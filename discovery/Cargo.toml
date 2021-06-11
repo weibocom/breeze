@@ -1,0 +1,22 @@
+[package]
+name = "discovery"
+version = "0.1.0"
+authors = ["icy"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+url = "2.2.1"
+async-trait = "*"
+
+#for http request and json parse
+reqwest = {version = "0.11", features = ["json"]}
+tokio = {version = "1", features = ["full"]}
+json = "*"
+
+#for deserialize
+serde = { version = "1.0", features = ["derive"] }
+serde_derive = "1.0"
+serde_yaml = "0.8"
+serde_json = "1.0"

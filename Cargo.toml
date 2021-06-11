@@ -1,0 +1,14 @@
+[workspace]
+members = [
+  "stream",
+  "hash",
+  "endpoint",
+  "protocol",
+  "agent",
+  "net",
+  "discovery",
+  "context",
+  "pool",
+  "log",
+  "metrics",
+]

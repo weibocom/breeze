@@ -1,0 +1,18 @@
+[package]
+name = "agent"
+version = "0.1.0"
+authors = ["icy"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+context = { path = "../context" }
+net = { path = "../net"}
+protocol = { path = "../protocol" }
+endpoint = { path = "../endpoint" }
+discovery = { path = "../discovery" }
+
+url = "2"
+clap = "3.0.0-beta.2"
+tokio = {version = "1", features = ["io-util"]}
