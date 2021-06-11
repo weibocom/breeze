@@ -1,0 +1,11 @@
+[package]
+name = "Metrics"
+version = "0.1.0"
+authors = ["mingzhe10 <mingzhe10@staff.weibo.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+once_cell = "*"
+crossbeam-channel = "*"
