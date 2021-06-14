@@ -14,9 +14,9 @@ use std::sync::Arc;
 
 use tokio::net::{tcp::OwnedWriteHalf, TcpStream};
 
-use stream::{Cid, MpscRingBufferStream};
+use stream::{Cid, RingBufferStream};
 
-type Backend = stream::BackendStream<Arc<MpscRingBufferStream>, Cid>;
+type Backend = stream::BackendStream<Arc<RingBufferStream>, Cid>;
 
 type MemcacheRoute = protocol::memcache::MemcacheRoute<DefaultHasher>;
 type GetOperation = AsyncRoute<Backend, MemcacheRoute>;

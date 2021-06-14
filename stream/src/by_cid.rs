@@ -1,4 +1,4 @@
-use super::MpscRingBufferStream;
+use super::RingBufferStream;
 
 use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
@@ -11,10 +11,11 @@ pub trait IdAsyncRead {
 }
 pub trait IdAsyncWrite {
     fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>>;
+    fn poll_shutdown(&self, id: usize, cx: &mut Context) -> Poll<Result<()>>;
 }
 
 pub enum IdStream {
-    Mpsc(Arc<MpscRingBufferStream>),
+    Mpsc(Arc<RingBufferStream>),
     NotConnected(NotConnected),
 }
 
@@ -41,6 +42,12 @@ impl IdAsyncWrite for IdStream {
             IdStream::NotConnected(stream) => stream.poll_write(id, cx, buf),
         }
     }
+    fn poll_shutdown(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
+        match self {
+            IdStream::Mpsc(stream) => stream.poll_shutdown(id, cx),
+            IdStream::NotConnected(stream) => stream.poll_shutdown(id, cx),
+        }
+    }
 }
 
 pub struct NotConnected;
@@ -58,6 +65,9 @@ impl IdAsyncRead for NotConnected {
 
 impl IdAsyncWrite for NotConnected {
     fn poll_write(&self, _id: usize, _cx: &mut Context, _buf: &[u8]) -> Poll<Result<()>> {
+        Poll::Ready(Err(Error::from(ErrorKind::NotConnected)))
+    }
+    fn poll_shutdown(&self, _id: usize, _cx: &mut Context) -> Poll<Result<()>> {
         Poll::Ready(Err(Error::from(ErrorKind::NotConnected)))
     }
 }

@@ -38,6 +38,10 @@ impl RingSlice {
             end: end,
         }
     }
+    pub fn resize(&mut self, num: usize) {
+        debug_assert!(self.len() >= num);
+        self.end = self.start + num;
+    }
     #[inline]
     fn mask(&self, offset: usize) -> usize {
         self.offset & (self.cap - 1)

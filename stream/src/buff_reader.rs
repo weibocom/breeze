@@ -1,6 +1,8 @@
 use std::future::Future;
 use std::io::{Error, Result};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use super::ResponseRingBuffer;
@@ -14,77 +16,110 @@ use futures::ready;
 
 pub trait Response {
     fn load_read_offset(&self) -> usize;
-    fn on_full(&self, waker: Waker);
     fn on_response(&self, seq: usize, response: RingSlice);
-    fn on_error(&self, err: Error);
 }
 
-unsafe impl<'a, T, R, P> Send for BuffReadFrom<'a, T, R, P> {}
-unsafe impl<'a, T, R, P> Sync for BuffReadFrom<'a, T, R, P> {}
+unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
+unsafe impl<R, W, P> Sync for BridgeResponseToLocal<R, W, P> {}
 
-pub struct BuffReadFrom<'a, T, R, P> {
+pub struct BridgeResponseToLocal<R, W, P> {
     seq: usize,
-    cond: &'a T,
+    done: Arc<AtomicBool>,
     r: R,
+    w: W,
     parser: P,
-
     data: ResponseRingBuffer,
 }
 
-impl<'a, T, R, P> BuffReadFrom<'a, T, R, P> {
-    pub fn from(cond: &'a T, r: R, parser: P, buf: usize) -> Self {
+impl<R, W, P> BridgeResponseToLocal<R, W, P> {
+    pub fn from(r: R, w: W, parser: P, buf: usize, done: Arc<AtomicBool>) -> Self {
         debug_assert!(buf == buf.next_power_of_two());
         Self {
             seq: 0,
-            cond: cond,
+            w: w,
             r: r,
             parser: parser,
             data: ResponseRingBuffer::with_capacity(buf),
+            done: done,
         }
     }
 }
 
-impl<'a, T, R, P> Future for BuffReadFrom<'a, T, R, P>
+impl<R, W, P> Future for BridgeResponseToLocal<R, W, P>
 where
     R: AsyncRead + Unpin,
     P: ResponseParser + Unpin,
-    T: Response + Unpin,
+    W: Response + Unpin,
 {
     type Output = Result<usize>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        println!("task polling. BridgeResponseToLocal");
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
-        loop {
-            me.data.reset_read(me.cond.load_read_offset());
+        //let mut spins = 0;
+        while !me.done.load(Ordering::Relaxed) {
+            let offset = me.w.load_read_offset();
+            me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
+            println!(
+                "task response to buffer:{} bytes available offset:{}",
+                buf.len(),
+                offset
+            );
             if buf.len() == 0 {
-                me.cond.on_full(cx.waker().clone());
-                return Poll::Pending;
+                panic!("response buffer full");
+                //println!("response buffer full");
+                std::hint::spin_loop();
+                continue;
             }
             let mut buf = ReadBuf::new(&mut buf);
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
-            //println!("{} bytes read from response", n);
+            println!(
+                "task response to buffer:{} bytes read from response. read buffer filled:{:?}",
+                n,
+                buf.filled()
+            );
             if n == 0 {
                 // EOF
-                return Poll::Ready(Ok(me.seq));
+                //panic!("EOF FOUND");
+                std::hint::spin_loop();
+                break;
             }
             me.data.advance_write(n);
             // 处理等处理的数据
             while me.data.processed() < me.data.writtened() {
-                let response = me.data.processing_bytes();
-                //println!("response processing bytes:{}", response.available());
+                let mut response = me.data.processing_bytes();
                 let (found, num) = me.parser.parse_response(&response);
+                println!(
+                    "task response to buffer: response processing bytes:{} parsed:{} num:{} seq:{} processed:{} written:{}",
+                    response.available(),
+                    found,
+                    num,
+                    me.seq,
+                    me.data.processed(),
+                    me.data.writtened(),
+                );
                 if !found {
                     break;
                 }
+                response.resize(num);
                 let seq = me.seq;
-                me.cond.on_response(seq, response);
+                me.w.on_response(seq, response);
+                println!(
+                    "task response to buffer:  {} bytes processed. seq:{} {} => {}",
+                    num,
+                    seq,
+                    me.data.processed(),
+                    me.data.writtened(),
+                );
                 me.data.advance_processed(num);
                 me.seq += 1;
             }
         }
+        println!("task of reading data from response complete");
+        Poll::Ready(Ok(0))
     }
 }
