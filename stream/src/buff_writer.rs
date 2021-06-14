@@ -1,67 +1,153 @@
 use std::future::Future;
 use std::io::{Error, Result};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use futures::ready;
 use tokio::io::AsyncWrite;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 
-unsafe impl<'a, T, W> Send for BuffCopyTo<'a, T, W> {}
-unsafe impl<'a, T, W> Sync for BuffCopyTo<'a, T, W> {}
+use super::ring::spsc::{RingBufferReader, RingBufferWriter};
+
+unsafe impl<W> Send for BridgeBufferToWriter<W> {}
+unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
+
+pub struct RequestData {
+    id: usize,
+    //ptr: usize,
+    //len: usize,
+    data: Vec<u8>,
+}
+
+impl RequestData {
+    pub fn from(id: usize, b: &[u8]) -> Self {
+        let data = b.clone().to_vec();
+        //let ptr = b.as_ptr() as usize;
+        Self {
+            id: id,
+            //ptr: ptr,
+            //len: b.len(),
+            data: data,
+        }
+    }
+    fn data(&self) -> &[u8] {
+        //let ptr = self.ptr as *const u8;
+        //unsafe { std::slice::from_raw_parts(ptr, self.len) }
+        &self.data
+    }
+    fn id(&self) -> usize {
+        self.id
+    }
+}
 
 pub trait Request {
-    fn on_success(&self, n: usize);
-    fn stream_fetch(&self) -> Option<&[u8]>;
-    fn on_empty(&self, waker: Waker);
-    fn on_error(&self, err: Error);
+    //fn next(&self, id: usize) -> Option<RequestData>;
+    fn request_received(&self, id: usize, seq: usize);
 }
 
-pub struct BuffCopyTo<'a, T, W> {
+pub struct BridgeBufferToWriter<W> {
     // 一次poll_write没有写完时，会暂存下来
-    left: Option<&'a [u8]>,
-    pos: usize,
-    bytes: usize,
-    cond: &'a T,
+    reader: RingBufferReader,
     w: W,
+    done: Arc<AtomicBool>,
 }
 
-impl<'a, T, W> BuffCopyTo<'a, T, W> {
-    pub fn from(cond: &'a T, w: W) -> Self {
+impl<W> BridgeBufferToWriter<W> {
+    pub fn from(reader: RingBufferReader, w: W, done: Arc<AtomicBool>) -> Self {
         Self {
-            left: None,
-            pos: 0,
-            bytes: 0,
-            cond: cond,
             w: w,
+            reader: reader,
+            done: done,
         }
     }
 }
 
-impl<'a, T, W> Future for BuffCopyTo<'a, T, W>
+impl<W> Future for BridgeBufferToWriter<W>
 where
     W: AsyncWrite + Unpin,
-    T: Request + Unpin,
 {
-    type Output = Result<usize>;
+    type Output = Result<()>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        println!("task polling. BridgeBufferToWriter");
         let me = &mut *self;
         let mut writer = Pin::new(&mut me.w);
-        loop {
-            if let Some(left) = me.left.take() {
-                while me.pos < left.len() {
-                    let num = ready!(writer.as_mut().poll_write(cx, &left[me.pos..]))?;
-                    debug_assert!(num > 0);
-                    me.pos += num;
-                    me.bytes += num;
-                    me.cond.on_success(num);
-                }
-            }
-            me.left = me.cond.stream_fetch();
-            me.pos = 0;
-            if me.left == None {
-                me.cond.on_empty(cx.waker().clone());
-                return Poll::Pending;
-            }
+        while !me.done.load(Ordering::Relaxed) {
+            println!("bridage buffer to backend.");
+            let b = ready!(me.reader.poll_next(cx));
+            println!("bridage buffer to backend. len:{}", b.len());
+            let num = ready!(writer.as_mut().poll_write(cx, b))?;
+            debug_assert!(num > 0);
+            println!("bridage buffer to backend: {} bytes sent ", num);
+            me.reader.consume(num);
         }
+        println!("task complete. bridge data from local buffer to backend server");
+        Poll::Ready(Ok(()))
+    }
+}
+
+pub struct BridgeRequestToBuffer<R> {
+    cache: Option<RequestData>,
+    done: Arc<AtomicBool>,
+    seq: usize,
+    r: R,
+    receiver: Receiver<RequestData>,
+    w: RingBufferWriter,
+}
+
+impl<R> BridgeRequestToBuffer<R> {
+    pub fn from(
+        receiver: Receiver<RequestData>,
+        r: R,
+        w: RingBufferWriter,
+        done: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            done: done,
+            seq: 0,
+            receiver: receiver,
+            r: r,
+            w: w,
+            cache: None,
+        }
+    }
+}
+
+impl<R> Future for BridgeRequestToBuffer<R>
+where
+    R: Unpin + Request,
+{
+    type Output = Result<()>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        println!("task polling. BridgeRequestToBuffer");
+        let me = &mut *self;
+        let mut receiver = Pin::new(&mut me.receiver);
+        while !me.done.load(Ordering::Relaxed) {
+            if let Some(req) = me.cache.take() {
+                let data = req.data();
+                assert_eq!(data[0], 0x80);
+                println!(
+                    "bridge request to buffer: write to buffer. cid: {} len:{}",
+                    req.id(),
+                    req.data().len()
+                );
+                ready!(me.w.poll_put_slice(cx, data));
+                let seq = me.seq;
+                me.seq += 1;
+                me.r.request_received(req.id(), seq);
+                println!(
+                    "received data from bridge. len:{} id:{} seq:{}",
+                    req.data().len(),
+                    req.id(),
+                    seq
+                );
+            }
+            println!("bridge request to buffer: wating to get request from channel");
+            me.cache = Some(ready!(receiver.as_mut().poll_recv(cx)).expect("channel closed"));
+            println!("bridge request to buffer. one request received from request channel");
+        }
+        Poll::Ready(Ok(()))
     }
 }

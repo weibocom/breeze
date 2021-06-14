@@ -1,4 +1,4 @@
-use stream::{BackendBuilder, Cid, MpscRingBufferStream};
+use stream::{BackendBuilder, Cid, RingBufferStream};
 
 use protocol::memcache::MemcacheResponseParser;
 
@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use tokio::net::tcp::OwnedWriteHalf;
 
-type BackendStream = stream::BackendStream<Arc<MpscRingBufferStream>, Cid>;
+type BackendStream = stream::BackendStream<Arc<RingBufferStream>, Cid>;
 
 #[derive(Default)]
 pub struct Topology {

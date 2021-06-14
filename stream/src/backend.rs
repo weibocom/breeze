@@ -64,8 +64,9 @@ where
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
         Poll::Ready(Ok(()))
     }
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+        let me = &*self;
+        me.inner.poll_shutdown(me.id.id(), cx)
     }
 }
 
@@ -142,13 +143,14 @@ impl AsyncWrite for NotConnected {
     }
 }
 
-use super::{Cid, Ids, MpscRingBufferStream};
+use super::{Cid, Ids, RingBufferStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 pub struct BackendBuilder {
     closed: AtomicBool,
+    done: Arc<AtomicBool>,
     addr: String,
-    stream: Arc<MpscRingBufferStream>,
+    stream: Arc<RingBufferStream>,
     ids: Arc<Ids>,
 }
 
@@ -175,19 +177,21 @@ impl BackendBuilder {
     where
         P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
-        let stream = MpscRingBufferStream::with_capacity(req_buf, resp_buf, parallel);
+        let done = Arc::new(AtomicBool::new(true));
+        let stream = RingBufferStream::with_capacity(req_buf, resp_buf, parallel, done.clone());
         let me = Self {
             closed: AtomicBool::new(false),
+            done: done.clone(),
             addr: addr,
             stream: Arc::new(stream),
             ids: Arc::new(Ids::with_capacity(parallel)),
         };
         let me = Arc::new(me);
-        let checker = BackendChecker::<P>::from(me.clone(), ignore_response);
+        let checker = BackendChecker::<P>::from(me.clone(), ignore_response, req_buf, resp_buf);
         checker.start_check();
         me
     }
-    pub fn build(&self) -> BackendStream<Arc<MpscRingBufferStream>, Cid> {
+    pub fn build(&self) -> BackendStream<Arc<RingBufferStream>, Cid> {
         self.ids
             .next()
             .map(|cid| BackendStream::from(Cid::new(cid, self.ids.clone()), self.stream.clone()))
@@ -195,11 +199,14 @@ impl BackendBuilder {
     }
     pub fn close(&self) {
         self.closed.store(true, Ordering::Release);
+        self.done.store(true, Ordering::Release);
     }
 }
 
 use tokio::time::{interval, Interval};
 pub struct BackendChecker<P> {
+    req_buf: usize,
+    resp_buf: usize,
     inner: Arc<BackendBuilder>,
 
     // 记录两个任务是否完成。
@@ -212,11 +219,18 @@ impl<P> BackendChecker<P>
 where
     P: Unpin + Send + Sync + ResponseParser + Default + 'static,
 {
-    fn from(builder: Arc<BackendBuilder>, ignore_response: bool) -> Self {
+    fn from(
+        builder: Arc<BackendBuilder>,
+        ignore_response: bool,
+        req_buf: usize,
+        resp_buf: usize,
+    ) -> Self {
         Self {
             inner: builder,
             ignore_response: Arc::new(AtomicBool::new(ignore_response)),
             tick: interval(std::time::Duration::from_secs(3)),
+            req_buf: req_buf,
+            resp_buf: resp_buf,
             _mark: Default::default(),
         }
     }
@@ -233,7 +247,8 @@ where
     }
 
     async fn check_reconnected_once(&self) {
-        if !self.inner.stream.running() {
+        // 说明连接未主动关闭，但任务已经结束，需要再次启动
+        if self.inner.done.load(Ordering::Acquire) {
             if !self.inner.stream.is_complete() {
                 // stream已经没有在运行，但没有结束。说明可能有一些waker等数据没有处理完。通知处理
                 self.inner.stream.try_complete();
@@ -245,9 +260,9 @@ where
                     let (r, w) = stream.into_split();
                     let req_stream = self.inner.stream.clone();
                     if !self.ignore_response.load(Ordering::Acquire) {
-                        req_stream.bridge(r, w, P::default());
+                        req_stream.bridge(self.req_buf, self.resp_buf, r, w, P::default());
                     } else {
-                        req_stream.bridge_no_reply(r, w, P::default());
+                        req_stream.bridge_no_reply(self.resp_buf, r, w, P::default());
                     }
                 }
                 // TODO

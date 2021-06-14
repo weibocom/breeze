@@ -57,6 +57,10 @@ impl ResponseRingBuffer {
     pub(crate) fn as_mut_bytes(&mut self) -> &mut [u8] {
         let offset = self.mask(self.write);
         let n = if self.read + self.size == self.write {
+            println!(
+                "response buffer full: read:{} write:{}",
+                self.read, self.write
+            );
             // 已满
             0
         } else {
@@ -88,15 +92,21 @@ impl Drop for ResponseRingBuffer {
 #[cfg(test)]
 mod tests {
     use super::ResponseRingBuffer;
+    use rand::Rng;
     use std::ptr::copy_nonoverlapping;
 
+    fn rnd_write(w: &mut [u8], size: usize) -> Vec<u8> {
+        debug_assert!(size <= w.len());
+        let data: Vec<u8> = (0..size).map(|_| rand::random::<u8>()).collect();
+        unsafe { copy_nonoverlapping(data.as_ptr(), w.as_mut_ptr(), size) }
+    }
+
+    #[test]
     fn test_response_buffer() {
         let cap = 32;
         let mut buffer = ResponseRingBuffer::with_capacity(cap);
-        let data: Vec<u8> = (0..24).map(|_| rand::random::<u8>()).collect();
-        let mut bytes = buffer.as_mut_bytes();
-        unsafe { copy_nonoverlapping(data.as_ptr(), bytes.as_mut_ptr(), data.len()) };
-        let ptr = data.as_ptr();
-        std::mem::forget(data);
+        let data = rnd_write(buffer.as_mut_bytes(), cap);
+        let mut response = buffer.processing_bytes();
+        assert_eq!(response.available(), 0);
     }
 }

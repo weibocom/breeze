@@ -1,4 +1,4 @@
-use crossbeam_channel::{bounded, Receiver, Sender, TryRecvError};
+use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::task::Waker;
 
@@ -11,7 +11,7 @@ pub struct MyWaker {
 // 用在一个通常不会出现阻塞的场景。所以通知的时候，是进行全量通知。
 impl MyWaker {
     pub fn with_capacity(cap: usize) -> Self {
-        let (sender, receiver) = bounded(cap);
+        let (sender, receiver) = unbounded();
         let len = AtomicIsize::new(0);
         MyWaker {
             receiver,
@@ -20,15 +20,17 @@ impl MyWaker {
         }
     }
     pub fn wait_on(&self, waker: Waker) {
+        //println!("waiting");
         self.sender.send(waker).expect("send waker");
         self.len.fetch_add(1, Ordering::AcqRel);
     }
     pub fn notify(&self) {
+        //println!("notify");
         let len = self.len.load(Ordering::Acquire);
         // 大部分情况是走这个逻辑。
-        if len == 0 {
-            return;
-        }
+        //if len == 0 {
+        //    return;
+        //}
         // 一次最多notify 4个，避免notify阻塞过多
         for _i in 0..4 {
             match self.receiver.try_recv() {
