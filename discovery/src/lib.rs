@@ -1,8 +1,10 @@
 pub mod cache;
-//mod memcache;
-mod empty_vintage;
+mod memcache;
 
-pub use empty_vintage::Vintage;
+// mod empty_vintage;
+// pub use empty_vintage::Vintage;
+mod vintage;
+use vintage::Vintage;
 
 use url::Url;
 
@@ -20,9 +22,15 @@ pub enum Discovery {
 }
 
 impl Discovery {
-    pub fn from_url(url: Url) -> Self {
+    pub async fn from_url(url: Url, groups: Vec<&str>) -> Self {
         match url.scheme() {
-            "vintage" => Self::Vintage(Vintage::from_url(url)),
+            "vintage" => {
+                let mut vt = Vintage::from_url(url).await;
+                for g in groups {
+                    vt.subscribe(g).await;
+                }
+                Self::Vintage(vt)
+            }
             _ => panic!("not a vintage schema"),
         }
     }
