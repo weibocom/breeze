@@ -13,7 +13,7 @@ use tokio::sync::oneshot;
 async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
     ctx.check()?;
-    let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
+    let discovery = Arc::from(Discovery::from_url(ctx.discovery(), ctx.groups()).await);
     for quard in ctx.listeners() {
         let discovery = Arc::clone(&discovery);
         spawn(async move {

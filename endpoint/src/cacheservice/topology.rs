@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 use tokio::net::tcp::OwnedWriteHalf;
 
+use crate::cacheservice::memcache::memcache_topo::MemcacheConf;
+
 type BackendStream = stream::BackendStream<Arc<MpscRingBufferStream>, Cid>;
 
 #[derive(Default)]
@@ -102,11 +104,29 @@ impl Topology {
         m.insert(addr.to_string(), stream);
     }
     fn parse(_cfg: &str) -> (Vec<String>, Vec<Vec<String>>, Vec<Vec<String>>) {
-        let masters = vec!["127.0.0.1:11211".to_string()];
-        let followers = vec![vec![]];
-        let readers = vec![vec!["127.0.0.1:11211".to_string()]];
+        let mut conf = MemcacheConf::parse_conf(_cfg);
 
-        (masters, followers, readers)
+        // master 就是conf中的master
+        let master: Vec<String> = conf.master.clone();
+
+        // followers包含： master-l1, slave, slave-l1
+        let mut followers: Vec<Vec<String>> = conf.slave_l1.clone();
+        followers.insert(0, conf.slave.clone());
+        for l1 in conf.master_l1.clone() {
+            followers.insert(0, l1);
+        }
+
+        // reader包含：l1, master，slave
+        let mut readers = conf.master_l1.clone();
+        readers.insert(readers.len(), conf.master.clone());
+        readers.insert(readers.len(), conf.slave.clone());
+
+        // let masters = vec!["127.0.0.1:11211".to_string()];
+        // let followers = vec![vec![]];
+        // let readers = vec![vec!["127.0.0.1:11211".to_string()]];
+
+        (master, followers, readers)
+
     }
     fn _copy(&self, cfg: &str) -> Self {
         let (masters, followers, readers) = Self::parse(cfg);
