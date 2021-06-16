@@ -1,27 +1,63 @@
 use std::cell::RefCell;
 use std::ptr::copy_nonoverlapping as copy;
 use std::slice::from_raw_parts;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use cache_line_size::CacheAligned;
 use lockfree::channel::spsc::{create, Receiver, Sender};
 
-use futures::ready;
-use spin::Mutex;
-
 unsafe impl Send for RingBuffer {}
 unsafe impl Sync for RingBuffer {}
+
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum Status {
+    Ok = 0u8,
+    ReadPending = 1,
+    WritePending = 2,
+    Lock,
+}
+
+const STATUSES: [Status; 4] = [
+    Status::Ok,
+    Status::ReadPending,
+    Status::WritePending,
+    Status::Lock,
+];
+
+impl PartialEq for Status {
+    fn eq(&self, other: &Self) -> bool {
+        *self as u8 == *other as u8
+    }
+}
+impl PartialEq<u8> for Status {
+    fn eq(&self, other: &u8) -> bool {
+        *self as u8 == *other
+    }
+}
+impl PartialEq<Status> for u8 {
+    fn eq(&self, other: &Status) -> bool {
+        *self == *other as u8
+    }
+}
+
+impl From<u8> for Status {
+    fn from(status: u8) -> Self {
+        debug_assert!(status <= Status::Lock as u8);
+        STATUSES[status as usize]
+    }
+}
 
 pub struct RingBuffer {
     data: *mut u8,
     len: usize,
     read: CacheAligned<AtomicUsize>,
     write: CacheAligned<AtomicUsize>,
-    //waker_status: AtomicBool,
-    //waker: RefCell<Option<Waker>>,
-    waker: Mutex<Option<Waker>>,
+    waker_status: AtomicU8,
+    // 0: ReadPending, 1: WritePending
+    wakers: [RefCell<Option<Waker>>; 2],
 }
 
 impl RingBuffer {
@@ -37,11 +73,8 @@ impl RingBuffer {
             len: cap,
             read: CacheAligned(AtomicUsize::new(0)),
             write: CacheAligned(AtomicUsize::new(0)),
-            //sender: sender,
-            //receiver: receiver,
-            //waker: Default::default(),
-            //waker_status: AtomicBool::new(false),
-            waker: Mutex::new(None),
+            waker_status: AtomicU8::new(Status::Ok as u8),
+            wakers: Default::default(),
         }
     }
     pub fn into_split(self) -> (RingBufferWriter, RingBufferReader) {
@@ -52,49 +85,64 @@ impl RingBuffer {
         )
     }
     // 读和写同时只会出现一个notify. TODO 待验证
-    fn notify(&self) {
-        let mut waker = self.waker.lock();
-        if let Some(w) = waker.take() {
-            println!(
-                "spsc: notyfied: read:{} write:{}",
-                self.read.0.load(Ordering::Acquire),
-                self.write.0.load(Ordering::Acquire)
-            );
-            w.wake()
-        }
-        //if self.waker_status.load(Ordering::Acquire) {
-        //    if let Some(waker) = self.waker.borrow_mut().take() {
-        //        self.waker_status.store(false, Ordering::Release);
-        //        waker.wake();
-        //        println!("spsc: entering pending mode");
-        //    }
-        //}
-    }
-    fn wake_and_pending(&self, cx: &mut Context) -> Poll<()> {
-        println!(
-            "spsc: entering pending mode: read:{} write:{}",
-            self.read.0.load(Ordering::Acquire),
-            self.write.0.load(Ordering::Acquire)
+    fn notify(&self, status: Status) {
+        debug_assert!(
+            status as u8 == Status::ReadPending as u8 || status as u8 == Status::WritePending as u8
         );
-        let mut waker = self.waker.lock();
-        let read = self.read.0.load(Ordering::Acquire);
-        let write = self.write.0.load(Ordering::Acquire);
-        if read != write {
-            println!(
-                "spsc: entering pending mode, but read{} write:{}",
-                read, write
-            );
-            return Poll::Ready(());
+        if self.status_cas(status, Status::Lock) {
+            // 进入到pending状态，一定会有waker
+            self.wakers[status as usize - 1]
+                .borrow_mut()
+                .take()
+                .unwrap()
+                .wake();
+            debug_assert!(self.status_cas(Status::Lock, Status::Ok));
+            return;
         }
-        // 拿到锁了，进行double check
-        waker.take().map(|w| {
-            println!("spsc: notified in wake pending");
-            w.wake()
-        });
-        *waker = Some(cx.waker().clone());
-        Poll::Pending
-        //*self.waker.borrow_mut() = Some(cx.waker().clone());
-        //self.waker_status.store(true, Ordering::Release);
+    }
+    // 当前状态要进入到status状态（status只能是ReadPending或者WritePending
+    fn waiting(&self, cx: &mut Context, status: Status) {
+        debug_assert!(status == Status::ReadPending || status == Status::WritePending);
+        //for _ in 0..128 {
+        let mut loops = 0;
+        loop {
+            loops += 1;
+            // 异常情况，进入死循环了
+            debug_assert!(loops <= 1024 * 1024);
+            let old = self.waker_status.load(Ordering::Acquire);
+            if old == Status::Ok || old == status {
+                if self.status_cas(old.into(), Status::Lock) {
+                    *self.wakers[status as usize - 1].borrow_mut() = Some(cx.waker().clone());
+                    debug_assert!(self.status_cas(Status::Lock, status));
+                    return;
+                } else {
+                    continue;
+                }
+            }
+
+            if old == Status::Lock {
+                //println!("waiting into status. but old status is:{}", old);
+                continue;
+            }
+
+            // 运行到这，通常是下面这种场景：
+            // 写阻塞，进入waiting，但瞬间所有数据都被读走，读也会被阻塞。反之一样
+            // 唤醒old的
+            println!("try to waiting in status {}, but current status is {}. maybe both write and read enterinto Pending status mode", status as u8, old);
+            self.notify(Status::from(old));
+            return;
+        }
+    }
+    fn status_cas(&self, old: Status, new: Status) -> bool {
+        match self.waker_status.compare_exchange(
+            old as u8,
+            new as u8,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
     }
 }
 
@@ -126,14 +174,6 @@ impl RingBufferWriter {
         let read = self.buffer.read.0.load(Ordering::Acquire);
         let available = self.buffer.len - (self.write - read);
         debug_assert!(available <= self.buffer.len);
-        println!(
-            "spsc: try write data. read:{} write:{} buffer write:{} available:{} len:{}",
-            read,
-            self.write,
-            self.buffer.write.0.load(Ordering::Acquire),
-            available,
-            b.len()
-        );
         if available < b.len() {
             false
         } else {
@@ -158,13 +198,11 @@ impl RingBufferWriter {
     }
     pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<()> {
         if self.put_slice(b) {
-            self.buffer.notify();
+            self.buffer.notify(Status::ReadPending);
             Poll::Ready(())
         } else {
-            // 空间不足
-            println!("spsc: no space to write, entering waiting mode. ");
-            self.buffer.notify();
-            self.buffer.wake_and_pending(cx)
+            self.buffer.waiting(cx, Status::WritePending);
+            Poll::Pending
         }
     }
 }
@@ -188,12 +226,6 @@ impl RingBufferReader {
     pub fn next(&self) -> Option<&[u8]> {
         let write = self.buffer.write.0.load(Ordering::Acquire);
         if self.read == write {
-            println!(
-                "spsc: no data to read.buffer read:{} read:{} write:{}",
-                self.buffer.read.0.load(Ordering::Acquire),
-                self.read,
-                write
-            );
             None
         } else {
             debug_assert!(self.read < write);
@@ -204,7 +236,7 @@ impl RingBufferReader {
             } else {
                 self.buffer.len - oft_start
             };
-            println!("spsc poll next. read:{} write:{} n:{}", self.read, write, n);
+            //println!("spsc poll next. read:{} write:{} n:{}", self.read, write, n);
             unsafe {
                 Some(from_raw_parts(
                     self.buffer.data.offset(oft_start as isize),
@@ -216,17 +248,15 @@ impl RingBufferReader {
     pub fn consume(&mut self, n: usize) {
         self.read += n;
         self.buffer.read.0.store(self.read, Ordering::Release);
-        self.buffer.notify();
+        self.buffer.notify(Status::WritePending);
     }
     // 没有数据进入waiting状态。等put唤醒
     pub fn poll_next(&mut self, cx: &mut Context) -> Poll<&[u8]> {
         if let Some(data) = self.next() {
             Poll::Ready(data)
         } else {
-            // 没有数据了
-            ready!(self.buffer.wake_and_pending(cx));
-            let data = self.next().expect("spsc not entering pending status");
-            Poll::Ready(data)
+            self.buffer.waiting(cx, Status::ReadPending);
+            Poll::Pending
         }
     }
 }
@@ -306,5 +336,69 @@ mod tests {
                 reader.consume(r2.len());
             }
         }
+    }
+
+    #[test]
+    fn test_spsc_data_consistent() {
+        use std::sync::Arc;
+        use std::task::{Context, Poll};
+        let cap = 1024 * 1024;
+        let (mut writer, mut reader) = RingBuffer::with_capacity(8 * cap).into_split();
+        // 场景0： 一次写满
+        // 生成10 * cap的数据。一读一写
+        let request_data: Arc<Vec<u8>> = Arc::new(rnd_bytes(cap));
+        let mut readed_data: Vec<u8> = Vec::with_capacity(request_data.len());
+
+        let w_data = request_data.clone();
+        // 一写一读
+        let w = std::thread::spawn(move || {
+            let waker = futures::task::noop_waker_ref();
+            let mut cx = std::task::Context::from_waker(waker);
+            let min = 512usize;
+            let max = 1024usize;
+            let mut writes = 0;
+            let mut i = min;
+            while writes < w_data.len() {
+                let end = (w_data.len() - writes).min(i) + writes;
+                match writer.poll_put_slice(&mut cx, &w_data[writes..end]) {
+                    Poll::Ready(_) => {
+                        writes = end;
+                        i += 1;
+                        if i >= max {
+                            i = min
+                        }
+                    }
+                    Poll::Pending => {
+                        std::hint::spin_loop();
+                    }
+                };
+            }
+        });
+        let r = std::thread::spawn(move || {
+            let waker = futures::task::noop_waker_ref();
+            let mut cx = std::task::Context::from_waker(waker);
+            let size = readed_data.capacity();
+            while readed_data.len() < size {
+                let n = match reader.poll_next(&mut cx) {
+                    Poll::Ready(data) => {
+                        debug_assert!(data.len() > 0);
+                        readed_data.extend_from_slice(data);
+                        data.len()
+                    }
+                    Poll::Pending => {
+                        std::hint::spin_loop();
+                        0
+                    }
+                };
+                if n > 0 {
+                    reader.consume(n);
+                }
+            }
+            readed_data
+        });
+        w.join().unwrap();
+        let readed_data = r.join().unwrap();
+        assert_eq!(request_data.len(), readed_data.len());
+        assert_eq!(&request_data[..], &readed_data[..]);
     }
 }

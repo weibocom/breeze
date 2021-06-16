@@ -51,7 +51,7 @@ where
     P: ResponseParser + Unpin,
     W: Response + Unpin,
 {
-    type Output = Result<usize>;
+    type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         println!("task polling. BridgeResponseToLocal");
@@ -103,6 +103,9 @@ where
                     me.data.writtened(),
                 );
                 if !found {
+                    if num >= 24 {
+                        panic!("not a valid response");
+                    }
                     break;
                 }
                 response.resize(num);
@@ -120,6 +123,6 @@ where
             }
         }
         println!("task of reading data from response complete");
-        Poll::Ready(Ok(0))
+        Poll::Ready(Ok(()))
     }
 }

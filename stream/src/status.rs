@@ -145,9 +145,9 @@ impl Item {
         let waker = self.waker.borrow_mut().take();
         self.unlock_waker();
         if let Some(waker) = waker {
-            println!("wake up");
+            //println!("wake up");
             waker.wake();
-            println!("wake up complete");
+            //println!("wake up complete");
         }
     }
     #[inline(always)]

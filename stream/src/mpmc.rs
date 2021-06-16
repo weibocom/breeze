@@ -1,13 +1,16 @@
 use std::cell::RefCell;
+use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use super::ring::spsc::RingBuffer;
 use super::status::*;
-use super::{IdAsyncRead, IdAsyncWrite, Request, Response, RingSlice};
+use super::{
+    BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, IdAsyncRead, IdAsyncWrite,
+    Request, Response, RingBuffer, RingSlice,
+};
 
 use protocol::ResponseParser;
 
@@ -129,7 +132,7 @@ impl MpmcRingBufferStream {
     }
     pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         ready!(self.poll_check())?;
-        println!("stream: poll write cid:{} len:{} ", cid, buf.len());
+        println!("stream: poll write cid:{} len:{} ", cid, buf.len(),);
         let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
         if sender.0 {
             self.get_item(cid).place_request();
@@ -215,27 +218,21 @@ impl MpmcRingBufferStream {
         let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
         // 把数据从request同步到buffer
         let receiver = self.receiver.borrow_mut().take().expect("receiver exists");
-        tokio::spawn(super::BridgeRequestToBuffer::from(
-            receiver,
-            self.clone(),
-            req_rb_writer,
-            self.done.clone(),
-        ));
-        // 把数据从buffer发送数据到,server
-        tokio::spawn(super::BridgeBufferToWriter::from(
-            req_rb_reader,
-            w,
-            self.done.clone(),
-        ));
+        self.start_bridge(
+            "bridge-request-to-buffer",
+            BridgeRequestToBuffer::from(receiver, self.clone(), req_rb_writer, self.done.clone()),
+        );
+        //// 把数据从buffer发送数据到,server
+        self.start_bridge(
+            "bridge-buffer-to-backend",
+            BridgeBufferToWriter::from(req_rb_reader, w, self.done.clone()),
+        );
 
-        // 从response读取数据写入items
-        tokio::spawn(super::BridgeResponseToLocal::from(
-            r,
-            self.clone(),
-            parser,
-            resp_buffer,
-            self.done.clone(),
-        ));
+        //// 从response读取数据写入items
+        self.start_bridge(
+            "bridge-backend-to-local",
+            BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone()),
+        );
     }
     pub fn bridge_no_reply<R, W, P>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W, _parser: P)
     where
@@ -277,6 +274,22 @@ impl MpmcRingBufferStream {
                     Err(_e) => break,
                 }
             }
+        });
+    }
+    fn start_bridge<F>(&self, name: &'static str, future: F)
+    where
+        F: Future<Output = Result<()>> + Send + 'static,
+    {
+        tokio::spawn(async move {
+            println!("{} bridge task started", name);
+            match future.await {
+                Ok(_) => {
+                    println!("{} bridge task complete", name);
+                }
+                Err(e) => {
+                    println!("{} bridge task complete with error:{:?}", name, e);
+                }
+            };
         });
     }
 
