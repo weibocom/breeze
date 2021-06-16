@@ -1,6 +1,8 @@
 mod topology;
 pub use topology::Topology;
 
+mod memcache;
+
 use discovery::ServiceDiscover;
 
 use protocol::chan::{
@@ -12,7 +14,7 @@ use protocol::DefaultHasher;
 use std::io::Result;
 use std::sync::Arc;
 
-use tokio::net::{tcp::OwnedWriteHalf, TcpStream};
+use tokio::net::{tcp::OwnedWriteHalf};
 
 use stream::{Cid, RingBufferStream};
 
