@@ -17,6 +17,9 @@ pub struct Context {
         default_value("unix")
     )]
     family: String,
+
+    #[clap(short, long, about("groups for subscrbie"))]
+    group: String,
 }
 
 impl Context {
@@ -29,6 +32,10 @@ impl Context {
     }
     pub fn discovery(&self) -> Url {
         self.discovery.clone()
+    }
+    pub fn groups(&self) -> Vec<&str> {
+        let groups: Vec<&str> = self.group.split(',').collect();
+        groups
     }
     pub async fn wait(&self) {}
     pub fn check(&self) -> std::io::Result<()> {
