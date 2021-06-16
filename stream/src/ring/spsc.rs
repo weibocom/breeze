@@ -179,10 +179,13 @@ impl RingBufferWriter {
         } else {
             let oft_write = self.write & self.mask;
             let oft_read = read & self.mask;
-            let offset = oft_write.max(oft_read);
-            let n = (self.buffer.len - offset).min(b.len());
+            let n = if oft_read > oft_write {
+                b.len()
+            } else {
+                b.len().min(self.buffer.len - oft_write)
+            };
             unsafe {
-                copy(b.as_ptr(), self.buffer.data.offset(offset as isize), n);
+                copy(b.as_ptr(), self.buffer.data.offset(oft_write as isize), n);
             }
             if b.len() > n && available > n {
                 // 说明写入到buffer末尾，空间够，还有未写完的数据
