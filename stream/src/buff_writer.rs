@@ -47,19 +47,24 @@ pub trait Request {
     fn request_received(&self, id: usize, seq: usize);
 }
 
+use std::fs::File;
+use std::io::prelude::*;
 pub struct BridgeBufferToWriter<W> {
     // 一次poll_write没有写完时，会暂存下来
     reader: RingBufferReader,
     w: W,
     done: Arc<AtomicBool>,
+    cache: File,
 }
 
 impl<W> BridgeBufferToWriter<W> {
     pub fn from(reader: RingBufferReader, w: W, done: Arc<AtomicBool>) -> Self {
+        let cache = File::create("/tmp/cache.out").unwrap();
         Self {
             w: w,
             reader: reader,
             done: done,
+            cache: cache,
         }
     }
 }
@@ -76,8 +81,9 @@ where
         while !me.done.load(Ordering::Relaxed) {
             println!("bridage buffer to backend.");
             let b = ready!(me.reader.poll_next(cx));
-            println!("bridage buffer to backend. len:{}", b.len());
+            println!("bridage buffer to backend. len:{} ", b.len());
             let num = ready!(writer.as_mut().poll_write(cx, b))?;
+            me.cache.write_all(&b[..num]).unwrap();
             debug_assert!(num > 0);
             println!("bridage buffer to backend: {} bytes sent ", num);
             me.reader.consume(num);

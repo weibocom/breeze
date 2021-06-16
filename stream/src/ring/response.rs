@@ -57,10 +57,6 @@ impl ResponseRingBuffer {
     pub(crate) fn as_mut_bytes(&mut self) -> &mut [u8] {
         let offset = self.mask(self.write);
         let n = if self.read + self.size == self.write {
-            println!(
-                "response buffer full: read:{} write:{}",
-                self.read, self.write
-            );
             // 已满
             0
         } else {
@@ -71,6 +67,10 @@ impl ResponseRingBuffer {
                 self.size - offset
             }
         };
+        println!(
+            "response as mut bytes. read:{} processed:{} write:{} available:{}",
+            self.read, self.processed, self.write, n
+        );
 
         unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
     }
@@ -98,7 +98,8 @@ mod tests {
     fn rnd_write(w: &mut [u8], size: usize) -> Vec<u8> {
         debug_assert!(size <= w.len());
         let data: Vec<u8> = (0..size).map(|_| rand::random::<u8>()).collect();
-        unsafe { copy_nonoverlapping(data.as_ptr(), w.as_mut_ptr(), size) }
+        unsafe { copy_nonoverlapping(data.as_ptr(), w.as_mut_ptr(), size) };
+        data
     }
 
     #[test]

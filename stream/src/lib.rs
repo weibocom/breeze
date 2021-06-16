@@ -15,4 +15,5 @@ use buff_writer::RequestData;
 pub(crate) use buff_writer::{BridgeBufferToWriter, BridgeRequestToBuffer, Request};
 pub use by_cid::{Cid, Id, IdAsyncRead, IdAsyncWrite, IdStream, Ids};
 pub use mpmc::MpmcRingBufferStream as RingBufferStream;
+use ring::spsc::RingBuffer;
 pub use ring::{MonoRingBuffer, ResponseRingBuffer};
