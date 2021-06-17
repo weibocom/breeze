@@ -14,7 +14,7 @@ use protocol::DefaultHasher;
 use std::io::Result;
 use std::sync::Arc;
 
-use tokio::net::{tcp::OwnedWriteHalf};
+use tokio::net::tcp::OwnedWriteHalf;
 
 use stream::{Cid, RingBufferStream};
 
