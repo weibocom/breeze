@@ -1,5 +1,3 @@
-mod memcache;
-
 mod update;
 mod vintage;
 use update::AsyncServiceUpdate;
