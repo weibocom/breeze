@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
     coredump::register_panic_handler().unwrap();
     let ctx = Context::from_os_args();
     ctx.check()?;
-    let discovery = Arc::from(Discovery::from_url(ctx.discovery(), ctx.groups()).await);
+    let discovery = Arc::from(Discovery::from_url(ctx.discovery()).await);
     for quard in ctx.listeners() {
         let discovery = Arc::clone(&discovery);
         spawn(async move {
@@ -22,13 +22,18 @@ async fn main() -> Result<()> {
                 Ok(l) => {
                     println!("listener received:{:?}", quard);
                     let discovery = Arc::clone(&discovery);
-                    let sd = ServiceDiscovery::new(discovery, quard.service());
+                    let sd = Arc::new(ServiceDiscovery::new(
+                        discovery,
+                        quard.service(),
+                        quard.snapshot(),
+                        quard.tick(),
+                    ));
                     loop {
                         match l.accept().await {
                             Ok((mut client, _addr)) => {
                                 let sd = Arc::clone(&sd);
                                 use endpoint::Endpoint;
-                                let ed = Endpoint::from_discovery(&quard.endpoint(), sd).await;
+                                let ed = Endpoint::from_discovery(&quard.endpoint(), sd);
                                 match ed {
                                     Ok(mut server) => {
                                         spawn(async move {

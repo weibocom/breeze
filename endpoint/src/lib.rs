@@ -13,10 +13,10 @@ macro_rules! define_endpoint {
             $($item($type_name<D>)),+
         }
 
-        impl<D> Endpoint<D> where D: ServiceDiscover<Item = Topology> + Unpin {
-            pub async fn from_discovery(name: &str, discovery:D) -> Result<Self> {
+        impl<D> Endpoint<D> where D: ServiceDiscover<Topology> + Unpin + 'static {
+            pub fn from_discovery(name: &str, discovery:D) -> Result<Self> {
                 match name {
-                    $($ep => Ok(Self::$item($type_name::<D>::from_discovery(discovery).await?)),)+
+                    $($ep => Ok(Self::$item($type_name::<D>::from_discovery(discovery)?)),)+
                     _ => panic!("not supported endpoint name"),
                 }
             }
@@ -51,7 +51,7 @@ macro_rules! define_endpoint {
 }
 
 mod cacheservice;
-mod pipe;
+//mod pipe;
 
 use cacheservice::CacheService;
 //use pipe::Pipe;
