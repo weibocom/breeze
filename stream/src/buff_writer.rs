@@ -54,17 +54,17 @@ pub struct BridgeBufferToWriter<W> {
     reader: RingBufferReader,
     w: W,
     done: Arc<AtomicBool>,
-    cache: File,
+    //cache: File,
 }
 
 impl<W> BridgeBufferToWriter<W> {
     pub fn from(reader: RingBufferReader, w: W, done: Arc<AtomicBool>) -> Self {
-        let cache = File::create("/tmp/cache.out").unwrap();
+        //let cache = File::create("/tmp/cache.out").unwrap();
         Self {
             w: w,
             reader: reader,
             done: done,
-            cache: cache,
+            //cache: cache,
         }
     }
 }
@@ -83,7 +83,7 @@ where
             let b = ready!(me.reader.poll_next(cx));
             println!("bridage buffer to backend. len:{} ", b.len());
             let num = ready!(writer.as_mut().poll_write(cx, b))?;
-            me.cache.write_all(&b[..num]).unwrap();
+            //me.cache.write_all(&b[..num]).unwrap();
             debug_assert!(num > 0);
             println!("bridage buffer to backend: {} bytes sent ", num);
             me.reader.consume(num);
