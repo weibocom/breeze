@@ -3,6 +3,7 @@ mod memcache;
 
 // mod empty_vintage;
 // pub use empty_vintage::Vintage;
+mod update;
 mod vintage;
 use vintage::Vintage;
 
