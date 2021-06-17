@@ -46,7 +46,13 @@ where
             snapshot: snapshot,
         }
     }
-    fn load_from_snapshot(&mut self) {}
+    // 如果当前配置为空，则从snapshot加载
+    fn load_from_snapshot(&mut self)
+    where
+        D: Discover + Send + Unpin,
+    {
+        if self.cfg.len() == 0 {}
+    }
     fn load_from_discovery(&mut self) {}
 }
 
