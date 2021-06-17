@@ -3,49 +3,43 @@ mod vintage;
 use update::AsyncServiceUpdate;
 use vintage::Vintage;
 
+use std::io::Result;
 use std::time::Duration;
 
 use left_right::ReadHandle;
 
 use url::Url;
 
+use async_trait::async_trait;
+use enum_dispatch::enum_dispatch;
+
+#[async_trait]
+#[enum_dispatch]
 pub trait Discover {
-    fn get_service(&self, name: &str) -> String;
+    async fn get_service(&self, name: &str, sig: &str) -> Result<Option<(String, String)>>;
 }
 
-pub trait ServiceDiscover<T> {
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O;
-}
-
+#[enum_dispatch(Discover)]
 pub enum Discovery {
     Vintage(Vintage),
 }
-
 impl Discovery {
-    pub async fn from_url(url: Url) -> Self {
+    pub fn from_url(url: Url) -> Self {
         match url.scheme() {
-            "vintage" => {
-                let v = Vintage::from_url(url).await;
-                Self::Vintage(v)
-            }
-            _ => panic!("not a vintage schema"),
-        }
-    }
-}
-
-impl Discover for Discovery {
-    #[inline]
-    fn get_service(&self, name: &str) -> String {
-        match self {
-            Discovery::Vintage(v) => v.get_service(name),
+            "vintage" => Self::Vintage(Vintage::from_url(url)),
+            _ => panic!("not supported endpoint name"),
         }
     }
 }
 
 pub trait Topology: Default + left_right::Absorb<String> + Clone {
     fn copy_from(&self, cfg: &str) -> Self;
+}
+
+pub trait ServiceDiscover<T> {
+    fn do_with<F, O>(&self, f: F) -> O
+    where
+        F: Fn(&T) -> O;
 }
 
 unsafe impl<T> Send for ServiceDiscovery<T> {}
@@ -82,10 +76,12 @@ impl<T> ServiceDiscover<T> for ServiceDiscovery<T> {
 }
 
 use std::sync::Arc;
-impl<T: Discover> Discover for Arc<T> {
+
+#[async_trait]
+impl<T: Discover + Send + Unpin + Sync> Discover for Arc<T> {
     #[inline]
-    fn get_service(&self, name: &str) -> String {
-        (**self).get_service(name)
+    async fn get_service(&self, name: &str, sig: &str) -> Result<Option<(String, String)>> {
+        (**self).get_service(name, sig).await
     }
 }
 impl<T> ServiceDiscover<T> for Arc<ServiceDiscovery<T>> {
