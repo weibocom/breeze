@@ -1,4 +1,3 @@
-pub mod cache;
 mod memcache;
 
 mod update;
