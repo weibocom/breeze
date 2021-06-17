@@ -23,7 +23,7 @@ pub struct Vintage {
     biz_mc_confs: HashMap<String, String>,
     // 注册的grouop列表，一个group下一般有多个biz/namespace
     groups: HashSet<String>,
-    sender: Sender<String>,
+    //sender: Sender<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -53,16 +53,16 @@ pub struct MemcacheRspConfNode {
 }
 
 impl Vintage {
-    pub async fn from_url(_url: Url) -> Self {
-        let (tx, rx) = mpsc::channel(200);
+    pub fn from_url(_url: Url) -> Self {
+        //let (tx, rx) = mpsc::channel(200);
         let mut vintage = Vintage {
             base_url: _url,
             biz_mc_confs: HashMap::new(),
             groups: HashSet::new(),
-            sender: tx,
+            //sender: tx,
         };
 
-        vintage.start_deamon_worker(rx).await;
+        //vintage.start_deamon_worker(rx).await;
         //TODO： start deamon worker here
 
         return vintage;
@@ -183,21 +183,21 @@ impl Vintage {
 
     // 订阅group，注意可以支持订阅任意个group，所有group的key均位all
 
-    pub async fn subscribe(&mut self, group: &str) {
-        let rs = self.groups.insert(group.into());
-        if !rs {
-            println!("subscribe duplicat group: {}", group);
-            return;
-        }
+    //pub async fn subscribe(&mut self, group: &str) {
+    //    let rs = self.groups.insert(group.into());
+    //    if !rs {
+    //        println!("subscribe duplicat group: {}", group);
+    //        return;
+    //    }
 
-        // 通过channel方式进行通知
-        match self.sender.send(group.into()).await {
-            Ok(_) => {
-                println!("subscribe for group/{} sended", group)
-            }
-            Err(e) => println!("err: {:?}", e),
-        }
-    }
+    //    // 通过channel方式进行通知
+    //    match self.sender.send(group.into()).await {
+    //        Ok(_) => {
+    //            println!("subscribe for group/{} sended", group)
+    //        }
+    //        Err(e) => println!("err: {:?}", e),
+    //    }
+    //}
 }
 
 #[cfg(test)]
@@ -217,5 +217,18 @@ mod mc_discovery_test {
 
         println!("lookup result: {:?}", conf);
         assert!(conf.unwrap().len() > 0);
+    }
+}
+
+use async_trait::async_trait;
+
+#[async_trait]
+impl super::Discover for Vintage {
+    async fn get_service(
+        &self,
+        name: &str,
+        sig: &str,
+    ) -> std::io::Result<Option<(String, String)>> {
+        todo!();
     }
 }
