@@ -85,7 +85,7 @@ where
             if n == 0 {
                 // EOF
                 //panic!("EOF FOUND");
-                std::hint::spin_loop();
+                //std::hint::spin_loop();
                 break;
             }
             me.data.advance_write(n);
