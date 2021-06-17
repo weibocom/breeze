@@ -1,11 +1,14 @@
 pub mod cache;
 mod memcache;
 
-// mod empty_vintage;
-// pub use empty_vintage::Vintage;
 mod update;
 mod vintage;
+use update::AsyncServiceUpdate;
 use vintage::Vintage;
+
+use std::time::Duration;
+
+use left_right::ReadHandle;
 
 use url::Url;
 
@@ -13,9 +16,10 @@ pub trait Discover {
     fn get_service(&self, name: &str) -> String;
 }
 
-pub trait ServiceDiscover {
-    type Item;
-    fn get(&self) -> &Self::Item;
+pub trait ServiceDiscover<T> {
+    fn do_with<F, O>(&self, f: F) -> O
+    where
+        F: Fn(&T) -> O;
 }
 
 pub enum Discovery {
@@ -23,14 +27,11 @@ pub enum Discovery {
 }
 
 impl Discovery {
-    pub async fn from_url(url: Url, groups: Vec<&str>) -> Self {
+    pub async fn from_url(url: Url) -> Self {
         match url.scheme() {
             "vintage" => {
-                let mut vt = Vintage::from_url(url).await;
-                for g in groups {
-                    vt.subscribe(g).await;
-                }
-                Self::Vintage(vt)
+                let v = Vintage::from_url(url).await;
+                Self::Vintage(v)
             }
             _ => panic!("not a vintage schema"),
         }
@@ -46,41 +47,40 @@ impl Discover for Discovery {
     }
 }
 
-pub trait Topology: Default {
+pub trait Topology: Default + left_right::Absorb<String> + Clone {
     fn copy_from(&self, cfg: &str) -> Self;
 }
 
-pub struct ServiceDiscovery<D, T> {
-    cache: T,
-    discovery: D,
-    service: String,
+unsafe impl<T> Send for ServiceDiscovery<T> {}
+unsafe impl<T> Sync for ServiceDiscovery<T> {}
+
+pub struct ServiceDiscovery<T> {
+    cache: ReadHandle<T>,
 }
 
-impl<D, T> ServiceDiscovery<D, T> {
-    pub fn new(discovery: D, service: String) -> Arc<Self>
+impl<T> ServiceDiscovery<T> {
+    pub fn new<D>(discovery: D, service: String, snapshot: String, tick: Duration) -> Self
     where
-        D: Discover,
-        T: Topology,
+        D: Discover + Send + Unpin + 'static,
+        T: Topology + Send + Sync + 'static,
     {
-        let cfg = discovery.get_service(&service);
-        let cache = T::default().copy_from(&cfg);
-        let me = Self {
-            discovery,
-            service,
-            cache: cache,
-        };
-        let me = Arc::new(me);
-        me.clone().start_watch();
-        me
+        let (w, r) = left_right::new_from_empty::<T, String>(T::default());
+
+        tokio::spawn(AsyncServiceUpdate::new(
+            service, discovery, w, tick, snapshot,
+        ));
+
+        Self { cache: r }
     }
-    fn start_watch(self: Arc<Self>) {}
 }
 
-impl<D: Discover, T> ServiceDiscover for ServiceDiscovery<D, T> {
-    type Item = T;
+impl<T> ServiceDiscover<T> for ServiceDiscovery<T> {
     #[inline]
-    fn get(&self) -> &Self::Item {
-        &self.cache
+    fn do_with<F, O>(&self, f: F) -> O
+    where
+        F: Fn(&T) -> O,
+    {
+        f(&self.cache.enter().expect("topology not inited yes"))
     }
 }
 
@@ -91,10 +91,12 @@ impl<T: Discover> Discover for Arc<T> {
         (**self).get_service(name)
     }
 }
-impl<T: ServiceDiscover> ServiceDiscover for Arc<T> {
-    type Item = T::Item;
+impl<T> ServiceDiscover<T> for Arc<ServiceDiscovery<T>> {
     #[inline]
-    fn get(&self) -> &T::Item {
-        (**self).get()
+    fn do_with<F, O>(&self, f: F) -> O
+    where
+        F: Fn(&T) -> O,
+    {
+        (**self).do_with(f)
     }
 }

@@ -1,4 +1,5 @@
 use clap::{AppSettings, Clap};
+use std::time::Duration;
 use url::Url;
 #[derive(Clap, Debug)]
 #[clap(name = "resource mesh", version = "0.0.1", author = "IF")]
@@ -7,19 +8,24 @@ pub struct Context {
     #[clap(
         short,
         long,
-        about("service registry url. e.g. vintage://127.0.0.1:8080")
+        about("service registry url. e.g. vintage://127.0.0.1:8080"),
+        default_value("vintage://127.0.0.1:8080")
     )]
     discovery: Url,
     #[clap(
         short,
         long,
-        about("use unix or tcp socket for listener. (default: unix)"),
-        default_value("unix")
+        about("path for saving snapshot of service topology."),
+        default_value("/tmp/breeze/services/snapshot")
     )]
-    family: String,
-
-    #[clap(short, long, about("groups for subscrbie"))]
-    group: String,
+    snapshot: String,
+    #[clap(
+        short,
+        long,
+        about("path for unix domain socket to listen."),
+        default_value("/tmp/breeze/socks")
+    )]
+    unix_sock: String,
 }
 
 impl Context {
@@ -32,10 +38,6 @@ impl Context {
     }
     pub fn discovery(&self) -> Url {
         self.discovery.clone()
-    }
-    pub fn groups(&self) -> Vec<&str> {
-        let groups: Vec<&str> = self.group.split(',').collect();
-        groups
     }
     pub async fn wait(&self) {}
     pub fn check(&self) -> std::io::Result<()> {
@@ -67,6 +69,12 @@ impl Quadruple {
     pub fn endpoint(&self) -> String {
         "cacheservice".to_owned()
         //"pipe".to_owned()
+    }
+    pub fn snapshot(&self) -> String {
+        "/tmp/breeze/services/snapshot".to_string()
+    }
+    pub fn tick(&self) -> Duration {
+        Duration::from_secs(6)
     }
 }
 

@@ -53,12 +53,16 @@ where
         let r = MemcacheRoute::from_len(shards.len());
         AsyncRoute::from(shards, r)
     }
-    pub async fn from_discovery(discovery: D) -> Result<Self>
+    pub fn from_discovery(discovery: D) -> Result<Self>
     where
-        D: ServiceDiscover<Item = Topology> + Unpin,
+        D: ServiceDiscover<Topology> + Unpin,
     {
-        let topo = discovery.get();
-
+        discovery.do_with(|t| Self::from_topology(t))
+    }
+    fn from_topology(topo: &Topology) -> Result<Self>
+    where
+        D: ServiceDiscover<Topology> + Unpin,
+    {
         let get = AsyncOperation::Get(Self::build_route(topo.next_l1()));
 
         let parser: Memcache<DefaultHasher> = Memcache::<DefaultHasher>::new();

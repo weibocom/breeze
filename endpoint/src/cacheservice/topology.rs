@@ -13,6 +13,9 @@ use crate::cacheservice::memcache::memcache_topo::MemcacheConf;
 
 type BackendStream = stream::BackendStream<Arc<RingBufferStream>, Cid>;
 
+unsafe impl Send for Topology {}
+unsafe impl Sync for Topology {}
+
 #[derive(Default)]
 pub struct Topology {
     // 最后一个元素是slave，倒数第二个元素是master，剩下的是l1.
@@ -126,7 +129,6 @@ impl Topology {
         // let readers = vec![vec!["127.0.0.1:11211".to_string()]];
 
         (master, followers, readers)
-
     }
     fn _copy(&self, cfg: &str) -> Self {
         let (masters, followers, readers) = Self::parse(cfg);
@@ -166,12 +168,39 @@ impl Topology {
         top.masters = masters;
         top.followers = followers;
         top.readers = readers;
+
+        use rand::Rng;
+        let l1_idx = rand::thread_rng().gen_range(0, top.readers.len());
+        top.l1_seq = AtomicUsize::new(l1_idx);
         top
+    }
+}
+
+impl Clone for Topology {
+    fn clone(&self) -> Self {
+        Self {
+            l1_seq: AtomicUsize::new(self.l1_seq.load(Ordering::Acquire)),
+            masters: self.masters.clone(),
+            m_streams: self.m_streams.clone(),
+            followers: self.followers.clone(),
+            f_streams: self.f_streams.clone(),
+            readers: self.readers.clone(),
+            get_streams: self.get_streams.clone(),
+            gets_streams: self.gets_streams.clone(),
+        }
     }
 }
 
 impl discovery::Topology for Topology {
     fn copy_from(&self, cfg: &str) -> Self {
         self._copy(cfg)
+    }
+}
+impl left_right::Absorb<String> for Topology {
+    fn absorb_first(&mut self, cfg: &mut String, _other: &Self) {
+        *self = discovery::Topology::copy_from(self, cfg);
+    }
+    fn sync_with(&mut self, first: &Self) {
+        *self = first.clone();
     }
 }
