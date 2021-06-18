@@ -4,8 +4,18 @@
 use super::Discover;
 use futures::ready;
 use left_right::{Absorb, WriteHandle};
+use std::future::Future;
+use std::io::{Error, ErrorKind, Result};
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::Duration;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{interval, Interval};
+
+unsafe impl<D, T> Send for AsyncServiceUpdate<D, T> where T: Absorb<String> {}
+unsafe impl<D, T> Sync for AsyncServiceUpdate<D, T> where T: Absorb<String> {}
 
 pub(crate) struct AsyncServiceUpdate<D, T>
 where
@@ -46,61 +56,84 @@ where
             snapshot: snapshot,
         }
     }
+    fn path(&self) -> PathBuf {
+        let mut pb = PathBuf::new();
+        pb.push(&self.snapshot);
+        pb.push(&self.service);
+        pb
+    }
     // 如果当前配置为空，则从snapshot加载
-    fn load_from_snapshot(&mut self)
+    async fn load_from_snapshot(&mut self) -> Result<()>
     where
         D: Discover + Send + Unpin,
     {
-        if self.cfg.len() == 0 {}
-    }
-    fn load_from_discovery(&mut self) {}
-}
+        if self.cfg.len() != 0 {
+            return Ok(());
+        }
+        let mut contents = vec![];
+        File::open(&self.path())
+            .await?
+            .read_to_end(&mut contents)
+            .await?;
+        let mut contents = String::from_utf8(contents)
+            .map_err(|_e| Error::new(ErrorKind::Other, "not a valid utfi file"))?;
+        // 内容的第一行是签名，第二行是往后是配置
+        let idx = contents.find('\n').unwrap_or(0);
+        let cfg = contents.split_off(idx);
+        self.cfg = cfg;
+        self.sign = contents;
 
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-impl<D, T> Future for AsyncServiceUpdate<D, T>
-where
-    D: Discover + Send + Unpin,
-    T: Absorb<String>,
-{
-    type Output = ();
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let me = &mut *self;
-        me.load_from_snapshot();
-        if me.cfg.len() == 0 {
-            me.load_from_discovery();
+        self.w.append(self.cfg.clone());
+        Ok(())
+    }
+    async fn dump_to_snapshot(&mut self) -> Result<()> {
+        let mut file = File::create(&self.path()).await?;
+        file.write_all(self.sign.as_bytes()).await?;
+        file.write_all(self.cfg.as_bytes()).await?;
+        Ok(())
+    }
+    async fn load_from_discovery(&mut self) -> Result<()>
+    where
+        D: Discover + Send + Unpin,
+    {
+        let (cfg, sign) = self
+            .discovery
+            .get_service(&self.service, &self.sign)
+            .await?
+            .ok_or_else(|| Error::new(ErrorKind::NotFound, "no service config found"))?;
+        if self.cfg != cfg {
+            self.cfg = cfg;
+            self.sign = sign;
+            self.w.append(self.cfg.clone());
+            self.dump_to_snapshot().await?;
+        }
+        Ok(())
+    }
+    pub async fn start_watch(&mut self)
+    where
+        D: Discover + Send + Unpin,
+    {
+        let r = self.load_from_snapshot().await;
+        self.check(r);
+        if self.cfg.len() == 0 {
+            let r = self.load_from_discovery().await;
+            self.check(r);
         }
         loop {
-            ready!(me.interval.poll_tick(cx));
-            me.load_from_discovery();
+            self.interval.tick().await;
+            let r = self.load_from_discovery().await;
+            self.check(r);
+        }
+    }
+    fn check(&self, r: Result<()>) {
+        match r {
+            Ok(_) => {}
+            Err(e) => {
+                println!(
+                    "load service config error. service:{} error:{:?}",
+                    self.service, e
+                );
+            }
         }
     }
 }
-use std::io::Result;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-
-pub(super) async fn load_service_snapshot(service: &str, snapshot: &str) -> (String, String) {
-    match _load_service(service, snapshot).await {
-        Ok(s) => s,
-        Err(_e) => ("".to_string(), "".to_string()),
-    }
-}
-async fn _load_service(service: &str, snapshot: &str) -> Result<(String, String)> {
-    let path = format!("{}/{}", snapshot, service);
-    let mut file = File::open(&path).await?;
-
-    let mut contents = vec![];
-    file.read_to_end(&mut contents).await?;
-
-    let contents = String::from_utf8(contents).unwrap_or_else(|e| {
-        println!(
-            "snapshot loaded {}, but is not valid utf8 format:{:?}",
-            &path, e
-        );
-        "".to_string()
-    });
-    Ok((contents, "".to_string()))
-}
-pub(super) async fn dump_service_snapshot(service: &str, cfg: &str, sign: &str, snapshot: &str) {}
