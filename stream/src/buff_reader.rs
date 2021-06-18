@@ -1,9 +1,9 @@
 use std::future::Future;
-use std::io::{Error, Result};
+use std::io::Result;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Poll};
 
 use super::ResponseRingBuffer;
 use super::RingSlice;
