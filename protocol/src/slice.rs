@@ -42,10 +42,6 @@ impl RingSlice {
         debug_assert!(self.len() >= num);
         self.end = self.start + num;
     }
-    #[inline]
-    fn mask(&self, offset: usize) -> usize {
-        self.offset & (self.cap - 1)
-    }
     // 返回true，说明数据已经读完了
     pub fn read(&mut self, buff: &mut ReadBuf) -> bool {
         unsafe {

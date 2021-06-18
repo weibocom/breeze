@@ -52,14 +52,16 @@ pub struct ServiceDiscovery<T> {
 impl<T> ServiceDiscovery<T> {
     pub fn new<D>(discovery: D, service: String, snapshot: String, tick: Duration) -> Self
     where
-        D: Discover + Send + Unpin + 'static,
+        D: Discover + Send + Unpin + 'static + Sync,
         T: Topology + Send + Sync + 'static,
     {
         let (w, r) = left_right::new_from_empty::<T, String>(T::default());
 
-        tokio::spawn(AsyncServiceUpdate::new(
-            service, discovery, w, tick, snapshot,
-        ));
+        tokio::spawn(async move {
+            AsyncServiceUpdate::new(service, discovery, w, tick, snapshot)
+                .start_watch()
+                .await
+        });
 
         Self { cache: r }
     }

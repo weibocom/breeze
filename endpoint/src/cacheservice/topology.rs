@@ -82,28 +82,6 @@ impl Topology {
                 .collect()
         }
     }
-    fn insert(
-        m: &mut HashMap<String, Arc<BackendBuilder>>,
-        from: &HashMap<String, Arc<BackendBuilder>>,
-        addr: &str,
-        req: usize,
-        resp: usize,
-        parallel: usize,
-        ignore: bool,
-    ) {
-        let stream = if let Some(old) = from.get(addr) {
-            old.clone()
-        } else {
-            BackendBuilder::from_with_response::<MemcacheResponseParser>(
-                addr.to_string(),
-                req,
-                resp,
-                parallel,
-                ignore,
-            )
-        };
-        m.insert(addr.to_string(), stream);
-    }
     // 删除不存在的stream
     fn delete_non_exists(addrs: &[String], streams: &mut HashMap<String, Arc<BackendBuilder>>) {
         streams.retain(|addr, _| addrs.contains(addr));
