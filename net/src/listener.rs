@@ -1,5 +1,5 @@
+use super::SocketAddr;
 use super::Stream;
-use crate::address::SocketAddr;
 
 use std::io::Error;
 use std::io::ErrorKind;
