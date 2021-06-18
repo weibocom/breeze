@@ -33,7 +33,7 @@ impl Discovery {
 }
 
 pub trait Topology: Default + left_right::Absorb<String> + Clone {
-    fn copy_from(&self, cfg: &str) -> Self;
+    fn update(&mut self, cfg: &str);
 }
 
 pub trait ServiceDiscover<T> {

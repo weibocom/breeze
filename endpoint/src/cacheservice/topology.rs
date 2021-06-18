@@ -9,8 +9,6 @@ use std::sync::Arc;
 
 use tokio::net::tcp::OwnedWriteHalf;
 
-use crate::cacheservice::memcache::memcache_topo::MemcacheConf;
-
 type BackendStream = stream::BackendStream<Arc<RingBufferStream>, Cid>;
 
 unsafe impl Send for Topology {}
@@ -106,73 +104,64 @@ impl Topology {
         };
         m.insert(addr.to_string(), stream);
     }
-    fn parse(_cfg: &str) -> (Vec<String>, Vec<Vec<String>>, Vec<Vec<String>>) {
-        let mut conf = MemcacheConf::parse_conf(_cfg);
+    // 删除不存在的stream
+    fn delete_non_exists(addrs: &[String], streams: &mut HashMap<String, Arc<BackendBuilder>>) {
+        streams.retain(|addr, _| addrs.contains(addr));
+    }
+    // 添加新增的stream
+    fn add_new(
+        addrs: &[String],
+        streams: &mut HashMap<String, Arc<BackendBuilder>>,
+        req: usize,
+        resp: usize,
+        parallel: usize,
+        ignore: bool,
+    ) {
+        for addr in addrs {
+            if !streams.contains_key(addr) {
+                streams.insert(
+                    addr.to_string(),
+                    BackendBuilder::from_with_response::<MemcacheResponseParser>(
+                        addr.to_string(),
+                        req,
+                        resp,
+                        parallel,
+                        ignore,
+                    ),
+                );
+            }
+        }
+    }
+    fn update(&mut self, cfg: &str) {
+        let (masters, followers, readers) = super::Config::from(cfg).into_split();
 
-        // master 就是conf中的master
-        let master: Vec<String> = conf.master.clone();
-
-        // followers包含： master-l1, slave, slave-l1
-        let mut followers: Vec<Vec<String>> = conf.slave_l1.clone();
-        followers.insert(0, conf.slave.clone());
-        for l1 in conf.master_l1.clone() {
-            followers.insert(0, l1);
+        if masters.len() == 0 {
+            // TODO
+            println!("parse cacheservice failed. master len is zero. cfg:{}", cfg);
+            return;
         }
 
-        // reader包含：l1, master，slave
-        let mut readers = conf.master_l1.clone();
-        readers.insert(readers.len(), conf.master.clone());
-        readers.insert(readers.len(), conf.slave.clone());
-
-        // let masters = vec!["127.0.0.1:11211".to_string()];
-        // let followers = vec![vec![]];
-        // let readers = vec![vec!["127.0.0.1:11211".to_string()]];
-
-        (master, followers, readers)
-    }
-    fn _copy(&self, cfg: &str) -> Self {
-        let (masters, followers, readers) = Self::parse(cfg);
-
-        let mut top: Topology = Self::default();
+        self.masters = masters;
+        self.followers = followers;
+        self.readers = readers;
 
         let kb = 1024;
         let mb = 1024 * 1024;
         let p = 16;
-        for addr in masters.iter() {
-            Self::insert(&mut top.m_streams, &self.m_streams, addr, mb, kb, p, false)
-        }
+        Self::delete_non_exists(&self.masters, &mut self.m_streams);
+        Self::add_new(&self.masters, &mut self.m_streams, mb, kb, p, false);
 
-        for addr in followers.iter().flatten() {
-            Self::insert(&mut top.f_streams, &self.f_streams, addr, mb, kb, p, true);
-        }
-        for addr in readers.iter().flatten() {
-            Self::insert(
-                &mut top.get_streams,
-                &self.get_streams,
-                addr,
-                kb,
-                mb,
-                p,
-                false,
-            );
-            Self::insert(
-                &mut top.gets_streams,
-                &self.gets_streams,
-                addr,
-                kb,
-                mb,
-                p,
-                false,
-            );
-        }
-        top.masters = masters;
-        top.followers = followers;
-        top.readers = readers;
+        let followers: Vec<String> = self.followers.clone().into_iter().flatten().collect();
+        Self::delete_non_exists(&followers, &mut self.f_streams);
+        Self::add_new(followers.as_ref(), &mut self.f_streams, mb, kb, p, true);
 
-        use rand::Rng;
-        let l1_idx = rand::thread_rng().gen_range(0, top.readers.len());
-        top.l1_seq = AtomicUsize::new(l1_idx);
-        top
+        let readers: Vec<String> = self.readers.clone().into_iter().flatten().collect();
+        // get command
+        Self::delete_non_exists(&readers, &mut self.get_streams);
+        Self::add_new(&readers, &mut self.get_streams, kb, mb, p, false);
+        // get[s] command
+        Self::delete_non_exists(&readers, &mut self.gets_streams);
+        Self::add_new(&readers, &mut self.gets_streams, kb, mb, p, false);
     }
 }
 
@@ -192,13 +181,13 @@ impl Clone for Topology {
 }
 
 impl discovery::Topology for Topology {
-    fn copy_from(&self, cfg: &str) -> Self {
-        self._copy(cfg)
+    fn update(&mut self, cfg: &str) {
+        self.update(cfg);
     }
 }
 impl left_right::Absorb<String> for Topology {
     fn absorb_first(&mut self, cfg: &mut String, _other: &Self) {
-        *self = discovery::Topology::copy_from(self, cfg);
+        self.update(cfg);
     }
     fn sync_with(&mut self, first: &Self) {
         *self = first.clone();
