@@ -97,6 +97,7 @@ impl RingSlice {
         self.end - self.start
     }
     pub fn at(&self, idx: usize) -> u8 {
+        debug_assert!(idx < self.len());
         unsafe {
             *self
                 .ptr
@@ -107,12 +108,24 @@ impl RingSlice {
         (self.start, self.end)
     }
     // 从offset开始，查找s是否存在
-    pub fn index(&self, _offset: usize, _s: &[u8]) -> Option<usize> {
-        todo!();
+    // 最坏时间复杂度 O(self.len() * s.len())
+    // 但通常在协议处理过程中，被查的s都是特殊字符，而且s的长度通常比较小，因为时间复杂度会接近于O(self.len())
+    pub fn index(&self, offset: usize, s: &[u8]) -> Option<usize> {
+        let mut i = offset;
+        while i + s.len() <= self.len() {
+            for j in 0..s.len() {
+                if self.at(i + j) != s[j] {
+                    i += 1;
+                    continue;
+                }
+            }
+            return Some(i);
+        }
+        None
     }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     pub fn index_lf_cr(&self, offset: usize) -> Option<usize> {
-        todo!();
+        self.index(offset, &[b'\r', b'\n'])
     }
 }
 
