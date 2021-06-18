@@ -170,7 +170,7 @@ impl Topology {
         top.readers = readers;
 
         use rand::Rng;
-        let l1_idx = rand::thread_rng().gen_range(0, top.readers.len());
+        let l1_idx = rand::thread_rng().gen_range(0..top.readers.len());
         top.l1_seq = AtomicUsize::new(l1_idx);
         top
     }
