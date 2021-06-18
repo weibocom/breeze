@@ -58,7 +58,6 @@ impl Quadruple {
     }
     pub fn address(&self) -> String {
         "/tmp/sock/feed.content.sock".to_owned()
-        //"0.0.0.0:1234".to_owned()
     }
     pub fn protocol(&self) -> &'static str {
         "memcache"
