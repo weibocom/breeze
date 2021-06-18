@@ -2,13 +2,9 @@
 // 基于left-right实现无锁并发更新
 //
 use super::Discover;
-use futures::ready;
 use left_right::{Absorb, WriteHandle};
-use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
-use std::path::{Path, PathBuf};
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

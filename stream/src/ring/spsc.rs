@@ -1,12 +1,11 @@
 use std::cell::RefCell;
 use std::ptr::copy_nonoverlapping as copy;
 use std::slice::from_raw_parts;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use cache_line_size::CacheAligned;
-use lockfree::channel::spsc::{create, Receiver, Sender};
 
 unsafe impl Send for RingBuffer {}
 unsafe impl Sync for RingBuffer {}
