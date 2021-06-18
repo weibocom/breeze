@@ -1,7 +1,8 @@
+mod config;
 mod topology;
-pub use topology::Topology;
+use config::MemcacheConf as Config;
 
-mod memcache;
+pub use topology::Topology;
 
 use discovery::ServiceDiscover;
 
