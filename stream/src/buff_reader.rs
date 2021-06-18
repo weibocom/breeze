@@ -68,8 +68,8 @@ where
                 offset
             );
             if buf.len() == 0 {
-                panic!("response buffer full");
-                //println!("response buffer full");
+                //panic!("response buffer full");
+                println!("response buffer full");
                 std::hint::spin_loop();
                 continue;
             }

@@ -1,13 +1,13 @@
 use std::future::Future;
-use std::io::{Error, Result};
+use std::io::Result;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Poll};
 
 use futures::ready;
 use tokio::io::AsyncWrite;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::Receiver;
 
 use super::ring::spsc::{RingBufferReader, RingBufferWriter};
 
@@ -43,12 +43,9 @@ impl RequestData {
 }
 
 pub trait Request {
-    //fn next(&self, id: usize) -> Option<RequestData>;
     fn request_received(&self, id: usize, seq: usize);
 }
 
-use std::fs::File;
-use std::io::prelude::*;
 pub struct BridgeBufferToWriter<W> {
     // 一次poll_write没有写完时，会暂存下来
     reader: RingBufferReader,
