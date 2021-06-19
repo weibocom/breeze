@@ -1,6 +1,9 @@
 use clap::{AppSettings, Clap};
+use std::io::{Error, ErrorKind, Result};
+use std::path::Path;
 use std::time::Duration;
 use url::Url;
+
 #[derive(Clap, Debug)]
 #[clap(name = "resource mesh", version = "0.0.1", author = "IF")]
 #[clap(setting = AppSettings::ColoredHelp)]
@@ -20,12 +23,12 @@ pub struct Context {
     )]
     snapshot: String,
     #[clap(
-        short,
+        short('p'),
         long,
         about("path for unix domain socket to listen."),
-        default_value("/tmp/breeze/socks")
+        default_value("/tmp/breeze/services/socks")
     )]
-    unix_sock: String,
+    service_path: String,
 }
 
 impl Context {
@@ -33,21 +36,33 @@ impl Context {
     pub fn from_os_args() -> Self {
         Context::parse()
     }
+    // service_path目录要存在
+    pub fn check(&self) -> Result<()> {
+        let path = Path::new(&self.service_path);
+        if !path.is_dir() {
+            let msg = format!("{} is not a valid dir", self.service_path);
+            return Err(Error::new(ErrorKind::NotFound, msg));
+        }
+        Ok(())
+    }
     pub fn listeners(&self) -> ListenerIter {
-        ListenerIter { seq: 0 }
+        ListenerIter {
+            path: self.service_path.to_string(),
+            listened: Default::default(),
+        }
     }
     pub fn discovery(&self) -> Url {
         self.discovery.clone()
     }
-    pub async fn wait(&self) {}
-    pub fn check(&self) -> std::io::Result<()> {
-        Ok(())
+    pub fn service_path(&self) -> String {
+        self.service_path.clone()
     }
 }
 
 #[derive(Debug)]
 pub struct Quadruple {}
 
+// feed.content#yf@unix@memcache@cacheservice
 impl Quadruple {
     fn new() -> Self {
         Self {}
@@ -59,9 +74,9 @@ impl Quadruple {
     pub fn address(&self) -> String {
         "/tmp/sock/feed.content.sock".to_owned()
     }
-    pub fn protocol(&self) -> &'static str {
-        "memcache"
-    }
+    //pub fn protocol(&self) -> &'static str {
+    //    "memcache"
+    //}
     pub fn service(&self) -> String {
         "feed.content".to_owned()
     }
@@ -77,18 +92,15 @@ impl Quadruple {
     }
 }
 
+use std::collections::HashMap;
 pub struct ListenerIter {
-    seq: usize,
+    listened: HashMap<String, ()>,
+    path: String,
 }
 
-impl Iterator for ListenerIter {
-    type Item = Quadruple;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.seq >= 1 {
-            None
-        } else {
-            self.seq += 1;
-            Some(Quadruple::new())
-        }
+impl ListenerIter {
+    pub async fn next(&mut self) -> Option<Quadruple> {
+        None
     }
+    //    async fn read_all(&self) -> Result<Vec<String>> {}
 }
