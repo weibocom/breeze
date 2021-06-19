@@ -4,10 +4,11 @@ use discovery::{Discovery, ServiceDiscovery};
 use net::listener::Listener;
 use std::io::Result;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::io::copy_bidirectional;
 use tokio::spawn;
-use tokio::sync::oneshot;
+use tokio::time::{interval_at, Instant};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -15,7 +16,22 @@ async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
     ctx.check()?;
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
-    for quard in ctx.listeners() {
+    let mut listeners = ctx.listeners();
+    let mut tick = interval_at(
+        Instant::now() + Duration::from_secs(1),
+        Duration::from_secs(3),
+    );
+    loop {
+        let quard = listeners.next().await;
+        if quard.is_none() {
+            println!(
+                "no service found or all services have been processed. service configed in path:{}",
+                ctx.service_path()
+            );
+            tick.tick().await;
+            continue;
+        }
+        let quard = quard.unwrap();
         let discovery = Arc::clone(&discovery);
         spawn(async move {
             match Listener::bind(&quard.family(), &quard.address()).await {
@@ -75,13 +91,13 @@ async fn main() -> Result<()> {
             }
         });
     }
-    let (_tx, rx) = oneshot::channel::<()>();
-    match rx.await {
-        Ok(_) => {}
-        Err(e) => {
-            println!("failed to wait:{:?}", e);
-        }
-    }
-    println!("never run here");
-    Ok(())
+    //let (_tx, rx) = oneshot::channel::<()>();
+    //match rx.await {
+    //    Ok(_) => {}
+    //    Err(e) => {
+    //        println!("failed to wait:{:?}", e);
+    //    }
+    //}
+    //println!("never run here");
+    //Ok(())
 }
