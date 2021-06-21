@@ -230,36 +230,37 @@ impl super::Discover for Vintage {
         name: &str,
         sig: &str,
     ) -> std::io::Result<Option<(String, String)>> {
+        Ok(None)
         // 从name中解析出group和namespace
-        let group_ns: Vec<&str> = name.split("#").collect();
-        if group_ns.len() != 2 {
-            println!("malformed param/{} when get conf", name);
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "malformed param in get_service",
-            ));
-        }
+        //let group_ns: Vec<&str> = name.split("#").collect();
+        //if group_ns.len() != 2 {
+        //    println!("malformed param/{} when get conf", name);
+        //    return Err(Error::new(
+        //        ErrorKind::InvalidInput,
+        //        "malformed param in get_service",
+        //    ));
+        //}
 
-        // 根据group查询分组配置，根据namespace获取具体子业务配置
-        let group = *group_ns.get(0).unwrap();
-        let namespace = *group_ns.get(1).unwrap();
-        let mut this = self.clone();
-        match this.lookup(group).await {
-            Ok(confs) => match confs.get(namespace) {
-                Some(c) => {
-                    return Ok(Some((namespace.to_string(), c.to_string())));
-                }
-                None => {
-                    println!("not found namespace in group confs:{}", name);
-                    return Err(Error::new(ErrorKind::InvalidInput, "not found namespace"));
-                }
-            },
-            Err(e) => {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    format!("lookup error:{:?}", e),
-                ));
-            }
-        };
+        //// 根据group查询分组配置，根据namespace获取具体子业务配置
+        //let group = *group_ns.get(0).unwrap();
+        //let namespace = *group_ns.get(1).unwrap();
+        //let mut this = self.clone();
+        //match this.lookup(group).await {
+        //    Ok(confs) => match confs.get(namespace) {
+        //        Some(c) => {
+        //            return Ok(Some((namespace.to_string(), c.to_string())));
+        //        }
+        //        None => {
+        //            println!("not found namespace in group confs:{}", name);
+        //            return Err(Error::new(ErrorKind::InvalidInput, "not found namespace"));
+        //        }
+        //    },
+        //    Err(e) => {
+        //        return Err(Error::new(
+        //            ErrorKind::InvalidInput,
+        //            format!("lookup error:{:?}", e),
+        //        ));
+        //    }
+        //};
     }
 }

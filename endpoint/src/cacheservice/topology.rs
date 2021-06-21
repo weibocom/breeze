@@ -112,6 +112,7 @@ impl Topology {
     }
     fn update(&mut self, cfg: &str) {
         let (masters, followers, readers) = super::Config::from(cfg).into_split();
+        let masters = vec!["127.0.0.1:11211".to_owned()];
 
         if masters.len() == 0 {
             // TODO
