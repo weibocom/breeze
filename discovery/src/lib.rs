@@ -25,10 +25,18 @@ pub enum Discovery {
 }
 impl Discovery {
     pub fn from_url(url: Url) -> Self {
-        match url.scheme() {
-            "vintage" => Self::Vintage(Vintage::from_url(url)),
+        let schem = url.scheme();
+        let http = Self::copy_url_to_http(&url);
+        match schem {
+            "vintage" => Self::Vintage(Vintage::from_url(http)),
             _ => panic!("not supported endpoint name"),
         }
+    }
+    fn copy_url_to_http(url: &Url) -> Url {
+        let schem = url.scheme();
+        let mut s = "http".to_owned();
+        s.push_str(&url.as_str()[schem.len()..]);
+        Url::parse(&s).unwrap()
     }
 }
 
