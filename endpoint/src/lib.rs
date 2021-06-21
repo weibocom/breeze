@@ -58,5 +58,5 @@ use cacheservice::CacheService;
 
 define_endpoint! {
 //    Pipe,         Pipe,         "pipe",
-    Topology, CacheService, CacheService, "cacheservice"
+    Topology, CacheService, CacheService, "cs"
 }
