@@ -1,4 +1,3 @@
-use rand::Rng;
 use stream::{BackendBuilder, Cid, RingBufferStream};
 
 use protocol::memcache::MemcacheResponseParser;
