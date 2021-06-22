@@ -120,7 +120,7 @@ impl Vintage {
     pub async fn lookup(
         &mut self,
         group: &str,
-    ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<(HashMap<String, String>, String)>, Box<dyn std::error::Error>> {
         // 设置config的path
         let mut gurl = self.base_url.clone();
         gurl.set_path("1/config/service");
@@ -154,8 +154,8 @@ impl Vintage {
         }
 
         // parse body with yaml format
+        let sign = resp.body.sign;
         let conf_str = &resp.body.nodes[0].value;
-        println!("config str:{}", conf_str);
         let conf_mapping: Mapping = serde_yaml::from_str(conf_str)?;
         let mut biz_confs: HashMap<String, String> = HashMap::new();
         for (k, v) in conf_mapping {
@@ -176,15 +176,9 @@ impl Vintage {
         // update groups
         self.groups.insert(group.into());
 
-        println!(
-            "lookup vintage - group/{} key/{}, keys: {:?}, values: {:?}",
-            group,
-            CONF_COMMON_KEY,
-            biz_confs.keys(),
-            biz_confs.values(),
-        );
+        println!("lookup vintage - group/{}, confs: {:?}", group, biz_confs);
 
-        Ok(biz_confs)
+        Ok(Some((biz_confs, sign)))
     }
 
     // 订阅group，注意可以支持订阅任意个group，所有group的key均位all
@@ -219,11 +213,11 @@ mod mc_discovery_test {
 
         let mut vintage = Vintage::from_url(vintage_base.unwrap());
         let conf_task = vintage.lookup("cache.service2.0.unread.pool.lru.test");
-        let conf = rt.block_on(conf_task);
+        let (conf, sign) = rt.block_on(conf_task).unwrap().unwrap();
 
         println!("+++++++++");
         println!("lookup result: {:?}", conf);
-        assert!(conf.unwrap().len() > 0);
+        assert!(conf.len() > 0);
     }
 }
 
@@ -252,16 +246,22 @@ impl super::Discover for Vintage {
         let namespace = *group_ns.get(1).unwrap();
         let mut this = self.clone();
         match this.lookup(group).await {
-            Ok(confs) => match confs.get(&namespace.to_string()) {
+            Ok(Some((confs, new_sign))) => match confs.get(&namespace.to_string()) {
                 Some(c) => {
-                    println!("found config, ns:{}, values:{}", namespace, c);
-                    return Ok(Some((namespace.to_string(), c.to_string())));
+                    // println!("found config, ns:{}, values:{}", namespace, c);
+                    return Ok(Some((c.to_string(), new_sign)));
                 }
                 None => {
                     println!("not found namespace/{} with group:{}", namespace, group);
                     return Err(Error::new(ErrorKind::InvalidInput, "not found namespace"));
                 }
             },
+            Ok(None) => {
+                return Err(Error::new(
+                    ErrorKind::NotFound,
+                    format!("lookup empty config"),
+                ));
+            }
             Err(e) => {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
