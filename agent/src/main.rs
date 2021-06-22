@@ -57,6 +57,7 @@ async fn main() -> Result<()> {
                                 let sd = Arc::clone(&sd);
                                 use endpoint::Endpoint;
                                 let ed = Endpoint::from_discovery(&quard.endpoint(), sd);
+                                println!("connection connected");
                                 match ed {
                                     Ok(mut server) => {
                                         spawn(async move {

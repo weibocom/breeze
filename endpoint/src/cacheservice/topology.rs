@@ -25,7 +25,8 @@ pub struct Topology {
     // 只用来同步写请求
     followers: Vec<Vec<String>>,
     f_streams: HashMap<String, Arc<BackendBuilder>>,
-    // 处理读请求
+    // 处理读请求,每个layer选择一个，先打通
+    // 后续考虑要调整为新的Vec嵌套逻辑： [random[reader[node_dist_pool]]]
     readers: Vec<Vec<String>>,
     get_streams: HashMap<String, Arc<BackendBuilder>>,
     gets_streams: HashMap<String, Arc<BackendBuilder>>,
@@ -52,7 +53,12 @@ impl Topology {
     pub fn followers(&self) -> Vec<Vec<OwnedWriteHalf>> {
         vec![]
     }
+
+    // TODO：这里只返回一个pool，后面会替换掉 fishermen
     pub fn next_l1(&self) -> Vec<BackendStream> {
+        if self.readers.len() == 0 {
+            return vec![];
+        }
         let idx = self.l1_seq.fetch_add(1, Ordering::AcqRel) % self.readers.len();
         unsafe {
             self.readers
@@ -67,7 +73,11 @@ impl Topology {
                 .collect()
         }
     }
+    // TODO：这里只返回一个pool，后面会替换掉 fishermen
     pub fn next_l1_gets(&self) -> Vec<BackendStream> {
+        if self.readers.len() == 0 {
+            return vec![];
+        }
         let idx = self.l1_seq.fetch_add(1, Ordering::AcqRel) % self.readers.len();
         unsafe {
             self.readers
@@ -82,6 +92,24 @@ impl Topology {
                 .collect()
         }
     }
+
+    // 获取reader列表
+    pub fn reader_4_get_through(&self) -> Vec<Vec<BackendStream>> {
+        self.readers
+            .iter()
+            .map(|pool| {
+                pool.iter()
+                    .map(|addr| {
+                        self.get_streams
+                            .get(addr)
+                            .expect("stream must be exists before adress")
+                            .build()
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
     // 删除不存在的stream
     fn delete_non_exists(addrs: &[String], streams: &mut HashMap<String, Arc<BackendBuilder>>) {
         streams.retain(|addr, _| addrs.contains(addr));
@@ -110,6 +138,7 @@ impl Topology {
             }
         }
     }
+
     fn update(&mut self, cfg: &str) {
         let (masters, followers, readers) = super::Config::from(cfg).into_split();
 

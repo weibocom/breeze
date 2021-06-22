@@ -1,4 +1,4 @@
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -81,6 +81,12 @@ where
         buf: &mut ReadBuf,
     ) -> Poll<Result<()>> {
         let me = &mut *self;
+        if me.backends.len() == 0 {
+            return Poll::Ready(Err(Error::new(
+                ErrorKind::NotConnected,
+                "not connected, maybe topology not inited",
+            )));
+        }
         unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_read(cx, buf) }
     }
 }
