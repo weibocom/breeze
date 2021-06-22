@@ -68,34 +68,34 @@ impl Vintage {
         return vintage;
     }
 
-    async fn start_deamon_worker(&mut self, mut recv: Receiver<String>) {
-        let mut this = self.clone();
-        tokio::task::spawn(async move {
-            loop {
-                // 每个loop sleep 2-5 秒
-                let sleep_mills: u64 = 2000 + rand::random::<u64>() % 3000;
-                time::sleep(time::Duration::from_millis(sleep_mills)).await;
+    // async fn start_deamon_worker(&mut self, mut recv: Receiver<String>) {
+    //     let mut this = self.clone();
+    //     tokio::task::spawn(async move {
+    //         loop {
+    //             // 每个loop sleep 2-5 秒
+    //             let sleep_mills: u64 = 2000 + rand::random::<u64>() % 3000;
+    //             time::sleep(time::Duration::from_millis(sleep_mills)).await;
 
-                // 一旦从channel有group，连续处理所有的滞留的group
-                loop {
-                    match recv.recv().await {
-                        Some(group) => match this.lookup(group.as_str()).await {
-                            Ok(rs) => {
-                                println!("lookup success for {}, count: {}", group, rs.len());
-                            }
-                            Err(e) => {
-                                println!("found err when lookup {}, err: {:?}", group, e);
-                            }
-                        },
-                        None => {
-                            println!("recv none in vintage, so will stop and wait");
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-    }
+    //             // 一旦从channel有group，连续处理所有的滞留的group
+    //             loop {
+    //                 match recv.recv().await {
+    //                     Some(group) => match this.lookup(group.as_str()).await {
+    //                         Ok(rs) => {
+    //                             println!("lookup success for {}, count: {}", group, rs.len());
+    //                         }
+    //                         Err(e) => {
+    //                             println!("found err when lookup {}, err: {:?}", group, e);
+    //                         }
+    //                     },
+    //                     None => {
+    //                         println!("recv none in vintage, so will stop and wait");
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     });
+    // }
 
     //TODO: 根据业务的namespace获取mc conf，然后进行hash、layer、路由选择
     pub fn get_service(&self, _name: &str) -> String {
@@ -163,7 +163,7 @@ impl Vintage {
                 continue;
             }
 
-            let biz_name = serde_yaml::to_string(&v)?;
+            let biz_name = k.as_str().unwrap_or("").to_owned();
             let biz_conf = serde_yaml::to_string(&v)?;
             biz_confs.insert(biz_name, biz_conf);
         }
@@ -177,8 +177,11 @@ impl Vintage {
         self.groups.insert(group.into());
 
         println!(
-            "lookup group/{} key/{}, rs: {:?}",
-            group, CONF_COMMON_KEY, biz_confs
+            "lookup vintage - group/{} key/{}, keys: {:?}, values: {:?}",
+            group,
+            CONF_COMMON_KEY,
+            biz_confs.keys(),
+            biz_confs.values(),
         );
 
         Ok(biz_confs)
@@ -233,37 +236,38 @@ impl super::Discover for Vintage {
         name: &str,
         sig: &str,
     ) -> std::io::Result<Option<(String, String)>> {
-        Ok(None)
+        //Ok(None)
         // 从name中解析出group和namespace
-        //let group_ns: Vec<&str> = name.split("#").collect();
-        //if group_ns.len() != 2 {
-        //    println!("malformed param/{} when get conf", name);
-        //    return Err(Error::new(
-        //        ErrorKind::InvalidInput,
-        //        "malformed param in get_service",
-        //    ));
-        //}
+        let group_ns: Vec<&str> = name.split("#").collect();
+        if group_ns.len() != 2 {
+            println!("malformed param/{} when get conf", name);
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "malformed param in get_service",
+            ));
+        }
 
-        //// 根据group查询分组配置，根据namespace获取具体子业务配置
-        //let group = *group_ns.get(0).unwrap();
-        //let namespace = *group_ns.get(1).unwrap();
-        //let mut this = self.clone();
-        //match this.lookup(group).await {
-        //    Ok(confs) => match confs.get(namespace) {
-        //        Some(c) => {
-        //            return Ok(Some((namespace.to_string(), c.to_string())));
-        //        }
-        //        None => {
-        //            println!("not found namespace in group confs:{}", name);
-        //            return Err(Error::new(ErrorKind::InvalidInput, "not found namespace"));
-        //        }
-        //    },
-        //    Err(e) => {
-        //        return Err(Error::new(
-        //            ErrorKind::InvalidInput,
-        //            format!("lookup error:{:?}", e),
-        //        ));
-        //    }
-        //};
+        // 根据group查询分组配置，根据namespace获取具体子业务配置
+        let group = *group_ns.get(0).unwrap();
+        let namespace = *group_ns.get(1).unwrap();
+        let mut this = self.clone();
+        match this.lookup(group).await {
+            Ok(confs) => match confs.get(&namespace.to_string()) {
+                Some(c) => {
+                    println!("found config, ns:{}, values:{}", namespace, c);
+                    return Ok(Some((namespace.to_string(), c.to_string())));
+                }
+                None => {
+                    println!("not found namespace/{} with group:{}", namespace, group);
+                    return Err(Error::new(ErrorKind::InvalidInput, "not found namespace"));
+                }
+            },
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("lookup error:{:?}", e),
+                ));
+            }
+        };
     }
 }
