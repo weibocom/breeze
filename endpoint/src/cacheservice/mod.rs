@@ -1,7 +1,8 @@
+mod config;
 mod topology;
-pub use topology::Topology;
+use config::MemcacheConf as Config;
 
-mod memcache;
+pub use topology::Topology;
 
 use discovery::ServiceDiscover;
 
@@ -12,7 +13,7 @@ use protocol::chan::{
 use protocol::memcache::{Memcache, MemcacheMetaStream, MemcacheOpRoute};
 use protocol::DefaultHasher;
 
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
 
 use tokio::net::tcp::OwnedWriteHalf;
@@ -81,7 +82,13 @@ where
     where
         D: ServiceDiscover<Topology> + Unpin,
     {
-        discovery.do_with(|t| Self::from_topology(t))
+        discovery.do_with(|t| match t {
+            Some(t) => Self::from_topology(t),
+            None => Err(Error::new(
+                ErrorKind::ConnectionRefused,
+                "backend server not inited yet",
+            )),
+        })
     }
     fn from_topology(topo: &Topology) -> Result<Self>
     where
@@ -112,6 +119,7 @@ where
         let op_stream = AsyncRoute::from(vec![get, gets, get_through, store, meta], router);
 
         let inner = PipeToPingPongChanWrite::from_stream(Memcache::new(), op_stream);
+
         Ok(Self {
             inner: inner,
             _mark: Default::default(),

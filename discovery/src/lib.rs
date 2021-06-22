@@ -25,21 +25,30 @@ pub enum Discovery {
 }
 impl Discovery {
     pub fn from_url(url: Url) -> Self {
-        match url.scheme() {
-            "vintage" => Self::Vintage(Vintage::from_url(url)),
+        let schem = url.scheme();
+        let http = Self::copy_url_to_http(&url);
+        match schem {
+            "vintage" => Self::Vintage(Vintage::from_url(http)),
             _ => panic!("not supported endpoint name"),
         }
+    }
+    fn copy_url_to_http(url: &Url) -> Url {
+        let schem = url.scheme();
+        let mut s = "http".to_owned();
+        s.push_str(&url.as_str()[schem.len()..]);
+        Url::parse(&s).unwrap()
     }
 }
 
 pub trait Topology: Default + left_right::Absorb<String> + Clone {
-    fn copy_from(&self, cfg: &str) -> Self;
+    fn update(&mut self, cfg: &str);
 }
 
 pub trait ServiceDiscover<T> {
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: Fn(&T) -> O;
+        F: Fn(Option<&T>) -> O,
+        T: Default;
 }
 
 unsafe impl<T> Send for ServiceDiscovery<T> {}
@@ -52,14 +61,16 @@ pub struct ServiceDiscovery<T> {
 impl<T> ServiceDiscovery<T> {
     pub fn new<D>(discovery: D, service: String, snapshot: String, tick: Duration) -> Self
     where
-        D: Discover + Send + Unpin + 'static,
+        D: Discover + Send + Unpin + 'static + Sync,
         T: Topology + Send + Sync + 'static,
     {
-        let (w, r) = left_right::new_from_empty::<T, String>(T::default());
+        let (w, r) = left_right::new::<T, String>();
 
-        tokio::spawn(AsyncServiceUpdate::new(
-            service, discovery, w, tick, snapshot,
-        ));
+        tokio::spawn(async move {
+            AsyncServiceUpdate::new(service, discovery, w, tick, snapshot)
+                .start_watch()
+                .await
+        });
 
         Self { cache: r }
     }
@@ -69,9 +80,14 @@ impl<T> ServiceDiscover<T> for ServiceDiscovery<T> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: Fn(&T) -> O,
+        F: Fn(Option<&T>) -> O,
+        T: Default,
     {
-        f(&self.cache.enter().expect("topology not inited yes"))
+        if let Some(cache) = self.cache.enter() {
+            f(Some(&cache))
+        } else {
+            f(None)
+        }
     }
 }
 
@@ -88,7 +104,8 @@ impl<T> ServiceDiscover<T> for Arc<ServiceDiscovery<T>> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: Fn(&T) -> O,
+        F: Fn(Option<&T>) -> O,
+        T: Default,
     {
         (**self).do_with(f)
     }

@@ -5,7 +5,6 @@ mod by_cid;
 mod mpmc;
 mod ring;
 mod status;
-mod waker;
 
 use protocol::RingSlice;
 

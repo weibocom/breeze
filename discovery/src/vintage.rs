@@ -53,10 +53,10 @@ pub struct MemcacheRspConfNode {
 }
 
 impl Vintage {
-    pub fn from_url(_url: Url) -> Self {
+    pub fn from_url(url: Url) -> Self {
         //let (tx, rx) = mpsc::channel(200);
-        let mut vintage = Vintage {
-            base_url: _url,
+        let vintage = Vintage {
+            base_url: url,
             biz_mc_confs: HashMap::new(),
             groups: HashSet::new(),
             //sender: tx,
@@ -141,7 +141,7 @@ impl Vintage {
         if "200".ne(resp.code.as_str()) {
             return Err(Box::new(Error::new(
                 ErrorKind::NotFound,
-                "not found conf when lookup",
+                format!("lookup failed. code is not 200:{}", resp.code),
             )));
         }
 
@@ -155,6 +155,7 @@ impl Vintage {
 
         // parse body with yaml format
         let conf_str = &resp.body.nodes[0].value;
+        println!("config str:{}", conf_str);
         let conf_mapping: Mapping = serde_yaml::from_str(conf_str)?;
         let mut biz_confs: HashMap<String, String> = HashMap::new();
         for (k, v) in conf_mapping {
@@ -229,35 +230,37 @@ impl super::Discover for Vintage {
         name: &str,
         sig: &str,
     ) -> std::io::Result<Option<(String, String)>> {
+        Ok(None)
         // 从name中解析出group和namespace
-        let group_ns: Vec<&str> = name.split("#").collect();
-        if group_ns.len() != 2 {
-            println!("malformed param/{} when get conf", name);
-            return Err(Error::new(ErrorKind::InvalidInput, "malformed param in get_service"));
-        }
+        //let group_ns: Vec<&str> = name.split("#").collect();
+        //if group_ns.len() != 2 {
+        //    println!("malformed param/{} when get conf", name);
+        //    return Err(Error::new(
+        //        ErrorKind::InvalidInput,
+        //        "malformed param in get_service",
+        //    ));
+        //}
 
-        // 根据group查询分组配置，根据namespace获取具体子业务配置
-        let group = *group_ns.get(0).unwrap();
-        let namespace = *group_ns.get(1).unwrap();
-        let mut this = self.clone();
-        match this.lookup(group).await {
-            Ok(confs) => {
-                match confs.get(namespace) {
-                    Some(c) => {
-                        return Ok(Some((namespace.to_string(), c.to_string())));
-                    }
-                    None => {
-                        println!("not found namespace in group confs:{}", name);
-                        return Err(Error::new(ErrorKind::InvalidInput, "not found namespace"));
-                    }
-
-                }
-
-            }
-            Err(e) => {
-                println!("not found conf for group:{}", name);
-                return Err(Error::new(ErrorKind::InvalidInput, "not found group"));
-            }
-        } ;
+        //// 根据group查询分组配置，根据namespace获取具体子业务配置
+        //let group = *group_ns.get(0).unwrap();
+        //let namespace = *group_ns.get(1).unwrap();
+        //let mut this = self.clone();
+        //match this.lookup(group).await {
+        //    Ok(confs) => match confs.get(namespace) {
+        //        Some(c) => {
+        //            return Ok(Some((namespace.to_string(), c.to_string())));
+        //        }
+        //        None => {
+        //            println!("not found namespace in group confs:{}", name);
+        //            return Err(Error::new(ErrorKind::InvalidInput, "not found namespace"));
+        //        }
+        //    },
+        //    Err(e) => {
+        //        return Err(Error::new(
+        //            ErrorKind::InvalidInput,
+        //            format!("lookup error:{:?}", e),
+        //        ));
+        //    }
+        //};
     }
 }
