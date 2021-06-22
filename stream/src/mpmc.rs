@@ -1,8 +1,7 @@
 use std::cell::RefCell;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -15,7 +14,7 @@ use super::{
 use protocol::ResponseParser;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{channel, Receiver};
 use tokio_util::sync::PollSender;
 
 use futures::ready;
