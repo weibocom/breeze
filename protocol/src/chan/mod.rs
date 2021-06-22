@@ -1,9 +1,11 @@
+mod get_sync;
 mod multi_get;
 mod operation;
 mod pipeline;
 mod route;
 mod set_sync;
 
+pub use get_sync::AsyncGetSync;
 pub use multi_get::AsyncMultiGet;
 pub use operation::AsyncOperation;
 pub use pipeline::PipeToPingPongChanWrite;

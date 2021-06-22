@@ -16,6 +16,8 @@ pub trait Protocol: Unpin {
     // 包含EOF（类似于memcache协议中的END）则返回的位置不包含END信息。
     // 主要用来在进行multiget时，判断请求是否结束。
     fn probe_response_eof(&mut self, partial_resp: &[u8]) -> (bool, usize);
+    // 解析响应是否命中
+    fn probe_response_succeed(&mut self, response: &[u8]) -> bool;
 }
 
 pub trait Router {
