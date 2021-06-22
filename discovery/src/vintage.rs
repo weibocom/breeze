@@ -156,7 +156,6 @@ impl Vintage {
         // parse body with yaml format
         let sign = resp.body.sign;
         let conf_str = &resp.body.nodes[0].value;
-        println!("config str:{}", conf_str);
         let conf_mapping: Mapping = serde_yaml::from_str(conf_str)?;
         let mut biz_confs: HashMap<String, String> = HashMap::new();
         for (k, v) in conf_mapping {
@@ -177,13 +176,7 @@ impl Vintage {
         // update groups
         self.groups.insert(group.into());
 
-        println!(
-            "lookup vintage - group/{} key/{}, keys: {:?}, values: {:?}",
-            group,
-            CONF_COMMON_KEY,
-            biz_confs.keys(),
-            biz_confs.values(),
-        );
+        println!("lookup vintage - group/{}, confs: {:?}", group, biz_confs);
 
         Ok(Some((biz_confs, sign)))
     }
@@ -253,10 +246,10 @@ impl super::Discover for Vintage {
         let namespace = *group_ns.get(1).unwrap();
         let mut this = self.clone();
         match this.lookup(group).await {
-            Ok(Some((confs, sign))) => match confs.get(&namespace.to_string()) {
+            Ok(Some((confs, new_sign))) => match confs.get(&namespace.to_string()) {
                 Some(c) => {
-                    println!("found config, ns:{}, values:{}", namespace, c);
-                    return Ok(Some((c.to_string(), sign)));
+                    // println!("found config, ns:{}, values:{}", namespace, c);
+                    return Ok(Some((c.to_string(), new_sign)));
                 }
                 None => {
                     println!("not found namespace/{} with group:{}", namespace, group);

@@ -97,17 +97,20 @@ where
             .get_service(&self.service, &self.sign)
             .await?
             .ok_or_else(|| Error::new(ErrorKind::NotFound, "no service config found"))?;
-        println!("1111111 in load_from_discovery, cfg:{}, sign:{}", cfg, sign);
         if self.cfg != cfg {
+            println!(
+                "load new config from discovery succeed, service:{}, cfg:{}, sign:{}",
+                self.service, cfg, sign
+            );
             self.cfg = cfg;
             self.sign = sign;
             self.w.append(self.cfg.clone());
             self.dump_to_snapshot().await?;
+            println!(
+                "dump to snapshot succeed for service/{} sign:{}",
+                self.service, self.sign
+            );
         }
-        println!(
-            "222222222 in load_from_discovery, cfg:{}, sign:{}",
-            self.cfg, self.sign
-        );
         Ok(())
     }
     pub async fn start_watch(&mut self)
