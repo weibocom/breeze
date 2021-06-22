@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: 构建
         run: |
-          ls -l
+          ls -l 1>&2
       - uses: actions-rs/cargo@v1.0.1
         with:
           command: build
