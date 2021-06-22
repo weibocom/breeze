@@ -97,24 +97,32 @@ where
             .get_service(&self.service, &self.sign)
             .await?
             .ok_or_else(|| Error::new(ErrorKind::NotFound, "no service config found"))?;
+        println!("1111111 in load_from_discovery, cfg:{}, sign:{}", cfg, sign);
         if self.cfg != cfg {
             self.cfg = cfg;
             self.sign = sign;
             self.w.append(self.cfg.clone());
             self.dump_to_snapshot().await?;
         }
+        println!(
+            "222222222 in load_from_discovery, cfg:{}, sign:{}",
+            self.cfg, self.sign
+        );
         Ok(())
     }
     pub async fn start_watch(&mut self)
     where
         D: Discover + Send + Unpin,
     {
+        println!("===== watch 1");
         let r = self.load_from_snapshot().await;
         self.check(r);
+        println!("===== watch 2");
         if self.cfg.len() == 0 {
             let r = self.load_from_discovery().await;
             self.check(r);
         }
+        println!("===== watch 3");
         loop {
             self.interval.tick().await;
             let r = self.load_from_discovery().await;
