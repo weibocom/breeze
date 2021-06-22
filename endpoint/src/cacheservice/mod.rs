@@ -7,12 +7,13 @@ pub use topology::Topology;
 use discovery::ServiceDiscover;
 
 use protocol::chan::{
-    AsyncMultiGet, AsyncOperation, AsyncRoute, AsyncSetSync, AsyncWriteAll, PipeToPingPongChanWrite,
+    AsyncGetSync, AsyncMultiGet, AsyncOperation, AsyncRoute, AsyncSetSync, AsyncWriteAll,
+    PipeToPingPongChanWrite,
 };
 use protocol::memcache::{Memcache, MemcacheMetaStream, MemcacheOpRoute};
 use protocol::DefaultHasher;
 
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
 
 use tokio::net::tcp::OwnedWriteHalf;
@@ -25,11 +26,20 @@ type MemcacheRoute = protocol::memcache::MemcacheRoute<DefaultHasher>;
 type GetOperation = AsyncRoute<Backend, MemcacheRoute>;
 type MultiGetOperation = AsyncMultiGet<Backend, Memcache<DefaultHasher>>;
 
+type Reader = AsyncRoute<Backend, MemcacheRoute>;
+type GetThroughOperation = AsyncGetSync<Reader, Memcache<DefaultHasher>>;
+
 type Master = AsyncRoute<Backend, MemcacheRoute>;
 type Follower = AsyncRoute<OwnedWriteHalf, MemcacheRoute>;
 type StoreOperation = AsyncSetSync<Master, Follower>;
 type MetaOperation = MemcacheMetaStream;
-type Operation = AsyncOperation<GetOperation, MultiGetOperation, StoreOperation, MetaOperation>;
+type Operation = AsyncOperation<
+    GetOperation,
+    MultiGetOperation,
+    GetThroughOperation,
+    StoreOperation,
+    MetaOperation,
+>;
 
 // 三级访问策略。
 // 第一级先进行读写分离
@@ -54,11 +64,31 @@ where
         let r = MemcacheRoute::from_len(shards.len());
         AsyncRoute::from(shards, r)
     }
+
+    #[inline]
+    fn build_routes<S>(pools: Vec<Vec<S>>) -> Vec<AsyncRoute<S, MemcacheRoute>>
+    where
+        S: AsyncWrite + AsyncWriteAll + Unpin,
+    {
+        let mut routes = Vec::new();
+        for p in pools {
+            let r = MemcacheRoute::from_len(p.len());
+            routes.push(AsyncRoute::from(p, r));
+        }
+        routes
+    }
+
     pub fn from_discovery(discovery: D) -> Result<Self>
     where
         D: ServiceDiscover<Topology> + Unpin,
     {
-        discovery.do_with(|t| Self::from_topology(t))
+        discovery.do_with(|t| match t {
+            Some(t) => Self::from_topology(t),
+            None => Err(Error::new(
+                ErrorKind::ConnectionRefused,
+                "backend server not inited yet",
+            )),
+        })
     }
     fn from_topology(topo: &Topology) -> Result<Self>
     where
@@ -78,11 +108,18 @@ where
             .collect();
         let store = AsyncOperation::Store(AsyncSetSync::from_master(master, followers));
 
+        // 获取get through
+        let reads_get_through = Self::build_routes(topo.reader_4_get_through());
+        let parser_get_through: Memcache<DefaultHasher> = Memcache::<DefaultHasher>::new();
+        let get_through =
+            AsyncOperation::GetThrough(AsyncGetSync::from(reads_get_through, parser_get_through));
+
         let meta = AsyncOperation::Meta(MemcacheMetaStream::from(""));
         let router = MemcacheOpRoute::new();
-        let op_stream = AsyncRoute::from(vec![get, gets, store, meta], router);
+        let op_stream = AsyncRoute::from(vec![get, gets, get_through, store, meta], router);
 
         let inner = PipeToPingPongChanWrite::from_stream(Memcache::new(), op_stream);
+
         Ok(Self {
             inner: inner,
             _mark: Default::default(),

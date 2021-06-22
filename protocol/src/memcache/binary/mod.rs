@@ -1,4 +1,6 @@
 mod meta;
+use std::usize;
+
 pub use meta::MemcacheBinaryMetaStream;
 
 pub const HEADER_LEN: usize = 24;
@@ -101,6 +103,11 @@ where
         let key_len = BigEndian::read_u16(&req[2..]) as usize;
         &req[offset..offset + key_len]
     }
+    fn probe_response_succeed(&mut self, response: &[u8]) -> bool {
+        debug_assert!(response.len() > HEADER_LEN);
+        let status = BigEndian::read_u16(&response[6..]) as usize;
+        status == 0
+    }
 }
 
 pub struct MemcacheBinaryOpRoute {}
@@ -150,6 +157,16 @@ impl crate::ResponseParser for MemcacheBinaryResponseParser {
         debug_assert_eq!(response.at(0), 0x81);
         let len = response.read_u32(8) as usize + HEADER_LEN;
         (response.available() >= len, len)
+    }
+
+    // 请求命中，status为0，否则部位0
+    fn probe_response_succeed(&mut self, response: &RingSlice) -> bool {
+        if response.available() < HEADER_LEN {
+            return false;
+        }
+        debug_assert_eq!(response.at(0), 0x81);
+        // status 在字节的6、7两个字节
+        response.at(6) == 0 && response.at(7) == 0
     }
 }
 impl MemcacheBinaryResponseParser {
