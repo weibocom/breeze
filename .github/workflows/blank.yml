@@ -1,0 +1,15 @@
+
+ name: rust-cargo
+
+  # You may pin to the exact commit or the version.
+  # uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
+  uses: actions-rs/cargo@v1.0.1
+  with:
+    # Cargo command to run (ex. `check` or `build`)
+    command: build
+    # Toolchain to use (without the `+` sign, ex. `nightly`)
+    toolchain: # optional
+    # Arguments for the cargo command
+    args: # optional
+    # Use cross instead of cargo
+    use-cross: # optional
