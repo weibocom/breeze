@@ -3,9 +3,9 @@ name: cargo-build
 # Controls when the action will run.
 on:
   push:
-    branches: [ dev ]
+    branches: [ dev_mingzhe10_stable_test ]
   pull_request:
-    branches: [ dev ]
+    branches: [ dev_mingzhe10_stable_test ]
 
   workflow_dispatch:
 
@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: 构建
+        run: |
+          ls -l
       - uses: actions-rs/cargo@v1.0.1
         with:
           command: build
