@@ -3,9 +3,9 @@ name: cargo-build
 # Controls when the action will run.
 on:
   push:
-    branches: [ dev_mingzhe10_stable_test ]
+    branches: [ dev ]
   pull_request:
-    branches: [ dev_mingzhe10_stable_test ]
+    branches: [ dev ]
 
   workflow_dispatch:
 
