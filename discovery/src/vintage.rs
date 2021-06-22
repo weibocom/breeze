@@ -162,8 +162,10 @@ impl Vintage {
             if "global".to_string() == k {
                 continue;
             }
-            //let temp_cnf: MemcacheConf = serde_yaml::from_value(v)?;
-            biz_confs.insert(k.as_str().unwrap().into(), v.as_str().unwrap().into());
+
+            let biz_name = serde_yaml::to_string(&v)?;
+            let biz_conf = serde_yaml::to_string(&v)?;
+            biz_confs.insert(biz_name, biz_conf);
         }
 
         // update vintage cache
@@ -216,6 +218,7 @@ mod mc_discovery_test {
         let conf_task = vintage.lookup("cache.service2.0.unread.pool.lru.test");
         let conf = rt.block_on(conf_task);
 
+        println!("+++++++++");
         println!("lookup result: {:?}", conf);
         assert!(conf.unwrap().len() > 0);
     }
