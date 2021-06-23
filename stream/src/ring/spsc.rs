@@ -173,6 +173,7 @@ impl RingBufferWriter {
         let read = self.buffer.read.0.load(Ordering::Acquire);
         let available = self.buffer.len - (self.write - read);
         debug_assert!(available <= self.buffer.len);
+        debug_assert!(b.len() < self.buffer.len);
         if available < b.len() {
             false
         } else {

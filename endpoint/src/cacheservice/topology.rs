@@ -166,18 +166,22 @@ impl Topology {
         let mb = 1024 * 1024;
         let p = 16;
         Self::delete_non_exists(&self.masters, &mut self.m_streams);
+        println!("master =========== ");
         Self::add_new(&self.masters, &mut self.m_streams, mb, kb, p, false);
 
         let followers: Vec<String> = self.followers.clone().into_iter().flatten().collect();
         Self::delete_non_exists(&followers, &mut self.f_streams);
+        println!("followers =========== ");
         Self::add_new(followers.as_ref(), &mut self.f_streams, mb, kb, p, true);
 
         let readers: Vec<String> = self.readers.clone().into_iter().flatten().collect();
         // get command
         Self::delete_non_exists(&readers, &mut self.get_streams);
+        println!("get =========== ");
         Self::add_new(&readers, &mut self.get_streams, kb, mb, p, false);
         // get[s] command
         Self::delete_non_exists(&readers, &mut self.gets_streams);
+        println!("gets =========== ");
         Self::add_new(&readers, &mut self.gets_streams, kb, mb, p, false);
     }
 }
