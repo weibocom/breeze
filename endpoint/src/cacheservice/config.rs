@@ -46,14 +46,23 @@ impl Namespace {
         let master = self.master;
         // followers包含： master-l1, slave, slave-l1
         let mut followers: Vec<Vec<String>> = self.master_l1.clone();
-        followers.push(self.slave.clone());
+        if self.slave.len() > 0 {
+            followers.push(self.slave.clone());
+        }
         followers.extend(self.slave_l1);
 
         // reader包含：master，l1, slave
         // 保障严格的顺序。
         let mut readers = vec![master.clone()];
         readers.extend(self.master_l1);
-        readers.push(self.slave);
+        if self.slave.len() > 0 {
+            readers.push(self.slave);
+        }
+
+        println!(
+            "masters:{:?} folloers:{:?} readers:{:?}",
+            master, followers, readers
+        );
 
         (master, followers, readers)
     }

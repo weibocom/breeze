@@ -20,7 +20,7 @@ impl ServiceName {
 
 impl ServiceId for ServiceName {
     fn path(&self) -> &str {
-        let idx = self.name.find('#').unwrap_or(self.name.len());
+        let idx = self.name.find(':').unwrap_or(self.name.len());
         &self.name[..idx]
     }
 }

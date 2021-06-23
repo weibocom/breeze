@@ -13,7 +13,6 @@ use tokio::time::{interval_at, Instant};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    coredump::register_panic_handler().unwrap();
     let ctx = Context::from_os_args();
     ctx.check()?;
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
