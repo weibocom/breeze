@@ -10,5 +10,5 @@ pub use slice::RingSlice;
 
 pub trait ResponseParser {
     fn parse_response(&mut self, response: &RingSlice) -> (bool, usize);
-    fn probe_response_succeed(&mut self, response: &RingSlice) -> bool;
+    fn probe_response_found(&mut self, response: &RingSlice) -> bool;
 }
