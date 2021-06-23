@@ -44,16 +44,7 @@ pub struct MpmcRingBufferStream {
 
 impl MpmcRingBufferStream {
     // id必须小于parallel
-    pub fn with_capacity(
-        req_buff: usize,
-        resp_buff: usize,
-        parallel: usize,
-        done: Arc<AtomicBool>,
-    ) -> Self {
-        let req_buff = req_buff.next_power_of_two();
-        let resp_buff = resp_buff.next_power_of_two();
-        assert!(req_buff <= 8 << 20 && resp_buff <= 8 << 20);
-
+    pub fn with_capacity(parallel: usize, done: Arc<AtomicBool>) -> Self {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= 32);
         let items = (0..parallel).map(|id| Item::new(id)).collect();
@@ -214,6 +205,7 @@ impl MpmcRingBufferStream {
         P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         self.check_bridge();
+        println!("request buffer size:{}", req_buffer);
         let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
         // 把数据从request同步到buffer
         let receiver = self.receiver.borrow_mut().take().expect("receiver exists");

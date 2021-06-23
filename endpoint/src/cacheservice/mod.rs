@@ -112,14 +112,14 @@ where
         let store = AsyncOperation::Store(AsyncSetSync::from_master(master, followers));
 
         // 获取get through
-        let reads_get_through = Self::build_routes(topo.reader_4_get_through());
-        let parser_get_through: Memcache<DefaultHasher> = Memcache::<DefaultHasher>::new();
-        let get_through =
-            AsyncOperation::GetThrough(AsyncGetSync::from(reads_get_through, parser_get_through));
+        //let reads_get_through = Self::build_routes(topo.reader_4_get_through());
+        //let parser_get_through: Memcache<DefaultHasher> = Memcache::<DefaultHasher>::new();
+        //let get_through =
+        //    AsyncOperation::GetThrough(AsyncGetSync::from(reads_get_through, parser_get_through));
 
         let meta = AsyncOperation::Meta(MemcacheMetaStream::from(""));
         let router = MemcacheOpRoute::new();
-        let op_stream = AsyncRoute::from(vec![get, gets, get_through, store, meta], router);
+        let op_stream = AsyncRoute::from(vec![get, gets, store, meta], router);
 
         let inner = PipeToPingPongChanWrite::from_stream(Memcache::new(), op_stream);
 
