@@ -139,12 +139,22 @@ impl Topology {
         }
     }
 
-    fn update(&mut self, cfg: &str) {
-        let (masters, followers, readers) = super::Config::from(cfg).into_split();
+    fn update(&mut self, cfg: &str, name: &str) {
+        let idx = name.find('#').unwrap_or(name.len());
+        if idx == 0 || idx >= name.len() - 1 {
+            println!("not a valid cache service name:{} no namespace found", name);
+        }
+        let namespace = &name[idx + 1..];
 
+        let (masters, followers, readers) = match super::Namespace::parse(cfg, namespace) {
+            Ok(ns) => ns.into_split(),
+            Err(e) => {
+                println!("parse cacheservice config error: name:{} error:{}", name, e);
+                return;
+            }
+        };
         if masters.len() == 0 {
-            // TODO
-            println!("parse cacheservice failed. master len is zero. cfg:{}", cfg);
+            println!("cacheservice master not exists. {} => {}", name, cfg);
             return;
         }
 
@@ -188,13 +198,13 @@ impl Clone for Topology {
 }
 
 impl discovery::Topology for Topology {
-    fn update(&mut self, cfg: &str) {
-        self.update(cfg);
+    fn update(&mut self, cfg: &str, name: &str) {
+        self.update(cfg, name);
     }
 }
-impl left_right::Absorb<String> for Topology {
-    fn absorb_first(&mut self, cfg: &mut String, _other: &Self) {
-        self.update(cfg);
+impl left_right::Absorb<(String, String)> for Topology {
+    fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
+        self.update(&cfg.0, &cfg.1);
     }
     fn sync_with(&mut self, first: &Self) {
         *self = first.clone();

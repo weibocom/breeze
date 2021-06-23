@@ -1,6 +1,6 @@
 mod config;
 mod topology;
-use config::MemcacheConf as Config;
+use config::Namespace;
 
 pub use topology::Topology;
 
