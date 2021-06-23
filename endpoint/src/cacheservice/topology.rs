@@ -140,7 +140,7 @@ impl Topology {
     }
 
     fn update(&mut self, cfg: &str, name: &str) {
-        let idx = name.find('#').unwrap_or(name.len());
+        let idx = name.find(':').unwrap_or(name.len());
         if idx == 0 || idx >= name.len() - 1 {
             println!("not a valid cache service name:{} no namespace found", name);
         }

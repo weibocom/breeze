@@ -74,11 +74,25 @@ where
     R: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     P: Unpin,
 {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
-        return self.do_req(cx, buf);
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize>> {
+        println!("===============readers len:{}", self.readers.len());
+        if self.readers.len() == 1 {
+            unsafe { Pin::new(self.readers.get_unchecked_mut(0)).poll_write(cx, buf) }
+        } else {
+            self.do_req(cx, buf)
+        }
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        if self.readers.len() == 1 {
+            unsafe {
+                return Pin::new(self.readers.get_unchecked_mut(0)).poll_flush(cx);
+            }
+        }
         let idx = self.idx;
         let reader = unsafe { self.readers.get_unchecked_mut(idx) };
         match Pin::new(reader).poll_flush(cx) {
@@ -89,6 +103,11 @@ where
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        if self.readers.len() == 1 {
+            unsafe {
+                return Pin::new(self.readers.get_unchecked_mut(0)).poll_shutdown(cx);
+            }
+        }
         let idx = self.idx;
         let reader = unsafe { self.readers.get_unchecked_mut(idx) };
         match Pin::new(reader).poll_shutdown(cx) {
@@ -109,6 +128,11 @@ where
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
+        if self.readers.len() == 1 {
+            unsafe {
+                return Pin::new(self.readers.get_unchecked_mut(0)).poll_read(cx, buf);
+            }
+        }
         let idx = self.idx;
         let reader = unsafe { self.readers.get_unchecked_mut(idx) };
         match Pin::new(reader).poll_read(cx, buf) {
