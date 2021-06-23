@@ -84,6 +84,7 @@ where
         self.sign = contents;
 
         self.w.append((self.cfg.clone(), self.service.to_owned()));
+        self.w.publish();
         Ok(())
     }
     async fn dump_to_snapshot(&mut self) -> Result<()> {
@@ -118,6 +119,7 @@ where
                     self.cfg = cfg;
                     self.sign = sig;
                     self.w.append((self.cfg.clone(), self.service.to_owned()));
+                    self.w.publish();
                     if let Err(e) = self.dump_to_snapshot().await {
                         println!(
                             "failed to dump to snapshot. path:{:?} {:?}",

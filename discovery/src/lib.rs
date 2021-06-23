@@ -74,12 +74,18 @@ pub struct ServiceDiscovery<T> {
 }
 
 impl<T> ServiceDiscovery<T> {
-    pub fn new<D>(discovery: D, service: String, snapshot: String, tick: Duration) -> Self
+    pub fn new<D>(
+        discovery: D,
+        service: String,
+        endpoint: String,
+        snapshot: String,
+        tick: Duration,
+    ) -> Self
     where
         D: Discover + Send + Unpin + 'static + Sync,
-        T: Topology + Send + Sync + 'static,
+        T: Topology + Send + Sync + 'static + From<String>,
     {
-        let (w, r) = left_right::new::<T, (String, String)>();
+        let (w, r) = left_right::new_from_empty::<T, (String, String)>(T::from(endpoint));
 
         tokio::spawn(async move {
             AsyncServiceUpdate::new(service, discovery, w, tick, snapshot)
