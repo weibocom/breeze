@@ -133,7 +133,10 @@ impl AsyncRead for NotConnected {
 
 impl AsyncWrite for NotConnected {
     fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: &[u8]) -> Poll<Result<usize>> {
-        Poll::Ready(Err(Error::from(ErrorKind::NotConnected)))
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "write to an unconnected stream",
+        )))
     }
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
         Poll::Ready(Ok(()))
@@ -195,7 +198,10 @@ impl BackendBuilder {
         self.ids
             .next()
             .map(|cid| BackendStream::from(Cid::new(cid, self.ids.clone()), self.stream.clone()))
-            .unwrap_or_else(|| BackendStream::not_connected())
+            .unwrap_or_else(|| {
+                println!("connection id overflow, connection established failed");
+                BackendStream::not_connected()
+            })
     }
     pub fn close(&self) {
         self.closed.store(true, Ordering::Release);
@@ -266,7 +272,12 @@ where
                     }
                 }
                 // TODO
-                Err(_e) => {}
+                Err(e) => {
+                    println!(
+                        "failed to establish a connection to {} err:{:?}",
+                        self.inner.addr, e
+                    );
+                }
             }
         }
     }
