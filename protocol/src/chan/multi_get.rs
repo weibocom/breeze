@@ -65,36 +65,34 @@ where
         // 为了简单。flush时不考虑pending，即使从pending恢复，也可以把之前的poll_flush重新操作一遍。
         // poll_flush是幂等的
         let me = &mut *self;
-        let mut success = false;
         let mut last_err = None;
         for &i in me.writes.iter() {
             match Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_flush(cx) {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(Err(e)) => last_err = Some(e),
-                _ => success = true,
+                _ => {}
             }
         }
-        if success {
-            Poll::Ready(Ok(()))
+        if let Some(e) = last_err {
+            Poll::Ready(Err(e))
         } else {
-            Poll::Ready(Err(last_err.expect("no error found")))
+            Poll::Ready(Ok(()))
         }
     }
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         let me = &mut *self;
-        let mut success = false;
         let mut last_err = None;
         for s in me.shards.iter_mut() {
             match Pin::new(s).poll_shutdown(cx) {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(Err(e)) => last_err = Some(e),
-                _ => success = true,
+                _ => {}
             }
         }
-        if success {
-            Poll::Ready(Ok(()))
+        if let Some(e) = last_err {
+            Poll::Ready(Err(e))
         } else {
-            Poll::Ready(Err(last_err.expect("no error found")))
+            Poll::Ready(Ok(()))
         }
     }
 }

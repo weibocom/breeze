@@ -81,7 +81,7 @@ impl MpmcRingBufferStream {
     #[inline(always)]
     fn poll_check(&self) -> Poll<Result<()>> {
         if self.done.load(Ordering::Relaxed) {
-            Poll::Ready(Err(Error::from(ErrorKind::NotConnected)))
+            Poll::Ready(Err(Error::new(ErrorKind::NotConnected, "mpmc is done")))
         } else {
             Poll::Ready(Ok(()))
         }
