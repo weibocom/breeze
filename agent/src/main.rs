@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
         spawn(async move {
             match Listener::bind(&quard.family(), &quard.address()).await {
                 Ok(l) => {
-                    println!("listener received:{:?}", quard);
+                    println!("listener received:{:?}", quard.address());
                     if let Err(e) = tx.send(true) {
                         println!("failed to notify the listener status true:{:?}", e);
                     }

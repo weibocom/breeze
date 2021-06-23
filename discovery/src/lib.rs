@@ -1,5 +1,9 @@
+mod name;
 mod update;
 mod vintage;
+
+use name::{ServiceId, ServiceName};
+
 use update::AsyncServiceUpdate;
 use vintage::Vintage;
 
@@ -13,10 +17,21 @@ use url::Url;
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 
+unsafe impl<C> Send for Config<C> {}
+unsafe impl<C> Sync for Config<C> {}
+pub enum Config<C> {
+    NotFound,
+    NotChanged,
+    Config(C, String),
+}
+
 #[async_trait]
 #[enum_dispatch]
 pub trait Discover {
-    async fn get_service(&self, name: &str, sig: &str) -> Result<Option<(String, String)>>;
+    async fn get_service<S, C>(&self, name: S, sig: &str) -> Result<Config<C>>
+    where
+        S: Unpin + Send + ServiceId,
+        C: Unpin + Send + From<String>;
 }
 
 #[enum_dispatch(Discover)]
@@ -40,8 +55,8 @@ impl Discovery {
     }
 }
 
-pub trait Topology: Default + left_right::Absorb<String> + Clone {
-    fn update(&mut self, cfg: &str);
+pub trait Topology: Default + left_right::Absorb<(String, String)> + Clone {
+    fn update(&mut self, cfg: &str, name: &str);
 }
 
 pub trait ServiceDiscover<T> {
@@ -64,14 +79,13 @@ impl<T> ServiceDiscovery<T> {
         D: Discover + Send + Unpin + 'static + Sync,
         T: Topology + Send + Sync + 'static,
     {
-        let (w, r) = left_right::new::<T, String>();
+        let (w, r) = left_right::new::<T, (String, String)>();
 
         tokio::spawn(async move {
             AsyncServiceUpdate::new(service, discovery, w, tick, snapshot)
                 .start_watch()
                 .await
         });
-
         Self { cache: r }
     }
 }
@@ -96,7 +110,11 @@ use std::sync::Arc;
 #[async_trait]
 impl<T: Discover + Send + Unpin + Sync> Discover for Arc<T> {
     #[inline]
-    async fn get_service(&self, name: &str, sig: &str) -> Result<Option<(String, String)>> {
+    async fn get_service<S, C>(&self, name: S, sig: &str) -> Result<Config<C>>
+    where
+        S: Unpin + Send + ServiceId,
+        C: Unpin + Send + From<String>,
+    {
         (**self).get_service(name, sig).await
     }
 }
