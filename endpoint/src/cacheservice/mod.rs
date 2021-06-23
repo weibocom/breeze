@@ -78,12 +78,15 @@ where
         routes
     }
 
-    pub fn from_discovery(discovery: D) -> Result<Self>
+    pub async fn from_discovery(discovery: D) -> Result<Self>
     where
-        D: ServiceDiscover<Topology> + Unpin,
+        D: ServiceDiscover<super::Topology> + Unpin,
     {
         discovery.do_with(|t| match t {
-            Some(t) => Self::from_topology(t),
+            Some(t) => match t {
+                super::Topology::CacheService(t) => Self::from_topology(t),
+                _ => panic!("cacheservice topologyt required!"),
+            },
             None => Err(Error::new(
                 ErrorKind::ConnectionRefused,
                 "backend server not inited yet",
@@ -92,7 +95,7 @@ where
     }
     fn from_topology(topo: &Topology) -> Result<Self>
     where
-        D: ServiceDiscover<Topology> + Unpin,
+        D: ServiceDiscover<super::Topology> + Unpin,
     {
         let get = AsyncOperation::Get(Self::build_route(topo.next_l1()));
 

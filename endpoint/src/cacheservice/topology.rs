@@ -20,14 +20,14 @@ pub struct Topology {
     // 为了方便遍历
     l1_seq: AtomicUsize,
     // 处理写请求
-    masters: Vec<String>,
+    pub(crate) masters: Vec<String>,
     m_streams: HashMap<String, Arc<BackendBuilder>>,
     // 只用来同步写请求
     followers: Vec<Vec<String>>,
     f_streams: HashMap<String, Arc<BackendBuilder>>,
     // 处理读请求,每个layer选择一个，先打通
     // 后续考虑要调整为新的Vec嵌套逻辑： [random[reader[node_dist_pool]]]
-    readers: Vec<Vec<String>>,
+    pub(crate) readers: Vec<Vec<String>>,
     get_streams: HashMap<String, Arc<BackendBuilder>>,
     gets_streams: HashMap<String, Arc<BackendBuilder>>,
 }
@@ -199,7 +199,9 @@ impl Clone for Topology {
 
 impl discovery::Topology for Topology {
     fn update(&mut self, cfg: &str, name: &str) {
+        println!("cache service topology received:{}", name);
         self.update(cfg, name);
+        println!("master:{:?}", self.masters);
     }
 }
 impl left_right::Absorb<(String, String)> for Topology {
