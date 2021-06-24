@@ -184,11 +184,11 @@ impl BackendBuilder {
         P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         println!("come into from_with_response");
-        let done = Arc::new(AtomicBool::new(false));
+        let done = Arc::new(AtomicBool::new(true));
         let stream = RingBufferStream::with_capacity(parallel, done.clone());
         let me_builder = Self {
             closed: Arc::new(AtomicBool::new(true)),
-            finished: done.clone(),
+            finished: Arc::new(AtomicBool::new(false)),
             addr: addr,
             stream: Arc::new(stream),
             ids: Arc::new(Ids::with_capacity(parallel)),
@@ -304,10 +304,10 @@ where
 
                     if !self.ignore_response.load(Ordering::Acquire) {
                         println!("go to bridge");
-                        req_stream.bridge(self.req_buf, self.resp_buf, r, w, P::default());
+                        req_stream.bridge(self.req_buf, self.resp_buf, r, w, P::default(), self.inner.clone());
                     } else {
                         println!("go to bridge_no_reply");
-                        req_stream.bridge_no_reply(self.resp_buf, r, w, P::default());
+                        req_stream.bridge_no_reply(self.resp_buf, r, w, P::default(), self.inner.clone());
                     }
                     println!("set false to closed");
                     self.inner.read().unwrap().closed.store(false, Ordering::Release);

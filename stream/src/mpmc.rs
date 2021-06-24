@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 
 use super::status::*;
@@ -199,6 +199,7 @@ impl MpmcRingBufferStream {
         r: R,
         w: W,
         parser: P,
+        builder: Arc<RwLock<BackendBuilder>>,
     ) where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
@@ -216,16 +217,16 @@ impl MpmcRingBufferStream {
         //// 把数据从buffer发送数据到,server
         self.start_bridge(
             "bridge-buffer-to-backend",
-            BridgeBufferToWriter::from(req_rb_reader, w, self.done.clone()),
+            BridgeBufferToWriter::from(req_rb_reader, w, self.done.clone(), builder.clone()),
         );
 
         //// 从response读取数据写入items
         self.start_bridge(
             "bridge-backend-to-local",
-            BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone()),
+            BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone(), builder.clone()),
         );
     }
-    pub fn bridge_no_reply<R, W, P>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W, _parser: P)
+    pub fn bridge_no_reply<R, W, P>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W, _parser: P, builder: Arc<RwLock<BackendBuilder>>,)
     where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
@@ -247,6 +248,7 @@ impl MpmcRingBufferStream {
             req_rb_reader,
             w,
             self.done.clone(),
+            builder.clone(),
         ));
 
         tokio::spawn(async move {
@@ -294,6 +296,8 @@ impl MpmcRingBufferStream {
 }
 
 use super::RequestData;
+use crate::BackendBuilder;
+
 impl Request for Arc<MpmcRingBufferStream> {
     //fn next(&self, id: usize) -> Option<RequestData> {
     //    let offset = id & (self.items.len() - 1);
