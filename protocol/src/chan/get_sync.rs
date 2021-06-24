@@ -14,8 +14,10 @@ pub struct AsyncGetSync<R, P> {
     idx: usize,
     // 需要read though的shards
     readers: Vec<R>,
-    last_req: Vec<u8>,
-    last_status: bool,
+    req: Vec<u8>,
+    resp_found: bool,
+    resp_len: usize,
+    resp_len_readed: usize,
     parser: P,
 }
 
@@ -25,8 +27,10 @@ impl<R, P> AsyncGetSync<R, P> {
         AsyncGetSync {
             idx: 0,
             readers,
-            last_req: Vec::new(),
-            last_status: false,
+            req: Vec::new(),
+            resp_found: false,
+            resp_len: 0,
+            resp_len_readed: 0,
             parser: p,
         }
     }
@@ -39,6 +43,8 @@ where
 {
     // 发送请求，如果失败，继续向下一层write，注意处理重入问题
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize>> {
+        debug_assert!(self.req.len() > 0);
+
         // check idx
         let mut idx = self.idx;
         debug_assert!(idx < self.readers.len());
@@ -50,7 +56,7 @@ where
         // 轮询reader，发送请求
         while idx < self.readers.len() {
             let rpool = unsafe { self.readers.get_unchecked_mut(idx) };
-            match ready!(Pin::new(rpool).poll_write(cx, self.last_req.as_slice())) {
+            match ready!(Pin::new(rpool).poll_write(cx, self.req.as_slice())) {
                 Ok(len) => return Poll::Ready(Ok(len)),
                 Err(e) => {
                     self.idx += 1;
@@ -60,7 +66,7 @@ where
             }
         }
 
-        // 重置，以准备迎接下一个请求
+        // 及时重置，回收内存
         self.reset();
 
         // write req到所有资源失败
@@ -72,8 +78,15 @@ where
 
     // 请求完毕（成功or失败）后，做清理，准备迎接下一个请求
     fn reset(&mut self) {
-        self.last_status = false;
-        self.last_req.resize(0, 0);
+        // 清理req，如果req缓冲过大，重新分配一个新的
+        self.req.clear();
+        if self.req.capacity() > 10 * 1024 {
+            self.req = Vec::new();
+        }
+
+        self.resp_found = false;
+        self.resp_len = 0;
+        self.resp_len_readed = 0;
     }
 }
 
@@ -87,10 +100,11 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize>> {
-        // 第一次请求时，记录req
-        if self.last_req.len() == 0 {
-            self.last_req.reserve(buf.len());
-            self.last_req.copy_from_slice(buf);
+        // 第一次请求时，首先进行reset操作，然后保留req，最后进行实际请求
+        if self.req.len() == 0 {
+            self.reset();
+            self.req.reserve(buf.len());
+            self.req.copy_from_slice(buf);
         }
         return self.do_write(cx);
     }
@@ -140,12 +154,26 @@ where
             let reader = unsafe { me.readers.get_unchecked_mut(idx) };
             match ready!(Pin::new(reader).poll_read(cx, buf)) {
                 Ok(_) => {
-                    if me.last_status {
+                    // 请求命中，返回ok及消息长度；
+                    if !me.resp_found {
+                        let (found, rsp_len) = me.parser.probe_response_found(buf.filled());
+                        if found {
+                            me.resp_found = true;
+                            me.resp_len = rsp_len;
+                            me.resp_len_readed = buf.capacity() - buf.remaining();
+                        }
+                    } else {
+                        me.resp_len_readed += buf.capacity() - buf.remaining();
+                    }
+                    // 请求完成，需要进行请求重置
+                    if me.resp_found {
+                        // 如果响应完成，进行请求重置
+                        // TODO: \r\n结尾的长度还有2是否需要判断？这个需要确认二进制协议和文本协议的区别？ fishermen
+                        if me.resp_len_readed >= me.resp_len {
+                            self.reset();
+                        }
+
                         // 对于请求成功并重入，直接返回
-                        return Poll::Ready(Ok(()));
-                    } else if me.parser.probe_response_found(buf.filled()) {
-                        // 请求获取命中，设置status，并返回
-                        me.last_status = true;
                         return Poll::Ready(Ok(()));
                     }
                     // 如果请求未命中，则继续准备尝试下一个reader
