@@ -6,7 +6,7 @@ impl super::Hash for Bkdr {
         let mut h = 0usize;
         let seed = 31usize;
         for c in b.iter() {
-            h = h.wrapping_mul(seed) + *c as usize;
+            h = h.wrapping_mul(seed).wrapping_add(*c as usize);
         }
         h as u64
     }
