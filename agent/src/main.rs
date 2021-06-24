@@ -105,7 +105,7 @@ async fn process_one_connection(
     proto: String,
 ) -> Result<()> {
     use endpoint::Endpoint;
-    let parser = protocol::DefaultProtocol::from(&proto).ok_or_else(|| {
+    let parser = protocol::Protocols::from(&proto).ok_or_else(|| {
         Error::new(
             ErrorKind::NotFound,
             format!("'{}' protocol is not suppoted", proto),

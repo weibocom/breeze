@@ -36,11 +36,11 @@ pub trait Protocol: Unpin {
     fn probe_response_found(&mut self, response: &[u8]) -> (bool, usize);
 }
 #[enum_dispatch(Protocol)]
-pub enum DefaultProtocol {
+pub enum Protocols {
     Mc(memcache::Memcache),
 }
 
-impl DefaultProtocol {
+impl Protocols {
     pub fn from(name: &str) -> Option<Self> {
         match name {
             "mc" | "memcache" | "memcached" => Some(Self::Mc(memcache::Memcache::new())),
@@ -49,7 +49,7 @@ impl DefaultProtocol {
     }
 }
 
-impl Clone for DefaultProtocol {
+impl Clone for Protocols {
     fn clone(&self) -> Self {
         match self {
             Self::Mc(_) => Self::Mc(memcache::Memcache::new()),
