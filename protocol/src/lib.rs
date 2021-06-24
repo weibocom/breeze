@@ -59,3 +59,6 @@ impl Clone for DefaultProtocol {
         }
     }
 }
+pub trait Router {
+    fn route(&mut self, req: &[u8]) -> usize;
+}

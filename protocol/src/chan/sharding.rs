@@ -7,7 +7,9 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use futures::ready;
 
 use super::AsyncWriteAll;
-use crate::{Hash, Protocol};
+use crate::Protocol;
+use hash::Hash;
+
 pub struct AsyncSharding<B, H, P> {
     idx: usize,
     shards: Vec<B>,
@@ -41,7 +43,7 @@ where
         debug_assert!(me.idx < me.shards.len());
         let key = me.parser.parse_key(buf);
         let h = me.hasher.hash(key) as usize;
-        me.idx = h % me.idx;
+        me.idx = h % me.shards.len();
         unsafe {
             let w = ready!(Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf))?;
             debug_assert_eq!(w, buf.len());
