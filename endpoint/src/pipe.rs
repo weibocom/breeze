@@ -14,9 +14,9 @@ impl<D> Pipe<D> {
     #[inline]
     pub async fn from_discovery(discovery: D) -> Result<Self>
     where
-        D: ServiceDiscover<Item = String>,
+        D: ServiceDiscover<Topology>,
     {
-        let addr = discovery.get();
+        let addr = discovery.do_with(|_t| "127.0.0.1:11211".to_owned());
         let stream = TcpStream::connect(addr).await?;
         Ok(Self {
             stream: stream,
@@ -53,5 +53,23 @@ where
     #[inline]
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         Pin::new(&mut self.get_mut().stream).poll_shutdown(cx)
+    }
+}
+
+use super::Topology;
+#[derive(Clone, Default)]
+pub struct PipeTopology {}
+impl discovery::Topology for PipeTopology {
+    fn update(&mut self, _cfg: &str, _name: &str) {
+        todo!()
+    }
+}
+impl left_right::Absorb<(String, String)> for PipeTopology {
+    fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
+        discovery::Topology::update(self, &cfg.0, &cfg.1);
+        //self.update(&cfg.0, &cfg.1);
+    }
+    fn sync_with(&mut self, first: &Self) {
+        *self = first.clone();
     }
 }

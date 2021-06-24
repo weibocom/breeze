@@ -4,19 +4,51 @@ use std::task::{Context, Poll};
 
 use discovery::ServiceDiscover;
 
-use cacheservice::Topology;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 macro_rules! define_endpoint {
-    ($($top:tt, $item:ident, $type_name:tt, $ep:expr),+) => {
+    ($($top:tt, $item:ident, $type_name:tt, $ep:expr);+) => {
+
+       #[derive(Clone)]
+       pub enum Topology {
+            Empty,
+            $($item($top)),+
+       }
+
+       impl Default for Topology {
+           fn default() -> Self {
+               Topology::Empty
+           }
+       }
+       impl From<String> for Topology {
+           fn from(endpoint:String) -> Self {
+                match &endpoint[..]{
+                    $($ep => Self::$item($top::default()),)+
+                    _ => {println!("{} not supported endpoint name", endpoint); Self::Empty},
+                }
+           }
+       }
+
+       impl discovery::Topology for Topology {
+           fn update(&mut self, cfg: &str, name: &str) {
+               match self {
+                    $(Self::$item(s) => s.update(cfg, name),)+
+                   Self::Empty => {
+                        println!("empty topology request received");
+                   }
+               }
+           }
+       }
+
+
         pub enum Endpoint<D> {
             $($item($type_name<D>)),+
         }
 
         impl<D> Endpoint<D> where D: ServiceDiscover<Topology> + Unpin + 'static {
-            pub fn from_discovery(name: &str, discovery:D) -> Result<Self> {
+            pub async fn from_discovery(name: &str, discovery:D) -> Result<Self> {
                 match name {
-                    $($ep => Ok(Self::$item($type_name::<D>::from_discovery(discovery)?)),)+
+                    $($ep => Ok(Self::$item($type_name::<D>::from_discovery(discovery).await?)),)+
                     _ => panic!("not supported endpoint name"),
                 }
             }
@@ -51,12 +83,22 @@ macro_rules! define_endpoint {
 }
 
 mod cacheservice;
-//mod pipe;
+mod pipe;
 
 use cacheservice::CacheService;
-//use pipe::Pipe;
+use cacheservice::Topology as CSTopology;
+use pipe::{Pipe, PipeTopology};
 
 define_endpoint! {
-//    Pipe,         Pipe,         "pipe",
-    Topology, CacheService, CacheService, "cs"
+    PipeTopology, Pipe,         Pipe,         "pipe";
+    CSTopology, CacheService, CacheService, "cs"
+}
+
+impl left_right::Absorb<(String, String)> for Topology {
+    fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
+        discovery::Topology::update(self, &cfg.0, &cfg.1)
+    }
+    fn sync_with(&mut self, first: &Self) {
+        *self = first.clone();
+    }
 }

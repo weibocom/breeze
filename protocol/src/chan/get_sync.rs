@@ -110,6 +110,11 @@ where
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        if self.readers.len() == 1 {
+            unsafe {
+                return Pin::new(self.readers.get_unchecked_mut(0)).poll_flush(cx);
+            }
+        }
         let idx = self.idx;
         let reader = unsafe { self.readers.get_unchecked_mut(idx) };
         match Pin::new(reader).poll_flush(cx) {
@@ -120,6 +125,11 @@ where
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        if self.readers.len() == 1 {
+            unsafe {
+                return Pin::new(self.readers.get_unchecked_mut(0)).poll_shutdown(cx);
+            }
+        }
         let idx = self.idx;
         let reader = unsafe { self.readers.get_unchecked_mut(idx) };
         match Pin::new(reader).poll_shutdown(cx) {
