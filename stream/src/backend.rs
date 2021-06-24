@@ -5,10 +5,11 @@ use protocol::ResponseParser;
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use std::thread;
 
 pub enum BackendStream<I, Id> {
     NotConnected(NotConnected),
@@ -145,25 +146,27 @@ impl AsyncWrite for NotConnected {
 
 use super::{Cid, Ids, RingBufferStream};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 pub struct BackendBuilder {
-    closed: AtomicBool,
-    done: Arc<AtomicBool>,
+    closed: Arc<AtomicBool>,
+    finished: Arc<AtomicBool>,
     addr: String,
     stream: Arc<RingBufferStream>,
     ids: Arc<Ids>,
+    //checker: Option<Arc<Mutex<BackendChecker<()>>>>,
+    check_task: Option<std::thread::JoinHandle<()>>,
 }
 
 impl BackendBuilder {
-    pub fn from<P>(addr: String, req_buf: usize, resp_buf: usize, parallel: usize) -> Arc<Self>
-    where
-        P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+    pub fn from<P>(addr: String, req_buf: usize, resp_buf: usize, parallel: usize) -> Arc<Mutex<Self>>
+        where
+            P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         Self::from_with_response::<P>(addr, req_buf, resp_buf, parallel, false)
     }
-    pub fn ignore_response<P>(addr: String, req_buf: usize, parallel: usize) -> Arc<Self>
-    where
-        P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+    pub fn ignore_response<P>(addr: String, req_buf: usize, parallel: usize) -> Arc<Mutex<Self>>
+        where
+            P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         Self::from_with_response::<P>(addr, req_buf, 2048, parallel, true)
     }
@@ -173,22 +176,24 @@ impl BackendBuilder {
         resp_buf: usize,
         parallel: usize,
         ignore_response: bool,
-    ) -> Arc<Self>
-    where
-        P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+    ) -> Arc<Mutex<Self>>
+        where
+            P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
-        let done = Arc::new(AtomicBool::new(true));
+        let done = Arc::new(AtomicBool::new(false));
         let stream = RingBufferStream::with_capacity(req_buf, resp_buf, parallel, done.clone());
-        let me = Self {
-            closed: AtomicBool::new(false),
-            done: done.clone(),
+        let me_builder = Self {
+            closed: Arc::new(AtomicBool::new(true)),
+            finished: done.clone(),
             addr: addr,
             stream: Arc::new(stream),
             ids: Arc::new(Ids::with_capacity(parallel)),
+            //checker: None,
+            check_task: None
         };
-        let me = Arc::new(me);
+        let mut me = Arc::new(Mutex::new(me_builder));
         let checker = BackendChecker::<P>::from(me.clone(), ignore_response, req_buf, resp_buf);
-        checker.start_check();
+        me.lock().unwrap().start_check::<P>(checker);
         me
     }
     pub fn build(&self) -> BackendStream<Arc<RingBufferStream>, Cid> {
@@ -199,15 +204,35 @@ impl BackendBuilder {
     }
     pub fn close(&self) {
         self.closed.store(true, Ordering::Release);
-        self.done.store(true, Ordering::Release);
+        self.finished.store(true, Ordering::Release);
+    }
+    pub fn reconnect(&self) {
+        self.closed.store(true, Ordering::Release);
+        if self.check_task.is_some() {
+            self.check_task.as_ref().unwrap().thread().unpark();
+        }
+    }
+
+    fn start_check<P>(&mut self, checker: BackendChecker<(P)>)
+        where
+            P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+    {
+        let arc_mutex_checker = Arc::new(Mutex::new(checker));
+        //self.checker = Some(arc_mutex_checker.clone());
+        let res = std::thread::spawn(move || {
+            arc_mutex_checker.clone().as_ref().lock().unwrap().check();
+        });
+        self.check_task = Some(res);
     }
 }
 
 use tokio::time::{interval, Interval};
+use std::time::Duration;
+
 pub struct BackendChecker<P> {
     req_buf: usize,
     resp_buf: usize,
-    inner: Arc<BackendBuilder>,
+    inner: Arc<Mutex<BackendBuilder>>,
 
     // 记录两个任务是否完成。
     ignore_response: Arc<AtomicBool>,
@@ -220,53 +245,52 @@ where
     P: Unpin + Send + Sync + ResponseParser + Default + 'static,
 {
     fn from(
-        builder: Arc<BackendBuilder>,
+        builder: Arc<Mutex<BackendBuilder>>,
         ignore_response: bool,
         req_buf: usize,
         resp_buf: usize,
     ) -> Self {
-        Self {
+        let me = Self {
             inner: builder,
             ignore_response: Arc::new(AtomicBool::new(ignore_response)),
             tick: interval(std::time::Duration::from_secs(3)),
             req_buf: req_buf,
             resp_buf: resp_buf,
             _mark: Default::default(),
-        }
-    }
-    fn start_check(mut self) {
-        tokio::spawn(async move {
-            self.check().await;
-        });
+        };
+        me
+
     }
     async fn check(&mut self) {
-        while !self.inner.closed.load(Ordering::Acquire) {
+        while !self.inner.lock().unwrap().finished.load(Ordering::Acquire) {
             self.check_reconnected_once().await;
-            self.tick.tick().await;
+            thread::park_timeout(Duration::from_micros(1000 as u64));
+        }
+        if !self.inner.lock().unwrap().stream.is_complete() {
+            // stream已经没有在运行，但没有结束。说明可能有一些waker等数据没有处理完。通知处理
+            self.inner.lock().unwrap().stream.try_complete();
         }
     }
 
     async fn check_reconnected_once(&self) {
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
-        if self.inner.done.load(Ordering::Acquire) {
-            if !self.inner.stream.is_complete() {
-                // stream已经没有在运行，但没有结束。说明可能有一些waker等数据没有处理完。通知处理
-                self.inner.stream.try_complete();
-                return;
-            }
+        if self.inner.lock().unwrap().closed.load(Ordering::Acquire) {
             // 开始建立连接
-            match tokio::net::TcpStream::connect(&self.inner.addr).await {
+            match tokio::net::TcpStream::connect(&self.inner.lock().unwrap().addr).await {
                 Ok(stream) => {
                     let (r, w) = stream.into_split();
-                    let req_stream = self.inner.stream.clone();
+                    let req_stream = self.inner.lock().unwrap().stream.clone();
                     if !self.ignore_response.load(Ordering::Acquire) {
                         req_stream.bridge(self.req_buf, self.resp_buf, r, w, P::default());
                     } else {
                         req_stream.bridge_no_reply(self.resp_buf, r, w, P::default());
                     }
+                    self.inner.lock().unwrap().closed.store(false, Ordering::Release);
                 }
                 // TODO
-                Err(_e) => {}
+                Err(_e) => {
+                    println!("connect to {} failed, error = {}", self.inner.lock().unwrap().addr, _e);
+                }
             }
         }
     }
