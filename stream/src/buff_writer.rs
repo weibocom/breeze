@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 
 use futures::ready;
@@ -10,6 +10,7 @@ use tokio::io::AsyncWrite;
 use tokio::sync::mpsc::Receiver;
 
 use super::ring::spsc::{RingBufferReader, RingBufferWriter};
+use crate::BackendBuilder;
 
 unsafe impl<W> Send for BridgeBufferToWriter<W> {}
 unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
@@ -52,16 +53,18 @@ pub struct BridgeBufferToWriter<W> {
     w: W,
     done: Arc<AtomicBool>,
     //cache: File,
+    builder: Arc<RwLock<BackendBuilder>>,
 }
 
 impl<W> BridgeBufferToWriter<W> {
-    pub fn from(reader: RingBufferReader, w: W, done: Arc<AtomicBool>) -> Self {
+    pub fn from(reader: RingBufferReader, w: W, done: Arc<AtomicBool>, builder: Arc<RwLock<BackendBuilder>>) -> Self {
         //let cache = File::create("/tmp/cache.out").unwrap();
         Self {
             w: w,
             reader: reader,
             done: done,
             //cache: cache,
+            builder: builder.clone(),
         }
     }
 }
