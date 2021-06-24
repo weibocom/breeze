@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 net = { path = "../net" }
+hash = { path = "../hash" }
 
 enum_dispatch = "*"
 tokio = { version = "1", features = ["io-util"]}

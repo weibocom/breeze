@@ -8,45 +8,44 @@ use futures::ready;
 
 use super::AsyncWriteAll;
 use crate::Protocol;
+use hash::Hash;
 
-/// 这个只支持ping-pong请求。将请求按照固定的路由策略分发到不同的dest
-/// 并且AsyncRoute的buf必须包含一个完整的请求。
-pub struct AsyncRoute<B, R> {
-    backends: Vec<B>,
-    router: R,
+pub struct AsyncSharding<B, H, P> {
     idx: usize,
+    shards: Vec<B>,
+    hasher: H,
+    parser: P,
 }
 
-impl<B, R> AsyncRoute<B, R> {
-    pub fn from(backends: Vec<B>, router: R) -> Self
-    where
-        B: AsyncWriteAll + AsyncWrite + Unpin,
-        R: Protocol + Unpin,
-    {
+impl<B, H, P> AsyncSharding<B, H, P> {
+    pub fn from(shards: Vec<B>, hasher: H, parser: P) -> Self {
         let idx = 0;
         Self {
-            backends,
-            router,
+            shards,
+            hasher,
+            parser,
             idx,
         }
     }
 }
 
-impl<B, R> AsyncWriteAll for AsyncRoute<B, R> {}
+impl<B, H, P> AsyncWriteAll for AsyncSharding<B, H, P> {}
 
-impl<B, R> AsyncWrite for AsyncRoute<B, R>
+impl<B, H, P> AsyncWrite for AsyncSharding<B, H, P>
 where
     B: AsyncWriteAll + AsyncWrite + Unpin,
-    R: Protocol + Unpin,
+    H: Unpin + Hash,
+    P: Unpin + Protocol,
 {
     #[inline]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
         let me = &mut *self;
-        // ping-pong请求，有写时，read一定是读完成了
-        me.idx = me.router.op_route(buf);
-        debug_assert!(me.idx < me.backends.len());
+        debug_assert!(me.idx < me.shards.len());
+        let key = me.parser.parse_key(buf);
+        let h = me.hasher.hash(key) as usize;
+        me.idx = h % me.shards.len();
         unsafe {
-            let w = ready!(Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_write(cx, buf))?;
+            let w = ready!(Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf))?;
             debug_assert_eq!(w, buf.len());
         }
         Poll::Ready(Ok(buf.len()))
@@ -54,7 +53,7 @@ where
     #[inline]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         let me = &mut *self;
-        for b in me.backends.iter_mut() {
+        for b in me.shards.iter_mut() {
             ready!(Pin::new(b).poll_flush(cx))?;
         }
         Poll::Ready(Ok(()))
@@ -62,17 +61,18 @@ where
     #[inline]
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         let me = &mut *self;
-        for b in me.backends.iter_mut() {
+        for b in me.shards.iter_mut() {
             ready!(Pin::new(b).poll_shutdown(cx))?;
         }
         Poll::Ready(Ok(()))
     }
 }
 
-impl<B, R> AsyncRead for AsyncRoute<B, R>
+impl<B, H, P> AsyncRead for AsyncSharding<B, H, P>
 where
     B: AsyncRead + Unpin,
-    R: Unpin,
+    H: Unpin,
+    P: Unpin,
 {
     #[inline]
     fn poll_read(
@@ -81,12 +81,12 @@ where
         buf: &mut ReadBuf,
     ) -> Poll<Result<()>> {
         let me = &mut *self;
-        if me.backends.len() == 0 {
+        if me.shards.len() == 0 {
             return Poll::Ready(Err(Error::new(
                 ErrorKind::NotConnected,
                 "not connected, maybe topology not inited",
             )));
         }
-        unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_read(cx, buf) }
+        unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_read(cx, buf) }
     }
 }

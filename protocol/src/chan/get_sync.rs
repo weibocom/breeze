@@ -1,11 +1,12 @@
 // 对于mc，全部穿透顺序：首先读取L1，如果miss，则读取master，否则读取slave;
 // 此处优化为：外部传入对应需要访问的层次，顺讯读取对应的每个层，读取miss，继续访问后续的层。
 // 任何一层读取成功，如果前面读取过其他层，则在返回后，还需要进行回写操作。
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use crate::chan::AsyncWriteAll;
+use futures::ready;
 use tokio::io::{self, AsyncRead, AsyncWrite, ReadBuf};
 
 pub struct AsyncGetSync<R, P> {
@@ -14,6 +15,9 @@ pub struct AsyncGetSync<R, P> {
     // 需要read though的shards
     readers: Vec<R>,
     req: Vec<u8>,
+    resp_found: bool,
+    resp_len: usize,
+    resp_len_readed: usize,
     parser: P,
 }
 
@@ -24,6 +28,9 @@ impl<R, P> AsyncGetSync<R, P> {
             idx: 0,
             readers,
             req: Vec::new(),
+            resp_found: false,
+            resp_len: 0,
+            resp_len_readed: 0,
             parser: p,
         }
     }
@@ -34,38 +41,52 @@ where
     R: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     P: Unpin,
 {
-    fn do_req(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
-        self.idx = self.idx + 1;
-        let mut msg_prefix = "will retry - ";
-        if self.idx == self.readers.len() {
-            msg_prefix = "stop req -"
-        }
-        // 记录req
-        self.req.reserve(buf.len());
-        self.req.copy_from_slice(buf);
+    // 发送请求，如果失败，继续向下一层write，注意处理重入问题
+    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize>> {
+        debug_assert!(self.req.len() > 0);
 
-        let idx = self.idx;
-        let rpool = unsafe { self.readers.get_unchecked_mut(idx) };
-        match Pin::new(rpool).poll_write(cx, buf) {
-            Poll::Pending => {
-                println!(
-                    "{}for writing msg to mc#{} failed for pending",
-                    msg_prefix, idx
-                );
-                return Poll::Pending;
-            }
-            Poll::Ready(Err(e)) => {
-                println!(
-                    "{} for write msg to {} failed for err: {}",
-                    msg_prefix, idx, e
-                );
-                return Poll::Ready(Err(e));
-            }
-            _ => {
-                // 写成功
-                return Poll::Ready(Ok(buf.len()));
+        // check idx
+        let mut idx = self.idx;
+        debug_assert!(idx < self.readers.len());
+        if idx >= self.readers.len() {
+            println!("idx/{} is exceed readers.len/{}", idx, self.readers.len());
+            return Poll::Ready(Err(Error::new(ErrorKind::Interrupted, "idx is over range")));
+        }
+
+        // 轮询reader，发送请求
+        while idx < self.readers.len() {
+            let rpool = unsafe { self.readers.get_unchecked_mut(idx) };
+            match ready!(Pin::new(rpool).poll_write(cx, self.req.as_slice())) {
+                Ok(len) => return Poll::Ready(Ok(len)),
+                Err(e) => {
+                    self.idx += 1;
+                    idx = self.idx;
+                    println!("write req err: {:?}", e);
+                }
             }
         }
+
+        // 及时重置，回收内存
+        self.reset();
+
+        // write req到所有资源失败
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "cannot write req to all resources",
+        )))
+    }
+
+    // 请求完毕（成功or失败）后，做清理，准备迎接下一个请求
+    fn reset(&mut self) {
+        // 清理req，如果req缓冲过大，重新分配一个新的
+        self.req.clear();
+        if self.req.capacity() > 10 * 1024 {
+            self.req = Vec::new();
+        }
+
+        self.resp_found = false;
+        self.resp_len = 0;
+        self.resp_len_readed = 0;
     }
 }
 
@@ -74,11 +95,26 @@ where
     R: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     P: Unpin,
 {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
-        return self.do_req(cx, buf);
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize>> {
+        // 第一次请求时，首先进行reset操作，然后保留req，最后进行实际请求
+        if self.req.len() == 0 {
+            self.reset();
+            self.req.reserve(buf.len());
+            self.req.copy_from_slice(buf);
+        }
+        return self.do_write(cx);
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        if self.readers.len() == 1 {
+            unsafe {
+                return Pin::new(self.readers.get_unchecked_mut(0)).poll_flush(cx);
+            }
+        }
         let idx = self.idx;
         let reader = unsafe { self.readers.get_unchecked_mut(idx) };
         match Pin::new(reader).poll_flush(cx) {
@@ -89,6 +125,11 @@ where
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        if self.readers.len() == 1 {
+            unsafe {
+                return Pin::new(self.readers.get_unchecked_mut(0)).poll_shutdown(cx);
+            }
+        }
         let idx = self.idx;
         let reader = unsafe { self.readers.get_unchecked_mut(idx) };
         match Pin::new(reader).poll_shutdown(cx) {
@@ -109,56 +150,72 @@ where
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        let idx = self.idx;
-        let reader = unsafe { self.readers.get_unchecked_mut(idx) };
-        match Pin::new(reader).poll_read(cx, buf) {
-            Poll::Pending => {
-                // TODO: 对于buf中有部分数据，是否合适？
-                // 如果有数据获取，则返回数据,触发下一次获取。
-                // 如果未获取到数据，则pending
-                return if buf.filled().len() == 0 {
-                    Poll::Pending
-                } else {
-                    Poll::Ready(Ok(()))
-                };
-            }
-            Poll::Ready(Err(e)) => {
-                println!("found err in get: {:?}", e);
-            }
-            // 如果接受到数据，检测是否是命中，只有命中，请求才算完毕
-            Poll::Ready(Ok(())) => {
-                if self.parser.probe_response_succeed(buf.filled()) {
-                    return Poll::Ready(Ok(()));
-                }
-            }
+        let mut me = &mut *self;
+        // check precondition
+        let mut idx = me.idx;
+        debug_assert!(idx < me.readers.len());
+        if idx >= me.readers.len() {
+            println!("idx/{} over range, readers/{}", idx, me.readers.len());
+            return Poll::Ready(Err(Error::new(ErrorKind::Interrupted, "idx is over range")));
         }
-        // 到了这里，说明请求没有get到结果，需要继续穿透访问
-        if self.idx + 1 < self.readers.len() {
-            self.idx += 1;
-            let req = self.req.clone();
-            let msg_prefix = "rewrite when miss -";
-            match self.do_req(cx, req.as_slice()) {
-                Poll::Pending => {
-                    println!(
-                        "{}for writing msg to mc#{} failed for pending",
-                        msg_prefix, idx
-                    );
-                    return Poll::Pending;
+
+        // 注意重入问题
+        while idx < me.readers.len() {
+            let reader = unsafe { me.readers.get_unchecked_mut(idx) };
+            match ready!(Pin::new(reader).poll_read(cx, buf)) {
+                Ok(_) => {
+                    // 请求命中，返回ok及消息长度；
+                    if !me.resp_found {
+                        let (found, rsp_len) = me.parser.probe_response_found(buf.filled());
+                        if found {
+                            me.resp_found = true;
+                            me.resp_len = rsp_len;
+                            me.resp_len_readed = buf.capacity() - buf.remaining();
+                        }
+                    } else {
+                        me.resp_len_readed += buf.capacity() - buf.remaining();
+                    }
+                    // 请求完成，需要进行请求重置
+                    if me.resp_found {
+                        // 如果响应完成，进行请求重置
+                        // TODO: \r\n结尾的长度还有2是否需要判断？这个需要确认二进制协议和文本协议的区别？ fishermen
+                        if me.resp_len_readed >= me.resp_len {
+                            self.reset();
+                        }
+
+                        // 对于请求成功并重入，直接返回
+                        return Poll::Ready(Ok(()));
+                    }
+                    // 如果请求未命中，则继续准备尝试下一个reader
                 }
-                Poll::Ready(Err(e)) => {
-                    println!(
-                        "{} for write msg to {} failed for err: {}",
-                        msg_prefix, idx, e
-                    );
-                    return Poll::Ready(Err(e));
+                // 请求失败，如果还有reader，需要继续尝试下一个reader
+                Err(e) => {
+                    println!("read found err: {:?}", e);
                 }
-                _ => {
-                    // 写成功
-                    return Poll::Ready(Ok(()));
+            }
+            // 如果所有reader尝试完毕，退出循环
+            if idx + 1 >= me.readers.len() {
+                break;
+            }
+
+            // 还有reader,继续重试后续的reader
+            buf.clear();
+            me.idx += 1;
+            idx = me.idx;
+            match ready!(me.do_write(cx)) {
+                Ok(len) => {
+                    println!("write req len/{}", len);
+                    continue;
+                }
+                Err(e) => {
+                    // 发送消息到readers全部失败，结束
+                    println!("write req failed, e:{:?}", e);
+                    break;
                 }
             }
         }
 
-        Poll::Ready(Ok(()))
+        debug_assert!(idx == self.readers.len());
+        Poll::Ready(Err(Error::new(ErrorKind::NotFound, "not found key")))
     }
 }

@@ -5,18 +5,18 @@ use tokio::net::TcpStream;
 
 use std::io::Result;
 
-pub struct Pipe<D> {
+pub struct Pipe<P> {
     stream: TcpStream,
-    _mark: std::marker::PhantomData<D>,
+    _mark: std::marker::PhantomData<P>,
 }
 
-impl<D> Pipe<D> {
+impl<P> Pipe<P> {
     #[inline]
-    pub async fn from_discovery(discovery: D) -> Result<Self>
+    pub async fn from_discovery<D>(_p: P, discovery: D) -> Result<Self>
     where
-        D: ServiceDiscover<Item = String>,
+        D: ServiceDiscover<Topology>,
     {
-        let addr = discovery.get();
+        let addr = discovery.do_with(|_t| "127.0.0.1:11211".to_owned());
         let stream = TcpStream::connect(addr).await?;
         Ok(Self {
             stream: stream,
@@ -28,9 +28,9 @@ impl<D> Pipe<D> {
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::ReadBuf;
-impl<D> AsyncRead for Pipe<D>
+impl<P> AsyncRead for Pipe<P>
 where
-    D: Unpin,
+    P: Unpin,
 {
     #[inline]
     fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
@@ -38,9 +38,9 @@ where
     }
 }
 
-impl<D> AsyncWrite for Pipe<D>
+impl<P> AsyncWrite for Pipe<P>
 where
-    D: Unpin,
+    P: Unpin,
 {
     #[inline]
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
@@ -53,5 +53,23 @@ where
     #[inline]
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         Pin::new(&mut self.get_mut().stream).poll_shutdown(cx)
+    }
+}
+
+use super::Topology;
+#[derive(Clone, Default)]
+pub struct PipeTopology {}
+impl discovery::Topology for PipeTopology {
+    fn update(&mut self, _cfg: &str, _name: &str) {
+        todo!()
+    }
+}
+impl left_right::Absorb<(String, String)> for PipeTopology {
+    fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
+        discovery::Topology::update(self, &cfg.0, &cfg.1);
+        //self.update(&cfg.0, &cfg.1);
+    }
+    fn sync_with(&mut self, first: &Self) {
+        *self = first.clone();
     }
 }
