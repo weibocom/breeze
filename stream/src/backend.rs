@@ -197,7 +197,7 @@ impl BackendBuilder {
         };
         let me = Arc::new(RwLock::new(me_builder));
         let checker = BackendChecker::<P>::from(me.clone(), ignore_response, req_buf, resp_buf);
-        let t = me.read().as_ref().unwrap().start_check(checker);
+        let t = me.read().unwrap().start_check(checker);
         me.write().unwrap().check_task = Some(t);
         me
     }
@@ -221,7 +221,7 @@ impl BackendBuilder {
         }
     }
 
-    pub fn start_check<P>(self, checker: BackendChecker<(P)>) -> JoinHandle<()>
+    pub fn start_check<P>(&self, checker: BackendChecker<(P)>) -> JoinHandle<()>
         where
             P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
