@@ -10,52 +10,56 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{interval, Interval};
 
-unsafe impl<D, T> Send for AsyncServiceUpdate<D, T> where T: Absorb<String> {}
-unsafe impl<D, T> Sync for AsyncServiceUpdate<D, T> where T: Absorb<String> {}
+use super::ServiceName;
+
+unsafe impl<D, T> Send for AsyncServiceUpdate<D, T> where T: Absorb<(String, String)> {}
+unsafe impl<D, T> Sync for AsyncServiceUpdate<D, T> where T: Absorb<(String, String)> {}
 
 pub(crate) struct AsyncServiceUpdate<D, T>
 where
-    T: Absorb<String>,
+    T: Absorb<(String, String)>,
 {
-    service: String,
+    service: ServiceName,
     discovery: D,
-    w: WriteHandle<T, String>,
+    w: WriteHandle<T, (String, String)>,
     cfg: String,
     sign: String,
     interval: Interval,
-    snapshot: String, // 本地快照存储的文件名称
+    snapshot: PathBuf, // 本地快照存储的文件名称
 }
 
 impl<D, T> AsyncServiceUpdate<D, T>
 where
-    T: Absorb<String>,
+    T: Absorb<(String, String)>,
 {
     pub fn new(
         service: String,
         discovery: D,
-        writer: WriteHandle<T, String>,
+        writer: WriteHandle<T, (String, String)>,
         tick: Duration,
         snapshot: String,
     ) -> Self {
         let snapshot = if snapshot.len() == 0 {
-            "/tmp/breeze/discovery/services/snapshot".to_owned()
+            "/tmp/breeze/services/snapshot".to_owned()
         } else {
             snapshot
         };
+        let mut path = PathBuf::from(snapshot);
+        path.push(&service);
         Self {
-            service: service,
+            service: ServiceName::from(service),
             discovery: discovery,
             w: writer,
             cfg: Default::default(),
             sign: Default::default(),
             interval: interval(tick),
-            snapshot: snapshot,
+            snapshot: path,
         }
     }
     fn path(&self) -> PathBuf {
         let mut pb = PathBuf::new();
         pb.push(&self.snapshot);
-        pb.push(&self.service);
+        pb.push(self.service.name());
         pb
     }
     // 如果当前配置为空，则从snapshot加载
@@ -79,11 +83,18 @@ where
         self.cfg = cfg;
         self.sign = contents;
 
-        self.w.append(self.cfg.clone());
+        self.w.append((self.cfg.clone(), self.service.to_owned()));
+        self.w.publish();
         Ok(())
     }
     async fn dump_to_snapshot(&mut self) -> Result<()> {
-        let mut file = File::create(&self.path()).await?;
+        let path = self.snapshot.as_path();
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+        }
+        let mut file = File::create(path).await?;
         file.write_all(self.sign.as_bytes()).await?;
         file.write_all(self.cfg.as_bytes()).await?;
         Ok(())
@@ -92,40 +103,43 @@ where
     where
         D: Discover + Send + Unpin,
     {
-        let (cfg, sign) = self
+        use super::Config;
+        match self
             .discovery
             .get_service(&self.service, &self.sign)
             .await?
-            .ok_or_else(|| Error::new(ErrorKind::NotFound, "no service config found"))?;
-        if self.cfg != cfg {
-            println!(
-                "load new config from discovery succeed, service:{}, cfg:{}, sign:{}",
-                self.service, cfg, sign
-            );
-            self.cfg = cfg;
-            self.sign = sign;
-            self.w.append(self.cfg.clone());
-            self.dump_to_snapshot().await?;
-            println!(
-                "dump to snapshot succeed for service/{} sign:{}",
-                self.service, self.sign
-            );
+        {
+            Config::NotChanged => Ok(()),
+            Config::NotFound => Err(Error::new(
+                ErrorKind::NotFound,
+                format!("service not found. name:{}", self.service.name()),
+            )),
+            Config::Config(cfg, sig) => {
+                if self.cfg != cfg || self.sign != sig {
+                    self.cfg = cfg;
+                    self.sign = sig;
+                    self.w.append((self.cfg.clone(), self.service.to_owned()));
+                    self.w.publish();
+                    if let Err(e) = self.dump_to_snapshot().await {
+                        println!(
+                            "failed to dump to snapshot. path:{:?} {:?}",
+                            self.snapshot, e
+                        );
+                    };
+                }
+                Ok(())
+            }
         }
-        Ok(())
     }
     pub async fn start_watch(&mut self)
     where
         D: Discover + Send + Unpin,
     {
-        println!("===== watch 1");
-        let r = self.load_from_snapshot().await;
-        self.check(r);
-        println!("===== watch 2");
+        let _r = self.load_from_snapshot().await;
         if self.cfg.len() == 0 {
             let r = self.load_from_discovery().await;
             self.check(r);
         }
-        println!("===== watch 3");
         loop {
             self.interval.tick().await;
             let r = self.load_from_discovery().await;
@@ -138,7 +152,8 @@ where
             Err(e) => {
                 println!(
                     "load service config error. service:{} error:{:?}",
-                    self.service, e
+                    self.service.name(),
+                    e
                 );
             }
         }

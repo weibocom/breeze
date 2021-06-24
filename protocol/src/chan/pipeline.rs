@@ -121,7 +121,6 @@ where
         cx: &mut Context,
         buf: &mut ReadBuf,
     ) -> Poll<Result<()>> {
-        println!("pipe line poll read");
         if self.shutdown {
             return Poll::Ready(Ok(()));
         }

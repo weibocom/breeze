@@ -65,10 +65,16 @@ impl IdAsyncRead for NotConnected {
 
 impl IdAsyncWrite for NotConnected {
     fn poll_write(&self, _id: usize, _cx: &mut Context, _buf: &[u8]) -> Poll<Result<()>> {
-        Poll::Ready(Err(Error::from(ErrorKind::NotConnected)))
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "writing to a not connected id-stream",
+        )))
     }
     fn poll_shutdown(&self, _id: usize, _cx: &mut Context) -> Poll<Result<()>> {
-        Poll::Ready(Err(Error::from(ErrorKind::NotConnected)))
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "shutdown a not connected id-stream",
+        )))
     }
 }
 

@@ -133,7 +133,10 @@ impl AsyncRead for NotConnected {
 
 impl AsyncWrite for NotConnected {
     fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: &[u8]) -> Poll<Result<usize>> {
-        Poll::Ready(Err(Error::from(ErrorKind::NotConnected)))
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "write to an unconnected stream",
+        )))
     }
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
         Poll::Ready(Ok(()))
@@ -178,7 +181,7 @@ impl BackendBuilder {
         P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         let done = Arc::new(AtomicBool::new(true));
-        let stream = RingBufferStream::with_capacity(req_buf, resp_buf, parallel, done.clone());
+        let stream = RingBufferStream::with_capacity(parallel, done.clone());
         let me = Self {
             closed: AtomicBool::new(false),
             done: done.clone(),
@@ -187,6 +190,7 @@ impl BackendBuilder {
             ids: Arc::new(Ids::with_capacity(parallel)),
         };
         let me = Arc::new(me);
+        println!("request buffer:{} response buffer:{}", req_buf, resp_buf);
         let checker = BackendChecker::<P>::from(me.clone(), ignore_response, req_buf, resp_buf);
         checker.start_check();
         me
@@ -195,7 +199,10 @@ impl BackendBuilder {
         self.ids
             .next()
             .map(|cid| BackendStream::from(Cid::new(cid, self.ids.clone()), self.stream.clone()))
-            .unwrap_or_else(|| BackendStream::not_connected())
+            .unwrap_or_else(|| {
+                println!("connection id overflow, connection established failed");
+                BackendStream::not_connected()
+            })
     }
     pub fn close(&self) {
         self.closed.store(true, Ordering::Release);
@@ -266,7 +273,12 @@ where
                     }
                 }
                 // TODO
-                Err(_e) => {}
+                Err(e) => {
+                    println!(
+                        "failed to establish a connection to {} err:{:?}",
+                        self.inner.addr, e
+                    );
+                }
             }
         }
     }
