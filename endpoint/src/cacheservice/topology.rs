@@ -5,7 +5,7 @@ use protocol::memcache::MemcacheResponseParser;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tokio::net::tcp::OwnedWriteHalf;
 
@@ -21,15 +21,15 @@ pub struct Topology {
     l1_seq: AtomicUsize,
     // 处理写请求
     masters: Vec<String>,
-    m_streams: HashMap<String, Arc<BackendBuilder>>,
+    m_streams: HashMap<String, Arc<Mutex<BackendBuilder>>>,
     // 只用来同步写请求
     followers: Vec<Vec<String>>,
-    f_streams: HashMap<String, Arc<BackendBuilder>>,
+    f_streams: HashMap<String, Arc<Mutex<BackendBuilder>>>,
     // 处理读请求,每个layer选择一个，先打通
     // 后续考虑要调整为新的Vec嵌套逻辑： [random[reader[node_dist_pool]]]
     readers: Vec<Vec<String>>,
-    get_streams: HashMap<String, Arc<BackendBuilder>>,
-    gets_streams: HashMap<String, Arc<BackendBuilder>>,
+    get_streams: HashMap<String, Arc<Mutex<BackendBuilder>>>,
+    gets_streams: HashMap<String, Arc<Mutex<BackendBuilder>>>,
 }
 
 // 用来测试的一组配置, ip都是127.0.0.1
@@ -45,6 +45,8 @@ impl Topology {
                 self.m_streams
                     .get(addr)
                     .expect("stream must be exists before address")
+                    .lock()
+                    .unwrap()
                     .build()
             })
             .collect()
@@ -68,6 +70,8 @@ impl Topology {
                     self.get_streams
                         .get(addr)
                         .expect("stream must be exists before address")
+                        .lock()
+                        .unwrap()
                         .build()
                 })
                 .collect()
@@ -87,6 +91,8 @@ impl Topology {
                     self.gets_streams
                         .get(addr)
                         .expect("stream must be exists before address")
+                        .lock()
+                        .unwrap()
                         .build()
                 })
                 .collect()
@@ -103,6 +109,8 @@ impl Topology {
                         self.get_streams
                             .get(addr)
                             .expect("stream must be exists before adress")
+                            .lock()
+                            .unwrap()
                             .build()
                     })
                     .collect()
@@ -111,13 +119,13 @@ impl Topology {
     }
 
     // 删除不存在的stream
-    fn delete_non_exists(addrs: &[String], streams: &mut HashMap<String, Arc<BackendBuilder>>) {
+    fn delete_non_exists(addrs: &[String], streams: &mut HashMap<String, Arc<Mutex<BackendBuilder>>>) {
         streams.retain(|addr, _| addrs.contains(addr));
     }
     // 添加新增的stream
     fn add_new(
         addrs: &[String],
-        streams: &mut HashMap<String, Arc<BackendBuilder>>,
+        streams: &mut HashMap<String, Arc<Mutex<BackendBuilder>>>,
         req: usize,
         resp: usize,
         parallel: usize,
