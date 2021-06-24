@@ -1,5 +1,5 @@
 use super::{AsyncPipeToPingPongChanWrite, AsyncWriteAll};
-use crate::parser::Protocol;
+use crate::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
@@ -121,7 +121,6 @@ where
         cx: &mut Context,
         buf: &mut ReadBuf,
     ) -> Poll<Result<()>> {
-        println!("pipe line poll read");
         if self.shutdown {
             return Poll::Ready(Ok(()));
         }

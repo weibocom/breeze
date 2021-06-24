@@ -1,5 +1,9 @@
+mod name;
 mod update;
 mod vintage;
+
+use name::{ServiceId, ServiceName};
+
 use update::AsyncServiceUpdate;
 use vintage::Vintage;
 
@@ -13,10 +17,21 @@ use url::Url;
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 
+unsafe impl<C> Send for Config<C> {}
+unsafe impl<C> Sync for Config<C> {}
+pub enum Config<C> {
+    NotFound,
+    NotChanged,
+    Config(C, String),
+}
+
 #[async_trait]
 #[enum_dispatch]
 pub trait Discover {
-    async fn get_service(&self, name: &str, sig: &str) -> Result<Option<(String, String)>>;
+    async fn get_service<S, C>(&self, name: S, sig: &str) -> Result<Config<C>>
+    where
+        S: Unpin + Send + ServiceId,
+        C: Unpin + Send + From<String>;
 }
 
 #[enum_dispatch(Discover)]
@@ -40,14 +55,14 @@ impl Discovery {
     }
 }
 
-pub trait Topology: Default + left_right::Absorb<String> + Clone {
-    fn update(&mut self, cfg: &str);
+pub trait Topology: Default + left_right::Absorb<(String, String)> + Clone {
+    fn update(&mut self, cfg: &str, name: &str);
 }
 
 pub trait ServiceDiscover<T> {
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: Fn(Option<&T>) -> O,
+        F: FnOnce(Option<&T>) -> O,
         T: Default;
 }
 
@@ -59,19 +74,24 @@ pub struct ServiceDiscovery<T> {
 }
 
 impl<T> ServiceDiscovery<T> {
-    pub fn new<D>(discovery: D, service: String, snapshot: String, tick: Duration) -> Self
+    pub fn new<D>(
+        discovery: D,
+        service: String,
+        endpoint: String,
+        snapshot: String,
+        tick: Duration,
+    ) -> Self
     where
         D: Discover + Send + Unpin + 'static + Sync,
-        T: Topology + Send + Sync + 'static,
+        T: Topology + Send + Sync + 'static + From<String>,
     {
-        let (w, r) = left_right::new::<T, String>();
+        let (w, r) = left_right::new_from_empty::<T, (String, String)>(T::from(endpoint));
 
         tokio::spawn(async move {
             AsyncServiceUpdate::new(service, discovery, w, tick, snapshot)
                 .start_watch()
                 .await
         });
-
         Self { cache: r }
     }
 }
@@ -80,7 +100,7 @@ impl<T> ServiceDiscover<T> for ServiceDiscovery<T> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: Fn(Option<&T>) -> O,
+        F: FnOnce(Option<&T>) -> O,
         T: Default,
     {
         if let Some(cache) = self.cache.enter() {
@@ -96,7 +116,11 @@ use std::sync::Arc;
 #[async_trait]
 impl<T: Discover + Send + Unpin + Sync> Discover for Arc<T> {
     #[inline]
-    async fn get_service(&self, name: &str, sig: &str) -> Result<Option<(String, String)>> {
+    async fn get_service<S, C>(&self, name: S, sig: &str) -> Result<Config<C>>
+    where
+        S: Unpin + Send + ServiceId,
+        C: Unpin + Send + From<String>,
+    {
         (**self).get_service(name, sig).await
     }
 }
@@ -104,7 +128,7 @@ impl<T> ServiceDiscover<T> for Arc<ServiceDiscovery<T>> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: Fn(Option<&T>) -> O,
+        F: FnOnce(Option<&T>) -> O,
         T: Default,
     {
         (**self).do_with(f)

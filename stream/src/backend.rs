@@ -134,7 +134,10 @@ impl AsyncRead for NotConnected {
 
 impl AsyncWrite for NotConnected {
     fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: &[u8]) -> Poll<Result<usize>> {
-        Poll::Ready(Err(Error::from(ErrorKind::NotConnected)))
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "write to an unconnected stream",
+        )))
     }
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
         Poll::Ready(Ok(()))
@@ -159,14 +162,14 @@ pub struct BackendBuilder {
 
 impl BackendBuilder {
     pub fn from<P>(addr: String, req_buf: usize, resp_buf: usize, parallel: usize) -> Arc<Mutex<Self>>
-        where
-            P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+    where
+        P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         Self::from_with_response::<P>(addr, req_buf, resp_buf, parallel, false)
     }
     pub fn ignore_response<P>(addr: String, req_buf: usize, parallel: usize) -> Arc<Mutex<Self>>
-        where
-            P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+    where
+        P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         Self::from_with_response::<P>(addr, req_buf, 2048, parallel, true)
     }
@@ -177,8 +180,8 @@ impl BackendBuilder {
         parallel: usize,
         ignore_response: bool,
     ) -> Arc<Mutex<Self>>
-        where
-            P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+    where
+        P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         let done = Arc::new(AtomicBool::new(false));
         let stream = RingBufferStream::with_capacity(req_buf, resp_buf, parallel, done.clone());
@@ -200,7 +203,10 @@ impl BackendBuilder {
         self.ids
             .next()
             .map(|cid| BackendStream::from(Cid::new(cid, self.ids.clone()), self.stream.clone()))
-            .unwrap_or_else(|| BackendStream::not_connected())
+            .unwrap_or_else(|| {
+                println!("connection id overflow, connection established failed");
+                BackendStream::not_connected()
+            })
     }
     pub fn close(&self) {
         self.closed.store(true, Ordering::Release);

@@ -16,18 +16,19 @@ unsafe impl Sync for Topology {}
 
 #[derive(Default)]
 pub struct Topology {
+    pub(crate) hash: String, // hash策略
     // 最后一个元素是slave，倒数第二个元素是master，剩下的是l1.
     // 为了方便遍历
     l1_seq: AtomicUsize,
     // 处理写请求
-    masters: Vec<String>,
+    pub(crate) masters: Vec<String>,
     m_streams: HashMap<String, Arc<Mutex<BackendBuilder>>>,
     // 只用来同步写请求
     followers: Vec<Vec<String>>,
     f_streams: HashMap<String, Arc<Mutex<BackendBuilder>>>,
     // 处理读请求,每个layer选择一个，先打通
     // 后续考虑要调整为新的Vec嵌套逻辑： [random[reader[node_dist_pool]]]
-    readers: Vec<Vec<String>>,
+    pub(crate) readers: Vec<Vec<String>>,
     get_streams: HashMap<String, Arc<Mutex<BackendBuilder>>>,
     gets_streams: HashMap<String, Arc<Mutex<BackendBuilder>>>,
 }
@@ -147,18 +148,32 @@ impl Topology {
         }
     }
 
-    fn update(&mut self, cfg: &str) {
-        let (masters, followers, readers) = super::Config::from(cfg).into_split();
-
-        if masters.len() == 0 {
-            // TODO
-            println!("parse cacheservice failed. master len is zero. cfg:{}", cfg);
-            return;
-        }
-
+    fn update_from_namespace(&mut self, ns: super::Namespace) {
+        let (masters, followers, readers, hash) = ns.into_split();
         self.masters = masters;
         self.followers = followers;
         self.readers = readers;
+        self.hash = hash;
+    }
+
+    fn update(&mut self, cfg: &str, name: &str) {
+        let idx = name.find(':').unwrap_or(name.len());
+        if idx == 0 || idx >= name.len() - 1 {
+            println!("not a valid cache service name:{} no namespace found", name);
+        }
+        let namespace = &name[idx + 1..];
+
+        match super::Namespace::parse(cfg, namespace) {
+            Ok(ns) => self.update_from_namespace(ns),
+            Err(e) => {
+                println!("parse cacheservice config error: name:{} error:{}", name, e);
+                return;
+            }
+        };
+        if self.masters.len() == 0 || self.readers.len() == 0 {
+            println!("cacheservice empty. {} => {}", name, cfg);
+            return;
+        }
 
         let kb = 1024;
         let mb = 1024 * 1024;
@@ -183,6 +198,7 @@ impl Topology {
 impl Clone for Topology {
     fn clone(&self) -> Self {
         Self {
+            hash: self.hash.clone(),
             l1_seq: AtomicUsize::new(self.l1_seq.load(Ordering::Acquire)),
             masters: self.masters.clone(),
             m_streams: self.m_streams.clone(),
@@ -196,13 +212,15 @@ impl Clone for Topology {
 }
 
 impl discovery::Topology for Topology {
-    fn update(&mut self, cfg: &str) {
-        self.update(cfg);
+    fn update(&mut self, cfg: &str, name: &str) {
+        println!("cache service topology received:{}", name);
+        self.update(cfg, name);
+        println!("master:{:?}", self.masters);
     }
 }
-impl left_right::Absorb<String> for Topology {
-    fn absorb_first(&mut self, cfg: &mut String, _other: &Self) {
-        self.update(cfg);
+impl left_right::Absorb<(String, String)> for Topology {
+    fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
+        self.update(&cfg.0, &cfg.1);
     }
     fn sync_with(&mut self, first: &Self) {
         *self = first.clone();
