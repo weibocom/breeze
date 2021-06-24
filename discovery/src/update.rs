@@ -98,10 +98,18 @@ where
             .await?
             .ok_or_else(|| Error::new(ErrorKind::NotFound, "no service config found"))?;
         if self.cfg != cfg {
+            println!(
+                "load new config from discovery succeed, service:{}, cfg:{}, sign:{}",
+                self.service, cfg, sign
+            );
             self.cfg = cfg;
             self.sign = sign;
             self.w.append(self.cfg.clone());
             self.dump_to_snapshot().await?;
+            println!(
+                "dump to snapshot succeed for service/{} sign:{}",
+                self.service, self.sign
+            );
         }
         Ok(())
     }
@@ -109,12 +117,15 @@ where
     where
         D: Discover + Send + Unpin,
     {
+        println!("===== watch 1");
         let r = self.load_from_snapshot().await;
         self.check(r);
+        println!("===== watch 2");
         if self.cfg.len() == 0 {
             let r = self.load_from_discovery().await;
             self.check(r);
         }
+        println!("===== watch 3");
         loop {
             self.interval.tick().await;
             let r = self.load_from_discovery().await;
