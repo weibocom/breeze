@@ -46,7 +46,7 @@ impl Topology {
                 self.m_streams
                     .get(addr)
                     .expect("stream must be exists before address")
-                    .lock()
+                    .read()
                     .unwrap()
                     .build()
             })
