@@ -5,14 +5,14 @@ use tokio::net::TcpStream;
 
 use std::io::Result;
 
-pub struct Pipe<D> {
+pub struct Pipe<P> {
     stream: TcpStream,
-    _mark: std::marker::PhantomData<D>,
+    _mark: std::marker::PhantomData<P>,
 }
 
-impl<D> Pipe<D> {
+impl<P> Pipe<P> {
     #[inline]
-    pub async fn from_discovery(discovery: D) -> Result<Self>
+    pub async fn from_discovery<D>(_p: P, discovery: D) -> Result<Self>
     where
         D: ServiceDiscover<Topology>,
     {
@@ -28,9 +28,9 @@ impl<D> Pipe<D> {
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::ReadBuf;
-impl<D> AsyncRead for Pipe<D>
+impl<P> AsyncRead for Pipe<P>
 where
-    D: Unpin,
+    P: Unpin,
 {
     #[inline]
     fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
@@ -38,9 +38,9 @@ where
     }
 }
 
-impl<D> AsyncWrite for Pipe<D>
+impl<P> AsyncWrite for Pipe<P>
 where
-    D: Unpin,
+    P: Unpin,
 {
     #[inline]
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
