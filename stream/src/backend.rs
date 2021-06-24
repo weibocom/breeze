@@ -151,7 +151,7 @@ use super::{Cid, Ids, RingBufferStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 pub struct BackendBuilder {
-    closed: Arc<AtomicBool>,
+    connected: Arc<AtomicBool>,
     finished: Arc<AtomicBool>,
     addr: String,
     stream: Arc<RingBufferStream>,
@@ -187,7 +187,7 @@ impl BackendBuilder {
         let done = Arc::new(AtomicBool::new(true));
         let stream = RingBufferStream::with_capacity(parallel, done.clone());
         let me_builder = Self {
-            closed: Arc::new(AtomicBool::new(true)),
+            connected: Arc::new(AtomicBool::new(false)),
             finished: Arc::new(AtomicBool::new(false)),
             addr: addr,
             stream: Arc::new(stream),
@@ -210,14 +210,15 @@ impl BackendBuilder {
                 BackendStream::not_connected()
             })
     }
-    pub fn close(&self) {
-        self.closed.store(true, Ordering::Release);
+    pub fn finish(&self) {
         self.finished.store(true, Ordering::Release);
     }
     pub fn reconnect(&self) {
-        self.closed.store(true, Ordering::Release);
-        if self.check_task.is_some() {
-            self.check_task.as_ref().unwrap().thread().unpark();
+        if !self.finished.load(Ordering::Acquire) {
+            self.connected.store(false, Ordering::Release);
+            if self.check_task.is_some() {
+                self.check_task.as_ref().unwrap().thread().unpark();
+            }
         }
     }
 
@@ -291,8 +292,8 @@ where
 
     async fn check_reconnected_once(&self) {
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
-        let closed = self.inner.read().unwrap().closed.load(Ordering::Acquire);
-        if closed {
+        let connected = self.inner.read().unwrap().connected.load(Ordering::Acquire);
+        if !connected {
             let addr = &self.inner.read().unwrap().addr;
             println!("connection is closed");
             // 开始建立连接
@@ -310,7 +311,7 @@ where
                         req_stream.bridge_no_reply(self.resp_buf, r, w, P::default(), self.inner.clone());
                     }
                     println!("set false to closed");
-                    self.inner.read().unwrap().closed.store(false, Ordering::Release);
+                    self.inner.read().unwrap().connected.store(true, Ordering::Release);
                 }
                 // TODO
                 Err(_e) => {

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering, AtomicI32};
 use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 
@@ -40,6 +40,7 @@ pub struct MpmcRingBufferStream {
     resp_read_offset_ext: lockfree::map::Map<usize, usize>,
 
     done: Arc<AtomicBool>,
+    running_threads: Arc<AtomicI32>,
 }
 
 impl MpmcRingBufferStream {
@@ -66,6 +67,7 @@ impl MpmcRingBufferStream {
             receiver: RefCell::new(Some(receiver)),
             senders: senders,
             done: done,
+            running_threads: Arc::new(AtomicI32::new(0)),
         }
     }
     // 如果complete为true，则快速失败
@@ -210,18 +212,21 @@ impl MpmcRingBufferStream {
         let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
         // 把数据从request同步到buffer
         let receiver = self.receiver.borrow_mut().take().expect("receiver exists");
-        self.start_bridge(
+        Self::start_bridge(
+            self.clone(),
             "bridge-request-to-buffer",
             BridgeRequestToBuffer::from(receiver, self.clone(), req_rb_writer, self.done.clone()),
         );
         //// 把数据从buffer发送数据到,server
-        self.start_bridge(
+        Self::start_bridge(
+            self.clone(),
             "bridge-buffer-to-backend",
             BridgeBufferToWriter::from(req_rb_reader, w, self.done.clone(), builder.clone()),
         );
 
         //// 从response读取数据写入items
-        self.start_bridge(
+        Self::start_bridge(
+            self.clone(),
             "bridge-backend-to-local",
             BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone(), builder.clone()),
         );
@@ -269,11 +274,12 @@ impl MpmcRingBufferStream {
             }
         });
     }
-    fn start_bridge<F>(&self, name: &'static str, future: F)
+    fn start_bridge<F>(arc_self: Arc<Self>, name: &'static str, future: F)
     where
         F: Future<Output = Result<()>> + Send + 'static,
     {
         tokio::spawn(async move {
+            arc_self.clone().running_threads.clone().fetch_add(1, Ordering::Release);
             println!("{} bridge task started", name);
             match future.await {
                 Ok(_) => {
@@ -283,6 +289,8 @@ impl MpmcRingBufferStream {
                     println!("{} bridge task complete with error:{:?}", name, e);
                 }
             };
+            arc_self.clone().running_threads.fetch_sub(1, Ordering::Release);
+            arc_self.clone().try_complete();
         });
     }
 
@@ -290,9 +298,12 @@ impl MpmcRingBufferStream {
         todo!();
     }
     pub fn is_complete(&self) -> bool {
-        self.done.load(Ordering::Acquire)
+        self.done.load(Ordering::Acquire) && self.running_threads.load(Ordering::Acquire) == 0
     }
-    pub fn try_complete(&self) {}
+    pub fn try_complete(&self) {
+        self.done.store(true, Ordering::Release);
+        while self.running_threads.load(Ordering::Acquire) != 0 {}
+    }
 }
 
 use super::RequestData;
