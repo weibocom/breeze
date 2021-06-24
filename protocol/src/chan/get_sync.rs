@@ -38,7 +38,7 @@ where
     P: Unpin,
 {
     // 发送请求，如果失败，继续向下一层write，注意处理重入问题
-    fn do_write(&mut self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
+    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize>> {
         // check idx
         let mut idx = self.idx;
         debug_assert!(idx < self.readers.len());
@@ -47,16 +47,10 @@ where
             return Poll::Ready(Err(Error::new(ErrorKind::Interrupted, "idx is over range")));
         }
 
-        // 第一次请求时，记录req
-        if self.last_req.len() == 0 {
-            self.last_req.reserve(buf.len());
-            self.last_req.copy_from_slice(buf);
-        }
-
         // 轮询reader，发送请求
         while idx < self.readers.len() {
             let rpool = unsafe { self.readers.get_unchecked_mut(idx) };
-            match ready!(Pin::new(rpool).poll_write(cx, buf)) {
+            match ready!(Pin::new(rpool).poll_write(cx, self.last_req.as_slice())) {
                 Ok(len) => return Poll::Ready(Ok(len)),
                 Err(e) => {
                     self.idx += 1;
@@ -93,7 +87,12 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize>> {
-        return self.do_write(cx, buf);
+        // 第一次请求时，记录req
+        if self.last_req.len() == 0 {
+            self.last_req.reserve(buf.len());
+            self.last_req.copy_from_slice(buf);
+        }
+        return self.do_write(cx);
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
@@ -165,8 +164,17 @@ where
             buf.clear();
             me.idx += 1;
             idx = me.idx;
-            let req = me.last_req.clone().as_slice();
-            Pin::new(me).do_write(cx, req);
+            match ready!(me.do_write(cx)) {
+                Ok(len) => {
+                    println!("write req len/{}", len);
+                    continue;
+                }
+                Err(e) => {
+                    // 发送消息到readers全部失败，结束
+                    println!("write req failed, e:{:?}", e);
+                    break;
+                }
+            }
         }
 
         debug_assert!(idx == self.readers.len());
