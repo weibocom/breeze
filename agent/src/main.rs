@@ -2,7 +2,7 @@ use context::Context;
 use discovery::{Discovery, ServiceDiscovery};
 
 use net::listener::Listener;
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -89,8 +89,9 @@ async fn process_one_service(
         let sd = sd.clone();
         let (client, _addr) = l.accept().await?;
         let endpoint = quard.endpoint().to_owned();
+        let proto = quard.protocol();
         spawn(async move {
-            if let Err(e) = process_one_connection(client, sd, endpoint).await {
+            if let Err(e) = process_one_connection(client, sd, endpoint, proto).await {
                 println!("connection disconnected:{:?}", e);
             }
         });
@@ -101,9 +102,16 @@ async fn process_one_connection(
     mut client: net::Stream,
     sd: Arc<ServiceDiscovery<endpoint::Topology>>,
     endpoint: String,
+    proto: String,
 ) -> Result<()> {
     use endpoint::Endpoint;
-    let mut agent = Endpoint::from_discovery(&endpoint, sd).await?;
+    let parser = protocol::DefaultProtocol::from(&proto).ok_or_else(|| {
+        Error::new(
+            ErrorKind::NotFound,
+            format!("'{}' protocol is not suppoted", proto),
+        )
+    })?;
+    let mut agent = Endpoint::from_discovery(&endpoint, parser, sd).await?;
     copy_bidirectional(&mut client, &mut agent).await?;
     Ok(())
 }

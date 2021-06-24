@@ -7,11 +7,11 @@ pub use topology::Topology;
 use discovery::ServiceDiscover;
 
 use protocol::chan::{
-    AsyncGetSync, AsyncMultiGet, AsyncOperation, AsyncRoute, AsyncSetSync, AsyncWriteAll,
+    AsyncMultiGet, AsyncOperation, AsyncRoute, AsyncSetSync, AsyncSharding, AsyncWriteAll,
     PipeToPingPongChanWrite,
 };
-use protocol::memcache::{Memcache, MemcacheMetaStream, MemcacheOpRoute};
-use protocol::DefaultHasher;
+use protocol::memcache::MemcacheMetaStream;
+use protocol::{Hasher, Protocol};
 
 use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
@@ -22,69 +22,58 @@ use stream::{Cid, RingBufferStream};
 
 type Backend = stream::BackendStream<Arc<RingBufferStream>, Cid>;
 
-type MemcacheRoute = protocol::memcache::MemcacheRoute<DefaultHasher>;
-type GetOperation = AsyncRoute<Backend, MemcacheRoute>;
-type MultiGetOperation = AsyncMultiGet<Backend, Memcache<DefaultHasher>>;
+type GetOperation<P> = AsyncSharding<Backend, Hasher, P>;
+type MultiGetOperation<P> = AsyncMultiGet<Backend, P>;
 
-type Reader = AsyncRoute<Backend, MemcacheRoute>;
-type GetThroughOperation = AsyncGetSync<Reader, Memcache<DefaultHasher>>;
+//type Reader<P> = AsyncRoute<Backend, P>;
+//type GetThroughOperation<P> = AsyncGetSync<Reader<P>, P>;
 
-type Master = AsyncRoute<Backend, MemcacheRoute>;
-type Follower = AsyncRoute<OwnedWriteHalf, MemcacheRoute>;
-type StoreOperation = AsyncSetSync<Master, Follower>;
+type Master<P> = AsyncSharding<Backend, Hasher, P>;
+type Follower<P> = AsyncSharding<OwnedWriteHalf, Hasher, P>;
+type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>>;
 type MetaOperation = MemcacheMetaStream;
-type Operation = AsyncOperation<
-    GetOperation,
-    MultiGetOperation,
-    GetThroughOperation,
-    StoreOperation,
-    MetaOperation,
->;
+type Operation<P> =
+    AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation>;
 
 // 三级访问策略。
 // 第一级先进行读写分离
 // 第二级按key进行hash
 // 第三级进行pipeline与server进行交互
-pub struct CacheService<D> {
-    inner: PipeToPingPongChanWrite<Memcache<DefaultHasher>, AsyncRoute<Operation, MemcacheOpRoute>>,
-    // 第一个元素存储是的op_code
-    // 第二个元素存储的是当前op待poll_read的数量
-    _mark: std::marker::PhantomData<D>,
+pub struct CacheService<P> {
+    inner: PipeToPingPongChanWrite<P, AsyncRoute<Operation<P>, P>>,
 }
 
-impl<D> CacheService<D>
-where
-    D: Unpin,
-{
+impl<P> CacheService<P> {
     #[inline]
-    fn build_route<S>(shards: Vec<S>) -> AsyncRoute<S, MemcacheRoute>
+    fn build_sharding<S>(shards: Vec<S>, h: &str, parser: P) -> AsyncSharding<S, Hasher, P>
     where
-        S: AsyncWrite + AsyncWriteAll + Unpin,
+        S: AsyncWrite + AsyncWriteAll,
     {
-        let r = MemcacheRoute::from_len(shards.len());
-        AsyncRoute::from(shards, r)
+        let hasher = Hasher::from(h);
+        AsyncSharding::from(shards, hasher, parser)
     }
 
-    #[inline]
-    fn build_routes<S>(pools: Vec<Vec<S>>) -> Vec<AsyncRoute<S, MemcacheRoute>>
-    where
-        S: AsyncWrite + AsyncWriteAll + Unpin,
-    {
-        let mut routes = Vec::new();
-        for p in pools {
-            let r = MemcacheRoute::from_len(p.len());
-            routes.push(AsyncRoute::from(p, r));
-        }
-        routes
-    }
+    //#[inline]
+    //fn build_routes<S>(pools: Vec<Vec<S>>) -> Vec<AsyncRoute<S, MemcacheRoute>>
+    //where
+    //    S: AsyncWrite + AsyncWriteAll + Unpin,
+    //{
+    //    let mut routes = Vec::new();
+    //    for p in pools {
+    //        let r = MemcacheRoute::from_len(p.len());
+    //        routes.push(AsyncRoute::from(p, r));
+    //    }
+    //    routes
+    //}
 
-    pub async fn from_discovery(discovery: D) -> Result<Self>
+    pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
     where
-        D: ServiceDiscover<super::Topology> + Unpin,
+        D: ServiceDiscover<super::Topology>,
+        P: protocol::Protocol + Clone,
     {
         discovery.do_with(|t| match t {
             Some(t) => match t {
-                super::Topology::CacheService(t) => Self::from_topology(t),
+                super::Topology::CacheService(t) => Self::from_topology::<D>(p, t),
                 _ => panic!("cacheservice topologyt required!"),
             },
             None => Err(Error::new(
@@ -93,21 +82,26 @@ where
             )),
         })
     }
-    fn from_topology(topo: &Topology) -> Result<Self>
+    fn from_topology<D>(parser: P, topo: &Topology) -> Result<Self>
     where
-        D: ServiceDiscover<super::Topology> + Unpin,
+        D: ServiceDiscover<super::Topology>,
+        P: protocol::Protocol + Clone,
     {
-        let get = AsyncOperation::Get(Self::build_route(topo.next_l1()));
+        let hash_alg = &topo.hash;
+        let get = AsyncOperation::Get(Self::build_sharding(
+            topo.next_l1(),
+            &hash_alg,
+            parser.clone(),
+        ));
 
-        let parser: Memcache<DefaultHasher> = Memcache::<DefaultHasher>::new();
         let l1 = topo.next_l1_gets();
-        let gets = AsyncOperation::Gets(AsyncMultiGet::from_shard(l1, parser));
+        let gets = AsyncOperation::Gets(AsyncMultiGet::from_shard(l1, parser.clone()));
 
-        let master = Self::build_route(topo.master());
+        let master = Self::build_sharding(topo.master(), &hash_alg, parser.clone());
         let followers = topo
             .followers()
             .into_iter()
-            .map(|shards| Self::build_route(shards))
+            .map(|shards| Self::build_sharding(shards, &hash_alg, parser.clone()))
             .collect();
         let store = AsyncOperation::Store(AsyncSetSync::from_master(master, followers));
 
@@ -118,15 +112,11 @@ where
         //    AsyncOperation::GetThrough(AsyncGetSync::from(reads_get_through, parser_get_through));
 
         let meta = AsyncOperation::Meta(MemcacheMetaStream::from(""));
-        let router = MemcacheOpRoute::new();
-        let op_stream = AsyncRoute::from(vec![get, gets, store, meta], router);
+        let op_stream = AsyncRoute::from(vec![get, gets, store, meta], parser.clone());
 
-        let inner = PipeToPingPongChanWrite::from_stream(Memcache::new(), op_stream);
+        let inner = PipeToPingPongChanWrite::from_stream(parser, op_stream);
 
-        Ok(Self {
-            inner: inner,
-            _mark: Default::default(),
-        })
+        Ok(Self { inner: inner })
     }
 }
 
@@ -135,9 +125,9 @@ use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-impl<D> AsyncRead for CacheService<D>
+impl<P> AsyncRead for CacheService<P>
 where
-    D: Unpin,
+    P: Unpin + Protocol,
 {
     #[inline]
     fn poll_read(
@@ -149,9 +139,9 @@ where
     }
 }
 
-impl<D> AsyncWrite for CacheService<D>
+impl<P> AsyncWrite for CacheService<P>
 where
-    D: Unpin,
+    P: Unpin + Protocol,
 {
     // 支持pipelin.
     // left是表示当前请求还有多少个字节未写入完成

@@ -1,5 +1,5 @@
 use super::{AsyncPipeToPingPongChanWrite, AsyncWriteAll};
-use crate::parser::Protocol;
+use crate::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;

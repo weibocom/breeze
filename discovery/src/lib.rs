@@ -62,7 +62,7 @@ pub trait Topology: Default + left_right::Absorb<(String, String)> + Clone {
 pub trait ServiceDiscover<T> {
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: Fn(Option<&T>) -> O,
+        F: FnOnce(Option<&T>) -> O,
         T: Default;
 }
 
@@ -100,7 +100,7 @@ impl<T> ServiceDiscover<T> for ServiceDiscovery<T> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: Fn(Option<&T>) -> O,
+        F: FnOnce(Option<&T>) -> O,
         T: Default,
     {
         if let Some(cache) = self.cache.enter() {
@@ -128,7 +128,7 @@ impl<T> ServiceDiscover<T> for Arc<ServiceDiscovery<T>> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: Fn(Option<&T>) -> O,
+        F: FnOnce(Option<&T>) -> O,
         T: Default,
     {
         (**self).do_with(f)

@@ -16,6 +16,7 @@ unsafe impl Sync for Topology {}
 
 #[derive(Default)]
 pub struct Topology {
+    pub(crate) hash: String, // hash策略
     // 最后一个元素是slave，倒数第二个元素是master，剩下的是l1.
     // 为了方便遍历
     l1_seq: AtomicUsize,
@@ -139,6 +140,14 @@ impl Topology {
         }
     }
 
+    fn update_from_namespace(&mut self, ns: super::Namespace) {
+        let (masters, followers, readers, hash) = ns.into_split();
+        self.masters = masters;
+        self.followers = followers;
+        self.readers = readers;
+        self.hash = hash;
+    }
+
     fn update(&mut self, cfg: &str, name: &str) {
         let idx = name.find(':').unwrap_or(name.len());
         if idx == 0 || idx >= name.len() - 1 {
@@ -146,42 +155,34 @@ impl Topology {
         }
         let namespace = &name[idx + 1..];
 
-        let (masters, followers, readers) = match super::Namespace::parse(cfg, namespace) {
-            Ok(ns) => ns.into_split(),
+        match super::Namespace::parse(cfg, namespace) {
+            Ok(ns) => self.update_from_namespace(ns),
             Err(e) => {
                 println!("parse cacheservice config error: name:{} error:{}", name, e);
                 return;
             }
         };
-        if masters.len() == 0 {
-            println!("cacheservice master not exists. {} => {}", name, cfg);
+        if self.masters.len() == 0 || self.readers.len() == 0 {
+            println!("cacheservice empty. {} => {}", name, cfg);
             return;
         }
-
-        self.masters = masters;
-        self.followers = followers;
-        self.readers = readers;
 
         let kb = 1024;
         let mb = 1024 * 1024;
         let p = 16;
         Self::delete_non_exists(&self.masters, &mut self.m_streams);
-        println!("master =========== ");
         Self::add_new(&self.masters, &mut self.m_streams, mb, kb, p, false);
 
         let followers: Vec<String> = self.followers.clone().into_iter().flatten().collect();
         Self::delete_non_exists(&followers, &mut self.f_streams);
-        println!("followers =========== ");
         Self::add_new(followers.as_ref(), &mut self.f_streams, mb, kb, p, true);
 
         let readers: Vec<String> = self.readers.clone().into_iter().flatten().collect();
         // get command
         Self::delete_non_exists(&readers, &mut self.get_streams);
-        println!("get =========== ");
         Self::add_new(&readers, &mut self.get_streams, kb, mb, p, false);
         // get[s] command
         Self::delete_non_exists(&readers, &mut self.gets_streams);
-        println!("gets =========== ");
         Self::add_new(&readers, &mut self.gets_streams, kb, mb, p, false);
     }
 }
@@ -189,6 +190,7 @@ impl Topology {
 impl Clone for Topology {
     fn clone(&self) -> Self {
         Self {
+            hash: self.hash.clone(),
             l1_seq: AtomicUsize::new(self.l1_seq.load(Ordering::Acquire)),
             masters: self.masters.clone(),
             m_streams: self.m_streams.clone(),

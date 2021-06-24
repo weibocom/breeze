@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use discovery::ServiceDiscover;
+use protocol::Protocol;
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
@@ -41,20 +42,23 @@ macro_rules! define_endpoint {
        }
 
 
-        pub enum Endpoint<D> {
-            $($item($type_name<D>)),+
+        pub enum Endpoint<P> {
+            $($item($type_name<P>)),+
         }
 
-        impl<D> Endpoint<D> where D: ServiceDiscover<Topology> + Unpin + 'static {
-            pub async fn from_discovery(name: &str, discovery:D) -> Result<Self> {
+        impl<P> Endpoint<P>  {
+            pub async fn from_discovery<D>(name: &str, p:P, discovery:D) -> Result<Self>
+                where D: ServiceDiscover<Topology> + Unpin + 'static,
+                P:protocol::Protocol+Clone,
+            {
                 match name {
-                    $($ep => Ok(Self::$item($type_name::<D>::from_discovery(discovery).await?)),)+
+                    $($ep => Ok(Self::$item($type_name::from_discovery(p, discovery).await?)),)+
                     _ => panic!("not supported endpoint name"),
                 }
             }
         }
 
-        impl<D> AsyncRead for Endpoint<D> where D: Unpin{
+        impl<P> AsyncRead for Endpoint<P> where P: Unpin+Protocol{
             fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
                 match &mut *self {
                     $(Self::$item(ref mut p) => Pin::new(p).poll_read(cx, buf),)+
@@ -62,7 +66,7 @@ macro_rules! define_endpoint {
             }
         }
 
-        impl<D> AsyncWrite for Endpoint<D> where D:Unpin{
+        impl<P> AsyncWrite for Endpoint<P> where P:Unpin+Protocol{
             fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>>{
                 match &mut *self {
                     $(Self::$item(ref mut p) => Pin::new(p).poll_write(cx, buf),)+

@@ -5,8 +5,6 @@ pub use meta::MemcacheBinaryMetaStream;
 
 pub const HEADER_LEN: usize = 24;
 
-use crate::Hasher;
-
 use byteorder::{BigEndian, ByteOrder};
 
 use crate::{Protocol, Router};
@@ -27,27 +25,22 @@ const COMMAND_IDX: [u8; 128] = [
 const NO_OP: [u8; 24] = [
     129, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
-pub struct MemcacheBinary<H> {
+pub struct MemcacheBinary {
     // 上一个完整读取完一个包的位置
     read: usize,
     op_router: MemcacheBinaryOpRoute,
-    _marker: std::marker::PhantomData<H>,
 }
 
-impl<H> MemcacheBinary<H> {
+impl MemcacheBinary {
     pub fn new() -> Self {
         MemcacheBinary {
             read: 0,
             op_router: MemcacheBinaryOpRoute {},
-            _marker: Default::default(),
         }
     }
 }
 
-impl<H> Protocol for MemcacheBinary<H>
-where
-    H: Unpin + Hasher,
-{
+impl Protocol for MemcacheBinary {
     #[inline(always)]
     fn min_size(&self) -> usize {
         HEADER_LEN
@@ -82,8 +75,9 @@ where
         if len == 1 {
             0
         } else {
-            let key = self.parse_key(req);
-            H::hash(key) as usize % len
+            let _key = self.parse_key(req);
+            //H::hash(key) as usize % len
+            todo!();
         }
     }
     // 去掉末尾的NO_OP
@@ -122,12 +116,12 @@ impl Router for MemcacheBinaryOpRoute {
     }
 }
 
-pub struct MemcacheBinaryKeyRoute<H> {
+pub struct MemcacheBinaryKeyRoute {
     len: usize,
-    parser: MemcacheBinary<H>,
+    parser: MemcacheBinary,
 }
 
-impl<H> MemcacheBinaryKeyRoute<H> {
+impl MemcacheBinaryKeyRoute {
     pub fn from_len(len: usize) -> Self {
         Self {
             len: len,
@@ -136,10 +130,7 @@ impl<H> MemcacheBinaryKeyRoute<H> {
     }
 }
 
-impl<H> Router for MemcacheBinaryKeyRoute<H>
-where
-    H: Unpin + Hasher,
-{
+impl Router for MemcacheBinaryKeyRoute {
     #[inline]
     fn route(&mut self, req: &[u8]) -> usize {
         self.parser.key_route(req, self.len)
