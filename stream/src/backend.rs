@@ -149,7 +149,7 @@ impl AsyncWrite for NotConnected {
 
 use super::{Cid, Ids, RingBufferStream};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 pub struct BackendBuilder {
     closed: Arc<AtomicBool>,
     finished: Arc<AtomicBool>,
@@ -161,13 +161,13 @@ pub struct BackendBuilder {
 }
 
 impl BackendBuilder {
-    pub fn from<P>(addr: String, req_buf: usize, resp_buf: usize, parallel: usize) -> Arc<Mutex<Self>>
+    pub fn from<P>(addr: String, req_buf: usize, resp_buf: usize, parallel: usize) -> Arc<RwLock<Self>>
     where
         P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         Self::from_with_response::<P>(addr, req_buf, resp_buf, parallel, false)
     }
-    pub fn ignore_response<P>(addr: String, req_buf: usize, parallel: usize) -> Arc<Mutex<Self>>
+    pub fn ignore_response<P>(addr: String, req_buf: usize, parallel: usize) -> Arc<RwLock<Self>>
     where
         P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
@@ -179,10 +179,11 @@ impl BackendBuilder {
         resp_buf: usize,
         parallel: usize,
         ignore_response: bool,
-    ) -> Arc<Mutex<Self>>
+    ) -> Arc<RwLock<Self>>
     where
         P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
+        println!("come into from_with_response");
         let done = Arc::new(AtomicBool::new(false));
         let stream = RingBufferStream::with_capacity(parallel, done.clone());
         let me_builder = Self {
@@ -194,9 +195,10 @@ impl BackendBuilder {
             //checker: None,
             check_task: None
         };
-        let mut me = Arc::new(Mutex::new(me_builder));
+        let me = Arc::new(RwLock::new(me_builder));
         let checker = BackendChecker::<P>::from(me.clone(), ignore_response, req_buf, resp_buf);
-        me.lock().unwrap().start_check::<P>(checker);
+        let t = me.read().as_ref().unwrap().start_check(checker);
+        me.write().unwrap().check_task = Some(t);
         me
     }
     pub fn build(&self) -> BackendStream<Arc<RingBufferStream>, Cid> {
@@ -219,26 +221,34 @@ impl BackendBuilder {
         }
     }
 
-    fn start_check<P>(&mut self, checker: BackendChecker<(P)>)
+    pub fn start_check<P>(self, checker: BackendChecker<(P)>) -> JoinHandle<()>
         where
             P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
-        let arc_mutex_checker = Arc::new(Mutex::new(checker));
+        //let arc_mutex_checker = Arc::new(RwLock::new(checker));
+        let runtime = Runtime::new().unwrap();
         //self.checker = Some(arc_mutex_checker.clone());
         let res = std::thread::spawn(move || {
-            arc_mutex_checker.clone().as_ref().lock().unwrap().check();
+            //let arc_mutex_checker = Arc::new(checker);
+            //let check_future = arc_mutex_checker.check();
+            //runtime.block_on(check_future);
+            let check_future = checker.check();
+            runtime.block_on(check_future);
         });
-        self.check_task = Some(res);
+        res
     }
 }
 
 use tokio::time::{interval, Interval};
 use std::time::Duration;
+use std::sync::RwLock;
+use tokio::runtime::Runtime;
+use std::thread::JoinHandle;
 
 pub struct BackendChecker<P> {
     req_buf: usize,
     resp_buf: usize,
-    inner: Arc<Mutex<BackendBuilder>>,
+    inner: Arc<RwLock<BackendBuilder>>,
 
     // 记录两个任务是否完成。
     ignore_response: Arc<AtomicBool>,
@@ -251,7 +261,7 @@ where
     P: Unpin + Send + Sync + ResponseParser + Default + 'static,
 {
     fn from(
-        builder: Arc<Mutex<BackendBuilder>>,
+        builder: Arc<RwLock<BackendBuilder>>,
         ignore_response: bool,
         req_buf: usize,
         resp_buf: usize,
@@ -267,35 +277,44 @@ where
         me
 
     }
-    async fn check(&mut self) {
-        while !self.inner.lock().unwrap().finished.load(Ordering::Acquire) {
+    async fn check(self) {
+        println!("come into check");
+        while !self.inner.read().unwrap().finished.load(Ordering::Acquire) {
             self.check_reconnected_once().await;
-            thread::park_timeout(Duration::from_micros(1000 as u64));
+            thread::park_timeout(Duration::from_millis(1000 as u64));
         }
-        if !self.inner.lock().unwrap().stream.is_complete() {
+        if !self.inner.read().unwrap().stream.is_complete() {
             // stream已经没有在运行，但没有结束。说明可能有一些waker等数据没有处理完。通知处理
-            self.inner.lock().unwrap().stream.try_complete();
+            self.inner.read().unwrap().stream.try_complete();
         }
     }
 
     async fn check_reconnected_once(&self) {
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
-        if self.inner.lock().unwrap().closed.load(Ordering::Acquire) {
+        let closed = self.inner.read().unwrap().closed.load(Ordering::Acquire);
+        if closed {
+            let addr = &self.inner.read().unwrap().addr;
+            println!("connection is closed");
             // 开始建立连接
-            match tokio::net::TcpStream::connect(&self.inner.lock().unwrap().addr).await {
+            match tokio::net::TcpStream::connect(addr).await {
                 Ok(stream) => {
+                    println!("connected to {}", addr);
                     let (r, w) = stream.into_split();
-                    let req_stream = self.inner.lock().unwrap().stream.clone();
+                    let req_stream = self.inner.read().unwrap().stream.clone();
+
                     if !self.ignore_response.load(Ordering::Acquire) {
+                        println!("go to bridge");
                         req_stream.bridge(self.req_buf, self.resp_buf, r, w, P::default());
                     } else {
+                        println!("go to bridge_no_reply");
                         req_stream.bridge_no_reply(self.resp_buf, r, w, P::default());
                     }
-                    self.inner.lock().unwrap().closed.store(false, Ordering::Release);
+                    println!("set false to closed");
+                    self.inner.read().unwrap().closed.store(false, Ordering::Release);
                 }
                 // TODO
                 Err(_e) => {
-                    println!("connect to {} failed, error = {}", self.inner.lock().unwrap().addr, _e);
+                    println!("connect to {} failed, error = {}", addr, _e);
                 }
             }
         }
