@@ -6,12 +6,13 @@ pub use topology::Topology;
 
 use discovery::ServiceDiscover;
 
+use hash::Hasher;
 use protocol::chan::{
     AsyncMultiGet, AsyncOperation, AsyncRoute, AsyncSetSync, AsyncSharding, AsyncWriteAll,
     PipeToPingPongChanWrite,
 };
 use protocol::memcache::MemcacheMetaStream;
-use protocol::{Hasher, Protocol};
+use protocol::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
