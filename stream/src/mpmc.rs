@@ -14,7 +14,7 @@ use super::{
 use protocol::ResponseParser;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
-use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio_util::sync::PollSender;
 
 use futures::{ready, SinkExt};
@@ -307,8 +307,6 @@ impl MpmcRingBufferStream {
         for sender in &self.senders {
             sender.borrow_mut().1.close_this_sender();
         }
-        let mut receiver = self.receiver.borrow_mut().take().expect("receiver exists");
-        receiver.close();
     }
     pub fn is_complete(self: Arc<Self>) -> bool {
         self.done.load(Ordering::Acquire) && self.running_threads.load(Ordering::Acquire) == 0
