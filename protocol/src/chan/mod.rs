@@ -33,8 +33,6 @@ pub trait AsyncWriteAll {}
 
 /// 确保读取response的时候，类似于NotFound、Stored这样的数据包含
 /// 在一个readbuf中，不被拆开，方便判断
-// pub trait AsyncEnsureResponseReadBuf {}
 
 impl AsyncWriteAll for tokio::net::TcpStream {}
 impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}
-// impl AsyncEnsureResponseReadBuf for tokio::net::TcpStream {}
