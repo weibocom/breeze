@@ -3,15 +3,12 @@ pub struct Bkdr;
 
 impl super::Hash for Bkdr {
     fn hash(&mut self, b: &[u8]) -> u64 {
-        let mut h: i32 = 0;
-        let seed = 31;
+        let mut h = 0usize;
+        let seed = 31usize;
         for c in b.iter() {
-            h = h * seed + *c as i32;
+            h = h.wrapping_mul(seed).wrapping_add(*c as usize);
         }
-        if h < 0 {
-            return (-1 * h) as u64;
-        } else {
-            return h as u64;
-        }
+
+        h as u64
     }
 }
