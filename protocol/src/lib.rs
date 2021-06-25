@@ -33,7 +33,7 @@ pub trait Protocol: Unpin {
     // 主要用来在进行multiget时，判断请求是否结束。
     fn probe_response_eof(&mut self, partial_resp: &[u8]) -> (bool, usize);
     // 解析响应是否命中
-    fn probe_response_found(&mut self, response: &[u8]) -> (bool, usize);
+    fn probe_response_found(&mut self, response: &[u8]) -> bool;
 }
 #[enum_dispatch(Protocol)]
 pub enum Protocols {
