@@ -306,7 +306,7 @@ impl MpmcRingBufferStream {
         todo!();
     }
     fn send_empty(&self) {
-        let buf = vec![0 as u8; 1];
+        let buf = vec![0 as u8; 0];
         let waker = futures::task::noop_waker_ref();
         let mut cx = std::task::Context::from_waker(waker);
         let mut sender = self.notify_sender.borrow_mut();
