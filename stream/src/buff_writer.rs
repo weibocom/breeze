@@ -133,7 +133,7 @@ where
         while !me.done.load(Ordering::Relaxed) {
             if let Some(req) = me.cache.take() {
                 let data = req.data();
-                if !data.len() <= 1 {
+                if !data.len() < 1 {
                     assert_eq!(data[0], 0x80);
                     println!(
                         "bridge request to buffer: write to buffer. cid: {} len:{}",
@@ -153,7 +153,7 @@ where
                 }
             }
             println!("bridge request to buffer: wating to get request from channel");
-            me.cache = Some(ready!(receiver.as_mut().poll_recv(cx)).expect("channel closed"));
+            //me.cache = Some(ready!(receiver.as_mut().poll_recv(cx)).expect("channel closed"));
             let result = receiver.as_mut().blocking_recv();
             if result.is_none() {
                 println!("bridge request to buffer: channel closed, quit");
