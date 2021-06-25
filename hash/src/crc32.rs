@@ -1,4 +1,4 @@
-const crc32tab: [u32; 256] = [
+const CRC32TAB: [u32; 256] = [
     0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3,
     0x0edb8832, 0x79dcb8a4, 0xe0d5e91e, 0x97d2d988, 0x09b64c2b, 0x7eb17cbd, 0xe7b82d07, 0x90bf1d91,
     0x1db71064, 0x6ab020f2, 0xf3b97148, 0x84be41de, 0x1adad47d, 0x6ddde4eb, 0xf4d4b551, 0x83d385c7,
@@ -39,9 +39,9 @@ impl super::Hash for Crc32 {
     // CRC-32 implementation compatible with libmemcached library. Unfortunately
     // this implementation does not return CRC-32 as per spec.
     fn hash(&mut self, key: &[u8]) -> u64 {
-        let crc: u32 = 0;
+        let mut crc: u32 = 0;
         for c in key {
-            crc = (crc >> 8) ^ crc32tab[((crc as u64 ^ (*c as u64)) & 0xff) as usize];
+            crc = (crc >> 8) ^ CRC32TAB[((crc as u64 ^ (*c as u64)) & 0xff) as usize];
         }
         return (((!crc) >> 16) & 0x7fff) as u64;
     }
@@ -50,9 +50,9 @@ impl super::Hash for Crc32 {
 impl Crc32 {
     // crc-32 标准规范实现，与mc实现存在差异
     fn hash_spec(&mut self, key: &[u8]) -> u64 {
-        let crc: u32 = !0;
+        let mut crc: u32 = !0;
         for c in key {
-            crc = crc32tab[((crc ^ *c as u32) & 0xFF) as usize] ^ (crc >> 8);
+            crc = CRC32TAB[((crc ^ *c as u32) & 0xFF) as usize] ^ (crc >> 8);
         }
         return (crc ^ !0) as u64;
     }
