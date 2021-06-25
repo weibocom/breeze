@@ -10,8 +10,11 @@ use enum_dispatch::enum_dispatch;
 
 #[enum_dispatch]
 pub trait Protocol: Unpin {
-    // 一个包的最小的字节数
+    // 一个请求包的最小的字节数
     fn min_size(&self) -> usize;
+    // 从response读取buffer时，可能读取多次。
+    // 限制最后一个包最小返回长度。
+    fn min_last_response_size(&self) -> usize;
     // parse会被一直调用，直到返回true.
     // 当前请求是否结束。
     // 一个请求在req中的第多少个字节结束。

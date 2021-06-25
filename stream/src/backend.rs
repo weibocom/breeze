@@ -188,7 +188,8 @@ impl BackendBuilder {
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         let done = Arc::new(AtomicBool::new(true));
-        let stream = RingBufferStream::with_capacity(parallel, done.clone());
+        let min = parser.min_last_response_size();
+        let stream = RingBufferStream::with_capacity(min, parallel, done.clone());
         let me = Self {
             closed: AtomicBool::new(false),
             done: done.clone(),

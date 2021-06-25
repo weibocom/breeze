@@ -39,12 +39,15 @@ pub struct MpmcRingBufferStream {
     resp_read_offset: CacheAligned<AtomicUsize>,
     resp_read_offset_ext: lockfree::map::Map<usize, usize>,
 
+    // 读取response时，返回最后一个包的最小长度
+    min: usize,
+
     done: Arc<AtomicBool>,
 }
 
 impl MpmcRingBufferStream {
     // id必须小于parallel
-    pub fn with_capacity(parallel: usize, done: Arc<AtomicBool>) -> Self {
+    pub fn with_capacity(min: usize, parallel: usize, done: Arc<AtomicBool>) -> Self {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= 32);
         let items = (0..parallel).map(|id| Item::new(id)).collect();
@@ -65,6 +68,7 @@ impl MpmcRingBufferStream {
             resp_read_offset_ext: Default::default(),
             receiver: RefCell::new(Some(receiver)),
             senders: senders,
+            min: min,
             done: done,
         }
     }
@@ -107,9 +111,22 @@ impl MpmcRingBufferStream {
         ready!(self.poll_check())?;
         //println!("poll read cid:{} ", cid);
         let item = unsafe { self.items.get_unchecked(cid) };
+        let filled = buf.filled().len();
         if ready!(item.poll_read(cx, buf)) {
             let (start, end) = item.response_slice();
             self.update_response_read_offset(start, end);
+
+            let read = buf.filled().len() - filled;
+
+            if read < self.min {
+                return Poll::Ready(Err(Error::new(
+                    ErrorKind::Interrupted,
+                    format!(
+                        "read complete, but last response buffer is less than min. {} < {}",
+                        read, self.min
+                    ),
+                )));
+            }
         }
         println!("mpmc poll read complete. data:{:?}", buf.filled());
         Poll::Ready(Ok(()))
