@@ -1,19 +1,23 @@
 // 对于mc，全部穿透顺序：首先读取L1，如果miss，则读取master，否则读取slave;
 // 此处优化为：外部传入对应需要访问的层次，顺讯读取对应的每个层，读取miss，继续访问后续的层。
 // 任何一层读取成功，如果前面读取过其他层，则在返回后，还需要进行回写操作。
-use std::io::Result;
+use std::io::{self, Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use crate::chan::AsyncWriteAll;
-use tokio::io::{self, AsyncRead, AsyncWrite, ReadBuf};
+use futures::ready;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 pub struct AsyncGetSync<R, P> {
     // 当前从哪个shard开始发送请求
     idx: usize,
     // 需要read though的shards
     readers: Vec<R>,
-    req: Vec<u8>,
+    req_ptr: usize,
+    req_len: usize,
+    empty_resp: Vec<u8>,
+    resp_found: bool,
     parser: P,
 }
 
@@ -23,7 +27,10 @@ impl<R, P> AsyncGetSync<R, P> {
         AsyncGetSync {
             idx: 0,
             readers,
-            req: Vec::new(),
+            req_ptr: 0,
+            req_len: 0,
+            empty_resp: Vec::new(),
+            resp_found: false,
             parser: p,
         }
     }
@@ -34,38 +41,54 @@ where
     R: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     P: Unpin,
 {
-    fn do_req(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
-        self.idx = self.idx + 1;
-        let mut msg_prefix = "will retry - ";
-        if self.idx == self.readers.len() {
-            msg_prefix = "stop req -"
-        }
-        // 记录req
-        self.req.reserve(buf.len());
-        self.req.copy_from_slice(buf);
+    // 发送请求，如果失败，继续向下一层write，注意处理重入问题
+    // ready! 会返回Poll，所以这里还是返回Poll了
+    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize>> {
+        let mut idx = self.idx;
 
-        let idx = self.idx;
-        let rpool = unsafe { self.readers.get_unchecked_mut(idx) };
-        match Pin::new(rpool).poll_write(cx, buf) {
-            Poll::Pending => {
-                println!(
-                    "{}for writing msg to mc#{} failed for pending",
-                    msg_prefix, idx
-                );
-                return Poll::Pending;
-            }
-            Poll::Ready(Err(e)) => {
-                println!(
-                    "{} for write msg to {} failed for err: {}",
-                    msg_prefix, idx, e
-                );
-                return Poll::Ready(Err(e));
-            }
-            _ => {
-                // 写成功
-                return Poll::Ready(Ok(buf.len()));
+        debug_assert!(self.req_len > 0);
+        debug_assert!(idx < self.readers.len());
+
+        // 发送请求之前首先设置resp found为false
+        self.resp_found = false;
+
+        // 还原req数据
+        // let req = self.req_data();
+        let ptr = self.req_ptr as *const u8;
+        let data = unsafe { std::slice::from_raw_parts(ptr, self.req_len) };
+
+        // 轮询reader发送请求，直到发送成功
+        while idx < self.readers.len() {
+            let reader = unsafe { self.readers.get_unchecked_mut(idx) };
+            match ready!(Pin::new(reader).poll_write(cx, data)) {
+                Ok(len) => return Poll::Ready(Ok(len)),
+                Err(e) => {
+                    self.idx += 1;
+                    idx = self.idx;
+                    println!("write req failed e:{:?}", e);
+                }
             }
         }
+
+        // write req到所有资源失败，reset并返回err
+        self.reset();
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "cannot write req to all resources",
+        )))
+    }
+
+    // 请求处理完毕，进行reset
+    fn reset(&mut self) {
+        self.idx = 0;
+        self.resp_found = false;
+        self.empty_resp.clear();
+    }
+
+    // TODO: 使用这个方法，会导致借用问题，先留着
+    fn req_data(&mut self) -> &[u8] {
+        let ptr = self.req_ptr as *const u8;
+        unsafe { std::slice::from_raw_parts(ptr, self.req_len) }
     }
 }
 
@@ -79,40 +102,42 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize>> {
-        println!("===============readers len:{}", self.readers.len());
-        if self.readers.len() == 1 {
-            unsafe { Pin::new(self.readers.get_unchecked_mut(0)).poll_write(cx, buf) }
-        } else {
-            self.do_req(cx, buf)
-        }
+        // 记录req buf，方便多层访问
+        self.req_ptr = buf.as_ptr() as usize;
+        self.req_len = buf.len();
+        return self.do_write(cx);
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        if self.readers.len() == 1 {
-            unsafe {
-                return Pin::new(self.readers.get_unchecked_mut(0)).poll_flush(cx);
-            }
-        }
+        // TODO 这个不需要，每次只用flush idx对应的reader 待和@icy 确认
+        // if self.readers.len() == 1 {
+        //     unsafe {
+        //         return Pin::new(self.readers.get_unchecked_mut(0)).poll_flush(cx);
+        //     }
+        // }
+
         let idx = self.idx;
+        debug_assert!(self.idx < self.readers.len());
         let reader = unsafe { self.readers.get_unchecked_mut(idx) };
-        match Pin::new(reader).poll_flush(cx) {
-            Poll::Pending => return Poll::Pending,
-            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+        match ready!(Pin::new(reader).poll_flush(cx)) {
+            Err(e) => return Poll::Ready(Err(e)),
             _ => return Poll::Ready(Ok(())),
         }
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        if self.readers.len() == 1 {
-            unsafe {
-                return Pin::new(self.readers.get_unchecked_mut(0)).poll_shutdown(cx);
-            }
-        }
+        // TODO 这个不需要，每次只用flush idx对应的reader 待和@icy 确认
+        // if self.readers.len() == 1 {
+        //     unsafe {
+        //         return Pin::new(self.readers.get_unchecked_mut(0)).poll_shutdown(cx);
+        //     }
+        // }
+
         let idx = self.idx;
+        debug_assert!(idx < self.readers.len());
         let reader = unsafe { self.readers.get_unchecked_mut(idx) };
-        match Pin::new(reader).poll_shutdown(cx) {
-            Poll::Pending => return Poll::Pending,
-            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+        match ready!(Pin::new(reader).poll_shutdown(cx)) {
+            Err(e) => return Poll::Ready(Err(e)),
             _ => return Poll::Ready(Ok(())),
         }
     }
@@ -128,61 +153,66 @@ where
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        if self.readers.len() == 1 {
-            unsafe {
-                return Pin::new(self.readers.get_unchecked_mut(0)).poll_read(cx, buf);
-            }
-        }
-        let idx = self.idx;
-        let reader = unsafe { self.readers.get_unchecked_mut(idx) };
-        match Pin::new(reader).poll_read(cx, buf) {
-            Poll::Pending => {
-                // TODO: 对于buf中有部分数据，是否合适？
-                // 如果有数据获取，则返回数据,触发下一次获取。
-                // 如果未获取到数据，则pending
-                return if buf.filled().len() == 0 {
-                    Poll::Pending
-                } else {
-                    Poll::Ready(Ok(()))
-                };
-            }
-            Poll::Ready(Err(e)) => {
-                println!("found err in get: {:?}", e);
-            }
-            // 如果接受到数据，检测是否是命中，只有命中，请求才算完毕
-            Poll::Ready(Ok(())) => {
-                if self.parser.probe_response_succeed(buf.filled()) {
-                    return Poll::Ready(Ok(()));
+        let mut me = &mut *self;
+        // check precondition
+        debug_assert!(me.idx < me.readers.len());
+
+        // 注意重入问题
+        while me.idx < me.readers.len() {
+            //for each
+            let reader = unsafe { me.readers.get_unchecked_mut(me.idx) };
+            match ready!(Pin::new(reader).poll_read(cx, buf)) {
+                Ok(_) => {
+                    // 请求命中，返回ok及消息长度；
+                    if !me.resp_found {
+                        if me.parser.probe_response_found(buf.filled()) {
+                            me.resp_found = true;
+                        }
+                    }
+                    // 请求命中，清理empty resp，并返回;如果是最后一个layer，直接返回；否则保留一份emtpy/special响应
+                    if me.resp_found {
+                        me.empty_resp.clear();
+                        return Poll::Ready(Ok(()));
+                    } else if me.idx + 1 == me.readers.len() {
+                        me.empty_resp.clear();
+                        return Poll::Ready(Ok(()));
+                    } else if me.empty_resp.len() == 0 {
+                        // TODO 对于空响应，由底层确认有足够数据
+                        me.empty_resp.reserve(buf.capacity() - buf.remaining());
+                        me.empty_resp.copy_from_slice(buf.filled());
+                    }
+                    // 如果请求未命中，则继续准备尝试下一个reader
+                }
+                // 请求失败，如果还有reader，需要继续尝试下一个reader
+                Err(e) => {
+                    println!("read found err: {:?}", e);
                 }
             }
-        }
-        // 到了这里，说明请求没有get到结果，需要继续穿透访问
-        if self.idx + 1 < self.readers.len() {
-            self.idx += 1;
-            let req = self.req.clone();
-            let msg_prefix = "rewrite when miss -";
-            match self.do_req(cx, req.as_slice()) {
-                Poll::Pending => {
-                    println!(
-                        "{}for writing msg to mc#{} failed for pending",
-                        msg_prefix, idx
-                    );
-                    return Poll::Pending;
+            // 如果所有reader尝试完毕，退出循环
+            if me.idx + 1 >= me.readers.len() {
+                break;
+            }
+
+            // 还有reader,继续重试后续的reader
+            buf.clear();
+            me.idx += 1;
+            match ready!(me.do_write(cx)) {
+                Ok(_) => {
+                    continue;
                 }
-                Poll::Ready(Err(e)) => {
-                    println!(
-                        "{} for write msg to {} failed for err: {}",
-                        msg_prefix, idx, e
-                    );
-                    return Poll::Ready(Err(e));
-                }
-                _ => {
-                    // 写成功
-                    return Poll::Ready(Ok(()));
+                Err(e) => {
+                    break;
                 }
             }
         }
 
-        Poll::Ready(Ok(()))
+        debug_assert!(self.idx + 1 == self.readers.len());
+        // 只要有empty response，则优先返回empty resp
+        if self.empty_resp.len() > 0 {
+            buf.put_slice(self.empty_resp.as_slice());
+            return Poll::Ready(Ok(()));
+        }
+
+        Poll::Ready(Err(Error::new(ErrorKind::NotFound, "not found key")))
     }
 }

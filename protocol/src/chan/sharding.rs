@@ -41,7 +41,7 @@ where
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
         let me = &mut *self;
         debug_assert!(me.idx < me.shards.len());
-        let key = me.parser.parse_key(buf);
+        let key = me.parser.key(buf);
         let h = me.hasher.hash(key) as usize;
         me.idx = h % me.shards.len();
         unsafe {
