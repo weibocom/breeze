@@ -305,7 +305,7 @@ impl MpmcRingBufferStream {
     }
     fn do_close(&self) {
         for sender in &self.senders {
-            sender.borrow_mut().1.close();
+            sender.borrow_mut().1.close_this_sender();
         }
     }
     pub fn is_complete(&self) -> bool {
