@@ -184,7 +184,7 @@ impl BackendBuilder {
         P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         println!("come into from_with_response");
-        let done = Arc::new(AtomicBool::new(true));
+        let done = Arc::new(AtomicBool::new(false));
         let stream = RingBufferStream::with_capacity(parallel, done.clone());
         let me_builder = Self {
             connected: Arc::new(AtomicBool::new(false)),
@@ -215,6 +215,7 @@ impl BackendBuilder {
     }
     pub fn reconnect(&self) {
         if !self.finished.load(Ordering::Acquire) {
+            self.stream.try_complete();
             self.connected.store(false, Ordering::Release);
             if self.check_task.is_some() {
                 self.check_task.as_ref().unwrap().thread().unpark();
