@@ -42,9 +42,9 @@ pub struct MpmcRingBufferStream {
     done: Arc<AtomicBool>,
 }
 
-impl MpmcRingBufferStream {
+implgg MpmcRingBufferStream {
     // id必须小于parallel
-    pub fn with_capacity(parallel: usize, done: Arc<AtomicBool>) -> Self {
+    pub fn with_capacity(parser: P, parallel: usize, done: Arc<AtomicBool>) -> Self {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= 32);
         let items = (0..parallel).map(|id| Item::new(id)).collect();
@@ -66,6 +66,8 @@ impl MpmcRingBufferStream {
             receiver: RefCell::new(Some(receiver)),
             senders: senders,
             done: done,
+
+            parser: parser,
         }
     }
     // 如果complete为true，则快速失败
@@ -192,14 +194,8 @@ impl MpmcRingBufferStream {
     // 线程A: 把request data数据从item写入到ring buffer.
     // 线程B：把ring buffer的数据flush到server
     // 线程C：把response数据从server中读取，并且place到item的response中
-    pub fn bridge<R, W, P>(
-        self: Arc<Self>,
-        parser: P,
-        req_buffer: usize,
-        resp_buffer: usize,
-        r: R,
-        w: W,
-    ) where
+    pub fn bridge<R, W>(self: Arc<Self>, req_buffer: usize, resp_buffer: usize, r: R, w: W)
+    where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
@@ -225,16 +221,17 @@ impl MpmcRingBufferStream {
             BridgeResponseToLocal::from(
                 r,
                 self.clone(),
-                parser.clone(),
+                self.parser.clone(),
                 resp_buffer,
                 self.done.clone(),
             ),
         );
     }
-    pub fn bridge_no_reply<R, W>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W)
+    pub fn bridge_no_reply<R, W, P>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W)
     where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
+        P: Unpin + Send + Sync + Protocol + 'static,
     {
         println!("noreply bridaged");
         self.check_bridge();
@@ -314,7 +311,7 @@ impl Request for Arc<MpmcRingBufferStream> {
         self.bind_seq(id, seq);
     }
 }
-impl Response for Arc<MpmcRingBufferStream> {
+implgg Response for Arc<MpmcRingBufferStream> {
     // 获取已经被全部读取的字节的位置
     #[inline]
     fn load_read_offset(&self) -> usize {
@@ -335,12 +332,12 @@ impl Response for Arc<MpmcRingBufferStream> {
     }
 }
 
-impl IdAsyncRead for MpmcRingBufferStream {
+implgg IdAsyncRead for MpmcRingBufferStream {
     fn poll_read(&self, id: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
         self.poll_read(id, cx, buf)
     }
 }
-impl IdAsyncWrite for MpmcRingBufferStream {
+implgg IdAsyncWrite for MpmcRingBufferStream {
     fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         self.poll_write(id, cx, buf)
     }
@@ -348,12 +345,12 @@ impl IdAsyncWrite for MpmcRingBufferStream {
         self.poll_shutdown(id, cx)
     }
 }
-impl IdAsyncRead for Arc<MpmcRingBufferStream> {
+implgg IdAsyncRead for Arc<MpmcRingBufferStream> {
     fn poll_read(&self, id: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
         (**self).poll_read(id, cx, buf)
     }
 }
-impl IdAsyncWrite for Arc<MpmcRingBufferStream> {
+implgg IdAsyncWrite for Arc<MpmcRingBufferStream> {
     fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         (**self).poll_write(id, cx, buf)
     }

@@ -8,11 +8,6 @@ pub mod memcache;
 mod slice;
 pub use slice::RingSlice;
 
-pub trait ResponseParser {
-    fn parse_response(&mut self, response: &RingSlice) -> (bool, usize);
-    fn probe_response_succeed(&mut self, response: &RingSlice) -> bool;
-}
-
 use enum_dispatch::enum_dispatch;
 
 #[enum_dispatch]
@@ -36,14 +31,22 @@ pub trait Protocol: Unpin {
     fn probe_response_eof(&mut self, partial_resp: &[u8]) -> (bool, usize);
     // 解析响应是否命中
     fn probe_response_succeed(&mut self, response: &[u8]) -> bool;
+    fn probe_response_succeed_rs(&mut self, response: &RingSlice) -> bool;
+    fn parse_response(&mut self, response: &RingSlice) -> (bool, usize);
 }
 
 #[enum_dispatch(Protocol)]
-pub enum DefaultProtocol {
+pub enum Protocols {
     Mc(memcache::Memcache),
 }
 
-impl DefaultProtocol {
+impl Default for Protocols {
+    fn default() -> Self {
+        panic!("not suppotred");
+    }
+}
+
+impl Protocols {
     pub fn from(name: &str) -> Option<Self> {
         match name {
             "mc" | "memcache" | "memcached" => Some(Self::Mc(memcache::Memcache::new())),
@@ -52,7 +55,7 @@ impl DefaultProtocol {
     }
 }
 
-impl Clone for DefaultProtocol {
+impl Clone for Protocols {
     fn clone(&self) -> Self {
         match self {
             Self::Mc(_) => Self::Mc(memcache::Memcache::new()),

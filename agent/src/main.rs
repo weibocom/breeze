@@ -8,8 +8,10 @@ use std::time::Duration;
 
 use tokio::io::copy_bidirectional;
 use tokio::spawn;
-use tokio::sync::oneshot::{self, Sender};
+use tokio::sync::mpsc::{self, Sender};
 use tokio::time::{interval_at, Instant};
+
+use protocol::Protocols;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,44 +23,39 @@ async fn main() -> Result<()> {
         Instant::now() + Duration::from_secs(1),
         Duration::from_secs(3),
     );
-    let mut cycle = 0usize;
+    let (tx, mut rx) = mpsc::channel(1);
     loop {
-        let quard = listeners.next().await;
-        if quard.is_none() {
-            if cycle == 0 {
-                println!(
-                    "all services have been processed. service configed in path:{}",
-                    ctx.service_path()
-                );
-                cycle += 1;
-            }
+        let quards = listeners.scan().await;
+        if let Err(e) = quards {
+            println!("scan listener failed:{:?}", e);
             tick.tick().await;
             continue;
         }
-        let quard_ = quard.unwrap();
-        let quard = quard_.clone();
-        let discovery = Arc::clone(&discovery);
-        let (tx, rx) = oneshot::channel::<bool>();
-        spawn(async move {
-            match process_one_service(tx, &quard, discovery).await {
-                Ok(_) => println!("service listener complete address:{}", quard.address()),
-                Err(e) => println!(
-                    "service listener complete with error:{:?} {}",
-                    e,
-                    quard.address()
-                ),
-            };
-        });
-        match rx.await {
-            Ok(done) => {
-                if done {
+        for quard in quards.unwrap().iter() {
+            let quard = quard.clone();
+            let quard_ = quard.clone();
+            let discovery = Arc::clone(&discovery);
+            let tx = tx.clone();
+            spawn(async move {
+                let _tx = tx.clone();
+                match process_one_service(tx, &quard, discovery).await {
+                    Ok(_) => println!("service listener complete address:{}", quard.address()),
+                    Err(e) => {
+                        let _ = _tx.send(false).await;
+                        println!("service listener error:{:?} {}", e, quard.address())
+                    }
+                };
+            });
+            if let Some(success) = rx.recv().await {
+                if success {
                     if let Err(e) = listeners.on_listened(quard_).await {
-                        println!("on listened failed:{:?}", e);
+                        println!("on_listened failed:{:?} ", e);
                     }
                 }
             }
-            Err(e) => println!("failed to recv from oneshot channel:{}", e),
         }
+
+        tick.tick().await;
     }
 }
 
@@ -67,31 +64,31 @@ async fn process_one_service(
     quard: &context::Quadruple,
     discovery: Arc<discovery::Discovery>,
 ) -> Result<()> {
-    let l = match Listener::bind(&quard.family(), &quard.address()).await {
-        Ok(l) => {
-            let _ = tx.send(true);
-            l
-        }
-        Err(e) => {
-            let _ = tx.send(false);
-            return Err(e);
-        }
-    };
+    let parser = Protocols::from(&quard.protocol()).ok_or(Error::new(
+        ErrorKind::InvalidData,
+        format!("'{}' is not a valid protocol", quard.protocol()),
+    ))?;
+    let top = endpoint::Topology::from(parser.clone(), quard.endpoint()).ok_or(Error::new(
+        ErrorKind::InvalidData,
+        format!("'{}' is not a valid endpoint", quard.endpoint()),
+    ))?;
+    let l = Listener::bind(&quard.family(), &quard.address()).await?;
     println!("starting to serve {}", quard.address());
+    let _ = tx.send(true).await;
     let sd = Arc::new(ServiceDiscovery::new(
         discovery,
         quard.service(),
-        quard.endpoint(),
         quard.snapshot(),
         quard.tick(),
+        top,
     ));
     loop {
         let sd = sd.clone();
         let (client, _addr) = l.accept().await?;
         let endpoint = quard.endpoint().to_owned();
-        let proto = quard.protocol();
+        let parser = parser.clone();
         spawn(async move {
-            if let Err(e) = process_one_connection(client, sd, endpoint, proto).await {
+            if let Err(e) = process_one_connection(client, sd, endpoint, parser).await {
                 println!("connection disconnected:{:?}", e);
             }
         });
@@ -100,17 +97,11 @@ async fn process_one_service(
 
 async fn process_one_connection(
     mut client: net::Stream,
-    sd: Arc<ServiceDiscovery<endpoint::Topology>>,
+    sd: Arc<ServiceDiscovery<endpoint::Topology<Protocols>>>,
     endpoint: String,
-    proto: String,
+    parser: Protocols,
 ) -> Result<()> {
     use endpoint::Endpoint;
-    let parser = protocol::DefaultProtocol::from(&proto).ok_or_else(|| {
-        Error::new(
-            ErrorKind::NotFound,
-            format!("'{}' protocol is not suppoted", proto),
-        )
-    })?;
     let mut agent = Endpoint::from_discovery(&endpoint, parser, sd).await?;
     copy_bidirectional(&mut client, &mut agent).await?;
     Ok(())
