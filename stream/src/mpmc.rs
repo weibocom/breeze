@@ -30,6 +30,7 @@ pub struct MpmcRingBufferStream {
 
     senders: Vec<RefCell<(bool, PollSender<RequestData>)>>,
     receiver: RefCell<Option<Receiver<RequestData>>>,
+    notify_sender: RefCell<PollSender<RequestData>>,
 
     // idx: 是seq % seq_cids.len()。因为seq是自增的，而且seq_cids.len() == items.len()
     // 用来当cache用。会通过item status进行double check
@@ -68,6 +69,7 @@ impl MpmcRingBufferStream {
             senders: senders,
             done: done,
             running_threads: Arc::new(AtomicI32::new(0)),
+            notify_sender: RefCell::new(sender.clone()),
         }
     }
     // 如果complete为true，则快速失败
@@ -297,11 +299,18 @@ impl MpmcRingBufferStream {
     fn on_io_error(&self, _err: Error) {
         todo!();
     }
+    fn send_empty(&self) {
+        let buf = vec![0 as u8; 0];
+        let mut sender = self.notify_sender.borrow_mut();
+            let req = RequestData::from(0, buf.as_slice());
+            sender.start_send(req).ok().expect("channel closed");
+    }
     pub fn is_complete(&self) -> bool {
         self.done.load(Ordering::Acquire) && self.running_threads.load(Ordering::Acquire) == 0
     }
     pub fn try_complete(&self) {
         self.done.store(true, Ordering::Release);
+        self.send_empty();
         while self.running_threads.load(Ordering::Acquire) != 0 {}
     }
 }
