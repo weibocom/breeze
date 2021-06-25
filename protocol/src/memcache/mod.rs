@@ -1,5 +1,5 @@
 mod binary;
 pub use binary::{
-    MemcacheBinary as Memcache, MemcacheBinaryKeyRoute as MemcacheRoute,
-    MemcacheBinaryMetaStream as MemcacheMetaStream, MemcacheBinaryOpRoute as MemcacheOpRoute,
+    MemcacheBinary as Memcache, MemcacheBinaryMetaStream as MemcacheMetaStream,
+    MemcacheBinaryOpRoute as MemcacheOpRoute,
 };

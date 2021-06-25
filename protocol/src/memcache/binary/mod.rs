@@ -71,16 +71,6 @@ impl Protocol for MemcacheBinary {
     fn op_route(&mut self, req: &[u8]) -> usize {
         self.op_router.route(req)
     }
-    #[inline]
-    fn key_route(&mut self, req: &[u8], len: usize) -> usize {
-        if len == 1 {
-            0
-        } else {
-            let _key = self.parse_key(req);
-            //H::hash(key) as usize % len
-            todo!();
-        }
-    }
     // 去掉末尾的NO_OP
     // TODO FIXME
     // 要使用之前必须要流式读取判断
@@ -92,13 +82,20 @@ impl Protocol for MemcacheBinary {
         (noop == NO_OP, resp.len() - HEADER_LEN)
     }
     #[inline]
-    fn parse_key<'a>(&mut self, req: &'a [u8]) -> &'a [u8] {
+    fn key<'a>(&mut self, req: &'a [u8]) -> &'a [u8] {
         let extra_len = req[4] as usize;
         let offset = extra_len + HEADER_LEN;
         let key_len = BigEndian::read_u16(&req[2..]) as usize;
         &req[offset..offset + key_len]
     }
-    fn probe_response_succeed(&mut self, response: &[u8]) -> bool {
+    #[inline]
+    fn keys<'a>(&mut self, req: &'a [u8]) -> Vec<&'a [u8]> {
+        todo!()
+    }
+    fn build_gets_cmd(&mut self, keys: Vec<&[u8]>) -> Vec<u8> {
+        todo!()
+    }
+    fn probe_response_found(&mut self, response: &[u8]) -> bool {
         debug_assert!(response.len() > HEADER_LEN);
         let status = BigEndian::read_u16(&response[6..]) as usize;
         status == 0
@@ -132,26 +129,5 @@ impl MemcacheBinaryOpRoute {
 impl Router for MemcacheBinaryOpRoute {
     fn route(&mut self, req: &[u8]) -> usize {
         COMMAND_IDX[req[1] as usize] as usize
-    }
-}
-
-pub struct MemcacheBinaryKeyRoute {
-    len: usize,
-    parser: MemcacheBinary,
-}
-
-impl MemcacheBinaryKeyRoute {
-    pub fn from_len(len: usize) -> Self {
-        Self {
-            len: len,
-            parser: MemcacheBinary::new(),
-        }
-    }
-}
-
-impl Router for MemcacheBinaryKeyRoute {
-    #[inline]
-    fn route(&mut self, req: &[u8]) -> usize {
-        self.parser.key_route(req, self.len)
     }
 }
