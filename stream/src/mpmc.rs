@@ -303,19 +303,21 @@ impl MpmcRingBufferStream {
     fn on_io_error(&self, _err: Error) {
         todo!();
     }
-    fn do_close(&self) {
+    fn do_close(self: Arc<Self>) {
         for sender in &self.senders {
             sender.borrow_mut().1.close_this_sender();
         }
+        let mut receiver = self.receiver.borrow_mut().take().expect("receiver exists");
+        receiver.close();
     }
-    pub fn is_complete(&self) -> bool {
+    pub fn is_complete(self: Arc<Self>) -> bool {
         self.done.load(Ordering::Acquire) && self.running_threads.load(Ordering::Acquire) == 0
     }
-    pub fn try_complete(&self) {
-        self.done.store(true, Ordering::Release);
-        self.do_close();
-        while self.running_threads.load(Ordering::Acquire) != 0 {
-            println!("running threads: {}", self.running_threads.load(Ordering::Acquire));
+    pub fn try_complete(self: Arc<Self>) {
+        self.clone().done.store(true, Ordering::Release);
+        self.clone().do_close();
+        while self.clone().running_threads.load(Ordering::Acquire) != 0 {
+            println!("running threads: {}", self.clone().running_threads.load(Ordering::Acquire));
             sleep(Duration::from_secs(1));
         }
     }
@@ -326,6 +328,7 @@ use crate::BackendBuilder;
 use std::borrow::BorrowMut;
 use std::thread::sleep;
 use std::time::Duration;
+use std::ops::Deref;
 
 impl Request for Arc<MpmcRingBufferStream> {
     //fn next(&self, id: usize) -> Option<RequestData> {

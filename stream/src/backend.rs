@@ -215,7 +215,7 @@ impl BackendBuilder {
     }
     pub fn reconnect(&self) {
         if !self.finished.load(Ordering::Acquire) {
-            self.stream.try_complete();
+            self.stream.clone().try_complete();
             self.connected.store(false, Ordering::Release);
             if self.check_task.is_some() {
                 self.check_task.as_ref().unwrap().thread().unpark();
@@ -285,9 +285,9 @@ where
             self.check_reconnected_once().await;
             thread::park_timeout(Duration::from_millis(1000 as u64));
         }
-        if !self.inner.read().unwrap().stream.is_complete() {
+        if !self.inner.read().unwrap().stream.clone().is_complete() {
             // stream已经没有在运行，但没有结束。说明可能有一些waker等数据没有处理完。通知处理
-            self.inner.read().unwrap().stream.try_complete();
+            self.inner.read().unwrap().stream.clone().try_complete();
         }
     }
 
