@@ -11,30 +11,30 @@ macro_rules! define_endpoint {
     ($($top:tt, $item:ident, $type_name:tt, $ep:expr);+) => {
 
        #[derive(Clone)]
-       pub enum Topology {
-            Empty,
-            $($item($top)),+
+       pub enum Topology<P> {
+            Empty(P),
+            $($item($top<P>)),+
        }
 
-       impl Default for Topology {
+       impl<P> Default for Topology<P> where P:Default{
            fn default() -> Self {
-               Topology::Empty
+               Topology::Empty(Default::default())
            }
        }
-       impl From<String> for Topology {
-           fn from(endpoint:String) -> Self {
+       impl<P> Topology<P>  {
+           pub fn from(parser:P, endpoint:String) -> Option<Self> {
                 match &endpoint[..]{
-                    $($ep => Self::$item($top::default()),)+
-                    _ => {println!("{} not supported endpoint name", endpoint); Self::Empty},
+                    $($ep => Some(Self::$item(parser.into())),)+
+                    _ => None,
                 }
            }
        }
 
-       impl discovery::Topology for Topology {
+       impl<P> discovery::Topology for Topology<P> where P:Clone+Default+Sync+Send+Protocol+'static{
            fn update(&mut self, cfg: &str, name: &str) {
                match self {
-                    $(Self::$item(s) => s.update(cfg, name),)+
-                   Self::Empty => {
+                    $(Self::$item(s) => discovery::Topology::update(s, cfg, name),)+
+                   Self::Empty(_) => {
                         println!("empty topology request received");
                    }
                }
@@ -48,8 +48,8 @@ macro_rules! define_endpoint {
 
         impl<P> Endpoint<P>  {
             pub async fn from_discovery<D>(name: &str, p:P, discovery:D) -> Result<Self>
-                where D: ServiceDiscover<Topology> + Unpin + 'static,
-                P:protocol::Protocol+Clone,
+                where D: ServiceDiscover<Topology<P>> + Unpin + 'static,
+                P:protocol::Protocol+Clone + Default,
             {
                 match name {
                     $($ep => Ok(Self::$item($type_name::from_discovery(p, discovery).await?)),)+
@@ -98,7 +98,10 @@ define_endpoint! {
     CSTopology, CacheService, CacheService, "cs"
 }
 
-impl left_right::Absorb<(String, String)> for Topology {
+impl<P> left_right::Absorb<(String, String)> for Topology<P>
+where
+    P: Clone + Default + Sync + Send + Protocol + 'static,
+{
     fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
         discovery::Topology::update(self, &cfg.0, &cfg.1)
     }

@@ -7,6 +7,7 @@ pub const HEADER_LEN: usize = 24;
 
 use byteorder::{BigEndian, ByteOrder};
 
+use crate::RingSlice;
 use crate::{Protocol, Router};
 
 #[inline]
@@ -102,6 +103,24 @@ impl Protocol for MemcacheBinary {
         let status = BigEndian::read_u16(&response[6..]) as usize;
         status == 0
     }
+    fn parse_response(&mut self, response: &RingSlice) -> (bool, usize) {
+        if response.available() < HEADER_LEN {
+            return (false, response.available());
+        }
+        debug_assert_eq!(response.at(0), 0x81);
+        let len = response.read_u32(8) as usize + HEADER_LEN;
+        (response.available() >= len, len)
+    }
+
+    // 请求命中，status为0，否则部位0
+    fn probe_response_succeed_rs(&mut self, response: &RingSlice) -> bool {
+        if response.available() < HEADER_LEN {
+            return false;
+        }
+        debug_assert_eq!(response.at(0), 0x81);
+        // status 在字节的6、7两个字节
+        response.at(6) == 0 && response.at(7) == 0
+    }
 }
 
 pub struct MemcacheBinaryOpRoute {}
@@ -134,34 +153,5 @@ impl Router for MemcacheBinaryKeyRoute {
     #[inline]
     fn route(&mut self, req: &[u8]) -> usize {
         self.parser.key_route(req, self.len)
-    }
-}
-
-#[derive(Default)]
-pub struct MemcacheBinaryResponseParser {}
-use crate::RingSlice;
-impl crate::ResponseParser for MemcacheBinaryResponseParser {
-    fn parse_response(&mut self, response: &RingSlice) -> (bool, usize) {
-        if response.available() < HEADER_LEN {
-            return (false, response.available());
-        }
-        debug_assert_eq!(response.at(0), 0x81);
-        let len = response.read_u32(8) as usize + HEADER_LEN;
-        (response.available() >= len, len)
-    }
-
-    // 请求命中，status为0，否则部位0
-    fn probe_response_succeed(&mut self, response: &RingSlice) -> bool {
-        if response.available() < HEADER_LEN {
-            return false;
-        }
-        debug_assert_eq!(response.at(0), 0x81);
-        // status 在字节的6、7两个字节
-        response.at(6) == 0 && response.at(7) == 0
-    }
-}
-impl MemcacheBinaryResponseParser {
-    pub fn new() -> Self {
-        MemcacheBinaryResponseParser {}
     }
 }

@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use super::ResponseRingBuffer;
 use super::RingSlice;
 
-use protocol::ResponseParser;
+use protocol::Protocol;
 
 use tokio::io::{AsyncRead, ReadBuf};
 
@@ -48,7 +48,7 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
 impl<R, W, P> Future for BridgeResponseToLocal<R, W, P>
 where
     R: AsyncRead + Unpin,
-    P: ResponseParser + Unpin,
+    P: Protocol + Unpin,
     W: Response + Unpin,
 {
     type Output = Result<()>;
