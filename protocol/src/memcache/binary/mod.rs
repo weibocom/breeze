@@ -46,6 +46,10 @@ impl Protocol for MemcacheBinary {
     fn min_size(&self) -> usize {
         HEADER_LEN
     }
+    #[inline(always)]
+    fn min_last_response_size(&self) -> usize {
+        HEADER_LEN
+    }
     #[inline]
     fn probe_request_eof(&mut self, req: &[u8]) -> (bool, usize) {
         while self.read as usize + HEADER_LEN <= req.len() {
