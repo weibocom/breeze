@@ -6,6 +6,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use cache_line_size::CacheAligned;
+use std::io::{Error, ErrorKind};
+use std::result::Result;
 
 unsafe impl Send for RingBuffer {}
 unsafe impl Sync for RingBuffer {}
@@ -17,13 +19,15 @@ pub enum Status {
     ReadPending = 1,
     WritePending = 2,
     Lock,
+    Close,
 }
 
-const STATUSES: [Status; 4] = [
+const STATUSES: [Status; 5] = [
     Status::Ok,
     Status::ReadPending,
     Status::WritePending,
     Status::Lock,
+    Status::Close,
 ];
 
 impl PartialEq for Status {
@@ -86,7 +90,9 @@ impl RingBuffer {
     // 读和写同时只会出现一个notify. TODO 待验证
     fn notify(&self, status: Status) {
         debug_assert!(
-            status as u8 == Status::ReadPending as u8 || status as u8 == Status::WritePending as u8
+            status as u8 == Status::ReadPending as u8 ||
+                status as u8 == Status::WritePending as u8 ||
+                status as u8 == Status::Close as u8
         );
         if self.status_cas(status, Status::Lock) {
             // 进入到pending状态，一定会有waker
@@ -155,6 +161,7 @@ pub struct RingBufferWriter {
     buffer: Arc<RingBuffer>,
     write: usize,
     mask: usize,
+    closed: bool,
 }
 
 impl RingBufferWriter {
@@ -164,18 +171,22 @@ impl RingBufferWriter {
             buffer: buffer,
             mask: mask,
             write: 0,
+            closed: false,
         }
     }
     // 写入b到buffer。
     // true: 写入成功，false：写入失败。
     // 要么全部成功，要么全部失败。不会写入部分字节
-    pub fn put_slice(&mut self, b: &[u8]) -> bool {
+    pub fn put_slice(&mut self, b: &[u8]) -> Result<usize, &'static str> {
+        if self.closed {
+            return Err("Closed");
+        }
         let read = self.buffer.read.0.load(Ordering::Acquire);
         let available = self.buffer.len - (self.write - read);
         debug_assert!(available <= self.buffer.len);
         debug_assert!(b.len() < self.buffer.len);
         if available < b.len() {
-            false
+            Result::Ok(0 as usize)
         } else {
             let oft_write = self.write & self.mask;
             let oft_read = read & self.mask;
@@ -196,17 +207,29 @@ impl RingBufferWriter {
             }
             self.write += b.len();
             self.buffer.write.0.store(self.write, Ordering::Release);
-            true
+            Result::Ok(b.len())
         }
     }
-    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<()> {
-        if self.put_slice(b) {
-            self.buffer.notify(Status::ReadPending);
-            Poll::Ready(())
-        } else {
+    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<(Result<usize, &'static str>)> {
+        let result = self.put_slice(b);
+        if result.is_ok() && result.unwrap() == 0 {
             self.buffer.waiting(cx, Status::WritePending);
             Poll::Pending
         }
+        else {
+            if result.is_err() {
+                self.buffer.notify(Status::Close);
+            }
+            else {
+                self.buffer.notify(Status::ReadPending);
+            }
+            Poll::Ready((result))
+        }
+    }
+
+    pub fn close(&mut self) {
+        self.closed = true;
+        self.buffer.notify(Status::Close);
     }
 }
 
@@ -214,6 +237,7 @@ pub struct RingBufferReader {
     read: usize,
     mask: usize,
     buffer: Arc<RingBuffer>,
+    close: bool,
 }
 
 impl RingBufferReader {
@@ -223,13 +247,17 @@ impl RingBufferReader {
             buffer: buffer,
             read: 0,
             mask: mask,
+            close: false,
         }
     }
     // 如果ringbuffer到达末尾，则只返回到末尾的slice
-    pub fn next(&self) -> Option<&[u8]> {
+    pub fn next(&self) -> Result<Option<&[u8]>, &'static str> {
+        if self.close {
+            return Err("Closed");
+        }
         let write = self.buffer.write.0.load(Ordering::Acquire);
         if self.read == write {
-            None
+            Result::Ok(None)
         } else {
             debug_assert!(self.read < write);
             let oft_start = self.read & self.mask;
@@ -241,10 +269,10 @@ impl RingBufferReader {
             };
             //println!("spsc poll next. read:{} write:{} n:{}", self.read, write, n);
             unsafe {
-                Some(from_raw_parts(
+                Result::Ok(Some(from_raw_parts(
                     self.buffer.data.offset(oft_start as isize),
                     n,
-                ))
+                )))
             }
         }
     }
@@ -254,12 +282,20 @@ impl RingBufferReader {
         self.buffer.notify(Status::WritePending);
     }
     // 没有数据进入waiting状态。等put唤醒
-    pub fn poll_next(&mut self, cx: &mut Context) -> Poll<&[u8]> {
-        if let Some(data) = self.next() {
-            Poll::Ready(data)
-        } else {
-            self.buffer.waiting(cx, Status::ReadPending);
-            Poll::Pending
+    pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Result<&[u8], &'static str>> {
+        let result = self.next();
+        if result.is_ok() {
+            if result.unwrap().is_some() {
+                Poll::Ready(Result::Ok(result.unwrap().unwrap()))
+            }
+            else {
+                self.buffer.waiting(cx, Status::ReadPending);
+                Poll::Pending
+            }
+        }
+        else {
+            self.buffer.notify(Status::Close);
+            Poll::Ready(Result::Err(result.unwrap_err()))
         }
     }
 }
@@ -384,9 +420,9 @@ mod tests {
             while readed_data.len() < size {
                 let n = match reader.poll_next(&mut cx) {
                     Poll::Ready(data) => {
-                        debug_assert!(data.len() > 0);
-                        readed_data.extend_from_slice(data);
-                        data.len()
+                        debug_assert!(data.unwrap().len() > 0);
+                        readed_data.extend_from_slice(data.unwrap());
+                        data.unwrap().len()
                     }
                     Poll::Pending => {
                         std::hint::spin_loop();

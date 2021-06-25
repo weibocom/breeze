@@ -17,7 +17,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
 use tokio::sync::mpsc::{channel, Receiver};
 use tokio_util::sync::PollSender;
 
-use futures::ready;
+use futures::{ready, SinkExt};
 
 use cache_line_size::CacheAligned;
 
@@ -30,7 +30,6 @@ pub struct MpmcRingBufferStream {
 
     senders: Vec<RefCell<(bool, PollSender<RequestData>)>>,
     receiver: RefCell<Option<Receiver<RequestData>>>,
-    notify_sender: RefCell<PollSender<RequestData>>,
 
     // idx: 是seq % seq_cids.len()。因为seq是自增的，而且seq_cids.len() == items.len()
     // 用来当cache用。会通过item status进行double check
@@ -69,7 +68,6 @@ impl MpmcRingBufferStream {
             senders: senders,
             done: done,
             running_threads: Arc::new(AtomicI32::new(0)),
-            notify_sender: RefCell::new(sender.clone()),
         }
     }
     // 如果complete为true，则快速失败
@@ -305,17 +303,9 @@ impl MpmcRingBufferStream {
     fn on_io_error(&self, _err: Error) {
         todo!();
     }
-    fn send_empty(&self) {
-        let buf = vec![0 as u8; 1];
-        let waker = futures::task::noop_waker_ref();
-        let mut cx = std::task::Context::from_waker(waker);
-        let mut sender = self.notify_sender.borrow_mut();
-        let req = RequestData::from(0, buf.as_slice());
-        println!("send empty, request length = {}", buf.as_slice().len());
-        sender.start_send(req).ok().expect("channel closed");
-        let mut result = sender.poll_send_done(cx.borrow_mut());
-        while result.is_pending() {
-            result = sender.poll_send_done(cx.borrow_mut());
+    fn do_close(&self) {
+        for sender in &self.senders {
+            sender.borrow_mut().1.close();
         }
     }
     pub fn is_complete(&self) -> bool {
@@ -323,7 +313,7 @@ impl MpmcRingBufferStream {
     }
     pub fn try_complete(&self) {
         self.done.store(true, Ordering::Release);
-        self.send_empty();
+        self.do_close();
         while self.running_threads.load(Ordering::Acquire) != 0 {
             println!("running threads: {}", self.running_threads.load(Ordering::Acquire));
             sleep(Duration::from_secs(1));
