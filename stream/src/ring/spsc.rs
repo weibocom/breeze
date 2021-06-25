@@ -87,13 +87,17 @@ impl RingBuffer {
             RingBufferReader::from(buffer.clone()),
         )
     }
+    fn close(&self) {
+        self.waker_status.store(Status::Close as u8, Ordering::Release);
+    }
     // 读和写同时只会出现一个notify. TODO 待验证
     fn notify(&self, status: Status) {
         debug_assert!(
-            status as u8 == Status::ReadPending as u8 ||
-                status as u8 == Status::WritePending as u8 ||
-                status as u8 == Status::Close as u8
+            status as u8 == Status::ReadPending as u8 || status as u8 == Status::WritePending as u8
         );
+        if self.waker_status.load(Ordering::Acquire) == Status::Close as u8 {
+            return;
+        }
         if self.status_cas(status, Status::Lock) {
             // 进入到pending状态，一定会有waker
             self.wakers[status as usize - 1]
@@ -115,6 +119,9 @@ impl RingBuffer {
             // 异常情况，进入死循环了
             debug_assert!(loops <= 1024 * 1024);
             let old = self.waker_status.load(Ordering::Acquire);
+            if old == Status::Close {
+                return;
+            }
             if old == Status::Ok || old == status {
                 if self.status_cas(old.into(), Status::Lock) {
                     *self.wakers[status as usize - 1].borrow_mut() = Some(cx.waker().clone());
@@ -218,7 +225,7 @@ impl RingBufferWriter {
         }
         else {
             if result.is_err() {
-                self.buffer.notify(Status::Close);
+                self.buffer.close();
             }
             else {
                 self.buffer.notify(Status::ReadPending);
@@ -229,7 +236,7 @@ impl RingBufferWriter {
 
     pub fn close(&mut self) {
         self.closed = true;
-        self.buffer.notify(Status::Close);
+        self.buffer.close();
     }
 }
 
@@ -294,7 +301,7 @@ impl RingBufferReader {
             }
         }
         else {
-            self.buffer.notify(Status::Close);
+            self.buffer.close();
             Poll::Ready(Result::Err(result.unwrap_err()))
         }
     }
