@@ -184,7 +184,7 @@ impl BackendBuilder {
         P: Unpin + Send + Sync + ResponseParser + Default + 'static,
     {
         println!("come into from_with_response");
-        let done = Arc::new(AtomicBool::new(false));
+        let done = Arc::new(AtomicBool::new(true));
         let stream = RingBufferStream::with_capacity(parallel, done.clone());
         let me_builder = Self {
             connected: Arc::new(AtomicBool::new(false)),
