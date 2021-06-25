@@ -216,12 +216,14 @@ impl MpmcRingBufferStream {
         let receiver = self.receiver.borrow_mut().take().expect("receiver exists");
         Self::start_bridge(
             self.clone(),
+            builder.clone(),
             "bridge-request-to-buffer",
             BridgeRequestToBuffer::from(receiver, self.clone(), req_rb_writer, self.done.clone()),
         );
         //// 把数据从buffer发送数据到,server
         Self::start_bridge(
             self.clone(),
+            builder.clone(),
             "bridge-buffer-to-backend",
             BridgeBufferToWriter::from(req_rb_reader, w, self.done.clone(), builder.clone()),
         );
@@ -229,6 +231,7 @@ impl MpmcRingBufferStream {
         //// 从response读取数据写入items
         Self::start_bridge(
             self.clone(),
+            builder.clone(),
             "bridge-backend-to-local",
             BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone(), builder.clone()),
         );
@@ -276,12 +279,13 @@ impl MpmcRingBufferStream {
             }
         });
     }
-    fn start_bridge<F>(arc_self: Arc<Self>, name: &'static str, future: F)
+    fn start_bridge<F>(arc_self: Arc<Self>, builder: Arc<RwLock<BackendBuilder>>, name: &'static str, future: F)
     where
         F: Future<Output = Result<()>> + Send + 'static,
     {
         tokio::spawn(async move {
-            arc_self.clone().running_threads.clone().fetch_add(1, Ordering::Release);
+            let self_clone = arc_self.clone();
+            self_clone.running_threads.clone().fetch_add(1, Ordering::Release);
             println!("{} bridge task started", name);
             match future.await {
                 Ok(_) => {
@@ -291,8 +295,10 @@ impl MpmcRingBufferStream {
                     println!("{} bridge task complete with error:{:?}", name, e);
                 }
             };
-            arc_self.clone().running_threads.fetch_sub(1, Ordering::Release);
-            arc_self.clone().try_complete();
+            self_clone.running_threads.fetch_sub(1, Ordering::Release);
+            self_clone.try_complete();
+            println!("{} bridge task completed", name);
+            builder.clone().read().unwrap().reconnect();
         });
     }
 
@@ -317,13 +323,18 @@ impl MpmcRingBufferStream {
     pub fn try_complete(&self) {
         self.done.store(true, Ordering::Release);
         self.send_empty();
-        while self.running_threads.load(Ordering::Acquire) != 0 {}
+        while self.running_threads.load(Ordering::Acquire) != 0 {
+            println!("running threads: {}", self.running_threads.load(Ordering::Acquire));
+            sleep(Duration::from_secs(1));
+        }
     }
 }
 
 use super::RequestData;
 use crate::BackendBuilder;
 use std::borrow::BorrowMut;
+use std::thread::sleep;
+use std::time::Duration;
 
 impl Request for Arc<MpmcRingBufferStream> {
     //fn next(&self, id: usize) -> Option<RequestData> {
