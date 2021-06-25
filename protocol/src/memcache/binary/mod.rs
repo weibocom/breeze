@@ -94,7 +94,7 @@ impl Protocol for MemcacheBinary {
     fn build_gets_cmd(&mut self, keys: Vec<&[u8]>) -> Vec<u8> {
         todo!()
     }
-    fn probe_response_found(&mut self, response: &[u8]) -> (bool, usize) {
+    fn probe_response_found(&mut self, response: &[u8]) -> bool {
         debug_assert!(response.len() > HEADER_LEN);
         let status = BigEndian::read_u16(&response[6..]) as usize;
         status == 0

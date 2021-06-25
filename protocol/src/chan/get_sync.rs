@@ -3,10 +3,11 @@
 // 任何一层读取成功，如果前面读取过其他层，则在返回后，还需要进行回写操作。
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
+use std::rc::Rc;
 use std::task::{Context, Poll};
 
 use crate::chan::AsyncWriteAll;
-use futures::{ready, SinkExt};
+use futures::ready;
 use tokio::io::{self, AsyncRead, AsyncWrite, ReadBuf};
 
 pub struct AsyncGetSync<R, P> {
@@ -14,8 +15,8 @@ pub struct AsyncGetSync<R, P> {
     idx: usize,
     // 需要read though的shards
     readers: Vec<R>,
-    req: &mut [u8],
-    empty_resp: Vec<[u8]>,
+    req: Box<[u8]>,
+    empty_resp: Vec<u8>,
     resp_found: bool,
     parser: P,
 }
@@ -26,7 +27,7 @@ impl<R, P> AsyncGetSync<R, P> {
         AsyncGetSync {
             idx: 0,
             readers,
-            req: &mut [u8],
+            req: Box::new([0]),
             empty_resp: Vec::new(),
             resp_found: false,
             parser: p,
@@ -40,7 +41,7 @@ where
     P: Unpin,
 {
     // 发送请求，如果失败，继续向下一层write，注意处理重入问题
-    fn do_write(&mut self, cx: &mut Context<'_>) -> Result<bool> {
+    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize>> {
         debug_assert!(self.req.len() > 0);
         debug_assert!(self.idx < self.readers.len());
 
@@ -48,23 +49,22 @@ where
         self.resp_found = false;
 
         // 轮询reader发送请求，直到发送成功
-        self.readers
-            .iter()
-            .enumerate()
-            .filter(|&(idx, r)| idx >= self.idx)
-            .for_each(
-                |(_, reader)| match ready!(Pin::new(reader).poll_write(cx, self.req)) {
-                    Ok(len) => Ok(true),
-                    Err(e) => self.idx += 1,
-                },
-            );
+        while self.idx < self.readers.len() {
+            let reader = unsafe { self.readers.get_unchecked_mut(self.idx) };
+            match ready!(Pin::new(reader).poll_write(cx, &*self.req)) {
+                Ok(len) => return Poll::Ready(Ok(len)),
+                Err(e) => {
+                    self.idx += 1;
+                }
+            }
+        }
 
         // write req到所有资源失败，reset并返回err
         self.reset();
-        Err(Error::new(
+        Poll::Ready(Err(Error::new(
             ErrorKind::NotConnected,
             "cannot write req to all resources",
-        ))
+        )))
     }
 
     // 请求处理完毕，进行reset
@@ -86,7 +86,7 @@ where
         buf: &[u8],
     ) -> Poll<Result<usize>> {
         // 记录req buf，方便多层访问
-        self.req = buf;
+        self.req = Box::new(*buf);
         return self.do_write(cx);
     }
 
@@ -155,7 +155,7 @@ where
                         return Poll::Ready(Ok(()));
                     } else if self.idx + 1 == me.readers.len() {
                         me.empty_resp.clear();
-                        return Poll::Ready(Ok());
+                        return Poll::Ready(Ok(()));
                     } else if me.empty_resp.len() == 0 {
                         // TODO 对于空响应，由底层确认有足够数据
                         me.empty_resp.reserve(buf.capacity() - buf.remaining());
@@ -179,11 +179,11 @@ where
             me.do_write(cx)?;
         }
 
-        debug_assert!(idx + 1 == self.readers.len());
+        debug_assert!(self.idx + 1 == self.readers.len());
         // 只要有empty response，则优先返回empty resp
         if self.empty_resp.len() > 0 {
-            buf.put_slice(self.empty_resp);
-            return Poll::Ready(Ok());
+            buf.put_slice(self.empty_resp.as_slice());
+            return Poll::Ready(Ok(()));
         }
 
         Poll::Ready(Err(Error::new(ErrorKind::NotFound, "not found key")))
