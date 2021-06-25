@@ -100,14 +100,7 @@ impl Protocol for MemcacheBinary {
     fn probe_response_found(&mut self, response: &[u8]) -> (bool, usize) {
         debug_assert!(response.len() > HEADER_LEN);
         let status = BigEndian::read_u16(&response[6..]) as usize;
-        let found = status == 0;
-        if found {
-            return (
-                found,
-                HEADER_LEN + BigEndian::read_u32(&response[8..]) as usize,
-            );
-        }
-        return (false, 0);
+        status == 0
     }
 }
 
