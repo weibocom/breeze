@@ -311,6 +311,7 @@ impl MpmcRingBufferStream {
         let mut cx = std::task::Context::from_waker(waker);
         let mut sender = self.notify_sender.borrow_mut();
         let req = RequestData::from(0, buf.as_slice());
+        println!("send empty, request length = {}", buf.as_slice().len());
         sender.start_send(req).ok().expect("channel closed");
         let mut result = sender.poll_send_done(cx.borrow_mut());
         while result.is_pending() {

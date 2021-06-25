@@ -154,6 +154,14 @@ where
             }
             println!("bridge request to buffer: wating to get request from channel");
             me.cache = Some(ready!(receiver.as_mut().poll_recv(cx)).expect("channel closed"));
+            let result = receiver.as_mut().blocking_recv();
+            if result.is_none() {
+                println!("bridge request to buffer: channel closed, quit");
+                break;
+            }
+            else {
+                me.cache = result;
+            }
             println!("bridge request to buffer. one request received from request channel");
         }
         Poll::Ready(Ok(()))
