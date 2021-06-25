@@ -52,7 +52,6 @@ where
         // 发送请求之前首先设置resp found为false
         self.resp_found = false;
 
-        // 还原req数据
         // let req = self.req_data();
         let ptr = self.req_ptr as *const u8;
         let data = unsafe { std::slice::from_raw_parts(ptr, self.req_len) };
@@ -196,14 +195,7 @@ where
             // 还有reader,继续重试后续的reader
             buf.clear();
             me.idx += 1;
-            match ready!(me.do_write(cx)) {
-                Ok(_) => {
-                    continue;
-                }
-                Err(e) => {
-                    break;
-                }
-            }
+            ready!(me.do_write(cx))?;
         }
 
         debug_assert!(self.idx + 1 == self.readers.len());
