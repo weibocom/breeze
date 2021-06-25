@@ -1,21 +1,21 @@
 // 对于mc，全部穿透顺序：首先读取L1，如果miss，则读取master，否则读取slave;
 // 此处优化为：外部传入对应需要访问的层次，顺讯读取对应的每个层，读取miss，继续访问后续的层。
 // 任何一层读取成功，如果前面读取过其他层，则在返回后，还需要进行回写操作。
-use std::io::{Error, ErrorKind, Result};
+use std::io::{self, Error, ErrorKind, Result};
 use std::pin::Pin;
-use std::rc::Rc;
 use std::task::{Context, Poll};
 
 use crate::chan::AsyncWriteAll;
 use futures::ready;
-use tokio::io::{self, AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 pub struct AsyncGetSync<R, P> {
     // 当前从哪个shard开始发送请求
     idx: usize,
     // 需要read though的shards
     readers: Vec<R>,
-    req: Box<[u8]>,
+    req_ptr: usize,
+    req_len: usize,
     empty_resp: Vec<u8>,
     resp_found: bool,
     parser: P,
@@ -27,7 +27,8 @@ impl<R, P> AsyncGetSync<R, P> {
         AsyncGetSync {
             idx: 0,
             readers,
-            req: Box::new([0]),
+            req_ptr: 0,
+            req_len: 0,
             empty_resp: Vec::new(),
             resp_found: false,
             parser: p,
@@ -41,20 +42,30 @@ where
     P: Unpin,
 {
     // 发送请求，如果失败，继续向下一层write，注意处理重入问题
+    // ready! 会返回Poll，所以这里还是返回Poll了
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize>> {
-        debug_assert!(self.req.len() > 0);
-        debug_assert!(self.idx < self.readers.len());
+        let mut idx = self.idx;
+
+        debug_assert!(self.req_len > 0);
+        debug_assert!(idx < self.readers.len());
 
         // 发送请求之前首先设置resp found为false
         self.resp_found = false;
 
+        // 还原req数据
+        // let req = self.req_data();
+        let ptr = self.req_ptr as *const u8;
+        let data = unsafe { std::slice::from_raw_parts(ptr, self.req_len) };
+
         // 轮询reader发送请求，直到发送成功
-        while self.idx < self.readers.len() {
-            let reader = unsafe { self.readers.get_unchecked_mut(self.idx) };
-            match ready!(Pin::new(reader).poll_write(cx, &*self.req)) {
+        while idx < self.readers.len() {
+            let reader = unsafe { self.readers.get_unchecked_mut(idx) };
+            match ready!(Pin::new(reader).poll_write(cx, data)) {
                 Ok(len) => return Poll::Ready(Ok(len)),
                 Err(e) => {
                     self.idx += 1;
+                    idx = self.idx;
+                    println!("write req failed e:{:?}", e);
                 }
             }
         }
@@ -73,6 +84,12 @@ where
         self.resp_found = false;
         self.empty_resp.clear();
     }
+
+    // TODO: 使用这个方法，会导致借用问题，先留着
+    fn req_data(&mut self) -> &[u8] {
+        let ptr = self.req_ptr as *const u8;
+        unsafe { std::slice::from_raw_parts(ptr, self.req_len) }
+    }
 }
 
 impl<R, P> AsyncWrite for AsyncGetSync<R, P>
@@ -86,7 +103,8 @@ where
         buf: &[u8],
     ) -> Poll<Result<usize>> {
         // 记录req buf，方便多层访问
-        self.req = Box::new(*buf);
+        self.req_ptr = buf.as_ptr() as usize;
+        self.req_len = buf.len();
         return self.do_write(cx);
     }
 
@@ -98,8 +116,9 @@ where
         //     }
         // }
 
+        let idx = self.idx;
         debug_assert!(self.idx < self.readers.len());
-        let reader = unsafe { self.readers.get_unchecked_mut(self.idx) };
+        let reader = unsafe { self.readers.get_unchecked_mut(idx) };
         match ready!(Pin::new(reader).poll_flush(cx)) {
             Err(e) => return Poll::Ready(Err(e)),
             _ => return Poll::Ready(Ok(())),
@@ -114,8 +133,9 @@ where
         //     }
         // }
 
-        debug_assert!(self.idx < self.readers.len());
-        let reader = unsafe { self.readers.get_unchecked_mut(self.idx) };
+        let idx = self.idx;
+        debug_assert!(idx < self.readers.len());
+        let reader = unsafe { self.readers.get_unchecked_mut(idx) };
         match ready!(Pin::new(reader).poll_shutdown(cx)) {
             Err(e) => return Poll::Ready(Err(e)),
             _ => return Poll::Ready(Ok(())),
@@ -135,12 +155,12 @@ where
     ) -> Poll<io::Result<()>> {
         let mut me = &mut *self;
         // check precondition
-        debug_assert!(self.idx < me.readers.len());
+        debug_assert!(me.idx < me.readers.len());
 
         // 注意重入问题
-        while self.idx < me.readers.len() {
+        while me.idx < me.readers.len() {
             //for each
-            let reader = unsafe { me.readers.get_unchecked_mut(self.idx) };
+            let reader = unsafe { me.readers.get_unchecked_mut(me.idx) };
             match ready!(Pin::new(reader).poll_read(cx, buf)) {
                 Ok(_) => {
                     // 请求命中，返回ok及消息长度；
@@ -153,7 +173,7 @@ where
                     if me.resp_found {
                         me.empty_resp.clear();
                         return Poll::Ready(Ok(()));
-                    } else if self.idx + 1 == me.readers.len() {
+                    } else if me.idx + 1 == me.readers.len() {
                         me.empty_resp.clear();
                         return Poll::Ready(Ok(()));
                     } else if me.empty_resp.len() == 0 {
@@ -169,14 +189,21 @@ where
                 }
             }
             // 如果所有reader尝试完毕，退出循环
-            if self.idx + 1 >= me.readers.len() {
+            if me.idx + 1 >= me.readers.len() {
                 break;
             }
 
             // 还有reader,继续重试后续的reader
             buf.clear();
             me.idx += 1;
-            me.do_write(cx)?;
+            match ready!(me.do_write(cx)) {
+                Ok(_) => {
+                    continue;
+                }
+                Err(e) => {
+                    break;
+                }
+            }
         }
 
         debug_assert!(self.idx + 1 == self.readers.len());
