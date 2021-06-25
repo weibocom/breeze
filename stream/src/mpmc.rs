@@ -301,9 +301,15 @@ impl MpmcRingBufferStream {
     }
     fn send_empty(&self) {
         let buf = vec![0 as u8; 0];
+        let waker = futures::task::noop_waker_ref();
+        let mut cx = std::task::Context::from_waker(waker);
         let mut sender = self.notify_sender.borrow_mut();
-            let req = RequestData::from(0, buf.as_slice());
-            sender.start_send(req).ok().expect("channel closed");
+        let req = RequestData::from(0, buf.as_slice());
+        sender.start_send(req).ok().expect("channel closed");
+        let mut result = sender.poll_send_done(cx.borrow_mut());
+        while result.is_pending() {
+            result = sender.poll_send_done(cx.borrow_mut());
+        }
     }
     pub fn is_complete(&self) -> bool {
         self.done.load(Ordering::Acquire) && self.running_threads.load(Ordering::Acquire) == 0
@@ -317,6 +323,7 @@ impl MpmcRingBufferStream {
 
 use super::RequestData;
 use crate::BackendBuilder;
+use std::borrow::BorrowMut;
 
 impl Request for Arc<MpmcRingBufferStream> {
     //fn next(&self, id: usize) -> Option<RequestData> {
