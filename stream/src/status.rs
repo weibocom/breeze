@@ -87,7 +87,7 @@ impl Item {
         // place_response先更新数据，后更新状态。不会有并发问题
         // 读数据
         println!("poll read id:{}", self.id);
-        if self.response.borrow_mut().read(buf) {
+        if self.response.borrow_mut().read_ensure_min(buf, last_min) {
             // 把状态调整为Init
             match self.status_cas(status, ItemStatus::Init as u8) {
                 Ok(_) => return Poll::Ready(true),
