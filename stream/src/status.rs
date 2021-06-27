@@ -184,4 +184,13 @@ impl Item {
         self.status
             .store(ItemStatus::Shutdown as u8, Ordering::Release);
     }
+
+    // reset只会把状态从shutdown变更为init
+    // 必须在shutdown之后调用
+    pub(crate) fn reset(&self) {
+        match self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8) {
+            Ok(_) => {}
+            Err(status) => assert_eq!(status, ItemStatus::Init as u8),
+        }
+    }
 }

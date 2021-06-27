@@ -47,6 +47,8 @@ pub struct MpmcRingBufferStream {
     // 3. BridgeResponseToLocal: 把response数据从backend server读取到items
     runnings: Arc<AtomicIsize>,
 
+    // chan是否处理reset状态, 在reset_chan与bridge方法中使用
+    chan_reset: AtomicBool,
     done: Arc<AtomicBool>,
 }
 
@@ -75,6 +77,7 @@ impl MpmcRingBufferStream {
             min: min,
             done: done,
             runnings: Arc::new(AtomicIsize::new(0)),
+            chan_reset: AtomicBool::new(false),
         }
     }
     // 如果complete为true，则快速失败
@@ -169,6 +172,9 @@ impl MpmcRingBufferStream {
         self.done
             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
             .expect("bridge an uncompleted stream");
+        assert_eq!(self.runnings.load(Ordering::AcqRel), 0);
+
+        self.chan_reset.store(true, Ordering::Acquire);
     }
 
     // 构建一个ring buffer.
@@ -279,6 +285,31 @@ impl MpmcRingBufferStream {
     pub fn is_complete(&self) -> bool {
         self.done.load(Ordering::Acquire)
     }
+    // done == true。所以新到达的poll_write都会直接返回
+    // 不会再操作senders, 可以重置senders
+    fn reset_chann(&self) {
+        if !self.chan_reset.load(Ordering::AcqRel) {
+            let (sender, receiver) = channel(self.senders.len());
+            let sender = PollSender::new(sender);
+            // 删除所有的sender，则receiver会会接收到一个None，而不会阻塞
+            for s in self.senders.iter() {
+                let (_, old) = s.replace((true, sender.clone()));
+                drop(old);
+            }
+            let old = self.receiver.replace(Some(receiver));
+            debug_assert!(old.is_none());
+            self.chan_reset.store(true, Ordering::AcqRel);
+        }
+    }
+    // done == true
+    // runnings == 0
+    // 所有的线程都结束了
+    // 不会再有额外的线程来更新items信息
+    fn reset_item_status(&self) {
+        for item in self.items.iter() {
+            item.reset();
+        }
+    }
     // 在complete从true变成false的时候，需要将mpmc进行初始化。
     // 满足以下所有条件之后，初始化返回成功
     // 0. 三个线程全部结束
@@ -291,14 +322,15 @@ impl MpmcRingBufferStream {
         let runnings = self.runnings.load(Ordering::AcqRel);
         debug_assert!(runnings >= 0);
 
-        // done == true。所以新到达的poll_write都会直接返回
-        // 不会再操作senders, 可以重置senders
+        self.reset_chann();
+
+        self.reset_item_status();
 
         if runnings > 0 {
             return false;
         }
-        // 所有的线程都结束了
-        false
+
+        true
     }
 }
 
