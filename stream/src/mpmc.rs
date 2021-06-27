@@ -281,18 +281,18 @@ impl MpmcRingBufferStream {
 
 use super::RequestData;
 impl Request for Arc<MpmcRingBufferStream> {
-    fn request_received(&self, id: usize, seq: usize) {
+    fn on_received(&self, id: usize, seq: usize) {
         self.bind_seq(id, seq);
     }
 }
 impl Response for Arc<MpmcRingBufferStream> {
     // 获取已经被全部读取的字节的位置
     #[inline]
-    fn load_read_offset(&self) -> usize {
+    fn load_offset(&self) -> usize {
         self.offset.0.load()
     }
     // 在从response读取的数据后调用。
-    fn on_response(&self, seq: usize, first: RingSlice) {
+    fn on_received(&self, seq: usize, first: RingSlice) {
         self.place_response(seq, first);
     }
 }

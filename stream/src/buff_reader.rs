@@ -15,8 +15,9 @@ use tokio::io::{AsyncRead, ReadBuf};
 use futures::ready;
 
 pub trait Response {
-    fn load_read_offset(&self) -> usize;
-    fn on_response(&self, seq: usize, response: RingSlice);
+    fn load_offset(&self) -> usize;
+    // 从backend接收到response，并且完成协议解析时调用
+    fn on_received(&self, seq: usize, response: RingSlice);
 }
 
 unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
@@ -59,7 +60,7 @@ where
         let mut reader = Pin::new(&mut me.r);
         //let mut spins = 0;
         while !me.done.load(Ordering::Relaxed) {
-            let offset = me.w.load_read_offset();
+            let offset = me.w.load_offset();
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
             println!(
@@ -110,7 +111,7 @@ where
                 }
                 response.resize(num);
                 let seq = me.seq;
-                me.w.on_response(seq, response);
+                me.w.on_received(seq, response);
                 println!(
                     "task response to buffer:  {} bytes processed. seq:{} {} => {}",
                     num,

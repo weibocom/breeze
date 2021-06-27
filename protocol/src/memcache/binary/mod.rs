@@ -94,10 +94,10 @@ impl Protocol for MemcacheBinary {
         &req[offset..offset + key_len]
     }
     #[inline]
-    fn keys<'a>(&mut self, req: &'a [u8]) -> Vec<&'a [u8]> {
+    fn keys<'a>(&mut self, _req: &'a [u8]) -> Vec<&'a [u8]> {
         todo!()
     }
-    fn build_gets_cmd(&mut self, keys: Vec<&[u8]>) -> Vec<u8> {
+    fn build_gets_cmd(&mut self, _keys: Vec<&[u8]>) -> Vec<u8> {
         todo!()
     }
     fn probe_response_found(&mut self, response: &[u8]) -> bool {
