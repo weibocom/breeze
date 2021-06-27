@@ -268,7 +268,7 @@ impl BackendChecker {
     {
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
         if self.inner.done.load(Ordering::Acquire) {
-            if !self.inner.stream.reset() {
+            if !self.inner.stream.reset().await {
                 // stream已经没有在运行，但没有结束。说明可能有一些waker等数据没有处理完。通知处理
                 return;
             }

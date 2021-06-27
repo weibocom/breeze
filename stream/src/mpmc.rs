@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -41,6 +41,12 @@ pub struct MpmcRingBufferStream {
     // 读取response时，返回最后一个包的最小长度
     min: usize,
 
+    // 在运行当中的线程数。一共会有三个
+    // 1. BridgeRequestToBuffer: 把request数据从receiver读取到本地的buffer
+    // 2. BridgeBufferToWriter:  把request数据从本地的buffer写入到backend server
+    // 3. BridgeResponseToLocal: 把response数据从backend server读取到items
+    runnings: Arc<AtomicIsize>,
+
     done: Arc<AtomicBool>,
 }
 
@@ -68,19 +74,21 @@ impl MpmcRingBufferStream {
             senders: senders,
             min: min,
             done: done,
+            runnings: Arc::new(AtomicIsize::new(0)),
         }
     }
     // 如果complete为true，则快速失败
     #[inline(always)]
-    fn poll_check(&self) -> Poll<Result<()>> {
-        if self.done.load(Ordering::Relaxed) {
+    fn poll_check(&self, cid: usize) -> Poll<Result<()>> {
+        if self.done.load(Ordering::Acquire) {
+            self.get_item(cid).shutdown();
             Poll::Ready(Err(Error::new(ErrorKind::NotConnected, "mpmc is done")))
         } else {
             Poll::Ready(Ok(()))
         }
     }
     pub fn poll_read(&self, cid: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
-        ready!(self.poll_check())?;
+        ready!(self.poll_check(cid))?;
         //println!("poll read cid:{} ", cid);
         let item = unsafe { self.items.get_unchecked(cid) };
         if ready!(item.poll_read(cx, buf, self.min)) {
@@ -97,7 +105,7 @@ impl MpmcRingBufferStream {
         Poll::Ready(Ok(()))
     }
     pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
-        ready!(self.poll_check())?;
+        ready!(self.poll_check(cid))?;
         println!("stream: poll write cid:{} len:{} ", cid, buf.len(),);
         let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
         if sender.0 {
@@ -252,7 +260,9 @@ impl MpmcRingBufferStream {
     where
         F: Future<Output = Result<()>> + Send + 'static,
     {
+        let runnings = self.runnings.clone();
         tokio::spawn(async move {
+            runnings.fetch_add(1, Ordering::AcqRel);
             println!("{} bridge task started", name);
             match future.await {
                 Ok(_) => {
@@ -262,6 +272,7 @@ impl MpmcRingBufferStream {
                     println!("{} bridge task complete with error:{:?}", name, e);
                 }
             };
+            runnings.fetch_add(-1, Ordering::AcqRel);
         });
     }
 
@@ -270,11 +281,23 @@ impl MpmcRingBufferStream {
     }
     // 在complete从true变成false的时候，需要将mpmc进行初始化。
     // 满足以下所有条件之后，初始化返回成功
+    // 0. 三个线程全部结束
     // 1. 所有item没有在处于waker在等待数据读取
     // 2. 所有的状态都处于Init状态
     // 3. 关闭senders的channel
     // 4. 重新初始化senders与receivers
-    pub fn reset(&self) -> bool {
+    pub async fn reset(&self) -> bool {
+        debug_assert!(self.done.load(Ordering::AcqRel));
+        let runnings = self.runnings.load(Ordering::AcqRel);
+        debug_assert!(runnings >= 0);
+
+        // done == true。所以新到达的poll_write都会直接返回
+        // 不会再操作senders, 可以重置senders
+
+        if runnings > 0 {
+            return false;
+        }
+        // 所有的线程都结束了
         false
     }
 }
