@@ -11,8 +11,7 @@ use protocol::chan::{
     AsyncMultiGet, AsyncOperation, AsyncRoute, AsyncSetSync, AsyncSharding, AsyncWriteAll,
     PipeToPingPongChanWrite,
 };
-use protocol::memcache::MemcacheMetaStream;
-use protocol::Protocol;
+use protocol::{MetaStream, Protocol};
 
 use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
@@ -32,7 +31,7 @@ type MultiGetOperation<P> = AsyncMultiGet<Backend, P>;
 type Master<P> = AsyncSharding<Backend, Hasher, P>;
 type Follower<P> = AsyncSharding<OwnedWriteHalf, Hasher, P>;
 type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>>;
-type MetaOperation = MemcacheMetaStream;
+type MetaOperation = MetaStream;
 type Operation<P> =
     AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation>;
 
@@ -54,19 +53,6 @@ impl<P> CacheService<P> {
         AsyncSharding::from(shards, hasher, parser)
     }
 
-    //#[inline]
-    //fn build_routes<S>(pools: Vec<Vec<S>>) -> Vec<AsyncRoute<S, MemcacheRoute>>
-    //where
-    //    S: AsyncWrite + AsyncWriteAll + Unpin,
-    //{
-    //    let mut routes = Vec::new();
-    //    for p in pools {
-    //        let r = MemcacheRoute::from_len(p.len());
-    //        routes.push(AsyncRoute::from(p, r));
-    //    }
-    //    routes
-    //}
-
     pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
     where
         D: ServiceDiscover<super::Topology<P>>,
@@ -83,7 +69,7 @@ impl<P> CacheService<P> {
             )),
         })
     }
-    fn from_topology<D>(parser: P, topo: &Topology<P>) -> Result<Self>
+    fn from_topology<D>(mut parser: P, topo: &Topology<P>) -> Result<Self>
     where
         D: ServiceDiscover<super::Topology<P>>,
         P: protocol::Protocol + Clone,
@@ -106,13 +92,7 @@ impl<P> CacheService<P> {
             .collect();
         let store = AsyncOperation::Store(AsyncSetSync::from_master(master, followers));
 
-        // 获取get through
-        //let reads_get_through = Self::build_routes(topo.reader_4_get_through());
-        //let parser_get_through: Memcache<DefaultHasher> = Memcache::<DefaultHasher>::new();
-        //let get_through =
-        //    AsyncOperation::GetThrough(AsyncGetSync::from(reads_get_through, parser_get_through));
-
-        let meta = AsyncOperation::Meta(MemcacheMetaStream::from(""));
+        let meta = AsyncOperation::Meta(parser.meta(""));
         let op_stream = AsyncRoute::from(vec![get, gets, store, meta], parser.clone());
 
         let inner = PipeToPingPongChanWrite::from_stream(parser, op_stream);

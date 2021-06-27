@@ -9,9 +9,6 @@ pub(super) struct SeqOffset {
 }
 
 impl SeqOffset {
-    pub(super) fn new() -> Self {
-        Self::from(8)
-    }
     pub(super) fn from(tries: usize) -> Self {
         assert!(tries >= 1);
         Self {

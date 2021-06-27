@@ -5,6 +5,8 @@ pub mod chan;
 pub mod memcache;
 mod slice;
 pub use slice::RingSlice;
+mod meta;
+pub use meta::MetaStream;
 
 use enum_dispatch::enum_dispatch;
 
@@ -34,6 +36,7 @@ pub trait Protocol: Unpin {
     fn probe_response_succeed_rs(&mut self, response: &RingSlice) -> bool;
     fn parse_response(&mut self, response: &RingSlice) -> (bool, usize);
     fn probe_response_found(&mut self, response: &[u8]) -> bool;
+    fn meta(&mut self, url: &str) -> MetaStream;
 }
 #[enum_dispatch(Protocol)]
 pub enum Protocols {
