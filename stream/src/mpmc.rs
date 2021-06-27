@@ -256,9 +256,6 @@ impl MpmcRingBufferStream {
         });
     }
 
-    fn on_io_error(&self, _err: Error) {
-        todo!();
-    }
     pub fn is_complete(&self) -> bool {
         self.done.load(Ordering::Acquire)
     }
