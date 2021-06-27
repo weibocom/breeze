@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use super::status::*;
 use super::{
     BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, IdAsyncRead, IdAsyncWrite,
-    Request, Response, RingBuffer, RingSlice,
+    Request, Response, RingBuffer, RingSlice, SeqOffset,
 };
 
 use protocol::Protocol;
@@ -36,8 +36,7 @@ pub struct MpmcRingBufferStream {
     seq_cids: Vec<CacheAligned<AtomicUsize>>,
 
     // 已经成功读取response的最小的offset，在ReadRrom里面使用
-    resp_read_offset: CacheAligned<AtomicUsize>,
-    resp_read_offset_ext: lockfree::map::Map<usize, usize>,
+    offset: CacheAligned<SeqOffset>,
 
     // 读取response时，返回最后一个包的最小长度
     min: usize,
@@ -64,8 +63,7 @@ impl MpmcRingBufferStream {
         Self {
             items: items,
             seq_cids: seq_cids,
-            resp_read_offset: CacheAligned(AtomicUsize::new(0)),
-            resp_read_offset_ext: Default::default(),
+            offset: CacheAligned(SeqOffset::from(parallel)),
             receiver: RefCell::new(Some(receiver)),
             senders: senders,
             min: min,
@@ -81,52 +79,13 @@ impl MpmcRingBufferStream {
             Poll::Ready(Ok(()))
         }
     }
-    fn update_response_read_offset(&self, start: usize, end: usize) {
-        for _i in 0..8 {
-            match self.resp_read_offset.0.compare_exchange(
-                start,
-                end,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => {
-                    println!(
-                        "poll read complete. response read offset update from {} to {}",
-                        start, end
-                    );
-                    return;
-                }
-                Err(_offset) => {}
-            }
-        }
-        //println!("{} -- offset not updated. start:{} end:{}", cid, start, end);
-        // slow
-        println!(
-            "poll read complete. response read offset insert into slow map{} to {}",
-            start, end
-        );
-        self.resp_read_offset_ext.insert(start, end);
-    }
     pub fn poll_read(&self, cid: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
         ready!(self.poll_check())?;
         //println!("poll read cid:{} ", cid);
         let item = unsafe { self.items.get_unchecked(cid) };
-        let filled = buf.filled().len();
-        if ready!(item.poll_read(cx, buf)) {
+        if ready!(item.poll_read(cx, buf, self.min)) {
             let (start, end) = item.response_slice();
-            self.update_response_read_offset(start, end);
-
-            let read = buf.filled().len() - filled;
-
-            if read < self.min {
-                return Poll::Ready(Err(Error::new(
-                    ErrorKind::Interrupted,
-                    format!(
-                        "read complete, but last response buffer is less than min. {} < {}",
-                        read, self.min
-                    ),
-                )));
-            }
+            self.offset.0.insert(start, end);
         }
         println!("mpmc poll read complete. data:{:?}", buf.filled());
         Poll::Ready(Ok(()))
@@ -306,27 +265,22 @@ impl MpmcRingBufferStream {
         });
     }
 
-    fn on_io_error(&self, _err: Error) {
-        todo!();
-    }
     pub fn is_complete(&self) -> bool {
         self.done.load(Ordering::Acquire)
     }
-    pub fn try_complete(&self) {}
+    // 在complete从true变成false的时候，需要将mpmc进行初始化。
+    // 满足以下所有条件之后，初始化返回成功
+    // 1. 所有item没有在处于waker在等待数据读取
+    // 2. 所有的状态都处于Init状态
+    // 3. 关闭senders的channel
+    // 4. 重新初始化senders与receivers
+    pub fn reset(&self) -> bool {
+        false
+    }
 }
 
 use super::RequestData;
 impl Request for Arc<MpmcRingBufferStream> {
-    //fn next(&self, id: usize) -> Option<RequestData> {
-    //    let offset = id & (self.items.len() - 1);
-    //    for i in offset..self.items.len() {
-    //        let data = unsafe { self.items.get_unchecked(i).request_data() };
-    //        if data.is_some() {
-    //            return data;
-    //        }
-    //    }
-    //    None
-    //}
     fn request_received(&self, id: usize, seq: usize) {
         self.bind_seq(id, seq);
     }
@@ -335,16 +289,7 @@ impl Response for Arc<MpmcRingBufferStream> {
     // 获取已经被全部读取的字节的位置
     #[inline]
     fn load_read_offset(&self) -> usize {
-        let mut offset = self.resp_read_offset.0.load(Ordering::Acquire);
-        let old = offset;
-        while let Some(removed) = self.resp_read_offset_ext.remove(&offset) {
-            offset = *removed.val();
-            println!("read offset loaded by map:{} ", offset);
-        }
-        if offset != old {
-            self.resp_read_offset.0.store(offset, Ordering::Release);
-        }
-        offset
+        self.offset.0.load()
     }
     // 在从response读取的数据后调用。
     fn on_response(&self, seq: usize, first: RingSlice) {

@@ -75,7 +75,8 @@ impl Item {
     // 有两种可能的状态。
     // Received, 说明之前从来没有poll过
     // Reponded: 有数据并且成功返回
-    pub fn poll_read(&self, cx: &mut Context, buf: &mut ReadBuf) -> Poll<bool> {
+    // last_min: 最后一次获取最少要保障last_min个字节。
+    pub fn poll_read(&self, cx: &mut Context, buf: &mut ReadBuf, last_min: usize) -> Poll<bool> {
         let status = self.status.load(Ordering::Acquire);
         if status != ItemStatus::ResponseReceived as u8 {
             // 进入waiting状态
