@@ -43,7 +43,7 @@ impl RequestData {
 }
 
 pub trait Request {
-    fn request_received(&self, id: usize, seq: usize);
+    fn on_received(&self, id: usize, seq: usize);
 }
 
 pub struct BridgeBufferToWriter<W> {
@@ -139,7 +139,7 @@ where
                 ready!(me.w.poll_put_slice(cx, data));
                 let seq = me.seq;
                 me.seq += 1;
-                me.r.request_received(req.id(), seq);
+                me.r.on_received(req.id(), seq);
                 println!(
                     "received data from bridge. len:{} id:{} seq:{}",
                     req.data().len(),
