@@ -77,7 +77,7 @@ where
         let mut writer = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Relaxed) {
             println!("bridage buffer to backend.");
-            let b = ready!(me.reader.poll_next(cx));
+            let b = ready!(me.reader.poll_next(cx))?;
             println!("bridage buffer to backend. len:{} ", b.len());
             let num = ready!(writer.as_mut().poll_write(cx, b))?;
             //me.cache.write_all(&b[..num]).unwrap();
@@ -136,7 +136,7 @@ where
                     req.id(),
                     req.data().len()
                 );
-                ready!(me.w.poll_put_slice(cx, data));
+                ready!(me.w.poll_put_slice(cx, data))?;
                 let seq = me.seq;
                 me.seq += 1;
                 me.r.on_received(req.id(), seq);
