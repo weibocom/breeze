@@ -1,7 +1,8 @@
 use std::cell::RefCell;
+use std::io::{Error, ErrorKind, Result};
 use std::ptr::copy_nonoverlapping as copy;
 use std::slice::from_raw_parts;
-use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
@@ -55,6 +56,7 @@ pub struct RingBuffer {
     read: CacheAligned<AtomicUsize>,
     write: CacheAligned<AtomicUsize>,
     waker_status: AtomicU8,
+    closed: AtomicBool,
     // 0: ReadPending, 1: WritePending
     wakers: [RefCell<Option<Waker>>; 2],
 }
@@ -66,7 +68,6 @@ impl RingBuffer {
         let ptr = data.as_mut_ptr();
         std::mem::forget(data);
 
-        //let (sender, receiver) = create();
         Self {
             data: ptr,
             len: cap,
@@ -74,6 +75,7 @@ impl RingBuffer {
             write: CacheAligned(AtomicUsize::new(0)),
             waker_status: AtomicU8::new(Status::Ok as u8),
             wakers: Default::default(),
+            closed: AtomicBool::new(false),
         }
     }
     pub fn into_split(self) -> (RingBufferWriter, RingBufferReader) {
@@ -93,7 +95,7 @@ impl RingBuffer {
             self.wakers[status as usize - 1]
                 .borrow_mut()
                 .take()
-                .unwrap()
+                .expect("waiting status must contain waker.")
                 .wake();
             debug_assert!(self.status_cas(Status::Lock, Status::Ok));
             return;
@@ -199,20 +201,28 @@ impl RingBufferWriter {
             true
         }
     }
-    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<()> {
+    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<Result<()>> {
         if self.put_slice(b) {
             self.buffer.notify(Status::ReadPending);
-            Poll::Ready(())
+            Poll::Ready(Ok(()))
         } else {
-            self.buffer.waiting(cx, Status::WritePending);
-            Poll::Pending
+            if !self.buffer.closed.load(Ordering::Acquire) {
+                self.buffer.waiting(cx, Status::WritePending);
+                Poll::Pending
+            } else {
+                // TODO 实际未写成功。
+                Poll::Ready(Err(Error::new(
+                    ErrorKind::BrokenPipe,
+                    "spsc buffer channel closed",
+                )))
+            }
         }
     }
 }
 impl Drop for RingBufferWriter {
     fn drop(&mut self) {
         // 唤醒读状态的waker
-        println!("ring buffer writer dropped");
+        self.buffer.closed.store(true, Ordering::Release);
         self.buffer.notify(Status::ReadPending);
     }
 }
@@ -261,12 +271,20 @@ impl RingBufferReader {
         self.buffer.notify(Status::WritePending);
     }
     // 没有数据进入waiting状态。等put唤醒
-    pub fn poll_next(&mut self, cx: &mut Context) -> Poll<&[u8]> {
+    pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Result<&[u8]>> {
         if let Some(data) = self.next() {
-            Poll::Ready(data)
+            Poll::Ready(Ok(data))
         } else {
-            self.buffer.waiting(cx, Status::ReadPending);
-            Poll::Pending
+            if !self.buffer.closed.load(Ordering::Acquire) {
+                self.buffer.waiting(cx, Status::ReadPending);
+                Poll::Pending
+            } else {
+                // TODO 实际未写成功。
+                Poll::Ready(Err(Error::new(
+                    ErrorKind::BrokenPipe,
+                    "spsc buffer channel closed",
+                )))
+            }
         }
     }
 }
@@ -275,6 +293,7 @@ impl Drop for RingBufferReader {
     fn drop(&mut self) {
         // 唤醒读状态的waker
         println!("ring buffer reader dropped");
+        self.buffer.closed.store(true, Ordering::Release);
         self.buffer.notify(Status::WritePending);
     }
 }
