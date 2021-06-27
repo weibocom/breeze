@@ -1,6 +1,7 @@
 mod meta;
 use std::usize;
 
+use crate::MetaStream;
 pub use meta::MemcacheBinaryMetaStream;
 
 pub const HEADER_LEN: usize = 24;
@@ -121,6 +122,9 @@ impl Protocol for MemcacheBinary {
         debug_assert_eq!(response.at(0), 0x81);
         // status 在字节的6、7两个字节
         response.at(6) == 0 && response.at(7) == 0
+    }
+    fn meta(&mut self, url: &str) -> MetaStream {
+        MetaStream::Mc(MemcacheBinaryMetaStream::from(url))
     }
 }
 
