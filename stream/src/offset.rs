@@ -58,7 +58,7 @@ mod offset_tests {
     use super::SeqOffset;
     #[test]
     fn test_seq_offset() {
-        let offset = SeqOffset::new();
+        let offset = SeqOffset::from(8);
         assert_eq!(0, offset.load());
         offset.insert(0, 8);
         assert_eq!(8, offset.load());

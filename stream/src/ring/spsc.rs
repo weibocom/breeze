@@ -209,6 +209,13 @@ impl RingBufferWriter {
         }
     }
 }
+impl Drop for RingBufferWriter {
+    fn drop(&mut self) {
+        // 唤醒读状态的waker
+        println!("ring buffer writer dropped");
+        self.buffer.notify(Status::ReadPending);
+    }
+}
 
 pub struct RingBufferReader {
     read: usize,
@@ -261,6 +268,14 @@ impl RingBufferReader {
             self.buffer.waiting(cx, Status::ReadPending);
             Poll::Pending
         }
+    }
+}
+
+impl Drop for RingBufferReader {
+    fn drop(&mut self) {
+        // 唤醒读状态的waker
+        println!("ring buffer reader dropped");
+        self.buffer.notify(Status::WritePending);
     }
 }
 
