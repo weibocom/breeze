@@ -1,5 +1,6 @@
 mod meta;
-use std::usize;
+
+use std::io::{Error, ErrorKind, Result};
 
 use crate::MetaStream;
 pub use meta::MemcacheBinaryMetaStream;
@@ -27,6 +28,9 @@ const COMMAND_IDX: [u8; 128] = [
 const NO_OP: [u8; 24] = [
     129, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
+
+const REQUEST_MAGIC: u8 = 0x80;
+
 pub struct MemcacheBinary {
     // 上一个完整读取完一个包的位置
     read: usize,
@@ -40,19 +44,8 @@ impl MemcacheBinary {
             op_router: MemcacheBinaryOpRoute {},
         }
     }
-}
-
-impl Protocol for MemcacheBinary {
-    #[inline(always)]
-    fn min_size(&self) -> usize {
-        HEADER_LEN
-    }
-    #[inline(always)]
-    fn min_last_response_size(&self) -> usize {
-        HEADER_LEN
-    }
     #[inline]
-    fn probe_request_eof(&mut self, req: &[u8]) -> (bool, usize) {
+    fn _probe_request(&mut self, req: &[u8]) -> (bool, usize) {
         while self.read as usize + HEADER_LEN <= req.len() {
             // 当前请求的body
             let total = body_len(&req[self.read as usize..]) as usize + HEADER_LEN;
@@ -69,6 +62,32 @@ impl Protocol for MemcacheBinary {
             }
         }
         (false, req.len())
+    }
+}
+
+impl Protocol for MemcacheBinary {
+    #[inline(always)]
+    fn min_size(&self) -> usize {
+        HEADER_LEN
+    }
+
+    #[inline(always)]
+    fn parse_request(&mut self, req: &[u8]) -> Result<(bool, usize)> {
+        debug_assert!(req.len() >= self.min_size());
+        if req[0] != REQUEST_MAGIC {
+            Err(Error::new(
+                ErrorKind::InvalidData,
+                "not a valid protocol, the magic number must be 0x80 on mc binary protocol",
+            ))
+        } else {
+            let (done, n) = self._probe_request(req);
+            Ok((done, n))
+        }
+    }
+
+    #[inline(always)]
+    fn min_last_response_size(&self) -> usize {
+        HEADER_LEN
     }
     // 调用方确保req是一个完整的mc的请求包。
     // 第二个字节是op_code。
