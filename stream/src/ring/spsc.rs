@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Result};
 use std::ptr::copy_nonoverlapping as copy;
 use std::slice::from_raw_parts;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use cache_line_size::CacheAligned;
-use std::result::Result;
 
 unsafe impl Send for RingBuffer {}
 unsafe impl Sync for RingBuffer {}
@@ -185,9 +184,9 @@ impl RingBufferWriter {
     // 写入b到buffer。
     // true: 写入成功，false：写入失败。
     // 要么全部成功，要么全部失败。不会写入部分字节
-    pub fn put_slice(&mut self, b: &[u8]) -> Result<usize, &'static str> {
+    pub fn put_slice(&mut self, b: &[u8]) -> Result<usize> {
         if self.closed {
-            return Err("Closed");
+            return Result::Err(Error::new(ErrorKind::BrokenPipe, "channel is closed"));
         }
         let read = self.buffer.read.0.load(Ordering::Acquire);
         let available = self.buffer.len - (self.write - read);
@@ -218,19 +217,21 @@ impl RingBufferWriter {
             Result::Ok(b.len())
         }
     }
-    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<(Result<usize, &'static str>)> {
+    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<(Result<usize>)> {
         let result = self.put_slice(b);
-        if result.is_ok() && result.unwrap() == 0 {
-            self.buffer.waiting(cx, Status::WritePending);
-            Poll::Pending
-        }
-        else {
-            if result.is_err() {
-                self.buffer.close();
+        if result.is_ok() {
+            let result_size = result.unwrap();
+            if result_size == 0 {
+                self.buffer.waiting(cx, Status::WritePending);
+                Poll::Pending
             }
             else {
                 self.buffer.notify(Status::ReadPending);
+                Poll::Ready((Result::Ok(result_size)))
             }
+        }
+        else {
+            self.buffer.close();
             Poll::Ready((result))
         }
     }
@@ -266,9 +267,9 @@ impl RingBufferReader {
         }
     }
     // 如果ringbuffer到达末尾，则只返回到末尾的slice
-    pub fn next(&self) -> Result<Option<&[u8]>, &'static str> {
+    pub fn next(&self) -> Result<Option<&[u8]>> {
         if self.close {
-            return Err("Closed");
+            return Err(Error::new(ErrorKind::BrokenPipe, "channel is closed"));
         }
         let write = self.buffer.write.0.load(Ordering::Acquire);
         if self.read == write {
@@ -297,11 +298,12 @@ impl RingBufferReader {
         self.buffer.notify(Status::WritePending);
     }
     // 没有数据进入waiting状态。等put唤醒
-    pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Result<&[u8], &'static str>> {
+    pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Result<&[u8]>> {
         let result = self.next();
         if result.is_ok() {
-            if result.unwrap().is_some() {
-                Poll::Ready(Result::Ok(result.unwrap().unwrap()))
+            let poll_result = result.unwrap();
+            if poll_result.is_some() {
+                Poll::Ready(Result::Ok(poll_result.unwrap()))
             }
             else {
                 self.buffer.waiting(cx, Status::ReadPending);
