@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
 use super::HEADER_LEN;
-use crate::chan::AsyncWriteAll;
+use crate::chan::{AsyncReadAll, AsyncWriteAll, ResponseItem};
 
 const NON_EXISTS: u8 = std::u8::MAX;
 
@@ -54,25 +54,18 @@ const VERSION: [u8; 29] = [
     0x81, 0x0b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x2e, 0x30, 0x2e, 0x31,
 ];
-impl AsyncRead for MemcacheBinaryMetaStream {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-        buf: &mut ReadBuf,
-    ) -> Poll<Result<()>> {
+impl AsyncReadAll for MemcacheBinaryMetaStream {
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<ResponseItem>> {
         let mut me = &mut *self;
-        let op = me.op;
-        if op == NON_EXISTS {
-            me.waker = Some(cx.waker().clone());
-            return Poll::Pending;
-        }
-        me.op = NON_EXISTS;
-        match op {
+        match me.op {
             0xb => {
-                buf.put_slice(&VERSION);
+                me.op = NON_EXISTS;
+                Poll::Ready(Ok(ResponseItem::from_slice(&VERSION)))
             }
-            _ => panic!("{} is not a valid meta operation", op),
+            _ => panic!("{} is not a valid meta operation", me.op),
         }
+    }
+    fn poll_done(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<()>> {
         Poll::Ready(Ok(()))
     }
 }

@@ -11,6 +11,8 @@ pub use slice::RingSlice;
 mod meta;
 pub use meta::MetaStream;
 
+pub use chan::ResponseItem;
+
 use enum_dispatch::enum_dispatch;
 
 #[enum_dispatch]
@@ -34,7 +36,7 @@ pub trait Protocol: Unpin + Clone + 'static + Unpin {
     // 解析当前请求是否结束。返回请求结束位置，如果请求
     // 包含EOF（类似于memcache协议中的END）则返回的位置不包含END信息。
     // 主要用来在进行multiget时，判断请求是否结束。
-    fn probe_response_eof(&self, partial_resp: &[u8]) -> (bool, usize);
+    fn trim_eof<T: AsRef<RingSlice>>(&self, response: T) -> usize;
     // 从response中解析出一个完成的response
     fn parse_response(&self, response: &RingSlice) -> (bool, usize);
     fn probe_response_found(&self, response: &[u8]) -> bool;

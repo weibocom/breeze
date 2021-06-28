@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use super::AsyncWriteAll;
+use super::{AsyncReadAll, AsyncWriteAll, ResponseItem};
 
 pub enum AsyncOperation<Get, Gets, Store, Meta> {
     Get(Get),
@@ -15,41 +15,45 @@ pub enum AsyncOperation<Get, Gets, Store, Meta> {
 
 impl<Get, Gets, Store, Meta> AsyncWriteAll for AsyncOperation<Get, Gets, Store, Meta>
 where
-    Get: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    Gets: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    Store: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    Meta: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
+    Get: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    Gets: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    Store: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    Meta: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
 {
 }
 
-impl<Get, Gets, Store, Meta> AsyncRead for AsyncOperation<Get, Gets, Store, Meta>
+impl<Get, Gets, Store, Meta> AsyncReadAll for AsyncOperation<Get, Gets, Store, Meta>
 where
-    Get: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    Gets: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    Store: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    Meta: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
+    Get: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    Gets: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    Store: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    Meta: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
 {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-        buf: &mut ReadBuf,
-    ) -> Poll<Result<()>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
         let me = &mut *self;
         match me {
-            Self::Get(ref mut s) => Pin::new(s).poll_read(cx, buf),
-            Self::Gets(ref mut s) => Pin::new(s).poll_read(cx, buf),
-            //       Self::GetThrough(ref mut s) => Pin::new(s).poll_read(cx, buf),
-            Self::Store(ref mut s) => Pin::new(s).poll_read(cx, buf),
-            Self::Meta(ref mut s) => Pin::new(s).poll_read(cx, buf),
+            Self::Get(ref mut s) => Pin::new(s).poll_next(cx),
+            Self::Gets(ref mut s) => Pin::new(s).poll_next(cx),
+            Self::Store(ref mut s) => Pin::new(s).poll_next(cx),
+            Self::Meta(ref mut s) => Pin::new(s).poll_next(cx),
+        }
+    }
+    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+        let me = &mut *self;
+        match me {
+            Self::Get(ref mut s) => Pin::new(s).poll_done(cx),
+            Self::Gets(ref mut s) => Pin::new(s).poll_done(cx),
+            Self::Store(ref mut s) => Pin::new(s).poll_done(cx),
+            Self::Meta(ref mut s) => Pin::new(s).poll_done(cx),
         }
     }
 }
 impl<Get, Gets, Store, Meta> AsyncWrite for AsyncOperation<Get, Gets, Store, Meta>
 where
-    Get: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    Gets: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    Store: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    Meta: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
+    Get: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    Gets: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    Store: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    Meta: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
 {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
         let me = &mut *self;

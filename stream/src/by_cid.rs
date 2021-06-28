@@ -4,16 +4,21 @@ use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use tokio::io::ReadBuf;
+use protocol::ResponseItem;
 
+use enum_dispatch::enum_dispatch;
+
+#[enum_dispatch]
 pub trait IdAsyncRead {
-    fn poll_read(&self, id: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>>;
+    fn poll_next(&self, id: usize, cx: &mut Context) -> Poll<Result<ResponseItem>>;
+    fn poll_done(&self, id: usize, cx: &mut Context) -> Poll<Result<()>>;
 }
 pub trait IdAsyncWrite {
     fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>>;
     fn poll_shutdown(&self, id: usize, cx: &mut Context) -> Poll<Result<()>>;
 }
 
+#[enum_dispatch(IdAsyncRead, IdAsyncWrite)]
 pub enum IdStream {
     Mpsc(Arc<RingBufferStream>),
     NotConnected(NotConnected),
@@ -25,30 +30,30 @@ impl IdStream {
     }
 }
 
-impl IdAsyncRead for IdStream {
-    fn poll_read(&self, id: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
-        match self {
-            IdStream::Mpsc(stream) => stream.poll_read(id, cx, buf),
-            // TODO 记录一次异常
-            IdStream::NotConnected(stream) => stream.poll_read(id, cx, buf),
-        }
-    }
-}
+//impl IdAsyncRead for IdStream {
+//    fn poll_done(&self, id: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
+//        match self {
+//            IdStream::Mpsc(stream) => stream.poll_read(id, cx, buf),
+//            // TODO 记录一次异常
+//            IdStream::NotConnected(stream) => stream.poll_read(id, cx, buf),
+//        }
+//    }
+//}
 
-impl IdAsyncWrite for IdStream {
-    fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
-        match self {
-            IdStream::Mpsc(stream) => stream.poll_write(id, cx, buf),
-            IdStream::NotConnected(stream) => stream.poll_write(id, cx, buf),
-        }
-    }
-    fn poll_shutdown(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
-        match self {
-            IdStream::Mpsc(stream) => stream.poll_shutdown(id, cx),
-            IdStream::NotConnected(stream) => stream.poll_shutdown(id, cx),
-        }
-    }
-}
+//impl IdAsyncWrite for IdStream {
+//    fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
+//        match self {
+//            IdStream::Mpsc(stream) => stream.poll_write(id, cx, buf),
+//            IdStream::NotConnected(stream) => stream.poll_write(id, cx, buf),
+//        }
+//    }
+//    fn poll_shutdown(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
+//        match self {
+//            IdStream::Mpsc(stream) => stream.poll_shutdown(id, cx),
+//            IdStream::NotConnected(stream) => stream.poll_shutdown(id, cx),
+//        }
+//    }
+//}
 
 pub struct NotConnected;
 
@@ -58,8 +63,17 @@ impl NotConnected {
     }
 }
 impl IdAsyncRead for NotConnected {
-    fn poll_read(&self, _id: usize, _cx: &mut Context, _buf: &mut ReadBuf) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
+    fn poll_next(&self, _id: usize, _cx: &mut Context) -> Poll<Result<ResponseItem>> {
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "id read from not connected id-stream",
+        )))
+    }
+    fn poll_done(&self, _id: usize, _cx: &mut Context) -> Poll<Result<()>> {
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "id done from not connected id-stream",
+        )))
     }
 }
 
