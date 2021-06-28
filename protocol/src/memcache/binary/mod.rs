@@ -126,15 +126,6 @@ impl Protocol for MemcacheBinary {
         (response.available() >= len, len)
     }
 
-    // 请求命中，status为0，否则部位0
-    fn probe_response_succeed_rs(&self, response: &RingSlice) -> bool {
-        if response.available() < HEADER_LEN {
-            return false;
-        }
-        debug_assert_eq!(response.at(0), 0x81);
-        // status 在字节的6、7两个字节
-        response.at(6) == 0 && response.at(7) == 0
-    }
     fn meta(&self, url: &str) -> MetaStream {
         MetaStream::Mc(MemcacheBinaryMetaStream::from(url))
     }
