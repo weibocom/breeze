@@ -138,56 +138,50 @@ impl ListenerIter {
     // 扫描self.pah，获取该目录下所有不以.sock结尾，符合格式的文件作为服务配置进行解析。
     // 不以.sock结尾，由'@'字符分隔成一个Quard的配置。一个标准的服务配置文件名为
     // 如果对应的文件已经存在 $name.sock。那说明有其他进程侦听了该服务
-    pub async fn next(&mut self) -> Option<Quadruple> {
-        match self.read_all().await {
-            Err(e) => {
-                println!("read service names failed:{:?}", e);
-                None
+    pub async fn scan(&mut self) -> Result<Vec<Quadruple>> {
+        let mut listeners = vec![];
+        for name in self.read_all().await?.iter() {
+            if self.listened.contains_key(name) {
+                continue;
             }
-            Ok(names) => {
-                for name in names.iter() {
-                    if self.listened.contains_key(name) {
-                        continue;
-                    }
-                    // 如果是sock文件，说明有其他进程listen了该服务。
-                    if self.is_sock(name) {
-                        continue;
-                    }
+            // 如果是sock文件，说明有其他进程listen了该服务。
+            if self.is_sock(name) {
+                continue;
+            }
 
-                    let mut orig = None;
-                    let mut sock = self.sock_name(name);
-                    // 对应的sock已经存在，但又不是升级。
-                    if self.is_sock_exists(&sock) {
-                        if !self.upgrade {
-                            println!("{} listened by other process, but current process is not in upgrade mode. ", sock);
-                            continue;
-                        }
-                        // 升级模式。
-                        orig = Some(sock);
-                        sock = self.sock_name_upgrade(&name);
-                    }
-                    if let Some((service, protocol, backend)) = self.parse(name) {
-                        return Some(Quadruple::from(
-                            name.to_owned(),
-                            service,
-                            "unix".to_owned(),
-                            protocol,
-                            backend,
-                            self.snapshot.to_string(),
-                            sock,
-                            orig,
-                        ));
-                    } else {
-                        println!(
-                            "{} is not a valid service or processed by other processor",
-                            name
-                        );
-                        continue;
-                    }
+            let mut orig = None;
+            let mut sock = self.sock_name(name);
+            // 对应的sock已经存在，但又不是升级。
+            if self.is_sock_exists(&sock) {
+                if !self.upgrade {
+                    println!("{} listened by other process, but current process is not in upgrade mode. ", sock);
+                    continue;
                 }
-                None
+                // 升级模式。
+                orig = Some(sock);
+                sock = self.sock_name_upgrade(&name);
+            }
+            if let Some((service, protocol, backend)) = self.parse(name) {
+                let one = Quadruple::from(
+                    name.to_owned(),
+                    service,
+                    "unix".to_owned(),
+                    protocol,
+                    backend,
+                    self.snapshot.to_string(),
+                    sock,
+                    orig,
+                );
+                listeners.push(one);
+            } else {
+                println!(
+                    "{} is not a valid service or processed by other processor",
+                    name
+                );
+                continue;
             }
         }
+        Ok(listeners)
     }
     // service@protocol@backend_type
     // service: 服务名称

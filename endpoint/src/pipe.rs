@@ -14,7 +14,8 @@ impl<P> Pipe<P> {
     #[inline]
     pub async fn from_discovery<D>(_p: P, discovery: D) -> Result<Self>
     where
-        D: ServiceDiscover<Topology>,
+        D: ServiceDiscover<Topology<P>>,
+        P: Default,
     {
         let addr = discovery.do_with(|_t| "127.0.0.1:11211".to_owned());
         let stream = TcpStream::connect(addr).await?;
@@ -58,18 +59,34 @@ where
 
 use super::Topology;
 #[derive(Clone, Default)]
-pub struct PipeTopology {}
-impl discovery::Topology for PipeTopology {
+pub struct PipeTopology<P> {
+    _mark: std::marker::PhantomData<P>,
+}
+
+impl<P> discovery::Topology for PipeTopology<P>
+where
+    P: Clone + Default,
+{
     fn update(&mut self, _cfg: &str, _name: &str) {
         todo!()
     }
 }
-impl left_right::Absorb<(String, String)> for PipeTopology {
+impl<P> left_right::Absorb<(String, String)> for PipeTopology<P>
+where
+    P: Default + Clone,
+{
     fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
         discovery::Topology::update(self, &cfg.0, &cfg.1);
-        //self.update(&cfg.0, &cfg.1);
     }
     fn sync_with(&mut self, first: &Self) {
         *self = first.clone();
+    }
+}
+
+impl<P> From<P> for PipeTopology<P> {
+    fn from(_parser: P) -> Self {
+        Self {
+            _mark: Default::default(),
+        }
     }
 }

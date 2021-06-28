@@ -1,12 +1,12 @@
 use std::cell::RefCell;
+use std::io::{Error, ErrorKind};
 use std::ptr::copy_nonoverlapping as copy;
 use std::slice::from_raw_parts;
-use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use cache_line_size::CacheAligned;
-use std::io::{Error, ErrorKind};
 use std::result::Result;
 
 unsafe impl Send for RingBuffer {}
@@ -59,6 +59,7 @@ pub struct RingBuffer {
     read: CacheAligned<AtomicUsize>,
     write: CacheAligned<AtomicUsize>,
     waker_status: AtomicU8,
+    closed: AtomicBool,
     // 0: ReadPending, 1: WritePending
     wakers: [RefCell<Option<Waker>>; 2],
 }
@@ -70,7 +71,6 @@ impl RingBuffer {
         let ptr = data.as_mut_ptr();
         std::mem::forget(data);
 
-        //let (sender, receiver) = create();
         Self {
             data: ptr,
             len: cap,
@@ -78,6 +78,7 @@ impl RingBuffer {
             write: CacheAligned(AtomicUsize::new(0)),
             waker_status: AtomicU8::new(Status::Ok as u8),
             wakers: Default::default(),
+            closed: AtomicBool::new(false),
         }
     }
     pub fn into_split(self) -> (RingBufferWriter, RingBufferReader) {
@@ -103,7 +104,7 @@ impl RingBuffer {
             self.wakers[status as usize - 1]
                 .borrow_mut()
                 .take()
-                .unwrap()
+                .expect("waiting status must contain waker.")
                 .wake();
             debug_assert!(self.status_cas(Status::Lock, Status::Ok));
             return;
@@ -239,6 +240,13 @@ impl RingBufferWriter {
         self.buffer.close();
     }
 }
+impl Drop for RingBufferWriter {
+    fn drop(&mut self) {
+        // 唤醒读状态的waker
+        self.buffer.closed.store(true, Ordering::Release);
+        self.buffer.notify(Status::ReadPending);
+    }
+}
 
 pub struct RingBufferReader {
     read: usize,
@@ -304,6 +312,15 @@ impl RingBufferReader {
             self.buffer.close();
             Poll::Ready(Result::Err(result.unwrap_err()))
         }
+    }
+}
+
+impl Drop for RingBufferReader {
+    fn drop(&mut self) {
+        // 唤醒读状态的waker
+        println!("ring buffer reader dropped");
+        self.buffer.closed.store(true, Ordering::Release);
+        self.buffer.notify(Status::WritePending);
     }
 }
 
