@@ -14,7 +14,7 @@ pub use meta::MetaStream;
 use enum_dispatch::enum_dispatch;
 
 #[enum_dispatch]
-pub trait Protocol: Unpin {
+pub trait Protocol: Unpin + Clone + 'static + Unpin {
     // 一个请求包的最小的字节数
     fn min_size(&self) -> usize;
     // 从response读取buffer时，可能读取多次。
@@ -42,6 +42,7 @@ pub trait Protocol: Unpin {
     fn meta(&self, url: &str) -> MetaStream;
 }
 #[enum_dispatch(Protocol)]
+#[derive(Clone)]
 pub enum Protocols {
     Mc(memcache::Memcache),
 }
@@ -51,14 +52,6 @@ impl Protocols {
         match name {
             "mc" | "memcache" | "memcached" => Some(Self::Mc(memcache::Memcache::new())),
             _ => None,
-        }
-    }
-}
-
-impl Clone for Protocols {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Mc(_) => Self::Mc(memcache::Memcache::new()),
         }
     }
 }

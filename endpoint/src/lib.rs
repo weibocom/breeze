@@ -12,15 +12,9 @@ macro_rules! define_endpoint {
 
        #[derive(Clone)]
        pub enum Topology<P> {
-            Empty(P),
             $($item($top<P>)),+
        }
 
-       //impl<P> Default for Topology<P> where P:Default{
-       //    fn default() -> Self {
-       //        Topology::Empty(Default::default())
-       //    }
-       //}
        impl<P> Topology<P>  {
            pub fn from(parser:P, endpoint:String) -> Option<Self> {
                 match &endpoint[..]{
@@ -34,9 +28,6 @@ macro_rules! define_endpoint {
            fn update(&mut self, cfg: &str, name: &str) {
                match self {
                     $(Self::$item(s) => discovery::Topology::update(s, cfg, name),)+
-                   Self::Empty(_) => {
-                        println!("empty topology request received");
-                   }
                }
            }
        }
@@ -47,13 +38,13 @@ macro_rules! define_endpoint {
         }
 
         impl<P> Endpoint<P>  {
-            pub async fn from_discovery<D>(name: &str, p:P, discovery:D) -> Result<Self>
+            pub async fn from_discovery<D>(name: &str, p:P, discovery:D) -> Result<Option<Self>>
                 where D: ServiceDiscover<Topology<P>> + Unpin + 'static,
-                P:protocol::Protocol+Clone ,
+                P:protocol::Protocol,
             {
                 match name {
-                    $($ep => Ok(Self::$item($type_name::from_discovery(p, discovery).await?)),)+
-                    _ => panic!("not supported endpoint name"),
+                    $($ep => Ok(Some(Self::$item($type_name::from_discovery(p, discovery).await?))),)+
+                    _ => Ok(None),
                 }
             }
         }
