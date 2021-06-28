@@ -9,17 +9,19 @@ pub struct AsyncMultiGet<S, P> {
     // 当前从哪个shard开始发送请求
     idx: usize,
     // 成功发送请求的shards
-    writes: Vec<usize>,
+    writes: Vec<bool>,
     shards: Vec<S>,
     parser: P,
 }
 
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use crate::chan::AsyncWriteAll;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+use futures::ready;
 
 impl<S, P> AsyncWriteAll for AsyncMultiGet<S, P> {}
 
@@ -27,7 +29,7 @@ impl<S, P> AsyncMultiGet<S, P> {
     pub fn from_shard(shards: Vec<S>, p: P) -> Self {
         Self {
             idx: 0,
-            writes: vec![0; shards.len()],
+            writes: vec![false; shards.len()],
             shards: shards,
             parser: p,
         }
@@ -46,19 +48,21 @@ where
         let mut success = false;
         let mut last_err = None;
         for i in offset..me.shards.len() {
-            match Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_write(cx, buf) {
-                Poll::Pending => return Poll::Pending,
-                Poll::Ready(Err(e)) => last_err = Some(e),
+            me.writes[i] = false;
+            match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_write(cx, buf)) {
+                Err(e) => last_err = Some(e),
                 _ => success = true,
             }
-            me.writes[me.idx] = i;
+            me.writes[i] = true;
             me.idx += 1;
         }
         me.idx = 0;
         if success {
             Poll::Ready(Ok(buf.len()))
         } else {
-            Poll::Ready(Err(last_err.expect("no error found")))
+            Poll::Ready(Err(last_err.unwrap_or_else(|| {
+                Error::new(ErrorKind::Other, "no request sent.")
+            })))
         }
     }
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
@@ -66,33 +70,34 @@ where
         // poll_flush是幂等的
         let me = &mut *self;
         let mut last_err = None;
-        for &i in me.writes.iter() {
-            match Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_flush(cx) {
-                Poll::Pending => return Poll::Pending,
-                Poll::Ready(Err(e)) => last_err = Some(e),
-                _ => {}
+        for (i, &success) in me.writes.iter().enumerate() {
+            if success {
+                match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_flush(cx)) {
+                    Err(e) => last_err = Some(e),
+                    _ => {}
+                }
             }
         }
-        if let Some(e) = last_err {
-            Poll::Ready(Err(e))
-        } else {
-            Poll::Ready(Ok(()))
+        match last_err {
+            Some(e) => Poll::Ready(Err(e)),
+            _ => Poll::Ready(Ok(())),
         }
     }
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         let me = &mut *self;
         let mut last_err = None;
-        for s in me.shards.iter_mut() {
-            match Pin::new(s).poll_shutdown(cx) {
-                Poll::Pending => return Poll::Pending,
-                Poll::Ready(Err(e)) => last_err = Some(e),
-                _ => {}
+        for (i, &success) in me.writes.iter().enumerate() {
+            if success {
+                match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_shutdown(cx))
+                {
+                    Err(e) => last_err = Some(e),
+                    _ => {}
+                }
             }
         }
-        if let Some(e) = last_err {
-            Poll::Ready(Err(e))
-        } else {
-            Poll::Ready(Ok(()))
+        match last_err {
+            Some(e) => Poll::Ready(Err(e)),
+            _ => Poll::Ready(Ok(())),
         }
     }
 }
@@ -112,33 +117,35 @@ where
         let mut last_err = None;
         let offset = me.idx;
         let mut eof_len = 0;
-        for &i in me.writes[offset..].iter() {
-            let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(i) });
-            let mut c_done = false;
-            while !c_done {
-                match r.as_mut().poll_read(cx, buf) {
-                    Poll::Pending => {
-                        // 如果有数据获取，则返回数据。触发下一次获取。
-                        // 如果未获取到数据，则pending
-                        return if buf.filled().len() == 0 {
-                            Poll::Pending
-                        } else {
-                            Poll::Ready(Ok(()))
-                        };
-                    }
-                    Poll::Ready(Err(e)) => {
-                        c_done = true;
-                        last_err = Some(e)
-                    }
-                    Poll::Ready(Ok(())) => {
-                        success = true;
-                        // 检查当前请求是否包含请求的结束
-                        let filled = buf.filled().len();
-                        let (done, n) = me.parser.probe_response_eof(buf.filled());
-                        if done {
+        for i in offset..me.shards.len() {
+            if me.writes[i] {
+                let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(i) });
+                let mut c_done = false;
+                while !c_done {
+                    match r.as_mut().poll_read(cx, buf) {
+                        Poll::Pending => {
+                            // 如果有数据获取，则返回数据。触发下一次获取。
+                            // 如果未获取到数据，则pending
+                            return if buf.filled().len() == 0 {
+                                Poll::Pending
+                            } else {
+                                Poll::Ready(Ok(()))
+                            };
+                        }
+                        Poll::Ready(Err(e)) => {
                             c_done = true;
-                            eof_len = filled - n;
-                            buf.set_filled(n);
+                            last_err = Some(e)
+                        }
+                        Poll::Ready(Ok(())) => {
+                            success = true;
+                            // 检查当前请求是否包含请求的结束
+                            let filled = buf.filled().len();
+                            let (done, n) = me.parser.probe_response_eof(buf.filled());
+                            if done {
+                                c_done = true;
+                                eof_len = filled - n;
+                                buf.set_filled(n);
+                            }
                         }
                     }
                 }
@@ -151,7 +158,9 @@ where
             buf.advance(eof_len);
             Poll::Ready(Ok(()))
         } else {
-            Poll::Ready(Err(last_err.expect("no error found")))
+            Poll::Ready(Err(last_err.unwrap_or_else(|| {
+                Error::new(ErrorKind::Other, "all poll read failed")
+            })))
         }
     }
 }

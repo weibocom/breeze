@@ -6,17 +6,9 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use super::AsyncWriteAll;
 
-pub enum AsyncOperation<Get, Gets, Store, Meta>
-//where
-//    Get: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-//    Gets: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-//    //GetThrough: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-//    Store: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-//    Meta: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-{
+pub enum AsyncOperation<Get, Gets, Store, Meta> {
     Get(Get),
     Gets(Gets),
-    //    GetThrough(GetThrough),
     Store(Store),
     Meta(Meta),
 }
@@ -25,7 +17,6 @@ impl<Get, Gets, Store, Meta> AsyncWriteAll for AsyncOperation<Get, Gets, Store, 
 where
     Get: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     Gets: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    //GetThrough: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     Store: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     Meta: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
 {
@@ -35,7 +26,6 @@ impl<Get, Gets, Store, Meta> AsyncRead for AsyncOperation<Get, Gets, Store, Meta
 where
     Get: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     Gets: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    //GetThrough: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     Store: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     Meta: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
 {
@@ -58,7 +48,6 @@ impl<Get, Gets, Store, Meta> AsyncWrite for AsyncOperation<Get, Gets, Store, Met
 where
     Get: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     Gets: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
-    //GetThrough: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     Store: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
     Meta: AsyncRead + AsyncWrite + AsyncWriteAll + Unpin,
 {
@@ -67,7 +56,6 @@ where
         match me {
             Self::Get(ref mut s) => Pin::new(s).poll_write(cx, buf),
             Self::Gets(ref mut s) => Pin::new(s).poll_write(cx, buf),
-            //       Self::GetThrough(ref mut s) => Pin::new(s).poll_write(cx, buf),
             Self::Store(ref mut s) => Pin::new(s).poll_write(cx, buf),
             Self::Meta(ref mut s) => Pin::new(s).poll_write(cx, buf),
         }
@@ -77,7 +65,6 @@ where
         match me {
             Self::Get(ref mut s) => Pin::new(s).poll_flush(cx),
             Self::Gets(ref mut s) => Pin::new(s).poll_flush(cx),
-            //      Self::GetThrough(ref mut s) => Pin::new(s).poll_flush(cx),
             Self::Store(ref mut s) => Pin::new(s).poll_flush(cx),
             Self::Meta(ref mut s) => Pin::new(s).poll_flush(cx),
         }
@@ -87,7 +74,6 @@ where
         match me {
             Self::Get(ref mut s) => Pin::new(s).poll_shutdown(cx),
             Self::Gets(ref mut s) => Pin::new(s).poll_shutdown(cx),
-            //     Self::GetThrough(ref mut s) => Pin::new(s).poll_shutdown(cx),
             Self::Store(ref mut s) => Pin::new(s).poll_shutdown(cx),
             Self::Meta(ref mut s) => Pin::new(s).poll_shutdown(cx),
         }
