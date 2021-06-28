@@ -30,11 +30,12 @@ const NO_OP: [u8; 24] = [
 
 const REQUEST_MAGIC: u8 = 0x80;
 
-pub struct MemcacheBinary {}
+#[derive(Clone)]
+pub struct MemcacheBinary;
 
 impl MemcacheBinary {
     pub fn new() -> Self {
-        MemcacheBinary {}
+        MemcacheBinary
     }
     #[inline]
     fn _probe_request(&self, req: &[u8]) -> (bool, usize) {
