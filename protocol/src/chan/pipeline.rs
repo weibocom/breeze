@@ -71,7 +71,10 @@ where
                 me.w_buf.put_slice(buf);
                 &me.w_buf
             };
-            let (done, n) = me.parser.probe_request_eof(req);
+            let (done, n) = match me.parser.parse_request(req) {
+                Ok((done, n)) => (done, n),
+                Err(e) => return Poll::Ready(Err(e)),
+            };
             offset += n - start;
             debug_assert!(n > 0);
             if !done {

@@ -1,5 +1,8 @@
 //mod controller;
 //pub use controller::{Controller, GroupStream};
+//
+
+use std::io::Result;
 
 pub mod chan;
 pub mod memcache;
@@ -21,7 +24,7 @@ pub trait Protocol: Unpin {
     // 当前请求是否结束。
     // 一个请求在req中的第多少个字节结束。
     // req包含的是一个完整的请求。
-    fn probe_request_eof(&mut self, req: &[u8]) -> (bool, usize);
+    fn parse_request(&mut self, req: &[u8]) -> Result<(bool, usize)>;
     // 按照op来进行路由，通常用于读写分离
     fn op_route(&mut self, req: &[u8]) -> usize;
     // 调用方必须确保req包含key，否则可能会panic
