@@ -1,0 +1,127 @@
+use std::io::Result;
+
+pub mod chan;
+pub mod memcache;
+mod slice;
+pub use slice::RingSlice;
+mod meta;
+pub use meta::MetaStream;
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use enum_dispatch::enum_dispatch;
+
+#[enum_dispatch]
+pub trait Protocol: Unpin + 'static + Unpin {
+    // 一个请求包的最小的字节数
+    fn min_size(&self) -> usize;
+    // 从response读取buffer时，可能读取多次。
+    // 限制最后一个包最小返回长度。
+    fn min_last_response_size(&self) -> usize;
+    // parse会被一直调用，直到返回true.
+    // 当前请求是否结束。
+    // 一个请求在req中的第多少个字节结束。
+    // req包含的是一个完整的请求。
+    fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)>;
+    // 按照op来进行路由，通常用于读写分离
+    fn op_route(&self, req: &[u8]) -> usize;
+    // 调用方必须确保req包含key，否则可能会panic
+    fn key<'a>(&self, req: &'a [u8]) -> &'a [u8];
+    fn keys<'a>(&self, req: &'a [u8]) -> Vec<&'a [u8]>;
+    fn build_gets_cmd(&self, keys: Vec<&[u8]>) -> Vec<u8>;
+    // 主要用来在进行multiget时，截断不同sharding请求的eof，方便进行合并。
+    fn eof_size(&self) -> usize;
+    fn parse_response(&self, response: &RingSlice) -> (bool, usize);
+    fn probe_response_found(&self, first_part_response: &[u8]) -> bool;
+    fn meta(&self, url: &str) -> MetaStream;
+}
+
+pub trait Sizable {
+    // 已经成功写入的请求的数量
+    fn req_num(&self) -> usize;
+    // 最后一次response的字节的数量
+    fn response_num(&self) -> usize;
+}
+
+#[enum_dispatch(Protocol)]
+#[derive(Clone)]
+pub enum Protocols {
+    Mc(memcache::Memcache),
+}
+
+impl Protocols {
+    pub fn from(name: &str) -> Option<Self> {
+        match name {
+            "mc" | "memcache" | "memcached" => Some(Self::Mc(memcache::Memcache::new())),
+            _ => None,
+        }
+    }
+}
+
+pub struct ProtocolWrapper<P> {
+    inner: P,
+
+    // 最近一次请求的response长度
+    last_response_bytes: AtomicUsize,
+    reqs: AtomicUsize,
+}
+
+impl<P> Protocol for ProtocolWrapper<P>
+where
+    P: Protocol,
+{
+    fn min_size(&self) -> usize {
+        self.inner.min_size()
+    }
+    fn min_last_response_size(&self) -> usize {
+        self.inner.min_last_response_size()
+    }
+    fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)> {
+        self.inner.parse_request(req).map(|(done, size)| {
+            if done {
+                self.reqs.fetch_add(1, Ordering::AcqRel);
+            }
+            (done, size)
+        })
+    }
+    // 按照op来进行路由，通常用于读写分离
+    fn op_route(&self, req: &[u8]) -> usize {
+        self.op_route(req)
+    }
+    // 调用方必须确保req包含key，否则可能会panic
+    fn key<'a>(&self, req: &'a [u8]) -> &'a [u8] {
+        self.inner.key(req)
+    }
+    fn keys<'a>(&self, req: &'a [u8]) -> Vec<&'a [u8]> {
+        self.inner.keys(req)
+    }
+    fn build_gets_cmd(&self, keys: Vec<&[u8]>) -> Vec<u8> {
+        self.inner.build_gets_cmd(keys)
+    }
+    // 主要用来在进行multiget时，截断不同sharding请求的eof，方便进行合并。
+    fn eof_size(&self) -> usize {
+        self.inner.eof_size()
+    }
+    fn parse_response(&self, response: &RingSlice) -> (bool, usize) {
+        let (done, size) = self.inner.parse_response(response);
+        if done {
+            self.last_response_bytes.store(size, Ordering::Release);
+        }
+        (done, size)
+    }
+    fn probe_response_found(&self, first_part_response: &[u8]) -> bool {
+        self.inner.probe_response_found(first_part_response)
+    }
+    fn meta(&self, url: &str) -> MetaStream {
+        self.inner.meta(url)
+    }
+}
+
+impl<P> Sizable for ProtocolWrapper<P> {
+    fn req_num(&self) -> usize {
+        self.reqs.load(Ordering::Acquire)
+    }
+    fn response_bytes(&self) -> usize {
+        self.last_response_bytes.load(Ordering::Acquire)
+    }
+}

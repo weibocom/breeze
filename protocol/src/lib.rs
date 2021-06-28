@@ -35,8 +35,7 @@ pub trait Protocol: Unpin + Clone + 'static + Unpin {
     // 包含EOF（类似于memcache协议中的END）则返回的位置不包含END信息。
     // 主要用来在进行multiget时，判断请求是否结束。
     fn probe_response_eof(&self, partial_resp: &[u8]) -> (bool, usize);
-    // 解析响应是否命中
-    fn probe_response_succeed_rs(&self, response: &RingSlice) -> bool;
+    // 从response中解析出一个完成的response
     fn parse_response(&self, response: &RingSlice) -> (bool, usize);
     fn probe_response_found(&self, response: &[u8]) -> bool;
     fn meta(&self, url: &str) -> MetaStream;
