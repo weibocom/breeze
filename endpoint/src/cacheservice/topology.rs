@@ -1,21 +1,21 @@
 use stream::{BackendBuilder, Cid, RingBufferStream};
 
-use protocol::memcache::MemcacheResponseParser;
-
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use protocol::Protocol;
+
 use tokio::net::tcp::OwnedWriteHalf;
 
 type BackendStream = stream::BackendStream<Arc<RingBufferStream>, Cid>;
 
-unsafe impl Send for Topology {}
-unsafe impl Sync for Topology {}
+unsafe impl<P> Send for Topology<P> {}
+unsafe impl<P> Sync for Topology<P> {}
 
 #[derive(Default)]
-pub struct Topology {
+pub struct Topology<P> {
     pub(crate) hash: String, // hash策略
     // 最后一个元素是slave，倒数第二个元素是master，剩下的是l1.
     // 为了方便遍历
@@ -31,6 +31,8 @@ pub struct Topology {
     pub(crate) readers: Vec<Vec<String>>,
     get_streams: HashMap<String, Arc<BackendBuilder>>,
     gets_streams: HashMap<String, Arc<BackendBuilder>>,
+
+    parser: P,
 }
 
 // 用来测试的一组配置, ip都是127.0.0.1
@@ -38,7 +40,7 @@ pub struct Topology {
 // followers: 11213, 11214; 11215, 11216;
 // l1: 11213, 11214; 11215, 11216
 // 没有slave
-impl Topology {
+impl<P> Topology<P> {
     pub fn master(&self) -> Vec<BackendStream> {
         self.masters
             .iter()
@@ -117,18 +119,22 @@ impl Topology {
     }
     // 添加新增的stream
     fn add_new(
+        parser: &P,
         addrs: &[String],
         streams: &mut HashMap<String, Arc<BackendBuilder>>,
         req: usize,
         resp: usize,
         parallel: usize,
         ignore: bool,
-    ) {
+    ) where
+        P: Send + Sync + Protocol + Default + 'static + Clone,
+    {
         for addr in addrs {
             if !streams.contains_key(addr) {
                 streams.insert(
                     addr.to_string(),
-                    BackendBuilder::from_with_response::<MemcacheResponseParser>(
+                    BackendBuilder::from_with_response(
+                        parser.clone(),
                         addr.to_string(),
                         req,
                         resp,
@@ -148,7 +154,11 @@ impl Topology {
         self.hash = hash;
     }
 
-    fn update(&mut self, cfg: &str, name: &str) {
+    fn update(&mut self, cfg: &str, name: &str)
+    where
+        P: Send + Sync + Protocol + Default + 'static + Clone,
+    {
+        let p = self.parser.clone();
         let idx = name.find(':').unwrap_or(name.len());
         if idx == 0 || idx >= name.len() - 1 {
             println!("not a valid cache service name:{} no namespace found", name);
@@ -169,25 +179,28 @@ impl Topology {
 
         let kb = 1024;
         let mb = 1024 * 1024;
-        let p = 16;
+        let c = 16;
         Self::delete_non_exists(&self.masters, &mut self.m_streams);
-        Self::add_new(&self.masters, &mut self.m_streams, mb, kb, p, false);
+        Self::add_new(&p, &self.masters, &mut self.m_streams, mb, kb, c, false);
 
         let followers: Vec<String> = self.followers.clone().into_iter().flatten().collect();
         Self::delete_non_exists(&followers, &mut self.f_streams);
-        Self::add_new(followers.as_ref(), &mut self.f_streams, mb, kb, p, true);
+        Self::add_new(&p, followers.as_ref(), &mut self.f_streams, mb, kb, c, true);
 
         let readers: Vec<String> = self.readers.clone().into_iter().flatten().collect();
         // get command
         Self::delete_non_exists(&readers, &mut self.get_streams);
-        Self::add_new(&readers, &mut self.get_streams, kb, mb, p, false);
+        Self::add_new(&p, &readers, &mut self.get_streams, kb, mb, c, false);
         // get[s] command
         Self::delete_non_exists(&readers, &mut self.gets_streams);
-        Self::add_new(&readers, &mut self.gets_streams, kb, mb, p, false);
+        Self::add_new(&p, &readers, &mut self.gets_streams, kb, mb, c, false);
     }
 }
 
-impl Clone for Topology {
+impl<P> Clone for Topology<P>
+where
+    P: Clone,
+{
     fn clone(&self) -> Self {
         Self {
             hash: self.hash.clone(),
@@ -199,22 +212,46 @@ impl Clone for Topology {
             readers: self.readers.clone(),
             get_streams: self.get_streams.clone(),
             gets_streams: self.gets_streams.clone(),
+            parser: self.parser.clone(),
         }
     }
 }
 
-impl discovery::Topology for Topology {
+impl<P> discovery::Topology for Topology<P>
+where
+    P: Send + Sync + Protocol + Default + 'static + Clone,
+{
     fn update(&mut self, cfg: &str, name: &str) {
         println!("cache service topology received:{}", name);
         self.update(cfg, name);
         println!("master:{:?}", self.masters);
     }
 }
-impl left_right::Absorb<(String, String)> for Topology {
+impl<P> left_right::Absorb<(String, String)> for Topology<P>
+where
+    P: Send + Sync + Protocol + Default + 'static + Clone,
+{
     fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
         self.update(&cfg.0, &cfg.1);
     }
     fn sync_with(&mut self, first: &Self) {
         *self = first.clone();
+    }
+}
+
+impl<P> From<P> for Topology<P> {
+    fn from(parser: P) -> Self {
+        Self {
+            parser: parser,
+            l1_seq: AtomicUsize::new(0),
+            hash: Default::default(),
+            masters: Default::default(),
+            m_streams: Default::default(),
+            followers: Default::default(),
+            f_streams: Default::default(),
+            readers: Default::default(),
+            get_streams: Default::default(),
+            gets_streams: Default::default(),
+        }
     }
 }

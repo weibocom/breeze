@@ -1,7 +1,7 @@
 use super::{IdAsyncRead, IdAsyncWrite};
 
 use protocol::chan::AsyncWriteAll;
-use protocol::ResponseParser;
+use protocol::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
@@ -158,19 +158,26 @@ pub struct BackendBuilder {
 }
 
 impl BackendBuilder {
-    pub fn from<P>(addr: String, req_buf: usize, resp_buf: usize, parallel: usize) -> Arc<Self>
+    pub fn from<P>(
+        parser: P,
+        addr: String,
+        req_buf: usize,
+        resp_buf: usize,
+        parallel: usize,
+    ) -> Arc<Self>
     where
-        P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+        P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        Self::from_with_response::<P>(addr, req_buf, resp_buf, parallel, false)
+        Self::from_with_response(parser, addr, req_buf, resp_buf, parallel, false)
     }
-    pub fn ignore_response<P>(addr: String, req_buf: usize, parallel: usize) -> Arc<Self>
+    pub fn ignore_response<P>(parser: P, addr: String, req_buf: usize, parallel: usize) -> Arc<Self>
     where
-        P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+        P: Unpin + Send + Sync + Protocol + Clone + 'static,
     {
-        Self::from_with_response::<P>(addr, req_buf, 2048, parallel, true)
+        Self::from_with_response(parser, addr, req_buf, 2048, parallel, true)
     }
     pub fn from_with_response<P>(
+        parser: P,
         addr: String,
         req_buf: usize,
         resp_buf: usize,
@@ -178,10 +185,11 @@ impl BackendBuilder {
         ignore_response: bool,
     ) -> Arc<Self>
     where
-        P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+        P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         let done = Arc::new(AtomicBool::new(true));
-        let stream = RingBufferStream::with_capacity(parallel, done.clone());
+        let min = parser.min_last_response_size();
+        let stream = RingBufferStream::with_capacity(min, parallel, done.clone());
         let me = Self {
             closed: AtomicBool::new(false),
             done: done.clone(),
@@ -191,8 +199,8 @@ impl BackendBuilder {
         };
         let me = Arc::new(me);
         println!("request buffer:{} response buffer:{}", req_buf, resp_buf);
-        let checker = BackendChecker::<P>::from(me.clone(), ignore_response, req_buf, resp_buf);
-        checker.start_check();
+        let checker = BackendChecker::from(me.clone(), ignore_response, req_buf, resp_buf);
+        checker.start_check(parser);
         me
     }
     pub fn build(&self) -> BackendStream<Arc<RingBufferStream>, Cid> {
@@ -211,7 +219,7 @@ impl BackendBuilder {
 }
 
 use tokio::time::{interval, Interval};
-pub struct BackendChecker<P> {
+pub struct BackendChecker {
     req_buf: usize,
     resp_buf: usize,
     inner: Arc<BackendBuilder>,
@@ -219,13 +227,9 @@ pub struct BackendChecker<P> {
     // 记录两个任务是否完成。
     ignore_response: Arc<AtomicBool>,
     tick: Interval,
-    _mark: std::marker::PhantomData<P>,
 }
 
-impl<P> BackendChecker<P>
-where
-    P: Unpin + Send + Sync + ResponseParser + Default + 'static,
-{
+impl BackendChecker {
     fn from(
         builder: Arc<BackendBuilder>,
         ignore_response: bool,
@@ -238,38 +242,46 @@ where
             tick: interval(std::time::Duration::from_secs(3)),
             req_buf: req_buf,
             resp_buf: resp_buf,
-            _mark: Default::default(),
         }
     }
-    fn start_check(mut self) {
+    fn start_check<P>(mut self, parser: P)
+    where
+        P: Clone + Send + Sync + Protocol + 'static,
+    {
         tokio::spawn(async move {
-            self.check().await;
+            self.check(parser).await;
         });
     }
-    async fn check(&mut self) {
+    async fn check<P>(&mut self, parser: P)
+    where
+        P: Clone + Send + Sync + Protocol + 'static,
+    {
         while !self.inner.closed.load(Ordering::Acquire) {
-            self.check_reconnected_once().await;
+            self.check_reconnected_once(&parser).await;
             self.tick.tick().await;
         }
     }
 
-    async fn check_reconnected_once(&self) {
+    async fn check_reconnected_once<P>(&self, parser: &P)
+    where
+        P: Clone + Send + Sync + Protocol + 'static,
+    {
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
         if self.inner.done.load(Ordering::Acquire) {
-            if !self.inner.stream.is_complete() {
+            if !self.inner.stream.reset().await {
                 // stream已经没有在运行，但没有结束。说明可能有一些waker等数据没有处理完。通知处理
-                self.inner.stream.try_complete();
                 return;
             }
+            let parser = parser.clone();
             // 开始建立连接
             match tokio::net::TcpStream::connect(&self.inner.addr).await {
                 Ok(stream) => {
                     let (r, w) = stream.into_split();
                     let req_stream = self.inner.stream.clone();
                     if !self.ignore_response.load(Ordering::Acquire) {
-                        req_stream.bridge(self.req_buf, self.resp_buf, r, w, P::default());
+                        req_stream.bridge(parser, self.req_buf, self.resp_buf, r, w);
                     } else {
-                        req_stream.bridge_no_reply(self.resp_buf, r, w, P::default());
+                        req_stream.bridge_no_reply(self.resp_buf, r, w);
                     }
                 }
                 // TODO

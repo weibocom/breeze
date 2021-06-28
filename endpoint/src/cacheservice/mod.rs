@@ -14,8 +14,7 @@ use protocol::chan::{
 
 type AsyncMultiGet<S, P> = AsyncMultiGetSharding<S, P>;
 
-use protocol::memcache::MemcacheMetaStream;
-use protocol::Protocol;
+use protocol::{MetaStream, Protocol};
 
 use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
@@ -35,7 +34,7 @@ type MultiGetOperation<P> = AsyncMultiGet<Readers<P>, P>;
 type Master<P> = AsyncSharding<Backend, Hasher, P>;
 type Follower<P> = AsyncSharding<OwnedWriteHalf, Hasher, P>;
 type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>>;
-type MetaOperation = MemcacheMetaStream;
+type MetaOperation = MetaStream;
 type Operation<P> =
     AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation>;
 
@@ -73,8 +72,8 @@ impl<P> CacheService<P> {
 
     pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
     where
-        D: ServiceDiscover<super::Topology>,
-        P: protocol::Protocol + Clone,
+        D: ServiceDiscover<super::Topology<P>>,
+        P: protocol::Protocol + Clone + Default,
     {
         discovery.do_with(|t| match t {
             Some(t) => match t {
@@ -87,9 +86,9 @@ impl<P> CacheService<P> {
             )),
         })
     }
-    fn from_topology<D>(parser: P, topo: &Topology) -> Result<Self>
+    fn from_topology<D>(mut parser: P, topo: &Topology<P>) -> Result<Self>
     where
-        D: ServiceDiscover<super::Topology>,
+        D: ServiceDiscover<super::Topology<P>>,
         P: protocol::Protocol + Clone,
     {
         let hash_alg = &topo.hash;
@@ -116,7 +115,7 @@ impl<P> CacheService<P> {
         let get_layers = Self::build_layers(topo.reader_layers(), &hash_alg, parser.clone());
         let get = AsyncOperation::Get(AsyncGetSync::from(get_layers, parser.clone()));
 
-        let meta = AsyncOperation::Meta(MemcacheMetaStream::from(""));
+        let meta = AsyncOperation::Meta(parser.meta(""));
         let op_stream = AsyncRoute::from(vec![get, gets, store, meta], parser.clone());
 
         let inner = PipeToPingPongChanWrite::from_stream(parser, op_stream);

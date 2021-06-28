@@ -5,18 +5,18 @@ pub mod chan;
 pub mod memcache;
 mod slice;
 pub use slice::RingSlice;
-
-pub trait ResponseParser {
-    fn parse_response(&mut self, response: &RingSlice) -> (bool, usize);
-    fn probe_response_found(&mut self, response: &RingSlice) -> bool;
-}
+mod meta;
+pub use meta::MetaStream;
 
 use enum_dispatch::enum_dispatch;
 
 #[enum_dispatch]
 pub trait Protocol: Unpin {
-    // 一个包的最小的字节数
+    // 一个请求包的最小的字节数
     fn min_size(&self) -> usize;
+    // 从response读取buffer时，可能读取多次。
+    // 限制最后一个包最小返回长度。
+    fn min_last_response_size(&self) -> usize;
     // parse会被一直调用，直到返回true.
     // 当前请求是否结束。
     // 一个请求在req中的第多少个字节结束。
@@ -33,11 +33,20 @@ pub trait Protocol: Unpin {
     // 主要用来在进行multiget时，判断请求是否结束。
     fn probe_response_eof(&mut self, partial_resp: &[u8]) -> (bool, usize);
     // 解析响应是否命中
+    fn probe_response_succeed_rs(&mut self, response: &RingSlice) -> bool;
+    fn parse_response(&mut self, response: &RingSlice) -> (bool, usize);
     fn probe_response_found(&mut self, response: &[u8]) -> bool;
+    fn meta(&mut self, url: &str) -> MetaStream;
 }
 #[enum_dispatch(Protocol)]
 pub enum Protocols {
     Mc(memcache::Memcache),
+}
+
+impl Default for Protocols {
+    fn default() -> Self {
+        panic!("not suppotred");
+    }
 }
 
 impl Protocols {
