@@ -7,6 +7,7 @@ use std::task::{Context, Poll};
 
 use bytes::{BufMut, BytesMut};
 
+use super::{AsyncReadAll, ResponseItem};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use futures::ready;
@@ -16,6 +17,7 @@ pub struct PipeToPingPongChanWrite<P, S> {
     w_buf: BytesMut,
     parser: P,
     inner: S,
+    response: Option<ResponseItem>,
 }
 
 impl<P, S> PipeToPingPongChanWrite<P, S> {
@@ -25,6 +27,7 @@ impl<P, S> PipeToPingPongChanWrite<P, S> {
             w_buf: BytesMut::with_capacity(2048),
             parser: parser,
             inner: stream,
+            response: None,
         }
     }
 }
@@ -32,7 +35,7 @@ impl<P, S> PipeToPingPongChanWrite<P, S> {
 impl<P, S> AsyncPipeToPingPongChanWrite for PipeToPingPongChanWrite<P, S>
 where
     P: Protocol,
-    S: AsyncWriteAll + AsyncWrite + Unpin + AsyncRead,
+    S: AsyncWriteAll + AsyncWrite + Unpin + AsyncReadAll,
 {
 }
 impl<P, S> AsyncWriteAll for PipeToPingPongChanWrite<P, S> {}
@@ -117,16 +120,29 @@ where
 impl<P, S> AsyncRead for PipeToPingPongChanWrite<P, S>
 where
     P: Protocol,
-    S: AsyncRead + Unpin,
+    S: AsyncReadAll + Unpin,
 {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context,
-        buf: &mut ReadBuf,
+        buff: &mut ReadBuf,
     ) -> Poll<Result<()>> {
-        if self.shutdown {
+        let mut me = &mut *self;
+        if me.shutdown {
             return Poll::Ready(Ok(()));
         }
-        Pin::new(&mut self.inner).poll_read(cx, buf)
+        let mut inner = Pin::new(&mut me.inner);
+        // 大部分场景不会touch response
+        let mut item = match me.response.take() {
+            Some(item) => item,
+            None => ready!(inner.as_mut().poll_next(cx))?,
+        };
+
+        if item.write_to(buff) {
+            ready!(inner.as_mut().poll_done(cx))?;
+        } else {
+            me.response = Some(item);
+        }
+        Poll::Ready(Ok(()))
     }
 }

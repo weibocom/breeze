@@ -36,3 +36,52 @@ pub trait AsyncWriteAll {}
 
 impl AsyncWriteAll for tokio::net::TcpStream {}
 impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}
+
+use std::io::Result;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+// 数据读取的时候，要么一次性全部读取，要么都不读取
+
+use enum_dispatch::enum_dispatch;
+
+#[enum_dispatch]
+pub trait AsyncReadAll {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<ResponseItem>>;
+    // 处理完poll_next之后的请求调用
+    fn poll_done(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>>;
+}
+
+use crate::RingSlice;
+use tokio::io::ReadBuf;
+
+pub struct ResponseItem {
+    slice: RingSlice,
+}
+
+impl ResponseItem {
+    pub fn from(slice: RingSlice) -> Self {
+        Self { slice: slice }
+    }
+    pub fn from_slice(slice: &'static [u8]) -> Self {
+        todo!("from slice not supported");
+    }
+    // 返回true，说明所有ResponseItem的数据都写入完成
+    pub fn write_to(&mut self, _buff: &mut ReadBuf) -> bool {
+        false
+    }
+    pub fn len(&self) -> usize {
+        0
+    }
+    pub fn append(&mut self, other: ResponseItem) {}
+    pub fn advance(&mut self, n: usize) {}
+    pub fn backwards(&mut self, n: usize) {}
+}
+
+impl AsRef<RingSlice> for ResponseItem {
+    fn as_ref(&self) -> &RingSlice {
+        &self.slice
+    }
+}
+
+unsafe impl Send for ResponseItem {}
+unsafe impl Sync for ResponseItem {}

@@ -24,9 +24,6 @@ const COMMAND_IDX: [u8; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
-const NO_OP: [u8; 24] = [
-    129, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
 
 const REQUEST_MAGIC: u8 = 0x80;
 
@@ -88,15 +85,10 @@ impl Protocol for MemcacheBinary {
     fn op_route(&self, req: &[u8]) -> usize {
         COMMAND_IDX[req[1] as usize] as usize
     }
-    // 去掉末尾的NO_OP
-    // TODO FIXME
-    // 要使用之前必须要流式读取判断
-    // req长度要大于24个字节。为了简单，直接使用 noop的code来校验。
+    // TODO 只有multiget 都会调用
     #[inline]
-    fn probe_response_eof(&self, resp: &[u8]) -> (bool, usize) {
-        debug_assert!(resp.len() >= HEADER_LEN);
-        let noop = &resp[resp.len() - HEADER_LEN..];
-        (noop == NO_OP, resp.len() - HEADER_LEN)
+    fn trim_eof<T: AsRef<RingSlice>>(&self, resp: T) -> usize {
+        HEADER_LEN
     }
     #[inline]
     fn key<'a>(&self, req: &'a [u8]) -> &'a [u8] {
