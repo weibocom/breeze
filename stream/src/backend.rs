@@ -169,7 +169,7 @@ impl BackendBuilder {
         req_buf: usize,
         resp_buf: usize,
         parallel: usize,
-    ) -> Arc<Self>
+    ) -> Arc<RwLock<BackendBuilder>>
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
@@ -207,10 +207,10 @@ impl BackendBuilder {
             //checker: None,
             check_task: None
         };
-        let me = Arc::new(RwLock::new(me_builder));
+        let me = Arc::new(RwLock::new(me));
         println!("request buffer:{} response buffer:{}", req_buf, resp_buf);
-        let checker = BackendChecker::from(me.clone(), ignore_response, req_buf, resp_buf);
-        let t = me.read().unwrap().start_check(checker);
+        let checker = Arc::new(BackendChecker::from(me.clone(), ignore_response, req_buf, resp_buf));
+        let t = me.read().unwrap().start_check(checker, parser.clone());
         me.write().unwrap().check_task = Some(t);
         me
     }
@@ -240,18 +240,19 @@ impl BackendBuilder {
         }
     }
 
-    pub fn start_check<P>(&self, checker: BackendChecker<(P)>) -> JoinHandle<()>
+    pub fn start_check<P>(&self, checker: Arc<BackendChecker>, parser: P) -> JoinHandle<()>
         where
-            P: Unpin + Send + Sync + ResponseParser + Default + 'static,
+            P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         //let arc_mutex_checker = Arc::new(RwLock::new(checker));
         let runtime = Runtime::new().unwrap();
         //self.checker = Some(arc_mutex_checker.clone());
+        let cloned_parser = parser.clone();
         let res = std::thread::spawn(move || {
             //let arc_mutex_checker = Arc::new(checker);
             //let check_future = arc_mutex_checker.check();
             //runtime.block_on(check_future);
-            let check_future = checker.check();
+            let check_future = checker.check(cloned_parser);
             runtime.block_on(check_future);
         });
         res
@@ -292,18 +293,13 @@ impl BackendChecker {
 
     }
 
-    fn start_check<P>(mut self, parser: P)
+    async fn check<P>(&self, parser: P)
         where
-            P: Clone + Send + Sync + Protocol + 'static,
+            P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        tokio::spawn(async move {
-            self.check(parser).await;
-        });
-    }
-    async fn check(self) {
         println!("come into check");
         while !self.inner.read().unwrap().finished.load(Ordering::Acquire) {
-            self.check_reconnected_once().await;
+            self.check_reconnected_once(parser.clone()).await;
             thread::park_timeout(Duration::from_millis(1000 as u64));
         }
         if !self.inner.read().unwrap().stream.clone().is_complete() {
@@ -312,9 +308,9 @@ impl BackendChecker {
         }
     }
 
-    async fn check_reconnected_once<P>(&self, parser: &P)
-    where
-        P: Clone + Send + Sync + Protocol + 'static,
+    async fn check_reconnected_once<P>(&self, parser: P)
+        where
+            P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
         let connected = self.inner.read().unwrap().connected.load(Ordering::Acquire);
@@ -330,10 +326,10 @@ impl BackendChecker {
 
                     if !self.ignore_response.load(Ordering::Acquire) {
                         println!("go to bridge");
-                        req_stream.bridge(self.req_buf, self.resp_buf, r, w, P::default(), self.inner.clone());
+                        req_stream.bridge(parser.clone(), self.req_buf, self.resp_buf, r, w, self.inner.clone());
                     } else {
                         println!("go to bridge_no_reply");
-                        req_stream.bridge_no_reply(self.resp_buf, r, w, P::default(), self.inner.clone());
+                        req_stream.bridge_no_reply(self.resp_buf, r, w, self.inner.clone());
                     }
                     println!("set false to closed");
                     self.inner.read().unwrap().connected.store(true, Ordering::Release);

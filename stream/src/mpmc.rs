@@ -222,7 +222,7 @@ impl MpmcRingBufferStream {
             BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone(), builder.clone()),
         );
     }
-    pub fn bridge_no_reply<R, W>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W)
+    pub fn bridge_no_reply<R, W>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W, builder: Arc<RwLock<BackendBuilder>>)
     where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
@@ -264,7 +264,7 @@ impl MpmcRingBufferStream {
             }
         });
     }
-    fn start_bridge<F>(arc_self: Arc<Self>, builder: Arc<RwLock<BackendBuilder>>, name: &'static str, future: F)
+    fn start_bridge<F>(self: Arc<Self>, builder: Arc<RwLock<BackendBuilder>>, name: &'static str, future: F)
     where
         F: Future<Output = Result<()>> + Send + 'static,
     {
@@ -281,16 +281,12 @@ impl MpmcRingBufferStream {
                 }
             };
             runnings.fetch_add(-1, Ordering::AcqRel);
-            self_clone.running_threads.fetch_sub(1, Ordering::Release);
-            self_clone.try_complete();
+            self.try_complete();
             println!("{} bridge task completed", name);
             builder.clone().read().unwrap().reconnect();
         });
     }
 
-    pub fn is_complete(&self) -> bool {
-        self.done.load(Ordering::Acquire)
-    }
     fn on_io_error(&self, _err: Error) {
         todo!();
     }
@@ -300,13 +296,13 @@ impl MpmcRingBufferStream {
         }
     }
     pub fn is_complete(self: Arc<Self>) -> bool {
-        self.done.load(Ordering::Acquire) && self.running_threads.load(Ordering::Acquire) == 0
+        self.done.load(Ordering::Acquire) && self.runnings.load(Ordering::Acquire) == 0
     }
     pub fn try_complete(self: Arc<Self>) {
         self.clone().done.store(true, Ordering::Release);
         self.clone().do_close();
-        while self.clone().running_threads.load(Ordering::Acquire) != 0 {
-            println!("running threads: {}", self.clone().running_threads.load(Ordering::Acquire));
+        while self.clone().runnings.load(Ordering::Acquire) != 0 {
+            println!("running threads: {}", self.clone().runnings.load(Ordering::Acquire));
             sleep(Duration::from_secs(1));
         }
     }

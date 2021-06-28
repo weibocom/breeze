@@ -85,8 +85,9 @@ where
             if b.is_err() {
                 break;
             }
-            println!("bridage buffer to backend. len:{} ", b.unwrap().len());
-            let num = ready!(writer.as_mut().poll_write(cx, b.unwrap()))?;
+            let result_buffer = b.unwrap();
+            println!("bridage buffer to backend. len:{} ", result_buffer.len());
+            let num = ready!(writer.as_mut().poll_write(cx, result_buffer))?;
             //me.cache.write_all(&b[..num]).unwrap();
             debug_assert!(num > 0);
             println!("bridage buffer to backend: {} bytes sent ", num);
@@ -144,7 +145,7 @@ where
                         req.id(),
                         req.data().len()
                     );
-                    let t = ready!(me.w.poll_put_slice(cx, data))?;
+                    let t = ready!(me.w.poll_put_slice(cx, data));
                     if t.is_err() {
                         break;
                     }
