@@ -56,7 +56,7 @@ impl<P> CacheService<P> {
     pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
     where
         D: ServiceDiscover<super::Topology<P>>,
-        P: protocol::Protocol + Clone + Default,
+        P: protocol::Protocol + Clone,
     {
         discovery.do_with(|t| match t {
             Some(t) => match t {
@@ -69,7 +69,7 @@ impl<P> CacheService<P> {
             )),
         })
     }
-    fn from_topology<D>(mut parser: P, topo: &Topology<P>) -> Result<Self>
+    fn from_topology<D>(parser: P, topo: &Topology<P>) -> Result<Self>
     where
         D: ServiceDiscover<super::Topology<P>>,
         P: protocol::Protocol + Clone,
