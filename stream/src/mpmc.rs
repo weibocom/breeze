@@ -172,9 +172,9 @@ impl MpmcRingBufferStream {
         self.done
             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
             .expect("bridge an uncompleted stream");
-        assert_eq!(self.runnings.load(Ordering::AcqRel), 0);
+        assert_eq!(self.runnings.load(Ordering::Acquire), 0);
 
-        self.chan_reset.store(true, Ordering::Acquire);
+        self.chan_reset.store(true, Ordering::Release);
     }
 
     // 构建一个ring buffer.
@@ -288,7 +288,7 @@ impl MpmcRingBufferStream {
     // done == true。所以新到达的poll_write都会直接返回
     // 不会再操作senders, 可以重置senders
     fn reset_chann(&self) {
-        if !self.chan_reset.load(Ordering::AcqRel) {
+        if !self.chan_reset.load(Ordering::Acquire) {
             let (sender, receiver) = channel(self.senders.len());
             let sender = PollSender::new(sender);
             // 删除所有的sender，则receiver会会接收到一个None，而不会阻塞
@@ -297,8 +297,13 @@ impl MpmcRingBufferStream {
                 drop(old);
             }
             let old = self.receiver.replace(Some(receiver));
-            debug_assert!(old.is_none());
-            self.chan_reset.store(true, Ordering::AcqRel);
+            if let Some(o_r) = old {
+                println!(
+                    "may be the old stream is not established, but the new one is reconnected"
+                );
+                drop(o_r);
+            }
+            self.chan_reset.store(true, Ordering::Release);
         }
     }
     // done == true
@@ -318,8 +323,8 @@ impl MpmcRingBufferStream {
     // 3. 关闭senders的channel
     // 4. 重新初始化senders与receivers
     pub async fn reset(&self) -> bool {
-        debug_assert!(self.done.load(Ordering::AcqRel));
-        let runnings = self.runnings.load(Ordering::AcqRel);
+        debug_assert!(self.done.load(Ordering::Acquire));
+        let runnings = self.runnings.load(Ordering::Acquire);
         debug_assert!(runnings >= 0);
 
         self.reset_chann();
