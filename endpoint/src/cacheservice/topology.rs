@@ -95,7 +95,7 @@ impl Topology {
     }
 
     // 获取reader列表
-    pub fn reader_4_get_through(&self) -> Vec<Vec<BackendStream>> {
+    pub fn reader_layers(&self) -> Vec<Vec<BackendStream>> {
         self.readers
             .iter()
             .map(|pool| {
