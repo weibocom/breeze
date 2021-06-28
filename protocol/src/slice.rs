@@ -42,12 +42,15 @@ impl RingSlice {
         debug_assert!(self.len() >= num);
         self.end = self.start + num;
     }
+
     // 返回true，说明数据已经读完了
     pub fn read(&mut self, buff: &mut ReadBuf) -> bool {
         unsafe {
             if self.end > self.offset {
                 let oft_start = self.offset & (self.cap - 1);
                 let oft_end = self.end & (self.cap - 1);
+
+                println!("offset start:{} offset end:{}", oft_start, oft_end);
 
                 let n = buff
                     .remaining()
@@ -68,6 +71,28 @@ impl RingSlice {
             }
 
             self.offset == self.end
+        }
+    }
+    // 返回true，说明数据已经读完了
+    // 如果返回true，则确保当前请求要么至少读取了min个字节, 要么0个字节。
+    pub fn read_ensure_min(&mut self, buff: &mut ReadBuf, last_min: usize) -> bool {
+        debug_assert!(buff.capacity() >= last_min);
+        debug_assert!(self.available() >= last_min);
+
+        // last_min通常会比较小。可以直接先调用
+        if self.read(buff) {
+            true
+        } else {
+            if self.available() < last_min {
+                // 说明剩余的不满足下一次读取
+                // 要进行回退
+                let fallback = last_min - self.available();
+                let filled = buff.filled().len();
+                assert!(filled > fallback);
+                buff.set_filled(filled - fallback);
+                self.offset -= fallback;
+            }
+            false
         }
     }
     // 调用方确保len >= offset + 4
@@ -174,6 +199,21 @@ mod tests {
         assert_eq!(u32_num, num_range.read_u32(32));
 
         assert_eq!(u32_num, num_range.read_u32(23));
+
+        // 验证最后一次读取的字节数
+        assert!(cap >= 40);
+        //println!("[0..40] = {:?}", &dc[0..40]);
+        let mut min_rs = RingSlice::from(dc.as_ptr(), cap, 0, 40);
+        read_buf.clear();
+        let mut read_buf = ReadBuf::new(&mut buf[0..30]);
+        assert_eq!(false, min_rs.read_ensure_min(&mut read_buf, 24));
+        // 第一次只能读取 40 - 24个字节
+        assert_eq!(read_buf.filled().len(), 16);
+        assert_eq!(read_buf.filled(), &dc[..read_buf.filled().len()]);
+        read_buf.clear();
+        assert_eq!(true, min_rs.read_ensure_min(&mut read_buf, 24));
+        assert_eq!(read_buf.filled().len(), 24);
+        assert_eq!(read_buf.filled(), &dc[16..read_buf.filled().len() + 16]);
 
         let _ = unsafe { Vec::from_raw_parts(ptr, 0, cap) };
     }

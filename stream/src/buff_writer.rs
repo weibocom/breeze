@@ -43,7 +43,7 @@ impl RequestData {
 }
 
 pub trait Request {
-    fn request_received(&self, id: usize, seq: usize);
+    fn on_received(&self, id: usize, seq: usize);
 }
 
 pub struct BridgeBufferToWriter<W> {
@@ -77,7 +77,7 @@ where
         let mut writer = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Relaxed) {
             println!("bridage buffer to backend.");
-            let b = ready!(me.reader.poll_next(cx));
+            let b = ready!(me.reader.poll_next(cx))?;
             println!("bridage buffer to backend. len:{} ", b.len());
             let num = ready!(writer.as_mut().poll_write(cx, b))?;
             //me.cache.write_all(&b[..num]).unwrap();
@@ -136,10 +136,10 @@ where
                     req.id(),
                     req.data().len()
                 );
-                ready!(me.w.poll_put_slice(cx, data));
+                ready!(me.w.poll_put_slice(cx, data))?;
                 let seq = me.seq;
                 me.seq += 1;
-                me.r.request_received(req.id(), seq);
+                me.r.on_received(req.id(), seq);
                 println!(
                     "received data from bridge. len:{} id:{} seq:{}",
                     req.data().len(),
@@ -148,7 +148,11 @@ where
                 );
             }
             println!("bridge request to buffer: wating to get request from channel");
-            me.cache = Some(ready!(receiver.as_mut().poll_recv(cx)).expect("channel closed"));
+            me.cache = ready!(receiver.as_mut().poll_recv(cx));
+            if me.cache.is_none() {
+                println!("channel closed. task complete");
+                break;
+            }
             println!("bridge request to buffer. one request received from request channel");
         }
         Poll::Ready(Ok(()))

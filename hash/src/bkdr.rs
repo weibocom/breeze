@@ -8,7 +8,6 @@ impl super::Hash for Bkdr {
         for c in b.iter() {
             h = h.wrapping_mul(seed).wrapping_add(*c as usize);
         }
-
         h as u64
     }
 }

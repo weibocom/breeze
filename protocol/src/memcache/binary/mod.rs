@@ -1,12 +1,14 @@
 mod meta;
 use std::usize;
 
+use crate::MetaStream;
 pub use meta::MemcacheBinaryMetaStream;
 
 pub const HEADER_LEN: usize = 24;
 
 use byteorder::{BigEndian, ByteOrder};
 
+use crate::RingSlice;
 use crate::{Protocol, Router};
 
 #[inline]
@@ -43,6 +45,10 @@ impl MemcacheBinary {
 impl Protocol for MemcacheBinary {
     #[inline(always)]
     fn min_size(&self) -> usize {
+        HEADER_LEN
+    }
+    #[inline(always)]
+    fn min_last_response_size(&self) -> usize {
         HEADER_LEN
     }
     #[inline]
@@ -88,16 +94,37 @@ impl Protocol for MemcacheBinary {
         &req[offset..offset + key_len]
     }
     #[inline]
-    fn keys<'a>(&mut self, req: &'a [u8]) -> Vec<&'a [u8]> {
+    fn keys<'a>(&mut self, _req: &'a [u8]) -> Vec<&'a [u8]> {
         todo!()
     }
-    fn build_gets_cmd(&mut self, keys: Vec<&[u8]>) -> Vec<u8> {
+    fn build_gets_cmd(&mut self, _keys: Vec<&[u8]>) -> Vec<u8> {
         todo!()
     }
     fn probe_response_found(&mut self, response: &[u8]) -> bool {
         debug_assert!(response.len() > HEADER_LEN);
         let status = BigEndian::read_u16(&response[6..]) as usize;
         status == 0
+    }
+    fn parse_response(&mut self, response: &RingSlice) -> (bool, usize) {
+        if response.available() < HEADER_LEN {
+            return (false, response.available());
+        }
+        debug_assert_eq!(response.at(0), 0x81);
+        let len = response.read_u32(8) as usize + HEADER_LEN;
+        (response.available() >= len, len)
+    }
+
+    // 请求命中，status为0，否则部位0
+    fn probe_response_succeed_rs(&mut self, response: &RingSlice) -> bool {
+        if response.available() < HEADER_LEN {
+            return false;
+        }
+        debug_assert_eq!(response.at(0), 0x81);
+        // status 在字节的6、7两个字节
+        response.at(6) == 0 && response.at(7) == 0
+    }
+    fn meta(&mut self, url: &str) -> MetaStream {
+        MetaStream::Mc(MemcacheBinaryMetaStream::from(url))
     }
 }
 
@@ -110,48 +137,5 @@ impl MemcacheBinaryOpRoute {
 impl Router for MemcacheBinaryOpRoute {
     fn route(&mut self, req: &[u8]) -> usize {
         COMMAND_IDX[req[1] as usize] as usize
-    }
-}
-
-pub struct MemcacheBinaryKeyRoute {
-    len: usize,
-    parser: MemcacheBinary,
-}
-
-impl MemcacheBinaryKeyRoute {
-    pub fn from_len(len: usize) -> Self {
-        Self {
-            len: len,
-            parser: MemcacheBinary::new(),
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct MemcacheBinaryResponseParser {}
-use crate::RingSlice;
-impl crate::ResponseParser for MemcacheBinaryResponseParser {
-    fn parse_response(&mut self, response: &RingSlice) -> (bool, usize) {
-        if response.available() < HEADER_LEN {
-            return (false, response.available());
-        }
-        debug_assert_eq!(response.at(0), 0x81);
-        let len = response.read_u32(8) as usize + HEADER_LEN;
-        (response.available() >= len, len)
-    }
-
-    // 请求命中，status为0，否则部位0
-    fn probe_response_found(&mut self, response: &RingSlice) -> bool {
-        if response.available() < HEADER_LEN {
-            return false;
-        }
-        debug_assert_eq!(response.at(0), 0x81);
-        // status 在字节的6、7两个字节
-        response.at(6) == 0 && response.at(7) == 0
-    }
-}
-impl MemcacheBinaryResponseParser {
-    pub fn new() -> Self {
-        MemcacheBinaryResponseParser {}
     }
 }
