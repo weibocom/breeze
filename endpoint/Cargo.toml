@@ -10,7 +10,6 @@ edition = "2018"
 net = { path = "../net"}
 discovery = { path = "../discovery" }
 protocol = { path = "../protocol" }
-pool = { path = "../pool"}
 hash = { path = "../hash" }
 stream = { path = "../stream" }
 
