@@ -3,7 +3,7 @@ use crate::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 use bytes::{BufMut, BytesMut};
 
@@ -18,6 +18,9 @@ pub struct PipeToPingPongChanWrite<P, S> {
     parser: P,
     inner: S,
     response: Option<ResponseItem>,
+    // 已经写完，但没有读取的请求数量
+    pending: usize,
+    waker: Option<Waker>,
 }
 
 impl<P, S> PipeToPingPongChanWrite<P, S> {
@@ -28,6 +31,8 @@ impl<P, S> PipeToPingPongChanWrite<P, S> {
             parser: parser,
             inner: stream,
             response: None,
+            pending: 0,
+            waker: None,
         }
     }
 }
@@ -56,48 +61,52 @@ where
                 "write to a closed chan",
             )));
         }
-        let mut offset = 0;
-        while offset < buf.len() {
-            let (_, buf) = buf.split_at(offset);
-            // 确保字节数满足协议要求
-            if me.w_buf.len() + buf.len() < me.parser.min_size() {
-                me.w_buf.put_slice(buf);
-                offset += buf.len();
-                continue;
-            }
-            let first = me.w_buf.len() == 0;
-            let mut start = 0;
-            let req = if first {
-                buf
-            } else {
-                start = me.w_buf.len();
-                me.w_buf.put_slice(buf);
-                &me.w_buf
-            };
-            let (done, n) = match me.parser.parse_request(req) {
-                Ok((done, n)) => (done, n),
-                Err(e) => return Poll::Ready(Err(e)),
-            };
-            offset += n - start;
-            debug_assert!(n > 0);
-            if !done {
-                if first {
-                    me.w_buf.put_slice(&buf[..n]);
-                }
-                continue;
-            }
-            let cmd = if me.w_buf.len() > 0 {
-                &me.w_buf
-            } else {
-                // zero copy。
-                &buf[..n]
-            };
-            // 解析出一个request，写入到chan的下游
-            let w = ready!(Pin::new(&mut me.inner).poll_write(cx, cmd))?;
-            assert_eq!(w, cmd.len());
-            me.w_buf.clear();
+        if me.pending > 0 {
+            me.waker = Some(cx.waker().clone());
+            return Poll::Pending;
         }
-        Poll::Ready(Ok(offset))
+        // 不满足协议最低字节数要求, 先缓存
+        if me.w_buf.len() + buf.len() < me.parser.min_size() {
+            me.w_buf.put_slice(buf);
+            return Poll::Ready(Ok(buf.len()));
+        }
+        let mut put = false;
+        let w_len = me.w_buf.len();
+        let req = if me.w_buf.len() == 0 {
+            buf
+        } else {
+            put = true;
+            me.w_buf.put_slice(buf);
+            &me.w_buf
+        };
+        let (done, n) = match me.parser.parse_request(req) {
+            Ok((done, n)) => (done, n),
+            Err(e) => return Poll::Ready(Err(e)),
+        };
+        debug_assert!(n > 0);
+        if !done {
+            if !put {
+                me.w_buf.put_slice(&buf[..n]);
+            }
+            return Poll::Ready(Ok(buf.len()));
+        }
+        let cmd = if me.w_buf.len() > 0 {
+            &me.w_buf
+        } else {
+            // zero copy。
+            &buf[..n]
+        };
+        // 解析出一个request，写入到chan的下游
+        let w = ready!(Pin::new(&mut me.inner).poll_write(cx, cmd))?;
+        assert_eq!(w, cmd.len());
+        let bytes = cmd.len() - w_len;
+        me.w_buf.clear();
+        me.pending = 1;
+
+        if let Some(waker) = me.waker.take() {
+            waker.wake();
+        }
+        Poll::Ready(Ok(bytes))
     }
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         let me = &mut *self;
@@ -131,6 +140,10 @@ where
         if me.shutdown {
             return Poll::Ready(Ok(()));
         }
+        if me.pending == 0 {
+            me.waker = Some(cx.waker().clone());
+            return Poll::Pending;
+        }
         let mut inner = Pin::new(&mut me.inner);
         // 大部分场景不会touch response
         let mut item = match me.response.take() {
@@ -142,6 +155,11 @@ where
             ready!(inner.as_mut().poll_done(cx))?;
         } else {
             me.response = Some(item);
+        }
+
+        me.pending = 0;
+        if let Some(waker) = me.waker.take() {
+            waker.wake();
         }
         Poll::Ready(Ok(()))
     }

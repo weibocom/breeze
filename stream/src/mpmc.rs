@@ -365,11 +365,11 @@ impl IdAsyncRead for MpmcRingBufferStream {
         let response = ready!(item.poll_read(cx));
         Poll::Ready(Ok(ResponseItem::from(response)))
     }
-    fn poll_done(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
-        todo!("poll done not complete")
-        //let (start, end) = item.response_slice();
-        //self.offset.0.insert(start, end);
-        //Poll::Ready(Ok(()))
+    fn poll_done(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {
+        let item = unsafe { self.items.get_unchecked(cid) };
+        let (start, end) = item.response_done();
+        self.offset.0.insert(start, end);
+        Poll::Ready(Ok(()))
     }
 }
 impl IdAsyncWrite for MpmcRingBufferStream {

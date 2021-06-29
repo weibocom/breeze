@@ -63,18 +63,29 @@ impl ResponseItem {
         Self { slice: slice }
     }
     pub fn from_slice(slice: &'static [u8]) -> Self {
-        todo!("from slice not supported");
+        Self::from(RingSlice::from(
+            slice.as_ptr(),
+            slice.len().next_power_of_two(),
+            0,
+            slice.len(),
+        ))
     }
     // 返回true，说明所有ResponseItem的数据都写入完成
-    pub fn write_to(&mut self, _buff: &mut ReadBuf) -> bool {
-        false
+    pub fn write_to(&mut self, buff: &mut ReadBuf) -> bool {
+        self.slice.read(buff)
     }
     pub fn len(&self) -> usize {
-        0
+        todo!("not supported");
     }
-    pub fn append(&mut self, other: ResponseItem) {}
-    pub fn advance(&mut self, n: usize) {}
-    pub fn backwards(&mut self, n: usize) {}
+    pub fn append(&mut self, other: ResponseItem) {
+        todo!("not supported");
+    }
+    pub fn advance(&mut self, n: usize) {
+        todo!("not supported");
+    }
+    pub fn backwards(&mut self, n: usize) {
+        todo!("not supported");
+    }
 }
 
 impl AsRef<RingSlice> for ResponseItem {
