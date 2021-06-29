@@ -172,9 +172,9 @@ impl MpmcRingBufferStream {
         self.done
             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
             .expect("bridge an uncompleted stream");
-        assert_eq!(self.runnings.load(Ordering::AcqRel), 0);
+        assert_eq!(self.runnings.load(Ordering::Acquire), 0);
 
-        self.chan_reset.store(true, Ordering::Acquire);
+        self.chan_reset.store(true, Ordering::Release);
     }
 
     // 构建一个ring buffer.
