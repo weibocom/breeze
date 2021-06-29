@@ -2,14 +2,11 @@ mod meta;
 
 use std::io::{Error, ErrorKind, Result};
 
-use crate::MetaStream;
-pub use meta::MemcacheBinaryMetaStream;
-
 pub const HEADER_LEN: usize = 24;
 
 use byteorder::{BigEndian, ByteOrder};
 
-use crate::{Protocol, RingSlice};
+use crate::{MetaType, Protocol, RingSlice};
 
 #[inline]
 pub fn body_len(header: &[u8]) -> u32 {
@@ -85,6 +82,9 @@ impl Protocol for MemcacheBinary {
     fn op_route(&self, req: &[u8]) -> usize {
         COMMAND_IDX[req[1] as usize] as usize
     }
+    fn meta_type(&self, req: &[u8]) -> MetaType {
+        MetaType::Version
+    }
     // TODO 只有multiget 都会调用
     #[inline]
     fn trim_eof<T: AsRef<RingSlice>>(&self, _resp: T) -> usize {
@@ -116,9 +116,5 @@ impl Protocol for MemcacheBinary {
         debug_assert_eq!(response.at(0), 0x81);
         let len = response.read_u32(8) as usize + HEADER_LEN;
         (response.available() >= len, len)
-    }
-
-    fn meta(&self, url: &str) -> MetaStream {
-        MetaStream::Mc(MemcacheBinaryMetaStream::from(url))
     }
 }

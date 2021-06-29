@@ -6,9 +6,8 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use futures::ready;
 
-use super::{AsyncReadAll, AsyncWriteAll, ResponseItem};
-use crate::Protocol;
 use hash::Hash;
+use protocol::{AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
 
 pub struct AsyncSharding<B, H, P> {
     idx: usize,

@@ -23,7 +23,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use super::{AsyncReadAll, AsyncWriteAll, ResponseItem};
+use protocol::{AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
 use tokio::io::AsyncWrite;
 
 use futures::ready;
@@ -105,7 +105,7 @@ where
 impl<S, P> AsyncReadAll for AsyncMultiGet<S, P>
 where
     S: AsyncReadAll + Unpin,
-    P: Unpin + crate::Protocol,
+    P: Unpin + Protocol,
 {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
         let me = &mut *self;

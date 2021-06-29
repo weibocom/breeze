@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use super::{AsyncReadAll, AsyncWriteAll, ResponseItem};
+use protocol::{AsyncReadAll, AsyncWriteAll, ResponseItem};
 
 pub struct AsyncSetSync<M, W> {
     master: M,

@@ -2,13 +2,10 @@ use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use super::{AsyncReadAll, ResponseItem};
+use protocol::{AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
 use tokio::io::AsyncWrite;
 
 use futures::ready;
-
-use super::AsyncWriteAll;
-use crate::Protocol;
 
 /// 这个只支持ping-pong请求。将请求按照固定的路由策略分发到不同的dest
 /// 并且AsyncRoute的buf必须包含一个完整的请求。

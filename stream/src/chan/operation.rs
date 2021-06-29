@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use super::{AsyncReadAll, AsyncWriteAll, ResponseItem};
+use protocol::{AsyncReadAll, AsyncWriteAll, ResponseItem};
 
 pub enum AsyncOperation<Get, Gets, Store, Meta> {
     Get(Get),

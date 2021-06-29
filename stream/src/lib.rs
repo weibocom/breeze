@@ -2,10 +2,13 @@ mod backend;
 mod buff_reader;
 mod buff_writer;
 mod by_cid;
+mod chan;
 mod mpmc;
 mod offset;
 mod ring;
 mod status;
+
+pub use chan::*;
 
 use protocol::RingSlice;
 
