@@ -39,7 +39,7 @@ pub trait Protocol: Unpin + Clone + 'static + Unpin {
     fn trim_eof<T: AsRef<RingSlice>>(&self, response: T) -> usize;
     // 从response中解析出一个完成的response
     fn parse_response(&self, response: &RingSlice) -> (bool, usize);
-    fn probe_response_found(&self, response: &[u8]) -> bool;
+    fn response_found<T: AsRef<RingSlice>>(&self, response: T) -> bool;
     fn meta(&self, url: &str) -> MetaStream;
 }
 #[enum_dispatch(Protocol)]

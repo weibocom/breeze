@@ -87,7 +87,7 @@ impl Protocol for MemcacheBinary {
     }
     // TODO 只有multiget 都会调用
     #[inline]
-    fn trim_eof<T: AsRef<RingSlice>>(&self, resp: T) -> usize {
+    fn trim_eof<T: AsRef<RingSlice>>(&self, _resp: T) -> usize {
         HEADER_LEN
     }
     #[inline]
@@ -104,10 +104,10 @@ impl Protocol for MemcacheBinary {
     fn build_gets_cmd(&self, _keys: Vec<&[u8]>) -> Vec<u8> {
         todo!()
     }
-    fn probe_response_found(&self, response: &[u8]) -> bool {
-        debug_assert!(response.len() > HEADER_LEN);
-        let status = BigEndian::read_u16(&response[6..]) as usize;
-        status == 0
+    fn response_found<T: AsRef<RingSlice>>(&self, response: T) -> bool {
+        let slice = response.as_ref();
+        debug_assert!(slice.len() >= HEADER_LEN);
+        slice.at(6) == 0 && slice.at(7) == 0
     }
     fn parse_response(&self, response: &RingSlice) -> (bool, usize) {
         if response.available() < HEADER_LEN {

@@ -5,6 +5,9 @@
 /// 一个keys的请求req通常只包含key，所以额外的load会比较低。
 /// 发送给所有sharding的请求，有一个成功，即认定为成功。
 
+// TODO 这个文件改为 multi_get_sharding? 待和@icy 确认 fishermen
+// 思路： multi_get_sharding 是一种特殊的用于multi get 的shard读取，但支持单层，需要进一步封装为多层访问
+
 pub struct AsyncMultiGet<S, P> {
     // 当前从哪个shard开始发送请求
     idx: usize,
@@ -21,7 +24,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use super::{AsyncReadAll, AsyncWriteAll, ResponseItem};
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::AsyncWrite;
 
 use futures::ready;
 
