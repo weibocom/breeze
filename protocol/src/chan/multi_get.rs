@@ -8,38 +8,42 @@
 // TODO 这个文件改为 multi_get_sharding? 待和@icy 确认 fishermen
 // 思路： multi_get_sharding 是一种特殊的用于multi get 的shard读取，但支持单层，需要进一步封装为多层访问
 
-pub struct AsyncMultiGetSharding<S, P> {
+pub struct AsyncMultiGet<S, P> {
     // 当前从哪个shard开始发送请求
     idx: usize,
     // 成功发送请求的shards
     writes: Vec<bool>,
     shards: Vec<S>,
     parser: P,
+    response: Option<ResponseItem>,
+    eof: usize,
 }
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::chan::AsyncWriteAll;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use super::{AsyncReadAll, AsyncWriteAll, ResponseItem};
+use tokio::io::AsyncWrite;
 
 use futures::ready;
 
-impl<S, P> AsyncWriteAll for AsyncMultiGetSharding<S, P> {}
+impl<S, P> AsyncWriteAll for AsyncMultiGet<S, P> {}
 
-impl<S, P> AsyncMultiGetSharding<S, P> {
+impl<S, P> AsyncMultiGet<S, P> {
     pub fn from_shard(shards: Vec<S>, p: P) -> Self {
         Self {
             idx: 0,
             writes: vec![false; shards.len()],
             shards: shards,
             parser: p,
+            response: None,
+            eof: 0,
         }
     }
 }
 
-impl<S, P> AsyncWrite for AsyncMultiGetSharding<S, P>
+impl<S, P> AsyncWrite for AsyncMultiGet<S, P>
 where
     S: AsyncWrite + AsyncWriteAll + Unpin,
     P: Unpin,
@@ -72,19 +76,12 @@ where
         // 为了简单。flush时不考虑pending，即使从pending恢复，也可以把之前的poll_flush重新操作一遍。
         // poll_flush是幂等的
         let me = &mut *self;
-        let mut last_err = None;
         for (i, &success) in me.writes.iter().enumerate() {
             if success {
-                match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_flush(cx)) {
-                    Err(e) => last_err = Some(e),
-                    _ => {}
-                }
+                ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_flush(cx))?;
             }
         }
-        match last_err {
-            Some(e) => Poll::Ready(Err(e)),
-            _ => Poll::Ready(Ok(())),
-        }
+        Poll::Ready(Ok(()))
     }
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         let me = &mut *self;
@@ -105,50 +102,26 @@ where
     }
 }
 
-impl<S, P> AsyncRead for AsyncMultiGetSharding<S, P>
+impl<S, P> AsyncReadAll for AsyncMultiGet<S, P>
 where
-    S: AsyncRead + Unpin,
+    S: AsyncReadAll + Unpin,
     P: Unpin + crate::Protocol,
 {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-        buf: &mut ReadBuf,
-    ) -> Poll<Result<()>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
         let me = &mut *self;
-        let mut success = false;
         let mut last_err = None;
         let offset = me.idx;
-        let mut eof_len = 0;
         for i in offset..me.shards.len() {
             if me.writes[i] {
                 let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(i) });
-                let mut c_done = false;
-                while !c_done {
-                    match r.as_mut().poll_read(cx, buf) {
-                        Poll::Pending => {
-                            // 如果有数据获取，则返回数据。触发下一次获取。
-                            // 如果未获取到数据，则pending
-                            return if buf.filled().len() == 0 {
-                                Poll::Pending
-                            } else {
-                                Poll::Ready(Ok(()))
-                            };
-                        }
-                        Poll::Ready(Err(e)) => {
-                            c_done = true;
-                            last_err = Some(e)
-                        }
-                        Poll::Ready(Ok(())) => {
-                            success = true;
-                            // 检查当前请求是否包含请求的结束
-                            let filled = buf.filled().len();
-                            let (done, n) = me.parser.probe_response_eof(buf.filled());
-                            if done {
-                                c_done = true;
-                                eof_len = filled - n;
-                                buf.set_filled(n);
-                            }
+                match ready!(r.as_mut().poll_next(cx)) {
+                    Err(e) => last_err = Some(e),
+                    Ok(mut response) => {
+                        me.eof = me.parser.trim_eof(&response);
+                        response.backwards(me.eof);
+                        match me.response.as_mut() {
+                            Some(item) => item.append(response),
+                            None => me.response = Some(response),
                         }
                     }
                 }
@@ -156,14 +129,28 @@ where
             me.idx += 1;
         }
         me.idx = 0;
-        if success {
-            // 把最后一次成功请求的eof加上
-            buf.advance(eof_len);
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Ready(Err(last_err.unwrap_or_else(|| {
-                Error::new(ErrorKind::Other, "all poll read failed")
-            })))
+        let eof = me.eof;
+        me.eof = 0;
+        me.response
+            .take()
+            .map(|mut item| {
+                item.advance(eof);
+                Poll::Ready(Ok(item))
+            })
+            .unwrap_or_else(|| {
+                Poll::Ready(Err(last_err.unwrap_or_else(|| {
+                    Error::new(ErrorKind::Other, "all poll read failed")
+                })))
+            })
+    }
+
+    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+        let me = &mut *self;
+        for (i, &success) in me.writes.iter().enumerate() {
+            if success {
+                ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_done(cx))?;
+            }
         }
+        Poll::Ready(Ok(()))
     }
 }

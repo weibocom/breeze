@@ -18,3 +18,4 @@ lockfree = "*"
 cache_line_size = "*"
 tokio-util = "*"
 spin = { version = "0.9.0"}
+enum_dispatch = "*"

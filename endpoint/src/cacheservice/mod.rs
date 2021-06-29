@@ -73,7 +73,7 @@ impl<P> CacheService<P> {
     pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
     where
         D: ServiceDiscover<super::Topology<P>>,
-        P: protocol::Protocol + Clone + Default,
+        P: protocol::Protocol,
     {
         discovery.do_with(|t| match t {
             Some(t) => match t {
@@ -86,10 +86,10 @@ impl<P> CacheService<P> {
             )),
         })
     }
-    fn from_topology<D>(mut parser: P, topo: &Topology<P>) -> Result<Self>
+    fn from_topology<D>(parser: P, topo: &Topology<P>) -> Result<Self>
     where
         D: ServiceDiscover<super::Topology<P>>,
-        P: protocol::Protocol + Clone,
+        P: protocol::Protocol,
     {
         let hash_alg = &topo.hash;
         // let get = AsyncOperation::Get(Self::build_sharding(
@@ -131,7 +131,7 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 impl<P> AsyncRead for CacheService<P>
 where
-    P: Unpin + Protocol,
+    P: Protocol,
 {
     #[inline]
     fn poll_read(
@@ -145,7 +145,7 @@ where
 
 impl<P> AsyncWrite for CacheService<P>
 where
-    P: Unpin + Protocol,
+    P: Protocol,
 {
     // 支持pipelin.
     // left是表示当前请求还有多少个字节未写入完成
