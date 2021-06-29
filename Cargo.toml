@@ -8,7 +8,6 @@ members = [
   "net",
   "discovery",
   "context",
-  "pool",
   "log",
   "metrics",
 ]
