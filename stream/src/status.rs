@@ -90,12 +90,7 @@ impl Item {
         // place_response先更新数据，后更新状态。不会有并发问题
         // 读数据
         println!("poll read id:{}", self.id);
-        let response = self.response.take();
-        // 把状态调整为Init
-
-        if let Err(status) = self.status_cas(status, ItemStatus::Init as u8) {
-            panic!("data race: responded status expected, but {} found", status);
-        }
+        let response = self.response.borrow().clone();
 
         Poll::Ready(response)
     }
@@ -130,8 +125,13 @@ impl Item {
             .compare_exchange(old, new, Ordering::AcqRel, Ordering::Acquire)
     }
     #[inline]
-    pub fn response_slice(&self) -> (usize, usize) {
-        self.response.borrow().location()
+    pub fn response_done(&self) -> (usize, usize) {
+        // 把状态调整为Init
+        let status = self.status.load(Ordering::Acquire);
+        if let Err(status) = self.status_cas(status, ItemStatus::Init as u8) {
+            panic!("data race: responded status expected, but {} found", status);
+        }
+        self.response.take().location()
     }
     #[inline]
     fn waiting(&self, waker: Waker) {
