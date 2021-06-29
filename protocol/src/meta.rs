@@ -4,7 +4,7 @@ use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::chan::AsyncWriteAll;
+use crate::chan::{AsyncReadAll, AsyncWriteAll, ResponseItem};
 use crate::memcache::MemcacheMetaStream;
 macro_rules! define_meta_stream {
     ($($item:ident, $type_name:tt);+) => {
@@ -15,10 +15,15 @@ macro_rules! define_meta_stream {
 
         impl AsyncWriteAll for MetaStream{}
 
-        impl AsyncRead for MetaStream {
-            fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
+        impl AsyncReadAll for MetaStream {
+            fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
                 match &mut *self {
-                    $(Self::$item(ref mut p) => Pin::new(p).poll_read(cx, buf),)+
+                    $(Self::$item(ref mut p) => Pin::new(p).poll_next(cx),)+
+                }
+            }
+            fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+                match &mut *self {
+                    $(Self::$item(ref mut p) => Pin::new(p).poll_done(cx),)+
                 }
             }
         }

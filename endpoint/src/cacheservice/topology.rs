@@ -127,7 +127,7 @@ impl<P> Topology<P> {
         parallel: usize,
         ignore: bool,
     ) where
-        P: Send + Sync + Protocol + Default + 'static + Clone,
+        P: Send + Sync + Protocol + 'static + Clone,
     {
         for addr in addrs {
             if !streams.contains_key(addr) {
@@ -156,7 +156,7 @@ impl<P> Topology<P> {
 
     fn update(&mut self, cfg: &str, name: &str)
     where
-        P: Send + Sync + Protocol + Default + 'static + Clone,
+        P: Send + Sync + Protocol + 'static + Clone,
     {
         let p = self.parser.clone();
         let idx = name.find(':').unwrap_or(name.len());
@@ -219,7 +219,7 @@ where
 
 impl<P> discovery::Topology for Topology<P>
 where
-    P: Send + Sync + Protocol + Default + 'static + Clone,
+    P: Send + Sync + Protocol + 'static + Clone,
 {
     fn update(&mut self, cfg: &str, name: &str) {
         println!("cache service topology received:{}", name);
@@ -229,7 +229,7 @@ where
 }
 impl<P> left_right::Absorb<(String, String)> for Topology<P>
 where
-    P: Send + Sync + Protocol + Default + 'static + Clone,
+    P: Send + Sync + Protocol + 'static + Clone,
 {
     fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
         self.update(&cfg.0, &cfg.1);

@@ -11,7 +11,7 @@ use super::{
     Request, Response, RingBuffer, RingSlice, SeqOffset,
 };
 
-use protocol::Protocol;
+use protocol::{Protocol, ResponseItem};
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
 use tokio::sync::mpsc::{channel, Receiver};
@@ -90,17 +90,17 @@ impl MpmcRingBufferStream {
             Poll::Ready(Ok(()))
         }
     }
-    pub fn poll_read(&self, cid: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
-        ready!(self.poll_check(cid))?;
-        //println!("poll read cid:{} ", cid);
-        let item = unsafe { self.items.get_unchecked(cid) };
-        if ready!(item.poll_read(cx, buf, self.min)) {
-            let (start, end) = item.response_slice();
-            self.offset.0.insert(start, end);
-        }
-        println!("mpmc poll read complete. data:{:?}", buf.filled());
-        Poll::Ready(Ok(()))
-    }
+    //pub fn poll_read(&self, cid: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
+    //    ready!(self.poll_check(cid))?;
+    //    //println!("poll read cid:{} ", cid);
+    //    let item = unsafe { self.items.get_unchecked(cid) };
+    //    if ready!(item.poll_read(cx, buf, self.min)) {
+    //        let (start, end) = item.response_slice();
+    //        self.offset.0.insert(start, end);
+    //    }
+    //    println!("mpmc poll read complete. data:{:?}", buf.filled());
+    //    Poll::Ready(Ok(()))
+    //}
     // 释放cid的资源
     pub fn poll_shutdown(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {
         println!("mpmc: poll shutdown. cid:{}", cid);
@@ -358,8 +358,18 @@ impl Response for Arc<MpmcRingBufferStream> {
 }
 
 impl IdAsyncRead for MpmcRingBufferStream {
-    fn poll_read(&self, id: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
-        self.poll_read(id, cx, buf)
+    fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<ResponseItem>> {
+        ready!(self.poll_check(cid))?;
+        //println!("poll read cid:{} ", cid);
+        let item = unsafe { self.items.get_unchecked(cid) };
+        let response = ready!(item.poll_read(cx));
+        Poll::Ready(Ok(ResponseItem::from(response)))
+    }
+    fn poll_done(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {
+        let item = unsafe { self.items.get_unchecked(cid) };
+        let (start, end) = item.response_done();
+        self.offset.0.insert(start, end);
+        Poll::Ready(Ok(()))
     }
 }
 impl IdAsyncWrite for MpmcRingBufferStream {
@@ -371,8 +381,11 @@ impl IdAsyncWrite for MpmcRingBufferStream {
     }
 }
 impl IdAsyncRead for Arc<MpmcRingBufferStream> {
-    fn poll_read(&self, id: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
-        (**self).poll_read(id, cx, buf)
+    fn poll_next(&self, id: usize, cx: &mut Context) -> Poll<Result<ResponseItem>> {
+        (**self).poll_next(id, cx)
+    }
+    fn poll_done(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
+        (**self).poll_done(id, cx)
     }
 }
 impl IdAsyncWrite for Arc<MpmcRingBufferStream> {

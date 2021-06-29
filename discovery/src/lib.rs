@@ -55,15 +55,14 @@ impl Discovery {
     }
 }
 
-pub trait Topology: Default + left_right::Absorb<(String, String)> + Clone {
+pub trait Topology: left_right::Absorb<(String, String)> + Clone {
     fn update(&mut self, cfg: &str, name: &str);
 }
 
 pub trait ServiceDiscover<T> {
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: FnOnce(Option<&T>) -> O,
-        T: Default;
+        F: FnOnce(Option<&T>) -> O;
 }
 
 unsafe impl<T> Send for ServiceDiscovery<T> {}
@@ -95,7 +94,6 @@ impl<T> ServiceDiscover<T> for ServiceDiscovery<T> {
     fn do_with<F, O>(&self, f: F) -> O
     where
         F: FnOnce(Option<&T>) -> O,
-        T: Default,
     {
         if let Some(cache) = self.cache.enter() {
             f(Some(&cache))
@@ -123,7 +121,6 @@ impl<T> ServiceDiscover<T> for Arc<ServiceDiscovery<T>> {
     fn do_with<F, O>(&self, f: F) -> O
     where
         F: FnOnce(Option<&T>) -> O,
-        T: Default,
     {
         (**self).do_with(f)
     }

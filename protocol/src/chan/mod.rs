@@ -3,17 +3,17 @@ mod multi_get;
 // mod multi_get_2;
 mod operation;
 mod pipeline;
-mod request_ref;
+//mod request_ref;
 mod route;
 mod set_sync;
 mod sharding;
 
 pub use get_sync::AsyncGetSync;
-pub use multi_get::AsyncMultiGetSharding;
+pub use multi_get::AsyncMultiGet as AsyncMultiGetSharding;
 // pub use multi_get_2::AsyncMultiGet;
 pub use operation::AsyncOperation;
 pub use pipeline::PipeToPingPongChanWrite;
-pub use request_ref::RequestRef;
+//pub use request_ref::RequestRef;
 pub use route::AsyncRoute;
 pub use set_sync::AsyncSetSync;
 pub use sharding::AsyncSharding;
@@ -40,3 +40,63 @@ pub trait AsyncWriteAll {}
 
 impl AsyncWriteAll for tokio::net::TcpStream {}
 impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}
+
+use std::io::Result;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+// 数据读取的时候，要么一次性全部读取，要么都不读取
+
+use enum_dispatch::enum_dispatch;
+
+#[enum_dispatch]
+pub trait AsyncReadAll {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<ResponseItem>>;
+    // 处理完poll_next之后的请求调用
+    fn poll_done(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>>;
+}
+
+use crate::RingSlice;
+use tokio::io::ReadBuf;
+
+pub struct ResponseItem {
+    slice: RingSlice,
+}
+
+impl ResponseItem {
+    pub fn from(slice: RingSlice) -> Self {
+        Self { slice: slice }
+    }
+    pub fn from_slice(slice: &'static [u8]) -> Self {
+        Self::from(RingSlice::from(
+            slice.as_ptr(),
+            slice.len().next_power_of_two(),
+            0,
+            slice.len(),
+        ))
+    }
+    // 返回true，说明所有ResponseItem的数据都写入完成
+    pub fn write_to(&mut self, buff: &mut ReadBuf) -> bool {
+        self.slice.read(buff)
+    }
+    pub fn len(&self) -> usize {
+        todo!("not supported");
+    }
+    pub fn append(&mut self, other: ResponseItem) {
+        todo!("not supported");
+    }
+    pub fn advance(&mut self, n: usize) {
+        todo!("not supported");
+    }
+    pub fn backwards(&mut self, n: usize) {
+        todo!("not supported");
+    }
+}
+
+impl AsRef<RingSlice> for ResponseItem {
+    fn as_ref(&self) -> &RingSlice {
+        &self.slice
+    }
+}
+
+unsafe impl Send for ResponseItem {}
+unsafe impl Sync for ResponseItem {}
