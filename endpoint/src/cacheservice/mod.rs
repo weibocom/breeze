@@ -7,14 +7,16 @@ pub use topology::Topology;
 use discovery::ServiceDiscover;
 
 use hash::Hasher;
-use protocol::chan::{
+use stream::{
     AsyncGetSync, AsyncMultiGetSharding, AsyncOperation, AsyncRoute, AsyncSetSync, AsyncSharding,
-    AsyncWriteAll, PipeToPingPongChanWrite,
+    MetaStream, PipeToPingPongChanWrite,
 };
+
+use protocol::AsyncWriteAll;
 
 type AsyncMultiGet<S, P> = AsyncMultiGetSharding<S, P>;
 
-use protocol::{MetaStream, Protocol};
+use protocol::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
@@ -34,9 +36,9 @@ type MultiGetOperation<P> = AsyncMultiGet<Readers<P>, P>;
 type Master<P> = AsyncSharding<Backend, Hasher, P>;
 type Follower<P> = AsyncSharding<OwnedWriteHalf, Hasher, P>;
 type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>>;
-type MetaOperation = MetaStream;
+type MetaOperation<P> = MetaStream<P, Backend>;
 type Operation<P> =
-    AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation>;
+    AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation<P>>;
 
 // 三级访问策略。
 // 第一级先进行读写分离
@@ -115,7 +117,9 @@ impl<P> CacheService<P> {
         let get_layers = Self::build_layers(topo.reader_layers(), &hash_alg, parser.clone());
         let get = AsyncOperation::Get(AsyncGetSync::from(get_layers, parser.clone()));
 
-        let meta = AsyncOperation::Meta(parser.meta(""));
+        let all_instances = topo.meta();
+
+        let meta = AsyncOperation::Meta(MetaStream::from(parser.clone(), all_instances));
         let op_stream = AsyncRoute::from(vec![get, gets, store, meta], parser.clone());
 
         let inner = PipeToPingPongChanWrite::from_stream(parser, op_stream);

@@ -5,8 +5,8 @@ use std::io::{self, Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::chan::{AsyncReadAll, AsyncWriteAll, ResponseItem};
 use futures::ready;
+use protocol::{AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
 use tokio::io::AsyncWrite;
 
 pub struct AsyncGetSync<R, P> {
@@ -145,7 +145,7 @@ where
 impl<R, P> AsyncReadAll for AsyncGetSync<R, P>
 where
     R: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
-    P: Unpin + crate::Protocol,
+    P: Unpin + Protocol,
 {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<ResponseItem>> {
         let mut me = &mut *self;

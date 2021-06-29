@@ -32,6 +32,9 @@ pub struct Topology<P> {
     get_streams: HashMap<String, Arc<BackendBuilder>>,
     gets_streams: HashMap<String, Arc<BackendBuilder>>,
 
+    all_instances: Vec<String>,
+    meta_stream: HashMap<String, Arc<BackendBuilder>>,
+
     parser: P,
 }
 
@@ -41,6 +44,17 @@ pub struct Topology<P> {
 // l1: 11213, 11214; 11215, 11216
 // 没有slave
 impl<P> Topology<P> {
+    pub fn meta(&self) -> Vec<BackendStream> {
+        self.all_instances
+            .iter()
+            .map(|addr| {
+                self.meta_stream
+                    .get(addr)
+                    .expect("stream must be exists before address")
+                    .build()
+            })
+            .collect()
+    }
     pub fn master(&self) -> Vec<BackendStream> {
         self.masters
             .iter()
@@ -152,6 +166,7 @@ impl<P> Topology<P> {
         self.followers = followers;
         self.readers = readers;
         self.hash = hash;
+        self.all_instances = self.readers.clone().into_iter().flatten().collect();
     }
 
     fn update(&mut self, cfg: &str, name: &str)
@@ -194,6 +209,18 @@ impl<P> Topology<P> {
         // get[s] command
         Self::delete_non_exists(&readers, &mut self.gets_streams);
         Self::add_new(&p, &readers, &mut self.gets_streams, kb, mb, c, false);
+
+        // meta
+        Self::delete_non_exists(&self.all_instances, &mut self.meta_stream);
+        Self::add_new(
+            &p,
+            &self.all_instances,
+            &mut self.meta_stream,
+            kb,
+            128 * kb,
+            c,
+            false,
+        );
     }
 }
 
@@ -212,6 +239,8 @@ where
             readers: self.readers.clone(),
             get_streams: self.get_streams.clone(),
             gets_streams: self.gets_streams.clone(),
+            all_instances: self.all_instances.clone(),
+            meta_stream: self.meta_stream.clone(),
             parser: self.parser.clone(),
         }
     }
@@ -252,6 +281,8 @@ impl<P> From<P> for Topology<P> {
             readers: Default::default(),
             get_streams: Default::default(),
             gets_streams: Default::default(),
+            all_instances: Default::default(),
+            meta_stream: Default::default(),
         }
     }
 }

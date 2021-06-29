@@ -1,5 +1,4 @@
-use super::{AsyncPipeToPingPongChanWrite, AsyncWriteAll};
-use crate::Protocol;
+use protocol::{AsyncPipeToPingPongChanWrite, AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
@@ -7,7 +6,6 @@ use std::task::{Context, Poll, Waker};
 
 use bytes::{BufMut, BytesMut};
 
-use super::{AsyncReadAll, ResponseItem};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use futures::ready;

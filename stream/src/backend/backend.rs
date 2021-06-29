@@ -1,12 +1,13 @@
-use super::{IdAsyncRead, IdAsyncWrite};
+use super::super::{IdAsyncRead, IdAsyncWrite};
 
-use protocol::chan::{AsyncReadAll, AsyncWriteAll, ResponseItem};
-use protocol::Protocol;
+use protocol::{AsyncReadAll, AsyncWriteAll};
+use protocol::{Protocol, ResponseItem};
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use super::super::Id;
 use futures::ready;
 use tokio::io::{AsyncWrite, ReadBuf};
 
@@ -46,7 +47,7 @@ impl<I, Id> Backend<I, Id> {
 impl<I, Id> AsyncReadAll for Backend<I, Id>
 where
     I: IdAsyncRead,
-    Id: super::Id,
+    Id: super::super::Id,
 {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
         let me = &*self;
@@ -61,7 +62,7 @@ where
 impl<I, Id> AsyncWrite for Backend<I, Id>
 where
     I: IdAsyncWrite,
-    Id: super::Id,
+    Id: super::super::Id,
 {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
         let me = &*self;
@@ -79,7 +80,7 @@ where
 
 impl<I, Id> AsyncReadAll for BackendStream<I, Id>
 where
-    Id: Unpin + super::Id,
+    Id: Unpin + super::super::Id,
     I: IdAsyncRead + Unpin,
 {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
@@ -100,7 +101,7 @@ where
 
 impl<I, Id> AsyncWrite for BackendStream<I, Id>
 where
-    Id: Unpin + super::Id,
+    Id: Unpin + super::super::Id,
     I: IdAsyncWrite + Unpin,
 {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
@@ -112,7 +113,7 @@ where
     }
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>>
     where
-        Id: Unpin + super::Id,
+        Id: Unpin + super::super::Id,
         I: IdAsyncWrite + Unpin,
     {
         let me = &mut *self;
@@ -123,7 +124,7 @@ where
     }
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>>
     where
-        Id: Unpin + super::Id,
+        Id: Unpin + super::super::Id,
         I: IdAsyncWrite + Unpin,
     {
         let me = &mut *self;
@@ -165,7 +166,7 @@ impl AsyncWrite for NotConnected {
     }
 }
 
-use super::{Cid, Ids, RingBufferStream};
+use super::super::{Cid, Ids, RingBufferStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 pub struct BackendBuilder {
