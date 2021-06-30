@@ -152,7 +152,7 @@ where
         // check precondition
         debug_assert!(me.idx < me.layers.len());
 
-        // 注意重入问题
+        // 注意重入问题，写成功后，如何回写？
         while me.idx < me.layers.len() {
             //for each
             let reader = unsafe { me.layers.get_unchecked_mut(me.idx) };
