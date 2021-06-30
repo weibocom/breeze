@@ -2,7 +2,8 @@ use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use protocol::{AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
+use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use protocol::Protocol;
 use tokio::io::AsyncWrite;
 
 use futures::ready;
@@ -73,7 +74,7 @@ where
     R: Unpin,
 {
     #[inline]
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_next(cx) }
     }

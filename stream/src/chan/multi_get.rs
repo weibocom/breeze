@@ -15,7 +15,7 @@ pub struct AsyncMultiGet<S, P> {
     writes: Vec<bool>,
     shards: Vec<S>,
     parser: P,
-    response: Option<ResponseItem>,
+    response: Option<Response>,
     eof: usize,
 }
 
@@ -23,7 +23,9 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use protocol::{AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
+use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use protocol::Protocol;
+
 use tokio::io::AsyncWrite;
 
 use futures::ready;
@@ -107,7 +109,7 @@ where
     S: AsyncReadAll + Unpin,
     P: Unpin + Protocol,
 {
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         let mut last_err = None;
         let offset = me.idx;

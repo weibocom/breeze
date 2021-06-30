@@ -14,7 +14,7 @@ use tokio::io::{AsyncRead, ReadBuf};
 use crate::BackendBuilder;
 use futures::ready;
 
-pub trait Response {
+pub trait ResponseHandler {
     fn load_offset(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
     fn on_received(&self, seq: usize, response: RingSlice);
@@ -59,7 +59,7 @@ impl<R, W, P> Future for BridgeResponseToLocal<R, W, P>
 where
     R: AsyncRead + Unpin,
     P: Protocol + Unpin,
-    W: Response + Unpin,
+    W: ResponseHandler + Unpin,
 {
     type Output = Result<()>;
 

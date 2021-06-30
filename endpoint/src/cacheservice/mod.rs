@@ -12,20 +12,17 @@ use stream::{
     MetaStream, PipeToPingPongChanWrite,
 };
 
-use protocol::AsyncWriteAll;
+use stream::AsyncWriteAll;
 
 type AsyncMultiGet<S, P> = AsyncMultiGetSharding<S, P>;
 
 use protocol::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
-use std::sync::Arc;
 
 use tokio::net::tcp::OwnedWriteHalf;
 
-use stream::{Cid, RingBufferStream};
-
-type Backend = stream::BackendStream<Arc<RingBufferStream>, Cid>;
+type Backend = stream::BackendStream;
 
 // type GetOperation<P> = AsyncSharding<Backend, Hasher, P>;
 type Readers<P> = AsyncSharding<Backend, Hasher, P>;

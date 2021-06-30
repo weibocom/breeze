@@ -6,8 +6,9 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use futures::ready;
 
+use crate::{AsyncReadAll, AsyncWriteAll, Response};
 use hash::Hash;
-use protocol::{AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
+use protocol::Protocol;
 
 pub struct AsyncSharding<B, H, P> {
     idx: usize,
@@ -74,7 +75,7 @@ where
     P: Unpin,
 {
     #[inline]
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         if me.shards.len() == 0 {
             return Poll::Ready(Err(Error::new(

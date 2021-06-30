@@ -8,12 +8,12 @@ use std::task::{Context, Poll};
 use ds::{RingBuffer, RingSlice};
 
 use super::status::*;
-use super::{
-    BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, IdAsyncRead, IdAsyncWrite,
-    Request, Response, SeqOffset,
+use crate::{
+    BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, RequestHandler, Response,
+    ResponseHandler, SeqOffset,
 };
 
-use protocol::{Protocol, ResponseItem};
+use protocol::Protocol;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::sync::mpsc::{channel, Receiver};
@@ -89,6 +89,18 @@ impl MpmcRingBufferStream {
         } else {
             Poll::Ready(Ok(()))
         }
+    }
+    pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<RingSlice>> {
+        ready!(self.poll_check(cid))?;
+        //println!("poll read cid:{} ", cid);
+        let item = unsafe { self.items.get_unchecked(cid) };
+        let response = ready!(item.poll_read(cx));
+        Poll::Ready(Ok(response))
+    }
+    pub fn response_done(&self, cid: usize, response: &RingSlice) {
+        let item = unsafe { self.items.get_unchecked(cid) };
+        let (start, end) = item.response_done();
+        self.offset.0.insert(start, end);
     }
     //pub fn poll_read(&self, cid: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
     //    ready!(self.poll_check(cid))?;
@@ -376,16 +388,15 @@ impl MpmcRingBufferStream {
 use super::RequestData;
 use crate::BackendBuilder;
 use std::borrow::BorrowMut;
-use std::ops::Deref;
 use std::thread::sleep;
 use std::time::Duration;
 
-impl Request for Arc<MpmcRingBufferStream> {
+impl RequestHandler for Arc<MpmcRingBufferStream> {
     fn on_received(&self, id: usize, seq: usize) {
         self.bind_seq(id, seq);
     }
 }
-impl Response for Arc<MpmcRingBufferStream> {
+impl ResponseHandler for Arc<MpmcRingBufferStream> {
     // 获取已经被全部读取的字节的位置
     #[inline]
     fn load_offset(&self) -> usize {
@@ -397,45 +408,14 @@ impl Response for Arc<MpmcRingBufferStream> {
     }
 }
 
-impl IdAsyncRead for MpmcRingBufferStream {
-    fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<ResponseItem>> {
-        ready!(self.poll_check(cid))?;
-        //println!("poll read cid:{} ", cid);
-        let item = unsafe { self.items.get_unchecked(cid) };
-        let response = ready!(item.poll_read(cx));
-        Poll::Ready(Ok(ResponseItem::from(response)))
-    }
-    fn poll_done(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {
-        let item = unsafe { self.items.get_unchecked(cid) };
-        let (start, end) = item.response_done();
-        self.offset.0.insert(start, end);
-        Poll::Ready(Ok(()))
-    }
-}
-impl IdAsyncWrite for MpmcRingBufferStream {
-    fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
-        self.poll_write(id, cx, buf)
-    }
-    fn poll_shutdown(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
-        self.poll_shutdown(id, cx)
-    }
-}
-impl IdAsyncRead for Arc<MpmcRingBufferStream> {
-    fn poll_next(&self, id: usize, cx: &mut Context) -> Poll<Result<ResponseItem>> {
-        (**self).poll_next(id, cx)
-    }
-    fn poll_done(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
-        (**self).poll_done(id, cx)
-    }
-}
-impl IdAsyncWrite for Arc<MpmcRingBufferStream> {
-    fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
-        (**self).poll_write(id, cx, buf)
-    }
-    fn poll_shutdown(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
-        (**self).poll_shutdown(id, cx)
-    }
-}
+//impl IdAsyncWrite for MpmcRingBufferStream {
+//    fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
+//        self.poll_write(id, cx, buf)
+//    }
+//    fn poll_shutdown(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
+//        self.poll_shutdown(id, cx)
+//    }
+//}
 
 #[cfg(test)]
 mod mpmc_test {

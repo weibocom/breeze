@@ -1,4 +1,4 @@
-use stream::{BackendBuilder, Cid, RingBufferStream};
+use stream::{BackendBuilder, BackendStream};
 
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
@@ -8,8 +8,6 @@ use std::sync::Arc;
 use protocol::Protocol;
 
 use tokio::net::tcp::OwnedWriteHalf;
-
-type BackendStream = stream::BackendStream<Arc<RingBufferStream>, Cid>;
 
 unsafe impl<P> Send for Topology<P> {}
 unsafe impl<P> Sync for Topology<P> {}

@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use protocol::{AsyncReadAll, AsyncWriteAll, ResponseItem};
+use crate::{AsyncReadAll, AsyncWriteAll, Response};
 
 pub struct AsyncSetSync<M, W> {
     master: M,
@@ -90,7 +90,7 @@ where
     M: AsyncReadAll + Unpin,
     W: Unpin,
 {
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         match Pin::new(&mut self.master).poll_next(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(r) => {

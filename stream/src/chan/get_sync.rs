@@ -5,8 +5,9 @@ use std::io::{self, Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use crate::{AsyncReadAll, AsyncWriteAll, Response};
 use futures::ready;
-use protocol::{AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
+use protocol::Protocol;
 use tokio::io::AsyncWrite;
 
 pub struct AsyncGetSync<R, P> {
@@ -16,7 +17,7 @@ pub struct AsyncGetSync<R, P> {
     layers: Vec<R>,
     req_ref: RequestRef,
     // TODO: 对于空响应，根据协议获得空响应格式，这样效率更高，待和@icy 讨论 fishermen 2021.6.27
-    empty_resp: Option<ResponseItem>,
+    empty_resp: Option<Response>,
     resp_found: bool,
     parser: P,
 }
@@ -147,7 +148,7 @@ where
     R: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
     P: Unpin + Protocol,
 {
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<ResponseItem>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Response>> {
         let mut me = &mut *self;
         // check precondition
         debug_assert!(me.idx < me.layers.len());
