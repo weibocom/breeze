@@ -22,15 +22,15 @@ pub struct Topology<P> {
     l1_seq: AtomicUsize,
     // 处理写请求
     pub(crate) masters: Vec<String>,
-    m_streams: HashMap<String, Arc<RwLock<BackendBuilder>>>,
+    m_streams: HashMap<String, Arc<BackendBuilder>>,
     // 只用来同步写请求
     followers: Vec<Vec<String>>,
-    f_streams: HashMap<String, Arc<RwLock<BackendBuilder>>>,
+    f_streams: HashMap<String, Arc<BackendBuilder>>,
     // 处理读请求,每个layer选择一个，先打通
     // 后续考虑要调整为新的Vec嵌套逻辑： [random[reader[node_dist_pool]]]
     pub(crate) readers: Vec<Vec<String>>,
-    get_streams: HashMap<String, Arc<RwLock<BackendBuilder>>>,
-    gets_streams: HashMap<String, Arc<RwLock<BackendBuilder>>>,
+    get_streams: HashMap<String, Arc<BackendBuilder>>,
+    gets_streams: HashMap<String, Arc<BackendBuilder>>,
 
     parser: P,
 }
@@ -48,8 +48,6 @@ impl<P> Topology<P> {
                 self.m_streams
                     .get(addr)
                     .expect("stream must be exists before address")
-                    .read()
-                    .unwrap()
                     .build()
             })
             .collect()
@@ -73,7 +71,6 @@ impl<P> Topology<P> {
                     self.get_streams
                         .get(addr)
                         .expect("stream must be exists before address")
-                        .read().unwrap()
                         .build()
                 })
                 .collect()
@@ -93,7 +90,6 @@ impl<P> Topology<P> {
                     self.gets_streams
                         .get(addr)
                         .expect("stream must be exists before address")
-                        .read().unwrap()
                         .build()
                 })
                 .collect()
@@ -110,7 +106,6 @@ impl<P> Topology<P> {
                         self.get_streams
                             .get(addr)
                             .expect("stream must be exists before adress")
-                            .read().unwrap()
                             .build()
                     })
                     .collect()
@@ -119,14 +114,14 @@ impl<P> Topology<P> {
     }
 
     // 删除不存在的stream
-    fn delete_non_exists(addrs: &[String], streams: &mut HashMap<String, Arc<RwLock<BackendBuilder>>>) {
+    fn delete_non_exists(addrs: &[String], streams: &mut HashMap<String, Arc<BackendBuilder>>) {
         streams.retain(|addr, _| addrs.contains(addr));
     }
     // 添加新增的stream
     fn add_new(
         parser: &P,
         addrs: &[String],
-        streams: &mut HashMap<String, Arc<RwLock<BackendBuilder>>>,
+        streams: &mut HashMap<String, Arc<BackendBuilder>>,
         req: usize,
         resp: usize,
         parallel: usize,

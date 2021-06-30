@@ -31,11 +31,11 @@ pub struct BridgeResponseToLocal<R, W, P> {
     w: W,
     parser: P,
     data: ResponseRingBuffer,
-    builder: Arc<RwLock<BackendBuilder>>,
+    builder: Arc<BackendBuilder>,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, buf: usize, done: Arc<AtomicBool>, builder: Arc<RwLock<BackendBuilder>>) -> Self {
+    pub fn from(r: R, w: W, parser: P, buf: usize, done: Arc<AtomicBool>, builder: Arc<BackendBuilder>) -> Self {
         debug_assert!(buf == buf.next_power_of_two());
         Self {
             seq: 0,
@@ -128,7 +128,7 @@ where
             }
         }
         println!("task of reading data from response complete");
-        self.builder.read().unwrap().do_reconnect();
+        self.builder.do_reconnect();
         Poll::Ready(Ok(()))
     }
 }

@@ -5,7 +5,7 @@ use protocol::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Poll, Waker, RawWaker};
 
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -177,8 +177,7 @@ pub struct BackendBuilder {
     addr: String,
     stream: Arc<RingBufferStream>,
     ids: Arc<Ids>,
-    //checker: Option<Arc<Mutex<BackendChecker<()>>>>,
-    check_task: Option<std::thread::JoinHandle<()>>,
+    check_waker: Arc<RwLock<BackendWaker>>,
 }
 
 impl BackendBuilder {
@@ -188,13 +187,13 @@ impl BackendBuilder {
         req_buf: usize,
         resp_buf: usize,
         parallel: usize,
-    ) -> Arc<RwLock<BackendBuilder>>
+    ) -> Arc<BackendBuilder>
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         Self::from_with_response(parser, addr, req_buf, resp_buf, parallel, false)
     }
-    pub fn ignore_response<P>(parser: P, addr: String, req_buf: usize, parallel: usize) -> Arc<RwLock<Self>>
+    pub fn ignore_response<P>(parser: P, addr: String, req_buf: usize, parallel: usize) -> Arc<Self>
     where
         P: Unpin + Send + Sync + Protocol + Clone + 'static,
     {
@@ -207,7 +206,7 @@ impl BackendBuilder {
         resp_buf: usize,
         parallel: usize,
         ignore_response: bool,
-    ) -> Arc<RwLock<Self>>
+    ) -> Arc<Self>
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
@@ -223,14 +222,14 @@ impl BackendBuilder {
             addr: addr,
             stream: Arc::new(stream),
             ids: Arc::new(Ids::with_capacity(parallel)),
-            //checker: None,
-            check_task: None,
+            check_waker: Arc::new(RwLock::new(BackendWaker::new())),
         };
-        let me = Arc::new(RwLock::new(me));
+        let me = Arc::new(me);
         println!("request buffer:{} response buffer:{}", req_buf, resp_buf);
         let checker = Arc::new(BackendChecker::from(me.clone(), ignore_response, req_buf, resp_buf));
-        let t = me.read().unwrap().start_check(checker, parser.clone());
-        me.write().unwrap().check_task = Some(t);
+        let t = me.start_check(checker, parser.clone());
+
+        me.check_waker.clone().write().unwrap().check_task = Some(t);
         me
     }
     pub fn build(&self) -> BackendStream<Arc<RingBufferStream>, Cid> {
@@ -253,9 +252,7 @@ impl BackendBuilder {
         if !self.finished.load(Ordering::Acquire) {
             self.stream.clone().try_complete();
             self.connected.store(false, Ordering::Release);
-            if self.check_task.is_some() {
-                self.check_task.as_ref().unwrap().thread().unpark();
-            }
+            self.check_waker.read().unwrap().wake();
         }
     }
 
@@ -267,14 +264,9 @@ impl BackendBuilder {
         where
             P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        //let arc_mutex_checker = Arc::new(RwLock::new(checker));
         let runtime = Runtime::new().unwrap();
-        //self.checker = Some(arc_mutex_checker.clone());
         let cloned_parser = parser.clone();
         let res = std::thread::spawn(move || {
-            //let arc_mutex_checker = Arc::new(checker);
-            //let check_future = arc_mutex_checker.check();
-            //runtime.block_on(check_future);
             let check_future = checker.check(cloned_parser);
             runtime.block_on(check_future);
         });
@@ -288,10 +280,28 @@ use std::sync::RwLock;
 use tokio::runtime::Runtime;
 use std::thread::JoinHandle;
 
+pub struct BackendWaker {
+    check_task: Option<std::thread::JoinHandle<()>>,
+}
+
+impl BackendWaker {
+    fn new() -> Self {
+        BackendWaker {
+            check_task: None,
+        }
+    }
+
+    fn wake(&self) {
+        if self.check_task.is_some() {
+            self.check_task.as_ref().unwrap().thread().unpark();
+        }
+    }
+}
+
 pub struct BackendChecker {
     req_buf: usize,
     resp_buf: usize,
-    inner: Arc<RwLock<BackendBuilder>>,
+    inner: Arc<BackendBuilder>,
 
     // 记录两个任务是否完成。
     ignore_response: Arc<AtomicBool>,
@@ -300,7 +310,7 @@ pub struct BackendChecker {
 
 impl BackendChecker {
     fn from(
-        builder: Arc<RwLock<BackendBuilder>>,
+        builder: Arc<BackendBuilder>,
         ignore_response: bool,
         req_buf: usize,
         resp_buf: usize,
@@ -321,13 +331,13 @@ impl BackendChecker {
             P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         println!("come into check");
-        while !self.inner.read().unwrap().finished.load(Ordering::Acquire) {
+        while !self.inner.finished.load(Ordering::Acquire) {
             self.check_reconnected_once(parser.clone()).await;
             thread::park_timeout(Duration::from_millis(1000 as u64));
         }
-        if !self.inner.read().unwrap().stream.clone().is_complete() {
+        if !self.inner.stream.clone().is_complete() {
             // stream已经没有在运行，但没有结束。说明可能有一些waker等数据没有处理完。通知处理
-            self.inner.read().unwrap().stream.clone().try_complete();
+            self.inner.stream.clone().try_complete();
         }
     }
 
@@ -335,22 +345,22 @@ impl BackendChecker {
         where
             P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        if self.inner.clone().read().unwrap().done.load(Ordering::Acquire) {
+        if self.inner.clone().done.load(Ordering::Acquire) {
             println!("need to reconnect");
-            self.inner.clone().read().unwrap().reconnect();
+            self.inner.clone().reconnect();
             //self.inner.clone().read().unwrap().done.store(false, Ordering::Release);
         }
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
-        let connected = self.inner.read().unwrap().connected.load(Ordering::Acquire);
+        let connected = self.inner.connected.load(Ordering::Acquire);
         if !connected {
-            let addr = &self.inner.read().unwrap().addr;
+            let addr = &self.inner.addr;
             println!("connection is closed");
             // 开始建立连接
             match tokio::net::TcpStream::connect(addr).await {
                 Ok(stream) => {
                     println!("connected to {}", addr);
                     let (r, w) = stream.into_split();
-                    let req_stream = self.inner.read().unwrap().stream.clone();
+                    let req_stream = self.inner.stream.clone();
 
                     if !self.ignore_response.load(Ordering::Acquire) {
                         println!("go to bridge");
@@ -360,7 +370,7 @@ impl BackendChecker {
                         req_stream.bridge_no_reply(self.resp_buf, r, w, self.inner.clone());
                     }
                     println!("set false to closed");
-                    self.inner.read().unwrap().connected.store(true, Ordering::Release);
+                    self.inner.connected.store(true, Ordering::Release);
                 }
                 // TODO
                 Err(_e) => {
