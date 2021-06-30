@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 
 use super::ResponseRingBuffer;
@@ -13,6 +13,7 @@ use protocol::Protocol;
 use tokio::io::{AsyncRead, ReadBuf};
 
 use futures::ready;
+use crate::BackendBuilder;
 
 pub trait Response {
     fn load_offset(&self) -> usize;
@@ -30,10 +31,11 @@ pub struct BridgeResponseToLocal<R, W, P> {
     w: W,
     parser: P,
     data: ResponseRingBuffer,
+    builder: Arc<RwLock<BackendBuilder>>,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, buf: usize, done: Arc<AtomicBool>) -> Self {
+    pub fn from(r: R, w: W, parser: P, buf: usize, done: Arc<AtomicBool>, builder: Arc<RwLock<BackendBuilder>>) -> Self {
         debug_assert!(buf == buf.next_power_of_two());
         Self {
             seq: 0,
@@ -42,6 +44,7 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
             parser: parser,
             data: ResponseRingBuffer::with_capacity(buf),
             done: done,
+            builder: builder.clone(),
         }
     }
 }
@@ -75,7 +78,8 @@ where
                 continue;
             }
             let mut buf = ReadBuf::new(&mut buf);
-            ready!(reader.as_mut().poll_read(cx, &mut buf))?;
+            let t = ready!(reader.as_mut().poll_read(cx, &mut buf));
+            println!("read result: {:?}", t);
             // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
             println!(
@@ -124,6 +128,7 @@ where
             }
         }
         println!("task of reading data from response complete");
+        self.builder.read().unwrap().do_reconnect();
         Poll::Ready(Ok(()))
     }
 }
