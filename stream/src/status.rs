@@ -78,7 +78,7 @@ impl Item {
     // Reponded: 有数据并且成功返回
     // last_min: 最后一次获取最少要保障last_min个字节。
     // 调用方确保当前status不为shutdown
-    pub fn poll_read(&self, cx: &mut Context, buf: &mut ReadBuf, last_min: usize) -> Poll<bool> {
+    pub fn poll_read(&self, cx: &mut Context) -> Poll<RingSlice> {
         let status = self.status.load(Ordering::Acquire);
         debug_assert_ne!(status, ItemStatus::Shutdown as u8);
         if status != ItemStatus::ResponseReceived as u8 {
@@ -90,17 +90,9 @@ impl Item {
         // place_response先更新数据，后更新状态。不会有并发问题
         // 读数据
         println!("poll read id:{}", self.id);
-        if self.response.borrow_mut().read_ensure_min(buf, last_min) {
-            // 把状态调整为Init
-            match self.status_cas(status, ItemStatus::Init as u8) {
-                Ok(_) => return Poll::Ready(true),
-                Err(status) => {
-                    panic!("data race: responded status expected, but {} found", status)
-                }
-            }
-        } else {
-            return Poll::Ready(false);
-        }
+        let response = self.response.borrow().clone();
+
+        Poll::Ready(response)
     }
     pub fn place_response(&self, response: RingSlice) {
         //println!("response received len:{}", response.available());
@@ -133,8 +125,13 @@ impl Item {
             .compare_exchange(old, new, Ordering::AcqRel, Ordering::Acquire)
     }
     #[inline]
-    pub fn response_slice(&self) -> (usize, usize) {
-        self.response.borrow().location()
+    pub fn response_done(&self) -> (usize, usize) {
+        // 把状态调整为Init
+        let status = self.status.load(Ordering::Acquire);
+        if let Err(status) = self.status_cas(status, ItemStatus::Init as u8) {
+            panic!("data race: responded status expected, but {} found", status);
+        }
+        self.response.take().location()
     }
     #[inline]
     fn waiting(&self, waker: Waker) {

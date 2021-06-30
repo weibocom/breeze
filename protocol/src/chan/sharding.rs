@@ -6,7 +6,7 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use futures::ready;
 
-use super::AsyncWriteAll;
+use super::{AsyncReadAll, AsyncWriteAll, ResponseItem};
 use crate::Protocol;
 use hash::Hash;
 
@@ -68,18 +68,14 @@ where
     }
 }
 
-impl<B, H, P> AsyncRead for AsyncSharding<B, H, P>
+impl<B, H, P> AsyncReadAll for AsyncSharding<B, H, P>
 where
-    B: AsyncRead + Unpin,
+    B: AsyncReadAll + Unpin,
     H: Unpin,
     P: Unpin,
 {
     #[inline]
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-        buf: &mut ReadBuf,
-    ) -> Poll<Result<()>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
         let me = &mut *self;
         if me.shards.len() == 0 {
             return Poll::Ready(Err(Error::new(
@@ -87,6 +83,12 @@ where
                 "not connected, maybe topology not inited",
             )));
         }
-        unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_read(cx, buf) }
+        unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_next(cx) }
+    }
+    #[inline]
+    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+        let me = &mut *self;
+        debug_assert!(me.shards.len() > 0);
+        unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_done(cx) }
     }
 }

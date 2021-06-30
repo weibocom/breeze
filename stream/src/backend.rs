@@ -1,6 +1,6 @@
 use super::{IdAsyncRead, IdAsyncWrite};
 
-use protocol::chan::AsyncWriteAll;
+use protocol::chan::{AsyncReadAll, AsyncWriteAll, ResponseItem};
 use protocol::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
@@ -11,6 +11,9 @@ use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use std::thread;
 
+use enum_dispatch::enum_dispatch;
+
+#[enum_dispatch(AsyncReadAll)]
 pub enum BackendStream<I, Id> {
     NotConnected(NotConnected),
     Backend(Backend<I, Id>),
@@ -41,14 +44,18 @@ impl<I, Id> Backend<I, Id> {
     }
 }
 
-impl<I, Id> AsyncRead for Backend<I, Id>
+impl<I, Id> AsyncReadAll for Backend<I, Id>
 where
     I: IdAsyncRead,
     Id: super::Id,
 {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
         let me = &*self;
-        me.inner.poll_read(me.id.id(), cx, buf)
+        me.inner.poll_next(me.id.id(), cx)
+    }
+    fn poll_done(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+        let me = &*self;
+        me.inner.poll_done(me.id.id(), cx)
     }
 }
 
@@ -71,20 +78,23 @@ where
     }
 }
 
-impl<I, Id> AsyncRead for BackendStream<I, Id>
+impl<I, Id> AsyncReadAll for BackendStream<I, Id>
 where
     Id: Unpin + super::Id,
     I: IdAsyncRead + Unpin,
 {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-        buf: &mut ReadBuf,
-    ) -> Poll<Result<()>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
         let me = &mut *self;
         match me {
-            BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_read(cx, buf),
-            BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_read(cx, buf),
+            BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_next(cx),
+            BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_next(cx),
+        }
+    }
+    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+        let me = &mut *self;
+        match me {
+            BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_done(cx),
+            BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_done(cx),
         }
     }
 }
@@ -126,9 +136,18 @@ where
 }
 
 pub struct NotConnected;
-impl AsyncRead for NotConnected {
-    fn poll_read(self: Pin<&mut Self>, _cx: &mut Context, _buf: &mut ReadBuf) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
+impl AsyncReadAll for NotConnected {
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<ResponseItem>> {
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "read from an unconnected stream",
+        )))
+    }
+    fn poll_done(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "poll done from an unconnected stream",
+        )))
     }
 }
 
