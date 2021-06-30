@@ -205,7 +205,7 @@ impl BackendBuilder {
             stream: Arc::new(stream),
             ids: Arc::new(Ids::with_capacity(parallel)),
             //checker: None,
-            check_task: None
+            check_task: None,
         };
         let me = Arc::new(RwLock::new(me));
         println!("request buffer:{} response buffer:{}", req_buf, resp_buf);
@@ -238,6 +238,10 @@ impl BackendBuilder {
                 self.check_task.as_ref().unwrap().thread().unpark();
             }
         }
+    }
+
+    pub fn do_reconnect(&self) {
+        self.done.store(true, Ordering::Release);
     }
 
     pub fn start_check<P>(&self, checker: Arc<BackendChecker>, parser: P) -> JoinHandle<()>
@@ -312,6 +316,11 @@ impl BackendChecker {
         where
             P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
+        if self.inner.clone().read().unwrap().done.load(Ordering::Acquire) {
+            println!("need to reconnect");
+            self.inner.clone().read().unwrap().reconnect();
+            //self.inner.clone().read().unwrap().done.store(false, Ordering::Release);
+        }
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
         let connected = self.inner.read().unwrap().connected.load(Ordering::Acquire);
         if !connected {

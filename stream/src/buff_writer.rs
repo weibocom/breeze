@@ -86,6 +86,10 @@ where
                 break;
             }
             let result_buffer = b.unwrap();
+            if result_buffer.is_empty() {
+                println!("bridage buffer to backend: received empty");
+                continue;
+            }
             println!("bridage buffer to backend. len:{} ", result_buffer.len());
             let num = ready!(writer.as_mut().poll_write(cx, result_buffer))?;
             //me.cache.write_all(&b[..num]).unwrap();

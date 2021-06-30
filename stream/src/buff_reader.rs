@@ -128,7 +128,7 @@ where
             }
         }
         println!("task of reading data from response complete");
-        self.builder.read().unwrap().reconnect();
+        self.builder.read().unwrap().do_reconnect();
         Poll::Ready(Ok(()))
     }
 }
