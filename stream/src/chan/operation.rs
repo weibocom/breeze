@@ -2,9 +2,9 @@ use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::AsyncWrite;
 
-use protocol::{AsyncReadAll, AsyncWriteAll, ResponseItem};
+use crate::{AsyncReadAll, AsyncWriteAll, Response};
 
 pub enum AsyncOperation<Get, Gets, Store, Meta> {
     Get(Get),
@@ -29,7 +29,7 @@ where
     Store: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
     Meta: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
 {
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         match me {
             Self::Get(ref mut s) => Pin::new(s).poll_next(cx),

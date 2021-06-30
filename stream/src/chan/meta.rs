@@ -6,7 +6,8 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use protocol::{AsyncReadAll, AsyncWriteAll, MetaType, Protocol, ResponseItem};
+use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use protocol::{MetaType, Protocol};
 
 pub struct MetaStream<P, B> {
     instances: Vec<B>,
@@ -31,7 +32,7 @@ where
     P: Unpin,
     B: AsyncReadAll + Unpin,
 {
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<ResponseItem>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>> {
         let me = &mut *self;
         unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_next(cx) }
     }

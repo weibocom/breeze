@@ -43,7 +43,7 @@ impl RequestData {
     }
 }
 
-pub trait Request {
+pub trait RequestHandler {
     fn on_received(&self, id: usize, seq: usize);
 }
 
@@ -135,7 +135,7 @@ impl<R> BridgeRequestToBuffer<R> {
 
 impl<R> Future for BridgeRequestToBuffer<R>
 where
-    R: Unpin + Request,
+    R: Unpin + RequestHandler,
 {
     type Output = Result<()>;
 

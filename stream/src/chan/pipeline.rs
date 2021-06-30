@@ -1,4 +1,5 @@
-use protocol::{AsyncPipeToPingPongChanWrite, AsyncReadAll, AsyncWriteAll, Protocol, ResponseItem};
+use crate::{AsyncPipeToPingPongChanWrite, AsyncReadAll, AsyncWriteAll, Response};
+use protocol::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
@@ -15,7 +16,7 @@ pub struct PipeToPingPongChanWrite<P, S> {
     w_buf: BytesMut,
     parser: P,
     inner: S,
-    response: Option<ResponseItem>,
+    response: Option<Response>,
     // 已经写完，但没有读取的请求数量
     pending: usize,
     waker: Option<Waker>,
