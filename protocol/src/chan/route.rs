@@ -1,8 +1,9 @@
-use std::io::{Error, ErrorKind, Result};
+use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use super::{AsyncReadAll, ResponseItem};
+use tokio::io::AsyncWrite;
 
 use futures::ready;
 
@@ -69,24 +70,19 @@ where
     }
 }
 
-impl<B, R> AsyncRead for AsyncRoute<B, R>
+impl<B, R> AsyncReadAll for AsyncRoute<B, R>
 where
-    B: AsyncRead + Unpin,
+    B: AsyncReadAll + Unpin,
     R: Unpin,
 {
     #[inline]
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-        buf: &mut ReadBuf,
-    ) -> Poll<Result<()>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<ResponseItem>> {
         let me = &mut *self;
-        if me.backends.len() == 0 {
-            return Poll::Ready(Err(Error::new(
-                ErrorKind::NotConnected,
-                "not connected, maybe topology not inited",
-            )));
-        }
-        unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_read(cx, buf) }
+        unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_next(cx) }
+    }
+    #[inline]
+    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+        let me = &mut *self;
+        unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_done(cx) }
     }
 }

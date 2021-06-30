@@ -14,6 +14,18 @@ pub struct RingSlice {
     end: usize,
 }
 
+impl Clone for RingSlice {
+    fn clone(&self) -> Self {
+        Self {
+            ptr: self.ptr,
+            cap: self.cap,
+            start: self.start,
+            offset: self.offset,
+            end: self.end,
+        }
+    }
+}
+
 impl Default for RingSlice {
     fn default() -> Self {
         RingSlice {
