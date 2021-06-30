@@ -1,24 +1,25 @@
 use std::cell::RefCell;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
-use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering, AtomicI32};
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::runtime::Runtime;
+
+use ds::{RingBuffer, RingSlice};
 
 use super::status::*;
 use super::{
     BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, IdAsyncRead, IdAsyncWrite,
-    Request, Response, RingBuffer, RingSlice, SeqOffset,
+    Request, Response, SeqOffset,
 };
 
 use protocol::{Protocol, ResponseItem};
 
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::sync::mpsc::{channel, Receiver};
 use tokio_util::sync::PollSender;
 
-use futures::{ready, SinkExt};
+use futures::ready;
 
 use cache_line_size::CacheAligned;
 
@@ -39,9 +40,6 @@ pub struct MpmcRingBufferStream {
     // 已经成功读取response的最小的offset，在ReadRrom里面使用
     offset: CacheAligned<SeqOffset>,
 
-    // 读取response时，返回最后一个包的最小长度
-    min: usize,
-
     // 在运行当中的线程数。一共会有三个
     // 1. BridgeRequestToBuffer: 把request数据从receiver读取到本地的buffer
     // 2. BridgeBufferToWriter:  把request数据从本地的buffer写入到backend server
@@ -55,7 +53,7 @@ pub struct MpmcRingBufferStream {
 
 impl MpmcRingBufferStream {
     // id必须小于parallel
-    pub fn with_capacity(min: usize, parallel: usize, done: Arc<AtomicBool>) -> Self {
+    pub fn with_capacity(parallel: usize, done: Arc<AtomicBool>) -> Self {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= 32);
         let items = (0..parallel).map(|id| Item::new(id)).collect();
@@ -77,7 +75,6 @@ impl MpmcRingBufferStream {
             offset: CacheAligned(SeqOffset::from(parallel)),
             receiver: RefCell::new(Some(receiver)),
             senders: senders,
-            min: min,
             done: done,
             runnings: Arc::new(AtomicIsize::new(0)),
             chan_reset: AtomicBool::new(false),
@@ -220,11 +217,23 @@ impl MpmcRingBufferStream {
             self.clone(),
             builder.clone(),
             "bridge-backend-to-local",
-            BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone(), builder.clone()),
+            BridgeResponseToLocal::from(
+                r,
+                self.clone(),
+                parser,
+                resp_buffer,
+                self.done.clone(),
+                builder.clone(),
+            ),
         );
     }
-    pub fn bridge_no_reply<R, W>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W, builder: Arc<BackendBuilder>)
-    where
+    pub fn bridge_no_reply<R, W>(
+        self: Arc<Self>,
+        req_buffer: usize,
+        mut r: R,
+        w: W,
+        builder: Arc<BackendBuilder>,
+    ) where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
     {
@@ -301,11 +310,13 @@ impl MpmcRingBufferStream {
         }
         self.clone().do_close();
         while self.clone().runnings.load(Ordering::Acquire) != 0 {
-            println!("running threads: {}", self.clone().runnings.load(Ordering::Acquire));
+            println!(
+                "running threads: {}",
+                self.clone().runnings.load(Ordering::Acquire)
+            );
             sleep(Duration::from_secs(1));
         }
         println!("all threads completed");
-
     }
     // done == true。所以新到达的poll_write都会直接返回
     // 不会再操作senders, 可以重置senders
@@ -365,9 +376,9 @@ impl MpmcRingBufferStream {
 use super::RequestData;
 use crate::BackendBuilder;
 use std::borrow::BorrowMut;
+use std::ops::Deref;
 use std::thread::sleep;
 use std::time::Duration;
-use std::ops::Deref;
 
 impl Request for Arc<MpmcRingBufferStream> {
     fn on_received(&self, id: usize, seq: usize) {
@@ -435,7 +446,6 @@ mod mpmc_test {
     struct TestMpmc {
         senders: Vec<RefCell<(bool, PollSender<RequestData>)>>,
         receiver: RefCell<Option<Receiver<RequestData>>>,
-
     }
 
     pub struct ReceiverTester {
@@ -446,10 +456,7 @@ mod mpmc_test {
     }
 
     impl ReceiverTester {
-        pub fn from(
-            receiver: Receiver<RequestData>,
-            done: Arc<AtomicBool>,
-        ) -> Self {
+        pub fn from(receiver: Receiver<RequestData>, done: Arc<AtomicBool>) -> Self {
             Self {
                 done: done,
                 seq: 0,
@@ -459,8 +466,7 @@ mod mpmc_test {
         }
     }
 
-    impl Future for ReceiverTester
-    {
+    impl Future for ReceiverTester {
         type Output = Result<()>;
 
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -473,9 +479,7 @@ mod mpmc_test {
                     let data = req.data();
                     if !data.len() <= 1 {
                         assert_eq!(data[0], 0x80);
-                        println!(
-                            "request  received"
-                        );
+                        println!("request  received");
                         let seq = me.seq;
                         me.seq += 1;
                     }
@@ -496,49 +500,49 @@ mod mpmc_test {
     fn test_mpmc() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-        let test_mpmc = {
-        let (origin_sender, receiver) = channel(100);
-        let mut sender = PollSender::new(origin_sender);
-        let senders = (0..50)
-            .map(|_| RefCell::new((true, sender.clone())))
-            .collect();
-        /*
-        sender.close_this_sender();
-        drop(sender);
-        */
-                    println!("thread {}: new testMpmc", thread_id::get());
+            let test_mpmc = {
+                let (origin_sender, receiver) = channel(100);
+                let mut sender = PollSender::new(origin_sender);
+                let senders = (0..50)
+                    .map(|_| RefCell::new((true, sender.clone())))
+                    .collect();
+                /*
+                sender.close_this_sender();
+                drop(sender);
+                */
+                println!("thread {}: new testMpmc", thread_id::get());
 
-        TestMpmc{
-            senders: senders,
-            receiver: RefCell::new(Some(receiver))
-        }
-        };
+                TestMpmc {
+                    senders: senders,
+                    receiver: RefCell::new(Some(receiver)),
+                }
+            };
 
-        let done = Arc::new(AtomicBool::new(false));
+            let done = Arc::new(AtomicBool::new(false));
 
-        let receiver = test_mpmc.receiver.borrow_mut().take().expect("receiver exists");
-                    println!("thread {}: goto new thread", thread_id::get());
-        tokio::spawn(ReceiverTester::from(
-            receiver,
-            done.clone(),
-        ));
+            let receiver = test_mpmc
+                .receiver
+                .borrow_mut()
+                .take()
+                .expect("receiver exists");
+            println!("thread {}: goto new thread", thread_id::get());
+            tokio::spawn(ReceiverTester::from(receiver, done.clone()));
 
-        std::thread::sleep(Duration::from_secs(5));
-                    println!("thread {}: sleep 5 seconds, begin drop", thread_id::get());
+            std::thread::sleep(Duration::from_secs(5));
+            println!("thread {}: sleep 5 seconds, begin drop", thread_id::get());
 
-        let (sender, receiver) = channel(100);
-        let sender = PollSender::new(sender);
-        // 删除所有的sender，则receiver会会接收到一个None，而不会阻塞
-        for s in test_mpmc.senders.iter() {
-            let (_, mut old) = s.replace((true, sender.clone()));
-            old.close_this_sender();
-            drop(old);
-        }
-                    println!("thread {}: drop done", thread_id::get());
-        let old = test_mpmc.receiver.replace(Some(receiver));
-        debug_assert!(old.is_none());
-        std::thread::sleep(Duration::from_secs(5));
+            let (sender, receiver) = channel(100);
+            let sender = PollSender::new(sender);
+            // 删除所有的sender，则receiver会会接收到一个None，而不会阻塞
+            for s in test_mpmc.senders.iter() {
+                let (_, mut old) = s.replace((true, sender.clone()));
+                old.close_this_sender();
+                drop(old);
+            }
+            println!("thread {}: drop done", thread_id::get());
+            let old = test_mpmc.receiver.replace(Some(receiver));
+            debug_assert!(old.is_none());
+            std::thread::sleep(Duration::from_secs(5));
         });
     }
 }
-

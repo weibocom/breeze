@@ -14,10 +14,11 @@ futures = "*"
 tokio = { version = "1", features = ["full"]}
 protocol = { path = "../protocol" }
 hash = { path = "../hash" }
+ds = { path = "../ds" }
 rand = "*"
 lockfree = "*"
-cache_line_size = "*"
 tokio-util = "*"
 spin = { version = "0.9.0"}
 enum_dispatch = "*"
 bytes = "*"
+cache_line_size = "*"

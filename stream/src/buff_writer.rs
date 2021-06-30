@@ -2,16 +2,15 @@ use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use futures::{ready, SinkExt};
+use futures::ready;
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc::Receiver;
 
-use super::ring::spsc::{RingBufferReader, RingBufferWriter};
 use crate::BackendBuilder;
-use tokio::runtime::Runtime;
+use ds::{RingBufferReader, RingBufferWriter};
 
 unsafe impl<W> Send for BridgeBufferToWriter<W> {}
 unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
@@ -58,7 +57,12 @@ pub struct BridgeBufferToWriter<W> {
 }
 
 impl<W> BridgeBufferToWriter<W> {
-    pub fn from(reader: RingBufferReader, w: W, done: Arc<AtomicBool>, builder: Arc<BackendBuilder>) -> Self {
+    pub fn from(
+        reader: RingBufferReader,
+        w: W,
+        done: Arc<AtomicBool>,
+        builder: Arc<BackendBuilder>,
+    ) -> Self {
         //let cache = File::create("/tmp/cache.out").unwrap();
         Self {
             w: w,
@@ -155,7 +159,7 @@ where
                     }
                     let seq = me.seq;
                     me.seq += 1;
-                me.r.on_received(req.id(), seq);
+                    me.r.on_received(req.id(), seq);
                     println!(
                         "received data from bridge. len:{} id:{} seq:{}",
                         req.data().len(),
