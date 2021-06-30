@@ -5,12 +5,12 @@ use protocol::{Protocol, ResponseItem};
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
-use std::task::{Context, Poll, Waker, RawWaker};
+use std::task::{Context, Poll, RawWaker, Waker};
 
 use super::super::Id;
 use futures::ready;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use std::thread;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use enum_dispatch::enum_dispatch;
 
@@ -213,8 +213,7 @@ impl BackendBuilder {
     {
         println!("come into from_with_response");
         let done = Arc::new(AtomicBool::new(true));
-        let min = parser.min_last_response_size();
-        let stream = RingBufferStream::with_capacity(min, parallel, done.clone());
+        let stream = RingBufferStream::with_capacity(parallel, done.clone());
         let me = Self {
             connected: Arc::new(AtomicBool::new(false)),
             finished: Arc::new(AtomicBool::new(false)),
@@ -227,7 +226,12 @@ impl BackendBuilder {
         };
         let me = Arc::new(me);
         println!("request buffer:{} response buffer:{}", req_buf, resp_buf);
-        let checker = Arc::new(BackendChecker::from(me.clone(), ignore_response, req_buf, resp_buf));
+        let checker = Arc::new(BackendChecker::from(
+            me.clone(),
+            ignore_response,
+            req_buf,
+            resp_buf,
+        ));
         let t = me.start_check(checker, parser.clone());
 
         me.check_waker.clone().write().unwrap().check_task = Some(t);
@@ -262,8 +266,8 @@ impl BackendBuilder {
     }
 
     pub fn start_check<P>(&self, checker: Arc<BackendChecker>, parser: P) -> JoinHandle<()>
-        where
-            P: Unpin + Send + Sync + Protocol + 'static + Clone,
+    where
+        P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         let runtime = Runtime::new().unwrap();
         let cloned_parser = parser.clone();
@@ -275,11 +279,11 @@ impl BackendBuilder {
     }
 }
 
-use tokio::time::{interval, Interval};
-use std::time::Duration;
 use std::sync::RwLock;
-use tokio::runtime::Runtime;
 use std::thread::JoinHandle;
+use std::time::Duration;
+use tokio::runtime::Runtime;
+use tokio::time::{interval, Interval};
 
 pub struct BackendWaker {
     check_task: Option<std::thread::JoinHandle<()>>,
@@ -287,9 +291,7 @@ pub struct BackendWaker {
 
 impl BackendWaker {
     fn new() -> Self {
-        BackendWaker {
-            check_task: None,
-        }
+        BackendWaker { check_task: None }
     }
 
     fn wake(&self) {
@@ -324,12 +326,11 @@ impl BackendChecker {
             resp_buf: resp_buf,
         };
         me
-
     }
 
     async fn check<P>(&self, parser: P)
-        where
-            P: Unpin + Send + Sync + Protocol + 'static + Clone,
+    where
+        P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         println!("come into check");
         while !self.inner.finished.load(Ordering::Acquire) {
@@ -343,8 +344,8 @@ impl BackendChecker {
     }
 
     async fn check_reconnected_once<P>(&self, parser: P)
-        where
-            P: Unpin + Send + Sync + Protocol + 'static + Clone,
+    where
+        P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         if self.inner.clone().done.load(Ordering::Acquire) {
             println!("need to reconnect");
@@ -365,7 +366,14 @@ impl BackendChecker {
 
                     if !self.ignore_response.load(Ordering::Acquire) {
                         println!("go to bridge");
-                        req_stream.bridge(parser.clone(), self.req_buf, self.resp_buf, r, w, self.inner.clone());
+                        req_stream.bridge(
+                            parser.clone(),
+                            self.req_buf,
+                            self.resp_buf,
+                            r,
+                            w,
+                            self.inner.clone(),
+                        );
                     } else {
                         println!("go to bridge_no_reply");
                         req_stream.bridge_no_reply(self.resp_buf, r, w, self.inner.clone());

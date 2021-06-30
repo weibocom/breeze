@@ -29,23 +29,23 @@ impl ResponseRingBuffer {
         }
     }
     #[inline]
-    pub(crate) fn processed(&self) -> usize {
+    pub fn processed(&self) -> usize {
         self.processed
     }
     #[inline]
-    pub(crate) fn reset_read(&mut self, read: usize) {
+    pub fn reset_read(&mut self, read: usize) {
         self.read = read;
     }
     #[inline]
-    pub(crate) fn writtened(&self) -> usize {
+    pub fn writtened(&self) -> usize {
         self.write
     }
     #[inline]
-    pub(crate) fn advance_processed(&mut self, n: usize) {
+    pub fn advance_processed(&mut self, n: usize) {
         self.processed += n;
     }
     #[inline]
-    pub(crate) fn advance_write(&mut self, n: usize) {
+    pub fn advance_write(&mut self, n: usize) {
         self.write += n;
     }
     #[inline(always)]
@@ -54,7 +54,7 @@ impl ResponseRingBuffer {
     }
     // 如果无法写入，则返回一个长度为0的slice
     #[inline(always)]
-    pub(crate) fn as_mut_bytes(&mut self) -> &mut [u8] {
+    pub fn as_mut_bytes(&mut self) -> &mut [u8] {
         let offset = self.mask(self.write);
         let n = if self.read + self.size == self.write {
             // 已满
@@ -76,7 +76,7 @@ impl ResponseRingBuffer {
     }
     // 返回已写入，未处理的字节。即从[processed,write)的字节
     #[inline(always)]
-    pub(crate) fn processing_bytes(&self) -> RingSlice {
+    pub fn processing_bytes(&self) -> RingSlice {
         RingSlice::from(self.data.as_ptr(), self.size, self.processed, self.write)
     }
 }

@@ -2,18 +2,17 @@ use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use super::ResponseRingBuffer;
-use super::RingSlice;
+use ds::{ResponseRingBuffer, RingSlice};
 
 use protocol::Protocol;
 
 use tokio::io::{AsyncRead, ReadBuf};
 
-use futures::ready;
 use crate::BackendBuilder;
+use futures::ready;
 
 pub trait Response {
     fn load_offset(&self) -> usize;
@@ -35,7 +34,14 @@ pub struct BridgeResponseToLocal<R, W, P> {
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, buf: usize, done: Arc<AtomicBool>, builder: Arc<BackendBuilder>) -> Self {
+    pub fn from(
+        r: R,
+        w: W,
+        parser: P,
+        buf: usize,
+        done: Arc<AtomicBool>,
+        builder: Arc<BackendBuilder>,
+    ) -> Self {
         debug_assert!(buf == buf.next_power_of_two());
         Self {
             seq: 0,

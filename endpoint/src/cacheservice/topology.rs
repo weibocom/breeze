@@ -3,7 +3,7 @@ use stream::{BackendBuilder, Cid, RingBufferStream};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use protocol::Protocol;
 
@@ -256,7 +256,7 @@ where
 
 impl<P> discovery::Topology for Topology<P>
 where
-    P: Send + Sync + Protocol + 'static + Clone,
+    P: Send + Sync + Protocol,
 {
     fn update(&mut self, cfg: &str, name: &str) {
         println!("cache service topology received:{}", name);

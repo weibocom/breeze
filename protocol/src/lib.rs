@@ -5,14 +5,13 @@
 use std::io::Result;
 
 pub mod memcache;
-mod slice;
-pub use slice::RingSlice;
+use ds::RingSlice;
 use tokio::io::AsyncWrite;
 
 use enum_dispatch::enum_dispatch;
 
 #[enum_dispatch]
-pub trait Protocol: Unpin + Clone + 'static + Unpin {
+pub trait Protocol: Unpin + Clone + 'static {
     // 一个请求包的最小的字节数
     fn min_size(&self) -> usize;
     // 从response读取buffer时，可能读取多次。
@@ -73,7 +72,10 @@ impl ResponseItem {
     }
     // 返回true，说明所有ResponseItem的数据都写入完成
     pub fn write_to(&mut self, buff: &mut ReadBuf) -> bool {
-        self.slice.read(buff)
+        let b = unsafe { std::mem::transmute(buff.unfilled_mut()) };
+        let n = self.slice.read(b);
+        buff.advance(n);
+        self.slice.available() == 0
     }
     pub fn len(&self) -> usize {
         todo!("not supported");

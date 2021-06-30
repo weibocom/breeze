@@ -6,7 +6,7 @@ use std::task::{Context, Poll, Waker};
 use tokio::io::ReadBuf;
 
 //use super::RequestData;
-use super::RingSlice;
+use ds::RingSlice;
 
 #[repr(u8)]
 pub enum ItemStatus {
@@ -90,7 +90,7 @@ impl Item {
         // place_response先更新数据，后更新状态。不会有并发问题
         // 读数据
         println!("poll read id:{}", self.id);
-        let response = self.response.borrow().clone();
+        let response = self.response.take();
 
         Poll::Ready(response)
     }

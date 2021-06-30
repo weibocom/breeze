@@ -10,4 +10,5 @@ members = [
   "context",
   "log",
   "metrics",
+  "ds",
 ]
