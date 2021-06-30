@@ -3,7 +3,7 @@ use stream::{BackendBuilder, Cid, RingBufferStream};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use protocol::Protocol;
 
@@ -22,15 +22,15 @@ pub struct Topology<P> {
     l1_seq: AtomicUsize,
     // 处理写请求
     pub(crate) masters: Vec<String>,
-    m_streams: HashMap<String, Arc<BackendBuilder>>,
+    m_streams: HashMap<String, Arc<RwLock<BackendBuilder>>>,
     // 只用来同步写请求
     followers: Vec<Vec<String>>,
-    f_streams: HashMap<String, Arc<BackendBuilder>>,
+    f_streams: HashMap<String, Arc<RwLock<BackendBuilder>>>,
     // 处理读请求,每个layer选择一个，先打通
     // 后续考虑要调整为新的Vec嵌套逻辑： [random[reader[node_dist_pool]]]
     pub(crate) readers: Vec<Vec<String>>,
-    get_streams: HashMap<String, Arc<BackendBuilder>>,
-    gets_streams: HashMap<String, Arc<BackendBuilder>>,
+    get_streams: HashMap<String, Arc<RwLock<BackendBuilder>>>,
+    gets_streams: HashMap<String, Arc<RwLock<BackendBuilder>>>,
 
     all_instances: Vec<String>,
     meta_stream: HashMap<String, Arc<BackendBuilder>>,
@@ -62,6 +62,8 @@ impl<P> Topology<P> {
                 self.m_streams
                     .get(addr)
                     .expect("stream must be exists before address")
+                    .read()
+                    .unwrap()
                     .build()
             })
             .collect()
@@ -85,6 +87,7 @@ impl<P> Topology<P> {
                     self.get_streams
                         .get(addr)
                         .expect("stream must be exists before address")
+                        .read().unwrap()
                         .build()
                 })
                 .collect()
@@ -104,6 +107,7 @@ impl<P> Topology<P> {
                     self.gets_streams
                         .get(addr)
                         .expect("stream must be exists before address")
+                        .read().unwrap()
                         .build()
                 })
                 .collect()
@@ -120,6 +124,7 @@ impl<P> Topology<P> {
                         self.get_streams
                             .get(addr)
                             .expect("stream must be exists before adress")
+                            .read().unwrap()
                             .build()
                     })
                     .collect()
@@ -128,14 +133,14 @@ impl<P> Topology<P> {
     }
 
     // 删除不存在的stream
-    fn delete_non_exists(addrs: &[String], streams: &mut HashMap<String, Arc<BackendBuilder>>) {
+    fn delete_non_exists(addrs: &[String], streams: &mut HashMap<String, Arc<RwLock<BackendBuilder>>>) {
         streams.retain(|addr, _| addrs.contains(addr));
     }
     // 添加新增的stream
     fn add_new(
         parser: &P,
         addrs: &[String],
-        streams: &mut HashMap<String, Arc<BackendBuilder>>,
+        streams: &mut HashMap<String, Arc<RwLock<BackendBuilder>>>,
         req: usize,
         resp: usize,
         parallel: usize,
@@ -144,6 +149,7 @@ impl<P> Topology<P> {
         P: Send + Sync + Protocol + 'static + Clone,
     {
         for addr in addrs {
+            println!("add new, addr = {}", addr);
             if !streams.contains_key(addr) {
                 streams.insert(
                     addr.to_string(),
@@ -183,8 +189,15 @@ impl<P> Topology<P> {
         match super::Namespace::parse(cfg, namespace) {
             Ok(ns) => self.update_from_namespace(ns),
             Err(e) => {
+                if self.masters.is_empty() {
+                    self.masters.push("127.0.0.1:10001".parse().unwrap());
+                }
+
+                if self.readers.is_empty() {
+                    self.readers.push(vec!["127.0.0.1:10001".parse().unwrap()]);
+                }
                 println!("parse cacheservice config error: name:{} error:{}", name, e);
-                return;
+                //return;
             }
         };
         if self.masters.len() == 0 || self.readers.len() == 0 {

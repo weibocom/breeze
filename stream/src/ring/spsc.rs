@@ -18,13 +18,15 @@ pub enum Status {
     ReadPending = 1,
     WritePending = 2,
     Lock,
+    Close,
 }
 
-const STATUSES: [Status; 4] = [
+const STATUSES: [Status; 5] = [
     Status::Ok,
     Status::ReadPending,
     Status::WritePending,
     Status::Lock,
+    Status::Close,
 ];
 
 impl PartialEq for Status {
@@ -85,11 +87,17 @@ impl RingBuffer {
             RingBufferReader::from(buffer.clone()),
         )
     }
+    fn close(&self) {
+        self.waker_status.store(Status::Close as u8, Ordering::Release);
+    }
     // 读和写同时只会出现一个notify. TODO 待验证
     fn notify(&self, status: Status) {
         debug_assert!(
             status as u8 == Status::ReadPending as u8 || status as u8 == Status::WritePending as u8
         );
+        if self.waker_status.load(Ordering::Acquire) == Status::Close as u8 {
+            return;
+        }
         if self.status_cas(status, Status::Lock) {
             // 进入到pending状态，一定会有waker
             self.wakers[status as usize - 1]
@@ -111,6 +119,9 @@ impl RingBuffer {
             // 异常情况，进入死循环了
             debug_assert!(loops <= 1024 * 1024);
             let old = self.waker_status.load(Ordering::Acquire);
+            if old == Status::Close {
+                return;
+            }
             if old == Status::Ok || old == status {
                 if self.status_cas(old.into(), Status::Lock) {
                     *self.wakers[status as usize - 1].borrow_mut() = Some(cx.waker().clone());
@@ -157,6 +168,7 @@ pub struct RingBufferWriter {
     buffer: Arc<RingBuffer>,
     write: usize,
     mask: usize,
+    closed: bool,
 }
 
 impl RingBufferWriter {
@@ -166,18 +178,22 @@ impl RingBufferWriter {
             buffer: buffer,
             mask: mask,
             write: 0,
+            closed: false,
         }
     }
     // 写入b到buffer。
     // true: 写入成功，false：写入失败。
     // 要么全部成功，要么全部失败。不会写入部分字节
-    pub fn put_slice(&mut self, b: &[u8]) -> bool {
+    pub fn put_slice(&mut self, b: &[u8]) -> Result<usize> {
+        if self.closed {
+            return Result::Err(Error::new(ErrorKind::BrokenPipe, "channel is closed"));
+        }
         let read = self.buffer.read.0.load(Ordering::Acquire);
         let available = self.buffer.len - (self.write - read);
         debug_assert!(available <= self.buffer.len);
         debug_assert!(b.len() < self.buffer.len);
         if available < b.len() {
-            false
+            Result::Ok(0 as usize)
         } else {
             let oft_write = self.write & self.mask;
             let oft_read = read & self.mask;
@@ -198,25 +214,31 @@ impl RingBufferWriter {
             }
             self.write += b.len();
             self.buffer.write.0.store(self.write, Ordering::Release);
-            true
+            Result::Ok(b.len())
         }
     }
-    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<Result<()>> {
-        if self.put_slice(b) {
-            self.buffer.notify(Status::ReadPending);
-            Poll::Ready(Ok(()))
-        } else {
-            if !self.buffer.closed.load(Ordering::Acquire) {
+    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<(Result<usize>)> {
+        let result = self.put_slice(b);
+        if result.is_ok() {
+            let result_size = result.unwrap();
+            if result_size == 0 {
                 self.buffer.waiting(cx, Status::WritePending);
                 Poll::Pending
-            } else {
-                // TODO 实际未写成功。
-                Poll::Ready(Err(Error::new(
-                    ErrorKind::BrokenPipe,
-                    "spsc buffer channel closed",
-                )))
+            }
+            else {
+                self.buffer.notify(Status::ReadPending);
+                Poll::Ready((Result::Ok(result_size)))
             }
         }
+        else {
+            self.buffer.close();
+            Poll::Ready((result))
+        }
+    }
+
+    pub fn close(&mut self) {
+        self.closed = true;
+        self.buffer.close();
     }
 }
 impl Drop for RingBufferWriter {
@@ -231,6 +253,7 @@ pub struct RingBufferReader {
     read: usize,
     mask: usize,
     buffer: Arc<RingBuffer>,
+    close: bool,
 }
 
 impl RingBufferReader {
@@ -240,13 +263,17 @@ impl RingBufferReader {
             buffer: buffer,
             read: 0,
             mask: mask,
+            close: false,
         }
     }
     // 如果ringbuffer到达末尾，则只返回到末尾的slice
-    pub fn next(&self) -> Option<&[u8]> {
+    pub fn next(&self) -> Result<Option<&[u8]>> {
+        if self.close {
+            return Err(Error::new(ErrorKind::BrokenPipe, "channel is closed"));
+        }
         let write = self.buffer.write.0.load(Ordering::Acquire);
         if self.read == write {
-            None
+            Result::Ok(None)
         } else {
             debug_assert!(self.read < write);
             let oft_start = self.read & self.mask;
@@ -258,10 +285,10 @@ impl RingBufferReader {
             };
             //println!("spsc poll next. read:{} write:{} n:{}", self.read, write, n);
             unsafe {
-                Some(from_raw_parts(
+                Result::Ok(Some(from_raw_parts(
                     self.buffer.data.offset(oft_start as isize),
                     n,
-                ))
+                )))
             }
         }
     }
@@ -272,19 +299,20 @@ impl RingBufferReader {
     }
     // 没有数据进入waiting状态。等put唤醒
     pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Result<&[u8]>> {
-        if let Some(data) = self.next() {
-            Poll::Ready(Ok(data))
-        } else {
-            if !self.buffer.closed.load(Ordering::Acquire) {
+        let result = self.next();
+        if result.is_ok() {
+            let poll_result = result.unwrap();
+            if poll_result.is_some() {
+                Poll::Ready(Result::Ok(poll_result.unwrap()))
+            }
+            else {
                 self.buffer.waiting(cx, Status::ReadPending);
                 Poll::Pending
-            } else {
-                // TODO 实际未写成功。
-                Poll::Ready(Err(Error::new(
-                    ErrorKind::BrokenPipe,
-                    "spsc buffer channel closed",
-                )))
             }
+        }
+        else {
+            self.buffer.close();
+            Poll::Ready(Result::Err(result.unwrap_err()))
         }
     }
 }
@@ -418,9 +446,9 @@ mod tests {
             while readed_data.len() < size {
                 let n = match reader.poll_next(&mut cx) {
                     Poll::Ready(data) => {
-                        debug_assert!(data.len() > 0);
-                        readed_data.extend_from_slice(data);
-                        data.len()
+                        debug_assert!(data.unwrap().len() > 0);
+                        readed_data.extend_from_slice(data.unwrap());
+                        data.unwrap().len()
                     }
                     Poll::Pending => {
                         std::hint::spin_loop();
