@@ -190,7 +190,7 @@ impl MpmcRingBufferStream {
         resp_buffer: usize,
         r: R,
         w: W,
-        builder: Arc<RwLock<BackendBuilder>>,
+        builder: Arc<BackendBuilder>,
     ) where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
@@ -223,7 +223,7 @@ impl MpmcRingBufferStream {
             BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone(), builder.clone()),
         );
     }
-    pub fn bridge_no_reply<R, W>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W, builder: Arc<RwLock<BackendBuilder>>)
+    pub fn bridge_no_reply<R, W>(self: Arc<Self>, req_buffer: usize, mut r: R, w: W, builder: Arc<BackendBuilder>)
     where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
@@ -265,7 +265,7 @@ impl MpmcRingBufferStream {
             }
         });
     }
-    fn start_bridge<F>(self: Arc<Self>, builder: Arc<RwLock<BackendBuilder>>, name: &'static str, future: F)
+    fn start_bridge<F>(self: Arc<Self>, builder: Arc<BackendBuilder>, name: &'static str, future: F)
     where
         F: Future<Output = Result<()>> + Send + 'static,
     {

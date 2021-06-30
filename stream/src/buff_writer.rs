@@ -54,11 +54,11 @@ pub struct BridgeBufferToWriter<W> {
     w: W,
     done: Arc<AtomicBool>,
     //cache: File,
-    builder: Arc<RwLock<BackendBuilder>>,
+    builder: Arc<BackendBuilder>,
 }
 
 impl<W> BridgeBufferToWriter<W> {
-    pub fn from(reader: RingBufferReader, w: W, done: Arc<AtomicBool>, builder: Arc<RwLock<BackendBuilder>>) -> Self {
+    pub fn from(reader: RingBufferReader, w: W, done: Arc<AtomicBool>, builder: Arc<BackendBuilder>) -> Self {
         //let cache = File::create("/tmp/cache.out").unwrap();
         Self {
             w: w,
