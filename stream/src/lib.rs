@@ -47,7 +47,7 @@ use std::io::Result;
 pub trait AsyncReadAll {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>>;
     // 处理完poll_next之后的请求调用
-    fn poll_done(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>>;
+    //   fn poll_done(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>>;
 }
-impl AsyncWriteAll for tokio::net::TcpStream {}
-impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}
+//impl AsyncWriteAll for tokio::net::TcpStream {}
+//impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}

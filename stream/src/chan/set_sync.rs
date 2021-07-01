@@ -99,7 +99,7 @@ where
             }
         }
     }
-    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        Pin::new(&mut self.master).poll_done(cx)
-    }
+    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    Pin::new(&mut self.master).poll_done(cx)
+    //}
 }

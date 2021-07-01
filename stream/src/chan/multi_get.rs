@@ -146,13 +146,13 @@ where
             })
     }
 
-    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        for (i, &success) in me.writes.iter().enumerate() {
-            if success {
-                ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_done(cx))?;
-            }
-        }
-        Poll::Ready(Ok(()))
-    }
+    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    for (i, &success) in me.writes.iter().enumerate() {
+    //        if success {
+    //            ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_done(cx))?;
+    //        }
+    //    }
+    //    Poll::Ready(Ok(()))
+    //}
 }

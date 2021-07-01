@@ -147,27 +147,21 @@ where
             if let Some(req) = me.cache.take() {
                 let data = req.data();
                 println!("data len:{}", data.len());
-                if !data.len() <= 1 {
-                    assert_eq!(data[0], 0x80);
-                    println!(
-                        "bridge request to buffer: write to buffer. cid: {} len:{}",
-                        req.id(),
-                        req.data().len()
-                    );
-                    let t = ready!(me.w.poll_put_slice(cx, data));
-                    if t.is_err() {
-                        break;
-                    }
-                    let seq = me.seq;
-                    me.seq += 1;
-                    me.r.on_received(req.id(), seq);
-                    println!(
-                        "received data from bridge. len:{} id:{} seq:{}",
-                        req.data().len(),
-                        req.id(),
-                        seq
-                    );
-                }
+                println!(
+                    "bridge request to buffer: write to buffer. cid: {} len:{}",
+                    req.id(),
+                    req.data().len()
+                );
+                ready!(me.w.poll_put_slice(cx, data))?;
+                let seq = me.seq;
+                me.seq += 1;
+                me.r.on_received(req.id(), seq);
+                println!(
+                    "received data from bridge. len:{} id:{} seq:{}",
+                    req.data().len(),
+                    req.id(),
+                    seq
+                );
             }
             println!("bridge request to buffer: wating to get request from channel");
             let result = ready!(receiver.as_mut().poll_recv(cx));

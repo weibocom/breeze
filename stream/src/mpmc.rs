@@ -102,7 +102,7 @@ impl MpmcRingBufferStream {
         item.response_done();
         let (start, end) = response.location();
         self.offset.0.insert(start, end);
-        println!("mpmc poll read complete. {} => {}", start, end);
+        println!("mpmc poll read complete. cid:{} {} => {}", cid, start, end);
     }
     // 释放cid的资源
     pub fn poll_shutdown(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {

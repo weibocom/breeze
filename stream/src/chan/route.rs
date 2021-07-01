@@ -78,9 +78,9 @@ where
         let me = &mut *self;
         unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_next(cx) }
     }
-    #[inline]
-    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_done(cx) }
-    }
+    //#[inline]
+    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_done(cx) }
+    //}
 }

@@ -50,9 +50,10 @@ impl AsyncReadAll for Backend {
         let slice = ready!(me.inner.poll_next(me.id.id(), cx))?;
         Poll::Ready(Ok(Response::from(slice, me.id.id(), me.inner.clone())))
     }
-    fn poll_done(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        todo!("not suppotred");
-    }
+    //fn poll_done(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
+    //    //todo!("not suppotred");
+    //    Poll::Ready(Ok(()))
+    //}
 }
 
 impl AsyncWrite for Backend {
@@ -78,13 +79,13 @@ impl AsyncReadAll for BackendStream {
             BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_next(cx),
         }
     }
-    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        match me {
-            BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_done(cx),
-            BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_done(cx),
-        }
-    }
+    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    match me {
+    //        BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_done(cx),
+    //        BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_done(cx),
+    //    }
+    //}
 }
 
 impl AsyncWrite for BackendStream {
@@ -119,12 +120,12 @@ impl AsyncReadAll for NotConnected {
             "read from an unconnected stream",
         )))
     }
-    fn poll_done(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-        Poll::Ready(Err(Error::new(
-            ErrorKind::NotConnected,
-            "poll done from an unconnected stream",
-        )))
-    }
+    //fn poll_done(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
+    //    Poll::Ready(Err(Error::new(
+    //        ErrorKind::NotConnected,
+    //        "poll done from an unconnected stream",
+    //    )))
+    //}
 }
 
 impl AsyncWrite for NotConnected {

@@ -36,10 +36,10 @@ where
         let me = &mut *self;
         unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_next(cx) }
     }
-    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_done(cx) }
-    }
+    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_done(cx) }
+    //}
 }
 
 impl<P, B> AsyncWrite for MetaStream<P, B>

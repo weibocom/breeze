@@ -190,14 +190,14 @@ where
             Poll::Ready(Err(Error::new(ErrorKind::NotFound, "not found key")))
         }
     }
-    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        let me = &mut self;
-        for i in 0..me.idx {
-            unsafe { ready!(Pin::new(me.layers.get_unchecked_mut(i)).poll_done(cx))? };
-        }
-        self.idx = 0;
-        Poll::Ready(Ok(()))
-    }
+    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    //    let me = &mut self;
+    //    for i in 0..me.idx {
+    //        unsafe { ready!(Pin::new(me.layers.get_unchecked_mut(i)).poll_done(cx))? };
+    //    }
+    //    self.idx = 0;
+    //    Poll::Ready(Ok(()))
+    //}
 }
 
 struct RequestRef {
