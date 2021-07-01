@@ -5,9 +5,10 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use ds::{RingBuffer, RingSlice};
+use ds::{RingBuffer, RingSlice, Slice};
 
 use super::status::*;
+use super::RequestData;
 use crate::{
     BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, RequestHandler,
     ResponseHandler, SeqOffset,
@@ -376,7 +377,6 @@ impl MpmcRingBufferStream {
     }
 }
 
-use super::RequestData;
 use crate::BackendBuilder;
 use std::thread::sleep;
 use std::time::Duration;

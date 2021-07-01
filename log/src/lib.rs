@@ -1,16 +1,16 @@
 #[allow(unused_macros)]
-#[cfg(debug_assertions)]
-#[macro_export]
-macro_rules! debug {
-    ($( $args:expr ),*) => { println!( $( $args ),* ); }
-}
-
 #[cfg(not(debug_assertions))]
 #[macro_export]
 macro_rules! debug {
     ($( $args:expr ),*) => {
         ()
     };
+}
+
+#[cfg(debug_assertions)]
+#[macro_export]
+macro_rules! debug {
+    ($( $args:expr ),*) => { println!( $( $args ),* ); }
 }
 
 #[macro_export]
