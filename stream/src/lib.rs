@@ -1,8 +1,8 @@
 mod backend;
-mod buff_reader;
-mod buff_writer;
 mod chan;
 mod mpmc;
+mod req_handler;
+mod resp_handler;
 mod response;
 mod status;
 
@@ -10,10 +10,11 @@ pub use chan::*;
 pub use response::*;
 
 pub use backend::{Backend, BackendBuilder, BackendStream};
-pub(crate) use buff_reader::{BridgeResponseToLocal, ResponseHandler};
-use buff_writer::RequestData;
-pub(crate) use buff_writer::{BridgeBufferToWriter, BridgeRequestToBuffer, RequestHandler};
 pub use mpmc::MpmcRingBufferStream as RingBufferStream;
+pub(crate) use req_handler::{
+    BridgeBufferToWriter, BridgeRequestToBuffer, RequestData, RequestHandler,
+};
+pub(crate) use resp_handler::{BridgeResponseToLocal, ResponseHandler};
 
 use std::io::Result;
 use tokio::io::AsyncWrite;
