@@ -70,34 +70,6 @@ where
             })))
         }
     }
-    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    // 为了简单。flush时不考虑pending，即使从pending恢复，也可以把之前的poll_flush重新操作一遍。
-    //    // poll_flush是幂等的
-    //    let me = &mut *self;
-    //    for (i, &success) in me.writes.iter().enumerate() {
-    //        if success {
-    //            ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_flush(cx))?;
-    //        }
-    //    }
-    //    Poll::Ready(Ok(()))
-    //}
-    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    let mut last_err = None;
-    //    for (i, &success) in me.writes.iter().enumerate() {
-    //        if success {
-    //            match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_shutdown(cx))
-    //            {
-    //                Err(e) => last_err = Some(e),
-    //                _ => {}
-    //            }
-    //        }
-    //    }
-    //    match last_err {
-    //        Some(e) => Poll::Ready(Err(e)),
-    //        _ => Poll::Ready(Ok(())),
-    //    }
-    //}
 }
 
 impl<S, P> AsyncReadAll for AsyncMultiGet<S, P>
@@ -141,14 +113,4 @@ where
                 })))
             })
     }
-
-    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    for (i, &success) in me.writes.iter().enumerate() {
-    //        if success {
-    //            ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_done(cx))?;
-    //        }
-    //    }
-    //    Poll::Ready(Ok(()))
-    //}
 }

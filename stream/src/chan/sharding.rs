@@ -40,22 +40,6 @@ where
         me.idx = h % me.shards.len();
         unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf) }
     }
-    //#[inline]
-    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    for b in me.shards.iter_mut() {
-    //        ready!(Pin::new(b).poll_flush(cx))?;
-    //    }
-    //    Poll::Ready(Ok(()))
-    //}
-    //#[inline]
-    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    for b in me.shards.iter_mut() {
-    //        ready!(Pin::new(b).poll_shutdown(cx))?;
-    //    }
-    //    Poll::Ready(Ok(()))
-    //}
 }
 
 impl<B, H, P> AsyncReadAll for AsyncSharding<B, H, P>
@@ -75,10 +59,4 @@ where
         }
         unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_next(cx) }
     }
-    //#[inline]
-    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    debug_assert!(me.shards.len() > 0);
-    //    unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_done(cx) }
-    //}
 }

@@ -1,5 +1,3 @@
-//use super::super::{IdAsyncRead, IdAsyncWrite};
-
 use crate::{AsyncReadAll, AsyncWriteAll, Response, RingBufferStream};
 
 use std::io::{Error, ErrorKind, Result};
@@ -47,10 +45,6 @@ impl AsyncReadAll for Backend {
         let slice = ready!(me.inner.poll_next(me.id.id(), cx))?;
         Poll::Ready(Ok(Response::from(slice, me.id.id(), me.inner.clone())))
     }
-    //fn poll_done(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-    //    //todo!("not suppotred");
-    //    Poll::Ready(Ok(()))
-    //}
 }
 
 impl AsyncWriteAll for Backend {
@@ -58,13 +52,6 @@ impl AsyncWriteAll for Backend {
         let me = &*self;
         me.inner.poll_write(me.id.id(), cx, buf)
     }
-    //fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-    //    Poll::Ready(Ok(()))
-    //}
-    //fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &*self;
-    //    me.inner.poll_shutdown(me.id.id(), cx)
-    //}
 }
 
 impl AsyncReadAll for BackendStream {
@@ -75,13 +62,6 @@ impl AsyncReadAll for BackendStream {
             BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_next(cx),
         }
     }
-    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    match me {
-    //        BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_done(cx),
-    //        BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_done(cx),
-    //    }
-    //}
 }
 
 impl AsyncWriteAll for BackendStream {
@@ -92,20 +72,6 @@ impl AsyncWriteAll for BackendStream {
             BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_write(cx, buf),
         }
     }
-    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    match me {
-    //        BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_flush(cx),
-    //        BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_flush(cx),
-    //    }
-    //}
-    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    match me {
-    //        BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_shutdown(cx),
-    //        BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_shutdown(cx),
-    //    }
-    //}
 }
 
 pub struct NotConnected;
@@ -116,12 +82,6 @@ impl AsyncReadAll for NotConnected {
             "read from an unconnected stream",
         )))
     }
-    //fn poll_done(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-    //    Poll::Ready(Err(Error::new(
-    //        ErrorKind::NotConnected,
-    //        "poll done from an unconnected stream",
-    //    )))
-    //}
 }
 
 impl AsyncWriteAll for NotConnected {
@@ -131,10 +91,4 @@ impl AsyncWriteAll for NotConnected {
             "write to an unconnected stream",
         )))
     }
-    //fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-    //    Poll::Ready(Ok(()))
-    //}
-    //fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-    //    Poll::Ready(Ok(()))
-    //}
 }

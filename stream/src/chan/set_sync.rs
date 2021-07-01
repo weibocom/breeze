@@ -6,7 +6,6 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures::ready;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::{AsyncReadAll, AsyncWriteAll, Response};
 
@@ -60,30 +59,6 @@ where
         me.f_idx = 0;
         Poll::Ready(Ok(()))
     }
-    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    // 先刷新follower
-    //    if me.followers.len() > 0 {
-    //        for (idx, w) in me.followers.iter_mut().enumerate() {
-    //            let _ = ready!(Pin::new(w).poll_flush(cx)).map_err(|e| {
-    //                println!("flush follower failed idx:{} err:{:?}", idx, e);
-    //            });
-    //        }
-    //    }
-    //    Pin::new(&mut me.master).poll_flush(cx)
-    //}
-    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    // 先刷新follower
-    //    if me.followers.len() > 0 {
-    //        for (idx, w) in me.followers.iter_mut().enumerate() {
-    //            let _ = ready!(Pin::new(w).poll_shutdown(cx)).map_err(|e| {
-    //                println!("shtudown follower failed idx:{} err:{:?}", idx, e);
-    //            });
-    //        }
-    //    }
-    //    Pin::new(&mut me.master).poll_shutdown(cx)
-    //}
 }
 impl<M, W> AsyncReadAll for AsyncSetSync<M, W>
 where
@@ -99,7 +74,4 @@ where
             }
         }
     }
-    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    Pin::new(&mut self.master).poll_done(cx)
-    //}
 }

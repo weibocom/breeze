@@ -101,40 +101,6 @@ where
         self.req_ref = RequestRef::from(buf);
         return self.do_write(cx);
     }
-
-    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-    //    // TODO 这个不需要，每次只用flush idx对应的reader 待和@icy 确认
-    //    // if self.readers.len() == 1 {
-    //    //     unsafe {
-    //    //         return Pin::new(self.readers.get_unchecked_mut(0)).poll_flush(cx);
-    //    //     }
-    //    // }
-
-    //    let idx = self.idx;
-    //    debug_assert!(self.idx < self.layers.len());
-    //    let reader = unsafe { self.layers.get_unchecked_mut(idx) };
-    //    match ready!(Pin::new(reader).poll_flush(cx)) {
-    //        Err(e) => return Poll::Ready(Err(e)),
-    //        _ => return Poll::Ready(Ok(())),
-    //    }
-    //}
-
-    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-    //    // TODO 这个不需要，每次只用flush idx对应的reader 待和@icy 确认
-    //    // if self.readers.len() == 1 {
-    //    //     unsafe {
-    //    //         return Pin::new(self.readers.get_unchecked_mut(0)).poll_shutdown(cx);
-    //    //     }
-    //    // }
-
-    //    let idx = self.idx;
-    //    debug_assert!(idx < self.layers.len());
-    //    let reader = unsafe { self.layers.get_unchecked_mut(idx) };
-    //    match ready!(Pin::new(reader).poll_shutdown(cx)) {
-    //        Err(e) => return Poll::Ready(Err(e)),
-    //        _ => return Poll::Ready(Ok(())),
-    //    }
-    //}
 }
 
 impl<R, P> AsyncReadAll for AsyncGetSync<R, P>
@@ -184,14 +150,6 @@ where
             Poll::Ready(Err(Error::new(ErrorKind::NotFound, "not found key")))
         }
     }
-    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-    //    let me = &mut self;
-    //    for i in 0..me.idx {
-    //        unsafe { ready!(Pin::new(me.layers.get_unchecked_mut(i)).poll_done(cx))? };
-    //    }
-    //    self.idx = 0;
-    //    Poll::Ready(Ok(()))
-    //}
 }
 
 struct RequestRef {
