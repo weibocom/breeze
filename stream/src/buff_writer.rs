@@ -10,33 +10,27 @@ use tokio::io::AsyncWrite;
 use tokio::sync::mpsc::Receiver;
 
 use crate::BackendBuilder;
-use ds::{RingBufferReader, RingBufferWriter};
+use ds::{RingBufferReader, RingBufferWriter, Slice};
 
 unsafe impl<W> Send for BridgeBufferToWriter<W> {}
 unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
 
 pub struct RequestData {
     id: usize,
-    //ptr: usize,
-    //len: usize,
-    data: Vec<u8>,
+    data: Slice,
 }
 
 impl RequestData {
     pub fn from(id: usize, b: &[u8]) -> Self {
-        let data = b.clone().to_vec();
+        //let data = b.clone().to_vec();
         //let ptr = b.as_ptr() as usize;
         Self {
             id: id,
-            //ptr: ptr,
-            //len: b.len(),
-            data: data,
+            data: Slice::from(b),
         }
     }
     fn data(&self) -> &[u8] {
-        //let ptr = self.ptr as *const u8;
-        //unsafe { std::slice::from_raw_parts(ptr, self.len) }
-        &self.data
+        &self.data.data()
     }
     fn id(&self) -> usize {
         self.id
@@ -53,7 +47,7 @@ pub struct BridgeBufferToWriter<W> {
     w: W,
     done: Arc<AtomicBool>,
     //cache: File,
-    builder: Arc<BackendBuilder>,
+    _builder: Arc<BackendBuilder>,
 }
 
 impl<W> BridgeBufferToWriter<W> {
@@ -69,7 +63,7 @@ impl<W> BridgeBufferToWriter<W> {
             reader: reader,
             done: done,
             //cache: cache,
-            builder: builder.clone(),
+            _builder: builder.clone(),
         }
     }
 }
@@ -85,11 +79,7 @@ where
         let mut writer = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Relaxed) {
             log::debug!("bridage buffer to backend.");
-            let b = ready!(me.reader.poll_next(cx));
-            if b.is_err() {
-                break;
-            }
-            let result_buffer = b.unwrap();
+            let result_buffer = ready!(me.reader.poll_next(cx))?;
             if result_buffer.is_empty() {
                 log::debug!("bridage buffer to backend: received empty");
                 continue;
@@ -146,7 +136,6 @@ where
         while !me.done.load(Ordering::Relaxed) {
             if let Some(req) = me.cache.take() {
                 let data = req.data();
-                log::debug!("data len:{}", data.len());
                 log::debug!(
                     "bridge request to buffer: write to buffer. cid: {} len:{}",
                     req.id(),

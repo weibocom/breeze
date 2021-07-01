@@ -93,10 +93,12 @@ impl RingBuffer {
     }
     // 读和写同时只会出现一个notify. TODO 待验证
     fn notify(&self, status: Status) {
+        log::debug!("spsc: notify status:{}", status as u8);
         debug_assert!(
             status as u8 == Status::ReadPending as u8 || status as u8 == Status::WritePending as u8
         );
         if self.waker_status.load(Ordering::Acquire) == Status::Close as u8 {
+            log::info!("buffer closed. no need to notify?");
             return;
         }
         if self.status_cas(status, Status::Lock) {
@@ -106,12 +108,17 @@ impl RingBuffer {
                 .take()
                 .expect("waiting status must contain waker.")
                 .wake();
-            debug_assert!(self.status_cas(Status::Lock, Status::Ok));
+            log::debug!("spsc notifyed:{}", status as u8);
+            let cas = self.status_cas(Status::Lock, Status::Ok);
+            debug_assert!(cas);
             return;
+        } else {
+            log::debug!("try to lock status failed");
         }
     }
     // 当前状态要进入到status状态（status只能是ReadPending或者WritePending
     fn waiting(&self, cx: &mut Context, status: Status) {
+        log::debug!("poll next entering waiting status:{}", status as u8);
         debug_assert!(status == Status::ReadPending || status == Status::WritePending);
         //for _ in 0..128 {
         let mut loops = 0;
@@ -126,7 +133,8 @@ impl RingBuffer {
             if old == Status::Ok || old == status {
                 if self.status_cas(old.into(), Status::Lock) {
                     *self.wakers[status as usize - 1].borrow_mut() = Some(cx.waker().clone());
-                    debug_assert!(self.status_cas(Status::Lock, status));
+                    let cas = self.status_cas(Status::Lock, status);
+                    debug_assert!(cas);
                     return;
                 } else {
                     continue;
@@ -134,7 +142,7 @@ impl RingBuffer {
             }
 
             if old == Status::Lock {
-                //log::debug!("waiting into status. but old status is:{}", old);
+                log::debug!("waiting into status. but old status is:{}", old);
                 continue;
             }
 
@@ -147,6 +155,7 @@ impl RingBuffer {
         }
     }
     fn status_cas(&self, old: Status, new: Status) -> bool {
+        log::debug!("spsc status cas. old:{} new:{}", old as u8, new as u8);
         match self.waker_status.compare_exchange(
             old as u8,
             new as u8,
@@ -154,7 +163,15 @@ impl RingBuffer {
             Ordering::Acquire,
         ) {
             Ok(_) => true,
-            Err(_) => false,
+            Err(status) => {
+                log::debug!(
+                    "spsc: try to status cas failed. old:{}, new:{} current:{}",
+                    old as u8,
+                    new as u8,
+                    status as u8
+                );
+                false
+            }
         }
     }
 }
@@ -220,12 +237,14 @@ impl RingBufferWriter {
     }
     pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<Result<usize>> {
         let result = self.put_slice(b);
+        log::debug!("poll put slice:{:?}", result);
         if result.is_ok() {
             let result_size = result.unwrap();
             if result_size == 0 {
                 self.buffer.waiting(cx, Status::WritePending);
                 Poll::Pending
             } else {
+                log::debug!("spsc: put slice success, notify read pending");
                 self.buffer.notify(Status::ReadPending);
                 Poll::Ready(Result::Ok(result_size))
             }

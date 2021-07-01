@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
     loop {
         let quards = listeners.scan().await;
         if let Err(e) = quards {
-            log::debug!("scan listener failed:{:?}", e);
+            log::info!("scan listener failed:{:?}", e);
             tick.tick().await;
             continue;
         }
