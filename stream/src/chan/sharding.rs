@@ -2,10 +2,6 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-
-use futures::ready;
-
 use crate::{AsyncReadAll, AsyncWriteAll, Response};
 use hash::Hash;
 use protocol::Protocol;
@@ -29,43 +25,37 @@ impl<B, H, P> AsyncSharding<B, H, P> {
     }
 }
 
-impl<B, H, P> AsyncWriteAll for AsyncSharding<B, H, P> {}
-
-impl<B, H, P> AsyncWrite for AsyncSharding<B, H, P>
+impl<B, H, P> AsyncWriteAll for AsyncSharding<B, H, P>
 where
-    B: AsyncWriteAll + AsyncWrite + Unpin,
+    B: AsyncWriteAll + Unpin,
     H: Unpin + Hash,
     P: Unpin + Protocol,
 {
     #[inline]
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         let me = &mut *self;
         debug_assert!(me.idx < me.shards.len());
         let key = me.parser.key(buf);
         let h = me.hasher.hash(key) as usize;
         me.idx = h % me.shards.len();
-        unsafe {
-            let w = ready!(Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf))?;
-            debug_assert_eq!(w, buf.len());
-        }
-        Poll::Ready(Ok(buf.len()))
+        unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf) }
     }
-    #[inline]
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        for b in me.shards.iter_mut() {
-            ready!(Pin::new(b).poll_flush(cx))?;
-        }
-        Poll::Ready(Ok(()))
-    }
-    #[inline]
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        for b in me.shards.iter_mut() {
-            ready!(Pin::new(b).poll_shutdown(cx))?;
-        }
-        Poll::Ready(Ok(()))
-    }
+    //#[inline]
+    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    for b in me.shards.iter_mut() {
+    //        ready!(Pin::new(b).poll_flush(cx))?;
+    //    }
+    //    Poll::Ready(Ok(()))
+    //}
+    //#[inline]
+    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    for b in me.shards.iter_mut() {
+    //        ready!(Pin::new(b).poll_shutdown(cx))?;
+    //    }
+    //    Poll::Ready(Ok(()))
+    //}
 }
 
 impl<B, H, P> AsyncReadAll for AsyncSharding<B, H, P>

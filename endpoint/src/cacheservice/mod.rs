@@ -47,7 +47,7 @@ impl<P> CacheService<P> {
     #[inline]
     fn build_sharding<S>(shards: Vec<S>, h: &str, parser: P) -> AsyncSharding<S, Hasher, P>
     where
-        S: AsyncWrite + AsyncWriteAll,
+        S: AsyncWriteAll,
     {
         let hasher = Hasher::from(h);
         AsyncSharding::from(shards, hasher, parser)
@@ -56,7 +56,7 @@ impl<P> CacheService<P> {
     #[inline]
     fn build_layers<S>(pools: Vec<Vec<S>>, h: &str, parser: P) -> Vec<AsyncSharding<S, Hasher, P>>
     where
-        S: AsyncWrite + AsyncWriteAll,
+        S: AsyncWriteAll,
         P: Clone,
     {
         let mut layers: Vec<AsyncSharding<S, Hasher, P>> = Vec::new();

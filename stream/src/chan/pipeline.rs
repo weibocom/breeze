@@ -39,17 +39,17 @@ impl<P, S> PipeToPingPongChanWrite<P, S> {
 impl<P, S> AsyncPipeToPingPongChanWrite for PipeToPingPongChanWrite<P, S>
 where
     P: Protocol,
-    S: AsyncWriteAll + AsyncWrite + Unpin + AsyncReadAll,
+    S: AsyncWriteAll + Unpin + AsyncReadAll,
 {
 }
-impl<P, S> AsyncWriteAll for PipeToPingPongChanWrite<P, S> {}
+//impl<P, S> AsyncWriteAll for PipeToPingPongChanWrite<P, S> {}
 
 impl<P, S> PipeToPingPongChanWrite<P, S> {}
 
 impl<P, S> AsyncWrite for PipeToPingPongChanWrite<P, S>
 where
     P: Protocol,
-    S: AsyncWriteAll + AsyncWrite + Unpin,
+    S: AsyncWriteAll + Unpin,
 {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
         println!("bytes received {} {:?}", buf.len(), buf);
@@ -96,8 +96,7 @@ where
             &buf[..n]
         };
         // 解析出一个request，写入到chan的下游
-        let w = ready!(Pin::new(&mut me.inner).poll_write(cx, cmd))?;
-        assert_eq!(w, cmd.len());
+        ready!(Pin::new(&mut me.inner).poll_write(cx, cmd))?;
         let bytes = cmd.len() - w_len;
         me.w_buf.clear();
         me.pending = 1;
@@ -108,21 +107,23 @@ where
         Poll::Ready(Ok(bytes))
     }
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        let mut w = Pin::new(&mut me.inner);
-        if me.w_buf.len() > 0 {
-            let w = ready!(w.as_mut().poll_write(cx, &me.w_buf))?;
-            debug_assert_eq!(w, me.w_buf.len());
-            me.w_buf.clear();
-        }
-        w.as_mut().poll_flush(cx)
+        //let me = &mut *self;
+        //let mut w = Pin::new(&mut me.inner);
+        //if me.w_buf.len() > 0 {
+        //    let w = ready!(w.as_mut().poll_write(cx, &me.w_buf))?;
+        //    debug_assert_eq!(w, me.w_buf.len());
+        //    me.w_buf.clear();
+        //}
+        //w.as_mut().poll_flush(cx)
+        Poll::Ready(Ok(()))
     }
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         let me = &mut *self;
         me.shutdown = true;
-        let mut w = Pin::new(&mut me.inner);
-        ready!(w.as_mut().poll_flush(cx))?;
-        w.as_mut().poll_shutdown(cx)
+        //let mut w = Pin::new(&mut me.inner);
+        //ready!(w.as_mut().poll_flush(cx))?;
+        //w.as_mut().poll_shutdown(cx)
+        Poll::Ready(Ok(()))
     }
 }
 impl<P, S> AsyncRead for PipeToPingPongChanWrite<P, S>
