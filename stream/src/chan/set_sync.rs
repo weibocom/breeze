@@ -32,14 +32,14 @@ impl<M, W> AsyncSetSync<M, W> {
     }
 }
 
-impl<M, W> AsyncWriteAll for AsyncSetSync<M, W> {}
+//impl<M, W> AsyncWriteAll for AsyncSetSync<M, W> {}
 
-impl<M, W> AsyncWrite for AsyncSetSync<M, W>
+impl<M, W> AsyncWriteAll for AsyncSetSync<M, W>
 where
-    M: AsyncWrite + AsyncWriteAll + Unpin,
-    W: AsyncWrite + AsyncWriteAll + Unpin,
+    M: AsyncWriteAll + Unpin,
+    W: AsyncWriteAll + Unpin,
 {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         let me = &mut *self;
         if !me.master_done {
             ready!(Pin::new(&mut me.master).poll_write(cx, buf))?;
@@ -58,32 +58,32 @@ where
             }
         }
         me.f_idx = 0;
-        Poll::Ready(Ok(buf.len()))
+        Poll::Ready(Ok(()))
     }
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        // 先刷新follower
-        if me.followers.len() > 0 {
-            for (idx, w) in me.followers.iter_mut().enumerate() {
-                let _ = ready!(Pin::new(w).poll_flush(cx)).map_err(|e| {
-                    println!("flush follower failed idx:{} err:{:?}", idx, e);
-                });
-            }
-        }
-        Pin::new(&mut me.master).poll_flush(cx)
-    }
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        // 先刷新follower
-        if me.followers.len() > 0 {
-            for (idx, w) in me.followers.iter_mut().enumerate() {
-                let _ = ready!(Pin::new(w).poll_shutdown(cx)).map_err(|e| {
-                    println!("shtudown follower failed idx:{} err:{:?}", idx, e);
-                });
-            }
-        }
-        Pin::new(&mut me.master).poll_shutdown(cx)
-    }
+    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    // 先刷新follower
+    //    if me.followers.len() > 0 {
+    //        for (idx, w) in me.followers.iter_mut().enumerate() {
+    //            let _ = ready!(Pin::new(w).poll_flush(cx)).map_err(|e| {
+    //                println!("flush follower failed idx:{} err:{:?}", idx, e);
+    //            });
+    //        }
+    //    }
+    //    Pin::new(&mut me.master).poll_flush(cx)
+    //}
+    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    // 先刷新follower
+    //    if me.followers.len() > 0 {
+    //        for (idx, w) in me.followers.iter_mut().enumerate() {
+    //            let _ = ready!(Pin::new(w).poll_shutdown(cx)).map_err(|e| {
+    //                println!("shtudown follower failed idx:{} err:{:?}", idx, e);
+    //            });
+    //        }
+    //    }
+    //    Pin::new(&mut me.master).poll_shutdown(cx)
+    //}
 }
 impl<M, W> AsyncReadAll for AsyncSetSync<M, W>
 where

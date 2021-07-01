@@ -1,5 +1,3 @@
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-
 use futures::ready;
 
 use std::io::{Error, ErrorKind, Result};
@@ -25,8 +23,6 @@ impl<P, B> MetaStream<P, B> {
     }
 }
 
-impl<P, B> AsyncWriteAll for MetaStream<P, B> {}
-
 impl<P, B> AsyncReadAll for MetaStream<P, B>
 where
     P: Unpin,
@@ -42,20 +38,20 @@ where
     //}
 }
 
-impl<P, B> AsyncWrite for MetaStream<P, B>
+impl<P, B> AsyncWriteAll for MetaStream<P, B>
 where
     P: Protocol,
-    B: AsyncWrite + Unpin,
+    B: AsyncWriteAll + Unpin,
 {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         let me = &mut *self;
         match me.parser.meta_type(buf) {
             MetaType::Version => {
                 // 只需要发送请求到一个backend即可
                 for (i, b) in me.instances.iter_mut().enumerate() {
-                    let n = ready!(Pin::new(b).poll_write(cx, buf))?;
+                    ready!(Pin::new(b).poll_write(cx, buf))?;
                     me.idx = i;
-                    return Poll::Ready(Ok(n));
+                    return Poll::Ready(Ok(()));
                 }
             }
         }
@@ -64,18 +60,18 @@ where
             "all meta instance failed",
         )));
     }
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>>
-    where
-        B: AsyncWrite + Unpin,
-    {
-        let me = &mut *self;
-        unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_flush(cx) }
-    }
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>>
-    where
-        B: AsyncWrite + Unpin,
-    {
-        let me = &mut *self;
-        unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_shutdown(cx) }
-    }
+    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>>
+    //where
+    //    B: AsyncWrite + Unpin,
+    //{
+    //    let me = &mut *self;
+    //    unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_flush(cx) }
+    //}
+    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>>
+    //where
+    //    B: AsyncWrite + Unpin,
+    //{
+    //    let me = &mut *self;
+    //    unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_shutdown(cx) }
+    //}
 }

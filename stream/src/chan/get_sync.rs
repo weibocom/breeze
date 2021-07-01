@@ -8,7 +8,6 @@ use std::task::{Context, Poll};
 use crate::{AsyncReadAll, AsyncWriteAll, Response};
 use futures::ready;
 use protocol::Protocol;
-use tokio::io::AsyncWrite;
 
 pub struct AsyncGetSync<R, P> {
     // 当前从哪个shard开始发送请求
@@ -22,7 +21,6 @@ pub struct AsyncGetSync<R, P> {
     parser: P,
 }
 
-impl<R, P> AsyncWriteAll for AsyncGetSync<R, P> {}
 impl<R, P> AsyncGetSync<R, P> {
     pub fn from(layers: Vec<R>, p: P) -> Self {
         AsyncGetSync {
@@ -38,12 +36,12 @@ impl<R, P> AsyncGetSync<R, P> {
 
 impl<R, P> AsyncGetSync<R, P>
 where
-    R: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    R: AsyncWriteAll + Unpin,
     P: Unpin,
 {
     // 发送请求，如果失败，继续向下一层write，注意处理重入问题
     // ready! 会返回Poll，所以这里还是返回Poll了
-    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize>> {
+    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut idx = self.idx;
 
         //debug_assert!(self.req_ref.validate());
@@ -62,7 +60,7 @@ where
         while idx < self.layers.len() {
             let reader = unsafe { self.layers.get_unchecked_mut(idx) };
             match ready!(Pin::new(reader).poll_write(cx, data)) {
-                Ok(len) => return Poll::Ready(Ok(len)),
+                Ok(_) => return Poll::Ready(Ok(())),
                 Err(e) => {
                     self.idx += 1;
                     idx = self.idx;
@@ -93,59 +91,55 @@ where
     //}
 }
 
-impl<R, P> AsyncWrite for AsyncGetSync<R, P>
+impl<R, P> AsyncWriteAll for AsyncGetSync<R, P>
 where
-    R: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    R: AsyncWriteAll + Unpin,
     P: Unpin,
 {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<()>> {
         // 记录req buf，方便多层访问
         self.req_ref = RequestRef::from(buf);
         return self.do_write(cx);
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        // TODO 这个不需要，每次只用flush idx对应的reader 待和@icy 确认
-        // if self.readers.len() == 1 {
-        //     unsafe {
-        //         return Pin::new(self.readers.get_unchecked_mut(0)).poll_flush(cx);
-        //     }
-        // }
+    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    //    // TODO 这个不需要，每次只用flush idx对应的reader 待和@icy 确认
+    //    // if self.readers.len() == 1 {
+    //    //     unsafe {
+    //    //         return Pin::new(self.readers.get_unchecked_mut(0)).poll_flush(cx);
+    //    //     }
+    //    // }
 
-        let idx = self.idx;
-        debug_assert!(self.idx < self.layers.len());
-        let reader = unsafe { self.layers.get_unchecked_mut(idx) };
-        match ready!(Pin::new(reader).poll_flush(cx)) {
-            Err(e) => return Poll::Ready(Err(e)),
-            _ => return Poll::Ready(Ok(())),
-        }
-    }
+    //    let idx = self.idx;
+    //    debug_assert!(self.idx < self.layers.len());
+    //    let reader = unsafe { self.layers.get_unchecked_mut(idx) };
+    //    match ready!(Pin::new(reader).poll_flush(cx)) {
+    //        Err(e) => return Poll::Ready(Err(e)),
+    //        _ => return Poll::Ready(Ok(())),
+    //    }
+    //}
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        // TODO 这个不需要，每次只用flush idx对应的reader 待和@icy 确认
-        // if self.readers.len() == 1 {
-        //     unsafe {
-        //         return Pin::new(self.readers.get_unchecked_mut(0)).poll_shutdown(cx);
-        //     }
-        // }
+    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    //    // TODO 这个不需要，每次只用flush idx对应的reader 待和@icy 确认
+    //    // if self.readers.len() == 1 {
+    //    //     unsafe {
+    //    //         return Pin::new(self.readers.get_unchecked_mut(0)).poll_shutdown(cx);
+    //    //     }
+    //    // }
 
-        let idx = self.idx;
-        debug_assert!(idx < self.layers.len());
-        let reader = unsafe { self.layers.get_unchecked_mut(idx) };
-        match ready!(Pin::new(reader).poll_shutdown(cx)) {
-            Err(e) => return Poll::Ready(Err(e)),
-            _ => return Poll::Ready(Ok(())),
-        }
-    }
+    //    let idx = self.idx;
+    //    debug_assert!(idx < self.layers.len());
+    //    let reader = unsafe { self.layers.get_unchecked_mut(idx) };
+    //    match ready!(Pin::new(reader).poll_shutdown(cx)) {
+    //        Err(e) => return Poll::Ready(Err(e)),
+    //        _ => return Poll::Ready(Ok(())),
+    //    }
+    //}
 }
 
 impl<R, P> AsyncReadAll for AsyncGetSync<R, P>
 where
-    R: AsyncReadAll + AsyncWrite + AsyncWriteAll + Unpin,
+    R: AsyncReadAll + AsyncWriteAll + Unpin,
     P: Unpin + Protocol,
 {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Response>> {

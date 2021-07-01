@@ -9,7 +9,6 @@ use std::task::{Context, Poll};
 
 use super::super::Cid;
 use futures::ready;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use enum_dispatch::enum_dispatch;
 
@@ -18,8 +17,6 @@ pub enum BackendStream {
     NotConnected(NotConnected),
     Backend(Backend),
 }
-
-impl AsyncWriteAll for BackendStream {}
 
 impl BackendStream {
     pub fn not_connected() -> Self {
@@ -56,19 +53,18 @@ impl AsyncReadAll for Backend {
     //}
 }
 
-impl AsyncWrite for Backend {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
+impl AsyncWriteAll for Backend {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         let me = &*self;
-        ready!(me.inner.poll_write(me.id.id(), cx, buf))?;
-        Poll::Ready(Ok(buf.len()))
+        me.inner.poll_write(me.id.id(), cx, buf)
     }
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &*self;
-        me.inner.poll_shutdown(me.id.id(), cx)
-    }
+    //fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
+    //    Poll::Ready(Ok(()))
+    //}
+    //fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &*self;
+    //    me.inner.poll_shutdown(me.id.id(), cx)
+    //}
 }
 
 impl AsyncReadAll for BackendStream {
@@ -88,28 +84,28 @@ impl AsyncReadAll for BackendStream {
     //}
 }
 
-impl AsyncWrite for BackendStream {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
+impl AsyncWriteAll for BackendStream {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         let me = &mut *self;
         match me {
             BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_write(cx, buf),
             BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_write(cx, buf),
         }
     }
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        match me {
-            BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_flush(cx),
-            BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_flush(cx),
-        }
-    }
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        match me {
-            BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_shutdown(cx),
-            BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_shutdown(cx),
-        }
-    }
+    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    match me {
+    //        BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_flush(cx),
+    //        BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_flush(cx),
+    //    }
+    //}
+    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    match me {
+    //        BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_shutdown(cx),
+    //        BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_shutdown(cx),
+    //    }
+    //}
 }
 
 pub struct NotConnected;
@@ -128,17 +124,17 @@ impl AsyncReadAll for NotConnected {
     //}
 }
 
-impl AsyncWrite for NotConnected {
-    fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: &[u8]) -> Poll<Result<usize>> {
+impl AsyncWriteAll for NotConnected {
+    fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: &[u8]) -> Poll<Result<()>> {
         Poll::Ready(Err(Error::new(
             ErrorKind::NotConnected,
             "write to an unconnected stream",
         )))
     }
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
-    }
+    //fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
+    //    Poll::Ready(Ok(()))
+    //}
+    //fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
+    //    Poll::Ready(Ok(()))
+    //}
 }

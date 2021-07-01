@@ -26,11 +26,7 @@ use std::task::{Context, Poll};
 use crate::{AsyncReadAll, AsyncWriteAll, Response};
 use protocol::Protocol;
 
-use tokio::io::AsyncWrite;
-
 use futures::ready;
-
-impl<S, P> AsyncWriteAll for AsyncMultiGet<S, P> {}
 
 impl<S, P> AsyncMultiGet<S, P> {
     pub fn from_shard(shards: Vec<S>, p: P) -> Self {
@@ -45,13 +41,13 @@ impl<S, P> AsyncMultiGet<S, P> {
     }
 }
 
-impl<S, P> AsyncWrite for AsyncMultiGet<S, P>
+impl<S, P> AsyncWriteAll for AsyncMultiGet<S, P>
 where
-    S: AsyncWrite + AsyncWriteAll + Unpin,
+    S: AsyncWriteAll + Unpin,
     P: Unpin,
 {
     // 只要有一个shard成功就算成功,如果所有的都写入失败，则返回错误信息。
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         let me = &mut *self;
         let offset = me.idx;
         let mut success = false;
@@ -67,41 +63,41 @@ where
         }
         me.idx = 0;
         if success {
-            Poll::Ready(Ok(buf.len()))
+            Poll::Ready(Ok(()))
         } else {
             Poll::Ready(Err(last_err.unwrap_or_else(|| {
                 Error::new(ErrorKind::Other, "no request sent.")
             })))
         }
     }
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        // 为了简单。flush时不考虑pending，即使从pending恢复，也可以把之前的poll_flush重新操作一遍。
-        // poll_flush是幂等的
-        let me = &mut *self;
-        for (i, &success) in me.writes.iter().enumerate() {
-            if success {
-                ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_flush(cx))?;
-            }
-        }
-        Poll::Ready(Ok(()))
-    }
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        let mut last_err = None;
-        for (i, &success) in me.writes.iter().enumerate() {
-            if success {
-                match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_shutdown(cx))
-                {
-                    Err(e) => last_err = Some(e),
-                    _ => {}
-                }
-            }
-        }
-        match last_err {
-            Some(e) => Poll::Ready(Err(e)),
-            _ => Poll::Ready(Ok(())),
-        }
-    }
+    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    // 为了简单。flush时不考虑pending，即使从pending恢复，也可以把之前的poll_flush重新操作一遍。
+    //    // poll_flush是幂等的
+    //    let me = &mut *self;
+    //    for (i, &success) in me.writes.iter().enumerate() {
+    //        if success {
+    //            ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_flush(cx))?;
+    //        }
+    //    }
+    //    Poll::Ready(Ok(()))
+    //}
+    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    let mut last_err = None;
+    //    for (i, &success) in me.writes.iter().enumerate() {
+    //        if success {
+    //            match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_shutdown(cx))
+    //            {
+    //                Err(e) => last_err = Some(e),
+    //                _ => {}
+    //            }
+    //        }
+    //    }
+    //    match last_err {
+    //        Some(e) => Poll::Ready(Err(e)),
+    //        _ => Poll::Ready(Ok(())),
+    //    }
+    //}
 }
 
 impl<S, P> AsyncReadAll for AsyncMultiGet<S, P>

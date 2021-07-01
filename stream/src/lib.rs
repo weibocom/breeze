@@ -19,6 +19,7 @@ pub use by_cid::*;
 pub use mpmc::MpmcRingBufferStream as RingBufferStream;
 pub(crate) use offset::SeqOffset;
 
+use std::io::Result;
 use tokio::io::AsyncWrite;
 
 /// 该接口是一个marker接口。实现了该接口的AsyncWrite，本身不
@@ -34,15 +35,15 @@ pub trait AsyncPipeToPingPongChanWrite: AsyncWrite + Unpin {}
 /// Pending
 /// 写入错误
 /// 不能出现部分写入成功的情况。方案处理
-pub trait AsyncWriteAll {}
+pub trait AsyncWriteAll {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>>;
+}
 
 /// 确保读取response的时候，类似于NotFound、Stored这样的数据包含
 /// 在一个readbuf中，不被拆开，方便判断
 use std::pin::Pin;
 use std::task::{Context, Poll};
 // 数据读取的时候，要么一次性全部读取，要么都不读取
-
-use std::io::Result;
 
 pub trait AsyncReadAll {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>>;
