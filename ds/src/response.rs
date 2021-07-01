@@ -67,9 +67,12 @@ impl ResponseRingBuffer {
                 self.size - offset
             }
         };
-        println!(
+        log::debug!(
             "response as mut bytes. read:{} processed:{} write:{} available:{}",
-            self.read, self.processed, self.write, n
+            self.read,
+            self.processed,
+            self.write,
+            n
         );
 
         unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }

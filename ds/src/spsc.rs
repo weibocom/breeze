@@ -134,14 +134,14 @@ impl RingBuffer {
             }
 
             if old == Status::Lock {
-                //println!("waiting into status. but old status is:{}", old);
+                //log::debug!("waiting into status. but old status is:{}", old);
                 continue;
             }
 
             // 运行到这，通常是下面这种场景：
             // 写阻塞，进入waiting，但瞬间所有数据都被读走，读也会被阻塞。反之一样
             // 唤醒old的
-            println!("try to waiting in status {}, but current status is {}. maybe both write and read enterinto Pending status mode", status as u8, old);
+            log::warn!("try to waiting in status {}, but current status is {}. maybe both write and read enterinto Pending status mode", status as u8, old);
             self.notify(Status::from(old));
             return;
         }
@@ -282,7 +282,7 @@ impl RingBufferReader {
             } else {
                 self.buffer.len - oft_start
             };
-            //println!("spsc poll next. read:{} write:{} n:{}", self.read, write, n);
+            //log::debug!("spsc poll next. read:{} write:{} n:{}", self.read, write, n);
             unsafe {
                 Result::Ok(Some(from_raw_parts(
                     self.buffer.data.offset(oft_start as isize),
@@ -317,7 +317,6 @@ impl RingBufferReader {
 impl Drop for RingBufferReader {
     fn drop(&mut self) {
         // 唤醒读状态的waker
-        println!("ring buffer reader dropped");
         self.buffer.closed.store(true, Ordering::Release);
         self.buffer.notify(Status::WritePending);
     }

@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
     loop {
         let quards = listeners.scan().await;
         if let Err(e) = quards {
-            println!("scan listener failed:{:?}", e);
+            log::debug!("scan listener failed:{:?}", e);
             tick.tick().await;
             continue;
         }
@@ -39,17 +39,17 @@ async fn main() -> Result<()> {
             spawn(async move {
                 let _tx = tx.clone();
                 match process_one_service(tx, &quard, discovery).await {
-                    Ok(_) => println!("service listener complete address:{}", quard.address()),
+                    Ok(_) => log::info!("service listener complete address:{}", quard.address()),
                     Err(e) => {
                         let _ = _tx.send(false).await;
-                        println!("service listener error:{:?} {}", e, quard.address())
+                        log::error!("service listener error:{:?} {}", e, quard.address())
                     }
                 };
             });
             if let Some(success) = rx.recv().await {
                 if success {
                     if let Err(e) = listeners.on_listened(quard_).await {
-                        println!("on_listened failed:{:?} ", e);
+                        log::error!("on_listened failed:{:?} ", e);
                     }
                 }
             }
@@ -73,7 +73,7 @@ async fn process_one_service(
         format!("'{}' is not a valid endpoint", quard.endpoint()),
     ))?;
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
-    println!("starting to serve {}", quard.address());
+    log::info!("starting to serve {}", quard.address());
     let _ = tx.send(true).await;
     let sd = Arc::new(ServiceDiscovery::new(
         discovery,
@@ -89,7 +89,7 @@ async fn process_one_service(
         let parser = parser.clone();
         spawn(async move {
             if let Err(e) = process_one_connection(client, sd, endpoint, parser).await {
-                println!("connection disconnected:{:?}", e);
+                log::warn!("connection disconnected:{:?}", e);
             }
         });
     }

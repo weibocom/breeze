@@ -51,7 +51,7 @@ where
     S: AsyncWriteAll + Unpin,
 {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
-        println!("bytes received {} {:?}", buf.len(), buf);
+        log::debug!("bytes received {} {:?}", buf.len(), buf);
         let me = &mut *self;
         if me.shutdown {
             return Poll::Ready(Err(Error::new(

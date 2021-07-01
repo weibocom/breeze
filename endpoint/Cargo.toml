@@ -12,6 +12,7 @@ discovery = { path = "../discovery" }
 protocol = { path = "../protocol" }
 hash = { path = "../hash" }
 stream = { path = "../stream" }
+log = { path = "../log" }
 
 tokio = { version = "*", features = ["full"] }
 bb8 = "*"

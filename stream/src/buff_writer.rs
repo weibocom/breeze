@@ -80,28 +80,28 @@ where
 {
     type Output = Result<()>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        println!("task polling. BridgeBufferToWriter");
+        log::debug!("task polling. BridgeBufferToWriter");
         let me = &mut *self;
         let mut writer = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Relaxed) {
-            println!("bridage buffer to backend.");
+            log::debug!("bridage buffer to backend.");
             let b = ready!(me.reader.poll_next(cx));
             if b.is_err() {
                 break;
             }
             let result_buffer = b.unwrap();
             if result_buffer.is_empty() {
-                println!("bridage buffer to backend: received empty");
+                log::debug!("bridage buffer to backend: received empty");
                 continue;
             }
-            println!("bridage buffer to backend. len:{} ", result_buffer.len());
+            log::debug!("bridage buffer to backend. len:{} ", result_buffer.len());
             let num = ready!(writer.as_mut().poll_write(cx, result_buffer))?;
             //me.cache.write_all(&b[..num]).unwrap();
             debug_assert!(num > 0);
-            println!("bridage buffer to backend: {} bytes sent ", num);
+            log::debug!("bridage buffer to backend: {} bytes sent ", num);
             me.reader.consume(num);
         }
-        println!("task complete. bridge data from local buffer to backend server");
+        log::debug!("task complete. bridge data from local buffer to backend server");
         Poll::Ready(Ok(()))
     }
 }
@@ -140,14 +140,14 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        println!("task polling. BridgeRequestToBuffer");
+        log::debug!("task polling. BridgeRequestToBuffer");
         let me = &mut *self;
         let mut receiver = Pin::new(&mut me.receiver);
         while !me.done.load(Ordering::Relaxed) {
             if let Some(req) = me.cache.take() {
                 let data = req.data();
-                println!("data len:{}", data.len());
-                println!(
+                log::debug!("data len:{}", data.len());
+                log::debug!(
                     "bridge request to buffer: write to buffer. cid: {} len:{}",
                     req.id(),
                     req.data().len()
@@ -156,22 +156,22 @@ where
                 let seq = me.seq;
                 me.seq += 1;
                 me.r.on_received(req.id(), seq);
-                println!(
+                log::debug!(
                     "received data from bridge. len:{} id:{} seq:{}",
                     req.data().len(),
                     req.id(),
                     seq
                 );
             }
-            println!("bridge request to buffer: wating to get request from channel");
+            log::debug!("bridge request to buffer: wating to get request from channel");
             let result = ready!(receiver.as_mut().poll_recv(cx));
             if result.is_none() {
                 me.w.close();
-                println!("bridge request to buffer: channel closed, quit");
+                log::debug!("bridge request to buffer: channel closed, quit");
                 break;
             }
             me.cache = result;
-            println!("bridge request to buffer. one request received from request channel");
+            log::debug!("bridge request to buffer. one request received from request channel");
         }
         Poll::Ready(Ok(()))
     }
