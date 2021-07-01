@@ -19,7 +19,6 @@ pub enum ItemStatus {
 unsafe impl Send for ItemStatus {}
 #[derive(Default)]
 pub struct Item {
-    // connection id
     id: usize,
     seq: AtomicUsize, // 用来做request与response的同步
     status: AtomicU8, // 0: 待接收请求。
@@ -87,7 +86,6 @@ impl Item {
         // 响应已返回，开始读取。状态一旦进入Responsed状态，没有其他任何请求会变更。只有poll_read会变更
         // place_response先更新数据，后更新状态。不会有并发问题
         // 读数据
-        log::debug!("poll read id:{}", self.id);
         let response = self.response.take();
 
         Poll::Ready(response)
