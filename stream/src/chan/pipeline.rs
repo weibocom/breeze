@@ -106,7 +106,7 @@ where
         }
         Poll::Ready(Ok(bytes))
     }
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
         //let me = &mut *self;
         //let mut w = Pin::new(&mut me.inner);
         //if me.w_buf.len() > 0 {
@@ -117,7 +117,7 @@ where
         //w.as_mut().poll_flush(cx)
         Poll::Ready(Ok(()))
     }
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<()>> {
         let me = &mut *self;
         me.shutdown = true;
         //let mut w = Pin::new(&mut me.inner);

@@ -32,10 +32,6 @@ where
         let me = &mut *self;
         unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_next(cx) }
     }
-    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-    //    let me = &mut *self;
-    //    unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_done(cx) }
-    //}
 }
 
 impl<P, B> AsyncWriteAll for MetaStream<P, B>
@@ -60,18 +56,4 @@ where
             "all meta instance failed",
         )));
     }
-    //fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>>
-    //where
-    //    B: AsyncWrite + Unpin,
-    //{
-    //    let me = &mut *self;
-    //    unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_flush(cx) }
-    //}
-    //fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>>
-    //where
-    //    B: AsyncWrite + Unpin,
-    //{
-    //    let me = &mut *self;
-    //    unsafe { Pin::new(me.instances.get_unchecked_mut(me.idx)).poll_shutdown(cx) }
-    //}
 }
