@@ -102,7 +102,14 @@ async fn process_one_connection(
     parser: Protocols,
 ) -> Result<()> {
     use endpoint::Endpoint;
-    let mut agent = Endpoint::from_discovery(&endpoint, parser, sd).await?;
+    let mut agent = Endpoint::from_discovery(&endpoint, parser, sd)
+        .await?
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::NotFound,
+                format!("'{}' is not a valid endpoint type", endpoint),
+            )
+        })?;
     copy_bidirectional(&mut client, &mut agent).await?;
     Ok(())
 }

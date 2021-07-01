@@ -1,10 +1,7 @@
-use std::mem::{transmute, MaybeUninit};
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
 use byteorder::{BigEndian, ByteOrder};
-
-use tokio::io::ReadBuf;
 
 pub struct RingSlice {
     ptr: *const u8,
@@ -42,32 +39,29 @@ impl RingSlice {
         debug_assert!(self.len() >= num);
         self.end = self.start + num;
     }
+
     // 返回true，说明数据已经读完了
-    pub fn read(&mut self, buff: &mut ReadBuf) -> bool {
+    pub fn read(&mut self, buff: &mut [u8]) -> usize {
         unsafe {
+            let old_oft = self.offset;
             if self.end > self.offset {
                 let oft_start = self.offset & (self.cap - 1);
                 let oft_end = self.end & (self.cap - 1);
 
-                let n = buff
-                    .remaining()
-                    .min(self.cap - oft_start)
-                    .min(self.available());
-                let bytes = transmute::<&mut [MaybeUninit<u8>], &mut [u8]>(buff.unfilled_mut());
-                copy_nonoverlapping(self.ptr.offset(oft_start as isize), bytes.as_mut_ptr(), n);
-                buff.advance(n);
+                println!("offset start:{} offset end:{}", oft_start, oft_end);
+
+                let n = buff.len().min(self.cap - oft_start).min(self.available());
+                copy_nonoverlapping(self.ptr.offset(oft_start as isize), buff.as_mut_ptr(), n);
                 self.offset += n;
 
                 // 说明可写入的信息写到到数据末尾，需要再次写入
-                if buff.remaining() > 0 && self.end > self.offset {
-                    let n2 = buff.remaining().min(oft_end);
-                    copy_nonoverlapping(self.ptr, bytes.as_mut_ptr().offset(n as isize), n2);
-                    buff.advance(n2);
+                if buff.len() > n && self.end > self.offset {
+                    let n2 = (buff.len() - n).min(oft_end);
+                    copy_nonoverlapping(self.ptr, buff.as_mut_ptr().offset(n as isize), n2);
                     self.offset += n2;
                 }
             }
-
-            self.offset == self.end
+            self.offset - old_oft
         }
     }
     // 调用方确保len >= offset + 4
@@ -130,9 +124,8 @@ impl RingSlice {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests_ds {
     use super::RingSlice;
-    use tokio::io::ReadBuf;
     #[test]
     fn test_ring_slice() {
         let cap = 1024;
@@ -142,25 +135,22 @@ mod tests {
         std::mem::forget(data);
         let mut in_range = RingSlice::from(ptr, cap, 0, 32);
         let mut buf = vec![0u8; cap];
-        let mut read_buf = ReadBuf::new(&mut buf);
-        in_range.read(&mut read_buf);
+        let n = in_range.read(&mut buf);
         assert_eq!(in_range.available(), 0);
-        assert_eq!(read_buf.filled(), &dc[in_range.start..in_range.end]);
+        assert_eq!(&buf[..n], &dc[in_range.start..in_range.end]);
 
         // 截止到末尾的
         let mut end_range = RingSlice::from(ptr, cap, cap - 32, cap);
-        read_buf.clear();
-        assert!(end_range.read(&mut read_buf));
+        let n = end_range.read(&mut buf);
         assert_eq!(end_range.available(), 0);
-        assert_eq!(read_buf.filled(), &dc[end_range.start..end_range.end]);
+        assert_eq!(&buf[0..n], &dc[end_range.start..end_range.end]);
 
         let mut over_range = RingSlice::from(ptr, cap, cap - 32, cap + 32);
-        read_buf.clear();
-        assert!(over_range.read(&mut read_buf));
+        let n = over_range.read(&mut buf);
         assert_eq!(over_range.available(), 0);
         let mut merged = (&dc[cap - 32..]).clone().to_vec();
         merged.extend(&dc[0..32]);
-        assert_eq!(read_buf.filled(), &merged);
+        assert_eq!(&buf[0..n], &merged);
 
         let u32_num = 111234567u32;
         let bytes = u32_num.to_be_bytes();

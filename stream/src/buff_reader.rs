@@ -5,18 +5,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use super::ResponseRingBuffer;
-use super::RingSlice;
+use ds::{ResponseRingBuffer, RingSlice};
 
 use protocol::Protocol;
 
 use tokio::io::{AsyncRead, ReadBuf};
 
+use crate::BackendBuilder;
 use futures::ready;
 
-pub trait Response {
-    fn load_read_offset(&self) -> usize;
-    fn on_response(&self, seq: usize, response: RingSlice);
+pub trait ResponseHandler {
+    fn load_offset(&self) -> usize;
+    // 从backend接收到response，并且完成协议解析时调用
+    fn on_received(&self, seq: usize, response: RingSlice);
 }
 
 unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
@@ -29,10 +30,18 @@ pub struct BridgeResponseToLocal<R, W, P> {
     w: W,
     parser: P,
     data: ResponseRingBuffer,
+    builder: Arc<BackendBuilder>,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, buf: usize, done: Arc<AtomicBool>) -> Self {
+    pub fn from(
+        r: R,
+        w: W,
+        parser: P,
+        buf: usize,
+        done: Arc<AtomicBool>,
+        builder: Arc<BackendBuilder>,
+    ) -> Self {
         debug_assert!(buf == buf.next_power_of_two());
         Self {
             seq: 0,
@@ -41,6 +50,7 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
             parser: parser,
             data: ResponseRingBuffer::with_capacity(buf),
             done: done,
+            builder: builder.clone(),
         }
     }
 }
@@ -49,7 +59,7 @@ impl<R, W, P> Future for BridgeResponseToLocal<R, W, P>
 where
     R: AsyncRead + Unpin,
     P: Protocol + Unpin,
-    W: Response + Unpin,
+    W: ResponseHandler + Unpin,
 {
     type Output = Result<()>;
 
@@ -59,7 +69,7 @@ where
         let mut reader = Pin::new(&mut me.r);
         //let mut spins = 0;
         while !me.done.load(Ordering::Relaxed) {
-            let offset = me.w.load_read_offset();
+            let offset = me.w.load_offset();
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
             println!(
@@ -74,7 +84,8 @@ where
                 continue;
             }
             let mut buf = ReadBuf::new(&mut buf);
-            ready!(reader.as_mut().poll_read(cx, &mut buf))?;
+            let t = ready!(reader.as_mut().poll_read(cx, &mut buf));
+            println!("read result: {:?}", t);
             // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
             println!(
@@ -110,7 +121,7 @@ where
                 }
                 response.resize(num);
                 let seq = me.seq;
-                me.w.on_response(seq, response);
+                me.w.on_received(seq, response);
                 println!(
                     "task response to buffer:  {} bytes processed. seq:{} {} => {}",
                     num,
@@ -123,6 +134,7 @@ where
             }
         }
         println!("task of reading data from response complete");
+        self.builder.do_reconnect();
         Poll::Ready(Ok(()))
     }
 }
