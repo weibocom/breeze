@@ -5,13 +5,13 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use ds::{RingBuffer, RingSlice, Slice};
+use ds::{RingBuffer, RingSlice, SeqOffset};
 
 use super::status::*;
 use super::RequestData;
 use crate::{
     BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, RequestHandler,
-    ResponseHandler, SeqOffset,
+    ResponseHandler,
 };
 
 use protocol::Protocol;
