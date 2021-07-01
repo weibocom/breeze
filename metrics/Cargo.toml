@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 once_cell = "*"
 crossbeam-channel = "*"
+thread-id = "*"
