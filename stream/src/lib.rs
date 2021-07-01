@@ -3,7 +3,6 @@ mod buff_reader;
 mod buff_writer;
 mod chan;
 mod mpmc;
-mod offset;
 mod response;
 mod status;
 
@@ -15,7 +14,6 @@ pub(crate) use buff_reader::{BridgeResponseToLocal, ResponseHandler};
 use buff_writer::RequestData;
 pub(crate) use buff_writer::{BridgeBufferToWriter, BridgeRequestToBuffer, RequestHandler};
 pub use mpmc::MpmcRingBufferStream as RingBufferStream;
-pub(crate) use offset::SeqOffset;
 
 use std::io::Result;
 use tokio::io::AsyncWrite;
@@ -45,8 +43,6 @@ use std::task::{Context, Poll};
 
 pub trait AsyncReadAll {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>>;
-    // 处理完poll_next之后的请求调用
-    //   fn poll_done(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>>;
 }
 //impl AsyncWriteAll for tokio::net::TcpStream {}
 //impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}
