@@ -6,6 +6,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use ds::Slice;
 use futures::ready;
 use protocol::Protocol;
 
@@ -14,7 +15,7 @@ pub struct AsyncGetSync<R, P> {
     idx: usize,
     // 需要read though的layers
     layers: Vec<R>,
-    req_ref: RequestRef,
+    req_ref: Slice,
     // TODO: 对于空响应，根据协议获得空响应格式，这样效率更高，待和@icy 讨论 fishermen 2021.6.27
     empty_resp: Option<Response>,
     resp_found: bool,
@@ -26,7 +27,7 @@ impl<R, P> AsyncGetSync<R, P> {
         AsyncGetSync {
             idx: 0,
             layers,
-            req_ref: RequestRef::empty(),
+            req_ref: Slice::default(),
             empty_resp: None,
             resp_found: false,
             parser: p,
@@ -98,7 +99,7 @@ where
 {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<()>> {
         // 记录req buf，方便多层访问
-        self.req_ref = RequestRef::from(buf);
+        self.req_ref = Slice::from(buf);
         return self.do_write(cx);
     }
 }
@@ -149,26 +150,5 @@ where
         } else {
             Poll::Ready(Err(Error::new(ErrorKind::NotFound, "not found key")))
         }
-    }
-}
-
-struct RequestRef {
-    ptr: usize,
-    len: usize,
-}
-
-impl RequestRef {
-    fn from(data: &[u8]) -> Self {
-        Self {
-            ptr: data.as_ptr() as usize,
-            len: data.len(),
-        }
-    }
-    fn empty() -> Self {
-        Self { ptr: 0, len: 0 }
-    }
-    fn data(&self) -> &[u8] {
-        debug_assert!(self.ptr > 0);
-        unsafe { std::slice::from_raw_parts(self.ptr as *const u8, self.len) }
     }
 }
