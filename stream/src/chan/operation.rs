@@ -38,15 +38,15 @@ where
             Self::Meta(ref mut s) => Pin::new(s).poll_next(cx),
         }
     }
-    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        match me {
-            Self::Get(ref mut s) => Pin::new(s).poll_done(cx),
-            Self::Gets(ref mut s) => Pin::new(s).poll_done(cx),
-            Self::Store(ref mut s) => Pin::new(s).poll_done(cx),
-            Self::Meta(ref mut s) => Pin::new(s).poll_done(cx),
-        }
-    }
+    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    match me {
+    //        Self::Get(ref mut s) => Pin::new(s).poll_done(cx),
+    //        Self::Gets(ref mut s) => Pin::new(s).poll_done(cx),
+    //        Self::Store(ref mut s) => Pin::new(s).poll_done(cx),
+    //        Self::Meta(ref mut s) => Pin::new(s).poll_done(cx),
+    //    }
+    //}
 }
 impl<Get, Gets, Store, Meta> AsyncWrite for AsyncOperation<Get, Gets, Store, Meta>
 where

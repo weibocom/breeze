@@ -30,7 +30,7 @@ pub struct Topology<P> {
     get_streams: HashMap<String, Arc<BackendBuilder>>,
     gets_streams: HashMap<String, Arc<BackendBuilder>>,
 
-    all_instances: Vec<String>,
+    metas: Vec<String>,
     meta_stream: HashMap<String, Arc<BackendBuilder>>,
 
     parser: P,
@@ -43,7 +43,7 @@ pub struct Topology<P> {
 // 没有slave
 impl<P> Topology<P> {
     pub fn meta(&self) -> Vec<BackendStream> {
-        self.all_instances
+        self.metas
             .iter()
             .map(|addr| {
                 self.meta_stream
@@ -65,7 +65,7 @@ impl<P> Topology<P> {
             .collect()
     }
     // followers是只能写，读忽略的
-    pub fn followers(&self) -> Vec<Vec<OwnedWriteHalf>> {
+    pub fn followers(&self) -> Vec<Vec<BackendStream>> {
         vec![]
     }
 
@@ -165,7 +165,8 @@ impl<P> Topology<P> {
         self.followers = followers;
         self.readers = readers;
         self.hash = hash;
-        self.all_instances = self.readers.clone().into_iter().flatten().collect();
+        //self.metas = self.readers.clone().into_iter().flatten().collect();
+        self.metas = self.masters.clone();
     }
 
     fn update(&mut self, cfg: &str, name: &str)
@@ -217,10 +218,10 @@ impl<P> Topology<P> {
         Self::add_new(&p, &readers, &mut self.gets_streams, kb, mb, c, false);
 
         // meta
-        Self::delete_non_exists(&self.all_instances, &mut self.meta_stream);
+        Self::delete_non_exists(&self.metas, &mut self.meta_stream);
         Self::add_new(
             &p,
-            &self.all_instances,
+            &self.metas,
             &mut self.meta_stream,
             kb,
             128 * kb,
@@ -245,7 +246,7 @@ where
             readers: self.readers.clone(),
             get_streams: self.get_streams.clone(),
             gets_streams: self.gets_streams.clone(),
-            all_instances: self.all_instances.clone(),
+            metas: self.metas.clone(),
             meta_stream: self.meta_stream.clone(),
             parser: self.parser.clone(),
         }
@@ -287,7 +288,7 @@ impl<P> From<P> for Topology<P> {
             readers: Default::default(),
             get_streams: Default::default(),
             gets_streams: Default::default(),
-            all_instances: Default::default(),
+            metas: Default::default(),
             meta_stream: Default::default(),
         }
     }

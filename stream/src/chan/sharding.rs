@@ -85,10 +85,10 @@ where
         }
         unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_next(cx) }
     }
-    #[inline]
-    fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        debug_assert!(me.shards.len() > 0);
-        unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_done(cx) }
-    }
+    //#[inline]
+    //fn poll_done(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
+    //    let me = &mut *self;
+    //    debug_assert!(me.shards.len() > 0);
+    //    unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_done(cx) }
+    //}
 }

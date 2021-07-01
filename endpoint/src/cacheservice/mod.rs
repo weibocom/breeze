@@ -20,8 +20,6 @@ use protocol::Protocol;
 
 use std::io::{Error, ErrorKind, Result};
 
-use tokio::net::tcp::OwnedWriteHalf;
-
 type Backend = stream::BackendStream;
 
 // type GetOperation<P> = AsyncSharding<Backend, Hasher, P>;
@@ -31,7 +29,7 @@ type GetOperation<P> = AsyncGetSync<Readers<P>, P>;
 type MultiGetOperation<P> = AsyncMultiGet<Readers<P>, P>;
 
 type Master<P> = AsyncSharding<Backend, Hasher, P>;
-type Follower<P> = AsyncSharding<OwnedWriteHalf, Hasher, P>;
+type Follower<P> = AsyncSharding<Backend, Hasher, P>;
 type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>>;
 type MetaOperation<P> = MetaStream<P, Backend>;
 type Operation<P> =

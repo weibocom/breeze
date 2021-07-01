@@ -150,9 +150,7 @@ where
             None => ready!(inner.as_mut().poll_next(cx))?,
         };
 
-        if item.write_to(buff) {
-            ready!(inner.as_mut().poll_done(cx))?;
-        } else {
+        if !item.write_to(buff) {
             me.response = Some(item);
         }
 
