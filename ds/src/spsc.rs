@@ -88,7 +88,8 @@ impl RingBuffer {
         )
     }
     fn close(&self) {
-        self.waker_status.store(Status::Close as u8, Ordering::Release);
+        self.waker_status
+            .store(Status::Close as u8, Ordering::Release);
     }
     // 读和写同时只会出现一个notify. TODO 待验证
     fn notify(&self, status: Status) {
@@ -217,22 +218,20 @@ impl RingBufferWriter {
             Result::Ok(b.len())
         }
     }
-    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<(Result<usize>)> {
+    pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<Result<usize>> {
         let result = self.put_slice(b);
         if result.is_ok() {
             let result_size = result.unwrap();
             if result_size == 0 {
                 self.buffer.waiting(cx, Status::WritePending);
                 Poll::Pending
-            }
-            else {
+            } else {
                 self.buffer.notify(Status::ReadPending);
-                Poll::Ready((Result::Ok(result_size)))
+                Poll::Ready(Result::Ok(result_size))
             }
-        }
-        else {
+        } else {
             self.buffer.close();
-            Poll::Ready((result))
+            Poll::Ready(result)
         }
     }
 
@@ -304,13 +303,11 @@ impl RingBufferReader {
             let poll_result = result.unwrap();
             if poll_result.is_some() {
                 Poll::Ready(Result::Ok(poll_result.unwrap()))
-            }
-            else {
+            } else {
                 self.buffer.waiting(cx, Status::ReadPending);
                 Poll::Pending
             }
-        }
-        else {
+        } else {
             self.buffer.close();
             Poll::Ready(Result::Err(result.unwrap_err()))
         }

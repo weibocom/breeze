@@ -84,8 +84,7 @@ where
                 continue;
             }
             let mut buf = ReadBuf::new(&mut buf);
-            let t = ready!(reader.as_mut().poll_read(cx, &mut buf));
-            println!("read result: {:?}", t);
+            ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
             println!(
@@ -114,9 +113,6 @@ where
                     me.data.writtened(),
                 );
                 if !found {
-                    if num >= 24 {
-                        panic!("not a valid response");
-                    }
                     break;
                 }
                 response.resize(num);

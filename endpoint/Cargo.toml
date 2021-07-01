@@ -13,7 +13,7 @@ protocol = { path = "../protocol" }
 hash = { path = "../hash" }
 stream = { path = "../stream" }
 
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "*", features = ["full"] }
 bb8 = "*"
 byteorder = "*"
 bytes = "1"
