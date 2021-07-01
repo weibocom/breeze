@@ -13,7 +13,7 @@ enum_dispatch = "*"
 
 #for http request and json parse
 reqwest = {version = "0.11", features = ["json"]}
-tokio = {version = "1", features = ["full"]}
+tokio = {version = "*", features = ["full"]}
 json = "*"
 
 #for deserialize

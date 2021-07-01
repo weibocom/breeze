@@ -12,7 +12,6 @@ hash = { path = "../hash" }
 ds = { path = "../ds" }
 
 enum_dispatch = "*"
-tokio = { version = "1", features = ["io-util"]}
 async-trait = "*"
 byteorder = "*"
 futures = "*"
