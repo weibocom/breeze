@@ -1,7 +1,6 @@
 mod backend;
 mod buff_reader;
 mod buff_writer;
-mod by_cid;
 mod chan;
 mod mpmc;
 mod offset;
@@ -15,7 +14,6 @@ pub use backend::{Backend, BackendBuilder, BackendStream};
 pub(crate) use buff_reader::{BridgeResponseToLocal, ResponseHandler};
 use buff_writer::RequestData;
 pub(crate) use buff_writer::{BridgeBufferToWriter, BridgeRequestToBuffer, RequestHandler};
-pub use by_cid::*;
 pub use mpmc::MpmcRingBufferStream as RingBufferStream;
 pub(crate) use offset::SeqOffset;
 
