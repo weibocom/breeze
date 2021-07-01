@@ -25,4 +25,4 @@ serde_json = "1.0"
 rand = "0.4"
 left-right = "*"
 futures = "*"
-
+log = { path = "../log" }

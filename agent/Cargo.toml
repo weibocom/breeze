@@ -12,6 +12,7 @@ net = { path = "../net"}
 protocol = { path = "../protocol" }
 endpoint = { path = "../endpoint" }
 discovery = { path = "../discovery" }
+log = { path = "../log" }
 
 url = "2"
 clap = "3.0.0-beta.2"

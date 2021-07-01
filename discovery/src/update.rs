@@ -121,9 +121,10 @@ where
                     self.w.append((self.cfg.clone(), self.service.to_owned()));
                     self.w.publish();
                     if let Err(e) = self.dump_to_snapshot().await {
-                        println!(
+                        log::warn!(
                             "failed to dump to snapshot. path:{:?} {:?}",
-                            self.snapshot, e
+                            self.snapshot,
+                            e
                         );
                     };
                 }
@@ -150,7 +151,7 @@ where
         match r {
             Ok(_) => {}
             Err(e) => {
-                println!(
+                log::warn!(
                     "load service config error. service:{} error:{:?}",
                     self.service.name(),
                     e

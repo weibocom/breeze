@@ -27,7 +27,7 @@ impl MetricsSender {
     fn init() -> MetricsSender {
         let (new_sender, new_receiver) = unbounded::<Metrics>();
         thread::spawn(move || {
-            println!("start send thread");
+            log::debug!("start send thread");
             let mut socket = UdpSocket::bind("test_metrics:1234").unwrap();
             //let mut socket = UdpSocket::bind("127.0.0.1:1234").unwrap();
             loop {
@@ -37,7 +37,7 @@ impl MetricsSender {
                 }
                 let metrics = received.unwrap();
                 let send_string = metrics.key + ":" + &*metrics.value + "|kv";
-                println!("send string: {}", send_string);
+                log::debug!("send string: {}", send_string);
                 socket.send(send_string.as_ref());
             }
         });

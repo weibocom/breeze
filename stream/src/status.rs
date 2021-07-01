@@ -87,13 +87,13 @@ impl Item {
         // 响应已返回，开始读取。状态一旦进入Responsed状态，没有其他任何请求会变更。只有poll_read会变更
         // place_response先更新数据，后更新状态。不会有并发问题
         // 读数据
-        println!("poll read id:{}", self.id);
+        log::debug!("poll read id:{}", self.id);
         let response = self.response.take();
 
         Poll::Ready(response)
     }
     pub fn place_response(&self, response: RingSlice) {
-        //println!("response received len:{}", response.available());
+        //log::debug!("response received len:{}", response.available());
         self.response.replace(response);
         // Ok poll_read更新状态时， 会把状态从RequestReceived变更为Pending，所以可能会失败。
 
@@ -113,7 +113,7 @@ impl Item {
     }
     #[inline(always)]
     fn status_cas(&self, old: u8, new: u8) -> std::result::Result<u8, u8> {
-        println!(
+        log::debug!(
             "status cas. expected: {} current:{} update to:{}",
             old,
             self.status.load(Ordering::Relaxed),
@@ -133,7 +133,7 @@ impl Item {
     }
     #[inline]
     fn waiting(&self, waker: Waker) {
-        println!("entering waiting status:{}", self.id);
+        log::debug!("entering waiting status:{}", self.id);
         self.lock_waker();
         *self.waker.borrow_mut() = Some(waker);
         self.unlock_waker();
@@ -159,7 +159,7 @@ impl Item {
             {
                 Ok(_) => break,
                 Err(_) => {
-                    println!("lock failed");
+                    log::debug!("lock failed");
                     continue;
                 }
             }

@@ -92,7 +92,7 @@ impl MpmcRingBufferStream {
     }
     pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<RingSlice>> {
         ready!(self.poll_check(cid))?;
-        //println!("poll read cid:{} ", cid);
+        //log::debug!("poll read cid:{} ", cid);
         let item = unsafe { self.items.get_unchecked(cid) };
         let response = ready!(item.poll_read(cx));
         Poll::Ready(Ok(response))
@@ -102,17 +102,17 @@ impl MpmcRingBufferStream {
         item.response_done();
         let (start, end) = response.location();
         self.offset.0.insert(start, end);
-        println!("mpmc poll read complete. cid:{} {} => {}", cid, start, end);
+        log::debug!("mpmc poll read complete. cid:{} {} => {}", cid, start, end);
     }
     // 释放cid的资源
     pub fn poll_shutdown(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {
-        println!("mpmc: poll shutdown. cid:{}", cid);
+        log::debug!("mpmc: poll shutdown. cid:{}", cid);
         debug_assert!(self.get_item(cid).status_init());
         Poll::Ready(Ok(()))
     }
     pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
         ready!(self.poll_check(cid))?;
-        println!("stream: poll write cid:{} len:{} ", cid, buf.len(),);
+        log::debug!("stream: poll write cid:{} len:{} ", cid, buf.len());
         let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
         if sender.0 {
             self.get_item(cid).place_request();
@@ -124,7 +124,7 @@ impl MpmcRingBufferStream {
             .ok()
             .expect("channel send failed");
         sender.0 = true;
-        println!("stream: poll write complete cid:{} len:{} ", cid, buf.len());
+        log::debug!("stream: poll write complete cid:{} len:{} ", cid, buf.len());
         Poll::Ready(Ok(()))
     }
     #[inline]
@@ -197,7 +197,7 @@ impl MpmcRingBufferStream {
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         self.check_bridge();
-        println!("request buffer size:{}", req_buffer);
+        log::debug!("request buffer size:{}", req_buffer);
         let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
         // 把数据从request同步到buffer
         let receiver = self.receiver.borrow_mut().take().expect("receiver exists");
@@ -240,7 +240,7 @@ impl MpmcRingBufferStream {
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
     {
-        println!("noreply bridaged");
+        log::debug!("noreply bridaged");
         self.check_bridge();
         let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
         // 把数据从request同步到buffer
@@ -284,17 +284,17 @@ impl MpmcRingBufferStream {
         let runnings = self.runnings.clone();
         tokio::spawn(async move {
             runnings.fetch_add(1, Ordering::AcqRel);
-            println!("{} bridge task started", name);
+            log::debug!("{} bridge task started", name);
             match future.await {
                 Ok(_) => {
-                    println!("{} bridge task complete", name);
+                    log::debug!("{} bridge task complete", name);
                 }
                 Err(e) => {
-                    println!("{} bridge task complete with error:{:?}", name, e);
+                    log::debug!("{} bridge task complete with error:{:?}", name, e);
                 }
             };
             runnings.fetch_add(-1, Ordering::AcqRel);
-            println!("{} bridge task completed", name);
+            log::debug!("{} bridge task completed", name);
         });
     }
 
@@ -313,13 +313,13 @@ impl MpmcRingBufferStream {
         }
         self.clone().do_close();
         while self.clone().runnings.load(Ordering::Acquire) != 0 {
-            println!(
+            log::debug!(
                 "running threads: {}",
                 self.clone().runnings.load(Ordering::Acquire)
             );
             sleep(Duration::from_secs(1));
         }
-        println!("all threads completed");
+        log::debug!("all threads completed");
     }
     // done == true。所以新到达的poll_write都会直接返回
     // 不会再操作senders, 可以重置senders
@@ -335,7 +335,7 @@ impl MpmcRingBufferStream {
             }
             let old = self.receiver.replace(Some(receiver));
             if let Some(o_r) = old {
-                println!(
+                log::debug!(
                     "may be the old stream is not established, but the new one is reconnected"
                 );
                 drop(o_r);
@@ -378,7 +378,6 @@ impl MpmcRingBufferStream {
 
 use super::RequestData;
 use crate::BackendBuilder;
-use std::borrow::BorrowMut;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -398,15 +397,6 @@ impl ResponseHandler for Arc<MpmcRingBufferStream> {
         self.place_response(seq, first);
     }
 }
-
-//impl IdAsyncWrite for MpmcRingBufferStream {
-//    fn poll_write(&self, id: usize, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
-//        self.poll_write(id, cx, buf)
-//    }
-//    fn poll_shutdown(&self, id: usize, cx: &mut Context) -> Poll<Result<()>> {
-//        self.poll_shutdown(id, cx)
-//    }
-//}
 
 #[cfg(test)]
 mod mpmc_test {
@@ -441,28 +431,28 @@ mod mpmc_test {
         type Output = Result<()>;
 
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            println!("thread {}: task polling. ReceiverTester", thread_id::get());
+            log::debug!("thread {}: task polling. ReceiverTester", thread_id::get());
             let me = &mut *self;
             let mut receiver = Pin::new(&mut me.receiver);
             while !me.done.load(Ordering::Relaxed) {
-                println!("thread {}: come into poll loop", thread_id::get());
+                log::debug!("thread {}: come into poll loop", thread_id::get());
                 if let Some(req) = me.cache.take() {
                     let data = req.data();
                     if !data.len() <= 1 {
                         assert_eq!(data[0], 0x80);
-                        println!("request  received");
+                        log::debug!("request  received");
                         let seq = me.seq;
                         me.seq += 1;
                     }
                 }
                 let result = ready!(receiver.as_mut().poll_recv(cx));
                 if result.is_none() {
-                    println!("thread {}: channel closed, quit", thread_id::get());
+                    log::debug!("thread {}: channel closed, quit", thread_id::get());
                     break;
                 }
                 me.cache = result;
             }
-            println!("poll done");
+            log::debug!("poll done");
             Poll::Ready(Ok(()))
         }
     }
@@ -481,7 +471,7 @@ mod mpmc_test {
                 sender.close_this_sender();
                 drop(sender);
                 */
-                println!("thread {}: new testMpmc", thread_id::get());
+                log::debug!("thread {}: new testMpmc", thread_id::get());
 
                 TestMpmc {
                     senders: senders,
@@ -496,11 +486,11 @@ mod mpmc_test {
                 .borrow_mut()
                 .take()
                 .expect("receiver exists");
-            println!("thread {}: goto new thread", thread_id::get());
+            log::debug!("thread {}: goto new thread", thread_id::get());
             tokio::spawn(ReceiverTester::from(receiver, done.clone()));
 
             std::thread::sleep(Duration::from_secs(5));
-            println!("thread {}: sleep 5 seconds, begin drop", thread_id::get());
+            log::debug!("thread {}: sleep 5 seconds, begin drop", thread_id::get());
 
             let (sender, receiver) = channel(100);
             let sender = PollSender::new(sender);
@@ -510,7 +500,7 @@ mod mpmc_test {
                 old.close_this_sender();
                 drop(old);
             }
-            println!("thread {}: drop done", thread_id::get());
+            log::debug!("thread {}: drop done", thread_id::get());
             let old = test_mpmc.receiver.replace(Some(receiver));
             debug_assert!(old.is_none());
             std::thread::sleep(Duration::from_secs(5));

@@ -102,8 +102,8 @@ mod mc_discovery_test {
         let conf_task = vintage.lookup("cache.service2.0.unread.pool.lru.test", "");
         let conf = rt.block_on(conf_task);
 
-        println!("+++++++++");
-        println!("lookup result: {:?}", conf);
+        log::info!("+++++++++");
+        log::info!("lookup result: {:?}", conf);
         assert!(conf.unwrap().len() > 0);
     }
 }
