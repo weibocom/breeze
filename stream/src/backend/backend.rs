@@ -48,7 +48,7 @@ impl AsyncReadAll for Backend {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &*self;
         let slice = ready!(me.inner.poll_next(me.id.id(), cx))?;
-        Poll::Ready(Ok(Response::from(slice, me.inner.clone())))
+        Poll::Ready(Ok(Response::from(slice, me.id.id(), me.inner.clone())))
     }
     fn poll_done(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
         todo!("not suppotred");

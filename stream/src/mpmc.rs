@@ -9,7 +9,7 @@ use ds::{RingBuffer, RingSlice};
 
 use super::status::*;
 use crate::{
-    BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, RequestHandler, Response,
+    BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, RequestHandler,
     ResponseHandler, SeqOffset,
 };
 
@@ -99,20 +99,11 @@ impl MpmcRingBufferStream {
     }
     pub fn response_done(&self, cid: usize, response: &RingSlice) {
         let item = unsafe { self.items.get_unchecked(cid) };
-        let (start, end) = item.response_done();
+        item.response_done();
+        let (start, end) = response.location();
         self.offset.0.insert(start, end);
+        println!("mpmc poll read complete. {} => {}", start, end);
     }
-    //pub fn poll_read(&self, cid: usize, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
-    //    ready!(self.poll_check(cid))?;
-    //    //println!("poll read cid:{} ", cid);
-    //    let item = unsafe { self.items.get_unchecked(cid) };
-    //    if ready!(item.poll_read(cx, buf, self.min)) {
-    //        let (start, end) = item.response_slice();
-    //        self.offset.0.insert(start, end);
-    //    }
-    //    println!("mpmc poll read complete. data:{:?}", buf.filled());
-    //    Poll::Ready(Ok(()))
-    //}
     // 释放cid的资源
     pub fn poll_shutdown(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {
         println!("mpmc: poll shutdown. cid:{}", cid);

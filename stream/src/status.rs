@@ -3,8 +3,6 @@ use std::sync::atomic::fence;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
 
-use tokio::io::ReadBuf;
-
 //use super::RequestData;
 use ds::RingSlice;
 
@@ -125,13 +123,13 @@ impl Item {
             .compare_exchange(old, new, Ordering::AcqRel, Ordering::Acquire)
     }
     #[inline]
-    pub fn response_done(&self) -> (usize, usize) {
+    pub fn response_done(&self) {
         // 把状态调整为Init
         let status = self.status.load(Ordering::Acquire);
+        debug_assert_eq!(status, ItemStatus::ResponseReceived as u8);
         if let Err(status) = self.status_cas(status, ItemStatus::Init as u8) {
             panic!("data race: responded status expected, but {} found", status);
         }
-        self.response.take().location()
     }
     #[inline]
     fn waiting(&self, waker: Waker) {
