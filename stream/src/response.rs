@@ -6,14 +6,15 @@ use std::sync::Arc;
 
 pub struct Response {
     slice: RingSlice,
-    release: Option<Arc<RingBufferStream>>,
+    // 在drop response的时候，需要将执行RingBufferStream::response_done。释放资源
+    done: Option<(usize, Arc<RingBufferStream>)>,
 }
 
 impl Response {
-    pub fn from(slice: RingSlice, release: Arc<RingBufferStream>) -> Self {
+    pub fn from(slice: RingSlice, cid: usize, release: Arc<RingBufferStream>) -> Self {
         Self {
             slice: slice,
-            release: Some(release),
+            done: Some((cid, release)),
         }
     }
     pub fn from_slice(slice: &'static [u8]) -> Self {
@@ -25,7 +26,7 @@ impl Response {
         );
         Self {
             slice: slice,
-            release: None,
+            done: None,
         }
     }
     // 返回true，说明所有Response的数据都写入完成
@@ -57,3 +58,11 @@ impl AsRef<RingSlice> for Response {
 
 unsafe impl Send for Response {}
 unsafe impl Sync for Response {}
+
+impl Drop for Response {
+    fn drop(&mut self) {
+        if let Some((cid, done)) = self.done.take() {
+            done.response_done(cid, &self.slice);
+        }
+    }
+}
