@@ -9,7 +9,8 @@ use futures::ready;
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc::Receiver;
 
-use super::ring::spsc::{RingBufferReader, RingBufferWriter};
+use crate::BackendBuilder;
+use ds::{RingBufferReader, RingBufferWriter};
 
 unsafe impl<W> Send for BridgeBufferToWriter<W> {}
 unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
@@ -42,8 +43,8 @@ impl RequestData {
     }
 }
 
-pub trait Request {
-    fn request_received(&self, id: usize, seq: usize);
+pub trait RequestHandler {
+    fn on_received(&self, id: usize, seq: usize);
 }
 
 pub struct BridgeBufferToWriter<W> {
@@ -52,16 +53,23 @@ pub struct BridgeBufferToWriter<W> {
     w: W,
     done: Arc<AtomicBool>,
     //cache: File,
+    builder: Arc<BackendBuilder>,
 }
 
 impl<W> BridgeBufferToWriter<W> {
-    pub fn from(reader: RingBufferReader, w: W, done: Arc<AtomicBool>) -> Self {
+    pub fn from(
+        reader: RingBufferReader,
+        w: W,
+        done: Arc<AtomicBool>,
+        builder: Arc<BackendBuilder>,
+    ) -> Self {
         //let cache = File::create("/tmp/cache.out").unwrap();
         Self {
             w: w,
             reader: reader,
             done: done,
             //cache: cache,
+            builder: builder.clone(),
         }
     }
 }
@@ -78,8 +86,16 @@ where
         while !me.done.load(Ordering::Relaxed) {
             println!("bridage buffer to backend.");
             let b = ready!(me.reader.poll_next(cx));
-            println!("bridage buffer to backend. len:{} ", b.len());
-            let num = ready!(writer.as_mut().poll_write(cx, b))?;
+            if b.is_err() {
+                break;
+            }
+            let result_buffer = b.unwrap();
+            if result_buffer.is_empty() {
+                println!("bridage buffer to backend: received empty");
+                continue;
+            }
+            println!("bridage buffer to backend. len:{} ", result_buffer.len());
+            let num = ready!(writer.as_mut().poll_write(cx, result_buffer))?;
             //me.cache.write_all(&b[..num]).unwrap();
             debug_assert!(num > 0);
             println!("bridage buffer to backend: {} bytes sent ", num);
@@ -119,7 +135,7 @@ impl<R> BridgeRequestToBuffer<R> {
 
 impl<R> Future for BridgeRequestToBuffer<R>
 where
-    R: Unpin + Request,
+    R: Unpin + RequestHandler,
 {
     type Output = Result<()>;
 
@@ -130,16 +146,16 @@ where
         while !me.done.load(Ordering::Relaxed) {
             if let Some(req) = me.cache.take() {
                 let data = req.data();
-                assert_eq!(data[0], 0x80);
+                println!("data len:{}", data.len());
                 println!(
                     "bridge request to buffer: write to buffer. cid: {} len:{}",
                     req.id(),
                     req.data().len()
                 );
-                ready!(me.w.poll_put_slice(cx, data));
+                ready!(me.w.poll_put_slice(cx, data))?;
                 let seq = me.seq;
                 me.seq += 1;
-                me.r.request_received(req.id(), seq);
+                me.r.on_received(req.id(), seq);
                 println!(
                     "received data from bridge. len:{} id:{} seq:{}",
                     req.data().len(),
@@ -148,7 +164,13 @@ where
                 );
             }
             println!("bridge request to buffer: wating to get request from channel");
-            me.cache = Some(ready!(receiver.as_mut().poll_recv(cx)).expect("channel closed"));
+            let result = ready!(receiver.as_mut().poll_recv(cx));
+            if result.is_none() {
+                me.w.close();
+                println!("bridge request to buffer: channel closed, quit");
+                break;
+            }
+            me.cache = result;
             println!("bridge request to buffer. one request received from request channel");
         }
         Poll::Ready(Ok(()))

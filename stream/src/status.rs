@@ -3,10 +3,8 @@ use std::sync::atomic::fence;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
 
-use tokio::io::ReadBuf;
-
 //use super::RequestData;
-use super::RingSlice;
+use ds::RingSlice;
 
 #[repr(u8)]
 pub enum ItemStatus {
@@ -15,6 +13,7 @@ pub enum ItemStatus {
     RequestSent,
     ReadPending,      // 增加一个中间状态来协调poll_read与place_response
     ResponseReceived, // 数据已写入
+    Shutdown,         // 当前状态隶属的stream已结束。
 }
 
 unsafe impl Send for ItemStatus {}
@@ -28,7 +27,6 @@ pub struct Item {
     // 下面的数据要加锁才能访问
     waker_lock: AtomicBool,
     waker: RefCell<Option<Waker>>,
-    //request: RefCell<RequestData>,
     response: RefCell<RingSlice>,
 }
 
@@ -59,6 +57,7 @@ impl Item {
         self.seq.load(Ordering::Acquire)
     }
 
+    // 调用方确保状态正确性
     pub fn bind_seq(&self, seq: usize) {
         match self.status_cas(
             ItemStatus::RequestReceived as u8,
@@ -75,8 +74,11 @@ impl Item {
     // 有两种可能的状态。
     // Received, 说明之前从来没有poll过
     // Reponded: 有数据并且成功返回
-    pub fn poll_read(&self, cx: &mut Context, buf: &mut ReadBuf) -> Poll<bool> {
+    // last_min: 最后一次获取最少要保障last_min个字节。
+    // 调用方确保当前status不为shutdown
+    pub fn poll_read(&self, cx: &mut Context) -> Poll<RingSlice> {
         let status = self.status.load(Ordering::Acquire);
+        debug_assert_ne!(status, ItemStatus::Shutdown as u8);
         if status != ItemStatus::ResponseReceived as u8 {
             // 进入waiting状态
             self.waiting(cx.waker().clone());
@@ -86,17 +88,9 @@ impl Item {
         // place_response先更新数据，后更新状态。不会有并发问题
         // 读数据
         println!("poll read id:{}", self.id);
-        if self.response.borrow_mut().read(buf) {
-            // 把状态调整为Init
-            match self.status_cas(status, ItemStatus::Init as u8) {
-                Ok(_) => return Poll::Ready(true),
-                Err(status) => {
-                    panic!("data race: responded status expected, but {} found", status)
-                }
-            }
-        } else {
-            return Poll::Ready(false);
-        }
+        let response = self.response.take();
+
+        Poll::Ready(response)
     }
     pub fn place_response(&self, response: RingSlice) {
         //println!("response received len:{}", response.available());
@@ -129,8 +123,13 @@ impl Item {
             .compare_exchange(old, new, Ordering::AcqRel, Ordering::Acquire)
     }
     #[inline]
-    pub fn response_slice(&self) -> (usize, usize) {
-        self.response.borrow().location()
+    pub fn response_done(&self) {
+        // 把状态调整为Init
+        let status = self.status.load(Ordering::Acquire);
+        debug_assert_eq!(status, ItemStatus::ResponseReceived as u8);
+        if let Err(status) = self.status_cas(status, ItemStatus::Init as u8) {
+            panic!("data race: responded status expected, but {} found", status);
+        }
     }
     #[inline]
     fn waiting(&self, waker: Waker) {
@@ -140,14 +139,15 @@ impl Item {
         self.unlock_waker();
     }
     #[inline]
-    fn try_wake(&self) {
+    fn try_wake(&self) -> bool {
         self.lock_waker();
         let waker = self.waker.borrow_mut().take();
         self.unlock_waker();
         if let Some(waker) = waker {
-            //println!("wake up");
             waker.wake();
-            //println!("wake up complete");
+            true
+        } else {
+            false
         }
     }
     #[inline(always)]
@@ -172,5 +172,20 @@ impl Item {
     }
     pub(crate) fn status_init(&self) -> bool {
         self.status.load(Ordering::Acquire) == ItemStatus::Init as u8
+    }
+    // 把所有状态设置为shutdown
+    // 状态一旦变更为Shutdown，只有reset都会把状态从Shutdown变更为Init
+    pub(crate) fn shutdown(&self) {
+        self.status
+            .store(ItemStatus::Shutdown as u8, Ordering::Release);
+    }
+
+    // reset只会把状态从shutdown变更为init
+    // 必须在shutdown之后调用
+    pub(crate) fn reset(&self) {
+        match self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8) {
+            Ok(_) => {}
+            Err(status) => assert_eq!(status, ItemStatus::Init as u8),
+        }
     }
 }
