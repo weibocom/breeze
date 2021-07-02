@@ -1,3 +1,4 @@
+use rand::Rng;
 use stream::{BackendBuilder, BackendStream};
 
 use std::collections::HashMap;
@@ -6,8 +7,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use protocol::Protocol;
-
-use tokio::net::tcp::OwnedWriteHalf;
 
 unsafe impl<P> Send for Topology<P> {}
 unsafe impl<P> Sync for Topology<P> {}
@@ -25,8 +24,8 @@ pub struct Topology<P> {
     followers: Vec<Vec<String>>,
     f_streams: HashMap<String, Arc<BackendBuilder>>,
     // 处理读请求,每个layer选择一个，先打通
-    // 后续考虑要调整为新的Vec嵌套逻辑： [random[reader[node_dist_pool]]]
-    pub(crate) readers: Vec<Vec<String>>,
+    // 包含多层，每层是一组资源池，比如在mc，一般有三层，分别为masterL1--master--slave--slaveL1: [layer[reader[node_dist_pool]]]
+    pub(crate) layer_readers: Vec<Vec<Vec<String>>>,
     get_streams: HashMap<String, Arc<BackendBuilder>>,
     gets_streams: HashMap<String, Arc<BackendBuilder>>,
 
@@ -66,47 +65,65 @@ impl<P> Topology<P> {
     }
     // followers是只能写，读忽略的
     pub fn followers(&self) -> Vec<Vec<BackendStream>> {
-        vec![]
+        if self.followers.len() == 0 {
+            return vec![];
+        }
+        self.followers
+            .clone()
+            .into_iter()
+            .map(|servers| {
+                servers
+                    .iter()
+                    .map(|addr| {
+                        self.m_streams
+                            .get(addr)
+                            .expect("stream must be exists before address when call followers")
+                            .build()
+                    })
+                    .collect()
+            })
+            .collect()
     }
 
+    // 测试完毕后清理 fishermen 2021.7.2
     // TODO：这里只返回一个pool，后面会替换掉 fishermen
-    pub fn next_l1(&self) -> Vec<BackendStream> {
-        if self.readers.len() == 0 {
-            return vec![];
-        }
-        let idx = self.l1_seq.fetch_add(1, Ordering::AcqRel) % self.readers.len();
-        unsafe {
-            self.readers
-                .get_unchecked(idx)
-                .iter()
-                .map(|addr| {
-                    self.get_streams
-                        .get(addr)
-                        .expect("stream must be exists before address")
-                        .build()
-                })
-                .collect()
-        }
-    }
+    // pub fn next_l1(&self) -> Vec<BackendStream> {
+    //     if self.layer_readers.len() == 0 {
+    //         return vec![];
+    //     }
+    //     let idx = self.l1_seq.fetch_add(1, Ordering::AcqRel) % self.readers.len();
+    //     unsafe {
+    //         self.random_reads()
+    //             .get_unchecked(idx)
+    //             .iter()
+    //             .map(|addr| {
+    //                 self.get_streams
+    //                     .get(addr)
+    //                     .expect("stream must be exists before address")
+    //                     .build()
+    //             })
+    //             .collect()
+    //     }
+    // }
     // TODO：这里只返回一个pool，后面会替换掉 fishermen
-    pub fn next_l1_gets(&self) -> Vec<BackendStream> {
-        if self.readers.len() == 0 {
-            return vec![];
-        }
-        let idx = self.l1_seq.fetch_add(1, Ordering::AcqRel) % self.readers.len();
-        unsafe {
-            self.readers
-                .get_unchecked(idx)
-                .iter()
-                .map(|addr| {
-                    self.gets_streams
-                        .get(addr)
-                        .expect("stream must be exists before address")
-                        .build()
-                })
-                .collect()
-        }
-    }
+    // pub fn next_l1_gets(&self) -> Vec<BackendStream> {
+    //     if self.readers.len() == 0 {
+    //         return vec![];
+    //     }
+    //     let idx = self.l1_seq.fetch_add(1, Ordering::AcqRel) % self.readers.len();
+    //     unsafe {
+    //         self.random_reads()
+    //             .get_unchecked(idx)
+    //             .iter()
+    //             .map(|addr| {
+    //                 self.gets_streams
+    //                     .get(addr)
+    //                     .expect("stream must be exists before address")
+    //                     .build()
+    //             })
+    //             .collect()
+    //     }
+    // }
 
     pub fn retrive_get(&self) -> Vec<Vec<BackendStream>> {
         self.reader_layers(&self.get_streams)
@@ -115,12 +132,29 @@ impl<P> Topology<P> {
         self.reader_layers(&self.gets_streams)
     }
 
+    fn random_reads(&self) -> Vec<Vec<String>> {
+        let mut readers = Vec::new();
+        for layer in self.layer_readers.clone() {
+            if layer.len() == 1 {
+                readers.push(layer[0].clone());
+            } else if layer.len() > 1 {
+                let rd = rand::thread_rng().gen_range(0..layer.len());
+                readers.push(layer[rd].clone())
+            } else {
+                println!(" +++ should not come here!!");
+            }
+        }
+        readers
+    }
+
     // 获取reader列表
     fn reader_layers(
         &self,
         streams: &HashMap<String, Arc<BackendBuilder>>,
     ) -> Vec<Vec<BackendStream>> {
-        self.readers
+        // 从每个层选择一个reader
+        let readers = self.random_reads();
+        readers
             .iter()
             .map(|pool| {
                 pool.iter()
@@ -173,7 +207,7 @@ impl<P> Topology<P> {
         let (masters, followers, readers, hash) = ns.into_split();
         self.masters = masters;
         self.followers = followers;
-        self.readers = readers;
+        self.layer_readers = readers;
         self.hash = hash;
         //self.metas = self.readers.clone().into_iter().flatten().collect();
         self.metas = self.masters.clone();
@@ -198,7 +232,7 @@ impl<P> Topology<P> {
                 return;
             }
         };
-        if self.masters.len() == 0 || self.readers.len() == 0 {
+        if self.masters.len() == 0 || self.layer_readers.len() == 0 {
             log::info!("cacheservice empty. {} => {}", name, cfg);
             return;
         }
@@ -213,7 +247,13 @@ impl<P> Topology<P> {
         Self::delete_non_exists(&followers, &mut self.f_streams);
         Self::add_new(&p, followers.as_ref(), &mut self.f_streams, mb, kb, c, true);
 
-        let readers: Vec<String> = self.readers.clone().into_iter().flatten().collect();
+        let readers: Vec<String> = self
+            .layer_readers
+            .clone()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .collect();
         // get command
         Self::delete_non_exists(&readers, &mut self.get_streams);
         Self::add_new(&p, &readers, &mut self.get_streams, kb, mb, c, false);
@@ -247,7 +287,7 @@ where
             m_streams: self.m_streams.clone(),
             followers: self.followers.clone(),
             f_streams: self.f_streams.clone(),
-            readers: self.readers.clone(),
+            layer_readers: self.layer_readers.clone(),
             get_streams: self.get_streams.clone(),
             gets_streams: self.gets_streams.clone(),
             metas: self.metas.clone(),
@@ -289,7 +329,7 @@ impl<P> From<P> for Topology<P> {
             m_streams: Default::default(),
             followers: Default::default(),
             f_streams: Default::default(),
-            readers: Default::default(),
+            layer_readers: Default::default(),
             get_streams: Default::default(),
             gets_streams: Default::default(),
             metas: Default::default(),
