@@ -96,7 +96,7 @@ impl<P> CacheService<P> {
         // ));
 
         // let l1 = topo.next_l1_gets();
-        let get_multi_layers = Self::build_layers(topo.reader_layers(), &hash_alg, parser.clone());
+        let get_multi_layers = Self::build_layers(topo.retrive_gets(), &hash_alg, parser.clone());
         let gets =
             AsyncOperation::Gets(AsyncMultiGet::from_shard(get_multi_layers, parser.clone()));
 
@@ -109,7 +109,7 @@ impl<P> CacheService<P> {
         let store = AsyncOperation::Store(AsyncSetSync::from_master(master, followers));
 
         // 获取get through
-        let get_layers = Self::build_layers(topo.reader_layers(), &hash_alg, parser.clone());
+        let get_layers = Self::build_layers(topo.retrive_get(), &hash_alg, parser.clone());
         let get = AsyncOperation::Get(AsyncGetSync::from(get_layers, parser.clone()));
 
         let all_instances = topo.meta();
