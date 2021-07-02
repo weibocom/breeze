@@ -10,3 +10,4 @@ edition = "2018"
 once_cell = "*"
 crossbeam-channel = "*"
 log = { path = "../log" }
+thread-id = "*"
