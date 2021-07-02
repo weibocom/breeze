@@ -68,7 +68,6 @@ mod crc_test {
     fn crc32_test() {
         let key = "123456789012345.fri";
         let mut crc = Crc32 {};
-        let hash = crc.hash(key.as_bytes());
-        println!("key:{}, crc32-mc.hash: {}", key, hash);
+        let _hash = crc.hash(key.as_bytes());
     }
 }

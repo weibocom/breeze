@@ -55,7 +55,7 @@ impl<L, P> AsyncMultiGet<L, P> {
                 Err(e) => {
                     self.idx += 1;
                     idx = self.idx;
-                    println!("write req failed e:{:?}", e);
+                    log::debug!("write req failed e:{:?}", e);
                 }
             }
         }

@@ -64,7 +64,7 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        println!("task polling. BridgeResponseToLocal");
+        log::debug!("task polling. BridgeResponseToLocal");
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
         //let mut spins = 0;
@@ -72,23 +72,22 @@ where
             let offset = me.w.load_offset();
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
-            println!(
+            log::debug!(
                 "task response to buffer:{} bytes available offset:{}",
                 buf.len(),
                 offset
             );
             if buf.len() == 0 {
                 //panic!("response buffer full");
-                println!("response buffer full");
+                log::debug!("response buffer full");
                 std::hint::spin_loop();
                 continue;
             }
             let mut buf = ReadBuf::new(&mut buf);
-            let t = ready!(reader.as_mut().poll_read(cx, &mut buf));
-            println!("read result: {:?}", t);
+            ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
-            println!(
+            log::debug!(
                 "task response to buffer:{} bytes read from response. read buffer filled:{:?}",
                 n,
                 buf.filled()
@@ -104,36 +103,33 @@ where
             while me.data.processed() < me.data.writtened() {
                 let mut response = me.data.processing_bytes();
                 let (found, num) = me.parser.parse_response(&response);
-                println!(
+                log::debug!(
                     "task response to buffer: response processing bytes:{} parsed:{} num:{} seq:{} processed:{} written:{}",
                     response.available(),
                     found,
                     num,
                     me.seq,
                     me.data.processed(),
-                    me.data.writtened(),
+                    me.data.writtened()
                 );
                 if !found {
-                    if num >= 24 {
-                        panic!("not a valid response");
-                    }
                     break;
                 }
                 response.resize(num);
                 let seq = me.seq;
                 me.w.on_received(seq, response);
-                println!(
+                log::debug!(
                     "task response to buffer:  {} bytes processed. seq:{} {} => {}",
                     num,
                     seq,
                     me.data.processed(),
-                    me.data.writtened(),
+                    me.data.writtened()
                 );
                 me.data.advance_processed(num);
                 me.seq += 1;
             }
         }
-        println!("task of reading data from response complete");
+        log::debug!("task of reading data from response complete");
         self.builder.do_reconnect();
         Poll::Ready(Ok(()))
     }

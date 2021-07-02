@@ -1,8 +1,10 @@
-use super::super::{Cid, Ids, RingBufferStream};
-use super::BackendStream;
+use crate::{BackendStream, RingBufferStream};
+use ds::{Cid, Ids};
 use protocol::Protocol;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
 pub struct BackendBuilder {
     connected: Arc<AtomicBool>,
     finished: Arc<AtomicBool>,
@@ -44,7 +46,7 @@ impl BackendBuilder {
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        println!("come into from_with_response");
+        log::info!("come into from_with_response");
         let done = Arc::new(AtomicBool::new(true));
         let stream = RingBufferStream::with_capacity(parallel, done.clone());
         let me = Self {
@@ -58,7 +60,7 @@ impl BackendBuilder {
             check_waker: Arc::new(RwLock::new(BackendWaker::new())),
         };
         let me = Arc::new(me);
-        println!("request buffer:{} response buffer:{}", req_buf, resp_buf);
+        log::info!("request buffer:{} response buffer:{}", req_buf, resp_buf);
         let checker = Arc::new(BackendChecker::from(
             me.clone(),
             ignore_response,
@@ -75,7 +77,7 @@ impl BackendBuilder {
             .next()
             .map(|cid| BackendStream::from(Cid::new(cid, self.ids.clone()), self.stream.clone()))
             .unwrap_or_else(|| {
-                println!("connection id overflow, connection established failed");
+                log::info!("connection id overflow, connection established failed");
                 BackendStream::not_connected()
             })
     }
@@ -165,7 +167,7 @@ impl BackendChecker {
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        println!("come into check");
+        log::info!("come into check");
         while !self.inner.finished.load(Ordering::Acquire) {
             self.check_reconnected_once(parser.clone()).await;
             std::thread::park_timeout(Duration::from_millis(1000 as u64));
@@ -181,7 +183,7 @@ impl BackendChecker {
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         if self.inner.clone().done.load(Ordering::Acquire) {
-            println!("need to reconnect");
+            log::info!("need to reconnect");
             self.inner.clone().reconnect();
             //self.inner.clone().read().unwrap().done.store(false, Ordering::Release);
         }
@@ -189,16 +191,16 @@ impl BackendChecker {
         let connected = self.inner.connected.load(Ordering::Acquire);
         if !connected {
             let addr = &self.inner.addr;
-            println!("connection is closed");
+            log::info!("connection is closed");
             // 开始建立连接
             match tokio::net::TcpStream::connect(addr).await {
                 Ok(stream) => {
-                    println!("connected to {}", addr);
+                    log::info!("connected to {}", addr);
                     let (r, w) = stream.into_split();
                     let req_stream = self.inner.stream.clone();
 
                     if !self.ignore_response.load(Ordering::Acquire) {
-                        println!("go to bridge");
+                        log::info!("go to bridge");
                         req_stream.bridge(
                             parser.clone(),
                             self.req_buf,
@@ -208,15 +210,15 @@ impl BackendChecker {
                             self.inner.clone(),
                         );
                     } else {
-                        println!("go to bridge_no_reply");
+                        log::info!("go to bridge_no_reply");
                         req_stream.bridge_no_reply(self.resp_buf, r, w, self.inner.clone());
                     }
-                    println!("set false to closed");
+                    log::info!("set false to closed");
                     self.inner.connected.store(true, Ordering::Release);
                 }
                 // TODO
                 Err(_e) => {
-                    println!("connect to {} failed, error = {}", addr, _e);
+                    log::info!("connect to {} failed, error = {}", addr, _e);
                 }
             }
         }

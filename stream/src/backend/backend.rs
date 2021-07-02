@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use super::super::Cid;
+use ds::Cid;
 use futures::ready;
 
 use enum_dispatch::enum_dispatch;

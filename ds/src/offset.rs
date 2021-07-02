@@ -2,14 +2,14 @@ use lockfree::map::Map;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 无锁，支持并发更新offset，按顺序读取offset的数据结构
-pub(super) struct SeqOffset {
+pub struct SeqOffset {
     tries: usize,
     offset: AtomicUsize,
     slow_cache: Map<usize, usize>,
 }
 
 impl SeqOffset {
-    pub(super) fn from(tries: usize) -> Self {
+    pub fn from(tries: usize) -> Self {
         assert!(tries >= 1);
         Self {
             tries: tries,
@@ -22,7 +22,7 @@ impl SeqOffset {
     // 否则将span临时存储下来。
     // TODO 临时存储空间可能会触发OOM
     // end > start
-    pub(super) fn insert(&self, start: usize, end: usize) {
+    pub fn insert(&self, start: usize, end: usize) {
         debug_assert!(end > start);
         for _i in 0..self.tries {
             match self
@@ -39,12 +39,12 @@ impl SeqOffset {
     }
 
     // load offset, [0.. offset)都已经调用insert被相应的span全部填充
-    pub(super) fn load(&self) -> usize {
+    pub fn load(&self) -> usize {
         let mut offset = self.offset.load(Ordering::Acquire);
         let old = offset;
         while let Some(removed) = self.slow_cache.remove(&offset) {
             offset = *removed.val();
-            println!("read offset loaded by map:{} ", offset);
+            log::debug!("read offset loaded by map:{} ", offset);
         }
         if offset != old {
             self.offset.store(offset, Ordering::Release);

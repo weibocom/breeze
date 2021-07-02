@@ -65,7 +65,7 @@ where
                 Err(e) => {
                     self.idx += 1;
                     idx = self.idx;
-                    println!("write req failed e:{:?}", e);
+                    log::debug!("write req failed e:{:?}", e);
                 }
             }
         }
@@ -132,7 +132,7 @@ where
                 }
                 // 请求失败，如果还有reader，需要继续尝试下一个reader
                 Err(e) => {
-                    println!("read found err: {:?}", e);
+                    log::debug!("read found err: {:?}", e);
                 }
             }
             // 如果所有reader尝试完毕，退出循环

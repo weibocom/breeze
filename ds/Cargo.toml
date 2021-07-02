@@ -9,3 +9,5 @@ edition = "2018"
 byteorder = "*"
 rand = "*"
 cache_line_size = "*"
+log = { path = "../log" }
+lockfree = "*"

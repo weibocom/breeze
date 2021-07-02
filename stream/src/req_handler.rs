@@ -10,33 +10,27 @@ use tokio::io::AsyncWrite;
 use tokio::sync::mpsc::Receiver;
 
 use crate::BackendBuilder;
-use ds::{RingBufferReader, RingBufferWriter};
+use ds::{RingBufferReader, RingBufferWriter, Slice};
 
 unsafe impl<W> Send for BridgeBufferToWriter<W> {}
 unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
 
 pub struct RequestData {
     id: usize,
-    //ptr: usize,
-    //len: usize,
-    data: Vec<u8>,
+    data: Slice,
 }
 
 impl RequestData {
     pub fn from(id: usize, b: &[u8]) -> Self {
-        let data = b.clone().to_vec();
+        //let data = b.clone().to_vec();
         //let ptr = b.as_ptr() as usize;
         Self {
             id: id,
-            //ptr: ptr,
-            //len: b.len(),
-            data: data,
+            data: Slice::from(b),
         }
     }
     fn data(&self) -> &[u8] {
-        //let ptr = self.ptr as *const u8;
-        //unsafe { std::slice::from_raw_parts(ptr, self.len) }
-        &self.data
+        &self.data.data()
     }
     fn id(&self) -> usize {
         self.id
@@ -53,7 +47,7 @@ pub struct BridgeBufferToWriter<W> {
     w: W,
     done: Arc<AtomicBool>,
     //cache: File,
-    builder: Arc<BackendBuilder>,
+    _builder: Arc<BackendBuilder>,
 }
 
 impl<W> BridgeBufferToWriter<W> {
@@ -69,7 +63,7 @@ impl<W> BridgeBufferToWriter<W> {
             reader: reader,
             done: done,
             //cache: cache,
-            builder: builder.clone(),
+            _builder: builder.clone(),
         }
     }
 }
@@ -80,28 +74,24 @@ where
 {
     type Output = Result<()>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        println!("task polling. BridgeBufferToWriter");
+        log::debug!("task polling. BridgeBufferToWriter");
         let me = &mut *self;
         let mut writer = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Relaxed) {
-            println!("bridage buffer to backend.");
-            let b = ready!(me.reader.poll_next(cx));
-            if b.is_err() {
-                break;
-            }
-            let result_buffer = b.unwrap();
+            log::debug!("bridage buffer to backend.");
+            let result_buffer = ready!(me.reader.poll_next(cx))?;
             if result_buffer.is_empty() {
-                println!("bridage buffer to backend: received empty");
+                log::debug!("bridage buffer to backend: received empty");
                 continue;
             }
-            println!("bridage buffer to backend. len:{} ", result_buffer.len());
+            log::debug!("bridage buffer to backend. len:{} ", result_buffer.len());
             let num = ready!(writer.as_mut().poll_write(cx, result_buffer))?;
             //me.cache.write_all(&b[..num]).unwrap();
             debug_assert!(num > 0);
-            println!("bridage buffer to backend: {} bytes sent ", num);
+            log::debug!("bridage buffer to backend: {} bytes sent ", num);
             me.reader.consume(num);
         }
-        println!("task complete. bridge data from local buffer to backend server");
+        log::debug!("task complete. bridge data from local buffer to backend server");
         Poll::Ready(Ok(()))
     }
 }
@@ -140,14 +130,13 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        println!("task polling. BridgeRequestToBuffer");
+        log::debug!("task polling. BridgeRequestToBuffer");
         let me = &mut *self;
         let mut receiver = Pin::new(&mut me.receiver);
         while !me.done.load(Ordering::Relaxed) {
             if let Some(req) = me.cache.take() {
                 let data = req.data();
-                println!("data len:{}", data.len());
-                println!(
+                log::debug!(
                     "bridge request to buffer: write to buffer. cid: {} len:{}",
                     req.id(),
                     req.data().len()
@@ -156,22 +145,22 @@ where
                 let seq = me.seq;
                 me.seq += 1;
                 me.r.on_received(req.id(), seq);
-                println!(
+                log::debug!(
                     "received data from bridge. len:{} id:{} seq:{}",
                     req.data().len(),
                     req.id(),
                     seq
                 );
             }
-            println!("bridge request to buffer: wating to get request from channel");
+            log::debug!("bridge request to buffer: wating to get request from channel");
             let result = ready!(receiver.as_mut().poll_recv(cx));
             if result.is_none() {
                 me.w.close();
-                println!("bridge request to buffer: channel closed, quit");
+                log::debug!("bridge request to buffer: channel closed, quit");
                 break;
             }
             me.cache = result;
-            println!("bridge request to buffer. one request received from request channel");
+            log::debug!("bridge request to buffer. one request received from request channel");
         }
         Poll::Ready(Ok(()))
     }

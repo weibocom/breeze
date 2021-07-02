@@ -108,14 +108,24 @@ impl<P> Topology<P> {
         }
     }
 
+    pub fn retrive_get(&self) -> Vec<Vec<BackendStream>> {
+        self.reader_layers(&self.get_streams)
+    }
+    pub fn retrive_gets(&self) -> Vec<Vec<BackendStream>> {
+        self.reader_layers(&self.gets_streams)
+    }
+
     // 获取reader列表
-    pub fn reader_layers(&self) -> Vec<Vec<BackendStream>> {
+    fn reader_layers(
+        &self,
+        streams: &HashMap<String, Arc<BackendBuilder>>,
+    ) -> Vec<Vec<BackendStream>> {
         self.readers
             .iter()
             .map(|pool| {
                 pool.iter()
                     .map(|addr| {
-                        self.get_streams
+                        streams
                             .get(addr)
                             .expect("stream must be exists before adress")
                             .build()
@@ -142,7 +152,7 @@ impl<P> Topology<P> {
         P: Send + Sync + Protocol + 'static + Clone,
     {
         for addr in addrs {
-            println!("add new, addr = {}", addr);
+            log::info!("add new, addr = {}", addr);
             if !streams.contains_key(addr) {
                 streams.insert(
                     addr.to_string(),
@@ -176,26 +186,20 @@ impl<P> Topology<P> {
         let p = self.parser.clone();
         let idx = name.find(':').unwrap_or(name.len());
         if idx == 0 || idx >= name.len() - 1 {
-            println!("not a valid cache service name:{} no namespace found", name);
+            log::info!("not a valid cache service name:{} no namespace found", name);
+            return;
         }
         let namespace = &name[idx + 1..];
 
         match super::Namespace::parse(cfg, namespace) {
             Ok(ns) => self.update_from_namespace(ns),
             Err(e) => {
-                if self.masters.is_empty() {
-                    self.masters.push("127.0.0.1:10001".parse().unwrap());
-                }
-
-                if self.readers.is_empty() {
-                    self.readers.push(vec!["127.0.0.1:10001".parse().unwrap()]);
-                }
-                println!("parse cacheservice config error: name:{} error:{}", name, e);
-                //return;
+                log::info!("parse cacheservice config error: name:{} error:{}", name, e);
+                return;
             }
         };
         if self.masters.len() == 0 || self.readers.len() == 0 {
-            println!("cacheservice empty. {} => {}", name, cfg);
+            log::info!("cacheservice empty. {} => {}", name, cfg);
             return;
         }
 
@@ -258,9 +262,9 @@ where
     P: Send + Sync + Protocol,
 {
     fn update(&mut self, cfg: &str, name: &str) {
-        println!("cache service topology received:{}", name);
+        log::info!("cache service topology received:{}", name);
         self.update(cfg, name);
-        println!("master:{:?}", self.masters);
+        log::info!("master:{:?}", self.masters);
     }
 }
 impl<P> left_right::Absorb<(String, String)> for Topology<P>
