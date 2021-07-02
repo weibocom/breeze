@@ -1,5 +1,6 @@
 mod metrics;
 
+/*
 #[cfg(test)]
 mod tests {
     use super::metrics::*;
@@ -13,3 +14,4 @@ mod tests {
         thread::sleep(time::Duration::from_millis(1000));
     }
 }
+*/
