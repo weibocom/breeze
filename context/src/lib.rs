@@ -154,7 +154,7 @@ impl ListenerIter {
             // 对应的sock已经存在，但又不是升级。
             if self.is_sock_exists(&sock) {
                 if !self.upgrade {
-                    println!("{} listened by other process, but current process is not in upgrade mode. ", sock);
+                    log::warn!("{} listened by other process, but current process is not in upgrade mode. ", sock);
                     continue;
                 }
                 // 升级模式。
@@ -174,7 +174,7 @@ impl ListenerIter {
                 );
                 listeners.push(one);
             } else {
-                println!(
+                log::warn!(
                     "{} is not a valid service or processed by other processor",
                     name
                 );
@@ -195,7 +195,7 @@ impl ListenerIter {
             .unwrap_or("");
         let fields: Vec<&str> = name.split('@').collect();
         if fields.len() != 3 {
-            println!(
+            log::warn!(
                 "not a valid service file name:{}. must contains 4 fields seperated by '@'",
                 name
             );
@@ -234,14 +234,14 @@ impl ListenerIter {
                         if name.len() < 100 {
                             found.push(name)
                         } else {
-                            println!(
+                            log::warn!(
                                 "{} is not a valid file name. len {} is greater than 100",
                                 name,
                                 name.len()
                             );
                         }
                     }
-                    Err(os_str) => println!("{:?} is not a valid file name", os_str),
+                    Err(os_str) => log::warn!("{:?} is not a valid file name", os_str),
                 }
             }
         }

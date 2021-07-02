@@ -58,12 +58,6 @@ impl Namespace {
         if self.slave.len() > 0 {
             readers.push(self.slave);
         }
-
-        println!(
-            "masters:{:?} folloers:{:?} readers:{:?}",
-            master, followers, readers
-        );
-
         (master, followers, readers, self.hash)
     }
 }

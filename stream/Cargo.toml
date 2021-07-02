@@ -11,12 +11,12 @@ crossbeam-deque = "*"
 crossbeam-utils = "*"
 crossbeam-channel = "*"
 futures = "*"
-tokio = { version = "1", features = ["full"]}
+tokio = { version = "*", features = ["full"]}
 protocol = { path = "../protocol" }
 hash = { path = "../hash" }
 ds = { path = "../ds" }
+log = { path = "../log" }
 rand = "*"
-lockfree = "*"
 tokio-util = "*"
 spin = { version = "0.9.0"}
 enum_dispatch = "*"

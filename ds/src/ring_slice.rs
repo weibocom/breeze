@@ -48,7 +48,7 @@ impl RingSlice {
                 let oft_start = self.offset & (self.cap - 1);
                 let oft_end = self.end & (self.cap - 1);
 
-                println!("offset start:{} offset end:{}", oft_start, oft_end);
+                log::debug!("offset start:{} offset end:{}", oft_start, oft_end);
 
                 let n = buff.len().min(self.cap - oft_start).min(self.available());
                 copy_nonoverlapping(self.ptr.offset(oft_start as isize), buff.as_mut_ptr(), n);
@@ -155,7 +155,7 @@ mod tests_ds {
         let u32_num = 111234567u32;
         let bytes = u32_num.to_be_bytes();
         unsafe {
-            println!("bytes:{:?}", bytes);
+            log::debug!("bytes:{:?}", bytes);
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr.offset(8), 4);
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr.offset(1023), 1);
             std::ptr::copy_nonoverlapping(bytes.as_ptr().offset(1), ptr, 3);

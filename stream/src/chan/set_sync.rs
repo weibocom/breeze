@@ -51,7 +51,7 @@ where
                         .poll_write(cx, buf)
                 )
                 .map_err(|e| {
-                    println!("write follower failed idx:{} err:{:?}", me.f_idx, e);
+                    log::error!("write follower failed idx:{} err:{:?}", me.f_idx, e);
                 });
                 me.f_idx += 1;
             }
