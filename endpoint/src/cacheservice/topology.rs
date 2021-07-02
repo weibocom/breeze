@@ -69,8 +69,7 @@ impl<P> Topology<P> {
             return vec![];
         }
         self.followers
-            .clone()
-            .into_iter()
+            .iter()
             .map(|servers| {
                 servers
                     .iter()
