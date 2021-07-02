@@ -1,8 +1,10 @@
-use super::super::{Cid, Ids, RingBufferStream};
-use super::BackendStream;
+use crate::{BackendStream, RingBufferStream};
+use ds::{Cid, Ids};
 use protocol::Protocol;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
 pub struct BackendBuilder {
     connected: Arc<AtomicBool>,
     finished: Arc<AtomicBool>,

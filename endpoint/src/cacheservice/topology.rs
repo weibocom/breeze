@@ -108,14 +108,24 @@ impl<P> Topology<P> {
         }
     }
 
+    pub fn retrive_get(&self) -> Vec<Vec<BackendStream>> {
+        self.reader_layers(&self.get_streams)
+    }
+    pub fn retrive_gets(&self) -> Vec<Vec<BackendStream>> {
+        self.reader_layers(&self.gets_streams)
+    }
+
     // 获取reader列表
-    pub fn reader_layers(&self) -> Vec<Vec<BackendStream>> {
+    fn reader_layers(
+        &self,
+        streams: &HashMap<String, Arc<BackendBuilder>>,
+    ) -> Vec<Vec<BackendStream>> {
         self.readers
             .iter()
             .map(|pool| {
                 pool.iter()
                     .map(|addr| {
-                        self.get_streams
+                        streams
                             .get(addr)
                             .expect("stream must be exists before adress")
                             .build()
@@ -177,6 +187,7 @@ impl<P> Topology<P> {
         let idx = name.find(':').unwrap_or(name.len());
         if idx == 0 || idx >= name.len() - 1 {
             log::info!("not a valid cache service name:{} no namespace found", name);
+            return;
         }
         let namespace = &name[idx + 1..];
 
@@ -184,7 +195,7 @@ impl<P> Topology<P> {
             Ok(ns) => self.update_from_namespace(ns),
             Err(e) => {
                 log::info!("parse cacheservice config error: name:{} error:{}", name, e);
-                //return;
+                return;
             }
         };
         if self.masters.len() == 0 || self.readers.len() == 0 {
