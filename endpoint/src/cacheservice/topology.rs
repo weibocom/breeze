@@ -66,7 +66,20 @@ impl<P> Topology<P> {
     }
     // followers是只能写，读忽略的
     pub fn followers(&self) -> Vec<Vec<BackendStream>> {
-        vec![]
+        self.followers
+            .iter()
+            .map(|group| {
+                group
+                    .iter()
+                    .map(|addr| {
+                        self.f_streams
+                            .get(addr)
+                            .expect("stream must be exists before address")
+                            .build()
+                    })
+                    .collect()
+            })
+            .collect()
     }
 
     // TODO：这里只返回一个pool，后面会替换掉 fishermen
