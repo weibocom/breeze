@@ -14,7 +14,7 @@ pub struct AsyncMultiGet<S, P> {
     // 成功发送请求的shards
     writes: Vec<bool>,
     shards: Vec<S>,
-    parser: P,
+    _parser: P,
     response: Option<Response>,
     eof: usize,
 }
@@ -34,7 +34,7 @@ impl<S, P> AsyncMultiGet<S, P> {
             idx: 0,
             writes: vec![false; shards.len()],
             shards: shards,
-            parser: p,
+            _parser: p,
             response: None,
             eof: 0,
         }
@@ -48,6 +48,7 @@ where
 {
     // 只要有一个shard成功就算成功,如果所有的都写入失败，则返回错误信息。
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
+        log::debug!("multi get poll write received.");
         let me = &mut *self;
         let offset = me.idx;
         let mut success = false;
@@ -86,27 +87,19 @@ where
                 let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(i) });
                 match ready!(r.as_mut().poll_next(cx)) {
                     Err(e) => last_err = Some(e),
-                    Ok(mut response) => {
-                        me.eof = me.parser.trim_eof(&response);
-                        response.backwards(me.eof);
-                        match me.response.as_mut() {
-                            Some(item) => item.append(response),
-                            None => me.response = Some(response),
-                        }
-                    }
+                    Ok(response) => match me.response.as_mut() {
+                        Some(item) => item.append(response),
+                        None => me.response = Some(response),
+                    },
                 }
             }
             me.idx += 1;
         }
         me.idx = 0;
-        let eof = me.eof;
         me.eof = 0;
         me.response
             .take()
-            .map(|mut item| {
-                item.advance(eof);
-                Poll::Ready(Ok(item))
-            })
+            .map(|item| Poll::Ready(Ok(item)))
             .unwrap_or_else(|| {
                 Poll::Ready(Err(last_err.unwrap_or_else(|| {
                     Error::new(ErrorKind::Other, "all poll read failed")

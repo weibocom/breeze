@@ -139,7 +139,7 @@ where
             None => ready!(inner.as_mut().poll_next(cx))?,
         };
 
-        if !item.write_to(buff) {
+        if !item.write_to(buff, &me.parser) {
             me.response = Some(item);
         } else {
             me.pending = 0;
