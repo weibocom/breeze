@@ -5,13 +5,13 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use ds::{RingBuffer, RingSlice, Slice};
+use ds::{RingBuffer, RingSlice, SeqOffset};
 
 use super::status::*;
 use super::RequestData;
 use crate::{
     BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, RequestHandler,
-    ResponseHandler, SeqOffset,
+    ResponseHandler,
 };
 
 use protocol::Protocol;
@@ -278,8 +278,12 @@ impl MpmcRingBufferStream {
             }
         });
     }
-    fn start_bridge<F>(self: Arc<Self>, builder: Arc<BackendBuilder>, name: &'static str, future: F)
-    where
+    fn start_bridge<F>(
+        self: Arc<Self>,
+        _builder: Arc<BackendBuilder>,
+        name: &'static str,
+        future: F,
+    ) where
         F: Future<Output = Result<()>> + Send + 'static,
     {
         let runnings = self.runnings.clone();
@@ -299,9 +303,6 @@ impl MpmcRingBufferStream {
         });
     }
 
-    fn on_io_error(&self, _err: Error) {
-        todo!();
-    }
     fn do_close(self: Arc<Self>) {
         self.reset();
     }
