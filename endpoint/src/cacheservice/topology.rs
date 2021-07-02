@@ -183,13 +183,6 @@ impl<P> Topology<P> {
         match super::Namespace::parse(cfg, namespace) {
             Ok(ns) => self.update_from_namespace(ns),
             Err(e) => {
-                if self.masters.is_empty() {
-                    self.masters.push("127.0.0.1:10001".parse().unwrap());
-                }
-
-                if self.readers.is_empty() {
-                    self.readers.push(vec!["127.0.0.1:10001".parse().unwrap()]);
-                }
                 log::info!("parse cacheservice config error: name:{} error:{}", name, e);
                 //return;
             }
