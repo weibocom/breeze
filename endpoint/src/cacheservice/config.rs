@@ -42,22 +42,27 @@ impl Namespace {
 }
 
 impl Namespace {
-    pub fn into_split(self) -> (Vec<String>, Vec<Vec<String>>, Vec<Vec<String>>, String) {
-        let master = self.master;
+    pub fn into_split(self) -> (Vec<String>, Vec<Vec<String>>, Vec<Vec<Vec<String>>>, String) {
+        let master = self.master.clone();
         // followers包含： master-l1, slave, slave-l1
         let mut followers: Vec<Vec<String>> = self.master_l1.clone();
         if self.slave.len() > 0 {
             followers.push(self.slave.clone());
         }
-        followers.extend(self.slave_l1);
+        followers.extend(self.slave_l1.clone());
 
-        // reader包含：master，l1, slave
+        // reader包含多层，目前是：l1,master, slave
         // 保障严格的顺序。
-        let mut readers = vec![master.clone()];
-        readers.extend(self.master_l1);
-        if self.slave.len() > 0 {
-            readers.push(self.slave);
-        }
+        let mut readers = Vec::new();
+        readers.push(self.master_l1.clone());
+        readers.push(vec![self.master.clone()]);
+        readers.push(self.slave_l1.clone());
+        // 这个实现无法区分layer含义，先注释备查，测试完毕清理 fishermen
+        // let mut readers = vec![master.clone()];
+        // readers.extend(self.master_l1);
+        // if self.slave.len() > 0 {
+        //     readers.push(self.slave);
+        // }
         (master, followers, readers, self.hash)
     }
 }
