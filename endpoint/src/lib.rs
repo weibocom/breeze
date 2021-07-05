@@ -58,7 +58,7 @@ macro_rules! define_endpoint {
         }
 
         impl<P> AsyncWriteAll for Endpoint<P> where P:Unpin+Protocol{
-            fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: Request) -> Poll<Result<()>>{
+            fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>>{
                 match &mut *self {
                     $(Self::$item(ref mut p) => Pin::new(p).poll_write(cx, buf),)+
                 }

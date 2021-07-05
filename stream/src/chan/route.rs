@@ -34,7 +34,7 @@ where
     R: Protocol + Unpin,
 {
     #[inline]
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: Request) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         // ping-pong请求，有写时，read一定是读完成了
         me.idx = me.router.op_route(buf.data());

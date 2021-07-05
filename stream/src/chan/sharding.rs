@@ -32,7 +32,7 @@ where
     P: Unpin + Protocol,
 {
     #[inline]
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: Request) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         debug_assert!(me.idx < me.shards.len());
         let key = me.parser.key(buf.data());

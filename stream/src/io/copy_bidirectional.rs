@@ -26,6 +26,7 @@ where
         parser: parser,
         receiver: Receiver::new(),
         sender: Sender::new(),
+        sent: false,
     }
     .await
 }
@@ -43,6 +44,7 @@ struct CopyBidirectional<A, C, P> {
     parser: P,
     receiver: Receiver,
     sender: Sender,
+    sent: bool, // 标识请求是否发送完成。用于ping-pong之间的协调
 }
 impl<A, C, P> Future for CopyBidirectional<A, C, P>
 where
@@ -59,14 +61,25 @@ where
             parser,
             receiver,
             sender,
+            sent,
         } = &mut *self;
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
-        let recv = receiver.poll_copy(cx, client.as_mut(), agent.as_mut(), parser)?;
-        let send = sender.poll_copy(cx, agent, client, parser)?;
+        loop {
+            if !*sent {
+                let bytes =
+                    ready!(receiver.poll_copy_one(cx, client.as_mut(), agent.as_mut(), parser))?;
+                if bytes == 0 {
+                    log::debug!("io-bidirectional not request polled");
+                    break;
+                }
+                *sent = true;
+            }
+            log::debug!("io-bidirectional. poll sender");
+            let _ = ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser))?;
+            *sent = false;
+        }
 
-        let _rx = ready!(recv);
-        let _tx = ready!(send);
         Poll::Ready(Ok((0, 0)))
     }
 }

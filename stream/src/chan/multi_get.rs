@@ -47,7 +47,7 @@ where
     P: Unpin,
 {
     // 只要有一个shard成功就算成功,如果所有的都写入失败，则返回错误信息。
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: Request) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         log::debug!("multi get poll write received.");
         let me = &mut *self;
         let offset = me.idx;

@@ -7,6 +7,9 @@ use std::io::Result;
 pub mod memcache;
 use ds::RingSlice;
 
+mod request;
+pub use request::*;
+
 use enum_dispatch::enum_dispatch;
 
 #[enum_dispatch]

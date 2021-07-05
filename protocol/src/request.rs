@@ -4,7 +4,7 @@ use ds::Slice;
 
 pub const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 pub struct Request {
     inner: Slice,
 }

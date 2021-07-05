@@ -111,14 +111,14 @@ impl MpmcRingBufferStream {
         debug_assert!(self.get_item(cid).status_init());
         Poll::Ready(Ok(()))
     }
-    pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: Request) -> Poll<Result<()>> {
+    pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         ready!(self.poll_check(cid))?;
         log::debug!("stream: poll write cid:{} len:{} ", cid, buf.len());
         let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
         if sender.0 {
             self.get_item(cid).place_request();
             sender.0 = false;
-            let req = RequestData::from(cid, *buf);
+            let req = RequestData::from(cid, buf.clone());
             sender.1.start_send(req).ok().expect("channel closed");
         }
         ready!(sender.1.poll_send_done(cx))
