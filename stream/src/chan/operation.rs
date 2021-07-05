@@ -2,7 +2,7 @@ use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
 pub enum AsyncOperation<Get, Gets, Store, Meta> {
     Get(Get),
@@ -35,7 +35,7 @@ where
     Store: AsyncWriteAll + Unpin,
     Meta: AsyncWriteAll + Unpin,
 {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         match me {
             Self::Get(ref mut s) => Pin::new(s).poll_write(cx, buf),

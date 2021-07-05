@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 use discovery::ServiceDiscover;
 use protocol::Protocol;
 
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
 macro_rules! define_endpoint {
     ($($top:tt, $item:ident, $type_name:tt, $ep:expr);+) => {
@@ -49,28 +49,18 @@ macro_rules! define_endpoint {
             }
         }
 
-        impl<P> AsyncRead for Endpoint<P> where P: Unpin+Protocol{
-            fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<Result<()>> {
+        impl<P> AsyncReadAll for Endpoint<P> where P: Unpin+Protocol{
+            fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
                 match &mut *self {
-                    $(Self::$item(ref mut p) => Pin::new(p).poll_read(cx, buf),)+
+                    $(Self::$item(ref mut p) => Pin::new(p).poll_next(cx),)+
                 }
             }
         }
 
-        impl<P> AsyncWrite for Endpoint<P> where P:Unpin+Protocol{
-            fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>>{
+        impl<P> AsyncWriteAll for Endpoint<P> where P:Unpin+Protocol{
+            fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>>{
                 match &mut *self {
                     $(Self::$item(ref mut p) => Pin::new(p).poll_write(cx, buf),)+
-                }
-            }
-            fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-                match &mut *self {
-                    $(Self::$item(ref mut p) => Pin::new(p).poll_flush(cx),)+
-                }
-            }
-            fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-                match &mut *self {
-                    $(Self::$item(ref mut p) => Pin::new(p).poll_shutdown(cx),)+
                 }
             }
         }
@@ -78,14 +68,14 @@ macro_rules! define_endpoint {
 }
 
 mod cacheservice;
-mod pipe;
+//mod pipe;
 
 use cacheservice::CacheService;
 use cacheservice::Topology as CSTopology;
-use pipe::{Pipe, PipeTopology};
+//use pipe::{Pipe, PipeTopology};
 
 define_endpoint! {
-    PipeTopology, Pipe,         Pipe,         "pipe";
+//    PipeTopology, Pipe,         Pipe,         "pipe";
     CSTopology, CacheService, CacheService, "cs"
 }
 
