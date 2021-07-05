@@ -1,12 +1,15 @@
 mod backend;
 mod chan;
+pub mod io;
 mod mpmc;
 mod req_handler;
+mod request;
 mod resp_handler;
 mod response;
 mod status;
 
 pub use chan::*;
+pub use request::*;
 pub use response::*;
 
 pub use backend::{Backend, BackendBuilder, BackendStream};
@@ -17,7 +20,6 @@ pub(crate) use req_handler::{
 pub(crate) use resp_handler::{BridgeResponseToLocal, ResponseHandler};
 
 use std::io::Result;
-use tokio::io::AsyncWrite;
 
 /// 该接口是一个marker接口。实现了该接口的AsyncWrite，本身不
 /// 会处理buf数据，只会把数据会给chan的接收方，但在数据会给
@@ -25,7 +27,7 @@ use tokio::io::AsyncWrite;
 /// 由具体的协议决定。方便下由处理。
 /// 通常实现要尽可能确保chan处理buf的过程是zero copy的。
 /// 输入是pipeline的，输出是ping-pong的。
-pub trait AsyncPipeToPingPongChanWrite: AsyncWrite + Unpin {}
+pub trait AsyncPipeToPingPongChanWrite: AsyncWriteAll + Unpin {}
 
 /// 标识一个实现了AsyncWrite的接口，写入buf时，只能有以下情况:
 /// buf全部写入成功
@@ -33,7 +35,7 @@ pub trait AsyncPipeToPingPongChanWrite: AsyncWrite + Unpin {}
 /// 写入错误
 /// 不能出现部分写入成功的情况。方案处理
 pub trait AsyncWriteAll {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>>;
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, req: Request) -> Poll<Result<()>>;
 }
 
 /// 确保读取response的时候，类似于NotFound、Stored这样的数据包含

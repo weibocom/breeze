@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 
 use futures::ready;
 
-use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
 pub struct AsyncSetSync<M, W> {
     master: M,
@@ -38,7 +38,7 @@ where
     M: AsyncWriteAll + Unpin,
     W: AsyncWriteAll + Unpin,
 {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: Request) -> Poll<Result<()>> {
         let me = &mut *self;
         if !me.master_done {
             ready!(Pin::new(&mut me.master).poll_write(cx, buf))?;
