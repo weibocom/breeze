@@ -92,6 +92,7 @@ impl ResponseReader {
             }
             self.idx += 1;
         }
+        ready!(w.as_mut().poll_flush(cx))?;
         Poll::Ready(Ok(self.bytes))
     }
 }
