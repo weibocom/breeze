@@ -54,20 +54,23 @@ impl MemcacheBinary {
 }
 
 impl Protocol for MemcacheBinary {
-    #[inline(always)]
-    fn min_size(&self) -> usize {
-        HEADER_LEN
-    }
+    //#[inline(always)]
+    //fn min_size(&self) -> usize {
+    //    HEADER_LEN
+    //}
 
     #[inline(always)]
     fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)> {
-        debug_assert!(req.len() >= self.min_size());
+        //debug_assert!(req.len() >= self.min_size());
         if req[0] != REQUEST_MAGIC {
             Err(Error::new(
                 ErrorKind::InvalidData,
                 "not a valid protocol, the magic number must be 0x80 on mc binary protocol",
             ))
         } else {
+            if req.len() < HEADER_LEN {
+                return Ok((false, req.len()));
+            }
             let (done, n) = self._probe_request(req);
             Ok((done, n))
         }

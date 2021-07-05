@@ -9,10 +9,8 @@ use discovery::ServiceDiscover;
 use hash::Hasher;
 use stream::{
     AsyncGetSync, AsyncMultiGetSharding, AsyncOperation, AsyncRoute, AsyncSetSync, AsyncSharding,
-    MetaStream, PipeToPingPongChanWrite,
+    MetaStream,
 };
-
-use stream::AsyncWriteAll;
 
 type AsyncMultiGet<S, P> = AsyncMultiGetSharding<S, P>;
 
@@ -40,7 +38,7 @@ type Operation<P> =
 // 第二级按key进行hash
 // 第三级进行pipeline与server进行交互
 pub struct CacheService<P> {
-    inner: PipeToPingPongChanWrite<P, AsyncRoute<Operation<P>, P>>,
+    inner: AsyncRoute<Operation<P>, P>,
 }
 
 impl<P> CacheService<P> {
@@ -75,7 +73,6 @@ impl<P> CacheService<P> {
         discovery.do_with(|t| match t {
             Some(t) => match t {
                 super::Topology::CacheService(t) => Self::from_topology::<D>(p, t),
-                _ => panic!("cacheservice topologyt required!"),
             },
             None => Err(Error::new(
                 ErrorKind::ConnectionRefused,
@@ -117,32 +114,26 @@ impl<P> CacheService<P> {
         let meta = AsyncOperation::Meta(MetaStream::from(parser.clone(), all_instances));
         let op_stream = AsyncRoute::from(vec![get, gets, store, meta], parser.clone());
 
-        let inner = PipeToPingPongChanWrite::from_stream(parser, op_stream);
-
-        Ok(Self { inner: inner })
+        Ok(Self { inner: op_stream })
     }
 }
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
-impl<P> AsyncRead for CacheService<P>
+impl<P> AsyncReadAll for CacheService<P>
 where
     P: Protocol,
 {
     #[inline]
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-        buf: &mut ReadBuf,
-    ) -> Poll<Result<()>> {
-        Pin::new(&mut self.inner).poll_read(cx, buf)
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
+        Pin::new(&mut self.inner).poll_next(cx)
     }
 }
 
-impl<P> AsyncWrite for CacheService<P>
+impl<P> AsyncWriteAll for CacheService<P>
 where
     P: Protocol,
 {
@@ -152,16 +143,8 @@ where
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize>> {
+        buf: Request,
+    ) -> Poll<Result<()>> {
         Pin::new(&mut self.inner).poll_write(cx, buf)
-    }
-    #[inline]
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        Pin::new(&mut self.inner).poll_flush(cx)
-    }
-    #[inline]
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }

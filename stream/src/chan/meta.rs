@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 use protocol::{MetaType, Protocol};
 
 pub struct MetaStream<P, B> {
@@ -39,9 +39,9 @@ where
     P: Protocol,
     B: AsyncWriteAll + Unpin,
 {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: Request) -> Poll<Result<()>> {
         let me = &mut *self;
-        match me.parser.meta_type(buf) {
+        match me.parser.meta_type(buf.data()) {
             MetaType::Version => {
                 // 只需要发送请求到一个backend即可
                 for (i, b) in me.instances.iter_mut().enumerate() {
