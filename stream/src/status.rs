@@ -131,7 +131,11 @@ impl Item {
     }
     #[inline]
     fn waiting(&self, waker: Waker) {
-        log::debug!("item entering waiting status:{}", self.id);
+        log::debug!(
+            "item-{} entering waiting status:{}",
+            self.id,
+            self.status.load(Ordering::Acquire)
+        );
         self.lock_waker();
         *self.waker.borrow_mut() = Some(waker);
         self.unlock_waker();
