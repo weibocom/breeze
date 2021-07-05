@@ -23,6 +23,7 @@ const COMMAND_IDX: [u8; 128] = [
 ];
 
 const REQUEST_MAGIC: u8 = 0x80;
+const OP_CODE_GETQ: u8 = 0xd;
 
 #[derive(Clone)]
 pub struct MemcacheBinary;
@@ -53,20 +54,23 @@ impl MemcacheBinary {
 }
 
 impl Protocol for MemcacheBinary {
-    #[inline(always)]
-    fn min_size(&self) -> usize {
-        HEADER_LEN
-    }
+    //#[inline(always)]
+    //fn min_size(&self) -> usize {
+    //    HEADER_LEN
+    //}
 
     #[inline(always)]
     fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)> {
-        debug_assert!(req.len() >= self.min_size());
+        //debug_assert!(req.len() >= self.min_size());
         if req[0] != REQUEST_MAGIC {
             Err(Error::new(
                 ErrorKind::InvalidData,
                 "not a valid protocol, the magic number must be 0x80 on mc binary protocol",
             ))
         } else {
+            if req.len() < HEADER_LEN {
+                return Ok((false, req.len()));
+            }
             let (done, n) = self._probe_request(req);
             Ok((done, n))
         }
@@ -82,7 +86,7 @@ impl Protocol for MemcacheBinary {
     fn op_route(&self, req: &[u8]) -> usize {
         COMMAND_IDX[req[1] as usize] as usize
     }
-    fn meta_type(&self, req: &[u8]) -> MetaType {
+    fn meta_type(&self, _req: &[u8]) -> MetaType {
         MetaType::Version
     }
     // TODO 只有multiget 都会调用
@@ -110,11 +114,22 @@ impl Protocol for MemcacheBinary {
         slice.at(6) == 0 && slice.at(7) == 0
     }
     fn parse_response(&self, response: &RingSlice) -> (bool, usize) {
-        if response.available() < HEADER_LEN {
-            return (false, response.available());
+        let mut read = 0;
+        let avail = response.available();
+        loop {
+            if avail < read + HEADER_LEN {
+                return (false, avail);
+            }
+            debug_assert_eq!(response.at(0), 0x81);
+            let len = response.read_u32(read + 8) as usize + HEADER_LEN;
+
+            if response.at(read + 1) == OP_CODE_GETQ {
+                read += len;
+                continue;
+            }
+
+            let n = read + len;
+            return (avail >= n, n);
         }
-        debug_assert_eq!(response.at(0), 0x81);
-        let len = response.read_u32(8) as usize + HEADER_LEN;
-        (response.available() >= len, len)
     }
 }

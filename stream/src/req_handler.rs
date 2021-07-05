@@ -9,7 +9,7 @@ use futures::ready;
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc::Receiver;
 
-use crate::BackendBuilder;
+use crate::{BackendBuilder, Request};
 use ds::{RingBufferReader, RingBufferWriter, Slice};
 
 unsafe impl<W> Send for BridgeBufferToWriter<W> {}
@@ -17,17 +17,12 @@ unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
 
 pub struct RequestData {
     id: usize,
-    data: Slice,
+    data: Request,
 }
 
 impl RequestData {
-    pub fn from(id: usize, b: &[u8]) -> Self {
-        //let data = b.clone().to_vec();
-        //let ptr = b.as_ptr() as usize;
-        Self {
-            id: id,
-            data: Slice::from(b),
-        }
+    pub fn from(id: usize, b: Request) -> Self {
+        Self { id: id, data: b }
     }
     fn data(&self) -> &[u8] {
         &self.data.data()
