@@ -140,7 +140,7 @@ impl<P> Topology<P> {
                 let rd = rand::thread_rng().gen_range(0..layer.len());
                 readers.push(layer[rd].clone())
             } else {
-                println!(" +++ should not come here!!");
+                log::debug!(" +++ should not come here!!");
             }
         }
         readers
@@ -238,7 +238,7 @@ impl<P> Topology<P> {
 
         let kb = 1024;
         let mb = 1024 * 1024;
-        let c = 16;
+        let c = 32;
         Self::delete_non_exists(&self.masters, &mut self.m_streams);
         Self::add_new(&p, &self.masters, &mut self.m_streams, mb, kb, c, false);
 
