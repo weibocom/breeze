@@ -143,7 +143,7 @@ where
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: Request,
+        buf: &Request,
     ) -> Poll<Result<()>> {
         Pin::new(&mut self.inner).poll_write(cx, buf)
     }

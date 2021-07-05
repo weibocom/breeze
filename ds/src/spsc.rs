@@ -113,7 +113,8 @@ impl RingBuffer {
             debug_assert!(_cas);
             return;
         } else {
-            log::debug!("try to lock status failed");
+            // 说明当前状态不是需要notify的status状态，直接忽略即可
+            //log::debug!("try to lock status failed");
         }
     }
     // 当前状态要进入到status状态（status只能是ReadPending或者WritePending

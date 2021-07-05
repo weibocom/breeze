@@ -1,6 +1,6 @@
-use crate::{AsyncWriteAll, Request, MAX_REQUEST_SIZE};
+use crate::AsyncWriteAll;
 
-use protocol::Protocol;
+use protocol::{Protocol, Request, MAX_REQUEST_SIZE};
 
 use futures::ready;
 
@@ -16,11 +16,8 @@ pub(super) struct Receiver {
     w: usize,
     cap: usize,
     buff: Vec<u8>,
-    bytes: u64,   // 一共复制的字节数量
-    req_num: u64, // 发送的请求数量
     parsed: bool,
     parsed_idx: usize,
-    read_done: bool,
 }
 
 impl Receiver {
@@ -32,69 +29,64 @@ impl Receiver {
             w: 0,
             cap: init_cap,
             r: 0,
-            bytes: 0,
-            req_num: 0,
             parsed: false,
             parsed_idx: 0,
-            read_done: false,
         }
     }
-    pub fn poll_copy<R, W, P>(
+    fn reset(&mut self) {
+        if self.w == self.r {
+            self.r = 0;
+            self.w = 0;
+        }
+        self.parsed_idx = 0;
+        self.parsed = false;
+    }
+    pub fn poll_copy_one<R, W, P>(
         &mut self,
         cx: &mut Context,
         mut reader: Pin<&mut R>,
         mut writer: Pin<&mut W>,
         parser: &P,
-    ) -> Poll<Result<(u64, u64)>>
+    ) -> Poll<Result<usize>>
     where
         R: AsyncRead + ?Sized,
         P: Protocol + Unpin,
         W: AsyncWriteAll + ?Sized,
     {
-        while !self.read_done {
+        log::debug!(
+            "io-receiver-poll-copy. r:{} idx:{} w:{} ",
+            self.r,
+            self.parsed_idx,
+            self.w
+        );
+        while !self.parsed {
             if self.w == self.cap {
                 self.extends()?;
             }
-            if !self.parsed {
-                let mut buff = ReadBuf::new(&mut self.buff[self.w..]);
-                ready!(reader.as_mut().poll_read(cx, &mut buff))?;
-                let read = buff.filled().len();
-                if read == 0 {
-                    self.read_done = true;
+            let mut buff = ReadBuf::new(&mut self.buff[self.w..]);
+            ready!(reader.as_mut().poll_read(cx, &mut buff))?;
+            let read = buff.filled().len();
+            if read == 0 {
+                if self.w > self.r {
+                    log::warn!("io-receiver: eof, but {} bytes left.", self.w - self.r);
                 }
-                self.w += read;
-                self.bytes += read as u64;
-                let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
-                self.parsed = parsed;
-                self.parsed_idx = self.r + n;
+                return Poll::Ready(Ok(0));
             }
-            if !self.parsed {
-                continue;
-            }
-            debug_assert!(self.parsed_idx > self.r);
-            let req = Request::from(&self.buff[self.r..self.parsed_idx]);
-            ready!(writer.as_mut().poll_write(cx, req))?;
-            log::debug!("io:request recived len:{}", self.parsed_idx - self.r);
-            self.req_num += 1;
-            self.parsed = false;
-            if self.r == self.w {
-                self.r = 0;
-                self.w = 0;
-            }
+            self.w += read;
+            let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
+            self.parsed = parsed;
+            self.parsed_idx = self.r + n;
         }
-        if self.w > self.r {
-            // 有数据未写完，未解析完成，但reader已关闭
-            if !self.parsed {
-                return Poll::Ready(Err(Error::new(
-                    ErrorKind::UnexpectedEof,
-                    "read stream closed, but parser is false.",
-                )));
-            }
-            debug_assert!(self.parsed_idx > self.r);
-            let req = Request::from(&self.buff[self.r..self.parsed_idx]);
-            ready!(writer.as_mut().poll_write(cx, req))?;
-        }
-        Poll::Ready(Ok((self.bytes, self.req_num)))
+        let req = Request::from(&self.buff[self.r..self.parsed_idx]);
+        log::debug!(
+            "io:request recived len:{} {:?}",
+            self.parsed_idx - self.r,
+            &self.buff[self.r..self.parsed_idx]
+        );
+        ready!(writer.as_mut().poll_write(cx, &req))?;
+        self.r += req.len();
+        self.reset();
+        Poll::Ready(Ok(req.len()))
     }
     // 如果r > 0. 先进行一次move。通过是client端发送的是pipeline请求时会出现这种情况
     // 每次扩容两倍，最多扩容1MB，超过1MB就会扩容失败

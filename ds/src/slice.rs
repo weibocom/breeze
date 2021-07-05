@@ -1,5 +1,5 @@
 /// 使用者确保Slice持有的数据不会被释放。
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Slice {
     ptr: usize,
     len: usize,

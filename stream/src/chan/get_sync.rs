@@ -59,7 +59,7 @@ where
         // 轮询reader发送请求，直到发送成功
         while idx < self.layers.len() {
             let reader = unsafe { self.layers.get_unchecked_mut(idx) };
-            match ready!(Pin::new(reader).poll_write(cx, self.req_ref)) {
+            match ready!(Pin::new(reader).poll_write(cx, &self.req_ref)) {
                 Ok(_) => return Poll::Ready(Ok(())),
                 Err(e) => {
                     self.idx += 1;
@@ -99,10 +99,10 @@ where
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: Request,
+        buf: &Request,
     ) -> Poll<Result<()>> {
         // 记录req buf，方便多层访问
-        self.req_ref = buf;
+        self.req_ref = buf.clone();
         return self.do_write(cx);
     }
 }

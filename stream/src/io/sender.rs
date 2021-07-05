@@ -1,4 +1,4 @@
-use crate::{AsyncReadAll, Item, Request, Response, MAX_REQUEST_SIZE};
+use crate::{AsyncReadAll, Item, Response};
 
 use protocol::Protocol;
 
@@ -10,42 +10,39 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 pub(super) struct Sender {
-    bytes: u64,   // 一共复制的字节数量
-    req_num: u64, // 发送的请求数量
     response: Option<ResponseReader>,
 }
 
 impl Sender {
     pub fn new() -> Self {
-        Self {
-            bytes: 0,
-            req_num: 0,
-            response: None,
-        }
+        Self { response: None }
     }
-    pub fn poll_copy<R, W, P>(
+    pub fn poll_copy_one<R, W, P>(
         &mut self,
         cx: &mut Context,
         mut reader: Pin<&mut R>,
         mut writer: Pin<&mut W>,
         parser: &P,
-    ) -> Poll<Result<(u64, u64)>>
+    ) -> Poll<Result<usize>>
     where
         R: AsyncReadAll + ?Sized,
         W: AsyncWrite + ?Sized,
         P: Protocol,
     {
-        loop {
-            if self.response.is_none() {
-                let response = ready!(reader.as_mut().poll_next(cx))?;
-                self.response = Some(ResponseReader::from(response, parser));
-            }
-            if let Some(ref mut rr) = self.response {
-                ready!(rr.poll_write_to(cx, writer.as_mut()))?;
-            }
-            let old = self.response.take();
-            drop(old);
+        log::debug!("io-sender-poll");
+        if self.response.is_none() {
+            let response = ready!(reader.as_mut().poll_next(cx))?;
+            log::debug!("io-sender-poll: response found");
+            self.response = Some(ResponseReader::from(response, parser));
         }
+        log::debug!("io-sender-poll: try to write to client");
+        if let Some(ref mut rr) = self.response {
+            ready!(rr.poll_write_to(cx, writer.as_mut()))?;
+        }
+        log::debug!("io-sender-poll: try to write to client complete");
+        let old = self.response.take();
+        drop(old);
+        Poll::Ready(Ok(1))
     }
 }
 

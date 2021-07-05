@@ -3,13 +3,12 @@ mod chan;
 pub mod io;
 mod mpmc;
 mod req_handler;
-mod request;
 mod resp_handler;
 mod response;
 mod status;
 
 pub use chan::*;
-pub use request::*;
+pub use protocol::{Request, MAX_REQUEST_SIZE};
 pub use response::*;
 
 pub use backend::{Backend, BackendBuilder, BackendStream};
@@ -35,7 +34,7 @@ pub trait AsyncPipeToPingPongChanWrite: AsyncWriteAll + Unpin {}
 /// 写入错误
 /// 不能出现部分写入成功的情况。方案处理
 pub trait AsyncWriteAll {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, req: Request) -> Poll<Result<()>>;
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, req: &Request) -> Poll<Result<()>>;
 }
 
 /// 确保读取response的时候，类似于NotFound、Stored这样的数据包含

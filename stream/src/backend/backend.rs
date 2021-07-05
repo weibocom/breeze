@@ -48,7 +48,7 @@ impl AsyncReadAll for Backend {
 }
 
 impl AsyncWriteAll for Backend {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: Request) -> Poll<Result<()>> {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &*self;
         me.inner.poll_write(me.id.id(), cx, buf)
     }
@@ -65,7 +65,7 @@ impl AsyncReadAll for BackendStream {
 }
 
 impl AsyncWriteAll for BackendStream {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: Request) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         match me {
             BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_write(cx, buf),
@@ -85,7 +85,7 @@ impl AsyncReadAll for NotConnected {
 }
 
 impl AsyncWriteAll for NotConnected {
-    fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: Request) -> Poll<Result<()>> {
+    fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: &Request) -> Poll<Result<()>> {
         Poll::Ready(Err(Error::new(
             ErrorKind::NotConnected,
             "write to an unconnected stream",
