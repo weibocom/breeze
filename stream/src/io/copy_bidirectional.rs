@@ -74,8 +74,11 @@ where
                     break;
                 }
                 *sent = true;
+                log::debug!(
+                    "io-bidirectional. poll request recived and sent to agent:{}",
+                    bytes
+                );
             }
-            log::debug!("io-bidirectional. poll sender");
             let _ = ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser))?;
             *sent = false;
         }

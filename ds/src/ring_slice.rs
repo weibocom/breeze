@@ -43,8 +43,8 @@ impl RingSlice {
     }
 
     pub fn next_slice(&self) -> Slice {
-        let oft = self.offset;
-        let l = (self.cap - oft).min(self.len());
+        let oft = self.offset & (self.cap - 1);
+        let l = (self.cap - oft).min(self.available());
         unsafe { Slice::new(self.ptr.offset(oft as isize) as usize, l) }
     }
     pub fn advance(&mut self, n: usize) {
