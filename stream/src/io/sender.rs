@@ -29,13 +29,13 @@ impl Sender {
         W: AsyncWrite + ?Sized,
         P: Protocol,
     {
-        log::debug!("io-sender-poll");
+        log::debug!("io-sender-poll start");
         if self.response.is_none() {
             let response = ready!(reader.as_mut().poll_next(cx))?;
             log::debug!("io-sender-poll: response found");
             self.response = Some(ResponseReader::from(response, parser));
         }
-        log::debug!("io-sender-poll: try to write to client");
+        log::debug!("io-sender-poll response found");
         if let Some(ref mut rr) = self.response {
             ready!(rr.poll_write_to(cx, writer.as_mut()))?;
         }

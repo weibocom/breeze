@@ -76,21 +76,17 @@ where
         let me = &mut *self;
         let mut writer = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Relaxed) {
-            log::debug!("bridage buffer to backend.");
-            let result_buffer = match me.reader.poll_next(cx)? {
+            log::debug!("req-handler-writer: bridage buffer to backend.");
+            let buff = match me.reader.poll_next(cx)? {
                 Poll::Ready(buff) => buff,
                 Poll::Pending => {
-                    let _ = writer.as_mut().poll_flush(cx)?;
+                    ready!(writer.as_mut().poll_flush(cx))?;
                     return Poll::Pending;
                 }
             };
-            if result_buffer.is_empty() {
-                log::debug!("bridage buffer to backend: received empty");
-                continue;
-            }
-            log::debug!("bridage buffer to backend. len:{} ", result_buffer.len());
-            let num = ready!(writer.as_mut().poll_write(cx, result_buffer))?;
-            //me.cache.write_all(&b[..num]).unwrap();
+            debug_assert!(!buff.is_empty());
+            log::debug!("req-handler-writer: send buffer {} ", buff.len());
+            let num = ready!(writer.as_mut().poll_write(cx, buff))?;
             debug_assert!(num > 0);
             log::debug!("bridage buffer to backend: {} bytes sent ", num);
             me.reader.consume(num);
@@ -150,21 +146,21 @@ where
                 me.seq += 1;
                 me.r.on_received(req.id(), seq);
                 log::debug!(
-                    "received data from bridge. len:{} id:{} seq:{}",
+                    "req-handler-buffer: received data from bridge. len:{} id:{} seq:{}",
                     req.data().len(),
                     req.id(),
                     seq
                 );
             }
-            log::debug!("bridge request to buffer: wating to get request from channel");
+            log::debug!("req-handler-buffer: bridge request to buffer: wating incomming data");
             let result = ready!(receiver.as_mut().poll_recv(cx));
             if result.is_none() {
                 me.w.close();
-                log::debug!("bridge request to buffer: channel closed, quit");
+                log::info!("req-handler-buffer: bridge request to buffer: channel closed, quit");
                 break;
             }
             me.cache = result;
-            log::debug!("bridge request to buffer. one request received from request channel");
+            log::debug!("req-handler-buffer: one request received from request channel");
         }
         Poll::Ready(Ok(()))
     }
