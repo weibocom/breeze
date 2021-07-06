@@ -13,7 +13,12 @@ use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-pub async fn copy_bidirectional<A, C, P>(agent: A, client: C, parser: P) -> Result<(u64, u64)>
+pub async fn copy_bidirectional<A, C, P>(
+    agent: A,
+    client: C,
+    parser: P,
+    session_id: usize,
+) -> Result<(u64, u64)>
 where
     A: AsyncReadAll + AsyncWriteAll + Unpin,
     C: AsyncRead + AsyncWrite + Unpin,
@@ -27,6 +32,8 @@ where
         receiver: Receiver::new(),
         sender: Sender::new(),
         sent: false,
+        session_id: session_id,
+        seq: 0,
     }
     .await
 }
@@ -45,6 +52,8 @@ struct CopyBidirectional<A, C, P> {
     receiver: Receiver,
     sender: Sender,
     sent: bool, // 标识请求是否发送完成。用于ping-pong之间的协调
+    seq: usize,
+    session_id: usize,
 }
 impl<A, C, P> Future for CopyBidirectional<A, C, P>
 where
@@ -62,6 +71,8 @@ where
             receiver,
             sender,
             sent,
+            seq,
+            session_id,
         } = &mut *self;
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
@@ -75,12 +86,21 @@ where
                 }
                 *sent = true;
                 log::debug!(
-                    "io-bidirectional. poll request recived and sent to agent:{}",
-                    bytes
+                    "io-bidirectional. poll request from clien. bytes:{} seq:{}-{}",
+                    bytes,
+                    *seq,
+                    *session_id
                 );
             }
-            let _ = ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser))?;
+            let bytes = ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser))?;
+            log::debug!(
+                "io-bidirectional. write response to client bytes :{} seq:{}-{}",
+                bytes,
+                *seq,
+                *session_id
+            );
             *sent = false;
+            *seq += 1;
         }
 
         Poll::Ready(Ok((0, 0)))
