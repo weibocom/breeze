@@ -33,6 +33,8 @@ impl RequestData {
 }
 
 pub trait RequestHandler {
+    // 把更新seq与更新状态分开。避免response在执行on_received之前返回时，会依赖seq做判断
+    fn on_received_seq(&self, id: usize, seq: usize);
     fn on_received(&self, id: usize, seq: usize);
 }
 
@@ -141,6 +143,7 @@ where
                     req.id(),
                     req.data().len()
                 );
+                me.r.on_received_seq(req.id(), me.seq);
                 ready!(me.w.poll_put_slice(cx, data))?;
                 let seq = me.seq;
                 me.seq += 1;

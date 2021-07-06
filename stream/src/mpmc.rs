@@ -56,7 +56,7 @@ impl MpmcRingBufferStream {
     // id必须小于parallel
     pub fn with_capacity(parallel: usize, done: Arc<AtomicBool>) -> Self {
         let parallel = parallel.next_power_of_two();
-        assert!(parallel <= 32);
+        assert!(parallel <= 64);
         let items = (0..parallel).map(|id| Item::new(id)).collect();
         let seq_cids = (0..parallel)
             .map(|_| CacheAligned(AtomicUsize::new(0)))
@@ -113,7 +113,7 @@ impl MpmcRingBufferStream {
     }
     pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         ready!(self.poll_check(cid))?;
-        log::debug!("stream: poll write cid:{} len:{} ", cid, buf.len());
+        log::debug!("mpmc: write cid:{} len:{} ", cid, buf.len());
         let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
         if sender.0 {
             self.get_item(cid).place_request();
@@ -125,7 +125,7 @@ impl MpmcRingBufferStream {
             .ok()
             .expect("channel send failed");
         sender.0 = true;
-        log::debug!("stream: poll write complete cid:{} len:{} ", cid, buf.len());
+        log::debug!("mpmc: write complete cid:{} len:{} ", cid, buf.len());
         Poll::Ready(Ok(()))
     }
     #[inline]
@@ -147,7 +147,7 @@ impl MpmcRingBufferStream {
             self.seq_cids
                 .get_unchecked(seq_idx)
                 .0
-                .store(cid, Ordering::Relaxed);
+                .store(cid, Ordering::Release);
             self.get_item(cid).bind_seq(seq)
         };
     }
@@ -167,6 +167,7 @@ impl MpmcRingBufferStream {
                     }
                 }
             }
+            debug_assert_eq!(item.seq(), seq);
             item.place_response(response);
         }
     }
@@ -383,8 +384,11 @@ use std::thread::sleep;
 use std::time::Duration;
 
 impl RequestHandler for Arc<MpmcRingBufferStream> {
-    fn on_received(&self, id: usize, seq: usize) {
+    fn on_received_seq(&self, id: usize, seq: usize) {
         self.bind_seq(id, seq);
+    }
+    fn on_received(&self, id: usize, seq: usize) {
+        self.get_item(id).on_sent(seq);
     }
 }
 impl ResponseHandler for Arc<MpmcRingBufferStream> {
