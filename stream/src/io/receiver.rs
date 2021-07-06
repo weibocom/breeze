@@ -22,7 +22,6 @@ pub(super) struct Receiver {
 
 impl Receiver {
     pub fn new() -> Self {
-        log::debug!("Receiver inited");
         let init_cap = 2048usize;
         Self {
             buff: vec![0; init_cap],
@@ -72,6 +71,7 @@ impl Receiver {
                 }
                 return Poll::Ready(Ok(0));
             }
+            log::debug!("io-receiver-poll: {} bytes received.", read);
             self.w += read;
             let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
             self.parsed = parsed;
@@ -79,9 +79,9 @@ impl Receiver {
         }
         let req = Request::from(&self.buff[self.r..self.parsed_idx]);
         log::debug!(
-            "io:request recived len:{} {:?}",
+            "io-receiver-poll: len:{} {:?}",
             self.parsed_idx - self.r,
-            &self.buff[self.r..self.parsed_idx]
+            &self.buff[self.r..self.parsed_idx.min(48)]
         );
         ready!(writer.as_mut().poll_write(cx, &req))?;
         self.r += req.len();

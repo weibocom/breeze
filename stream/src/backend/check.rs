@@ -196,6 +196,7 @@ impl BackendChecker {
             match tokio::net::TcpStream::connect(addr).await {
                 Ok(stream) => {
                     log::info!("connected to {}", addr);
+                    let _ = stream.set_nodelay(true);
                     let (r, w) = stream.into_split();
                     let req_stream = self.inner.stream.clone();
 
