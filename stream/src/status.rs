@@ -12,9 +12,9 @@ pub enum ItemStatus {
     Init = 0u8,
     RequestReceived,
     RequestSent,
-    ReadPending,      // 增加一个中间状态来协调poll_read与place_response
     ResponseReceived, // 数据已写入
-    Shutdown,         // 当前状态隶属的stream已结束。
+    //ReadPending,      // 增加一个中间状态来协调poll_read与place_response
+    Shutdown, // 当前状态隶属的stream已结束。
 }
 use ItemStatus::*;
 impl PartialEq<u8> for ItemStatus {
@@ -86,10 +86,16 @@ impl Item {
             match self.status_cas(RequestReceived as u8, RequestSent as u8) {
                 Ok(_) => {}
                 Err(status) => log::info!(
-                    "item status: on_sent. status should be request received. but found:{}",
+                    "item status: on_sent. status should be req-received. but found:{}",
                     status
                 ),
             }
+        } else {
+            log::info!(
+                "item status: on_sent. sequence not matched. {} != {}",
+                old_seq,
+                seq
+            );
         }
     }
 
@@ -165,9 +171,9 @@ impl Item {
         debug_assert_eq!(status, ItemStatus::ResponseReceived as u8);
         if let Err(status) = self.status_cas(status, ItemStatus::Init as u8) {
             // 0会有qi歧义。因为seq是从0开始的。
-            self.seq.store(0, Ordering::Release);
             panic!("data race: responded status expected, but {} found", status);
         }
+        self.seq.store(0, Ordering::Release);
     }
     #[inline]
     fn try_wake(&self) -> bool {
@@ -175,7 +181,11 @@ impl Item {
         let waker = self.waker.borrow_mut().take();
         self.unlock_waker();
         if let Some(waker) = waker {
-            log::debug!("item status: waked up:{}", self.id);
+            log::debug!(
+                "item status: wakeup. id:{} status:{}",
+                self.id,
+                self.status()
+            );
             waker.wake();
             true
         } else {
@@ -205,19 +215,22 @@ impl Item {
     }
     #[inline(always)]
     fn lock_waker(&self) {
-        loop {
-            match self
-                .waker_lock
-                .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
-            {
-                Ok(_) => break,
-                Err(_) => {
-                    log::debug!("item status: waker lock failed");
-                    continue;
-                }
-            }
+        while !self.try_wake_lock() {
+            std::hint::spin_loop();
         }
-        fence(Ordering::Acquire);
+        // loop {
+        //     match self
+        //         .waker_lock
+        //         .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
+        //     {
+        //         Ok(_) => break,
+        //         Err(_) => {
+        //             log::debug!("item status: waker lock failed");
+        //             continue;
+        //         }
+        //     }
+        // }
+        // fence(Ordering::Acquire);
     }
     pub(crate) fn status_init(&self) -> bool {
         self.status.load(Ordering::Acquire) == ItemStatus::Init as u8
