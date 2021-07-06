@@ -1,5 +1,7 @@
+use std::iter::FromIterator;
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
+use std::str::FromStr;
 
 use byteorder::{BigEndian, ByteOrder};
 
@@ -81,6 +83,48 @@ impl RingSlice {
                 copy_nonoverlapping(self.ptr.offset(oft_start as isize), b.as_mut_ptr(), n);
                 copy_nonoverlapping(self.ptr, b.as_mut_ptr().offset(n as isize), 4 - n);
                 BigEndian::read_u32(&b)
+            }
+        }
+    }
+    pub fn read_u16(&self, offset: usize) -> u16 {
+        debug_assert!(self.available() >= offset + 2);
+        let oft_start = (self.offset + offset) & (self.cap - 1);
+        let oft_end = self.end & (self.cap - 1);
+        if oft_end > oft_start || self.cap >= oft_start + 2 {
+            unsafe {
+                let b = from_raw_parts(self.ptr.offset(oft_start as isize), 2);
+                BigEndian::read_u16(b)
+            }
+        } else {
+            // start 索引更高，2个字节转弯了
+            let mut b = [0u8, 2];
+            let n = self.cap - oft_start;
+            unsafe {
+                copy_nonoverlapping(self.ptr.offset(oft_start as isize), b.as_mut_ptr(), n);
+                copy_nonoverlapping(self.ptr, b.as_mut_ptr().offset(n as isize), 2 - n);
+                BigEndian::read_u16(&b)
+            }
+        }
+    }
+    // 从offset读取len个字节
+    pub fn read_bytes(&self, offset: usize, len: usize) -> String {
+        debug_assert!(self.available() >= offset + len);
+        let oft_start = (self.offset + offset) & (self.cap - 1);
+        let oft_end = self.end & (self.cap - 1);
+        let result = String::new();
+        if oft_end > oft_start || self.cap >= oft_start + len {
+            unsafe {
+                let b = from_raw_parts(self.ptr.offset(oft_start as isize), len);
+                String::from_utf8_lossy(b).to_string()
+            }
+        } else {
+            // start 索引更高，2个字节转弯了
+            let result = String::with_capacity(len);
+            let n = self.cap - oft_start;
+            unsafe {
+                copy_nonoverlapping(self.ptr.offset(oft_start as isize), result.as_mut_ptr(), n);
+                copy_nonoverlapping(self.ptr, result.as_mut_ptr().offset(n as isize), len - n);
+                result
             }
         }
     }

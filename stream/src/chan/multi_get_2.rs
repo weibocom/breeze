@@ -1,12 +1,21 @@
 // 封装multi_get.rs，当前的multi_get是单层访问策略，需要封装为多层
 // TODO： 有2个问题：1）单层访问改多层，封装multiGetSharding? 2) 需要解析key。如果需要解析key，那multiGetSharding还有存在的价值吗？
-// TODO：待和@icy 讨论。
+// 分两步：1）在multi get中，解析多个cmd/key 以及对应的response，然后多层穿透访问；
+//        2）将解析req迁移到pipelineToPingPong位置,同时改造req buf。
+
+use std::collections::HashMap;
+
+const MULTI_GET_SHRINK_SIZE: u32 = 2048;
 
 pub struct AsyncMultiGet<L, P> {
     // 当前从哪个layer开始发送请求
     idx: usize,
     layers: Vec<L>,
-    keys: Vec<String>,
+    // origin_cmds: Slice,
+    current_cmds: Slice,
+    //left_cmds: Vec<Slice>,
+    //key_values: HashMap<String, Response>,
+    response: Option<Response>,
     parser: P,
 }
 
@@ -14,44 +23,39 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::chan::AsyncWriteAll;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use ds::Slice;
+use protocol::Protocol;
+use tokio::io::ReadBuf;
 
 use futures::ready;
 
-impl<L, P> AsyncWriteAll for AsyncMultiGet<L, P> {}
-
-impl<L, P> AsyncMultiGet<L, P> {
-    pub fn from_layers(layers: Vec<L>, p: P) -> Self {
+impl<L, P> AsyncWriteAll for AsyncMultiGet<L, P> {
+    fn from_layers(layers: Vec<L>, p: P) -> Self {
         Self {
             idx: 0,
             // writes: vec![false; shards.len()],
             layers,
-            keys: Vec::new(),
+            // origin_cmds: Default::default(),
+            current_cmds: Default::default(),
+            response: None,
             parser: p,
         }
     }
 
-    // 发送请求，如果失败，继续向下一层write，注意处理重入问题
+    // 发送请求，将current cmds发送到所有mc，如果失败，继续向下一层write，注意处理重入问题
     // ready! 会返回Poll，所以这里还是返回Poll了
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize>> {
         let mut idx = self.idx;
 
-        debug_assert!(self.req_len > 0);
         debug_assert!(idx < self.layers.len());
+        let data = self.current_cmds.data();
 
-        // 发送请求之前首先设置resp found为false
-        self.resp_found = false;
-
-        // let req = self.req_data();
-        let ptr = self.req_ptr as *const u8;
-        let data = unsafe { std::slice::from_raw_parts(ptr, self.req_len) };
-
-        // 轮询reader发送请求，直到发送成功
+        // 当前layer的reader发送请求，直到发送成功
         while idx < self.layers.len() {
             let reader = unsafe { self.layers.get_unchecked_mut(idx) };
             match ready!(Pin::new(reader).poll_write(cx, data)) {
-                Ok(len) => return Poll::Ready(Ok(len)),
+                Ok(_) => return Poll::Ready(Ok(())),
                 Err(e) => {
                     self.idx += 1;
                     idx = self.idx;
@@ -64,127 +68,86 @@ impl<L, P> AsyncMultiGet<L, P> {
         self.reset();
         Poll::Ready(Err(Error::new(
             ErrorKind::NotConnected,
-            "cannot write req to all resources",
+            "cannot write multi-reqs to all resources",
         )))
     }
 
     // 请求处理完毕，进行reset
     fn reset(&mut self) {
         self.idx = 0;
-        self.resp_found = false;
-        self.empty_resp.clear();
-    }
-
-    // TODO: 使用这个方法，会导致借用问题，先留着
-    fn req_data(&mut self) -> &[u8] {
-        let ptr = self.req_ptr as *const u8;
-        unsafe { std::slice::from_raw_parts(ptr, self.req_len) }
+        // try shrink left cmds
+        if self.left_cmds.len() > MULTI_GET_SHRINK_SIZE {
+            self.left_cmds = Vec::new();
+        } else {
+            self.left_cmds.clear();
+        }
+        // try shrink left key values
+        if self.key_values.len() > MULTI_GET_SHRINK_SIZE {
+            self.key_values = Vec::new();
+        } else {
+            self.key_values.clear();
+        }
     }
 }
 
-impl<S, P> AsyncWrite for AsyncMultiGet<S, P>
+impl<L, P> AsyncWrite for AsyncMultiGet<L, P>
 where
-    S: AsyncWrite + AsyncWriteAll + Unpin,
+    L: AsyncWrite + AsyncWriteAll + Unpin,
     P: Unpin,
 {
     // 请求某一层
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {}
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        // 为了简单。flush时不考虑pending，即使从pending恢复，也可以把之前的poll_flush重新操作一遍。
-        // poll_flush是幂等的
-        let me = &mut *self;
-        let mut last_err = None;
-        for (i, &success) in me.writes.iter().enumerate() {
-            if success {
-                match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_flush(cx)) {
-                    Err(e) => last_err = Some(e),
-                    _ => {}
-                }
-            }
-        }
-        match last_err {
-            Some(e) => Poll::Ready(Err(e)),
-            _ => Poll::Ready(Ok(())),
-        }
-    }
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<()>> {
-        let me = &mut *self;
-        let mut last_err = None;
-        for (i, &success) in me.writes.iter().enumerate() {
-            if success {
-                match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_shutdown(cx))
-                {
-                    Err(e) => last_err = Some(e),
-                    _ => {}
-                }
-            }
-        }
-        match last_err {
-            Some(e) => Poll::Ready(Err(e)),
-            _ => Poll::Ready(Ok(())),
-        }
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
+        self.current_cmds = Slice::from(buf);
+        return self.do_write(cx);
     }
 }
 
-impl<S, P> AsyncRead for AsyncMultiGet<S, P>
+impl<L, P> AsyncReadAll for AsyncMultiGet<L, P>
 where
-    S: AsyncRead + Unpin,
-    P: Unpin + crate::Protocol,
+    L: AsyncReadAll + AsyncWriteAll + Unpin,
+    P: Unpin + Protocol,
 {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-        buf: &mut ReadBuf,
-    ) -> Poll<Result<()>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>> {
         let me = &mut *self;
-        let mut success = false;
+        debug_assert!(self.idx < self.layers.len());
         let mut last_err = None;
-        let offset = me.idx;
-        let mut eof_len = 0;
-        for i in offset..me.shards.len() {
-            if me.writes[i] {
-                let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(i) });
-                let mut c_done = false;
-                while !c_done {
-                    match r.as_mut().poll_read(cx, buf) {
-                        Poll::Pending => {
-                            // 如果有数据获取，则返回数据。触发下一次获取。
-                            // 如果未获取到数据，则pending
-                            return if buf.filled().len() == 0 {
-                                Poll::Pending
-                            } else {
-                                Poll::Ready(Ok(()))
-                            };
-                        }
-                        Poll::Ready(Err(e)) => {
-                            c_done = true;
-                            last_err = Some(e)
-                        }
-                        Poll::Ready(Ok(())) => {
-                            success = true;
-                            // 检查当前请求是否包含请求的结束
-                            let filled = buf.filled().len();
-                            let (done, n) = me.parser.probe_response_eof(buf.filled());
-                            if done {
-                                c_done = true;
-                                eof_len = filled - n;
-                                buf.set_filled(n);
-                            }
-                        }
+        let mut req_cmds = Vec::new();
+        let found_keys = Vec::new();
+        while (me.idx < me.layers.len()) {
+            // 重新构建request cmd
+            if found_keys.len() > 0 {
+                req_cmds = me.parser.remove_found_cmd(me.current_cmds, keys);
+                let cmds = req_cmds.as_mut_slice();
+                me.current_cmds = Slice::from(&cmds);
+            }
+
+            let layer = unsafe { me.layers.get_unchecked_mut(me.idx) };
+            match ready!(Pin::new(layer).poll_next(cx)) {
+                Ok(item) => {
+                    // 读到响应，轮询出改respons的noop及查到的keys
+                    // TODO：方案1：noop作为标准response返回，这样需要在解析时，忽略noop
+                    //       方案2：noop在正常的respons中，由外层进行过滤剔除
+                    // 方案待定，暂时先倾向于方案1 fishermen
+                    found_keys.clear();
+                    let (found_keys, noop_pos) = me.parser.scan_response(&item, found_keys);
+                    match me.response {
+                        Some(all_resps) => all_resps.append(item),
+                        None => me.response = Some(item),
                     }
                 }
+                Err(e) => last_err = Some(e),
             }
-            me.idx += 1;
+            m.idx += 1;
         }
-        me.idx = 0;
-        if success {
-            // 把最后一次成功请求的eof加上
-            buf.advance(eof_len);
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Ready(Err(last_err.unwrap_or_else(|| {
-                Error::new(ErrorKind::Other, "all poll read failed")
-            })))
-        }
+
+        me.reset();
+        me.response
+            .take()
+            .map(|item| Poll::Ready(Ok(item)))
+            .unwrap_or_else(|| {
+                Poll::Ready(Err(last_err.unwrap_or_else(|| {
+                    Error::new(ErrorKind::Other, "all poll read failed")
+                })))
+            })
     }
 }

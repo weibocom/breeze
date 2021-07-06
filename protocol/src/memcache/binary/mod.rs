@@ -1,10 +1,16 @@
 mod meta;
 
-use std::io::{Error, ErrorKind, Result};
+use std::{
+    intrinsics::copy_nonoverlapping,
+    io::{Error, ErrorKind, Result},
+    usize,
+};
 
 pub const HEADER_LEN: usize = 24;
 
 use byteorder::{BigEndian, ByteOrder};
+use bytes::BufMut;
+use ds::Slice;
 
 use crate::{MetaType, Protocol, RingSlice};
 
@@ -23,7 +29,8 @@ const COMMAND_IDX: [u8; 128] = [
 ];
 
 const REQUEST_MAGIC: u8 = 0x80;
-const OP_CODE_GETQ: u8 = 0xd;
+const OP_CODE_GETKQ: u8 = 0xd;
+const OP_CODE_NOOP: u8 = 0x0a;
 
 #[derive(Clone)]
 pub struct MemcacheBinary;
@@ -120,13 +127,77 @@ impl Protocol for MemcacheBinary {
             debug_assert_eq!(response.at(0), 0x81);
             let len = response.read_u32(read + 8) as usize + HEADER_LEN;
 
-            if response.at(read + 1) == OP_CODE_GETQ {
+            if response.at(read + 1) == OP_CODE_GETKQ {
                 read += len;
                 continue;
             }
 
             let n = read + len;
             return (avail >= n, n);
+        }
+    }
+    // 轮询response，找出本次查询到的keys，loop所在的位置
+    fn scan_response(&self, response: &RingSlice, keys: &mut Vec<String>) -> (usize) {
+        let mut read = 0;
+        let avail = response.available();
+        loop {
+            if avail < read + HEADER_LEN {
+                // 这种情况不应该出现
+                debug_assert!(false);
+                return 0;
+            }
+            debug_assert!(response.at(read), 0x81);
+            // op_getkq 是最后一个response
+            if (response.at(read + 1) == OP_CODE_NOOP) {
+                return read;
+            }
+            let len = response.read_u32(read + 8) as usize + HEADER_LEN;
+            debug_assert!(read + len <= avail);
+            // key 获取
+            let key_len = response.read_u16(read + 2);
+            let extra_len = response.at(read + 4);
+            let key = response.read_bytes(read + HEADER_LEN + extra_len, key_len);
+            keys.push(key);
+
+            read += len;
+            if read == avail {
+                return read;
+            }
+        }
+    }
+    fn remove_found_cmd(&self, current_cmds: &Slice, found_keys: Vec<String>) -> Vec<u8> {
+        let new_cmds = Vec::new();
+        let read = 0;
+        let origin = current_cmds.data();
+        let avail = origin.len();
+
+        loop {
+            // noop 正好是24 bytes
+            debug_assert!(read + HEADER_LEN <= avail);
+            debug_assert!(origin[read], 0x80);
+            if origin[read + 1] == OP_CODE_NOOP {
+                new_cmds.put(origin[read..read + HEADER_LEN]);
+                return new_cmds;
+            }
+            let len = BigEndian::read_u32(origin[read + 8]) as usize + HEADER_LEN;
+            debug_assert!(read + len <= avail);
+
+            let key_len = BigEndian::read_u16(origin[read + 2]);
+            let extra_len = origin[read + 4];
+            unsafe {
+                let key_bytes = [0u8; key_len];
+                copy_nonoverlapping(origin[read + HEADER_LEN + extra_len], key_bytes, key_len);
+                let key = String::from_utf8_lossy(key_bytes).to_string();
+                if found_keys.contains(key) {
+                    // key 已经命中，略过
+                    read += len;
+                    if read == avail {
+                        return new_cmds;
+                    }
+                    continue;
+                }
+                new_cmds.put(origin[read..read + len]);
+            }
         }
     }
 }
