@@ -13,6 +13,7 @@ protocol = { path = "../protocol" }
 endpoint = { path = "../endpoint" }
 discovery = { path = "../discovery" }
 log = { path = "../log" }
+stream = { path = "../stream" }
 
 url = "2"
 clap = "3.0.0-beta.2"

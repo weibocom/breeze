@@ -7,13 +7,16 @@ use std::io::Result;
 pub mod memcache;
 use ds::RingSlice;
 
+mod request;
+pub use request::*;
+
 use enum_dispatch::enum_dispatch;
 use futures::io::ReadVectored;
 
 #[enum_dispatch]
 pub trait Protocol: Unpin + Clone + 'static {
     // 一个请求包的最小的字节数
-    fn min_size(&self) -> usize;
+    //fn min_size(&self) -> usize;
     // 从response读取buffer时，可能读取多次。
     // 限制最后一个包最小返回长度。
     fn min_last_response_size(&self) -> usize;

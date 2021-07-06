@@ -2,7 +2,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 use hash::Hash;
 use protocol::Protocol;
 
@@ -32,10 +32,10 @@ where
     P: Unpin + Protocol,
 {
     #[inline]
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         debug_assert!(me.idx < me.shards.len());
-        let key = me.parser.key(buf);
+        let key = me.parser.key(buf.data());
         let h = me.hasher.hash(key) as usize;
         me.idx = h % me.shards.len();
         unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf) }

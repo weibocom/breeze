@@ -2,7 +2,7 @@ use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 use protocol::Protocol;
 
 /// 这个只支持ping-pong请求。将请求按照固定的路由策略分发到不同的dest
@@ -34,10 +34,10 @@ where
     R: Protocol + Unpin,
 {
     #[inline]
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         // ping-pong请求，有写时，read一定是读完成了
-        me.idx = me.router.op_route(buf);
+        me.idx = me.router.op_route(buf.data());
         debug_assert!(me.idx < me.backends.len());
         unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_write(cx, buf) }
     }

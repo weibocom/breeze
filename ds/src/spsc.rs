@@ -109,16 +109,17 @@ impl RingBuffer {
                 .expect("waiting status must contain waker.")
                 .wake();
             log::debug!("spsc notifyed:{}", status as u8);
-            let cas = self.status_cas(Status::Lock, Status::Ok);
-            debug_assert!(cas);
+            let _cas = self.status_cas(Status::Lock, Status::Ok);
+            debug_assert!(_cas);
             return;
         } else {
-            log::debug!("try to lock status failed");
+            // 说明当前状态不是需要notify的status状态，直接忽略即可
+            //log::debug!("try to lock status failed");
         }
     }
     // 当前状态要进入到status状态（status只能是ReadPending或者WritePending
     fn waiting(&self, cx: &mut Context, status: Status) {
-        log::debug!("poll next entering waiting status:{}", status as u8);
+        log::debug!("spsc poll next entering waiting status:{}", status as u8);
         debug_assert!(status == Status::ReadPending || status == Status::WritePending);
         //for _ in 0..128 {
         let mut loops = 0;
@@ -133,8 +134,8 @@ impl RingBuffer {
             if old == Status::Ok || old == status {
                 if self.status_cas(old.into(), Status::Lock) {
                     *self.wakers[status as usize - 1].borrow_mut() = Some(cx.waker().clone());
-                    let cas = self.status_cas(Status::Lock, status);
-                    debug_assert!(cas);
+                    let _cas = self.status_cas(Status::Lock, status);
+                    debug_assert!(_cas);
                     return;
                 } else {
                     continue;

@@ -3,6 +3,8 @@ use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 use std::str::FromStr;
 
+use super::Slice;
+
 use byteorder::{BigEndian, ByteOrder};
 
 pub struct RingSlice {
@@ -42,30 +44,16 @@ impl RingSlice {
         self.end = self.start + num;
     }
 
-    // 返回true，说明数据已经读完了
-    pub fn read(&mut self, buff: &mut [u8]) -> usize {
-        unsafe {
-            let old_oft = self.offset;
-            if self.end > self.offset {
-                let oft_start = self.offset & (self.cap - 1);
-                let oft_end = self.end & (self.cap - 1);
-
-                log::debug!("offset start:{} offset end:{}", oft_start, oft_end);
-
-                let n = buff.len().min(self.cap - oft_start).min(self.available());
-                copy_nonoverlapping(self.ptr.offset(oft_start as isize), buff.as_mut_ptr(), n);
-                self.offset += n;
-
-                // 说明可写入的信息写到到数据末尾，需要再次写入
-                if buff.len() > n && self.end > self.offset {
-                    let n2 = (buff.len() - n).min(oft_end);
-                    copy_nonoverlapping(self.ptr, buff.as_mut_ptr().offset(n as isize), n2);
-                    self.offset += n2;
-                }
-            }
-            self.offset - old_oft
-        }
+    pub fn next_slice(&self) -> Slice {
+        let oft = self.offset & (self.cap - 1);
+        let l = (self.cap - oft).min(self.available());
+        unsafe { Slice::new(self.ptr.offset(oft as isize) as usize, l) }
     }
+    pub fn advance(&mut self, n: usize) {
+        debug_assert!(self.offset + n <= self.end);
+        self.offset += n;
+    }
+
     // 调用方确保len >= offset + 4
     pub fn read_u32(&self, offset: usize) -> u32 {
         debug_assert!(self.available() >= offset + 4);
@@ -166,6 +154,9 @@ impl RingSlice {
         self.index(offset, &[b'\r', b'\n'])
     }
 }
+
+unsafe impl Send for RingSlice {}
+unsafe impl Sync for RingSlice {}
 
 #[cfg(test)]
 mod tests_ds {

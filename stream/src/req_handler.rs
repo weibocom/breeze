@@ -6,28 +6,23 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use futures::ready;
-use tokio::io::AsyncWrite;
+use tokio::io::{AsyncWrite, BufWriter};
 use tokio::sync::mpsc::Receiver;
 
-use crate::BackendBuilder;
-use ds::{RingBufferReader, RingBufferWriter, Slice};
+use crate::{BackendBuilder, Request};
+use ds::{RingBufferReader, RingBufferWriter};
 
 unsafe impl<W> Send for BridgeBufferToWriter<W> {}
 unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
 
 pub struct RequestData {
     id: usize,
-    data: Slice,
+    data: Request,
 }
 
 impl RequestData {
-    pub fn from(id: usize, b: &[u8]) -> Self {
-        //let data = b.clone().to_vec();
-        //let ptr = b.as_ptr() as usize;
-        Self {
-            id: id,
-            data: Slice::from(b),
-        }
+    pub fn from(id: usize, b: Request) -> Self {
+        Self { id: id, data: b }
     }
     fn data(&self) -> &[u8] {
         &self.data.data()
@@ -44,7 +39,7 @@ pub trait RequestHandler {
 pub struct BridgeBufferToWriter<W> {
     // 一次poll_write没有写完时，会暂存下来
     reader: RingBufferReader,
-    w: W,
+    w: BufWriter<W>,
     done: Arc<AtomicBool>,
     //cache: File,
     _builder: Arc<BackendBuilder>,
@@ -56,10 +51,13 @@ impl<W> BridgeBufferToWriter<W> {
         w: W,
         done: Arc<AtomicBool>,
         builder: Arc<BackendBuilder>,
-    ) -> Self {
+    ) -> Self
+    where
+        W: AsyncWrite,
+    {
         //let cache = File::create("/tmp/cache.out").unwrap();
         Self {
-            w: w,
+            w: BufWriter::with_capacity(2048, w),
             reader: reader,
             done: done,
             //cache: cache,
@@ -79,7 +77,13 @@ where
         let mut writer = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Relaxed) {
             log::debug!("bridage buffer to backend.");
-            let result_buffer = ready!(me.reader.poll_next(cx))?;
+            let result_buffer = match me.reader.poll_next(cx)? {
+                Poll::Ready(buff) => buff,
+                Poll::Pending => {
+                    let _ = writer.as_mut().poll_flush(cx)?;
+                    return Poll::Pending;
+                }
+            };
             if result_buffer.is_empty() {
                 log::debug!("bridage buffer to backend: received empty");
                 continue;
