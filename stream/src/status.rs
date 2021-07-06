@@ -128,21 +128,21 @@ impl Item {
         self.response.replace(response);
         // Ok poll_read更新状态时， 会把状态从RequestReceived变更为Pending，所以可能会失败。
 
-        let status = self.status.load(Ordering::Acquire);
-        // 1. response到达之前的状态是 RequestSent. 即请求已发出。 这是大多数场景
-        // 2. 因为在req_handler中，是先发送请求，再调用
-        //    bind_req来更新状态为RequestSent，有可能在这中间，response已经接收到了。此时的状态是RequestReceived。
-        debug_assert!(
-            status == ItemStatus::RequestSent as u8 || status == ItemStatus::RequestReceived as u8
-        );
-        match self.status_cas(status, ItemStatus::ResponseReceived as u8) {
-            Ok(_) => {
-                self.try_wake();
-                return;
-            }
-            // 状态，状态可能是Received状态, 但这个状态可能会有data race
-            Err(status) => {
-                panic!("item status. place response. RequestSent or RequestReceived expected, but {} found", status);
+        loop {
+            let status = self.status.load(Ordering::Acquire);
+            // 1. response到达之前的状态是 RequestSent. 即请求已发出。 这是大多数场景
+            // 2. 因为在req_handler中，是先发送请求，再调用
+            //    bind_req来更新状态为RequestSent，有可能在这中间，response已经接收到了。此时的状态是RequestReceived。
+            debug_assert!(status == RequestSent || status == RequestReceived);
+            match self.status_cas(status, ItemStatus::ResponseReceived as u8) {
+                Ok(_) => {
+                    self.try_wake();
+                    return;
+                }
+                // 状态，状态可能是Received状态, 但这个状态可能会有data race
+                Err(_status) => {
+                    log::info!("item status. place response. RequestSent or RequestReceived expected, but {} found", _status);
+                }
             }
         }
     }
