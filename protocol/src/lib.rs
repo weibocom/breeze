@@ -8,6 +8,7 @@ pub mod memcache;
 use ds::RingSlice;
 
 use enum_dispatch::enum_dispatch;
+use futures::io::ReadVectored;
 
 #[enum_dispatch]
 pub trait Protocol: Unpin + Clone + 'static {
@@ -35,6 +36,10 @@ pub trait Protocol: Unpin + Clone + 'static {
     // 从response中解析出一个完成的response
     fn parse_response(&self, response: &RingSlice) -> (bool, usize);
     fn response_found<T: AsRef<RingSlice>>(&self, response: T) -> bool;
+    // 轮询response，解析出本次查到的keys以及noop所在的位置
+    fn scan_response(&self, response: &RingSlice, keys: &Vec<String>) -> (usize);
+    // 从当前的cmds中，过滤掉已经查到的keys，然后返回新的请求cmds
+    fn remove_found_cmd(&self, current_cmds: &Slice, found_keys: &mut Vec<String>) -> Vec<u8>;
 }
 #[enum_dispatch(Protocol)]
 #[derive(Clone)]
