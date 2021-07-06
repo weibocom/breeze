@@ -72,14 +72,9 @@ where
             let offset = me.w.load_offset();
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
-            log::debug!(
-                "task response to buffer:{} bytes available offset:{}",
-                buf.len(),
-                offset
-            );
+            log::debug!("resp-handler: {} bytes available oft:{}", buf.len(), offset);
             if buf.len() == 0 {
-                //panic!("response buffer full");
-                log::debug!("response buffer full");
+                log::info!("resp-handler: buffer full");
                 std::hint::spin_loop();
                 continue;
             }
@@ -87,16 +82,9 @@ where
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
-            log::debug!(
-                "task response to buffer:{} bytes read from response. read buffer filled:{:?}",
-                n,
-                buf.filled()
-            );
+            log::debug!("resp-handler:{} bytes read. data:{:?}", n, &buf.filled());
             if n == 0 {
-                // EOF
-                //panic!("EOF FOUND");
-                //std::hint::spin_loop();
-                break;
+                break; // EOF
             }
             me.data.advance_write(n);
             // 处理等处理的数据
@@ -104,10 +92,10 @@ where
                 let mut response = me.data.processing_bytes();
                 let (found, num) = me.parser.parse_response(&response);
                 log::debug!(
-                    "task response to buffer: response processing bytes:{} parsed:{} num:{} seq:{} processed:{} written:{}",
-                    response.available(),
+                    "resp-handler: parsed:{} num:{} avail:{} seq:{} processed:{} written:{}",
                     found,
                     num,
+                    response.available(),
                     me.seq,
                     me.data.processed(),
                     me.data.writtened()
@@ -119,7 +107,7 @@ where
                 let seq = me.seq;
                 me.w.on_received(seq, response);
                 log::debug!(
-                    "task response to buffer:  {} bytes processed. seq:{} {} => {}",
+                    "resp-handler: response found. len: {} seq:{} {} => {}",
                     num,
                     seq,
                     me.data.processed(),
@@ -129,7 +117,7 @@ where
                 me.seq += 1;
             }
         }
-        log::debug!("task of reading data from response complete");
+        log::debug!("resp-handler: task of reading data from response complete");
         self.builder.do_reconnect();
         Poll::Ready(Ok(()))
     }
