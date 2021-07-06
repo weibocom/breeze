@@ -54,9 +54,14 @@ impl Namespace {
         // reader包含多层，目前是：l1,master, slave
         // 保障严格的顺序。
         let mut readers = Vec::new();
-        readers.push(self.master_l1.clone());
+        if self.master_l1.len() > 0 {
+            readers.push(self.master_l1.clone());
+        }
         readers.push(vec![self.master.clone()]);
-        readers.push(self.slave_l1.clone());
+        if self.slave_l1.len() > 0 {
+            readers.push(self.slave_l1.clone());
+        }
+
         // 这个实现无法区分layer含义，先注释备查，测试完毕清理 fishermen
         // let mut readers = vec![master.clone()];
         // readers.extend(self.master_l1);

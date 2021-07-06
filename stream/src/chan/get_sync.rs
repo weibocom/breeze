@@ -5,7 +5,7 @@ use std::io::{self, Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 use ds::Slice;
 use futures::ready;
 use protocol::Protocol;
@@ -15,7 +15,7 @@ pub struct AsyncGetSync<R, P> {
     idx: usize,
     // 需要read though的layers
     layers: Vec<R>,
-    req_ref: Slice,
+    req_ref: Request,
     // TODO: 对于空响应，根据协议获得空响应格式，这样效率更高，待和@icy 讨论 fishermen 2021.6.27
     empty_resp: Option<Response>,
     resp_found: bool,
@@ -27,7 +27,7 @@ impl<R, P> AsyncGetSync<R, P> {
         AsyncGetSync {
             idx: 0,
             layers,
-            req_ref: Slice::default(),
+            req_ref: Default::default(),
             empty_resp: None,
             resp_found: false,
             parser: p,
@@ -55,12 +55,11 @@ where
 
         //let ptr = self.req_ref.ptr() as *const u8;
         //let data = unsafe { std::slice::from_raw_parts(ptr, self.req_ref.len()) };
-        let data = self.req_ref.data();
 
         // 轮询reader发送请求，直到发送成功
         while idx < self.layers.len() {
             let reader = unsafe { self.layers.get_unchecked_mut(idx) };
-            match ready!(Pin::new(reader).poll_write(cx, data)) {
+            match ready!(Pin::new(reader).poll_write(cx, &self.req_ref)) {
                 Ok(_) => return Poll::Ready(Ok(())),
                 Err(e) => {
                     self.idx += 1;
@@ -97,9 +96,13 @@ where
     R: AsyncWriteAll + Unpin,
     P: Unpin,
 {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<()>> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &Request,
+    ) -> Poll<Result<()>> {
         // 记录req buf，方便多层访问
-        self.req_ref = Slice::from(buf);
+        self.req_ref = buf.clone();
         return self.do_write(cx);
     }
 }

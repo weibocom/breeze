@@ -112,9 +112,9 @@ impl Item {
     #[inline(always)]
     fn status_cas(&self, old: u8, new: u8) -> std::result::Result<u8, u8> {
         log::debug!(
-            "status cas. expected: {} current:{} update to:{}",
+            "item status cas. expected: {} current:{} update to:{}",
             old,
-            self.status.load(Ordering::Relaxed),
+            self.status.load(Ordering::Acquire),
             new
         );
         self.status
@@ -131,7 +131,11 @@ impl Item {
     }
     #[inline]
     fn waiting(&self, waker: Waker) {
-        log::debug!("entering waiting status:{}", self.id);
+        log::debug!(
+            "item-{} entering waiting status:{}",
+            self.id,
+            self.status.load(Ordering::Acquire)
+        );
         self.lock_waker();
         *self.waker.borrow_mut() = Some(waker);
         self.unlock_waker();
@@ -142,6 +146,7 @@ impl Item {
         let waker = self.waker.borrow_mut().take();
         self.unlock_waker();
         if let Some(waker) = waker {
+            log::debug!("item waiting status waked up:{}", self.id);
             waker.wake();
             true
         } else {

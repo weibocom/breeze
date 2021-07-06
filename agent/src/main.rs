@@ -6,7 +6,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::copy_bidirectional;
+use stream::io::copy_bidirectional;
 use tokio::spawn;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::time::{interval_at, Instant};
@@ -96,13 +96,13 @@ async fn process_one_service(
 }
 
 async fn process_one_connection(
-    mut client: net::Stream,
+    client: net::Stream,
     sd: Arc<ServiceDiscovery<endpoint::Topology<Protocols>>>,
     endpoint: String,
     parser: Protocols,
 ) -> Result<()> {
     use endpoint::Endpoint;
-    let mut agent = Endpoint::from_discovery(&endpoint, parser, sd)
+    let agent = Endpoint::from_discovery(&endpoint, parser.clone(), sd)
         .await?
         .ok_or_else(|| {
             Error::new(
@@ -110,6 +110,6 @@ async fn process_one_connection(
                 format!("'{}' is not a valid endpoint type", endpoint),
             )
         })?;
-    copy_bidirectional(&mut client, &mut agent).await?;
+    copy_bidirectional(agent, client, parser).await?;
     Ok(())
 }
