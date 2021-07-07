@@ -1,10 +1,11 @@
 use std::cell::RefCell;
-use std::sync::atomic::fence;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
 
 //use super::RequestData;
+use crate::ResponseData;
 use ds::RingSlice;
+use protocol::{Request, RequestId};
 
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -13,8 +14,7 @@ pub enum ItemStatus {
     RequestReceived,
     RequestSent,
     ResponseReceived, // 数据已写入
-    //ReadPending,      // 增加一个中间状态来协调poll_read与place_response
-    Shutdown, // 当前状态隶属的stream已结束。
+    Shutdown,         // 当前状态隶属的stream已结束。
 }
 use ItemStatus::*;
 impl PartialEq<u8> for ItemStatus {
@@ -35,6 +35,8 @@ pub struct Item {
     seq: AtomicUsize, // 用来做request与response的同步
     status: AtomicU8, // 0: 待接收请求。
 
+    request_id: RefCell<RequestId>,
+
     // 下面的数据要加锁才能访问
     waker_lock: AtomicBool,
     waker: RefCell<Option<Waker>>,
@@ -53,7 +55,7 @@ impl Item {
     }
     // 把buf的指针保存下来。
     // 上面的假设待验证
-    pub fn place_request(&self) {
+    pub fn place_request(&self, req: &Request) {
         debug_assert_eq!(self.status.load(Ordering::Acquire), ItemStatus::Init as u8);
         //self.request.replace(RequestData::from(self.id, buf));
         match self.status_cas(ItemStatus::Init as u8, ItemStatus::RequestReceived as u8) {
@@ -62,6 +64,8 @@ impl Item {
                 panic!("place request must be in Init status but {} found", status);
             }
         }
+
+        self.request_id.replace(req.id().clone());
     }
     pub fn seq(&self) -> usize {
         self.seq.load(Ordering::Acquire)
@@ -108,7 +112,7 @@ impl Item {
     // Received, 说明之前从来没有poll过
     // Reponded: 有数据并且成功返回
     // 调用方确保当前status不为shutdown
-    pub fn poll_read(&self, cx: &mut Context) -> Poll<RingSlice> {
+    pub fn poll_read(&self, cx: &mut Context) -> Poll<ResponseData> {
         loop {
             let status = self.status.load(Ordering::Acquire);
             debug_assert_ne!(status, ItemStatus::Shutdown as u8);
@@ -126,8 +130,9 @@ impl Item {
         // place_response先更新数据，后更新状态。不会有并发问题
         // 读数据
         let response = self.response.take();
+        let rid = self.request_id.take();
 
-        Poll::Ready(response)
+        Poll::Ready(ResponseData::from(response, rid))
     }
     pub fn place_response(&self, response: RingSlice) {
         //log::debug!("response received len:{}", response.available());

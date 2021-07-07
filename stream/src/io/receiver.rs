@@ -1,6 +1,6 @@
 use crate::AsyncWriteAll;
 
-use protocol::{Protocol, Request, MAX_REQUEST_SIZE};
+use protocol::{Protocol, Request, RequestId, MAX_REQUEST_SIZE};
 
 use futures::ready;
 
@@ -46,6 +46,8 @@ impl Receiver {
         mut reader: Pin<&mut R>,
         mut writer: Pin<&mut W>,
         parser: &P,
+        session_id: usize,
+        seq: usize,
     ) -> Poll<Result<usize>>
     where
         R: AsyncRead + ?Sized,
@@ -77,7 +79,8 @@ impl Receiver {
             self.parsed = parsed;
             self.parsed_idx = self.r + n;
         }
-        let req = Request::from(&self.buff[self.r..self.parsed_idx]);
+        let id = RequestId::from(session_id, seq);
+        let req = Request::from(&self.buff[self.r..self.parsed_idx], id);
         log::debug!(
             "io-receiver-poll: len:{} {:?}",
             self.parsed_idx - self.r,

@@ -11,7 +11,7 @@ use super::status::*;
 use super::RequestData;
 use crate::{
     BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, Request, RequestHandler,
-    ResponseHandler,
+    ResponseData, ResponseHandler,
 };
 
 use protocol::Protocol;
@@ -91,19 +91,29 @@ impl MpmcRingBufferStream {
             Poll::Ready(Ok(()))
         }
     }
-    pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<RingSlice>> {
+    pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<ResponseData>> {
         ready!(self.poll_check(cid))?;
-        //log::debug!("poll read cid:{} ", cid);
         let item = unsafe { self.items.get_unchecked(cid) };
-        let response = ready!(item.poll_read(cx));
-        Poll::Ready(Ok(response))
+        let data = ready!(item.poll_read(cx));
+        log::debug!(
+            "mpmc: data read out. cid:{} len:{} rid:{:?} ",
+            cid,
+            data.data().len(),
+            data.rid()
+        );
+        Poll::Ready(Ok(data))
     }
-    pub fn response_done(&self, cid: usize, response: &RingSlice) {
+    pub fn response_done(&self, cid: usize, response: &ResponseData) {
         let item = unsafe { self.items.get_unchecked(cid) };
         item.response_done();
-        let (start, end) = response.location();
+        let (start, end) = response.data().location();
         self.offset.0.insert(start, end);
-        log::debug!("mpmc poll read complete. cid:{} {} => {}", cid, start, end);
+        log::debug!(
+            "mpmc poll read complete. cid:{} len:{} rid:{:?}",
+            cid,
+            end - start,
+            response.rid()
+        );
     }
     // 释放cid的资源
     pub fn poll_shutdown(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {
@@ -113,10 +123,15 @@ impl MpmcRingBufferStream {
     }
     pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         ready!(self.poll_check(cid))?;
-        log::debug!("mpmc: write cid:{} len:{} ", cid, buf.len());
+        log::debug!(
+            "mpmc: write cid:{} len:{} id:{:?}",
+            cid,
+            buf.len(),
+            buf.id()
+        );
         let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
         if sender.0 {
-            self.get_item(cid).place_request();
+            self.get_item(cid).place_request(buf);
             sender.0 = false;
             let req = RequestData::from(cid, buf.clone());
             sender.1.start_send(req).ok().expect("channel closed");

@@ -9,8 +9,9 @@ use futures::ready;
 use tokio::io::{AsyncWrite, BufWriter};
 use tokio::sync::mpsc::Receiver;
 
-use crate::{BackendBuilder, Request};
+use crate::BackendBuilder;
 use ds::{RingBufferReader, RingBufferWriter};
+use protocol::{Request, RequestId};
 
 unsafe impl<W> Send for BridgeBufferToWriter<W> {}
 unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
@@ -27,8 +28,11 @@ impl RequestData {
     fn data(&self) -> &[u8] {
         &self.data.data()
     }
-    fn id(&self) -> usize {
+    fn cid(&self) -> usize {
         self.id
+    }
+    fn rid(&self) -> &RequestId {
+        &self.data.id()
     }
 }
 
@@ -139,20 +143,22 @@ where
             if let Some(req) = me.cache.take() {
                 let data = req.data();
                 log::debug!(
-                    "bridge request to buffer: write to buffer. cid: {} len:{}",
-                    req.id(),
-                    req.data().len()
+                    "req-handler-buffer: received. cid: {} len:{} rid:{:?}",
+                    req.cid(),
+                    req.data().len(),
+                    req.rid()
                 );
-                me.r.on_received_seq(req.id(), me.seq);
+                me.r.on_received_seq(req.cid(), me.seq);
                 ready!(me.w.poll_put_slice(cx, data))?;
                 let seq = me.seq;
                 me.seq += 1;
-                me.r.on_received(req.id(), seq);
+                me.r.on_received(req.cid(), seq);
                 log::debug!(
-                    "req-handler-buffer: received data from bridge. len:{} id:{} seq:{}",
+                    "req-handler-buffer: write to buffer. len:{} id:{} seq:{}, rid:{:?}",
                     req.data().len(),
-                    req.id(),
-                    seq
+                    req.cid(),
+                    seq,
+                    req.rid()
                 );
             }
             log::debug!("req-handler-buffer: bridge request to buffer: wating incomming data");
