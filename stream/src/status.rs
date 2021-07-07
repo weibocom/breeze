@@ -75,6 +75,7 @@ impl Item {
         self.status.load(Ordering::Acquire)
     }
 
+    // seq: 是SPSC中请求的seq
     // req_handler中，将请求写入到buffer前调用bind_req，更新seq;
     // 之后，会调用on_sent更新状态
     // 在调用on_sent之前，
@@ -84,6 +85,13 @@ impl Item {
     // 只能是以上两种状态
     pub fn on_sent(&self, seq: usize) {
         let old_seq = self.seq.load(Ordering::Acquire);
+        log::debug!(
+            "item status: on_sent. cid:{} old seq:{} seq:{} rid:{:?}",
+            old_seq,
+            self.id,
+            seq,
+            self.request_id
+        );
         // 说明是同一个req请求
         if old_seq == seq {
             // 只把状态从RequestReceived改为RequestSent. 其他状态则忽略
