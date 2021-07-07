@@ -36,13 +36,14 @@ impl Sender {
             self.response = Some(ResponseReader::from(response, parser));
         }
         log::debug!("io-sender-poll response found");
+        let mut bytes = 0;
         if let Some(ref mut rr) = self.response {
-            ready!(rr.poll_write_to(cx, writer.as_mut()))?;
+            bytes = ready!(rr.poll_write_to(cx, writer.as_mut()))?;
         }
         log::debug!("io-sender-poll: try to write to client complete");
         let old = self.response.take();
         drop(old);
-        Poll::Ready(Ok(1))
+        Poll::Ready(Ok(bytes))
     }
 }
 
@@ -80,7 +81,13 @@ impl ResponseReader {
             while item.available() > 0 {
                 let b = item.next_slice();
                 debug_assert!(b.len() > 0);
+                log::debug!(
+                    "io-sender: write data to client. len:{} data:{:?}",
+                    b.len(),
+                    b.data()
+                );
                 let n = ready!(w.as_mut().poll_write(cx, b.data()))?;
+                log::debug!("io-sender: write data to client. {} bytes write", n);
                 if n == 0 {
                     return Poll::Ready(Err(Error::new(
                         ErrorKind::WriteZero,

@@ -9,8 +9,9 @@ use futures::ready;
 use tokio::io::{AsyncWrite, BufWriter};
 use tokio::sync::mpsc::Receiver;
 
-use crate::{BackendBuilder, Request};
+use crate::BackendBuilder;
 use ds::{RingBufferReader, RingBufferWriter};
+use protocol::{Request, RequestId};
 
 unsafe impl<W> Send for BridgeBufferToWriter<W> {}
 unsafe impl<W> Sync for BridgeBufferToWriter<W> {}
@@ -27,12 +28,17 @@ impl RequestData {
     fn data(&self) -> &[u8] {
         &self.data.data()
     }
-    fn id(&self) -> usize {
+    fn cid(&self) -> usize {
         self.id
+    }
+    fn rid(&self) -> &RequestId {
+        &self.data.id()
     }
 }
 
 pub trait RequestHandler {
+    // 把更新seq与更新状态分开。避免response在执行on_received之前返回时，会依赖seq做判断
+    fn on_received_seq(&self, id: usize, seq: usize);
     fn on_received(&self, id: usize, seq: usize);
 }
 
@@ -88,7 +94,7 @@ where
             log::debug!("req-handler-writer: send buffer {} ", buff.len());
             let num = ready!(writer.as_mut().poll_write(cx, buff))?;
             debug_assert!(num > 0);
-            log::debug!("bridage buffer to backend: {} bytes sent ", num);
+            log::debug!("req-handler-writer: {} bytes sent", num);
             me.reader.consume(num);
         }
         log::debug!("task complete. bridge data from local buffer to backend server");
@@ -134,24 +140,40 @@ where
         let me = &mut *self;
         let mut receiver = Pin::new(&mut me.receiver);
         while !me.done.load(Ordering::Relaxed) {
-            if let Some(req) = me.cache.take() {
+            if let Some(ref req) = me.cache {
                 let data = req.data();
                 log::debug!(
-                    "bridge request to buffer: write to buffer. cid: {} len:{}",
-                    req.id(),
-                    req.data().len()
+                    "req-handler-buffer: received. cid: {} len:{} rid:{:?}",
+                    req.cid(),
+                    req.data().len(),
+                    req.rid()
+                );
+                me.r.on_received_seq(req.cid(), me.seq);
+                log::debug!(
+                    "req-handler-buffer: on received seq. cid: {} len:{} rid:{:?}",
+                    req.cid(),
+                    req.data().len(),
+                    req.rid()
                 );
                 ready!(me.w.poll_put_slice(cx, data))?;
+                log::debug!(
+                    "req-handler-buffer: write to buffer. cid: {} len:{} rid:{:?}",
+                    req.cid(),
+                    req.data().len(),
+                    req.rid()
+                );
                 let seq = me.seq;
                 me.seq += 1;
-                me.r.on_received(req.id(), seq);
+                me.r.on_received(req.cid(), seq);
                 log::debug!(
-                    "req-handler-buffer: received data from bridge. len:{} id:{} seq:{}",
+                    "req-handler-buffer: received and write to buffer. len:{} id:{} seq:{}, rid:{:?}",
                     req.data().len(),
-                    req.id(),
-                    seq
+                    req.cid(),
+                    seq,
+                    req.rid()
                 );
             }
+            me.cache.take();
             log::debug!("req-handler-buffer: bridge request to buffer: wating incomming data");
             let result = ready!(receiver.as_mut().poll_recv(cx));
             if result.is_none() {

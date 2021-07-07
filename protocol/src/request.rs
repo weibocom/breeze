@@ -7,13 +7,18 @@ pub const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 #[derive(Default, Clone)]
 pub struct Request {
     inner: Slice,
+    id: RequestId,
 }
 
 impl Request {
-    pub fn from(data: &[u8]) -> Self {
+    pub fn from(data: &[u8], id: RequestId) -> Self {
         Self {
             inner: Slice::from(data),
+            id: id,
         }
+    }
+    pub fn id(&self) -> &RequestId {
+        &self.id
     }
 }
 use std::ops::Deref;
@@ -31,3 +36,15 @@ impl AsRef<Slice> for Request {
 }
 unsafe impl Send for Request {}
 unsafe impl Sync for Request {}
+
+#[derive(Default, Clone, Debug)]
+pub struct RequestId {
+    session_id: usize, // 关联至一个client的实际的connection
+    seq: usize,        // 自增序列号
+}
+
+impl RequestId {
+    pub fn from(session_id: usize, seq: usize) -> Self {
+        Self { session_id, seq }
+    }
+}
