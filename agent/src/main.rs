@@ -13,11 +13,18 @@ use tokio::sync::mpsc::{self, Sender};
 use tokio::time::{interval_at, Instant};
 
 use protocol::Protocols;
+use metrics::MetricsSender;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
     ctx.check()?;
+    MetricsSender::init(ctx.metrics_url());
+    std::thread::spawn(|| {
+        loop {
+            MetricsSender::sum("living".parse().unwrap(), 1);
+        }
+    });
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
     let mut listeners = ctx.listeners();
     let mut tick = interval_at(
