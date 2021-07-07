@@ -94,7 +94,7 @@ where
             log::debug!("req-handler-writer: send buffer {} ", buff.len());
             let num = ready!(writer.as_mut().poll_write(cx, buff))?;
             debug_assert!(num > 0);
-            log::debug!("bridage buffer to backend: {} bytes sent ", num);
+            log::debug!("req-handler-writer: {} bytes sent", num);
             me.reader.consume(num);
         }
         log::debug!("task complete. bridge data from local buffer to backend server");
@@ -140,7 +140,7 @@ where
         let me = &mut *self;
         let mut receiver = Pin::new(&mut me.receiver);
         while !me.done.load(Ordering::Relaxed) {
-            if let Some(req) = me.cache.take() {
+            if let Some(ref req) = me.cache {
                 let data = req.data();
                 log::debug!(
                     "req-handler-buffer: received. cid: {} len:{} rid:{:?}",
@@ -149,18 +149,31 @@ where
                     req.rid()
                 );
                 me.r.on_received_seq(req.cid(), me.seq);
+                log::debug!(
+                    "req-handler-buffer: on received seq. cid: {} len:{} rid:{:?}",
+                    req.cid(),
+                    req.data().len(),
+                    req.rid()
+                );
                 ready!(me.w.poll_put_slice(cx, data))?;
+                log::debug!(
+                    "req-handler-buffer: write to buffer. cid: {} len:{} rid:{:?}",
+                    req.cid(),
+                    req.data().len(),
+                    req.rid()
+                );
                 let seq = me.seq;
                 me.seq += 1;
                 me.r.on_received(req.cid(), seq);
                 log::debug!(
-                    "req-handler-buffer: write to buffer. len:{} id:{} seq:{}, rid:{:?}",
+                    "req-handler-buffer: received and write to buffer. len:{} id:{} seq:{}, rid:{:?}",
                     req.data().len(),
                     req.cid(),
                     seq,
                     req.rid()
                 );
             }
+            me.cache.take();
             log::debug!("req-handler-buffer: bridge request to buffer: wating incomming data");
             let result = ready!(receiver.as_mut().poll_recv(cx));
             if result.is_none() {
