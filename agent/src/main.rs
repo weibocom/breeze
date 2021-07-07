@@ -23,6 +23,7 @@ async fn main() -> Result<()> {
     std::thread::spawn(|| {
         loop {
             MetricsSender::sum("living".parse().unwrap(), 1);
+            std::thread::sleep(Duration::from_secs(1));
         }
     });
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
