@@ -96,7 +96,7 @@ where
                 }
                 *sent = true;
                 log::debug!(
-                    "io-bidirectional. poll request from clien. bytes:{} seq:{}-{}",
+                    "io-bidirectional. one request copy from client to agent. bytes:{} seq:{}-{}",
                     bytes,
                     *session_id,
                     *seq
@@ -104,7 +104,7 @@ where
             }
             let bytes = ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser))?;
             log::debug!(
-                "io-bidirectional. write response to client bytes :{} seq:{}-{}",
+                "io-bidirectional. one response write to client bytes :{} seq:{}-{}",
                 bytes,
                 *session_id,
                 *seq

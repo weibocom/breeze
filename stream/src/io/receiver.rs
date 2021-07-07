@@ -73,7 +73,12 @@ impl Receiver {
                 }
                 return Poll::Ready(Ok(0));
             }
-            log::debug!("io-receiver-poll: {} bytes received.", read);
+            log::debug!(
+                "io-receiver-poll: {} bytes received.session_id: {}, seq: {}",
+                read,
+                session_id,
+                seq
+            );
             self.w += read;
             let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
             self.parsed = parsed;
@@ -82,9 +87,11 @@ impl Receiver {
         let id = RequestId::from(session_id, seq);
         let req = Request::from(&self.buff[self.r..self.parsed_idx], id);
         log::debug!(
-            "io-receiver-poll: len:{} {:?}",
+            "io-receiver-poll: request parsed. len:{} {:?}, session_id: {}, seq: {}",
             self.parsed_idx - self.r,
-            &self.buff[self.r..self.parsed_idx.min(48)]
+            &self.buff[self.r..self.parsed_idx.min(48)],
+            session_id,
+            seq
         );
         ready!(writer.as_mut().poll_write(cx, &req))?;
         self.r += req.len();
