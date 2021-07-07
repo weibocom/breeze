@@ -31,7 +31,7 @@ pub struct Context {
     service_path: String,
     #[clap(short, long, about("starting in upgrade mode"))]
     upgrade: bool,
-    #[clap(short, long, about("metrics url"), default_value(""))]
+    #[clap(short, long, about("metrics url"), default_value(""), required(false))]
     metrics_url: String,
 }
 
