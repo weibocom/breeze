@@ -6,7 +6,7 @@ pub(crate) struct MetricsConfig {
 impl MetricsConfig {
     pub(crate) fn new (metrics_url: String) -> MetricsConfig {
         MetricsConfig {
-            print_only: metrics_url.eq(""),
+            print_only: metrics_url.eq("default"),
             metrics_url,
         }
     }
