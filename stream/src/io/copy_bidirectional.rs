@@ -87,23 +87,27 @@ where
                     *seq
                 ))?;
                 if bytes == 0 {
-                    log::debug!("io-bidirectional not request polled");
+                    log::debug!(
+                        "io-bidirectional not request polled seq:{}-{}",
+                        *session_id,
+                        *seq
+                    );
                     break;
                 }
                 *sent = true;
                 log::debug!(
                     "io-bidirectional. poll request from clien. bytes:{} seq:{}-{}",
                     bytes,
-                    *seq,
-                    *session_id
+                    *session_id,
+                    *seq
                 );
             }
             let bytes = ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser))?;
             log::debug!(
                 "io-bidirectional. write response to client bytes :{} seq:{}-{}",
                 bytes,
-                *seq,
-                *session_id
+                *session_id,
+                *seq
             );
             *sent = false;
             *seq += 1;
