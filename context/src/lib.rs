@@ -31,6 +31,8 @@ pub struct Context {
     service_path: String,
     #[clap(short, long, about("starting in upgrade mode"))]
     upgrade: bool,
+    #[clap(short, long, about("metrics url"), default_value(""))]
+    metrics_url: String,
 }
 
 impl Context {
@@ -61,6 +63,12 @@ impl Context {
     }
     pub fn service_path(&self) -> String {
         self.service_path.clone()
+    }
+    pub fn has_metrics(&self) -> bool {
+        self.metrics_url.eq("")
+    }
+    pub fn metrics_url(&self) -> String {
+        self.metrics_url.clone()
     }
 }
 
