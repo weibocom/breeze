@@ -1,11 +1,31 @@
 use super::RingBufferStream;
 use ds::RingSlice;
+use protocol::RequestId;
 
 use std::sync::Arc;
 
 pub(crate) struct Item {
-    slice: RingSlice,
+    data: ResponseData,
     done: Option<(usize, Arc<RingBufferStream>)>,
+}
+
+pub struct ResponseData {
+    data: RingSlice,
+    req_id: RequestId,
+}
+impl ResponseData {
+    pub fn from(data: RingSlice, rid: RequestId) -> Self {
+        Self {
+            data: data,
+            req_id: rid,
+        }
+    }
+    pub fn data(&self) -> &RingSlice {
+        &self.data
+    }
+    pub fn rid(&self) -> &RequestId {
+        &self.req_id
+    }
 }
 
 pub struct Response {
@@ -13,15 +33,15 @@ pub struct Response {
 }
 
 impl Response {
-    fn _from(slice: RingSlice, done: Option<(usize, Arc<RingBufferStream>)>) -> Self {
+    fn _from(slice: ResponseData, done: Option<(usize, Arc<RingBufferStream>)>) -> Self {
         Self {
             items: vec![Item {
-                slice: slice,
+                data: slice,
                 done: done,
             }],
         }
     }
-    pub fn from(slice: RingSlice, cid: usize, release: Arc<RingBufferStream>) -> Self {
+    pub fn from(slice: ResponseData, cid: usize, release: Arc<RingBufferStream>) -> Self {
         Self::_from(slice, Some((cid, release)))
     }
     pub fn from_slice(slice: &'static [u8]) -> Self {
@@ -31,7 +51,11 @@ impl Response {
             0,
             slice.len(),
         );
-        Self::_from(slice, None)
+        let data = ResponseData {
+            data: slice,
+            req_id: Default::default(),
+        };
+        Self::_from(data, None)
     }
     pub fn append(&mut self, other: Response) {
         self.items.extend(other.items);
@@ -54,14 +78,14 @@ impl AsRef<RingSlice> for Response {
 impl Drop for Item {
     fn drop(&mut self) {
         if let Some((cid, done)) = self.done.take() {
-            done.response_done(cid, &self.slice);
+            done.response_done(cid, &self.data);
         }
     }
 }
 
 impl AsRef<RingSlice> for Item {
     fn as_ref(&self) -> &RingSlice {
-        &self.slice
+        &self.data.data
     }
 }
 
@@ -69,11 +93,11 @@ use std::ops::{Deref, DerefMut};
 impl Deref for Item {
     type Target = RingSlice;
     fn deref(&self) -> &Self::Target {
-        &self.slice
+        &self.data.data
     }
 }
 impl DerefMut for Item {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.slice
+        &mut self.data.data
     }
 }
