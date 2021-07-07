@@ -78,8 +78,14 @@ where
         let mut agent = Pin::new(&mut *agent);
         loop {
             if !*sent {
-                let bytes =
-                    ready!(receiver.poll_copy_one(cx, client.as_mut(), agent.as_mut(), parser))?;
+                let bytes = ready!(receiver.poll_copy_one(
+                    cx,
+                    client.as_mut(),
+                    agent.as_mut(),
+                    parser,
+                    *session_id,
+                    *seq
+                ))?;
                 if bytes == 0 {
                     log::debug!("io-bidirectional not request polled");
                     break;
