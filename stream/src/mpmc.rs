@@ -11,7 +11,7 @@ use super::status::*;
 use super::RequestData;
 use crate::{
     BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, Request, RequestHandler,
-    ResponseHandler,
+    ResponseData, ResponseHandler,
 };
 
 use protocol::Protocol;
@@ -56,7 +56,7 @@ impl MpmcRingBufferStream {
     // id必须小于parallel
     pub fn with_capacity(parallel: usize, done: Arc<AtomicBool>) -> Self {
         let parallel = parallel.next_power_of_two();
-        assert!(parallel <= 32);
+        assert!(parallel <= 64);
         let items = (0..parallel).map(|id| Item::new(id)).collect();
         let seq_cids = (0..parallel)
             .map(|_| CacheAligned(AtomicUsize::new(0)))
@@ -91,19 +91,29 @@ impl MpmcRingBufferStream {
             Poll::Ready(Ok(()))
         }
     }
-    pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<RingSlice>> {
+    pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<ResponseData>> {
         ready!(self.poll_check(cid))?;
-        //log::debug!("poll read cid:{} ", cid);
         let item = unsafe { self.items.get_unchecked(cid) };
-        let response = ready!(item.poll_read(cx));
-        Poll::Ready(Ok(response))
+        let data = ready!(item.poll_read(cx));
+        log::debug!(
+            "mpmc: data read out. cid:{} len:{} rid:{:?} ",
+            cid,
+            data.data().len(),
+            data.rid()
+        );
+        Poll::Ready(Ok(data))
     }
-    pub fn response_done(&self, cid: usize, response: &RingSlice) {
+    pub fn response_done(&self, cid: usize, response: &ResponseData) {
         let item = unsafe { self.items.get_unchecked(cid) };
         item.response_done();
-        let (start, end) = response.location();
+        let (start, end) = response.data().location();
         self.offset.0.insert(start, end);
-        log::debug!("mpmc poll read complete. cid:{} {} => {}", cid, start, end);
+        log::debug!(
+            "mpmc poll read complete. cid:{} len:{} rid:{:?}",
+            cid,
+            end - start,
+            response.rid()
+        );
     }
     // 释放cid的资源
     pub fn poll_shutdown(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {
@@ -113,10 +123,15 @@ impl MpmcRingBufferStream {
     }
     pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         ready!(self.poll_check(cid))?;
-        log::debug!("stream: poll write cid:{} len:{} ", cid, buf.len());
+        log::debug!(
+            "mpmc: write cid:{} len:{} id:{:?}",
+            cid,
+            buf.len(),
+            buf.id()
+        );
         let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
         if sender.0 {
-            self.get_item(cid).place_request();
+            self.get_item(cid).place_request(buf);
             sender.0 = false;
             let req = RequestData::from(cid, buf.clone());
             sender.1.start_send(req).ok().expect("channel closed");
@@ -125,7 +140,7 @@ impl MpmcRingBufferStream {
             .ok()
             .expect("channel send failed");
         sender.0 = true;
-        log::debug!("stream: poll write complete cid:{} len:{} ", cid, buf.len());
+        log::debug!("mpmc: write complete cid:{} len:{} ", cid, buf.len());
         Poll::Ready(Ok(()))
     }
     #[inline]
@@ -147,7 +162,7 @@ impl MpmcRingBufferStream {
             self.seq_cids
                 .get_unchecked(seq_idx)
                 .0
-                .store(cid, Ordering::Relaxed);
+                .store(cid, Ordering::Release);
             self.get_item(cid).bind_seq(seq)
         };
     }
@@ -167,6 +182,7 @@ impl MpmcRingBufferStream {
                     }
                 }
             }
+            debug_assert_eq!(item.seq(), seq);
             item.place_response(response);
         }
     }
@@ -383,8 +399,11 @@ use std::thread::sleep;
 use std::time::Duration;
 
 impl RequestHandler for Arc<MpmcRingBufferStream> {
-    fn on_received(&self, id: usize, seq: usize) {
+    fn on_received_seq(&self, id: usize, seq: usize) {
         self.bind_seq(id, seq);
+    }
+    fn on_received(&self, id: usize, seq: usize) {
+        self.get_item(id).on_sent(seq);
     }
 }
 impl ResponseHandler for Arc<MpmcRingBufferStream> {

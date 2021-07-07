@@ -82,7 +82,11 @@ where
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
-            log::debug!("resp-handler:{} bytes read. data:{:?}", n, &buf.filled());
+            log::debug!(
+                "resp-handler:{} bytes read. data:{:?}",
+                n,
+                &buf.filled()[0..n.min(48)]
+            );
             if n == 0 {
                 break; // EOF
             }

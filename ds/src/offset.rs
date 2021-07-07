@@ -49,7 +49,7 @@ impl SeqOffset {
         while let Some(removed) = self.slow_cache.remove(&offset) {
             let len = self.len.fetch_add(-1, Ordering::Relaxed);
             offset = *removed.val();
-            log::debug!("read offset loaded by map:{} len:{}", offset, len);
+            log::debug!("offset: read offset loaded by map:{} len:{}", offset, len);
         }
         if offset != old {
             self.offset.store(offset, Ordering::Release);
