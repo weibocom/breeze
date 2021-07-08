@@ -37,7 +37,7 @@ impl AsRef<Slice> for Request {
 unsafe impl Send for Request {}
 unsafe impl Sync for Request {}
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub struct RequestId {
     session_id: usize, // 关联至一个client的实际的connection
     seq: usize,        // 自增序列号
@@ -46,5 +46,8 @@ pub struct RequestId {
 impl RequestId {
     pub fn from(session_id: usize, seq: usize) -> Self {
         Self { session_id, seq }
+    }
+    pub fn incr(&mut self) {
+        self.seq += 1;
     }
 }
