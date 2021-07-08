@@ -52,7 +52,7 @@ impl MetricsSender {
                                 if udp_result.is_ok() {
                                     socket = Some(udp_result.unwrap());
                                 } else {
-                                    log::warn!("connect to metrics address {} error", metrics_url.clone());
+                                    log::warn!("connect to metrics address {} error, {:?}", metrics_url.clone(), udp_result.unwrap_err());
                                 }
                             }
                         }
