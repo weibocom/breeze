@@ -13,6 +13,9 @@ pub use request::*;
 use enum_dispatch::enum_dispatch;
 use futures::io::ReadVectored;
 
+// 往client写入时，最大的buffer大小。
+pub const MAX_SENT_BUFFER_SIZE: usize = 1024 * 1024;
+
 #[enum_dispatch]
 pub trait Protocol: Unpin + Clone + 'static {
     // 一个请求包的最小的字节数

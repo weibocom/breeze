@@ -237,7 +237,7 @@ impl<P> Topology<P> {
             return;
         }
 
-        let kb = 1024;
+        let kb = 2 * 1024;
         let mb = 1024 * 1024;
         let c = 64;
         Self::delete_non_exists(&self.masters, &mut self.m_streams);

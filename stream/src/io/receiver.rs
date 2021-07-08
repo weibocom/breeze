@@ -46,8 +46,7 @@ impl Receiver {
         mut reader: Pin<&mut R>,
         mut writer: Pin<&mut W>,
         parser: &P,
-        session_id: usize,
-        seq: usize,
+        rid: &RequestId,
     ) -> Poll<Result<usize>>
     where
         R: AsyncRead + ?Sized,
@@ -73,25 +72,18 @@ impl Receiver {
                 }
                 return Poll::Ready(Ok(0));
             }
-            log::debug!(
-                "io-receiver-poll: {} bytes received.session_id: {}, seq: {}",
-                read,
-                session_id,
-                seq
-            );
+            log::debug!("io-receiver-poll: {} bytes received.{:?}", read, rid);
             self.w += read;
             let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
             self.parsed = parsed;
             self.parsed_idx = self.r + n;
         }
-        let id = RequestId::from(session_id, seq);
-        let req = Request::from(&self.buff[self.r..self.parsed_idx], id);
+        let req = Request::from(&self.buff[self.r..self.parsed_idx], rid.clone());
         log::debug!(
-            "io-receiver-poll: request parsed. len:{} {:?}, session_id: {}, seq: {}",
+            "io-receiver-poll: request parsed. len:{} {:?}, {:?}",
             self.parsed_idx - self.r,
             &self.buff[self.r..self.parsed_idx.min(48)],
-            session_id,
-            seq
+            rid
         );
         ready!(writer.as_mut().poll_write(cx, &req))?;
         self.r += req.len();
