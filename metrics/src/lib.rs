@@ -53,11 +53,13 @@ impl MetricsSender {
                     if metrics.stat_second.gt(last_stat_second) {
                         if !print_only {
                             if socket.as_ref().is_none() {
-                                let udp_result = UdpSocket::bind(metrics_url.clone());
+                                let udp_result = UdpSocket::bind(local_address.clone() + ":34254");
                                 if udp_result.is_ok() {
-                                    socket = Some(udp_result.unwrap());
+                                    let mut udp_socket = udp_result.unwrap();
+                                    udp_socket.connect(metrics_url.clone()).expect("connect to metrics error");
+                                    socket = Some(udp_socket);
                                 } else {
-                                    log::warn!("connect to metrics address {} error, {:?}", metrics_url.clone(), udp_result.unwrap_err());
+                                    log::warn!("bind error, {:?}", udp_result.unwrap_err());
                                 }
                             }
                         }
@@ -177,7 +179,7 @@ mod tests {
     #[test]
     fn test_sum() {
         let mut thread_vec: Vec<JoinHandle<()>> = Vec::new();
-        MetricsSender::init("default".parse().unwrap());
+        MetricsSender::init("logtailer.monitor.weibo.com:8333".parse().unwrap());
         for i in 1..5 {
             thread_vec.push(std::thread::spawn(move ||{
                 for j in 1..10000000 {
