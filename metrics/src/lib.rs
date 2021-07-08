@@ -80,7 +80,7 @@ impl MetricsSender {
                                     value.1 += metrics.count;
                                 }
                                 CalculateMethod::Avg => {
-                                    value.0 = ((value.0 * value.1 as f64) + metrics.value)/(value.1 as f64 + metrics.count as f64);
+                                    value.0 = ((value.0 * value.1 as f64) + (metrics.value * metrics.count as f64))/(value.1 as f64 + metrics.count as f64);
                                     value.1 += metrics.count;
                                 }
                             }
@@ -165,7 +165,6 @@ impl MetricsSender {
 
 #[cfg(test)]
 mod tests {
-    use crate::metrics::MetricsSender;
     use thread_id;
     use std::thread::JoinHandle;
     use std::time::Duration;
