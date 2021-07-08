@@ -98,7 +98,7 @@ impl RingBuffer {
             status as u8 == Status::ReadPending as u8 || status as u8 == Status::WritePending as u8
         );
         if self.waker_status.load(Ordering::Acquire) == Status::Close as u8 {
-            log::info!("buffer closed. no need to notify?");
+            log::debug!("buffer closed. no need to notify?");
             return;
         }
         if self.status_cas(status, Status::Lock) {
