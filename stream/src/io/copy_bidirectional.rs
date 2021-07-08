@@ -12,6 +12,9 @@ use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Instant;
+
+use metrics::MetricsSender;
 
 pub async fn copy_bidirectional<A, C, P>(
     agent: A,
@@ -34,6 +37,7 @@ where
         sent: false,
         session_id: session_id,
         seq: 0,
+        request_start: Instant::now()
     }
     .await
 }
@@ -54,6 +58,7 @@ struct CopyBidirectional<A, C, P> {
     sent: bool, // 标识请求是否发送完成。用于ping-pong之间的协调
     seq: usize,
     session_id: usize,
+    request_start: Instant,
 }
 impl<A, C, P> Future for CopyBidirectional<A, C, P>
 where
@@ -73,6 +78,7 @@ where
             sent,
             seq,
             session_id,
+            request_start,
         } = &mut *self;
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
@@ -95,6 +101,7 @@ where
                     break;
                 }
                 *sent = true;
+                *request_start = Instant::now();
                 log::debug!(
                     "io-bidirectional. one request copy from client to agent. bytes:{} seq:{}-{}",
                     bytes,
@@ -110,6 +117,8 @@ where
                 *seq
             );
             *sent = false;
+            let cost = request_start.elapsed().as_micros();
+            MetricsSender::avg("cost".parse().unwrap(), cost as usize);
             *seq += 1;
         }
 

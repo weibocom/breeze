@@ -13,12 +13,18 @@ impl MetricsConfig {
 }
 pub(crate) struct Metrics {
     pub(crate) key: String,
-    pub(crate) value: usize,
+    pub(crate) value: f64,
+    pub(crate) count: usize,
     pub(crate) stat_second: u128,
 }
 
 impl Metrics {
-    pub(crate) fn new(key: String, value: usize, stat_second: u128) -> Metrics {
-        Metrics { key, value, stat_second }
+    pub(crate) fn new(key: String, value: f64, count: usize, stat_second: u128) -> Metrics {
+        Metrics { key, value, count, stat_second }
     }
+}
+
+pub(crate) enum CalculateMethod {
+    Sum = 0,
+    Avg = 1,
 }
