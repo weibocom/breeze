@@ -149,19 +149,7 @@ where
                     req.rid()
                 );
                 me.r.on_received_seq(req.cid(), me.seq);
-                log::debug!(
-                    "req-handler-buffer: on received seq. cid: {} len:{} rid:{:?}",
-                    req.cid(),
-                    req.data().len(),
-                    req.rid()
-                );
                 ready!(me.w.poll_put_slice(cx, data))?;
-                log::debug!(
-                    "req-handler-buffer: write to buffer. cid: {} len:{} rid:{:?}",
-                    req.cid(),
-                    req.data().len(),
-                    req.rid()
-                );
                 let seq = me.seq;
                 me.seq += 1;
                 me.r.on_received(req.cid(), seq);

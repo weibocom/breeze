@@ -19,6 +19,7 @@ use metrics::MetricsSender;
 async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
     ctx.check()?;
+    log::init(ctx.log_dir())?;
     MetricsSender::init(ctx.metrics_url());
     std::thread::spawn(|| {
         loop {
@@ -54,14 +55,14 @@ async fn main() -> Result<()> {
                     Ok(_) => log::info!("service listener complete address:{}", quard.address()),
                     Err(e) => {
                         let _ = _tx.send(false).await;
-                        log::error!("service listener error:{:?} {}", e, quard.address())
+                        log::warn!("service listener error:{:?} {}", e, quard.address())
                     }
                 };
             });
             if let Some(success) = rx.recv().await {
                 if success {
                     if let Err(e) = listeners.on_listened(quard_).await {
-                        log::error!("on_listened failed:{:?} ", e);
+                        log::warn!("on_listened failed:{:?} ", e);
                     }
                 }
             }

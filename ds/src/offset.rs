@@ -38,21 +38,44 @@ impl SeqOffset {
                 Err(_offset) => {}
             }
         }
-        self.len.fetch_add(1, Ordering::Relaxed);
+        log::debug!(
+            "offset slow len:{} start:{} end:{}",
+            self.len.fetch_add(1, Ordering::Relaxed),
+            start,
+            end
+        );
         self.slow_cache.insert(start, end);
     }
 
     // load offset, [0.. offset)都已经调用insert被相应的span全部填充
     pub fn load(&self) -> usize {
         let mut offset = self.offset.load(Ordering::Acquire);
-        let old = offset;
+        let mut old = offset;
         while let Some(removed) = self.slow_cache.remove(&offset) {
-            let len = self.len.fetch_add(-1, Ordering::Relaxed);
             offset = *removed.val();
-            log::debug!("offset: read offset loaded by map:{} len:{}", offset, len);
+            log::debug!(
+                "offset: read offset loaded by map:{} len:{}",
+                offset,
+                self.len.fetch_add(-1, Ordering::Relaxed)
+            );
         }
-        if offset != old {
-            self.offset.store(offset, Ordering::Release);
+        while old != offset {
+            match self
+                .offset
+                .compare_exchange(old, offset, Ordering::AcqRel, Ordering::Acquire)
+            {
+                Ok(_) => break,
+                // 失败了。说明可能在这
+                Err(latest) => {
+                    log::info!(
+                        "offset: compare failed. old:{} new:{} act:{}",
+                        old,
+                        offset,
+                        latest
+                    );
+                    old = latest;
+                }
+            }
         }
         offset
     }

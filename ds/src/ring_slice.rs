@@ -28,6 +28,7 @@ impl Default for RingSlice {
 impl RingSlice {
     #[inline(always)]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
+        debug_assert!(cap > 0);
         debug_assert_eq!(cap, cap.next_power_of_two());
         Self {
             ptr: ptr,
@@ -43,6 +44,7 @@ impl RingSlice {
     }
 
     pub fn next_slice(&self) -> Slice {
+        debug_assert!(self.cap > 0);
         let oft = self.offset & (self.cap - 1);
         let l = (self.cap - oft).min(self.available());
         unsafe { Slice::new(self.ptr.offset(oft as isize) as usize, l) }

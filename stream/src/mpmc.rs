@@ -109,9 +109,10 @@ impl MpmcRingBufferStream {
         let (start, end) = response.data().location();
         self.offset.0.insert(start, end);
         log::debug!(
-            "mpmc poll read complete. cid:{} len:{} rid:{:?}",
+            "mpmc done. cid:{} start:{} end:{} rid:{:?}",
             cid,
-            end - start,
+            start,
+            end,
             response.rid()
         );
     }
@@ -179,10 +180,11 @@ impl MpmcRingBufferStream {
                 for it in self.items.iter() {
                     if it.seq() == seq {
                         item = it;
+                        break;
                     }
                 }
             }
-            debug_assert_eq!(item.seq(), seq);
+            assert_eq!(item.seq(), seq);
             item.place_response(response);
         }
     }
