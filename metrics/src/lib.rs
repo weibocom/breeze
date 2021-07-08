@@ -17,7 +17,7 @@ mod metrics;
 
 static SENDER: OnceCell<MetricsSender> = OnceCell::new();
 static METRICS_CONFIG: OnceCell<MetricsConfig> = OnceCell::new();
-const METRICS_PREFIX: &'static str = &*"breeze.profile";
+const METRICS_PREFIX: &'static str = &*"breeze.profile-test";
 
 
 pub struct MetricsSender {
