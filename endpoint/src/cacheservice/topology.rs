@@ -68,13 +68,14 @@ impl<P> Topology<P> {
         if self.followers.len() == 0 {
             return vec![];
         }
+
         self.followers
             .iter()
             .map(|servers| {
                 servers
                     .iter()
                     .map(|addr| {
-                        self.m_streams
+                        self.f_streams
                             .get(addr)
                             .expect("stream must be exists before address when call followers")
                             .build()
