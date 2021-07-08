@@ -44,24 +44,18 @@ impl Response {
     pub fn from(slice: ResponseData, cid: usize, release: Arc<RingBufferStream>) -> Self {
         Self::_from(slice, Some((cid, release)))
     }
-    pub fn from_slice(slice: &'static [u8]) -> Self {
-        let slice = RingSlice::from(
-            slice.as_ptr(),
-            slice.len().next_power_of_two(),
-            0,
-            slice.len(),
-        );
-        let data = ResponseData {
-            data: slice,
-            req_id: Default::default(),
-        };
-        Self::_from(data, None)
-    }
     pub fn append(&mut self, other: Response) {
         self.items.extend(other.items);
     }
     pub(crate) fn into_items(self) -> Vec<Item> {
         self.items
+    }
+    pub fn len(&self) -> usize {
+        let mut l = 0;
+        for item in self.items.iter() {
+            l += item.available();
+        }
+        l
     }
 }
 
@@ -99,5 +93,11 @@ impl Deref for Item {
 impl DerefMut for Item {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data.data
+    }
+}
+
+impl Item {
+    pub fn rid(&self) -> &RequestId {
+        &self.data.req_id
     }
 }

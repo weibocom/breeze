@@ -143,9 +143,13 @@ impl Item {
         Poll::Ready(ResponseData::from(response, rid))
     }
     pub fn place_response(&self, response: RingSlice) {
-        //log::debug!("response received len:{}", response.available());
+        //log::debug!(
+        //    "item status: response place len:{} location:{:?} rid: {:?}",
+        //    response.available(),
+        //    response.location(),
+        //    self.request_id.borrow()
+        //);
         self.response.replace(response);
-        // Ok poll_read更新状态时， 会把状态从RequestReceived变更为Pending，所以可能会失败。
 
         loop {
             let status = self.status.load(Ordering::Acquire);
