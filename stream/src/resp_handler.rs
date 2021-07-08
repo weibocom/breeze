@@ -74,7 +74,7 @@ where
             let mut buf = me.data.as_mut_bytes();
             log::debug!("resp-handler: {} bytes available oft:{}", buf.len(), offset);
             if buf.len() == 0 {
-                log::info!("resp-handler: buffer full");
+                log::info!("resp-handler: buffer full. offset:{}", offset);
                 std::hint::spin_loop();
                 continue;
             }
