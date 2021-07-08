@@ -34,6 +34,10 @@ impl MetricsSender {
         let (new_sender, new_receiver) = unbounded::<Metrics>();
         let metrics_url = config.metrics_url.clone();
         let print_only = config.print_only;
+        let local_address = local_ip_address::local_ip().unwrap().to_string();
+        let replaced_address = local_address.replace(".", "_");
+        let full_prefix = METRICS_PREFIX.to_owned() + ".byhost." + &*replaced_address + ".";
+        log::debug!("local ip address : {}, full metrics prefix: {}", local_address.clone(), full_prefix.clone());
         thread::spawn(move || {
             let mut metrics_collect_map = HashMap::<String, (f64, usize, CalculateMethod)>::new();
             let mut metrics_stat_second_map = HashMap::<String, u128>::new();
@@ -58,7 +62,7 @@ impl MetricsSender {
                             }
                         }
                         if let Some(value) = metrics_collect_map.get_mut(&*metrics.key) {
-                            let send_string = METRICS_PREFIX.clone().to_owned() + "." + &*metrics.key + ":" + &*(f64::trunc(value.0 * 100.0 as f64)/100.0 as f64).to_string() + "|kv";
+                            let send_string = full_prefix.clone() + &*metrics.key + ":" + &*(f64::trunc(value.0 * 100.0 as f64)/100.0 as f64).to_string() + "|kv";
                             log::debug!("send string: {}", send_string);
                             if socket.as_ref().is_some() {
                                 let result = socket.as_ref().unwrap().send(send_string.as_ref());
