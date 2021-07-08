@@ -10,7 +10,8 @@ use std::cell::RefCell;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use thread_id;
-use crate::metrics::{Metrics, MetricsConfig};
+use crate::metrics::{Metrics, MetricsConfig, CalculateMethod};
+use crate::metrics::CalculateMethod::Avg;
 
 mod metrics;
 
@@ -27,6 +28,7 @@ impl MetricsSender {
     thread_local! {
         // Could add pub to make it public to whatever Foo already is public to.
         static COUNT: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
+        static CALCULATE_RESULT: RefCell<HashMap<String, f64>> = RefCell::new(HashMap::new());
         static LAST_SECOND: RefCell<u128> = RefCell::new(0 as u128);
     }
     fn new(config: &MetricsConfig) -> MetricsSender {
@@ -34,7 +36,7 @@ impl MetricsSender {
         let metrics_url = config.metrics_url.clone();
         let print_only = config.print_only;
         thread::spawn(move || {
-            let mut metrics_collect_map = HashMap::<String, usize>::new();
+            let mut metrics_collect_map = HashMap::<String, f64>::new();
             let mut metrics_stat_second_map = HashMap::<String, u128>::new();
             log::debug!("start send thread");
             let mut socket = None;
@@ -57,7 +59,7 @@ impl MetricsSender {
                             }
                         }
                         if let Some(value) = metrics_collect_map.get_mut(&*metrics.key) {
-                            let send_string = METRICS_PREFIX.clone().to_owned() + "." + &*metrics.key + ":" + &*value.to_string() + "|kv";
+                            let send_string = METRICS_PREFIX.clone().to_owned() + "." + &*metrics.key + ":" + &*(f64::trunc(*value * 100.0 as f64)/100.0 as f64).to_string() + "|kv";
                             log::debug!("send string: {}", send_string);
                             if socket.as_ref().is_some() {
                                 let result = socket.as_ref().unwrap().send(send_string.as_ref());
@@ -97,9 +99,19 @@ impl MetricsSender {
             return;
         }
         let sender = SENDER.get_or_init(|| MetricsSender::new(config.unwrap()));
-        sender.sum_internal(key, value);
+        sender.calculate(key, value, CalculateMethod::Sum);
     }
-    fn sum_internal(&self, key: String, value: usize) {
+
+    pub fn avg(key: String, value: usize) {
+        let config = METRICS_CONFIG.get().clone();
+        if config.is_none() {
+            return;
+        }
+        let sender = SENDER.get_or_init(|| MetricsSender::new(config.unwrap()));
+        sender.calculate(key, value, Avg);
+    }
+
+    fn calculate(&self, key: String, value: usize, method: CalculateMethod) {
         let current_second = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros()/1000000;
         let mut collect_and_clear = false;
         MetricsSender::LAST_SECOND.with(|last_second| {
@@ -109,27 +121,43 @@ impl MetricsSender {
                 collect_and_clear = true;
             }
         });
-        MetricsSender::COUNT.with(|count|{
-            let mut count_map = count.borrow_mut();
-            if collect_and_clear {
-                for (key, value) in count_map.iter_mut() {
-                    log::debug!("thread {} send: key = {}, value = {}", thread_id::get(), key.clone(), value);
-                    let metrics = Metrics::new(key.clone(), *value, current_second);
-                    let result = self.sender.send(metrics);
-                    if result.is_err() {
-                        log::warn!("collect message to metrics queue error");
+        MetricsSender::CALCULATE_RESULT.with(|calculate_result|{
+            let mut calculate_map = calculate_result.borrow_mut();
+            MetricsSender::COUNT.with(|count| {
+                let mut count_map = count.borrow_mut();
+                if collect_and_clear {
+                    for (key, value) in calculate_map.iter_mut() {
+                        let single_count = count_map.get_mut(&*key.clone()).unwrap();
+                        log::debug!("thread {} send: key = {}, value = {}", thread_id::get(), key.clone(), value);
+                        let metrics = Metrics::new(key.clone(), *value, *single_count, current_second);
+                        let result = self.sender.send(metrics);
+                        if result.is_err() {
+                            log::warn!("collect message to metrics queue error");
+                        }
+                        *value = 0 as f64;
+                        *single_count = 0 as usize;
                     }
-                    *value = 0 as usize;
                 }
-            }
-            if let Some(old_value) = count_map.get_mut(&*key) {
-                *old_value += value;
-            }
-            else {
-                count_map.insert(key, value);
-            }
+                if let Some(old_value) = calculate_map.get_mut(&*key) {
+                    let single_count = count_map.get_mut(&*key.clone()).unwrap();
+                    match method {
+                        CalculateMethod::Sum => {
+                            *old_value += value as f64;
+                        }
+                        CalculateMethod::Avg=> {
+                            *old_value = ((*old_value * *single_count as f64) + value as f64)/(*single_count as f64 + 1.0);
+                        }
+                    }
+                    *single_count += 1;
+                }
+                else {
+                    calculate_map.insert(key.clone(), value as f64);
+                    count_map.insert(key, 1 as usize);
+                }
+            });
         });
     }
+
 }
 
 /*
