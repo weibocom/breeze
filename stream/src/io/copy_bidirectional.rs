@@ -119,6 +119,7 @@ where
             *sent = false;
             let cost = request_start.elapsed().as_micros();
             MetricsSender::avg("cost".parse().unwrap(), cost as usize);
+            MetricsSender::sum("count".parse().unwrap(), 1 as usize);
             *seq += 1;
         }
 
