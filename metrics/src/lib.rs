@@ -64,7 +64,7 @@ impl MetricsSender {
                             }
                         }
                         if let Some(value) = metrics_collect_map.get_mut(&*metrics.key) {
-                            let send_string = full_prefix.clone() + &*metrics.key + ":" + &*(f64::trunc(value.0 * 100.0 as f64)/100.0 as f64).to_string() + "|kv";
+                            let send_string = full_prefix.clone() + &*metrics.key + ":" + &*(f64::trunc(value.0 * 100.0 as f64)/100.0 as f64).to_string() + "|kv\n";
                             log::debug!("send string: {}", send_string);
                             if socket.as_ref().is_some() {
                                 let result = socket.as_ref().unwrap().send(send_string.as_ref());
