@@ -10,7 +10,7 @@ mod sharding;
 
 pub use get_sync::AsyncGetSync;
 pub use meta::MetaStream;
-pub use multi_get::AsyncMultiGet as AsyncMultiGetSharding;
+pub use multi_get::AsyncMultiGetSharding;
 pub use multi_get_2::AsyncMultiGet;
 pub use operation::AsyncOperation;
 //pub use pipeline::PipeToPingPongChanWrite;

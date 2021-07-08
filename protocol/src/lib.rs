@@ -5,7 +5,7 @@
 use std::io::Result;
 
 pub mod memcache;
-use ds::RingSlice;
+use ds::{RingSlice, Slice};
 
 mod request;
 pub use request::*;
@@ -40,9 +40,11 @@ pub trait Protocol: Unpin + Clone + 'static {
     fn parse_response(&self, response: &RingSlice) -> (bool, usize);
     fn response_found<T: AsRef<RingSlice>>(&self, response: T) -> bool;
     // 轮询response，解析出本次查到的keys以及noop所在的位置
-    fn scan_response(&self, response: &RingSlice, keys: &Vec<String>) -> (usize);
+    fn scan_response_keys<T: AsRef<RingSlice>>(&self, response: T, keys: &mut Vec<String>);
     // 从当前的cmds中，过滤掉已经查到的keys，然后返回新的请求cmds
-    fn remove_found_cmd(&self, current_cmds: &Slice, found_keys: &mut Vec<String>) -> Vec<u8>;
+    fn rebuild_request(&self, current_cmds: &Request, found_keys: &Vec<String>) -> Vec<u8>;
+    // 消息结尾标志的长度，对不同协议、不同请求不同
+    fn tail_size_for_multi_get(&self) -> usize;
 }
 #[enum_dispatch(Protocol)]
 #[derive(Clone)]

@@ -2,19 +2,11 @@
 // TODO： 有2个问题：1）单层访问改多层，封装multiGetSharding? 2) 需要解析key。如果需要解析key，那multiGetSharding还有存在的价值吗？
 // 分两步：1）在multi get中，解析多个cmd/key 以及对应的response，然后多层穿透访问；
 //        2）将解析req迁移到pipelineToPingPong位置,同时改造req buf。
-
-use std::collections::HashMap;
-
-const MULTI_GET_SHRINK_SIZE: u32 = 2048;
-
 pub struct AsyncMultiGet<L, P> {
     // 当前从哪个layer开始发送请求
     idx: usize,
     layers: Vec<L>,
-    // origin_cmds: Slice,
-    current_cmds: Slice,
-    //left_cmds: Vec<Slice>,
-    //key_values: HashMap<String, Response>,
+    request_ref: Request,
     response: Option<Response>,
     parser: P,
 }
@@ -24,20 +16,22 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use crate::{AsyncReadAll, AsyncWriteAll, Response};
-use ds::Slice;
-use protocol::Protocol;
-use tokio::io::ReadBuf;
+use protocol::{Protocol, Request};
 
 use futures::ready;
 
-impl<L, P> AsyncWriteAll for AsyncMultiGet<L, P> {
-    fn from_layers(layers: Vec<L>, p: P) -> Self {
+impl<L, P> AsyncMultiGet<L, P>
+where
+    L: AsyncWriteAll + AsyncWriteAll + Unpin,
+    P: Unpin,
+{
+    pub fn from_layers(layers: Vec<L>, p: P) -> Self {
         Self {
             idx: 0,
             // writes: vec![false; shards.len()],
             layers,
             // origin_cmds: Default::default(),
-            current_cmds: Default::default(),
+            request_ref: Default::default(),
             response: None,
             parser: p,
         }
@@ -45,16 +39,15 @@ impl<L, P> AsyncWriteAll for AsyncMultiGet<L, P> {
 
     // 发送请求，将current cmds发送到所有mc，如果失败，继续向下一层write，注意处理重入问题
     // ready! 会返回Poll，所以这里还是返回Poll了
-    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize>> {
+    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut idx = self.idx;
 
         debug_assert!(idx < self.layers.len());
-        let data = self.current_cmds.data();
 
         // 当前layer的reader发送请求，直到发送成功
         while idx < self.layers.len() {
             let reader = unsafe { self.layers.get_unchecked_mut(idx) };
-            match ready!(Pin::new(reader).poll_write(cx, data)) {
+            match ready!(Pin::new(reader).poll_write(cx, &self.request_ref)) {
                 Ok(_) => return Poll::Ready(Ok(())),
                 Err(e) => {
                     self.idx += 1;
@@ -75,29 +68,18 @@ impl<L, P> AsyncWriteAll for AsyncMultiGet<L, P> {
     // 请求处理完毕，进行reset
     fn reset(&mut self) {
         self.idx = 0;
-        // try shrink left cmds
-        if self.left_cmds.len() > MULTI_GET_SHRINK_SIZE {
-            self.left_cmds = Vec::new();
-        } else {
-            self.left_cmds.clear();
-        }
-        // try shrink left key values
-        if self.key_values.len() > MULTI_GET_SHRINK_SIZE {
-            self.key_values = Vec::new();
-        } else {
-            self.key_values.clear();
-        }
+        self.response = None;
     }
 }
 
-impl<L, P> AsyncWrite for AsyncMultiGet<L, P>
+impl<L, P> AsyncWriteAll for AsyncMultiGet<L, P>
 where
-    L: AsyncWrite + AsyncWriteAll + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + Unpin,
     P: Unpin,
 {
     // 请求某一层
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize>> {
-        self.current_cmds = Slice::from(buf);
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, req: &Request) -> Poll<Result<()>> {
+        self.request_ref = req.clone();
         return self.do_write(cx);
     }
 }
@@ -107,20 +89,14 @@ where
     L: AsyncReadAll + AsyncWriteAll + Unpin,
     P: Unpin + Protocol,
 {
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
-        debug_assert!(self.idx < self.layers.len());
+        debug_assert!(me.idx < me.layers.len());
         let mut last_err = None;
-        let mut req_cmds = Vec::new();
-        let found_keys = Vec::new();
-        while (me.idx < me.layers.len()) {
-            // 重新构建request cmd
-            if found_keys.len() > 0 {
-                req_cmds = me.parser.remove_found_cmd(me.current_cmds, keys);
-                let cmds = req_cmds.as_mut_slice();
-                me.current_cmds = Slice::from(&cmds);
-            }
+        let mut found_keys = Vec::new();
 
+        while me.idx < me.layers.len() {
+            log::debug!(" =========== get-multi loop:{}", me.idx);
             let layer = unsafe { me.layers.get_unchecked_mut(me.idx) };
             match ready!(Pin::new(layer).poll_next(cx)) {
                 Ok(item) => {
@@ -129,20 +105,64 @@ where
                     //       方案2：noop在正常的respons中，由外层进行过滤剔除
                     // 方案待定，暂时先倾向于方案1 fishermen
                     found_keys.clear();
-                    let (found_keys, noop_pos) = me.parser.scan_response(&item, found_keys);
-                    match me.response {
-                        Some(all_resps) => all_resps.append(item),
-                        None => me.response = Some(item),
+                    me.parser.scan_response_keys(&item, &mut found_keys);
+                    match me.response.as_mut() {
+                        Some(response) => {
+                            log::debug!("++++++++= in get-multi, len: {}", response.items.len());
+                            // 需要先清理之前response的结尾标志
+                            // response.cut_tail(me.parser.tail_size_for_multi_get());
+                            response.append(item);
+                        }
+                        None => {
+                            log::debug!(
+                                "++++++++= in get-multi first found - len: {}, idx:{}, len: {}",
+                                item.items.len(),
+                                me.idx,
+                                me.layers.len()
+                            );
+                            me.response = Some(item);
+                        }
                     }
                 }
-                Err(e) => last_err = Some(e),
+                Err(e) => {
+                    log::debug!(" ++++++++= get-multi err:{:?}", e);
+                    last_err = Some(e);
+                }
             }
-            m.idx += 1;
+
+            me.idx += 1;
+            if me.idx >= me.layers.len() {
+                break;
+            }
+            log::debug!(
+                " =========== get-multi loop:{}======== before rebuild key",
+                me.idx
+            );
+            // 重新构建request cmd，再次请求
+            if found_keys.len() > 0 {
+                let new_req_data = me.parser.rebuild_request(&me.request_ref, &found_keys);
+                me.request_ref =
+                    Request::from(new_req_data.as_slice(), me.request_ref.id().clone());
+            }
+            log::debug!(
+                " =========== get-multi loop:{}======== before rewrite",
+                me.idx
+            );
+            match ready!(me.do_write(cx)) {
+                Ok(()) => continue,
+                Err(e) => {
+                    println!("found err when send layer request:{:?}", e);
+                    break;
+                }
+            }
         }
 
+        let response = me.response.take();
+
+        // 请求完毕，重置
         me.reset();
-        me.response
-            .take()
+
+        response
             .map(|item| Poll::Ready(Ok(item)))
             .unwrap_or_else(|| {
                 Poll::Ready(Err(last_err.unwrap_or_else(|| {

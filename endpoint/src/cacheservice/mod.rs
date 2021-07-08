@@ -8,11 +8,9 @@ use discovery::ServiceDiscover;
 
 use hash::Hasher;
 use stream::{
-    AsyncGetSync, AsyncMultiGetSharding, AsyncOperation, AsyncRoute, AsyncSetSync, AsyncSharding,
-    MetaStream,
+    AsyncGetSync, AsyncMultiGet, AsyncMultiGetSharding, AsyncOperation, AsyncRoute, AsyncSetSync,
+    AsyncSharding, MetaStream,
 };
-
-type AsyncMultiGet<S, P> = AsyncMultiGetSharding<S, P>;
 
 use protocol::Protocol;
 
@@ -21,10 +19,11 @@ use std::io::{Error, ErrorKind, Result};
 type Backend = stream::BackendStream;
 
 // type GetOperation<P> = AsyncSharding<Backend, Hasher, P>;
-type Readers<P> = AsyncSharding<Backend, Hasher, P>;
-type GetOperation<P> = AsyncGetSync<Readers<P>, P>;
+type GetLayer<P> = AsyncSharding<Backend, Hasher, P>;
+type GetOperation<P> = AsyncGetSync<GetLayer<P>, P>;
 
-type MultiGetOperation<P> = AsyncMultiGet<Readers<P>, P>;
+type MultiGetLayer<P> = AsyncMultiGetSharding<Backend, P>;
+type MultiGetOperation<P> = AsyncMultiGet<MultiGetLayer<P>, P>;
 
 type Master<P> = AsyncSharding<Backend, Hasher, P>;
 type Follower<P> = AsyncSharding<Backend, Hasher, P>;
@@ -52,7 +51,11 @@ impl<P> CacheService<P> {
     }
 
     #[inline]
-    fn build_layers<S>(pools: Vec<Vec<S>>, h: &str, parser: P) -> Vec<AsyncSharding<S, Hasher, P>>
+    fn build_get_layers<S>(
+        pools: Vec<Vec<S>>,
+        h: &str,
+        parser: P,
+    ) -> Vec<AsyncSharding<S, Hasher, P>>
     where
         S: AsyncWriteAll,
         P: Clone,
@@ -61,6 +64,19 @@ impl<P> CacheService<P> {
         for p in pools {
             let hasher = Hasher::from(h);
             layers.push(AsyncSharding::from(p, hasher, parser.clone()));
+        }
+        layers
+    }
+
+    #[inline]
+    fn build_get_multi_layers<S>(pools: Vec<Vec<S>>, parser: P) -> Vec<AsyncMultiGetSharding<S, P>>
+    where
+        S: AsyncWriteAll,
+        P: Clone,
+    {
+        let mut layers: Vec<AsyncMultiGetSharding<S, P>> = Vec::new();
+        for p in pools {
+            layers.push(AsyncMultiGetSharding::from_shard(p, parser.clone()));
         }
         layers
     }
@@ -93,9 +109,9 @@ impl<P> CacheService<P> {
         // ));
 
         // let l1 = topo.next_l1_gets();
-        let get_multi_layers = Self::build_layers(topo.retrive_gets(), &hash_alg, parser.clone());
-        let gets =
-            AsyncOperation::Gets(AsyncMultiGet::from_shard(get_multi_layers, parser.clone()));
+        let get_multi_layers = Self::build_get_multi_layers(topo.retrive_gets(), parser.clone());
+        let get_multi =
+            AsyncOperation::Gets(AsyncMultiGet::from_layers(get_multi_layers, parser.clone()));
 
         let master = Self::build_sharding(topo.master(), &hash_alg, parser.clone());
         let followers = topo
@@ -106,13 +122,13 @@ impl<P> CacheService<P> {
         let store = AsyncOperation::Store(AsyncSetSync::from_master(master, followers));
 
         // 获取get through
-        let get_layers = Self::build_layers(topo.retrive_get(), &hash_alg, parser.clone());
+        let get_layers = Self::build_get_layers(topo.retrive_get(), &hash_alg, parser.clone());
         let get = AsyncOperation::Get(AsyncGetSync::from(get_layers, parser.clone()));
 
         let all_instances = topo.meta();
 
         let meta = AsyncOperation::Meta(MetaStream::from(parser.clone(), all_instances));
-        let op_stream = AsyncRoute::from(vec![get, gets, store, meta], parser.clone());
+        let op_stream = AsyncRoute::from(vec![get, get_multi, store, meta], parser.clone());
 
         Ok(Self { inner: op_stream })
     }

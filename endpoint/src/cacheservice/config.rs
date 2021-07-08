@@ -62,12 +62,11 @@ impl Namespace {
             readers.push(self.slave_l1.clone());
         }
 
-        // 这个实现无法区分layer含义，先注释备查，测试完毕清理 fishermen
-        // let mut readers = vec![master.clone()];
-        // readers.extend(self.master_l1);
-        // if self.slave.len() > 0 {
-        //     readers.push(self.slave);
-        // }
+        println!(
+            "========= master:{:?}, followers:{:?}, readers:{:?}",
+            master, followers, readers
+        );
+
         (master, followers, readers, self.hash)
     }
 }

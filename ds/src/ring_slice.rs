@@ -107,7 +107,7 @@ impl RingSlice {
             }
         } else {
             // start 索引更高，2个字节转弯了
-            let result = String::with_capacity(len);
+            let mut result = String::with_capacity(len);
             let n = self.cap - oft_start;
             unsafe {
                 copy_nonoverlapping(self.ptr.offset(oft_start as isize), result.as_mut_ptr(), n);
