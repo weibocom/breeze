@@ -27,8 +27,7 @@ pub struct MetricsSender {
 impl MetricsSender {
     thread_local! {
         // Could add pub to make it public to whatever Foo already is public to.
-        static COUNT: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
-        static CALCULATE_RESULT: RefCell<HashMap<String, f64>> = RefCell::new(HashMap::new());
+        static CALCULATE_RESULT: RefCell<HashMap<String, (f64, usize, CalculateMethod)>> = RefCell::new(HashMap::new());
         static LAST_SECOND: RefCell<u128> = RefCell::new(0 as u128);
     }
     fn new(config: &MetricsConfig) -> MetricsSender {
@@ -36,7 +35,7 @@ impl MetricsSender {
         let metrics_url = config.metrics_url.clone();
         let print_only = config.print_only;
         thread::spawn(move || {
-            let mut metrics_collect_map = HashMap::<String, f64>::new();
+            let mut metrics_collect_map = HashMap::<String, (f64, usize, CalculateMethod)>::new();
             let mut metrics_stat_second_map = HashMap::<String, u128>::new();
             log::debug!("start send thread");
             let mut socket = None;
@@ -59,7 +58,7 @@ impl MetricsSender {
                             }
                         }
                         if let Some(value) = metrics_collect_map.get_mut(&*metrics.key) {
-                            let send_string = METRICS_PREFIX.clone().to_owned() + "." + &*metrics.key + ":" + &*(f64::trunc(*value * 100.0 as f64)/100.0 as f64).to_string() + "|kv";
+                            let send_string = METRICS_PREFIX.clone().to_owned() + "." + &*metrics.key + ":" + &*(f64::trunc(value.0 * 100.0 as f64)/100.0 as f64).to_string() + "|kv";
                             log::debug!("send string: {}", send_string);
                             if socket.as_ref().is_some() {
                                 let result = socket.as_ref().unwrap().send(send_string.as_ref());
@@ -68,18 +67,28 @@ impl MetricsSender {
                                     socket = None;
                                 }
                             }
-                            *value = metrics.value;
+                            value.0 = metrics.value;
+                            value.1 = metrics.count;
                         }
                         *last_stat_second = metrics.stat_second;
                     }
                     else {
                         if let Some(value) = metrics_collect_map.get_mut(&*metrics.key) {
-                            *value += metrics.value;
+                            match value.2 {
+                                CalculateMethod::Sum => {
+                                    value.0 += metrics.value;
+                                    value.1 += metrics.count;
+                                }
+                                CalculateMethod::Avg => {
+                                    value.0 = ((value.0 * value.1 as f64) + metrics.value)/(value.1 as f64 + metrics.count as f64);
+                                    value.1 += metrics.count;
+                                }
+                            }
                         }
                     }
                 }
                 else {
-                    metrics_collect_map.insert(metrics.key.clone(), metrics.value);
+                    metrics_collect_map.insert(metrics.key.clone(), (metrics.value, metrics.count, metrics.method));
                     metrics_stat_second_map.insert(metrics.key.clone(), metrics.stat_second);
                 }
             }
@@ -123,63 +132,57 @@ impl MetricsSender {
         });
         MetricsSender::CALCULATE_RESULT.with(|calculate_result|{
             let mut calculate_map = calculate_result.borrow_mut();
-            MetricsSender::COUNT.with(|count| {
-                let mut count_map = count.borrow_mut();
-                if collect_and_clear {
-                    for (key, value) in calculate_map.iter_mut() {
-                        let single_count = count_map.get_mut(&*key.clone()).unwrap();
-                        log::debug!("thread {} send: key = {}, value = {}", thread_id::get(), key.clone(), value);
-                        let metrics = Metrics::new(key.clone(), *value, *single_count, current_second);
-                        let result = self.sender.send(metrics);
-                        if result.is_err() {
-                            log::warn!("collect message to metrics queue error");
-                        }
-                        *value = 0 as f64;
-                        *single_count = 0 as usize;
+            if collect_and_clear {
+                for (key, value) in calculate_map.iter_mut() {
+                    log::debug!("thread {} send: key = {}, value = {}, count = {}, method = {}", thread_id::get(), key.clone(), value.0, value.1, value.2);
+                    let metrics = Metrics::new(key.clone(), value.0, value.1, value.2, current_second);
+                    let result = self.sender.send(metrics);
+                    if result.is_err() {
+                        log::warn!("collect message to metrics queue error");
+                    }
+                    value.0 = 0 as f64;
+                    value.1 = 0 as usize;
+                }
+            }
+            if let Some(old_value) = calculate_map.get_mut(&*key) {
+                match old_value.2 {
+                    CalculateMethod::Sum => {
+                        old_value.0 += value as f64;
+                    }
+                    CalculateMethod::Avg=> {
+                        old_value.0 = ((old_value.0 * old_value.1 as f64) + value as f64)/(old_value.1 as f64 + 1.0);
                     }
                 }
-                if let Some(old_value) = calculate_map.get_mut(&*key) {
-                    let single_count = count_map.get_mut(&*key.clone()).unwrap();
-                    match method {
-                        CalculateMethod::Sum => {
-                            *old_value += value as f64;
-                        }
-                        CalculateMethod::Avg=> {
-                            *old_value = ((*old_value * *single_count as f64) + value as f64)/(*single_count as f64 + 1.0);
-                        }
-                    }
-                    *single_count += 1;
-                }
-                else {
-                    calculate_map.insert(key.clone(), value as f64);
-                    count_map.insert(key, 1 as usize);
-                }
-            });
+                old_value.1 += 1;
+            }
+            else {
+                calculate_map.insert(key.clone(), (value as f64, 1 as usize, method));
+            }
         });
     }
 
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use crate::metrics::MetricsSender;
     use thread_id;
     use std::thread::JoinHandle;
     use std::time::Duration;
+    use crate::MetricsSender;
 
     #[test]
     fn test_sum() {
         let mut thread_vec: Vec<JoinHandle<()>> = Vec::new();
+        MetricsSender::init("default".parse().unwrap());
         for i in 1..5 {
             thread_vec.push(std::thread::spawn(move ||{
                 for j in 1..10000000 {
                     //MetricsSender::sum(thread_id::get().to_string(), 1);
-                    MetricsSender::sum("test".parse().unwrap(), 1);
+                    MetricsSender::avg("test".parse().unwrap(), 3);
                 }
             }));
         }
         std::thread::sleep(Duration::from_secs(20));
     }
 }
-*/
