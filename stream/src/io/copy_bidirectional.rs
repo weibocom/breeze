@@ -2,7 +2,7 @@ use crate::{AsyncReadAll, AsyncWriteAll};
 
 use super::{Receiver, Sender};
 
-use protocol::Protocol;
+use protocol::{Protocol, RequestId};
 
 use futures::ready;
 
@@ -32,8 +32,7 @@ where
         receiver: Receiver::new(),
         sender: Sender::new(),
         sent: false,
-        session_id: session_id,
-        seq: 0,
+        rid: RequestId::from(session_id, 0),
     }
     .await
 }
@@ -52,8 +51,7 @@ struct CopyBidirectional<A, C, P> {
     receiver: Receiver,
     sender: Sender,
     sent: bool, // 标识请求是否发送完成。用于ping-pong之间的协调
-    seq: usize,
-    session_id: usize,
+    rid: RequestId,
 }
 impl<A, C, P> Future for CopyBidirectional<A, C, P>
 where
@@ -71,8 +69,7 @@ where
             receiver,
             sender,
             sent,
-            seq,
-            session_id,
+            rid,
         } = &mut *self;
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
@@ -83,34 +80,28 @@ where
                     client.as_mut(),
                     agent.as_mut(),
                     parser,
-                    *session_id,
-                    *seq
+                    rid,
                 ))?;
                 if bytes == 0 {
-                    log::debug!(
-                        "io-bidirectional not request polled seq:{}-{}",
-                        *session_id,
-                        *seq
-                    );
+                    log::debug!("io-bidirectional not request polled {:?}", rid);
                     break;
                 }
                 *sent = true;
                 log::debug!(
-                    "io-bidirectional. one request copy from client to agent. bytes:{} seq:{}-{}",
+                    "io-bidirectional request sent to agent. len:{} {:?}",
                     bytes,
-                    *session_id,
-                    *seq
+                    rid
                 );
             }
-            let bytes = ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser))?;
+            let bytes =
+                ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser, rid))?;
             log::debug!(
-                "io-bidirectional. one response write to client bytes :{} seq:{}-{}",
+                "io-bidirectional. one response sent to client len:{} {:?}",
                 bytes,
-                *session_id,
-                *seq
+                *rid
             );
             *sent = false;
-            *seq += 1;
+            rid.incr();
         }
 
         Poll::Ready(Ok((0, 0)))
