@@ -11,3 +11,4 @@ once_cell = "*"
 crossbeam-channel = "*"
 log = { path = "../log" }
 thread-id = "*"
+local-ip-address = "*"
