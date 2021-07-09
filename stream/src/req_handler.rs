@@ -34,6 +34,9 @@ impl RequestData {
     fn rid(&self) -> &RequestId {
         &self.data.id()
     }
+    fn noreply(&self) -> bool {
+        self.data.noreply()
+    }
 }
 
 pub trait RequestHandler {
@@ -147,7 +150,9 @@ where
                     req.rid()
                 );
                 ready!(me.w.poll_check_available(cx, data.len()));
-                me.r.on_received(req.cid(), me.seq);
+                if !req.noreply() {
+                    me.r.on_received(req.cid(), me.seq);
+                }
                 me.w.poll_put_no_check(data)?;
                 log::debug!(
                     "req-handler-buffer: received and write to buffer. len:{} id:{} seq:{}, rid:{:?}",
@@ -156,7 +161,10 @@ where
                     me.seq,
                     req.rid()
                 );
-                me.seq += 1;
+                // 如果是noreply，则序号不需要增加。因为没有response
+                if !req.noreply() {
+                    me.seq += 1;
+                }
             }
             me.cache.take();
             log::debug!("req-handler-buffer: bridge request to buffer: wating incomming data");

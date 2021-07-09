@@ -74,7 +74,7 @@ impl<P> Topology<P> {
                 servers
                     .iter()
                     .map(|addr| {
-                        self.m_streams
+                        self.f_streams
                             .get(addr)
                             .expect("stream must be exists before address when call followers")
                             .build()
@@ -180,23 +180,15 @@ impl<P> Topology<P> {
         req: usize,
         resp: usize,
         parallel: usize,
-        ignore: bool,
     ) where
         P: Send + Sync + Protocol + 'static + Clone,
     {
         for addr in addrs {
-            log::info!("add new, addr = {}", addr);
+            log::info!("cs: add new, addr = {}", addr);
             if !streams.contains_key(addr) {
                 streams.insert(
                     addr.to_string(),
-                    BackendBuilder::from_with_response(
-                        parser.clone(),
-                        addr.to_string(),
-                        req,
-                        resp,
-                        parallel,
-                        ignore,
-                    ),
+                    BackendBuilder::from(parser.clone(), addr.to_string(), req, resp, parallel),
                 );
             }
         }
@@ -240,11 +232,11 @@ impl<P> Topology<P> {
         let mb = 1024 * 1024;
         let c = 64;
         Self::delete_non_exists(&self.masters, &mut self.m_streams);
-        Self::add_new(&p, &self.masters, &mut self.m_streams, mb, kb, c, false);
+        Self::add_new(&p, &self.masters, &mut self.m_streams, mb, kb, c);
 
         let followers: Vec<String> = self.followers.clone().into_iter().flatten().collect();
         Self::delete_non_exists(&followers, &mut self.f_streams);
-        Self::add_new(&p, followers.as_ref(), &mut self.f_streams, mb, kb, c, true);
+        Self::add_new(&p, followers.as_ref(), &mut self.f_streams, mb, kb, c);
 
         let readers: Vec<String> = self
             .layer_readers
@@ -255,22 +247,14 @@ impl<P> Topology<P> {
             .collect();
         // get command
         Self::delete_non_exists(&readers, &mut self.get_streams);
-        Self::add_new(&p, &readers, &mut self.get_streams, kb, mb, c, false);
+        Self::add_new(&p, &readers, &mut self.get_streams, kb, mb, c);
         // get[s] command
         Self::delete_non_exists(&readers, &mut self.gets_streams);
-        Self::add_new(&p, &readers, &mut self.gets_streams, kb, mb, c, false);
+        Self::add_new(&p, &readers, &mut self.gets_streams, kb, mb, c);
 
         // meta
         Self::delete_non_exists(&self.metas, &mut self.meta_stream);
-        Self::add_new(
-            &p,
-            &self.metas,
-            &mut self.meta_stream,
-            kb,
-            128 * kb,
-            c,
-            false,
-        );
+        Self::add_new(&p, &self.metas, &mut self.meta_stream, kb, 128 * kb, c);
     }
 }
 

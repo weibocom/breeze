@@ -28,7 +28,7 @@ type MultiGetOperation<P> = AsyncMultiGet<Readers<P>, P>;
 
 type Master<P> = AsyncSharding<Backend, Hasher, P>;
 type Follower<P> = AsyncSharding<Backend, Hasher, P>;
-type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>>;
+type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>, P>;
 type MetaOperation<P> = MetaStream<P, Backend>;
 type Operation<P> =
     AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation<P>>;
@@ -103,7 +103,8 @@ impl<P> CacheService<P> {
             .into_iter()
             .map(|shards| Self::build_sharding(shards, &hash_alg, parser.clone()))
             .collect();
-        let store = AsyncOperation::Store(AsyncSetSync::from_master(master, followers));
+        let store =
+            AsyncOperation::Store(AsyncSetSync::from_master(master, followers, parser.clone()));
 
         // 获取get through
         let get_layers = Self::build_layers(topo.retrive_get(), &hash_alg, parser.clone());

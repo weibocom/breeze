@@ -125,14 +125,18 @@ impl MpmcRingBufferStream {
     pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         ready!(self.poll_check(cid))?;
         log::debug!(
-            "mpmc: write cid:{} len:{} id:{:?}",
+            "mpmc: write cid:{} len:{} id:{:?}, noreply:{}",
             cid,
             buf.len(),
-            buf.id()
+            buf.id(),
+            buf.noreply()
         );
         let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
         if sender.0 {
-            self.get_item(cid).place_request(buf);
+            // noreply，则不更新状态。
+            if !buf.noreply() {
+                self.get_item(cid).place_request(buf);
+            }
             sender.0 = false;
             let req = RequestData::from(cid, buf.clone());
             sender.1.start_send(req).ok().expect("channel closed");
@@ -247,53 +251,6 @@ impl MpmcRingBufferStream {
             ),
         );
     }
-    pub fn bridge_no_reply<R, W>(
-        self: Arc<Self>,
-        req_buffer: usize,
-        mut r: R,
-        w: W,
-        builder: Arc<BackendBuilder>,
-    ) where
-        W: AsyncWrite + Unpin + Send + Sync + 'static,
-        R: AsyncRead + Unpin + Send + 'static,
-    {
-        log::debug!("noreply bridaged");
-        self.check_bridge();
-        let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
-        // 把数据从request同步到buffer
-        let receiver = self.receiver.borrow_mut().take().expect("receiver exists");
-        tokio::spawn(super::BridgeRequestToBuffer::from(
-            receiver,
-            self.clone(),
-            req_rb_writer,
-            self.done.clone(),
-        ));
-        // 把数据从buffer发送数据到,server
-        tokio::spawn(super::BridgeBufferToWriter::from(
-            req_rb_reader,
-            w,
-            self.done.clone(),
-            builder.clone(),
-        ));
-
-        tokio::spawn(async move {
-            let mut buf = [0u8; 2048];
-            loop {
-                match r.read(&mut buf).await {
-                    Ok(n) => {
-                        if n > 0 {
-                            continue;
-                        } else {
-                            // EOF
-                            break;
-                        }
-                    }
-                    // TODO
-                    Err(_e) => break,
-                }
-            }
-        });
-    }
     fn start_bridge<F>(
         self: Arc<Self>,
         _builder: Arc<BackendBuilder>,
@@ -402,6 +359,7 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
     //fn on_received_seq(&self, id: usize, seq: usize) {
     //    self.bind_seq(id, seq);
     //}
+    #[inline]
     fn on_received(&self, id: usize, seq: usize) {
         self.bind_seq(id, seq);
         self.get_item(id).on_sent(seq);
@@ -413,6 +371,7 @@ impl ResponseHandler for Arc<MpmcRingBufferStream> {
     fn load_offset(&self) -> usize {
         self.offset.0.load()
     }
+    #[inline]
     // 在从response读取的数据后调用。
     fn on_received(&self, seq: usize, first: RingSlice) {
         self.place_response(seq, first);
