@@ -45,7 +45,12 @@ pub trait Protocol: Unpin + Clone + 'static {
     // 轮询response，解析出本次查到的keys以及noop所在的位置
     fn scan_response_keys<T: AsRef<RingSlice>>(&self, response: T, keys: &mut Vec<String>);
     // 从当前的cmds中，过滤掉已经查到的keys，然后返回新的请求cmds
-    fn rebuild_request(&self, current_cmds: &Request, found_keys: &Vec<String>) -> Vec<u8>;
+    fn rebuild_get_multi_request(
+        &self,
+        current_cmds: &Request,
+        found_keys: &Vec<String>,
+        new_req_data: &mut Vec<u8>,
+    );
     // 消息结尾标志的长度，对不同协议、不同请求不同
     fn tail_size_for_multi_get(&self) -> usize;
 }

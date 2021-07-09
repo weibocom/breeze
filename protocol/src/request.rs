@@ -6,7 +6,8 @@ pub const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 
 #[derive(Default, Clone)]
 pub struct Request {
-    inner: Slice,
+    // TODO just for debug
+    pub inner: Slice,
     id: RequestId,
 }
 
@@ -19,6 +20,9 @@ impl Request {
     }
     pub fn id(&self) -> &RequestId {
         &self.id
+    }
+    pub fn update_data(&mut self, data: &[u8]) {
+        self.inner = Slice::from(data);
     }
 }
 use std::ops::Deref;

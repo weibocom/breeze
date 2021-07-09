@@ -20,6 +20,7 @@ pub struct AsyncMultiGetSharding<S, P> {
 }
 
 use std::io::{Error, ErrorKind, Result};
+use std::ops::Deref;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -64,6 +65,7 @@ where
         }
         me.idx = 0;
         if success {
+            log::debug!("========== write req: {:?}", buf.deref().data());
             Poll::Ready(Ok(()))
         } else {
             Poll::Ready(Err(last_err.unwrap_or_else(|| {

@@ -10,6 +10,7 @@ edition = "2018"
 net = { path = "../net" }
 hash = { path = "../hash" }
 ds = { path = "../ds" }
+log = { path = "../log" }
 
 enum_dispatch = "*"
 async-trait = "*"
