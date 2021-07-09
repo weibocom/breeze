@@ -12,12 +12,14 @@ pub(crate) struct Item {
 pub struct ResponseData {
     data: RingSlice,
     req_id: RequestId,
+    seq: usize, // response的seq
 }
 impl ResponseData {
-    pub fn from(data: RingSlice, rid: RequestId) -> Self {
+    pub fn from(data: RingSlice, rid: RequestId, resp_seq: usize) -> Self {
         Self {
             data: data,
             req_id: rid,
+            seq: resp_seq,
         }
     }
     pub fn data(&self) -> &RingSlice {
@@ -25,6 +27,9 @@ impl ResponseData {
     }
     pub fn rid(&self) -> &RequestId {
         &self.req_id
+    }
+    pub fn seq(&self) -> usize {
+        self.seq
     }
 }
 

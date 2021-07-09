@@ -1,11 +1,10 @@
 use lockfree::map::Map;
-use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 无锁，支持并发更新offset，按顺序读取offset的数据结构
 pub struct SeqOffset {
     tries: usize,
     offset: AtomicUsize,
-    len: AtomicIsize,
     slow_cache: Map<usize, usize>,
 }
 
@@ -15,7 +14,6 @@ impl SeqOffset {
         Self {
             tries: tries,
             offset: AtomicUsize::new(0),
-            len: AtomicIsize::new(0),
             slow_cache: Map::default(),
         }
     }
@@ -25,6 +23,7 @@ impl SeqOffset {
     // TODO 临时存储空间可能会触发OOM
     // end > start
     pub fn insert(&self, start: usize, end: usize) {
+        log::debug!("offset: {} => {}", start, end);
         debug_assert!(end > start);
         for _i in 0..self.tries {
             //loop {
@@ -38,12 +37,6 @@ impl SeqOffset {
                 Err(_offset) => {}
             }
         }
-        log::debug!(
-            "offset slow len:{} start:{} end:{}",
-            self.len.fetch_add(1, Ordering::Relaxed),
-            start,
-            end
-        );
         self.slow_cache.insert(start, end);
     }
 
@@ -53,11 +46,7 @@ impl SeqOffset {
         let mut old = offset;
         while let Some(removed) = self.slow_cache.remove(&offset) {
             offset = *removed.val();
-            log::debug!(
-                "offset: read offset loaded by map:{} len:{}",
-                offset,
-                self.len.fetch_add(-1, Ordering::Relaxed)
-            );
+            //log::debug!("offset: read offset loaded by map:{} ", offset);
         }
         while old != offset {
             match self

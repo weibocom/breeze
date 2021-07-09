@@ -14,7 +14,10 @@ macro_rules! debug {
 #[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! debug {
-    ($( $args:expr ),*) => { println!( $( $args ),* ); }
+    ($( $args:expr ),*) => {
+        //println!( $( $args ),* );
+        ()
+    };
 }
 
 #[macro_export]
