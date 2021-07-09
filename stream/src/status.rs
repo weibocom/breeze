@@ -75,6 +75,25 @@ impl Item {
         self.status.load(Ordering::Acquire)
     }
 
+    fn check_seq(&self, seq: usize, method: &str) {
+        let old_seq = self.seq.load(Ordering::Acquire);
+        if old_seq != seq {
+            panic!("item status: {} {} != {}", method, old_seq, seq);
+        }
+    }
+    fn seq_cas(&self, old: usize, new: usize, m: &str) {
+        match self
+            .seq
+            .compare_exchange(old, new, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => {}
+            Err(cur) => panic!(
+                "item status seq cas. {} => {} but found {} m:{}",
+                old, new, cur, m
+            ),
+        }
+    }
+
     // seq: 是SPSC中请求的seq
     // req_handler中，将请求写入到buffer前调用bind_req，更新seq;
     // 之后，会调用on_sent更新状态
@@ -84,84 +103,83 @@ impl Item {
     // 3. 甚至有可能response已经返回了。
     // 只能是以上两种状态
     pub fn on_sent(&self, seq: usize) {
-        let old_seq = self.seq.load(Ordering::Acquire);
+        self.seq_cas(0, seq, "on_sent");
         log::debug!(
-            "item status: on_sent. cid:{} old seq:{} seq:{} rid:{:?}",
-            old_seq,
+            "item status: on_sent. cid:{} seq:{} rid:{:?}",
             self.id,
             seq,
             self.request_id
         );
         // 说明是同一个req请求
-        if old_seq == seq {
-            // 只把状态从RequestReceived改为RequestSent. 其他状态则忽略
-            match self.status_cas(RequestReceived as u8, RequestSent as u8) {
-                Ok(_) => {}
-                Err(status) => log::info!(
-                    "item status: on_sent. status should be req-received. but found:{}",
-                    status
-                ),
-            }
-        } else {
-            log::info!(
-                "item status: on_sent. sequence not matched. {} != {}",
-                old_seq,
-                seq
-            );
+        // 只把状态从RequestReceived改为RequestSent. 其他状态则忽略
+        match self.status_cas(RequestReceived as u8, RequestSent as u8) {
+            Ok(_) => {}
+            Err(status) => panic!("item status: status mut be req-received. found:{}", status),
         }
     }
 
-    // 在req_handler中，获取到request，准备写入到buffer之前调用。
-    // 调用方确保状态正确性
-    pub fn bind_seq(&self, seq: usize) {
-        self.seq.store(seq, Ordering::Release);
-    }
     // 有两种可能的状态。
     // Received, 说明之前从来没有poll过
     // Reponded: 有数据并且成功返回
     // 调用方确保当前status不为shutdown
     pub fn poll_read(&self, cx: &mut Context) -> Poll<ResponseData> {
-        loop {
-            let status = self.status.load(Ordering::Acquire);
-            debug_assert_ne!(status, ItemStatus::Shutdown as u8);
-            if status == ItemStatus::ResponseReceived {
-                break;
-            }
-            // 进入waiting状态
-            if self.try_wake_lock() {
-                *self.waker.borrow_mut() = Some(cx.waker().clone());
-                self.unlock_waker();
-                return Poll::Pending;
-            }
+        self.lock_waker();
+        let status = self.status();
+        if status == ItemStatus::ResponseReceived {
+            let response = self.response.take();
+            log::debug!("item status: read {:?}", response.location());
+            let rid = self.request_id.take();
+
+            self.unlock_waker();
+            Poll::Ready(ResponseData::from(response, rid, self.seq()))
+        } else {
+            *self.waker.borrow_mut() = Some(cx.waker().clone());
+            self.unlock_waker();
+            Poll::Pending
         }
-        // 响应已返回，开始读取。状态一旦进入Responsed状态，没有其他任何请求会变更。只有poll_read会变更
-        // place_response先更新数据，后更新状态。不会有并发问题
-        // 读数据
-        let response = self.response.take();
-        let rid = self.request_id.take();
 
-        Poll::Ready(ResponseData::from(response, rid))
+        //loop {
+        //    let status = self.status();
+        //    debug_assert_ne!(status, ItemStatus::Shutdown as u8);
+        //    if status == ItemStatus::ResponseReceived {
+        //        break;
+        //    }
+        //    // 进入waiting状态
+        //    if self.try_wake_lock() {
+        //        // double check
+        //        if status == ItemStatus::ResponseReceived {
+        //            self.unlock_waker();
+        //            break;
+        //        }
+        //        *self.waker.borrow_mut() = Some(cx.waker().clone());
+        //        self.unlock_waker();
+        //        return Poll::Pending;
+        //    }
+        //}
+        //// 响应已返回，开始读取。状态一旦进入Responsed状态，没有其他任何请求会变更。只有poll_read会变更
+        //// place_response先更新数据，后更新状态。不会有并发问题
+        //// 读数据
+        //let response = self.response.take();
+        //log::debug!("item status: read {:?}", response.location());
+        //let rid = self.request_id.take();
+
+        //Poll::Ready(ResponseData::from(response, rid, self.seq()))
     }
-    pub fn place_response(&self, response: RingSlice) {
-        //log::debug!("response received len:{}", response.available());
+    pub fn place_response(&self, response: RingSlice, seq: usize) {
+        self.check_seq(seq, "place_response");
+        log::debug!("item status: write :{:?} ", response.location());
         self.response.replace(response);
-        // Ok poll_read更新状态时， 会把状态从RequestReceived变更为Pending，所以可能会失败。
 
-        loop {
-            let status = self.status.load(Ordering::Acquire);
-            // 1. response到达之前的状态是 RequestSent. 即请求已发出。 这是大多数场景
-            // 2. 因为在req_handler中，是先发送请求，再调用
-            //    bind_req来更新状态为RequestSent，有可能在这中间，response已经接收到了。此时的状态是RequestReceived。
-            debug_assert!(status == RequestSent || status == RequestReceived);
-            match self.status_cas(status, ItemStatus::ResponseReceived as u8) {
-                Ok(_) => {
-                    self.try_wake();
-                    return;
-                }
-                // 状态，状态可能是Received状态, 但这个状态可能会有data race
-                Err(_status) => {
-                    log::info!("item status. place response. RequestSent or RequestReceived expected, but {} found", _status);
-                }
+        // 1. response到达之前的状态是 RequestSent. 即请求已发出。 这是大多数场景
+        // 2. 因为在req_handler中，是先发送请求，再调用
+        //    bind_req来更新状态为RequestSent，有可能在这中间，response已经接收到了。此时的状态是RequestReceived。
+        match self.status_cas(RequestSent as u8, ResponseReceived as u8) {
+            Ok(_) => {
+                self.try_wake();
+            }
+            // 状态，状态可能是Received状态, 但这个状态可能会有data race
+            Err(_status) => {
+                panic!("item status. response.cur: {}", _status);
             }
         }
     }
@@ -178,7 +196,7 @@ impl Item {
     }
     // 在在sender把Response发送给client后，在Drop中会调用response_done，更新状态。
     #[inline]
-    pub fn response_done(&self) {
+    pub fn response_done(&self, seq: usize) {
         // 把状态调整为Init
         let status = self.status();
         debug_assert_eq!(status, ItemStatus::ResponseReceived as u8);
@@ -186,7 +204,7 @@ impl Item {
             // 0会有qi歧义。因为seq是从0开始的。
             panic!("data race: responded status expected, but {} found", status);
         }
-        self.seq.store(0, Ordering::Release);
+        self.seq_cas(seq, 0, "done");
     }
     #[inline]
     fn try_wake(&self) -> bool {
@@ -202,9 +220,11 @@ impl Item {
             waker.wake();
             true
         } else {
+            log::debug!("item status: not waker found. {}", self.id);
             false
         }
     }
+    // TODO ReadGuard
     fn try_wake_lock(&self) -> bool {
         match self
             .waker_lock
@@ -231,19 +251,6 @@ impl Item {
         while !self.try_wake_lock() {
             std::hint::spin_loop();
         }
-        // loop {
-        //     match self
-        //         .waker_lock
-        //         .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
-        //     {
-        //         Ok(_) => break,
-        //         Err(_) => {
-        //             log::debug!("item status: waker lock failed");
-        //             continue;
-        //         }
-        //     }
-        // }
-        // fence(Ordering::Acquire);
     }
     pub(crate) fn status_init(&self) -> bool {
         self.status.load(Ordering::Acquire) == ItemStatus::Init as u8
