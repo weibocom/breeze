@@ -129,11 +129,14 @@ impl MpmcRingBufferStream {
             buf.len(),
             buf.id()
         );
+
+        println!("++++++++ in mpmc req: {:?}", buf.clone().inner.data());
         let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
         if sender.0 {
             self.get_item(cid).place_request(buf);
             sender.0 = false;
             let req = RequestData::from(cid, buf.clone());
+            println!("++++++222++ in mpmc req: {:?}", req.clone().data());
             sender.1.start_send(req).ok().expect("channel closed");
         }
         ready!(sender.1.poll_send_done(cx))
@@ -141,6 +144,7 @@ impl MpmcRingBufferStream {
             .expect("channel send failed");
         sender.0 = true;
         log::debug!("mpmc: write complete cid:{} len:{} ", cid, buf.len());
+
         Poll::Ready(Ok(()))
     }
     #[inline]

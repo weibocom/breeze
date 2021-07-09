@@ -29,6 +29,7 @@ const COMMAND_IDX: [u8; 128] = [
 
 const REQUEST_MAGIC: u8 = 0x80;
 const OP_CODE_GETKQ: u8 = 0xd;
+const OP_CODE_GETQ: u8 = 0x09;
 const OP_CODE_NOOP: u8 = 0x0a;
 
 #[derive(Clone)]
@@ -132,6 +133,10 @@ impl Protocol for MemcacheBinary {
             if response.at(read + 1) == OP_CODE_GETKQ {
                 read += len;
                 continue;
+            } else if response.at(read + 1) == OP_CODE_GETQ {
+                println!("==== check who send getq ===");
+                read += len;
+                continue;
             }
 
             let n = read + len;
@@ -168,8 +173,12 @@ impl Protocol for MemcacheBinary {
             }
         }
     }
-    fn rebuild_request(&self, current_cmds: &Request, found_keys: &Vec<String>) -> Vec<u8> {
-        let mut new_cmds = Vec::new();
+    fn rebuild_get_multi_request(
+        &self,
+        current_cmds: &Request,
+        found_keys: &Vec<String>,
+        new_cmds: &mut Vec<u8>,
+    ) {
         let mut read = 0;
         let origin = current_cmds.data();
         let avail = origin.len();
@@ -178,58 +187,41 @@ impl Protocol for MemcacheBinary {
         println!("{} - 0-{:?}", i, current_cmds.data());
         loop {
             i += 1;
-            // noop 正好是24 bytes
+            // noop 是24 bytes
             debug_assert!(read + HEADER_LEN <= avail);
             debug_assert_eq!(origin[read], 0x80);
-            println!("{} - 2-{:?}", i, new_cmds);
+            log::debug!("{} - 1-{:?}", i, new_cmds);
+
+            // get-multi的结尾是noop
             if origin[read + 1] == OP_CODE_NOOP {
                 new_cmds.extend(&origin[read..read + HEADER_LEN]);
-                // unsafe {
-                // copy_nonoverlapping(
-                //     origin.as_ptr().offset(read as isize),
-                //     new_cmds.as_mut_ptr().offset(new_cmds.len() as isize),
-                //     HEADER_LEN as usize,
-                // );
-                // }
-                println!("{} - 5-{:?}", i, new_cmds);
-                return new_cmds;
+                debug_assert_eq!(read + HEADER_LEN, avail);
+                println!("{} - 3-{:?}", i, new_cmds);
+                return;
             }
-            println!("{} - 333333-{:?}", i, new_cmds);
-            let len = BigEndian::read_u32(&origin[read + 8..]) as usize + HEADER_LEN;
-            debug_assert!(read + len <= avail);
 
+            // 非noop cmd一定不是最后一个cmd
+            let len = BigEndian::read_u32(&origin[read + 8..]) as usize + HEADER_LEN;
+            debug_assert!(read + len < avail);
+
+            // 找到key，如果是命中的key，则对应cmd被略过
             let key_len = BigEndian::read_u16(&origin[read + 2..]) as usize;
             let extra_len = origin[read + 4] as usize;
-            unsafe {
-                // let mut key = String::with_capacity(key_len as usize);
-                // copy_nonoverlapping(
-                //     origin
-                //         .as_ptr()
-                //         .offset((read + HEADER_LEN + extra_len as usize) as isize),
-                //     key.as_mut_vec().as_mut_ptr(),
-                //     key_len as usize,
-                // );
-                let mut key_data = Vec::new();
-                key_data.extend_from_slice(
-                    &origin[read + HEADER_LEN + extra_len..read + HEADER_LEN + extra_len + key_len],
-                );
-                let key = String::from_utf8(key_data).unwrap_or_default();
-                println!("{} - cmd key: {:?}, found_keys: {:?}", i, key, found_keys);
-                if found_keys.contains(&key) {
-                    // key 已经命中，略过
-                    read += len;
-                    continue;
-                }
-                // 该key miss，将cmd写入new_cmds
-                new_cmds.extend(&origin[read..read + len]);
-                // copy_nonoverlapping(
-                //     origin.as_ptr().offset(read as isize),
-                //     new_cmds.as_mut_ptr().offset(new_cmds.len() as isize),
-                //     len as usize,
-                // );
+            let extra_pos = read + HEADER_LEN + extra_len;
+            let mut key_data = Vec::new();
+            key_data.extend_from_slice(&origin[extra_pos..extra_pos + key_len]);
+            let key = String::from_utf8(key_data).unwrap_or_default();
+            println!("{} - cmd key: {:?}, found_keys: {:?}", i, key, found_keys);
+            if found_keys.contains(&key) {
+                // key 已经命中，略过
                 read += len;
-                println!("{} - 4-{:?}", i, new_cmds);
+                continue;
             }
+
+            // 该key miss，将其cmd写入new_cmds
+            new_cmds.extend(&origin[read..read + len]);
+            read += len;
+            println!("{} - 2-{:?}", i, new_cmds);
         }
     }
 

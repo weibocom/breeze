@@ -1,6 +1,7 @@
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response, RingBufferStream};
 
 use std::io::{Error, ErrorKind, Result};
+use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -50,6 +51,7 @@ impl AsyncReadAll for Backend {
 impl AsyncWriteAll for Backend {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &*self;
+        println!("++++++++++++ in backend, req: {:?}", buf.deref().data());
         me.inner.poll_write(me.id.id(), cx, buf)
     }
 }
