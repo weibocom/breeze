@@ -100,26 +100,13 @@ where
             while me.data.processed() < me.data.writtened() {
                 let mut response = me.data.processing_bytes();
                 let (found, num) = me.parser.parse_response(&response);
-                log::debug!(
-                    "resp-handler: parsed:{} num:{} avail:{} seq:{} processed:{} written:{}",
-                    found,
-                    num,
-                    response.available(),
-                    me.seq,
-                    me.data.processed(),
-                    me.data.writtened()
-                );
+                log::debug!("resp-handler: parsed:{} num:{} seq:{} ", found, num, me.seq);
                 if !found {
                     break;
                 }
                 response.resize(num);
                 let seq = me.seq;
                 me.seq += 1;
-                log::debug!(
-                    "resp-handler: response len: {} loc:{:?}",
-                    num,
-                    response.location()
-                );
 
                 me.w.on_received(seq, response);
                 me.data.advance_processed(num);

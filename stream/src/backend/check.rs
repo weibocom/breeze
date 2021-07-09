@@ -23,25 +23,6 @@ impl BackendBuilder {
         req_buf: usize,
         resp_buf: usize,
         parallel: usize,
-    ) -> Arc<BackendBuilder>
-    where
-        P: Unpin + Send + Sync + Protocol + 'static + Clone,
-    {
-        Self::from_with_response(parser, addr, req_buf, resp_buf, parallel, false)
-    }
-    pub fn ignore_response<P>(parser: P, addr: String, req_buf: usize, parallel: usize) -> Arc<Self>
-    where
-        P: Unpin + Send + Sync + Protocol + Clone + 'static,
-    {
-        Self::from_with_response(parser, addr, req_buf, 2048, parallel, true)
-    }
-    pub fn from_with_response<P>(
-        parser: P,
-        addr: String,
-        req_buf: usize,
-        resp_buf: usize,
-        parallel: usize,
-        ignore_response: bool,
     ) -> Arc<Self>
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
@@ -61,12 +42,7 @@ impl BackendBuilder {
         };
         let me = Arc::new(me);
         log::info!("request buffer:{} response buffer:{}", req_buf, resp_buf);
-        let checker = Arc::new(BackendChecker::from(
-            me.clone(),
-            ignore_response,
-            req_buf,
-            resp_buf,
-        ));
+        let checker = Arc::new(BackendChecker::from(me.clone(), req_buf, resp_buf));
         let t = me.start_check(checker, parser.clone());
 
         me.check_waker.clone().write().unwrap().check_task = Some(t);
@@ -141,21 +117,13 @@ pub struct BackendChecker {
     resp_buf: usize,
     inner: Arc<BackendBuilder>,
 
-    // 记录两个任务是否完成。
-    ignore_response: Arc<AtomicBool>,
     tick: Interval,
 }
 
 impl BackendChecker {
-    fn from(
-        builder: Arc<BackendBuilder>,
-        ignore_response: bool,
-        req_buf: usize,
-        resp_buf: usize,
-    ) -> Self {
+    fn from(builder: Arc<BackendBuilder>, req_buf: usize, resp_buf: usize) -> Self {
         let me = Self {
             inner: builder,
-            ignore_response: Arc::new(AtomicBool::new(ignore_response)),
             tick: interval(std::time::Duration::from_secs(3)),
             req_buf: req_buf,
             resp_buf: resp_buf,
@@ -200,20 +168,15 @@ impl BackendChecker {
                     let (r, w) = stream.into_split();
                     let req_stream = self.inner.stream.clone();
 
-                    if !self.ignore_response.load(Ordering::Acquire) {
-                        log::info!("go to bridge");
-                        req_stream.bridge(
-                            parser.clone(),
-                            self.req_buf,
-                            self.resp_buf,
-                            r,
-                            w,
-                            self.inner.clone(),
-                        );
-                    } else {
-                        log::info!("go to bridge_no_reply");
-                        req_stream.bridge_no_reply(self.resp_buf, r, w, self.inner.clone());
-                    }
+                    log::info!("go to bridge");
+                    req_stream.bridge(
+                        parser.clone(),
+                        self.req_buf,
+                        self.resp_buf,
+                        r,
+                        w,
+                        self.inner.clone(),
+                    );
                     log::info!("set false to closed");
                     self.inner.connected.store(true, Ordering::Release);
                 }
