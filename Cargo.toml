@@ -11,4 +11,5 @@ members = [
   "log",
   "metrics",
   "ds",
+  "tests",
 ]

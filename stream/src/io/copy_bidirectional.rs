@@ -36,7 +36,7 @@ where
         sender: Sender::new(),
         sent: false,
         rid: RequestId::from(session_id, 0),
-        request_start: Instant::now()
+        request_start: Instant::now(),
     }
     .await
 }
@@ -100,11 +100,11 @@ where
                     rid
                 );
             }
-            let bytes =
+            let _bytes =
                 ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser, rid))?;
             log::debug!(
                 "io-bidirectional. one response sent to client len:{} {:?}",
-                bytes,
+                _bytes,
                 *rid
             );
             *sent = false;
