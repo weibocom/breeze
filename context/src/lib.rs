@@ -31,6 +31,12 @@ pub struct Context {
     service_path: String,
     #[clap(short, long, about("starting in upgrade mode"))]
     upgrade: bool,
+
+    #[clap(short, long, about("log path"), default_value("/tmp/breeze/logs"))]
+    log_dir: String,
+
+    #[clap(short, long, about("metrics url"), default_value = "default")]
+    metrics_url: String,
 }
 
 impl Context {
@@ -47,6 +53,9 @@ impl Context {
         }
         Ok(())
     }
+    pub fn log_dir(&self) -> &str {
+        &self.log_dir
+    }
     // 如果是以升级模式启动，则会将原有的端口先关闭。
     pub fn listeners(&self) -> ListenerIter {
         ListenerIter {
@@ -61,6 +70,9 @@ impl Context {
     }
     pub fn service_path(&self) -> String {
         self.service_path.clone()
+    }
+    pub fn metrics_url(&self) -> String {
+        self.metrics_url.clone()
     }
 }
 

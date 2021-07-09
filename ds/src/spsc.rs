@@ -98,7 +98,7 @@ impl RingBuffer {
             status as u8 == Status::ReadPending as u8 || status as u8 == Status::WritePending as u8
         );
         if self.waker_status.load(Ordering::Acquire) == Status::Close as u8 {
-            log::info!("buffer closed. no need to notify?");
+            log::debug!("buffer closed. no need to notify?");
             return;
         }
         if self.status_cas(status, Status::Lock) {
@@ -164,12 +164,12 @@ impl RingBuffer {
             Ordering::Acquire,
         ) {
             Ok(_) => true,
-            Err(status) => {
+            Err(_status) => {
                 log::debug!(
                     "spsc: try to status cas failed. old:{}, new:{} current:{}",
                     old as u8,
                     new as u8,
-                    status as u8
+                    _status as u8
                 );
                 false
             }
@@ -235,6 +235,23 @@ impl RingBufferWriter {
             self.buffer.write.0.store(self.write, Ordering::Release);
             Result::Ok(b.len())
         }
+    }
+    pub fn poll_check_available(&self, cx: &mut Context, size: usize) -> Poll<()> {
+        let read = self.buffer.read.0.load(Ordering::Acquire);
+        let available = self.buffer.len - (self.write - read);
+        if available < size {
+            self.buffer.waiting(cx, Status::WritePending);
+            Poll::Pending
+        } else {
+            Poll::Ready(())
+        }
+    }
+    pub fn poll_put_no_check(&mut self, b: &[u8]) -> Result<()> {
+        let size = self.put_slice(b)?;
+        debug_assert_eq!(b.len(), size);
+        log::debug!("spsc: put slice success, notify read pending");
+        self.buffer.notify(Status::ReadPending);
+        Ok(())
     }
     pub fn poll_put_slice(&mut self, cx: &mut Context, b: &[u8]) -> Poll<Result<usize>> {
         let result = self.put_slice(b);

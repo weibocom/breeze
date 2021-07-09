@@ -1,5 +1,5 @@
 [package]
-name = "Metrics"
+name = "metrics"
 version = "0.1.0"
 authors = ["mingzhe10 <mingzhe10@staff.weibo.com>"]
 edition = "2018"
@@ -11,3 +11,4 @@ once_cell = "*"
 crossbeam-channel = "*"
 log = { path = "../log" }
 thread-id = "*"
+local-ip-address = "*"
