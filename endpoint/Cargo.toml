@@ -14,8 +14,7 @@ hash = { path = "../hash" }
 stream = { path = "../stream" }
 log = { path = "../log" }
 
-tokio = { version = "1.7.1", features = ["full"] }
-bb8 = "*"
+tokio = { version = "1.8.0", features = ["full"] }
 byteorder = "*"
 bytes = "1"
 futures = "*"

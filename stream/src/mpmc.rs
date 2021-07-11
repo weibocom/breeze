@@ -16,7 +16,7 @@ use crate::{
 
 use protocol::Protocol;
 
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc::{channel, Receiver};
 use tokio_util::sync::PollSender;
 
@@ -73,7 +73,7 @@ impl MpmcRingBufferStream {
         Self {
             items: items,
             seq_cids: seq_cids,
-            offset: CacheAligned(SeqOffset::from(parallel)),
+            offset: CacheAligned(SeqOffset::with_capacity(parallel)),
             receiver: RefCell::new(Some(receiver)),
             senders: senders,
             done: done,
@@ -254,7 +254,7 @@ impl MpmcRingBufferStream {
     fn start_bridge<F>(
         self: Arc<Self>,
         _builder: Arc<BackendBuilder>,
-        name: &'static str,
+        _name: &'static str,
         future: F,
     ) where
         F: Future<Output = Result<()>> + Send + 'static,
@@ -262,17 +262,17 @@ impl MpmcRingBufferStream {
         let runnings = self.runnings.clone();
         tokio::spawn(async move {
             runnings.fetch_add(1, Ordering::AcqRel);
-            log::debug!("{} bridge task started", name);
+            log::debug!("{} bridge task started", _name);
             match future.await {
                 Ok(_) => {
-                    log::debug!("{} bridge task complete", name);
+                    log::debug!("{} bridge task complete", _name);
                 }
                 Err(e) => {
-                    log::debug!("{} bridge task complete with error:{:?}", name, e);
+                    log::debug!("{} bridge task complete with error:{:?}", _name, e);
                 }
             };
             runnings.fetch_add(-1, Ordering::AcqRel);
-            log::debug!("{} bridge task completed", name);
+            log::debug!("{} bridge task completed", _name);
         });
     }
 
@@ -356,9 +356,6 @@ use std::thread::sleep;
 use std::time::Duration;
 
 impl RequestHandler for Arc<MpmcRingBufferStream> {
-    //fn on_received_seq(&self, id: usize, seq: usize) {
-    //    self.bind_seq(id, seq);
-    //}
     #[inline]
     fn on_received(&self, id: usize, seq: usize) {
         self.bind_seq(id, seq);
