@@ -31,7 +31,7 @@ impl PartialEq<ItemStatus> for u8 {
 unsafe impl Send for ItemStatus {}
 #[derive(Default)]
 pub struct Item {
-    id: usize,
+    _id: usize,
     seq: AtomicUsize, // 用来做request与response的同步
     status: AtomicU8, // 0: 待接收请求。
 
@@ -48,7 +48,7 @@ unsafe impl Send for Item {}
 impl Item {
     pub fn new(cid: usize) -> Self {
         Self {
-            id: cid,
+            _id: cid,
             status: AtomicU8::new(ItemStatus::Init as u8),
             ..Default::default()
         }
@@ -99,7 +99,7 @@ impl Item {
         self.seq_cas(0, seq);
         log::debug!(
             "item status: on_sent. cid:{} seq:{} rid:{:?}",
-            self.id,
+            self._id,
             seq,
             self.request_id
         );
@@ -180,13 +180,13 @@ impl Item {
         if let Some(waker) = waker {
             log::debug!(
                 "item status: wakeup. id:{} status:{}",
-                self.id,
+                self._id,
                 self.status()
             );
             waker.wake();
             true
         } else {
-            log::debug!("item status: not waker found. {}", self.id);
+            log::debug!("item status: not waker found. {}", self._id);
             false
         }
     }
