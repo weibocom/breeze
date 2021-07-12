@@ -13,3 +13,8 @@ members = [
   "ds",
   "tests",
 ]
+
+
+[profile.release]
+#opt-level = 3
+#lto = "fat"

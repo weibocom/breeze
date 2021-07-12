@@ -15,7 +15,7 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! debug {
     ($( $args:expr ),*) => {
-        //println!( $( $args ),* );
+        //    println!( $( $args ),* );
         ()
     };
 }
@@ -23,8 +23,8 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! info {
     ($( $args:expr ),*) => {
-           println!( $( $args ),* );
-    }
+        println!( $( $args ),* );
+    };
 }
 #[macro_export]
 macro_rules! warn{

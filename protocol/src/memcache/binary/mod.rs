@@ -26,6 +26,16 @@ const COMMAND_IDX: [u8; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
+// OP_CODE对应的noreply code。
+const NOREPLY_MAPPING: [u8; 128] = [
+    0x09, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x09, 0x0a, 0x0b, 0x0d, 0x0d, 0x19, 0x1a,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+    0x30, 0x32, 0x32, 0x34, 0x34, 0x36, 0x36, 0x38, 0x38, 0x3a, 0x3a, 0x3c, 0x3c, 0x3d, 0x3e, 0x3f,
+    0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0,
+];
 
 const REQUEST_MAGIC: u8 = 0x80;
 const OP_CODE_GETKQ: u8 = 0xd;
@@ -61,11 +71,33 @@ impl MemcacheBinary {
 }
 
 impl Protocol for MemcacheBinary {
-    //#[inline(always)]
-    //fn min_size(&self) -> usize {
-    //    HEADER_LEN
-    //}
-
+    #[inline]
+    // 如果当前请求已经是noreply了，则直接clone。
+    // 否则把数据复制出来，再更改op_code
+    fn copy_noreply(&self, req: &Request) -> Request {
+        let data = req.data();
+        debug_assert!(data.len() >= HEADER_LEN);
+        if req.noreply() {
+            req.clone()
+        } else {
+            let noreply = data[1] == NOREPLY_MAPPING[data[1] as usize];
+            if noreply {
+                let mut new = req.clone();
+                new.set_noreply();
+                new
+            } else {
+                let mut v = vec![0u8; data.len()];
+                use std::ptr::copy_nonoverlapping as copy;
+                unsafe {
+                    copy(data.as_ptr(), v.as_mut_ptr(), data.len());
+                }
+                v[1] = NOREPLY_MAPPING[data[1] as usize];
+                let mut new = Request::from_vec(v, req.id().clone());
+                new.set_noreply();
+                new
+            }
+        }
+    }
     #[inline(always)]
     fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)> {
         //debug_assert!(req.len() >= self.min_size());
@@ -83,10 +115,6 @@ impl Protocol for MemcacheBinary {
         }
     }
 
-    #[inline(always)]
-    fn min_last_response_size(&self) -> usize {
-        HEADER_LEN
-    }
     // 调用方确保req是一个完整的mc的请求包。
     // 第二个字节是op_code。
     #[inline]
@@ -103,9 +131,11 @@ impl Protocol for MemcacheBinary {
     }
     #[inline]
     fn key<'a>(&self, req: &'a [u8]) -> &'a [u8] {
+        debug_assert!(req.len() >= HEADER_LEN);
         let extra_len = req[4] as usize;
         let offset = extra_len + HEADER_LEN;
         let key_len = BigEndian::read_u16(&req[2..]) as usize;
+        debug_assert!(key_len + offset <= req.len());
         &req[offset..offset + key_len]
     }
     #[inline]

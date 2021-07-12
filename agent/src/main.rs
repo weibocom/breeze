@@ -10,10 +10,10 @@ use std::time::Duration;
 use stream::io::copy_bidirectional;
 use tokio::spawn;
 use tokio::sync::mpsc::{self, Sender};
-use tokio::time::{interval_at, Instant};
+use tokio::time::{interval, interval_at, Instant};
 
-use protocol::Protocols;
 use metrics::MetricsSender;
+use protocol::Protocols;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,10 +21,11 @@ async fn main() -> Result<()> {
     ctx.check()?;
     log::init(ctx.log_dir())?;
     MetricsSender::init(ctx.metrics_url());
-    std::thread::spawn(|| {
+    tokio::spawn(async move {
+        let mut tick = interval(Duration::from_secs(3));
         loop {
             MetricsSender::sum("living".parse().unwrap(), 1);
-            std::thread::sleep(Duration::from_secs(1));
+            tick.tick().await;
         }
     });
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
