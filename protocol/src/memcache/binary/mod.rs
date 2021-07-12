@@ -33,7 +33,15 @@ const NOREPLY_MAPPING: [u8; 128] = [
 ];
 
 const REQUEST_MAGIC: u8 = 0x80;
-const OP_CODE_GETQ: u8 = 0xd;
+
+// 0x09: getq
+// 0x0d: getkq
+const MULT_GETS: [u8; 128] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
 
 #[derive(Clone)]
 pub struct MemcacheBinary;
@@ -41,6 +49,10 @@ pub struct MemcacheBinary;
 impl MemcacheBinary {
     pub fn new() -> Self {
         MemcacheBinary
+    }
+    #[inline(always)]
+    fn is_multi_get(&self, op_code: u8) -> bool {
+        MULT_GETS[op_code as usize] == 1
     }
     #[inline]
     fn _probe_request(&self, req: &[u8]) -> (bool, usize) {
@@ -55,7 +67,7 @@ impl MemcacheBinary {
             read += total;
             // 0xd是getq请求，说明当前请求是multiget请求，最后通常一个noop请求结束
             // 0x09是getq，0x0d是getkq，都可以用于multiget请求 fishermen
-            if op_code != 0xd && op_code != 0x09 {
+            if !self.is_multi_get(op_code) {
                 let pos = read;
                 return (true, pos);
             }
@@ -154,7 +166,7 @@ impl Protocol for MemcacheBinary {
             debug_assert_eq!(response.at(0), 0x81);
             let len = response.read_u32(read + 8) as usize + HEADER_LEN;
 
-            if response.at(read + 1) == OP_CODE_GETQ {
+            if self.is_multi_get(response.at(read + 1)) {
                 read += len;
                 continue;
             }
