@@ -55,16 +55,14 @@ impl Item {
     }
     // 把buf的指针保存下来。
     // 上面的假设待验证
-    pub fn place_request(&self, req: &Request) {
+    #[inline(always)]
+    pub fn place_request(&self, _req: &Request) {
         debug_assert_eq!(self.status.load(Ordering::Acquire), ItemStatus::Init as u8);
-        match self.status_cas(ItemStatus::Init as u8, ItemStatus::RequestReceived as u8) {
-            Ok(_) => {}
-            Err(status) => {
-                panic!("place request must be in Init status but {} found", status);
-            }
-        }
-
-        self.request_id.replace(req.id().clone());
+        self.status_cas(ItemStatus::Init as u8, ItemStatus::RequestReceived as u8);
+        log::debug!(
+            "item status: old request id:{:?}",
+            self.request_id.replace(_req.id().clone())
+        );
     }
     #[inline(always)]
     pub fn seq(&self) -> usize {
@@ -95,6 +93,7 @@ impl Item {
     // 2. 也有可能response返回了，并且成功调用了place_response，此时的状态是ResponseReceived
     // 3. 甚至有可能response已经返回了。
     // 只能是以上两种状态
+    #[inline(always)]
     pub fn on_sent(&self, seq: usize) {
         self.seq_cas(0, seq);
         log::debug!(
@@ -105,10 +104,7 @@ impl Item {
         );
         // 说明是同一个req请求
         // 只把状态从RequestReceived改为RequestSent. 其他状态则忽略
-        match self.status_cas(RequestReceived as u8, RequestSent as u8) {
-            Ok(_) => {}
-            Err(status) => panic!("item status: status mut be req-received. found:{}", status),
-        }
+        self.status_cas(RequestReceived as u8, RequestSent as u8);
     }
 
     // 有两种可能的状态。
@@ -139,26 +135,24 @@ impl Item {
         // 1. response到达之前的状态是 RequestSent. 即请求已发出。 这是大多数场景
         // 2. 因为在req_handler中，是先发送请求，再调用
         //    bind_req来更新状态为RequestSent，有可能在这中间，response已经接收到了。此时的状态是RequestReceived。
-        match self.status_cas(RequestSent as u8, ResponseReceived as u8) {
-            Ok(_) => {
-                self.try_wake();
-            }
-            // 状态，状态可能是Received状态, 但这个状态可能会有data race
-            Err(_status) => {
-                panic!("item status. response.cur: {}", _status);
-            }
-        }
+        self.status_cas(RequestSent as u8, ResponseReceived as u8);
+        self.try_wake();
     }
     #[inline(always)]
-    fn status_cas(&self, old: u8, new: u8) -> std::result::Result<u8, u8> {
+    fn status_cas(&self, old: u8, new: u8) {
         log::debug!(
             "item status cas. expected: {} current:{} update to:{}",
             old,
             self.status.load(Ordering::Acquire),
             new
         );
-        self.status
+        match self
+            .status
             .compare_exchange(old, new, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => {}
+            Err(cur) => panic!("item status: cas {} => {}, but {} found", old, new, cur),
+        }
     }
     // 在在sender把Response发送给client后，在Drop中会调用response_done，更新状态。
     #[inline]
@@ -166,10 +160,7 @@ impl Item {
         // 把状态调整为Init
         let status = self.status();
         debug_assert_eq!(status, ItemStatus::ResponseReceived as u8);
-        if let Err(status) = self.status_cas(status, ItemStatus::Init as u8) {
-            // 0会有qi歧义。因为seq是从0开始的。
-            panic!("data race: responded status expected, but {} found", status);
-        }
+        self.status_cas(status, ItemStatus::Init as u8);
         self.seq_cas(seq, 0);
     }
     #[inline]
@@ -191,6 +182,7 @@ impl Item {
         }
     }
     // TODO ReadGuard
+    #[inline(always)]
     fn try_wake_lock(&self) -> bool {
         match self
             .waker_lock
@@ -200,16 +192,19 @@ impl Item {
             Err(_) => false,
         }
     }
+    #[inline(always)]
     fn unlock_waker(&self) {
-        match self
-            .waker_lock
-            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
-        {
-            Ok(_) => {}
-            Err(_) => panic!("item status: waker unlock failed"),
-        }
+        debug_assert_eq!(self.waker_lock.load(Ordering::Acquire), true);
+        self.waker_lock.store(false, Ordering::Release);
+        //match self
+        //    .waker_lock
+        //    .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+        //{
+        //    Ok(_) => {}
+        //    Err(_) => panic!("item status: waker unlock failed"),
+        //}
     }
-    #[inline]
+    #[inline(always)]
     fn lock_waker(&self) {
         while !self.try_wake_lock() {
             std::hint::spin_loop();
@@ -229,9 +224,6 @@ impl Item {
     // reset只会把状态从shutdown变更为init
     // 必须在shutdown之后调用
     pub(crate) fn reset(&self) {
-        match self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8) {
-            Ok(_) => {}
-            Err(status) => assert_eq!(status, ItemStatus::Init as u8),
-        }
+        self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8);
     }
 }

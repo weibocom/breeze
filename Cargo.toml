@@ -22,3 +22,5 @@ members = [
 #overflow-checks = false
 #debug = false
 #codegen-units = 1
+#codegen-units = 1
+#panic = "abort"
