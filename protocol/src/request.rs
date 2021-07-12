@@ -68,9 +68,11 @@ pub struct RequestId {
 }
 
 impl RequestId {
+    #[inline(always)]
     pub fn from(session_id: usize, seq: usize) -> Self {
         Self { session_id, seq }
     }
+    #[inline(always)]
     pub fn incr(&mut self) {
         self.seq += 1;
     }

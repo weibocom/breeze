@@ -23,12 +23,15 @@ impl ResponseData {
             seq: resp_seq,
         }
     }
+    #[inline(always)]
     pub fn data(&self) -> &RingSlice {
         &self.data
     }
+    #[inline(always)]
     pub fn rid(&self) -> &RequestId {
         &self.req_id
     }
+    #[inline(always)]
     pub fn seq(&self) -> usize {
         self.seq
     }
@@ -107,6 +110,7 @@ impl DerefMut for Item {
 }
 
 impl Item {
+    #[inline(always)]
     pub fn rid(&self) -> &RequestId {
         &self.data.req_id
     }
