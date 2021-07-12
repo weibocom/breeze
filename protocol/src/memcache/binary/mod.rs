@@ -54,7 +54,8 @@ impl MemcacheBinary {
             let op_code = req[read + 1];
             read += total;
             // 0xd是getq请求，说明当前请求是multiget请求，最后通常一个noop请求结束
-            if op_code != 0xd {
+            // 0x09是getq，0x0d是getkq，都可以用于multiget请求 fishermen
+            if op_code != 0xd && op_code != 0x09 {
                 let pos = read;
                 return (true, pos);
             }
