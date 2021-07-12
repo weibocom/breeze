@@ -36,28 +36,17 @@ impl Ids {
         for (id, status) in self.bits.iter().enumerate() {
             match status.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire) {
                 Ok(_) => {
-                    log::debug!(
-                        "fetch next connection id success. active:{} cap:{}",
-                        self.active.fetch_add(1, Ordering::AcqRel) + 1,
-                        self.bits.len()
-                    );
+                    log::debug!("cid: next connection id success.  cap:{}", self.bits.len());
                     return Some(id);
                 }
                 Err(_) => {}
             }
         }
-        log::debug!(
-            "fetch next connection build failed. active:{}",
-            self.active.load(Ordering::Acquire)
-        );
+        log::debug!("cid: fetch next connection build failed. ");
         None
     }
 
     pub fn release(&self, id: usize) {
-        log::debug!(
-            "connection id freeed. {}",
-            self.active.fetch_add(-1, Ordering::AcqRel)
-        );
         unsafe {
             match self.bits.get_unchecked(id).compare_exchange(
                 true,
