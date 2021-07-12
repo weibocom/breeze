@@ -44,6 +44,15 @@ impl RingSlice {
         self.end = self.start + num;
     }
 
+    #[inline(always)]
+    pub fn take_slice(&mut self) -> Slice {
+        debug_assert!(self.cap > 0);
+        let s = self.next_slice();
+        self.advance(s.len());
+        s
+    }
+
+    #[inline(always)]
     pub fn next_slice(&self) -> Slice {
         debug_assert!(self.cap > 0);
         let oft = self.offset & (self.cap - 1);
