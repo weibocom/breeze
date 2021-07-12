@@ -4,11 +4,18 @@ use ds::Slice;
 
 pub const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 
+use std::sync::Arc;
+
 #[derive(Default, Clone)]
 pub struct Request {
     // TODO just for debug
     pub inner: Slice,
     id: RequestId,
+    // 是否需要返回结果
+    noreply: bool,
+    // 如果是from_vec调用的，则Request在释放的时候要确保内存被释放
+    // 访问数据要直接使用slice访问，不能使用_data。因为_data可能为EMPTY
+    _data: Arc<Vec<u8>>,
 }
 
 impl Request {
@@ -16,15 +23,33 @@ impl Request {
         Self {
             inner: Slice::from(data),
             id: id,
+            noreply: false,
+            _data: Arc::new(Vec::new()),
+        }
+    }
+    pub fn from_vec(data: Vec<u8>, id: RequestId) -> Self {
+        Self {
+            inner: Slice::from(&data),
+            id: id,
+            noreply: false,
+            _data: Arc::new(data),
         }
     }
     pub fn id(&self) -> &RequestId {
         &self.id
     }
+
     pub fn update_data(&mut self, data: &[u8]) {
         self.inner = Slice::from(data);
     }
+    pub fn set_noreply(&mut self) {
+        self.noreply = true;
+    }
+    pub fn noreply(&self) -> bool {
+        self.noreply
+    }
 }
+
 use std::ops::Deref;
 impl Deref for Request {
     type Target = Slice;

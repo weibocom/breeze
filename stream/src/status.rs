@@ -31,7 +31,7 @@ impl PartialEq<ItemStatus> for u8 {
 unsafe impl Send for ItemStatus {}
 #[derive(Default)]
 pub struct Item {
-    id: usize,
+    _id: usize,
     seq: AtomicUsize, // 用来做request与response的同步
     status: AtomicU8, // 0: 待接收请求。
 
@@ -48,7 +48,7 @@ unsafe impl Send for Item {}
 impl Item {
     pub fn new(cid: usize) -> Self {
         Self {
-            id: cid,
+            _id: cid,
             status: AtomicU8::new(ItemStatus::Init as u8),
             ..Default::default()
         }
@@ -57,7 +57,6 @@ impl Item {
     // 上面的假设待验证
     pub fn place_request(&self, req: &Request) {
         debug_assert_eq!(self.status.load(Ordering::Acquire), ItemStatus::Init as u8);
-        //self.request.replace(RequestData::from(self.id, buf));
         match self.status_cas(ItemStatus::Init as u8, ItemStatus::RequestReceived as u8) {
             Ok(_) => {}
             Err(status) => {
@@ -67,30 +66,24 @@ impl Item {
 
         self.request_id.replace(req.id().clone());
     }
+    #[inline(always)]
     pub fn seq(&self) -> usize {
         self.seq.load(Ordering::Acquire)
     }
 
+    #[inline(always)]
     fn status(&self) -> u8 {
         self.status.load(Ordering::Acquire)
     }
 
-    fn check_seq(&self, seq: usize, method: &str) {
-        let old_seq = self.seq.load(Ordering::Acquire);
-        if old_seq != seq {
-            panic!("item status: {} {} != {}", method, old_seq, seq);
-        }
-    }
-    fn seq_cas(&self, old: usize, new: usize, m: &str) {
+    #[inline(always)]
+    fn seq_cas(&self, old: usize, new: usize) {
         match self
             .seq
             .compare_exchange(old, new, Ordering::AcqRel, Ordering::Acquire)
         {
             Ok(_) => {}
-            Err(cur) => panic!(
-                "item status seq cas. {} => {} but found {} m:{}",
-                old, new, cur, m
-            ),
+            Err(cur) => panic!("item status seq cas. {} => {} but found {}", old, new, cur),
         }
     }
 
@@ -103,10 +96,10 @@ impl Item {
     // 3. 甚至有可能response已经返回了。
     // 只能是以上两种状态
     pub fn on_sent(&self, seq: usize) {
-        self.seq_cas(0, seq, "on_sent");
+        self.seq_cas(0, seq);
         log::debug!(
             "item status: on_sent. cid:{} seq:{} rid:{:?}",
-            self.id,
+            self._id,
             seq,
             self.request_id
         );
@@ -137,36 +130,9 @@ impl Item {
             self.unlock_waker();
             Poll::Pending
         }
-
-        //loop {
-        //    let status = self.status();
-        //    debug_assert_ne!(status, ItemStatus::Shutdown as u8);
-        //    if status == ItemStatus::ResponseReceived {
-        //        break;
-        //    }
-        //    // 进入waiting状态
-        //    if self.try_wake_lock() {
-        //        // double check
-        //        if status == ItemStatus::ResponseReceived {
-        //            self.unlock_waker();
-        //            break;
-        //        }
-        //        *self.waker.borrow_mut() = Some(cx.waker().clone());
-        //        self.unlock_waker();
-        //        return Poll::Pending;
-        //    }
-        //}
-        //// 响应已返回，开始读取。状态一旦进入Responsed状态，没有其他任何请求会变更。只有poll_read会变更
-        //// place_response先更新数据，后更新状态。不会有并发问题
-        //// 读数据
-        //let response = self.response.take();
-        //log::debug!("item status: read {:?}", response.location());
-        //let rid = self.request_id.take();
-
-        //Poll::Ready(ResponseData::from(response, rid, self.seq()))
     }
     pub fn place_response(&self, response: RingSlice, seq: usize) {
-        self.check_seq(seq, "place_response");
+        debug_assert_eq!(seq, self.seq());
         log::debug!("item status: write :{:?} ", response.location());
         self.response.replace(response);
 
@@ -204,7 +170,7 @@ impl Item {
             // 0会有qi歧义。因为seq是从0开始的。
             panic!("data race: responded status expected, but {} found", status);
         }
-        self.seq_cas(seq, 0, "done");
+        self.seq_cas(seq, 0);
     }
     #[inline]
     fn try_wake(&self) -> bool {
@@ -214,13 +180,13 @@ impl Item {
         if let Some(waker) = waker {
             log::debug!(
                 "item status: wakeup. id:{} status:{}",
-                self.id,
+                self._id,
                 self.status()
             );
             waker.wake();
             true
         } else {
-            log::debug!("item status: not waker found. {}", self.id);
+            log::debug!("item status: not waker found. {}", self._id);
             false
         }
     }
@@ -231,10 +197,7 @@ impl Item {
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         {
             Ok(_) => true,
-            Err(_) => {
-                log::debug!("item status: waker lock failed");
-                false
-            }
+            Err(_) => false,
         }
     }
     fn unlock_waker(&self) {
@@ -246,14 +209,15 @@ impl Item {
             Err(_) => panic!("item status: waker unlock failed"),
         }
     }
-    #[inline(always)]
+    #[inline]
     fn lock_waker(&self) {
         while !self.try_wake_lock() {
             std::hint::spin_loop();
         }
     }
+    #[inline(always)]
     pub(crate) fn status_init(&self) -> bool {
-        self.status.load(Ordering::Acquire) == ItemStatus::Init as u8
+        self.status() == ItemStatus::Init as u8
     }
     // 把所有状态设置为shutdown
     // 状态一旦变更为Shutdown，只有reset都会把状态从Shutdown变更为Init

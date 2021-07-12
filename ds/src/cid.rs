@@ -20,9 +20,8 @@ impl Drop for Cid {
     }
 }
 
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 pub struct Ids {
-    active: AtomicIsize,
     bits: Vec<AtomicBool>,
 }
 
@@ -30,7 +29,6 @@ impl Ids {
     pub fn with_capacity(cap: usize) -> Self {
         log::debug!("ids builded, cap:{}", cap);
         Self {
-            active: AtomicIsize::new(0),
             bits: (0..cap).map(|_| AtomicBool::new(false)).collect(),
         }
     }
