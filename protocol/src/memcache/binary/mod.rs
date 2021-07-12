@@ -33,7 +33,6 @@ const NOREPLY_MAPPING: [u8; 128] = [
 ];
 
 const REQUEST_MAGIC: u8 = 0x80;
-
 // 0x09: getq
 // 0x0d: getkq
 const MULT_GETS: [u8; 128] = [
