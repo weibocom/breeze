@@ -14,7 +14,8 @@ pub use response::*;
 pub use backend::{Backend, BackendBuilder, BackendStream};
 pub use mpmc::MpmcRingBufferStream as RingBufferStream;
 pub(crate) use req_handler::{
-    BridgeBufferToWriter, BridgeRequestToBuffer, RequestData, RequestHandler,
+    BridgeBufferToWriter, BridgeRequestToBackend, BridgeRequestToBuffer, RequestData,
+    RequestHandler,
 };
 pub(crate) use resp_handler::{BridgeResponseToLocal, ResponseHandler};
 
