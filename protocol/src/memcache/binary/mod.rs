@@ -63,6 +63,7 @@ impl MemcacheBinary {
             // 0xd是getq请求，说明当前请求是multiget请求，最后通常一个noop请求结束
             if op_code != OP_CODE_GETKQ {
                 let pos = read;
+                println!("++++parsed req: {:?}", req);
                 return (true, pos);
             }
         }
@@ -224,6 +225,11 @@ impl Protocol for MemcacheBinary {
 
             // get-multi的结尾是noop
             if origin[read + 1] == OP_CODE_NOOP {
+                if new_cmds.len() == 0 {
+                    //全部命中，不用构建新的cmd了
+                    println!("++++++++ all keys hited");
+                    return;
+                }
                 new_cmds.extend(&origin[read..read + HEADER_LEN]);
                 debug_assert_eq!(read + HEADER_LEN, avail);
                 println!("{} - 3-{:?}", i, new_cmds);
