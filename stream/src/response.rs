@@ -1,6 +1,7 @@
 use super::RingBufferStream;
 use ds::RingSlice;
-use protocol::RequestId;
+use ds::Slice;
+use protocol::{Protocol, RequestId};
 
 use std::sync::Arc;
 
@@ -22,12 +23,15 @@ impl ResponseData {
             seq: resp_seq,
         }
     }
+    #[inline(always)]
     pub fn data(&self) -> &RingSlice {
         &self.data
     }
+    #[inline(always)]
     pub fn rid(&self) -> &RequestId {
         &self.req_id
     }
+    #[inline(always)]
     pub fn seq(&self) -> usize {
         self.seq
     }
@@ -52,6 +56,7 @@ impl Response {
     pub fn append(&mut self, other: Response) {
         self.items.extend(other.items);
     }
+
     // 去掉消息的结尾部分
     pub fn cut_tail(&mut self, tail_size: usize) -> bool {
         if self.items.len() == 0 {
@@ -78,8 +83,13 @@ impl Response {
         }
         return true;
     }
-    pub(crate) fn into_items(self) -> Vec<Item> {
-        self.items
+
+    pub(crate) fn into_reader<P>(self, parser: &P) -> ResponseReader<'_, P> {
+        ResponseReader {
+            idx: 0,
+            items: self.items,
+            parser: parser,
+        }
     }
     pub fn len(&self) -> usize {
         let mut l = 0;
@@ -128,7 +138,57 @@ impl DerefMut for Item {
 }
 
 impl Item {
+    #[inline(always)]
     pub fn rid(&self) -> &RequestId {
         &self.data.req_id
+    }
+}
+
+pub(crate) struct ResponseReader<'a, P> {
+    idx: usize,
+    items: Vec<Item>,
+    parser: &'a P,
+}
+
+impl<'a, P> Iterator for ResponseReader<'a, P>
+where
+    P: Protocol,
+{
+    type Item = Slice;
+    fn next(&mut self) -> Option<Self::Item> {
+        let len = self.items.len();
+        while self.idx < len {
+            let item = unsafe { self.items.get_unchecked_mut(self.idx) };
+            let eof = self.parser.trim_eof(&item);
+            let avail = item.available();
+            if avail > 0 {
+                if self.idx < len - 1 {
+                    if avail > eof {
+                        let mut data = item.take_slice();
+                        if item.available() < eof {
+                            data.backwards(eof - item.available());
+                        }
+                        return Some(data);
+                    }
+                } else {
+                    return Some(item.take_slice());
+                }
+            }
+            self.idx += 1;
+        }
+        None
+    }
+}
+impl<'a, P> ResponseReader<'a, P>
+where
+    P: Protocol,
+{
+    #[inline]
+    pub fn available(&self) -> usize {
+        let mut len = 0;
+        for i in self.idx..self.items.len() {
+            len += unsafe { self.items.get_unchecked(i).available() };
+        }
+        len
     }
 }

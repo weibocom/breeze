@@ -1,4 +1,4 @@
-//use cache_line_size::CacheAligned;
+use cache_line_size::CacheAligned;
 use crossbeam_queue::{ArrayQueue, SegQueue};
 
 use std::cell::Cell;
@@ -7,11 +7,11 @@ use std::collections::HashMap;
 
 /// 无锁，支持并发更新offset，按顺序读取offset的数据结构
 pub struct SeqOffset {
-    // 只有一个线程访问
-    offset: Cell<usize>,
     l2: ArrayQueue<(usize, usize)>,
     l3: SegQueue<(usize, usize)>,
-    seqs: Cell<HashMap<usize, usize>>,
+    // 只有一个线程访问
+    offset: CacheAligned<Cell<usize>>,
+    seqs: CacheAligned<Cell<HashMap<usize, usize>>>,
 }
 
 impl SeqOffset {
@@ -19,10 +19,10 @@ impl SeqOffset {
         debug_assert!(cap >= 1);
         //let cache = (0..cap).map(|_| CacheAligned(Item::new())).collect();
         Self {
-            offset: Cell::new(0),
             l2: ArrayQueue::new(cap * 4),
             l3: SegQueue::new(),
-            seqs: Cell::new(HashMap::with_capacity(cap)),
+            offset: CacheAligned(Cell::new(0)),
+            seqs: CacheAligned(Cell::new(HashMap::with_capacity(cap))),
         }
     }
     // 插入一个span, [start, end)。
@@ -30,6 +30,7 @@ impl SeqOffset {
     // 否则将span临时存储下来。
     // TODO 临时存储空间可能会触发OOM
     // end > start
+    #[inline(always)]
     pub fn insert(&self, start: usize, end: usize) {
         log::debug!("offset: {} => {}", start, end);
         debug_assert!(end > start);
@@ -40,11 +41,12 @@ impl SeqOffset {
     }
 
     // load offset, [0.. offset)都已经调用insert被相应的span全部填充
+    #[inline(always)]
     pub fn load(&self) -> usize {
         log::debug!("offset: loading");
-        let mut offset = self.offset.get();
+        let mut offset = self.offset.0.get();
         use std::mem::transmute;
-        let seqs: &mut HashMap<usize, usize> = unsafe { transmute(self.seqs.as_ptr()) };
+        let seqs: &mut HashMap<usize, usize> = unsafe { transmute(self.seqs.0.as_ptr()) };
         while let Some((start, end)) = self.l2.pop() {
             if offset == start {
                 offset = end;
@@ -62,7 +64,7 @@ impl SeqOffset {
         while let Some(end) = seqs.remove(&offset) {
             offset = end;
         }
-        self.offset.replace(offset);
+        self.offset.0.replace(offset);
         log::debug!("offset: loaded = {}", offset);
         offset
     }

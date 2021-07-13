@@ -14,6 +14,7 @@ pub(super) struct Sender {
     // 避免往buffer writer写的时候，阻塞导致Response Buffer的资源无法释放(buffer full)，影响其他请求。
     idx: usize,
     buff: Vec<u8>,
+    bytes: usize,
 }
 
 impl Sender {
@@ -21,6 +22,7 @@ impl Sender {
         Self {
             buff: Vec::with_capacity(2048),
             idx: 0,
+            bytes: 0,
         }
     }
     pub fn poll_copy_one<R, W, P>(
@@ -36,14 +38,30 @@ impl Sender {
         W: AsyncWrite + ?Sized,
         P: Protocol,
     {
-        if self.buff.len() == 0 {
+        // cache里面有数据，当前请求是上一次pending触发
+        if self.buff.len() > 0 {
+            self.flush(cx, w, rid)
+        } else {
             log::debug!("io-sender-poll: poll response from agent. {:?}", rid);
             let response = ready!(r.as_mut().poll_next(cx))?;
             log::debug!("io-sender-poll: response polled. {:?}", rid);
             // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
-            self.cache(response, parser, rid)?;
-            log::debug!("io-sender-poll: response buffered. {:?}", rid);
+            ready!(self.write_to(response, cx, w.as_mut(), parser, rid))?;
+            let bytes = self.bytes;
+            self.bytes = 0;
+            Poll::Ready(Ok(bytes))
         }
+    }
+    #[inline(always)]
+    fn flush<W>(
+        &mut self,
+        cx: &mut Context,
+        mut w: Pin<&mut W>,
+        rid: &RequestId,
+    ) -> Poll<Result<usize>>
+    where
+        W: AsyncWrite + ?Sized,
+    {
         log::debug!(
             "io-sender: flushing idx:{} len:{} {:?}",
             self.idx,
@@ -52,59 +70,81 @@ impl Sender {
         );
         while self.idx < self.buff.len() {
             let n = ready!(w.as_mut().poll_write(cx, &self.buff[self.idx..]))?;
+            self.bytes += n;
             if n == 0 {
                 return Poll::Ready(Err(Error::new(ErrorKind::WriteZero, "write zero response")));
             }
             self.idx += n;
         }
         ready!(w.as_mut().poll_flush(cx))?;
-        log::debug!(
-            "io-sender-poll response flushed. len:{} {:?} ",
-            self.idx,
-            rid
-        );
-        let bytes = self.idx;
         self.idx = 0;
         unsafe {
             self.buff.set_len(0);
         }
-        Poll::Ready(Ok(bytes))
+        let bytes = self.bytes;
+        self.bytes = 0;
+        return Poll::Ready(Ok(bytes));
     }
-    fn cache<P>(&mut self, response: Response, parser: &P, rid: &RequestId) -> Result<()>
+    // 先直接写w，直到pending，将剩下的数据写入到cache
+    // 返回直接写入到client的字节数
+    fn write_to<W, P>(
+        &mut self,
+        response: Response,
+        cx: &mut Context,
+        mut w: Pin<&mut W>,
+        parser: &P,
+        rid: &RequestId,
+    ) -> Poll<Result<()>>
     where
+        W: AsyncWrite + ?Sized,
         P: Protocol,
     {
-        let l = response.len();
-        self.reserve(l);
-        let mut items = response.into_items();
-        let i_l = items.len();
-        log::debug!("io-sender: cache bytes:{} items:{} {:?}", l, i_l, rid);
-        for (i, item) in items.iter_mut().enumerate() {
-            debug_assert_eq!(item.rid(), rid);
-            let eof = parser.trim_eof(&item);
-            debug_assert!(item.available() >= eof);
-            if self.buff.len() + item.available() > protocol::MAX_SENT_BUFFER_SIZE {
-                return Err(Error::new(
-                    ErrorKind::Unsupported,
-                    "response size over limited.",
-                ));
-            }
-            while item.available() > 0 {
-                let data = item.next_slice();
-                self.put_slice(data.data());
-                item.advance(data.len());
-            }
-            // 前n-1个item需要trim掉eof
-            if i < i_l - 1 {
-                let l = self.buff.len() - eof;
-                unsafe {
-                    self.buff.set_len(l);
+        let reader = response.into_reader(parser);
+
+        // true: 直接往client写
+        // false: 往cache写
+        let mut direct = true;
+        let mut left = reader.available();
+        for slice in reader {
+            if direct {
+                match w.as_mut().poll_write(cx, slice.data())? {
+                    Poll::Ready(n) => {
+                        left -= n;
+                        self.bytes += n;
+                        if n == 0 {
+                            return Poll::Ready(Err(Error::new(
+                                ErrorKind::WriteZero,
+                                "write zero bytes to client",
+                            )));
+                        }
+                        // 一次未写完。不再尝试, 需要快速释放response中的item
+                        if n != slice.len() {
+                            self.reserve(left);
+                            self.put_slice(&slice.data()[n..]);
+                            direct = false;
+                            break;
+                        }
+                    }
+                    Poll::Pending => {
+                        self.reserve(left);
+                        self.put_slice(&slice.data());
+                        direct = false;
+                        break;
+                    }
                 }
+            } else {
+                self.put_slice(slice.data());
             }
         }
+        ready!(w.as_mut().poll_flush(cx))?;
 
-        drop(items);
-        Ok(())
+        if !direct {
+            log::debug!("io-sender-poll: response buffered. {:?}", rid);
+            Poll::Pending
+        } else {
+            log::debug!("io-sender-poll: response direct. {:?}", rid);
+            Poll::Ready(Ok(()))
+        }
     }
     #[inline]
     fn reserve(&mut self, l: usize) {

@@ -109,9 +109,9 @@ where
             );
             *sent = false;
             rid.incr();
-            let cost = request_start.elapsed().as_micros();
-            MetricsSender::avg("cost".parse().unwrap(), cost as usize);
-            MetricsSender::sum("count".parse().unwrap(), 1 as usize);
+            //let cost = request_start.elapsed().as_micros();
+            //MetricsSender::avg("cost".parse().unwrap(), cost as usize);
+            //MetricsSender::sum("count".parse().unwrap(), 1 as usize);
         }
 
         Poll::Ready(Ok((0, 0)))
