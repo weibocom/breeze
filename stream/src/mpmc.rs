@@ -10,8 +10,8 @@ use ds::{RingBuffer, RingSlice, SeqOffset};
 use super::status::*;
 use super::RequestData;
 use crate::{
-    BridgeBufferToWriter, BridgeRequestToBuffer, BridgeResponseToLocal, Request, RequestHandler,
-    ResponseData, ResponseHandler,
+    BridgeBufferToWriter, BridgeRequestToBackend, BridgeRequestToBuffer, BridgeResponseToLocal,
+    Request, RequestHandler, ResponseData, ResponseHandler,
 };
 
 use protocol::Protocol;
@@ -228,29 +228,35 @@ impl MpmcRingBufferStream {
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         self.check_bridge();
-        log::debug!("request buffer size:{}", req_buffer);
-        let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
+        //log::debug!("request buffer size:{}", req_buffer);
+        //let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
         // 把数据从request同步到buffer
         let receiver = self.receiver.borrow_mut().take().expect("receiver exists");
+        //Self::start_bridge(
+        //    self.clone(),
+        //    builder.clone(),
+        //    "bridge-request-to-buffer",
+        //    BridgeRequestToBuffer::from(receiver, self.clone(), req_rb_writer, self.done.clone()),
+        //);
+        ////// 把数据从buffer发送数据到,server
+        //Self::start_bridge(
+        //    self.clone(),
+        //    builder.clone(),
+        //    "bridge-buffer-to-backend",
+        //    BridgeBufferToWriter::from(req_rb_reader, w, self.done.clone(), builder.clone()),
+        //);
         Self::start_bridge(
             self.clone(),
             builder.clone(),
-            "bridge-request-to-buffer",
-            BridgeRequestToBuffer::from(receiver, self.clone(), req_rb_writer, self.done.clone()),
-        );
-        //// 把数据从buffer发送数据到,server
-        Self::start_bridge(
-            self.clone(),
-            builder.clone(),
-            "bridge-buffer-to-backend",
-            BridgeBufferToWriter::from(req_rb_reader, w, self.done.clone(), builder.clone()),
+            "bridge-send-req",
+            BridgeRequestToBackend::from(req_buffer, self.clone(), receiver, w, self.done.clone()),
         );
 
         //// 从response读取数据写入items
         Self::start_bridge(
             self.clone(),
             builder.clone(),
-            "bridge-backend-to-local",
+            "bridge-recv-response",
             BridgeResponseToLocal::from(
                 r,
                 self.clone(),

@@ -19,14 +19,22 @@ impl Slice {
     pub fn data(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.ptr as *const u8, self.len) }
     }
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.len
     }
+    #[inline(always)]
     pub fn as_ptr(&self) -> *const u8 {
         self.ptr as *const u8
     }
+    #[inline(always)]
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
         self.ptr as *mut u8
+    }
+    #[inline(always)]
+    pub fn backwards(&mut self, n: usize) {
+        debug_assert!(self.len >= n);
+        self.len -= n;
     }
 }
 
