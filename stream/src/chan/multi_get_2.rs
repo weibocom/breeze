@@ -127,6 +127,9 @@ where
                     &found_keys,
                     &mut new_req_data,
                 );
+                if new_req_data.len() == 0 {
+                    break;
+                }
                 // me.request_ref =
                 //     Request::from(new_req_data.as_slice(), me.request_ref.id().clone());
                 me.request_ref.update_data(new_req_data.as_slice());

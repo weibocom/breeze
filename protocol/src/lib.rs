@@ -66,6 +66,7 @@ impl Protocols {
     }
 }
 
+#[derive(Debug)]
 pub enum MetaType {
     Version,
 }

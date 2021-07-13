@@ -138,7 +138,7 @@ impl<P> Topology<P> {
             if layer.len() == 1 {
                 readers.push(layer[0].clone());
             } else if layer.len() > 1 {
-                let rd = rand::thread_rng().gen_range(0..layer.len());
+                let rd = rand::thread_rng().gen_range(0, layer.len());
                 readers.push(layer[rd].clone())
             } else {
                 log::debug!(" +++ should not come here!!");

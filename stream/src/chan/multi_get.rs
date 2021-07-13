@@ -65,7 +65,7 @@ where
         }
         me.idx = 0;
         if success {
-            log::debug!("========== write req: {:?}", buf.deref().data());
+            log::debug!("========== writed req: {:?}", buf.deref().data());
             Poll::Ready(Ok(()))
         } else {
             Poll::Ready(Err(last_err.unwrap_or_else(|| {

@@ -43,6 +43,7 @@ where
     P: Protocol,
 {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
+        println!(" set req: {:?}", buf.data());
         let me = &mut *self;
         if !me.master_done {
             ready!(Pin::new(&mut me.master).poll_write(cx, buf))?;
