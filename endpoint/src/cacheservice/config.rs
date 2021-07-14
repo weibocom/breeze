@@ -62,9 +62,11 @@ impl Namespace {
             readers.push(self.slave_l1.clone());
         }
 
-        println!(
-            "========= master:{:?}, followers:{:?}, readers:{:?}",
-            master, followers, readers
+        log::debug!(
+            "config parsed rs: master:{:?}, followers:{:?}, readers:{:?}",
+            master,
+            followers,
+            readers
         );
 
         (master, followers, readers, self.hash)

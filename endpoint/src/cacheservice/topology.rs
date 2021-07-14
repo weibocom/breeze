@@ -141,7 +141,7 @@ impl<P> Topology<P> {
                 let rd = rand::thread_rng().gen_range(0, layer.len());
                 readers.push(layer[rd].clone())
             } else {
-                log::debug!(" +++ should not come here!!");
+                log::warn!("topolody - rand readers should has candidates!");
             }
         }
         readers

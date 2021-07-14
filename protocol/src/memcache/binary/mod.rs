@@ -76,7 +76,6 @@ impl MemcacheBinary {
             // 0xd是getq请求，说明当前请求是multiget请求，最后通常一个noop请求结束
             if !self.is_multi_get(op_code) {
                 let pos = read;
-                println!("++++parsed req: {:?}", req);
                 return (true, pos);
             }
         }
@@ -223,24 +222,20 @@ impl Protocol for MemcacheBinary {
         let avail = origin.len();
 
         let mut i = 0;
-        println!("{} - 0-{:?}", i, current_cmds.data());
         loop {
             i += 1;
             // noop 是24 bytes
             debug_assert!(read + HEADER_LEN <= avail);
             debug_assert_eq!(origin[read], 0x80);
-            log::debug!("{} - 1-{:?}", i, new_cmds);
 
             // get-multi的结尾是noop
             if origin[read + 1] == OP_CODE_NOOP {
                 if new_cmds.len() == 0 {
                     //全部命中，不用构建新的cmd了
-                    println!("++++++++ all keys hited");
                     return;
                 }
                 new_cmds.extend(&origin[read..read + HEADER_LEN]);
                 debug_assert_eq!(read + HEADER_LEN, avail);
-                println!("{} - 3-{:?}", i, new_cmds);
                 return;
             }
 
@@ -255,7 +250,6 @@ impl Protocol for MemcacheBinary {
             let mut key_data = Vec::new();
             key_data.extend_from_slice(&origin[extra_pos..extra_pos + key_len]);
             let key = String::from_utf8(key_data).unwrap_or_default();
-            println!("{} - cmd key: {:?}, found_keys: {:?}", i, key, found_keys);
             if found_keys.contains(&key) {
                 // key 已经命中，略过
                 read += len;
@@ -265,7 +259,6 @@ impl Protocol for MemcacheBinary {
             // 该key miss，将其cmd写入new_cmds
             new_cmds.extend(&origin[read..read + len]);
             read += len;
-            println!("{} - 2-{:?}", i, new_cmds);
         }
     }
 

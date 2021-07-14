@@ -38,15 +38,14 @@ impl Request {
     pub fn id(&self) -> &RequestId {
         &self.id
     }
-
-    pub fn update_data(&mut self, data: &[u8]) {
-        self.inner = Slice::from(data);
-    }
     pub fn set_noreply(&mut self) {
         self.noreply = true;
     }
     pub fn noreply(&self) -> bool {
         self.noreply
+    }
+    pub fn data(&self) -> &[u8] {
+        return self.inner.data();
     }
 }
 
