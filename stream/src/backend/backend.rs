@@ -51,7 +51,6 @@ impl AsyncReadAll for Backend {
 impl AsyncWriteAll for Backend {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &*self;
-        println!("++++++++++++ in backend, req: {:?}", buf.deref().data());
         me.inner.poll_write(me.id.id(), cx, buf)
     }
 }

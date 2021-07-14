@@ -28,7 +28,8 @@ impl RequestData {
     }
     // TODO debug完毕后，去掉pub
     pub fn data(&self) -> &[u8] {
-        &self.data.data()
+        //&self.data.data()
+        &self.data.inner.data()
     }
     fn cid(&self) -> usize {
         self.id
@@ -85,7 +86,7 @@ where
         let me = &mut *self;
         let mut writer = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Relaxed) {
-            log::debug!("req-handler-writer: bridage buffer to backend.");
+            log::debug!("req-handler-writer: bridge buffer to backend.");
             let buff = match me.reader.poll_next(cx)? {
                 Poll::Ready(buff) => buff,
                 Poll::Pending => {
@@ -96,7 +97,6 @@ where
             debug_assert!(!buff.is_empty());
             log::debug!("req-handler-writer: send buffer {} ", buff.len());
             let num = ready!(writer.as_mut().poll_write(cx, buff))?;
-            println!("=====222=== in req_handler buf-to-writer: req:{:?}", buff);
             debug_assert!(num > 0);
             log::debug!("req-handler-writer: {} bytes sent", num);
             me.reader.consume(num);
@@ -146,7 +146,6 @@ where
         while !me.done.load(Ordering::Relaxed) {
             if let Some(ref req) = me.cache {
                 let data = req.data();
-                println!("====11111==== in req_handler req-to-buff: req:{:?}", data);
                 log::debug!(
                     "req-handler-buffer: received. cid: {} len:{} rid:{:?}",
                     req.cid(),
@@ -159,7 +158,6 @@ where
                     me.r.on_received(req.cid(), me.seq);
                 }
                 me.w.poll_put_no_check(data)?;
-                println!("====22222==== in req_handler req-to-buff: req:{:?}", data);
                 log::debug!(
                     "req-handler-buffer: received and write to buffer. len:{} id:{} seq:{}, rid:{:?}",
                     req.data().len(),
@@ -181,13 +179,6 @@ where
                 break;
             }
             me.cache = result;
-
-            // just for debug
-            let tmp = me.cache.clone();
-            println!(
-                "====000000000==== in req_handler req-to-buff: req:{:?}",
-                tmp.unwrap().data()
-            );
             log::debug!("req-handler-buffer: one request received from request channel");
         }
         Poll::Ready(Ok(()))
@@ -241,7 +232,7 @@ where
             if let Some(ref req) = me.cache {
                 let data = req.data();
                 log::debug!(
-                    "req-handler: writeing to backend. cid: {} len:{} rid:{:?} offset:{}",
+                    "req-handler: writing to backend. cid: {} len:{} rid:{:?} offset:{}",
                     req.cid(),
                     req.data().len(),
                     req.rid(),
@@ -250,12 +241,11 @@ where
                 while me.offset < data.len() {
                     let n = ready!(w.as_mut().poll_write(cx, &data[me.offset..]))?;
                     log::debug!(
-                        "req-handler: {} bytes written . cid: {} len:{} rid:{:?}, {:?}",
+                        "req-handler: {} bytes written . cid: {} len:{} rid:{:?}",
                         n,
                         req.cid(),
                         req.data().len(),
-                        req.rid(),
-                        &data[me.offset..n]
+                        req.rid()
                     );
                     me.offset += n;
                 }

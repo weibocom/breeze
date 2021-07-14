@@ -1,139 +1,172 @@
-/// 按一次获取多个key的请求时，类似memcache与redis的gets时，一种
-/// 方式是把keys解析出来，然后分发分发给不同的shards；另外一种方
-/// 式是把所有的keys发送给所有的后端，然后合并。这种方式没有keys
-/// 的解析，会更加高效。适合到shards的分片不多的场景，尤其是一般
-/// 一个keys的请求req通常只包含key，所以额外的load会比较低。
-/// 发送给所有sharding的请求，有一个成功，即认定为成功。
-
-// TODO 这个文件改为 multi_get_sharding? 待和@icy 确认 fishermen
-// 思路： multi_get_sharding 是一种特殊的用于multi get 的shard读取，但支持单层，需要进一步封装为多层访问
-
-pub struct AsyncMultiGetSharding<S, P> {
-    // 当前从哪个shard开始发送请求
-    idx: usize,
-    // 成功发送请求的shards
-    writes: Vec<bool>,
-    shards: Vec<S>,
-    _parser: P,
-    response: Option<Response>,
-    eof: usize,
-}
+// 封装multi_get.rs，当前的multi_get是单层访问策略，需要封装为多层
+// TODO： 有2个问题：1）单层访问改多层，封装multiGetSharding? 2) 需要解析key。如果需要解析key，那multiGetSharding还有存在的价值吗？
+// 分两步：1）在multi get中，解析多个cmd/key 以及对应的response，然后多层穿透访问；
+//        2）将解析req迁移到pipelineToPingPong位置,同时改造req buf。
+// TODO：下一步改造：1）支持根据keys来自定义访问指令；2）getmulit在layer层按key hash。
 
 use std::io::{Error, ErrorKind, Result};
-use std::ops::Deref;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
-use protocol::Protocol;
+use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use protocol::{Protocol, Request};
 
 use futures::ready;
 
-impl<S, P> AsyncMultiGetSharding<S, P> {
-    pub fn from_shard(shards: Vec<S>, p: P) -> Self {
-        Self {
-            idx: 0,
-            writes: vec![false; shards.len()],
-            shards: shards,
-            _parser: p,
-            response: None,
-            eof: 0,
-        }
-    }
+const REQUEST_BUFF_MAX_LEN: usize = 5000;
+pub struct AsyncMultiGet<L, P> {
+    // 当前从哪个layer开始发送请求
+    idx: usize,
+    layers: Vec<L>,
+    request_ref: Request,
+    request_rebuild_buf: Vec<u8>,
+    response: Option<Response>,
+    parser: P,
 }
 
-impl<S, P> AsyncWriteAll for AsyncMultiGetSharding<S, P>
+impl<L, P> AsyncMultiGet<L, P>
 where
-    S: AsyncWriteAll + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + Unpin,
     P: Unpin,
 {
-    // 只要有一个shard成功就算成功,如果所有的都写入失败，则返回错误信息。
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
-        log::debug!("multi get poll write received.");
-        let me = &mut *self;
-        let offset = me.idx;
-        let mut success = false;
-        let mut last_err = None;
-        for i in offset..me.shards.len() {
-            me.writes[i] = false;
-            match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_write(cx, buf)) {
-                Err(e) => last_err = Some(e),
-                _ => success = true,
+    pub fn from_layers(layers: Vec<L>, p: P) -> Self {
+        Self {
+            idx: 0,
+            layers,
+            request_ref: Default::default(),
+            request_rebuild_buf: Vec::new(),
+            response: None,
+            parser: p,
+        }
+    }
+
+    // 发送请求，将current cmds发送到所有mc，如果失败，继续向下一层write，注意处理重入问题
+    // ready! 会返回Poll，所以这里还是返回Poll了
+    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        let mut idx = self.idx;
+        debug_assert!(idx < self.layers.len());
+
+        // 当前layer的reader发送请求，直到发送成功
+        while idx < self.layers.len() {
+            let reader = unsafe { self.layers.get_unchecked_mut(idx) };
+            match ready!(Pin::new(reader).poll_write(cx, &self.request_ref)) {
+                Ok(_) => return Poll::Ready(Ok(())),
+                Err(e) => {
+                    self.idx += 1;
+                    idx = self.idx;
+                    log::debug!("write req failed e:{:?}", e);
+                }
             }
-            me.writes[i] = true;
-            me.idx += 1;
         }
-        me.idx = 0;
-        if success {
-            log::debug!("========== writed req: {:?}", buf.deref().data());
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Ready(Err(last_err.unwrap_or_else(|| {
-                Error::new(ErrorKind::Other, "no request sent.")
-            })))
+
+        // write req到所有资源失败，reset并返回err
+        self.reset();
+        Poll::Ready(Err(Error::new(
+            ErrorKind::NotConnected,
+            "cannot write multi-reqs to all resources",
+        )))
+    }
+
+    // 请求处理完毕，进行reset
+    fn reset(&mut self) {
+        self.idx = 0;
+        self.response = None;
+        // 如果buff太大，释放重建
+        if self.request_rebuild_buf.len() > REQUEST_BUFF_MAX_LEN {
+            self.request_rebuild_buf = Vec::new();
         }
+        self.request_rebuild_buf.clear();
     }
 }
 
-impl<S, P> AsyncReadAll for AsyncMultiGetSharding<S, P>
+impl<L, P> AsyncWriteAll for AsyncMultiGet<L, P>
 where
-    S: AsyncReadAll + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + Unpin,
+    P: Unpin,
+{
+    // 请求某一层
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, req: &Request) -> Poll<Result<()>> {
+        self.request_ref = req.clone();
+        return self.do_write(cx);
+    }
+}
+
+impl<L, P> AsyncReadAll for AsyncMultiGet<L, P>
+where
+    L: AsyncReadAll + AsyncWriteAll + Unpin,
     P: Unpin + Protocol,
 {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
+        debug_assert!(me.idx < me.layers.len());
         let mut last_err = None;
-        let offset = me.idx;
-        log::debug!(
-            "+++++++=========== in getMulti layer: {}, all:{}",
-            offset,
-            me.shards.len()
-        );
-        for i in offset..me.shards.len() {
-            log::debug!(
-                "+++++++=========== in getMulti layer writed:{}",
-                me.writes[i]
-            );
-            if me.writes[i] {
-                let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(i) });
-                match ready!(r.as_mut().poll_next(cx)) {
-                    Err(e) => {
-                        log::debug!("+++++++layer - err:{:?}", e);
-                        last_err = Some(e);
+
+        while me.idx < me.layers.len() {
+            let mut found_keys = Vec::new();
+            let layer = unsafe { me.layers.get_unchecked_mut(me.idx) };
+            match ready!(Pin::new(layer).poll_next(cx)) {
+                Ok(item) => {
+                    // 轮询出已经查到的keys
+                    me.parser.scan_response_keys(&item, &mut found_keys);
+                    match me.response.as_mut() {
+                        Some(response) => response.append(item),
+                        None => me.response = Some(item),
                     }
-                    Ok(response) => match me.response.as_mut() {
-                        Some(item) => {
-                            log::debug!(
-                                "+++++++layer - found resp for multi-get, len:{}",
-                                item.items.len()
-                            );
-                            // 之前的response中包含一个noop结尾消息，需要去掉
-                            // item.cut_tail(me._parser.tail_size_for_multi_get());
-                            item.append(response);
-                        }
-                        None => {
-                            log::debug!(
-                                "+++++++layer - first found resp for multi-get, len:{}",
-                                response.items.len()
-                            );
-                            me.response = Some(response);
-                        }
-                    },
+                }
+                Err(e) => {
+                    log::warn!("get-multi found err: {:?}", e);
+                    last_err = Some(e);
                 }
             }
+
             me.idx += 1;
+            if me.idx >= me.layers.len() {
+                break;
+            }
+
+            // 重新构建request cmd，再次请求，生命周期考虑，需要外部出入buf来构建新请求指令
+            if found_keys.len() > 0 {
+                // 每次重建request，先清理buff
+                me.request_rebuild_buf.clear();
+                me.parser.rebuild_get_multi_request(
+                    &me.request_ref,
+                    &found_keys,
+                    &mut me.request_rebuild_buf,
+                );
+                // 如果所有请求全部全部命中，新指令长度为0
+                if me.request_rebuild_buf.len() == 0 {
+                    break;
+                }
+
+                me.request_ref = Request::from(
+                    me.request_rebuild_buf.as_slice(),
+                    me.request_ref.id().clone(),
+                );
+                // 及时清理
+                found_keys.clear();
+
+                log::debug!("rebuild req for get-multi: {:?}", me.request_ref.data());
+            }
+
+            match ready!(me.do_write(cx)) {
+                Ok(()) => continue,
+                Err(e) => {
+                    log::warn!("found err when resend layer request:{:?}", e);
+                    last_err = Some(e);
+                    break;
+                }
+            }
         }
-        me.idx = 0;
-        me.eof = 0;
-        me.response
-            .take()
-            .map(|item| {
-                log::debug!("+++++++ response item size: {}", item.items.len());
-                return Poll::Ready(Ok(item));
-            })
+
+        // 先拿走response，然后重置，最后返回响应列表
+        let response = me.response.take();
+        // 请求完毕，重置
+        me.reset();
+        response
+            .map(|item| Poll::Ready(Ok(item)))
             .unwrap_or_else(|| {
                 Poll::Ready(Err(last_err.unwrap_or_else(|| {
-                    Error::new(ErrorKind::Other, "all poll read failed in layer")
+                    Error::new(ErrorKind::Other, "all poll read failed")
                 })))
             })
     }
