@@ -56,7 +56,7 @@ impl MpmcRingBufferStream {
     // id必须小于parallel
     pub fn with_capacity(parallel: usize, done: Arc<AtomicBool>) -> Self {
         let parallel = parallel.next_power_of_two();
-        assert!(parallel <= 64);
+        assert!(parallel <= super::MAX_CONNECTIONS);
         let items = (0..parallel).map(|id| Item::new(id)).collect();
         let seq_cids = (0..parallel)
             .map(|_| CacheAligned(AtomicUsize::new(0)))
