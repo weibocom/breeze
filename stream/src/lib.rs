@@ -49,3 +49,5 @@ pub trait AsyncReadAll {
 }
 //impl AsyncWriteAll for tokio::net::TcpStream {}
 //impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}
+
+pub const MAX_CONNECTIONS: usize = 256;
