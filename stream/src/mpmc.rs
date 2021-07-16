@@ -268,8 +268,8 @@ impl MpmcRingBufferStream {
     {
         let runnings = self.runnings.clone();
         tokio::spawn(async move {
-            runnings.fetch_add(1, Ordering::AcqRel);
-            log::debug!("{} bridge task started", _name);
+            runnings.fetch_add(1, Ordering::Release);
+            log::debug!("{} bridge task started, runnings = {}", _name, runnings.load(Ordering::Acquire));
             match future.await {
                 Ok(_) => {
                     log::debug!("{} bridge task complete", _name);
@@ -278,8 +278,8 @@ impl MpmcRingBufferStream {
                     log::debug!("{} bridge task complete with error:{:?}", _name, e);
                 }
             };
-            runnings.fetch_add(-1, Ordering::AcqRel);
-            log::debug!("{} bridge task completed", _name);
+            runnings.fetch_add(-1, Ordering::Release);
+            log::debug!("{} bridge task completed, runnings = {}", _name, runnings.load(Ordering::Acquire));
         });
     }
 
@@ -331,6 +331,7 @@ impl MpmcRingBufferStream {
     // 不会再有额外的线程来更新items信息
     fn reset_item_status(&self) {
         for item in self.items.iter() {
+            item.shutdown();
             item.reset();
         }
     }
@@ -342,7 +343,7 @@ impl MpmcRingBufferStream {
     // 3. 关闭senders的channel
     // 4. 重新初始化senders与receivers
     pub fn reset(&self) -> bool {
-        debug_assert!(self.done.load(Ordering::Acquire));
+        debug_assert!(!self.done.load(Ordering::Acquire));
         let runnings = self.runnings.load(Ordering::Acquire);
         debug_assert!(runnings >= 0);
         self.done.store(true, Ordering::Release);
