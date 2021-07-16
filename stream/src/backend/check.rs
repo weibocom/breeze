@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 static RECONNECT_ERROR_CAP: usize = 5 as usize;
+static RECONNECT_ERROR_WINDOW: u64 = 30 as u64;
 
 enum BackendErrorType {
     ConnError = 0 as isize,
@@ -191,7 +192,7 @@ impl BackendChecker {
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        let mut reconnect_error = BackendErrorCounter::new(60 as u64, BackendErrorType::ConnError);
+        let mut reconnect_error = BackendErrorCounter::new(RECONNECT_ERROR_WINDOW, BackendErrorType::ConnError);
         log::info!("come into check");
         while !self.inner.finished.load(Ordering::Acquire) {
             self.check_reconnected_once(parser.clone(), &mut reconnect_error).await;
@@ -213,9 +214,7 @@ impl BackendChecker {
                 self.inner.clone().reconnect();
                 //self.inner.clone().read().unwrap().done.store(false, Ordering::Release);
             }
-            Err(_) => {
-                log::info!("no need to reconnect");
-            }
+            Err(_) => {}
         }
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
         let connected = self.inner.connected.load(Ordering::Acquire);
