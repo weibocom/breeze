@@ -5,6 +5,13 @@ use protocol::Protocol;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+static RECONNECT_ERROR_CAP: usize = 5 as usize;
+
+enum BackendErrorType {
+    ConnError = 0 as isize,
+    RequestError,
+}
+
 pub struct BackendBuilder {
     connected: Arc<AtomicBool>,
     finished: Arc<AtomicBool>,
@@ -92,9 +99,11 @@ impl BackendBuilder {
 
 use std::sync::RwLock;
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant, UNIX_EPOCH, SystemTime};
 use tokio::runtime::Runtime;
 use tokio::time::{interval, Interval};
+use std::collections::LinkedList;
+use std::net::SocketAddr;
 
 pub struct BackendWaker {
     check_task: Option<std::thread::JoinHandle<()>>,
@@ -108,6 +117,53 @@ impl BackendWaker {
     fn wake(&self) {
         if self.check_task.is_some() {
             self.check_task.as_ref().unwrap().thread().unpark();
+        }
+    }
+}
+
+pub struct BackendErrorCounter {
+    error_window_size: u64,
+    error_count: usize,
+    error_type: BackendErrorType,
+    error_time_list: LinkedList<(u64, usize)>,
+    error_total_value: usize,
+}
+
+impl BackendErrorCounter {
+    fn new(error_window_size: u64, error_type: BackendErrorType) -> BackendErrorCounter {
+        BackendErrorCounter {
+            error_window_size,
+            error_count: 0 as usize,
+            error_type,
+            error_time_list: LinkedList::new(),
+            error_total_value: 0 as usize,
+        }
+    }
+
+    fn add_error(&mut self, error_value: usize) {
+        let current = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        self.judge_window();
+        self.error_total_value += error_value;
+        self.error_time_list.push_back((current, error_value));
+        self.error_count += 1;
+    }
+
+    fn judge_error(&mut self, error_cap: usize) -> bool {
+        self.judge_window();
+        self.error_total_value >= error_cap
+    }
+
+    fn judge_window(&mut self) {
+        let current = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        while !self.error_time_list.is_empty() {
+            if self.error_time_list.front().unwrap().0.lt(&(current - self.error_window_size)) {
+                self.error_total_value -= self.error_time_list.front().unwrap().1;
+                self.error_time_list.pop_front();
+                self.error_count -= 1;
+            }
+            else {
+                break;
+            }
         }
     }
 }
@@ -135,9 +191,10 @@ impl BackendChecker {
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
+        let mut reconnect_error = BackendErrorCounter::new(60 as u64, BackendErrorType::ConnError);
         log::info!("come into check");
         while !self.inner.finished.load(Ordering::Acquire) {
-            self.check_reconnected_once(parser.clone()).await;
+            self.check_reconnected_once(parser.clone(), &mut reconnect_error).await;
             std::thread::park_timeout(Duration::from_millis(1000 as u64));
         }
         if !self.inner.stream.clone().is_complete() {
@@ -146,7 +203,7 @@ impl BackendChecker {
         }
     }
 
-    async fn check_reconnected_once<P>(&self, parser: P)
+    async fn check_reconnected_once<P>(&self, parser: P, reconnect_error: &mut BackendErrorCounter)
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
@@ -160,29 +217,41 @@ impl BackendChecker {
         if !connected {
             let addr = &self.inner.addr;
             log::info!("connection is closed");
-            // 开始建立连接
-            match tokio::net::TcpStream::connect(addr).await {
-                Ok(stream) => {
-                    log::info!("connected to {}", addr);
-                    let _ = stream.set_nodelay(true);
-                    let (r, w) = stream.into_split();
-                    let req_stream = self.inner.stream.clone();
+            if reconnect_error.judge_error(RECONNECT_ERROR_CAP) {
+                log::warn!("connect to {} error over {} times, will not connect recently", self.inner.addr, RECONNECT_ERROR_CAP);
+                return;
+            }
+            match tokio::time::timeout(std::time::Duration::from_secs(2), tokio::net::TcpStream::connect(addr)).await {
+                Ok(connect_result) => {
+                    if connect_result.is_ok() {
+                        let stream = connect_result.unwrap();
+                        log::info!("connected to {}", addr);
+                        let _ = stream.set_nodelay(true);
+                        let (r, w) = stream.into_split();
+                        let req_stream = self.inner.stream.clone();
 
-                    log::info!("go to bridge");
-                    req_stream.bridge(
-                        parser.clone(),
-                        self.req_buf,
-                        self.resp_buf,
-                        r,
-                        w,
-                        self.inner.clone(),
-                    );
-                    log::info!("set false to closed");
-                    self.inner.connected.store(true, Ordering::Release);
+                        log::info!("go to bridge");
+                        req_stream.bridge(
+                            parser.clone(),
+                            self.req_buf,
+                            self.resp_buf,
+                            r,
+                            w,
+                            self.inner.clone(),
+                        );
+                        log::info!("set false to closed");
+                        self.inner.connected.store(true, Ordering::Release);
+                    }
+                    else {
+                        reconnect_error.add_error(1);
+                        log::info!("connect to {} failed, error = {}", addr, connect_result.unwrap_err());
+                    }
+
                 }
                 // TODO
                 Err(_e) => {
-                    log::info!("connect to {} failed, error = {}", addr, _e);
+                    reconnect_error.add_error(1);
+                    log::info!("connect to {} timeout, error = {}", addr, _e);
                 }
             }
         }
