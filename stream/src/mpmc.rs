@@ -345,6 +345,7 @@ impl MpmcRingBufferStream {
         debug_assert!(self.done.load(Ordering::Acquire));
         let runnings = self.runnings.load(Ordering::Acquire);
         debug_assert!(runnings >= 0);
+        self.done.store(true, Ordering::Release);
 
         self.reset_item_status();
 
