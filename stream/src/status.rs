@@ -49,7 +49,7 @@ impl Item {
     pub fn new(cid: usize) -> Self {
         Self {
             _id: cid,
-            status: AtomicU8::new(ItemStatus::Init as u8),
+            status: AtomicU8::new(ItemStatus::Shutdown as u8),
             ..Default::default()
         }
     }

@@ -219,6 +219,7 @@ impl MpmcRingBufferStream {
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         self.check_bridge();
+        self.reset_item_status();
         //log::debug!("request buffer size:{}", req_buffer);
         //let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
         // 把数据从request同步到buffer
@@ -329,9 +330,14 @@ impl MpmcRingBufferStream {
     // runnings == 0
     // 所有的线程都结束了
     // 不会再有额外的线程来更新items信息
-    fn reset_item_status(&self) {
+    fn shutdown_item_status(&self) {
         for item in self.items.iter() {
             item.shutdown();
+        }
+    }
+
+    fn reset_item_status(&self) {
+        for item in self.items.iter() {
             item.reset();
         }
     }
@@ -348,7 +354,7 @@ impl MpmcRingBufferStream {
         debug_assert!(runnings >= 0);
         self.done.store(true, Ordering::Release);
 
-        self.reset_item_status();
+        self.shutdown_item_status();
 
         self.reset_chann();
 
