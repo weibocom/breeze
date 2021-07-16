@@ -220,6 +220,7 @@ impl MpmcRingBufferStream {
     {
         self.check_bridge();
         self.reset_item_status();
+        self.chan_reset.store(false, Ordering::Release);
         //log::debug!("request buffer size:{}", req_buffer);
         //let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
         // 把数据从request同步到buffer
