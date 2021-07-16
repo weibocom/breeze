@@ -41,7 +41,7 @@ impl BackendBuilder {
             connected: Arc::new(AtomicBool::new(false)),
             finished: Arc::new(AtomicBool::new(false)),
             closed: AtomicBool::new(false),
-            done: done.clone(),
+            done: Arc::new(AtomicBool::new(false)),
             addr: addr,
             stream: Arc::new(stream),
             ids: Arc::new(Ids::with_capacity(parallel)),
@@ -195,7 +195,7 @@ impl BackendChecker {
         log::info!("come into check");
         while !self.inner.finished.load(Ordering::Acquire) {
             self.check_reconnected_once(parser.clone(), &mut reconnect_error).await;
-            std::thread::park_timeout(Duration::from_millis(1000 as u64));
+            std::thread::sleep(Duration::from_millis(1000 as u64));
         }
         if !self.inner.stream.clone().is_complete() {
             // stream已经没有在运行，但没有结束。说明可能有一些waker等数据没有处理完。通知处理
@@ -207,10 +207,15 @@ impl BackendChecker {
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        if self.inner.clone().done.load(Ordering::Acquire) {
-            log::info!("need to reconnect");
-            self.inner.clone().reconnect();
-            //self.inner.clone().read().unwrap().done.store(false, Ordering::Release);
+        match self.inner.clone().done.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => {
+                log::info!("need to reconnect");
+                self.inner.clone().reconnect();
+                //self.inner.clone().read().unwrap().done.store(false, Ordering::Release);
+            }
+            Err(_) => {
+                log::info!("no need to reconnect");
+            }
         }
         // 说明连接未主动关闭，但任务已经结束，需要再次启动
         let connected = self.inner.connected.load(Ordering::Acquire);
