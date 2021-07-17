@@ -1,7 +1,5 @@
-use std::iter::FromIterator;
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
-use std::str::FromStr;
 
 use super::Slice;
 
@@ -113,7 +111,6 @@ impl RingSlice {
         debug_assert!(self.available() >= offset + len);
         let oft_start = (self.offset + offset) & (self.cap - 1);
         let oft_end = self.end & (self.cap - 1);
-        let result = String::new();
         if oft_end > oft_start || self.cap >= oft_start + len {
             unsafe {
                 let b = from_raw_parts(self.ptr.offset(oft_start as isize), len);

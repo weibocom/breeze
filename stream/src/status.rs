@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
 
-//use super::RequestData;
 use crate::ResponseData;
 use ds::RingSlice;
 use protocol::{Request, RequestId};
@@ -104,28 +103,6 @@ impl Item {
             Ok(_) => {}
             Err(cur) => panic!("item status seq cas. {} => {} but found {}", old, new, cur),
         }
-    }
-
-    // seq: 是SPSC中请求的seq
-    // req_handler中，将请求写入到buffer前调用bind_req，更新seq;
-    // 之后，会调用on_sent更新状态
-    // 在调用on_sent之前，
-    // 1. response有可能没返回，此时的前置状态是RequestReceived. (这是大部分情况)
-    // 2. 也有可能response返回了，并且成功调用了place_response，此时的状态是ResponseReceived
-    // 3. 甚至有可能response已经返回了。
-    // 只能是以上两种状态
-    #[inline(always)]
-    pub fn on_sent(&self, seq: usize) {
-        self.seq_cas(0, seq);
-        log::debug!(
-            "item status: on_sent. cid:{} seq:{} rid:{:?}",
-            self._id,
-            seq,
-            self.rid
-        );
-        // 说明是同一个req请求
-        // 只把状态从RequestReceived改为RequestSent. 其他状态则忽略
-        self.status_cas(RequestReceived as u8, RequestSent as u8);
     }
 
     // 有两种可能的状态。

@@ -1,18 +1,15 @@
-use std::cell::RefCell;
 use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use ds::{BitMap, RingSlice, SeqOffset};
-
 use super::status::*;
 use crate::{
     AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Request, RequestHandler,
     ResponseData, ResponseHandler,
 };
-
+use ds::{BitMap, RingSlice, SeqOffset};
 use protocol::Protocol;
 
 use cache_line_size::CacheAligned;
@@ -24,13 +21,14 @@ unsafe impl Sync for MpmcRingBufferStream {}
 
 // 支持并发读取的stream
 pub struct MpmcRingBufferStream {
-    items: Vec<Item>,
+    items: Vec<CacheAligned<Item>>,
     waker: AtomicWaker,
     bits: BitMap,
 
     // idx: 是seq % seq_cids.len()。因为seq是自增的，而且seq_cids.len() == items.len()
     // 用来当cache用。会通过item status进行double check
     seq_cids: Vec<CacheAligned<AtomicUsize>>,
+    seq_mask: usize,
 
     // 已经成功读取response的最小的offset，在ReadRrom里面使用
     offset: CacheAligned<SeqOffset>,
@@ -49,7 +47,9 @@ impl MpmcRingBufferStream {
     pub fn with_capacity(parallel: usize, done: Arc<AtomicBool>) -> Self {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= super::MAX_CONNECTIONS);
-        let items = (0..parallel).map(|id| Item::new(id)).collect();
+        let items = (0..parallel)
+            .map(|id| CacheAligned(Item::new(id)))
+            .collect();
         let seq_cids = (0..parallel)
             .map(|_| CacheAligned(AtomicUsize::new(0)))
             .collect();
@@ -59,6 +59,7 @@ impl MpmcRingBufferStream {
             waker: AtomicWaker::new(),
             bits: BitMap::with_capacity(parallel),
             seq_cids: seq_cids,
+            seq_mask: parallel - 1,
             offset: CacheAligned(SeqOffset::with_capacity(parallel)),
             done: done,
             runnings: Arc::new(AtomicIsize::new(0)),
@@ -74,9 +75,10 @@ impl MpmcRingBufferStream {
             Poll::Ready(Ok(()))
         }
     }
+    #[inline(always)]
     pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<ResponseData>> {
         ready!(self.poll_check(cid))?;
-        let item = unsafe { self.items.get_unchecked(cid) };
+        let item = self.get_item(cid);
         let data = ready!(item.poll_read(cx));
         log::debug!(
             "mpmc: data read out. cid:{} len:{} rid:{:?} ",
@@ -87,7 +89,7 @@ impl MpmcRingBufferStream {
         Poll::Ready(Ok(data))
     }
     pub fn response_done(&self, cid: usize, response: &ResponseData) {
-        let item = unsafe { self.items.get_unchecked(cid) };
+        let item = self.get_item(cid);
         item.response_done(response.seq());
         let (start, end) = response.data().location();
         self.offset.0.insert(start, end);
@@ -105,6 +107,7 @@ impl MpmcRingBufferStream {
         debug_assert!(self.get_item(cid).status_init());
         Poll::Ready(Ok(()))
     }
+    #[inline]
     pub fn poll_write(&self, cid: usize, _cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         ready!(self.poll_check(cid))?;
         log::debug!(
@@ -121,14 +124,15 @@ impl MpmcRingBufferStream {
         log::debug!("mpmc: write complete cid:{} len:{} ", cid, buf.len());
         Poll::Ready(Ok(()))
     }
-    #[inline]
+    #[inline(always)]
     fn get_item(&self, cid: usize) -> &Item {
         debug_assert!(cid < self.items.len());
-        unsafe { self.items.get_unchecked(cid) }
+        unsafe { &self.items.get_unchecked(cid).0 }
     }
-    #[inline]
+    #[inline(always)]
     fn mask_seq(&self, seq: usize) -> usize {
-        (self.seq_cids.len() - 1) & seq
+        //self.seq_cids.len() - 1) & seq
+        self.seq_mask & seq
     }
     // bind_seq在reorder_req_offsets中被调用。
     // 生成一个seq，并且与cid绑定。在读取response时，直接使用cid即可快速获取。
@@ -154,8 +158,8 @@ impl MpmcRingBufferStream {
             let mut item = self.get_item(cid);
             if seq != item.seq() {
                 for it in self.items.iter() {
-                    if it.seq() == seq {
-                        item = it;
+                    if it.0.seq() == seq {
+                        item = &it.0;
                         break;
                     }
                 }
@@ -227,8 +231,8 @@ impl MpmcRingBufferStream {
                 Ok(_) => {
                     log::debug!("{} bridge task complete", _name);
                 }
-                Err(e) => {
-                    log::debug!("{} bridge task complete with error:{:?}", _name, e);
+                Err(_e) => {
+                    log::debug!("{} bridge task complete with error:{:?}", _name, _e);
                 }
             };
             runnings.fetch_add(-1, Ordering::Release);
@@ -262,13 +266,13 @@ impl MpmcRingBufferStream {
     }
     fn shutdown_item_status(&self) {
         for item in self.items.iter() {
-            item.shutdown();
+            item.0.shutdown();
         }
     }
 
     fn reset_item_status(&self) {
         for item in self.items.iter() {
-            item.reset();
+            item.0.reset();
         }
     }
     // 在complete从true变成false的时候，需要将mpmc进行初始化。
@@ -296,10 +300,12 @@ use std::time::Duration;
 
 use crate::req_handler::Snapshot;
 impl RequestHandler for Arc<MpmcRingBufferStream> {
+    #[inline(always)]
     fn take(&self, cid: usize, seq: usize) -> Request {
         self.bind_seq(cid, seq);
         self.get_item(cid).take_request(seq)
     }
+    #[inline]
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()> {
         debug_assert_eq!(ss.len(), 0);
         let bits: Vec<usize> = self.bits.snapshot();

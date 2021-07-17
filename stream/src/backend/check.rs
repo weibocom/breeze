@@ -10,7 +10,7 @@ static RECONNECT_ERROR_WINDOW: u64 = 30 as u64;
 
 enum BackendErrorType {
     ConnError = 0 as isize,
-    RequestError,
+    //RequestError,
 }
 
 pub struct BackendBuilder {
@@ -98,13 +98,12 @@ impl BackendBuilder {
     }
 }
 
+use std::collections::LinkedList;
 use std::sync::RwLock;
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant, UNIX_EPOCH, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
 use tokio::time::{interval, Interval};
-use std::collections::LinkedList;
-use std::net::SocketAddr;
 
 pub struct BackendWaker {
     check_task: Option<std::thread::JoinHandle<()>>,
@@ -125,7 +124,7 @@ impl BackendWaker {
 pub struct BackendErrorCounter {
     error_window_size: u64,
     error_count: usize,
-    error_type: BackendErrorType,
+    _error_type: BackendErrorType,
     error_time_list: LinkedList<(u64, usize)>,
     error_total_value: usize,
 }
@@ -135,14 +134,17 @@ impl BackendErrorCounter {
         BackendErrorCounter {
             error_window_size,
             error_count: 0 as usize,
-            error_type,
+            _error_type: error_type,
             error_time_list: LinkedList::new(),
             error_total_value: 0 as usize,
         }
     }
 
     fn add_error(&mut self, error_value: usize) {
-        let current = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let current = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         self.judge_window();
         self.error_total_value += error_value;
         self.error_time_list.push_back((current, error_value));
@@ -155,14 +157,22 @@ impl BackendErrorCounter {
     }
 
     fn judge_window(&mut self) {
-        let current = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let current = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         while !self.error_time_list.is_empty() {
-            if self.error_time_list.front().unwrap().0.lt(&(current - self.error_window_size)) {
+            if self
+                .error_time_list
+                .front()
+                .unwrap()
+                .0
+                .lt(&(current - self.error_window_size))
+            {
                 self.error_total_value -= self.error_time_list.front().unwrap().1;
                 self.error_time_list.pop_front();
                 self.error_count -= 1;
-            }
-            else {
+            } else {
                 break;
             }
         }
@@ -174,14 +184,14 @@ pub struct BackendChecker {
     resp_buf: usize,
     inner: Arc<BackendBuilder>,
 
-    tick: Interval,
+    _tick: Interval,
 }
 
 impl BackendChecker {
     fn from(builder: Arc<BackendBuilder>, req_buf: usize, resp_buf: usize) -> Self {
         let me = Self {
             inner: builder,
-            tick: interval(std::time::Duration::from_secs(3)),
+            _tick: interval(std::time::Duration::from_secs(3)),
             req_buf: req_buf,
             resp_buf: resp_buf,
         };
@@ -192,10 +202,12 @@ impl BackendChecker {
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        let mut reconnect_error = BackendErrorCounter::new(RECONNECT_ERROR_WINDOW, BackendErrorType::ConnError);
+        let mut reconnect_error =
+            BackendErrorCounter::new(RECONNECT_ERROR_WINDOW, BackendErrorType::ConnError);
         log::info!("come into check");
         while !self.inner.finished.load(Ordering::Acquire) {
-            self.check_reconnected_once(parser.clone(), &mut reconnect_error).await;
+            self.check_reconnected_once(parser.clone(), &mut reconnect_error)
+                .await;
             std::thread::sleep(Duration::from_millis(1000 as u64));
         }
         if !self.inner.stream.clone().is_complete() {
@@ -208,7 +220,12 @@ impl BackendChecker {
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        match self.inner.clone().done.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire) {
+        match self.inner.clone().done.compare_exchange(
+            true,
+            false,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
             Ok(_) => {
                 log::info!("need to reconnect");
                 self.inner.clone().reconnect();
@@ -222,10 +239,19 @@ impl BackendChecker {
             let addr = &self.inner.addr;
             log::info!("connection is closed");
             if reconnect_error.judge_error(RECONNECT_ERROR_CAP) {
-                log::warn!("connect to {} error over {} times, will not connect recently", self.inner.addr, RECONNECT_ERROR_CAP);
+                log::warn!(
+                    "connect to {} error over {} times, will not connect recently",
+                    self.inner.addr,
+                    RECONNECT_ERROR_CAP
+                );
                 return;
             }
-            match tokio::time::timeout(std::time::Duration::from_secs(2), tokio::net::TcpStream::connect(addr)).await {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                tokio::net::TcpStream::connect(addr),
+            )
+            .await
+            {
                 Ok(connect_result) => {
                     if connect_result.is_ok() {
                         let stream = connect_result.unwrap();
@@ -245,12 +271,14 @@ impl BackendChecker {
                         );
                         log::info!("set false to closed");
                         self.inner.connected.store(true, Ordering::Release);
-                    }
-                    else {
+                    } else {
                         reconnect_error.add_error(1);
-                        log::info!("connect to {} failed, error = {}", addr, connect_result.unwrap_err());
+                        log::info!(
+                            "connect to {} failed, error = {}",
+                            addr,
+                            connect_result.unwrap_err()
+                        );
                     }
-
                 }
                 // TODO
                 Err(_e) => {

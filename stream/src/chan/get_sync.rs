@@ -6,7 +6,6 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
-use ds::Slice;
 use futures::ready;
 use protocol::Protocol;
 
@@ -61,10 +60,10 @@ where
             let reader = unsafe { self.layers.get_unchecked_mut(idx) };
             match ready!(Pin::new(reader).poll_write(cx, &self.req_ref)) {
                 Ok(_) => return Poll::Ready(Ok(())),
-                Err(e) => {
+                Err(_e) => {
                     self.idx += 1;
                     idx = self.idx;
-                    log::debug!("write req failed e:{:?}", e);
+                    log::warn!("get_sync:write req failed e:{:?}", _e);
                 }
             }
         }
@@ -134,8 +133,8 @@ where
                     // 如果请求未命中，则继续准备尝试下一个reader
                 }
                 // 请求失败，如果还有reader，需要继续尝试下一个reader
-                Err(e) => {
-                    log::debug!("read found err: {:?}", e);
+                Err(_e) => {
+                    log::debug!("get_sync:read found err: {:?}", _e);
                 }
             }
             // 如果所有reader尝试完毕，退出循环

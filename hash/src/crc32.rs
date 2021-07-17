@@ -59,7 +59,7 @@ impl super::Hash for Crc32 {
 
 impl Crc32 {
     // crc-32 标准规范实现，与mc实现存在差异
-    fn hash_spec(&mut self, key: &[u8]) -> u64 {
+    fn _hash_spec(&mut self, key: &[u8]) -> u64 {
         let mut crc: i64 = !0;
         for c in key {
             crc = CRC32TAB[((crc ^ *c as i64) & 0xFF) as usize] ^ (crc >> 8);

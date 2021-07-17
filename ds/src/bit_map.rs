@@ -18,11 +18,11 @@ impl BitMap {
         let idx = pos / BLK_SIZE;
         let offset = pos - idx * BLK_SIZE;
         unsafe {
-            let old = self
+            let _old = self
                 .blocks
                 .get_unchecked(idx)
                 .fetch_or(1 << offset, Ordering::Relaxed);
-            log::debug!("bitmap-mark: pos:{} before:{:#b}", pos, old);
+            log::debug!("bitmap-mark: pos:{} before:{:#b}", pos, _old);
         }
     }
     pub fn unmark(&self, pos: usize) {
