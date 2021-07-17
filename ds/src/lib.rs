@@ -1,3 +1,4 @@
+mod bit_map;
 mod cid;
 mod offset;
 mod request;
@@ -6,6 +7,7 @@ mod ring_slice;
 mod slice;
 mod spsc;
 
+pub use bit_map::BitMap;
 pub use cid::*;
 pub use offset::*;
 pub use request::*;

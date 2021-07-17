@@ -35,7 +35,8 @@ pub struct Item {
     seq: AtomicUsize, // 用来做request与response的同步
     status: AtomicU8, // 0: 待接收请求。
 
-    request_id: RefCell<RequestId>,
+    rid: RefCell<RequestId>,
+    request: RefCell<Option<Request>>,
 
     // 下面的数据要加锁才能访问
     waker_lock: AtomicBool,
@@ -56,13 +57,33 @@ impl Item {
     // 把buf的指针保存下来。
     // 上面的假设待验证
     #[inline(always)]
-    pub fn place_request(&self, _req: &Request) {
+    pub fn place_request(&self, req: &Request) {
         debug_assert_eq!(self.status.load(Ordering::Acquire), ItemStatus::Init as u8);
         self.status_cas(ItemStatus::Init as u8, ItemStatus::RequestReceived as u8);
+        *self.request.borrow_mut() = Some(req.clone());
         log::debug!(
-            "item status: old request id:{:?}",
-            self.request_id.replace(_req.id().clone())
+            "item status: place:{:?}",
+            self.rid.replace(req.id().clone())
         );
+    }
+    #[inline(always)]
+    pub fn take_request(&self, seq: usize) -> Request {
+        let req = self.request.borrow_mut().take().expect("take request");
+        log::debug!(
+            "item status: take request. {:?} seq:{} noreply:{}",
+            self.rid,
+            seq,
+            req.noreply()
+        );
+        // 如果不需要回复，则request之后立即恢复到init状态
+        let new = if req.noreply() {
+            Init
+        } else {
+            self.seq_cas(0, seq);
+            RequestSent
+        };
+        self.status_cas(RequestReceived as u8, new as u8);
+        req
     }
     #[inline(always)]
     pub fn seq(&self) -> usize {
@@ -100,7 +121,7 @@ impl Item {
             "item status: on_sent. cid:{} seq:{} rid:{:?}",
             self._id,
             seq,
-            self.request_id
+            self.rid
         );
         // 说明是同一个req请求
         // 只把状态从RequestReceived改为RequestSent. 其他状态则忽略
@@ -117,7 +138,7 @@ impl Item {
         if status == ItemStatus::ResponseReceived {
             let response = self.response.take();
             log::debug!("item status: read {:?}", response.location());
-            let rid = self.request_id.take();
+            let rid = self.rid.take();
 
             self.unlock_waker();
             Poll::Ready(ResponseData::from(response, rid, self.seq()))

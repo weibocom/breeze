@@ -5,24 +5,19 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use ds::{RingBuffer, RingSlice, SeqOffset};
+use ds::{BitMap, RingSlice, SeqOffset};
 
 use super::status::*;
-use super::RequestData;
 use crate::{
-    BridgeBufferToWriter, BridgeRequestToBackend, BridgeRequestToBuffer, BridgeResponseToLocal,
-    Request, RequestHandler, ResponseData, ResponseHandler,
+    AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Request, RequestHandler,
+    ResponseData, ResponseHandler,
 };
 
 use protocol::Protocol;
 
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::sync::mpsc::{channel, Receiver};
-use tokio_util::sync::PollSender;
-
-use futures::ready;
-
 use cache_line_size::CacheAligned;
+use futures::ready;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 unsafe impl Send for MpmcRingBufferStream {}
 unsafe impl Sync for MpmcRingBufferStream {}
@@ -30,9 +25,8 @@ unsafe impl Sync for MpmcRingBufferStream {}
 // 支持并发读取的stream
 pub struct MpmcRingBufferStream {
     items: Vec<Item>,
-
-    senders: Vec<RefCell<(bool, PollSender<RequestData>)>>,
-    receiver: RefCell<Option<Receiver<RequestData>>>,
+    waker: AtomicWaker,
+    bits: BitMap,
 
     // idx: 是seq % seq_cids.len()。因为seq是自增的，而且seq_cids.len() == items.len()
     // 用来当cache用。会通过item status进行double check
@@ -47,8 +41,6 @@ pub struct MpmcRingBufferStream {
     // 3. BridgeResponseToLocal: 把response数据从backend server读取到items
     runnings: Arc<AtomicIsize>,
 
-    // chan是否处理reset状态, 在reset_chan与bridge方法中使用
-    chan_reset: AtomicBool,
     done: Arc<AtomicBool>,
 }
 
@@ -62,23 +54,14 @@ impl MpmcRingBufferStream {
             .map(|_| CacheAligned(AtomicUsize::new(0)))
             .collect();
 
-        let (sender, receiver) = channel(parallel * 2);
-        let mut sender = PollSender::new(sender);
-        let senders = (0..parallel)
-            .map(|_| RefCell::new((true, sender.clone())))
-            .collect();
-        sender.close_this_sender();
-        drop(sender);
-
         Self {
             items: items,
+            waker: AtomicWaker::new(),
+            bits: BitMap::with_capacity(parallel),
             seq_cids: seq_cids,
             offset: CacheAligned(SeqOffset::with_capacity(parallel)),
-            receiver: RefCell::new(Some(receiver)),
-            senders: senders,
             done: done,
             runnings: Arc::new(AtomicIsize::new(0)),
-            chan_reset: AtomicBool::new(false),
         }
     }
     // 如果complete为true，则快速失败
@@ -122,7 +105,7 @@ impl MpmcRingBufferStream {
         debug_assert!(self.get_item(cid).status_init());
         Poll::Ready(Ok(()))
     }
-    pub fn poll_write(&self, cid: usize, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
+    pub fn poll_write(&self, cid: usize, _cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         ready!(self.poll_check(cid))?;
         log::debug!(
             "mpmc: write cid:{} len:{} id:{:?}, noreply:{}",
@@ -132,20 +115,9 @@ impl MpmcRingBufferStream {
             buf.noreply()
         );
 
-        let mut sender = unsafe { self.senders.get_unchecked(cid) }.borrow_mut();
-        if sender.0 {
-            // noreply，则不更新状态。
-            if !buf.noreply() {
-                self.get_item(cid).place_request(buf);
-            }
-            sender.0 = false;
-            let req = RequestData::from(cid, buf.clone());
-            sender.1.start_send(req).ok().expect("channel closed");
-        }
-        ready!(sender.1.poll_send_done(cx))
-            .ok()
-            .expect("channel send failed");
-        sender.0 = true;
+        self.get_item(cid).place_request(buf);
+        self.bits.mark(cid);
+        self.waker.wake();
         log::debug!("mpmc: write complete cid:{} len:{} ", cid, buf.len());
         Poll::Ready(Ok(()))
     }
@@ -220,29 +192,11 @@ impl MpmcRingBufferStream {
     {
         self.check_bridge();
         self.reset_item_status();
-        self.chan_reset.store(false, Ordering::Release);
-        //log::debug!("request buffer size:{}", req_buffer);
-        //let (req_rb_writer, req_rb_reader) = RingBuffer::with_capacity(req_buffer).into_split();
-        // 把数据从request同步到buffer
-        let receiver = self.receiver.borrow_mut().take().expect("receiver exists");
-        //Self::start_bridge(
-        //    self.clone(),
-        //    builder.clone(),
-        //    "bridge-request-to-buffer",
-        //    BridgeRequestToBuffer::from(receiver, self.clone(), req_rb_writer, self.done.clone()),
-        //);
-        ////// 把数据从buffer发送数据到,server
-        //Self::start_bridge(
-        //    self.clone(),
-        //    builder.clone(),
-        //    "bridge-buffer-to-backend",
-        //    BridgeBufferToWriter::from(req_rb_reader, w, self.done.clone(), builder.clone()),
-        //);
         Self::start_bridge(
             self.clone(),
             builder.clone(),
             "bridge-send-req",
-            BridgeRequestToBackend::from(req_buffer, self.clone(), receiver, w, self.done.clone()),
+            BridgeRequestToBackend::from(req_buffer, self.clone(), w, self.done.clone()),
         );
 
         //// 从response读取数据写入items
@@ -250,14 +204,7 @@ impl MpmcRingBufferStream {
             self.clone(),
             builder.clone(),
             "bridge-recv-response",
-            BridgeResponseToLocal::from(
-                r,
-                self.clone(),
-                parser,
-                resp_buffer,
-                self.done.clone(),
-                builder.clone(),
-            ),
+            BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone()),
         );
     }
     fn start_bridge<F>(
@@ -271,7 +218,11 @@ impl MpmcRingBufferStream {
         let runnings = self.runnings.clone();
         tokio::spawn(async move {
             runnings.fetch_add(1, Ordering::Release);
-            log::debug!("{} bridge task started, runnings = {}", _name, runnings.load(Ordering::Acquire));
+            log::debug!(
+                "{} bridge task started, runnings = {}",
+                _name,
+                runnings.load(Ordering::Acquire)
+            );
             match future.await {
                 Ok(_) => {
                     log::debug!("{} bridge task complete", _name);
@@ -281,7 +232,11 @@ impl MpmcRingBufferStream {
                 }
             };
             runnings.fetch_add(-1, Ordering::Release);
-            log::debug!("{} bridge task completed, runnings = {}", _name, runnings.load(Ordering::Acquire));
+            log::debug!(
+                "{} bridge task completed, runnings = {}",
+                _name,
+                runnings.load(Ordering::Acquire)
+            );
         });
     }
 
@@ -305,32 +260,6 @@ impl MpmcRingBufferStream {
         }
         log::debug!("all threads completed");
     }
-    // done == true。所以新到达的poll_write都会直接返回
-    // 不会再操作senders, 可以重置senders
-    fn reset_chann(&self) {
-        if !self.chan_reset.load(Ordering::Acquire) {
-            let (sender, receiver) = channel(self.senders.len());
-            let sender = PollSender::new(sender);
-            // 删除所有的sender，则receiver会会接收到一个None，而不会阻塞
-            for s in self.senders.iter() {
-                let (_, mut old) = s.replace((true, sender.clone()));
-                old.close_this_sender();
-                drop(old);
-            }
-            let old = self.receiver.replace(Some(receiver));
-            if let Some(o_r) = old {
-                log::debug!(
-                    "may be the old stream is not established, but the new one is reconnected"
-                );
-                drop(o_r);
-            }
-            self.chan_reset.store(true, Ordering::Release);
-        }
-    }
-    // done == true
-    // runnings == 0
-    // 所有的线程都结束了
-    // 不会再有额外的线程来更新items信息
     fn shutdown_item_status(&self) {
         for item in self.items.iter() {
             item.shutdown();
@@ -357,13 +286,7 @@ impl MpmcRingBufferStream {
 
         self.shutdown_item_status();
 
-        self.reset_chann();
-
-        if runnings > 0 {
-            return false;
-        }
-
-        true
+        runnings == 0
     }
 }
 
@@ -371,11 +294,32 @@ use crate::BackendBuilder;
 use std::thread::sleep;
 use std::time::Duration;
 
+use crate::req_handler::Snapshot;
 impl RequestHandler for Arc<MpmcRingBufferStream> {
-    #[inline]
-    fn on_received(&self, id: usize, seq: usize) {
-        self.bind_seq(id, seq);
-        self.get_item(id).on_sent(seq);
+    fn take(&self, cid: usize, seq: usize) -> Request {
+        self.bind_seq(cid, seq);
+        self.get_item(cid).take_request(seq)
+    }
+    fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()> {
+        debug_assert_eq!(ss.len(), 0);
+        let bits: Vec<usize> = self.bits.snapshot();
+        for i in 0..bits.len() {
+            let mut one = unsafe { *bits.get_unchecked(i) };
+            while one > 0 {
+                let zeros = one.trailing_zeros() as usize;
+                let cid = i * std::mem::size_of::<usize>() + zeros;
+                ss.push(cid);
+                one = one & !(1 << zeros);
+            }
+        }
+        self.bits.unmark_all(&bits);
+        // 没有获取到数据的时候，并且done为false，返回pending.
+        if ss.len() == 0 && !self.done.load(Ordering::Acquire) {
+            self.waker.register_by_ref(&cx.waker());
+            Poll::Pending
+        } else {
+            Poll::Ready(())
+        }
     }
 }
 impl ResponseHandler for Arc<MpmcRingBufferStream> {
