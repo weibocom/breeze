@@ -1,7 +1,6 @@
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response, RingBufferStream};
 
 use std::io::{Error, ErrorKind, Result};
-use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};

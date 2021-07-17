@@ -51,10 +51,10 @@ where
             let reader = unsafe { self.layers.get_unchecked_mut(idx) };
             match ready!(Pin::new(reader).poll_write(cx, &self.request_ref)) {
                 Ok(_) => return Poll::Ready(Ok(())),
-                Err(e) => {
+                Err(_e) => {
                     self.idx += 1;
                     idx = self.idx;
-                    log::debug!("write req failed e:{:?}", e);
+                    log::warn!("mget: write req failed e:{:?}", _e);
                 }
             }
         }
