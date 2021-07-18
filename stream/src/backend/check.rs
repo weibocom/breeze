@@ -185,6 +185,9 @@ impl BackendChecker {
         finished: Arc<AtomicBool>,
     ) -> Self {
         let (tx, rx) = channel(8);
+        if let Err(e) = tx.try_send(0) {
+            log::error!("check: failed to send connect signal to {}:{:?}", addr, e);
+        }
         let me = Self {
             tx: Arc::new(tx),
             rx: rx,
@@ -207,33 +210,47 @@ impl BackendChecker {
                     "check: connect signal recived, try to connect:{}",
                     self.addr
                 );
-                self.check(parser.clone()).await;
+                self.connect(parser.clone()).await;
             }
-            log::info!("check: stream complete");
+            log::info!("check: stream complete:{}", self.addr);
         });
     }
 
-    async fn check<P>(&self, parser: P)
+    async fn connect<P>(&self, parser: P)
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        let mut reconnect_error =
-            BackendErrorCounter::new(RECONNECT_ERROR_WINDOW, BackendErrorType::ConnError);
-        log::info!("come into check");
+        let mut tries = 0;
+        //let mut reconnect_error =
+        //    BackendErrorCounter::new(RECONNECT_ERROR_WINDOW, BackendErrorType::ConnError);
+        //log::info!("come into check");
         while !self.finished.load(Ordering::Acquire) {
-            if reconnect_error.judge_error(RECONNECT_ERROR_CAP) {
-                log::warn!(
-                    "check: connect to {} error over {} times, will not connect recently",
-                    self.addr,
-                    RECONNECT_ERROR_CAP
-                );
-                sleep(Duration::from_secs(1)).await;
-            } else {
-                if let Err(e) = self.check_reconnected_once(parser.clone()).await {
-                    log::warn!("check: connect {} error:{:?}", self.addr, e);
-                    reconnect_error.add_error(1);
+            // if reconnect_error.judge_error(RECONNECT_ERROR_CAP) {
+            //     log::warn!(
+            //         "check: connect to {} error over {} times, will not connect recently",
+            //         self.addr,
+            //         RECONNECT_ERROR_CAP
+            //     );
+            //     sleep(Duration::from_secs(1)).await;
+            // } else {
+            match self.check_reconnected_once(parser.clone()).await {
+                Ok(_) => {
+                    log::debug!("check: {} connected tries:{}", self.addr, tries);
+                    break;
                 }
+                Err(e) => {
+                    log::info!(
+                        "check: {} connected failed:{:?} tries:{}",
+                        self.addr,
+                        e,
+                        tries
+                    );
+                    let secs = (1 << tries).max(31);
+                    tries += 1;
+                    sleep(Duration::from_secs(secs)).await;
+                } //   reconnect_error.add_error(1);
             }
+            //}
         }
     }
 
