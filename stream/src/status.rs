@@ -13,7 +13,6 @@ pub enum ItemStatus {
     RequestReceived,
     RequestSent,
     ResponseReceived, // 数据已写入
-    Shutdown,         // 当前状态隶属的stream已结束。
 }
 use ItemStatus::*;
 impl PartialEq<u8> for ItemStatus {
@@ -49,7 +48,7 @@ impl Item {
     pub fn new(cid: usize) -> Self {
         Self {
             _id: cid,
-            status: AtomicU8::new(ItemStatus::Shutdown as u8),
+            status: AtomicU8::new(Init as u8),
             ..Default::default()
         }
     }
@@ -212,16 +211,10 @@ impl Item {
     pub(crate) fn status_init(&self) -> bool {
         self.status() == ItemStatus::Init as u8
     }
-    // 把所有状态设置为shutdown
-    // 状态一旦变更为Shutdown，只有reset都会把状态从Shutdown变更为Init
-    pub(crate) fn shutdown(&self) {
-        self.status
-            .store(ItemStatus::Shutdown as u8, Ordering::Release);
-    }
-
     // reset只会把状态从shutdown变更为init
     // 必须在shutdown之后调用
     pub(crate) fn reset(&self) {
-        self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8);
+        //self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8);
+        self.status.store(Init as u8, Ordering::Release);
     }
 }

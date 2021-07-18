@@ -21,22 +21,27 @@ impl Snapshot {
             cids: Vec::with_capacity(64),
         }
     }
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.cids.len()
     }
+    #[inline(always)]
     pub fn push(&mut self, cid: usize) {
         self.cids.push(cid);
     }
     // 调用方确保idx < cids.len()
+    #[inline(always)]
     fn take(&mut self) -> usize {
         debug_assert!(self.idx < self.cids.len());
         let cid = unsafe { *self.cids.get_unchecked(self.idx) };
         self.idx += 1;
         cid
     }
+    #[inline(always)]
     fn available(&self) -> usize {
         self.cids.len() - self.idx
     }
+    #[inline(always)]
     fn reset(&mut self) {
         self.idx = 0;
         unsafe {
@@ -89,7 +94,7 @@ where
         log::debug!("task polling. request handler");
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
-        while !me.done.load(Ordering::Relaxed) {
+        while !me.done.load(Ordering::Acquire) {
             if let Some(ref req) = me.cache {
                 let data = req.data();
                 log::debug!(

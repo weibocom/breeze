@@ -58,7 +58,7 @@ where
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
         //let mut spins = 0;
-        while !me.done.load(Ordering::Relaxed) {
+        while !me.done.load(Ordering::Acquire) {
             let offset = me.w.load_offset();
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
