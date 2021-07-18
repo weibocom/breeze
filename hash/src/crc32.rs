@@ -38,16 +38,15 @@ const CRC32TAB: [i64; 256] = [
 const CRC_SEED: i64 = 0xFFFFFFFF;
 pub struct Crc32 {}
 
+//TODO 参考java 内部实现版本 以及 api-commons中crc32 hash算法调整，手动测试各种长度key，hash一致，需要线上继续验证 fishermen
 impl super::Hash for Crc32 {
-    // CRC-32 implementation compatible with libmemcached library. Unfortunately
-    // this implementation does not return CRC-32 as per spec.
     fn hash(&mut self, key: &[u8]) -> u64 {
-        let mut crc: i64 = CRC_SEED as i64;
+        let mut crc: i64 = CRC_SEED;
         for c in key {
             crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (*c as i64)) & 0xff) as usize];
         }
-        crc ^= CRC_SEED as i64;
-        crc &= 0x00000000FFFFFFFF;
+        crc ^= CRC_SEED;
+        crc &= CRC_SEED;
 
         let mut rs = (crc >> 16) & 0x7fff;
         if rs < 0 {
@@ -77,7 +76,7 @@ mod crc_test {
     #[test]
     fn crc32_test() {
         // let key = "123";
-        let key = "123456789012345678.fri";
+        let key = "12345678901234567890123456789.fri";
         let mut crc = Crc32 {};
         let _hash = crc.hash(key.as_bytes());
         println!("crc32 - key: {}, hash: {}", key, _hash);
