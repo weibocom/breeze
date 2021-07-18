@@ -11,7 +11,6 @@ use protocol::Protocol;
 
 use tokio::io::{AsyncRead, ReadBuf};
 
-use crate::BackendBuilder;
 use futures::ready;
 
 pub trait ResponseHandler {
@@ -30,18 +29,10 @@ pub struct BridgeResponseToLocal<R, W, P> {
     w: W,
     parser: P,
     data: ResponseRingBuffer,
-    builder: Arc<BackendBuilder>,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(
-        r: R,
-        w: W,
-        parser: P,
-        buf: usize,
-        done: Arc<AtomicBool>,
-        builder: Arc<BackendBuilder>,
-    ) -> Self {
+    pub fn from(r: R, w: W, parser: P, buf: usize, done: Arc<AtomicBool>) -> Self {
         debug_assert!(buf == buf.next_power_of_two());
         Self {
             seq: 0,
@@ -50,7 +41,6 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
             parser: parser,
             data: ResponseRingBuffer::with_capacity(buf),
             done: done,
-            builder: builder.clone(),
         }
     }
 }
@@ -68,7 +58,7 @@ where
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
         //let mut spins = 0;
-        while !me.done.load(Ordering::Relaxed) {
+        while !me.done.load(Ordering::Acquire) {
             let offset = me.w.load_offset();
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
@@ -113,7 +103,6 @@ where
             }
         }
         log::debug!("resp-handler: task of reading data from response complete");
-        self.builder.do_reconnect();
         Poll::Ready(Ok(()))
     }
 }

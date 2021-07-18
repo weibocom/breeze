@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
 
-//use super::RequestData;
 use crate::ResponseData;
 use ds::RingSlice;
 use protocol::{Request, RequestId};
@@ -14,7 +13,6 @@ pub enum ItemStatus {
     RequestReceived,
     RequestSent,
     ResponseReceived, // 数据已写入
-    Shutdown,         // 当前状态隶属的stream已结束。
 }
 use ItemStatus::*;
 impl PartialEq<u8> for ItemStatus {
@@ -35,7 +33,8 @@ pub struct Item {
     seq: AtomicUsize, // 用来做request与response的同步
     status: AtomicU8, // 0: 待接收请求。
 
-    request_id: RefCell<RequestId>,
+    rid: RefCell<RequestId>,
+    request: RefCell<Option<Request>>,
 
     // 下面的数据要加锁才能访问
     waker_lock: AtomicBool,
@@ -49,20 +48,40 @@ impl Item {
     pub fn new(cid: usize) -> Self {
         Self {
             _id: cid,
-            status: AtomicU8::new(ItemStatus::Shutdown as u8),
+            status: AtomicU8::new(Init as u8),
             ..Default::default()
         }
     }
     // 把buf的指针保存下来。
     // 上面的假设待验证
     #[inline(always)]
-    pub fn place_request(&self, _req: &Request) {
+    pub fn place_request(&self, req: &Request) {
         debug_assert_eq!(self.status.load(Ordering::Acquire), ItemStatus::Init as u8);
         self.status_cas(ItemStatus::Init as u8, ItemStatus::RequestReceived as u8);
+        *self.request.borrow_mut() = Some(req.clone());
         log::debug!(
-            "item status: old request id:{:?}",
-            self.request_id.replace(_req.id().clone())
+            "item status: place:{:?}",
+            self.rid.replace(req.id().clone())
         );
+    }
+    #[inline(always)]
+    pub fn take_request(&self, seq: usize) -> Request {
+        let req = self.request.borrow_mut().take().expect("take request");
+        log::debug!(
+            "item status: take request. {:?} seq:{} noreply:{}",
+            self.rid,
+            seq,
+            req.noreply()
+        );
+        // 如果不需要回复，则request之后立即恢复到init状态
+        let new = if req.noreply() {
+            Init
+        } else {
+            self.seq_cas(0, seq);
+            RequestSent
+        };
+        self.status_cas(RequestReceived as u8, new as u8);
+        req
     }
     #[inline(always)]
     pub fn seq(&self) -> usize {
@@ -85,28 +104,6 @@ impl Item {
         }
     }
 
-    // seq: 是SPSC中请求的seq
-    // req_handler中，将请求写入到buffer前调用bind_req，更新seq;
-    // 之后，会调用on_sent更新状态
-    // 在调用on_sent之前，
-    // 1. response有可能没返回，此时的前置状态是RequestReceived. (这是大部分情况)
-    // 2. 也有可能response返回了，并且成功调用了place_response，此时的状态是ResponseReceived
-    // 3. 甚至有可能response已经返回了。
-    // 只能是以上两种状态
-    #[inline(always)]
-    pub fn on_sent(&self, seq: usize) {
-        self.seq_cas(0, seq);
-        log::debug!(
-            "item status: on_sent. cid:{} seq:{} rid:{:?}",
-            self._id,
-            seq,
-            self.request_id
-        );
-        // 说明是同一个req请求
-        // 只把状态从RequestReceived改为RequestSent. 其他状态则忽略
-        self.status_cas(RequestReceived as u8, RequestSent as u8);
-    }
-
     // 有两种可能的状态。
     // Received, 说明之前从来没有poll过
     // Reponded: 有数据并且成功返回
@@ -117,7 +114,7 @@ impl Item {
         if status == ItemStatus::ResponseReceived {
             let response = self.response.take();
             log::debug!("item status: read {:?}", response.location());
-            let rid = self.request_id.take();
+            let rid = self.rid.take();
 
             self.unlock_waker();
             Poll::Ready(ResponseData::from(response, rid, self.seq()))
@@ -214,16 +211,10 @@ impl Item {
     pub(crate) fn status_init(&self) -> bool {
         self.status() == ItemStatus::Init as u8
     }
-    // 把所有状态设置为shutdown
-    // 状态一旦变更为Shutdown，只有reset都会把状态从Shutdown变更为Init
-    pub(crate) fn shutdown(&self) {
-        self.status
-            .store(ItemStatus::Shutdown as u8, Ordering::Release);
-    }
-
     // reset只会把状态从shutdown变更为init
     // 必须在shutdown之后调用
     pub(crate) fn reset(&self) {
-        self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8);
+        //self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8);
+        self.status.store(Init as u8, Ordering::Release);
     }
 }

@@ -6,17 +6,16 @@ mod req_handler;
 mod resp_handler;
 mod response;
 mod status;
+mod waker;
 
 pub use chan::*;
 pub use protocol::{Request, MAX_REQUEST_SIZE};
 pub use response::*;
+use waker::AtomicWaker;
 
 pub use backend::{Backend, BackendBuilder, BackendStream};
 pub use mpmc::MpmcRingBufferStream as RingBufferStream;
-pub(crate) use req_handler::{
-    BridgeBufferToWriter, BridgeRequestToBackend, BridgeRequestToBuffer, RequestData,
-    RequestHandler,
-};
+pub(crate) use req_handler::{BridgeRequestToBackend, RequestHandler};
 pub(crate) use resp_handler::{BridgeResponseToLocal, ResponseHandler};
 
 use std::io::Result;
@@ -51,3 +50,8 @@ pub trait AsyncReadAll {
 //impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}
 
 pub const MAX_CONNECTIONS: usize = 256;
+
+// 当stream退出时，通知
+pub trait Notify {
+    fn notify(&self);
+}

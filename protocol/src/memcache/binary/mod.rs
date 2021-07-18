@@ -1,7 +1,6 @@
 mod meta;
 
 use std::{
-    intrinsics::copy_nonoverlapping,
     io::{Error, ErrorKind, Result},
     usize,
 };
@@ -9,7 +8,6 @@ use std::{
 pub const HEADER_LEN: usize = 24;
 
 use byteorder::{BigEndian, ByteOrder};
-use futures::io::ReadVectored;
 
 use crate::{MetaType, Protocol, Request, RingSlice};
 
@@ -38,8 +36,6 @@ const NOREPLY_MAPPING: [u8; 128] = [
 ];
 
 const REQUEST_MAGIC: u8 = 0x80;
-const OP_CODE_GETKQ: u8 = 0xd;
-const OP_CODE_GETQ: u8 = 0x09;
 const OP_CODE_NOOP: u8 = 0x0a;
 
 // 0x09: getq
@@ -221,9 +217,7 @@ impl Protocol for MemcacheBinary {
         let origin = current_cmds.data();
         let avail = origin.len();
 
-        let mut i = 0;
         loop {
-            i += 1;
             // noop 是24 bytes
             debug_assert!(read + HEADER_LEN <= avail);
             debug_assert_eq!(origin[read], 0x80);
