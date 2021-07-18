@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 
 use super::status::*;
 use crate::{
-    AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Request, RequestHandler,
+    AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Notify, Request, RequestHandler,
     ResponseData, ResponseHandler,
 };
 use ds::{BitMap, RingSlice, SeqOffset};
@@ -37,14 +37,15 @@ pub struct MpmcRingBufferStream {
     // 1. BridgeRequestToBuffer: 把request数据从receiver读取到本地的buffer
     // 2. BridgeBufferToWriter:  把request数据从本地的buffer写入到backend server
     // 3. BridgeResponseToLocal: 把response数据从backend server读取到items
-    runnings: Arc<AtomicIsize>,
+    runnings: AtomicIsize,
 
     done: Arc<AtomicBool>,
+    closed: AtomicBool,
 }
 
 impl MpmcRingBufferStream {
     // id必须小于parallel
-    pub fn with_capacity(parallel: usize, done: Arc<AtomicBool>) -> Self {
+    pub fn with_capacity(parallel: usize) -> Self {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= super::MAX_CONNECTIONS);
         let items = (0..parallel)
@@ -61,15 +62,15 @@ impl MpmcRingBufferStream {
             seq_cids: seq_cids,
             seq_mask: parallel - 1,
             offset: CacheAligned(SeqOffset::with_capacity(parallel)),
-            done: done,
-            runnings: Arc::new(AtomicIsize::new(0)),
+            done: Arc::new(AtomicBool::new(true)),
+            closed: AtomicBool::new(false),
+            runnings: AtomicIsize::new(0),
         }
     }
     // 如果complete为true，则快速失败
     #[inline(always)]
-    fn poll_check(&self, cid: usize) -> Poll<Result<()>> {
+    fn poll_check(&self, _cid: usize) -> Poll<Result<()>> {
         if self.done.load(Ordering::Acquire) {
-            self.get_item(cid).shutdown();
             Poll::Ready(Err(Error::new(ErrorKind::NotConnected, "mpmc is done")))
         } else {
             Poll::Ready(Ok(()))
@@ -170,10 +171,8 @@ impl MpmcRingBufferStream {
 
     fn check_bridge(&self) {
         // 必须是已经complete才能重新bridage
-        self.done
-            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
-            .expect("bridge an uncompleted stream");
         assert_eq!(self.runnings.load(Ordering::Acquire), 0);
+        assert!(self.done.load(Ordering::Acquire));
     }
 
     // 构建一个ring buffer.
@@ -181,24 +180,24 @@ impl MpmcRingBufferStream {
     // 线程A: 把request data数据从item写入到ring buffer.
     // 线程B：把ring buffer的数据flush到server
     // 线程C：把response数据从server中读取，并且place到item的response中
-    pub fn bridge<R, W, P>(
+    pub fn bridge<R, W, P, N>(
         self: Arc<Self>,
         parser: P,
         req_buffer: usize,
         resp_buffer: usize,
         r: R,
         w: W,
-        builder: Arc<BackendBuilder>,
+        notify: N,
     ) where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
+        N: Notify + Clone + Send + 'static,
     {
         self.check_bridge();
-        self.reset_item_status();
         Self::start_bridge(
             self.clone(),
-            builder.clone(),
+            notify.clone(),
             "bridge-send-req",
             BridgeRequestToBackend::from(req_buffer, self.clone(), w, self.done.clone()),
         );
@@ -206,68 +205,50 @@ impl MpmcRingBufferStream {
         //// 从response读取数据写入items
         Self::start_bridge(
             self.clone(),
-            builder.clone(),
+            notify.clone(),
             "bridge-recv-response",
             BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone()),
         );
     }
-    fn start_bridge<F>(
-        self: Arc<Self>,
-        _builder: Arc<BackendBuilder>,
-        _name: &'static str,
-        future: F,
-    ) where
+    fn start_bridge<F, N>(self: Arc<Self>, notify: N, _name: &'static str, future: F)
+    where
         F: Future<Output = Result<()>> + Send + 'static,
+        N: Notify + Send + 'static,
     {
-        let runnings = self.runnings.clone();
         tokio::spawn(async move {
-            runnings.fetch_add(1, Ordering::Release);
-            log::debug!(
-                "{} bridge task started, runnings = {}",
-                _name,
-                runnings.load(Ordering::Acquire)
-            );
+            let runnings = self.runnings.fetch_add(1, Ordering::Release) + 1;
+            // 说明两个线程都已经启动了，把done标识为false
+            if runnings == 2 {
+                self.done.store(false, Ordering::Release);
+            }
+            log::debug!("{} bridge task started, runnings = {}", _name, runnings);
             match future.await {
                 Ok(_) => {
-                    log::debug!("{} bridge task complete", _name);
+                    log::info!("mpmc-task: {} complete", _name);
                 }
                 Err(_e) => {
-                    log::debug!("{} bridge task complete with error:{:?}", _name, _e);
+                    log::error!("mpmc-task: {} complete with error:{:?}", _name, _e);
                 }
             };
-            runnings.fetch_add(-1, Ordering::Release);
-            log::debug!(
-                "{} bridge task completed, runnings = {}",
+            std::sync::atomic::fence(Ordering::AcqRel);
+            self.done.store(true, Ordering::Release);
+            let runnings = self.runnings.fetch_add(-1, Ordering::Release) - 1;
+            log::info!(
+                "mpmc-task: {} task completed, runnings = {} done:{}",
                 _name,
-                runnings.load(Ordering::Acquire)
+                runnings,
+                self.done.load(Ordering::Acquire)
             );
+            self.waker.wake();
+            if runnings == 0 {
+                log::info!("mpmc-task: all threads attached completed. reset item status");
+                self.reset_item_status();
+                if !self.closed.load(Ordering::Acquire) {
+                    notify.notify();
+                    log::info!("mpmc-task: stream inited, try to connect");
+                }
+            }
         });
-    }
-
-    fn do_close(self: Arc<Self>) {
-        self.reset();
-    }
-    pub fn is_complete(self: Arc<Self>) -> bool {
-        self.done.load(Ordering::Acquire) && self.runnings.load(Ordering::Acquire) == 0
-    }
-    pub fn try_complete(self: Arc<Self>) {
-        if self.clone().done.load(Ordering::Acquire) {
-            return;
-        }
-        self.clone().do_close();
-        while self.clone().runnings.load(Ordering::Acquire) != 0 {
-            log::debug!(
-                "running threads: {}",
-                self.clone().runnings.load(Ordering::Acquire)
-            );
-            sleep(Duration::from_secs(1));
-        }
-        log::debug!("all threads completed");
-    }
-    fn shutdown_item_status(&self) {
-        for item in self.items.iter() {
-            item.0.shutdown();
-        }
     }
 
     fn reset_item_status(&self) {
@@ -275,28 +256,19 @@ impl MpmcRingBufferStream {
             item.0.reset();
         }
     }
-    // 在complete从true变成false的时候，需要将mpmc进行初始化。
-    // 满足以下所有条件之后，初始化返回成功
-    // 0. 三个线程全部结束
-    // 1. 所有item没有在处于waker在等待数据读取
-    // 2. 所有的状态都处于Init状态
-    // 3. 关闭senders的channel
-    // 4. 重新初始化senders与receivers
-    pub fn reset(&self) -> bool {
-        debug_assert!(!self.done.load(Ordering::Acquire));
-        let runnings = self.runnings.load(Ordering::Acquire);
-        debug_assert!(runnings >= 0);
+    fn close(&self) {
+        self.closed.store(true, Ordering::Release);
         self.done.store(true, Ordering::Release);
-
-        self.shutdown_item_status();
-
-        runnings == 0
+        self.waker.wake();
+        log::debug!("mpmc-task: closing called");
     }
 }
 
-use crate::BackendBuilder;
-use std::thread::sleep;
-use std::time::Duration;
+impl Drop for MpmcRingBufferStream {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
 
 use crate::req_handler::Snapshot;
 impl RequestHandler for Arc<MpmcRingBufferStream> {

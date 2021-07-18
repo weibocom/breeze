@@ -50,3 +50,8 @@ pub trait AsyncReadAll {
 //impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}
 
 pub const MAX_CONNECTIONS: usize = 256;
+
+// 当stream退出时，通知
+pub trait Notify {
+    fn notify(&self);
+}
