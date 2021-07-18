@@ -57,7 +57,7 @@ impl Sender {
         &mut self,
         cx: &mut Context,
         mut w: Pin<&mut W>,
-        rid: &RequestId,
+        _rid: &RequestId,
     ) -> Poll<Result<usize>>
     where
         W: AsyncWrite + ?Sized,
@@ -66,7 +66,7 @@ impl Sender {
             "io-sender: flushing idx:{} len:{} {:?}",
             self.idx,
             self.buff.len(),
-            rid
+            _rid
         );
         while self.idx < self.buff.len() {
             let n = ready!(w.as_mut().poll_write(cx, &self.buff[self.idx..]))?;
@@ -93,7 +93,7 @@ impl Sender {
         cx: &mut Context,
         mut w: Pin<&mut W>,
         parser: &P,
-        rid: &RequestId,
+        _rid: &RequestId,
     ) -> Poll<Result<()>>
     where
         W: AsyncWrite + ?Sized,
@@ -139,10 +139,10 @@ impl Sender {
         ready!(w.as_mut().poll_flush(cx))?;
 
         if !direct {
-            log::debug!("io-sender-poll: response buffered. {:?}", rid);
+            log::debug!("io-sender-poll: response buffered. {:?}", _rid);
             Poll::Pending
         } else {
-            log::debug!("io-sender-poll: response direct. {:?}", rid);
+            log::debug!("io-sender-poll: response direct. {:?}", _rid);
             Poll::Ready(Ok(()))
         }
     }

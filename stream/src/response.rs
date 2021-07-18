@@ -137,13 +137,6 @@ impl DerefMut for Item {
     }
 }
 
-impl Item {
-    #[inline(always)]
-    pub fn rid(&self) -> &RequestId {
-        &self.data.req_id
-    }
-}
-
 pub(crate) struct ResponseReader<'a, P> {
     idx: usize,
     items: Vec<Item>,

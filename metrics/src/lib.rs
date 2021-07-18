@@ -1,7 +1,6 @@
 use crossbeam_channel::unbounded;
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Sender;
 use once_cell::sync::OnceCell;
-use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::UdpSocket;
@@ -11,7 +10,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::metrics::CalculateMethod::Avg;
 use crate::metrics::{CalculateMethod, Metrics, MetricsConfig};
-use thread_id;
 
 mod metrics;
 
@@ -58,7 +56,7 @@ impl MetricsSender {
                             if socket.as_ref().is_none() {
                                 let udp_result = UdpSocket::bind(local_address.clone() + ":34254");
                                 if udp_result.is_ok() {
-                                    let mut udp_socket = udp_result.unwrap();
+                                    let udp_socket = udp_result.unwrap();
                                     udp_socket
                                         .connect(metrics_url.clone())
                                         .expect("connect to metrics error");

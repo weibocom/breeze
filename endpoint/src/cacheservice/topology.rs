@@ -189,7 +189,13 @@ impl<P> Topology<P> {
             if !streams.contains_key(addr) {
                 streams.insert(
                     addr.to_string(),
-                    BackendBuilder::from(parser.clone(), addr.to_string(), req, resp, parallel),
+                    Arc::new(BackendBuilder::from(
+                        parser.clone(),
+                        addr.to_string(),
+                        req,
+                        resp,
+                        parallel,
+                    )),
                 );
             }
         }
