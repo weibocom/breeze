@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
 
@@ -108,16 +109,23 @@ impl Item {
     // Received, 说明之前从来没有poll过
     // Reponded: 有数据并且成功返回
     // 调用方确保当前status不为shutdown
-    pub fn poll_read(&self, cx: &mut Context) -> Poll<ResponseData> {
+    pub fn poll_read(&self, cx: &mut Context) -> Poll<Result<ResponseData>> {
         self.lock_waker();
         let status = self.status();
-        if status == ItemStatus::ResponseReceived {
+        if status == ResponseReceived {
             let response = self.response.take();
-            log::debug!("item status: read {:?}", response.location());
             let rid = self.rid.take();
-
             self.unlock_waker();
-            Poll::Ready(ResponseData::from(response, rid, self.seq()))
+            log::debug!("item status: read {:?}", response.location());
+            Poll::Ready(Ok(ResponseData::from(response, rid, self.seq())))
+        } else if status == Init {
+            // 在stream/io/receiver中，确保了一定先发送请求，再读取response。
+            // 所以读请求过来时，状态一定不会是Init。
+            // 如果是Init，则有一种情况：因为stream异常，状态被重置了。直接返回错误，让client进行容错处理
+            return Poll::Ready(Err(Error::new(
+                ErrorKind::ConnectionReset,
+                "read in init status",
+            )));
         } else {
             *self.waker.borrow_mut() = Some(cx.waker().clone());
             self.unlock_waker();
@@ -216,5 +224,6 @@ impl Item {
     pub(crate) fn reset(&self) {
         //self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8);
         self.status.store(Init as u8, Ordering::Release);
+        self.try_wake();
     }
 }

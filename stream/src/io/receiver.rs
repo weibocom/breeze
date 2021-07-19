@@ -100,7 +100,7 @@ impl Receiver {
         } else {
             if self.cap >= MAX_REQUEST_SIZE {
                 Err(Error::new(
-                    ErrorKind::ConnectionAborted,
+                    ErrorKind::InvalidInput,
                     "max request size limited: 1mb",
                 ))
             } else {
@@ -114,6 +114,7 @@ impl Receiver {
                 };
                 self.buff.clear();
                 self.buff = new_buff;
+                self.cap = cap;
                 Ok(())
             }
         }

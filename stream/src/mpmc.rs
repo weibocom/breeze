@@ -87,7 +87,7 @@ impl MpmcRingBufferStream {
     pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<ResponseData>> {
         ready!(self.poll_check(cid))?;
         let item = self.get_item(cid);
-        let data = ready!(item.poll_read(cx));
+        let data = ready!(item.poll_read(cx))?;
         log::debug!(
             "mpmc: data read out. cid:{} len:{} rid:{:?} ",
             cid,
@@ -235,7 +235,6 @@ impl MpmcRingBufferStream {
                     log::error!("mpmc-task: {} complete with error:{:?}", _name, _e);
                 }
             };
-            std::sync::atomic::fence(Ordering::AcqRel);
             self.done.store(true, Ordering::Release);
             let runnings = self.runnings.fetch_add(-1, Ordering::Release) - 1;
             log::info!(
@@ -268,11 +267,20 @@ impl MpmcRingBufferStream {
         log::debug!("mpmc-task: closing called");
     }
 
-    // 满足以下所有条件，则把done调整为true，当前实例快速失败。
-    // 1. req_num停止更新；
-    // 2. resp_num > req_num;
-    // 3. 超过7秒钟。why 7 secs?
-    fn start_check_timeout(&self) {}
+    pub(crate) fn load_ping_ping(&self) -> (usize, usize) {
+        (
+            self.req_num.0.load(Ordering::Relaxed),
+            self.resp_num.0.load(Ordering::Relaxed),
+        )
+    }
+    pub(crate) fn done(&self) -> bool {
+        self.done.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn mark_done(&self) {
+        self.done.store(true, Ordering::Release);
+        self.waker.wake();
+    }
 }
 
 impl Drop for MpmcRingBufferStream {
