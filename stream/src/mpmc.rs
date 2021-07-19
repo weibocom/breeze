@@ -171,7 +171,7 @@ impl MpmcRingBufferStream {
 
     fn check_bridge(&self) {
         // 必须是已经complete才能重新bridage
-        assert_eq!(self.runnings.load(Ordering::Acquire), 0);
+        //assert_eq!(self.runnings.load(Ordering::Acquire), 0);
         assert!(self.done.load(Ordering::Acquire));
     }
 
