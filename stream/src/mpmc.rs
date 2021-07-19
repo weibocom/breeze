@@ -38,6 +38,12 @@ pub struct MpmcRingBufferStream {
     // 2. BridgeResponseToLocal: 把response数据从backend server读取到items
     runnings: AtomicIsize,
 
+    // resp_num - req_num就是正在处理中的请求。用来检查timeout
+    // 接入到的请求数量
+    req_num: CacheAligned<AtomicUsize>,
+    // 成功返回的请求数量
+    resp_num: CacheAligned<AtomicUsize>,
+
     done: Arc<AtomicBool>,
     closed: AtomicBool,
 }
@@ -64,6 +70,8 @@ impl MpmcRingBufferStream {
             done: Arc::new(AtomicBool::new(true)),
             closed: AtomicBool::new(false),
             runnings: AtomicIsize::new(0),
+            req_num: CacheAligned(AtomicUsize::new(0)),
+            resp_num: CacheAligned(AtomicUsize::new(0)),
         }
     }
     // 如果complete为true，则快速失败
@@ -86,6 +94,7 @@ impl MpmcRingBufferStream {
             data.data().len(),
             data.rid()
         );
+        self.req_num.0.fetch_add(1, Ordering::Relaxed);
         Poll::Ready(Ok(data))
     }
     pub fn response_done(&self, cid: usize, response: &ResponseData) {
@@ -120,6 +129,7 @@ impl MpmcRingBufferStream {
 
         self.get_item(cid).place_request(buf);
         self.bits.mark(cid);
+        self.req_num.0.fetch_add(1, Ordering::Relaxed);
         self.waker.wake();
         log::debug!("mpmc: write complete cid:{} len:{} ", cid, buf.len());
         Poll::Ready(Ok(()))
@@ -257,6 +267,12 @@ impl MpmcRingBufferStream {
         self.waker.wake();
         log::debug!("mpmc-task: closing called");
     }
+
+    // 满足以下所有条件，则把done调整为true，当前实例快速失败。
+    // 1. req_num停止更新；
+    // 2. resp_num > req_num;
+    // 3. 超过7秒钟。why 7 secs?
+    fn start_check_timeout(&self) {}
 }
 
 impl Drop for MpmcRingBufferStream {
