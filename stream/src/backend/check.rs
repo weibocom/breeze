@@ -245,7 +245,7 @@ impl BackendChecker {
                         e,
                         tries
                     );
-                    let secs = (1 << tries).max(31);
+                    let secs = (1 << tries).min(31);
                     tries += 1;
                     sleep(Duration::from_secs(secs)).await;
                 } //   reconnect_error.add_error(1);
