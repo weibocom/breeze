@@ -42,9 +42,17 @@ impl BackendBuilder {
             stream: stream.clone(),
             ids: Arc::new(Ids::with_capacity(parallel)),
         };
-        let checker =
-            BackendChecker::from(stream.clone(), req_buf, resp_buf, addr, me.finished.clone());
-        checker.start_check(parser.clone());
+        let (tx, rx) = channel(8);
+        let checker = Arc::new(BackendChecker::from(
+            stream.clone(),
+            req_buf,
+            resp_buf,
+            addr,
+            me.finished.clone(),
+            tx,
+        ));
+        checker.clone().start_check_done(parser.clone(), rx);
+        checker.start_check_timeout();
         me
     }
     pub fn build(&self) -> BackendStream {
@@ -59,28 +67,6 @@ impl BackendBuilder {
     fn finish(&self) {
         self.finished.store(true, Ordering::Release);
     }
-    //pub fn reconnect(&self) {
-    //    if let Err(e) = self.notify.try_send(0) {
-    //        log::error!("check: reconnect failed. notify error:{:?}", e);
-    //    }
-    //    //if !self.finished.load(Ordering::Acquire) {
-    //    //    self.connected.store(false, Ordering::Release);
-    //    //    self.check_waker.read().unwrap().wake();
-    //    //}
-    //}
-
-    //pub fn start_check<P>(&self, checker: Arc<BackendChecker>, parser: P) -> JoinHandle<()>
-    //where
-    //    P: Unpin + Send + Sync + Protocol + 'static + Clone,
-    //{
-    //    let runtime = Runtime::new().unwrap();
-    //    let cloned_parser = parser.clone();
-    //    let res = std::thread::spawn(move || {
-    //        let check_future = checker.check(cloned_parser);
-    //        runtime.block_on(check_future);
-    //    });
-    //    res
-    //}
 }
 
 impl Drop for BackendBuilder {
@@ -91,22 +77,6 @@ impl Drop for BackendBuilder {
 
 use std::collections::LinkedList;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-//pub struct BackendWaker {
-//    check_task: Option<std::thread::JoinHandle<()>>,
-//}
-//
-//impl BackendWaker {
-//    fn new() -> Self {
-//        BackendWaker { check_task: None }
-//    }
-//
-//    fn wake(&self) {
-//        if self.check_task.is_some() {
-//            self.check_task.as_ref().unwrap().thread().unpark();
-//        }
-//    }
-//}
 
 pub struct BackendErrorCounter {
     error_window_size: u64,
@@ -167,11 +137,10 @@ impl BackendErrorCounter {
 }
 
 pub struct BackendChecker {
+    inner: Arc<RingBufferStream>,
     tx: Arc<Sender<u8>>,
-    rx: Receiver<u8>,
     req_buf: usize,
     resp_buf: usize,
-    inner: Arc<RingBufferStream>,
     addr: String,
     finished: Arc<AtomicBool>,
 }
@@ -183,14 +152,13 @@ impl BackendChecker {
         resp_buf: usize,
         addr: String,
         finished: Arc<AtomicBool>,
+        tx: Sender<u8>,
     ) -> Self {
-        let (tx, rx) = channel(8);
         if let Err(e) = tx.try_send(0) {
             log::error!("check: failed to send connect signal to {}:{:?}", addr, e);
         }
         let me = Self {
             tx: Arc::new(tx),
-            rx: rx,
             inner: stream,
             req_buf: req_buf,
             resp_buf: resp_buf,
@@ -200,12 +168,12 @@ impl BackendChecker {
         me
     }
 
-    fn start_check<P>(mut self, parser: P)
+    fn start_check_done<P>(self: Arc<Self>, parser: P, mut rx: Receiver<u8>)
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         tokio::spawn(async move {
-            while let Some(_) = self.rx.recv().await {
+            while let Some(_) = rx.recv().await {
                 log::info!(
                     "check: connect signal recived, try to connect:{}",
                     self.addr
@@ -277,6 +245,54 @@ impl BackendChecker {
             },
         );
         Ok(())
+    }
+    fn start_check_timeout(self: Arc<Self>) {
+        log::info!("check: {} timeout task started", self.addr);
+        tokio::spawn(async move {
+            self._start_check_timeout().await;
+        });
+    }
+
+    // 满足以下所有条件，则把done调整为true，当前实例快速失败。
+    // 1. req_num停止更新；
+    // 2. resp_num > req_num;
+    // 3. 超过7秒钟。why 7 secs?
+    async fn _start_check_timeout(self: Arc<Self>) {
+        use std::time::Instant;
+        const TIME_OUT: Duration = Duration::from_secs(7);
+
+        let (mut last_req, _) = self.inner.load_ping_ping();
+        let mut duration = Instant::now();
+        while !self.finished.load(Ordering::Acquire) {
+            sleep(Duration::from_secs(1)).await;
+            // 已经done了，忽略
+            if self.inner.done() {
+                continue;
+            }
+            let (req_num, resp_num) = self.inner.load_ping_ping();
+            // req有更新
+            if req_num != last_req {
+                last_req = req_num;
+                duration = Instant::now();
+                continue;
+            }
+            // 当前没有请求堆积
+            if resp_num == req_num {
+                continue;
+            }
+            // 有请求正在处理
+            // 判断是否超时
+            let elap = duration.elapsed();
+            if elap <= TIME_OUT {
+                // 还未超时
+                continue;
+            }
+            log::error!(
+                "mpmc-timeout: no response return in {:?}. stream marked done",
+                elap
+            );
+            self.inner.mark_done();
+        }
     }
 }
 
