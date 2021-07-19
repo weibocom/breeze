@@ -102,7 +102,7 @@ where
                 me.data.advance_processed(num);
             }
         }
-        log::debug!("resp-handler: task of reading data from response complete");
+        log::info!("resp-handler: task of reading data from response complete");
         Poll::Ready(Ok(()))
     }
 }
