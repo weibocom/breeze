@@ -34,9 +34,8 @@ pub struct MpmcRingBufferStream {
     offset: CacheAligned<SeqOffset>,
 
     // 在运行当中的线程数。一共会有三个
-    // 1. BridgeRequestToBuffer: 把request数据从receiver读取到本地的buffer
-    // 2. BridgeBufferToWriter:  把request数据从本地的buffer写入到backend server
-    // 3. BridgeResponseToLocal: 把response数据从backend server读取到items
+    // 1. BridgeRequestToBackend: 把请求发送到backend
+    // 2. BridgeResponseToLocal: 把response数据从backend server读取到items
     runnings: AtomicIsize,
 
     done: Arc<AtomicBool>,
@@ -176,10 +175,9 @@ impl MpmcRingBufferStream {
     }
 
     // 构建一个ring buffer.
-    // 一共3个线程。
-    // 线程A: 把request data数据从item写入到ring buffer.
-    // 线程B：把ring buffer的数据flush到server
-    // 线程C：把response数据从server中读取，并且place到item的response中
+    // 一共2个线程。
+    // 线程A: 把request data数据从item写入backend
+    // 线程B：把response数据从server中读取，并且place到item的response中
     pub fn bridge<R, W, P, N>(
         self: Arc<Self>,
         parser: P,
@@ -218,11 +216,7 @@ impl MpmcRingBufferStream {
     {
         tokio::spawn(async move {
             let runnings = self.runnings.fetch_add(1, Ordering::Release) + 1;
-            // 说明两个线程都已经启动了，把done标识为false
-            if runnings == 2 {
-                self.done.store(false, Ordering::Release);
-            }
-            log::debug!("{} bridge task started, runnings = {}", _name, runnings);
+            log::info!("{} bridge task started, runnings = {}", _name, runnings);
             match future.await {
                 Ok(_) => {
                     log::info!("mpmc-task: {} complete", _name);
