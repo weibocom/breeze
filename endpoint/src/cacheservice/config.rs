@@ -4,6 +4,7 @@ use std::io::{Error, ErrorKind, Result};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Namespace {
+    #[serde(default)]
     pub hash: String, // eg: bkdr
     //pub distribution: String, //eg: ketama
     #[serde(default)]
@@ -22,6 +23,7 @@ pub struct Namespace {
 
 impl Namespace {
     pub(crate) fn parse(group_cfg: &str, namespace: &str) -> Result<Namespace> {
+        log::debug!("group_cfg:{:?}", group_cfg);
         match serde_yaml::from_str::<HashMap<String, Namespace>>(group_cfg) {
             Err(e) => {
                 return Err(Error::new(

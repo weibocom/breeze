@@ -41,6 +41,8 @@ impl Vintage {
         let mut gurl = self.base_url.clone();
         gurl.set_path(path);
 
+        log::debug!("vintage-lookup: path:{} index:{}", path, index);
+
         let resp = reqwest::Client::new()
             .get(gurl)
             .query(&[("index", index)])

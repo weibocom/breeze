@@ -2,7 +2,7 @@ pub trait ServiceId {
     fn path(&self) -> &str;
 }
 
-// 服务名称是一个路径。路径里面如果，路径分隔符可能是'_'，需要替换成'/'。
+// 服务名称是一个路径。路径里面如果，路径分隔符可能是'+'，需要替换成'/'。
 // 另外，如果名称里面存在'#'，则'#'后面的内容并不是path的一部分，而是分隔类似cacheservice的命名空间
 pub struct ServiceName {
     name: String,
@@ -10,7 +10,7 @@ pub struct ServiceName {
 impl ServiceName {
     pub fn from(name: String) -> Self {
         Self {
-            name: name.replace('_', "/"),
+            name: name.replace('+', "/"),
         }
     }
     pub fn name(&self) -> &str {
