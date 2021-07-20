@@ -267,6 +267,7 @@ impl BackendChecker {
             sleep(Duration::from_secs(1)).await;
             // 已经done了，忽略
             if self.inner.done() {
+                duration = Instant::now();
                 continue;
             }
             let (req_num, resp_num) = self.inner.load_ping_ping();
@@ -278,6 +279,7 @@ impl BackendChecker {
             }
             // 当前没有请求堆积
             if resp_num == req_num {
+                duration = Instant::now();
                 continue;
             }
             // 有请求正在处理
@@ -288,7 +290,7 @@ impl BackendChecker {
                 continue;
             }
             log::error!(
-                "mpmc-timeout: no response return in {:?}. stream marked done",
+                "check-timeout: no response return in {:?}. stream marked done",
                 elap
             );
             self.inner.mark_done();
