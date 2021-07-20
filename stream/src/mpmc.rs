@@ -94,7 +94,7 @@ impl MpmcRingBufferStream {
             data.data().len(),
             data.rid()
         );
-        self.req_num.0.fetch_add(1, Ordering::Relaxed);
+        self.resp_num.0.fetch_add(1, Ordering::Relaxed);
         Poll::Ready(Ok(data))
     }
     pub fn response_done(&self, cid: usize, response: &ResponseData) {
@@ -204,6 +204,9 @@ impl MpmcRingBufferStream {
     {
         self.check_bridge();
         self.done.store(false, Ordering::Release);
+        std::sync::atomic::fence(Ordering::AcqRel);
+        self.req_num.0.store(0, Ordering::Relaxed);
+        self.resp_num.0.store(0, Ordering::Relaxed);
         Self::start_bridge(
             self.clone(),
             notify.clone(),

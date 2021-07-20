@@ -201,13 +201,6 @@ impl Item {
     fn unlock_waker(&self) {
         debug_assert_eq!(self.waker_lock.load(Ordering::Acquire), true);
         self.waker_lock.store(false, Ordering::Release);
-        //match self
-        //    .waker_lock
-        //    .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
-        //{
-        //    Ok(_) => {}
-        //    Err(_) => panic!("item status: waker unlock failed"),
-        //}
     }
     #[inline(always)]
     fn lock_waker(&self) {

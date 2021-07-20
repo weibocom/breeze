@@ -266,23 +266,13 @@ impl BackendChecker {
         while !self.finished.load(Ordering::Acquire) {
             sleep(Duration::from_secs(1)).await;
             // 已经done了，忽略
-            if self.inner.done() {
-                duration = Instant::now();
-                continue;
-            }
+            let done = self.inner.done();
             let (req_num, resp_num) = self.inner.load_ping_ping();
-            // req有更新
-            if req_num != last_req {
+            if done || req_num != last_req || resp_num == req_num {
                 last_req = req_num;
                 duration = Instant::now();
                 continue;
             }
-            // 当前没有请求堆积
-            if resp_num == req_num {
-                duration = Instant::now();
-                continue;
-            }
-            // 有请求正在处理
             // 判断是否超时
             let elap = duration.elapsed();
             if elap <= TIME_OUT {
@@ -290,8 +280,10 @@ impl BackendChecker {
                 continue;
             }
             log::error!(
-                "check-timeout: no response return in {:?}. stream marked done",
-                elap
+                "check-timeout: no response return in {:?}. stream marked done. req:{} resp:{}",
+                elap,
+                req_num,
+                resp_num
             );
             self.inner.mark_done();
         }
