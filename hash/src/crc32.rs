@@ -36,6 +36,7 @@ const CRC32TAB: [i64; 256] = [
 ];
 
 const CRC_SEED: i64 = 0xFFFFFFFF;
+#[derive(Default)]
 pub struct Crc32 {}
 
 //TODO 参考java 内部实现版本 以及 api-commons中crc32 hash算法调整，手动测试各种长度key，hash一致，需要线上继续验证 fishermen

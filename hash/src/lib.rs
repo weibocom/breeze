@@ -2,6 +2,7 @@ mod bkdr;
 use bkdr::Bkdr;
 
 mod crc32;
+use crc32::Crc32;
 
 use enum_dispatch::enum_dispatch;
 #[enum_dispatch]
@@ -13,12 +14,14 @@ pub trait Hash {
 pub enum Hasher {
     SipHasher13(DefaultHasher),
     Bkdr(Bkdr),
+    Crc32(Crc32),
 }
 
 impl Hasher {
     pub fn from(alg: &str) -> Self {
         match alg {
             "bkdr" | "BKDR" => Self::Bkdr(Default::default()),
+            "crc32" | "CRC32" => Self::Crc32(Default::default()),
             _ => Self::SipHasher13(DefaultHasher),
         }
     }
