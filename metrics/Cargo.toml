@@ -12,3 +12,6 @@ crossbeam-channel = "*"
 log = { path = "../log" }
 #thread-id = "*"
 local-ip-address = "*"
+tokio = { version = "1.8.1", features = ["full"] }
+futures = "*"
+lazy_static = "1.4.0"

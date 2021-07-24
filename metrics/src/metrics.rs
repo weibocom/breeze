@@ -1,5 +1,5 @@
-use std::fmt::{Display, Formatter};
 use std::fmt;
+use std::fmt::{Display, Formatter};
 
 pub(crate) struct MetricsConfig {
     pub(crate) print_only: bool,
@@ -7,7 +7,7 @@ pub(crate) struct MetricsConfig {
 }
 
 impl MetricsConfig {
-    pub(crate) fn new (metrics_url: String) -> MetricsConfig {
+    pub(crate) fn new(metrics_url: String) -> MetricsConfig {
         MetricsConfig {
             print_only: metrics_url.eq("default"),
             metrics_url,
@@ -23,8 +23,20 @@ pub(crate) struct Metrics {
 }
 
 impl Metrics {
-    pub(crate) fn new(key: String, value: f64, count: usize, method: CalculateMethod, stat_second: u128) -> Metrics {
-        Metrics { key, value, count, method, stat_second }
+    pub(crate) fn new(
+        key: String,
+        value: f64,
+        count: usize,
+        method: CalculateMethod,
+        stat_second: u128,
+    ) -> Metrics {
+        Metrics {
+            key,
+            value,
+            count,
+            method,
+            stat_second,
+        }
     }
 }
 
@@ -38,7 +50,7 @@ impl Display for CalculateMethod {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
             CalculateMethod::Sum => write!(f, "Sum"),
-            CalculateMethod::Avg=> write!(f, "Avg"),
+            CalculateMethod::Avg => write!(f, "Avg"),
         }
     }
 }
