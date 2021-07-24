@@ -9,8 +9,6 @@ pub use id::*;
 
 mod ip;
 
-use ip::*;
-
 mod sender;
 use sender::Sender;
 
@@ -44,8 +42,16 @@ pub fn duration(key: &'static str, d: Duration) {
         recorder.duration(key, d);
     }
 }
+
+#[inline(always)]
 pub fn duration_with_service(key: &'static str, d: Duration, metric_id: usize) {
     if let Some(recorder) = RECORDER.get() {
         recorder.duration_with_service(key, d, metric_id);
+    }
+}
+#[inline(always)]
+pub fn counter_with_service(key: &'static str, c: usize, metric_id: usize) {
+    if let Some(recorder) = RECORDER.get() {
+        recorder.counter_with_service(key, c, metric_id);
     }
 }

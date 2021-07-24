@@ -63,7 +63,7 @@ impl Recorder {
             if data.len() <= service {
                 let res = service - data.len();
                 data.reserve(res);
-                for _ in 0..res {
+                for _ in 0..=res {
                     data.push(HashMap::with_capacity(16));
                 }
             }
