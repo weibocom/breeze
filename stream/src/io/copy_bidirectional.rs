@@ -104,6 +104,8 @@ where
             rid.incr();
             // 开始记录metric
             metrics::duration_with_service(metric.op.name(), metric.duration(), metric.metric_id);
+            metrics::counter_with_service("bytes.tx", metric.resp_bytes, metric.metric_id);
+            metrics::counter_with_service("bytes.rx", metric.req_bytes, metric.metric_id);
             metric.reset();
         }
 
