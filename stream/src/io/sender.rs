@@ -6,6 +6,7 @@ use futures::ready;
 
 use tokio::io::AsyncWrite;
 
+use super::IoMetric;
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -14,7 +15,6 @@ pub(super) struct Sender {
     // 避免往buffer writer写的时候，阻塞导致Response Buffer的资源无法释放(buffer full)，影响其他请求。
     idx: usize,
     buff: Vec<u8>,
-    bytes: usize,
 }
 
 impl Sender {
@@ -22,7 +22,6 @@ impl Sender {
         Self {
             buff: Vec::with_capacity(2048),
             idx: 0,
-            bytes: 0,
         }
     }
     pub fn poll_copy_one<R, W, P>(
@@ -32,7 +31,8 @@ impl Sender {
         mut w: Pin<&mut W>,
         parser: &P,
         rid: &RequestId,
-    ) -> Poll<Result<usize>>
+        metric: &mut IoMetric,
+    ) -> Poll<Result<()>>
     where
         R: AsyncReadAll + ?Sized,
         W: AsyncWrite + ?Sized,
@@ -40,16 +40,15 @@ impl Sender {
     {
         // cache里面有数据，当前请求是上一次pending触发
         if self.buff.len() > 0 {
-            self.flush(cx, w, rid)
+            self.flush(cx, w, rid, metric)
         } else {
             log::debug!("io-sender-poll: poll response from agent. {:?}", rid);
             let response = ready!(r.as_mut().poll_next(cx))?;
+            metric.response_ready();
             log::debug!("io-sender-poll: response polled. {:?}", rid);
             // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
-            ready!(self.write_to(response, cx, w.as_mut(), parser, rid))?;
-            let bytes = self.bytes;
-            self.bytes = 0;
-            Poll::Ready(Ok(bytes))
+            ready!(self.write_to(response, cx, w.as_mut(), parser, rid, metric))?;
+            Poll::Ready(Ok(()))
         }
     }
     #[inline(always)]
@@ -58,7 +57,8 @@ impl Sender {
         cx: &mut Context,
         mut w: Pin<&mut W>,
         _rid: &RequestId,
-    ) -> Poll<Result<usize>>
+        metric: &mut IoMetric,
+    ) -> Poll<Result<()>>
     where
         W: AsyncWrite + ?Sized,
     {
@@ -70,10 +70,10 @@ impl Sender {
         );
         while self.idx < self.buff.len() {
             let n = ready!(w.as_mut().poll_write(cx, &self.buff[self.idx..]))?;
-            self.bytes += n;
             if n == 0 {
                 return Poll::Ready(Err(Error::new(ErrorKind::WriteZero, "write zero response")));
             }
+            metric.response_sent(n);
             self.idx += n;
         }
         ready!(w.as_mut().poll_flush(cx))?;
@@ -81,9 +81,7 @@ impl Sender {
         unsafe {
             self.buff.set_len(0);
         }
-        let bytes = self.bytes;
-        self.bytes = 0;
-        return Poll::Ready(Ok(bytes));
+        return Poll::Ready(Ok(()));
     }
     // 先直接写w，直到pending，将剩下的数据写入到cache
     // 返回直接写入到client的字节数
@@ -94,6 +92,7 @@ impl Sender {
         mut w: Pin<&mut W>,
         parser: &P,
         _rid: &RequestId,
+        metric: &mut IoMetric,
     ) -> Poll<Result<()>>
     where
         W: AsyncWrite + ?Sized,
@@ -110,13 +109,13 @@ impl Sender {
                 match w.as_mut().poll_write(cx, slice.data())? {
                     Poll::Ready(n) => {
                         left -= n;
-                        self.bytes += n;
                         if n == 0 {
                             return Poll::Ready(Err(Error::new(
                                 ErrorKind::WriteZero,
                                 "write zero bytes to client",
                             )));
                         }
+                        metric.response_sent(n);
                         // 一次未写完。不再尝试, 需要快速释放response中的item
                         if n != slice.len() {
                             self.reserve(left);

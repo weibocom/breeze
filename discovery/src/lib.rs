@@ -1,4 +1,5 @@
 mod name;
+mod path;
 mod update;
 mod vintage;
 
@@ -9,6 +10,8 @@ use vintage::Vintage;
 
 use std::io::Result;
 use std::time::Duration;
+
+pub use path::UnixSocketPath;
 
 use left_right::ReadHandle;
 

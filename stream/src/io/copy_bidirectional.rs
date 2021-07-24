@@ -1,8 +1,8 @@
 use crate::{AsyncReadAll, AsyncWriteAll};
 
-use super::{Receiver, Sender};
+use super::{IoMetric, Receiver, Sender};
 
-use protocol::{Protocol, RequestId};
+use protocol::{Operation, Protocol, RequestId};
 
 use futures::ready;
 
@@ -14,13 +14,12 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use metrics::MetricsSender;
-
 pub async fn copy_bidirectional<A, C, P>(
     agent: A,
     client: C,
     parser: P,
     session_id: usize,
+    metric_id: usize,
 ) -> Result<(u64, u64)>
 where
     A: AsyncReadAll + AsyncWriteAll + Unpin,
@@ -36,7 +35,7 @@ where
         sender: Sender::new(),
         sent: false,
         rid: RequestId::from(session_id, 0),
-        request_start: Instant::now(),
+        metric: IoMetric::from(metric_id),
     }
     .await
 }
@@ -56,7 +55,9 @@ struct CopyBidirectional<A, C, P> {
     sender: Sender,
     sent: bool, // 标识请求是否发送完成。用于ping-pong之间的协调
     rid: RequestId,
-    request_start: Instant,
+
+    // 以下用来记录相关的metrics指标
+    metric: IoMetric,
 }
 impl<A, C, P> Future for CopyBidirectional<A, C, P>
 where
@@ -75,43 +76,35 @@ where
             sender,
             sent,
             rid,
-            request_start,
+            metric,
         } = &mut *self;
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
         loop {
             if !*sent {
-                let bytes = ready!(receiver.poll_copy_one(
+                ready!(receiver.poll_copy_one(
                     cx,
                     client.as_mut(),
                     agent.as_mut(),
                     parser,
                     rid,
+                    metric,
                 ))?;
-                if bytes == 0 {
-                    log::debug!("io-bidirectional not request polled {:?}", rid);
+                if metric.req_bytes == 0 {
+                    log::debug!("io-transfer: not request {:?}", rid);
                     break;
                 }
                 *sent = true;
-                *request_start = Instant::now();
-                log::debug!(
-                    "io-bidirectional request sent to agent. len:{} {:?}",
-                    bytes,
-                    rid
-                );
+                log::debug!("io-transfer: req sent.{} {:?}", metric.req_bytes, rid);
             }
-            let _bytes =
-                ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser, rid))?;
-            log::debug!(
-                "io-bidirectional. one response sent to client len:{} {:?}",
-                _bytes,
-                *rid
-            );
+            ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser, rid, metric))?;
+            metric.response_done();
+            log::debug!("io-transfer: resp sent {} {:?}", metric.resp_bytes, *rid);
             *sent = false;
             rid.incr();
-            let cost = request_start.elapsed().as_micros();
-            MetricsSender::avg("cost".parse().unwrap(), cost as usize);
-            MetricsSender::sum("count".parse().unwrap(), 1 as usize);
+            // 开始记录metric
+            metrics::duration_with_service(metric.op.name(), metric.duration(), metric.metric_id);
+            metric.reset();
         }
 
         Poll::Ready(Ok((0, 0)))

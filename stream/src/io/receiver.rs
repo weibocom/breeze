@@ -1,9 +1,10 @@
 use crate::AsyncWriteAll;
 
-use protocol::{Protocol, Request, RequestId, MAX_REQUEST_SIZE};
+use protocol::{Operation, Protocol, Request, RequestId, MAX_REQUEST_SIZE};
 
 use futures::ready;
 
+use super::IoMetric;
 use tokio::io::{AsyncRead, ReadBuf};
 
 use std::io::{Error, ErrorKind, Result};
@@ -40,6 +41,7 @@ impl Receiver {
         self.parsed_idx = 0;
         self.parsed = false;
     }
+    // 返回当前请求的size，以及请求的类型。
     pub fn poll_copy_one<R, W, P>(
         &mut self,
         cx: &mut Context,
@@ -47,7 +49,8 @@ impl Receiver {
         mut writer: Pin<&mut W>,
         parser: &P,
         rid: &RequestId,
-    ) -> Poll<Result<usize>>
+        metric: &mut IoMetric,
+    ) -> Poll<Result<()>>
     where
         R: AsyncRead + ?Sized,
         P: Protocol + Unpin,
@@ -70,25 +73,30 @@ impl Receiver {
                 if self.w > self.r {
                     log::warn!("io-receiver: eof, but {} bytes left.", self.w - self.r);
                 }
-                return Poll::Ready(Ok(0));
+                metric.reset();
+                return Poll::Ready(Ok(()));
             }
             log::debug!("io-receiver-poll: {} bytes received.{:?}", read, rid);
             self.w += read;
             let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
             self.parsed = parsed;
             self.parsed_idx = self.r + n;
+            metric.req_received(read);
         }
         let req = Request::from(&self.buff[self.r..self.parsed_idx], rid.clone());
+
         log::debug!(
             "io-receiver-poll: request parsed. len:{} {:?}, {:?}",
             self.parsed_idx - self.r,
             &self.buff[self.r..self.parsed_idx.min(48)],
             rid
         );
+        let req_op = parser.operation(req.data());
+        metric.req_done(req_op, req.len());
         ready!(writer.as_mut().poll_write(cx, &req))?;
         self.r += req.len();
         self.reset();
-        Poll::Ready(Ok(req.len()))
+        Poll::Ready(Ok(()))
     }
     // 如果r > 0. 先进行一次move。通过是client端发送的是pipeline请求时会出现这种情况
     // 每次扩容两倍，最多扩容1MB，超过1MB就会扩容失败

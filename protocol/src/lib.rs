@@ -26,6 +26,10 @@ pub trait Protocol: Unpin + Clone + 'static {
     fn copy_noreply(&self, req: &Request) -> Request;
     // 按照op来进行路由，通常用于读写分离
     fn op_route(&self, req: &[u8]) -> usize;
+    #[inline(always)]
+    fn operation(&self, req: &[u8]) -> Operation {
+        self.op_route(req).into()
+    }
     // 调用方必须确保req包含key，否则可能会panic
     fn meta_type(&self, req: &[u8]) -> MetaType;
     fn key<'a>(&self, req: &'a [u8]) -> &'a [u8];
@@ -68,4 +72,36 @@ impl Protocols {
 #[derive(Debug)]
 pub enum MetaType {
     Version,
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone)]
+pub enum Operation {
+    Get = 0u8,
+    Gets,
+    Store,
+    Meta,
+    Other,
+}
+
+use Operation::*;
+
+impl From<usize> for Operation {
+    #[inline(always)]
+    fn from(op: usize) -> Self {
+        match op {
+            0 => Get,
+            1 => Gets,
+            2 => Store,
+            3 => Meta,
+            _ => Other,
+        }
+    }
+}
+const OP_NAMES: [&'static str; 5] = ["get", "mget", "store", "meta", "other"];
+impl Operation {
+    #[inline(always)]
+    pub fn name(&self) -> &'static str {
+        OP_NAMES[*self as u8 as usize]
+    }
 }

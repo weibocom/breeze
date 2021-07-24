@@ -35,8 +35,8 @@ pub struct Context {
     #[clap(short, long, about("log path"), default_value("/tmp/breeze/logs"))]
     log_dir: String,
 
-    #[clap(short, long, about("metrics url"), default_value = "default")]
-    metrics_url: String,
+    #[clap(short, long, about("metrics url"))]
+    metrics_url: Option<String>,
 }
 
 impl Context {
@@ -72,7 +72,7 @@ impl Context {
         self.service_path.clone()
     }
     pub fn metrics_url(&self) -> String {
-        self.metrics_url.clone()
+        self.metrics_url.clone().unwrap_or_default()
     }
 }
 

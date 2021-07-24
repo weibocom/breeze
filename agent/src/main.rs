@@ -10,9 +10,8 @@ use std::time::Duration;
 use stream::io::copy_bidirectional;
 use tokio::spawn;
 use tokio::sync::mpsc::{self, Sender};
-use tokio::time::{interval, interval_at, Instant};
+use tokio::time::{interval_at, Instant};
 
-use metrics::MetricsSender;
 use protocol::Protocols;
 
 #[tokio::main]
@@ -20,14 +19,7 @@ async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
     ctx.check()?;
     log::init(ctx.log_dir())?;
-    MetricsSender::init(ctx.metrics_url());
-    tokio::spawn(async move {
-        let mut tick = interval(Duration::from_secs(3));
-        loop {
-            MetricsSender::sum("living".parse().unwrap(), 1);
-            tick.tick().await;
-        }
-    });
+    metrics::init(&ctx.metrics_url());
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
     let mut listeners = ctx.listeners();
     let mut tick = interval_at(
@@ -97,6 +89,9 @@ async fn process_one_service(
         quard.tick(),
         top,
     ));
+    let (biz, r_type, _d_type) =
+        discovery::UnixSocketPath::parse(&quard.address()).expect("valid path");
+    let metric_id = metrics::register_name(r_type + "." + &biz.replace(".", "_"));
     loop {
         let sd = sd.clone();
         let (client, _addr) = l.accept().await?;
@@ -104,7 +99,9 @@ async fn process_one_service(
         let parser = parser.clone();
         let session_id = session_id.fetch_add(1, Ordering::AcqRel);
         spawn(async move {
-            if let Err(e) = process_one_connection(client, sd, endpoint, parser, session_id).await {
+            if let Err(e) =
+                process_one_connection(client, sd, endpoint, parser, session_id, metric_id).await
+            {
                 log::warn!("connection disconnected:{:?}", e);
             }
         });
@@ -117,6 +114,7 @@ async fn process_one_connection(
     endpoint: String,
     parser: Protocols,
     session_id: usize,
+    metric_id: usize,
 ) -> Result<()> {
     use endpoint::Endpoint;
     let agent = Endpoint::from_discovery(&endpoint, parser.clone(), sd)
@@ -127,6 +125,6 @@ async fn process_one_connection(
                 format!("'{}' is not a valid endpoint type", endpoint),
             )
         })?;
-    copy_bidirectional(agent, client, parser, session_id).await?;
+    copy_bidirectional(agent, client, parser, session_id, metric_id).await?;
     Ok(())
 }
