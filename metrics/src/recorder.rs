@@ -54,7 +54,7 @@ impl Recorder {
     pub(crate) fn new(sender: Sender<Snapshot>) -> Self {
         Self { sender: sender }
     }
-    pub(crate) fn counter(&self, key: &'static str, c: usize) {
+    pub fn counter(&self, key: &'static str, c: usize) {
         self.counter_with_service(key, c, 0)
     }
     pub(crate) fn counter_with_service(&self, key: &'static str, c: usize, service: usize) {

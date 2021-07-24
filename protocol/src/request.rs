@@ -93,7 +93,7 @@ mod rid {
     pub struct RequestId;
     impl RequestId {
         #[inline(always)]
-        pub fn from(session_id: usize, seq: usize) -> Self {
+        pub fn from(_session_id: usize, _seq: usize) -> Self {
             Self
         }
         #[inline(always)]

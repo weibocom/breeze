@@ -1,6 +1,6 @@
 use crate::AsyncWriteAll;
 
-use protocol::{Operation, Protocol, Request, RequestId, MAX_REQUEST_SIZE};
+use protocol::{Protocol, Request, RequestId, MAX_REQUEST_SIZE};
 
 use futures::ready;
 

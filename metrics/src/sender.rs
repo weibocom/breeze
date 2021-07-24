@@ -99,8 +99,8 @@ impl Sender {
     fn poll_send(&mut self, cx: &mut Context) {
         let mut snapshot = self.snapshot.take().expect("metrics snapshot");
         match self._poll_send(cx, &snapshot) {
-            Poll::Ready(Err(e)) => {
-                log::debug!("metrics-send: error:{:?}", e);
+            Poll::Ready(Err(_e)) => {
+                log::debug!("metrics-send: error:{:?}", _e);
                 self.reconnect();
             }
             _ => {}
