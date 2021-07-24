@@ -7,13 +7,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+#[allow(dead_code)]
 static RECONNECT_ERROR_CAP: usize = 5 as usize;
+#[allow(dead_code)]
 static RECONNECT_ERROR_WINDOW: u64 = 30 as u64;
 
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::sleep;
 
+#[allow(dead_code)]
 enum BackendErrorType {
     ConnError = 0 as isize,
     //RequestError,
@@ -78,6 +81,7 @@ impl Drop for BackendBuilder {
 use std::collections::LinkedList;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[allow(dead_code)]
 pub struct BackendErrorCounter {
     error_window_size: u64,
     error_count: usize,
@@ -86,6 +90,7 @@ pub struct BackendErrorCounter {
     error_total_value: usize,
 }
 
+#[allow(dead_code)]
 impl BackendErrorCounter {
     fn new(error_window_size: u64, error_type: BackendErrorType) -> BackendErrorCounter {
         BackendErrorCounter {
