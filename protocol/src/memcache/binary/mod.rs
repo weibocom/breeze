@@ -101,7 +101,7 @@ impl Protocol for MemcacheBinary {
                     copy(data.as_ptr(), v.as_mut_ptr(), data.len());
                 }
                 v[1] = NOREPLY_MAPPING[data[1] as usize];
-                let mut new = Request::from_vec(v, req.id().clone());
+                let mut new = Request::from_vec(v, req.id());
                 new.set_noreply();
                 new
             }
