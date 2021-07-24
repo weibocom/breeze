@@ -2,7 +2,7 @@ use crate::{AsyncReadAll, AsyncWriteAll};
 
 use super::{IoMetric, Receiver, Sender};
 
-use protocol::{Operation, Protocol, RequestId};
+use protocol::{Protocol, RequestId};
 
 use futures::ready;
 
@@ -12,7 +12,6 @@ use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Instant;
 
 pub async fn copy_bidirectional<A, C, P>(
     agent: A,

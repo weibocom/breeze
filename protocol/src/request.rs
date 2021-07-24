@@ -35,8 +35,8 @@ impl Request {
             _data: Arc::new(data),
         }
     }
-    pub fn id(&self) -> &RequestId {
-        &self.id
+    pub fn id(&self) -> RequestId {
+        self.id
     }
     pub fn set_noreply(&mut self) {
         self.noreply = true;
@@ -65,19 +65,38 @@ impl AsRef<Slice> for Request {
 unsafe impl Send for Request {}
 unsafe impl Sync for Request {}
 
-#[derive(Default, Clone, Debug, PartialEq)]
-pub struct RequestId {
-    session_id: usize, // 关联至一个client的实际的connection
-    seq: usize,        // 自增序列号
+pub use rid::RequestId;
+
+#[cfg(debug_assertions)]
+mod rid {
+    #[derive(Default, Debug, PartialEq, Clone, Copy)]
+    pub struct RequestId {
+        session_id: usize, // 关联至一个client的实际的connection
+        seq: usize,        // 自增序列号
+    }
+
+    impl RequestId {
+        #[inline(always)]
+        pub fn from(session_id: usize, seq: usize) -> Self {
+            Self { session_id, seq }
+        }
+        #[inline(always)]
+        pub fn incr(&mut self) {
+            self.seq += 1;
+        }
+    }
 }
 
-impl RequestId {
-    #[inline(always)]
-    pub fn from(session_id: usize, seq: usize) -> Self {
-        Self { session_id, seq }
-    }
-    #[inline(always)]
-    pub fn incr(&mut self) {
-        self.seq += 1;
+#[cfg(not(debug_assertions))]
+mod rid {
+    #[derive(Default, Debug, PartialEq, Clone, Copy)]
+    pub struct RequestId;
+    impl RequestId {
+        #[inline(always)]
+        pub fn from(session_id: usize, seq: usize) -> Self {
+            Self
+        }
+        #[inline(always)]
+        pub fn incr(&mut self) {}
     }
 }
