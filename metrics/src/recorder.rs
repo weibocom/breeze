@@ -16,14 +16,14 @@ pub struct Recorder {
 pub(crate) struct DurationItem {
     pub(crate) count: usize,
     pub(crate) elapse_us: usize,
-    pub(crate) intervals: [usize; 6],
+    pub(crate) intervals: [usize; DURATION_INTERVALS.len()],
 }
 impl DurationItem {
     fn new() -> Self {
         Self {
             count: 0,
             elapse_us: 0,
-            intervals: [0; 6],
+            intervals: [0; DURATION_INTERVALS.len()],
         }
     }
     fn reset(&mut self) {
@@ -39,6 +39,9 @@ impl DurationItem {
             3 => "interval3",
             4 => "interval4",
             5 => "interval5",
+            6 => "interval6",
+            7 => "interval7",
+            8 => "interval8",
             _ => "interval_overflow",
         }
     }
@@ -92,9 +95,7 @@ impl Recorder {
             let one_data = unsafe { data.get_unchecked_mut(service) };
             let us = d.as_micros() as usize;
             // 计算us在哪个interval
-            // [0,256], [256,512], [512,1024],[1024,2048], [2048, 4096], [4096...],
-            let max = INTERVAL_IDX.len() - 1;
-            let idx = INTERVAL_IDX[(us / 256).min(max)] as usize;
+            let idx = get_interval_idx_by_duration_us(us);
             if let Some(item) = one_data.get_mut(key) {
                 item.count += 1;
                 item.elapse_us += us;
@@ -127,7 +128,6 @@ impl Recorder {
     }
 }
 
-static INTERVAL_IDX: [u8; 16] = [0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4];
 #[derive(Default, Debug)]
 pub(crate) struct Snapshot {
     pub(crate) counters: Vec<HashMap<&'static str, usize>>,
@@ -212,3 +212,25 @@ impl Snapshot {
         }
     }
 }
+
+// 通过耗时，获取对应的耗时区间，一共分为9个区间
+// 左开，右闭区间
+#[inline(always)]
+fn get_interval_idx_by_duration_us(duration_us: usize) -> usize {
+    match DURATION_INTERVALS.binary_search(&duration_us) {
+        Ok(idx) => idx,
+        Err(idx) => idx,
+    }
+}
+
+const DURATION_INTERVALS: [usize; 9] = [
+    1000 * 4usize.pow(0),
+    1000 * 4usize.pow(1),
+    1000 * 4usize.pow(2),
+    1000 * 4usize.pow(3),
+    1000 * 4usize.pow(4),
+    1000 * 4usize.pow(5),
+    1000 * 4usize.pow(6),
+    1000 * 4usize.pow(7),
+    std::usize::MAX,
+];
