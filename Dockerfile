@@ -12,7 +12,7 @@ RUN \
     mkdir bin socks logs && \
     cd bin 
 
-COPY agent /data1/breeze/bin/
+COPY debug/agent/agent /data1/breeze/bin/
 
 VOLUME ["/data1/breeze/socks", "/data1/breeze/snapshot",  "/data1/breeze/logs"]
 
