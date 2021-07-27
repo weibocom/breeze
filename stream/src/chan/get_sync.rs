@@ -129,7 +129,7 @@ where
                             return Poll::Ready(Ok(item));
                         }
                     }
-                    me.empty_resp.insert(item);
+                    me.empty_resp.replace(item);
                     // 如果请求未命中，则继续准备尝试下一个reader
                 }
                 // 请求失败，如果还有reader，需要继续尝试下一个reader
