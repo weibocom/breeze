@@ -29,6 +29,19 @@ ADD --chown=rust:rust . ./
 RUN cargo build --release
 
 FROM registry.api.weibo.com/weibo_rd_if/breeze_base_alpine:0.0.1
-WORKDIR /breeze
-COPY --from=builder /breeze/target/x86_64-unknown-linux-musl/release/agent ./breeze
-CMD ["./breeze"]
+
+RUN \
+    mkdir -p /data1/breeze && \
+    cd /data1/breeze && \
+    mkdir bin socks logs && \
+    cd bin 
+
+COPY --from=builder /breeze/target/x86_64-unknown-linux-musl/release/agent /data1/breeze/bin/breeze
+
+VOLUME ["/data1/breeze/socks", "/data1/breeze/snapshot",  "/data1/breeze/logs"]
+
+WORKDIR /data1/breeze
+
+ENTRYPOINT ["/data1/breeze/bin/breeze"]
+
+CMD ["--discovery", "vintage://static.config.api.weibo.com", "--snapshot", "/data1/breeze/snapshot", "--service-path", "/data1/breeze/socks", "--log-dir", "/data1/breeze/logs", "--metrics-url", "logtailer.monitor.weibo.com:8333"]
