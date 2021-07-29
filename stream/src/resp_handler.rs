@@ -4,12 +4,14 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 
-use ds::{ResponseRingBuffer, RingSlice};
+use ds::{ResizedRingBuffer, RingSlice};
 
 use protocol::Protocol;
 
 use tokio::io::{AsyncRead, ReadBuf};
+use tokio::time::{interval, Interval};
 
 use futures::ready;
 
@@ -28,19 +30,29 @@ pub struct BridgeResponseToLocal<R, W, P> {
     r: R,
     w: W,
     parser: P,
-    data: ResponseRingBuffer,
+    data: ResizedRingBuffer,
+
+    // 用来做spin控制，避免长时间spin
+    spins: usize,
+    spin_secs: usize,   // spin已经持续的时间，用来控制输出日志
+    spin_last: Instant, // 上一次开始spin的时间
+    tick: Interval,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, buf: usize, done: Arc<AtomicBool>) -> Self {
-        debug_assert!(buf == buf.next_power_of_two());
+    pub fn from(r: R, w: W, parser: P, done: Arc<AtomicBool>) -> Self {
         Self {
             seq: 0,
             w: w,
             r: r,
             parser: parser,
-            data: ResponseRingBuffer::with_capacity(buf),
+            data: ResizedRingBuffer::new(),
             done: done,
+
+            spins: 0,
+            spin_last: Instant::now(),
+            tick: interval(Duration::from_micros(1)),
+            spin_secs: 0,
         }
     }
 }
@@ -57,22 +69,39 @@ where
         log::debug!("resp-handler: task polling.");
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
-        //let mut spins = 0;
         while !me.done.load(Ordering::Acquire) {
             let offset = me.w.load_offset();
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
             log::debug!("resp-handler: {} bytes available oft:{}", buf.len(), offset);
             if buf.len() == 0 {
-                log::info!(
-                    "resp-handler: buffer full. read:{} processed:{} write:{}",
-                    offset,
-                    me.data.processed(),
-                    me.data.writtened()
-                );
+                if me.spins == 0 {
+                    me.spin_last = Instant::now();
+                }
+                me.spins += 1;
                 std::hint::spin_loop();
+                if me.spins >= 1024 {
+                    // 进行resize
+                    if me.data.resize() {
+                        continue;
+                    }
+                    // 进行sleep 1ms
+                    ready!(me.tick.poll_tick(cx));
+                }
+                // 每超过一秒钟输出一次日志
+                let secs = me.spin_last.elapsed().as_secs() as usize;
+                if secs > me.spin_secs {
+                    log::info!(
+                        "resp-handler: buffer full. read:{} processed:{} write:{}",
+                        offset,
+                        me.data.processed(),
+                        me.data.writtened()
+                    );
+                    me.spin_secs = secs;
+                }
                 continue;
             }
+            me.spins = 0;
             let mut buf = ReadBuf::new(&mut buf);
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             // 一共读取了n个字节

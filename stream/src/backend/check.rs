@@ -29,13 +29,7 @@ pub struct BackendBuilder {
 }
 
 impl BackendBuilder {
-    pub fn from<P>(
-        parser: P,
-        addr: String,
-        req_buf: usize,
-        resp_buf: usize,
-        parallel: usize,
-    ) -> Self
+    pub fn from<P>(parser: P, addr: String, parallel: usize) -> Self
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
@@ -48,8 +42,6 @@ impl BackendBuilder {
         let (tx, rx) = channel(8);
         let checker = Arc::new(BackendChecker::from(
             stream.clone(),
-            req_buf,
-            resp_buf,
             addr,
             me.finished.clone(),
             tx,
@@ -144,8 +136,6 @@ impl BackendErrorCounter {
 pub struct BackendChecker {
     inner: Arc<RingBufferStream>,
     tx: Arc<Sender<u8>>,
-    req_buf: usize,
-    resp_buf: usize,
     addr: String,
     finished: Arc<AtomicBool>,
 }
@@ -153,8 +143,6 @@ pub struct BackendChecker {
 impl BackendChecker {
     fn from(
         stream: Arc<RingBufferStream>,
-        req_buf: usize,
-        resp_buf: usize,
         addr: String,
         finished: Arc<AtomicBool>,
         tx: Sender<u8>,
@@ -165,8 +153,6 @@ impl BackendChecker {
         let me = Self {
             tx: Arc::new(tx),
             inner: stream,
-            req_buf: req_buf,
-            resp_buf: resp_buf,
             addr: addr,
             finished: finished,
         };
@@ -241,8 +227,6 @@ impl BackendChecker {
 
         req_stream.bridge(
             parser.clone(),
-            self.req_buf,
-            self.resp_buf,
             r,
             w,
             Notifier {
