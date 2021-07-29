@@ -68,7 +68,7 @@ pub struct BridgeRequestToBackend<H, W> {
 }
 
 impl<H, W> BridgeRequestToBackend<H, W> {
-    pub fn from(buf: usize, handler: H, w: W, done: Arc<AtomicBool>) -> Self
+    pub fn from(handler: H, w: W, done: Arc<AtomicBool>) -> Self
     where
         W: AsyncWrite,
     {
@@ -76,7 +76,7 @@ impl<H, W> BridgeRequestToBackend<H, W> {
             done: done,
             seq: 0,
             handler: handler,
-            w: BufWriter::with_capacity(buf.max(128 * 1024), w),
+            w: BufWriter::with_capacity(128 * 1024, w),
             snapshot: Snapshot::new(),
             cache: None,
             offset: 0,

@@ -188,15 +188,8 @@ impl MpmcRingBufferStream {
     // 一共2个线程。
     // 线程A: 把request data数据从item写入backend
     // 线程B：把response数据从server中读取，并且place到item的response中
-    pub fn bridge<R, W, P, N>(
-        self: Arc<Self>,
-        parser: P,
-        req_buffer: usize,
-        resp_buffer: usize,
-        r: R,
-        w: W,
-        notify: N,
-    ) where
+    pub fn bridge<R, W, P, N>(self: Arc<Self>, parser: P, r: R, w: W, notify: N)
+    where
         W: AsyncWrite + Unpin + Send + Sync + 'static,
         R: AsyncRead + Unpin + Send + 'static,
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
@@ -211,7 +204,7 @@ impl MpmcRingBufferStream {
             self.clone(),
             notify.clone(),
             "bridge-send-req",
-            BridgeRequestToBackend::from(req_buffer, self.clone(), w, self.done.clone()),
+            BridgeRequestToBackend::from(self.clone(), w, self.done.clone()),
         );
 
         //// 从response读取数据写入items
@@ -219,7 +212,7 @@ impl MpmcRingBufferStream {
             self.clone(),
             notify.clone(),
             "bridge-recv-response",
-            BridgeResponseToLocal::from(r, self.clone(), parser, resp_buffer, self.done.clone()),
+            BridgeResponseToLocal::from(r, self.clone(), parser, self.done.clone()),
         );
     }
     fn start_bridge<F, N>(self: Arc<Self>, notify: N, _name: &'static str, future: F)
