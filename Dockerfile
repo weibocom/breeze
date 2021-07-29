@@ -40,5 +40,4 @@ COPY --from=builder /breeze/target/x86_64-unknown-linux-musl/release/agent /data
 VOLUME ["/data1/breeze/socks", "/data1/breeze/snapshot",  "/data1/breeze/logs"]
 WORKDIR /data1/breeze
 ENTRYPOINT ["/data1/breeze/bin/breeze"]
-
 CMD ["--discovery", "vintage://static.config.api.weibo.com", "--snapshot", "/data1/breeze/snapshot", "--service-path", "/data1/breeze/socks", "--log-dir", "/data1/breeze/logs", "--metrics-url", "logtailer.monitor.weibo.com:8333"]
