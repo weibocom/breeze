@@ -7,20 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-#[allow(dead_code)]
-static RECONNECT_ERROR_CAP: usize = 5 as usize;
-#[allow(dead_code)]
-static RECONNECT_ERROR_WINDOW: u64 = 30 as u64;
-
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::sleep;
-
-#[allow(dead_code)]
-enum BackendErrorType {
-    ConnError = 0 as isize,
-    //RequestError,
-}
 
 pub struct BackendBuilder {
     finished: Arc<AtomicBool>,
@@ -67,69 +56,6 @@ impl BackendBuilder {
 impl Drop for BackendBuilder {
     fn drop(&mut self) {
         self.finish();
-    }
-}
-
-use std::collections::LinkedList;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-#[allow(dead_code)]
-pub struct BackendErrorCounter {
-    error_window_size: u64,
-    error_count: usize,
-    _error_type: BackendErrorType,
-    error_time_list: LinkedList<(u64, usize)>,
-    error_total_value: usize,
-}
-
-#[allow(dead_code)]
-impl BackendErrorCounter {
-    fn new(error_window_size: u64, error_type: BackendErrorType) -> BackendErrorCounter {
-        BackendErrorCounter {
-            error_window_size,
-            error_count: 0 as usize,
-            _error_type: error_type,
-            error_time_list: LinkedList::new(),
-            error_total_value: 0 as usize,
-        }
-    }
-
-    fn add_error(&mut self, error_value: usize) {
-        let current = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        self.judge_window();
-        self.error_total_value += error_value;
-        self.error_time_list.push_back((current, error_value));
-        self.error_count += 1;
-    }
-
-    fn judge_error(&mut self, error_cap: usize) -> bool {
-        self.judge_window();
-        self.error_total_value >= error_cap
-    }
-
-    fn judge_window(&mut self) {
-        let current = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        while !self.error_time_list.is_empty() {
-            if self
-                .error_time_list
-                .front()
-                .unwrap()
-                .0
-                .lt(&(current - self.error_window_size))
-            {
-                self.error_total_value -= self.error_time_list.front().unwrap().1;
-                self.error_time_list.pop_front();
-                self.error_count -= 1;
-            } else {
-                break;
-            }
-        }
     }
 }
 
@@ -180,18 +106,7 @@ impl BackendChecker {
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         let mut tries = 0;
-        //let mut reconnect_error =
-        //    BackendErrorCounter::new(RECONNECT_ERROR_WINDOW, BackendErrorType::ConnError);
-        //log::info!("come into check");
         while !self.finished.load(Ordering::Acquire) {
-            // if reconnect_error.judge_error(RECONNECT_ERROR_CAP) {
-            //     log::warn!(
-            //         "check: connect to {} error over {} times, will not connect recently",
-            //         self.addr,
-            //         RECONNECT_ERROR_CAP
-            //     );
-            //     sleep(Duration::from_secs(1)).await;
-            // } else {
             match self.check_reconnected_once(parser.clone()).await {
                 Ok(_) => {
                     log::debug!("check: {} connected tries:{}", self.addr, tries);
@@ -207,9 +122,8 @@ impl BackendChecker {
                     let secs = (1 << tries).min(31);
                     tries += 1;
                     sleep(Duration::from_secs(secs)).await;
-                } //   reconnect_error.add_error(1);
+                }
             }
-            //}
         }
     }
 
@@ -223,6 +137,8 @@ impl BackendChecker {
         log::info!("check: connected to {}", addr);
         let _ = stream.set_nodelay(true);
         let (r, w) = stream.into_split();
+        let r = super::Reader::from(r, addr);
+        let w = super::Writer::from(w, addr);
         let req_stream = self.inner.clone();
 
         req_stream.bridge(
