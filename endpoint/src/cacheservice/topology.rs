@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use protocol::Protocol;
+use protocol::{Protocol, Resource};
 
 unsafe impl<P> Send for Topology<P> {}
 unsafe impl<P> Sync for Topology<P> {}
@@ -179,6 +179,7 @@ impl<P> Topology<P> {
         addrs: &[String],
         streams: &mut HashMap<String, Arc<BackendBuilder>>,
         parallel: usize,
+        namespace: &str,
     ) where
         P: Send + Sync + Protocol + 'static + Clone,
     {
@@ -188,8 +189,10 @@ impl<P> Topology<P> {
                     addr.to_string(),
                     Arc::new(BackendBuilder::from(
                         parser.clone(),
-                        addr.to_string(),
+                        addr,
                         parallel,
+                        Resource::Memcache,
+                        namespace,
                     )),
                 );
             }
@@ -232,11 +235,11 @@ impl<P> Topology<P> {
 
         let c = 256;
         Self::delete_non_exists(&self.masters, &mut self.m_streams);
-        Self::add_new(&p, &self.masters, &mut self.m_streams, c);
+        Self::add_new(&p, &self.masters, &mut self.m_streams, c, namespace);
 
         let followers: Vec<String> = self.followers.clone().into_iter().flatten().collect();
         Self::delete_non_exists(&followers, &mut self.f_streams);
-        Self::add_new(&p, followers.as_ref(), &mut self.f_streams, c);
+        Self::add_new(&p, followers.as_ref(), &mut self.f_streams, c, namespace);
 
         let readers: Vec<String> = self
             .layer_readers
@@ -247,14 +250,14 @@ impl<P> Topology<P> {
             .collect();
         // get command
         Self::delete_non_exists(&readers, &mut self.get_streams);
-        Self::add_new(&p, &readers, &mut self.get_streams, c);
+        Self::add_new(&p, &readers, &mut self.get_streams, c, namespace);
         // get[s] command
         Self::delete_non_exists(&readers, &mut self.gets_streams);
-        Self::add_new(&p, &readers, &mut self.gets_streams, c);
+        Self::add_new(&p, &readers, &mut self.gets_streams, c, namespace);
 
         // meta
         Self::delete_non_exists(&self.metas, &mut self.meta_stream);
-        Self::add_new(&p, &self.metas, &mut self.meta_stream, c);
+        Self::add_new(&p, &self.metas, &mut self.meta_stream, c, namespace);
     }
 }
 

@@ -5,14 +5,17 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
+use protocol::Resource;
+
 pub(crate) struct Writer<W> {
     w: W,
     metric_id: usize,
 }
 
 impl<W> Writer<W> {
-    pub(crate) fn from(w: W, addr: &str) -> Self {
-        let metric_id = metrics::register_name(metrics::encode_addr(addr));
+    pub(crate) fn from(w: W, addr: &str, resource: Resource, biz: &str) -> Self {
+        let metric_id =
+            metrics::register_names(vec![resource.name(), biz, &metrics::encode_addr(addr)]);
         Self { w, metric_id }
     }
 }
@@ -54,8 +57,9 @@ pub(crate) struct Reader<R> {
 }
 
 impl<R> Reader<R> {
-    pub(crate) fn from(w: R, addr: &str) -> Self {
-        let metric_id = metrics::register_name(metrics::encode_addr(addr));
+    pub(crate) fn from(w: R, addr: &str, resource: Resource, biz: &str) -> Self {
+        let metric_id =
+            metrics::register_names(vec![resource.name(), biz, &metrics::encode_addr(addr)]);
         Self { w, metric_id }
     }
 }

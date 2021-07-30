@@ -105,3 +105,17 @@ impl Operation {
         OP_NAMES[*self as u8 as usize]
     }
 }
+
+#[derive(Copy, Clone)]
+pub enum Resource {
+    Memcache,
+}
+
+impl Resource {
+    #[inline]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Memcache => "mc",
+        }
+    }
+}
