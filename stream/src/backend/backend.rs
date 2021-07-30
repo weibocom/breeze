@@ -20,22 +20,28 @@ impl BackendStream {
     pub fn not_connected() -> Self {
         BackendStream::NotConnected(NotConnected)
     }
-    pub fn from(id: Cid, inner: Arc<RingBufferStream>) -> Self {
-        BackendStream::Backend(Backend::from(id, inner))
+    pub fn from(id: Cid, addr: String, inner: Arc<RingBufferStream>) -> Self {
+        BackendStream::Backend(Backend::from(id, addr, inner))
     }
 }
 
 pub struct Backend {
     id: Cid,
+    addr: String,
     inner: Arc<RingBufferStream>,
 }
 
 impl Backend {
-    pub fn from(id: Cid, inner: Arc<RingBufferStream>) -> Self {
+    pub fn from(id: Cid, addr: String, inner: Arc<RingBufferStream>) -> Self {
         Self {
             id: id,
+            addr: addr,
             inner: inner,
         }
+    }
+
+    pub fn addr(&self) -> String {
+        self.addr
     }
 }
 
@@ -90,5 +96,18 @@ impl AsyncWriteAll for NotConnected {
             ErrorKind::NotConnected,
             "write to an unconnected stream",
         )))
+    }
+}
+
+pub trait AddressEnable {
+    fn get_address(&self) -> String;
+}
+
+impl AddressEnable for BackendStream {
+    fn get_address(&self) -> String {
+        match self {
+            BackendStream::Backend(backend) => backend.addr(),
+            BackendStream::NotConnected(_) => "not connected".to_string(),
+        }
     }
 }

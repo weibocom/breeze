@@ -23,6 +23,7 @@ enum BackendErrorType {
 }
 
 pub struct BackendBuilder {
+    addr: String,
     finished: Arc<AtomicBool>,
     stream: Arc<RingBufferStream>,
     ids: Arc<Ids>,
@@ -41,6 +42,7 @@ impl BackendBuilder {
     {
         let stream = Arc::new(RingBufferStream::with_capacity(parallel));
         let me = Self {
+            addr: addr,
             finished: Arc::new(AtomicBool::new(false)),
             stream: stream.clone(),
             ids: Arc::new(Ids::with_capacity(parallel)),
@@ -61,7 +63,13 @@ impl BackendBuilder {
     pub fn build(&self) -> BackendStream {
         self.ids
             .next()
-            .map(|cid| BackendStream::from(Cid::new(cid, self.ids.clone()), self.stream.clone()))
+            .map(|cid| {
+                BackendStream::from(
+                    Cid::new(cid, self.ids.clone()),
+                    self.addr,
+                    self.stream.clone(),
+                )
+            })
             .unwrap_or_else(|| {
                 log::info!("connection id overflow, connection established failed");
                 BackendStream::not_connected()

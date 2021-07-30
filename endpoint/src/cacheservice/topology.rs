@@ -13,7 +13,8 @@ unsafe impl<P> Sync for Topology<P> {}
 
 #[derive(Default)]
 pub struct Topology<P> {
-    pub(crate) hash: String, // hash策略
+    pub(crate) hash: String,         // hash策略
+    pub(crate) distribution: String, //distribution策略
     // 最后一个元素是slave，倒数第二个元素是master，剩下的是l1.
     // 为了方便遍历
     l1_seq: AtomicUsize,
@@ -202,13 +203,36 @@ impl<P> Topology<P> {
     }
 
     fn update_from_namespace(&mut self, ns: super::Namespace) {
-        let (masters, followers, readers, hash) = ns.into_split();
+        let (masters, followers, readers, hash, distribution) = ns.into_split();
         self.masters = masters;
         self.followers = followers;
         self.layer_readers = readers;
         self.hash = hash;
+        self.distribution = distribution;
         //self.metas = self.readers.clone().into_iter().flatten().collect();
         self.metas = self.masters.clone();
+
+        self.correct_hash_distribution();
+    }
+
+    // 根据java client转换逻辑，对hash、distribution进行转换
+    fn correct_hash_distribution(&mut self) {
+        // java 只支持下面三种组合，其他的统统不支持，rust对其他类型，强制改为java的默认方式？ fishermen
+        if (self.hash.eq(hash::HASH_BKDR) && self.distribution.eq(hash::DISTRIBUTION_CONSISTENT))
+            || (self.hash.eq(hash::HASH_BKDR) && self.distribution.eq(hash::DISTRIBUTION_MODULA))
+            || (self.hash.eq(hash::HASH_CRC32) && self.distribution.eq(hash::DISTRIBUTION_MODULA))
+        {
+            return;
+        }
+
+        // 对于其他组合模式，强制改为默认行为
+        log::warn!(
+            "!!! found malformed hash/distribution: {}/{}, will change to crc32/mod",
+            self.hash,
+            self.distribution
+        );
+        self.hash = HashCrc32.to_string();
+        self.distribution = DistributionModula.to_string();
     }
 
     fn update(&mut self, cfg: &str, name: &str)
@@ -272,6 +296,7 @@ where
     fn clone(&self) -> Self {
         Self {
             hash: self.hash.clone(),
+            distribution: self.distribution.clone(),
             l1_seq: AtomicUsize::new(self.l1_seq.load(Ordering::Acquire)),
             masters: self.masters.clone(),
             m_streams: self.m_streams.clone(),
@@ -315,6 +340,7 @@ impl<P> From<P> for Topology<P> {
             parser: parser,
             l1_seq: AtomicUsize::new(0),
             hash: Default::default(),
+            distribution: Default::default(),
             masters: Default::default(),
             m_streams: Default::default(),
             followers: Default::default(),
