@@ -1,6 +1,6 @@
 use crate::{BackendStream, RingBufferStream};
 use ds::{Cid, Ids};
-use protocol::Protocol;
+use protocol::{Protocol, Resource};
 
 use std::io::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,7 +18,7 @@ pub struct BackendBuilder {
 }
 
 impl BackendBuilder {
-    pub fn from<P>(parser: P, addr: String, parallel: usize) -> Self
+    pub fn from<P>(parser: P, addr: &str, parallel: usize, rsrc: Resource, biz: &str) -> Self
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
@@ -31,9 +31,11 @@ impl BackendBuilder {
         let (tx, rx) = channel(8);
         let checker = Arc::new(BackendChecker::from(
             stream.clone(),
-            addr,
+            addr.to_string(),
             me.finished.clone(),
             tx,
+            rsrc,
+            biz,
         ));
         checker.clone().start_check_done(parser.clone(), rx);
         checker.start_check_timeout();
@@ -64,6 +66,8 @@ pub struct BackendChecker {
     tx: Arc<Sender<u8>>,
     addr: String,
     finished: Arc<AtomicBool>,
+    resource: Resource,
+    biz: String,
 }
 
 impl BackendChecker {
@@ -72,6 +76,8 @@ impl BackendChecker {
         addr: String,
         finished: Arc<AtomicBool>,
         tx: Sender<u8>,
+        resource: Resource,
+        biz: &str,
     ) -> Self {
         if let Err(e) = tx.try_send(0) {
             log::error!("check: failed to send connect signal to {}:{:?}", addr, e);
@@ -81,6 +87,8 @@ impl BackendChecker {
             inner: stream,
             addr: addr,
             finished: finished,
+            resource: resource,
+            biz: biz.to_string(),
         };
         me
     }
@@ -137,8 +145,8 @@ impl BackendChecker {
         log::info!("check: connected to {}", addr);
         let _ = stream.set_nodelay(true);
         let (r, w) = stream.into_split();
-        let r = super::Reader::from(r, addr);
-        let w = super::Writer::from(w, addr);
+        let r = super::Reader::from(r, addr, self.resource, &self.biz);
+        let w = super::Writer::from(w, addr, self.resource, &self.biz);
         let req_stream = self.inner.clone();
 
         req_stream.bridge(
