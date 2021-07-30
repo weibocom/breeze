@@ -6,7 +6,7 @@ use std::io::{Error, ErrorKind, Result};
 pub struct Namespace {
     #[serde(default)]
     pub hash: String, // eg: bkdr
-    //pub distribution: String, //eg: ketama
+    pub distribution: String, //eg: ketama
     #[serde(default)]
     pub hash_tag: String, //eg: user
     //pub timeout: i32,         // unit: mills
@@ -44,7 +44,15 @@ impl Namespace {
 }
 
 impl Namespace {
-    pub fn into_split(self) -> (Vec<String>, Vec<Vec<String>>, Vec<Vec<Vec<String>>>, String) {
+    pub fn into_split(
+        self,
+    ) -> (
+        Vec<String>,
+        Vec<Vec<String>>,
+        Vec<Vec<Vec<String>>>,
+        String,
+        String,
+    ) {
         let master = self.master.clone();
         // followers包含： master-l1, slave, slave-l1
         let mut followers: Vec<Vec<String>> = self.master_l1.clone();
@@ -71,6 +79,6 @@ impl Namespace {
             readers
         );
 
-        (master, followers, readers, self.hash)
+        (master, followers, readers, self.hash, self.distribution)
     }
 }

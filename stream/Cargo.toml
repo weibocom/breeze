@@ -24,3 +24,5 @@ spin = { version = "0.9.0"}
 enum_dispatch = "*"
 bytes = "*"
 cache_line_size = "*"
+rust-crypto = "^0.2"
+byteorder = "*"

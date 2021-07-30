@@ -4,6 +4,11 @@ use bkdr::Bkdr;
 mod crc32;
 use crc32::Crc32;
 
+pub const DISTRIBUTION_CONSISTENT: &str = "ketama";
+pub const DISTRIBUTION_MODULA: &str = "modula";
+pub const HASH_BKDR: &str = "bkdr";
+pub const HASH_CRC32: &str = "crc32";
+
 use enum_dispatch::enum_dispatch;
 #[enum_dispatch]
 pub trait Hash {
