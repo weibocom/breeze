@@ -8,6 +8,7 @@ use recorder::{Recorder, Snapshot};
 pub use id::*;
 
 mod ip;
+pub use ip::encode_addr;
 
 mod sender;
 use sender::Sender;

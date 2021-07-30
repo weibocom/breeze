@@ -91,7 +91,7 @@ async fn process_one_service(
     ));
     let (biz, r_type, _d_type) =
         discovery::UnixSocketPath::parse(&quard.address()).expect("valid path");
-    let metric_id = metrics::register_name(r_type + "." + &biz.replace(".", "_"));
+    let metric_id = metrics::register_name(r_type + "." + &metrics::encode_addr(&biz));
     loop {
         let sd = sd.clone();
         let (client, _addr) = l.accept().await?;

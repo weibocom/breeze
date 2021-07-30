@@ -42,3 +42,6 @@ pub fn register_name(name: String) -> usize {
 pub fn get_name<'a>(id: usize) -> String {
     ID_SEQ.read().unwrap().name(id).to_string()
 }
+
+// 这个id是通过register_name生成
+pub fn unregister_by_id(_id: usize) {}
