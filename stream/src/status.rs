@@ -18,11 +18,13 @@ pub enum ItemStatus {
 }
 use ItemStatus::*;
 impl PartialEq<u8> for ItemStatus {
+    #[inline(always)]
     fn eq(&self, other: &u8) -> bool {
         *self as u8 == *other
     }
 }
 impl PartialEq<ItemStatus> for u8 {
+    #[inline(always)]
     fn eq(&self, other: &ItemStatus) -> bool {
         *self == *other as u8
     }
@@ -75,8 +77,13 @@ impl Item {
         );
         // 如果不需要回复，则request之后立即恢复到init状态
         self.status_cas(RequestReceived as u8, RequestSent as u8);
+        // noreply的请求不需要seq来进行request与response之间的协调
+        if !req.noreply() {
+            self.seq_cas(0, seq);
+        }
         req
     }
+
     #[inline(always)]
     pub fn seq(&self) -> usize {
         self.seq.load(Ordering::Acquire)
@@ -97,7 +104,6 @@ impl Item {
             Err(cur) => panic!("item status seq cas. {} => {} but found {}", old, new, cur),
         }
     }
-
     // 有两种可能的状态。
     // Received, 说明之前从来没有poll过
     // Reponded: 有数据并且成功返回
