@@ -11,41 +11,37 @@ use tokio::io::{AsyncWrite, BufWriter};
 use protocol::Request;
 
 pub struct Snapshot {
-    idx: usize,
     cids: Vec<usize>,
+    reqs: Vec<Request>,
 }
 impl Snapshot {
     fn new() -> Self {
         Self {
-            idx: 0,
             cids: Vec::with_capacity(64),
+            reqs: Vec::with_capacity(8),
         }
     }
     #[inline(always)]
     pub fn len(&self) -> usize {
-        self.cids.len()
+        self.cids.len() + self.reqs.len()
     }
     #[inline(always)]
     pub fn push(&mut self, cid: usize) {
         self.cids.push(cid);
     }
+    #[inline(always)]
+    pub fn push_one(&mut self, req: Request) {
+        self.reqs.push(req);
+    }
     // 调用方确保idx < cids.len()
     #[inline(always)]
-    fn take(&mut self) -> usize {
-        debug_assert!(self.idx < self.cids.len());
-        let cid = unsafe { *self.cids.get_unchecked(self.idx) };
-        self.idx += 1;
-        cid
-    }
-    #[inline(always)]
-    fn available(&self) -> usize {
-        self.cids.len() - self.idx
-    }
-    #[inline(always)]
-    fn reset(&mut self) {
-        self.idx = 0;
-        unsafe {
-            self.cids.set_len(0);
+    fn take<H>(&mut self, handler: &H, seq: usize) -> Option<(usize, Request)>
+    where
+        H: Unpin + RequestHandler,
+    {
+        match self.cids.pop() {
+            Some(cid) => Some((cid, handler.take(cid, seq))),
+            None => self.reqs.pop().map(|req| (std::usize::MAX, req)),
         }
     }
 }
@@ -53,12 +49,13 @@ pub trait RequestHandler {
     // 如果填充ss的长度为0，则说明handler没有要处理的数据流，提示到达eof。
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()>;
     fn take(&self, cid: usize, seq: usize) -> Request;
+    fn sent(&self, cid: usize, seq: usize, req: &Request);
 }
 
 pub struct BridgeRequestToBackend<H, W> {
     snapshot: Snapshot,
     // 当前处理的请求
-    cache: Option<Request>,
+    cache: Option<(usize, Request)>,
     // 当前请求的data已经写入到writer的字节数量
     offset: usize,
     seq: usize,
@@ -95,7 +92,7 @@ where
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Acquire) {
-            if let Some(ref req) = me.cache {
+            if let Some((ref cid, ref req)) = me.cache {
                 let data = req.data();
                 log::debug!(
                     "req-handler: writing {:?} {} {}",
@@ -114,21 +111,19 @@ where
                     me.offset += n;
                 }
 
+                me.handler.sent(*cid, me.seq, req);
+
                 // 如果是noreply，则序号不需要增加。因为没有response
                 if !req.noreply() {
                     me.seq += 1;
                 }
             }
             me.offset = 0;
-            if me.snapshot.available() > 0 {
-                let cid = me.snapshot.take();
-                let req = me.handler.take(cid, me.seq);
-                me.cache.replace(req);
+            if let Some((cid, req)) = me.snapshot.take(&me.handler, me.seq) {
+                me.cache.replace((cid, req));
                 continue;
-            } else {
-                me.cache.take();
             }
-            me.snapshot.reset();
+            me.cache.take();
             log::debug!("req-handler: poll snapshot");
             match me.handler.poll_fill_snapshot(cx, &mut me.snapshot) {
                 Poll::Ready(_) => {

@@ -13,20 +13,21 @@ pub struct Request {
     id: RequestId,
     // 是否需要返回结果
     noreply: bool,
-    // 如果是from_vec调用的，则Request在释放的时候要确保内存被释放
-    // 访问数据要直接使用slice访问，不能使用_data。因为_data可能为EMPTY
+
     _data: Arc<Vec<u8>>,
 }
 
 impl Request {
+    #[inline(always)]
     pub fn from(data: &[u8], id: RequestId) -> Self {
         Self {
             inner: Slice::from(data),
             id: id,
             noreply: false,
-            _data: Arc::new(Vec::new()),
+            _data: Default::default(),
         }
     }
+    #[inline(always)]
     pub fn from_vec(data: Vec<u8>, id: RequestId) -> Self {
         Self {
             inner: Slice::from(&data),
@@ -35,15 +36,19 @@ impl Request {
             _data: Arc::new(data),
         }
     }
+    #[inline(always)]
     pub fn id(&self) -> RequestId {
         self.id
     }
+    #[inline(always)]
     pub fn set_noreply(&mut self) {
         self.noreply = true;
     }
+    #[inline(always)]
     pub fn noreply(&self) -> bool {
         self.noreply
     }
+    #[inline(always)]
     pub fn data(&self) -> &[u8] {
         return self.inner.data();
     }
@@ -62,8 +67,6 @@ impl AsRef<Slice> for Request {
         &self.inner
     }
 }
-unsafe impl Send for Request {}
-unsafe impl Sync for Request {}
 
 pub use rid::RequestId;
 

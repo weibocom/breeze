@@ -114,12 +114,10 @@ impl Recorder {
     fn try_flush(&self) {
         LAST_COMMIT.with(|l| {
             let elapsed = l.borrow().elapsed();
-            log::debug!("metrics-flush. elapsed:{:?}", elapsed);
             if elapsed >= COMMIT_TICK {
                 *l.borrow_mut() = Instant::now();
 
                 let ss = Snapshot::from_threadlocal();
-                log::debug!("metrics-flushing: {:?}", ss);
                 if let Err(e) = self.sender.try_send(ss) {
                     log::warn!("metrics-flush: failed to send. {:?}", e);
                 }

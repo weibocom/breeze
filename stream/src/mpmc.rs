@@ -16,6 +16,9 @@ use cache_line_size::CacheAligned;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+//use tokio::sync::mpsc::{channel, Receiver, Sender};
+use crossbeam_channel::{bounded, Receiver, Sender};
+
 unsafe impl Send for MpmcRingBufferStream {}
 unsafe impl Sync for MpmcRingBufferStream {}
 
@@ -44,6 +47,9 @@ pub struct MpmcRingBufferStream {
     // 成功返回的请求数量
     resp_num: CacheAligned<AtomicUsize>,
 
+    noreply_tx: Sender<Request>,
+    noreply_rx: Receiver<Request>,
+
     done: Arc<AtomicBool>,
     closed: AtomicBool,
 }
@@ -60,6 +66,8 @@ impl MpmcRingBufferStream {
             .map(|_| CacheAligned(AtomicUsize::new(0)))
             .collect();
 
+        let (tx, rx) = bounded(2048);
+
         Self {
             items: items,
             waker: AtomicWaker::new(),
@@ -72,6 +80,8 @@ impl MpmcRingBufferStream {
             runnings: AtomicIsize::new(0),
             req_num: CacheAligned(AtomicUsize::new(0)),
             resp_num: CacheAligned(AtomicUsize::new(0)),
+            noreply_tx: tx,
+            noreply_rx: rx,
         }
     }
     // 如果complete为true，则快速失败
@@ -120,18 +130,29 @@ impl MpmcRingBufferStream {
     pub fn poll_write(&self, cid: usize, _cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         ready!(self.poll_check(cid))?;
         log::debug!(
-            "mpmc: write cid:{} len:{} id:{:?}, noreply:{}",
+            "mpmc: write cid:{} len:{} id:{:?}, noreply:{}, data:{:?}",
             cid,
             buf.len(),
             buf.id(),
-            buf.noreply()
+            buf.noreply(),
+            buf.data()
         );
-
-        self.get_item(cid).place_request(buf);
-        self.bits.mark(cid);
-        self.req_num.0.fetch_add(1, Ordering::Relaxed);
+        if buf.noreply() {
+            self.noreply_tx.try_send(buf.clone()).map_err(|e| {
+                Error::new(
+                    ErrorKind::Interrupted,
+                    format!("noreply data chan full:{:?}", e.to_string()),
+                )
+            })?;
+        } else {
+            let item = self.get_item(cid);
+            item.place_request(buf);
+            self.bits.mark(cid);
+        }
         self.waker.wake();
+        self.req_num.0.fetch_add(1, Ordering::Relaxed);
         log::debug!("mpmc: write complete cid:{} len:{} ", cid, buf.len());
+        // noreply请求要等request sent之后才能返回。
         Poll::Ready(Ok(()))
     }
     #[inline(always)]
@@ -292,6 +313,13 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
         self.bind_seq(cid, seq);
         self.get_item(cid).take_request(seq)
     }
+    #[inline(always)]
+    fn sent(&self, _cid: usize, _seq: usize, req: &Request) {
+        if req.noreply() {
+            // noreply的请求，发送即接收
+            self.resp_num.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
     #[inline]
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()> {
         debug_assert_eq!(ss.len(), 0);
@@ -306,6 +334,12 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
             }
         }
         self.bits.unmark_all(&bits);
+        for _ in 0..8 {
+            match self.noreply_rx.try_recv() {
+                Ok(req) => ss.push_one(req),
+                Err(_) => break,
+            }
+        }
         // 没有获取到数据的时候，并且done为false，返回pending.
         if ss.len() == 0 && !self.done.load(Ordering::Acquire) {
             self.waker.register_by_ref(&cx.waker());
