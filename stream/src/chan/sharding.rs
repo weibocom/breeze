@@ -83,11 +83,12 @@ where
         // 根据分布策略确定idx
         if !me.consistent_enable {
             me.idx = h % me.shards.len();
+            // println!("+++ use mod distribution idx/{}", me.idx);
         } else {
             // 一致性hash，选择hash环的第一个节点，不支持漂移，避免脏数据 fishermen
             let (_, idx) = get_consistent_hash_idx(&me.consistent_map, h as i64);
             me.idx = idx;
-            println!("use consistent hash idx/{}", idx);
+            // println!("+++ use consistent distribution idx/{}", idx);
         }
 
         unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf) }
