@@ -6,9 +6,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-byteorder = "*"
-rand = "*"
-cache_line_size = "*"
 log = { path = "../log" }
+
+byteorder = "1.4.3"
+rand = "0.8.4"
+cache_line_size = "1.0.0"
 #log = "*"
-crossbeam-queue = "*"
+crossbeam-queue = "0.3.2"

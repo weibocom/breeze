@@ -255,9 +255,4 @@ impl Protocol for MemcacheBinary {
             read += len;
         }
     }
-
-    // 消息结尾标志的长度，对不同协议、不同请求不同
-    fn tail_size_for_multi_get(&self) -> usize {
-        return HEADER_LEN;
-    }
 }

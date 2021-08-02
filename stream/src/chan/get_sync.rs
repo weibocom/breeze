@@ -17,7 +17,6 @@ pub struct AsyncGetSync<R, P> {
     req_ref: Request,
     // TODO: 对于空响应，根据协议获得空响应格式，这样效率更高，待和@icy 讨论 fishermen 2021.6.27
     empty_resp: Option<Response>,
-    resp_found: bool,
     parser: P,
 }
 
@@ -28,7 +27,6 @@ impl<R, P> AsyncGetSync<R, P> {
             layers,
             req_ref: Default::default(),
             empty_resp: None,
-            resp_found: false,
             parser: p,
         }
     }
@@ -44,16 +42,7 @@ where
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut idx = self.idx;
 
-        //debug_assert!(self.req_ref.validate());
         debug_assert!(idx < self.layers.len());
-
-        // 发送请求之前首先设置resp found为false
-        self.resp_found = false;
-
-        //let req = self.req_data();
-
-        //let ptr = self.req_ref.ptr() as *const u8;
-        //let data = unsafe { std::slice::from_raw_parts(ptr, self.req_ref.len()) };
 
         // 轮询reader发送请求，直到发送成功
         while idx < self.layers.len() {
@@ -77,17 +66,10 @@ where
     }
 
     // 请求处理完毕，进行reset
+    #[inline(always)]
     fn reset(&mut self) {
         self.idx = 0;
-        self.resp_found = false;
-        //self.empty_resp.clear();
     }
-
-    // TODO: 使用这个方法，会导致借用问题，先留着
-    //fn req_data(&mut self) -> &[u8] {
-    //    let ptr = self.req_ref.ptr() as *const u8;
-    //    unsafe { std::slice::from_raw_parts(ptr, self.req_ref.len()) }
-    //}
 }
 
 impl<R, P> AsyncWriteAll for AsyncGetSync<R, P>
@@ -123,11 +105,9 @@ where
             match ready!(Pin::new(reader).poll_next(cx)) {
                 Ok(item) => {
                     // 请求命中，返回ok及消息长度；
-                    if !me.resp_found {
-                        if me.parser.response_found(&item) {
-                            self.empty_resp.take();
-                            return Poll::Ready(Ok(item));
-                        }
+                    if me.parser.response_found(&item) {
+                        self.empty_resp.take();
+                        return Poll::Ready(Ok(item));
                     }
                     me.empty_resp.replace(item);
                     // 如果请求未命中，则继续准备尝试下一个reader
@@ -137,16 +117,12 @@ where
                     log::debug!("get_sync:read found err: {:?}", _e);
                 }
             }
-            // 如果所有reader尝试完毕，退出循环
-            if me.idx + 1 >= me.layers.len() {
-                break;
-            }
-
             me.idx += 1;
             ready!(me.do_write(cx))?;
         }
 
         debug_assert!(self.idx + 1 == self.layers.len());
+        self.reset();
         if let Some(item) = self.empty_resp.take() {
             Poll::Ready(Ok(item))
         } else {

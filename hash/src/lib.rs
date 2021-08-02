@@ -1,8 +1,8 @@
-mod bkdr;
-use bkdr::Bkdr;
+pub mod bkdr;
+pub mod crc32;
 
-mod crc32;
-use crc32::Crc32;
+pub use bkdr::Bkdr;
+pub use crc32::Crc32;
 
 pub const DISTRIBUTION_CONSISTENT: &str = "ketama";
 pub const DISTRIBUTION_MODULA: &str = "modula";

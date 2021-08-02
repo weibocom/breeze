@@ -5,6 +5,7 @@ use config::Namespace;
 pub use topology::Topology;
 
 use discovery::ServiceDiscover;
+use stream::backend::AddressEnable;
 
 use hash::Hasher;
 use stream::{
@@ -42,28 +43,34 @@ pub struct CacheService<P> {
 
 impl<P> CacheService<P> {
     #[inline]
-    fn build_sharding<S>(shards: Vec<S>, h: &str, parser: P) -> AsyncSharding<S, Hasher, P>
+    fn build_sharding<S>(
+        shards: Vec<S>,
+        h: &str,
+        distribution: &String,
+        parser: P,
+    ) -> AsyncSharding<S, Hasher, P>
     where
-        S: AsyncWriteAll,
+        S: AsyncWriteAll + AddressEnable,
     {
         let hasher = Hasher::from(h);
-        AsyncSharding::from(shards, hasher, parser)
+        AsyncSharding::from(shards, hasher, distribution, parser)
     }
 
     #[inline]
     fn build_get_layers<S>(
         pools: Vec<Vec<S>>,
         h: &str,
+        distribution: &String,
         parser: P,
     ) -> Vec<AsyncSharding<S, Hasher, P>>
     where
-        S: AsyncWriteAll,
+        S: AsyncWriteAll + AddressEnable,
         P: Clone,
     {
         let mut layers: Vec<AsyncSharding<S, Hasher, P>> = Vec::new();
         for p in pools {
             let hasher = Hasher::from(h);
-            layers.push(AsyncSharding::from(p, hasher, parser.clone()));
+            layers.push(AsyncSharding::from(p, hasher, distribution, parser.clone()));
         }
         layers
     }
@@ -102,6 +109,7 @@ impl<P> CacheService<P> {
         P: protocol::Protocol,
     {
         let hash_alg = &topo.hash;
+        let distribution = &topo.distribution;
         // let get = AsyncOperation::Get(Self::build_sharding(
         //     topo.next_l1(),
         //     &hash_alg,
@@ -113,17 +121,18 @@ impl<P> CacheService<P> {
         let get_multi =
             AsyncOperation::Gets(AsyncMultiGet::from_layers(get_multi_layers, parser.clone()));
 
-        let master = Self::build_sharding(topo.master(), &hash_alg, parser.clone());
+        let master = Self::build_sharding(topo.master(), &hash_alg, distribution, parser.clone());
         let followers = topo
             .followers()
             .into_iter()
-            .map(|shards| Self::build_sharding(shards, &hash_alg, parser.clone()))
+            .map(|shards| Self::build_sharding(shards, &hash_alg, distribution, parser.clone()))
             .collect();
         let store =
             AsyncOperation::Store(AsyncSetSync::from_master(master, followers, parser.clone()));
 
         // 获取get through
-        let get_layers = Self::build_get_layers(topo.retrive_get(), &hash_alg, parser.clone());
+        let get_layers =
+            Self::build_get_layers(topo.retrive_get(), &hash_alg, distribution, parser.clone());
         let get = AsyncOperation::Get(AsyncGetSync::from(get_layers, parser.clone()));
 
         let all_instances = topo.meta();

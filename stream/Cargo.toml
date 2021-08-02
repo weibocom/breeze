@@ -7,22 +7,17 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossbeam-deque = "*"
-crossbeam-utils = "*"
-crossbeam-channel = "*"
-futures = "*"
-tokio = { version = "1.8.0", features = ["full"]}
 protocol = { path = "../protocol" }
 hash = { path = "../hash" }
 ds = { path = "../ds" }
 log = { path = "../log" }
 #log = "*"
 metrics = { path = "../metrics" }
-rand = "*"
-tokio-util = "*"
-spin = { version = "0.9.0"}
-enum_dispatch = "*"
-bytes = "*"
-cache_line_size = "*"
-rust-crypto = "^0.2"
-byteorder = "*"
+futures = "0.3.16"
+tokio = "1.9.0"
+rand = "0.8.4"
+enum_dispatch = "0.3.7"
+bytes = "1.0.1"
+cache_line_size = "1.0.0"
+rust-crypto = "0.2.36"
+byteorder = "1.4.3"

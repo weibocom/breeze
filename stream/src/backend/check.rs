@@ -1,26 +1,15 @@
 use crate::{BackendStream, RingBufferStream};
 use ds::{Cid, Ids};
-use protocol::Protocol;
+use protocol::{Protocol, Resource};
 
 use std::io::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-#[allow(dead_code)]
-static RECONNECT_ERROR_CAP: usize = 5 as usize;
-#[allow(dead_code)]
-static RECONNECT_ERROR_WINDOW: u64 = 30 as u64;
-
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::sleep;
-
-#[allow(dead_code)]
-enum BackendErrorType {
-    ConnError = 0 as isize,
-    //RequestError,
-}
 
 pub struct BackendBuilder {
     addr: String,
@@ -30,19 +19,13 @@ pub struct BackendBuilder {
 }
 
 impl BackendBuilder {
-    pub fn from<P>(
-        parser: P,
-        addr: String,
-        req_buf: usize,
-        resp_buf: usize,
-        parallel: usize,
-    ) -> Self
+    pub fn from<P>(parser: P, addr: &str, parallel: usize, rsrc: Resource, biz: &str) -> Self
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         let stream = Arc::new(RingBufferStream::with_capacity(parallel));
         let me = Self {
-            addr: addr,
+            addr: addr.to_string(),
             finished: Arc::new(AtomicBool::new(false)),
             stream: stream.clone(),
             ids: Arc::new(Ids::with_capacity(parallel)),
@@ -50,11 +33,11 @@ impl BackendBuilder {
         let (tx, rx) = channel(8);
         let checker = Arc::new(BackendChecker::from(
             stream.clone(),
-            req_buf,
-            resp_buf,
-            addr,
+            addr.to_string(),
             me.finished.clone(),
             tx,
+            rsrc,
+            biz,
         ));
         checker.clone().start_check_done(parser.clone(), rx);
         checker.start_check_timeout();
@@ -66,7 +49,7 @@ impl BackendBuilder {
             .map(|cid| {
                 BackendStream::from(
                     Cid::new(cid, self.ids.clone()),
-                    self.addr,
+                    self.addr.clone(),
                     self.stream.clone(),
                 )
             })
@@ -86,86 +69,23 @@ impl Drop for BackendBuilder {
     }
 }
 
-use std::collections::LinkedList;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-#[allow(dead_code)]
-pub struct BackendErrorCounter {
-    error_window_size: u64,
-    error_count: usize,
-    _error_type: BackendErrorType,
-    error_time_list: LinkedList<(u64, usize)>,
-    error_total_value: usize,
-}
-
-#[allow(dead_code)]
-impl BackendErrorCounter {
-    fn new(error_window_size: u64, error_type: BackendErrorType) -> BackendErrorCounter {
-        BackendErrorCounter {
-            error_window_size,
-            error_count: 0 as usize,
-            _error_type: error_type,
-            error_time_list: LinkedList::new(),
-            error_total_value: 0 as usize,
-        }
-    }
-
-    fn add_error(&mut self, error_value: usize) {
-        let current = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        self.judge_window();
-        self.error_total_value += error_value;
-        self.error_time_list.push_back((current, error_value));
-        self.error_count += 1;
-    }
-
-    fn judge_error(&mut self, error_cap: usize) -> bool {
-        self.judge_window();
-        self.error_total_value >= error_cap
-    }
-
-    fn judge_window(&mut self) {
-        let current = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        while !self.error_time_list.is_empty() {
-            if self
-                .error_time_list
-                .front()
-                .unwrap()
-                .0
-                .lt(&(current - self.error_window_size))
-            {
-                self.error_total_value -= self.error_time_list.front().unwrap().1;
-                self.error_time_list.pop_front();
-                self.error_count -= 1;
-            } else {
-                break;
-            }
-        }
-    }
-}
-
 pub struct BackendChecker {
     inner: Arc<RingBufferStream>,
     tx: Arc<Sender<u8>>,
-    req_buf: usize,
-    resp_buf: usize,
     addr: String,
     finished: Arc<AtomicBool>,
+    resource: Resource,
+    biz: String,
 }
 
 impl BackendChecker {
     fn from(
         stream: Arc<RingBufferStream>,
-        req_buf: usize,
-        resp_buf: usize,
         addr: String,
         finished: Arc<AtomicBool>,
         tx: Sender<u8>,
+        resource: Resource,
+        biz: &str,
     ) -> Self {
         if let Err(e) = tx.try_send(0) {
             log::error!("check: failed to send connect signal to {}:{:?}", addr, e);
@@ -173,10 +93,10 @@ impl BackendChecker {
         let me = Self {
             tx: Arc::new(tx),
             inner: stream,
-            req_buf: req_buf,
-            resp_buf: resp_buf,
             addr: addr,
             finished: finished,
+            resource: resource,
+            biz: biz.to_string(),
         };
         me
     }
@@ -202,18 +122,7 @@ impl BackendChecker {
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         let mut tries = 0;
-        //let mut reconnect_error =
-        //    BackendErrorCounter::new(RECONNECT_ERROR_WINDOW, BackendErrorType::ConnError);
-        //log::info!("come into check");
         while !self.finished.load(Ordering::Acquire) {
-            // if reconnect_error.judge_error(RECONNECT_ERROR_CAP) {
-            //     log::warn!(
-            //         "check: connect to {} error over {} times, will not connect recently",
-            //         self.addr,
-            //         RECONNECT_ERROR_CAP
-            //     );
-            //     sleep(Duration::from_secs(1)).await;
-            // } else {
             match self.check_reconnected_once(parser.clone()).await {
                 Ok(_) => {
                     log::debug!("check: {} connected tries:{}", self.addr, tries);
@@ -229,9 +138,8 @@ impl BackendChecker {
                     let secs = (1 << tries).min(31);
                     tries += 1;
                     sleep(Duration::from_secs(secs)).await;
-                } //   reconnect_error.add_error(1);
+                }
             }
-            //}
         }
     }
 
@@ -245,12 +153,12 @@ impl BackendChecker {
         log::info!("check: connected to {}", addr);
         let _ = stream.set_nodelay(true);
         let (r, w) = stream.into_split();
+        let r = super::Reader::from(r, addr, self.resource, &self.biz);
+        let w = super::Writer::from(w, addr, self.resource, &self.biz);
         let req_stream = self.inner.clone();
 
         req_stream.bridge(
             parser.clone(),
-            self.req_buf,
-            self.resp_buf,
             r,
             w,
             Notifier {

@@ -19,6 +19,7 @@ pub struct AsyncMultiGet<L, P> {
     idx: usize,
     layers: Vec<L>,
     request_ref: Request,
+    //TODO 这里需要改为Option fishermen
     request_rebuild_buf: Vec<u8>,
     response: Option<Response>,
     parser: P,

@@ -6,7 +6,7 @@ use std::slice::from_raw_parts_mut;
 // <= read的字节是已经全部读取完的
 // [read, processed]是已经写入，但未全部收到读取完成通知的
 // write是当前写入的地址
-pub struct ResponseRingBuffer {
+pub struct RingBuffer {
     data: NonNull<u8>,
     size: usize,
     read: usize,
@@ -14,7 +14,7 @@ pub struct ResponseRingBuffer {
     write: usize,
 }
 
-impl ResponseRingBuffer {
+impl RingBuffer {
     pub fn with_capacity(size: usize) -> Self {
         let buff_size = size.next_power_of_two();
         let mut data = Vec::with_capacity(buff_size);
@@ -28,23 +28,23 @@ impl ResponseRingBuffer {
             write: 0,
         }
     }
-    #[inline]
+    #[inline(always)]
     pub fn processed(&self) -> usize {
         self.processed
     }
-    #[inline]
+    #[inline(always)]
     pub fn reset_read(&mut self, read: usize) {
         self.read = read;
     }
-    #[inline]
+    #[inline(always)]
     pub fn writtened(&self) -> usize {
         self.write
     }
-    #[inline]
+    #[inline(always)]
     pub fn advance_processed(&mut self, n: usize) {
         self.processed += n;
     }
-    #[inline]
+    #[inline(always)]
     pub fn advance_write(&mut self, n: usize) {
         self.write += n;
     }
@@ -67,14 +67,6 @@ impl ResponseRingBuffer {
                 self.size - offset
             }
         };
-        log::debug!(
-            "response as mut bytes. read:{} processed:{} write:{} available:{}",
-            self.read,
-            self.processed,
-            self.write,
-            n
-        );
-
         unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
     }
     // 返回已写入，未处理的字节。即从[processed,write)的字节
@@ -82,9 +74,53 @@ impl ResponseRingBuffer {
     pub fn processing_bytes(&self) -> RingSlice {
         RingSlice::from(self.data.as_ptr(), self.size, self.processed, self.write)
     }
+    // 返回已写入的所有数据，包括已处理未确认的
+    #[inline(always)]
+    pub fn data(&self) -> RingSlice {
+        RingSlice::from(self.data.as_ptr(), self.size, self.read, self.write)
+    }
+    #[inline(always)]
+    pub(crate) fn cap(&self) -> usize {
+        self.size
+    }
+
+    // cap > self.len()
+    pub(crate) fn resize(&self, cap: usize) -> Self {
+        assert!(cap >= self.write - self.read);
+        let mut new = Self::with_capacity(cap);
+        new.read = self.read;
+        new.processed = self.processed;
+        new.write = self.read;
+        let mut old_data = self.data();
+        use std::ptr::copy_nonoverlapping as copy;
+        loop {
+            let slice = old_data.take_slice();
+            if slice.len() == 0 {
+                break;
+            }
+            let mut offset = 0usize;
+            while offset < slice.len() {
+                let dst = new.as_mut_bytes();
+                let count = dst.len().min(slice.len() - offset);
+                unsafe {
+                    copy(
+                        slice.as_ptr().offset(offset as isize),
+                        dst.as_mut_ptr(),
+                        count,
+                    );
+                }
+                new.advance_write(count);
+                offset += count;
+            }
+        }
+        assert_eq!(self.write, new.write);
+        assert_eq!(self.processed, new.processed);
+        assert_eq!(self.read, new.read);
+        new
+    }
 }
 
-impl Drop for ResponseRingBuffer {
+impl Drop for RingBuffer {
     fn drop(&mut self) {
         unsafe {
             let _ = Vec::from_raw_parts(self.data.as_ptr(), 0, self.size);
@@ -94,7 +130,7 @@ impl Drop for ResponseRingBuffer {
 
 #[cfg(test)]
 mod tests {
-    use super::ResponseRingBuffer;
+    use super::RingBuffer;
     use rand::Rng;
     use std::ptr::copy_nonoverlapping;
 
@@ -108,7 +144,7 @@ mod tests {
     #[test]
     fn test_response_buffer() {
         let cap = 32;
-        let mut buffer = ResponseRingBuffer::with_capacity(cap);
+        let mut buffer = RingBuffer::with_capacity(cap);
         let data = rnd_write(buffer.as_mut_bytes(), cap);
         let mut response = buffer.processing_bytes();
         assert_eq!(response.available(), 0);
