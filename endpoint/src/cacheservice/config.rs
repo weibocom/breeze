@@ -6,6 +6,7 @@ use std::io::{Error, ErrorKind, Result};
 pub struct Namespace {
     #[serde(default)]
     pub hash: String, // eg: bkdr
+    #[serde(default)]
     pub distribution: String, //eg: ketama
     #[serde(default)]
     pub hash_tag: String, //eg: user
