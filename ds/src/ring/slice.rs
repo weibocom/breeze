@@ -1,7 +1,7 @@
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
-use super::Slice;
+use crate::Slice;
 
 use byteorder::{BigEndian, ByteOrder};
 

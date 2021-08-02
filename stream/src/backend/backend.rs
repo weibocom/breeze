@@ -40,8 +40,8 @@ impl Backend {
         }
     }
 
-    pub fn addr(&self) -> String {
-        self.addr
+    pub fn addr(&self) -> &String {
+        &self.addr
     }
 }
 
@@ -106,7 +106,7 @@ pub trait AddressEnable {
 impl AddressEnable for BackendStream {
     fn get_address(&self) -> String {
         match self {
-            BackendStream::Backend(backend) => backend.addr(),
+            BackendStream::Backend(backend) => backend.addr().clone(),
             BackendStream::NotConnected(_) => "not connected".to_string(),
         }
     }

@@ -1,3 +1,2 @@
 // mod offset;
-
-mod vec_test;
+mod hash_test;

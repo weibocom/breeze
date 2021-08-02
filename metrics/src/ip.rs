@@ -1,6 +1,7 @@
+pub fn encode_addr(addr: &str) -> String {
+    addr.replace(".", "_").replace(":", "_")
+}
 lazy_static! {
-    pub(crate) static ref LOCAL_IP: String = local_ip_address::local_ip()
-        .expect("local ip")
-        .to_string()
-        .replace(".", "_");
+    pub(crate) static ref LOCAL_IP: String =
+        encode_addr(&local_ip_address::local_ip().expect("local ip").to_string());
 }

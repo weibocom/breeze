@@ -1,4 +1,4 @@
-mod backend;
+pub mod backend;
 mod chan;
 pub mod io;
 mod mpmc;
