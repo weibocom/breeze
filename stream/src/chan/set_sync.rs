@@ -49,16 +49,16 @@ where
             ready!(Pin::new(&mut me.master).poll_write(cx, buf))?;
             me.master_done = true;
             if me.followers.len() > 0 {
-                me.noreply = Some(me.parser.copy_noreply(buf));
+                let noreply = me.parser.copy_noreply(buf);
+                me.noreply = Some(noreply);
             }
         }
         if me.followers.len() > 0 {
             let noreply = me.noreply.as_ref().unwrap();
-            log::debug!("set: noreply:{}", noreply.noreply());
             while me.f_idx < me.followers.len() {
                 let w = Pin::new(unsafe { me.followers.get_unchecked_mut(me.f_idx) });
-                if let Err(e) = ready!(w.poll_write(cx, noreply)) {
-                    log::warn!("write follower failed idx:{} err:{:?}", me.f_idx, e);
+                if let Err(_e) = ready!(w.poll_write(cx, noreply)) {
+                    log::debug!("write follower failed idx:{} err:{:?}", me.f_idx, _e);
                 }
                 me.f_idx += 1;
             }
@@ -73,25 +73,15 @@ where
     F: AsyncReadAll + Unpin,
     P: Protocol,
 {
+    #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
-        let has_response = match &me.noreply {
-            None => true, // 没有，说明发送的不是noreply请求
-            Some(req) => !req.noreply(),
-        };
-        if has_response {
-            while me.f_idx < me.followers.len() {
-                let r = Pin::new(unsafe { me.followers.get_unchecked_mut(me.f_idx) });
-                if let Err(e) = ready!(r.poll_next(cx)) {
-                    log::error!("set_sync: poll followers failed.{:?}", e);
-                }
-                me.f_idx += 1;
-            }
-        }
-        me.f_idx = 0;
+        let response = ready!(Pin::new(&mut me.master).poll_next(cx))?;
 
-        let response = ready!(Pin::new(&mut self.master).poll_next(cx))?;
-        self.master_done = false;
+        me.f_idx = 0;
+        me.master_done = false;
+        me.noreply.take();
+
         Poll::Ready(Ok(response))
     }
 }

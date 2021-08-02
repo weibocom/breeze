@@ -77,6 +77,10 @@ impl MemcacheBinary {
         }
         (false, req.len())
     }
+    #[inline(always)]
+    fn _noreply(&self, req: &[u8]) -> bool {
+        req[1] == NOREPLY_MAPPING[req[1] as usize]
+    }
 }
 
 impl Protocol for MemcacheBinary {
@@ -89,7 +93,7 @@ impl Protocol for MemcacheBinary {
         if req.noreply() {
             req.clone()
         } else {
-            let noreply = data[1] == NOREPLY_MAPPING[data[1] as usize];
+            let noreply = self._noreply(data);
             if noreply {
                 let mut new = req.clone();
                 new.set_noreply();
