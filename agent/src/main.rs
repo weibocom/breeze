@@ -18,7 +18,10 @@ use protocol::Protocols;
 async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
     ctx.check()?;
+
+    let _l = listener_for_supervisor(ctx.port()).await?;
     log::init(ctx.log_dir())?;
+
     metrics::init(&ctx.metrics_url());
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
     let mut listeners = ctx.listeners();
@@ -127,4 +130,12 @@ async fn process_one_connection(
         })?;
     copy_bidirectional(agent, client, parser, session_id, metric_id).await?;
     Ok(())
+}
+
+use tokio::net::TcpListener;
+// 监控一个端口，主要用于进程监控
+async fn listener_for_supervisor(port: u16) -> Result<TcpListener> {
+    let addr = format!("127.0.0.1:{}", port);
+    let l = TcpListener::bind(&addr).await?;
+    Ok(l)
 }

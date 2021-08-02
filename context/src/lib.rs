@@ -8,6 +8,8 @@ use url::Url;
 #[clap(name = "resource mesh", version = "0.0.1", author = "IF")]
 #[clap(setting = AppSettings::ColoredHelp)]
 pub struct Context {
+    #[clap(short, long, about("port for suvervisor"), default_value("9984"))]
+    port: u16,
     #[clap(
         short,
         long,
@@ -43,6 +45,9 @@ impl Context {
     #[inline]
     pub fn from_os_args() -> Self {
         Context::parse()
+    }
+    pub fn port(&self) -> u16 {
+        self.port
     }
     // service_path目录要存在
     pub fn check(&self) -> Result<()> {
