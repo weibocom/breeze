@@ -8,7 +8,7 @@ use url::Url;
 #[clap(name = "resource mesh", version = "0.0.1", author = "IF")]
 #[clap(setting = AppSettings::ColoredHelp)]
 pub struct Context {
-    #[clap(short, long, about("port for suvervisor"), default_value("9984"))]
+    #[clap( long, about("port for suvervisor"), default_value("9984"))]
     port: u16,
     #[clap(
         short,
