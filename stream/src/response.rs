@@ -57,33 +57,6 @@ impl Response {
         self.items.extend(other.items);
     }
 
-    // 去掉消息的结尾部分
-    pub fn cut_tail(&mut self, tail_size: usize) -> bool {
-        if self.items.len() == 0 {
-            println!(" no tail to cut");
-            return false;
-        }
-        // 之前已经都出了response
-        let idx = self.items.len() - 1;
-        let last_resp = self.items.get_mut(idx).unwrap();
-        let last_len = last_resp.len();
-        if last_len > tail_size {
-            last_resp.resize(last_len - tail_size);
-            println!(" cut tail/{} from len/{}", tail_size, last_len);
-        } else if last_len < tail_size {
-            println!(
-                "found malformed response when cut tail with size/{}",
-                tail_size
-            );
-            return false;
-        } else if last_len == tail_size {
-            // 上一个响应是一个empty response，扔掉该响应
-            self.items.pop();
-            println!("cut an empty resp");
-        }
-        return true;
-    }
-
     pub(crate) fn into_reader<P>(self, parser: &P) -> ResponseReader<'_, P> {
         ResponseReader {
             idx: 0,
@@ -98,14 +71,41 @@ impl Response {
         }
         l
     }
+    pub fn iter(&self) -> ResponseRingSliceIter {
+        ResponseRingSliceIter {
+            response: self,
+            idx: 0,
+        }
+    }
+}
+
+pub struct ResponseRingSliceIter<'a> {
+    idx: usize,
+    response: &'a Response,
+}
+
+impl<'a> Iterator for ResponseRingSliceIter<'a> {
+    type Item = &'a RingSlice;
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.response.items.len() {
+            None
+        } else {
+            let idx = self.idx;
+            self.idx += 1;
+            unsafe { Some(&self.response.items.get_unchecked(idx)) }
+        }
+    }
 }
 
 unsafe impl Send for Response {}
 unsafe impl Sync for Response {}
 
 impl AsRef<RingSlice> for Response {
+    // 如果有多个item,应该使迭代方式
+    #[inline(always)]
     fn as_ref(&self) -> &RingSlice {
-        debug_assert!(self.items.len() > 0);
+        debug_assert!(self.items.len() == 1);
         unsafe { &self.items.get_unchecked(self.items.len() - 1) }
     }
 }
