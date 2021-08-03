@@ -14,7 +14,7 @@ pub struct AsyncGetSync<R, P> {
     idx: usize,
     // 需要read though的layers
     layers: Vec<R>,
-    req_ref: Request,
+    req: Request,
     // TODO: 对于空响应，根据协议获得空响应格式，这样效率更高，待和@icy 讨论 fishermen 2021.6.27
     empty_resp: Option<Response>,
     parser: P,
@@ -25,7 +25,7 @@ impl<R, P> AsyncGetSync<R, P> {
         AsyncGetSync {
             idx: 0,
             layers,
-            req_ref: Default::default(),
+            req: Default::default(),
             empty_resp: None,
             parser: p,
         }
@@ -40,18 +40,15 @@ where
     // 发送请求，如果失败，继续向下一层write，注意处理重入问题
     // ready! 会返回Poll，所以这里还是返回Poll了
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut idx = self.idx;
-
-        debug_assert!(idx < self.layers.len());
+        //debug_assert!(idx < self.layers.len());
 
         // 轮询reader发送请求，直到发送成功
-        while idx < self.layers.len() {
-            let reader = unsafe { self.layers.get_unchecked_mut(idx) };
-            match ready!(Pin::new(reader).poll_write(cx, &self.req_ref)) {
+        while self.idx < self.layers.len() {
+            let reader = unsafe { self.layers.get_unchecked_mut(self.idx) };
+            match ready!(Pin::new(reader).poll_write(cx, &self.req)) {
                 Ok(_) => return Poll::Ready(Ok(())),
                 Err(_e) => {
                     self.idx += 1;
-                    idx = self.idx;
                     log::warn!("get_sync:write req failed e:{:?}", _e);
                 }
             }
@@ -83,8 +80,8 @@ where
         buf: &Request,
     ) -> Poll<Result<()>> {
         // 记录req buf，方便多层访问
-        self.req_ref = buf.clone();
-        return self.do_write(cx);
+        self.req = buf.clone();
+        self.do_write(cx)
     }
 }
 
@@ -118,10 +115,15 @@ where
                 }
             }
             me.idx += 1;
-            ready!(me.do_write(cx))?;
+            if me.idx < me.layers.len() {
+                if let Err(_e) = ready!(me.do_write(cx)) {
+                    log::debug!("get_sync: write failed:{:?}", _e);
+                    break;
+                }
+            }
         }
 
-        debug_assert!(self.idx + 1 == self.layers.len());
+        debug_assert!(self.idx == self.layers.len());
         self.reset();
         if let Some(item) = self.empty_resp.take() {
             Poll::Ready(Ok(item))
