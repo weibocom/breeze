@@ -186,6 +186,9 @@ impl Protocol for MemcacheBinary {
     where
         T: Iterator<Item = &'a RingSlice>,
     {
+        for slice in resp_wrapper {
+            // process ringslice
+        }
         //let mut read = 0;
         //let response = resp_wrapper.as_ref();
         //let avail = response.available();
