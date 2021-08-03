@@ -46,7 +46,8 @@ pub trait Protocol: Unpin + Clone + 'static {
     fn response_found<T: AsRef<RingSlice>>(&self, response: T) -> bool;
     // 轮询response，解析出本次查到的keys以及noop所在的位置
     // TODO keys_response ？keys作为返回值 fishermen
-    fn scan_response_keys<'a, T: Iterator<Item = &'a RingSlice>>(
+    fn scan_response_keys(&self, response: &RingSlice, keys: &mut Vec<String>);
+    fn keys_response<'a, T: Iterator<Item = &'a RingSlice>>(
         &self,
         response: T,
         keys: &mut Vec<String>,
