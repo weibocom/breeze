@@ -180,7 +180,8 @@ impl BackendChecker {
     // 3. 超过7秒钟。why 7 secs?
     async fn _start_check_timeout(self: Arc<Self>) {
         use std::time::Instant;
-        const TIME_OUT: Duration = Duration::from_secs(7);
+        //const TIME_OUT: Duration = Duration::from_secs(7);
+        const TIME_OUT: Duration = Duration::from_millis(500);
 
         let (mut last_req, _) = self.inner.load_ping_ping();
         let mut duration = Instant::now();
