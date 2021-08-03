@@ -182,40 +182,42 @@ impl Protocol for MemcacheBinary {
         }
     }
     // 轮询response，找出本次查询到的keys，loop所在的位置
-    fn scan_response_keys<'a, T>(&self, resp_wrapper: T, keys: &mut Vec<String>)
+    fn keys_response<'a, T>(&self, resp: T, keys: &mut Vec<String>)
     where
         T: Iterator<Item = &'a RingSlice>,
     {
-        for slice in resp_wrapper {
-            // process ringslice
+        for slice in resp {
+            self.scan_response_keys(slice, keys);
         }
-        //let mut read = 0;
-        //let response = resp_wrapper.as_ref();
-        //let avail = response.available();
-        //loop {
-        //    if avail < read + HEADER_LEN {
-        //        // 这种情况不应该出现
-        //        debug_assert!(false);
-        //        return;
-        //    }
-        //    debug_assert_eq!(response.at(read), 0x81);
-        //    // op_getkq 是最后一个response
-        //    if response.at(read + 1) == OP_CODE_NOOP {
-        //        return;
-        //    }
-        //    let len = response.read_u32(read + 8) as usize + HEADER_LEN;
-        //    debug_assert!(read + len <= avail);
-        //    // key 获取
-        //    let key_len = response.read_u16(read + 2);
-        //    let extra_len = response.at(read + 4);
-        //    let key = response.read_bytes(read + HEADER_LEN + extra_len as usize, key_len as usize);
-        //    keys.push(key);
+    }
+    // 轮询response，找出本次查询到的keys，loop所在的位置
+    fn scan_response_keys(&self, response: &RingSlice, keys: &mut Vec<String>) {
+        let mut read = 0;
+        let avail = response.available();
+        loop {
+            if avail < read + HEADER_LEN {
+                // 这种情况不应该出现
+                debug_assert!(false);
+                return;
+            }
+            debug_assert_eq!(response.at(read), 0x81);
+            // op_getkq 是最后一个response
+            if response.at(read + 1) == OP_CODE_NOOP {
+                return;
+            }
+            let len = response.read_u32(read + 8) as usize + HEADER_LEN;
+            debug_assert!(read + len <= avail);
+            // key 获取
+            let key_len = response.read_u16(read + 2);
+            let extra_len = response.at(read + 4);
+            let key = response.read_bytes(read + HEADER_LEN + extra_len as usize, key_len as usize);
+            keys.push(key);
 
-        //    read += len;
-        //    if read == avail {
-        //        return;
-        //    }
-        //}
+            read += len;
+            if read == avail {
+                return;
+            }
+        }
     }
     fn rebuild_get_multi_request(
         &self,
