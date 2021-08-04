@@ -180,8 +180,7 @@ impl BackendChecker {
     // 3. 超过7秒钟。why 7 secs?
     async fn _start_check_timeout(self: Arc<Self>) {
         use std::time::Instant;
-        //const TIME_OUT: Duration = Duration::from_secs(7);
-        const TIME_OUT: Duration = Duration::from_millis(500);
+        const TIME_OUT: Duration = Duration::from_secs(4);
 
         let (mut last_req, _) = self.inner.load_ping_ping();
         let mut duration = Instant::now();
@@ -202,10 +201,11 @@ impl BackendChecker {
                 continue;
             }
             log::error!(
-                "check-timeout: no response return in {:?}. stream marked done. req:{} resp:{}",
+                "check-timeout: no response return in {:?}. stream marked done. req:{} resp:{}, addr:{}",
                 elap,
                 req_num,
-                resp_num
+                resp_num,
+                self.addr
             );
             self.inner.mark_done();
         }
