@@ -62,15 +62,19 @@ impl Namespace {
         }
         followers.extend(self.slave_l1.clone());
 
-        // reader包含多层，目前是：l1,master, slave
-        // 保障严格的顺序。
+        // 保障严格的顺序:L1-master-slave; 同时将master也作为l1的一部分参与读取，使用者注意排重
         let mut readers = Vec::new();
+        // readers: master-l1
         if self.master_l1.len() > 0 {
-            readers.push(self.master_l1.clone());
+            let mut l1 = self.master_l1.clone();
+            l1.push(self.master.clone());
+            readers.push(l1);
         }
+        // readers: master
         readers.push(vec![self.master.clone()]);
-        if self.slave_l1.len() > 0 {
-            readers.push(self.slave_l1.clone());
+        // readers: slave
+        if self.slave.len() > 0 {
+            readers.push(vec![self.slave.clone()]);
         }
 
         log::debug!(

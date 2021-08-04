@@ -104,6 +104,7 @@ where
                     // 请求命中，返回ok及消息长度；
                     if me.parser.response_found(&item) {
                         self.empty_resp.take();
+                        self.reset();
                         return Poll::Ready(Ok(item));
                     }
                     me.empty_resp.replace(item);
