@@ -133,18 +133,27 @@ impl<P> Topology<P> {
         self.reader_layers(&self.gets_streams)
     }
 
+    // 由于mc会将master也作为一个L1来访问，所以此处统一做排重处理
     fn random_reads(&self) -> Vec<Vec<String>> {
         let mut readers = Vec::new();
-        for layer in self.layer_readers.clone() {
+        for layer in &self.layer_readers {
             if layer.len() == 1 {
-                readers.push(layer[0].clone());
+                let r = &layer[0];
+                if !readers.contains(r) {
+                    readers.push(r.clone());
+                }
             } else if layer.len() > 1 {
                 let rd = rand::thread_rng().gen_range(0..layer.len());
-                readers.push(layer[rd].clone())
+                let r = &layer[rd];
+                if !readers.contains(r) {
+                    readers.push(r.clone())
+                }
             } else {
                 log::warn!("topolody - rand readers should has candidates!");
             }
         }
+
+        log::info!("use random readers: {:?}", readers);
         readers
     }
 
