@@ -15,7 +15,7 @@ pub(crate) struct Writer<W> {
 impl<W> Writer<W> {
     pub(crate) fn from(w: W, addr: &str, resource: Resource, biz: &str) -> Self {
         let metric_id =
-            metrics::register_names(vec![resource.name(), biz, &metrics::encode_addr(addr)]);
+            metrics::register_names(vec![resource.name(), &metrics::encode_addr(biz), &metrics::encode_addr(addr)]);
         Self { w, metric_id }
     }
 }
@@ -59,7 +59,7 @@ pub(crate) struct Reader<R> {
 impl<R> Reader<R> {
     pub(crate) fn from(w: R, addr: &str, resource: Resource, biz: &str) -> Self {
         let metric_id =
-            metrics::register_names(vec![resource.name(), biz, &metrics::encode_addr(addr)]);
+            metrics::register_names(vec![resource.name(), &metrics::encode_addr(biz), &metrics::encode_addr(addr)]);
         Self { w, metric_id }
     }
 }
