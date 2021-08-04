@@ -134,6 +134,7 @@ where
                     &found_keys,
                     &mut me.request_rebuild_buf,
                 );
+
                 // 如果所有请求全部全部命中，新指令长度为0
                 if me.request_rebuild_buf.len() == 0 {
                     break;
@@ -149,13 +150,10 @@ where
                 log::debug!("rebuild req for get-multi: {:?}", me.request_ref.data());
             }
 
-            match ready!(me.do_write(cx)) {
-                Ok(()) => continue,
-                Err(e) => {
-                    log::warn!("found err when resend layer request:{:?}", e);
-                    last_err = Some(e);
-                    break;
-                }
+            if let Err(e) = ready!(me.do_write(cx)) {
+                log::warn!("found err when resend layer request:{:?}", e);
+                last_err = Some(e);
+                break;
             }
         }
 
