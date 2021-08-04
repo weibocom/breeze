@@ -17,8 +17,8 @@ mod hash_test {
     #[test]
     fn hash_check() {
         // 将java生成的随机key及hash，每种size都copy的几条过来，用于日常验证
-        let path = "/Users/fishermen/works/weibo/git/java/api-commons/";
-        // let path = "./records/";
+        //let path = "/Users/fishermen/works/weibo/git/java/api-commons/";
+        let path = "./records/";
         let bkdr10 = format!("{}{}", path, "bkdr_10.log");
         let bkdr15 = format!("{}{}", path, "bkdr_15.log");
         let bkdr20 = format!("{}{}", path, "bkdr_20.log");
@@ -48,6 +48,33 @@ mod hash_test {
 
         let key = " 653017.hqfy";
         md5(&key);
+    }
+
+    #[test]
+    fn layer_test() {
+        let mut layer_readers = Vec::new();
+        layer_readers.push(vec![vec!["1", "2", "3"], vec!["4", "5"], vec!["6", "7"]]);
+        layer_readers.push(vec![vec!["1", "2", "3"], vec!["6", "7"]]);
+        layer_readers.push(vec![vec!["7", "8"], vec!["4", "5"]]);
+
+        let mut readers = Vec::new();
+        for layer in &layer_readers {
+            if layer.len() == 1 {
+                let r = &layer[0];
+                if !readers.contains(r) {
+                    readers.push(r.clone());
+                }
+            } else if layer.len() > 1 {
+                for r in layer {
+                    if !readers.contains(r) {
+                        readers.push(r.clone())
+                    }
+                }
+            }
+        }
+
+        debug_assert!(readers.len() == 4);
+        println!("readers: {:?}", readers);
     }
 
     fn bkdr_check(path: &str) {
@@ -184,7 +211,7 @@ mod hash_test {
                 Err(e) => println!("Stop read for err: {}", e),
             }
         }
-        println!("check crc32 hash from file: {}", path);
+        println!("check consistent hash from file: {}", path);
     }
 
     struct ConsistentHashInstance {
@@ -216,11 +243,11 @@ mod hash_test {
                         }
 
                         consistent_map.insert(hash, idx);
-                        println!("+++++++ {} - {}", hash, shards[idx]);
+                        //println!("+++++++ {} - {}", hash, shards[idx]);
                     }
                 }
             }
-            println!("map: {:?}", consistent_map);
+            //println!("map: {:?}", consistent_map);
 
             Self {
                 shards,
@@ -237,7 +264,7 @@ mod hash_test {
                 .range((Included(h as i64), Included(i64::MAX)));
 
             for (hash, idx) in idxs {
-                println!("chose idx/{} with hash/{} for key/{}", idx, hash, key);
+                //println!("chose idx/{} with hash/{} for key/{}", idx, hash, key);
                 let s = self.shards[*idx].to_string();
                 return (*hash, s);
             }
@@ -245,10 +272,6 @@ mod hash_test {
             //if let Some(mut entry) = self.consistent_map.first_entry() {
             for (h, i) in &self.consistent_map {
                 let s = self.shards[*i];
-                println!(
-                    "chose the first key idx/{} with hash/{} for key/{}",
-                    i, h, key
-                );
                 return (*h, s.to_string());
             }
 
@@ -275,19 +298,12 @@ mod hash_test {
             if hash < 0 {
                 hash = hash.wrapping_mul(-1);
             }
-            println!(
-                "{} {} {} {}",
-                ((out[0 + j * 4] & 0xFF) as i64),
-                ((out[1 + j * 4] & 0xFF) as i64) << 8,
-                ((out[2 + j * 4] & 0xFF) as i64) << 16,
-                ((out[3 + j * 4] & 0xFF) as i64) << 24
-            );
             // let hash_little = LittleEndian::read_i32(&out[j * 4..]) as i64;
             // let hash_big = BigEndian::read_i32(&out[j * 4..]) as i64;
             // println!("raw: {}  {}  {}", hash, hash_little, hash_big);
             // let hash = hash.wrapping_abs() as u64;
 
-            println!("+++++++ {} - {}", hash, j);
+            //println!("+++++++ {} - {}", hash, j);
         }
     }
 }
