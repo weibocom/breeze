@@ -108,7 +108,7 @@ where
             match ready!(Pin::new(layer).poll_next(cx)) {
                 Ok(item) => {
                     // 轮询出已经查到的keys
-                    me.parser.keys_response(item.iter(), &mut found_keys);
+                    found_keys = me.parser.keys_response(item.iter());
                     match me.response.as_mut() {
                         Some(response) => response.append(item),
                         None => me.response = Some(item),
@@ -125,6 +125,7 @@ where
                 break;
             }
 
+            log::debug!("====== found keys:{:?}", found_keys);
             // 重新构建request cmd，再次请求，生命周期考虑，需要外部出入buf来构建新请求指令
             if found_keys.len() > 0 {
                 // 每次重建request，先清理buff
@@ -134,6 +135,7 @@ where
                     &found_keys,
                     &mut me.request_rebuild_buf,
                 );
+                log::debug!("========== new req: {:?}", me.request_rebuild_buf);
                 // 如果所有请求全部全部命中，新指令长度为0
                 if me.request_rebuild_buf.len() == 0 {
                     break;
@@ -145,7 +147,6 @@ where
                 );
                 // 及时清理
                 found_keys.clear();
-
                 log::debug!("rebuild req for get-multi: {:?}", me.request_ref.data());
             }
 

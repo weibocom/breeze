@@ -182,13 +182,15 @@ impl Protocol for MemcacheBinary {
         }
     }
     // 轮询response，找出本次查询到的keys，loop所在的位置
-    fn keys_response<'a, T>(&self, resp: T, keys: &mut Vec<String>)
+    fn keys_response<'a, T>(&self, resp: T) -> Vec<String>
     where
         T: Iterator<Item = &'a RingSlice>,
     {
+        let keys: Vec<String> = Vec::new();
         for slice in resp {
             self.scan_response_keys(slice, keys);
         }
+        return keys;
     }
     // 轮询response，找出本次查询到的keys，loop所在的位置
     fn scan_response_keys(&self, response: &RingSlice, keys: &mut Vec<String>) {
