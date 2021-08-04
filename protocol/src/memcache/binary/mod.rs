@@ -186,9 +186,9 @@ impl Protocol for MemcacheBinary {
     where
         T: Iterator<Item = &'a RingSlice>,
     {
-        let keys: Vec<String> = Vec::new();
+        let mut keys: Vec<String> = Vec::new();
         for slice in resp {
-            self.scan_response_keys(slice, keys);
+            self.scan_response_keys(slice, &mut keys);
         }
         return keys;
     }

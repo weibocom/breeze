@@ -125,7 +125,6 @@ where
                 break;
             }
 
-            log::debug!("====== found keys:{:?}", found_keys);
             // 重新构建request cmd，再次请求，生命周期考虑，需要外部出入buf来构建新请求指令
             if found_keys.len() > 0 {
                 // 每次重建request，先清理buff
@@ -135,7 +134,6 @@ where
                     &found_keys,
                     &mut me.request_rebuild_buf,
                 );
-                log::debug!("========== new req: {:?}", me.request_rebuild_buf);
                 // 如果所有请求全部全部命中，新指令长度为0
                 if me.request_rebuild_buf.len() == 0 {
                     break;
@@ -147,7 +145,7 @@ where
                 );
                 // 及时清理
                 found_keys.clear();
-                log::debug!("rebuild req for get-multi: {:?}", me.request_ref.data());
+                log::debug!("rebuild new req: {:?}", me.request_ref.data());
             }
 
             match ready!(me.do_write(cx)) {
