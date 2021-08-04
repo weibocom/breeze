@@ -170,6 +170,7 @@ impl Item {
     pub(crate) fn reset(&self) {
         //self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8);
         self.status.store(Init as u8, Ordering::Release);
+        self.seq.store(0, Ordering::Release);
         self.waker.wake();
     }
 }
