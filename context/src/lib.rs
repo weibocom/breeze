@@ -8,7 +8,7 @@ use url::Url;
 #[clap(name = "resource mesh", version = "0.0.1", author = "IF")]
 #[clap(setting = AppSettings::ColoredHelp)]
 pub struct Context {
-    #[clap( long, about("port for suvervisor"), default_value("9984"))]
+    #[clap(long, about("port for suvervisor"), default_value("9984"))]
     port: u16,
     #[clap(
         short,
@@ -39,6 +39,14 @@ pub struct Context {
 
     #[clap(short, long, about("metrics url"))]
     metrics_url: Option<String>,
+
+    #[clap(
+        short('m'),
+        long,
+        about("establish a connection to select an local ip"),
+        default_value("weibo.com:80")
+    )]
+    pub metrics_probe: String,
 }
 
 impl Context {

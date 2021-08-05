@@ -68,7 +68,7 @@ impl Sender {
         let service = self.get_service_name(sid).to_string();
         self.write(&service);
         self.write(".byhost.");
-        self.write(&super::ip::LOCAL_IP);
+        self.write(&super::ip::local_ip());
         self.write(".");
         self.write(key);
         if sub_key.len() > 0 {

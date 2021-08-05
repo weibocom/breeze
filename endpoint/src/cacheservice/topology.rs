@@ -149,11 +149,11 @@ impl<P> Topology<P> {
                     readers.push(r.clone())
                 }
             } else {
-                log::warn!("topolody - rand readers should has candidates!");
+                log::debug!("topolody - rand readers should has candidates!");
             }
         }
 
-        log::info!("use random readers: {:?}", readers);
+        log::debug!("cs-topology: use random readers: {:?}", readers);
         readers
     }
 
