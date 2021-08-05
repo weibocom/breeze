@@ -159,7 +159,10 @@ impl Item {
         let status = self.status();
         debug_assert_eq!(status, ItemStatus::ResponseReceived as u8);
         self.status_cas(status, ItemStatus::Init as u8);
-        self.seq_cas(seq, 0);
+        // 如果seq为0，说明有一种情况，之前连接进行过reset，但response已获取。
+        if self.seq() > 0 {
+            self.seq_cas(seq, 0);
+        }
     }
     #[inline(always)]
     pub(crate) fn status_init(&self) -> bool {
