@@ -41,7 +41,6 @@ pub struct Context {
     metrics_url: Option<String>,
 
     #[clap(
-        short('m'),
         long,
         about("establish a connection to select an local ip"),
         default_value("weibo.com:80")
