@@ -108,7 +108,7 @@ where
             match ready!(Pin::new(layer).poll_next(cx)) {
                 Ok(item) => {
                     // 轮询出已经查到的keys
-                    me.parser.scan_response_keys(&item, &mut found_keys);
+                    found_keys = me.parser.keys_response(item.iter());
                     match me.response.as_mut() {
                         Some(response) => response.append(item),
                         None => me.response = Some(item),
@@ -146,8 +146,7 @@ where
                 );
                 // 及时清理
                 found_keys.clear();
-
-                log::debug!("rebuild req for get-multi: {:?}", me.request_ref.data());
+                log::debug!("rebuild new req: {:?}", me.request_ref.data());
             }
 
             if let Err(e) = ready!(me.do_write(cx)) {

@@ -46,7 +46,8 @@ pub trait Protocol: Unpin + Clone + 'static {
     fn response_found<T: AsRef<RingSlice>>(&self, response: T) -> bool;
     // 轮询response，解析出本次查到的keys以及noop所在的位置
     // TODO keys_response ？keys作为返回值 fishermen
-    fn scan_response_keys<T: AsRef<RingSlice>>(&self, response: T, keys: &mut Vec<String>);
+    fn scan_response_keys(&self, response: &RingSlice, keys: &mut Vec<String>);
+    fn keys_response<'a, T: Iterator<Item = &'a RingSlice>>(&self, response: T) -> Vec<String>;
     // 从当前的cmds中，过滤掉已经查到的keys，然后返回新的请求cmds
     // TODO 新的request 作为返回值 fishermen
     fn rebuild_get_multi_request(
