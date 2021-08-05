@@ -9,6 +9,7 @@ pub use id::*;
 
 mod ip;
 pub use ip::encode_addr;
+pub use ip::init_local_ip;
 
 mod sender;
 use sender::Sender;

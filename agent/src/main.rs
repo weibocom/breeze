@@ -23,6 +23,7 @@ async fn main() -> Result<()> {
     log::init(ctx.log_dir())?;
 
     metrics::init(&ctx.metrics_url());
+    metrics::init_local_ip(&ctx.metrics_probe);
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
     let mut listeners = ctx.listeners();
     let mut tick = interval_at(
