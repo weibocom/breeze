@@ -3,8 +3,6 @@ use std::slice::from_raw_parts;
 
 use crate::Slice;
 
-use byteorder::{BigEndian, ByteOrder};
-
 pub struct RingSlice {
     ptr: *const u8,
     cap: usize,
@@ -65,47 +63,6 @@ impl RingSlice {
         self.offset += n;
     }
 
-    // 调用方确保len >= offset + 4
-    pub fn read_u32(&self, offset: usize) -> u32 {
-        debug_assert!(self.available() >= offset + 4);
-        unsafe {
-            let oft_start = (self.offset + offset) & (self.cap - 1);
-            let oft_end = self.end & (self.cap - 1);
-            if oft_end > oft_start || self.cap >= oft_start + 4 {
-                let b = from_raw_parts(self.ptr.offset(oft_start as isize), 4);
-                BigEndian::read_u32(b)
-            } else {
-                // start索引更高
-                // 4个字节拐弯了
-                let mut b = [0u8; 4];
-                let n = self.cap - oft_start;
-                copy_nonoverlapping(self.ptr.offset(oft_start as isize), b.as_mut_ptr(), n);
-                copy_nonoverlapping(self.ptr, b.as_mut_ptr().offset(n as isize), 4 - n);
-                BigEndian::read_u32(&b)
-            }
-        }
-    }
-
-    pub fn read_u16(&self, offset: usize) -> u16 {
-        debug_assert!(self.available() >= offset + 2);
-        let oft_start = (self.offset + offset) & (self.cap - 1);
-        let oft_end = self.end & (self.cap - 1);
-        if oft_end > oft_start || self.cap >= oft_start + 2 {
-            unsafe {
-                let b = from_raw_parts(self.ptr.offset(oft_start as isize), 2);
-                BigEndian::read_u16(b)
-            }
-        } else {
-            // start 索引更高，2个字节转弯了
-            let mut b = [0u8, 2];
-            let n = self.cap - oft_start;
-            unsafe {
-                copy_nonoverlapping(self.ptr.offset(oft_start as isize), b.as_mut_ptr(), n);
-                copy_nonoverlapping(self.ptr, b.as_mut_ptr().offset(n as isize), 2 - n);
-                BigEndian::read_u16(&b)
-            }
-        }
-    }
     // 从offset读取len个字节
     pub fn read_bytes(&self, offset: usize, len: usize) -> String {
         debug_assert!(self.available() >= offset + len);
@@ -173,3 +130,35 @@ impl RingSlice {
 
 unsafe impl Send for RingSlice {}
 unsafe impl Sync for RingSlice {}
+
+use std::convert::TryInto;
+macro_rules! define_read_number {
+    ($fn_name:ident, $type_name:tt) => {
+        pub fn $fn_name(&self, offset: usize) -> $type_name {
+            const SIZE: usize = std::mem::size_of::<$type_name>();
+            debug_assert!(self.available() >= offset + SIZE);
+            unsafe {
+                let oft_start = (self.offset + offset) & (self.cap - 1);
+                let oft_end = self.end & (self.cap - 1);
+                if oft_end > oft_start || self.cap >= oft_start + SIZE {
+                    let b = from_raw_parts(self.ptr.offset(oft_start as isize), SIZE);
+                    $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
+                } else {
+                    // start索引更高
+                    // 4个字节拐弯了
+                    let mut b = [0u8; SIZE];
+                    let n = self.cap - oft_start;
+                    copy_nonoverlapping(self.ptr.offset(oft_start as isize), b.as_mut_ptr(), n);
+                    copy_nonoverlapping(self.ptr, b.as_mut_ptr().offset(n as isize), SIZE - n);
+                    $type_name::from_be_bytes(b)
+                }
+            }
+        }
+    };
+}
+
+impl RingSlice {
+    define_read_number!(read_u16, u16);
+    define_read_number!(read_u32, u32);
+    define_read_number!(read_u64, u64);
+}
