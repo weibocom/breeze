@@ -37,6 +37,17 @@ impl RingSlice {
         }
     }
     #[inline(always)]
+    pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
+        debug_assert!(offset < self.len());
+        debug_assert!(offset + len < self.len());
+        Self::from(
+            self.ptr,
+            self.cap,
+            self.offset + offset,
+            self.offset + offset + len,
+        )
+    }
+    #[inline(always)]
     pub fn resize(&mut self, num: usize) {
         debug_assert!(self.len() >= num);
         self.end = self.start + num;
@@ -51,14 +62,14 @@ impl RingSlice {
     }
 
     #[inline(always)]
-    pub fn next_slice(&self) -> Slice {
+    fn next_slice(&self) -> Slice {
         debug_assert!(self.cap > 0);
         let oft = self.offset & (self.cap - 1);
         let l = (self.cap - oft).min(self.available());
         unsafe { Slice::new(self.ptr.offset(oft as isize) as usize, l) }
     }
     #[inline(always)]
-    pub fn advance(&mut self, n: usize) {
+    fn advance(&mut self, n: usize) {
         debug_assert!(self.offset + n <= self.end);
         self.offset += n;
     }
@@ -87,12 +98,12 @@ impl RingSlice {
                 // str::from(bytes).to_string()
                 bytes.set_len(len);
                 let result = String::from_utf8_lossy(&bytes).to_string();
-                println!(
-                    "+++++++ result key: {} with len: {}, len: {}",
-                    result,
-                    result.len(),
-                    len
-                );
+                //println!(
+                //    "+++++++ result key: {} with len: {}, len: {}",
+                //    result,
+                //    result.len(),
+                //    len
+                //);
                 result
             }
         }
@@ -122,7 +133,7 @@ impl RingSlice {
     // 从offset开始，查找s是否存在
     // 最坏时间复杂度 O(self.len() * s.len())
     // 但通常在协议处理过程中，被查的s都是特殊字符，而且s的长度通常比较小，因为时间复杂度会接近于O(self.len())
-    pub fn index(&self, offset: usize, s: &[u8]) -> Option<usize> {
+    pub fn index_of(&self, offset: usize, s: &[u8]) -> Option<usize> {
         let mut i = offset;
         while i + s.len() <= self.len() {
             for j in 0..s.len() {
@@ -137,7 +148,7 @@ impl RingSlice {
     }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     pub fn index_lf_cr(&self, offset: usize) -> Option<usize> {
-        self.index(offset, &[b'\r', b'\n'])
+        self.index_of(offset, &[b'\r', b'\n'])
     }
 }
 
@@ -158,7 +169,7 @@ macro_rules! define_read_number {
                     $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
                 } else {
                     // start索引更高
-                    // 4个字节拐弯了
+                    // 拐弯了
                     let mut b = [0u8; SIZE];
                     let n = self.cap - oft_start;
                     copy_nonoverlapping(self.ptr.offset(oft_start as isize), b.as_mut_ptr(), n);
@@ -171,7 +182,23 @@ macro_rules! define_read_number {
 }
 
 impl RingSlice {
+    // big endian
     define_read_number!(read_u16, u16);
     define_read_number!(read_u32, u32);
     define_read_number!(read_u64, u64);
+}
+
+impl PartialEq<[u8]> for RingSlice {
+    fn eq(&self, other: &[u8]) -> bool {
+        if self.len() == other.len() {
+            for i in 0..other.len() {
+                if self.at(i) != other[i] {
+                    return false;
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
 }
