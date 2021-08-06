@@ -9,34 +9,29 @@
 // 思路： multi_get_sharding 是一种特殊的用于multi get 的shard读取，但支持单层，需要进一步封装为多层访问
 
 pub struct AsyncMultiGetSharding<S, P> {
-    // 当前从哪个shard开始发送请求
-    idx: usize,
     // 成功发送请求的shards
-    writes: Vec<bool>,
+    statuses: Vec<Status>,
     shards: Vec<S>,
     _parser: P,
     response: Option<Response>,
-    eof: usize,
+    err: Option<Error>,
 }
 
-use std::io::{Error, ErrorKind, Result};
+use std::io::{Error, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 use protocol::Protocol;
 
-use futures::ready;
-
 impl<S, P> AsyncMultiGetSharding<S, P> {
     pub fn from_shard(shards: Vec<S>, p: P) -> Self {
         Self {
-            idx: 0,
-            writes: vec![false; shards.len()],
+            statuses: vec![Status::Init; shards.len()],
             shards: shards,
             _parser: p,
             response: None,
-            eof: 0,
+            err: None,
         }
     }
 }
@@ -49,25 +44,30 @@ where
     // 只要有一个shard成功就算成功,如果所有的都写入失败，则返回错误信息。
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
-        let offset = me.idx;
         let mut success = false;
-        let mut last_err = None;
-        for i in offset..me.shards.len() {
-            me.writes[i] = false;
-            match ready!(Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_write(cx, buf)) {
-                Err(e) => last_err = Some(e),
-                _ => success = true,
+        let mut pending = false;
+        for i in 0..me.shards.len() {
+            let status = unsafe { me.statuses.get_unchecked_mut(i) };
+            if *status == Init {
+                match Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_write(cx, buf) {
+                    Poll::Pending => pending = true,
+                    Poll::Ready(Ok(_)) => {
+                        success = true;
+                        *status = Sent;
+                    }
+                    Poll::Ready(Err(e)) => {
+                        *status = Error;
+                        me.err = Some(e);
+                    }
+                }
             }
-            me.writes[i] = true;
-            me.idx += 1;
         }
-        me.idx = 0;
-        if success {
+        if pending {
+            Poll::Pending
+        } else if success {
             Poll::Ready(Ok(()))
         } else {
-            Poll::Ready(Err(last_err.unwrap_or_else(|| {
-                Error::new(ErrorKind::Other, "no request sent.")
-            })))
+            Poll::Ready(Err(me.err.take().unwrap()))
         }
     }
 }
@@ -79,30 +79,55 @@ where
 {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
-        let mut last_err = None;
-        let offset = me.idx;
-        for i in offset..me.shards.len() {
-            if me.writes[i] {
+        let mut pending = false;
+        for i in 0..me.shards.len() {
+            let status = unsafe { me.statuses.get_unchecked_mut(i) };
+            if *status == Sent {
                 let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(i) });
-                match ready!(r.as_mut().poll_next(cx)) {
-                    Err(e) => last_err = Some(e),
-                    Ok(response) => match me.response.as_mut() {
-                        Some(item) => item.append(response),
-                        None => me.response = Some(response),
-                    },
+                match r.as_mut().poll_next(cx) {
+                    Poll::Pending => pending = true,
+                    Poll::Ready(Ok(r)) => {
+                        match me.response.as_mut() {
+                            Some(exists) => exists.append(r),
+                            None => me.response = Some(r),
+                        };
+                        *status = Done;
+                    }
+                    Poll::Ready(Err(e)) => {
+                        *status = Error;
+                        me.err = Some(e);
+                    }
                 }
             }
-            me.idx += 1;
         }
-        me.idx = 0;
-        me.eof = 0;
-        me.response
-            .take()
-            .map(|item| Poll::Ready(Ok(item)))
-            .unwrap_or_else(|| {
-                Poll::Ready(Err(last_err.unwrap_or_else(|| {
-                    Error::new(ErrorKind::Other, "all poll read failed in layer")
-                })))
-            })
+        if pending {
+            Poll::Pending
+        } else {
+            // 长度一般都非常小
+            for status in me.statuses.iter_mut() {
+                *status = Init;
+            }
+            me.response
+                .take()
+                .map(|item| Poll::Ready(Ok(item)))
+                .unwrap_or_else(|| Poll::Ready(Err(me.err.take().unwrap())))
+        }
     }
 }
+
+#[repr(u8)]
+#[derive(Clone, Copy)]
+enum Status {
+    Init,
+    Sent,
+    Done,
+    Error,
+}
+
+impl PartialEq for Status {
+    fn eq(&self, o: &Status) -> bool {
+        *self as u8 == *o as u8
+    }
+}
+
+use Status::*;
