@@ -8,6 +8,7 @@ mod tests_ds {
         let dc = data.clone();
         let ptr = data.as_mut_ptr();
         std::mem::forget(data);
+
         let mut in_range = RingSlice::from(ptr, cap, 0, 32);
         let s = in_range.take_slice();
         assert_eq!(in_range.available(), 0);
