@@ -111,18 +111,31 @@ impl RingSlice {
         debug_assert!(self.available() >= offset + len);
         let oft_start = (self.offset + offset) & (self.cap - 1);
         let oft_end = self.end & (self.cap - 1);
+
         if oft_end > oft_start || self.cap >= oft_start + len {
             unsafe {
                 let b = from_raw_parts(self.ptr.offset(oft_start as isize), len);
                 String::from_utf8_lossy(b).to_string()
             }
         } else {
-            // start 索引更高，2个字节转弯了
-            let mut result = String::with_capacity(len);
+            // start 索引更高，字节转弯了
+            // let mut result = String::with_capacity(len);
+            let mut bytes: Vec<u8> = Vec::with_capacity(len);
             let n = self.cap - oft_start;
             unsafe {
-                copy_nonoverlapping(self.ptr.offset(oft_start as isize), result.as_mut_ptr(), n);
-                copy_nonoverlapping(self.ptr, result.as_mut_ptr().offset(n as isize), len - n);
+                copy_nonoverlapping(self.ptr.offset(oft_start as isize), bytes.as_mut_ptr(), n);
+                copy_nonoverlapping(self.ptr, bytes.as_mut_ptr().offset(n as isize), len - n);
+
+                // assert_eq!(result.len(), len);
+                // str::from(bytes).to_string()
+                bytes.set_len(len);
+                let result = String::from_utf8_lossy(&bytes).to_string();
+                println!(
+                    "+++++++ result key: {} with len: {}, len: {}",
+                    result,
+                    result.len(),
+                    len
+                );
                 result
             }
         }
