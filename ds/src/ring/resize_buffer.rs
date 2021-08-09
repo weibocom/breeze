@@ -35,7 +35,7 @@ impl ResizedRingBuffer {
     pub fn resize(&mut self) -> bool {
         let cap = self.inner.cap() * 2;
         // 8MB对于在线业务的一次请求，是一个足够大的值。
-        if cap > 8 * 1024 * 1024 {
+        if cap >= 8 * 1024 * 1024 {
             log::info!("ringbuffer: overflow. {}", cap);
             return false;
         }
