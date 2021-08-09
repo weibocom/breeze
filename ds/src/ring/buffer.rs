@@ -146,7 +146,7 @@ mod tests {
         let cap = 32;
         let mut buffer = RingBuffer::with_capacity(cap);
         let data = rnd_write(buffer.as_mut_bytes(), cap);
-        let mut response = buffer.processing_bytes();
+        let response = buffer.processing_bytes();
         assert_eq!(response.available(), 0);
     }
 }

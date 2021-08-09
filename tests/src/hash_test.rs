@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod hash_test {
-    #![feature(map_first_last)]
+    //#![feature(map_first_last)]
     use std::collections::BTreeMap;
 
     use std::{
@@ -176,7 +176,7 @@ mod hash_test {
             "127.0.0.4",
             "127.0.0.5",
         ];
-        let mut instance = ConsistentHashInstance::from(shards);
+        let mut _instance = ConsistentHashInstance::from(shards);
         loop {
             let mut line = String::new();
             match reader.read_line(&mut line) {
@@ -191,10 +191,10 @@ mod hash_test {
                     debug_assert!(props.len() == 3);
                     let key = props[0].trim();
                     let hash_in_java = props[1].trim();
-                    let server_in_java = props[2].trim();
+                    let _server_in_java = props[2].trim();
                     let hash_in_java_u64 = hash_in_java.parse::<i64>().unwrap();
 
-                    let (hash, server) = instance.get_hash_server(key);
+                    let (hash, _server) = _instance.get_hash_server(key);
 
                     if hash != hash_in_java_u64 {
                         println!(
@@ -294,9 +294,9 @@ mod hash_test {
                 | (((out[1 + j * 4] & 0xFF) as i64) << 8)
                 | ((out[0 + j * 4] & 0xFF) as i64);
 
-            let mut hash = hash.wrapping_rem(i32::MAX as i64);
-            if hash < 0 {
-                hash = hash.wrapping_mul(-1);
+            let mut _hash = hash.wrapping_rem(i32::MAX as i64);
+            if _hash < 0 {
+                _hash = hash.wrapping_mul(-1);
             }
             // let hash_little = LittleEndian::read_i32(&out[j * 4..]) as i64;
             // let hash_big = BigEndian::read_i32(&out[j * 4..]) as i64;
