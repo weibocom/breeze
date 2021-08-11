@@ -168,7 +168,7 @@ impl Protocol for MemcacheBinary {
             if (read + cmd_len) == avail {
                 let opcode_pos = read + PacketPos::Opcode as usize;
                 if data.at(opcode_pos) != OP_CODE_GETK {
-                    log::warn!("careful - unexpected cmd: {:?}", data.next_slice().data());
+                    log::warn!("careful - unexpected cmd");
                 }
                 debug_assert!(!self.is_multi_get_quite_op(data.at(opcode_pos)));
                 data.update_byte(opcode_pos, OP_CODE_GETKQ);
@@ -237,10 +237,7 @@ impl Protocol for MemcacheBinary {
         loop {
             if avail < read + HEADER_LEN {
                 // 这种情况不应该出现
-                log::warn!(
-                    "found malformed response: {:?}",
-                    response.next_slice().data()
-                );
+                log::warn!("found malformed response");
 
                 debug_assert!(false);
                 return;
