@@ -10,8 +10,8 @@ edition = "2018"
 protocol = { path = "../protocol" }
 hash = { path = "../hash" }
 ds = { path = "../ds" }
-log = { path = "../log" }
-#log = "*"
+#log = { path = "../log" }
+log = "0.4.14"
 metrics = { path = "../metrics" }
 futures = "0.3.16"
 tokio = "1.9.0"

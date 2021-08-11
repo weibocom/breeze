@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
     ctx.check()?;
 
     let _l = listener_for_supervisor(ctx.port()).await?;
-    log::init(ctx.log_dir())?;
+    elog::init(ctx.log_dir())?;
 
     metrics::init(&ctx.metrics_url());
     metrics::init_local_ip(&ctx.metrics_probe);
