@@ -12,7 +12,8 @@ discovery = { path = "../discovery" }
 protocol = { path = "../protocol" }
 hash = { path = "../hash" }
 stream = { path = "../stream" }
-log = { path = "../log" }
+#log = { path = "../log" }
+log = "0.4.14"
 
 tokio = "1.9.0"
 byteorder = "1.4.3"

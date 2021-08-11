@@ -12,8 +12,9 @@ net = { path = "../net"}
 protocol = { path = "../protocol" }
 endpoint = { path = "../endpoint" }
 discovery = { path = "../discovery" }
-log = { path = "../log" }
+elog = { path = "../log", package = "log" }
 stream = { path = "../stream" }
 metrics = { path = "../metrics" }
 
+log = "0.4.14"
 tokio = {version = "1.9.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
