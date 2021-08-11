@@ -106,6 +106,7 @@ impl Sender {
         let mut left = reader.available();
         for slice in reader {
             if direct {
+                log::debug!("will sent data to client: {:?}", slice.data());
                 match w.as_mut().poll_write(cx, slice.data())? {
                     Poll::Ready(n) => {
                         left -= n;

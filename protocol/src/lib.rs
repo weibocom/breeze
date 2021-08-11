@@ -38,9 +38,8 @@ pub trait Protocol: Unpin + Clone + 'static {
     fn build_gets_cmd(&self, keys: Vec<&[u8]>) -> Vec<u8>;
     // 解析当前请求是否结束。返回请求结束位置，如果请求
     // 包含EOF（类似于memcache协议中的END）则返回的位置不包含END信息。
-    // 主要用来在进行multiget时，判断请求是否结束。
-    // TODO trim tail？ fishermen
-    fn trim_eof<T: AsRef<RingSlice>>(&self, response: T) -> usize;
+    // 主要用来在进行multiget时，解析待trim掉的结尾长度，对于noop cmd全部trim，对于非quite的getk，修正opcode
+    fn trim_tail<T: AsRef<RingSlice>>(&self, response: T) -> usize;
     // 从response中解析出一个完成的response
     fn parse_response(&self, response: &RingSlice) -> (bool, usize);
     fn response_found<T: AsRef<RingSlice>>(&self, response: T) -> bool;
@@ -56,8 +55,6 @@ pub trait Protocol: Unpin + Clone + 'static {
         found_keys: &Vec<String>,
         new_req_data: &mut Vec<u8>,
     );
-    // 消息结尾标志的长度，对不同协议、不同请求不同
-    // fn tail_size_for_multi_get(&self) -> usize;
 }
 #[enum_dispatch(Protocol)]
 #[derive(Clone)]

@@ -88,7 +88,7 @@ impl Receiver {
         log::debug!(
             "io-receiver-poll: request parsed. len:{} {:?}, {:?}",
             self.parsed_idx - self.r,
-            &self.buff[self.r..self.parsed_idx.min(48)],
+            &self.buff[self.r..self.parsed_idx],
             rid
         );
         let req_op = parser.operation(req.data());
