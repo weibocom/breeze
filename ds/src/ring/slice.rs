@@ -6,7 +6,9 @@ use crate::Slice;
 use byteorder::{BigEndian, ByteOrder};
 
 pub struct RingSlice {
-    ptr: *const u8,
+    // ptr: *const u8,
+    // 在trim时，需要进行进行修改
+    ptr: *mut u8,
     cap: usize,
     start: usize,
     offset: usize,
@@ -27,7 +29,9 @@ impl Default for RingSlice {
 
 impl RingSlice {
     #[inline(always)]
-    pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
+    //pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
+    // ptr参数需要是mut
+    pub fn from(ptr: *mut u8, cap: usize, start: usize, end: usize) -> Self {
         debug_assert!(cap > 0);
         debug_assert_eq!(cap, cap.next_power_of_two());
         Self {
@@ -158,6 +162,16 @@ impl RingSlice {
                 .offset(((self.offset + idx) & (self.cap - 1)) as isize)
         }
     }
+
+    // TODO 这里self不设为mut，否则会造成一系列震荡，但一定要特别注意unsafe里面的逻辑  fishermen
+    pub fn update_byte(&self, idx: usize, new_value: u8) {
+        debug_assert!(idx < self.len());
+        let pos = (self.offset + idx) & (self.cap - 1);
+        unsafe {
+            *self.ptr.offset(pos as isize) = new_value;
+        }
+    }
+
     #[inline(always)]
     pub fn location(&self) -> (usize, usize) {
         (self.start, self.end)
