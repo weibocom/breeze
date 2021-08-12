@@ -28,7 +28,7 @@ impl Sender {
         &mut self,
         cx: &mut Context,
         mut r: Pin<&mut R>,
-        mut w: Pin<&mut W>,
+        w: Pin<&mut W>,
         parser: &P,
         rid: &RequestId,
         metric: &mut IoMetric,
@@ -39,17 +39,16 @@ impl Sender {
         P: Protocol,
     {
         // cache里面有数据，当前请求是上一次pending触发
-        if self.buff.len() > 0 {
-            self.flush(cx, w, rid, metric)
-        } else {
+        if self.buff.len() == 0 {
             log::debug!("io-sender-poll: poll response from agent. {:?}", rid);
             let response = ready!(r.as_mut().poll_next(cx))?;
             metric.response_ready();
             log::debug!("io-sender-poll: response polled. {:?}", rid);
             // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
-            ready!(self.write_to(response, cx, w.as_mut(), parser, rid, metric))?;
-            Poll::Ready(Ok(()))
+            //ready!(self.write_to(response, cx, w.as_mut(), parser, rid, metric))?;
+            self.write_to_buffer(response, parser);
         }
+        self.flush(cx, w, rid, metric)
     }
     #[inline(always)]
     fn flush<W>(
@@ -83,78 +82,81 @@ impl Sender {
         }
         return Poll::Ready(Ok(()));
     }
-    // 先直接写w，直到pending，将剩下的数据写入到cache
-    // 返回直接写入到client的字节数
-    fn write_to<W, P>(
-        &mut self,
-        response: Response,
-        cx: &mut Context,
-        mut w: Pin<&mut W>,
-        parser: &P,
-        _rid: &RequestId,
-        metric: &mut IoMetric,
-    ) -> Poll<Result<()>>
+    // 选择一次copy，而不是尝试写一次io或者使用buffer，主要考虑：
+    // 1. response要以最快的速度释放，因为会阻塞ResizedRingBuffer::reset_read。
+    // 2. 虽然平时写io的速度很快，但长尾可能导致一个连接慢了之后影响其他连接。
+    #[inline(always)]
+    fn write_to_buffer<P>(&mut self, response: Response, parser: &P)
     where
-        W: AsyncWrite + ?Sized,
         P: Protocol,
     {
-        let reader = response.into_reader(parser);
-
-        // true: 直接往client写
-        // false: 往cache写
-        let mut direct = true;
-        let mut left = reader.available();
-        for slice in reader {
-            if direct {
-                log::debug!("will sent data to client: {:?}", slice.data());
-                match w.as_mut().poll_write(cx, slice.data())? {
-                    Poll::Ready(n) => {
-                        left -= n;
-                        if n == 0 {
-                            return Poll::Ready(Err(Error::new(
-                                ErrorKind::WriteZero,
-                                "write zero bytes to client",
-                            )));
-                        }
-                        metric.response_sent(n);
-                        // 一次未写完。不再尝试, 需要快速释放response中的item
-                        if n != slice.len() {
-                            self.reserve(left);
-                            self.put_slice(&slice.data()[n..]);
-                            direct = false;
-                            break;
-                        }
-                    }
-                    Poll::Pending => {
-                        self.reserve(left);
-                        self.put_slice(&slice.data());
-                        direct = false;
-                        break;
-                    }
-                }
-            } else {
-                self.put_slice(slice.data());
-            }
-        }
-        ready!(w.as_mut().poll_flush(cx))?;
-
-        if !direct {
-            log::debug!("io-sender-poll: response buffered. {:?}", _rid);
-            Poll::Pending
-        } else {
-            log::debug!("io-sender-poll: response direct. {:?}", _rid);
-            Poll::Ready(Ok(()))
+        for slice in response.into_reader(parser) {
+            self.put_slice(slice.data());
         }
     }
-    #[inline]
-    fn reserve(&mut self, l: usize) {
-        if self.buff.capacity() - self.buff.len() < l {
-            self.buff.reserve(l);
-        }
-    }
+    //fn _write_to<W, P>(
+    //    &mut self,
+    //    response: Response,
+    //    cx: &mut Context,
+    //    mut w: Pin<&mut W>,
+    //    parser: &P,
+    //    _rid: &RequestId,
+    //    metric: &mut IoMetric,
+    //) -> Poll<Result<()>>
+    //where
+    //    W: AsyncWrite + ?Sized,
+    //    P: Protocol,
+    //{
+    //    let reader = response.into_reader(parser);
+
+    //    // true: 直接往client写
+    //    // false: 往cache写
+    //    let mut direct = true;
+    //    let mut left = reader.available();
+    //    for slice in reader {
+    //        if direct {
+    //            match w.as_mut().poll_write(cx, slice.data())? {
+    //                Poll::Ready(n) => {
+    //                    left -= n;
+    //                    if n == 0 {
+    //                        return Poll::Ready(Err(Error::new(
+    //                            ErrorKind::WriteZero,
+    //                            "write zero bytes to client",
+    //                        )));
+    //                    }
+    //                    metric.response_sent(n);
+    //                    // 一次未写完。不再尝试, 需要快速释放response中的item
+    //                    if n != slice.len() {
+    //                        self.put_slice(&slice.data()[n..]);
+    //                        log::info!("io-sender: sent direct partially {}/{}", n, slice.len());
+    //                        direct = false;
+    //                        break;
+    //                    }
+    //                }
+    //                Poll::Pending => {
+    //                    self.put_slice(&slice.data());
+    //                    direct = false;
+    //                    break;
+    //                }
+    //            }
+    //        } else {
+    //            self.put_slice(slice.data());
+    //        }
+    //    }
+    //    ready!(w.as_mut().poll_flush(cx))?;
+
+    //    if !direct {
+    //        log::debug!("io-sender-poll: response buffered. {:?}", _rid);
+    //        Poll::Pending
+    //    } else {
+    //        log::debug!("io-sender-poll: response direct. {:?}", _rid);
+    //        Poll::Ready(Ok(()))
+    //    }
+    //}
     #[inline]
     fn put_slice(&mut self, b: &[u8]) {
         debug_assert!(b.len() > 0);
+        self.buff.reserve(b.len());
         let l = self.buff.len();
         use std::ptr::copy_nonoverlapping as copy;
         unsafe {
