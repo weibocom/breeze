@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 // 一个标准的unix socket path如下
 // /tmp/breeze/socks/config+v1+breeze+feed.content.icy:user@mc@cs.sock
-pub struct UnixSocketPath;
+pub struct Path;
 
-impl UnixSocketPath {
+impl Path {
     // 第一个部分是biz
     // 第二个部分是资源类型
     // 第三个部分是discovery类型

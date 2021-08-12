@@ -41,7 +41,6 @@ async fn main() -> Result<()> {
         }
         for quard in quards.unwrap().iter() {
             let quard = quard.clone();
-            let quard_ = quard.clone();
             let discovery = Arc::clone(&discovery);
             let tx = tx.clone();
             let session_id = session_id.clone();
@@ -56,13 +55,7 @@ async fn main() -> Result<()> {
                     }
                 };
             });
-            if let Some(success) = rx.recv().await {
-                if success {
-                    if let Err(e) = listeners.on_listened(quard_).await {
-                        log::warn!("on_listened failed:{:?} ", e);
-                    }
-                }
-            }
+            let _success = rx.recv().await;
         }
 
         tick.tick().await;
@@ -93,8 +86,7 @@ async fn process_one_service(
         quard.tick(),
         top,
     ));
-    let (biz, r_type, _d_type) =
-        discovery::UnixSocketPath::parse(&quard.address()).expect("valid path");
+    let (biz, r_type, _d_type) = discovery::Path::parse(&quard.name()).expect("valid path");
     let metric_id = metrics::register_name(r_type + "." + &metrics::encode_addr(&biz));
     loop {
         let sd = sd.clone();
