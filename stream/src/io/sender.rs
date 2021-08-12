@@ -45,7 +45,6 @@ impl Sender {
             metric.response_ready();
             log::debug!("io-sender-poll: response polled. {:?}", rid);
             // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
-            //ready!(self.write_to(response, cx, w.as_mut(), parser, rid, metric))?;
             self.write_to_buffer(response, parser);
         }
         self.flush(cx, w, rid, metric)
@@ -61,12 +60,7 @@ impl Sender {
     where
         W: AsyncWrite + ?Sized,
     {
-        log::debug!(
-            "io-sender: flushing idx:{} len:{} {:?}",
-            self.idx,
-            self.buff.len(),
-            _rid
-        );
+        log::debug!("flush idx:{} len:{} {:?}", self.idx, self.buff.len(), _rid);
         while self.idx < self.buff.len() {
             let n = ready!(w.as_mut().poll_write(cx, &self.buff[self.idx..]))?;
             if n == 0 {
@@ -94,65 +88,6 @@ impl Sender {
             self.put_slice(slice.data());
         }
     }
-    //fn _write_to<W, P>(
-    //    &mut self,
-    //    response: Response,
-    //    cx: &mut Context,
-    //    mut w: Pin<&mut W>,
-    //    parser: &P,
-    //    _rid: &RequestId,
-    //    metric: &mut IoMetric,
-    //) -> Poll<Result<()>>
-    //where
-    //    W: AsyncWrite + ?Sized,
-    //    P: Protocol,
-    //{
-    //    let reader = response.into_reader(parser);
-
-    //    // true: 直接往client写
-    //    // false: 往cache写
-    //    let mut direct = true;
-    //    let mut left = reader.available();
-    //    for slice in reader {
-    //        if direct {
-    //            match w.as_mut().poll_write(cx, slice.data())? {
-    //                Poll::Ready(n) => {
-    //                    left -= n;
-    //                    if n == 0 {
-    //                        return Poll::Ready(Err(Error::new(
-    //                            ErrorKind::WriteZero,
-    //                            "write zero bytes to client",
-    //                        )));
-    //                    }
-    //                    metric.response_sent(n);
-    //                    // 一次未写完。不再尝试, 需要快速释放response中的item
-    //                    if n != slice.len() {
-    //                        self.put_slice(&slice.data()[n..]);
-    //                        log::info!("io-sender: sent direct partially {}/{}", n, slice.len());
-    //                        direct = false;
-    //                        break;
-    //                    }
-    //                }
-    //                Poll::Pending => {
-    //                    self.put_slice(&slice.data());
-    //                    direct = false;
-    //                    break;
-    //                }
-    //            }
-    //        } else {
-    //            self.put_slice(slice.data());
-    //        }
-    //    }
-    //    ready!(w.as_mut().poll_flush(cx))?;
-
-    //    if !direct {
-    //        log::debug!("io-sender-poll: response buffered. {:?}", _rid);
-    //        Poll::Pending
-    //    } else {
-    //        log::debug!("io-sender-poll: response direct. {:?}", _rid);
-    //        Poll::Ready(Ok(()))
-    //    }
-    //}
     #[inline]
     fn put_slice(&mut self, b: &[u8]) {
         debug_assert!(b.len() > 0);
