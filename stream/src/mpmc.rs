@@ -86,16 +86,16 @@ impl MpmcRingBufferStream {
     }
     // 如果complete为true，则快速失败
     #[inline(always)]
-    fn poll_check(&self, _cid: usize) -> Poll<Result<()>> {
+    fn check(&self, _cid: usize) -> Result<()> {
         if self.done.load(Ordering::Acquire) {
-            Poll::Ready(Err(Error::new(ErrorKind::NotConnected, "mpmc is done")))
+            Err(Error::new(ErrorKind::NotConnected, "mpmc is done"))
         } else {
-            Poll::Ready(Ok(()))
+            Ok(())
         }
     }
     #[inline(always)]
     pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<ResponseData>> {
-        ready!(self.poll_check(cid))?;
+        self.check(cid)?;
         let item = self.get_item(cid);
         let data = ready!(item.poll_read(cx))?;
         log::debug!(
@@ -128,14 +128,13 @@ impl MpmcRingBufferStream {
     }
     #[inline]
     pub fn poll_write(&self, cid: usize, _cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
-        ready!(self.poll_check(cid))?;
+        self.check(cid)?;
         log::debug!(
-            "mpmc: write cid:{} len:{} id:{:?}, noreply:{}, data:{:?}",
+            "write cid:{} len:{} id:{:?}, noreply:{}",
             cid,
             buf.len(),
             buf.id(),
             buf.noreply(),
-            buf.data()
         );
         if buf.noreply() {
             self.noreply_tx.try_send(buf.clone()).map_err(|e| {
@@ -151,7 +150,7 @@ impl MpmcRingBufferStream {
         }
         self.waker.wake();
         self.req_num.0.fetch_add(1, Ordering::Relaxed);
-        log::debug!("mpmc: write complete cid:{} len:{} ", cid, buf.len());
+        log::debug!("write complete cid:{} len:{} ", cid, buf.len());
         // noreply请求要等request sent之后才能返回。
         Poll::Ready(Ok(()))
     }
@@ -281,7 +280,7 @@ impl MpmcRingBufferStream {
         self.closed.store(true, Ordering::Release);
         self.done.store(true, Ordering::Release);
         self.waker.wake();
-        log::debug!("mpmc-task: closing called");
+        log::debug!("close: closing called");
     }
 
     pub(crate) fn load_ping_ping(&self) -> (usize, usize) {
