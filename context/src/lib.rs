@@ -71,7 +71,6 @@ impl Context {
     // 如果是以升级模式启动，则会将原有的端口先关闭。
     pub fn listeners(&self) -> ListenerIter {
         ListenerIter {
-            upgrade: self.upgrade,
             path: self.service_path.to_string(),
             listened: Default::default(),
             snapshot: self.snapshot.to_string(),
@@ -182,7 +181,6 @@ impl Quadruple {
 
 use std::collections::HashMap;
 pub struct ListenerIter {
-    upgrade: bool,
     listened: HashMap<String, ()>,
     path: String,
     snapshot: String,
@@ -212,22 +210,8 @@ impl ListenerIter {
         }
         Ok(listeners)
     }
-    // 升级中的名称。
-    fn sock_name_upgrade(&self, name: &str) -> String {
-        let mut s = self.sock_name(name);
-        s.push_str(".u");
-        s
-    }
-    fn sock_name(&self, name: &str) -> String {
-        let mut s: String = name.to_owned();
-        s.push_str(SOCK_APPENDIX);
-        s
-    }
     fn is_sock(&self, path: &str) -> bool {
         Path::new(path).extension().map(|ext| ext.to_str()) == Some(Some(SOCK_APPENDIX))
-    }
-    fn is_sock_exists(&self, sock: &str) -> bool {
-        Path::new(sock).exists()
     }
     async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];
