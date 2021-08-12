@@ -170,6 +170,7 @@ pub(crate) struct ResponseReader<'a, P> {
     items: Vec<Item>,
     tail_trim_lens: Vec<usize>,
     // TODO 之前用于parse，暂时保留，后续确定不用时，清理
+    #[allow(dead_code)]
     parser: &'a P,
 }
 
@@ -201,19 +202,5 @@ where
             self.idx += 1;
         }
         None
-    }
-}
-impl<'a, P> ResponseReader<'a, P>
-where
-    P: Protocol,
-{
-    #[inline]
-    pub fn available(&self) -> usize {
-        let mut len = 0;
-        for i in self.idx..self.items.len() {
-            len += unsafe { self.items.get_unchecked(i).available() };
-            len -= self.tail_trim_lens.get(i).unwrap();
-        }
-        len
     }
 }
