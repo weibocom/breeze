@@ -11,7 +11,7 @@ use vintage::Vintage;
 use std::io::Result;
 use std::time::Duration;
 
-pub use path::UnixSocketPath;
+pub use path::Path;
 
 use left_right::ReadHandle;
 
