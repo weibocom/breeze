@@ -77,7 +77,7 @@ async fn process_one_service(
         format!("'{}' is not a valid endpoint", quard.endpoint()),
     ))?;
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
-    log::info!("starting to serve {}", quard.address());
+    log::info!("starting to serve {}", quard);
     let _ = tx.send(true).await;
     let sd = Arc::new(ServiceDiscovery::new(
         discovery,
@@ -86,7 +86,8 @@ async fn process_one_service(
         quard.tick(),
         top,
     ));
-    let (biz, r_type, _d_type) = discovery::Path::parse(&quard.name()).expect("valid path");
+    let r_type = quard.protocol();
+    let biz = quard.biz();
     let metric_id = metrics::register_name(r_type + "." + &metrics::encode_addr(&biz));
     loop {
         let sd = sd.clone();
