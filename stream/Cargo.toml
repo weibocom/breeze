@@ -14,7 +14,7 @@ ds = { path = "../ds" }
 log = "0.4.14"
 metrics = { path = "../metrics" }
 futures = "0.3.16"
-tokio = "1.9.0"
+tokio = "1.10.0"
 rand = "0.8.4"
 enum_dispatch = "0.3.7"
 bytes = "1.0.1"
@@ -22,3 +22,4 @@ cache_line_size = "1.0.0"
 rust-crypto = "0.2.36"
 byteorder = "1.4.3"
 crossbeam-channel = "0.5.1"
+atomic-waker = "1"

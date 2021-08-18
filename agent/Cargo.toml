@@ -17,4 +17,4 @@ stream = { path = "../stream" }
 metrics = { path = "../metrics" }
 
 log = "0.4.14"
-tokio = {version = "1.9.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
+tokio = {version = "1.10.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
