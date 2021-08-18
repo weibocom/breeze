@@ -32,10 +32,10 @@ impl SeqOffset {
     // end > start
     #[inline(always)]
     pub fn insert(&self, start: usize, end: usize) {
-        log::debug!("offset: {} => {}", start, end);
+        log::debug!("{} => {}", start, end);
         debug_assert!(end > start);
         if let Err(_) = self.l2.push((start, end)) {
-            log::debug!("offset: l2 missed. start:{} end:{}", start, end);
+            log::debug!("l2 missed. start:{} end:{}", start, end);
             self.l3.push((start, end));
         }
     }
@@ -43,7 +43,6 @@ impl SeqOffset {
     // load offset, [0.. offset)都已经调用insert被相应的span全部填充
     #[inline(always)]
     pub fn load(&self) -> usize {
-        log::debug!("offset: loading");
         let mut offset = self.offset.0.get();
         use std::mem::transmute;
         let seqs: &mut HashMap<usize, usize> = unsafe { transmute(self.seqs.0.as_ptr()) };
