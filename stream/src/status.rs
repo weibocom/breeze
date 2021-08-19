@@ -67,16 +67,15 @@ impl Item {
     #[inline(always)]
     pub fn place_request(&self, req: &Request) {
         debug_assert_eq!(self.status.load(Acquire), ItemStatus::Init as u8);
-        self.status_cas(ItemStatus::Init as u8, ItemStatus::RequestReceived as u8);
+        self.status_cas(Init as u8, RequestReceived as u8);
         *self.request.borrow_mut() = Some(req.clone());
         log::debug!("place:{:?}", self.rid.replace(req.id()));
     }
     #[inline(always)]
     pub fn take_request(&self, seq: usize) -> Request {
-        let req = self.request.borrow_mut().take().expect("take request");
-        log::debug!("take request. {} seq:{} ", self.rid.borrow(), seq);
-        // 如果不需要回复，则request之后立即恢复到init状态
         self.status_cas(RequestReceived as u8, RequestSent as u8);
+        log::debug!("take request. {} seq:{} ", self.rid.borrow(), seq);
+        let req = self.request.borrow_mut().take().expect("take request");
         // noreply的请求不需要seq来进行request与response之间的协调
         if !req.noreply() {
             self.seq_cas(0, seq);
@@ -126,13 +125,13 @@ impl Item {
         let response = self.response.take();
         let rid = self.rid.take();
         self.status_cas(ResponseReceived as u8, Read as u8);
-        log::debug!("item status: read {:?}", response.location());
+        log::debug!("take response {:?}", response.location());
         ResponseData::from(response, rid, self.seq())
     }
     #[inline]
     pub fn place_response(&self, response: RingSlice, seq: usize) {
         debug_assert_eq!(seq, self.seq());
-        log::debug!(" write :{:?} ", response.location());
+        log::debug!("place response:{:?} ", response.location());
         self.response.replace(response);
 
         // 1. response到达之前的状态是 RequestSent. 即请求已发出。 这是大多数场景
@@ -174,23 +173,18 @@ impl Item {
     // reset只会把状态从shutdown变更为init
     // 必须在done设置为true之后调用。否则会有data race
     pub(crate) fn reset(&self) {
-        //self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8);
         let response = self.response.take();
-        let waker = self.waker.take();
         log::warn!(
-            "reset. id:{} {} seq:{} loc:{:?} has waker:{}",
+            "reset. id:{} {} seq:{} loc:{:?}",
             self.id,
             self.status(),
             self.seq(),
             response.location(),
-            waker.is_some()
         );
         self.status.store(Init as u8, Release);
         self.seq.store(0, Release);
-        self.request.take();
-        if let Some(w) = waker {
-            w.wake();
-        }
+        //self.request.take();
+        self.waker.wake();
     }
     pub(crate) fn try_wake(&self) {
         if self.status() == ResponseReceived {
