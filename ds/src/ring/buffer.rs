@@ -28,6 +28,10 @@ impl RingBuffer {
             write: 0,
         }
     }
+    #[inline]
+    pub fn read(&self) -> usize {
+        self.read
+    }
     #[inline(always)]
     pub fn processed(&self) -> usize {
         self.processed
