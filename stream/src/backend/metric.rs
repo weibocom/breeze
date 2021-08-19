@@ -5,7 +5,10 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
+use crate::SLOW_DURATION;
 use protocol::Resource;
+
+use futures::ready;
 
 pub(crate) struct Writer<W> {
     w: W,
@@ -34,10 +37,18 @@ where
         buf: &[u8],
     ) -> Poll<Result<usize>> {
         let instant = Instant::now();
-        let ret = Pin::new(&mut self.w).poll_write(cx, buf);
+        let size = ready!(Pin::new(&mut self.w).poll_write(cx, buf))?;
         let duration = instant.elapsed();
+        if duration >= SLOW_DURATION {
+            log::info!(
+                "{} write slow : {:?} size:{}",
+                metrics::get_name(self.metric_id),
+                duration,
+                size
+            );
+        }
         metrics::duration_with_service("tx", duration, self.metric_id);
-        ret
+        Poll::Ready(Ok(size))
     }
     #[inline(always)]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
@@ -87,9 +98,17 @@ where
         buf: &mut ReadBuf<'_>,
     ) -> Poll<Result<()>> {
         let instant = Instant::now();
-        let ret = Pin::new(&mut self.w).poll_read(cx, buf);
+        ready!(Pin::new(&mut self.w).poll_read(cx, buf))?;
         let duration = instant.elapsed();
+        if duration >= SLOW_DURATION {
+            log::info!(
+                "{} read slow : {:?} size:{}",
+                metrics::get_name(self.metric_id),
+                duration,
+                buf.filled().len()
+            );
+        }
         metrics::duration_with_service("rx", duration, self.metric_id);
-        ret
+        Poll::Ready(Ok(()))
     }
 }
