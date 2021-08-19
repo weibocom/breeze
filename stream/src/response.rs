@@ -88,16 +88,10 @@ impl Response {
             let item = self.items.get_mut(i).unwrap();
             // 其他item需要trim掉tail
             let avail = item.available();
-            if avail > 0 {
-                let tail_size = parser.trim_tail(&item);
-                if tail_size > 0 {
-                    debug_assert!(avail >= tail_size);
-                }
-                tail_trim_lens.push(tail_size);
-            } else {
-                tail_trim_lens.push(0);
-                log::warn!("warn - found empty item in response!");
-            }
+            let tail_size = parser.trim_tail(&item);
+            assert!(avail > 0);
+            debug_assert!(avail >= tail_size);
+            tail_trim_lens.push(tail_size);
         }
 
         // 最后一个item的tail不处理
