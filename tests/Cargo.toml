@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 ds = { path = "../ds" }
-hash = { path = "../hash" }
+sharding = { path = "../sharding" }
 rand = "0.8.4"
 rust-crypto = "0.2.36"
 byteorder = "1.4.3"

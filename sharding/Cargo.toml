@@ -1,5 +1,5 @@
 [package]
-name = "hash"
+name = "sharding"
 version = "0.1.0"
 edition = "2018"
 
@@ -7,3 +7,5 @@ edition = "2018"
 
 [dependencies]
 enum_dispatch = "*"
+rust-crypto = "0.2.36"
+log = "0.4.14"

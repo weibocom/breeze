@@ -1,5 +1,3 @@
-use std::u64;
-
 const CRC32TAB: [i64; 256] = [
     0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3,
     0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91,
@@ -41,7 +39,7 @@ pub struct Crc32 {}
 
 //TODO 参考java 内部实现版本 以及 api-commons中crc32 hash算法调整，手动测试各种长度key，hash一致，需要线上继续验证 fishermen
 impl super::Hash for Crc32 {
-    fn hash(&mut self, key: &[u8]) -> u64 {
+    fn hash(&self, key: &[u8]) -> u64 {
         let mut crc: i64 = CRC_SEED;
         for c in key {
             crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (*c as i64)) & 0xff) as usize];

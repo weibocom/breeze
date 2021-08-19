@@ -218,28 +218,6 @@ impl<P> Topology<P> {
         self.distribution = distribution;
         //self.metas = self.readers.clone().into_iter().flatten().collect();
         self.metas = self.masters.clone();
-
-        self.correct_hash_distribution();
-    }
-
-    // 根据java client转换逻辑，对hash、distribution进行转换
-    fn correct_hash_distribution(&mut self) {
-        // java 只支持下面三种组合，其他的统统不支持，rust对其他类型，强制改为java的默认方式？ fishermen
-        if (self.hash.eq(hash::HASH_BKDR) && self.distribution.eq(hash::DISTRIBUTION_CONSISTENT))
-            || (self.hash.eq(hash::HASH_BKDR) && self.distribution.eq(hash::DISTRIBUTION_MODULA))
-            || (self.hash.eq(hash::HASH_CRC32) && self.distribution.eq(hash::DISTRIBUTION_MODULA))
-        {
-            return;
-        }
-
-        // 对于其他组合模式，强制改为默认行为
-        log::warn!(
-            "!!! found malformed hash/distribution: {}/{}, will change to crc32/mod",
-            self.hash,
-            self.distribution
-        );
-        self.hash = hash::HASH_CRC32.to_string();
-        self.distribution = hash::DISTRIBUTION_MODULA.to_string();
     }
 
     fn update(&mut self, cfg: &str, name: &str)
