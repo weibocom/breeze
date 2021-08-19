@@ -3,7 +3,10 @@ use std::time::{Duration, Instant};
 
 pub(crate) struct IoMetric {
     pub(crate) metric_id: usize,
-    pub(crate) op: Operation,        // 请求类型
+    pub(crate) op: Operation, // 请求类型
+    pub(crate) enter: Instant,
+    pub(crate) enter_num: usize,     // 请求重入的次数
+    pub(crate) enter_rx: usize,      // 接收请求重入的次数
     pub(crate) req_receive: Instant, // 从client收到第一个字节的时间
     pub(crate) req_recv_num: usize,  // 从client接收到一个完整的包调用的io_read的次数
     pub(crate) req_bytes: usize,     // 请求包的大小
@@ -21,7 +24,15 @@ impl IoMetric {
         self.req_bytes = 0;
         self.resp_sent_num = 0;
         self.resp_bytes = 0;
+        self.enter_num = 0;
         // 和时间相关的不需要reset。因为每次都是重新赋值
+    }
+    #[inline(always)]
+    pub(crate) fn enter(&mut self) {
+        if self.enter_num == 0 {
+            self.enter = Instant::now();
+        }
+        self.enter_num += 1;
     }
 
     // 从client接收到n个字节
@@ -32,13 +43,13 @@ impl IoMetric {
             self.req_receive = Instant::now();
         }
         self.req_recv_num += 1;
-        //self.req_bytes += n;
     }
     #[inline(always)]
     pub(crate) fn req_done(&mut self, op: Operation, n: usize) {
         self.req_done = Instant::now();
-        self.op = op;
         self.req_bytes = n;
+        self.enter_rx = self.enter_num;
+        self.op = op;
     }
 
     #[inline(always)]
@@ -69,6 +80,9 @@ impl IoMetric {
         Self {
             metric_id: metric_id,
             op: Operation::Other,
+            enter: Instant::now(),
+            enter_num: 0,
+            enter_rx: 0,
             req_receive: Instant::now(),
             req_recv_num: 0,
             req_bytes: 0,
@@ -78,5 +92,28 @@ impl IoMetric {
             resp_bytes: 0,
             resp_done: Instant::now(),
         }
+    }
+}
+
+use std::fmt;
+
+impl fmt::Display for IoMetric {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}.{}: enters:{}, num:{},{} bytes:{},{} duration: since:{:?}, rx:{:?}, process:{:?} tx:{:?} total:{:?}",
+            metrics::get_name(self.metric_id),
+            self.op.name(),
+            self.enter_num,
+            self.req_recv_num,
+            self.resp_sent_num,
+            self.req_bytes,
+            self.resp_bytes,
+            self.req_receive.duration_since(self.enter),
+            self.req_done.duration_since(self.req_receive),
+            self.resp_ready.duration_since(self.req_done),
+            self.resp_done.duration_since(self.resp_ready),
+            self.duration()
+        )
     }
 }
