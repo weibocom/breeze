@@ -60,6 +60,12 @@ impl AsyncWriteAll for Backend {
     }
 }
 
+impl Drop for Backend {
+    fn drop(&mut self) {
+        self.inner.shutdown(self.id.id());
+    }
+}
+
 impl AsyncReadAll for BackendStream {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
