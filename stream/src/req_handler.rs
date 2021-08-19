@@ -88,26 +88,16 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        log::debug!("task polling. request handler");
+        log::debug!("task polling.");
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Acquire) {
             if let Some((ref cid, ref req)) = me.cache {
                 let data = req.data();
-                log::debug!(
-                    "req-handler: writing {:?} {} {}",
-                    req.id(),
-                    req.len(),
-                    me.offset
-                );
+                log::debug!("writing {} {} {}", req.len(), me.offset, req.id());
                 while me.offset < data.len() {
                     let n = ready!(w.as_mut().poll_write(cx, &data[me.offset..]))?;
-                    log::debug!(
-                        "req-handler: {}/{} bytes written {:?}",
-                        n,
-                        req.len(),
-                        req.id()
-                    );
+                    log::debug!("{}/{} bytes written {}", n, req.len(), req.id());
                     me.offset += n;
                 }
 
@@ -120,30 +110,26 @@ where
             }
             me.offset = 0;
             if let Some((cid, req)) = me.snapshot.take(&me.handler, me.seq) {
-                me.cache.replace((cid, req));
+                me.cache = Some((cid, req));
                 continue;
             }
             me.cache.take();
-            log::debug!("req-handler: poll snapshot");
             match me.handler.poll_fill_snapshot(cx, &mut me.snapshot) {
                 Poll::Ready(_) => {
-                    log::debug!(
-                        "req-handler: poll snapshot done. {} polled. {:?}",
-                        me.snapshot.len(),
-                        me.snapshot.cids
-                    );
+                    log::debug!("snapshot {} {:?}", me.snapshot.len(), me.snapshot.cids);
                     if me.snapshot.len() == 0 {
-                        log::info!("req-handler: no request polled. eof. task complete");
+                        log::info!("no request polled. eof-task complete");
                         break;
                     }
                 }
                 Poll::Pending => {
-                    log::debug!("req-handler: flushing");
+                    log::debug!("pending. seq:{}", me.seq);
                     ready!(w.as_mut().poll_flush(cx))?;
                     return Poll::Pending;
                 }
             }
         }
+        log::info!("task complete");
         Poll::Ready(Ok(()))
     }
 }

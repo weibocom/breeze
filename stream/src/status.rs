@@ -1,7 +1,7 @@
 use crate::AtomicWaker;
 use std::cell::RefCell;
 use std::io::{Error, ErrorKind, Result};
-use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering::*};
 use std::task::{Context, Poll};
 
 use crate::ResponseData;
@@ -15,6 +15,14 @@ pub enum ItemStatus {
     RequestReceived,
     RequestSent,
     ResponseReceived, // 数据已写入
+    Read,             // 已读走
+}
+const STATUSES: [ItemStatus; 5] = [Init, RequestReceived, RequestSent, ResponseReceived, Read];
+impl From<u8> for ItemStatus {
+    #[inline(always)]
+    fn from(s: u8) -> Self {
+        STATUSES[s as usize]
+    }
 }
 use ItemStatus::*;
 impl PartialEq<u8> for ItemStatus {
@@ -33,15 +41,15 @@ impl PartialEq<ItemStatus> for u8 {
 unsafe impl Send for ItemStatus {}
 #[derive(Default)]
 pub struct Item {
-    _id: usize,
+    id: usize,
     seq: AtomicUsize, // 用来做request与response的同步
     status: AtomicU8, // 0: 待接收请求。
 
     rid: RefCell<RequestId>,
     request: RefCell<Option<Request>>,
 
-    waker: AtomicWaker,
     response: RefCell<RingSlice>,
+    waker: AtomicWaker,
 }
 
 unsafe impl Send for Item {}
@@ -49,7 +57,7 @@ unsafe impl Send for Item {}
 impl Item {
     pub fn new(cid: usize) -> Self {
         Self {
-            _id: cid,
+            id: cid,
             status: AtomicU8::new(Init as u8),
             ..Default::default()
         }
@@ -58,23 +66,15 @@ impl Item {
     // 上面的假设待验证
     #[inline(always)]
     pub fn place_request(&self, req: &Request) {
-        debug_assert_eq!(self.status.load(Ordering::Acquire), ItemStatus::Init as u8);
+        debug_assert_eq!(self.status.load(Acquire), ItemStatus::Init as u8);
         self.status_cas(ItemStatus::Init as u8, ItemStatus::RequestReceived as u8);
         *self.request.borrow_mut() = Some(req.clone());
-        log::debug!(
-            "item status: place:{:?}",
-            self.rid.replace(req.id().clone())
-        );
+        log::debug!("place:{:?}", self.rid.replace(req.id()));
     }
     #[inline(always)]
     pub fn take_request(&self, seq: usize) -> Request {
         let req = self.request.borrow_mut().take().expect("take request");
-        log::debug!(
-            "item status: take request. {:?} seq:{} noreply:{}",
-            self.rid,
-            seq,
-            req.noreply()
-        );
+        log::debug!("take request. {} seq:{} ", self.rid.borrow(), seq);
         // 如果不需要回复，则request之后立即恢复到init状态
         self.status_cas(RequestReceived as u8, RequestSent as u8);
         // noreply的请求不需要seq来进行request与response之间的协调
@@ -86,51 +86,53 @@ impl Item {
 
     #[inline(always)]
     pub fn seq(&self) -> usize {
-        self.seq.load(Ordering::Acquire)
+        self.seq.load(Acquire)
     }
 
     #[inline(always)]
     fn status(&self) -> u8 {
-        self.status.load(Ordering::Acquire)
+        self.status.load(Acquire)
     }
 
     #[inline(always)]
     fn seq_cas(&self, old: usize, new: usize) {
-        match self
-            .seq
-            .compare_exchange(old, new, Ordering::AcqRel, Ordering::Acquire)
-        {
+        match self.seq.compare_exchange(old, new, AcqRel, Acquire) {
             Ok(_) => {}
             Err(cur) => panic!("item status seq cas. {} => {} but found {}", old, new, cur),
         }
     }
     // 有两种可能的状态。
-    // Received, 说明之前从来没有poll过
-    // Reponded: 有数据并且成功返回
-    // 调用方确保当前status不为shutdown
+    #[inline]
     pub fn poll_read(&self, cx: &mut Context) -> Poll<Result<ResponseData>> {
-        let status = self.status();
-        if status == ResponseReceived {
-            let response = self.response.take();
-            let rid = self.rid.take();
-            log::debug!("item status: read {:?}", response.location());
-            Poll::Ready(Ok(ResponseData::from(response, rid, self.seq())))
-        } else if status == Init {
-            // 在stream/io/receiver中，确保了一定先发送请求，再读取response。
-            // 所以读请求过来时，状态一定不会是Init。
+        let mut status = self.status();
+        if status != ResponseReceived {
+            self.waker.register(cx.waker());
+            // 再取一次状态。避免AtomicWaker因为memory order的问题，在与place_response出现race而
+            // 丢失最后一次notify
+            status = self.status();
+        }
+        match status.into() {
+            ResponseReceived => Poll::Ready(Ok(self.take_response())),
             // 如果是Init，则有一种情况：因为stream异常，状态被重置了。直接返回错误，让client进行容错处理
-            return Poll::Ready(Err(Error::new(
+            Init | Read => Poll::Ready(Err(Error::new(
                 ErrorKind::ConnectionReset,
-                "read in init status",
-            )));
-        } else {
-            self.waker.register_by_ref(&cx.waker());
-            Poll::Pending
+                format!("read in status:{}", status),
+            ))),
+            RequestReceived | RequestSent => Poll::Pending,
         }
     }
+    #[inline(always)]
+    fn take_response(&self) -> ResponseData {
+        let response = self.response.take();
+        let rid = self.rid.take();
+        self.status_cas(ResponseReceived as u8, Read as u8);
+        log::debug!("item status: read {:?}", response.location());
+        ResponseData::from(response, rid, self.seq())
+    }
+    #[inline]
     pub fn place_response(&self, response: RingSlice, seq: usize) {
         debug_assert_eq!(seq, self.seq());
-        log::debug!("item status: write :{:?} ", response.location());
+        log::debug!(" write :{:?} ", response.location());
         self.response.replace(response);
 
         // 1. response到达之前的状态是 RequestSent. 即请求已发出。 这是大多数场景
@@ -141,15 +143,20 @@ impl Item {
     }
     #[inline(always)]
     fn status_cas(&self, old: u8, new: u8) {
-        match self
-            .status
-            .compare_exchange(old, new, Ordering::AcqRel, Ordering::Acquire)
-        {
+        match self.status.compare_exchange(old, new, AcqRel, Acquire) {
             Ok(_) => {}
-            Err(cur) => panic!(
-                "item status: cas {} => {}, {} found. rid:{:?}",
-                old, new, cur, self.rid
-            ),
+            Err(cur) => {
+                let rid = self.rid.borrow();
+                log::error!(
+                    "cas {} => {}, {} found. seq:{} {}",
+                    old,
+                    new,
+                    cur,
+                    self.seq(),
+                    rid
+                );
+                panic!("cas {} => {}, {} found. {}", old, new, cur, rid);
+            }
         }
     }
     // 在在sender把Response发送给client后，在Drop中会调用response_done，更新状态。
@@ -164,16 +171,32 @@ impl Item {
             self.seq_cas(seq, 0);
         }
     }
-    #[inline(always)]
-    pub(crate) fn status_init(&self) -> bool {
-        self.status() == ItemStatus::Init as u8
-    }
     // reset只会把状态从shutdown变更为init
-    // 必须在shutdown之后调用
+    // 必须在done设置为true之后调用。否则会有data race
     pub(crate) fn reset(&self) {
         //self.status_cas(ItemStatus::Shutdown as u8, ItemStatus::Init as u8);
-        self.status.store(Init as u8, Ordering::Release);
-        self.seq.store(0, Ordering::Release);
+        let response = self.response.take();
+        let waker = self.waker.take();
+        log::warn!(
+            "reset. id:{} {} seq:{} loc:{:?} has waker:{}",
+            self.id,
+            self.status(),
+            self.seq(),
+            response.location(),
+            waker.is_some()
+        );
+        self.status.store(Init as u8, Release);
+        self.seq.store(0, Release);
+        self.request.take();
+        if let Some(w) = waker {
+            w.wake();
+        }
+    }
+    pub(crate) fn try_wake(&self) {
+        if self.status() == ResponseReceived {
+            let loc = self.response.borrow().location();
+            log::info!("id:{} loc:{:?} seq:{}", self.id, loc, self.seq());
+        }
         self.waker.wake();
     }
 }

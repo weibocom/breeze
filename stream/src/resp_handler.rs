@@ -19,6 +19,7 @@ pub trait ResponseHandler {
     fn load_offset(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
     fn on_received(&self, seq: usize, response: RingSlice);
+    fn wake(&self);
 }
 
 unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
@@ -73,29 +74,41 @@ where
             let offset = me.w.load_offset();
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
-            log::debug!("resp-handler: {} bytes available oft:{}", buf.len(), offset);
+            log::debug!("{} bytes available oft:{}", buf.len(), offset);
             if buf.len() == 0 {
                 if me.spins == 0 {
                     me.spin_last = Instant::now();
                 }
+                let read = offset;
+                let processed = me.data.processed();
+                let written = me.data.writtened();
                 me.spins += 1;
                 std::hint::spin_loop();
-                if me.spins >= 1024 {
-                    // 进行resize
+                // 1024这个值并没有参考与借鉴。
+                if me.spins & 1023 == 0 {
+                    ready!(me.tick.poll_tick(cx));
+                    continue;
+                }
+                if me.spin_last.elapsed() >= Duration::from_millis(5) {
                     if me.data.resize() {
+                        log::info!("resize: r:{} p:{} w:{}", read, processed, written);
                         continue;
                     }
-                    // 进行sleep 1ms
-                    ready!(me.tick.poll_tick(cx));
+                }
+                // TODO: 目前在stats中，存在部分场景下，状态是response已返回，但没有接收的情况。
+                // 临时在这里面增加一个定期扫描并且进行wakeup的临时解决方案。
+                if me.spin_last.elapsed() >= Duration::from_millis(50) {
+                    me.w.wake();
                 }
                 // 每超过一秒钟输出一次日志
                 let secs = me.spin_last.elapsed().as_secs() as usize;
                 if secs > me.spin_secs {
                     log::info!(
-                        "resp-handler: buffer full. read:{} processed:{} write:{}",
+                        "buffer full. read:{} processed:{} write:{}, seq:{}",
                         offset,
-                        me.data.processed(),
-                        me.data.writtened()
+                        processed,
+                        written,
+                        me.seq
                     );
                     me.spin_secs = secs;
                 }
@@ -106,11 +119,7 @@ where
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
-            log::debug!(
-                "resp-handler:{} bytes read. data:{:?}",
-                n,
-                &buf.filled()[0..n.min(48)]
-            );
+            log::debug!("{} bytes read.", n);
             if n == 0 {
                 break; // EOF
             }
@@ -131,7 +140,7 @@ where
                 me.data.advance_processed(num);
             }
         }
-        log::info!("resp-handler: task of reading data from response complete");
+        log::info!("task complete");
         Poll::Ready(Ok(()))
     }
 }
