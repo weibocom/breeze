@@ -97,9 +97,9 @@ where
                 }
                 // TODO: 目前在stats中，存在部分场景下，状态是response已返回，但没有接收的情况。
                 // 临时在这里面增加一个定期扫描并且进行wakeup的临时解决方案。
-                if me.spin_last.elapsed() >= Duration::from_millis(50) {
-                    me.w.wake();
-                }
+                //if me.spin_last.elapsed() >= Duration::from_millis(50) {
+                //    me.w.wake();
+                //}
                 // 每超过一秒钟输出一次日志
                 let secs = me.spin_last.elapsed().as_secs() as usize;
                 if secs > me.spin_secs {
