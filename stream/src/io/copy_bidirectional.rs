@@ -1,4 +1,4 @@
-use crate::{AsyncReadAll, AsyncWriteAll, SLOW_DURATION};
+use crate::{AsyncReadAll, AsyncWriteAll};
 
 use super::{IoMetric, Receiver, Sender};
 
