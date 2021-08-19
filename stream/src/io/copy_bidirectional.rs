@@ -1,4 +1,4 @@
-use crate::{AsyncReadAll, AsyncWriteAll};
+use crate::{AsyncReadAll, AsyncWriteAll, SLOW_DURATION};
 
 use super::{IoMetric, Receiver, Sender};
 
@@ -12,6 +12,7 @@ use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 pub async fn copy_bidirectional<A, C, P>(
     agent: A,
@@ -80,6 +81,7 @@ where
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
         loop {
+            metric.enter();
             if !*sent {
                 ready!(receiver.poll_copy_one(
                     cx,
@@ -90,19 +92,24 @@ where
                     metric,
                 ))?;
                 if metric.req_bytes == 0 {
-                    log::debug!("io-transfer: not request {:?}", rid);
+                    log::info!("eof:no bytes received {}", rid);
                     break;
                 }
                 *sent = true;
-                log::debug!("io-transfer: req sent.{} {:?}", metric.req_bytes, rid);
+                log::debug!("req sent.{} {}", metric.req_bytes, rid);
             }
             ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser, rid, metric))?;
             metric.response_done();
-            log::debug!("io-transfer: resp sent {} {:?}", metric.resp_bytes, *rid);
+            log::debug!("resp sent {} {}", metric.resp_bytes, *rid);
             *sent = false;
             rid.incr();
             // 开始记录metric
-            metrics::duration_with_service(metric.op.name(), metric.duration(), metric.metric_id);
+            let duration = metric.duration();
+            const SLOW: Duration = Duration::from_millis(32);
+            if duration >= SLOW {
+                log::info!("slow request: {}", metric);
+            }
+            metrics::duration_with_service(metric.op.name(), duration, metric.metric_id);
             metrics::counter_with_service("bytes.tx", metric.resp_bytes, metric.metric_id);
             metrics::counter_with_service("bytes.rx", metric.req_bytes, metric.metric_id);
             metric.reset();

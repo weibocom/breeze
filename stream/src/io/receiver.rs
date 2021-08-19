@@ -18,7 +18,7 @@ pub(super) struct Receiver {
     cap: usize,
     buff: Vec<u8>,
     parsed: bool,
-    parsed_idx: usize,
+    idx: usize,
 }
 
 impl Receiver {
@@ -30,15 +30,16 @@ impl Receiver {
             cap: init_cap,
             r: 0,
             parsed: false,
-            parsed_idx: 0,
+            idx: 0,
         }
     }
+    #[inline(always)]
     fn reset(&mut self) {
         if self.w == self.r {
             self.r = 0;
             self.w = 0;
         }
-        self.parsed_idx = 0;
+        self.idx = 0;
         self.parsed = false;
     }
     // 返回当前请求的size，以及请求的类型。
@@ -56,12 +57,7 @@ impl Receiver {
         P: Protocol + Unpin,
         W: AsyncWriteAll + ?Sized,
     {
-        log::debug!(
-            "io-receiver-poll-copy. r:{} idx:{} w:{} ",
-            self.r,
-            self.parsed_idx,
-            self.w
-        );
+        log::debug!("r:{} idx:{} w:{} ", self.r, self.idx, self.w);
         while !self.parsed {
             if self.w == self.cap {
                 self.extends()?;
@@ -71,28 +67,26 @@ impl Receiver {
             let read = buff.filled().len();
             if read == 0 {
                 if self.w > self.r {
-                    log::warn!("io-receiver: eof, but {} bytes left.", self.w - self.r);
+                    log::warn!("eof, but {} bytes left.", self.w - self.r);
                 }
                 metric.reset();
                 return Poll::Ready(Ok(()));
             }
-            log::debug!("io-receiver-poll: {} bytes received.{:?}", read, rid);
+            log::debug!("{} bytes received.{}", read, rid);
             self.w += read;
             let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
             self.parsed = parsed;
-            self.parsed_idx = self.r + n;
+            self.idx = self.r + n;
             metric.req_received(read);
-        }
-        let req = Request::from(&self.buff[self.r..self.parsed_idx], rid.clone());
 
-        log::debug!(
-            "io-receiver-poll: request parsed. len:{} {:?}, {:?}",
-            self.parsed_idx - self.r,
-            &self.buff[self.r..self.parsed_idx],
-            rid
-        );
-        let req_op = parser.operation(req.data());
-        metric.req_done(req_op, req.len());
+            if self.parsed {
+                let op = parser.operation(&self.buff[self.r..self.idx]);
+                metric.req_done(op, self.idx - self.r);
+            }
+        }
+        let req = Request::from(&self.buff[self.r..self.idx], *rid);
+
+        log::debug!("parsed: {}=>{} {}", self.r, self.idx, rid);
         ready!(writer.as_mut().poll_write(cx, &req))?;
         self.r += req.len();
         self.reset();
@@ -102,11 +96,13 @@ impl Receiver {
     // 每次扩容两倍，最多扩容1MB，超过1MB就会扩容失败
     fn extends(&mut self) -> Result<()> {
         debug_assert_eq!(self.w, self.cap);
+        log::info!("extend: r:{} idx:{} w:{} ", self.r, self.idx, self.w);
         if self.r > 0 {
             self.move_data();
             Ok(())
         } else {
             if self.cap >= MAX_REQUEST_SIZE {
+                log::warn!("request size limited:{} >= {}", self.cap, MAX_REQUEST_SIZE);
                 Err(Error::new(
                     ErrorKind::InvalidInput,
                     "max request size limited: 1mb",
@@ -116,10 +112,8 @@ impl Receiver {
                 let cap = self.buff.len();
                 let cap = (cap * 2).min(MAX_REQUEST_SIZE);
                 let mut new_buff = vec![0u8; cap];
-                use std::ptr::copy_nonoverlapping;
-                unsafe {
-                    copy_nonoverlapping(self.buff.as_ptr(), new_buff.as_mut_ptr(), self.buff.len())
-                };
+                use std::ptr::copy_nonoverlapping as copy;
+                unsafe { copy(self.buff.as_ptr(), new_buff.as_mut_ptr(), self.buff.len()) };
                 self.buff.clear();
                 self.buff = new_buff;
                 self.cap = cap;
@@ -127,10 +121,12 @@ impl Receiver {
             }
         }
     }
+    #[inline]
     fn move_data(&mut self) {
         debug_assert!(self.r > 0);
         // 有可能是因为pipeline，所以上一次request结束后，可能还有未处理的请求数据
         // 把[r..w]的数据copy到最0位置
+        log::info!("move: r:{} idx:{} w:{} ", self.r, self.idx, self.w);
         use std::ptr::copy;
         let len = self.w - self.r;
         debug_assert!(len > 0);
