@@ -98,19 +98,16 @@ impl RingSlice {
                 copy_nonoverlapping(self.ptr.offset(oft_start as isize), bytes.as_mut_ptr(), n);
                 copy_nonoverlapping(self.ptr, bytes.as_mut_ptr().offset(n as isize), len - n);
 
-                // assert_eq!(result.len(), len);
-                // str::from(bytes).to_string()
                 bytes.set_len(len);
                 let result = String::from_utf8_lossy(&bytes).to_string();
-                //println!(
-                //    "+++++++ result key: {} with len: {}, len: {}",
-                //    result,
-                //    result.len(),
-                //    len
-                //);
                 result
             }
         }
+    }
+
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe { from_raw_parts(self.ptr, self.cap) }
     }
 
     #[inline(always)]
