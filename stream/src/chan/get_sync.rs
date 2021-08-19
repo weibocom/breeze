@@ -112,13 +112,13 @@ where
                 }
                 // 请求失败，如果还有reader，需要继续尝试下一个reader
                 Err(_e) => {
-                    log::debug!("get_sync:read found err: {:?}", _e);
+                    log::debug!("read found err: {:?}", _e);
                 }
             }
             me.idx += 1;
             if me.idx < me.layers.len() {
                 if let Err(_e) = ready!(me.do_write(cx)) {
-                    log::debug!("get_sync: write failed:{:?}", _e);
+                    log::debug!("write failed:{:?}", _e);
                     break;
                 }
             }
