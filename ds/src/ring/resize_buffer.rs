@@ -36,7 +36,7 @@ impl ResizedRingBuffer {
         let cap = self.inner.cap() * 2;
         // 8MB对于在线业务的一次请求，是一个足够大的值。
         if cap >= 8 * 1024 * 1024 {
-            log::info!("ringbuffer: overflow. {}", cap);
+            log::debug!("overflow. {}", cap);
             return false;
         }
         log::info!("ringbuffer: resize buffer to {}", cap);
@@ -50,6 +50,17 @@ impl ResizedRingBuffer {
     pub fn reset_read(&mut self, read: usize) {
         self.inner.reset_read(read);
         if read >= self.max_processed {
+            for buff in self.old.iter() {
+                log::info!(
+                    "buffer released. old: ({},{},{}). new: ({},{},{})",
+                    buff.read(),
+                    buff.processed(),
+                    buff.writtened(),
+                    read,
+                    self.inner.processed(),
+                    self.writtened(),
+                );
+            }
             self.old.clear();
             self.max_processed = std::usize::MAX;
         }
