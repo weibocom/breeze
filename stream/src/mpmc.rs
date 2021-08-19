@@ -99,7 +99,7 @@ impl MpmcRingBufferStream {
         let item = self.get_item(cid);
         let data = ready!(item.poll_read(cx))?;
         log::debug!(
-            "mpmc: data read out. cid:{} len:{} rid:{:?} ",
+            "next. cid:{} len:{} rid:{} ",
             cid,
             data.data().len(),
             data.rid()
@@ -113,7 +113,7 @@ impl MpmcRingBufferStream {
         let (start, end) = response.data().location();
         self.offset.0.insert(start, end);
         log::debug!(
-            "mpmc done. cid:{} start:{} end:{} rid:{:?}",
+            "done. cid:{} loc:({}->{}). {}",
             cid,
             start,
             end,
@@ -121,16 +121,15 @@ impl MpmcRingBufferStream {
         );
     }
     // 释放cid的资源
-    pub fn poll_shutdown(&self, cid: usize, _cx: &mut Context) -> Poll<Result<()>> {
-        log::debug!("mpmc: poll shutdown. cid:{}", cid);
-        debug_assert!(self.get_item(cid).status_init());
-        Poll::Ready(Ok(()))
+    pub fn shutdown(&self, cid: usize) {
+        log::info!("mpmc: poll shutdown. cid:{}", cid);
+        self.get_item(cid).reset();
     }
     #[inline]
     pub fn poll_write(&self, cid: usize, _cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         self.check(cid)?;
         log::debug!(
-            "write cid:{} len:{} id:{:?}, noreply:{}",
+            "write cid:{} len:{} id:{}, noreply:{}",
             cid,
             buf.len(),
             buf.id(),
@@ -276,11 +275,13 @@ impl MpmcRingBufferStream {
             item.0.reset();
         }
     }
+    // 通常是某个资源被注释时调用。
     fn close(&self) {
         self.closed.store(true, Ordering::Release);
         self.done.store(true, Ordering::Release);
+        log::info!("bit maps:{:?}", self.bits.snapshot());
         self.waker.wake();
-        log::debug!("close: closing called");
+        log::warn!("close: closing called");
     }
 
     pub(crate) fn load_ping_ping(&self) -> (usize, usize) {
@@ -341,7 +342,7 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
         }
         // 没有获取到数据的时候，并且done为false，返回pending.
         if ss.len() == 0 && !self.done.load(Ordering::Acquire) {
-            self.waker.register_by_ref(&cx.waker());
+            self.waker.register(&cx.waker());
             Poll::Pending
         } else {
             Poll::Ready(())
@@ -358,5 +359,10 @@ impl ResponseHandler for Arc<MpmcRingBufferStream> {
     // 在从response读取的数据后调用。
     fn on_received(&self, seq: usize, first: RingSlice) {
         self.place_response(seq, first);
+    }
+    fn wake(&self) {
+        for item in self.items.iter() {
+            item.0.try_wake();
+        }
     }
 }

@@ -6,12 +6,11 @@ mod req_handler;
 mod resp_handler;
 mod response;
 mod status;
-mod waker;
 
+use atomic_waker::AtomicWaker;
 pub use chan::*;
 pub use protocol::{Request, MAX_REQUEST_SIZE};
 pub use response::*;
-use waker::AtomicWaker;
 
 pub use backend::{Backend, BackendBuilder, BackendStream};
 pub use mpmc::MpmcRingBufferStream as RingBufferStream;
@@ -55,3 +54,6 @@ pub const MAX_CONNECTIONS: usize = 256;
 pub trait Notify {
     fn notify(&self);
 }
+
+use std::time::Duration;
+pub(crate) const SLOW_DURATION: Duration = Duration::from_millis(4);
