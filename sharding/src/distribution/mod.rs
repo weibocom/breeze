@@ -15,10 +15,7 @@ impl Distribute {
             "modula" | "Modula" | "MODULA" => Self::Modula(Modula::from(names.len())),
             "ketama" | "Ketama" | "KETAMA" => Self::Consistent(Consistent::from(names)),
             _ => {
-                println!(
-                    "{} is not a recognized distribution, use static modula instead",
-                    distribution
-                );
+                log::warn!("'{}' is not valid , use modula instead", distribution);
                 Self::Modula(Modula::from(names.len()))
             }
         }

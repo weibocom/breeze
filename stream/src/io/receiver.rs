@@ -38,8 +38,8 @@ impl Receiver {
         if self.w == self.r {
             self.r = 0;
             self.w = 0;
+            self.idx = 0;
         }
-        self.idx = 0;
         self.parsed = false;
     }
     // 返回当前请求的size，以及请求的类型。
@@ -137,6 +137,7 @@ impl Receiver {
                 len,
             );
         }
+        self.idx = 0;
         self.r = 0;
         self.w = len;
     }
