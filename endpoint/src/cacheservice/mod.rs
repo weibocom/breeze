@@ -7,7 +7,6 @@ pub use topology::Topology;
 use discovery::ServiceDiscover;
 use stream::backend::AddressEnable;
 
-use hash::Hasher;
 use stream::{
     AsyncGetSync, AsyncMultiGet, AsyncMultiGetSharding, AsyncOperation, AsyncRoute, AsyncSetSync,
     AsyncSharding, MetaStream,
@@ -20,15 +19,15 @@ use std::io::{Error, ErrorKind, Result};
 type Backend = stream::BackendStream;
 
 // type GetOperation<P> = AsyncSharding<Backend, Hasher, P>;
-type GetLayer<P> = AsyncSharding<Backend, Hasher, P>;
-type GetOperation<P> = AsyncGetSync<GetLayer<P>, P>;
+type GetLayer = AsyncSharding<Backend>;
+type GetOperation<P> = AsyncGetSync<GetLayer, P>;
 
 type MultiGetLayer<P> = AsyncMultiGetSharding<Backend, P>;
 type MultiGetOperation<P> = AsyncMultiGet<MultiGetLayer<P>, P>;
 
-type Master<P> = AsyncSharding<Backend, Hasher, P>;
-type Follower<P> = AsyncSharding<Backend, Hasher, P>;
-type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>, P>;
+type Master = AsyncSharding<Backend>;
+type Follower = AsyncSharding<Backend>;
+type StoreOperation<P> = AsyncSetSync<Master, Follower, P>;
 type MetaOperation<P> = MetaStream<P, Backend>;
 type Operation<P> =
     AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation<P>>;
@@ -43,17 +42,11 @@ pub struct CacheService<P> {
 
 impl<P> CacheService<P> {
     #[inline]
-    fn build_sharding<S>(
-        shards: Vec<S>,
-        h: &str,
-        distribution: &String,
-        parser: P,
-    ) -> AsyncSharding<S, Hasher, P>
+    fn build_sharding<S>(shards: Vec<S>, h: &str, distribution: &str, _p: P) -> AsyncSharding<S>
     where
         S: AsyncWriteAll + AddressEnable,
     {
-        let hasher = Hasher::from(h);
-        AsyncSharding::from(shards, hasher, distribution, parser)
+        AsyncSharding::from(shards, h, distribution)
     }
 
     #[inline]
@@ -61,16 +54,15 @@ impl<P> CacheService<P> {
         pools: Vec<Vec<S>>,
         h: &str,
         distribution: &String,
-        parser: P,
-    ) -> Vec<AsyncSharding<S, Hasher, P>>
+        _p: P,
+    ) -> Vec<AsyncSharding<S>>
     where
         S: AsyncWriteAll + AddressEnable,
         P: Clone,
     {
-        let mut layers: Vec<AsyncSharding<S, Hasher, P>> = Vec::new();
+        let mut layers: Vec<AsyncSharding<S>> = Vec::new();
         for p in pools {
-            let hasher = Hasher::from(h);
-            layers.push(AsyncSharding::from(p, hasher, distribution, parser.clone()));
+            layers.push(AsyncSharding::from(p, h, distribution));
         }
         layers
     }

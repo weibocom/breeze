@@ -7,6 +7,8 @@ mod resp_handler;
 mod response;
 mod status;
 
+use sharding::Sharding;
+
 use atomic_waker::AtomicWaker;
 pub use chan::*;
 pub use protocol::{Request, MAX_REQUEST_SIZE};
