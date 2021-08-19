@@ -88,10 +88,17 @@ mod rid {
             self.seq += 1;
         }
     }
+    use std::fmt;
+    impl fmt::Display for RequestId {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "(rid: {} => {})", self.session_id, self.seq)
+        }
+    }
 }
 
 #[cfg(not(debug_assertions))]
 mod rid {
+    use std::fmt;
     #[derive(Default, Debug, PartialEq, Clone, Copy)]
     pub struct RequestId;
     impl RequestId {
@@ -101,5 +108,11 @@ mod rid {
         }
         #[inline(always)]
         pub fn incr(&mut self) {}
+    }
+
+    impl fmt::Display for RequestId {
+        fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            Ok(())
+        }
     }
 }
