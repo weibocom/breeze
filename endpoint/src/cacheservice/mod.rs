@@ -19,15 +19,15 @@ use std::io::{Error, ErrorKind, Result};
 type Backend = stream::BackendStream;
 
 // type GetOperation<P> = AsyncSharding<Backend, Hasher, P>;
-type GetLayer = AsyncSharding<Backend>;
-type GetOperation<P> = AsyncGetSync<GetLayer, P>;
+type GetLayer<P> = AsyncSharding<Backend, P>;
+type GetOperation<P> = AsyncGetSync<GetLayer<P>, P>;
 
 type MultiGetLayer<P> = AsyncMultiGetSharding<Backend, P>;
 type MultiGetOperation<P> = AsyncMultiGet<MultiGetLayer<P>, P>;
 
-type Master = AsyncSharding<Backend>;
-type Follower = AsyncSharding<Backend>;
-type StoreOperation<P> = AsyncSetSync<Master, Follower, P>;
+type Master<P> = AsyncSharding<Backend, P>;
+type Follower<P> = AsyncSharding<Backend, P>;
+type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>, P>;
 type MetaOperation<P> = MetaStream<P, Backend>;
 type Operation<P> =
     AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation<P>>;
@@ -42,11 +42,16 @@ pub struct CacheService<P> {
 
 impl<P> CacheService<P> {
     #[inline]
-    fn build_sharding<S>(shards: Vec<S>, h: &str, distribution: &str, _p: P) -> AsyncSharding<S>
+    fn build_sharding<S>(
+        shards: Vec<S>,
+        h: &str,
+        distribution: &str,
+        parser: P,
+    ) -> AsyncSharding<S, P>
     where
         S: AsyncWriteAll + AddressEnable,
     {
-        AsyncSharding::from(shards, h, distribution)
+        AsyncSharding::from(shards, h, distribution, parser)
     }
 
     #[inline]
@@ -54,15 +59,15 @@ impl<P> CacheService<P> {
         pools: Vec<Vec<S>>,
         h: &str,
         distribution: &String,
-        _p: P,
-    ) -> Vec<AsyncSharding<S>>
+        parser: P,
+    ) -> Vec<AsyncSharding<S, P>>
     where
         S: AsyncWriteAll + AddressEnable,
-        P: Clone,
+        P: Protocol + Clone,
     {
-        let mut layers: Vec<AsyncSharding<S>> = Vec::new();
+        let mut layers: Vec<AsyncSharding<S, P>> = Vec::new();
         for p in pools {
-            layers.push(AsyncSharding::from(p, h, distribution));
+            layers.push(AsyncSharding::from(p, h, distribution, parser.clone()));
         }
         layers
     }
