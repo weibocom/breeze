@@ -2,23 +2,26 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use protocol::Protocol;
+
 use crate::backend::AddressEnable;
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
 use crate::Sharding;
 
-pub struct AsyncSharding<B> {
+pub struct AsyncSharding<B, P> {
     idx: usize,
     // 用于modula分布以及一致性hash定位server
     shards: Vec<B>,
     policy: Sharding,
+    parser: P,
 }
 
-impl<B> AsyncSharding<B>
+impl<B, P> AsyncSharding<B, P>
 where
     B: AddressEnable,
 {
-    pub fn from(shards: Vec<B>, hash: &str, distribution: &str) -> Self {
+    pub fn from(shards: Vec<B>, hash: &str, distribution: &str, parser: P) -> Self {
         let idx = 0;
         let names = shards.iter().map(|s| s.get_address()).collect();
         let policy = Sharding::from(hash, distribution, names);
@@ -26,19 +29,22 @@ where
             idx,
             shards,
             policy,
+            parser,
         }
     }
 }
 
-impl<B> AsyncWriteAll for AsyncSharding<B>
+impl<B, P> AsyncWriteAll for AsyncSharding<B, P>
 where
     B: AsyncWriteAll + Unpin,
+    P: Protocol + Unpin,
 {
     #[inline]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         debug_assert!(me.idx < me.shards.len());
-        me.idx = me.policy.sharding(buf.data());
+        let key = me.parser.key(buf);
+        me.idx = me.policy.sharding(key);
         if me.idx >= me.shards.len() {
             return Poll::Ready(Err(Error::new(
                 ErrorKind::NotConnected,
@@ -53,9 +59,10 @@ where
     }
 }
 
-impl<B> AsyncReadAll for AsyncSharding<B>
+impl<B, P> AsyncReadAll for AsyncSharding<B, P>
 where
     B: AsyncReadAll + Unpin,
+    P: Protocol + Unpin,
 {
     #[inline]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
