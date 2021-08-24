@@ -18,6 +18,7 @@ pub struct AsyncGetSync<R, P> {
     // TODO: 对于空响应，根据协议获得空响应格式，这样效率更高，待和@icy 讨论 fishermen 2021.6.27
     empty_resp: Option<Response>,
     parser: P,
+    err: Option<Error>,
 }
 
 impl<R, P> AsyncGetSync<R, P> {
@@ -28,6 +29,7 @@ impl<R, P> AsyncGetSync<R, P> {
             req: Default::default(),
             empty_resp: None,
             parser: p,
+            err: None,
         }
     }
 }
@@ -113,12 +115,14 @@ where
                 // 请求失败，如果还有reader，需要继续尝试下一个reader
                 Err(_e) => {
                     log::debug!("read found err: {:?}", _e);
+                    me.err = Some(_e);
                 }
             }
             me.idx += 1;
             if me.idx < me.layers.len() {
                 if let Err(_e) = ready!(me.do_write(cx)) {
                     log::debug!("write failed:{:?}", _e);
+                    me.err = Some(_e);
                     break;
                 }
             }
@@ -126,10 +130,15 @@ where
 
         debug_assert!(self.idx == self.layers.len());
         self.reset();
+        let err = self.err.take();
         if let Some(item) = self.empty_resp.take() {
             Poll::Ready(Ok(item))
         } else {
-            Poll::Ready(Err(Error::new(ErrorKind::NotFound, "not found key")))
+            //
+            Poll::Ready(Err(Error::new(
+                ErrorKind::NotFound,
+                format!("get request failed:{:?}", err.unwrap()),
+            )))
         }
     }
 }
