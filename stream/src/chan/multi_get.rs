@@ -45,7 +45,6 @@ where
     // ready! 会返回Poll，所以这里还是返回Poll了
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut idx = self.idx;
-        debug_assert!(idx < self.layers.len());
 
         // 当前layer的reader发送请求，直到发送成功
         while idx < self.layers.len() {

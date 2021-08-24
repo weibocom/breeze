@@ -46,7 +46,12 @@ impl IoMetric {
     }
     #[inline(always)]
     pub(crate) fn req_done(&mut self, op: Operation, n: usize) {
-        self.req_done = Instant::now();
+        let now = Instant::now();
+        // pipeline时，部分请求没有req.
+        if self.req_recv_num == 0 {
+            self.req_receive = now;
+        }
+        self.req_done = now;
         self.req_bytes = n;
         self.enter_rx = self.enter_num;
         self.op = op;
