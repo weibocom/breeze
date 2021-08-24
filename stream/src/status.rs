@@ -162,9 +162,8 @@ impl Item {
     #[inline]
     pub fn response_done(&self, seq: usize) {
         // 把状态调整为Init
-        let status = self.status();
-        debug_assert_eq!(status, ItemStatus::ResponseReceived as u8);
-        self.status_cas(status, ItemStatus::Init as u8);
+        debug_assert_eq!(self.status(), Read as u8);
+        self.status_cas(Read as u8, ItemStatus::Init as u8);
         // 如果seq为0，说明有一种情况，之前连接进行过reset，但response已获取。
         if self.seq() > 0 {
             self.seq_cas(seq, 0);

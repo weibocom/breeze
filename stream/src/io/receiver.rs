@@ -62,6 +62,18 @@ impl Receiver {
             if self.w == self.cap {
                 self.extends()?;
             }
+            if self.w > self.r {
+                let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
+                self.parsed = parsed;
+                self.idx = self.r + n;
+
+                if self.parsed {
+                    let op = parser.operation(&self.buff[self.r..self.idx]);
+                    metric.req_done(op, self.idx - self.r);
+                    break;
+                }
+            }
+            // 数据不足。要从stream中读取
             let mut buff = ReadBuf::new(&mut self.buff[self.w..]);
             ready!(reader.as_mut().poll_read(cx, &mut buff))?;
             let read = buff.filled().len();
@@ -72,17 +84,9 @@ impl Receiver {
                 metric.reset();
                 return Poll::Ready(Ok(()));
             }
-            log::debug!("{} bytes received.{}", read, rid);
             self.w += read;
-            let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
-            self.parsed = parsed;
-            self.idx = self.r + n;
             metric.req_received(read);
-
-            if self.parsed {
-                let op = parser.operation(&self.buff[self.r..self.idx]);
-                metric.req_done(op, self.idx - self.r);
-            }
+            log::debug!("{} bytes received.{}", read, rid);
         }
         let req = Request::from(&self.buff[self.r..self.idx], *rid);
 
