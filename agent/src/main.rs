@@ -86,6 +86,8 @@ async fn process_one_service(
         quard.tick(),
         top,
     ));
+
+    
     let r_type = quard.protocol();
     let biz = quard.biz();
     let metric_id = metrics::register_name(r_type + "." + &metrics::encode_addr(&biz));
