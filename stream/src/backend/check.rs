@@ -65,6 +65,7 @@ impl BackendBuilder {
 
 impl Drop for BackendBuilder {
     fn drop(&mut self) {
+        log::info!("{} finished. stream will be closed later", self.addr);
         self.finish();
     }
 }
