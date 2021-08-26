@@ -172,14 +172,16 @@ impl Item {
     // reset只会把状态从shutdown变更为init
     // 必须在done设置为true之后调用。否则会有data race
     pub(crate) fn reset(&self) {
-        let response = self.response.take();
-        log::warn!(
-            "reset. id:{} {} seq:{} loc:{:?}",
-            self.id,
-            self.status(),
-            self.seq(),
-            response.location(),
-        );
+        if self.status() != Init {
+            let loc = self.response.take().location();
+            log::warn!(
+                "reset. id:{} {} seq:{} loc:{:?}",
+                self.id,
+                self.status(),
+                self.seq(),
+                loc,
+            );
+        }
         self.status.store(Init as u8, Release);
         self.seq.store(0, Release);
         //self.request.take();
