@@ -107,13 +107,6 @@ impl<P> CacheService<P> {
     {
         let hash_alg = &topo.hash;
         let distribution = &topo.distribution;
-        // let get = AsyncOperation::Get(Self::build_sharding(
-        //     topo.next_l1(),
-        //     &hash_alg,
-        //     parser.clone(),
-        // ));
-
-        // let l1 = topo.next_l1_gets();
         let get_multi_layers = Self::build_get_multi_layers(topo.retrive_gets(), parser.clone());
         let get_multi =
             AsyncOperation::Gets(AsyncMultiGet::from_layers(get_multi_layers, parser.clone()));

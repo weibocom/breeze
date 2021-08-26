@@ -86,46 +86,6 @@ impl<P> Topology<P> {
             .collect()
     }
 
-    // 测试完毕后清理 fishermen 2021.7.2
-    // TODO：这里只返回一个pool，后面会替换掉 fishermen
-    // pub fn next_l1(&self) -> Vec<BackendStream> {
-    //     if self.layer_readers.len() == 0 {
-    //         return vec![];
-    //     }
-    //     let idx = self.l1_seq.fetch_add(1, Ordering::AcqRel) % self.readers.len();
-    //     unsafe {
-    //         self.random_reads()
-    //             .get_unchecked(idx)
-    //             .iter()
-    //             .map(|addr| {
-    //                 self.get_streams
-    //                     .get(addr)
-    //                     .expect("stream must be exists before address")
-    //                     .build()
-    //             })
-    //             .collect()
-    //     }
-    // }
-    // TODO：这里只返回一个pool，后面会替换掉 fishermen
-    // pub fn next_l1_gets(&self) -> Vec<BackendStream> {
-    //     if self.readers.len() == 0 {
-    //         return vec![];
-    //     }
-    //     let idx = self.l1_seq.fetch_add(1, Ordering::AcqRel) % self.readers.len();
-    //     unsafe {
-    //         self.random_reads()
-    //             .get_unchecked(idx)
-    //             .iter()
-    //             .map(|addr| {
-    //                 self.gets_streams
-    //                     .get(addr)
-    //                     .expect("stream must be exists before address")
-    //                     .build()
-    //             })
-    //             .collect()
-    //     }
-    // }
-
     pub fn retrive_get(&self) -> Vec<Vec<BackendStream>> {
         self.reader_layers(&self.get_streams)
     }
@@ -137,19 +97,15 @@ impl<P> Topology<P> {
     fn random_reads(&self) -> Vec<Vec<String>> {
         let mut readers = Vec::new();
         for layer in &self.layer_readers {
-            if layer.len() == 1 {
-                let r = &layer[0];
-                if !readers.contains(r) {
-                    readers.push(r.clone());
-                }
-            } else if layer.len() > 1 {
-                let rd = rand::thread_rng().gen_range(0..layer.len());
-                let r = &layer[rd];
-                if !readers.contains(r) {
-                    readers.push(r.clone())
-                }
-            } else {
-                log::debug!("topolody - rand readers should has candidates!");
+            if layer.len() == 0 {
+                log::warn!("empty layer in {:?}", self.layer_readers);
+                continue;
+            }
+            let seq = self.l1_seq.fetch_add(1, Ordering::Acquire);
+            let idx = seq % layer.len();
+            let r = &layer[idx];
+            if !readers.contains(r) {
+                readers.push(r.clone())
             }
         }
 
@@ -300,9 +256,8 @@ where
     P: Send + Sync + Protocol,
 {
     fn update(&mut self, cfg: &str, name: &str) {
-        log::info!("cache service topology received:{}", name);
         self.update(cfg, name);
-        log::info!("master:{:?}", self.masters);
+        log::info!("name:{} master:{:?}", name, self.masters);
     }
 }
 impl<P> left_right::Absorb<(String, String)> for Topology<P>
@@ -319,9 +274,11 @@ where
 
 impl<P> From<P> for Topology<P> {
     fn from(parser: P) -> Self {
+        // 一般情况下, 一层的sharding数量不会超过64k。
+        let rd = rand::thread_rng().gen_range(0..65536);
         Self {
             parser: parser,
-            l1_seq: AtomicUsize::new(0),
+            l1_seq: AtomicUsize::new(rd),
             hash: Default::default(),
             distribution: Default::default(),
             masters: Default::default(),
