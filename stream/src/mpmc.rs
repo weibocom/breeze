@@ -122,7 +122,7 @@ impl MpmcRingBufferStream {
     }
     // 释放cid的资源
     pub fn shutdown(&self, cid: usize) {
-        log::info!("mpmc: poll shutdown. cid:{}", cid);
+        log::debug!("mpmc: poll shutdown. cid:{}", cid);
         self.get_item(cid).reset();
     }
     #[inline]
@@ -279,7 +279,6 @@ impl MpmcRingBufferStream {
     fn close(&self) {
         self.closed.store(true, Ordering::Release);
         self.done.store(true, Ordering::Release);
-        log::info!("bit maps:{:?}", self.bits.snapshot());
         self.waker.wake();
         log::warn!("close: closing called");
     }

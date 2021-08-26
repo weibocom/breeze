@@ -3,7 +3,12 @@ extern crate lazy_static;
 
 mod id;
 mod recorder;
-use recorder::{Recorder, Snapshot};
+use recorder::Recorder;
+
+mod duration;
+
+mod snapshot;
+use snapshot::Snapshot;
 
 pub use id::*;
 
