@@ -45,7 +45,7 @@ pub struct Context {
     #[clap(
         long,
         about("establish a connection to select an local ip"),
-        default_value("weibo.com:80")
+        default_value("10.10.10.10:53")
     )]
     pub metrics_probe: String,
 }
