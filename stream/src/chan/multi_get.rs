@@ -8,6 +8,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use crate::backend::AddressEnable;
 use crate::{AsyncReadAll, AsyncWriteAll, Response};
 use protocol::{Protocol, Request};
 
@@ -27,7 +28,7 @@ pub struct AsyncMultiGet<L, P> {
 
 impl<L, P> AsyncMultiGet<L, P>
 where
-    L: AsyncWriteAll + AsyncWriteAll + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + AddressEnable + Unpin,
     P: Unpin,
 {
     pub fn from_layers(layers: Vec<L>, p: P) -> Self {
@@ -81,7 +82,7 @@ where
 
 impl<L, P> AsyncWriteAll for AsyncMultiGet<L, P>
 where
-    L: AsyncWriteAll + AsyncWriteAll + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + AddressEnable + Unpin,
     P: Unpin,
 {
     // 请求某一层
@@ -93,7 +94,7 @@ where
 
 impl<L, P> AsyncReadAll for AsyncMultiGet<L, P>
 where
-    L: AsyncReadAll + AsyncWriteAll + Unpin,
+    L: AsyncReadAll + AsyncWriteAll + AddressEnable + Unpin,
     P: Unpin + Protocol,
 {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
@@ -104,10 +105,16 @@ where
         while me.idx < me.layers.len() {
             let mut found_keys = Vec::new();
             let layer = unsafe { me.layers.get_unchecked_mut(me.idx) };
+            let servers = layer.get_address();
             match ready!(Pin::new(layer).poll_next(cx)) {
                 Ok(item) => {
                     // 轮询出已经查到的keys
                     found_keys = me.parser.keys_response(item.iter());
+                    // TODO 一致性分析需要，在这里打印key及servers
+                    if found_keys.len() > 0 {
+                        log::info!("gets keys:{:?}, servers: {}", found_keys, servers);
+                    }
+
                     match me.response.as_mut() {
                         Some(response) => response.append(item),
                         None => me.response = Some(item),

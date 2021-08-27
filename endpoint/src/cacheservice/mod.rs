@@ -75,7 +75,7 @@ impl<P> CacheService<P> {
     #[inline]
     fn build_get_multi_layers<S>(pools: Vec<Vec<S>>, parser: P) -> Vec<AsyncMultiGetSharding<S, P>>
     where
-        S: AsyncWriteAll,
+        S: AsyncWriteAll + AddressEnable,
         P: Clone,
     {
         let mut layers: Vec<AsyncMultiGetSharding<S, P>> = Vec::new();
