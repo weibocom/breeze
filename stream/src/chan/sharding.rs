@@ -15,6 +15,8 @@ pub struct AsyncSharding<B, P> {
     shards: Vec<B>,
     policy: Sharding,
     parser: P,
+    // TODO 当前主要是为了一致性排查需要，后续可以干掉 fishermen
+    servers: String,
 }
 
 impl<B, P> AsyncSharding<B, P>
@@ -25,11 +27,20 @@ where
         let idx = 0;
         let names = shards.iter().map(|s| s.get_address()).collect();
         let policy = Sharding::from(hash, distribution, names);
+
+        let mut servers = String::from("{");
+        for s in &shards {
+            servers += s.get_address().as_str();
+            servers += ",";
+        }
+        servers += "}";
+
         Self {
             idx,
             shards,
             policy,
             parser,
+            servers,
         }
     }
 }
@@ -68,5 +79,11 @@ where
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_next(cx) }
+    }
+}
+
+impl<B, P> AddressEnable for AsyncSharding<B, P> {
+    fn get_address(&self) -> String {
+        self.servers.clone()
     }
 }
