@@ -30,7 +30,8 @@ fn _init_local_ip(addr: &str) -> Result<()> {
 pub fn init_local_ip(addr: &str) {
     if let Err(e) = _init_local_ip(addr) {
         log::info!(
-            "metrics: dynamic local ip init failed, use {:?} as local ip. err:{:?}",
+            "local ip init failed by connecting to {}, use {:?} as local ip. err:{:?}",
+            addr,
             LOCAL_IP_STATIC.to_owned(),
             e
         );
