@@ -16,13 +16,13 @@ pub(crate) fn local_ip() -> &'static String {
 }
 
 use std::io::Result;
-// use std::net::TcpStream;
-use local_ipaddress;
+use std::net::TcpStream;
+// use local_ipaddress;
 
 fn _init_local_ip(addr: &str) -> Result<()> {
-    // let local = encode_addr(&(TcpStream::connect(addr)?.local_addr()?.ip().to_string()));
+    let local = encode_addr(&(TcpStream::connect(addr)?.local_addr()?.ip().to_string()));
 
-    let local = encode_addr(&local_ipaddress::get().unwrap());
+    // let local = encode_addr(&local_ipaddress::get().unwrap());
     log::info!("metrics: local ip inited:{}", local);
     let _ = LOCAL_IP_BY_CONNECT.set(local);
     Ok(())
