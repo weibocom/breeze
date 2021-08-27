@@ -74,7 +74,7 @@ impl Context {
     pub fn listeners(&self) -> ListenerIter {
         ListenerIter {
             path: self.service_path.to_string(),
-            listened: Default::default(),
+            processed: Default::default(),
             snapshot: self.snapshot.to_string(),
         }
     }
@@ -91,7 +91,7 @@ impl Context {
 
 use std::collections::HashMap;
 pub struct ListenerIter {
-    listened: HashMap<String, ()>,
+    processed: HashMap<String, ()>,
     path: String,
     snapshot: String,
 }
@@ -103,13 +103,13 @@ impl ListenerIter {
     pub async fn scan(&mut self) -> Result<Vec<Quadruple>> {
         let mut listeners = vec![];
         for name in self.read_all().await?.iter() {
-            if self.listened.contains_key(name) {
+            if self.processed.contains_key(name) {
                 continue;
             }
             if let Some(one) = Quadruple::parse(name, &self.snapshot) {
                 listeners.push(one);
-                self.listened.insert(name.to_string(), ());
             }
+            self.processed.insert(name.to_string(), ());
         }
         Ok(listeners)
     }
