@@ -7,8 +7,10 @@ pub use topology::Topology;
 use discovery::ServiceDiscover;
 use stream::backend::AddressEnable;
 
+use std::collections::HashMap;
+
 use stream::{
-    AsyncGetSync, AsyncMultiGet, AsyncMultiGetSharding, AsyncOperation, AsyncRoute, AsyncSetSync,
+    AsyncGetSync, AsyncMultiGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync,
     AsyncSharding, MetaStream,
 };
 
@@ -37,7 +39,7 @@ type Operation<P> =
 // 第二级按key进行hash
 // 第三级进行pipeline与server进行交互
 pub struct CacheService<P> {
-    inner: AsyncRoute<Operation<P>, P>,
+    inner: AsyncOpRoute<Operation<P>>,
 }
 
 impl<P> CacheService<P> {
@@ -128,7 +130,12 @@ impl<P> CacheService<P> {
         let all_instances = topo.meta();
 
         let meta = AsyncOperation::Meta(MetaStream::from(parser.clone(), all_instances));
-        let op_stream = AsyncRoute::from(vec![get, get_multi, store, meta], parser.clone());
+        let mut operations = HashMap::with_capacity(4);
+        operations.insert(protocol::Operation::Get, get);
+        operations.insert(protocol::Operation::Gets, get_multi);
+        operations.insert(protocol::Operation::Store, store);
+        operations.insert(protocol::Operation::Meta, meta);
+        let op_stream = AsyncOpRoute::from(operations);
 
         Ok(Self { inner: op_stream })
     }
