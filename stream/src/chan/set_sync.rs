@@ -21,8 +21,6 @@ pub struct AsyncSetSync<M, F, P> {
     f_idx: usize,
     parser: P,
     noreply: Option<Request>,
-    // noreply请求会重新分配内存，这段内存在当前poll_next返回之前不能释放。
-    noreply_data: Option<Vec<u8>>,
 }
 
 impl<M, F, P> AsyncSetSync<M, F, P> {
@@ -34,7 +32,6 @@ impl<M, F, P> AsyncSetSync<M, F, P> {
             f_idx: 0,
             parser: parser,
             noreply: None,
-            noreply_data: None,
         }
     }
 }
@@ -53,9 +50,8 @@ where
             me.master_done = true;
             if me.followers.len() > 0 {
                 let data = me.parser.with_noreply(buf);
-                let mut noreply = Request::from_request(&data, buf);
+                let mut noreply = Request::from_request(data, buf);
                 noreply.set_noreply();
-                me.noreply_data = Some(data);
                 me.noreply = Some(noreply);
             }
         }
@@ -87,7 +83,6 @@ where
         me.f_idx = 0;
         me.master_done = false;
         me.noreply.take();
-        me.noreply_data.take();
 
         Poll::Ready(Ok(response))
     }
