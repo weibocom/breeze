@@ -48,6 +48,9 @@ pub struct Context {
         default_value("10.10.10.10:53")
     )]
     pub metrics_probe: String,
+
+    #[clap(long, about("log level. debug|info|warn|error"), default_value("info"))]
+    pub log_level: String,
 }
 
 impl Context {
