@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
     ctx.check()?;
 
     let _l = listener_for_supervisor(ctx.port()).await?;
-    elog::init(ctx.log_dir())?;
+    elog::init(ctx.log_dir(), &ctx.log_level)?;
 
     metrics::init(&ctx.metrics_url());
     metrics::init_local_ip(&ctx.metrics_probe);
@@ -87,7 +87,6 @@ async fn process_one_service(
         top,
     ));
 
-    
     let r_type = quard.protocol();
     let biz = quard.biz();
     let metric_id = metrics::register_name(r_type + "." + &metrics::encode_addr(&biz));
