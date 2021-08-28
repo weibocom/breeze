@@ -89,32 +89,17 @@ impl MemcacheBinary {
 }
 
 impl Protocol for MemcacheBinary {
+    // 当前请求必须不是noreply的
     #[inline]
-    // 如果当前请求已经是noreply了，则直接clone。
-    // 否则把数据复制出来，再更改op_code
-    fn copy_noreply(&self, req: &Request) -> Request {
-        let data = req.data();
-        debug_assert!(data.len() >= HEADER_LEN);
-        if req.noreply() {
-            req.clone()
-        } else {
-            let noreply = self._noreply(data);
-            if noreply {
-                let mut new = req.clone();
-                new.set_noreply();
-                new
-            } else {
-                let mut v = vec![0u8; data.len()];
-                use std::ptr::copy_nonoverlapping as copy;
-                unsafe {
-                    copy(data.as_ptr(), v.as_mut_ptr(), data.len());
-                }
-                v[1] = NOREPLY_MAPPING[data[1] as usize];
-                let mut new = Request::from_vec(v, req.id());
-                new.set_noreply();
-                new
-            }
+    fn with_noreply(&self, req: &[u8]) -> Vec<u8> {
+        debug_assert_eq!(self._noreply(req), false);
+        let mut v = vec![0u8; req.len()];
+        use std::ptr::copy_nonoverlapping as copy;
+        unsafe {
+            copy(req.as_ptr(), v.as_mut_ptr(), req.len());
         }
+        v[1] = NOREPLY_MAPPING[req[1] as usize];
+        v
     }
     #[inline(always)]
     fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)> {

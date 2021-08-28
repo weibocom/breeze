@@ -4,8 +4,6 @@ use ds::Slice;
 
 pub const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 
-use std::sync::Arc;
-
 #[derive(Default, Clone)]
 pub struct Request {
     // TODO just for debug
@@ -13,8 +11,6 @@ pub struct Request {
     id: RequestId,
     // 是否需要返回结果
     noreply: bool,
-
-    _data: Arc<Vec<u8>>,
 }
 
 impl Request {
@@ -24,16 +20,14 @@ impl Request {
             inner: Slice::from(data),
             id: id,
             noreply: false,
-            _data: Default::default(),
         }
     }
     #[inline(always)]
-    pub fn from_vec(data: Vec<u8>, id: RequestId) -> Self {
+    pub fn from_request(data: &[u8], req: &Request) -> Self {
         Self {
-            inner: Slice::from(&data),
-            id: id,
-            noreply: false,
-            _data: Arc::new(data),
+            inner: Slice::from(data),
+            id: req.id,
+            noreply: req.noreply,
         }
     }
     #[inline(always)]

@@ -22,8 +22,12 @@ pub trait Protocol: Unpin + Clone + 'static {
     // 一个请求在req中的第多少个字节结束。
     // req包含的是一个完整的请求。
     fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)>;
-    // 是否支持noreply请求
-    fn copy_noreply(&self, req: &Request) -> Request;
+    // req是一个完整的store类型的请求；
+    // 当前协议支持noreply
+    // 当前req不是noreply
+    fn with_noreply(&self, _req: &[u8]) -> Vec<u8> {
+        todo!("not supported")
+    }
     // 按照op来进行路由，通常用于读写分离
     fn op_route(&self, req: &[u8]) -> usize;
     #[inline(always)]
