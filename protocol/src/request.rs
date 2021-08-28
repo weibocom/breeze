@@ -4,6 +4,8 @@ use ds::Slice;
 
 pub const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 
+use std::sync::Arc;
+
 #[derive(Default, Clone)]
 pub struct Request {
     // TODO just for debug
@@ -11,6 +13,10 @@ pub struct Request {
     id: RequestId,
     // 是否需要返回结果
     noreply: bool,
+
+    // 如果内存是由Request管理的，则将data交由_data，避免copy成本。
+    // 如果不是，里面存储的是Vec::EMPTY，这个clone是零开销的，本身不占用内存。
+    _data: Arc<Vec<u8>>,
 }
 
 impl Request {
@@ -20,14 +26,16 @@ impl Request {
             inner: Slice::from(data),
             id: id,
             noreply: false,
+            _data: Default::default(),
         }
     }
     #[inline(always)]
-    pub fn from_request(data: &[u8], req: &Request) -> Self {
+    pub fn from_request(data: Vec<u8>, req: &Request) -> Self {
         Self {
-            inner: Slice::from(data),
+            inner: Slice::from(&data),
             id: req.id,
             noreply: req.noreply,
+            _data: Arc::new(data),
         }
     }
     #[inline(always)]
