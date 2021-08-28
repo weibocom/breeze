@@ -14,6 +14,7 @@ pub struct AsyncMultiGetSharding<S, P> {
     shards: Vec<S>,
     _parser: P,
     response: Option<Response>,
+    servers: String, // TODO 目前仅仅用于一致性分析，分析完毕之后可以清理 fishermen
     err: Option<Error>,
 }
 
@@ -21,16 +22,28 @@ use std::io::{Error, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use crate::backend::AddressEnable;
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 use protocol::Protocol;
 
-impl<S, P> AsyncMultiGetSharding<S, P> {
+impl<S, P> AsyncMultiGetSharding<S, P>
+where
+    S: AddressEnable,
+{
     pub fn from_shard(shards: Vec<S>, p: P) -> Self {
+        let mut servers = String::from("{");
+        for s in &shards {
+            servers += s.get_address().as_str();
+            servers += ",";
+        }
+        servers += "}";
+
         Self {
             statuses: vec![Status::Init; shards.len()],
             shards: shards,
             _parser: p,
             response: None,
+            servers,
             err: None,
         }
     }
@@ -112,6 +125,12 @@ where
                 .map(|item| Poll::Ready(Ok(item)))
                 .unwrap_or_else(|| Poll::Ready(Err(me.err.take().unwrap())))
         }
+    }
+}
+
+impl<S, P> AddressEnable for AsyncMultiGetSharding<S, P> {
+    fn get_address(&self) -> String {
+        self.servers.clone()
     }
 }
 
