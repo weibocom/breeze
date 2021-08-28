@@ -1,3 +1,4 @@
+use crate::Operation;
 /// Request对象在从stream::io::Client::poll_next生成，
 /// 同一个连接，在下一次调用该方法前，Request的内存不会被释放，不会被覆盖，是安全的
 use ds::Slice;
@@ -8,11 +9,11 @@ use std::sync::Arc;
 
 #[derive(Default, Clone)]
 pub struct Request {
+    noreply: bool,
+    op: Operation,
     // TODO just for debug
     pub inner: Slice,
     id: RequestId,
-    // 是否需要返回结果
-    noreply: bool,
 
     // 如果内存是由Request管理的，则将data交由_data，避免copy成本。
     // 如果不是，里面存储的是Vec::EMPTY，这个clone是零开销的，本身不占用内存。
@@ -21,12 +22,19 @@ pub struct Request {
 
 impl Request {
     #[inline(always)]
+    pub fn new(data: &[u8], op: Operation) -> Self {
+        Self {
+            inner: Slice::from(data),
+            op: op,
+            ..Default::default()
+        }
+    }
+    #[inline(always)]
     pub fn from(data: &[u8], id: RequestId) -> Self {
         Self {
             inner: Slice::from(data),
             id: id,
-            noreply: false,
-            _data: Default::default(),
+            ..Default::default()
         }
     }
     #[inline(always)]
@@ -36,7 +44,12 @@ impl Request {
             id: req.id,
             noreply: req.noreply,
             _data: Arc::new(data),
+            op: req.op,
         }
+    }
+    #[inline(always)]
+    pub fn operation(&self) -> Operation {
+        self.op
     }
     #[inline(always)]
     pub fn id(&self) -> RequestId {
@@ -53,6 +66,10 @@ impl Request {
     #[inline(always)]
     pub fn data(&self) -> &[u8] {
         return self.inner.data();
+    }
+    #[inline(always)]
+    pub fn set_request_id(&mut self, id: RequestId) {
+        self.id = id;
     }
 }
 

@@ -64,23 +64,24 @@ impl MemcacheBinary {
         MULT_GETS[op_code as usize] == 1
     }
     #[inline]
-    fn _probe_request(&self, req: &[u8]) -> (bool, usize) {
+    fn _probe_request(&self, req: &[u8]) -> Option<Request> {
+        let op = self.operation(req);
         let mut read = 0usize;
         while read + HEADER_LEN <= req.len() {
             // 当前请求的body
             let total = body_len(&req[read as usize..]) as usize + HEADER_LEN;
             if read as usize + total > req.len() {
-                return (false, req.len());
+                return None;
             }
             let op_code = req[read + 1];
             read += total;
             // getMulti的姿势On(quite-cmd) + O1(non-quite-cmd)，最后通常一个noop请求或者getk等 非quite请求 结尾
             if !self.is_multi_get_quite_op(op_code) {
                 let pos = read;
-                return (true, pos);
+                return Some(Request::new(&req[0..pos], op));
             }
         }
-        (false, req.len())
+        None
     }
     #[inline(always)]
     fn _noreply(&self, req: &[u8]) -> bool {
@@ -102,7 +103,7 @@ impl Protocol for MemcacheBinary {
         v
     }
     #[inline(always)]
-    fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)> {
+    fn parse_request(&self, req: &[u8]) -> Result<Option<Request>> {
         //debug_assert!(req.len() >= self.min_size());
         if req[PacketPos::Magic as usize] != REQUEST_MAGIC {
             Err(Error::new(
@@ -111,10 +112,9 @@ impl Protocol for MemcacheBinary {
             ))
         } else {
             if req.len() < HEADER_LEN {
-                return Ok((false, req.len()));
+                return Ok(None);
             }
-            let (done, n) = self._probe_request(req);
-            Ok((done, n))
+            Ok(self._probe_request(req))
         }
     }
 
