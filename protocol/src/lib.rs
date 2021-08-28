@@ -28,12 +28,11 @@ pub trait Protocol: Unpin + Clone + 'static {
     fn with_noreply(&self, _req: &[u8]) -> Vec<u8> {
         todo!("not supported")
     }
-    // 按照op来进行路由，通常用于读写分离
-    fn op_route(&self, req: &[u8]) -> usize;
-    #[inline(always)]
-    fn operation(&self, req: &[u8]) -> Operation {
-        self.op_route(req).into()
-    }
+    //fn op_route(&self, req: &[u8]) -> usize;
+    //#[inline(always)]
+    //fn operation(&self, req: &[u8]) -> Operation {
+    //    self.op_route(req).into()
+    //}
     // 调用方必须确保req包含key，否则可能会panic
     fn meta_type(&self, req: &[u8]) -> MetaType;
     fn key<'a>(&self, req: &'a [u8]) -> &'a [u8];
@@ -80,8 +79,9 @@ pub enum MetaType {
     Version,
 }
 
+pub const OPERATION_NUM: usize = 4;
 #[repr(u8)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Operation {
     Get = 0u8,
     Gets,
@@ -111,11 +111,26 @@ impl From<usize> for Operation {
         }
     }
 }
+
+impl PartialEq for Operation {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        *self as u8 == *other as u8
+    }
+}
+impl Eq for Operation {}
 const OP_NAMES: [&'static str; 5] = ["get", "mget", "store", "meta", "other"];
 impl Operation {
     #[inline(always)]
     pub fn name(&self) -> &'static str {
         OP_NAMES[*self as u8 as usize]
+    }
+}
+use std::hash::{Hash, Hasher};
+impl Hash for Operation {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (*self as u8).hash(state)
     }
 }
 

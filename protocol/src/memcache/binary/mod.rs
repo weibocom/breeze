@@ -65,7 +65,7 @@ impl MemcacheBinary {
     }
     #[inline]
     fn _probe_request(&self, req: &[u8]) -> Option<Request> {
-        let op = self.operation(req);
+        let op = self.op_route(req).into();
         let mut read = 0usize;
         while read + HEADER_LEN <= req.len() {
             // 当前请求的body
@@ -86,6 +86,12 @@ impl MemcacheBinary {
     #[inline(always)]
     fn _noreply(&self, req: &[u8]) -> bool {
         req[1] == NOREPLY_MAPPING[req[1] as usize]
+    }
+    // 调用方确保req是一个完整的mc的请求包。
+    // 第二个字节是op_code。
+    #[inline]
+    fn op_route(&self, req: &[u8]) -> usize {
+        COMMAND_IDX[req[1] as usize] as usize
     }
 }
 
@@ -118,12 +124,6 @@ impl Protocol for MemcacheBinary {
         }
     }
 
-    // 调用方确保req是一个完整的mc的请求包。
-    // 第二个字节是op_code。
-    #[inline]
-    fn op_route(&self, req: &[u8]) -> usize {
-        COMMAND_IDX[req[1] as usize] as usize
-    }
     fn meta_type(&self, _req: &[u8]) -> MetaType {
         MetaType::Version
     }

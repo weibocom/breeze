@@ -15,5 +15,5 @@ pub use multi_get_sharding::AsyncMultiGetSharding;
 pub use operation::AsyncOperation;
 //pub use pipeline::PipeToPingPongChanWrite;
 pub use self::sharding::AsyncSharding;
-pub use route::AsyncRoute;
+pub use route::AsyncOpRoute;
 pub use set_sync::AsyncSetSync;
