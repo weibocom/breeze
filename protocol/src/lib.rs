@@ -21,7 +21,7 @@ pub trait Protocol: Unpin + Clone + 'static {
     // 当前请求是否结束。
     // 一个请求在req中的第多少个字节结束。
     // req包含的是一个完整的请求。
-    fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)>;
+    fn parse_request(&self, buf: &[u8]) -> Result<Option<Request>>;
     // req是一个完整的store类型的请求；
     // 当前协议支持noreply
     // 当前req不是noreply
@@ -88,6 +88,13 @@ pub enum Operation {
     Store,
     Meta,
     Other,
+}
+
+impl Default for Operation {
+    #[inline(always)]
+    fn default() -> Self {
+        Operation::Other
+    }
 }
 
 use Operation::*;

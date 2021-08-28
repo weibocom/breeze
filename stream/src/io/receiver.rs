@@ -15,8 +15,7 @@ pub(super) struct Receiver {
     w: usize, // 当前buffer写入的位置
     cap: usize,
     buff: Vec<u8>,
-    parsed: bool,
-    idx: usize,
+    req: Option<Request>,
 }
 
 impl Receiver {
@@ -27,8 +26,7 @@ impl Receiver {
             w: 0,
             cap: init_cap,
             r: 0,
-            parsed: false,
-            idx: 0,
+            req: None,
         }
     }
     #[inline(always)]
@@ -36,9 +34,7 @@ impl Receiver {
         if self.w == self.r {
             self.r = 0;
             self.w = 0;
-            self.idx = 0;
         }
-        self.parsed = false;
     }
     // 返回当前请求的size，以及请求的类型。
     pub fn poll_copy_one<R, W, P>(
@@ -55,16 +51,11 @@ impl Receiver {
         P: Protocol + Unpin,
         W: AsyncWriteAll + ?Sized,
     {
-        log::debug!("r:{} idx:{} w:{} ", self.r, self.idx, self.w);
-        while !self.parsed {
+        log::debug!("r:{} w:{} ", self.r, self.w);
+        while self.req.is_none() {
             if self.w > self.r {
-                let (parsed, n) = parser.parse_request(&self.buff[self.r..self.w])?;
-                self.parsed = parsed;
-                self.idx = self.r + n;
-
-                if self.parsed {
-                    let op = parser.operation(&self.buff[self.r..self.idx]);
-                    metric.req_done(op, self.idx - self.r);
+                self.req = parser.parse_request(&self.buff[self.r..self.w])?;
+                if self.req.is_some() {
                     break;
                 }
             }
@@ -86,12 +77,16 @@ impl Receiver {
             metric.req_received(read);
             log::debug!("{} bytes received.{}", read, rid);
         }
-        let req = Request::from(&self.buff[self.r..self.idx], *rid);
-
-        log::debug!("parsed: {}=>{} {}", self.r, self.idx, rid);
-        ready!(writer.as_mut().poll_write(cx, &req))?;
-        self.r += req.len();
+        // 到这req一定存在，不用take+unwrap是为了在出现pending的时候，不重新insert
+        if let Some(ref mut req) = self.req {
+            req.set_request_id(*rid);
+            metric.req_done(req.operation(), req.len());
+            log::debug!("parsed: {}=>{} {}", self.r, req.len(), rid);
+            ready!(writer.as_mut().poll_write(cx, &req))?;
+            self.r += req.len();
+        }
         self.reset();
+        self.req.take();
         Poll::Ready(Ok(()))
     }
 
@@ -104,7 +99,7 @@ impl Receiver {
             return Ok(());
         }
         if self.r == self.w {
-            log::info!("extends r == w. r:{} idx:{} w:{}", self.r, self.idx, self.w);
+            log::info!("extends r == w. r:{} w:{}", self.r, self.w);
             self.reset();
             return Ok(());
         }
@@ -120,7 +115,7 @@ impl Receiver {
         debug_assert!(self.r > 0);
         // 有可能是因为pipeline，所以上一次request结束后，可能还有未处理的请求数据
         // 把[r..w]的数据copy到最0位置
-        log::info!("move: r:{} idx:{} w:{} ", self.r, self.idx, self.w);
+        log::info!("move: r:{} w:{} ", self.r, self.w);
         use std::ptr::copy;
         let len = self.w - self.r;
         debug_assert!(len > 0);
@@ -131,16 +126,14 @@ impl Receiver {
                 len,
             );
         }
-        self.idx = 0;
         self.r = 0;
         self.w = len;
     }
     #[inline]
     fn extend(&mut self) -> Result<()> {
         log::info!(
-            "extend: r:{} idx:{} w:{} cap: from {} to {}",
+            "extend: r:{} w:{} cap: from {} to {}",
             self.r,
-            self.idx,
             self.w,
             self.cap,
             2 * self.cap,
