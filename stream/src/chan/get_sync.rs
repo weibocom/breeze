@@ -5,6 +5,7 @@ use std::io::{self, Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use crate::backend::AddressEnable;
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 use futures::ready;
 use protocol::Protocol;
@@ -21,7 +22,10 @@ pub struct AsyncGetSync<R, P> {
     err: Option<Error>,
 }
 
-impl<R, P> AsyncGetSync<R, P> {
+impl<R, P> AsyncGetSync<R, P>
+where
+    R: AddressEnable,
+{
     pub fn from(layers: Vec<R>, p: P) -> Self {
         AsyncGetSync {
             idx: 0,
@@ -89,7 +93,7 @@ where
 
 impl<R, P> AsyncReadAll for AsyncGetSync<R, P>
 where
-    R: AsyncReadAll + AsyncWriteAll + Unpin,
+    R: AsyncReadAll + AsyncWriteAll + AddressEnable + Unpin,
     P: Unpin + Protocol,
 {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Response>> {
@@ -101,10 +105,16 @@ where
         while me.idx < me.layers.len() {
             //for each
             let reader = unsafe { me.layers.get_unchecked_mut(me.idx) };
+            let servers = reader.get_address();
             match ready!(Pin::new(reader).poll_next(cx)) {
                 Ok(item) => {
                     // 请求命中，返回ok及消息长度；
                     if me.parser.response_found(&item) {
+                        // TODO 一致性分析需要，此处打印key及服务ip
+                        let key_data = me.parser.key(me.req.data());
+                        let key = String::from_utf8_lossy(key_data).to_string();
+                        log::info!("key: {}, mc: {}", key, servers);
+
                         self.empty_resp.take();
                         self.reset();
                         return Poll::Ready(Ok(item));
