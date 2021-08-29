@@ -112,7 +112,7 @@ where
                     found_keys = me.parser.keys_response(item.iter());
                     // TODO 一致性分析需要，在这里打印key及servers
                     if found_keys.len() > 0 {
-                        log::info!("gets keys:{:?}, servers: {}", found_keys, servers);
+                        log::debug!("gets keys:{:?}, servers: {}", found_keys, servers);
                     }
 
                     match me.response.as_mut() {
