@@ -1,7 +1,6 @@
 use super::RingBufferStream;
 use ds::RingSlice;
-use ds::Slice;
-use protocol::{Protocol, RequestId};
+use protocol::RequestId;
 
 use std::sync::Arc;
 
@@ -56,24 +55,27 @@ impl Response {
     pub fn append(&mut self, other: Response) {
         self.items.extend(other.items);
     }
+    pub(crate) fn into_items(self) -> Vec<Item> {
+        self.items
+    }
 
-    pub(crate) fn into_reader<P: Protocol>(mut self, parser: &P) -> ResponseReader<'_, P> {
-        // 设置每个item的待trim tail的size
-        let tail_trim_lens = self.trim_unnessary_tail(parser);
-        ResponseReader {
-            idx: 0,
-            items: self.items,
-            tail_trim_lens: tail_trim_lens,
-            parser: parser,
-        }
-    }
-    pub fn len(&self) -> usize {
-        let mut l = 0;
-        for item in self.items.iter() {
-            l += item.available();
-        }
-        l
-    }
+    //pub(crate) fn into_reader<P: Protocol>(mut self, parser: &P) -> ResponseReader<'_, P> {
+    //    // 设置每个item的待trim tail的size
+    //    let tail_trim_lens = self.trim_unnessary_tail(parser);
+    //    ResponseReader {
+    //        idx: 0,
+    //        items: self.items,
+    //        tail_trim_lens: tail_trim_lens,
+    //        parser: parser,
+    //    }
+    //}
+    //pub fn len(&self) -> usize {
+    //    let mut l = 0;
+    //    for item in self.items.iter() {
+    //        l += item.len();
+    //    }
+    //    l
+    //}
     pub fn iter(&self) -> ResponseRingSliceIter {
         ResponseRingSliceIter {
             response: self,
@@ -81,24 +83,24 @@ impl Response {
         }
     }
     // 除了最后一个item，前面所有的item需要进行tail trim，当前仅适用于getMulti
-    fn trim_unnessary_tail<P: Protocol>(&mut self, parser: &P) -> Vec<usize> {
-        // 最后一个item需要保留tail
-        let mut tail_trim_lens = Vec::with_capacity(self.items.len());
-        for i in 0..(self.items.len() - 1) {
-            let item = self.items.get_mut(i).unwrap();
-            // 其他item需要trim掉tail
-            let avail = item.available();
-            let tail_size = parser.trim_tail(&item);
-            assert!(avail > 0);
-            debug_assert!(avail >= tail_size);
-            tail_trim_lens.push(tail_size);
-        }
+    //fn trim_unnessary_tail<P: Protocol>(&mut self, parser: &P) -> Vec<usize> {
+    //    // 最后一个item需要保留tail
+    //    let mut tail_trim_lens = Vec::with_capacity(self.items.len());
+    //    for i in 0..(self.items.len() - 1) {
+    //        let item = self.items.get_mut(i).unwrap();
+    //        // 其他item需要trim掉tail
+    //        let avail = item.len();
+    //        let tail_size = parser.trim_tail(&item);
+    //        assert!(avail > 0);
+    //        debug_assert!(avail >= tail_size);
+    //        tail_trim_lens.push(tail_size);
+    //    }
 
-        // 最后一个item的tail不处理
-        tail_trim_lens.push(0);
-        log::debug!("trim_len: {:?}", tail_trim_lens);
-        tail_trim_lens
-    }
+    //    // 最后一个item的tail不处理
+    //    tail_trim_lens.push(0);
+    //    log::debug!("trim_len: {:?}", tail_trim_lens);
+    //    tail_trim_lens
+    //}
 }
 
 pub struct ResponseRingSliceIter<'a> {
@@ -159,42 +161,44 @@ impl DerefMut for Item {
     }
 }
 
-pub(crate) struct ResponseReader<'a, P> {
-    idx: usize,
-    items: Vec<Item>,
-    tail_trim_lens: Vec<usize>,
-    // TODO 之前用于parse，暂时保留，后续确定不用时，清理
-    #[allow(dead_code)]
-    parser: &'a P,
-}
-
-impl<'a, P> Iterator for ResponseReader<'a, P>
-where
-    P: Protocol,
-{
-    type Item = Slice;
-    fn next(&mut self) -> Option<Self::Item> {
-        debug_assert_eq!(self.items.len(), self.tail_trim_lens.len());
-
-        let len = self.items.len();
-        while self.idx < len {
-            let item = unsafe { self.items.get_unchecked_mut(self.idx) };
-            let avail = item.available();
-            let trim_len = *self.tail_trim_lens.get(self.idx).unwrap();
-            if avail > trim_len {
-                if trim_len > 0 {
-                    let mut data = item.take_slice();
-                    // 剩下的不够trim，trim本次的data
-                    if item.available() < trim_len {
-                        data.backwards(trim_len - item.available());
-                        return Some(data);
-                    }
-                    return Some(data);
-                }
-                return Some(item.take_slice());
-            }
-            self.idx += 1;
-        }
-        None
-    }
-}
+//pub(crate) struct ResponseReader<'a, P> {
+//    idx: usize,
+//    items: Vec<Item>,
+//    tail_trim_lens: Vec<usize>,
+//    // TODO 之前用于parse，暂时保留，后续确定不用时，清理
+//    #[allow(dead_code)]
+//    parser: &'a P,
+//}
+//
+//impl<'a, P> Iterator for ResponseReader<'a, P>
+//where
+//    P: Protocol,
+//{
+//    type Item = Slice;
+//    fn next(&mut self) -> Option<Self::Item> {
+//        debug_assert_eq!(self.items.len(), self.tail_trim_lens.len());
+//
+//        let len = self.items.len();
+//        while self.idx < len {
+//            let item = unsafe { self.items.get_unchecked_mut(self.idx) };
+//            let avail = item.len();
+//            let trim_len = *self.tail_trim_lens.get(self.idx).unwrap();
+//            if avail > trim_len {
+//                if trim_len > 0 {
+//                    let mut data = item.take_slice();
+//                    // 剩下的不够trim，trim本次的data
+//                    if item.available() < trim_len {
+//                        data.backwards(trim_len - item.available());
+//                        return Some(data);
+//                    }
+//                    return Some(data);
+//                }
+//                return Some(item.take_slice());
+//            }
+//            self.idx += 1;
+//        }
+//        None
+//    }
+//}
+//
+//pub struct TrimItem<'a>(usize, &'a RingSlice);

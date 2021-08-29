@@ -9,7 +9,6 @@ pub struct RingSlice {
     ptr: *mut u8,
     cap: usize,
     start: usize,
-    offset: usize,
     end: usize,
 }
 
@@ -18,7 +17,6 @@ impl Default for RingSlice {
         RingSlice {
             ptr: 0 as *mut u8,
             start: 0,
-            offset: 0,
             end: 0,
             cap: 0,
         }
@@ -36,7 +34,6 @@ impl RingSlice {
             ptr: ptr,
             cap: cap,
             start: start,
-            offset: start,
             end: end,
         }
     }
@@ -47,41 +44,55 @@ impl RingSlice {
         Self::from(
             self.ptr,
             self.cap,
-            self.offset + offset,
-            self.offset + offset + len,
+            self.start + offset,
+            self.start + offset + len,
         )
     }
     #[inline(always)]
+    pub fn as_slices(&self) -> Vec<Slice> {
+        let mut slices = Vec::with_capacity(2);
+
+        let mut read = self.start;
+        while read < self.end {
+            let oft = read & (self.cap - 1);
+            let l = (self.cap - oft).min(self.end - read);
+            slices.push(unsafe { Slice::new(self.ptr.offset(oft as isize) as usize, l) });
+            read += l;
+        }
+
+        slices
+    }
+    //#[inline(always)]
     pub fn resize(&mut self, num: usize) {
         debug_assert!(self.len() >= num);
         self.end = self.start + num;
     }
 
-    #[inline(always)]
-    pub fn take_slice(&mut self) -> Slice {
-        debug_assert!(self.cap > 0);
-        let s = self.next_slice();
-        self.advance(s.len());
-        s
-    }
+    //#[inline(always)]
+    //pub fn take_slice(&mut self) -> Slice {
+    //    debug_assert!(self.cap > 0);
+    //    let s = self.next_slice();
+    //    self.advance(s.len());
+    //    s
+    //}
 
-    #[inline(always)]
-    fn next_slice(&self) -> Slice {
-        debug_assert!(self.cap > 0);
-        let oft = self.offset & (self.cap - 1);
-        let l = (self.cap - oft).min(self.available());
-        unsafe { Slice::new(self.ptr.offset(oft as isize) as usize, l) }
-    }
-    #[inline(always)]
-    fn advance(&mut self, n: usize) {
-        debug_assert!(self.offset + n <= self.end);
-        self.offset += n;
-    }
+    //#[inline(always)]
+    //fn next_slice(&self) -> Slice {
+    //    debug_assert!(self.cap > 0);
+    //    let oft = self.offset & (self.cap - 1);
+    //    let l = (self.cap - oft).min(self.available());
+    //    unsafe { Slice::new(self.ptr.offset(oft as isize) as usize, l) }
+    //}
+    //#[inline(always)]
+    //fn advance(&mut self, n: usize) {
+    //    debug_assert!(self.offset + n <= self.end);
+    //    self.offset += n;
+    //}
 
     // 从offset读取len个字节
     pub fn read_bytes(&self, offset: usize, len: usize) -> String {
-        debug_assert!(self.available() >= offset + len);
-        let oft_start = (self.offset + offset) & (self.cap - 1);
+        debug_assert!(self.len() >= offset + len);
+        let oft_start = (self.start + offset) & (self.cap - 1);
         let oft_end = self.end & (self.cap - 1);
 
         if oft_end > oft_start || self.cap >= oft_start + len {
@@ -110,10 +121,10 @@ impl RingSlice {
         unsafe { from_raw_parts(self.ptr, self.cap) }
     }
 
-    #[inline(always)]
-    pub fn available(&self) -> usize {
-        self.end - self.offset
-    }
+    //#[inline(always)]
+    //pub fn available(&self) -> usize {
+    //    self.end - self.offset
+    //}
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.end - self.start
@@ -124,14 +135,14 @@ impl RingSlice {
         unsafe {
             *self
                 .ptr
-                .offset(((self.offset + idx) & (self.cap - 1)) as isize)
+                .offset(((self.start + idx) & (self.cap - 1)) as isize)
         }
     }
 
     // TODO 这里self不设为mut，否则会造成一系列震荡，但一定要特别注意unsafe里面的逻辑  fishermen
     pub fn update_byte(&self, idx: usize, new_value: u8) {
         debug_assert!(idx < self.len());
-        let pos = (self.offset + idx) & (self.cap - 1);
+        let pos = (self.start + idx) & (self.cap - 1);
         unsafe {
             *self.ptr.offset(pos as isize) = new_value;
         }
@@ -171,9 +182,9 @@ macro_rules! define_read_number {
     ($fn_name:ident, $type_name:tt) => {
         pub fn $fn_name(&self, offset: usize) -> $type_name {
             const SIZE: usize = std::mem::size_of::<$type_name>();
-            debug_assert!(self.available() >= offset + SIZE);
+            debug_assert!(self.len() >= offset + SIZE);
             unsafe {
-                let oft_start = (self.offset + offset) & (self.cap - 1);
+                let oft_start = (self.start + offset) & (self.cap - 1);
                 let oft_end = self.end & (self.cap - 1);
                 if oft_end > oft_start || self.cap >= oft_start + SIZE {
                     let b = from_raw_parts(self.ptr.offset(oft_start as isize), SIZE);
