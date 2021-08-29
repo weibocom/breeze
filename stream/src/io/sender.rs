@@ -1,5 +1,6 @@
 use crate::{AsyncReadAll, Response};
 
+use ds::RingSlice;
 use protocol::{Protocol, RequestId};
 
 use futures::ready;
@@ -87,11 +88,29 @@ impl Sender {
     where
         P: Protocol,
     {
-        for slice in response.into_reader(parser) {
-            self.put_slice(slice.data());
+        let items = response.into_items();
+        debug_assert!(items.len() > 0);
+        for i in 0..items.len() - 1 {
+            let rs = unsafe { items.get_unchecked(i) };
+            let trim = parser.trim_tail(rs);
+            self.put_ring_slice(rs, trim);
+        }
+        let last = unsafe { items.get_unchecked(items.len() - 1) };
+        self.put_ring_slice(last, 0);
+    }
+    #[inline(always)]
+    fn put_ring_slice<E: AsRef<RingSlice>>(&mut self, slice: E, trim: usize) {
+        let rs = slice.as_ref();
+        if rs.len() > trim {
+            for b in rs.as_slices() {
+                self.put_slice(b.data());
+            }
+            unsafe {
+                self.buff.set_len(self.buff.len() - trim);
+            }
         }
     }
-    #[inline]
+    #[inline(always)]
     fn put_slice(&mut self, b: &[u8]) {
         debug_assert!(b.len() > 0);
         self.buff.reserve(b.len());

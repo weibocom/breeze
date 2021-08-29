@@ -187,7 +187,7 @@ impl Protocol for MemcacheBinary {
     // 会一直持续到非quite response，才算结束，而非仅仅用noop判断，以应对getkq...getkq + getk的场景
     fn parse_response(&self, response: &RingSlice) -> (bool, usize) {
         let mut read = 0;
-        let avail = response.available();
+        let avail = response.len();
         loop {
             if avail < read + HEADER_LEN {
                 return (false, avail);
@@ -218,7 +218,7 @@ impl Protocol for MemcacheBinary {
     // 轮询response，找出本次查询到的keys，loop所在的位置
     fn scan_response_keys(&self, response: &RingSlice, keys: &mut Vec<String>) {
         let mut read = 0;
-        let avail = response.available();
+        let avail = response.len();
         loop {
             if avail < read + HEADER_LEN {
                 // 这种情况不应该出现

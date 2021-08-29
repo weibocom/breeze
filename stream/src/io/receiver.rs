@@ -20,7 +20,7 @@ pub(super) struct Receiver {
 
 impl Receiver {
     pub fn new() -> Self {
-        let init_cap = 2048usize;
+        let init_cap = 4 * 1024;
         Self {
             buff: vec![0; init_cap],
             w: 0,

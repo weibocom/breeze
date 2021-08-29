@@ -95,16 +95,13 @@ impl RingBuffer {
         new.read = self.read;
         new.processed = self.processed;
         new.write = self.read;
-        let mut old_data = self.data();
+        let old_data = self.data();
         use std::ptr::copy_nonoverlapping as copy;
-        loop {
-            let slice = old_data.take_slice();
-            if slice.len() == 0 {
-                break;
-            }
+        for slice in old_data.as_slices() {
             let mut offset = 0usize;
             while offset < slice.len() {
                 let dst = new.as_mut_bytes();
+                // 向ring-buffer写入slice数据的时候，可能会分段。
                 let count = dst.len().min(slice.len() - offset);
                 unsafe {
                     copy(

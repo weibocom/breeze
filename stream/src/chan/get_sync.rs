@@ -113,7 +113,7 @@ where
                         // TODO 一致性分析需要，此处打印key及服务ip
                         let key_data = me.parser.key(me.req.data());
                         let key = String::from_utf8_lossy(key_data).to_string();
-                        log::info!("key: {}, mc: {}", key, servers);
+                        log::debug!("key: {}, mc: {}", key, servers);
 
                         self.empty_resp.take();
                         self.reset();

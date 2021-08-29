@@ -9,23 +9,25 @@ mod tests_ds {
         let ptr = data.as_mut_ptr();
         std::mem::forget(data);
 
-        let mut in_range = RingSlice::from(ptr, cap, 0, 32);
-        let s = in_range.take_slice();
-        assert_eq!(in_range.available(), 0);
-        assert_eq!(s.data(), &dc[0..32]);
+        let in_range = RingSlice::from(ptr, cap, 0, 32);
+        let s = in_range.as_slices();
+        assert_eq!(in_range.len(), 32);
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].data(), &dc[0..32]);
 
         // 截止到末尾的
-        let mut end_range = RingSlice::from(ptr, cap, cap - 32, cap);
-        let s = end_range.take_slice();
-        assert_eq!(end_range.available(), 0);
-        assert_eq!(s.data(), &dc[cap - 32..cap]);
+        let end_range = RingSlice::from(ptr, cap, cap - 32, cap);
+        let s = end_range.as_slices();
+        assert_eq!(s.len(), 1);
+        assert_eq!(end_range.len(), 32);
+        assert_eq!(s[0].data(), &dc[cap - 32..cap]);
 
-        let mut over_range = RingSlice::from(ptr, cap, cap - 32, cap + 32);
-        let s1 = over_range.take_slice();
-        let s2 = over_range.take_slice();
-        assert_eq!(over_range.available(), 0);
-        assert_eq!(s1.data(), &dc[cap - 32..cap]);
-        assert_eq!(s2.data(), &dc[0..32]);
+        let over_range = RingSlice::from(ptr, cap, cap - 32, cap + 32);
+        let s = over_range.as_slices();
+        assert_eq!(over_range.len(), 64);
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0].data(), &dc[cap - 32..cap]);
+        assert_eq!(s[1].data(), &dc[0..32]);
 
         let u32_num = 111234567u32;
         let bytes = u32_num.to_be_bytes();
