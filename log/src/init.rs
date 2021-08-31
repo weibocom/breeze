@@ -1,9 +1,5 @@
 use elog::LevelFilter;
-use log4rs::{
-    append::file::FileAppender,
-    config::{Appender, Config, Root},
-    encode::pattern::PatternEncoder,
-};
+use log4rs::{append::rolling_file::{RollingFileAppender, policy::compound::{CompoundPolicy, roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger}}, config::{Appender, Config, Root}, encode::pattern::PatternEncoder};
 
 use std::io::{Error, ErrorKind, Result};
 use std::path::PathBuf;
@@ -12,11 +8,30 @@ pub fn init(path: &str) -> Result<()> {
     file.push(path);
     file.push("breeze.log");
 
-    let logfile = FileAppender::builder()
+    let mut gzfile = PathBuf::new();
+    gzfile.push(path);
+    gzfile.push("breeze.log.{}.gz");
+
+    const MAX_LOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+    const MAX_NUM_LOGS: u32 = 5;
+    let policy = Box::new(CompoundPolicy::new(
+        Box::new(SizeTrigger::new(MAX_LOG_SIZE)),
+        Box::new(
+            FixedWindowRoller::builder()
+                .base(0)
+                .build(
+                    gzfile.to_str()
+                    .ok_or_else(||Error::new(ErrorKind::InvalidData, format!("init log failed")))?,
+                    MAX_NUM_LOGS,
+                )
+                .map_err(|e| Error::new(ErrorKind::InvalidData, format!("init log failed:{:?}", e)))?,
+        ),
+    ));
+    let logfile = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
             "[breeze] {d} - {l} - {t} - {m}{n}",
         )))
-        .build(file)
+        .build(file, policy)
         .unwrap();
 
     let level = if cfg!(debug_assertions) {
