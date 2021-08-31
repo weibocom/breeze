@@ -36,11 +36,6 @@ pub struct Topology<P> {
     parser: P,
 }
 
-// 用来测试的一组配置, ip都是127.0.0.1
-// master port: 11211:11212
-// followers: 11213, 11214; 11215, 11216;
-// l1: 11213, 11214; 11215, 11216
-// 没有slave
 impl<P> Topology<P> {
     pub fn meta(&self) -> Vec<BackendStream> {
         self.metas
@@ -101,7 +96,11 @@ impl<P> Topology<P> {
                 log::warn!("empty layer in {:?}", self.layer_readers);
                 continue;
             }
-            let seq = self.l1_seq.fetch_add(1, Ordering::Acquire);
+            // 纯粹的按seq，可能出现某种场景，导致每次循环选择的group都是一样。
+            // 引入一个随机数，打破这种波动
+            let fluctuation: bool = rand::thread_rng().gen();
+            let delta = 1 + fluctuation as usize;
+            let seq = self.l1_seq.fetch_add(delta, Ordering::Acquire);
             let idx = seq % layer.len();
             let r = &layer[idx];
             if !readers.contains(r) {
@@ -109,7 +108,7 @@ impl<P> Topology<P> {
             }
         }
 
-        log::debug!("cs-topology: use random readers: {:?}", readers);
+        log::info!("cs-topology: use random readers: {:?}", readers);
         readers
     }
 
@@ -200,7 +199,7 @@ impl<P> Topology<P> {
             return;
         }
 
-        let c = 256;
+        let c = stream::MAX_CONNECTIONS;
         Self::delete_non_exists(&self.masters, &mut self.m_streams);
         Self::add_new(&p, &self.masters, &mut self.m_streams, c, namespace);
 
