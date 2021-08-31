@@ -1,100 +1,20 @@
 mod meta;
+use meta::*;
 
-use std::{
-    io::{Error, ErrorKind, Result},
-    usize,
-};
+use std::collections::HashMap;
+use std::io::{Error, ErrorKind, Result};
 
 use meta::PacketPos;
 
-pub const HEADER_LEN: usize = 24;
-
 use byteorder::{BigEndian, ByteOrder};
 
-use crate::{MetaType, Protocol, Request, RingSlice};
+use crate::{MetaType, Operation, Protocol, Request, Response};
 
-#[inline]
-pub fn body_len(header: &[u8]) -> u32 {
-    debug_assert!(header.len() >= 12);
-    BigEndian::read_u32(&header[PacketPos::TotalBodyLength as usize..])
-}
-// https://github.com/memcached/memcached/wiki/BinaryProtocolRevamped#command-opcodes
-// MC包含Get, Gets, Store, Meta四类命令，索引分别是0-3
-const COMMAND_IDX: [u8; 128] = [
-    0, 2, 2, 2, 2, 2, 2, 3, 3, 1, 1, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
-// OP_CODE对应的noreply code。
-const NOREPLY_MAPPING: [u8; 128] = [
-    0x09, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x09, 0x0a, 0x0b, 0x0d, 0x0d, 0x19, 0x1a,
-    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
-    0x30, 0x32, 0x32, 0x34, 0x34, 0x36, 0x36, 0x38, 0x38, 0x3a, 0x3a, 0x3c, 0x3c, 0x3d, 0x3e, 0x3f,
-    0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0,
-];
-
-const REQUEST_MAGIC: u8 = 0x80;
-const OP_CODE_NOOP: u8 = 0x0a;
-const OP_CODE_GETK: u8 = 0x0c;
-const OP_CODE_GETKQ: u8 = 0x0d;
-
-// 0x09: getq
-// 0x0d: getkq
-const MULT_GETS: [u8; 128] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+use ds::{RingSlice, Slice};
+use sharding::Sharding;
 
 #[derive(Clone)]
 pub struct MemcacheBinary;
-
-impl MemcacheBinary {
-    pub fn new() -> Self {
-        MemcacheBinary
-    }
-    // 需要应对gek个各种姿势： getkq...getkq + noop, getkq...getkq + getk，对于quite cmd，肯定是multiget的非结尾请求
-    #[inline(always)]
-    fn is_multi_get_quite_op(&self, op_code: u8) -> bool {
-        MULT_GETS[op_code as usize] == 1
-    }
-    #[inline]
-    fn _probe_request(&self, req: &[u8]) -> Option<Request> {
-        let op = self.op_route(req).into();
-        let mut read = 0usize;
-        while read + HEADER_LEN <= req.len() {
-            // 当前请求的body
-            let total = body_len(&req[read as usize..]) as usize + HEADER_LEN;
-            if read as usize + total > req.len() {
-                return None;
-            }
-            let op_code = req[read + 1];
-            read += total;
-            // getMulti的姿势On(quite-cmd) + O1(non-quite-cmd)，最后通常一个noop请求或者getk等 非quite请求 结尾
-            if !self.is_multi_get_quite_op(op_code) {
-                let pos = read;
-                return Some(Request::new(&req[0..pos], op));
-            }
-        }
-        None
-    }
-    #[inline(always)]
-    fn _noreply(&self, req: &[u8]) -> bool {
-        req[1] == NOREPLY_MAPPING[req[1] as usize]
-    }
-    // 调用方确保req是一个完整的mc的请求包。
-    // 第二个字节是op_code。
-    #[inline]
-    fn op_route(&self, req: &[u8]) -> usize {
-        COMMAND_IDX[req[1] as usize] as usize
-    }
-}
-
 impl Protocol for MemcacheBinary {
     // 当前请求必须不是noreply的
     #[inline]
@@ -110,7 +30,6 @@ impl Protocol for MemcacheBinary {
     }
     #[inline(always)]
     fn parse_request(&self, req: &[u8]) -> Result<Option<Request>> {
-        //debug_assert!(req.len() >= self.min_size());
         if req[PacketPos::Magic as usize] != REQUEST_MAGIC {
             Err(Error::new(
                 ErrorKind::InvalidData,
@@ -123,186 +42,274 @@ impl Protocol for MemcacheBinary {
             Ok(self._probe_request(req))
         }
     }
+    #[inline]
+    fn sharding(&self, req: &Request, shard: &Sharding) -> HashMap<usize, Request> {
+        // 只有multiget才有分片
+        debug_assert_eq!(req.operation(), Operation::Gets);
+        unsafe {
+            let klen = req.keys().len();
+            let mut keys = Vec::with_capacity(klen);
+            for i in 0..klen - 1 {
+                let key = self.key(req.keys().get_unchecked(i));
+                debug_assert!(key.len() > 0);
+                keys.push(key);
+            }
+            let last_key = req.keys().get_unchecked(klen - 1);
+            let noop = last_key[PacketPos::Opcode as usize] == OP_CODE_NOOP;
+            if !noop {
+                keys.push(self.key(last_key));
+            }
 
-    fn meta_type(&self, _req: &[u8]) -> MetaType {
+            let sharded = shard.shardings(keys);
+            if sharded.len() == 1 {
+                let mut ret = HashMap::with_capacity(1);
+                let (s_idx, _) = sharded.iter().next().expect("only one shard");
+                ret.insert(*s_idx, req.clone());
+                return ret;
+            }
+            let mut sharded_req = HashMap::with_capacity(sharded.len());
+            for (s_idx, indice) in sharded.iter() {
+                let mut cmd: Vec<u8> = Vec::with_capacity(req.len());
+                let mut keys: Vec<Slice> = Vec::with_capacity(indice.len() + 1);
+                for idx in indice.iter() {
+                    let cmd_i = req.keys().get_unchecked(*idx);
+                    keys.push(Slice::new(cmd.as_ptr() as usize, cmd_i.len()));
+                    cmd_i.copy_to_vec(&mut cmd);
+                }
+                // 处理end
+                // 如果最后一个是noop请求，则需要补充上noop请求
+                // 否则，把最后一个请求的opcode与原始的req保持一致
+                if noop {
+                    last_key.copy_to_vec(&mut cmd);
+                } else {
+                    let last = keys.get_unchecked(keys.len() - 1);
+                    let last_op_idx = cmd.len() - last.len() + PacketPos::Opcode as usize;
+                    cmd[last_op_idx] = last_key.at(PacketPos::Opcode as usize);
+                }
+                let new = Request::from_request(cmd, keys, req);
+                sharded_req.insert(*s_idx, new);
+            }
+            sharded_req
+        }
+    }
+
+    fn meta_type(&self, _req: &Request) -> MetaType {
         MetaType::Version
     }
     // 只要是多个resp cmd（目前是 multiget） 都会调用
     // 1)对于noop结尾，返回noop cmd的长度，在外部trim掉;
     // 2)对于其他non-quite cmd，修改结尾opcode(getk)为getkq;
     #[inline]
-    fn trim_tail<T: AsRef<RingSlice>>(&self, _resp: T) -> usize {
-        // noop结尾，只需要trim掉一个header长度，否则是getk结尾，需要改为getkq
-        let mut read = 0;
-        let data = _resp.as_ref();
-        let avail = data.len();
-        loop {
-            // 最后一个cmd是noop，直接trim掉
-            if read + HEADER_LEN == avail {
-                debug_assert!(
-                    !self.is_multi_get_quite_op(data.at(read + PacketPos::Opcode as usize))
-                );
-                return HEADER_LEN;
-            }
-
-            let cmd_len =
-                data.read_u32(read + PacketPos::TotalBodyLength as usize) as usize + HEADER_LEN;
-            debug_assert!(read + cmd_len <= avail);
-
-            // 如果是最后一个非noop cmd，则肯定是类似getk这样的非quite cmd，把对应opcode改为getkq
-            if (read + cmd_len) == avail {
-                let opcode_pos = read + PacketPos::Opcode as usize;
-                if data.at(opcode_pos) != OP_CODE_GETK {
-                    log::warn!("careful - unexpected cmd");
-                }
-                debug_assert!(!self.is_multi_get_quite_op(data.at(opcode_pos)));
-                data.update_byte(opcode_pos, OP_CODE_GETKQ);
-                return 0;
-            }
-
-            read += cmd_len;
-        }
-    }
-    #[inline]
     fn key<'a>(&self, req: &'a [u8]) -> &'a [u8] {
         debug_assert!(req.len() >= HEADER_LEN);
-        let extra_len = req[4] as usize;
+        let extra_len = req[PacketPos::ExtrasLength as usize] as usize;
         let offset = extra_len + HEADER_LEN;
-        let key_len = BigEndian::read_u16(&req[2..]) as usize;
+        let key_len = BigEndian::read_u16(&req[PacketPos::Key as usize..]) as usize;
         debug_assert!(key_len + offset <= req.len());
         &req[offset..offset + key_len]
     }
-    #[inline]
-    fn keys<'a>(&self, _req: &'a [u8]) -> Vec<&'a [u8]> {
-        todo!()
-    }
-    fn build_gets_cmd(&self, _keys: Vec<&[u8]>) -> Vec<u8> {
-        todo!()
-    }
-    fn response_found<T: AsRef<RingSlice>>(&self, response: T) -> bool {
-        let slice = response.as_ref();
-        debug_assert!(slice.len() >= HEADER_LEN);
-        slice.at(6) == 0 && slice.at(7) == 0
-    }
     // 会一直持续到非quite response，才算结束，而非仅仅用noop判断，以应对getkq...getkq + getk的场景
-    fn parse_response(&self, response: &RingSlice) -> (bool, usize) {
+    #[inline]
+    fn parse_response(&self, response: &RingSlice) -> Option<Response> {
         let mut read = 0;
         let avail = response.len();
+        let mut keys = Vec::with_capacity(8);
         loop {
             if avail < read + HEADER_LEN {
-                return (false, avail);
+                return None;
             }
-            debug_assert_eq!(response.at(PacketPos::Magic as usize), 0x81);
+            debug_assert_eq!(response.at(read + PacketPos::Magic as usize), 0x81);
             let len =
                 response.read_u32(read + PacketPos::TotalBodyLength as usize) as usize + HEADER_LEN;
+            if avail < read + len {
+                return None;
+            }
+            keys.push(response.sub_slice(read, len));
             if self.is_multi_get_quite_op(response.at(read + PacketPos::Opcode as usize)) {
                 read += len;
                 continue;
             }
-
-            let n = read + len;
-            return (avail >= n, n);
-        }
-    }
-    // 轮询response，找出本次查询到的keys，loop所在的位置
-    fn keys_response<'a, T>(&self, resp: T) -> Vec<String>
-    where
-        T: Iterator<Item = &'a RingSlice>,
-    {
-        let mut keys: Vec<String> = Vec::new();
-        for slice in resp {
-            self.scan_response_keys(slice, &mut keys);
-        }
-        return keys;
-    }
-    // 轮询response，找出本次查询到的keys，loop所在的位置
-    fn scan_response_keys(&self, response: &RingSlice, keys: &mut Vec<String>) {
-        let mut read = 0;
-        let avail = response.len();
-        loop {
-            if avail < read + HEADER_LEN {
-                // 这种情况不应该出现
-                log::warn!("found malformed response");
-
-                debug_assert!(false);
-                return;
-            }
-            debug_assert_eq!(response.at(read), 0x81);
-            // 如果最后一个是noop请求，说明处理完毕，直接返回;
-            if response.at(read + PacketPos::Opcode as usize) == OP_CODE_NOOP {
-                return;
-            }
-
-            let cmd_len =
-                response.read_u32(read + PacketPos::TotalBodyLength as usize) as usize + HEADER_LEN;
-            debug_assert!(read + cmd_len <= avail);
-            // key 获取
-            let key_len = response.read_u16(read + 2);
-            let extra_len = response.at(read + 4);
-            let key = response.read_bytes(read + HEADER_LEN + extra_len as usize, key_len as usize);
-            keys.push(key);
-
-            read += cmd_len;
-            if read == avail {
-                return;
-            }
-        }
-    }
-    // 注意：multiget request 结尾可能是noop，也可能是getk等任何非quite cmd
-    fn rebuild_get_multi_request(
-        &self,
-        current_cmds: &Request,
-        found_keys: &Vec<String>,
-        new_cmds: &mut Vec<u8>,
-    ) {
-        let mut read = 0;
-        let origin = current_cmds.data();
-        let avail = origin.len();
-        let mut last_op_pos = 0usize;
-
-        loop {
-            // noop 是24 bytes
-            debug_assert!(read + HEADER_LEN <= avail);
-            debug_assert_eq!(origin[read], 0x80);
-
-            // 如果是noop，直接结束
-            if origin[read + PacketPos::Opcode as usize] == OP_CODE_NOOP {
-                if new_cmds.len() == 0 {
-                    //全部命中，不用构建新的cmd了
-                    return;
-                }
-                new_cmds.extend(&origin[read..read + HEADER_LEN]);
-                debug_assert_eq!(read + HEADER_LEN, avail);
-                return;
-            }
-
-            // 这个cmd可能是最后一个cmd，也可能不是，如果是最后一个，则必须是非quite cmd
-            let len = BigEndian::read_u32(&origin[read + 8..]) as usize + HEADER_LEN;
-            debug_assert!(read + len <= avail);
-
-            // 找到key，如果是命中的key，则对应cmd被略过
-            let key_len = BigEndian::read_u16(&origin[read + PacketPos::Key as usize..]) as usize;
-            let extra_len = origin[read + PacketPos::ExtrasLength as usize] as usize;
-            let extra_pos = read + HEADER_LEN + extra_len;
-            let mut key_data = Vec::new();
-            key_data.extend_from_slice(&origin[extra_pos..extra_pos + key_len]);
-            let key = String::from_utf8(key_data).unwrap_or_default();
-            if !found_keys.contains(&key) {
-                // 该key miss，将其cmd写入new_cmds
-                last_op_pos = new_cmds.len() + PacketPos::Opcode as usize;
-                new_cmds.extend(&origin[read..read + len]);
-            }
             read += len;
 
-            // 如果最后一个cmd处理完毕，还没遇到noop，说明请求是getk需要把new cmd的最后一个cmd设为getk
-            if read == avail {
-                if new_cmds.len() == 0 {
-                    return;
+            return Some(Response::from(response.sub_slice(0, read), keys));
+        }
+    }
+
+    fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
+    where
+        R: Iterator<Item = (bool, &'a Response)>,
+    {
+        debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::Gets);
+        debug_assert!(req.keys().len() > 0);
+        if self.is_single_get(req) {
+            if let Some((_, response)) = resp.next() {
+                if self.status_ok(&response) {
+                    return None;
                 }
-                // 对于非noop结尾的getMulit请求，设置最后一个cmd的类型为getk
-                new_cmds[last_op_pos] = OP_CODE_GETK;
-                return;
+            }
+            Some(req.clone())
+        } else {
+            // 有多个key
+            let found_keys = self.keys_response(resp, req.keys().len());
+            let mut cmd = Vec::with_capacity(req.len());
+            let mut keys_slice = Vec::with_capacity(req.keys().len());
+            // 遍历所有的请求key，如果response中没有，则写入到command中
+            for req_key in req.keys() {
+                let key = self.key(req_key);
+                let key_slice = Slice::from(key);
+                if key.len() > 0 {
+                    // 未找到，则写入新的request
+                    if !found_keys.contains_key(&key_slice.clone().into()) {
+                        // 写入的是原始的命令, 不是key
+                        req_key.copy_to_vec(&mut cmd);
+                        keys_slice.push(req_key.clone());
+                    }
+                } else {
+                    // 只有最后一个noop会不存在key
+                    req_key.copy_to_vec(&mut cmd);
+                    keys_slice.push(req_key.clone());
+                }
+            }
+            if keys_slice.len() > 0 {
+                // 设置最后一个key的op_code
+                let last_len = unsafe { keys_slice.get_unchecked(keys_slice.len() - 1).len() };
+                let last_op_pos = cmd.len() - last_len + PacketPos::Opcode as usize;
+                cmd[last_op_pos] = self.last_key_op(req);
+                let new = Request::from_request(cmd, keys_slice, req);
+                Some(new)
+            } else {
+                None
             }
         }
+    }
+    // 需要特殊处理multiget请求。
+    // multiget请求有两种方式，一种是 getkq + noop; 另外一种是 getkq + getk.
+    // 如果是noop请求，需要将前n-1个response中的noop给truncate掉。
+    // 如果是getkq + getk。则需要将前n-1个请求最后一个getk请求，变更为getkq
+    #[inline]
+    fn write_response<'a, R, W>(&self, r: R, w: &mut W)
+    where
+        W: crate::BackwardWrite,
+        R: Iterator<Item = (bool, &'a Response)>,
+    {
+        for (last, response) in r {
+            // 最后一个请求，不需要做变更，直接写入即可。
+            if last {
+                w.write(response, 0);
+                break;
+            }
+            // 不是最后一个请求，则处理response的最后一个key
+            let kl = response.keys().len();
+            if kl > 0 {
+                let last = unsafe { response.keys().get_unchecked(kl - 1) };
+                match last.at(PacketPos::Opcode as usize) {
+                    OP_CODE_NOOP => w.write(response, HEADER_LEN),
+                    OP_CODE_GETK => w.write_on(response, |data| {
+                        debug_assert_eq!(response.len(), data.len());
+                        data[PacketPos::Opcode as usize] = OP_CODE_GETKQ;
+                    }),
+                    _ => w.write(response, 0),
+                }
+            }
+        }
+    }
+}
+
+impl MemcacheBinary {
+    pub fn new() -> Self {
+        MemcacheBinary
+    }
+    // 需要应对gek个各种姿势： getkq...getkq + noop, getkq...getkq + getk，对于quite cmd，肯定是multiget的非结尾请求
+    #[inline(always)]
+    fn is_multi_get_quite_op(&self, op_code: u8) -> bool {
+        MULT_GETS[op_code as usize] == 1
+    }
+    #[inline]
+    fn _probe_request(&self, req: &[u8]) -> Option<Request> {
+        let op = self.op_route(req).into();
+        let mut read = 0usize;
+        // 包含的是整个请求，不仅仅是key
+        let mut keys: Vec<Slice> = Vec::with_capacity(req.len() >> 32);
+        while read + HEADER_LEN <= req.len() {
+            // 当前请求的body
+            let total = body_len(&req[read as usize..]) as usize + HEADER_LEN;
+            if read as usize + total > req.len() {
+                return None;
+            }
+            keys.push(Slice::from(&req[read..read + total]));
+            let op_code = req[read + 1];
+            read += total;
+            // getMulti的姿势On(quite-cmd) + O1(non-quite-cmd)，最后通常一个noop请求或者getk等 非quite请求 结尾
+            if !self.is_multi_get_quite_op(op_code) {
+                let pos = read;
+                return Some(Request::new(&req[0..pos], op, keys));
+            }
+        }
+        None
+    }
+    #[inline(always)]
+    fn _noreply(&self, req: &[u8]) -> bool {
+        req[1] == NOREPLY_MAPPING[req[1] as usize]
+    }
+    // 调用方确保req是一个完整的mc的请求包。
+    // 第二个字节是op_code。
+    #[inline]
+    fn op_route(&self, req: &[u8]) -> usize {
+        COMMAND_IDX[req[1] as usize] as usize
+    }
+    #[inline]
+    fn status_ok(&self, response: &RingSlice) -> bool {
+        debug_assert!(response.len() >= HEADER_LEN);
+        response.at(6) == 0 && response.at(7) == 0
+    }
+    #[inline]
+    fn key_response(&self, r: &RingSlice) -> RingSlice {
+        debug_assert!(r.len() >= HEADER_LEN);
+        let extra_len = r.at(PacketPos::ExtrasLength as usize) as usize;
+        let offset = extra_len + HEADER_LEN;
+        let key_len = r.read_u16(PacketPos::Key as usize) as usize;
+        debug_assert!(key_len + offset <= r.len());
+        r.sub_slice(offset, key_len)
+    }
+    // 是否只包含了一个key。只有get请求才会用到
+    #[inline]
+    fn is_single_get(&self, req: &Request) -> bool {
+        let keys = req.keys();
+        match keys.len() {
+            0 | 1 => true,
+            // 最后一个请求是NOOP
+            2 => unsafe {
+                keys.get_unchecked(keys.len() - 1)
+                    .at(PacketPos::Opcode as usize)
+                    == OP_CODE_NOOP
+            },
+            _ => false,
+        }
+    }
+    // 最后一个key的op_code
+    #[inline]
+    fn last_key_op(&self, req: &Request) -> u8 {
+        let keys = req.keys();
+        debug_assert!(keys.len() > 0);
+        let last = unsafe { keys.get_unchecked(keys.len() - 1) };
+        last.at(PacketPos::Opcode as usize)
+    }
+    // 轮询response，找出本次查询到的keys，loop所在的位置
+    #[inline(always)]
+    fn keys_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
+    where
+        T: Iterator<Item = (bool, &'a Response)>,
+    {
+        let mut keys = HashMap::with_capacity(exptects * 3 / 2);
+        // 解析response中的key
+        for (_last, one_respone) in resp {
+            for response_key in one_respone.keys() {
+                // response里面存储的key是一个完整的协议请求
+                if self.status_ok(response_key) {
+                    keys.insert(self.key_response(response_key), ());
+                }
+            }
+        }
+        return keys;
     }
 }

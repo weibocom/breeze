@@ -109,7 +109,7 @@ impl<P> Topology<P> {
             }
         }
 
-        log::info!("cs-topology: use random readers: {:?}", readers);
+        log::debug!("cs-topology: use random readers: {:?}", readers);
         readers
     }
 

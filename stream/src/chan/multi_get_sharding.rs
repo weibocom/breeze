@@ -4,20 +4,7 @@
 /// 的解析，会更加高效。适合到shards的分片不多的场景，尤其是一般
 /// 一个keys的请求req通常只包含key，所以额外的load会比较低。
 /// 发送给所有sharding的请求，有一个成功，即认定为成功。
-
-// TODO 这个文件改为 multi_get_sharding? 待和@icy 确认 fishermen
-// 思路： multi_get_sharding 是一种特殊的用于multi get 的shard读取，但支持单层，需要进一步封装为多层访问
-
-pub struct AsyncMultiGetSharding<S, P> {
-    // 成功发送请求的shards
-    statuses: Vec<Status>,
-    shards: Vec<S>,
-    _parser: P,
-    response: Option<Response>,
-    servers: String, // TODO 目前仅仅用于一致性分析，分析完毕之后可以清理 fishermen
-    err: Option<Error>,
-}
-
+use std::collections::HashMap;
 use std::io::{Error, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -25,12 +12,26 @@ use std::task::{Context, Poll};
 use crate::backend::AddressEnable;
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 use protocol::Protocol;
+use sharding::Sharding;
+
+pub struct AsyncMultiGetSharding<S, P> {
+    // 成功发送请求的shards
+    statuses: Vec<Status>,
+    shards: Vec<S>,
+    parser: P,
+    response: Option<Response>,
+    servers: String, // TODO 目前仅仅用于一致性分析，分析完毕之后可以清理 fishermen
+    shard_reqs: Option<HashMap<usize, Request>>,
+    alg: Sharding,
+    err: Option<Error>,
+}
 
 impl<S, P> AsyncMultiGetSharding<S, P>
 where
     S: AddressEnable,
 {
-    pub fn from_shard(shards: Vec<S>, p: P) -> Self {
+    pub fn from_shard(shards: Vec<S>, p: P, hash: &str, d: &str) -> Self {
+        let names = shards.iter().map(|s| s.get_address()).collect();
         let mut servers = String::from("{");
         for s in &shards {
             servers += s.get_address().as_str();
@@ -41,10 +42,12 @@ where
         Self {
             statuses: vec![Status::Init; shards.len()],
             shards: shards,
-            _parser: p,
+            shard_reqs: None,
+            parser: p,
             response: None,
             servers,
             err: None,
+            alg: Sharding::from(hash, d, names),
         }
     }
 }
@@ -52,27 +55,41 @@ where
 impl<S, P> AsyncWriteAll for AsyncMultiGetSharding<S, P>
 where
     S: AsyncWriteAll + Unpin,
-    P: Unpin,
+    P: Unpin + Protocol,
 {
     // 只要有一个shard成功就算成功,如果所有的都写入失败，则返回错误信息。
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, multi: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
+        if me.shard_reqs.is_none() {
+            me.shard_reqs = Some(me.parser.sharding(multi, &me.alg));
+        }
+
+        let shard_reqs = me.shard_reqs.as_ref().expect("multi get sharding");
+        debug_assert!(shard_reqs.len() > 0);
+
         let mut success = false;
         let mut pending = false;
         for i in 0..me.shards.len() {
             let status = unsafe { me.statuses.get_unchecked_mut(i) };
-            if *status == Init {
-                match Pin::new(unsafe { me.shards.get_unchecked_mut(i) }).poll_write(cx, buf) {
-                    Poll::Pending => pending = true,
-                    Poll::Ready(Ok(_)) => {
-                        success = true;
-                        *status = Sent;
-                    }
-                    Poll::Ready(Err(e)) => {
-                        *status = Error;
-                        me.err = Some(e);
+            match shard_reqs.get(&i) {
+                Some(req) => {
+                    if *status == Init {
+                        match Pin::new(unsafe { me.shards.get_unchecked_mut(i) })
+                            .poll_write(cx, req)
+                        {
+                            Poll::Pending => pending = true,
+                            Poll::Ready(Ok(_)) => {
+                                success = true;
+                                *status = Sent;
+                            }
+                            Poll::Ready(Err(e)) => {
+                                *status = Error;
+                                me.err = Some(e);
+                            }
+                        }
                     }
                 }
+                None => *status = Done,
             }
         }
         if pending {
@@ -120,6 +137,7 @@ where
             for status in me.statuses.iter_mut() {
                 *status = Init;
             }
+            me.shard_reqs.take();
             me.response
                 .take()
                 .map(|item| Poll::Ready(Ok(item)))

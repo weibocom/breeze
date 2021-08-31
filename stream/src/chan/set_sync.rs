@@ -53,7 +53,7 @@ where
                     buf.clone()
                 } else {
                     let data = me.parser.with_noreply(buf);
-                    let mut noreply = Request::from_request(data, buf);
+                    let mut noreply = Request::from_request(data, buf.keys().clone().into(), buf);
                     noreply.set_noreply();
                     noreply
                 };

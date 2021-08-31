@@ -41,7 +41,7 @@ where
 {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
-        match me.parser.meta_type(buf.data()) {
+        match me.parser.meta_type(&buf) {
             MetaType::Version => {
                 // 只需要发送请求到一个backend即可
                 for (i, b) in me.instances.iter_mut().enumerate() {
