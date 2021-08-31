@@ -62,10 +62,14 @@ where
 
     #[inline(always)]
     fn on_response(&mut self, item: Response) {
-        match self.response.as_mut() {
-            Some(response) => response.append(item),
-            None => self.response = Some(item),
-        };
+        if self.request.keys().len() == 1 {
+            self.response = Some(item);
+        } else {
+            match self.response.as_mut() {
+                Some(response) => response.append(item),
+                None => self.response = Some(item),
+            };
+        }
     }
 }
 
