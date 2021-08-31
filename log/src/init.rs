@@ -10,9 +10,9 @@ pub fn init(path: &str) -> Result<()> {
 
     let mut gzfile = PathBuf::new();
     gzfile.push(path);
-    gzfile.push("breeze.log.{}.gz");
+    gzfile.push("breeze.{}.log");
 
-    const MAX_LOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+    const MAX_LOG_SIZE: u64 = 1 * 1024 * 1024 * 1024 ; // 1GB
     const MAX_NUM_LOGS: u32 = 5;
     let policy = Box::new(CompoundPolicy::new(
         Box::new(SizeTrigger::new(MAX_LOG_SIZE)),
