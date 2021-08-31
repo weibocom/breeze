@@ -36,6 +36,25 @@ impl Slice {
         debug_assert!(self.len >= n);
         self.len -= n;
     }
+    #[inline(always)]
+    pub fn at(&self, pos: usize) -> u8 {
+        debug_assert!(pos < self.len());
+        unsafe { *(self.ptr as *const u8).offset(pos as isize) }
+    }
+    #[inline]
+    pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
+        debug_assert!(self.len() > 0);
+        v.reserve(self.len());
+        use std::ptr::copy_nonoverlapping as copy;
+        unsafe {
+            copy(
+                self.ptr as *const u8,
+                v.as_mut_ptr().offset(v.len() as isize),
+                self.len(),
+            );
+            v.set_len(v.len() + self.len());
+        }
+    }
 }
 
 impl AsRef<[u8]> for Slice {
@@ -55,5 +74,12 @@ impl Deref for Slice {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
         self.data()
+    }
+}
+
+use std::fmt::{self, Display, Formatter};
+impl Display for Slice {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Slice: ptr:{} len:{} ", self.ptr as usize, self.len)
     }
 }

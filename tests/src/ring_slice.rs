@@ -28,6 +28,10 @@ mod tests_ds {
         assert_eq!(s.len(), 2);
         assert_eq!(s[0].data(), &dc[cap - 32..cap]);
         assert_eq!(s[1].data(), &dc[0..32]);
+        let mut v: Vec<u8> = Vec::new();
+        over_range.copy_to_vec(&mut v);
+        assert_eq!(&v[0..32], &dc[cap - 32..cap]);
+        assert_eq!(&v[32..], &dc[0..32]);
 
         let u32_num = 111234567u32;
         let bytes = u32_num.to_be_bytes();
