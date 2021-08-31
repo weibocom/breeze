@@ -9,7 +9,7 @@ use crate::{
     AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Notify, Request, RequestHandler,
     ResponseData, ResponseHandler,
 };
-use ds::{BitMap, RingSlice, SeqOffset};
+use ds::{BitMap, SeqOffset};
 use protocol::Protocol;
 
 use cache_line_size::CacheAligned;
@@ -176,7 +176,7 @@ impl MpmcRingBufferStream {
                 .store(cid, Ordering::Release);
         };
     }
-    fn place_response(&self, seq: usize, response: RingSlice) {
+    fn place_response(&self, seq: usize, response: protocol::Response) {
         unsafe {
             let seq_idx = self.mask_seq(seq);
             let cid = self
@@ -356,7 +356,7 @@ impl ResponseHandler for Arc<MpmcRingBufferStream> {
     }
     #[inline]
     // 在从response读取的数据后调用。
-    fn on_received(&self, seq: usize, first: RingSlice) {
+    fn on_received(&self, seq: usize, first: protocol::Response) {
         self.place_response(seq, first);
     }
     fn wake(&self) {

@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 ds = { path = "../ds" }
+sharding = { path = "../sharding" }
 
 log = "0.4.14"
 enum_dispatch = "0.3.7"

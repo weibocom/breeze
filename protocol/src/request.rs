@@ -11,6 +11,7 @@ use std::sync::Arc;
 pub struct Request {
     noreply: bool,
     op: Operation,
+    keys: Vec<Slice>,
     // TODO just for debug
     pub inner: Slice,
     id: RequestId,
@@ -22,10 +23,11 @@ pub struct Request {
 
 impl Request {
     #[inline(always)]
-    pub fn new(data: &[u8], op: Operation) -> Self {
+    pub fn new(data: &[u8], op: Operation, keys: Vec<Slice>) -> Self {
         Self {
             inner: Slice::from(data),
             op: op,
+            keys: keys,
             ..Default::default()
         }
     }
@@ -38,12 +40,13 @@ impl Request {
         }
     }
     #[inline(always)]
-    pub fn from_request(data: Vec<u8>, req: &Request) -> Self {
+    pub fn from_request(data: Vec<u8>, keys: Vec<Slice>, req: &Request) -> Self {
         Self {
             inner: Slice::from(&data),
             id: req.id,
             noreply: req.noreply,
             _data: Arc::new(data),
+            keys: keys,
             op: req.op,
         }
     }
@@ -70,6 +73,10 @@ impl Request {
     #[inline(always)]
     pub fn set_request_id(&mut self, id: RequestId) {
         self.id = id;
+    }
+    #[inline(always)]
+    pub fn keys(&self) -> &[Slice] {
+        &self.keys
     }
 }
 
