@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests_ds {
-    use ds::RingSlice;
+    use ds::{RingSlice, Slice};
+    use std::collections::HashMap;
     #[test]
     fn test_ring_slice() {
         let cap = 1024;
@@ -47,5 +48,35 @@ mod tests_ds {
         assert_eq!(u32_num, num_range.read_u32(23));
 
         let _ = unsafe { Vec::from_raw_parts(ptr, 0, cap) };
+    }
+    #[test]
+    fn test_ring_slice_map() {
+        let slice_data = [98u8, 114, 101, 101, 122, 101, 45, 107, 101, 121, 45, 56, 57];
+        let slice = Slice::from(&slice_data);
+
+        // 第一个字节在最后
+        let ring_slice_data: [u8; 16] = [
+            114, 101, 101, 122, 101, 45, 107, 101, 121, 45, 56, 57, 0, 0, 0, 98,
+        ];
+        let ring_slice = RingSlice::from(ring_slice_data.as_ptr(), 16, 15, 15 + slice_data.len());
+
+        assert_eq!(ring_slice, slice);
+        let slice_to_ring: RingSlice = slice.clone().into();
+        assert_eq!(ring_slice, slice_to_ring);
+
+        assert_eq!(hash(&slice_to_ring), hash(&ring_slice));
+
+        let mut m = HashMap::with_capacity(4);
+        m.insert(ring_slice, ());
+        assert!(m.contains_key(&slice.into()));
+    }
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    fn hash<T: Hash>(t: &T) -> u64 {
+        let mut s = DefaultHasher::new();
+        t.hash(&mut s);
+        let h = s.finish();
+        println!("hash ring:{}", h);
+        h
     }
 }

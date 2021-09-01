@@ -11,6 +11,7 @@ mod distribution;
 use distribution::*;
 
 use std::collections::HashMap;
+use std::ops::Deref;
 
 impl Sharding {
     pub fn from(hash_alg: &str, distribution: &str, names: Vec<String>) -> Self {
@@ -33,7 +34,7 @@ impl Sharding {
     // key: sharding idx
     // value: 是keys idx列表
     #[inline]
-    pub fn shardings(&self, keys: Vec<&[u8]>) -> HashMap<usize, Vec<usize>> {
+    pub fn shardings<K: Deref<Target = [u8]>>(&self, keys: Vec<K>) -> HashMap<usize, Vec<usize>> {
         let mut shards: HashMap<usize, Vec<usize>> = HashMap::with_capacity(self.num);
         for (ki, key) in keys.iter().enumerate() {
             let idx = self.sharding(key);

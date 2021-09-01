@@ -63,7 +63,6 @@ where
         if me.shard_reqs.is_none() {
             me.shard_reqs = Some(me.parser.sharding(multi, &me.alg));
         }
-
         let shard_reqs = me.shard_reqs.as_ref().expect("multi get sharding");
         debug_assert!(shard_reqs.len() > 0);
 

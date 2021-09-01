@@ -94,7 +94,7 @@ impl Sender {
     fn buff_backwark(&mut self, back: usize) {
         unsafe {
             if back > 0 {
-                debug_assert!(self.buff.len() > back);
+                debug_assert!(self.buff.len() >= back);
                 self.buff.set_len(self.buff.len() - back);
             }
         }
