@@ -23,22 +23,22 @@ pub struct Request {
 
 impl Request {
     #[inline(always)]
-    pub fn new(data: &[u8], op: Operation, keys: Vec<Slice>) -> Self {
+    pub fn from(data: Slice, op: Operation, keys: Vec<Slice>) -> Self {
         Self {
-            inner: Slice::from(data),
+            inner: data,
             op: op,
             keys: keys,
             ..Default::default()
         }
     }
-    #[inline(always)]
-    pub fn from(data: &[u8], id: RequestId) -> Self {
-        Self {
-            inner: Slice::from(data),
-            id: id,
-            ..Default::default()
-        }
-    }
+    //#[inline(always)]
+    //pub fn from(data: &[u8], id: RequestId) -> Self {
+    //    Self {
+    //        inner: Slice::from(data),
+    //        id: id,
+    //        ..Default::default()
+    //    }
+    //}
     #[inline(always)]
     pub fn from_request(data: Vec<u8>, keys: Vec<Slice>, req: &Request) -> Self {
         Self {

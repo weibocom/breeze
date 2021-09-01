@@ -1,5 +1,10 @@
+use std::io::{Error, ErrorKind, Result};
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
 use crate::AsyncWriteAll;
 
+use ds::Slice;
 use protocol::{Protocol, Request, RequestId, MAX_REQUEST_SIZE};
 
 use futures::ready;
@@ -7,9 +12,6 @@ use futures::ready;
 use super::IoMetric;
 use tokio::io::{AsyncRead, ReadBuf};
 
-use std::io::{Error, ErrorKind, Result};
-use std::pin::Pin;
-use std::task::{Context, Poll};
 pub(super) struct Receiver {
     r: usize, // 上一个request的读取位置
     w: usize, // 当前buffer写入的位置
@@ -54,7 +56,7 @@ impl Receiver {
         log::debug!("r:{} w:{} ", self.r, self.w);
         while self.req.is_none() {
             if self.w > self.r {
-                self.req = parser.parse_request(&self.buff[self.r..self.w])?;
+                self.req = parser.parse_request(Slice::from(&self.buff[self.r..self.w]))?;
                 if self.req.is_some() {
                     break;
                 }

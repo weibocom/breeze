@@ -3,6 +3,7 @@ use std::slice::from_raw_parts;
 
 use crate::Slice;
 
+#[derive(Debug)]
 pub struct RingSlice {
     ptr: *const u8,
     cap: usize,
@@ -114,6 +115,7 @@ unsafe impl Sync for RingSlice {}
 use std::convert::TryInto;
 macro_rules! define_read_number {
     ($fn_name:ident, $type_name:tt) => {
+        #[inline]
         pub fn $fn_name(&self, offset: usize) -> $type_name {
             const SIZE: usize = std::mem::size_of::<$type_name>();
             debug_assert!(self.len() >= offset + SIZE);
@@ -146,6 +148,7 @@ impl RingSlice {
 
 impl PartialEq<[u8]> for RingSlice {
     fn eq(&self, other: &[u8]) -> bool {
+        println!("eq ref slice");
         if self.len() == other.len() {
             for i in 0..other.len() {
                 if self.at(i) != other[i] {
@@ -182,9 +185,17 @@ impl PartialEq for RingSlice {
 
 use std::hash::{Hash, Hasher};
 impl Hash for RingSlice {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for slice in self.as_slices() {
-            slice.hash(state);
+        let slices = self.as_slices();
+        unsafe {
+            if slices.len() == 1 {
+                slices.get_unchecked(0).data().hash(state);
+            } else {
+                let mut v = Vec::with_capacity(self.len());
+                self.copy_to_vec(&mut v);
+                v.hash(state);
+            }
         }
     }
 }
