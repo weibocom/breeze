@@ -1,6 +1,6 @@
 [package]
 name = "agent"
-version = "BREEZE_VERSION_PLACE_HOLDER"
+version = "0.0.1"
 authors = ["icy"]
 edition = "2018"
 
