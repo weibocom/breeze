@@ -1,5 +1,6 @@
 use crate::{AsyncReadAll, Response};
 
+use ds::RingSlice;
 use protocol::{Protocol, RequestId};
 
 use futures::ready;
@@ -87,23 +88,37 @@ impl Sender {
     where
         P: Protocol,
     {
-        for slice in response.into_reader(parser) {
-            self.put_slice(slice.data());
+        parser.write_response(response.iter(), self);
+    }
+    #[inline(always)]
+    fn buff_backwark(&mut self, back: usize) {
+        unsafe {
+            if back > 0 {
+                debug_assert!(self.buff.len() >= back);
+                self.buff.set_len(self.buff.len() - back);
+            }
         }
     }
-    #[inline]
-    fn put_slice(&mut self, b: &[u8]) {
-        debug_assert!(b.len() > 0);
-        self.buff.reserve(b.len());
-        let l = self.buff.len();
-        use std::ptr::copy_nonoverlapping as copy;
+}
+
+impl protocol::BackwardWrite for Sender {
+    #[inline(always)]
+    fn write(&mut self, data: &RingSlice, backward: usize) {
+        data.copy_to_vec(&mut self.buff);
+        debug_assert!(data.len() >= backward);
+        self.buff_backwark(backward);
+    }
+    #[inline(always)]
+    fn write_on<F: Fn(&mut [u8])>(&mut self, data: &RingSlice, update: F) {
+        let old = self.buff.len();
+        self.write(data, 0);
+        update(&mut self.buff[old..]);
+    }
+    #[inline(always)]
+    fn forward(&mut self, l: usize) {
         unsafe {
-            copy(
-                b.as_ptr(),
-                self.buff.as_mut_ptr().offset(l as isize),
-                b.len(),
-            );
-            self.buff.set_len(l + b.len());
+            debug_assert!(self.buff.len() + l <= self.buff.capacity());
+            self.buff.set_len(self.buff.len() + l);
         }
     }
 }

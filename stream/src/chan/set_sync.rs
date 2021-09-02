@@ -49,7 +49,14 @@ where
             ready!(Pin::new(&mut me.master).poll_write(cx, buf))?;
             me.master_done = true;
             if me.followers.len() > 0 {
-                let noreply = me.parser.copy_noreply(buf);
+                let noreply = if buf.noreply() {
+                    buf.clone()
+                } else {
+                    let data = me.parser.with_noreply(buf);
+                    let mut noreply = Request::from_request(data, buf.keys().clone().into(), buf);
+                    noreply.set_noreply();
+                    noreply
+                };
                 me.noreply = Some(noreply);
             }
         }

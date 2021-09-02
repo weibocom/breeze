@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering::*};
 use std::task::{Context, Poll};
 
 use crate::ResponseData;
-use ds::RingSlice;
 use protocol::{Request, RequestId};
 
 #[repr(u8)]
@@ -48,7 +47,7 @@ pub struct Item {
     rid: RefCell<RequestId>,
     request: RefCell<Option<Request>>,
 
-    response: RefCell<RingSlice>,
+    response: RefCell<protocol::Response>,
     waker: AtomicWaker,
 }
 
@@ -129,7 +128,7 @@ impl Item {
         ResponseData::from(response, rid, self.seq())
     }
     #[inline]
-    pub fn place_response(&self, response: RingSlice, seq: usize) {
+    pub fn place_response(&self, response: protocol::Response, seq: usize) {
         debug_assert_eq!(seq, self.seq());
         log::debug!("place response:{:?} ", response.location());
         self.response.replace(response);

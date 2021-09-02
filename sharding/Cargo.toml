@@ -9,3 +9,4 @@ edition = "2018"
 enum_dispatch = "*"
 rust-crypto = "0.2.36"
 log = "0.4.14"
+ds = { path = "../ds" }

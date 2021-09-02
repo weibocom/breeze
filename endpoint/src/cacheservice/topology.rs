@@ -36,11 +36,6 @@ pub struct Topology<P> {
     parser: P,
 }
 
-// 用来测试的一组配置, ip都是127.0.0.1
-// master port: 11211:11212
-// followers: 11213, 11214; 11215, 11216;
-// l1: 11213, 11214; 11215, 11216
-// 没有slave
 impl<P> Topology<P> {
     pub fn meta(&self) -> Vec<BackendStream> {
         self.metas
@@ -87,10 +82,10 @@ impl<P> Topology<P> {
     }
 
     pub fn retrive_get(&self) -> Vec<Vec<BackendStream>> {
-        self.reader_layers(&self.get_streams)
+        self.reader_layers(&self.get_streams, "get")
     }
     pub fn retrive_gets(&self) -> Vec<Vec<BackendStream>> {
-        self.reader_layers(&self.gets_streams)
+        self.reader_layers(&self.gets_streams, "multi-get")
     }
 
     // 由于mc会将master也作为一个L1来访问，所以此处统一做排重处理
@@ -101,7 +96,11 @@ impl<P> Topology<P> {
                 log::warn!("empty layer in {:?}", self.layer_readers);
                 continue;
             }
-            let seq = self.l1_seq.fetch_add(1, Ordering::Acquire);
+            // 纯粹的按seq，可能出现某种场景，导致每次循环选择的group都是一样。
+            // 引入一个随机数，打破这种波动
+            let fluctuation: bool = rand::thread_rng().gen();
+            let delta = 1 + fluctuation as usize;
+            let seq = self.l1_seq.fetch_add(delta, Ordering::Acquire);
             let idx = seq % layer.len();
             let r = &layer[idx];
             if !readers.contains(r) {
@@ -109,7 +108,6 @@ impl<P> Topology<P> {
             }
         }
 
-        log::info!("cs-topology: use random readers: {:?}", readers);
         readers
     }
 
@@ -117,9 +115,11 @@ impl<P> Topology<P> {
     fn reader_layers(
         &self,
         streams: &HashMap<String, Arc<BackendBuilder>>,
+        op: &str,
     ) -> Vec<Vec<BackendStream>> {
         // 从每个层选择一个reader
         let readers = self.random_reads();
+        log::info!("random {}-layers inited:readers: {:?}", op, readers);
         readers
             .iter()
             .map(|pool| {
@@ -200,7 +200,7 @@ impl<P> Topology<P> {
             return;
         }
 
-        let c = 256;
+        let c = stream::MAX_CONNECTIONS;
         Self::delete_non_exists(&self.masters, &mut self.m_streams);
         Self::add_new(&p, &self.masters, &mut self.m_streams, c, namespace);
 

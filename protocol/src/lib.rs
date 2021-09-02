@@ -5,56 +5,56 @@
 use std::io::Result;
 
 pub mod memcache;
-use ds::RingSlice;
+
+mod operation;
+pub use operation::*;
 
 mod request;
 pub use request::*;
 
+mod response;
+pub use response::*;
+
 use enum_dispatch::enum_dispatch;
+use std::collections::HashMap;
+
+use ds::{RingSlice, Slice};
+use sharding::Sharding;
 
 // 往client写入时，最大的buffer大小。
 pub const MAX_SENT_BUFFER_SIZE: usize = 1024 * 1024;
 
 #[enum_dispatch]
 pub trait Protocol: Unpin + Clone + 'static {
-    // parse会被一直调用，直到返回true.
-    // 当前请求是否结束。
-    // 一个请求在req中的第多少个字节结束。
-    // req包含的是一个完整的请求。
-    fn parse_request(&self, req: &[u8]) -> Result<(bool, usize)>;
-    // 是否支持noreply请求
-    fn copy_noreply(&self, req: &Request) -> Request;
-    // 按照op来进行路由，通常用于读写分离
-    fn op_route(&self, req: &[u8]) -> usize;
-    #[inline(always)]
-    fn operation(&self, req: &[u8]) -> Operation {
-        self.op_route(req).into()
+    fn parse_request(&self, buf: Slice) -> Result<Option<Request>>;
+    // 需要跨分片访问的请求进行分片处理
+    // 索引下标是分片id
+    fn sharding(&self, req: &Request, sharding: &Sharding) -> HashMap<usize, Request>;
+    // req是一个完整的store类型的请求；
+    // 当前协议支持noreply
+    // 当前req不是noreply
+    fn with_noreply(&self, _req: &[u8]) -> Vec<u8> {
+        todo!("not supported")
     }
     // 调用方必须确保req包含key，否则可能会panic
-    fn meta_type(&self, req: &[u8]) -> MetaType;
-    fn key<'a>(&self, req: &'a [u8]) -> &'a [u8];
-    // TODO rebuild_get_multi_request 部分移过来 fishermen
-    fn keys<'a>(&self, req: &'a [u8]) -> Vec<&'a [u8]>;
-    fn build_gets_cmd(&self, keys: Vec<&[u8]>) -> Vec<u8>;
-    // 解析当前请求是否结束。返回请求结束位置，如果请求
-    // 包含EOF（类似于memcache协议中的END）则返回的位置不包含END信息。
-    // 主要用来在进行multiget时，解析待trim掉的结尾长度，对于noop cmd全部trim，对于非quite的getk，修正opcode
-    fn trim_tail<T: AsRef<RingSlice>>(&self, response: T) -> usize;
+    fn meta_type(&self, req: &Request) -> MetaType;
+    fn key(&self, req: &Request) -> Slice;
     // 从response中解析出一个完成的response
-    fn parse_response(&self, response: &RingSlice) -> (bool, usize);
-    fn response_found<T: AsRef<RingSlice>>(&self, response: T) -> bool;
-    // 轮询response，解析出本次查到的keys以及noop所在的位置
-    // TODO keys_response ？keys作为返回值 fishermen
-    fn scan_response_keys(&self, response: &RingSlice, keys: &mut Vec<String>);
-    fn keys_response<'a, T: Iterator<Item = &'a RingSlice>>(&self, response: T) -> Vec<String>;
-    // 从当前的cmds中，过滤掉已经查到的keys，然后返回新的请求cmds
-    // TODO 新的request 作为返回值 fishermen
-    fn rebuild_get_multi_request(
-        &self,
-        current_cmds: &Request,
-        found_keys: &Vec<String>,
-        new_req_data: &mut Vec<u8>,
-    );
+    fn parse_response(&self, response: &RingSlice) -> Option<Response>;
+    // 把resp里面存在的key都去掉，只保留未返回结果的key及对应的命令。
+    // 如果所有的key都已返回，则返回None
+    fn filter_by_key<'a, R>(&self, req: &Request, resp: R) -> Option<Request>
+    where
+        R: Iterator<Item = (bool, &'a Response)>;
+    fn write_response<'a, R, W>(&self, r: R, w: &mut W)
+    where
+        W: BackwardWrite,
+        R: Iterator<Item = (bool, &'a Response)>;
+    // 把一个response，通常是一个get对应的返回，转换为一个Request。
+    // 用于将数据从一个实例同步到另外一个实例
+    fn convert(&self, _response: &Response, _noreply: bool) -> Option<Request> {
+        todo!("convert not supported");
+    }
 }
 #[enum_dispatch(Protocol)]
 #[derive(Clone)]
@@ -76,38 +76,6 @@ pub enum MetaType {
     Version,
 }
 
-#[repr(u8)]
-#[derive(Copy, Clone)]
-pub enum Operation {
-    Get = 0u8,
-    Gets,
-    Store,
-    Meta,
-    Other,
-}
-
-use Operation::*;
-
-impl From<usize> for Operation {
-    #[inline(always)]
-    fn from(op: usize) -> Self {
-        match op {
-            0 => Get,
-            1 => Gets,
-            2 => Store,
-            3 => Meta,
-            _ => Other,
-        }
-    }
-}
-const OP_NAMES: [&'static str; 5] = ["get", "mget", "store", "meta", "other"];
-impl Operation {
-    #[inline(always)]
-    pub fn name(&self) -> &'static str {
-        OP_NAMES[*self as u8 as usize]
-    }
-}
-
 #[derive(Copy, Clone)]
 pub enum Resource {
     Memcache,
@@ -120,4 +88,11 @@ impl Resource {
             Self::Memcache => "mc",
         }
     }
+}
+
+pub trait BackwardWrite {
+    fn write(&mut self, data: &RingSlice, backward: usize);
+    // f: 部分场景需要数据写入完成之后，对数据进行更新
+    fn write_on<F: Fn(&mut [u8])>(&mut self, data: &RingSlice, update: F);
+    fn forward(&mut self, forward: usize);
 }

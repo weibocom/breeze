@@ -55,7 +55,7 @@ where
         let me = &mut *self;
         debug_assert!(me.idx < me.shards.len());
         let key = me.parser.key(buf);
-        me.idx = me.policy.sharding(key);
+        me.idx = me.policy.sharding(&key);
         if me.idx >= me.shards.len() {
             return Poll::Ready(Err(Error::new(
                 ErrorKind::NotConnected,

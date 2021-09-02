@@ -11,7 +11,7 @@ mod hash_test {
 
     use crypto::digest::Digest;
     use crypto::md5::Md5;
-    use hash::{Bkdr, Crc32, Hash};
+    use sharding::hash::{Bkdr, Crc32, Hash};
     use std::ops::Bound::Included;
 
     #[test]
@@ -304,6 +304,29 @@ mod hash_test {
             // let hash = hash.wrapping_abs() as u64;
 
             //println!("+++++++ {} - {}", hash, j);
+        }
+    }
+    #[test]
+    fn test_consis_sharding() {
+        let servers = vec![
+            "10.73.63.195:15010",
+            "10.13.192.12:15010",
+            "10.73.63.190:15010",
+            "10.73.63.188:15010",
+            "10.73.63.187:15010",
+        ];
+        let servers = servers.iter().map(|s| s.to_string()).collect();
+        let shard = sharding::Sharding::from("bkdr", "ketama", servers);
+
+        let tuples = vec![
+            ("4675657416578300.sdt", 1),
+            ("4675358995775696.sdt", 3),
+            ("4675216938370991.sdt", 3),
+            ("4675342185268044.sdt", 2),
+            ("4676725675655615.sdt", 0),
+        ];
+        for t in tuples {
+            assert_eq!(shard.sharding(t.0.as_bytes()), t.1);
         }
     }
 }
