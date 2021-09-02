@@ -123,6 +123,7 @@ impl MpmcRingBufferStream {
     // 释放cid的资源
     pub fn shutdown(&self, cid: usize) {
         log::debug!("mpmc: poll shutdown. cid:{}", cid);
+        self.bits.unmark(cid);
         self.get_item(cid).reset();
     }
     #[inline]
