@@ -82,10 +82,10 @@ impl<P> Topology<P> {
     }
 
     pub fn retrive_get(&self) -> Vec<Vec<BackendStream>> {
-        self.reader_layers(&self.get_streams)
+        self.reader_layers(&self.get_streams, "get")
     }
     pub fn retrive_gets(&self) -> Vec<Vec<BackendStream>> {
-        self.reader_layers(&self.gets_streams)
+        self.reader_layers(&self.gets_streams, "multi-get")
     }
 
     // 由于mc会将master也作为一个L1来访问，所以此处统一做排重处理
@@ -108,7 +108,6 @@ impl<P> Topology<P> {
             }
         }
 
-        log::info!("cs-topology: use random readers: {:?}", readers);
         readers
     }
 
@@ -116,9 +115,11 @@ impl<P> Topology<P> {
     fn reader_layers(
         &self,
         streams: &HashMap<String, Arc<BackendBuilder>>,
+        op: &str,
     ) -> Vec<Vec<BackendStream>> {
         // 从每个层选择一个reader
         let readers = self.random_reads();
+        log::info!("random {}-layers inited:readers: {:?}", op, readers);
         readers
             .iter()
             .map(|pool| {
