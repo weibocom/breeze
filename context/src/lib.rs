@@ -7,7 +7,11 @@ mod quadruple;
 pub use quadruple::Quadruple;
 
 #[derive(Clap, Debug)]
-#[clap(name = "resource mesh", version = "0.0.1", author = "IF")]
+#[clap(
+    name = "resource mesh",
+    version = "BREEZE_VERSION_PLACE_HOLDER",
+    author = "IF"
+)]
 #[clap(setting = AppSettings::ColoredHelp)]
 pub struct Context {
     #[clap(long, about("port for suvervisor"), default_value("9984"))]
@@ -48,6 +52,9 @@ pub struct Context {
         default_value("10.10.10.10:53")
     )]
     pub metrics_probe: String,
+
+    #[clap(long, about("log level. debug|info|warn|error"), default_value("info"))]
+    pub log_level: String,
 }
 
 impl Context {

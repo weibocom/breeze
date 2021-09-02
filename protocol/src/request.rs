@@ -1,3 +1,4 @@
+use crate::Operation;
 /// Request对象在从stream::io::Client::poll_next生成，
 /// 同一个连接，在下一次调用该方法前，Request的内存不会被释放，不会被覆盖，是安全的
 use ds::Slice;
@@ -8,33 +9,49 @@ use std::sync::Arc;
 
 #[derive(Default, Clone)]
 pub struct Request {
-    // TODO just for debug
-    pub inner: Slice,
-    id: RequestId,
-    // 是否需要返回结果
     noreply: bool,
+    op: Operation,
+    keys: Vec<Slice>,
+    inner: Slice,
+    id: RequestId,
 
+    // 如果内存是由Request管理的，则将data交由_data，避免copy成本。
+    // 如果不是，里面存储的是Vec::EMPTY，这个clone是零开销的，本身不占用内存。
     _data: Arc<Vec<u8>>,
 }
 
 impl Request {
     #[inline(always)]
-    pub fn from(data: &[u8], id: RequestId) -> Self {
+    pub fn from(data: Slice, op: Operation, keys: Vec<Slice>) -> Self {
         Self {
-            inner: Slice::from(data),
-            id: id,
-            noreply: false,
-            _data: Default::default(),
+            inner: data,
+            op: op,
+            keys: keys,
+            ..Default::default()
+        }
+    }
+    //#[inline(always)]
+    //pub fn from(data: &[u8], id: RequestId) -> Self {
+    //    Self {
+    //        inner: Slice::from(data),
+    //        id: id,
+    //        ..Default::default()
+    //    }
+    //}
+    #[inline(always)]
+    pub fn from_request(data: Vec<u8>, keys: Vec<Slice>, req: &Request) -> Self {
+        Self {
+            inner: Slice::from(&data),
+            id: req.id,
+            noreply: req.noreply,
+            _data: Arc::new(data),
+            keys: keys,
+            op: req.op,
         }
     }
     #[inline(always)]
-    pub fn from_vec(data: Vec<u8>, id: RequestId) -> Self {
-        Self {
-            inner: Slice::from(&data),
-            id: id,
-            noreply: false,
-            _data: Arc::new(data),
-        }
+    pub fn operation(&self) -> Operation {
+        self.op
     }
     #[inline(always)]
     pub fn id(&self) -> RequestId {
@@ -51,6 +68,14 @@ impl Request {
     #[inline(always)]
     pub fn data(&self) -> &[u8] {
         return self.inner.data();
+    }
+    #[inline(always)]
+    pub fn set_request_id(&mut self, id: RequestId) {
+        self.id = id;
+    }
+    #[inline(always)]
+    pub fn keys(&self) -> &[Slice] {
+        &self.keys
     }
 }
 

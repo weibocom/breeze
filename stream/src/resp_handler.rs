@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use ds::{ResizedRingBuffer, RingSlice};
+use ds::ResizedRingBuffer;
 
 use protocol::Protocol;
 
@@ -18,7 +18,7 @@ use futures::ready;
 pub trait ResponseHandler {
     fn load_offset(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
-    fn on_received(&self, seq: usize, response: RingSlice);
+    fn on_received(&self, seq: usize, response: protocol::Response);
     fn wake(&self);
 }
 
@@ -126,18 +126,17 @@ where
             me.data.advance_write(n);
             // 处理等处理的数据
             while me.data.processed() < me.data.writtened() {
-                let mut response = me.data.processing_bytes();
-                let (found, num) = me.parser.parse_response(&response);
-                log::debug!("resp-handler: parsed:{} num:{} seq:{} ", found, num, me.seq);
-                if !found {
-                    break;
-                }
-                response.resize(num);
-                let seq = me.seq;
-                me.seq += 1;
+                let response = me.data.processing_bytes();
+                match me.parser.parse_response(&response) {
+                    None => break,
+                    Some(r) => {
+                        let seq = me.seq;
+                        me.seq += 1;
 
-                me.w.on_received(seq, response);
-                me.data.advance_processed(num);
+                        me.data.advance_processed(r.len());
+                        me.w.on_received(seq, r);
+                    }
+                }
             }
         }
         log::info!("task complete");
