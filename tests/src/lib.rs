@@ -1,3 +1,3 @@
 // mod offset;
-//mod hash_test;
+mod hash_test;
 mod ring_slice;
