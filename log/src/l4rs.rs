@@ -19,7 +19,7 @@ pub fn init(path: &str, l: &str) -> Result<()> {
 
     let mut gzfile = PathBuf::new();
     gzfile.push(path);
-    gzfile.push("breeze.log{}.gz");
+    gzfile.push("breeze.log{}");
 
     const MAX_LOG_SIZE: u64 = 1 * 1024 * 1024 * 1024; // 1GB
     const MAX_NUM_LOGS: u32 = 5;
