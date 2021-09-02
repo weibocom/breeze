@@ -14,6 +14,7 @@ impl BitMap {
         }
     }
 
+    #[inline]
     pub fn mark(&self, pos: usize) {
         let idx = pos / BLK_SIZE;
         let offset = pos - idx * BLK_SIZE;
