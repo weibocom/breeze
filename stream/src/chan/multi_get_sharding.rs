@@ -5,7 +5,7 @@
 /// 一个keys的请求req通常只包含key，所以额外的load会比较低。
 /// 发送给所有sharding的请求，有一个成功，即认定为成功。
 use std::collections::HashMap;
-use std::io::{Error, Result};
+use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -32,7 +32,7 @@ where
 {
     pub fn from_shard(shards: Vec<S>, p: P, hash: &str, d: &str) -> Self {
         let names = shards.iter().map(|s| s.get_address()).collect();
-        let mut servers = String::from("{");
+        let mut servers = "{".to_string();
         for s in &shards {
             servers += s.get_address().as_str();
             servers += ",";
@@ -96,7 +96,15 @@ where
         } else if success {
             Poll::Ready(Ok(()))
         } else {
-            Poll::Ready(Err(me.err.take().unwrap()))
+            Poll::Ready(Err(me.err.take().unwrap_or(Error::new(
+                ErrorKind::NotFound,
+                format!(
+                    "sharding server({}) must be greater than 0. req sharding num({}) must be greater than 0. reqeust keys({}) must great than 0",
+                    me.shards.len(),
+                    shard_reqs.len(),
+                    multi.keys().len()
+                ),
+            ))))
         }
     }
 }

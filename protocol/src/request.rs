@@ -12,8 +12,7 @@ pub struct Request {
     noreply: bool,
     op: Operation,
     keys: Vec<Slice>,
-    // TODO just for debug
-    pub inner: Slice,
+    inner: Slice,
     id: RequestId,
 
     // 如果内存是由Request管理的，则将data交由_data，避免copy成本。

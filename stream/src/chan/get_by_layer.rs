@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 
 use crate::backend::AddressEnable;
 use crate::{AsyncReadAll, AsyncWriteAll, Response};
-use protocol::{Protocol, Request};
+use protocol::{Operation, Protocol, Request};
 
 use futures::ready;
 
@@ -35,18 +35,16 @@ where
     // 发送请求，将current cmds发送到所有mc，如果失败，继续向下一层write，注意处理重入问题
     // ready! 会返回Poll，所以这里还是返回Poll了
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut idx = self.idx;
-
         // 当前layer的reader发送请求，直到发送成功
         let mut last_err = None;
-        while idx < self.layers.len() {
-            let reader = unsafe { self.layers.get_unchecked_mut(idx) };
+        while self.idx < self.layers.len() {
+            log::debug!("write to {}-th/{}", self.idx + 1, self.layers.len());
+            let reader = unsafe { self.layers.get_unchecked_mut(self.idx) };
             match ready!(Pin::new(reader).poll_write(cx, &self.request)) {
                 Ok(_) => return Poll::Ready(Ok(())),
                 Err(e) => {
                     self.idx += 1;
-                    idx = self.idx;
-                    log::debug!("write req failed e:{:?}", e);
+                    log::warn!("write req failed e:{:?}", e);
                     last_err = Some(e);
                 }
             }
@@ -62,13 +60,17 @@ where
 
     #[inline(always)]
     fn on_response(&mut self, item: Response) {
-        if self.request.keys().len() == 1 {
-            self.response = Some(item);
-        } else {
-            match self.response.as_mut() {
-                Some(response) => response.append(item),
-                None => self.response = Some(item),
-            };
+        match self.request.operation() {
+            Operation::Gets => {
+                match self.response.as_mut() {
+                    Some(response) => response.append(item),
+                    None => self.response = Some(item),
+                };
+            }
+            _ => {
+                log::info!("multi get never run here");
+                self.response = Some(item);
+            }
         }
     }
 }
