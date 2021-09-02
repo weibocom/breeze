@@ -110,7 +110,7 @@ impl Protocol for MemcacheBinary {
         debug_assert!(req.keys().len() > 0);
         if self.is_single_get(req) {
             if let Some((_, response)) = resp.next() {
-                if response.status_ok() {
+                if response.status_ok() && !response.noop() {
                     return None;
                 }
             }
