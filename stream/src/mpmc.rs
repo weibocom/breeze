@@ -322,17 +322,8 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
     #[inline]
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()> {
         debug_assert_eq!(ss.len(), 0);
-        let bits: Vec<usize> = self.bits.snapshot();
-        for i in 0..bits.len() {
-            let mut one = unsafe { *bits.get_unchecked(i) };
-            while one > 0 {
-                let zeros = one.trailing_zeros() as usize;
-                let cid = i * std::mem::size_of::<usize>() + zeros;
-                ss.push(cid);
-                one = one & !(1 << zeros);
-            }
-        }
-        self.bits.unmark_all(&bits);
+        let snapshot: Vec<usize> = self.bits.take();
+        ss.push_all(snapshot);
         for _ in 0..8 {
             match self.noreply_rx.try_recv() {
                 Ok(req) => ss.push_one(req),
