@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering::*};
 pub struct BitMap {
     blocks: Vec<AtomicUsize>,
 }
@@ -14,55 +14,63 @@ impl BitMap {
         }
     }
 
+    #[inline(always)]
+    fn location(&self, pos: usize) -> (usize, usize) {
+        let idx = pos / BLK_SIZE;
+        let offset = pos - idx * BLK_SIZE;
+        (idx, offset)
+    }
+
     #[inline]
     pub fn mark(&self, pos: usize) {
-        let idx = pos / BLK_SIZE;
-        let offset = pos - idx * BLK_SIZE;
+        let (idx, offset) = self.location(pos);
         unsafe {
-            let _old = self
-                .blocks
+            self.blocks
                 .get_unchecked(idx)
-                .fetch_or(1 << offset, Ordering::Relaxed);
-            log::debug!("bitmap-mark: pos:{} before:{:#b}", pos, _old);
+                .fetch_or(1 << offset, Relaxed);
         }
     }
+    #[inline]
     pub fn unmark(&self, pos: usize) {
-        let idx = pos / BLK_SIZE;
-        let offset = pos - idx * BLK_SIZE;
+        let (idx, offset) = self.location(pos);
         // mark不需要获取返回值，所以不同的mark之间访问时使用relaxed即可。
         unsafe {
             self.blocks
                 .get_unchecked(idx)
-                .fetch_and(!(1 << offset), Ordering::Relaxed);
+                .fetch_and(!(1 << offset), Relaxed);
         }
     }
 
-    pub fn blocks(&self) -> usize {
-        self.blocks.len()
-    }
-
-    pub fn snapshot(&self) -> Vec<usize> {
-        let mut ss = vec![0; self.blocks.len()];
+    #[inline]
+    pub fn marked(&self, pos: usize) -> bool {
+        let (idx, offset) = self.location(pos);
         unsafe {
-            use std::ptr::copy_nonoverlapping;
-            copy_nonoverlapping(
-                self.blocks.as_ptr() as *const usize,
-                ss.as_mut_ptr(),
-                ss.len(),
-            );
+            let old = self.blocks.get_unchecked(idx).load(Relaxed);
+            old & 1 << offset == 1 << offset
         }
-        ss
     }
-    // snapshot是通过Self::snapshot获取
-    pub fn unmark_all(&self, snapshot: &[usize]) {
-        debug_assert_eq!(snapshot.len(), self.blocks.len());
+
+    #[inline]
+    pub fn take(&self) -> Vec<usize> {
         //std::sync::atomic::fence(Ordering::Release);
-        unsafe {
-            for i in 0..snapshot.len() {
-                self.blocks
-                    .get_unchecked(i)
-                    .fetch_and(!snapshot.get_unchecked(i), Ordering::Relaxed);
+        let mut postions = Vec::with_capacity(64);
+        for i in 0..self.blocks.len() {
+            let mut one = unsafe { self.blocks.get_unchecked(i).load(Relaxed) };
+            let old = one;
+            while one > 0 {
+                let zeros = one.trailing_zeros() as usize;
+                let cid = i * BLK_SIZE + zeros;
+                postions.push(cid);
+                one = one & !(1 << zeros);
             }
+            // unmark
+            self.unmarked_one_block(i, old);
         }
+        postions
+    }
+
+    #[inline(always)]
+    fn unmarked_one_block(&self, i: usize, old: usize) {
+        unsafe { self.blocks.get_unchecked(i).fetch_and(!old, Relaxed) };
     }
 }
