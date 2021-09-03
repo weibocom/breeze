@@ -68,7 +68,6 @@ where
                 };
             }
             _ => {
-                log::info!("multi get never run here");
                 self.response = Some(item);
             }
         }
