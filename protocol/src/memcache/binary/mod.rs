@@ -149,7 +149,6 @@ impl Protocol for MemcacheBinary {
             cmd[last_op_pos] = self.last_key_op(req);
             let new = Request::from_request(cmd, keys_slice, req);
 
-            log::info!("req:{} new:{} found:{:?}", req, new, found_ids);
             debug_assert_eq!(new.keys().len() + found_ids.len(), req.keys().len());
             Some(new)
         } else {
