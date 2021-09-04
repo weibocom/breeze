@@ -59,6 +59,7 @@ impl Response {
         self.items.extend(other.items);
     }
 
+    #[inline]
     pub fn iter(&self) -> ResponseIter {
         ResponseIter {
             response: self,

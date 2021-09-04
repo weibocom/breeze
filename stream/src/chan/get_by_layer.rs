@@ -44,7 +44,6 @@ where
                 Ok(_) => return Poll::Ready(Ok(())),
                 Err(e) => {
                     self.idx += 1;
-                    log::warn!("write req failed e:{:?}", e);
                     last_err = Some(e);
                 }
             }
