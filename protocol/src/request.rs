@@ -148,3 +148,17 @@ impl Display for Request {
         )
     }
 }
+use std::fmt::Debug;
+impl Debug for Request {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "(len:{} keys:{} data:{:?} {})",
+            self.len(),
+            self.keys.len(),
+            self.data(),
+            self.id
+        )
+    }
+}

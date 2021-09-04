@@ -117,26 +117,28 @@ impl Protocol for MemcacheBinary {
             return Some(req.clone());
         }
         // 有多个key
-        let found_keys = self.keys_response(resp, req.keys().len());
+        let found_ids = self.ids_response(resp, req.keys().len());
         let mut cmd = Vec::with_capacity(req.len());
         let mut keys_slice = Vec::with_capacity(req.keys().len());
         // 遍历所有的请求key，如果response中没有，则写入到command中
         for cmd_i in req.keys() {
-            let key = cmd_i.key();
-            if key.len() > 0 {
-                // 未找到，则写入新的request
-                if !found_keys.contains_key(&key.clone().into()) {
-                    // 写入的是原始的命令, 不是key
-                    cmd_i.copy_to_vec(&mut cmd);
-                    keys_slice.push(cmd_i.clone());
+            match cmd_i.id() {
+                Some(id) => {
+                    debug_assert!(id.len() > 0);
+                    if !found_ids.contains_key(&id.into()) {
+                        // 写入的是原始的命令, 不是key
+                        cmd_i.copy_to_vec(&mut cmd);
+                        keys_slice.push(cmd_i.clone());
+                    }
                 }
-            } else {
-                // 只有最后一个noop会不存在key
-                // 判断之前是否有请求，避免cmd里面只有一个空的noop请求
-                debug_assert!(cmd_i.noop());
-                if cmd.len() > 0 {
-                    cmd_i.copy_to_vec(&mut cmd);
-                    keys_slice.push(cmd_i.clone());
+                None => {
+                    // 只有最后一个noop会不存在key
+                    debug_assert!(cmd_i.noop());
+                    // 避免发送一个noop空请求
+                    if cmd.len() > 0 {
+                        cmd_i.copy_to_vec(&mut cmd);
+                        keys_slice.push(cmd_i.clone());
+                    }
                 }
             }
         }
@@ -147,7 +149,7 @@ impl Protocol for MemcacheBinary {
             cmd[last_op_pos] = self.last_key_op(req);
             let new = Request::from_request(cmd, keys_slice, req);
 
-            debug_assert_eq!(new.keys().len() + found_keys.len(), req.keys().len());
+            debug_assert_eq!(new.keys().len() + found_ids.len(), req.keys().len());
             Some(new)
         } else {
             None
@@ -207,25 +209,26 @@ impl MemcacheBinary {
         debug_assert!(keys.len() > 0);
         unsafe { keys.get_unchecked(keys.len() - 1).op() }
     }
-    // 轮询response，找出本次查询到的keys，loop所在的位置
+    // 轮询response，找出本次查询到的keys.
+    // keys_response只在filter_by_key调用，为了解析未获取返回值的请求。
+    // 只有multiget请求才会调用到该方法
     #[inline(always)]
-    fn keys_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
+    fn ids_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
     where
         T: Iterator<Item = (bool, &'a Response)>,
     {
-        let mut keys = HashMap::with_capacity(exptects * 3 / 2);
+        let mut ids = HashMap::with_capacity(exptects * 3 / 2);
         // 解析response中的key
         for (_last, one_respone) in resp {
             for cmd in one_respone.keys() {
                 if cmd.status_ok() {
-                    let key = cmd.key();
-                    if key.len() > 0 {
-                        keys.insert(key, ());
+                    if let Some(id) = cmd.id() {
+                        ids.insert(id, ());
                     }
                 }
             }
         }
-        debug_assert!(keys.len() <= exptects);
-        return keys;
+        debug_assert!(ids.len() <= exptects);
+        return ids;
     }
 }
