@@ -91,8 +91,7 @@ impl Resource {
 }
 
 pub trait BackwardWrite {
-    fn write(&mut self, data: &RingSlice, backward: usize);
+    fn write(&mut self, data: &RingSlice);
     // f: 部分场景需要数据写入完成之后，对数据进行更新
     fn write_on<F: Fn(&mut [u8])>(&mut self, data: &RingSlice, update: F);
-    fn forward(&mut self, forward: usize);
 }

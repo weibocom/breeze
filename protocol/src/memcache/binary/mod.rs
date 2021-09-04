@@ -149,6 +149,7 @@ impl Protocol for MemcacheBinary {
             cmd[last_op_pos] = self.last_key_op(req);
             let new = Request::from_request(cmd, keys_slice, req);
 
+            log::info!("req:{} new:{} found:{:?}", req, new, found_ids);
             debug_assert_eq!(new.keys().len() + found_ids.len(), req.keys().len());
             Some(new)
         } else {
@@ -168,7 +169,7 @@ impl Protocol for MemcacheBinary {
         for (last, response) in r {
             // 最后一个请求，不需要做变更，直接写入即可。
             if last {
-                w.write(response, 0);
+                w.write(response);
                 break;
             }
             // 不是最后一个请求，则处理response的最后一个key
@@ -176,12 +177,26 @@ impl Protocol for MemcacheBinary {
             if kl > 0 {
                 let last = unsafe { response.keys().get_unchecked(kl - 1) };
                 match last.op() {
-                    OP_CODE_NOOP => w.write(response, HEADER_LEN),
-                    OP_CODE_GETK => w.write_on(response, |data| {
-                        debug_assert_eq!(response.len(), data.len());
-                        data[PacketPos::Opcode as usize] = OP_CODE_GETKQ;
+                    // NOOP 不直接忽略。最后一个NOOP请求已经在前面直接写入并返回
+                    OP_CODE_NOOP => {
+                        // 最后一个请求是NOOP，只写入前面的请求
+                        let pre = response.sub_slice(0, response.len() - last.len());
+                        if pre.len() > 0 {
+                            w.write(&pre);
+                        }
+                    }
+                    // 把GETK/GET请求，转换成Quite请求。
+                    OP_CODE_GETK | OP_CODE_GET => w.write_on(response, |data| {
+                        let op = if last.key_len() == 0 {
+                            OP_CODE_GETQ
+                        } else {
+                            OP_CODE_GETKQ
+                        };
+                        let last_op_idx = response.len() - last.len() + PacketPos::Opcode as usize;
+                        data[last_op_idx] = op;
+                        debug_assert_eq!(data.len(), response.len());
                     }),
-                    _ => w.write(response, 0),
+                    _ => w.write(response),
                 }
             }
         }

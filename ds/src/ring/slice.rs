@@ -61,6 +61,12 @@ impl RingSlice {
         slices
     }
     #[inline]
+    pub fn data(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(self.len());
+        self.copy_to_vec(&mut v);
+        v
+    }
+    #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
         v.reserve(self.len());
         for slice in self.as_slices() {
