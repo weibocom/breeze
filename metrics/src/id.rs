@@ -58,8 +58,11 @@ pub fn register_names(names: Vec<&str>) -> usize {
     unsafe { register_name(String::from_utf8_unchecked(s)) }
 }
 
-pub fn get_name<'a>(id: usize) -> String {
+pub fn get_name(id: usize) -> String {
     ID_SEQ.read().unwrap().name(id).to_string()
+}
+pub fn with_name<F: Fn(&str)>(id: usize, f: F) {
+    f(ID_SEQ.read().unwrap().name(id));
 }
 
 // 这个id是通过register_name生成
