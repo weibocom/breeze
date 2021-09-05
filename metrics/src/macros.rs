@@ -1,5 +1,5 @@
 #[macro_export]
-macro_rules! define_snapshot {
+macro_rules! define_metrics {
     ($($name:ident, $in:ty, $item:tt);+) => {
 
 pub(crate) struct Snapshot {
