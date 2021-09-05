@@ -7,7 +7,7 @@ use tokio::net::UdpSocket;
 #[derive(Default)]
 pub struct PacketBuffer {
     idx: usize,
-    buff: RefCell<Vec<u8>>,
+    buff: RefCell<Vec<u8>>, // 没有在请求的关键路径上。是异步发送metrics
     pub(crate) addr: String,
     socket: Option<UdpSocket>,
 }
@@ -22,7 +22,7 @@ impl PacketBuffer {
     #[inline]
     pub fn poll_flush(&mut self, cx: &mut Context) -> Poll<()> {
         if let Err(e) = ready!(self._poll_flush(cx)) {
-            log::warn!("failed to flush metrics:{}", e);
+            log::warn!("failed to flush metrics:{} ", e);
             self.socket.take();
         }
         self.idx = 0;
@@ -38,12 +38,12 @@ impl PacketBuffer {
             self.socket = Some(UdpSocket::from_std(sock)?);
         }
         if let Some(ref mut sock) = self.socket.as_mut() {
-            let buff = self.buff.borrow_mut();
+            let buff = self.buff.borrow();
             while self.idx < buff.len() {
                 self.idx += ready!(sock.poll_send(cx, &buff[self.idx..]))?;
             }
         }
-        Poll::Pending
+        Poll::Ready(Ok(()))
     }
 }
 
