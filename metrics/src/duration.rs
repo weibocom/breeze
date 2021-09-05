@@ -7,6 +7,11 @@ pub(crate) struct DurationItem {
     pub(crate) elapse_us: usize,
     pub(crate) intervals: [usize; DURATION_INTERVALS.len()],
 }
+impl Default for DurationItem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl DurationItem {
     pub(crate) fn new() -> Self {
         Self {
@@ -63,6 +68,26 @@ impl From<Duration> for DurationItem {
         item.elapse_us = us;
         item.intervals[idx] += 1;
         item
+    }
+}
+
+impl crate::kv::KvItem for DurationItem {
+    fn with_item<F: Fn(&'static str, f64)>(&self, secs: f64, f: F) {
+        // 平均耗时
+        let avg_us = if self.count == 0 {
+            0f64
+        } else {
+            self.elapse_us as f64 / self.count as f64
+        };
+        f("avg_us", avg_us);
+        // 总的qps
+        let qps = self.count as f64 / secs;
+        f("qps", qps);
+        for i in 0..self.intervals.len() {
+            let sub_key = self.get_interval_name(i);
+            let interval_qps = self.intervals[i] as f64 / secs;
+            f(sub_key, interval_qps);
+        }
     }
 }
 // 通过耗时，获取对应的耗时区间，一共分为9个区间
