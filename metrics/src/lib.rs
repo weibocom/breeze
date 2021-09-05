@@ -52,7 +52,7 @@ use std::time::{Duration, Instant};
 // 第二个是是metric的输入数据类型，通常是简单的数字类型
 // 第三个是实现了特定接口用于处理的Item类型, 需要实现From<第二个参数>. AddAssign<Self>
 // AddAssign<第二个参数> 三个接口
-define_snapshot!(
+define_metrics!(
     count, usize, Count;
     duration, std::time::Duration, DurationItem
 );
