@@ -2,9 +2,6 @@
 extern crate lazy_static;
 
 mod id;
-
-mod duration;
-
 pub use id::*;
 
 mod ip;
@@ -12,11 +9,6 @@ pub use ip::*;
 
 mod sender;
 use sender::Sender;
-
-mod count;
-mod item;
-mod kv;
-mod packet;
 
 use once_cell::sync::OnceCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,11 +33,15 @@ pub fn init(addr: &str) {
         }
     }
 }
+mod packet;
 
 mod macros;
-use count::Count;
-use duration::DurationItem;
+mod types;
+use types::*;
+
+mod item;
 use item::*;
+mod kv;
 use kv::*;
 use std::time::{Duration, Instant};
 // 第一个参数是名字。
@@ -53,6 +49,8 @@ use std::time::{Duration, Instant};
 // 第三个是实现了特定接口用于处理的Item类型, 需要实现From<第二个参数>. AddAssign<Self>
 // AddAssign<第二个参数> 三个接口
 define_metrics!(
-    count, usize, Count;
+    ratio, (usize, usize), Ratio;
+    count, isize, Count;
+    qps, usize, Qps;
     duration, std::time::Duration, DurationItem
 );
