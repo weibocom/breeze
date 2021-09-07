@@ -2,7 +2,7 @@ use crate::{AsyncReadAll, AsyncWriteAll};
 
 use super::{IoMetric, Receiver, Sender};
 
-use protocol::{Protocol, RequestId};
+use protocol::{Operation, Protocol, RequestId};
 
 use futures::ready;
 
@@ -110,8 +110,19 @@ where
                 log::info!("slow request: {}", metric);
             }
             metrics::duration(metric.op.name(), duration, metric.metric_id);
-            metrics::count("bytes.tx", metric.resp_bytes, metric.metric_id);
-            metrics::count("bytes.rx", metric.req_bytes, metric.metric_id);
+            metrics::qps("bytes.tx", metric.resp_bytes, metric.metric_id);
+            metrics::qps("bytes.rx", metric.req_bytes, metric.metric_id);
+            match metric.op {
+                Operation::Get | Operation::Gets => {
+                    metrics::qps("kps", metric.req_keys_num, metric.metric_id);
+                    metrics::ratio(
+                        "hit",
+                        (metric.resp_keys_num, metric.req_keys_num),
+                        metric.metric_id,
+                    );
+                }
+                _ => {}
+            }
             metric.reset();
         }
 

@@ -56,7 +56,16 @@ impl Response {
     }
     #[inline]
     pub fn append(&mut self, other: Response) {
+        self.items.reserve(other.items.len());
         self.items.extend(other.items);
+    }
+    #[inline]
+    pub fn keys_num(&self) -> usize {
+        let mut num = 0;
+        for item in &self.items {
+            num += item.data.data.keys().len();
+        }
+        num
     }
 
     #[inline]
