@@ -21,6 +21,11 @@ impl Response {
     pub fn keys(&self) -> &[RingSlice] {
         &self.keys
     }
+    #[inline]
+    pub fn last_key(&self) -> &RingSlice {
+        debug_assert!(self.keys.len() > 0);
+        unsafe { &self.keys.get_unchecked(self.keys.len() - 1) }
+    }
 }
 impl AsRef<RingSlice> for Response {
     #[inline(always)]

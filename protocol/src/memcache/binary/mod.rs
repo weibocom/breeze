@@ -43,13 +43,10 @@ impl Protocol for MemcacheBinary {
             let klen = req.keys().len();
             let mut keys = Vec::with_capacity(klen);
             for cmd in req.keys() {
-                let key = cmd.key();
-                if key.len() > 0 {
-                    keys.push(key);
-                }
+                debug_assert!(cmd.key().len() > 0);
+                keys.push(cmd.key());
             }
             debug_assert!(keys.len() > 0);
-            let last_cmd = req.keys().get_unchecked(klen - 1);
 
             let sharded = shard.shardings(keys);
             if sharded.len() == 1 {
@@ -58,6 +55,8 @@ impl Protocol for MemcacheBinary {
                 ret.insert(*s_idx, req.clone());
                 return ret;
             }
+            let last_cmd = req.last_key();
+            let noop = last_cmd.quite_get(); // 如果最后一个请求是quite，说明当前请求是noop请求。
             let mut sharded_req = HashMap::with_capacity(sharded.len());
             for (s_idx, indice) in sharded.iter() {
                 debug_assert!(indice.len() > 0);
@@ -73,8 +72,8 @@ impl Protocol for MemcacheBinary {
                     cmd_i.copy_to_vec(&mut cmd);
                 }
                 // 最后一个是noop请求，则需要补充上noop请求
-                if last_cmd.noop() {
-                    last_cmd.copy_to_vec(&mut cmd);
+                if noop {
+                    req.take_noop().copy_to_vec(&mut cmd);
                 } else {
                     // 最后一个请求不是noop. 把最后一个请求的opcode与原始的req保持一致
                     let last = keys.get_unchecked(keys.len() - 1);
@@ -122,33 +121,27 @@ impl Protocol for MemcacheBinary {
         let mut keys_slice = Vec::with_capacity(req.keys().len());
         // 遍历所有的请求key，如果response中没有，则写入到command中
         for cmd_i in req.keys() {
-            match cmd_i.id() {
-                Some(id) => {
-                    debug_assert!(id.len() > 0);
-                    if !found_ids.contains_key(&id.into()) {
-                        // 写入的是原始的命令, 不是key
-                        cmd_i.copy_to_vec(&mut cmd);
-                        keys_slice.push(cmd_i.clone());
-                    }
-                }
-                None => {
-                    // 只有最后一个noop会不存在key
-                    debug_assert!(cmd_i.noop());
-                    // 避免发送一个noop空请求
-                    if cmd.len() > 0 {
-                        cmd_i.copy_to_vec(&mut cmd);
-                        keys_slice.push(cmd_i.clone());
-                    }
+            if let Some(id) = cmd_i.id() {
+                debug_assert!(id.len() > 0);
+                if !found_ids.contains_key(&id.into()) {
+                    // 写入的是原始的命令, 不是key
+                    cmd_i.copy_to_vec(&mut cmd);
+                    keys_slice.push(cmd_i.clone());
                 }
             }
         }
         if keys_slice.len() > 0 {
-            // 设置最后一个key的op_code, 与request的最后一个key的opcode保持一致即可
-            let last_len = unsafe { keys_slice.get_unchecked(keys_slice.len() - 1).len() };
-            let last_op_pos = cmd.len() - last_len + PacketPos::Opcode as usize;
-            cmd[last_op_pos] = self.last_key_op(req);
-            let new = Request::from_request(cmd, keys_slice, req);
+            if req.last_key().quite_get() {
+                // 写入noop请求
+                req.take_noop().copy_to_vec(&mut cmd);
+            } else {
+                // 设置最后一个key的op_code, 与request的最后一个key的opcode保持一致即可
+                let last_len = unsafe { keys_slice.get_unchecked(keys_slice.len() - 1).len() };
+                let last_op_pos = cmd.len() - last_len + PacketPos::Opcode as usize;
+                cmd[last_op_pos] = req.last_key().op();
+            }
 
+            let new = Request::from_request(cmd, keys_slice, req);
             debug_assert_eq!(new.keys().len() + found_ids.len(), req.keys().len());
             Some(new)
         } else {
@@ -172,17 +165,14 @@ impl Protocol for MemcacheBinary {
                 break;
             }
             // 不是最后一个请求，则处理response的最后一个key
-            let kl = response.keys().len();
-            if kl > 0 {
-                let last = unsafe { response.keys().get_unchecked(kl - 1) };
+            if response.keys().len() > 0 {
+                let last = response.last_key();
+                debug_assert_ne!(last.op(), OP_CODE_NOOP);
                 match last.op() {
-                    // NOOP 不直接忽略。最后一个NOOP请求已经在前面直接写入并返回
-                    OP_CODE_NOOP => {
+                    OP_CODE_GETQ | OP_CODE_GETKQ => {
                         // 最后一个请求是NOOP，只写入前面的请求
-                        let pre = response.sub_slice(0, response.len() - last.len());
-                        if pre.len() > 0 {
-                            w.write(&pre);
-                        }
+                        let pre = response.sub_slice(0, response.len() - HEADER_LEN);
+                        w.write(&pre);
                     }
                     // 把GETK/GET请求，转换成Quite请求。
                     OP_CODE_GETK | OP_CODE_GET => w.write_on(response, |data| {
@@ -215,13 +205,6 @@ impl MemcacheBinary {
             2 => unsafe { keys.get_unchecked(keys.len() - 1).noop() },
             _ => false,
         }
-    }
-    // 最后一个key的op_code
-    #[inline]
-    fn last_key_op(&self, req: &Request) -> u8 {
-        let keys = req.keys();
-        debug_assert!(keys.len() > 0);
-        unsafe { keys.get_unchecked(keys.len() - 1).op() }
     }
     // 轮询response，找出本次查询到的keys.
     // keys_response只在filter_by_key调用，为了解析未获取返回值的请求。

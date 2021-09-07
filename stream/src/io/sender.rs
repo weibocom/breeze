@@ -46,7 +46,7 @@ impl Sender {
         if self.done {
             log::debug!("io-sender-poll: poll response from agent. {:?}", rid);
             let response = ready!(r.as_mut().poll_next(cx))?;
-            metric.response_ready();
+            metric.response_ready(response.keys_num());
             log::debug!("io-sender-poll: response polled. {:?}", rid);
             // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
             self.write_to_buffer(response, parser);

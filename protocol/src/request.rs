@@ -69,6 +69,11 @@ impl Request {
     pub fn keys(&self) -> &[Slice] {
         &self.keys
     }
+    #[inline(always)]
+    pub fn last_key(&self) -> &Slice {
+        debug_assert!(self.keys.len() > 0);
+        unsafe { &self.keys.get_unchecked(self.keys.len() - 1) }
+    }
 }
 
 use std::ops::Deref;
