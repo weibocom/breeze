@@ -34,9 +34,11 @@ pub(super) const NOREPLY_MAPPING: [u8; 128] = [
 
 pub(super) const REQUEST_MAGIC: u8 = 0x80;
 pub(super) const RESPONSE_MAGIC: u8 = 0x81;
+pub(super) const OP_CODE_GET: u8 = 0x00;
 pub(super) const OP_CODE_NOOP: u8 = 0x0a;
 pub(super) const OP_CODE_GETK: u8 = 0x0c;
 pub(super) const OP_CODE_GETKQ: u8 = 0x0d;
+pub(super) const OP_CODE_GETQ: u8 = 0x09;
 
 // 0x09: getq
 // 0x0d: getkq
@@ -56,6 +58,13 @@ pub(super) trait Binary<T> {
     fn body_len(&self) -> u32;
     fn status_ok(&self) -> bool;
     fn key(&self) -> T;
+    fn key_len(&self) -> u16;
+    // id: 主要用来在多层请求时，用来对比request与response的key
+    // 如果请求包含key，则直接获取key。
+    // 如果不包含key，当前请求是get_q请求，则使用协议中的Opaque，作为key。
+    // 如果是noop请求，则直接忽略.
+    // 其它，panic
+    fn id(&self) -> Option<T>;
     fn packet_len(&self) -> usize;
     // 是否为quite get请求。
     fn quite_get(&self) -> bool;
@@ -105,13 +114,30 @@ macro_rules! define_binary {
                 self.at(6) == 0 && self.at(7) == 0
             }
             #[inline(always)]
+            fn key_len(&self) -> u16 {
+                debug_assert!(self.len() >= HEADER_LEN);
+                self.read_u16(PacketPos::Key as usize)
+            }
+            #[inline(always)]
             fn key(&self) -> Self {
                 debug_assert!(self.len() >= HEADER_LEN);
                 let extra_len = self.at(PacketPos::ExtrasLength as usize) as usize;
                 let offset = extra_len + HEADER_LEN;
-                let key_len = self.read_u16(PacketPos::Key as usize) as usize;
+                let key_len = self.key_len() as usize;
                 debug_assert!(key_len + offset <= self.len());
                 self.sub_slice(offset, key_len)
+            }
+            #[inline(always)]
+            fn id(&self) -> Option<Self> {
+                debug_assert!(self.len() >= HEADER_LEN);
+                match self.op() {
+                    OP_CODE_NOOP => None,
+                    OP_CODE_GET | OP_CODE_GETQ => Some(self.sub_slice(12, 4)),
+                    _ => {
+                        debug_assert!(self.key_len() > 0);
+                        Some(self.key())
+                    }
+                }
             }
             // 需要应对gek个各种姿势： getkq...getkq + noop, getkq...getkq + getk，对于quite cmd，肯定是multiget的非结尾请求
             #[inline(always)]
