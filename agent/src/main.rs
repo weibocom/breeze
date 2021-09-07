@@ -41,21 +41,25 @@ async fn main() -> Result<()> {
         }
         for quard in quards.unwrap().iter() {
             let quard = quard.clone();
+            let quard_name = quard.name();
             let discovery = Arc::clone(&discovery);
             let tx = tx.clone();
             let session_id = session_id.clone();
             spawn(async move {
                 let session_id = session_id.clone();
                 match process_one_service(&quard, discovery, session_id).await {
-                    Ok(_) => log::info!("service listener complete address:{}", quard.address()),
+                    Ok(_) => {
+                        let _ = tx.send(true).await;
+                        log::info!("service listener complete address:{}", quard.address())
+                    }
                     Err(e) => {
-                        let _ = tx.send(quard.name()).await;
+                        let _ = tx.send(false).await;
                         log::warn!("service listener error:{:?} {}", e, quard.address())
                     }
                 };
             });
-            if let Some(quard_name) = rx.recv().await {
-                listeners.add_fail(&quard_name).await;
+            if let Some(false) = rx.recv().await {
+                listeners.add_fail(&quard_name);
             }
         }
 
