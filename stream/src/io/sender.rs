@@ -90,35 +90,17 @@ impl Sender {
     {
         parser.write_response(response.iter(), self);
     }
-    #[inline(always)]
-    fn buff_backwark(&mut self, back: usize) {
-        unsafe {
-            if back > 0 {
-                debug_assert!(self.buff.len() >= back);
-                self.buff.set_len(self.buff.len() - back);
-            }
-        }
-    }
 }
 
 impl protocol::BackwardWrite for Sender {
     #[inline(always)]
-    fn write(&mut self, data: &RingSlice, backward: usize) {
+    fn write(&mut self, data: &RingSlice) {
         data.copy_to_vec(&mut self.buff);
-        debug_assert!(data.len() >= backward);
-        self.buff_backwark(backward);
     }
     #[inline(always)]
     fn write_on<F: Fn(&mut [u8])>(&mut self, data: &RingSlice, update: F) {
         let old = self.buff.len();
-        self.write(data, 0);
-        update(&mut self.buff[old..]);
-    }
-    #[inline(always)]
-    fn forward(&mut self, l: usize) {
-        unsafe {
-            debug_assert!(self.buff.len() + l <= self.buff.capacity());
-            self.buff.set_len(self.buff.len() + l);
-        }
+        self.write(data);
+        update(&mut self.buff[old..old + data.len()]);
     }
 }

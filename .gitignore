@@ -13,3 +13,5 @@ Dockerfile
 
 **/*.swp
 **/*.swo
+
+.DS_Store

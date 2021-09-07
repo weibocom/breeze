@@ -26,8 +26,8 @@ impl Snapshot {
         self.cids.len() + self.reqs.len()
     }
     #[inline(always)]
-    pub fn push(&mut self, cid: usize) {
-        self.cids.push(cid);
+    pub fn push_all(&mut self, cids: Vec<usize>) {
+        let _ = std::mem::replace(&mut self.cids, cids);
     }
     #[inline(always)]
     pub fn push_one(&mut self, req: Request) {

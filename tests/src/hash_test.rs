@@ -257,7 +257,7 @@ mod hash_test {
 
         fn get_hash_server(&self, key: &str) -> (i64, String) {
             // 一致性hash，选择hash环的第一个节点，不支持漂移，避免脏数据 fishermen
-            let mut bk = Bkdr {};
+            let bk = Bkdr {};
             let h = bk.hash(key.as_bytes()) as usize;
             let idxs = self
                 .consistent_map

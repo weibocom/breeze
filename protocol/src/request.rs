@@ -30,14 +30,6 @@ impl Request {
             ..Default::default()
         }
     }
-    //#[inline(always)]
-    //pub fn from(data: &[u8], id: RequestId) -> Self {
-    //    Self {
-    //        inner: Slice::from(data),
-    //        id: id,
-    //        ..Default::default()
-    //    }
-    //}
     #[inline(always)]
     pub fn from_request(data: Vec<u8>, keys: Vec<Slice>, req: &Request) -> Self {
         Self {
@@ -139,5 +131,34 @@ mod rid {
         fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
             Ok(())
         }
+    }
+}
+
+use std::fmt::{self, Display, Formatter};
+impl Display for Request {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "(len:{} keys:{} data:{:?} {})",
+            self.len(),
+            self.keys.len(),
+            self.data(),
+            self.id
+        )
+    }
+}
+use std::fmt::Debug;
+impl Debug for Request {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "(len:{} keys:{} data:{:?} {})",
+            self.len(),
+            self.keys.len(),
+            self.data(),
+            self.id
+        )
     }
 }
