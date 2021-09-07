@@ -1,8 +1,8 @@
-pub(crate) struct Count(usize);
+pub(crate) struct Count(isize);
 
-impl From<usize> for Count {
+impl From<isize> for Count {
     #[inline(always)]
-    fn from(v: usize) -> Self {
+    fn from(v: isize) -> Self {
         Self(v)
     }
 }
@@ -17,15 +17,15 @@ impl AddAssign for Count {
 
 impl crate::kv::KvItem for Count {
     #[inline]
-    fn with_item<F: Fn(&'static str, f64)>(&self, secs: f64, f: F) {
+    fn with_item<F: Fn(&'static str, f64)>(&self, _secs: f64, f: F) {
         // 平均耗时
-        f("", self.0 as f64 / secs);
+        f("num", self.0 as f64);
     }
 }
 
-impl AddAssign<usize> for Count {
+impl AddAssign<isize> for Count {
     #[inline(always)]
-    fn add_assign(&mut self, other: usize) {
+    fn add_assign(&mut self, other: isize) {
         self.0 += other
     }
 }
