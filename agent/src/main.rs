@@ -6,10 +6,9 @@ use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-
 use stream::io::copy_bidirectional;
 use tokio::spawn;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc;
 use tokio::time::{interval_at, Instant};
 
 use protocol::Protocols;
@@ -32,6 +31,7 @@ async fn main() -> Result<()> {
     );
     let session_id = Arc::new(AtomicUsize::new(0));
     let (tx, mut rx) = mpsc::channel(1);
+
     loop {
         let quards = listeners.scan().await;
         if let Err(e) = quards {
@@ -45,17 +45,18 @@ async fn main() -> Result<()> {
             let tx = tx.clone();
             let session_id = session_id.clone();
             spawn(async move {
-                let _tx = tx.clone();
                 let session_id = session_id.clone();
-                match process_one_service(tx, &quard, discovery, session_id).await {
+                match process_one_service(&quard, discovery, session_id).await {
                     Ok(_) => log::info!("service listener complete address:{}", quard.address()),
                     Err(e) => {
-                        let _ = _tx.send(false).await;
+                        let _ = tx.send(quard.name()).await;
                         log::warn!("service listener error:{:?} {}", e, quard.address())
                     }
                 };
             });
-            let _success = rx.recv().await;
+            if let Some(quard_name) = rx.recv().await {
+                listeners.add_fail(&quard_name).await;
+            }
         }
 
         tick.tick().await;
@@ -63,7 +64,6 @@ async fn main() -> Result<()> {
 }
 
 async fn process_one_service(
-    tx: Sender<bool>,
     quard: &context::Quadruple,
     discovery: Arc<discovery::Discovery>,
     session_id: Arc<AtomicUsize>,
@@ -78,7 +78,6 @@ async fn process_one_service(
     ))?;
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("starting to serve {}", quard);
-    let _ = tx.send(true).await;
     let sd = Arc::new(ServiceDiscovery::new(
         discovery,
         quard.service(),

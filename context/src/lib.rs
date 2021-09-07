@@ -82,6 +82,7 @@ impl Context {
         ListenerIter {
             path: self.service_path.to_string(),
             processed: Default::default(),
+            failed: Default::default(),
             snapshot: self.snapshot.to_string(),
         }
     }
@@ -99,6 +100,7 @@ impl Context {
 use std::collections::HashMap;
 pub struct ListenerIter {
     processed: HashMap<String, ()>,
+    failed: HashMap<String, ()>,
     path: String,
     snapshot: String,
 }
@@ -111,14 +113,24 @@ impl ListenerIter {
         let mut listeners = vec![];
         for name in self.read_all().await?.iter() {
             if self.processed.contains_key(name) {
-                continue;
+                if !self.failed.contains_key(name) {
+                    continue;
+                }
             }
+
             if let Some(one) = Quadruple::parse(name, &self.snapshot) {
                 listeners.push(one);
             }
             self.processed.insert(name.to_string(), ());
         }
         Ok(listeners)
+    }
+
+    pub async fn add_fail(&mut self, name: &str) {
+        if !self.failed.contains_key(name) {
+            self.failed.insert(name.to_string(), ());
+            log::warn!("ListenerIter add_fail :{}", name);
+        }
     }
     async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];
