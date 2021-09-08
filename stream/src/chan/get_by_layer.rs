@@ -67,9 +67,8 @@ where
         let elapse = self.since.elapsed();
         self.since = Instant::now();
         let metric_id = item.rid().metric_id();
-        let name = get_name_by_idx(self.idx);
-        metrics::qps(name, found, metric_id);
-        metrics::duration(name, elapse, metric_id);
+        metrics::qps(get_key_hit_name_by_idx(self.idx), found, metric_id);
+        metrics::duration(get_name_by_idx(self.idx), elapse, metric_id);
 
         match self.request.operation() {
             Operation::Gets => {
@@ -165,10 +164,25 @@ where
     }
 }
 
-const NAMES_HIT: &[&'static str] = &[
-    "hit_l0", "hit_l1", "hit_l2", "hit_l3", "hit_l4", "hit_l5", "hit_l6", "hit_l7",
-];
+const NAMES: &[&'static str] = &["l0", "l1", "l2", "l3", "l4", "l5", "l6", "l7"];
 fn get_name_by_idx(idx: usize) -> &'static str {
+    if idx >= NAMES.len() {
+        "hit_lunkown"
+    } else {
+        unsafe { NAMES.get_unchecked(idx) }
+    }
+}
+const NAMES_HIT: &[&'static str] = &[
+    "l0_hit_key",
+    "l1_hit_key",
+    "l2_hit_key",
+    "l3_hit_key",
+    "l4_hit_key",
+    "l5_hit_key",
+    "l6_hit_key",
+    "l7_hit_key",
+];
+fn get_key_hit_name_by_idx(idx: usize) -> &'static str {
     if idx >= NAMES_HIT.len() {
         "hit_lunkown"
     } else {
