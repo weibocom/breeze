@@ -25,6 +25,9 @@ impl PacketBuffer {
             log::warn!("failed to flush metrics:{} ", e);
             self.socket.take();
         }
+        if self.idx >= 4 * 1024 * 1024 {
+            log::info!("metric size({}) is great than 4mb", self.idx);
+        }
         self.idx = 0;
         let mut buff = self.buff.borrow_mut();
         unsafe { buff.set_len(0) };
