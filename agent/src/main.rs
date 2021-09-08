@@ -19,7 +19,6 @@ async fn main() -> Result<()> {
 
     let _l = listener_for_supervisor(ctx.port()).await?;
     elog::init(ctx.log_dir(), &ctx.log_level)?;
-
     metrics::init(&ctx.metrics_url());
     metrics::init_local_ip(&ctx.metrics_probe);
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
@@ -28,13 +27,14 @@ async fn main() -> Result<()> {
         Instant::now() + Duration::from_secs(1),
         Duration::from_secs(3),
     );
+    let service_path = ctx.service_path();
+
     let session_id = Arc::new(AtomicUsize::new(0));
     let (tx, rx) = bounded(2048);
     loop {
         match rx.try_recv() {
             Ok(req) => listeners.add_fail(req),
-            Err(error) =>  log::warn!("try_recv error:{:?}", error),
-            
+            Err(error) => log::warn!("try_recv error:{:?}", error),
         }
 
         let quards = listeners.scan().await;
@@ -49,14 +49,16 @@ async fn main() -> Result<()> {
             let session_id = session_id.clone();
             let quard_name = quard.name();
             let tx = tx.clone();
+            let service_path = service_path.clone();
             spawn(async move {
                 let session_id = session_id.clone();
-                match process_one_service( &quard, discovery, session_id).await {
+                match process_one_service(&quard, discovery, session_id).await {
                     Ok(_) => {
                         log::info!("service listener complete address:{}", quard.address())
                     }
                     Err(e) => {
-                        tx.send(quard_name).unwrap();
+                        let s = service_path +"/"+ &quard_name;
+                        tx.send(s.clone()).unwrap();
                         log::warn!("service listener error:{:?} {}", e, quard.address())
                     }
                 };
@@ -79,6 +81,9 @@ async fn process_one_service(
         ErrorKind::InvalidData,
         format!("'{}' is not a valid endpoint", quard.endpoint()),
     ))?;
+
+  //  return Err((Error::new(ErrorKind::InvalidData, format!(" test"))));
+
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("starting to serve {}", quard);
     let sd = Arc::new(ServiceDiscovery::new(
