@@ -120,20 +120,21 @@ impl ListenerIter {
             if let Some(one) = Quadruple::parse(name, &self.snapshot) {
                 listeners.push(one);
                 self.processed.insert(name.to_string(), ());
-            } else {
                 self.failed.remove(name);
-                log::warn!("ListenerIter remove_fail:{}", name);
-            }
+                log::info!("parse succeeded, listenerIter remove_fail:{}", name);
+         
+            } 
         }
         Ok(listeners)
     }
 
     pub fn add_fail(&mut self, name: String) {
-        if !self.failed.contains_key(&name) {
-            self.failed.insert(name.clone().to_string(), ());
-            log::warn!("ListenerIter add_fail:{}", name);
+        let s = (self.path.clone() + "/" + &name).clone();
+        if !self.failed.contains_key(&s) {
+            self.failed.insert(s.to_string(), ());
+            log::warn!("listenerIter add_fail:{}",s);
         } else {
-            log::warn!("ListenerIter add_fail exist:{}", name);
+            log::warn!("listenerIter add_fail exist:{}", s);
         }
     }
     async fn read_all(&self) -> Result<Vec<String>> {
