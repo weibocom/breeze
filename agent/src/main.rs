@@ -49,7 +49,6 @@ async fn main() -> Result<()> {
             let session_id = session_id.clone();
             let quard_name = quard.name();
             let tx = tx.clone();
-            let service_path = service_path.clone();
             spawn(async move {
                 let session_id = session_id.clone();
                 match process_one_service(&quard, discovery, session_id).await {
@@ -57,9 +56,8 @@ async fn main() -> Result<()> {
                         log::info!("service listener complete address:{}", quard.address())
                     }
                     Err(e) => {
-                        let s = service_path +"/"+ &quard_name;
-                        tx.send(s.clone()).unwrap();
-                        log::warn!("service listener error:{:?} {}", e, quard.address())
+                        tx.send(quard_name).unwrap();
+                        log::warn!("service listener complete error:{:?} {}", e, quard.address())
                     }
                 };
             });
@@ -82,7 +80,7 @@ async fn process_one_service(
         format!("'{}' is not a valid endpoint", quard.endpoint()),
     ))?;
 
-  //  return Err((Error::new(ErrorKind::InvalidData, format!(" test"))));
+//    return Err((Error::new(ErrorKind::InvalidData, format!(" test"))));
 
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("starting to serve {}", quard);
