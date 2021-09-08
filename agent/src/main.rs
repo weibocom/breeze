@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
     loop {
         match rx.try_recv() {
             Ok(req) => listeners.add_fail(req),
-            Err(_) => todo!(),
+            Err(error) =>  log::warn!("try_recv error:{:?}", error),
         }
 
         let quards = listeners.scan().await;
