@@ -59,7 +59,6 @@ impl PacketBuffer {
                     }
                     end += 1;
                 }
-                let old = self.idx;
                 self.idx += ready!(sock.poll_send(cx, &buff[self.idx..=end]))?;
             }
         }
