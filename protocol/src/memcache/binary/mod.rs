@@ -141,9 +141,9 @@ impl Protocol for MemcacheBinary {
                 cmd[last_op_pos] = req.last_key().op();
             }
 
-            let new = Request::from_request(cmd, keys_slice, req);
-            debug_assert_eq!(new.keys().len() + found_ids.len(), req.keys().len());
-            Some(new)
+            // 业务输入的id可能会重复，导致断言失败
+            //debug_assert_eq!(new.keys().len() + found_ids.len(), req.keys().len());
+            Some(Request::from_request(cmd, keys_slice, req))
         } else {
             None
         }
