@@ -39,8 +39,11 @@ impl PacketBuffer {
         }
         if let Some(ref mut sock) = self.socket.as_mut() {
             let buff = self.buff.borrow();
+            // 一次最多发送4k。
+            let packet_size = 1024 * 4;
+            let end = (self.idx + packet_size).min(buff.len());
             while self.idx < buff.len() {
-                self.idx += ready!(sock.poll_send(cx, &buff[self.idx..]))?;
+                self.idx += ready!(sock.poll_send(cx, &buff[self.idx..end]))?;
             }
         }
         Poll::Ready(Ok(()))
