@@ -34,7 +34,7 @@ where
         receiver: Receiver::new(),
         sender: Sender::new(),
         sent: false,
-        rid: RequestId::from(session_id, 0),
+        rid: RequestId::from(session_id, 0, metric_id),
         metric: IoMetric::from(metric_id),
     }
     .await
