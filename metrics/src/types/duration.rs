@@ -84,9 +84,12 @@ impl crate::kv::KvItem for DurationItem {
         let qps = self.count as f64 / secs;
         f("qps", qps);
         for i in 0..self.intervals.len() {
-            let sub_key = self.get_interval_name(i);
-            let interval_qps = self.intervals[i] as f64 / secs;
-            f(sub_key, interval_qps);
+            let count = self.intervals[i];
+            if count > 0 {
+                let sub_key = self.get_interval_name(i);
+                let interval_qps = count as f64 / secs;
+                f(sub_key, interval_qps);
+            }
         }
     }
 }
