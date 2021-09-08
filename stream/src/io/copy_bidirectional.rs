@@ -114,7 +114,7 @@ where
             metrics::qps("bytes.rx", metric.req_bytes, metric.metric_id);
             match metric.op {
                 Operation::Get | Operation::Gets => {
-                    metrics::qps("kps", metric.req_keys_num, metric.metric_id);
+                    metrics::qps("key", metric.req_keys_num, metric.metric_id);
                     metrics::ratio(
                         "hit",
                         (metric.resp_keys_num, metric.req_keys_num),
