@@ -126,8 +126,8 @@ impl ListenerIter {
         Ok(listeners)
     }
 
-    pub  fn add_fail(&mut self, name: &str) {
-        if !self.failed.contains_key(name) {
+    pub  fn add_fail(&mut self, name: String) {
+        if !self.failed.contains_key(&name) {
             self.failed.insert(name.clone().to_string(), ());
             log::warn!("ListenerIter add_fail :{}", name);
         }
