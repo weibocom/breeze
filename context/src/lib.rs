@@ -117,19 +117,23 @@ impl ListenerIter {
                     continue;
                 }
             }
-
             if let Some(one) = Quadruple::parse(name, &self.snapshot) {
                 listeners.push(one);
+                self.processed.insert(name.to_string(), ());
+            } else {
+                self.failed.remove(name);
+                log::warn!("ListenerIter remove_fail:{}", name);
             }
-            self.processed.insert(name.to_string(), ());
         }
         Ok(listeners)
     }
 
-    pub  fn add_fail(&mut self, name: String) {
+    pub fn add_fail(&mut self, name: String) {
         if !self.failed.contains_key(&name) {
             self.failed.insert(name.clone().to_string(), ());
-            log::warn!("ListenerIter add_fail :{}", name);
+            log::warn!("ListenerIter add_fail:{}", name);
+        } else {
+            log::warn!("ListenerIter add_fail exist:{}", name);
         }
     }
     async fn read_all(&self) -> Result<Vec<String>> {
