@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     loop {
         match rx.try_recv() {
             Ok(req) => listeners.add_fail(req),
-            Err(error) => log::warn!("try_recv error:{:?}", error),
+            Err(error) => log::debug!("try_recv error:{:?}", error),
         }
 
         let quards = listeners.scan().await;
@@ -79,8 +79,6 @@ async fn process_one_service(
         ErrorKind::InvalidData,
         format!("'{}' is not a valid endpoint", quard.endpoint()),
     ))?;
-
-//    return Err((Error::new(ErrorKind::InvalidData, format!(" test"))));
 
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("starting to serve {}", quard);
