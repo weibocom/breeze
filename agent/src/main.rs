@@ -1,4 +1,5 @@
 use context::Context;
+use crossbeam_channel::bounded;
 use discovery::{Discovery, ServiceDiscovery};
 
 use net::listener::Listener;
@@ -8,11 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use stream::io::copy_bidirectional;
 use tokio::spawn;
-use tokio::sync::mpsc;
 use tokio::time::{interval_at, Instant};
 
 use protocol::Protocols;
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
@@ -30,9 +29,13 @@ async fn main() -> Result<()> {
         Duration::from_secs(3),
     );
     let session_id = Arc::new(AtomicUsize::new(0));
-    let (tx, mut rx) = mpsc::channel(1);
-
+    let (tx, rx) = bounded(2048);
     loop {
+        match rx.try_recv() {
+            Ok(req) => listeners.add_fail(req),
+            Err(_) => todo!(),
+        }
+
         let quards = listeners.scan().await;
         if let Err(e) = quards {
             log::info!("scan listener failed:{:?}", e);
@@ -41,28 +44,23 @@ async fn main() -> Result<()> {
         }
         for quard in quards.unwrap().iter() {
             let quard = quard.clone();
-            let quard_name = quard.name();
             let discovery = Arc::clone(&discovery);
-            let tx = tx.clone();
             let session_id = session_id.clone();
+            let quard_name = quard.name();
+            let tx = tx.clone();
             spawn(async move {
                 let session_id = session_id.clone();
-                match process_one_service(&quard, discovery, session_id).await {
+                match process_one_service( &quard, discovery, session_id).await {
                     Ok(_) => {
-                        let _ = tx.send(true).await;
                         log::info!("service listener complete address:{}", quard.address())
                     }
                     Err(e) => {
-                        let _ = tx.send(false).await;
+                        tx.send(quard_name).unwrap();
                         log::warn!("service listener error:{:?} {}", e, quard.address())
                     }
                 };
             });
-            if let Some(false) = rx.recv().await {
-                listeners.add_fail(&quard_name);
-            }
         }
-
         tick.tick().await;
     }
 }
