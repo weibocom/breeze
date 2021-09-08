@@ -37,6 +37,7 @@ impl ResponseData {
 }
 
 pub struct Response {
+    rid: RequestId,
     pub(crate) items: Vec<Item>,
 }
 
@@ -44,6 +45,7 @@ impl Response {
     #[inline]
     fn _from(slice: ResponseData, done: Option<(usize, Arc<RingBufferStream>)>) -> Self {
         Self {
+            rid: slice.req_id,
             items: vec![Item {
                 data: slice,
                 done: done,
@@ -66,6 +68,10 @@ impl Response {
             num += item.data.data.keys().len();
         }
         num
+    }
+    #[inline]
+    pub fn rid(&self) -> RequestId {
+        self.rid
     }
 
     #[inline]

@@ -98,22 +98,35 @@ mod rid {
     pub struct RequestId {
         session_id: usize, // 关联至一个client的实际的connection
         seq: usize,        // 自增序列号
+        metric_id: usize,
     }
 
     impl RequestId {
         #[inline(always)]
-        pub fn from(session_id: usize, seq: usize) -> Self {
-            Self { session_id, seq }
+        pub fn from(session_id: usize, seq: usize, metric_id: usize) -> Self {
+            Self {
+                session_id,
+                seq,
+                metric_id,
+            }
         }
         #[inline(always)]
         pub fn incr(&mut self) {
             self.seq += 1;
         }
+        #[inline(always)]
+        pub fn metric_id(&self) -> usize {
+            self.metric_id
+        }
     }
     use std::fmt;
     impl fmt::Display for RequestId {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "(rid: {} => {})", self.session_id, self.seq)
+            write!(
+                f,
+                "(rid: {} => {} metric:{})",
+                self.session_id, self.seq, self.metric_id
+            )
         }
     }
 }
@@ -122,14 +135,20 @@ mod rid {
 mod rid {
     use std::fmt;
     #[derive(Default, Debug, PartialEq, Clone, Copy)]
-    pub struct RequestId;
+    pub struct RequestId {
+        metric_id: usize,
+    }
     impl RequestId {
         #[inline(always)]
-        pub fn from(_session_id: usize, _seq: usize) -> Self {
-            Self
+        pub fn from(_session_id: usize, _seq: usize, metric_id: usize) -> Self {
+            Self { metric_id }
         }
         #[inline(always)]
         pub fn incr(&mut self) {}
+        #[inline(always)]
+        pub fn metric_id(&self) -> usize {
+            self.metric_id
+        }
     }
 
     impl fmt::Display for RequestId {
