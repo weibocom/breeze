@@ -27,13 +27,12 @@ async fn main() -> Result<()> {
         Instant::now() + Duration::from_secs(1),
         Duration::from_secs(3),
     );
-    let service_path = ctx.service_path();
 
     let session_id = Arc::new(AtomicUsize::new(0));
     let (tx, rx) = bounded(2048);
     loop {
         match rx.try_recv() {
-            Ok(req) => listeners.add_fail(req),
+            Ok(req) => listeners.on_fail(req),
             Err(error) => log::debug!("try_recv error:{:?}", error),
         }
 
