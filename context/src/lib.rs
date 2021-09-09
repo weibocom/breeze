@@ -82,7 +82,6 @@ impl Context {
         ListenerIter {
             path: self.service_path.to_string(),
             processed: Default::default(),
-            failed: Default::default(),
             snapshot: self.snapshot.to_string(),
         }
     }
@@ -100,7 +99,6 @@ impl Context {
 use std::collections::HashMap;
 pub struct ListenerIter {
     processed: HashMap<String, ()>,
-    failed: HashMap<String, ()>,
     path: String,
     snapshot: String,
 }
@@ -113,28 +111,24 @@ impl ListenerIter {
         let mut listeners = vec![];
         for name in self.read_all().await?.iter() {
             if self.processed.contains_key(name) {
-                if !self.failed.contains_key(name) {
                     continue;
-                }
             }
             if let Some(one) = Quadruple::parse(name, &self.snapshot) {
                 listeners.push(one);
                 self.processed.insert(name.to_string(), ());
-                self.failed.remove(name);
-                log::info!("parse succeeded, listenerIter remove_fail:{}", name);
-         
+                log::info!("parse succeeded, listenerIter :{}", name);
             } 
         }
         Ok(listeners)
     }
 
-    pub fn add_fail(&mut self, name: String) {
+    pub fn on_fail(&mut self, name: String) {
         let s = (self.path.clone() + "/" + &name).clone();
-        if !self.failed.contains_key(&s) {
-            self.failed.insert(s.to_string(), ());
-            log::warn!("listenerIter add_fail:{}",s);
+        if self.processed.contains_key(&s) {
+            self.processed.remove(&s);
+            log::warn!("listenerIter on_fail exist:{}",s);
         } else {
-            log::warn!("listenerIter add_fail exist:{}", s);
+            log::warn!("listenerIter on_fail :{}", s);
         }
     }
     async fn read_all(&self) -> Result<Vec<String>> {
