@@ -1,6 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Instant;
 
 use crate::backend::AddressEnable;
 use crate::{AsyncReadAll, AsyncWriteAll, Response};
@@ -16,6 +17,7 @@ pub struct AsyncLayerGet<L, P> {
     request: Request,
     response: Option<Response>,
     parser: P,
+    since: Instant, // 上一层请求开始的时间
 }
 
 impl<L, P> AsyncLayerGet<L, P>
@@ -30,6 +32,7 @@ where
             request: Default::default(),
             response: None,
             parser: p,
+            since: Instant::now(),
         }
     }
     // 发送请求，将current cmds发送到所有mc，如果失败，继续向下一层write，注意处理重入问题
@@ -59,6 +62,14 @@ where
 
     #[inline(always)]
     fn on_response(&mut self, item: Response) {
+        let found = item.keys_num();
+        // 记录metrics
+        let elapse = self.since.elapsed();
+        self.since = Instant::now();
+        let metric_id = item.rid().metric_id();
+        metrics::qps(get_key_hit_name_by_idx(self.idx), found, metric_id);
+        metrics::duration(get_name_by_idx(self.idx), elapse, metric_id);
+
         match self.request.operation() {
             Operation::Gets => {
                 match self.response.as_mut() {
@@ -82,6 +93,7 @@ where
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, req: &Request) -> Poll<Result<()>> {
         if self.request.len() == 0 {
             self.request = req.clone();
+            self.since = Instant::now();
         }
         return self.do_write(cx);
     }
@@ -149,5 +161,31 @@ where
                     )
                 })))
             })
+    }
+}
+
+const NAMES: &[&'static str] = &["l0", "l1", "l2", "l3", "l4", "l5", "l6", "l7"];
+fn get_name_by_idx(idx: usize) -> &'static str {
+    if idx >= NAMES.len() {
+        "hit_lunkown"
+    } else {
+        unsafe { NAMES.get_unchecked(idx) }
+    }
+}
+const NAMES_HIT: &[&'static str] = &[
+    "l0_hit_key",
+    "l1_hit_key",
+    "l2_hit_key",
+    "l3_hit_key",
+    "l4_hit_key",
+    "l5_hit_key",
+    "l6_hit_key",
+    "l7_hit_key",
+];
+fn get_key_hit_name_by_idx(idx: usize) -> &'static str {
+    if idx >= NAMES_HIT.len() {
+        "hit_lunkown"
+    } else {
+        unsafe { NAMES_HIT.get_unchecked(idx) }
     }
 }

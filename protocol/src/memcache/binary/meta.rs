@@ -13,6 +13,13 @@ pub(super) enum PacketPos {
 }
 pub(super) const HEADER_LEN: usize = 24;
 
+pub(super) const NOOP_REQEUST: &[u8] = &[
+    128, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+pub(super) const NOOP_RESPONSE: &[u8] = &[
+    129, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
 // https://github.com/memcached/memcached/wiki/BinaryProtocolRevamped#command-opcodes
 // MC包含Get, Gets, Store, Meta四类命令，索引分别是0-3
 pub(super) const COMMAND_IDX: [u8; 128] = [
@@ -68,6 +75,8 @@ pub(super) trait Binary<T> {
     fn packet_len(&self) -> usize;
     // 是否为quite get请求。
     fn quite_get(&self) -> bool;
+    // 截取末尾的noop请求
+    fn take_noop(&self) -> T;
 }
 
 use ds::{RingSlice, Slice};
@@ -144,6 +153,15 @@ macro_rules! define_binary {
             fn quite_get(&self) -> bool {
                 MULT_GETS[self.op() as usize] == 1
             }
+
+            // 截取末尾的noop请求
+            #[inline(always)]
+            fn take_noop(&self) -> Self {
+                debug_assert!(self.len() >= HEADER_LEN);
+                let noop = self.sub_slice(self.len() - HEADER_LEN, HEADER_LEN);
+                debug_assert!(noop.data() == NOOP_REQEUST || noop.data() == NOOP_RESPONSE);
+                noop
+            }
         }
     };
 }
@@ -167,7 +185,9 @@ macro_rules! define_packet_parser {
                     // 当前packet未读取完成
                     return None;
                 }
-                keys.push(c_r.sub_slice(0, packet_len));
+                if !c_r.noop() {
+                    keys.push(c_r.sub_slice(0, packet_len));
+                }
                 read += packet_len;
                 // 把完整的命令写入进去。方便后面处理
                 // getMulti的姿势On(quite-cmd) + O1(non-quite-cmd)，最后通常一个noop请求或者getk等 非quite请求 结尾

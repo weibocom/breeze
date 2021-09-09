@@ -214,6 +214,14 @@ impl From<Slice> for RingSlice {
         Self::from(s.as_ptr(), cap, 0, s.len())
     }
 }
+impl From<&[u8]> for RingSlice {
+    #[inline]
+    fn from(s: &[u8]) -> Self {
+        let len = s.len();
+        let cap = len.next_power_of_two();
+        Self::from(s.as_ptr(), cap, 0, s.len())
+    }
+}
 use std::fmt;
 use std::fmt::{Display, Formatter};
 impl Display for RingSlice {
