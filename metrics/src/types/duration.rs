@@ -22,16 +22,16 @@ impl DurationItem {
     }
     pub(crate) fn get_interval_name(&self, idx: usize) -> &'static str {
         match idx {
-            0 => "interval0",
-            1 => "interval1",
-            2 => "interval2",
-            3 => "interval3",
-            4 => "interval4",
-            5 => "interval5",
-            6 => "interval6",
-            7 => "interval7",
-            8 => "interval8",
-            _ => "interval_overflow",
+            0 => "itvl0-1ms",
+            1 => "itvl1-4ms",
+            2 => "itvl4-16ms",
+            3 => "itvl16-64ms",
+            4 => "itvl64-256ms",
+            5 => "itvl256ms-1s",
+            6 => "itvl1s-4s",
+            7 => "itvl4s-16s",
+            8 => "itvl16s-",
+            _ => "itvl_overflow",
         }
     }
 }
