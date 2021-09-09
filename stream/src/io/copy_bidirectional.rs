@@ -2,7 +2,7 @@ use crate::{AsyncReadAll, AsyncWriteAll};
 
 use super::{IoMetric, Receiver, Sender};
 
-use protocol::{Protocol, RequestId};
+use protocol::{Operation, Protocol, RequestId};
 
 use futures::ready;
 
@@ -34,7 +34,7 @@ where
         receiver: Receiver::new(),
         sender: Sender::new(),
         sent: false,
-        rid: RequestId::from(session_id, 0),
+        rid: RequestId::from(session_id, 0, metric_id),
         metric: IoMetric::from(metric_id),
     }
     .await
@@ -109,9 +109,20 @@ where
             if duration >= SLOW {
                 log::info!("slow request: {}", metric);
             }
-            metrics::duration_with_service(metric.op.name(), duration, metric.metric_id);
-            metrics::counter_with_service("bytes.tx", metric.resp_bytes, metric.metric_id);
-            metrics::counter_with_service("bytes.rx", metric.req_bytes, metric.metric_id);
+            metrics::duration(metric.op.name(), duration, metric.metric_id);
+            metrics::qps("bytes.tx", metric.resp_bytes, metric.metric_id);
+            metrics::qps("bytes.rx", metric.req_bytes, metric.metric_id);
+            match metric.op {
+                Operation::Get | Operation::Gets => {
+                    metrics::qps("key", metric.req_keys_num, metric.metric_id);
+                    metrics::ratio(
+                        "hit",
+                        (metric.resp_keys_num, metric.req_keys_num),
+                        metric.metric_id,
+                    );
+                }
+                _ => {}
+            }
             metric.reset();
         }
 

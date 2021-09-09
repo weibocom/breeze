@@ -10,10 +10,12 @@ pub(crate) struct IoMetric {
     pub(crate) req_receive: Instant, // 从client收到第一个字节的时间
     pub(crate) req_recv_num: usize,  // 从client接收到一个完整的包调用的io_read的次数
     pub(crate) req_bytes: usize,     // 请求包的大小
+    pub(crate) req_keys_num: usize,  // 请求中包含的key的数量
     pub(crate) req_done: Instant,    // 请求接收完成消耗的时间
     pub(crate) resp_ready: Instant,  // response准备好开始发送的时间
     pub(crate) resp_sent_num: usize, // 从client接收到一个完整的包调用的io_read的次数
     pub(crate) resp_bytes: usize,    // response包的大小
+    pub(crate) resp_keys_num: usize, // 返回包中包含的总的key的数量
     pub(crate) resp_done: Instant,   // response发送完成时间
 }
 
@@ -45,7 +47,7 @@ impl IoMetric {
         self.req_recv_num += 1;
     }
     #[inline(always)]
-    pub(crate) fn req_done(&mut self, op: Operation, n: usize) {
+    pub(crate) fn req_done(&mut self, op: Operation, n: usize, keys_num: usize) {
         let now = Instant::now();
         // pipeline时，部分请求没有req.
         if self.req_recv_num == 0 {
@@ -55,14 +57,16 @@ impl IoMetric {
         self.req_bytes = n;
         self.enter_rx = self.enter_num;
         self.op = op;
+        self.req_keys_num = keys_num;
     }
 
     #[inline(always)]
-    pub(crate) fn response_ready(&mut self) {
+    pub(crate) fn response_ready(&mut self, keys_num: usize) {
         if self.resp_sent_num == 0 {
             self.resp_ready = Instant::now();
         }
         self.resp_sent_num += 1;
+        self.resp_keys_num = keys_num;
     }
     // 成功发送了n个字节
     #[inline(always)]
@@ -91,10 +95,12 @@ impl IoMetric {
             req_receive: Instant::now(),
             req_recv_num: 0,
             req_bytes: 0,
+            req_keys_num: 0,
             req_done: Instant::now(),
             resp_ready: Instant::now(),
             resp_sent_num: 0,
             resp_bytes: 0,
+            resp_keys_num: 0,
             resp_done: Instant::now(),
         }
     }
@@ -106,9 +112,11 @@ impl fmt::Display for IoMetric {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "{}.{}: enters:{}, num:{},{} bytes:{},{} duration: since:{:?}, rx:{:?}, process:{:?} tx:{:?} total:{:?}",
+            "{}.{}: keys:({}/{}) enters:{}, num:{},{} bytes:{},{} duration: since:{:?}, rx:{:?}, process:{:?} tx:{:?} total:{:?}",
             metrics::get_name(self.metric_id),
             self.op.name(),
+            self.resp_keys_num,
+            self.req_keys_num,
             self.enter_num,
             self.req_recv_num,
             self.resp_sent_num,

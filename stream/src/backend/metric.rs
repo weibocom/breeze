@@ -47,7 +47,7 @@ where
                 size
             );
         }
-        metrics::duration_with_service("tx", duration, self.metric_id);
+        metrics::duration("tx", duration, self.metric_id);
         Poll::Ready(Ok(size))
     }
     #[inline(always)]
@@ -108,7 +108,7 @@ where
                 buf.filled().len()
             );
         }
-        metrics::duration_with_service("rx", duration, self.metric_id);
+        metrics::duration("rx", duration, self.metric_id);
         Poll::Ready(Ok(()))
     }
 }

@@ -68,7 +68,7 @@ impl Item {
         debug_assert_eq!(self.status.load(Acquire), ItemStatus::Init as u8);
         self.status_cas(Init as u8, RequestReceived as u8);
         *self.request.borrow_mut() = Some(req.clone());
-        log::debug!("place:{:?}", self.rid.replace(req.id()));
+        self.rid.replace(req.id());
     }
     #[inline(always)]
     pub fn take_request(&self, seq: usize) -> Request {
