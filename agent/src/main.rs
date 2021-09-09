@@ -1,4 +1,5 @@
 use context::Context;
+use crossbeam_channel::bounded;
 use discovery::{Discovery, ServiceDiscovery};
 
 use net::listener::Listener;
@@ -6,14 +7,11 @@ use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-
 use stream::io::copy_bidirectional;
 use tokio::spawn;
-use tokio::sync::mpsc::{self, Sender};
 use tokio::time::{interval_at, Instant};
 
 use protocol::Protocols;
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
@@ -21,7 +19,6 @@ async fn main() -> Result<()> {
 
     let _l = listener_for_supervisor(ctx.port()).await?;
     elog::init(ctx.log_dir(), &ctx.log_level)?;
-
     metrics::init(&ctx.metrics_url());
     metrics::init_local_ip(&ctx.metrics_probe);
     let discovery = Arc::from(Discovery::from_url(ctx.discovery()));
@@ -30,9 +27,15 @@ async fn main() -> Result<()> {
         Instant::now() + Duration::from_secs(1),
         Duration::from_secs(3),
     );
+
     let session_id = Arc::new(AtomicUsize::new(0));
-    let (tx, mut rx) = mpsc::channel(1);
+    let (tx, rx) = bounded(2048);
     loop {
+        match rx.try_recv() {
+            Ok(req) => listeners.on_fail(req),
+            Err(error) => log::debug!("try_recv error:{:?}", error),
+        }
+
         let quards = listeners.scan().await;
         if let Err(e) = quards {
             log::info!("scan listener failed:{:?}", e);
@@ -42,28 +45,27 @@ async fn main() -> Result<()> {
         for quard in quards.unwrap().iter() {
             let quard = quard.clone();
             let discovery = Arc::clone(&discovery);
-            let tx = tx.clone();
             let session_id = session_id.clone();
+            let quard_name = quard.name();
+            let tx = tx.clone();
             spawn(async move {
-                let _tx = tx.clone();
                 let session_id = session_id.clone();
-                match process_one_service(tx, &quard, discovery, session_id).await {
-                    Ok(_) => log::info!("service listener complete address:{}", quard.address()),
+                match process_one_service(&quard, discovery, session_id).await {
+                    Ok(_) => {
+                        log::info!("service listener complete address:{}", quard.address())
+                    }
                     Err(e) => {
-                        let _ = _tx.send(false).await;
-                        log::warn!("service listener error:{:?} {}", e, quard.address())
+                        tx.send(quard_name).unwrap();
+                        log::warn!("service listener complete error:{:?} {}", e, quard.address())
                     }
                 };
             });
-            let _success = rx.recv().await;
         }
-
         tick.tick().await;
     }
 }
 
 async fn process_one_service(
-    tx: Sender<bool>,
     quard: &context::Quadruple,
     discovery: Arc<discovery::Discovery>,
     session_id: Arc<AtomicUsize>,
@@ -76,9 +78,9 @@ async fn process_one_service(
         ErrorKind::InvalidData,
         format!("'{}' is not a valid endpoint", quard.endpoint()),
     ))?;
+
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("starting to serve {}", quard);
-    let _ = tx.send(true).await;
     let sd = Arc::new(ServiceDiscovery::new(
         discovery,
         quard.service(),

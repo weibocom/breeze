@@ -111,14 +111,25 @@ impl ListenerIter {
         let mut listeners = vec![];
         for name in self.read_all().await?.iter() {
             if self.processed.contains_key(name) {
-                continue;
+                    continue;
             }
             if let Some(one) = Quadruple::parse(name, &self.snapshot) {
                 listeners.push(one);
-            }
-            self.processed.insert(name.to_string(), ());
+                self.processed.insert(name.to_string(), ());
+                log::info!("parse succeeded, listenerIter :{}", name);
+            } 
         }
         Ok(listeners)
+    }
+
+    pub fn on_fail(&mut self, name: String) {
+        let s = (self.path.clone() + "/" + &name).clone();
+        if self.processed.contains_key(&s) {
+            self.processed.remove(&s);
+            log::warn!("listenerIter on_fail exist:{}",s);
+        } else {
+            log::warn!("listenerIter on_fail :{}", s);
+        }
     }
     async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];

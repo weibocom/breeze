@@ -15,6 +15,6 @@ discovery = { path = "../discovery" }
 elog = { path = "../log", package = "log" }
 stream = { path = "../stream" }
 metrics = { path = "../metrics" }
-
+crossbeam-channel = "0.5.1"
 log = "0.4.14"
 tokio = {version = "1.10.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
