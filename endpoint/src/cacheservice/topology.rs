@@ -260,17 +260,6 @@ where
         log::info!("name:{} master:{:?}", name, self.masters);
     }
 }
-impl<P> left_right::Absorb<(String, String)> for Topology<P>
-where
-    P: Send + Sync + Protocol + 'static + Clone,
-{
-    fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
-        self.update(&cfg.0, &cfg.1);
-    }
-    fn sync_with(&mut self, first: &Self) {
-        *self = first.clone();
-    }
-}
 
 impl<P> From<P> for Topology<P> {
     fn from(parser: P) -> Self {
