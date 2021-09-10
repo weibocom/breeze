@@ -12,8 +12,12 @@ impl<T> Spmc<T> {
     }
     #[inline]
     pub fn write<F: Fn(&mut T) -> O, O>(&self, w: F) -> O {
-        let mut t = self.inner.write().unwrap();
-        w(&mut *t)
+        loop {
+            if let Ok(mut t) = self.inner.try_write() {
+                return w(&mut *t);
+            }
+            println!("spining");
+        }
     }
     #[inline]
     pub fn read<F: Fn(&T) -> O, O>(&self, r: F) -> O {
