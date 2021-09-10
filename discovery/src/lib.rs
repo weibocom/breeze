@@ -10,8 +10,6 @@ use vintage::Vintage;
 use std::io::Result;
 use std::time::Duration;
 
-use left_right::ReadHandle;
-
 use url::Url;
 
 use async_trait::async_trait;
@@ -55,21 +53,21 @@ impl Discovery {
     }
 }
 
-pub trait Topology: left_right::Absorb<(String, String)> + Clone {
+pub trait Topology {
     fn update(&mut self, cfg: &str, name: &str);
 }
 
 pub trait ServiceDiscover<T> {
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: FnOnce(Option<&T>) -> O;
+        F: Fn(&T) -> O;
 }
 
 unsafe impl<T> Send for ServiceDiscovery<T> {}
 unsafe impl<T> Sync for ServiceDiscovery<T> {}
 
 pub struct ServiceDiscovery<T> {
-    cache: ReadHandle<T>,
+    cache: Arc<ds::Spmc<T>>,
 }
 
 impl<T> ServiceDiscovery<T> {
@@ -78,14 +76,14 @@ impl<T> ServiceDiscovery<T> {
         D: Discover + Send + Unpin + 'static + Sync,
         T: Topology + Send + Sync + 'static,
     {
-        let (w, r) = left_right::new_from_empty::<T, (String, String)>(empty);
-
+        let cache = Arc::new(ds::Spmc::from(empty));
+        let w = cache.clone();
         tokio::spawn(async move {
             AsyncServiceUpdate::new(service, discovery, w, tick, snapshot)
                 .start_watch()
                 .await
         });
-        Self { cache: r }
+        Self { cache: cache }
     }
 }
 
@@ -93,13 +91,9 @@ impl<T> ServiceDiscover<T> for ServiceDiscovery<T> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: FnOnce(Option<&T>) -> O,
+        F: Fn(&T) -> O,
     {
-        if let Some(cache) = self.cache.enter() {
-            f(Some(&cache))
-        } else {
-            f(None)
-        }
+        self.cache.read(|t| f(t))
     }
 }
 
@@ -120,7 +114,7 @@ impl<T> ServiceDiscover<T> for Arc<ServiceDiscovery<T>> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where
-        F: FnOnce(Option<&T>) -> O,
+        F: Fn(&T) -> O,
     {
         (**self).do_with(f)
     }

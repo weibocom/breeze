@@ -16,7 +16,7 @@ use stream::{
 
 use protocol::Protocol;
 
-use std::io::{Error, ErrorKind, Result};
+use std::io::Result;
 
 type Backend = stream::BackendStream;
 
@@ -96,15 +96,7 @@ impl<P> CacheService<P> {
         D: ServiceDiscover<super::Topology<P>>,
         P: protocol::Protocol,
     {
-        discovery.do_with(|t| match t {
-            Some(t) => match t {
-                super::Topology::CacheService(t) => Self::from_topology::<D>(p, t),
-            },
-            None => Err(Error::new(
-                ErrorKind::ConnectionRefused,
-                "backend server not inited yet",
-            )),
-        })
+        discovery.do_with(|t| Self::from_topology::<D>(p.clone(), t))
     }
     fn from_topology<D>(parser: P, topo: &Topology<P>) -> Result<Self>
     where

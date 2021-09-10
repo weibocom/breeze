@@ -1,8 +1,5 @@
 // 定期更新discovery.
-// 基于left-right实现无锁并发更新
-//
 use super::Discover;
-use left_right::{Absorb, WriteHandle};
 use std::io::{Error, ErrorKind, Result};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -12,16 +9,13 @@ use tokio::time::{interval, Interval};
 
 use super::ServiceName;
 
-unsafe impl<D, T> Send for AsyncServiceUpdate<D, T> where T: Absorb<(String, String)> {}
-unsafe impl<D, T> Sync for AsyncServiceUpdate<D, T> where T: Absorb<(String, String)> {}
+use ds::Spmc;
+use std::sync::Arc;
 
-pub(crate) struct AsyncServiceUpdate<D, T>
-where
-    T: Absorb<(String, String)>,
-{
+pub(crate) struct AsyncServiceUpdate<D, T> {
     service: ServiceName,
     discovery: D,
-    w: WriteHandle<T, (String, String)>,
+    w: Arc<Spmc<T>>,
     cfg: String,
     sign: String,
     interval: Interval,
@@ -30,12 +24,12 @@ where
 
 impl<D, T> AsyncServiceUpdate<D, T>
 where
-    T: Absorb<(String, String)>,
+    T: super::Topology,
 {
     pub fn new(
         service: String,
         discovery: D,
-        writer: WriteHandle<T, (String, String)>,
+        writer: Arc<Spmc<T>>,
         tick: Duration,
         snapshot: String,
     ) -> Self {
@@ -83,9 +77,14 @@ where
         self.cfg = cfg;
         self.sign = contents;
 
-        self.w.append((self.cfg.clone(), self.service.to_owned()));
-        self.w.publish();
+        self.update();
+
         Ok(())
+    }
+    fn update(&mut self) {
+        self.w.write(|t| {
+            t.update(&self.cfg, &self.service);
+        });
     }
     async fn dump_to_snapshot(&mut self) -> Result<()> {
         let path = self.snapshot.as_path();
@@ -118,8 +117,7 @@ where
                 if self.cfg != cfg || self.sign != sig {
                     self.cfg = cfg;
                     self.sign = sig;
-                    self.w.append((self.cfg.clone(), self.service.to_owned()));
-                    self.w.publish();
+                    self.update();
                     if let Err(e) = self.dump_to_snapshot().await {
                         log::warn!(
                             "failed to dump to snapshot. path:{:?} {:?}",

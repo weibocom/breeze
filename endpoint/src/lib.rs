@@ -8,11 +8,11 @@ use protocol::Protocol;
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
 macro_rules! define_endpoint {
-    ($($top:tt, $item:ident, $type_name:tt, $ep:expr);+) => {
+    ($($top:ty, $item:ident, $type_name:tt, $ep:expr);+) => {
 
        #[derive(Clone)]
        pub enum Topology<P> {
-            $($item($top<P>)),+
+            $($item($top)),+
        }
 
        impl<P> Topology<P>  {
@@ -24,7 +24,20 @@ macro_rules! define_endpoint {
            }
        }
 
-       impl<P> discovery::Topology for Topology<P> where P:Clone+Sync+Send+Protocol+'static{
+$(
+    impl<P> std::ops::Deref for Topology<P> {
+        type Target = $top;
+        fn deref(&self) -> &Self::Target {
+            match self {
+                Self::$item(t) => t,
+                // 如果有多个实现，把该注释去掉
+                //_ => panic!("topology {} not matched", stringify!($top)),
+            }
+        }
+    }
+)+
+
+       impl<P> discovery::Topology for Topology<P> where P:Sync+Send+Protocol{
            fn update(&mut self, cfg: &str, name: &str) {
                match self {
                     $(Self::$item(s) => discovery::Topology::update(s, cfg, name),)+
@@ -71,22 +84,9 @@ mod cacheservice;
 //mod pipe;
 
 use cacheservice::CacheService;
-use cacheservice::Topology as CSTopology;
 //use pipe::{Pipe, PipeTopology};
 
 define_endpoint! {
 //    PipeTopology, Pipe,         Pipe,         "pipe";
-    CSTopology, CacheService, CacheService, "cs"
-}
-
-impl<P> left_right::Absorb<(String, String)> for Topology<P>
-where
-    P: Clone + Sync + Send + Protocol + 'static,
-{
-    fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
-        discovery::Topology::update(self, &cfg.0, &cfg.1)
-    }
-    fn sync_with(&mut self, first: &Self) {
-        *self = first.clone();
-    }
+    cacheservice::Topology<P>, CacheService, CacheService, "cs"
 }
