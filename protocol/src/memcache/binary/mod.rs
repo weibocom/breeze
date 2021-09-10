@@ -103,12 +103,12 @@ impl Protocol for MemcacheBinary {
 
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
     where
-        R: Iterator<Item = (bool, &'a Response)>,
+        R: Iterator<Item = &'a Response>,
     {
         debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::Gets);
         debug_assert!(req.keys().len() > 0);
         if self.is_single_get(req) {
-            if let Some((_, response)) = resp.next() {
+            if let Some(response) = resp.next() {
                 if response.status_ok() && !response.noop() {
                     return None;
                 }
@@ -156,11 +156,13 @@ impl Protocol for MemcacheBinary {
     fn write_response<'a, R, W>(&self, r: R, w: &mut W)
     where
         W: crate::BackwardWrite,
-        R: Iterator<Item = (bool, &'a Response)>,
+        R: Iterator<Item = &'a Response>,
     {
-        for (last, response) in r {
+        let (mut left, _) = r.size_hint();
+        for response in r {
             // 最后一个请求，不需要做变更，直接写入即可。
-            if last {
+            left -= 1;
+            if left == 0 {
                 w.write(response);
                 break;
             }
@@ -212,11 +214,11 @@ impl MemcacheBinary {
     #[inline(always)]
     fn ids_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
     where
-        T: Iterator<Item = (bool, &'a Response)>,
+        T: Iterator<Item = &'a Response>,
     {
         let mut ids = HashMap::with_capacity(exptects * 3 / 2);
         // 解析response中的key
-        for (_last, one_respone) in resp {
+        for one_respone in resp {
             for cmd in one_respone.keys() {
                 if cmd.status_ok() {
                     if let Some(id) = cmd.id() {
