@@ -10,7 +10,6 @@ use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
 macro_rules! define_endpoint {
     ($($top:ty, $item:ident, $type_name:tt, $ep:expr);+) => {
 
-       #[derive(Clone)]
        pub enum Topology<P> {
             $($item($top)),+
        }
@@ -25,6 +24,7 @@ macro_rules! define_endpoint {
        }
 
 $(
+    // 支持Topology enum自动转换成具体的类型
     impl<P> std::ops::Deref for Topology<P> {
         type Target = $top;
         fn deref(&self) -> &Self::Target {
@@ -63,6 +63,7 @@ $(
         }
 
         impl<P> AsyncReadAll for Endpoint<P> where P: Unpin+Protocol{
+            #[inline]
             fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
                 match &mut *self {
                     $(Self::$item(ref mut p) => Pin::new(p).poll_next(cx),)+
@@ -71,6 +72,7 @@ $(
         }
 
         impl<P> AsyncWriteAll for Endpoint<P> where P:Unpin+Protocol{
+            #[inline]
             fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>>{
                 match &mut *self {
                     $(Self::$item(ref mut p) => Pin::new(p).poll_write(cx, buf),)+

@@ -37,11 +37,16 @@ impl Vintage {
     where
         C: From<String>,
     {
+        // 下来这段逻辑用于测试。把vintage先临时禁用，验证对cpu的影响
+        if index.len() > 4 {
+            log::info!("vintage lookup cached for {:?} index:{}", path, index);
+            return Ok(Config::NotChanged);
+        }
         // 设置config的path
         let mut gurl = self.base_url.clone();
         gurl.set_path(path);
 
-        //log::debug!("vintage-lookup: path:{} index:{}", path, index);
+        log::info!("vintage-lookup: path:{} index:{}", path, index);
 
         let resp = reqwest::Client::new()
             .get(gurl)
