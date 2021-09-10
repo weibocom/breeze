@@ -46,6 +46,7 @@ impl Backend {
 }
 
 impl AsyncReadAll for Backend {
+    #[inline(always)]
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &*self;
         let slice = ready!(me.inner.poll_next(me.id.id(), cx))?;
@@ -54,6 +55,7 @@ impl AsyncReadAll for Backend {
 }
 
 impl AsyncWriteAll for Backend {
+    #[inline(always)]
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &*self;
         me.inner.poll_write(me.id.id(), cx, buf)
@@ -61,12 +63,14 @@ impl AsyncWriteAll for Backend {
 }
 
 impl Drop for Backend {
+    #[inline(always)]
     fn drop(&mut self) {
         self.inner.shutdown(self.id.id());
     }
 }
 
 impl AsyncReadAll for BackendStream {
+    #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         match me {
@@ -77,6 +81,7 @@ impl AsyncReadAll for BackendStream {
 }
 
 impl AsyncWriteAll for BackendStream {
+    #[inline(always)]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         match me {
@@ -88,6 +93,7 @@ impl AsyncWriteAll for BackendStream {
 
 pub struct NotConnected;
 impl AsyncReadAll for NotConnected {
+    #[inline(always)]
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<Response>> {
         Poll::Ready(Err(Error::new(
             ErrorKind::NotConnected,
@@ -97,6 +103,7 @@ impl AsyncReadAll for NotConnected {
 }
 
 impl AsyncWriteAll for NotConnected {
+    #[inline(always)]
     fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: &Request) -> Poll<Result<()>> {
         Poll::Ready(Err(Error::new(
             ErrorKind::NotConnected,
@@ -110,6 +117,7 @@ pub trait AddressEnable {
 }
 
 impl AddressEnable for BackendStream {
+    #[inline(always)]
     fn get_address(&self) -> String {
         match self {
             BackendStream::Backend(backend) => backend.addr().clone(),
