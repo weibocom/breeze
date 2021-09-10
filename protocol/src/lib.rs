@@ -45,11 +45,11 @@ pub trait Protocol: Unpin + Clone + 'static {
     // 如果所有的key都已返回，则返回None
     fn filter_by_key<'a, R>(&self, req: &Request, resp: R) -> Option<Request>
     where
-        R: Iterator<Item = (bool, &'a Response)>;
+        R: Iterator<Item = &'a Response>;
     fn write_response<'a, R, W>(&self, r: R, w: &mut W)
     where
         W: BackwardWrite,
-        R: Iterator<Item = (bool, &'a Response)>;
+        R: Iterator<Item = &'a Response>;
     // 把一个response，通常是一个get对应的返回，转换为一个Request。
     // 用于将数据从一个实例同步到另外一个实例
     fn convert(&self, _response: &Response, _noreply: bool) -> Option<Request> {
