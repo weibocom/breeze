@@ -98,8 +98,9 @@ impl Quadruple {
     pub fn snapshot(&self) -> String {
         self.snapshot.to_owned()
     }
+    // 从discovery同步数据的间隔周期
     pub fn tick(&self) -> Duration {
-        Duration::from_secs(1)
+        Duration::from_secs(15)
     }
 }
 
