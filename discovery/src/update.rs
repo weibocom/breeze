@@ -159,6 +159,7 @@ where
         }
         let mut file = File::create(path).await?;
         file.write_all(sig.as_bytes()).await?;
+        file.write_all(b"\r\n").await?;
         file.write_all(cfg.as_bytes()).await?;
         Ok(())
     }
