@@ -65,7 +65,7 @@ impl Vintage {
                         Ok(Config::NotChanged)
                     } else {
                         log::info!("{} from {} to {} len:{}", path, index, t_index, data.len());
-                        Ok(Config::Config(C::from(data), t_index))
+                        Ok(Config::Config(t_index, C::from(data)))
                     }
                 }
             }

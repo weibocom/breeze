@@ -18,7 +18,7 @@ unsafe impl<C> Sync for Config<C> {}
 pub enum Config<C> {
     NotFound,
     NotChanged,
-    Config(C, String),
+    Config(String, C), // 第一个元素是签名，第二个是数据
 }
 
 #[async_trait]
