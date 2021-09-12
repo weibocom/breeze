@@ -36,7 +36,7 @@ impl Protocol for MemcacheBinary {
         }
     }
     #[inline]
-    fn sharding(&self, req: &Request, shard: &Sharding) -> HashMap<usize, Request> {
+    fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
         debug_assert_eq!(req.operation(), Operation::Gets);
         unsafe {
@@ -49,39 +49,34 @@ impl Protocol for MemcacheBinary {
             debug_assert!(keys.len() > 0);
 
             let sharded = shard.shardings(keys);
-            if sharded.len() == 1 {
-                let mut ret = HashMap::with_capacity(1);
-                let (s_idx, _) = sharded.iter().next().expect("only one shard");
-                ret.insert(*s_idx, req.clone());
-                return ret;
-            }
             let last_cmd = req.last_key();
             let noop = last_cmd.quite_get(); // 如果最后一个请求是quite，说明当前请求是noop请求。
-            let mut sharded_req = HashMap::with_capacity(sharded.len());
-            for (s_idx, indice) in sharded.iter() {
-                debug_assert!(indice.len() > 0);
-                let mut cmd: Vec<u8> = Vec::with_capacity(req.len());
-                let mut keys: Vec<Slice> = Vec::with_capacity(indice.len() + 1);
-                for idx in indice.iter() {
-                    debug_assert!(*idx < klen);
-                    let cmd_i = req.keys().get_unchecked(*idx);
-                    keys.push(Slice::new(
-                        cmd.as_ptr().offset(cmd.len() as isize) as usize,
-                        cmd_i.len(),
-                    ));
-                    cmd_i.copy_to_vec(&mut cmd);
+            let mut sharded_req = Vec::with_capacity(sharded.len());
+            for (s_idx, indice) in sharded.iter().enumerate() {
+                if indice.len() > 0 {
+                    let mut cmd: Vec<u8> = Vec::with_capacity(req.len());
+                    let mut keys: Vec<Slice> = Vec::with_capacity(indice.len() + 1);
+                    for idx in indice.iter() {
+                        debug_assert!(*idx < klen);
+                        let cmd_i = req.keys().get_unchecked(*idx);
+                        keys.push(Slice::new(
+                            cmd.as_ptr().offset(cmd.len() as isize) as usize,
+                            cmd_i.len(),
+                        ));
+                        cmd_i.copy_to_vec(&mut cmd);
+                    }
+                    // 最后一个是noop请求，则需要补充上noop请求
+                    if noop {
+                        req.take_noop().copy_to_vec(&mut cmd);
+                    } else {
+                        // 最后一个请求不是noop. 把最后一个请求的opcode与原始的req保持一致
+                        let last = keys.get_unchecked(keys.len() - 1);
+                        let last_op_idx = cmd.len() - last.len() + PacketPos::Opcode as usize;
+                        cmd[last_op_idx] = last_cmd.op();
+                    }
+                    let new = Request::from_request(cmd, keys, req);
+                    sharded_req.push((s_idx, new));
                 }
-                // 最后一个是noop请求，则需要补充上noop请求
-                if noop {
-                    req.take_noop().copy_to_vec(&mut cmd);
-                } else {
-                    // 最后一个请求不是noop. 把最后一个请求的opcode与原始的req保持一致
-                    let last = keys.get_unchecked(keys.len() - 1);
-                    let last_op_idx = cmd.len() - last.len() + PacketPos::Opcode as usize;
-                    cmd[last_op_idx] = last_cmd.op();
-                }
-                let new = Request::from_request(cmd, keys, req);
-                sharded_req.insert(*s_idx, new);
             }
             sharded_req
         }

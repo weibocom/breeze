@@ -4,7 +4,7 @@ use config::Namespace;
 
 pub use topology::Topology;
 
-use discovery::ServiceDiscover;
+use discovery::TopologyRead;
 use stream::backend::AddressEnable;
 
 use std::collections::HashMap;
@@ -93,14 +93,14 @@ impl<P> CacheService<P> {
 
     pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
     where
-        D: ServiceDiscover<super::Topology<P>>,
+        D: TopologyRead<super::Topology<P>>,
         P: protocol::Protocol,
     {
         discovery.do_with(|t| Self::from_topology::<D>(p.clone(), t))
     }
     fn from_topology<D>(parser: P, topo: &Topology<P>) -> Result<Self>
     where
-        D: ServiceDiscover<super::Topology<P>>,
+        D: TopologyRead<super::Topology<P>>,
         P: protocol::Protocol,
     {
         let hash_alg = &topo.hash;

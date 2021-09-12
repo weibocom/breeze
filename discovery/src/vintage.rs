@@ -22,9 +22,9 @@ struct Response {
     node: Node,
 }
 
-impl From<Response> for (String, String) {
-    fn from(resp: Response) -> Self {
-        (resp.node.data, resp.node.index)
+impl Response {
+    fn into(self) -> (String, String) {
+        (self.node.index, self.node.data)
     }
 }
 
@@ -37,16 +37,10 @@ impl Vintage {
     where
         C: From<String>,
     {
-        // 下来这段逻辑用于测试。把vintage先临时禁用，验证对cpu的影响
-        if index.len() > 4 {
-            log::info!("vintage lookup cached for {:?} index:{}", path, index);
-            return Ok(Config::NotChanged);
-        }
         // 设置config的path
         let mut gurl = self.base_url.clone();
         gurl.set_path(path);
-
-        log::info!("vintage-lookup: path:{} index:{}", path, index);
+        log::debug!("lookup: path:{} index:{}", path, index);
 
         let resp = reqwest::Client::new()
             .get(gurl)
@@ -66,8 +60,14 @@ impl Vintage {
                 if resp.message != "ok" {
                     Err(Error::new(ErrorKind::Other, resp.message))
                 } else {
-                    let (data, index) = resp.into();
-                    Ok(Config::Config(C::from(data), index))
+                    let (t_index, data) = resp.into();
+                    if t_index == index {
+                        log::info!("{} index({}) not changed", path, index);
+                        Ok(Config::NotChanged)
+                    } else {
+                        log::info!("{} from {} to {} len:{}", path, index, t_index, data.len());
+                        Ok(Config::Config(C::from(data), t_index))
+                    }
                 }
             }
             status => {
@@ -78,18 +78,16 @@ impl Vintage {
     }
 }
 
-use super::{Config, ServiceId};
+use super::Config;
 use async_trait::async_trait;
 
 #[async_trait]
 impl super::Discover for Vintage {
     #[inline]
-    async fn get_service<S, C>(&self, name: S, sig: &str) -> std::io::Result<Config<C>>
+    async fn get_service<C>(&self, name: &str, sig: &str) -> std::io::Result<Config<C>>
     where
-        S: Unpin + Send + ServiceId,
         C: Unpin + Send + From<String>,
     {
-        let path = name.path();
-        self.lookup(path, sig).await
+        self.lookup(name, sig).await
     }
 }

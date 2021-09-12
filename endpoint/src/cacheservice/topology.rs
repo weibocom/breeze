@@ -176,7 +176,7 @@ impl<P> Topology<P> {
         self.metas = self.masters.clone();
     }
 
-    fn update(&mut self, cfg: &str, name: &str)
+    fn update(&mut self, name: &str, cfg: &str)
     where
         P: Send + Sync + Protocol + 'static + Clone,
     {
@@ -191,7 +191,12 @@ impl<P> Topology<P> {
         match super::Namespace::parse(cfg, namespace) {
             Ok(ns) => self.update_from_namespace(ns),
             Err(e) => {
-                log::info!("parse cacheservice config error: name:{} error:{}", name, e);
+                log::info!(
+                    "parse cacheservice config error: name:{} error:{} cfg:{}",
+                    name,
+                    e,
+                    cfg
+                );
                 return;
             }
         };
@@ -251,13 +256,12 @@ where
     }
 }
 
-impl<P> discovery::Topology for Topology<P>
+impl<P> discovery::TopologyWrite for Topology<P>
 where
     P: Send + Sync + Protocol,
 {
-    fn update(&mut self, cfg: &str, name: &str) {
-        self.update(cfg, name);
-        log::info!("name:{} master:{:?}", name, self.masters);
+    fn update(&mut self, name: &str, cfg: &str) {
+        self.update(name, cfg);
     }
 }
 
