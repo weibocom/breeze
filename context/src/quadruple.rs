@@ -7,7 +7,6 @@ pub struct Quadruple {
     family: String,
     protocol: String,
     endpoint: String,
-    snapshot: String,
     addr: String,
 }
 
@@ -17,7 +16,7 @@ impl Quadruple {
     // service: 服务名称
     // protocol: 处理client连接的协议。memcache、redis等支持的协议.  格式为 mc:port.
     // backend_type: 后端资源的类型。是cacheservice、redis_dns等等
-    pub(super) fn parse(name: &str, snapshot: &str) -> Option<Self> {
+    pub(super) fn parse(name: &str) -> Option<Self> {
         let name = Path::new(name)
             .file_name()
             .map(|s| s.to_str())
@@ -68,7 +67,6 @@ impl Quadruple {
             protocol: protocol.to_owned(),
             endpoint: backend.to_string(),
             addr: addr.to_string(),
-            snapshot: snapshot.to_string(),
         })
     }
     pub fn name(&self) -> String {
@@ -95,9 +93,6 @@ impl Quadruple {
     pub fn endpoint(&self) -> String {
         self.endpoint.to_owned()
     }
-    pub fn snapshot(&self) -> String {
-        self.snapshot.to_owned()
-    }
     // 从discovery同步数据的间隔周期
     pub fn tick(&self) -> Duration {
         Duration::from_secs(15)
@@ -106,16 +101,11 @@ impl Quadruple {
 
 use std::fmt;
 impl fmt::Display for Quadruple {
-    // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Write strictly the first element into the supplied output
-        // stream: `f`. Returns `fmt::Result` which indicates whether the
-        // operation succeeded or failed. Note that `write!` uses syntax which
-        // is very similar to `println!`.
         write!(
             f,
-            "{} - {} - {} - {}",
-            self.name, self.service, self.protocol, self.addr
+            "(name:{}, service:{}, prot:{}, addr:{}, endpoint:{})",
+            self.name, self.service, self.protocol, self.addr, self.endpoint
         )
     }
 }

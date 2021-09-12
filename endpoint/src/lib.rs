@@ -1,8 +1,8 @@
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use discovery::ServiceDiscover;
+use discovery::TopologyRead;
 use protocol::Protocol;
 
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
@@ -10,15 +10,16 @@ use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
 macro_rules! define_endpoint {
     ($($top:ty, $item:ident, $type_name:tt, $ep:expr);+) => {
 
+       #[derive(Clone)]
        pub enum Topology<P> {
             $($item($top)),+
        }
 
        impl<P> Topology<P>  {
-           pub fn from(parser:P, endpoint:String) -> Option<Self> {
+           pub fn try_from(parser:P, endpoint:String) -> Result<Self> {
                 match &endpoint[..]{
-                    $($ep => Some(Self::$item(parser.into())),)+
-                    _ => None,
+                    $($ep => Ok(Self::$item(parser.into())),)+
+                    _ => Err(Error::new(ErrorKind::InvalidData, format!("'{}' is not a valid endpoint", endpoint))),
                 }
            }
        }
@@ -37,10 +38,18 @@ $(
     }
 )+
 
-       impl<P> discovery::Topology for Topology<P> where P:Sync+Send+Protocol{
-           fn update(&mut self, cfg: &str, name: &str) {
+       impl<P> discovery::TopologyWrite for Topology<P> where P:Sync+Send+Protocol{
+           fn update(&mut self, name: &str, cfg: &str) {
                match self {
-                    $(Self::$item(s) => discovery::Topology::update(s, cfg, name),)+
+                    $(Self::$item(s) => discovery::TopologyWrite::update(s, name, cfg),)+
+               }
+           }
+       }
+
+       impl<P> ds::Update<(String, String)> for Topology<P> where P:Sync+Send+Protocol{
+           fn update(&mut self, o: &mut (String, String)) {
+               match self {
+                    $(Self::$item(s) => discovery::TopologyWrite::update(s, &o.0, &o.1),)+
                }
            }
        }
@@ -52,7 +61,7 @@ $(
 
         impl<P> Endpoint<P>  {
             pub async fn from_discovery<D>(name: &str, p:P, discovery:D) -> Result<Option<Self>>
-                where D: ServiceDiscover<Topology<P>> + Unpin + 'static,
+                where D: TopologyRead<Topology<P>> + Unpin + 'static,
                 P:protocol::Protocol,
             {
                 match name {

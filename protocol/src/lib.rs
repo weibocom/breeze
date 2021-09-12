@@ -1,8 +1,4 @@
-//mod controller;
-//pub use controller::{Controller, GroupStream};
-//
-
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
 
 pub mod memcache;
 
@@ -16,7 +12,6 @@ mod response;
 pub use response::*;
 
 use enum_dispatch::enum_dispatch;
-use std::collections::HashMap;
 
 use ds::{RingSlice, Slice};
 use sharding::Sharding;
@@ -29,7 +24,7 @@ pub trait Protocol: Unpin + Clone + 'static {
     fn parse_request(&self, buf: Slice) -> Result<Option<Request>>;
     // 需要跨分片访问的请求进行分片处理
     // 索引下标是分片id
-    fn sharding(&self, req: &Request, sharding: &Sharding) -> HashMap<usize, Request>;
+    fn sharding(&self, req: &Request, sharding: &Sharding) -> Vec<(usize, Request)>;
     // req是一个完整的store类型的请求；
     // 当前协议支持noreply
     // 当前req不是noreply
@@ -63,10 +58,13 @@ pub enum Protocols {
 }
 
 impl Protocols {
-    pub fn from(name: &str) -> Option<Self> {
+    pub fn try_from(name: &str) -> Result<Self> {
         match name {
-            "mc" | "memcache" | "memcached" => Some(Self::Mc(memcache::Memcache::new())),
-            _ => None,
+            "mc" | "memcache" | "memcached" => Ok(Self::Mc(memcache::Memcache::new())),
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("'{}' is not a valid protocol", name),
+            )),
         }
     }
 }
