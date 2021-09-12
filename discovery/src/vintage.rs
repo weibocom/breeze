@@ -62,7 +62,6 @@ impl Vintage {
                 } else {
                     let (t_index, data) = resp.into();
                     if t_index == index {
-                        log::info!("{} index({}) not changed", path, index);
                         Ok(Config::NotChanged)
                     } else {
                         log::info!("{} from {} to {} len:{}", path, index, t_index, data.len());
