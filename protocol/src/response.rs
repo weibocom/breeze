@@ -45,3 +45,17 @@ impl DerefMut for Response {
         &mut self.inner
     }
 }
+
+use std::fmt::{self, Display, Formatter};
+impl Display for Response {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "op:{:?} key len:{} data:{}",
+            self._op,
+            self.keys.len(),
+            self.inner
+        )
+    }
+}
