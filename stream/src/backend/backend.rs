@@ -62,8 +62,8 @@ impl AsyncReadAll for Backend {
         let elapst = me.instant.elapsed();
         let rx = slice.len();
         let metric_id = me.inner.metric_id();
-        metrics::qps("rx", rx, metric_id);
-        metrics::qps("tx", me.tx, metric_id);
+        metrics::qps("bytes.rx", rx, metric_id);
+        metrics::qps("bytes.tx", me.tx, metric_id);
         metrics::duration(me.op.name(), elapst, metric_id);
 
         Poll::Ready(Ok(Response::from(slice, me.id.id(), me.inner.clone())))
