@@ -71,20 +71,20 @@ impl Protocol for MemcacheText {
         } else {
             read = read + split_req[0].len();
             if split_req.len() > 1 {
-                let mut key_size = 1 as usize;
+                let mut key_position = 2 as usize;
                 if op.eq(&Operation::Gets) {
-                    key_size = split_req.len() - 1;
+                    key_position = split_req.len();
                 }
                 for i in 1..split_req.len() {
                     let key = split_req.get(i).unwrap();
                     read = read + 1 + key.len();
                     if key.ends_with("\r\n".as_ref()) {
-                        if i < key_size {
+                        if i < key_position {
                             keys.push(key.split("\r\n".as_ref()).get(0).unwrap().clone());
                         }
                         return Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())));
                     } else {
-                        if i < key_size + 1 {
+                        if i < key_position {
                             keys.push(key.clone());
                         }
                     }
@@ -302,7 +302,7 @@ mod tests {
         let get_request = Slice::from("get key1\r\n".as_ref());
         let get_not_supported_request = Slice::from("get key1 key2 key3 key4\r\n".as_ref());
         let gets_request = Slice::from("gets key1 key2 key3 key4\r\n".as_ref());
-        let set_request = Slice::from("set key1 value1\r\n".as_ref());
+        let set_request = Slice::from("set key1 0 3600 6\r\nvalue1\r\n".as_ref());
         let version_request = Slice::from("version\r\n".as_ref());
 
         let parser = MemcacheText::new();
