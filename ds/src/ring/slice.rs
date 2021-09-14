@@ -100,7 +100,6 @@ impl RingSlice {
         loop {
             let new_pos = self.find_sub(pos, splitter);
             if new_pos.is_none() {
-                println!("to end, pos = {}, self.len() = {}", pos, self.len());
                 if pos < self.len() {
                     result.push(self.sub_slice(pos, self.len() - pos));
                 }
@@ -108,7 +107,6 @@ impl RingSlice {
             }
             else {
                 let new_pos = new_pos.unwrap();
-                println!("pos = {}, new_pos = {}", pos, new_pos);
                 result.push(self.sub_slice(pos, new_pos));
                 if new_pos + splitter.len() == self.end - self.start {
                     return result;

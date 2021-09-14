@@ -47,17 +47,21 @@ impl Protocol for MemcacheText {
         if split_req.len() > 1 {
             let mut key_size = 1 as usize;
             if op.eq(&Operation::Gets) {
-                key_size = split_req.len() - 1;
+                key_size = split_req.len();
             }
-            for i in 0..key_size {
-                let key = split_req.get(i + 1).unwrap();
+            for i in 1..split_req.len() {
+                let key = split_req.get(i).unwrap();
                 read = read + 1 + key.len();
                 if key.ends_with("\r\n".as_ref()) {
-                    keys.push(key.split("\r\n".as_ref()).get(0).unwrap().clone());
+                    if i < key_size {
+                        keys.push(key.split("\r\n".as_ref()).get(0).unwrap().clone());
+                    }
                     return Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())));
                 }
                 else {
-                    keys.push(key.clone());
+                    if i < key_size {
+                        keys.push(key.clone());
+                    }
                 }
             }
         }
