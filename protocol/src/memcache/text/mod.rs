@@ -58,8 +58,8 @@ impl Protocol for MemcacheText {
 
                 let key_split = key_row.split(" ".as_ref());
                 debug_assert!(key_split.len() >= 5);
-                let key = &key_split[2];
-                let value_bytes = key_split[5].to_string().parse::<usize>().unwrap();
+                let key = &key_split[1];
+                let value_bytes = key_split[4].to_string().parse::<usize>().unwrap();
                 assert_eq!(value_bytes, value_row.len());
 
                 keys.push(key.clone());
