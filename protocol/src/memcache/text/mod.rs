@@ -15,12 +15,16 @@ impl Protocol for MemcacheText {
     #[inline]
     fn with_noreply(&self, req: &[u8]) -> Vec<u8> {
         debug_assert_eq!(self._noreply(req), false);
-        debug_assert_eq!(req.ends_with("\r\n".as_ref()), true);
+        let req_string = String::from_utf8(Vec::from(req)).unwrap();
+        let rows = req_string.split("\r\n").collect::<Vec<&str>>();
+        debug_assert_eq!(rows.len(), 2);
         let mut v = vec![0u8; req.len() + " noreply".len()];
         use std::ptr::copy_nonoverlapping as copy;
         unsafe {
-            copy(req.as_ptr(), v.as_mut_ptr(), req.len() - 2);
+            copy(rows[0].as_ptr(), v.as_mut_ptr(), rows[0].len());
             v.append(&mut Vec::from(" noreply\r\n"));
+            copy(rows[1].as_ptr(), v.as_mut_ptr().offset((rows[0].len() + " noreply\r\n".len()) as isize), rows[1].len());
+            v.append(&mut Vec::from("\r\n"));
         }
         v
     }
@@ -28,6 +32,7 @@ impl Protocol for MemcacheText {
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
         let split_req = req.split(" ".as_ref());
         let mut read = 0 as usize;
+        let mut keys: Vec<Slice> = vec![];
         let op = {
             match String::from_utf8(split_req[0].data().to_vec()).unwrap().to_lowercase().as_str() {
                 "get" => Operation::Get,
@@ -42,30 +47,49 @@ impl Protocol for MemcacheText {
         if op == Operation::Get && split_req.len() > 2 {
             return Ok(None);
         }
-        read = read + split_req[0].len();
-        let mut keys: Vec<Slice> = vec![];
-        if split_req.len() > 1 {
-            let mut key_size = 1 as usize;
-            if op.eq(&Operation::Gets) {
-                key_size = split_req.len() - 1;
+
+        return if op == Operation::Store {
+            let lr_cf_split = req.split("\r\n".as_ref());
+            if lr_cf_split.len() < 2 {
+                Ok(None)
+            } else {
+                let key_row = &lr_cf_split[0];
+                let value_row = &lr_cf_split[1];
+
+                let key_split = key_row.split(" ".as_ref());
+                debug_assert!(key_split.len() >= 5);
+                let key = &key_split[2];
+                let value_bytes = key_split[5].to_string().parse::<usize>().unwrap();
+                assert_eq!(value_bytes, value_row.len());
+
+                keys.push(key.clone());
+                read = read + key_row.len() + "\r\n".len() + value_row.len() + "\r\n".len();
+                Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())))
             }
-            for i in 1..split_req.len() {
-                let key = split_req.get(i).unwrap();
-                read = read + 1 + key.len();
-                if key.ends_with("\r\n".as_ref()) {
-                    if i < key_size {
-                        keys.push(key.split("\r\n".as_ref()).get(0).unwrap().clone());
-                    }
-                    return Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())));
+        } else {
+            read = read + split_req[0].len();
+            if split_req.len() > 1 {
+                let mut key_size = 1 as usize;
+                if op.eq(&Operation::Gets) {
+                    key_size = split_req.len() - 1;
                 }
-                else {
-                    if i < key_size + 1 {
-                        keys.push(key.clone());
+                for i in 1..split_req.len() {
+                    let key = split_req.get(i).unwrap();
+                    read = read + 1 + key.len();
+                    if key.ends_with("\r\n".as_ref()) {
+                        if i < key_size {
+                            keys.push(key.split("\r\n".as_ref()).get(0).unwrap().clone());
+                        }
+                        return Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())));
+                    } else {
+                        if i < key_size + 1 {
+                            keys.push(key.clone());
+                        }
                     }
                 }
             }
+            Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())))
         }
-        return Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())));
     }
     #[inline]
     fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
