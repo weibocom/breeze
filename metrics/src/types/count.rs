@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub(crate) struct Count(isize);
 
 impl From<isize> for Count {
@@ -20,6 +21,10 @@ impl crate::kv::KvItem for Count {
     fn with_item<F: Fn(&'static str, f64)>(&self, _secs: f64, f: F) {
         // 平均耗时
         f("num", self.0 as f64);
+    }
+    // 统计历史的数据，不需要每次都清理
+    fn clear() -> bool {
+        false
     }
 }
 

@@ -30,13 +30,13 @@ impl Snapshot {
         self.last_commit = Instant::now();
         Self {
             last_commit: last,
-            $($name: std::mem::take(&mut self.$name),)+
+            $($name: self.$name.take(),)+
         }
     }
     #[inline]
     pub(crate) fn reset(&mut self) {
         self.last_commit = Instant::now();
-        $(let _ = std::mem::take(&mut self.$name);)+
+        $(self.$name.reset();)+
     }
     #[inline]
     pub(crate) fn visit_item<P:KV>(&self, secs:f64, packet:&P) {
@@ -67,7 +67,7 @@ thread_local! {
     static SNAPSHOT: std::cell::RefCell<Snapshot> = std::cell::RefCell::new(Snapshot::new());
 }
 
-const COMMIT_TICK: Duration = Duration::from_secs(1);
+const COMMIT_TICK: Duration = Duration::from_secs(2);
 
 pub struct Recorder {
     sender: tokio::sync::mpsc::Sender<Snapshot>,
