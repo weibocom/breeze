@@ -17,7 +17,8 @@ impl Protocol for MemcacheText {
         debug_assert_eq!(self._noreply(req), false);
         let req_string = String::from_utf8(Vec::from(req)).unwrap();
         let rows = req_string.split("\r\n").collect::<Vec<&str>>();
-        debug_assert_eq!(rows.len(), 2);
+        //string的split如果以分隔符结尾会有一个空字符串
+        debug_assert_eq!(rows.len(), 3);
         let mut v = vec![0u8; req.len() + " noreply".len()];
         use std::ptr::copy_nonoverlapping as copy;
         unsafe {
@@ -59,7 +60,8 @@ impl Protocol for MemcacheText {
                 let key_split = key_row.split(" ".as_ref());
                 debug_assert!(key_split.len() >= 5);
                 let key = &key_split[1];
-                let value_bytes = key_split[4].to_string().parse::<usize>().unwrap();
+                let value_bytes_string = String::from_utf8(Vec::from(key_split[4].data())).unwrap();
+                let value_bytes = value_bytes_string.parse::<usize>().unwrap();
                 assert_eq!(value_bytes, value_row.len());
 
                 keys.push(key.clone());
