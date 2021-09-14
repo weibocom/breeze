@@ -60,6 +60,7 @@ where
     }
 }
 impl<W> Drop for Writer<W> {
+    #[inline(always)]
     fn drop(&mut self) {
         metrics::unregister_by_id(self.metric_id);
     }
