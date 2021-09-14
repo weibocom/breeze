@@ -53,6 +53,7 @@ impl Snapshot {
     }
 }
 impl std::ops::AddAssign for Snapshot{
+    #[inline]
     fn add_assign(&mut self, other: Self) {
         $(
         self.$name += other.$name;
@@ -77,6 +78,7 @@ impl Recorder {
         Self { sender: sender }
     }
     $(
+    #[inline]
     pub(crate) fn $name(&self, key: &'static str, v: $in, service: usize) {
         SNAPSHOT.with(|ss| {
             let mut snapshot = ss.borrow_mut();
@@ -86,6 +88,7 @@ impl Recorder {
     }
     )+
     // 每10秒钟，flush一次
+    #[inline]
     fn try_flush(&self, ss: &mut Snapshot) {
         if ss.elapsed() >= COMMIT_TICK {
             let one = ss.take();

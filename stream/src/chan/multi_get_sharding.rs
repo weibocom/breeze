@@ -4,7 +4,6 @@
 /// 的解析，会更加高效。适合到shards的分片不多的场景，尤其是一般
 /// 一个keys的请求req通常只包含key，所以额外的load会比较低。
 /// 发送给所有sharding的请求，有一个成功，即认定为成功。
-use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -21,7 +20,7 @@ pub struct AsyncMultiGetSharding<S, P> {
     parser: P,
     response: Option<Response>,
     servers: String, // TODO 目前仅仅用于一致性分析，分析完毕之后可以清理 fishermen
-    shard_reqs: Option<HashMap<usize, Request>>,
+    shard_reqs: Option<Vec<(usize, Request)>>,
     alg: Sharding,
     err: Option<Error>,
 }
@@ -58,6 +57,7 @@ where
     P: Unpin + Protocol,
 {
     // 只要有一个shard成功就算成功,如果所有的都写入失败，则返回错误信息。
+    #[inline]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, multi: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         if me.shard_reqs.is_none() {
@@ -68,27 +68,24 @@ where
 
         let mut success = false;
         let mut pending = false;
-        for i in 0..me.shards.len() {
-            let status = unsafe { me.statuses.get_unchecked_mut(i) };
-            match shard_reqs.get(&i) {
-                Some(req) => {
-                    if *status == Init {
-                        match Pin::new(unsafe { me.shards.get_unchecked_mut(i) })
-                            .poll_write(cx, req)
-                        {
-                            Poll::Pending => pending = true,
-                            Poll::Ready(Ok(_)) => {
-                                success = true;
-                                *status = Sent;
-                            }
-                            Poll::Ready(Err(e)) => {
-                                *status = Error;
-                                me.err = Some(e);
-                            }
-                        }
+        for (i, req) in shard_reqs.iter() {
+            let sharding_idx = *i;
+            debug_assert!(sharding_idx < me.statuses.len());
+            let status = unsafe { me.statuses.get_unchecked_mut(sharding_idx) };
+            if *status == Init {
+                match Pin::new(unsafe { me.shards.get_unchecked_mut(sharding_idx) })
+                    .poll_write(cx, req)
+                {
+                    Poll::Pending => pending = true,
+                    Poll::Ready(Ok(_)) => {
+                        success = true;
+                        *status = Sent;
+                    }
+                    Poll::Ready(Err(e)) => {
+                        *status = Error;
+                        me.err = Some(e);
                     }
                 }
-                None => *status = Done,
             }
         }
         if pending {
@@ -114,13 +111,15 @@ where
     S: AsyncReadAll + Unpin,
     P: Unpin + Protocol,
 {
+    #[inline]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         let mut pending = false;
-        for i in 0..me.shards.len() {
-            let status = unsafe { me.statuses.get_unchecked_mut(i) };
+        let shard_reqs = me.shard_reqs.as_ref().expect("multi get sharding");
+        for (i, _) in shard_reqs {
+            let status = unsafe { me.statuses.get_unchecked_mut(*i) };
             if *status == Sent {
-                let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(i) });
+                let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(*i) });
                 match r.as_mut().poll_next(cx) {
                     Poll::Pending => pending = true,
                     Poll::Ready(Ok(r)) => {
