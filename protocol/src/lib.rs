@@ -59,13 +59,15 @@ pub trait Protocol: Unpin + Clone + 'static {
 #[enum_dispatch(Protocol)]
 #[derive(Clone)]
 pub enum Protocols {
-    Mc(memcache::Memcache),
+    McBin(memcache::MemcacheBin),
+    McText(memcache::MemcacheText),
 }
 
 impl Protocols {
     pub fn from(name: &str) -> Option<Self> {
         match name {
-            "mc" | "memcache" | "memcached" => Some(Self::Mc(memcache::Memcache::new())),
+            "mc_bin" | "mc" | "memcache" | "memcached" => Some(Self::McBin(memcache::MemcacheBin::new())),
+            "mc_text" | "memcache_text" | "memcached_text" => Some(Self::McText(memcache::MemcacheText::new())),
             _ => None,
         }
     }

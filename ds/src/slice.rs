@@ -21,6 +21,9 @@ impl Slice {
     pub fn data(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.ptr as *const u8, self.len) }
     }
+    pub fn data_with_pos(&self, pos: usize) -> &[u8] {
+        unsafe { std::slice::from_raw_parts((self.ptr as *const u8).offset(pos as isize), self.len - pos) }
+    }
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.len
@@ -61,6 +64,31 @@ impl Slice {
     pub fn sub_slice(&self, offset: usize, len: usize) -> Self {
         debug_assert!(offset + len <= self.len);
         Self::new(self.ptr + offset, len)
+    }
+
+    pub fn split(&self, splitter: &[u8]) -> Vec<Self> {
+        let mut pos = 0 as usize;
+        let mut result: Vec<Slice> = vec![];
+        loop {
+            let new_pos = self.find_sub(pos, splitter);
+            if new_pos.is_none() {
+                if pos < self.len() {
+                    result.push(self.sub_slice(pos, self.len() - pos));
+                }
+                return result;
+            }
+            else {
+                let new_pos = new_pos.unwrap();
+                result.push(self.sub_slice(pos, new_pos));
+                if new_pos + splitter.len() == self.len {
+                    return result;
+                }
+                pos = pos + new_pos + splitter.len();
+            }
+        }
+    }
+    fn find_sub(&self, pos: usize, needle: &[u8]) -> Option<usize> {
+        self.data_with_pos(pos).windows(needle.len()).position(|window| window == needle)
     }
 }
 
@@ -119,4 +147,22 @@ impl Slice {
     define_read_number!(read_u16, u16);
     define_read_number!(read_u32, u32);
     define_read_number!(read_u64, u64);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Slice;
+
+    #[test]
+    fn test_split_slice() {
+        println!("begin");
+        let data = "VALUE key1 0 10\r\nsksksksksk\r\nVALUE key2 0 14\r\nababababababab\r\nEND\r\n";
+        let slice = Slice::from(data.as_ref());
+        println!("slice generated");
+        let split = slice.split("\r\n".as_ref());
+        println!("slice split, size = {}", split.len());
+        for single in split {
+            println!("single = {}", String::from_utf8(Vec::from(single.data())).unwrap());
+        }
+    }
 }

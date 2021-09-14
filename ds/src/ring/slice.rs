@@ -3,7 +3,7 @@ use std::slice::from_raw_parts;
 
 use crate::Slice;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RingSlice {
     ptr: *const u8,
     cap: usize,
@@ -87,25 +87,59 @@ impl RingSlice {
     pub fn location(&self) -> (usize, usize) {
         (self.start, self.end)
     }
+
+    pub fn split(&self, splitter: &[u8]) -> Vec<Self> {
+        let mut pos = 0 as usize;
+        let mut result: Vec<RingSlice> = vec![];
+        loop {
+            let new_pos = self.find_sub(pos, splitter);
+            if new_pos.is_none() {
+                println!("to end, pos = {}, self.len() = {}", pos, self.len());
+                if pos < self.len() {
+                    result.push(self.sub_slice(pos, self.len() - pos));
+                }
+                return result;
+            }
+            else {
+                let new_pos = new_pos.unwrap();
+                println!("pos = {}, new_pos = {}", pos, new_pos);
+                result.push(self.sub_slice(pos, new_pos));
+                if new_pos + splitter.len() == self.end - self.start {
+                    return result;
+                }
+                pos = pos + new_pos + splitter.len();
+            }
+        }
+    }
     // 从offset开始，查找s是否存在
     // 最坏时间复杂度 O(self.len() * s.len())
     // 但通常在协议处理过程中，被查的s都是特殊字符，而且s的长度通常比较小，因为时间复杂度会接近于O(self.len())
-    pub fn index_of(&self, offset: usize, s: &[u8]) -> Option<usize> {
-        let mut i = offset;
-        while i + s.len() <= self.len() {
+    pub fn find_sub(&self, offset: usize, s: &[u8]) -> Option<usize> {
+        if self.start + offset + s.len() > self.end {
+            return None;
+        }
+        let mut i = 0 as usize;
+        let i_cap = self.end - s.len() - self.start - offset;
+        while i <= i_cap {
+            let mut found_len = 0 as usize;
             for j in 0..s.len() {
-                if self.at(i + j) != s[j] {
+                if self.read_u8(offset + i + j) != s[j] {
                     i += 1;
                     continue;
                 }
+                else {
+                    found_len = found_len + 1;
+                }
             }
-            return Some(i);
+            if found_len == s.len() {
+                return Some(i);
+            }
         }
         None
     }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     pub fn index_lf_cr(&self, offset: usize) -> Option<usize> {
-        self.index_of(offset, &[b'\r', b'\n'])
+        self.find_sub(offset, &[b'\r', b'\n'])
     }
 }
 
@@ -141,6 +175,7 @@ macro_rules! define_read_number {
 
 impl RingSlice {
     // big endian
+    define_read_number!(read_u8, u8);
     define_read_number!(read_u16, u16);
     define_read_number!(read_u32, u32);
     define_read_number!(read_u64, u64);
@@ -217,5 +252,33 @@ impl Display for RingSlice {
             "RingSlice: ptr:{} start:{} end:{} cap:{}",
             self.ptr as usize, self.start, self.end, self.cap
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::RingSlice;
+
+    #[test]
+    fn test_split_ring_slice() {
+        println!("begin");
+        let data = "END\r\nVALUE key1 0 9\r\nssksksksk\r\nVALUE key2 0 13\r\nabababababaab\r\n";
+        let slice = RingSlice::from(data.as_ptr(), data.len(), 21, data.len() + 21);
+
+        //let data = "VALUE key1 0 9\r\nssksksksk\r\nVALUE key2 0 13\r\nabababababaab\r\nEND\r\n";
+        //let slice = RingSlice::from(data.as_ptr(), data.len(), 0, data.len());
+
+        //let data = "VALUE key1 0 9\r\nssksksksk\r\nVALUE key2 0 13\r\nabababababaab\r\nEND";
+        //let slice = RingSlice::from(data.as_ptr(), 64, 0, data.len());
+        println!("slice generated");
+        let index = slice.find_sub(0, "\r\n".as_ref());
+        println!("found, index = {}", index.unwrap());
+        let split = slice.split("\r\n".as_ref());
+        println!("slice split, size = {}", split.len());
+        for single in split {
+            let mut single_vec: Vec<u8> = vec![];
+            single.copy_to_vec(&mut single_vec);
+            println!("single = {}", String::from_utf8(single_vec).unwrap());
+        }
     }
 }
