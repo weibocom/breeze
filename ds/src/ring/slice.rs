@@ -123,13 +123,14 @@ impl RingSlice {
             return None;
         }
         let mut i = 0 as usize;
-        let i_cap = self.end - s.len() - self.start - offset;
+        let i_cap = self.len() - s.len() - offset;
         while i <= i_cap {
             let mut found_len = 0 as usize;
             for j in 0..s.len() {
+                println!("offset = {}, i = {}, j = {}", offset, i, j);
                 if self.read_u8(offset + i + j) != s[j] {
                     i += 1;
-                    continue;
+                    break;
                 }
                 else {
                     found_len = found_len + 1;
@@ -274,6 +275,13 @@ mod tests {
     #[test]
     fn test_split_ring_slice() {
         println!("begin");
+
+        let data = "STORED\r\n";
+        let slice = RingSlice::from(data.as_ptr(), data.len(), 0, data.len());
+        let index = slice.find_sub(0, "sdfsfdssssd".as_ref());
+        println!("found = {}", index.is_some());
+
+        /*
         let data = "END\r\nVALUE key1 0 9\r\nssksksksk\r\nVALUE key2 0 13\r\nabababababaab\r\n";
         let slice = RingSlice::from(data.as_ptr(), data.len(), 21, data.len() + 21);
 
@@ -292,5 +300,6 @@ mod tests {
             single.copy_to_vec(&mut single_vec);
             println!("single = {}", String::from_utf8(single_vec).unwrap());
         }
+         */
     }
 }
