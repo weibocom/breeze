@@ -127,7 +127,6 @@ impl RingSlice {
         while i <= i_cap {
             let mut found_len = 0 as usize;
             for j in 0..s.len() {
-                println!("offset = {}, i = {}, j = {}", offset, i, j);
                 if self.read_u8(offset + i + j) != s[j] {
                     i += 1;
                     break;

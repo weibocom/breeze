@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{Error, ErrorKind, Result, BufRead, Write};
+use std::io::{BufRead, Error, ErrorKind, Result, Write};
 
 use byteorder::{BigEndian, ByteOrder};
 
@@ -24,7 +24,12 @@ impl Protocol for MemcacheText {
         unsafe {
             copy(rows[0].as_ptr(), v.as_mut_ptr(), rows[0].len());
             v.append(&mut Vec::from(" noreply\r\n"));
-            copy(rows[1].as_ptr(), v.as_mut_ptr().offset((rows[0].len() + " noreply\r\n".len()) as isize), rows[1].len());
+            copy(
+                rows[1].as_ptr(),
+                v.as_mut_ptr()
+                    .offset((rows[0].len() + " noreply\r\n".len()) as isize),
+                rows[1].len(),
+            );
             v.append(&mut Vec::from("\r\n"));
         }
         v
@@ -35,13 +40,16 @@ impl Protocol for MemcacheText {
         let mut read = 0 as usize;
         let mut keys: Vec<Slice> = vec![];
         let op = {
-            match String::from_utf8(split_req[0].data().to_vec()).unwrap().to_lowercase().as_str() {
+            match String::from_utf8(split_req[0].data().to_vec())
+                .unwrap()
+                .to_lowercase()
+                .as_str()
+            {
                 "get" => Operation::Get,
                 "gets" => Operation::Gets,
                 "set" => Operation::Store,
                 "version\r\n" => Operation::Meta,
                 _ => Operation::Other,
-
             }
         };
         //为了防止后边的解析出现逻辑错误，目前get只支持一个key
@@ -66,7 +74,11 @@ impl Protocol for MemcacheText {
 
                 keys.push(key.clone());
                 read = read + key_row.len() + "\r\n".len() + value_row.len() + "\r\n".len();
-                Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())))
+                Ok(Some(Request::from(
+                    req.sub_slice(0, read),
+                    op,
+                    keys.clone(),
+                )))
             }
         } else {
             read = read + split_req[0].len();
@@ -82,7 +94,11 @@ impl Protocol for MemcacheText {
                         if i < key_position {
                             keys.push(key.split("\r\n".as_ref()).get(0).unwrap().clone());
                         }
-                        return Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())));
+                        return Ok(Some(Request::from(
+                            req.sub_slice(0, read),
+                            op,
+                            keys.clone(),
+                        )));
                     } else {
                         if i < key_position {
                             keys.push(key.clone());
@@ -90,8 +106,12 @@ impl Protocol for MemcacheText {
                     }
                 }
             }
-            Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())))
-        }
+            Ok(Some(Request::from(
+                req.sub_slice(0, read),
+                op,
+                keys.clone(),
+            )))
+        };
     }
     #[inline]
     fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
@@ -115,7 +135,9 @@ impl Protocol for MemcacheText {
             }
             let mut sharded_req = Vec::with_capacity(sharded.len());
             for (s_idx, indice) in sharded.iter().enumerate() {
-                debug_assert!(indice.len() > 0);
+                if indice.is_empty() {
+                    continue;
+                }
                 let mut cmd: Vec<u8> = Vec::with_capacity(req.len());
                 cmd.write("gets".as_ref());
                 let mut keys: Vec<Slice> = Vec::with_capacity(indice.len() + 1);
@@ -156,8 +178,7 @@ impl Protocol for MemcacheText {
         for response_line in response_lines {
             if is_data {
                 is_data = false;
-            }
-            else {
+            } else {
                 if response_line.find_sub(0, "VALUE ".as_ref()).is_some() {
                     let response_items = response_line.split(" ".as_ref());
                     if response_items.len() > 2 {
@@ -171,8 +192,8 @@ impl Protocol for MemcacheText {
     }
 
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
-        where
-            R: Iterator<Item = &'a Response>,
+    where
+        R: Iterator<Item = &'a Response>,
     {
         debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::Gets);
         debug_assert!(req.keys().len() > 0);
@@ -215,9 +236,9 @@ impl Protocol for MemcacheText {
     // multiget需要将非最后一个请求的END行去除
     #[inline]
     fn write_response<'a, R, W>(&self, r: R, w: &mut W)
-        where
-            W: crate::BackwardWrite,
-            R: Iterator<Item = &'a Response>,
+    where
+        W: crate::BackwardWrite,
+        R: Iterator<Item = &'a Response>,
     {
         let (mut left, _) = r.size_hint();
         for response in r {
@@ -277,8 +298,8 @@ impl MemcacheText {
     // 轮询response，找出本次查询到的keys，loop所在的位置
     #[inline(always)]
     fn keys_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
-        where
-            T: Iterator<Item = &'a Response>,
+    where
+        T: Iterator<Item = &'a Response>,
     {
         let mut keys = HashMap::with_capacity(exptects * 3 / 2);
         // 解析response中的key
@@ -293,8 +314,8 @@ impl MemcacheText {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Slice, Protocol};
     use crate::memcache::text::MemcacheText;
+    use crate::{Protocol, Slice};
 
     #[test]
     fn test_parse_request() {
@@ -313,26 +334,35 @@ mod tests {
         let version_parse_result = parser.parse_request(version_request);
 
         let get = get_parse_result.unwrap().unwrap();
-        println!("get op = {}, keys.len = {}, keys[0] = {}",
-                 get.operation().name(),
-                 get.keys().len(),
-                 String::from_utf8(get.keys()[0].to_vec()).unwrap());
+        println!(
+            "get op = {}, keys.len = {}, keys[0] = {}",
+            get.operation().name(),
+            get.keys().len(),
+            String::from_utf8(get.keys()[0].to_vec()).unwrap()
+        );
 
-        println!("get not supported is_none: {}", get_not_supported_parse_result.unwrap().is_none());
+        println!(
+            "get not supported is_none: {}",
+            get_not_supported_parse_result.unwrap().is_none()
+        );
 
         let gets = gets_parse_result.unwrap().unwrap();
-        println!("gets op = {}, keys.len = {}, keys[0] = {}, keys[1] = {}, keys[2] = {}, keys[3] = {}",
-                 gets.operation().name(),
-                 gets.keys().len(),
-                 String::from_utf8(gets.keys()[0].to_vec()).unwrap(),
-                 String::from_utf8(gets.keys()[1].to_vec()).unwrap(),
-                 String::from_utf8(gets.keys()[2].to_vec()).unwrap(),
-                 String::from_utf8(gets.keys()[3].to_vec()).unwrap());
+        println!(
+            "gets op = {}, keys.len = {}, keys[0] = {}, keys[1] = {}, keys[2] = {}, keys[3] = {}",
+            gets.operation().name(),
+            gets.keys().len(),
+            String::from_utf8(gets.keys()[0].to_vec()).unwrap(),
+            String::from_utf8(gets.keys()[1].to_vec()).unwrap(),
+            String::from_utf8(gets.keys()[2].to_vec()).unwrap(),
+            String::from_utf8(gets.keys()[3].to_vec()).unwrap()
+        );
 
         let set = set_parse_result.unwrap().unwrap();
-        println!("set op = {}, keys[0] = {}",
-                 set.operation().name(),
-                 String::from_utf8(set.keys()[0].to_vec()).unwrap());
+        println!(
+            "set op = {}, keys[0] = {}",
+            set.operation().name(),
+            String::from_utf8(set.keys()[0].to_vec()).unwrap()
+        );
 
         let version = version_parse_result.unwrap().unwrap();
         println!("version op = {}", version.operation().name());
