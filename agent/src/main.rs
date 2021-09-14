@@ -76,6 +76,8 @@ async fn process_one_service(
         let endpoint = quard.endpoint().to_owned();
         let parser = parser.clone();
         let session_id = session_id.fetch_add(1, Ordering::AcqRel);
+        metrics::qps("conn", 1, metric_id);
+        metrics::count("conn", 1, metric_id);
         spawn(async move {
             if let Err(e) =
                 process_one_connection(client, top, endpoint, parser, session_id, metric_id).await
@@ -83,6 +85,7 @@ async fn process_one_service(
                 log::warn!("connection disconnected:{:?}", e);
             }
         });
+        metrics::count("conn", -1, metric_id);
     }
 }
 
