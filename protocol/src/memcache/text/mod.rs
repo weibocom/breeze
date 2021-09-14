@@ -47,7 +47,7 @@ impl Protocol for MemcacheText {
         if split_req.len() > 1 {
             let mut key_size = 1 as usize;
             if op.eq(&Operation::Gets) {
-                key_size = split_req.len();
+                key_size = split_req.len() - 1;
             }
             for i in 1..split_req.len() {
                 let key = split_req.get(i).unwrap();
@@ -59,7 +59,7 @@ impl Protocol for MemcacheText {
                     return Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())));
                 }
                 else {
-                    if i < key_size {
+                    if i < key_size + 1 {
                         keys.push(key.clone());
                     }
                 }
