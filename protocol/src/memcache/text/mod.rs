@@ -1,6 +1,3 @@
-mod meta;
-use meta::*;
-
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Result, BufRead, Write};
 
@@ -67,7 +64,7 @@ impl Protocol for MemcacheText {
         return Ok(Some(Request::from(req.sub_slice(0, read), op, keys.clone())));
     }
     #[inline]
-    fn sharding(&self, req: &Request, shard: &Sharding) -> HashMap<usize, Request> {
+    fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
         debug_assert_eq!(req.operation(), Operation::Gets);
         unsafe {
@@ -81,13 +78,13 @@ impl Protocol for MemcacheText {
 
             let sharded = shard.shardings(keys);
             if sharded.len() == 1 {
-                let mut ret = HashMap::with_capacity(1);
-                let (s_idx, _) = sharded.iter().next().expect("only one shard");
-                ret.insert(*s_idx, req.clone());
+                let mut ret = Vec::with_capacity(1);
+                let (s_idx, _) = sharded.iter().enumerate().next().expect("only one shard");
+                ret.push((s_idx, req.clone()));
                 return ret;
             }
-            let mut sharded_req = HashMap::with_capacity(sharded.len());
-            for (s_idx, indice) in sharded.iter() {
+            let mut sharded_req = Vec::with_capacity(sharded.len());
+            for (s_idx, indice) in sharded.iter().enumerate() {
                 debug_assert!(indice.len() > 0);
                 let mut cmd: Vec<u8> = Vec::with_capacity(req.len());
                 cmd.write("gets".as_ref());
@@ -106,7 +103,7 @@ impl Protocol for MemcacheText {
                 // 最后一个是noop请求，则需要补充上noop请求
                 cmd.append(&mut Vec::from("\r\n"));
                 let new = Request::from_request(cmd, keys, req);
-                sharded_req.insert(*s_idx, new);
+                sharded_req.push((s_idx, new));
             }
             sharded_req
         }
@@ -145,12 +142,12 @@ impl Protocol for MemcacheText {
 
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
         where
-            R: Iterator<Item = (bool, &'a Response)>,
+            R: Iterator<Item = &'a Response>,
     {
         debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::Gets);
         debug_assert!(req.keys().len() > 0);
         if self.is_single_get(req) {
-            if let Some((_, response)) = resp.next() {
+            if let Some(response) = resp.next() {
                 if response.as_ref().find_sub(0, "VALUE ".as_ref()).is_none() {
                     return None;
                 }
@@ -190,12 +187,14 @@ impl Protocol for MemcacheText {
     fn write_response<'a, R, W>(&self, r: R, w: &mut W)
         where
             W: crate::BackwardWrite,
-            R: Iterator<Item = (bool, &'a Response)>,
+            R: Iterator<Item = &'a Response>,
     {
-        for (last, response) in r {
+        let (mut left, _) = r.size_hint();
+        for response in r {
+            left -= 1;
             // 最后一个请求，不需要做变更，直接写入即可。
-            if last {
-                w.write(response, 0);
+            if left == 0 {
+                w.write(response);
                 break;
             }
             // 不是最后一个请求，则处理response的最后一个key
@@ -204,7 +203,7 @@ impl Protocol for MemcacheText {
                 let index_result = response.as_ref().find_sub(0, "END\r\n".as_ref());
                 if index_result.is_some() {
                     let index = index_result.unwrap();
-                    w.write(response, response.len() - index);
+                    w.write(&response.sub_slice(0, index));
                 }
             }
         }
@@ -249,11 +248,11 @@ impl MemcacheText {
     #[inline(always)]
     fn keys_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
         where
-            T: Iterator<Item = (bool, &'a Response)>,
+            T: Iterator<Item = &'a Response>,
     {
         let mut keys = HashMap::with_capacity(exptects * 3 / 2);
         // 解析response中的key
-        for (_last, one_respone) in resp {
+        for (one_respone) in resp {
             for response_key in one_respone.keys() {
                 keys.insert(response_key.clone(), ());
             }
