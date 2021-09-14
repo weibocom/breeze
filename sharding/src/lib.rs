@@ -2,7 +2,6 @@ pub struct Sharding {
     hash: Hasher,
     distribution: Distribute,
     num: usize,
-    names: Vec<String>,
 }
 
 pub mod hash;
@@ -11,20 +10,17 @@ use hash::*;
 mod distribution;
 use distribution::*;
 
-use std::collections::HashMap;
 use std::ops::Deref;
 
 impl Sharding {
     pub fn from(hash_alg: &str, distribution: &str, names: Vec<String>) -> Self {
         let num = names.len();
         let h = Hasher::from(hash_alg);
-        let servers = names.clone();
         let d = Distribute::from(distribution, names);
         Self {
             hash: h,
             distribution: d,
             num: num,
-            names: servers,
         }
     }
     #[inline(always)]
@@ -37,23 +33,11 @@ impl Sharding {
     // key: sharding idx
     // value: 是keys idx列表
     #[inline]
-    pub fn shardings<K: Deref<Target = [u8]>>(&self, keys: Vec<K>) -> HashMap<usize, Vec<usize>> {
-        let mut shards: HashMap<usize, Vec<usize>> = HashMap::with_capacity(self.num);
+    pub fn shardings<K: Deref<Target = [u8]>>(&self, keys: Vec<K>) -> Vec<Vec<usize>> {
+        let mut shards = vec![Vec::with_capacity(8); self.num];
         for (ki, key) in keys.iter().enumerate() {
             let idx = self.sharding(key);
-            log::debug!(
-                "key:{}, idx:{} server:{}",
-                unsafe { String::from_utf8_unchecked(key.to_vec()) },
-                idx,
-                self.names[idx]
-            );
-            if let Some(shard) = shards.get_mut(&idx) {
-                shard.push(ki);
-            } else {
-                let mut shard = Vec::with_capacity(keys.len());
-                shard.push(ki);
-                shards.insert(idx, shard);
-            }
+            unsafe { shards.get_unchecked_mut(idx).push(ki) };
         }
         shards
     }

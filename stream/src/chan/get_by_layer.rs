@@ -37,6 +37,7 @@ where
     }
     // 发送请求，将current cmds发送到所有mc，如果失败，继续向下一层write，注意处理重入问题
     // ready! 会返回Poll，所以这里还是返回Poll了
+    #[inline]
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         // 当前layer的reader发送请求，直到发送成功
         let mut last_err = None;
@@ -90,6 +91,7 @@ where
     P: Unpin,
 {
     // 请求某一层
+    #[inline]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, req: &Request) -> Poll<Result<()>> {
         if self.request.len() == 0 {
             self.request = req.clone();
@@ -104,6 +106,7 @@ where
     L: AsyncReadAll + AsyncWriteAll + AddressEnable + Unpin,
     P: Unpin + Protocol,
 {
+    #[inline]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         debug_assert!(me.idx < me.layers.len());
@@ -111,7 +114,7 @@ where
 
         while me.idx < me.layers.len() {
             let layer = unsafe { me.layers.get_unchecked_mut(me.idx) };
-            let _servers = layer.get_address();
+            //let _servers = layer.get_address();
             match ready!(Pin::new(layer).poll_next(cx)) {
                 Ok(item) => {
                     // 轮询出已经查到的keys
