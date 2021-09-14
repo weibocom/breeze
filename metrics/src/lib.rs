@@ -2,26 +2,16 @@
 extern crate lazy_static;
 
 mod id;
-mod recorder;
-use recorder::Recorder;
-
-mod duration;
-
-mod snapshot;
-use snapshot::Snapshot;
-
 pub use id::*;
 
 mod ip;
-pub use ip::encode_addr;
-pub use ip::init_local_ip;
+pub use ip::*;
 
 mod sender;
 use sender::Sender;
 
 use once_cell::sync::OnceCell;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use tokio::sync::mpsc::channel;
 
@@ -43,22 +33,24 @@ pub fn init(addr: &str) {
         }
     }
 }
+mod packet;
 
-pub fn duration(key: &'static str, d: Duration) {
-    if let Some(recorder) = RECORDER.get() {
-        recorder.duration(key, d);
-    }
-}
+mod macros;
+mod types;
+use types::*;
 
-#[inline(always)]
-pub fn duration_with_service(key: &'static str, d: Duration, metric_id: usize) {
-    if let Some(recorder) = RECORDER.get() {
-        recorder.duration_with_service(key, d, metric_id);
-    }
-}
-#[inline(always)]
-pub fn counter_with_service(key: &'static str, c: usize, metric_id: usize) {
-    if let Some(recorder) = RECORDER.get() {
-        recorder.counter_with_service(key, c, metric_id);
-    }
-}
+mod item;
+use item::*;
+mod kv;
+use kv::*;
+use std::time::{Duration, Instant};
+// 第一个参数是名字。
+// 第二个是是metric的输入数据类型，通常是简单的数字类型
+// 第三个是实现了特定接口用于处理的Item类型, 需要实现From<第二个参数>. AddAssign<Self>
+// AddAssign<第二个参数> 三个接口
+define_metrics!(
+    ratio, (usize, usize), Ratio;
+    count, isize, Count;
+    qps, usize, Qps;
+    duration, std::time::Duration, DurationItem
+);

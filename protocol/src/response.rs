@@ -21,6 +21,11 @@ impl Response {
     pub fn keys(&self) -> &[RingSlice] {
         &self.keys
     }
+    #[inline]
+    pub fn last_key(&self) -> &RingSlice {
+        debug_assert!(self.keys.len() > 0);
+        unsafe { &self.keys.get_unchecked(self.keys.len() - 1) }
+    }
 }
 impl AsRef<RingSlice> for Response {
     #[inline(always)]
@@ -38,5 +43,19 @@ impl Deref for Response {
 impl DerefMut for Response {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
+    }
+}
+
+use std::fmt::{self, Display, Formatter};
+impl Display for Response {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "op:{:?} key len:{} data:{}",
+            self._op,
+            self.keys.len(),
+            self.inner
+        )
     }
 }

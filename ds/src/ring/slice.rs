@@ -61,6 +61,12 @@ impl RingSlice {
         slices
     }
     #[inline]
+    pub fn data(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(self.len());
+        self.copy_to_vec(&mut v);
+        v
+    }
+    #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
         v.reserve(self.len());
         for slice in self.as_slices() {
@@ -238,6 +244,14 @@ impl Hash for RingSlice {
 impl From<Slice> for RingSlice {
     #[inline]
     fn from(s: Slice) -> Self {
+        let len = s.len();
+        let cap = len.next_power_of_two();
+        Self::from(s.as_ptr(), cap, 0, s.len())
+    }
+}
+impl From<&[u8]> for RingSlice {
+    #[inline]
+    fn from(s: &[u8]) -> Self {
         let len = s.len();
         let cap = len.next_power_of_two();
         Self::from(s.as_ptr(), cap, 0, s.len())

@@ -47,8 +47,6 @@ use std::task::{Context, Poll};
 pub trait AsyncReadAll {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>>;
 }
-//impl AsyncWriteAll for tokio::net::TcpStream {}
-//impl AsyncWriteAll for tokio::net::tcp::OwnedWriteHalf {}
 
 pub const MAX_CONNECTIONS: usize = 256;
 
@@ -57,5 +55,5 @@ pub trait Notify {
     fn notify(&self);
 }
 
-use std::time::Duration;
-pub(crate) const SLOW_DURATION: Duration = Duration::from_millis(4);
+//use std::time::Duration;
+//pub(crate) const SLOW_DURATION: Duration = Duration::from_millis(4);
