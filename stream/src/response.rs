@@ -22,10 +22,10 @@ impl ResponseData {
             seq: resp_seq,
         }
     }
-    #[inline(always)]
-    pub fn data(&self) -> &RingSlice {
-        &self.data
-    }
+    //#[inline(always)]
+    //pub fn data(&self) -> &RingSlice {
+    //    &self.data
+    //}
     #[inline(always)]
     pub fn rid(&self) -> &RequestId {
         &self.req_id
@@ -33,6 +33,22 @@ impl ResponseData {
     #[inline(always)]
     pub fn seq(&self) -> usize {
         self.seq
+    }
+}
+
+impl std::ops::Deref for ResponseData {
+    type Target = protocol::Response;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+use std::fmt::{self, Display, Formatter};
+impl Display for ResponseData {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "rid:{} data:{}", self.req_id, self.data)
     }
 }
 

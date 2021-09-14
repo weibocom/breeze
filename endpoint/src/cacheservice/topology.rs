@@ -119,7 +119,7 @@ impl<P> Topology<P> {
     ) -> Vec<Vec<BackendStream>> {
         // 从每个层选择一个reader
         let readers = self.random_reads();
-        log::info!("random {}-layers inited:readers: {:?}", op, readers);
+        log::debug!("random {}-layers inited:readers: {:?}", op, readers);
         readers
             .iter()
             .map(|pool| {
