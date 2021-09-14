@@ -22,15 +22,22 @@ impl Protocol for MemcacheText {
         let mut v = vec![0u8; req.len() + " noreply".len()];
         use std::ptr::copy_nonoverlapping as copy;
         unsafe {
+            let mut offset = 0 as isize;
             copy(rows[0].as_ptr(), v.as_mut_ptr(), rows[0].len());
-            v.append(&mut Vec::from(" noreply\r\n"));
+            offset += rows[0].len() as isize;
+            copy(
+                " noreply\r\n".as_ptr(),
+                v.as_mut_ptr().offset(offset),
+                " noreply\r\n".len(),
+            );
+            offset += " noreply\r\n".len() as isize;
             copy(
                 rows[1].as_ptr(),
-                v.as_mut_ptr()
-                    .offset((rows[0].len() + " noreply\r\n".len()) as isize),
+                v.as_mut_ptr().offset(offset),
                 rows[1].len(),
             );
-            v.append(&mut Vec::from("\r\n"));
+            offset += rows[1].len() as isize;
+            copy("\r\n".as_ptr(), v.as_mut_ptr().offset(offset), "\r\n".len());
         }
         v
     }
@@ -199,7 +206,7 @@ impl Protocol for MemcacheText {
         debug_assert!(req.keys().len() > 0);
         if self.is_single_get(req) {
             if let Some(response) = resp.next() {
-                if response.as_ref().find_sub(0, "VALUE ".as_ref()).is_none() {
+                if response.as_ref().find_sub(0, "VALUE ".as_ref()).is_some() {
                     return None;
                 }
             }
