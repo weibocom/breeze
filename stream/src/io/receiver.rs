@@ -82,7 +82,7 @@ impl Receiver {
         // 到这req一定存在，不用take+unwrap是为了在出现pending的时候，不重新insert
         if let Some(ref mut req) = self.req {
             req.set_request_id(*rid);
-            metric.req_done(req.operation(), req.len());
+            metric.req_done(req.operation(), req.len(), req.keys().len());
             log::debug!(
                 "parsed: {}=>{} {}, keys:{} op:{}",
                 self.r,

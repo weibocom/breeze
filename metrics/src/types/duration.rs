@@ -7,6 +7,11 @@ pub(crate) struct DurationItem {
     pub(crate) elapse_us: usize,
     pub(crate) intervals: [usize; DURATION_INTERVALS.len()],
 }
+impl Default for DurationItem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl DurationItem {
     pub(crate) fn new() -> Self {
         Self {
@@ -17,16 +22,16 @@ impl DurationItem {
     }
     pub(crate) fn get_interval_name(&self, idx: usize) -> &'static str {
         match idx {
-            0 => "interval0",
-            1 => "interval1",
-            2 => "interval2",
-            3 => "interval3",
-            4 => "interval4",
-            5 => "interval5",
-            6 => "interval6",
-            7 => "interval7",
-            8 => "interval8",
-            _ => "interval_overflow",
+            0 => "itvl0-1ms",
+            1 => "itvl1-4ms",
+            2 => "itvl4-16ms",
+            3 => "itvl16-64ms",
+            4 => "itvl64-256ms",
+            5 => "itvl256ms-1s",
+            6 => "itvl1s-4s",
+            7 => "itvl4s-16s",
+            8 => "itvl16s-",
+            _ => "itvl_overflow",
         }
     }
 }
@@ -63,6 +68,29 @@ impl From<Duration> for DurationItem {
         item.elapse_us = us;
         item.intervals[idx] += 1;
         item
+    }
+}
+
+impl crate::kv::KvItem for DurationItem {
+    fn with_item<F: Fn(&'static str, f64)>(&self, secs: f64, f: F) {
+        // 平均耗时
+        let avg_us = if self.count == 0 {
+            0f64
+        } else {
+            self.elapse_us as f64 / self.count as f64
+        };
+        f("avg_us", avg_us);
+        // 总的qps
+        let qps = self.count as f64 / secs;
+        f("qps", qps);
+        for i in 0..self.intervals.len() {
+            let count = self.intervals[i];
+            if count > 0 {
+                let sub_key = self.get_interval_name(i);
+                let interval_qps = count as f64 / secs;
+                f(sub_key, interval_qps);
+            }
+        }
     }
 }
 // 通过耗时，获取对应的耗时区间，一共分为9个区间

@@ -18,6 +18,7 @@ where
     Store: AsyncReadAll + Unpin,
     Meta: AsyncReadAll + Unpin,
 {
+    #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         match me {
@@ -35,6 +36,7 @@ where
     Store: AsyncWriteAll + Unpin,
     Meta: AsyncWriteAll + Unpin,
 {
+    #[inline(always)]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         match me {

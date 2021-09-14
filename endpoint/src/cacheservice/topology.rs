@@ -119,7 +119,7 @@ impl<P> Topology<P> {
     ) -> Vec<Vec<BackendStream>> {
         // 从每个层选择一个reader
         let readers = self.random_reads();
-        log::info!("random {}-layers inited:readers: {:?}", op, readers);
+        log::debug!("random {}-layers inited:readers: {:?}", op, readers);
         readers
             .iter()
             .map(|pool| {
@@ -176,7 +176,7 @@ impl<P> Topology<P> {
         self.metas = self.masters.clone();
     }
 
-    fn update(&mut self, cfg: &str, name: &str)
+    fn update(&mut self, name: &str, cfg: &str)
     where
         P: Send + Sync + Protocol + 'static + Clone,
     {
@@ -191,7 +191,12 @@ impl<P> Topology<P> {
         match super::Namespace::parse(cfg, namespace) {
             Ok(ns) => self.update_from_namespace(ns),
             Err(e) => {
-                log::info!("parse cacheservice config error: name:{} error:{}", name, e);
+                log::info!(
+                    "parse cacheservice config error: name:{} error:{} cfg:{}",
+                    name,
+                    e,
+                    cfg
+                );
                 return;
             }
         };
@@ -251,24 +256,12 @@ where
     }
 }
 
-impl<P> discovery::Topology for Topology<P>
+impl<P> discovery::TopologyWrite for Topology<P>
 where
     P: Send + Sync + Protocol,
 {
-    fn update(&mut self, cfg: &str, name: &str) {
-        self.update(cfg, name);
-        log::info!("name:{} master:{:?}", name, self.masters);
-    }
-}
-impl<P> left_right::Absorb<(String, String)> for Topology<P>
-where
-    P: Send + Sync + Protocol + 'static + Clone,
-{
-    fn absorb_first(&mut self, cfg: &mut (String, String), _other: &Self) {
-        self.update(&cfg.0, &cfg.1);
-    }
-    fn sync_with(&mut self, first: &Self) {
-        *self = first.clone();
+    fn update(&mut self, name: &str, cfg: &str) {
+        self.update(name, cfg);
     }
 }
 

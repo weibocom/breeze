@@ -36,53 +36,47 @@ impl Protocol for MemcacheBinary {
         }
     }
     #[inline]
-    fn sharding(&self, req: &Request, shard: &Sharding) -> HashMap<usize, Request> {
+    fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
         debug_assert_eq!(req.operation(), Operation::Gets);
         unsafe {
             let klen = req.keys().len();
             let mut keys = Vec::with_capacity(klen);
             for cmd in req.keys() {
-                let key = cmd.key();
-                if key.len() > 0 {
-                    keys.push(key);
-                }
+                debug_assert!(cmd.key().len() > 0);
+                keys.push(cmd.key());
             }
             debug_assert!(keys.len() > 0);
-            let last_cmd = req.keys().get_unchecked(klen - 1);
 
             let sharded = shard.shardings(keys);
-            if sharded.len() == 1 {
-                let mut ret = HashMap::with_capacity(1);
-                let (s_idx, _) = sharded.iter().next().expect("only one shard");
-                ret.insert(*s_idx, req.clone());
-                return ret;
-            }
-            let mut sharded_req = HashMap::with_capacity(sharded.len());
-            for (s_idx, indice) in sharded.iter() {
-                debug_assert!(indice.len() > 0);
-                let mut cmd: Vec<u8> = Vec::with_capacity(req.len());
-                let mut keys: Vec<Slice> = Vec::with_capacity(indice.len() + 1);
-                for idx in indice.iter() {
-                    debug_assert!(*idx < klen);
-                    let cmd_i = req.keys().get_unchecked(*idx);
-                    keys.push(Slice::new(
-                        cmd.as_ptr().offset(cmd.len() as isize) as usize,
-                        cmd_i.len(),
-                    ));
-                    cmd_i.copy_to_vec(&mut cmd);
+            let last_cmd = req.last_key();
+            let noop = last_cmd.quite_get(); // 如果最后一个请求是quite，说明当前请求是noop请求。
+            let mut sharded_req = Vec::with_capacity(sharded.len());
+            for (s_idx, indice) in sharded.iter().enumerate() {
+                if indice.len() > 0 {
+                    let mut cmd: Vec<u8> = Vec::with_capacity(req.len());
+                    let mut keys: Vec<Slice> = Vec::with_capacity(indice.len() + 1);
+                    for idx in indice.iter() {
+                        debug_assert!(*idx < klen);
+                        let cmd_i = req.keys().get_unchecked(*idx);
+                        keys.push(Slice::new(
+                            cmd.as_ptr().offset(cmd.len() as isize) as usize,
+                            cmd_i.len(),
+                        ));
+                        cmd_i.copy_to_vec(&mut cmd);
+                    }
+                    // 最后一个是noop请求，则需要补充上noop请求
+                    if noop {
+                        req.take_noop().copy_to_vec(&mut cmd);
+                    } else {
+                        // 最后一个请求不是noop. 把最后一个请求的opcode与原始的req保持一致
+                        let last = keys.get_unchecked(keys.len() - 1);
+                        let last_op_idx = cmd.len() - last.len() + PacketPos::Opcode as usize;
+                        cmd[last_op_idx] = last_cmd.op();
+                    }
+                    let new = Request::from_request(cmd, keys, req);
+                    sharded_req.push((s_idx, new));
                 }
-                // 最后一个是noop请求，则需要补充上noop请求
-                if last_cmd.noop() {
-                    last_cmd.copy_to_vec(&mut cmd);
-                } else {
-                    // 最后一个请求不是noop. 把最后一个请求的opcode与原始的req保持一致
-                    let last = keys.get_unchecked(keys.len() - 1);
-                    let last_op_idx = cmd.len() - last.len() + PacketPos::Opcode as usize;
-                    cmd[last_op_idx] = last_cmd.op();
-                }
-                let new = Request::from_request(cmd, keys, req);
-                sharded_req.insert(*s_idx, new);
             }
             sharded_req
         }
@@ -104,12 +98,12 @@ impl Protocol for MemcacheBinary {
 
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
     where
-        R: Iterator<Item = (bool, &'a Response)>,
+        R: Iterator<Item = &'a Response>,
     {
         debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::Gets);
         debug_assert!(req.keys().len() > 0);
         if self.is_single_get(req) {
-            if let Some((_, response)) = resp.next() {
+            if let Some(response) = resp.next() {
                 if response.status_ok() && !response.noop() {
                     return None;
                 }
@@ -117,38 +111,34 @@ impl Protocol for MemcacheBinary {
             return Some(req.clone());
         }
         // 有多个key
-        let found_keys = self.keys_response(resp, req.keys().len());
+        let found_ids = self.ids_response(resp, req.keys().len());
         let mut cmd = Vec::with_capacity(req.len());
         let mut keys_slice = Vec::with_capacity(req.keys().len());
         // 遍历所有的请求key，如果response中没有，则写入到command中
         for cmd_i in req.keys() {
-            let key = cmd_i.key();
-            if key.len() > 0 {
-                // 未找到，则写入新的request
-                if !found_keys.contains_key(&key.clone().into()) {
+            if let Some(id) = cmd_i.id() {
+                debug_assert!(id.len() > 0);
+                if !found_ids.contains_key(&id.into()) {
                     // 写入的是原始的命令, 不是key
-                    cmd_i.copy_to_vec(&mut cmd);
-                    keys_slice.push(cmd_i.clone());
-                }
-            } else {
-                // 只有最后一个noop会不存在key
-                // 判断之前是否有请求，避免cmd里面只有一个空的noop请求
-                debug_assert!(cmd_i.noop());
-                if cmd.len() > 0 {
                     cmd_i.copy_to_vec(&mut cmd);
                     keys_slice.push(cmd_i.clone());
                 }
             }
         }
         if keys_slice.len() > 0 {
-            // 设置最后一个key的op_code, 与request的最后一个key的opcode保持一致即可
-            let last_len = unsafe { keys_slice.get_unchecked(keys_slice.len() - 1).len() };
-            let last_op_pos = cmd.len() - last_len + PacketPos::Opcode as usize;
-            cmd[last_op_pos] = self.last_key_op(req);
-            let new = Request::from_request(cmd, keys_slice, req);
+            if req.last_key().quite_get() {
+                // 写入noop请求
+                req.take_noop().copy_to_vec(&mut cmd);
+            } else {
+                // 设置最后一个key的op_code, 与request的最后一个key的opcode保持一致即可
+                let last_len = unsafe { keys_slice.get_unchecked(keys_slice.len() - 1).len() };
+                let last_op_pos = cmd.len() - last_len + PacketPos::Opcode as usize;
+                cmd[last_op_pos] = req.last_key().op();
+            }
 
-            debug_assert_eq!(new.keys().len() + found_keys.len(), req.keys().len());
-            Some(new)
+            // 业务输入的id可能会重复，导致断言失败
+            //debug_assert_eq!(new.keys().len() + found_ids.len(), req.keys().len());
+            Some(Request::from_request(cmd, keys_slice, req))
         } else {
             None
         }
@@ -161,25 +151,38 @@ impl Protocol for MemcacheBinary {
     fn write_response<'a, R, W>(&self, r: R, w: &mut W)
     where
         W: crate::BackwardWrite,
-        R: Iterator<Item = (bool, &'a Response)>,
+        R: Iterator<Item = &'a Response>,
     {
-        for (last, response) in r {
+        let (mut left, _) = r.size_hint();
+        for response in r {
             // 最后一个请求，不需要做变更，直接写入即可。
-            if last {
-                w.write(response, 0);
+            left -= 1;
+            if left == 0 {
+                w.write(response);
                 break;
             }
             // 不是最后一个请求，则处理response的最后一个key
-            let kl = response.keys().len();
-            if kl > 0 {
-                let last = unsafe { response.keys().get_unchecked(kl - 1) };
+            if response.keys().len() > 0 {
+                let last = response.last_key();
+                debug_assert_ne!(last.op(), OP_CODE_NOOP);
                 match last.op() {
-                    OP_CODE_NOOP => w.write(response, HEADER_LEN),
-                    OP_CODE_GETK => w.write_on(response, |data| {
-                        debug_assert_eq!(response.len(), data.len());
-                        data[PacketPos::Opcode as usize] = OP_CODE_GETKQ;
+                    OP_CODE_GETQ | OP_CODE_GETKQ => {
+                        // 最后一个请求是NOOP，只写入前面的请求
+                        let pre = response.sub_slice(0, response.len() - HEADER_LEN);
+                        w.write(&pre);
+                    }
+                    // 把GETK/GET请求，转换成Quite请求。
+                    OP_CODE_GETK | OP_CODE_GET => w.write_on(response, |data| {
+                        let op = if last.key_len() == 0 {
+                            OP_CODE_GETQ
+                        } else {
+                            OP_CODE_GETKQ
+                        };
+                        let last_op_idx = response.len() - last.len() + PacketPos::Opcode as usize;
+                        data[last_op_idx] = op;
+                        debug_assert_eq!(data.len(), response.len());
                     }),
-                    _ => w.write(response, 0),
+                    _ => w.write(response),
                 }
             }
         }
@@ -200,32 +203,26 @@ impl MemcacheBinary {
             _ => false,
         }
     }
-    // 最后一个key的op_code
-    #[inline]
-    fn last_key_op(&self, req: &Request) -> u8 {
-        let keys = req.keys();
-        debug_assert!(keys.len() > 0);
-        unsafe { keys.get_unchecked(keys.len() - 1).op() }
-    }
-    // 轮询response，找出本次查询到的keys，loop所在的位置
+    // 轮询response，找出本次查询到的keys.
+    // keys_response只在filter_by_key调用，为了解析未获取返回值的请求。
+    // 只有multiget请求才会调用到该方法
     #[inline(always)]
-    fn keys_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
+    fn ids_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
     where
-        T: Iterator<Item = (bool, &'a Response)>,
+        T: Iterator<Item = &'a Response>,
     {
-        let mut keys = HashMap::with_capacity(exptects * 3 / 2);
+        let mut ids = HashMap::with_capacity(exptects * 3 / 2);
         // 解析response中的key
-        for (_last, one_respone) in resp {
+        for one_respone in resp {
             for cmd in one_respone.keys() {
                 if cmd.status_ok() {
-                    let key = cmd.key();
-                    if key.len() > 0 {
-                        keys.insert(key, ());
+                    if let Some(id) = cmd.id() {
+                        ids.insert(id, ());
                     }
                 }
             }
         }
-        debug_assert!(keys.len() <= exptects);
-        return keys;
+        debug_assert!(ids.len() <= exptects);
+        return ids;
     }
 }

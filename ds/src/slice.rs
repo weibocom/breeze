@@ -49,16 +49,8 @@ impl Slice {
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
         debug_assert!(self.len() > 0);
-        v.reserve(self.len());
-        use std::ptr::copy_nonoverlapping as copy;
-        unsafe {
-            copy(
-                self.ptr as *const u8,
-                v.as_mut_ptr().offset(v.len() as isize),
-                self.len(),
-            );
-            v.set_len(v.len() + self.len());
-        }
+        use crate::Buffer;
+        v.write(self);
     }
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> Self {
