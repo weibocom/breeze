@@ -119,7 +119,10 @@ where
         let mut requests_wb: Vec<Request> = Vec::new();
         for rit in rsp_its {
             if rit.keys().len() == 0 {
-                log::info!("ignore response for keys is 0");
+                // log::info!("ignore response for keys is 0");
+                let mut data = Vec::with_capacity(rit.len());
+                rit.as_ref().copy_to_vec(&mut data);
+                // log::info!("+++++++++ empty keys data: {:?}", data);
                 continue;
             }
             let req_rs =
@@ -138,7 +141,6 @@ where
         }
 
         if requests_wb.len() == 0 {
-            log::info!("+++++++ not found request for wb");
             return;
         }
 

@@ -63,6 +63,7 @@ pub(super) trait Binary<T> {
     fn request(&self) -> bool;
     fn response(&self) -> bool;
     fn body_len(&self) -> u32;
+    fn opaque(&self) -> u32;
     fn status_ok(&self) -> bool;
     fn key(&self) -> T;
     fn key_len(&self) -> u16;
@@ -110,6 +111,11 @@ macro_rules! define_binary {
             fn body_len(&self) -> u32 {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.read_u32(PacketPos::TotalBodyLength as usize)
+            }
+            #[inline(always)]
+            fn opaque(&self) -> u32 {
+                debug_assert!(self.len() >= HEADER_LEN);
+                self.read_u32(PacketPos::Opaque as usize)
             }
             #[inline(always)]
             fn packet_len(&self) -> usize {
