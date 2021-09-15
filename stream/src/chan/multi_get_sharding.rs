@@ -85,6 +85,7 @@ where
                 if req.noreply() {
                     noreply = req.noreply();
                 }
+
                 debug_assert!(sharding_idx < me.statuses.len());
                 let status = unsafe { me.statuses.get_unchecked_mut(sharding_idx) };
                 if *status == Init {

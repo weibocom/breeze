@@ -120,11 +120,6 @@ impl Protocol for MemcacheBinary {
         let mut data = Vec::with_capacity(response.len());
         origin.copy_to_vec(&mut data);
 
-        log::info!(
-            "+++++++++++ will build set for origin req: {:?}",
-            request.data()
-        );
-        log::info!("+++++++++++ will build set for resp: {:?}", data);
         // 轮询response，查出所有的子响应
         // let mut req_buf: Vec<u8> = Vec::new();
         let mut requests_wb = Vec::with_capacity(response.keys().len());
@@ -145,6 +140,8 @@ impl Protocol for MemcacheBinary {
             // 构建 set request
             let use_request_key = resp_packet.key.len() == 0 || request.keys().len() == 1;
             let key = if use_request_key {
+                // 对于不带key的response，目前只支持get的请求方式
+                debug_assert!(resp_packet.header.opaque == request.keys()[0].opaque());
                 debug_assert!(request.keys().len() == 1);
                 let mut req_key = Vec::new();
                 req_key.extend_from_slice(request.keys()[0].key().data());
@@ -152,7 +149,7 @@ impl Protocol for MemcacheBinary {
             } else {
                 resp_packet.key
             };
-            log::info!("+++++++ use req key/{}, key: {:?}", use_request_key, key);
+
             let set_req_packet = packet::SetRequest {
                 header: PacketHeader {
                     magic: Magic::Request as u8,
@@ -188,7 +185,7 @@ impl Protocol for MemcacheBinary {
                 true,
                 Operation::Store,
             );
-            log::info!("++++++++++ build set req: {:?}", set_req.data());
+
             requests_wb.push(set_req);
         }
         return Ok(requests_wb);
