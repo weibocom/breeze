@@ -22,7 +22,8 @@ async fn main() -> Result<()> {
     elog::init(ctx.log_dir(), &ctx.log_level)?;
     metrics::init(&ctx.metrics_url());
     metrics::init_local_ip(&ctx.metrics_probe);
-
+    //hjihvbhjkjbhv
+    //qswbojwbdiw
     let discovery = Discovery::from_url(ctx.discovery());
     let (tx_disc, rx_disc) = bounded(512);
     // 启动定期更新资源配置线程
