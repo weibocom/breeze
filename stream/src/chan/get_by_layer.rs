@@ -119,6 +119,7 @@ where
         let mut requests_wb: Vec<Request> = Vec::new();
         for rit in rsp_its {
             if rit.keys().len() == 0 {
+                log::info!("ignore response for keys is 0");
                 continue;
             }
             let req_rs =
@@ -150,6 +151,7 @@ where
             log::warn!("no requests to write back!");
             return Poll::Ready(Ok(()));
         }
+
         // 从第0层开始，轮询回写所有回种请求
         if let Some(reqs_wb) = self.requests_writeback.as_mut() {
             while self.idx_layer_writeback < self.idx {
@@ -158,6 +160,12 @@ where
                     let reader = self.layers.get_mut(self.idx_layer_writeback).unwrap();
                     let addr = reader.get_address();
                     let req = reqs_wb.get_mut(self.idx_request_writeback).unwrap();
+                    log::info!(
+                        "will write back req: {:?} to sever layer/{}: {:?}",
+                        req.data(),
+                        self.idx_layer_writeback,
+                        addr
+                    );
                     match ready!(Pin::new(reader).poll_write(cx, req)) {
                         Ok(_) => {
                             self.idx_request_writeback += 1;
