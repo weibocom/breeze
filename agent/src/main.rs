@@ -79,13 +79,10 @@ async fn process_one_service(
         let session_id = session_id.fetch_add(1, Ordering::AcqRel);
         spawn(async move {
             metrics::qps("conn", 1, metric_id);
-            //bcwd ondce wxs
             metrics::count("conn", 1, metric_id);
             let instant = Instant::now();
             if let Err(e) =
-                //bhd2dbehbdchd2jh bchj
-                process_one_connection(client, top, endpoint, parser, session_id, metric_id)
-                        .await
+                process_one_connection(client, top, endpoint, parser, session_id, metric_id).await
             {
                 log::warn!(
                     "disconnected:biz:{} processed:{:?} {:?}",
