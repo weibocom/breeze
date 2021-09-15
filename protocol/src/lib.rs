@@ -36,6 +36,13 @@ pub trait Protocol: Unpin + Clone + 'static {
     fn key(&self, req: &Request) -> Slice;
     // 从response中解析出一个完成的response
     fn parse_response(&self, response: &RingSlice) -> Option<Response>;
+    // 将response转换为回种数据的cmd,并将数据写入request_buff中，返回待会写的cmds的Slice结构
+    fn convert_to_writeback_request(
+        &self,
+        request: &Request,
+        response: &Response,
+        expire_seconds: u32,
+    ) -> Result<Vec<Request>>;
     // 把resp里面存在的key都去掉，只保留未返回结果的key及对应的命令。
     // 如果所有的key都已返回，则返回None
     fn filter_by_key<'a, R>(&self, req: &Request, resp: R) -> Option<Request>
