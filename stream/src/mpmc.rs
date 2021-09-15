@@ -52,11 +52,15 @@ pub struct MpmcRingBufferStream {
 
     done: Arc<AtomicBool>,
     closed: AtomicBool,
+
+    // 持有的远端资源地址（ip:port）
+    addr: String,
+    metric_id: usize,
 }
 
 impl MpmcRingBufferStream {
     // id必须小于parallel
-    pub fn with_capacity(parallel: usize) -> Self {
+    pub fn with_capacity(parallel: usize, biz: &str, addr: &str, rsrc: protocol::Resource) -> Self {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= super::MAX_CONNECTIONS);
         let items = (0..parallel)
@@ -67,6 +71,12 @@ impl MpmcRingBufferStream {
             .collect();
 
         let (tx, rx) = bounded(2048);
+
+        let metric_id = metrics::register_names(vec![
+            rsrc.name(),
+            &metrics::encode_addr(biz),
+            &metrics::encode_addr(addr),
+        ]);
 
         Self {
             items: items,
@@ -82,6 +92,9 @@ impl MpmcRingBufferStream {
             resp_num: CacheAligned(AtomicUsize::new(0)),
             noreply_tx: tx,
             noreply_rx: rx,
+
+            addr: addr.to_string(),
+            metric_id: metric_id,
         }
     }
     // 如果complete为true，则快速失败
@@ -98,27 +111,16 @@ impl MpmcRingBufferStream {
         self.check(cid)?;
         let item = self.get_item(cid);
         let data = ready!(item.poll_read(cx))?;
-        log::debug!(
-            "next. cid:{} len:{} rid:{} ",
-            cid,
-            data.data().len(),
-            data.rid()
-        );
+        log::debug!("next. cid:{} len:{} rid:{} ", cid, data.len(), data.rid());
         self.resp_num.0.fetch_add(1, Ordering::Relaxed);
         Poll::Ready(Ok(data))
     }
     pub fn response_done(&self, cid: usize, response: &ResponseData) {
         let item = self.get_item(cid);
         item.response_done(response.seq());
-        let (start, end) = response.data().location();
+        let (start, end) = response.location();
         self.offset.0.insert(start, end);
-        log::debug!(
-            "done. cid:{} loc:({}->{}). {}",
-            cid,
-            start,
-            end,
-            response.rid()
-        );
+        log::debug!("done. cid:{} response: {}", cid, response);
     }
     // 释放cid的资源
     pub fn shutdown(&self, cid: usize) {
@@ -297,6 +299,13 @@ impl MpmcRingBufferStream {
     pub(crate) fn mark_done(&self) {
         self.done.store(true, Ordering::Release);
         self.waker.wake();
+    }
+    pub(crate) fn addr(&self) -> &str {
+        &self.addr
+    }
+    #[inline(always)]
+    pub(crate) fn metric_id(&self) -> usize {
+        self.metric_id
     }
 }
 

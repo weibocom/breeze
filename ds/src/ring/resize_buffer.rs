@@ -29,7 +29,7 @@ impl ResizedRingBuffer {
         Self {
             old: Vec::new(),
             max_processed: std::usize::MAX,
-            inner: RingBuffer::with_capacity(32 * 1024),
+            inner: RingBuffer::with_capacity(64 * 1024),
         }
     }
     pub fn resize(&mut self) -> bool {

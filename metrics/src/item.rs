@@ -9,6 +9,7 @@ impl<E> SnapshotItem<E> {
             inner: Vec::with_capacity(32),
         }
     }
+    #[inline]
     pub fn apply<V>(&mut self, pos: usize, key: &'static str, val: V)
     where
         E: AddAssign<V>,
@@ -32,6 +33,7 @@ impl<E> AddAssign for SnapshotItem<E>
 where
     E: AddAssign,
 {
+    #[inline]
     fn add_assign(&mut self, other: Self) {
         for (i, group) in other.inner.into_iter().enumerate() {
             for (k, v) in group {
@@ -50,6 +52,7 @@ impl<E> Default for SnapshotItem<E> {
 use std::ops::Deref;
 impl<E> Deref for SnapshotItem<E> {
     type Target = Vec<HashMap<&'static str, E>>;
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
