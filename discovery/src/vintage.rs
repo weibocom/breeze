@@ -22,9 +22,9 @@ struct Response {
     node: Node,
 }
 
-impl From<Response> for (String, String) {
-    fn from(resp: Response) -> Self {
-        (resp.node.data, resp.node.index)
+impl Response {
+    fn into(self) -> (String, String) {
+        (self.node.index, self.node.data)
     }
 }
 
@@ -40,8 +40,7 @@ impl Vintage {
         // 设置config的path
         let mut gurl = self.base_url.clone();
         gurl.set_path(path);
-
-        //log::debug!("vintage-lookup: path:{} index:{}", path, index);
+        log::debug!("lookup: path:{} index:{}", path, index);
 
         let resp = reqwest::Client::new()
             .get(gurl)
@@ -61,8 +60,13 @@ impl Vintage {
                 if resp.message != "ok" {
                     Err(Error::new(ErrorKind::Other, resp.message))
                 } else {
-                    let (data, index) = resp.into();
-                    Ok(Config::Config(C::from(data), index))
+                    let (t_index, data) = resp.into();
+                    if t_index == index {
+                        Ok(Config::NotChanged)
+                    } else {
+                        log::info!("{} from {} to {} len:{}", path, index, t_index, data.len());
+                        Ok(Config::Config(t_index, C::from(data)))
+                    }
                 }
             }
             status => {
@@ -73,18 +77,16 @@ impl Vintage {
     }
 }
 
-use super::{Config, ServiceId};
+use super::Config;
 use async_trait::async_trait;
 
 #[async_trait]
 impl super::Discover for Vintage {
     #[inline]
-    async fn get_service<S, C>(&self, name: S, sig: &str) -> std::io::Result<Config<C>>
+    async fn get_service<C>(&self, name: &str, sig: &str) -> std::io::Result<Config<C>>
     where
-        S: Unpin + Send + ServiceId,
         C: Unpin + Send + From<String>,
     {
-        let path = name.path();
-        self.lookup(path, sig).await
+        self.lookup(name, sig).await
     }
 }

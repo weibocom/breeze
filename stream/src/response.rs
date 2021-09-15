@@ -22,10 +22,10 @@ impl ResponseData {
             seq: resp_seq,
         }
     }
-    #[inline(always)]
-    pub fn data(&self) -> &RingSlice {
-        &self.data
-    }
+    //#[inline(always)]
+    //pub fn data(&self) -> &RingSlice {
+    //    &self.data
+    //}
     #[inline(always)]
     pub fn rid(&self) -> &RequestId {
         &self.req_id
@@ -36,6 +36,22 @@ impl ResponseData {
     }
 }
 
+impl std::ops::Deref for ResponseData {
+    type Target = protocol::Response;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+use std::fmt::{self, Display, Formatter};
+impl Display for ResponseData {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "rid:{} data:{}", self.req_id, self.data)
+    }
+}
+
 pub struct Response {
     rid: RequestId,
     pub(crate) items: Vec<Item>,
@@ -43,18 +59,14 @@ pub struct Response {
 
 impl Response {
     #[inline]
-    fn _from(slice: ResponseData, done: Option<(usize, Arc<RingBufferStream>)>) -> Self {
+    pub fn from(slice: ResponseData, cid: usize, release: Arc<RingBufferStream>) -> Self {
         Self {
             rid: slice.req_id,
             items: vec![Item {
                 data: slice,
-                done: done,
+                done: Some((cid, release)),
             }],
         }
-    }
-    #[inline]
-    pub fn from(slice: ResponseData, cid: usize, release: Arc<RingBufferStream>) -> Self {
-        Self::_from(slice, Some((cid, release)))
     }
     #[inline]
     pub fn append(&mut self, other: Response) {
@@ -91,7 +103,7 @@ pub struct ResponseIter<'a> {
 impl<'a> Iterator for ResponseIter<'a> {
     // 0: 当前response是否为最后一个
     // 1: response
-    type Item = (bool, &'a protocol::Response);
+    type Item = &'a protocol::Response;
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx >= self.response.items.len() {
@@ -99,13 +111,13 @@ impl<'a> Iterator for ResponseIter<'a> {
         } else {
             let idx = self.idx;
             self.idx += 1;
-            unsafe {
-                Some((
-                    self.idx == self.response.items.len(),
-                    &self.response.items.get_unchecked(idx).data.data,
-                ))
-            }
+            unsafe { Some(&self.response.items.get_unchecked(idx).data.data) }
         }
+    }
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let left = self.response.items.len() - self.idx;
+        (left, Some(left))
     }
 }
 
