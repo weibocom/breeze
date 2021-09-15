@@ -34,10 +34,12 @@ async fn main() -> Result<()> {
     let session_id = Arc::new(AtomicUsize::new(0));
     let (tx, rx) = bounded(2048);
     loop {
+        //dbqwnxeeo
         tick.tick().await;
         while let Ok(req) = rx.try_recv() {
             listeners.on_fail(req);
         }
+        //bdwinqxb
         for quard in listeners.scan().await {
             let discovery = tx_disc.clone();
             let session_id = session_id.clone();
