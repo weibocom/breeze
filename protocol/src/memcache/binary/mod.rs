@@ -150,6 +150,11 @@ impl Protocol for MemcacheBinary {
                 resp_packet.key
             };
 
+            log::info!(
+                "will write back for key: {:?}",
+                String::from_utf8_lossy(&key)
+            );
+
             let set_req_packet = packet::SetRequest {
                 header: PacketHeader {
                     magic: Magic::Request as u8,
