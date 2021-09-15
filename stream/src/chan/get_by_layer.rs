@@ -252,8 +252,9 @@ where
                             break;
                         }
                         Some(req) => {
-                            me.request = req;
+                            // 在on_response中会根据req构建回写请求
                             me.on_response(item);
+                            me.request = req;
 
                             match ready!(me.do_write_back(cx)) {
                                 Err(e) => log::warn!("found err when write back: {:?}", e),
