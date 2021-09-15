@@ -69,10 +69,12 @@ async fn process_one_service(
     discovery.send(tx)?;
 
     let r_type = quard.protocol();
+    //bcqsnsdq n
     let biz = quard.biz();
     let metric_id = metrics::register_name(r_type + "." + &metrics::encode_addr(&biz));
     loop {
         let top = rx.clone();
+        //dcsd uicndqwd cbq
         let (client, _addr) = l.accept().await?;
         let endpoint = quard.endpoint().to_owned();
         let parser = parser.clone();
