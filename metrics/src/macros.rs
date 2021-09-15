@@ -39,6 +39,11 @@ impl Snapshot {
         $(self.$name.reset();)+
     }
     #[inline]
+    //pub(crate) fn clear(&mut self) {
+    //    self.last_commit = Instant::now();
+    //    $(self.$name.clear();)+
+    //}
+    #[inline]
     pub(crate) fn visit_item<P:KV>(&self, secs:f64, packet:&P) {
         $(
             for (service, group) in self.$name.iter().enumerate(){
