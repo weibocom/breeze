@@ -109,6 +109,7 @@ impl Protocol for MemcacheBinary {
     ) -> Result<Vec<Request>> {
         // 如果response中没有keys，说明不是get/gets，或者没有查到数据
         if response.keys().len() == 0 {
+            log::info!("ignore for response has no results");
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "not keys found in response",
