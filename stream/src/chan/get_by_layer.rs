@@ -23,8 +23,6 @@ pub struct AsyncLayerGet<L, P> {
 
     parser: P,
     since: Instant, // 上一层请求开始的时间
-    polling_resp: bool,
-    done: bool,
 }
 
 impl<L, P> AsyncLayerGet<L, P>
@@ -43,8 +41,6 @@ where
             idx_request_writeback: 0,
             parser: p,
             since: Instant::now(),
-            polling_resp: false,
-            done: false,
         }
     }
     // 发送请求，将current cmds发送到所有mc，如果失败，继续向下一层write，注意处理重入问题
@@ -73,15 +69,30 @@ where
         ))))
     }
 
+    fn log_response(&mut self, item: &Response) {
+        // print request and respons
+        log::debug!("=================== print response... =================");
+        let rsp_its = item.iter();
+        for rit in rsp_its {
+            let mut data = Vec::with_capacity(rit.len());
+            rit.as_ref().copy_to_vec(&mut data);
+            log::debug!("+++++++++ resp data: {:?}", data);
+        }
+        log::debug!("=================== printed response!!! =================");
+    }
+
     // 查到response之后，需要进行构建set指令进行回种：
     // 1 先支持getk/getkq这种带key的response；
     // 2 测试完毕后，再统一支持getq这种不带key的response
     #[inline(always)]
-    fn on_response(&mut self, item: Response) {
+    fn on_response(&mut self, cx: &mut Context<'_>, item: Response) {
+        // 暂时保留，查问题的时候和sharding的req日志结合排查
+        self.log_response(&item);
+
         // 构建回种的请求
         if self.idx > 0 {
-            log::info!("ceate request for write back with idx:{}", self.idx);
             self.create_requests_wb(&item);
+            self.do_write_back(cx);
         }
 
         let found = item.keys_num();
@@ -111,8 +122,8 @@ where
             return;
         }
 
-        // TODO 暂定为3天，这个过期时间后续要从vintage中获取
-        let expire_seconds = 3 * 24 * 3600;
+        // TODO 暂定为1天，这个过期时间后续要从vintage中获取
+        let expire_seconds = 24 * 3600;
 
         // 轮询response构建回写的request buff及keys
         let rsp_its = resp.iter();
@@ -147,11 +158,11 @@ where
         self.requests_writeback = Some(requests_wb);
     }
 
-    // 回种逻辑单独处理，不放在on_response中，否则pending时，需要保留response，逻辑会很ugly
-    fn do_write_back(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    // 回种逻辑单独处理，不放在on_response中，否则处理pending时，需要保留response，逻辑会很ugly
+    fn do_write_back(&mut self, cx: &mut Context<'_>) {
         if self.requests_writeback.is_none() {
             log::warn!("no requests to write back!");
-            return Poll::Ready(Ok(()));
+            return;
         }
 
         // 从第0层开始，轮询回写所有回种请求
@@ -162,23 +173,14 @@ where
                     let reader = self.layers.get_mut(self.idx_layer_writeback).unwrap();
                     let addr = reader.get_address();
                     let req = reqs_wb.get_mut(self.idx_request_writeback).unwrap();
-                    log::info!(
+                    log::debug!(
                         "will write back req: {:?} to sever layer/{}: {:?}",
                         req.data(),
                         self.idx_layer_writeback,
                         addr
                     );
-                    match ready!(Pin::new(reader).poll_write(cx, req)) {
-                        Ok(_) => {
-                            self.idx_request_writeback += 1;
-                            continue;
-                        }
-                        Err(e) => {
-                            self.idx_request_writeback += 1;
-                            log::warn!("write back to layer/{} failed, err: {}", addr, e);
-                            continue;
-                        }
-                    }
+                    let _ = Pin::new(reader).poll_write(cx, req);
+                    self.idx_request_writeback += 1;
                 }
                 self.idx_layer_writeback += 1;
             }
@@ -190,7 +192,7 @@ where
         // 回写完毕，回写idx清零
         self.idx_layer_writeback = 0;
         self.idx_request_writeback = 0;
-        return Poll::Ready(Ok(()));
+        // return Poll::Ready(Ok(()));
     }
 }
 
@@ -221,55 +223,23 @@ where
         debug_assert!(me.idx < me.layers.len());
         let mut last_err = None;
 
-        // 回写没有完成，先完成回种
-        if !me.requests_writeback.is_none() {
-            match ready!(me.do_write_back(cx)) {
-                _ => {}
-            }
-            // 回写完毕，可能需要继续处理下一个layer
-            if me.idx + 1 < me.layers.len() {
-                me.idx += 1;
-            }
-        }
-
-        // 如果idx不为0，说明当前是pending重入，先写完request
-        if !me.done && !me.polling_resp && me.idx != 0 {
-            if let Err(e) = ready!(me.do_write(cx)) {
-                log::warn!("found err when resend layer request:{:?}", e);
-                last_err = Some(e);
-                me.done = true;
-            }
-        }
-
         while me.idx < me.layers.len() {
             let layer = unsafe { me.layers.get_unchecked_mut(me.idx) };
             //let _servers = layer.get_address();
-            me.polling_resp = true;
             match ready!(Pin::new(layer).poll_next(cx)) {
                 Ok(item) => {
-                    me.polling_resp = false;
                     // 轮询出已经查到的keys
                     match me.parser.filter_by_key(&me.request, item.iter()) {
                         None => {
                             // 所有请求都已返回
-                            // 所有请求都已返回
-                            me.done = true;
-                            me.on_response(item);
-                            match ready!(me.do_write_back(cx)) {
-                                Err(e) => log::warn!("found err when write back: {:?}", e),
-                                _ => {}
-                            }
+                            // 处理response，并会根据req构建回写请求
+                            me.on_response(cx, item);
                             break;
                         }
                         Some(req) => {
-                            // 在on_response中会根据req构建回写请求
-                            me.on_response(item);
+                            // 处理response，并会根据req构建回写请求
+                            me.on_response(cx, item);
                             me.request = req;
-
-                            match ready!(me.do_write_back(cx)) {
-                                Err(e) => log::warn!("found err when write back: {:?}", e),
-                                _ => {}
-                            }
                         }
                     }
                 }
