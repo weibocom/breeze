@@ -85,6 +85,12 @@ where
                 if req.noreply() {
                     noreply = req.noreply();
                 }
+                // 暂时保留和get_by_layer的on_response 一起，方便排查问题
+                log::debug!(
+                    "write req: {:?} to servers: {:?}",
+                    req.data(),
+                    me.shards.get(sharding_idx).unwrap().get_address()
+                );
 
                 debug_assert!(sharding_idx < me.statuses.len());
                 let status = unsafe { me.statuses.get_unchecked_mut(sharding_idx) };
