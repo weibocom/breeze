@@ -28,16 +28,16 @@ impl<E> SnapshotItem<E> {
         }
     }
     #[inline]
-    pub fn take(&mut self) -> Self
+    pub(crate) fn take(&mut self) -> Self
     where
         E: KvItem,
     {
         let inner = self.inner.clone();
-        self.reset();
+        self.clear();
         Self { inner: inner }
     }
     #[inline]
-    pub fn reset(&mut self)
+    pub(crate) fn reset(&mut self)
     where
         E: KvItem,
     {
@@ -45,6 +45,15 @@ impl<E> SnapshotItem<E> {
             for map in self.inner.iter_mut() {
                 map.clear();
             }
+        }
+    }
+    #[inline]
+    fn clear(&mut self)
+    where
+        E: KvItem,
+    {
+        for map in self.inner.iter_mut() {
+            map.clear();
         }
     }
 }
