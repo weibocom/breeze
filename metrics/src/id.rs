@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-#[derive(Default)]
 struct IdSequence {
     seq: usize,
     names: Vec<String>,
@@ -9,11 +8,18 @@ struct IdSequence {
 }
 
 impl IdSequence {
+    fn new() -> Self {
+        // 初始化里面metric id是0表示，所有业务共享的元数据信息
+        Self {
+            seq: 1,
+            names: vec!["all".to_string()],
+            indice: Default::default(),
+        }
+    }
     fn register_name(&mut self, name: String) -> usize {
         match self.indice.get(&name) {
             Some(seq) => *seq,
             None => {
-                self.seq += 1;
                 let seq = self.seq;
                 if self.names.len() <= seq {
                     for _ in self.names.len()..=seq {
@@ -23,6 +29,7 @@ impl IdSequence {
                 log::info!("metrics-register: name:{} id:{}", name, seq);
                 self.names[seq] = name.to_owned();
                 self.indice.insert(name, self.seq);
+                self.seq += 1;
                 seq
             }
         }
@@ -34,7 +41,7 @@ impl IdSequence {
 }
 
 lazy_static! {
-    static ref ID_SEQ: RwLock<IdSequence> = RwLock::new(IdSequence::default());
+    static ref ID_SEQ: RwLock<IdSequence> = RwLock::new(IdSequence::new());
 }
 
 pub fn register_name(name: String) -> usize {

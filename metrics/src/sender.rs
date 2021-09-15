@@ -53,6 +53,8 @@ impl Future for Sender {
                     let elapsed = me.last.elapsed();
                     if elapsed >= Duration::from_secs(10) {
                         me.last = Instant::now();
+                        // 写入机器信息
+                        me.snapshot.host("host", crate::Host::default(), 0);
                         me.snapshot
                             .visit_item(elapsed.as_secs_f64(), &mut me.packet);
                         ready!(me.packet.poll_flush(cx));
