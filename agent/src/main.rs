@@ -6,7 +6,7 @@ use net::listener::Listener;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use stream::io::copy_bidirectional;
 use tokio::spawn;
 use tokio::time::interval;
@@ -79,10 +79,16 @@ async fn process_one_service(
         spawn(async move {
             metrics::qps("conn", 1, metric_id);
             metrics::count("conn", 1, metric_id);
+            let instant = Instant::now();
             if let Err(e) =
                 process_one_connection(client, top, endpoint, parser, session_id, metric_id).await
             {
-                log::warn!("connection disconnected:{:?}", e);
+                log::warn!(
+                    "disconnected:biz:{} processed:{:?} {:?}",
+                    metrics::get_name(metric_id),
+                    instant.elapsed(),
+                    e
+                );
             }
             metrics::count("conn", -1, metric_id);
         });
