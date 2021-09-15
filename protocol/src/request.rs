@@ -41,6 +41,23 @@ impl Request {
             op: req.op,
         }
     }
+    // request 自己接管data，构建一个全新的request
+    pub fn from_data(
+        data: Vec<u8>,
+        keys: Vec<Slice>,
+        id: RequestId,
+        noreply: bool,
+        op: Operation,
+    ) -> Self {
+        Self {
+            inner: Slice::from(&data),
+            id: id,
+            noreply: noreply,
+            _data: Arc::new(data),
+            keys: keys,
+            op: op,
+        }
+    }
     #[inline(always)]
     pub fn operation(&self) -> Operation {
         self.op
