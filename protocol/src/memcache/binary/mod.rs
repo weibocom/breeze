@@ -41,7 +41,7 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
-        debug_assert_eq!(req.operation(), Operation::Gets);
+        // debug_assert_eq!(req.operation(), Operation::Gets);
         unsafe {
             let klen = req.keys().len();
             let mut keys = Vec::with_capacity(klen);
