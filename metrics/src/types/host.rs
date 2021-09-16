@@ -7,7 +7,7 @@ lazy_static! {
 }
 // 采集宿主机的基本信息
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Host;
 
 use std::ops::AddAssign;

@@ -27,10 +27,7 @@ impl PacketBuffer {
                 self.socket.take();
             }
             if self.buff.borrow().len() >= 4 * 1024 * 1024 {
-                log::info!(
-                    "metric size({}) is great than 4mb",
-                    self.buff.borrow().len()
-                );
+                log::info!("metric size:{}", self.buff.borrow().len());
             }
             self.idx = 0;
             let mut buff = self.buff.borrow_mut();
@@ -71,7 +68,6 @@ impl crate::kv::KV for PacketBuffer {
     fn kv(&self, sid: usize, key: &str, sub_key: &str, v: f64) {
         use ds::Buffer;
         let mut buff = self.buff.borrow_mut();
-        let v = (v * 100f64) as isize as f64 / 100f64;
         buff.write("breeze.");
         buff.write(crate::get_name(sid));
         buff.write(".byhost.");
@@ -83,6 +79,7 @@ impl crate::kv::KV for PacketBuffer {
             buff.write(sub_key);
         }
         buff.write(":");
+        //let v = (v * 100f64) as isize as f64 / 100f64;
         buff.write(v.to_string());
         buff.write("|kv\n");
     }
