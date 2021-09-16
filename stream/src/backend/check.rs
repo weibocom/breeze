@@ -105,7 +105,7 @@ impl BackendChecker {
                     break;
                 }
                 Err(e) => {
-                    log::info!("connected {} failed:{:?} tries:{}", self.addr(), e, tries);
+                    log::info!("connect {} failed:{:?} tries:{}", self.addr(), e, tries);
                     let secs = (1 << tries).min(31);
                     tries += 1;
                     sleep(Duration::from_secs(secs)).await;
