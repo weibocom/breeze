@@ -57,7 +57,7 @@ where
         // write req到所有资源失败，reset并返回err
         Poll::Ready(Err(last_err.unwrap_or(Error::new(
             ErrorKind::NotConnected,
-            "layer get do write error",
+            format!("layer get do write error. layers:{}", self.layers.len()),
         ))))
     }
 
