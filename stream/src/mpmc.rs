@@ -115,6 +115,7 @@ impl MpmcRingBufferStream {
         self.resp_num.0.fetch_add(1, Ordering::Relaxed);
         Poll::Ready(Ok(data))
     }
+    #[inline]
     pub fn response_done(&self, cid: usize, response: &ResponseData) {
         let item = self.get_item(cid);
         item.response_done(response.seq());
@@ -123,6 +124,7 @@ impl MpmcRingBufferStream {
         log::debug!("done. cid:{} response: {}", cid, response);
     }
     // 释放cid的资源
+    #[inline]
     pub fn shutdown(&self, cid: usize) {
         log::debug!("mpmc: poll shutdown. cid:{}", cid);
         self.bits.unmark(cid);
