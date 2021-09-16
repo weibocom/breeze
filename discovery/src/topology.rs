@@ -1,5 +1,10 @@
 use ds::{Cow, CowReadHandle, CowWriteHandle};
 
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
 // 更新top时的参数。
 type TO = (String, String);
 
@@ -24,22 +29,29 @@ where
 {
     let (tx, rx) = ds::cow(t);
     let name = service.to_string();
+    let idx = name.find(':').unwrap_or(name.len());
     let mut path = name.clone().replace('+', "/");
-    let idx = path.find(':').unwrap_or(path.len());
     path.truncate(idx);
+
+    let init = Arc::new(AtomicBool::new(false));
 
     (
         TopologyWriteGuard {
             inner: tx,
             name: name,
             path: path,
+            init: init.clone(),
         },
-        TopologyReadGuard { inner: rx },
+        TopologyReadGuard {
+            inner: rx,
+            init: init,
+        },
     )
 }
 
 #[derive(Clone)]
 pub struct TopologyReadGuard<T> {
+    init: Arc<AtomicBool>,
     inner: CowReadHandle<Cow<T, TO>>,
 }
 pub struct TopologyWriteGuard<T>
@@ -49,6 +61,7 @@ where
     inner: CowWriteHandle<Cow<T, TO>, TO>,
     name: String,
     path: String,
+    init: Arc<AtomicBool>,
 }
 
 impl<T> TopologyRead<T> for TopologyReadGuard<T> {
@@ -60,13 +73,25 @@ impl<T> TopologyRead<T> for TopologyReadGuard<T> {
     }
 }
 
+impl<T> TopologyReadGuard<T>
+where
+    T: Clone,
+{
+    pub fn inited(&self) -> bool {
+        self.init.load(Ordering::Acquire)
+    }
+}
+
 impl<T> TopologyWrite for TopologyWriteGuard<T>
 where
     T: TopologyWrite + Clone + ds::Update<TO>,
 {
     fn update(&mut self, name: &str, cfg: &str) {
-        log::info!("topology updateing. name:{}, cfg len:{}", name, cfg.len());
+        log::info!("topology updating. name:{}, cfg len:{}", name, cfg.len());
         self.inner.write((name.to_string(), cfg.to_string()));
+        if !self.init.load(Ordering::Relaxed) {
+            self.init.store(true, Ordering::Release);
+        }
     }
 }
 
@@ -82,7 +107,6 @@ where
     }
 }
 
-use std::sync::Arc;
 impl<T> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O

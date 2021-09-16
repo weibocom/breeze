@@ -59,7 +59,6 @@ async fn process_one_service(
     session_id: Arc<AtomicUsize>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
-    log::info!("starting to serve {}", quard);
 
     let parser = Protocols::try_from(&quard.protocol())?;
     let top = endpoint::Topology::try_from(parser.clone(), quard.endpoint())?;
@@ -70,9 +69,23 @@ async fn process_one_service(
     let r_type = quard.protocol();
     let biz = quard.biz();
     let metric_id = metrics::register_name(r_type + "." + &metrics::encode_addr(&biz));
+    let metric_name = metrics::get_name(metric_id);
+    let mut tick = interval(Duration::from_secs(1));
+    let start = Instant::now();
+    while !rx.inited() {
+        tick.tick().await;
+        if start.elapsed() >= Duration::from_secs(3) {
+            log::info!("waiting inited. {} {:?}", metric_name, start.elapsed());
+        }
+    }
+    drop(tick);
+    log::info!("service started({:?}). {}", start.elapsed(), quard);
+
     loop {
         let top = rx.clone();
+        // 等待初始化成功
         let (client, _addr) = l.accept().await?;
+        log::info!("connection received.");
         let endpoint = quard.endpoint().to_owned();
         let parser = parser.clone();
         let session_id = session_id.fetch_add(1, Ordering::AcqRel);
