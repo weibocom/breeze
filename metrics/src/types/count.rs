@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Count(isize);
 
 impl From<isize> for Count {

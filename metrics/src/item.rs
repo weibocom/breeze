@@ -1,5 +1,7 @@
 use super::KvItem;
 use std::collections::HashMap;
+
+#[derive(Debug)]
 pub(crate) struct SnapshotItem<E> {
     pub(crate) inner: Vec<HashMap<&'static str, E>>,
 }
@@ -32,9 +34,17 @@ impl<E> SnapshotItem<E> {
     where
         E: KvItem,
     {
-        let inner = self.inner.clone();
-        self.clear();
-        Self { inner: inner }
+        let me = Self {
+            inner: std::mem::take(&mut self.inner),
+        };
+        self.inner.reserve(me.inner.len());
+        for i in 0..self.inner.len() {
+            unsafe {
+                self.inner
+                    .push(HashMap::with_capacity(me.inner.get_unchecked(i).capacity()));
+            }
+        }
+        me
     }
     #[inline]
     pub(crate) fn reset(&mut self)
@@ -45,15 +55,6 @@ impl<E> SnapshotItem<E> {
             for map in self.inner.iter_mut() {
                 map.clear();
             }
-        }
-    }
-    #[inline]
-    fn clear(&mut self)
-    where
-        E: KvItem,
-    {
-        for map in self.inner.iter_mut() {
-            map.clear();
         }
     }
 }

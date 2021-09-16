@@ -3,20 +3,20 @@ macro_rules! define_metrics {
     ($($name:ident, $in:ty, $item:tt);+) => {
 
 pub(crate) struct Snapshot {
-    pub(crate) last_commit: Instant,
     $(pub(crate) $name: SnapshotItem<$item>,)+
+}
+
+impl Default for Snapshot {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Snapshot {
     pub fn new() -> Self {
         Self {
-            last_commit: Instant::now(),
             $($name: SnapshotItem::<$item>::new(),)+
         }
-    }
-    #[inline]
-    pub fn elapsed(&self) -> Duration {
-        self.last_commit.elapsed()
     }
     $(
     #[inline(always)]
@@ -26,25 +26,16 @@ impl Snapshot {
     )+
     #[inline]
     pub(crate) fn take(&mut self) -> Self {
-        let last = self.last_commit;
-        self.last_commit = Instant::now();
         Self {
-            last_commit: last,
             $($name: self.$name.take(),)+
         }
     }
     #[inline]
     pub(crate) fn reset(&mut self) {
-        self.last_commit = Instant::now();
         $(self.$name.reset();)+
     }
     #[inline]
-    //pub(crate) fn clear(&mut self) {
-    //    self.last_commit = Instant::now();
-    //    $(self.$name.clear();)+
-    //}
-    #[inline]
-    pub(crate) fn visit_item<P:KV>(&self, secs:f64, packet:&P) {
+    pub(crate) fn visit_item<P:KV>(&mut self, secs:f64, packet:&P) {
         $(
             for (service, group) in self.$name.iter().enumerate(){
                 for (key, item) in group.iter() {
@@ -67,9 +58,42 @@ impl std::ops::AddAssign for Snapshot{
 }
 
 
+struct SnapshotTicker {
+    tick: Instant,
+    inner: Snapshot,
+}
+
+impl SnapshotTicker {
+    fn new() -> Self {
+        Self {
+            tick:Instant::now(),
+            inner: Snapshot::new(),
+        }
+    }
+    #[inline]
+    pub fn elapsed(&self) -> Duration {
+        self.tick.elapsed()
+    }
+}
+
+impl std::ops::Deref for SnapshotTicker {
+    type Target = Snapshot;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for SnapshotTicker {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
 // g下面定义Recorder
 thread_local! {
-    static SNAPSHOT: std::cell::RefCell<Snapshot> = std::cell::RefCell::new(Snapshot::new());
+    static SNAPSHOT: std::cell::RefCell<SnapshotTicker> = std::cell::RefCell::new(SnapshotTicker::new());
 }
 
 const COMMIT_TICK: Duration = Duration::from_secs(2);
@@ -94,7 +118,7 @@ impl Recorder {
     )+
     // 每10秒钟，flush一次
     #[inline]
-    fn try_flush(&self, ss: &mut Snapshot) {
+    fn try_flush(&self, ss: &mut SnapshotTicker) {
         if ss.elapsed() >= COMMIT_TICK {
             let one = ss.take();
             if let Err(e) = self.sender.try_send(one) {

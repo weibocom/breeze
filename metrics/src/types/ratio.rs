@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Ratio(usize, usize);
 
 impl From<(usize, usize)> for Ratio {

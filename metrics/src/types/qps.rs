@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Qps(usize);
 
 impl From<usize> for Qps {
