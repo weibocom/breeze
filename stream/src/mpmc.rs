@@ -227,7 +227,7 @@ impl MpmcRingBufferStream {
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            "bridge-send-req",
+            "req-handler",
             BridgeRequestToBackend::from(self.clone(), w, self.done.clone()),
         );
 
@@ -235,37 +235,37 @@ impl MpmcRingBufferStream {
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            "bridge-recv-response",
+            "response-handler",
             BridgeResponseToLocal::from(r, self.clone(), parser, self.done.clone()),
         );
     }
-    fn start_bridge<F, N>(self: Arc<Self>, notify: N, _name: &'static str, future: F)
+    fn start_bridge<F, N>(self: Arc<Self>, notify: N, name: &'static str, future: F)
     where
         F: Future<Output = Result<()>> + Send + 'static,
         N: Notify + Send + 'static,
     {
         tokio::spawn(async move {
             let runnings = self.runnings.fetch_add(1, Ordering::Release) + 1;
-            log::info!("{} bridge task started, runnings = {}", _name, runnings);
+            log::info!("{}-th task started, {} {}", runnings, name, self.addr);
             match future.await {
                 Ok(_) => {
-                    log::info!("mpmc-task: {} complete", _name);
+                    log::info!("task: {} complete {}", name, self.addr);
                 }
-                Err(_e) => {
-                    log::error!("mpmc-task: {} complete with error:{:?}", _name, _e);
+                Err(e) => {
+                    log::error!("task: {} complete with error:{:?} {}", name, e, self.addr);
                 }
             };
             self.done.store(true, Ordering::Release);
             let runnings = self.runnings.fetch_add(-1, Ordering::Release) - 1;
             log::info!(
-                "mpmc-task: {} task completed, runnings = {} done:{}",
-                _name,
+                "task: {} task completed, runnings = {} done:{}",
+                name,
                 runnings,
                 self.done.load(Ordering::Acquire)
             );
             self.waker.wake();
             if runnings == 0 {
-                log::info!("mpmc-task: all threads attached completed. reset item status");
+                log::info!("all threads attached completed. reset item status");
                 self.reset_item_status();
                 if !self.closed.load(Ordering::Acquire) {
                     notify.notify();
