@@ -167,6 +167,8 @@ where
 
         // 从第0层开始，轮询回写所有回种请求
         if let Some(reqs_wb) = self.requests_writeback.as_mut() {
+            let mut wb_keys = 0;
+            let mut metric_id = 0;
             while self.idx_layer_writeback < self.idx {
                 // 每一层轮询回种所有请求
                 while self.idx_request_writeback < reqs_wb.len() {
@@ -181,8 +183,13 @@ where
                     );
                     let _ = Pin::new(reader).poll_write(cx, req);
                     self.idx_request_writeback += 1;
+                    wb_keys += req.keys().len();
+                    metric_id = req.id().metric_id();
                 }
                 self.idx_layer_writeback += 1;
+            }
+            if wb_keys > 0 {
+                metrics::qps("wback_key", wb_keys, metric_id);
             }
         }
 
