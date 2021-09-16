@@ -53,7 +53,7 @@ impl Receiver {
         P: Protocol + Unpin,
         W: AsyncWriteAll + ?Sized,
     {
-        log::debug!("r:{} w:{} ", self.r, self.w);
+        log::debug!("r:{} w:{} rid:{}", self.r, self.w, rid);
         while self.req.is_none() {
             if self.w > self.r {
                 self.req = parser.parse_request(Slice::from(&self.buff[self.r..self.w]))?;

@@ -121,6 +121,7 @@ impl Recorder {
     fn try_flush(&self, ss: &mut SnapshotTicker) {
         if ss.elapsed() >= COMMIT_TICK {
             let one = ss.take();
+            ss.tick = Instant::now();
             if let Err(e) = self.sender.try_send(one) {
                 log::warn!("metrics-flush: failed to send. {}", e);
             }
