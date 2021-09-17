@@ -176,7 +176,7 @@ impl ResponsePacket {
         Ok(flag)
     }
 
-    pub fn is_ok(&self) -> bool {
+    pub fn status_ok(&self) -> bool {
         self.header.vbucket_id_or_status == Status::NoError as u16
     }
 }

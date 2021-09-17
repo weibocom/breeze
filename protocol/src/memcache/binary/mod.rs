@@ -136,7 +136,7 @@ impl Protocol for MemcacheBinary {
             }
 
             // 如果response不是正确命中响应，忽略
-            if !resp_packet.is_ok() {
+            if !resp_packet.status_ok() {
                 continue;
             }
 
