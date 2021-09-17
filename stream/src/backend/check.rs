@@ -116,6 +116,7 @@ impl BackendChecker {
                     let secs = 1 << tries.min(5);
                     tries += 1;
                     self.num.fetch_add(1, Ordering::AcqRel);
+                    metrics::status("status", metrics::Status::Down, self.metric_id());
                     sleep(Duration::from_secs(secs)).await;
                 }
             }
@@ -187,6 +188,7 @@ impl BackendChecker {
                 self.addr()
             );
             self.inner.mark_done();
+            metrics::status("status", metrics::Status::Timeout, self.metric_id());
         }
     }
 }
