@@ -52,5 +52,6 @@ define_metrics!(
     ratio, (usize, usize), Ratio;
     count, isize, Count;
     qps, usize, Qps;
-    duration, std::time::Duration, DurationItem
+    duration, std::time::Duration, DurationItem;
+    host, Host, Host
 );

@@ -1,3 +1,4 @@
+use super::KvItem;
 use std::collections::HashMap;
 pub(crate) struct SnapshotItem<E> {
     pub(crate) inner: Vec<HashMap<&'static str, E>>,
@@ -24,6 +25,35 @@ impl<E> SnapshotItem<E> {
         } else {
             let new = val.into();
             ele.insert(key, new);
+        }
+    }
+    #[inline]
+    pub(crate) fn take(&mut self) -> Self
+    where
+        E: KvItem,
+    {
+        let inner = self.inner.clone();
+        self.clear();
+        Self { inner: inner }
+    }
+    #[inline]
+    pub(crate) fn reset(&mut self)
+    where
+        E: KvItem,
+    {
+        if E::clear() {
+            for map in self.inner.iter_mut() {
+                map.clear();
+            }
+        }
+    }
+    #[inline]
+    fn clear(&mut self)
+    where
+        E: KvItem,
+    {
+        for map in self.inner.iter_mut() {
+            map.clear();
         }
     }
 }

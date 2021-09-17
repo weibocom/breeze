@@ -145,7 +145,7 @@ impl ListenerIter {
     }
 
     pub fn on_fail(&mut self, name: String) {
-        let s = (self.path.clone() + "/" + &name).clone();
+        let s = self.path.clone() + "/" + &name;
         if self.processed.contains_key(&s) {
             self.processed.remove(&s);
             log::warn!("listenerIter on_fail exist:{}", s);
