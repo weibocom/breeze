@@ -48,9 +48,6 @@ impl BackendBuilder {
                 BackendStream::not_connected()
             })
     }
-    fn finish(&self) {
-        self.finished.store(true, Ordering::Release);
-    }
     // 已经连接上或者至少连接了一次
     #[inline]
     pub fn inited(&self) -> bool {
@@ -61,7 +58,9 @@ impl BackendBuilder {
 impl Drop for BackendBuilder {
     fn drop(&mut self) {
         log::info!("{} finished. stream will be closed later", self.addr);
-        self.finish();
+        self.finished.store(true, Ordering::Release);
+        // 结束流处理。
+        self.checker.mark_done();
     }
 }
 
@@ -93,10 +92,13 @@ impl BackendChecker {
     {
         tokio::spawn(async move {
             while let Some(_) = rx.recv().await {
+                if self.finished.load(Ordering::Acquire) {
+                    break;
+                }
                 log::debug!("signal recived, try to connect:{}", self.inner.addr());
                 self.connect(parser.clone()).await;
             }
-            log::info!("complete:{}", self.inner.addr());
+            log::info!("check done complete:{}", self.inner.addr());
         });
     }
 
@@ -133,8 +135,6 @@ impl BackendChecker {
         log::debug!("connected to {}", addr);
         let _ = stream.set_nodelay(true);
         let (r, w) = stream.into_split();
-        //let r = super::Reader::from(r, addr, self.resource, &self.biz);
-        //let w = super::Writer::from(w, addr, self.resource, &self.biz);
         let req_stream = self.inner.clone();
 
         req_stream.bridge(
@@ -190,6 +190,7 @@ impl BackendChecker {
             self.inner.mark_done();
             metrics::status("status", metrics::Status::Timeout, self.metric_id());
         }
+        log::info!("timeout task checker complete:{}", self.addr());
     }
 }
 

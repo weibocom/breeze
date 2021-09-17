@@ -269,7 +269,6 @@ impl MpmcRingBufferStream {
                 self.reset_item_status();
                 if !self.closed.load(Ordering::Acquire) {
                     notify.notify();
-                    log::info!("mpmc-task: stream inited, try to connect");
                 }
             }
         });
@@ -350,6 +349,10 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
             Poll::Ready(())
         }
     }
+    #[inline]
+    fn metric_id(&self) -> usize {
+        self.metric_id
+    }
 }
 impl ResponseHandler for Arc<MpmcRingBufferStream> {
     // 获取已经被全部读取的字节的位置
@@ -362,9 +365,8 @@ impl ResponseHandler for Arc<MpmcRingBufferStream> {
     fn on_received(&self, seq: usize, first: protocol::Response) {
         self.place_response(seq, first);
     }
-    fn wake(&self) {
-        for item in self.items.iter() {
-            item.0.try_wake();
-        }
+    #[inline]
+    fn metric_id(&self) -> usize {
+        self.metric_id
     }
 }

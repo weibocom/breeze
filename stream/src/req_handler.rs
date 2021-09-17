@@ -50,6 +50,7 @@ pub trait RequestHandler {
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()>;
     fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)>;
     fn sent(&self, cid: usize, seq: usize, req: &Request);
+    fn metric_id(&self) -> usize;
 }
 
 pub struct BridgeRequestToBackend<H, W> {
@@ -88,7 +89,6 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        log::debug!("task polling.");
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Acquire) {
@@ -129,7 +129,8 @@ where
                 }
             }
         }
-        log::info!("task complete");
+        log::info!("task complete:{}", me.handler.metric_id());
+        ready!(w.as_mut().poll_shutdown(cx))?;
         Poll::Ready(Ok(()))
     }
 }

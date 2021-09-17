@@ -213,11 +213,4 @@ impl Item {
         self.request.take();
         self.waker.wake();
     }
-    pub(crate) fn try_wake(&self) {
-        if self.status() == ResponseReceived {
-            let loc = self.response.borrow().location();
-            log::info!("id:{} loc:{:?} seq:{}", self.id, loc, self.seq());
-        }
-        self.waker.wake();
-    }
 }
