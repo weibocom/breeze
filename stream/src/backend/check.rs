@@ -51,9 +51,10 @@ impl BackendBuilder {
     fn finish(&self) {
         self.finished.store(true, Ordering::Release);
     }
+    // 已经连接上或者至少连接了一次
     #[inline]
     pub fn inited(&self) -> bool {
-        self.checker.num.load(Ordering::Acquire) >= 1
+        !self.checker.done() || self.checker.num.load(Ordering::Acquire) >= 1
     }
 }
 
