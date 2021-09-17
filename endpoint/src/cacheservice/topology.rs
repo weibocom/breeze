@@ -192,10 +192,10 @@ impl<P> Topology<P> {
             Ok(ns) => self.update_from_namespace(ns),
             Err(e) => {
                 log::info!(
-                    "parse cacheservice config error: name:{} error:{} cfg:{}",
+                    "parse cacheservice config failed. name:{} error:{} cfg:{}",
                     name,
                     e,
-                    cfg
+                    cfg.len()
                 );
                 return;
             }
