@@ -40,7 +40,7 @@ impl Snapshot {
         H: Unpin + RequestHandler,
     {
         match self.cids.pop() {
-            Some(cid) => Some((cid, handler.take(cid, seq))),
+            Some(cid) => handler.take(cid, seq),
             None => self.reqs.pop().map(|req| (std::usize::MAX, req)),
         }
     }
@@ -48,7 +48,7 @@ impl Snapshot {
 pub trait RequestHandler {
     // 如果填充ss的长度为0，则说明handler没有要处理的数据流，提示到达eof。
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()>;
-    fn take(&self, cid: usize, seq: usize) -> Request;
+    fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)>;
     fn sent(&self, cid: usize, seq: usize, req: &Request);
 }
 

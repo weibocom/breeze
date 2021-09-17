@@ -70,16 +70,25 @@ impl Item {
         *self.request.borrow_mut() = Some(req.clone());
         self.rid.replace(req.id());
     }
+    // 如果状态不是RequestReceived, 则返回None.
+    // 有可能是连接被重置导致。
     #[inline(always)]
-    pub fn take_request(&self, seq: usize) -> Request {
-        self.status_cas(RequestReceived as u8, RequestSent as u8);
-        log::debug!("take request. {} seq:{} ", self.rid.borrow(), seq);
-        let req = self.request.borrow_mut().take().expect("take request");
-        // noreply的请求不需要seq来进行request与response之间的协调
-        if !req.noreply() {
-            self.seq_cas(0, seq);
+    pub fn take_request(&self, seq: usize) -> Option<(usize, Request)> {
+        if self.try_status_cas(RequestReceived as u8, RequestSent as u8) {
+            log::debug!("take request. {} seq:{} ", self.rid.borrow(), seq);
+            if let Some(req) = self.request.take() {
+                // noreply的请求不需要seq来进行request与response之间的协调
+                if !req.noreply() {
+                    self.seq_cas(0, seq);
+                }
+                return Some((self.id, req));
+            }
         }
-        req
+        log::warn!(
+            "take request failed. status:{}. maybe the stream reset status before",
+            self.status()
+        );
+        None
     }
 
     #[inline(always)]
@@ -140,6 +149,24 @@ impl Item {
         self.waker.wake();
     }
     #[inline(always)]
+    fn try_status_cas(&self, old: u8, new: u8) -> bool {
+        match self.status.compare_exchange(old, new, AcqRel, Acquire) {
+            Ok(_) => true,
+            Err(cur) => {
+                let rid = self.rid.borrow();
+                log::error!(
+                    "cas {} => {}, {} found. seq:{} {}",
+                    old,
+                    new,
+                    cur,
+                    self.seq(),
+                    rid
+                );
+                false
+            }
+        }
+    }
+    #[inline(always)]
     fn status_cas(&self, old: u8, new: u8) {
         match self.status.compare_exchange(old, new, AcqRel, Acquire) {
             Ok(_) => {}
@@ -183,7 +210,7 @@ impl Item {
         }
         self.status.store(Init as u8, Release);
         self.seq.store(0, Release);
-        //self.request.take();
+        self.request.take();
         self.waker.wake();
     }
     pub(crate) fn try_wake(&self) {
