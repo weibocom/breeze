@@ -49,6 +49,12 @@ where
     )
 }
 
+pub trait Inited {
+    fn inited(&self) -> bool;
+}
+
+unsafe impl<T> Send for TopologyReadGuard<T> {}
+unsafe impl<T> Sync for TopologyReadGuard<T> {}
 #[derive(Clone)]
 pub struct TopologyReadGuard<T> {
     init: Arc<AtomicBool>,
@@ -75,7 +81,7 @@ impl<T> TopologyRead<T> for TopologyReadGuard<T> {
 
 impl<T> TopologyReadGuard<T>
 where
-    T: Clone,
+    T: Clone + Inited,
 {
     pub fn inited(&self) -> bool {
         self.init.load(Ordering::Acquire)

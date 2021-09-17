@@ -286,3 +286,24 @@ impl<P> From<P> for Topology<P> {
         }
     }
 }
+
+// 所有的stream都初始化完成
+impl<P> discovery::Inited for Topology<P> {
+    fn inited(&self) -> bool {
+        for streams in vec![
+            &self.m_streams,
+            &self.f_streams,
+            &self.get_streams,
+            &self.gets_streams,
+            &self.meta_stream,
+        ] {
+            for (_, builder) in streams {
+                if !builder.inited() {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+}
