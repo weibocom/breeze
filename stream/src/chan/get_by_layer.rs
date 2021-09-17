@@ -90,10 +90,6 @@ where
         // 构建回种的请求
         if self.idx > 0 {
             self.create_requests_wb(&item);
-            //记录回种的kps，metric
-            if let Some(reqs_wb) = self.requests_writeback.as_mut() {
-                metrics::qps("back_kps", reqs_wb.len(), item.rid().metric_id());
-            }
             self.do_write_back(cx);
         }
 
@@ -158,6 +154,8 @@ where
         if requests_wb.len() == 0 {
             return;
         }
+        //记录回种的kps，metric
+        metrics::qps("back_key", requests_wb.len(), resp.rid().metric_id());
 
         self.requests_writeback = Some(requests_wb);
     }
