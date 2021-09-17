@@ -55,9 +55,12 @@ where
                     log::error!("service duplicatedly registered:{}", t.name());
                 } else {
                     log::info!("service {} path:{} registered ", t.name(), t.path());
-                    if let Some((sig, _cfg)) = self.init(&mut t).await {
-                        sigs.insert(t.name().to_string(), sig);
-                    }
+                    let sig = if let Some((sig, _cfg)) = self.init(&mut t).await {
+                        sig
+                    } else {
+                        String::new()
+                    };
+                    sigs.insert(t.name().to_string(), sig);
                     services.insert(t.name().to_string(), t);
                 }
             }
@@ -79,23 +82,23 @@ where
         let mut cache: HashMap<String, (String, String)> = HashMap::with_capacity(services.len());
         for (name, t) in services.iter_mut() {
             let path = t.path().to_string();
-            let empty = String::new();
-            let sig = sigs.get(name).unwrap_or(&empty);
+            let sig = sigs.get_mut(name).expect("sig not inited");
             // 在某些场景下，同一个name被多个path共用。所以如果sig没有变更，则不需要额外处理更新。
-            if let Some((path_sig, cfg)) = cache.get(&path) {
-                if path_sig == sig {
+            if let Some((cache_sig, cfg)) = cache.get(&path) {
+                if cache_sig == sig {
                     continue;
                 }
                 if cfg.len() > 0 {
                     t.update(name, &cfg);
+                    *sig = cache_sig.to_owned();
                     continue;
                 }
             }
 
-            if let Some((sig, cfg)) = self.load_from_discovery(&path, sig).await {
-                sigs.insert(name.to_string(), sig.to_string());
+            if let Some((remote_sig, cfg)) = self.load_from_discovery(&path, sig).await {
                 t.update(name, &cfg);
-                cache.insert(path, (sig, cfg));
+                *sig = remote_sig.to_owned();
+                cache.insert(path, (remote_sig, cfg));
             }
         }
     }
