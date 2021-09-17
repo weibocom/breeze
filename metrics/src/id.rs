@@ -26,7 +26,7 @@ impl IdSequence {
                         self.names.push("".to_string());
                     }
                 }
-                log::info!("metrics-register: name:{} id:{}", name, seq);
+                log::debug!("metrics-register: name:{} id:{}", name, seq);
                 self.names[seq] = name.to_owned();
                 self.indice.insert(name, self.seq);
                 self.seq += 1;

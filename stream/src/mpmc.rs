@@ -246,7 +246,7 @@ impl MpmcRingBufferStream {
     {
         tokio::spawn(async move {
             let runnings = self.runnings.fetch_add(1, Ordering::Release) + 1;
-            log::info!("{}-th task started, {} {}", runnings, name, self.addr);
+            log::debug!("{}-th task started, {} {}", runnings, name, self.addr);
             match future.await {
                 Ok(_) => {
                     log::info!("task: {} complete {}", name, self.addr);
