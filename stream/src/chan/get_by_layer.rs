@@ -90,11 +90,11 @@ where
         // 构建回种的请求
         if self.idx > 0 {
             self.create_requests_wb(&item);
-            self.do_write_back(cx);
             //记录回种的kps，metric
             if let Some(reqs_wb) = self.requests_writeback.as_mut() {
                 metrics::qps("back_kps", reqs_wb.len(), item.rid().metric_id());
             }
+            self.do_write_back(cx);
         }
 
         let found = item.keys_num();
