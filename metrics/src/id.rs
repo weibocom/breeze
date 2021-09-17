@@ -12,7 +12,7 @@ impl IdSequence {
         // 初始化里面metric id是0表示，所有业务共享的元数据信息
         Self {
             seq: 1,
-            names: vec!["all".to_string()],
+            names: vec!["mesh".to_string()],
             indice: Default::default(),
         }
     }
