@@ -174,9 +174,10 @@ where
                     let addr = reader.get_address();
                     let req = reqs_wb.get_mut(self.idx_request_writeback).unwrap();
                     log::debug!(
-                        "will write back req: {:?} to sever layer/{}: {:?}",
+                        "will write back req: {:?} to sever layer/{}/{}: {:?}",
                         req.data(),
                         self.idx_layer_writeback,
+                        self.idx,
                         addr
                     );
                     let _ = Pin::new(reader).poll_write(cx, req);
