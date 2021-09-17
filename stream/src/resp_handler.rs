@@ -19,7 +19,7 @@ pub trait ResponseHandler {
     fn load_offset(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
     fn on_received(&self, seq: usize, response: protocol::Response);
-    fn wake(&self);
+    fn metric_id(&self) -> usize;
 }
 
 unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
@@ -67,7 +67,6 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        log::debug!("resp-handler: task polling.");
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
         while !me.done.load(Ordering::Acquire) {
@@ -95,11 +94,6 @@ where
                         continue;
                     }
                 }
-                // TODO: 目前在stats中，存在部分场景下，状态是response已返回，但没有接收的情况。
-                // 临时在这里面增加一个定期扫描并且进行wakeup的临时解决方案。
-                //if me.spin_last.elapsed() >= Duration::from_millis(50) {
-                //    me.w.wake();
-                //}
                 // 每超过一秒钟输出一次日志
                 let secs = me.spin_last.elapsed().as_secs() as usize;
                 if secs > me.spin_secs {
@@ -139,7 +133,7 @@ where
                 }
             }
         }
-        log::info!("task complete");
+        log::info!("task complete:{}", metrics::get_name(me.w.metric_id()));
         Poll::Ready(Ok(()))
     }
 }
