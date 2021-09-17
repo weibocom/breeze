@@ -1,7 +1,7 @@
 use context::Context;
 use crossbeam_channel::{bounded, Sender};
 use discovery::*;
-
+//diyizhong
 use net::listener::Listener;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -17,7 +17,7 @@ use protocol::Protocols;
 async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
     ctx.check()?;
-
+    //ceshidierzhong sos sos sos sos
     let _l = listener_for_supervisor(ctx.port()).await?;
     elog::init(ctx.log_dir(), &ctx.log_level)?;
     metrics::init(&ctx.metrics_url());
@@ -38,6 +38,7 @@ async fn main() -> Result<()> {
         while let Ok(req) = rx.try_recv() {
             listeners.on_fail(req);
         }
+
         for quard in listeners.scan().await {
             let discovery = tx_disc.clone();
             let session_id = session_id.clone();
