@@ -320,7 +320,7 @@ impl Drop for MpmcRingBufferStream {
 use crate::req_handler::Snapshot;
 impl RequestHandler for Arc<MpmcRingBufferStream> {
     #[inline(always)]
-    fn take(&self, cid: usize, seq: usize) -> Request {
+    fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)> {
         self.bind_seq(cid, seq);
         self.get_item(cid).take_request(seq)
     }
