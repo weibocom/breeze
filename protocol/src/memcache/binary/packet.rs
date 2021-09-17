@@ -69,6 +69,12 @@ pub enum Opcode {
     StartAuth = 0x21,
 }
 
+// mc response的响应code
+pub enum Status {
+    NoError = 0x0000,
+    // NotFound = 0x0001,
+}
+
 impl PacketHeader {
     pub fn write<W: io::Write>(&self, writer: &mut W) -> Result<()> {
         writer.write_u8(self.magic)?;
@@ -168,6 +174,10 @@ impl ResponsePacket {
             flag = Cursor::new(&self.extras).read_u32::<BigEndian>()?;
         }
         Ok(flag)
+    }
+
+    pub fn is_ok(&self) -> bool {
+        self.header.vbucket_id_or_status == Status::NoError as u16
     }
 }
 
