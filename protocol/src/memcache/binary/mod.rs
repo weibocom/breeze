@@ -135,6 +135,11 @@ impl Protocol for MemcacheBinary {
                 continue;
             }
 
+            // 如果response不是正确命中响应，忽略
+            if !resp_packet.is_ok() {
+                continue;
+            }
+
             let flags = resp_packet.parse_get_response_flag()?;
 
             // 构建 set request

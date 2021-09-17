@@ -117,6 +117,7 @@ where
     fn create_requests_wb(&mut self, resp: &Response) {
         debug_assert!(self.requests_writeback.is_none());
         if self.idx == 0 {
+            log::info!("should not create request for write back when call layer-0");
             return;
         }
 
@@ -128,10 +129,11 @@ where
         let mut requests_wb: Vec<Request> = Vec::new();
         for rit in rsp_its {
             if rit.keys().len() == 0 {
-                // log::info!("ignore response for keys is 0");
-                let mut data = Vec::with_capacity(rit.len());
-                rit.as_ref().copy_to_vec(&mut data);
-                // log::info!("+++++++++ empty keys data: {:?}", data);
+                if log::log_enabled!(log::Level::Debug) {
+                    let mut data = Vec::with_capacity(rit.len());
+                    rit.as_ref().copy_to_vec(&mut data);
+                    log::debug!("found empty keys response, data: {:?}", data);
+                }
                 continue;
             }
             let req_rs =
@@ -159,7 +161,6 @@ where
     // 回种逻辑单独处理，不放在on_response中，否则处理pending时，需要保留response，逻辑会很ugly
     fn do_write_back(&mut self, cx: &mut Context<'_>) {
         if self.requests_writeback.is_none() {
-            log::warn!("no requests to write back!");
             return;
         }
 
