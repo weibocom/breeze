@@ -36,7 +36,7 @@ pub(super) async fn process_one(
     // 服务注册完成，侦听端口直到成功。
     while let Err(e) = _process_one(quard, parser.clone(), rx.clone(), session_id.clone()).await {
         log::warn!("service process failed. {}, err:{:?}", quard, e);
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        tokio::time::sleep(Duration::from_secs(6)).await;
     }
     Ok(())
 }
