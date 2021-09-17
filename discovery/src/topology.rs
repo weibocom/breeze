@@ -83,8 +83,9 @@ impl<T> TopologyReadGuard<T>
 where
     T: Clone + Inited,
 {
+    #[inline]
     pub fn inited(&self) -> bool {
-        self.init.load(Ordering::Acquire)
+        self.init.load(Ordering::Acquire) && self.do_with(|t| t.inited())
     }
 }
 
