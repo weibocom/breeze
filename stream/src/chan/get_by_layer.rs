@@ -19,8 +19,6 @@ pub struct AsyncLayerGet<L, P> {
     // 用于回写的set noreply响应及请求
     requests_writeback: Option<Vec<Request>>,
     idx_layer_writeback: usize,
-    idx_request_writeback: usize,
-
     parser: P,
     since: Instant, // 上一层请求开始的时间
 }
@@ -38,7 +36,7 @@ where
             response: None,
             requests_writeback: None,
             idx_layer_writeback: 0,
-            idx_request_writeback: 0,
+            // idx_request_writeback: 0,
             parser: p,
             since: Instant::now(),
         }
@@ -169,19 +167,20 @@ where
         if let Some(reqs_wb) = self.requests_writeback.as_mut() {
             while self.idx_layer_writeback < self.idx {
                 // 每一层轮询回种所有请求
-                while self.idx_request_writeback < reqs_wb.len() {
+                let mut i = 0;
+                while i < reqs_wb.len() {
                     let reader = self.layers.get_mut(self.idx_layer_writeback).unwrap();
                     let addr = reader.get_address();
-                    let req = reqs_wb.get_mut(self.idx_request_writeback).unwrap();
+                    let req = reqs_wb.get_mut(i).unwrap();
                     log::debug!(
-                        "will write back req: {:?} to sever layer/{}/{}: {:?}",
-                        req.data(),
+                        "layer/{}/{} will write back req: {:?} to sever : {:?}",
                         self.idx_layer_writeback,
                         self.idx,
+                        req.data(),
                         addr
                     );
                     let _ = Pin::new(reader).poll_write(cx, req);
-                    self.idx_request_writeback += 1;
+                    i += 1;
                 }
                 self.idx_layer_writeback += 1;
             }
@@ -192,7 +191,6 @@ where
 
         // 回写完毕，回写idx清零
         self.idx_layer_writeback = 0;
-        self.idx_request_writeback = 0;
         // return Poll::Ready(Ok(()));
     }
 }
