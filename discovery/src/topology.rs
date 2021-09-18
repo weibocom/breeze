@@ -8,7 +8,8 @@ pub trait TopologyRead<T> {
     where
         F: Fn(&T) -> O;
 }
-
+//vhjcedjwpssbq
+//wbhjc1d2
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
 }
