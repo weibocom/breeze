@@ -74,7 +74,7 @@ where
         for rit in rsp_its {
             let mut data = Vec::with_capacity(rit.len());
             rit.as_ref().copy_to_vec(&mut data);
-            log::debug!("+++++++++ resp data: {:?}", data);
+            log::debug!("resp data: {:?}", data);
         }
         log::debug!("=================== printed response!!! =================");
     }
