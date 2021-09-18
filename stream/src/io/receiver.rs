@@ -91,6 +91,7 @@ impl Receiver {
                 req.keys().len(),
                 req.operation().name()
             );
+            log::debug!("++++++++ req data:{:?}", req.data());
             ready!(writer.as_mut().poll_write(cx, &req))?;
             self.r += req.len();
         }
