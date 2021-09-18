@@ -49,45 +49,73 @@ where
             alg: Sharding::from(hash, d, names),
         }
     }
+
+    pub fn reset(&mut self) {
+        // 长度一般都非常小
+        for status in self.statuses.iter_mut() {
+            *status = Init;
+        }
+        self.shard_reqs.take();
+    }
 }
 
 impl<S, P> AsyncWriteAll for AsyncMultiGetSharding<S, P>
 where
-    S: AsyncWriteAll + Unpin,
+    S: AsyncWriteAll + AddressEnable + Unpin,
     P: Unpin + Protocol,
 {
     // 只要有一个shard成功就算成功,如果所有的都写入失败，则返回错误信息。
     #[inline]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, multi: &Request) -> Poll<Result<()>> {
-        let me = &mut *self;
+        let mut me = &mut *self;
         if me.shard_reqs.is_none() {
             me.shard_reqs = Some(me.parser.sharding(multi, &me.alg));
         }
-        let shard_reqs = me.shard_reqs.as_ref().expect("multi get sharding");
-        debug_assert!(shard_reqs.len() > 0);
+        //let shard_reqs = me.shard_reqs.as_mut().expect("multi get sharding");
+        // debug_assert!(shard_reqs.len() > 0);
 
         let mut success = false;
         let mut pending = false;
-        for (i, req) in shard_reqs.iter() {
-            let sharding_idx = *i;
-            debug_assert!(sharding_idx < me.statuses.len());
-            let status = unsafe { me.statuses.get_unchecked_mut(sharding_idx) };
-            if *status == Init {
-                match Pin::new(unsafe { me.shards.get_unchecked_mut(sharding_idx) })
-                    .poll_write(cx, req)
-                {
-                    Poll::Pending => pending = true,
-                    Poll::Ready(Ok(_)) => {
-                        success = true;
-                        *status = Sent;
-                    }
-                    Poll::Ready(Err(e)) => {
-                        *status = Error;
-                        me.err = Some(e);
+        let mut noreply = false;
+        let mut reqs_len = 0;
+        if let Some(shard_reqs) = me.shard_reqs.as_mut() {
+            reqs_len = shard_reqs.len();
+            for (i, req) in shard_reqs.iter() {
+                let sharding_idx = *i;
+                if req.noreply() {
+                    noreply = req.noreply();
+                }
+                // 暂时保留和get_by_layer的on_response 一起，方便排查问题
+                log::debug!(
+                    "write req: {:?} to servers: {:?}",
+                    req.data(),
+                    me.shards.get(sharding_idx).unwrap().get_address()
+                );
+
+                debug_assert!(sharding_idx < me.statuses.len());
+                let status = unsafe { me.statuses.get_unchecked_mut(sharding_idx) };
+                if *status == Init {
+                    match Pin::new(unsafe { me.shards.get_unchecked_mut(sharding_idx) })
+                        .poll_write(cx, req)
+                    {
+                        Poll::Pending => pending = true,
+                        Poll::Ready(Ok(_)) => {
+                            success = true;
+                            *status = Sent;
+                        }
+                        Poll::Ready(Err(e)) => {
+                            *status = Error;
+                            me.err = Some(e);
+                        }
                     }
                 }
             }
         }
+        // 如果是noreply的回种请求，发送完毕，请求则完毕，需要进行重制
+        if noreply {
+            me.reset();
+        }
+
         if pending {
             Poll::Pending
         } else if success {
@@ -98,7 +126,7 @@ where
                 format!(
                     "sharding server({}) must be greater than 0. req sharding num({}) must be greater than 0. reqeust keys({}) must great than 0",
                     me.shards.len(),
-                    shard_reqs.len(),
+                    reqs_len,
                     multi.keys().len()
                 ),
             ))))
@@ -108,7 +136,7 @@ where
 
 impl<S, P> AsyncReadAll for AsyncMultiGetSharding<S, P>
 where
-    S: AsyncReadAll + Unpin,
+    S: AsyncReadAll + AddressEnable + Unpin,
     P: Unpin + Protocol,
 {
     #[inline]
@@ -140,10 +168,11 @@ where
             Poll::Pending
         } else {
             // 长度一般都非常小
-            for status in me.statuses.iter_mut() {
-                *status = Init;
-            }
-            me.shard_reqs.take();
+            // for status in me.statuses.iter_mut() {
+            //     *status = Init;
+            // }
+            // me.shard_reqs.take();
+            me.reset();
             me.response
                 .take()
                 .map(|item| Poll::Ready(Ok(item)))

@@ -27,7 +27,6 @@ where
     P: Protocol + Unpin,
 {
     log::debug!("a new connection received.");
-    metrics::qps("cps", 1, metric_id);
     CopyBidirectional {
         agent: agent,
         client: client,

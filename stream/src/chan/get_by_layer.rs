@@ -16,6 +16,11 @@ pub struct AsyncLayerGet<L, P> {
     // 每一层访问的请求
     request: Request,
     response: Option<Response>,
+    // 用于回写的set noreply响应及请求
+    requests_writeback: Option<Vec<Request>>,
+    idx_layer_writeback: usize,
+    idx_request_writeback: usize,
+
     parser: P,
     since: Instant, // 上一层请求开始的时间
 }
@@ -23,7 +28,7 @@ pub struct AsyncLayerGet<L, P> {
 impl<L, P> AsyncLayerGet<L, P>
 where
     L: AsyncWriteAll + AsyncWriteAll + AddressEnable + Unpin,
-    P: Unpin,
+    P: Unpin + Protocol,
 {
     pub fn from_layers(layers: Vec<L>, p: P) -> Self {
         Self {
@@ -31,6 +36,9 @@ where
             layers,
             request: Default::default(),
             response: None,
+            requests_writeback: None,
+            idx_layer_writeback: 0,
+            idx_request_writeback: 0,
             parser: p,
             since: Instant::now(),
         }
@@ -61,8 +69,36 @@ where
         ))))
     }
 
+    // 打印respose的内容，注意仅仅在Debug开启时才生效执行
+    fn log_response(&mut self, item: &Response) {
+        if !log::log_enabled!(log::Level::Debug) {
+            return;
+        }
+        // print request and respons
+        log::debug!("=================== print response... =================");
+        let rsp_its = item.iter();
+        for rit in rsp_its {
+            let mut data = Vec::with_capacity(rit.len());
+            rit.as_ref().copy_to_vec(&mut data);
+            log::debug!("+++++++++ resp data: {:?}", data);
+        }
+        log::debug!("=================== printed response!!! =================");
+    }
+
+    // 查到response之后，需要进行构建set指令进行回种：
+    // 1 先支持getk/getkq这种带key的response；
+    // 2 测试完毕后，再统一支持getq这种不带key的response
     #[inline(always)]
-    fn on_response(&mut self, item: Response) {
+    fn on_response(&mut self, cx: &mut Context<'_>, item: Response) {
+        // 暂时保留，查问题的时候和sharding的req日志结合排查
+        self.log_response(&item);
+
+        // 构建回种的请求
+        if self.idx > 0 {
+            self.create_requests_wb(&item);
+            self.do_write_back(cx);
+        }
+
         let found = item.keys_num();
         // 记录metrics
         let elapse = self.since.elapsed();
@@ -83,12 +119,91 @@ where
             }
         }
     }
+
+    fn create_requests_wb(&mut self, resp: &Response) {
+        debug_assert!(self.requests_writeback.is_none());
+        if self.idx == 0 {
+            return;
+        }
+
+        // TODO 暂定为1天，这个过期时间后续要从vintage中获取
+        let expire_seconds = 24 * 3600;
+
+        // 轮询response构建回写的request buff及keys
+        let rsp_its = resp.iter();
+        let mut requests_wb: Vec<Request> = Vec::new();
+        for rit in rsp_its {
+            if rit.keys().len() == 0 {
+                // log::info!("ignore response for keys is 0");
+                let mut data = Vec::with_capacity(rit.len());
+                rit.as_ref().copy_to_vec(&mut data);
+                // log::info!("+++++++++ empty keys data: {:?}", data);
+                continue;
+            }
+            let req_rs =
+                self.parser
+                    .convert_to_writeback_request(&self.request, rit, expire_seconds);
+
+            if let Ok(mut reqs) = req_rs {
+                requests_wb.append(&mut reqs);
+            } else {
+                log::warn!(
+                    "careful - not found keys from response items/{}, err: {:?}",
+                    resp.items.len(),
+                    req_rs.err()
+                );
+            }
+        }
+
+        if requests_wb.len() == 0 {
+            return;
+        }
+
+        self.requests_writeback = Some(requests_wb);
+    }
+
+    // 回种逻辑单独处理，不放在on_response中，否则处理pending时，需要保留response，逻辑会很ugly
+    fn do_write_back(&mut self, cx: &mut Context<'_>) {
+        if self.requests_writeback.is_none() {
+            log::warn!("no requests to write back!");
+            return;
+        }
+
+        // 从第0层开始，轮询回写所有回种请求
+        if let Some(reqs_wb) = self.requests_writeback.as_mut() {
+            while self.idx_layer_writeback < self.idx {
+                // 每一层轮询回种所有请求
+                while self.idx_request_writeback < reqs_wb.len() {
+                    let reader = self.layers.get_mut(self.idx_layer_writeback).unwrap();
+                    let addr = reader.get_address();
+                    let req = reqs_wb.get_mut(self.idx_request_writeback).unwrap();
+                    log::debug!(
+                        "will write back req: {:?} to sever layer/{}: {:?}",
+                        req.data(),
+                        self.idx_layer_writeback,
+                        addr
+                    );
+                    let _ = Pin::new(reader).poll_write(cx, req);
+                    self.idx_request_writeback += 1;
+                }
+                self.idx_layer_writeback += 1;
+            }
+        }
+
+        // 发送完毕，take走
+        self.requests_writeback.take();
+
+        // 回写完毕，回写idx清零
+        self.idx_layer_writeback = 0;
+        self.idx_request_writeback = 0;
+        // return Poll::Ready(Ok(()));
+    }
 }
 
 impl<L, P> AsyncWriteAll for AsyncLayerGet<L, P>
 where
     L: AsyncWriteAll + AsyncWriteAll + AddressEnable + Unpin,
-    P: Unpin,
+    P: Unpin + Protocol,
 {
     // 请求某一层
     #[inline]
@@ -121,12 +236,14 @@ where
                     match me.parser.filter_by_key(&me.request, item.iter()) {
                         None => {
                             // 所有请求都已返回
-                            me.on_response(item);
+                            // 处理response，并会根据req构建回写请求
+                            me.on_response(cx, item);
                             break;
                         }
                         Some(req) => {
+                            // 处理response，并会根据req构建回写请求
+                            me.on_response(cx, item);
                             me.request = req;
-                            me.on_response(item);
                         }
                     }
                 }

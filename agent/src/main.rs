@@ -1,12 +1,12 @@
 use context::Context;
 use crossbeam_channel::{bounded, Sender};
 use discovery::*;
-
+//diyizhong
 use net::listener::Listener;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use stream::io::copy_bidirectional;
 use tokio::spawn;
 use tokio::time::interval;
@@ -17,7 +17,7 @@ use protocol::Protocols;
 async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
     ctx.check()?;
-
+    //ceshidierzhong sos sos sos sos
     let _l = listener_for_supervisor(ctx.port()).await?;
     elog::init(ctx.log_dir(), &ctx.log_level)?;
     metrics::init(&ctx.metrics_url());
@@ -38,6 +38,7 @@ async fn main() -> Result<()> {
         while let Ok(req) = rx.try_recv() {
             listeners.on_fail(req);
         }
+
         for quard in listeners.scan().await {
             let discovery = tx_disc.clone();
             let session_id = session_id.clone();
@@ -77,11 +78,20 @@ async fn process_one_service(
         let parser = parser.clone();
         let session_id = session_id.fetch_add(1, Ordering::AcqRel);
         spawn(async move {
+            metrics::qps("conn", 1, metric_id);
+            metrics::count("conn", 1, metric_id);
+            let instant = Instant::now();
             if let Err(e) =
                 process_one_connection(client, top, endpoint, parser, session_id, metric_id).await
             {
-                log::warn!("connection disconnected:{:?}", e);
+                log::warn!(
+                    "disconnected:biz:{} processed:{:?} {:?}",
+                    metrics::get_name(metric_id),
+                    instant.elapsed(),
+                    e
+                );
             }
+            metrics::count("conn", -1, metric_id);
         });
     }
 }
@@ -106,7 +116,7 @@ async fn process_one_connection(
     copy_bidirectional(agent, client, parser, session_id, metric_id).await?;
     Ok(())
 }
-
+// fugai dockerfile merage
 use tokio::net::TcpListener;
 // 监控一个端口，主要用于进程监控
 async fn listener_for_supervisor(port: u16) -> Result<TcpListener> {
