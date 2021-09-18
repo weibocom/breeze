@@ -46,6 +46,7 @@ impl Ids {
         None
     }
 
+    #[inline(always)]
     pub fn release(&self, id: usize) {
         unsafe {
             match self.bits.get_unchecked(id).compare_exchange(
