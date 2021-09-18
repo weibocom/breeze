@@ -135,6 +135,11 @@ impl Protocol for MemcacheBinary {
                 continue;
             }
 
+            // 如果response不是正确命中响应，忽略
+            if !resp_packet.status_ok() {
+                continue;
+            }
+
             let flags = resp_packet.parse_get_response_flag()?;
 
             // 构建 set request
@@ -149,6 +154,11 @@ impl Protocol for MemcacheBinary {
             } else {
                 resp_packet.key
             };
+
+            log::info!(
+                "will write back for key: {:?}",
+                String::from_utf8_lossy(&key)
+            );
 
             let set_req_packet = packet::SetRequest {
                 header: PacketHeader {

@@ -84,13 +84,15 @@ impl Receiver {
             req.set_request_id(*rid);
             metric.req_done(req.operation(), req.len(), req.keys().len());
             log::debug!(
-                "parsed: {}=>{} {}, keys:{} op:{}",
+                "parsed: {}=>{} {}, keys:{} op:{}, request data:{:?}",
                 self.r,
                 req.len(),
                 rid,
                 req.keys().len(),
-                req.operation().name()
+                req.operation().name(),
+                req.data()
             );
+
             ready!(writer.as_mut().poll_write(cx, &req))?;
             self.r += req.len();
         }
