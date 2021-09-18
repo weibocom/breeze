@@ -66,7 +66,11 @@ where
         ))))
     }
 
+    // 只在打开Debug时打印并开启
     fn log_response(&mut self, item: &Response) {
+        if !log::log_enabled!(log::Level::Debug) {
+            return;
+        }
         // print request and respons
         log::debug!("=================== print response... =================");
         let rsp_its = item.iter();
