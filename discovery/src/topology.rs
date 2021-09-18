@@ -9,7 +9,9 @@ pub trait TopologyRead<T> {
         F: Fn(&T) -> O;
 }
 //vhjcedjwpssbq
-//wbhjc1d2
+//wbhjc1d2i
+///ewrenjd2`k1psq[l
+/// //2ec1 boniepd2olmqaz]
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
 }
