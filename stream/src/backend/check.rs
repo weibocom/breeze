@@ -12,8 +12,6 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::sleep;
 
 pub struct BackendBuilder {
-    addr: String,
-    finished: Arc<AtomicBool>,
     checker: Arc<BackendChecker>,
     ids: Arc<Ids>,
 }
@@ -25,13 +23,10 @@ impl BackendBuilder {
     {
         let stream = Arc::new(RingBufferStream::with_capacity(parallel, biz, addr, rsrc));
         let (tx, rx) = channel(8);
-        let finished = Arc::new(AtomicBool::new(false));
-        let checker = Arc::new(BackendChecker::from(stream.clone(), finished.clone(), tx));
+        let checker = Arc::new(BackendChecker::from(stream.clone(), tx));
         checker.clone().start_check(parser.clone(), rx);
         checker.clone().start_check_timeout();
         let me = Self {
-            addr: addr.to_string(),
-            finished: finished,
             checker: checker,
             ids: Arc::new(Ids::with_capacity(parallel)),
         };
@@ -57,29 +52,28 @@ impl BackendBuilder {
 
 impl Drop for BackendBuilder {
     fn drop(&mut self) {
-        log::info!("{} finished. stream will be closed later", self.addr);
-        self.finished.store(true, Ordering::Release);
+        self.checker.finished.store(true, Ordering::Release);
         // 结束流处理。
-        self.checker.mark_done();
+        self.checker.try_close();
     }
 }
 
 pub struct BackendChecker {
     inner: Arc<RingBufferStream>,
     tx: Arc<Sender<u8>>,
-    finished: Arc<AtomicBool>,
+    finished: AtomicBool,
     num: AtomicUsize, // 建立连接的数量。
 }
 
 impl BackendChecker {
-    fn from(stream: Arc<RingBufferStream>, finished: Arc<AtomicBool>, tx: Sender<u8>) -> Self {
+    fn from(stream: Arc<RingBufferStream>, tx: Sender<u8>) -> Self {
         if let Err(e) = tx.try_send(0) {
             log::error!("failed to send connect signal to {}:{:?}", stream.addr(), e);
         }
         let me = Self {
             tx: Arc::new(tx),
             inner: stream,
-            finished: finished,
+            finished: AtomicBool::new(false),
             num: AtomicUsize::new(0),
         };
         me
