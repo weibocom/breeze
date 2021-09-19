@@ -56,7 +56,7 @@ $(
        }
 
        impl<P> ds::Update<(String, String)> for Topology<P> where P:Sync+Send+Protocol{
-           fn update(&mut self, o: &mut (String, String)) {
+           fn update(&mut self, o: &(String, String)) {
                match self {
                     $(Self::$item(s) => discovery::TopologyWrite::update(s, &o.0, &o.1),)+
                }
