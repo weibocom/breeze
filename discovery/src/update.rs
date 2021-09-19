@@ -161,7 +161,7 @@ where
         pb
     }
     async fn dump_to_snapshot(&self, name: &str, sig: &str, cfg: &str) {
-        log::info!("dump {} to snapshot. sig:{} cfg:{}", name, sig, cfg.len());
+        log::debug!("dump {} to snapshot. sig:{} cfg:{}", name, sig, cfg.len());
         match self.try_dump_to_snapshot(name, sig, cfg).await {
             Ok(_) => {}
             Err(e) => {
