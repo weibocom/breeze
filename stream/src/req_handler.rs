@@ -129,8 +129,12 @@ where
                 }
             }
         }
-        log::info!("task complete:{}", me.handler.metric_id());
+
         ready!(w.as_mut().poll_shutdown(cx))?;
+        log::info!(
+            "task complete:{}",
+            metrics::get_name(me.handler.metric_id())
+        );
         Poll::Ready(Ok(()))
     }
 }

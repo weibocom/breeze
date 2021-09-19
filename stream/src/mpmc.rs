@@ -279,10 +279,9 @@ impl MpmcRingBufferStream {
         log::info!("{} finished. stream will be closed later", self.addr);
     }
     // 通常是某个资源被注释时调用。
-    fn close(&self) {
+    pub(crate) fn shutdown_all(&self) {
         self.closed.store(true, Ordering::Relaxed);
         self.mark_done();
-        log::warn!("close: closing called");
     }
 
     pub(crate) fn load_ping_ping(&self) -> (usize, usize) {
@@ -310,7 +309,7 @@ impl MpmcRingBufferStream {
 
 impl Drop for MpmcRingBufferStream {
     fn drop(&mut self) {
-        self.close();
+        log::info!("{} closed.", self.addr);
     }
 }
 
