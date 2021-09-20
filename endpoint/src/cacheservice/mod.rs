@@ -128,9 +128,8 @@ impl<P> CacheService<P> {
             Self::build_get_layers(topo.retrive_get(), &hash_alg, distribution, parser.clone());
         let get = AsyncOperation::Get(AsyncLayerGet::from_layers(get_layers, parser.clone()));
 
-        let all_instances = topo.meta();
-
-        let meta = AsyncOperation::Meta(MetaStream::from(parser.clone(), all_instances));
+        // meta与master共享一个物理连接。
+        let meta = AsyncOperation::Meta(MetaStream::from(parser.clone(), topo.master()));
         let mut operations = HashMap::with_capacity(4);
         operations.insert(protocol::Operation::Get, get);
         operations.insert(protocol::Operation::Gets, get_multi);
