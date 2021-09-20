@@ -1,3 +1,4 @@
+use protocol::{Protocol, Resource};
 use rand::Rng;
 use stream::{BackendBuilder, BackendStream};
 
@@ -6,48 +7,28 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use protocol::{Protocol, Resource};
-
-unsafe impl<P> Send for Topology<P> {}
-unsafe impl<P> Sync for Topology<P> {}
-
-#[derive(Default)]
+#[derive(Clone)]
 pub struct Topology<P> {
     pub(crate) hash: String,         // hash策略
     pub(crate) distribution: String, //distribution策略
-    // 最后一个元素是slave，倒数第二个元素是master，剩下的是l1.
     // 为了方便遍历
-    l1_seq: AtomicUsize,
+    l1_seq: Seq,
     // 处理写请求
-    pub(crate) masters: Vec<String>,
+    masters: Vec<String>,
     m_streams: HashMap<String, Arc<BackendBuilder>>,
     // 只用来同步写请求
     followers: Vec<Vec<String>>,
     f_streams: HashMap<String, Arc<BackendBuilder>>,
     // 处理读请求,每个layer选择一个，先打通
     // 包含多层，每层是一组资源池，比如在mc，一般有三层，分别为masterL1--master--slave--slaveL1: [layer[reader[node_dist_pool]]]
-    pub(crate) layer_readers: Vec<Vec<Vec<String>>>,
+    layer_readers: Vec<Vec<Vec<String>>>,
     get_streams: HashMap<String, Arc<BackendBuilder>>,
     gets_streams: HashMap<String, Arc<BackendBuilder>>,
-
-    metas: Vec<String>,
-    meta_stream: HashMap<String, Arc<BackendBuilder>>,
 
     parser: P,
 }
 
 impl<P> Topology<P> {
-    pub fn meta(&self) -> Vec<BackendStream> {
-        self.metas
-            .iter()
-            .map(|addr| {
-                self.meta_stream
-                    .get(addr)
-                    .expect("stream must be exists before address")
-                    .build()
-            })
-            .collect()
-    }
     pub fn master(&self) -> Vec<BackendStream> {
         self.masters
             .iter()
@@ -172,8 +153,6 @@ impl<P> Topology<P> {
         self.layer_readers = readers;
         self.hash = hash;
         self.distribution = distribution;
-        //self.metas = self.readers.clone().into_iter().flatten().collect();
-        self.metas = self.masters.clone();
     }
 
     fn update(&mut self, name: &str, cfg: &str)
@@ -221,33 +200,6 @@ impl<P> Topology<P> {
         // get[s] command
         Self::delete_non_exists(&readers, &mut self.gets_streams);
         Self::add_new(&p, &readers, &mut self.gets_streams, c, namespace);
-
-        // meta
-        Self::delete_non_exists(&self.metas, &mut self.meta_stream);
-        Self::add_new(&p, &self.metas, &mut self.meta_stream, c, namespace);
-    }
-}
-
-impl<P> Clone for Topology<P>
-where
-    P: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            hash: self.hash.clone(),
-            distribution: self.distribution.clone(),
-            l1_seq: AtomicUsize::new(self.l1_seq.load(Ordering::Acquire)),
-            masters: self.masters.clone(),
-            m_streams: self.m_streams.clone(),
-            followers: self.followers.clone(),
-            f_streams: self.f_streams.clone(),
-            layer_readers: self.layer_readers.clone(),
-            get_streams: self.get_streams.clone(),
-            gets_streams: self.gets_streams.clone(),
-            metas: self.metas.clone(),
-            meta_stream: self.meta_stream.clone(),
-            parser: self.parser.clone(),
-        }
     }
 }
 
@@ -262,11 +214,9 @@ where
 
 impl<P> From<P> for Topology<P> {
     fn from(parser: P) -> Self {
-        // 一般情况下, 一层的sharding数量不会超过64k。
-        let rd = rand::thread_rng().gen_range(0..65536);
         Self {
             parser: parser,
-            l1_seq: AtomicUsize::new(rd),
+            l1_seq: Seq::random(),
             hash: Default::default(),
             distribution: Default::default(),
             masters: Default::default(),
@@ -276,8 +226,6 @@ impl<P> From<P> for Topology<P> {
             layer_readers: Default::default(),
             get_streams: Default::default(),
             gets_streams: Default::default(),
-            metas: Default::default(),
-            meta_stream: Default::default(),
         }
     }
 }
@@ -290,7 +238,7 @@ impl<P> discovery::Inited for Topology<P> {
             &self.f_streams,
             &self.get_streams,
             &self.gets_streams,
-            &self.meta_stream,
+            //&self.meta_stream,
         ] {
             for (_, builder) in streams {
                 if !builder.inited() {
@@ -311,5 +259,32 @@ impl<P> Display for Topology<P> {
             "master:{:?} followers:{:?} readers:{:?}",
             self.masters, self.followers, self.layer_readers
         )
+    }
+}
+
+struct Seq {
+    inner: AtomicUsize,
+}
+impl std::ops::Deref for Seq {
+    type Target = AtomicUsize;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+impl Clone for Seq {
+    fn clone(&self) -> Self {
+        Self {
+            inner: AtomicUsize::new(self.load(Ordering::Acquire)),
+        }
+    }
+}
+impl Seq {
+    fn random() -> Self {
+        // 一般情况下, 一层的sharding数量不会超过64k。
+        let rd = rand::thread_rng().gen_range(0..65536);
+        Self {
+            inner: AtomicUsize::new(rd),
+        }
     }
 }
