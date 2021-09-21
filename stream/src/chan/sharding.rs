@@ -4,8 +4,7 @@ use std::task::{Context, Poll};
 
 use protocol::Protocol;
 
-use crate::backend::AddressEnable;
-use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Names, Request, Response};
 
 use crate::Sharding;
 
@@ -15,32 +14,20 @@ pub struct AsyncSharding<B, P> {
     shards: Vec<B>,
     policy: Sharding,
     parser: P,
-    // TODO 当前主要是为了一致性排查需要，后续可以干掉 fishermen
-    servers: String,
 }
 
 impl<B, P> AsyncSharding<B, P>
 where
-    B: AddressEnable,
+    B: Addressed,
 {
     pub fn from(shards: Vec<B>, hash: &str, distribution: &str, parser: P) -> Self {
         let idx = 0;
-        let names = shards.iter().map(|s| s.get_address()).collect();
-        let policy = Sharding::from(hash, distribution, names);
-
-        let mut servers = String::from("{");
-        for s in &shards {
-            servers += s.get_address().as_str();
-            servers += ",";
-        }
-        servers += "}";
-
+        let policy = Sharding::from(hash, distribution, shards.names());
         Self {
             idx,
             shards,
             policy,
             parser,
-            servers,
         }
     }
 }
@@ -82,8 +69,11 @@ where
     }
 }
 
-impl<B, P> AddressEnable for AsyncSharding<B, P> {
-    fn get_address(&self) -> String {
-        self.servers.clone()
+impl<B, P> Addressed for AsyncSharding<B, P>
+where
+    B: Addressed,
+{
+    fn addr(&self) -> Address {
+        self.shards.addr()
     }
 }

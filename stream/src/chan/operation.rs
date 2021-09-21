@@ -47,3 +47,21 @@ where
         }
     }
 }
+use crate::{Address, Addressed};
+impl<Get, Gets, Store, Meta> Addressed for AsyncOperation<Get, Gets, Store, Meta>
+where
+    Get: Addressed + Unpin,
+    Gets: Addressed + Unpin,
+    Store: Addressed + Unpin,
+    Meta: Addressed + Unpin,
+{
+    #[inline(always)]
+    fn addr(&self) -> Address {
+        match self {
+            Self::Get(s) => s.addr(),
+            Self::Gets(s) => s.addr(),
+            Self::Store(s) => s.addr(),
+            Self::Meta(s) => s.addr(),
+        }
+    }
+}

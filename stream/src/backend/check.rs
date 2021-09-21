@@ -40,14 +40,19 @@ impl BackendBuilder {
             inited: init,
         }
     }
-    pub fn build(&self) -> BackendStream {
-        self.ids
-            .next()
-            .map(|cid| BackendStream::from(Cid::new(cid, self.ids.clone()), self.stream.clone()))
-            .unwrap_or_else(|| {
-                log::info!("connection id overflow. {}", self.stream.addr());
-                BackendStream::not_connected()
-            })
+    pub fn build(&self, fake_cid: bool) -> BackendStream {
+        let cid = if fake_cid {
+            Cid::fake()
+        } else {
+            self.ids
+                .next()
+                .map(|cid| Cid::new(cid, self.ids.clone()))
+                .unwrap_or_else(|| {
+                    log::info!("connection id overflow. {}", self.stream.addr());
+                    Cid::fake()
+                })
+        };
+        BackendStream::from(cid, self.stream.clone())
     }
     // 已经连接上或者至少连接了一次
     #[inline]
