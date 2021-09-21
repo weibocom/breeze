@@ -8,8 +8,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::backend::AddressEnable;
-use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Names, Request, Response};
 use protocol::Protocol;
 use sharding::Sharding;
 
@@ -19,7 +18,6 @@ pub struct AsyncMultiGetSharding<S, P> {
     shards: Vec<S>,
     parser: P,
     response: Option<Response>,
-    servers: String, // TODO 目前仅仅用于一致性分析，分析完毕之后可以清理 fishermen
     shard_reqs: Option<Vec<(usize, Request)>>,
     alg: Sharding,
     err: Option<Error>,
@@ -27,26 +25,17 @@ pub struct AsyncMultiGetSharding<S, P> {
 
 impl<S, P> AsyncMultiGetSharding<S, P>
 where
-    S: AddressEnable,
+    S: Addressed,
 {
     pub fn from_shard(shards: Vec<S>, p: P, hash: &str, d: &str) -> Self {
-        let names = shards.iter().map(|s| s.get_address()).collect();
-        let mut servers = "{".to_string();
-        for s in &shards {
-            servers += s.get_address().as_str();
-            servers += ",";
-        }
-        servers += "}";
-
         Self {
+            alg: Sharding::from(hash, d, shards.names()),
             statuses: vec![Status::Init; shards.len()],
             shards: shards,
             shard_reqs: None,
             parser: p,
             response: None,
-            servers,
             err: None,
-            alg: Sharding::from(hash, d, names),
         }
     }
 
@@ -61,7 +50,7 @@ where
 
 impl<S, P> AsyncWriteAll for AsyncMultiGetSharding<S, P>
 where
-    S: AsyncWriteAll + AddressEnable + Unpin,
+    S: AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
     // 只要有一个shard成功就算成功,如果所有的都写入失败，则返回错误信息。
@@ -89,7 +78,7 @@ where
                 log::debug!(
                     "write req: {:?} to servers: {:?}",
                     req.data(),
-                    me.shards.get(sharding_idx).unwrap().get_address()
+                    me.shards.get(sharding_idx).unwrap().addr()
                 );
 
                 debug_assert!(sharding_idx < me.statuses.len());
@@ -136,7 +125,7 @@ where
 
 impl<S, P> AsyncReadAll for AsyncMultiGetSharding<S, P>
 where
-    S: AsyncReadAll + AddressEnable + Unpin,
+    S: AsyncReadAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
     #[inline]
@@ -181,9 +170,13 @@ where
     }
 }
 
-impl<S, P> AddressEnable for AsyncMultiGetSharding<S, P> {
-    fn get_address(&self) -> String {
-        self.servers.clone()
+impl<S, P> Addressed for AsyncMultiGetSharding<S, P>
+where
+    S: Addressed,
+{
+    #[inline]
+    fn addr(&self) -> Address {
+        self.shards.addr()
     }
 }
 
