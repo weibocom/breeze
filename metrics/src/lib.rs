@@ -33,6 +33,8 @@ pub fn init(addr: &str) {
         }
     }
 }
+
+pub use types::Status;
 mod packet;
 
 mod macros;
@@ -52,5 +54,7 @@ define_metrics!(
     ratio, (usize, usize), Ratio;
     count, isize, Count;
     qps, usize, Qps;
-    duration, std::time::Duration, DurationItem
+    duration, std::time::Duration, DurationItem;
+    host, Host, Host;
+    status, Status, Status
 );
