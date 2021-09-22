@@ -52,11 +52,13 @@ impl<P> Topology<P> {
             .collect();
         (streams, write_back)
     }
+}
 
-    fn update(&mut self, name: &str, cfg: &str)
-    where
-        P: Send + Sync + Protocol + 'static + Clone,
-    {
+impl<P> discovery::TopologyWrite for Topology<P>
+where
+    P: Send + Sync + Protocol,
+{
+    fn update(&mut self, name: &str, cfg: &str) {
         let idx = name.find(':').unwrap_or(name.len());
         if idx == 0 || idx >= name.len() - 1 {
             log::info!("not a valid cache service name:{} no namespace found", name);
@@ -88,16 +90,7 @@ impl<P> Topology<P> {
                     self.mget.update(namespace, p);
                 }
             }
-        };
-    }
-}
-
-impl<P> discovery::TopologyWrite for Topology<P>
-where
-    P: Send + Sync + Protocol,
-{
-    fn update(&mut self, name: &str, cfg: &str) {
-        self.update(name, cfg);
+        }
     }
 }
 
