@@ -266,39 +266,3 @@ impl Display for RingSlice {
         )
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::RingSlice;
-
-    #[test]
-    fn test_split_ring_slice() {
-        println!("begin");
-
-        let data = "STORED\r\n";
-        let slice = RingSlice::from(data.as_ptr(), data.len(), 0, data.len());
-        let index = slice.find_sub(0, "sdfsfdssssd".as_ref());
-        println!("found = {}", index.is_some());
-
-        /*
-        let data = "END\r\nVALUE key1 0 9\r\nssksksksk\r\nVALUE key2 0 13\r\nabababababaab\r\n";
-        let slice = RingSlice::from(data.as_ptr(), data.len(), 21, data.len() + 21);
-
-        //let data = "VALUE key1 0 9\r\nssksksksk\r\nVALUE key2 0 13\r\nabababababaab\r\nEND\r\n";
-        //let slice = RingSlice::from(data.as_ptr(), data.len(), 0, data.len());
-
-        //let data = "VALUE key1 0 9\r\nssksksksk\r\nVALUE key2 0 13\r\nabababababaab\r\nEND";
-        //let slice = RingSlice::from(data.as_ptr(), 64, 0, data.len());
-        println!("slice generated");
-        let index = slice.find_sub(0, "\r\n".as_ref());
-        println!("found, index = {}", index.unwrap());
-        let split = slice.split("\r\n".as_ref());
-        println!("slice split, size = {}", split.len());
-        for single in split {
-            let mut single_vec: Vec<u8> = vec![];
-            single.copy_to_vec(&mut single_vec);
-            println!("single = {}", String::from_utf8(single_vec).unwrap());
-        }
-         */
-    }
-}
