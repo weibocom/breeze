@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Cursor, Error, ErrorKind, Result};
+use std::vec;
 
 use ds::{RingSlice, Slice};
 use sharding::Sharding;
@@ -11,6 +12,8 @@ use meta::*;
 
 mod packet;
 use packet::*;
+
+use ds::Buffer;
 
 #[derive(Clone)]
 pub struct MemcacheBinary;
@@ -116,77 +119,62 @@ impl Protocol for MemcacheBinary {
             ));
         }
 
-        let origin = response.as_ref();
-        let mut data = Vec::with_capacity(response.len());
-        origin.copy_to_vec(&mut data);
-
-        // 轮询response，查出所有的子响应
-        // let mut req_buf: Vec<u8> = Vec::new();
         let mut requests_wb = Vec::with_capacity(response.keys().len());
-        let mut cursor_reader = Cursor::new(data);
-        while cursor_reader.position() + 1 < origin.len() as u64 {
-            if cursor_reader.position() + HEADER_LEN as u64 == origin.len() as u64 {
-                return Ok(requests_wb);
-            }
-
-            let resp_packet = packet::parse_response_packet(&mut cursor_reader)?;
-            if resp_packet.value.len() == 0 {
-                log::info!("found empty response.");
+        // 轮询response的cmds，构建回写request
+        for rsp_cmd in response.keys() {
+            // 只为status为ok的resp构建回种req
+            if !rsp_cmd.status_ok() {
                 continue;
             }
 
-            let flags = resp_packet.parse_get_response_flag()?;
+            // 先用rsp的长度预分配，避免频繁分配内存
+            let mut req_cmd: Vec<u8> = Vec::with_capacity(rsp_cmd.len());
 
-            // 构建 set request
-            let use_request_key = resp_packet.key.len() == 0 || request.keys().len() == 1;
-            let key = if use_request_key {
-                // 对于不带key的response，目前只支持get的请求方式
-                debug_assert!(resp_packet.header.opaque == request.keys()[0].opaque());
+            /*============= 构建request header =============*/
+            req_cmd.write_u8(Magic::Request as u8); // magic: [0]
+            req_cmd.write_u8(Opcode::SetQ as u8); // opcode: [1]
+                                                  // 构建 set request
+            let mut key_len = rsp_cmd.key_len();
+            let use_request_key = key_len == 0 && request.keys().len() == 1;
+            if use_request_key {
+                // 这里后面需要通过opaque来匹配key，目前暂时只支持getkq+getk/noop 方式
                 debug_assert!(request.keys().len() == 1);
-                let mut req_key = Vec::new();
-                req_key.extend_from_slice(request.keys()[0].key().data());
-                req_key
+                debug_assert!(rsp_cmd.opaque() == request.keys()[0].opaque());
+                key_len = request.keys()[0].key_len();
+            }
+            req_cmd.write_u16(key_len); // key len: [2,3]
+            let extra_len = rsp_cmd.extra_len() + 4 as u8; // get response中的extra 应该是4字节，作为set的 flag，另外4字节是set的expire
+            debug_assert!(extra_len == 8);
+            req_cmd.write_u8(extra_len); // extra len: [4]
+            req_cmd.write_u8(0 as u8); // data type，全部为0: [5]
+            req_cmd.write_u16(0 as u16); // vbucket id, 回写全部为0,pos [6,7]
+            let total_body_len = extra_len as u32 + key_len as u32 + rsp_cmd.value_len();
+            req_cmd.write_u32(total_body_len); // total body len [8-11]
+            req_cmd.write_u32(0 as u32); // opaque: [12, 15]
+            req_cmd.write_u64(0 as u64); // cas: [16, 23]
+
+            /*============= 构建request body =============*/
+            req_cmd.write(rsp_cmd.extra_or_flag().data()); // extra之flag: [24, 27]
+            req_cmd.write_u32(expire_seconds); // extra之expiration：[28,31]
+            if use_request_key {
+                req_cmd.write(request.keys()[0].key().data());
+                log::info!(
+                    "will write back for key: {:?}",
+                    String::from_utf8_lossy(request.keys()[0].key().data())
+                );
             } else {
-                resp_packet.key
-            };
+                req_cmd.write(rsp_cmd.key().data());
+                log::info!(
+                    "will write back for key: {:?}",
+                    String::from_utf8(rsp_cmd.key().data())
+                );
+            }
+            req_cmd.write(rsp_cmd.value().data());
+            let cmds = vec![Slice::from(&req_cmd[0..req_cmd.len()])];
+            let req =
+                Request::from_data(req_cmd, cmds, request.id().clone(), true, Operation::Store);
 
-            let set_req_packet = packet::SetRequest {
-                header: PacketHeader {
-                    magic: Magic::Request as u8,
-                    opcode: Opcode::SetQ as u8,
-                    // 对于单个key请求，response中无key，直接使用request中的key
-                    // TODO 后续需要改造为通用型支持respons中无key的gets请求
-                    key_length: key.len() as u16,
-                    extras_length: SET_REQUEST_EXTRATS_LEN as u8,
-                    data_type: 0u8,
-                    vbucket_id_or_status: 0u16,
-                    total_body_length: SET_REQUEST_EXTRATS_LEN as u32
-                        + key.len() as u32
-                        + resp_packet.value.len() as u32,
-                    opaque: 0u32,
-                    cas: 0u64,
-                },
-                store_extras: StoreExtras {
-                    flags: flags,
-                    expiration: expire_seconds,
-                },
-                key: key,
-                value: resp_packet.value,
-            };
-            let len = HEADER_LEN + set_req_packet.header.total_body_length as usize;
-            let mut set_req_data = Vec::with_capacity(len);
-            set_req_packet.write(&mut set_req_data)?;
-            let cmds = vec![Slice::from(&set_req_data[0..len])];
-
-            let set_req = Request::from_data(
-                set_req_data,
-                cmds,
-                request.id().clone(),
-                true,
-                Operation::Store,
-            );
-
-            requests_wb.push(set_req);
+            requests_wb.push(req);
         }
         return Ok(requests_wb);
     }
