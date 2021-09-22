@@ -27,15 +27,10 @@ async fn main() -> Result<()> {
     let mut listeners = ctx.listeners();
 
     let session_id = Arc::new(AtomicUsize::new(0));
-    //let (tx, rx) = bounded(2048);
     loop {
-        //while let Ok(req) = rx.try_recv() {
-        //    listeners.on_fail(req);
-        //}
         for quard in listeners.scan().await {
             let discovery = tx_disc.clone();
             let session_id = session_id.clone();
-            //       let tx = tx.clone();
             spawn(async move {
                 let session_id = session_id.clone();
                 match service::process_one(&quard, discovery, session_id).await {
