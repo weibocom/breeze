@@ -36,11 +36,21 @@ impl<P> Topology<P> {
     pub fn noreply(&self) -> Vec<Vec<BackendStream>> {
         self.noreply.select()
     }
-    pub fn get(&self) -> Vec<Vec<BackendStream>> {
-        self.get.select()
+    pub fn get(&self) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
+        self.with_write_back(self.get.select())
     }
-    pub fn mget(&self) -> Vec<Vec<BackendStream>> {
-        self.mget.select()
+    pub fn mget(&self) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
+        self.with_write_back(self.mget.select())
+    }
+    fn with_write_back(
+        &self,
+        streams: Vec<Vec<BackendStream>>,
+    ) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
+        let write_back = streams
+            .iter()
+            .map(|layer| layer.iter().map(|s| s.faked_clone()).collect())
+            .collect();
+        (streams, write_back)
     }
 
     fn update(&mut self, name: &str, cfg: &str)

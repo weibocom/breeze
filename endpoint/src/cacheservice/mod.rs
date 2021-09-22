@@ -38,7 +38,7 @@ impl<P> CacheService<P> {
     {
         discovery.do_with(|t| Self::from_topology::<D>(p.clone(), t))
     }
-    fn from_topology<D>(parser: P, topo: &Topology<P>) -> Result<Self>
+    fn from_topology<D>(p: P, topo: &Topology<P>) -> Result<Self>
     where
         D: TopologyRead<super::Topology<P>>,
         P: protocol::Protocol,
@@ -47,21 +47,25 @@ impl<P> CacheService<P> {
         use discovery::Inited;
         use AsyncOperation::*;
         assert!(topo.inited());
-        let hash_alg = topo.hash();
-        let distribution = topo.distribution();
-        let mget_layers = build_mget_layers(topo.mget(), parser.clone(), hash_alg, distribution);
-        let mget = Gets(AsyncLayerGet::from_layers(mget_layers, parser.clone()));
+        let hash = topo.hash();
+        let dist = topo.distribution();
+        let (streams, write_back) = topo.mget();
+        let mget_layers = build_mget(streams, p.clone(), hash, dist);
+        let _write_back = build_mget(write_back, p.clone(), hash, dist);
+        let mget = Gets(AsyncLayerGet::from_layers(mget_layers, p.clone()));
 
-        let master = AsyncSharding::from(topo.master(), hash_alg, distribution, parser.clone());
-        let noreply = build_layers(topo.followers(), hash_alg, distribution, parser.clone());
-        let store = Store(AsyncSetSync::from_master(master, noreply, parser.clone()));
+        let master = AsyncSharding::from(topo.master(), hash, dist, p.clone());
+        let noreply = build_layers(topo.followers(), hash, dist, p.clone());
+        let store = Store(AsyncSetSync::from_master(master, noreply, p.clone()));
 
         // 获取get through
-        let get_layers = build_layers(topo.get(), &hash_alg, distribution, parser.clone());
-        let get = Get(AsyncLayerGet::from_layers(get_layers, parser.clone()));
+        let (streams, write_back) = topo.get();
+        let get_layers = build_layers(streams, hash, dist, p.clone());
+        let _write_back = build_mget(write_back, p.clone(), hash, dist);
+        let get = Get(AsyncLayerGet::from_layers(get_layers, p.clone()));
 
         // meta与master共享一个物理连接。
-        let meta = Meta(MetaStream::from(parser.clone(), topo.master()));
+        let meta = Meta(MetaStream::from(p.clone(), topo.master()));
         let mut operations = HashMap::with_capacity(4);
         operations.insert(protocol::Operation::Get, get);
         operations.insert(protocol::Operation::Gets, mget);
@@ -69,7 +73,7 @@ impl<P> CacheService<P> {
         operations.insert(protocol::Operation::Meta, meta);
         let op_stream = AsyncOpRoute::from(operations);
 
-        log::info!("cs logic connection established:{:?}", op_stream.addr());
+        log::debug!("cs logic connection established:{:?}", op_stream.addr());
 
         Ok(Self { inner: op_stream })
     }
@@ -123,7 +127,7 @@ where
 }
 
 #[inline]
-fn build_mget_layers<S, P>(
+fn build_mget<S, P>(
     pools: Vec<Vec<S>>,
     parser: P,
     h: &str,
