@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{Error, ErrorKind, Result};
+use std::io::{Cursor, Error, ErrorKind, Result};
 
 use ds::{RingSlice, Slice};
 use sharding::Sharding;
@@ -8,6 +8,9 @@ use crate::{MetaType, Operation, Protocol, Request, Response};
 
 mod meta;
 use meta::*;
+
+mod packet;
+use packet::*;
 
 #[derive(Clone)]
 pub struct MemcacheBinary;
@@ -38,7 +41,7 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
-        debug_assert_eq!(req.operation(), Operation::Gets);
+        // debug_assert_eq!(req.operation(), Operation::Gets);
         unsafe {
             let klen = req.keys().len();
             let mut keys = Vec::with_capacity(klen);
@@ -94,6 +97,98 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
         parse_response(response)
+    }
+
+    // 一个response中可能包含1个或多个key-response响应，转换时需要注意，返回每个cmd的长度
+    // TODO: 对于get请求，需要根据请求获取key；对于gets请求，当前只支持请求response中带key的请求模式；
+    fn convert_to_writeback_request(
+        &self,
+        request: &Request,
+        response: &Response,
+        expire_seconds: u32,
+    ) -> Result<Vec<Request>> {
+        // 如果response中没有keys，说明不是get/gets，或者没有查到数据
+        if response.keys().len() == 0 {
+            log::info!("ignore for response has no results");
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "not keys found in response",
+            ));
+        }
+
+        let origin = response.as_ref();
+        let mut data = Vec::with_capacity(response.len());
+        origin.copy_to_vec(&mut data);
+
+        // 轮询response，查出所有的子响应
+        // let mut req_buf: Vec<u8> = Vec::new();
+        let mut requests_wb = Vec::with_capacity(response.keys().len());
+        let mut cursor_reader = Cursor::new(data);
+        while cursor_reader.position() + 1 < origin.len() as u64 {
+            if cursor_reader.position() + HEADER_LEN as u64 == origin.len() as u64 {
+                return Ok(requests_wb);
+            }
+
+            let resp_packet = packet::parse_response_packet(&mut cursor_reader)?;
+            if resp_packet.value.len() == 0 {
+                log::info!("found empty response.");
+                continue;
+            }
+
+            let flags = resp_packet.parse_get_response_flag()?;
+
+            // 构建 set request
+            let use_request_key = resp_packet.key.len() == 0 || request.keys().len() == 1;
+            let key = if use_request_key {
+                // 对于不带key的response，目前只支持get的请求方式
+                debug_assert!(resp_packet.header.opaque == request.keys()[0].opaque());
+                debug_assert!(request.keys().len() == 1);
+                let mut req_key = Vec::new();
+                req_key.extend_from_slice(request.keys()[0].key().data());
+                req_key
+            } else {
+                resp_packet.key
+            };
+
+            let set_req_packet = packet::SetRequest {
+                header: PacketHeader {
+                    magic: Magic::Request as u8,
+                    opcode: Opcode::SetQ as u8,
+                    // 对于单个key请求，response中无key，直接使用request中的key
+                    // TODO 后续需要改造为通用型支持respons中无key的gets请求
+                    key_length: key.len() as u16,
+                    extras_length: SET_REQUEST_EXTRATS_LEN as u8,
+                    data_type: 0u8,
+                    vbucket_id_or_status: 0u16,
+                    total_body_length: SET_REQUEST_EXTRATS_LEN as u32
+                        + key.len() as u32
+                        + resp_packet.value.len() as u32,
+                    opaque: 0u32,
+                    cas: 0u64,
+                },
+                store_extras: StoreExtras {
+                    flags: flags,
+                    expiration: expire_seconds,
+                },
+                key: key,
+                value: resp_packet.value,
+            };
+            let len = HEADER_LEN + set_req_packet.header.total_body_length as usize;
+            let mut set_req_data = Vec::with_capacity(len);
+            set_req_packet.write(&mut set_req_data)?;
+            let cmds = vec![Slice::from(&set_req_data[0..len])];
+
+            let set_req = Request::from_data(
+                set_req_data,
+                cmds,
+                request.id().clone(),
+                true,
+                Operation::Store,
+            );
+
+            requests_wb.push(set_req);
+        }
+        return Ok(requests_wb);
     }
 
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>

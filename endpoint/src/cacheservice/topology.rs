@@ -191,12 +191,7 @@ impl<P> Topology<P> {
         match super::Namespace::parse(cfg, namespace) {
             Ok(ns) => self.update_from_namespace(ns),
             Err(e) => {
-                log::info!(
-                    "parse cacheservice config error: name:{} error:{} cfg:{}",
-                    name,
-                    e,
-                    cfg
-                );
+                log::info!("parse config. error:{} name:{} cfg:{}", e, name, cfg.len());
                 return;
             }
         };
@@ -284,5 +279,37 @@ impl<P> From<P> for Topology<P> {
             metas: Default::default(),
             meta_stream: Default::default(),
         }
+    }
+}
+
+// 所有的stream都初始化完成
+impl<P> discovery::Inited for Topology<P> {
+    fn inited(&self) -> bool {
+        for streams in vec![
+            &self.m_streams,
+            &self.f_streams,
+            &self.get_streams,
+            &self.gets_streams,
+            &self.meta_stream,
+        ] {
+            for (_, builder) in streams {
+                if !builder.inited() {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+}
+
+use std::fmt::{self, Display, Formatter};
+impl<P> Display for Topology<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "master:{:?} followers:{:?} readers:{:?}",
+            self.masters, self.followers, self.layer_readers
+        )
     }
 }

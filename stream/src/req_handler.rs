@@ -40,7 +40,7 @@ impl Snapshot {
         H: Unpin + RequestHandler,
     {
         match self.cids.pop() {
-            Some(cid) => Some((cid, handler.take(cid, seq))),
+            Some(cid) => handler.take(cid, seq),
             None => self.reqs.pop().map(|req| (std::usize::MAX, req)),
         }
     }
@@ -48,8 +48,9 @@ impl Snapshot {
 pub trait RequestHandler {
     // 如果填充ss的长度为0，则说明handler没有要处理的数据流，提示到达eof。
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()>;
-    fn take(&self, cid: usize, seq: usize) -> Request;
+    fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)>;
     fn sent(&self, cid: usize, seq: usize, req: &Request);
+    fn metric_id(&self) -> usize;
 }
 
 pub struct BridgeRequestToBackend<H, W> {
@@ -88,7 +89,6 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        log::debug!("task polling.");
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Acquire) {
@@ -129,7 +129,8 @@ where
                 }
             }
         }
-        log::info!("task complete");
+        log::info!("task complete:{}", me.handler.metric_id());
+        ready!(w.as_mut().poll_shutdown(cx))?;
         Poll::Ready(Ok(()))
     }
 }

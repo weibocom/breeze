@@ -27,7 +27,6 @@ where
     P: Protocol + Unpin,
 {
     log::debug!("a new connection received.");
-    metrics::qps("cps", 1, metric_id);
     CopyBidirectional {
         agent: agent,
         client: client,
@@ -106,7 +105,7 @@ where
             rid.incr();
             // 开始记录metric
             let duration = metric.duration();
-            const SLOW: Duration = Duration::from_millis(32);
+            const SLOW: Duration = Duration::from_millis(128);
             if duration >= SLOW {
                 log::info!("slow request: {}", metric);
             }

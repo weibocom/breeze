@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::time::interval_at;
+use tokio::time::interval;
 
 use std::collections::HashMap;
 
@@ -44,22 +44,36 @@ where
     T: Send + TopologyWrite + ServiceId + 'static,
 {
     async fn watch(&mut self) {
-        let start = Instant::now() + Duration::from_secs(1);
-        let mut tick = interval_at(start.into(), self.tick);
+        // 降低tick的频率，便于快速从chann中接收新的服务。
+        let mut tick = interval(Duration::from_secs(1));
         let mut services = HashMap::new();
         let mut sigs = HashMap::new();
+        let mut last = Instant::now();
         loop {
-            while let Ok(t) = self.rx.try_recv() {
-                log::info!("service {} registered, interval {:?}", t.name(), self.tick);
-                services.insert(t.name().to_string(), t);
+            while let Ok(mut t) = self.rx.try_recv() {
+                if services.contains_key(t.name()) {
+                    log::error!("service duplicatedly registered:{}", t.name());
+                } else {
+                    log::info!("service {} path:{} registered ", t.name(), t.path());
+                    let sig = if let Some((sig, _cfg)) = self.init(&mut t).await {
+                        sig
+                    } else {
+                        String::new()
+                    };
+                    sigs.insert(t.name().to_string(), sig);
+                    services.insert(t.name().to_string(), t);
+                }
             }
-            self.check_once(&mut services, &mut sigs).await;
+            if last.elapsed() >= self.tick {
+                self.check_once(&mut services, &mut sigs).await;
+                last = Instant::now();
+            }
             tick.tick().await;
         }
     }
     // 从rx里面获取所有已注册的服务列表
-    // 优先从snaphost里面load
-    // 其次从remove获取
+    // 先从cache中取
+    // 其次从remote获取
     async fn check_once(
         &mut self,
         services: &mut HashMap<String, T>,
@@ -68,44 +82,46 @@ where
         let mut cache: HashMap<String, (String, String)> = HashMap::with_capacity(services.len());
         for (name, t) in services.iter_mut() {
             let path = t.path().to_string();
-            let empty = String::new();
-            let sig = sigs.get(name).unwrap_or(&empty);
+            let sig = sigs.get_mut(name).expect("sig not inited");
             // 在某些场景下，同一个name被多个path共用。所以如果sig没有变更，则不需要额外处理更新。
-            if let Some((path_sig, cfg)) = cache.get(&path) {
-                if path_sig == sig {
+            if let Some((cache_sig, cfg)) = cache.get(&path) {
+                if cache_sig == sig {
                     continue;
                 }
                 if cfg.len() > 0 {
                     t.update(name, &cfg);
+                    *sig = cache_sig.to_owned();
                     continue;
                 }
             }
 
-            // 尝试优先加载本地的snapshot
-            if !sigs.contains_key(name) {
-                if let Ok((sig, cfg)) = self.try_load_from_snapshot(&name).await {
-                    sigs.insert(name.to_string(), sig);
-                    t.update(name, &cfg);
-                    continue;
-                }
+            if let Some((remote_sig, cfg)) = self.load_from_discovery(&path, sig).await {
+                t.update(name, &cfg);
+                *sig = remote_sig.to_owned();
+                cache.insert(path, (remote_sig, cfg));
             }
-            match self.load_from_discovery(&path, sig).await {
-                Err(e) => log::warn!("failed to load service config '{}' err:{:?}", name, e),
-                Ok(Some((sig, cfg))) => {
-                    self.dump_to_snapshot(name, &sig, &cfg).await;
-                    sigs.insert(name.to_string(), sig.to_string());
-                    t.update(name, &cfg);
-                    cache.insert(path, (sig, cfg));
-                }
-                _ => {
-                    cache.insert(path, (sig.to_string(), empty));
-                }
+        }
+    }
+    // 先从snapshot加载，再从远程加载
+    async fn init(&self, t: &mut T) -> Option<(String, String)> {
+        let path = t.path().to_string();
+        let name = t.name().to_string();
+        // 用path查找，用name更新。
+        if let Ok((sig, cfg)) = self.try_load_from_snapshot(&path).await {
+            t.update(&name, &cfg);
+            Some((sig, cfg))
+        } else {
+            if let Some((sig, cfg)) = self.load_from_discovery(&path, "").await {
+                t.update(&name, &cfg);
+                Some((sig, cfg))
+            } else {
+                None
             }
         }
     }
     async fn try_load_from_snapshot(&self, name: &str) -> Result<(String, String)> {
         let mut contents = Vec::with_capacity(8 * 1024);
-        File::open(&self.path(name))
+        File::open(&self._path(name))
             .await?
             .read_to_end(&mut contents)
             .await?;
@@ -118,24 +134,33 @@ where
         log::info!("{} snapshot loaded:sig:{} cfg:{}", name, sig, cfg.len());
         Ok((sig, cfg))
     }
-    async fn load_from_discovery(&self, name: &str, sig: &str) -> Result<Option<(String, String)>> {
+    async fn load_from_discovery(&self, path: &str, sig: &str) -> Option<(String, String)> {
         use super::Config;
-        match self.discovery.get_service(name, &sig).await? {
-            Config::NotChanged => Ok(None),
-            Config::NotFound => Err(Error::new(
-                ErrorKind::NotFound,
-                format!("service not found. name:{}", name),
-            )),
-            Config::Config(sig, cfg) => Ok(Some((sig, cfg))),
+        match self.discovery.get_service::<String>(path, &sig).await {
+            Err(e) => {
+                log::warn!("load service topology failed. path:{}, e:{:?}", path, e);
+            }
+            Ok(c) => match c {
+                Config::NotChanged => {}
+                Config::NotFound => {
+                    log::info!("{} not found in discovery", path);
+                }
+                Config::Config(sig, cfg) => {
+                    self.dump_to_snapshot(path, &sig, &cfg).await;
+                    return Some((sig, cfg));
+                }
+            },
         }
+        None
     }
-    fn path(&self, name: &str) -> PathBuf {
+    fn _path(&self, name: &str) -> PathBuf {
+        let base = name.replace("/", "+");
         let mut pb = PathBuf::new();
         pb.push(&self.snapshot);
-        pb.push(name);
+        pb.push(base);
         pb
     }
-    async fn dump_to_snapshot(&mut self, name: &str, sig: &str, cfg: &str) {
+    async fn dump_to_snapshot(&self, name: &str, sig: &str, cfg: &str) {
         log::info!("dump {} to snapshot. sig:{} cfg:{}", name, sig, cfg.len());
         match self.try_dump_to_snapshot(name, sig, cfg).await {
             Ok(_) => {}
@@ -150,8 +175,8 @@ where
             }
         }
     }
-    async fn try_dump_to_snapshot(&mut self, name: &str, sig: &str, cfg: &str) -> Result<()> {
-        let path = self.path(name);
+    async fn try_dump_to_snapshot(&self, name: &str, sig: &str, cfg: &str) -> Result<()> {
+        let path = self._path(name);
         if let Some(parent) = path.parent() {
             if !parent.exists() {
                 tokio::fs::create_dir_all(parent).await?;
