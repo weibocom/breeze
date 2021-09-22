@@ -1,7 +1,5 @@
 use std::collections::HashMap;
-use std::io::{BufRead, Error, ErrorKind, Result, Write};
-
-use byteorder::{BigEndian, ByteOrder};
+use std::io::{Result, Write};
 
 use crate::{MetaType, Operation, Protocol, Request, Response};
 
@@ -131,7 +129,6 @@ impl Protocol for MemcacheText {
                 keys.push(key.clone());
             }
             debug_assert!(keys.len() > 0);
-            let last_cmd = req.keys().get_unchecked(klen - 1);
 
             let sharded = shard.shardings(keys);
             if sharded.len() == 1 {
@@ -146,7 +143,7 @@ impl Protocol for MemcacheText {
                     continue;
                 }
                 let mut cmd: Vec<u8> = Vec::with_capacity(req.len());
-                cmd.write("gets".as_ref());
+                cmd.write("gets".as_ref()).unwrap();
                 let mut keys: Vec<Slice> = Vec::with_capacity(indice.len() + 1);
                 for idx in indice.iter() {
                     debug_assert!(*idx < klen);
@@ -215,7 +212,7 @@ impl Protocol for MemcacheText {
         // 有多个key
         let found_keys = self.keys_response(resp, req.keys().len());
         let mut cmd = Vec::with_capacity(req.len());
-        cmd.write("gets".as_ref());
+        cmd.write("gets".as_ref()).unwrap();
         let mut not_found_keys = Vec::with_capacity(req.keys().len());
         // 遍历所有的请求key，如果response中没有，则写入到command中
         for single_key in req.keys() {
@@ -266,6 +263,16 @@ impl Protocol for MemcacheText {
             }
         }
     }
+
+    //文本协议暂时先返回空
+    fn convert_to_writeback_request(
+        &self,
+        _request: &Request,
+        _response: &Response,
+        _expire_seconds: u32,
+    ) -> Result<Vec<Request>> {
+        Ok(Vec::new())
+    }
 }
 
 impl MemcacheText {
@@ -275,23 +282,6 @@ impl MemcacheText {
     #[inline(always)]
     fn _noreply(&self, req: &[u8]) -> bool {
         req.ends_with(" noreply\r\n".as_ref())
-    }
-    #[inline]
-    fn status_ok(&self, response: &RingSlice) -> bool {
-        response.find_sub(0, "VALUE ".as_ref()).is_some()
-    }
-    #[inline]
-    fn key_response(&self, r: &RingSlice) -> RingSlice {
-        let response_split = r.split("\r\n".as_ref());
-        for single_row in response_split {
-            if single_row.find_sub(0, "VALUE".as_ref()).is_some() {
-                let single_row_split = single_row.split(" ".as_ref());
-                if single_row_split.len() > 2 {
-                    return single_row_split.get(1).unwrap().clone();
-                }
-            }
-        }
-        r.clone()
     }
     // 是否只包含了一个key。只有get请求才会用到
     #[inline]
@@ -310,68 +300,11 @@ impl MemcacheText {
     {
         let mut keys = HashMap::with_capacity(exptects * 3 / 2);
         // 解析response中的key
-        for (one_respone) in resp {
-            for response_key in one_respone.keys() {
+        for one_response in resp {
+            for response_key in one_response.keys() {
                 keys.insert(response_key.clone(), ());
             }
         }
         return keys;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::memcache::text::MemcacheText;
-    use crate::{Protocol, Slice};
-
-    #[test]
-    fn test_parse_request() {
-        println!("begin");
-        let get_request = Slice::from("get key1\r\n".as_ref());
-        let get_not_supported_request = Slice::from("get key1 key2 key3 key4\r\n".as_ref());
-        let gets_request = Slice::from("gets key1 key2 key3 key4\r\n".as_ref());
-        let set_request = Slice::from("set key1 0 3600 6\r\nvalue1\r\n".as_ref());
-        let version_request = Slice::from("version\r\n".as_ref());
-
-        let parser = MemcacheText::new();
-        let get_parse_result = parser.parse_request(get_request);
-        let get_not_supported_parse_result = parser.parse_request(get_not_supported_request);
-        let gets_parse_result = parser.parse_request(gets_request);
-        let set_parse_result = parser.parse_request(set_request);
-        let version_parse_result = parser.parse_request(version_request);
-
-        let get = get_parse_result.unwrap().unwrap();
-        println!(
-            "get op = {}, keys.len = {}, keys[0] = {}",
-            get.operation().name(),
-            get.keys().len(),
-            String::from_utf8(get.keys()[0].to_vec()).unwrap()
-        );
-
-        println!(
-            "get not supported is_none: {}",
-            get_not_supported_parse_result.unwrap().is_none()
-        );
-
-        let gets = gets_parse_result.unwrap().unwrap();
-        println!(
-            "gets op = {}, keys.len = {}, keys[0] = {}, keys[1] = {}, keys[2] = {}, keys[3] = {}",
-            gets.operation().name(),
-            gets.keys().len(),
-            String::from_utf8(gets.keys()[0].to_vec()).unwrap(),
-            String::from_utf8(gets.keys()[1].to_vec()).unwrap(),
-            String::from_utf8(gets.keys()[2].to_vec()).unwrap(),
-            String::from_utf8(gets.keys()[3].to_vec()).unwrap()
-        );
-
-        let set = set_parse_result.unwrap().unwrap();
-        println!(
-            "set op = {}, keys[0] = {}",
-            set.operation().name(),
-            String::from_utf8(set.keys()[0].to_vec()).unwrap()
-        );
-
-        let version = version_parse_result.unwrap().unwrap();
-        println!("version op = {}", version.operation().name());
     }
 }
