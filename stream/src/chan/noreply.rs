@@ -1,5 +1,5 @@
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::Context;
 
 use protocol::Protocol;
 
@@ -8,17 +8,11 @@ use crate::{AsyncWriteAll, Request};
 pub struct AsyncNoReply<S, P> {
     backends: Vec<S>,
     parser: P,
-    idx: usize,
 }
 
 impl<S, P> AsyncNoReply<S, P> {
     pub fn from(backends: Vec<S>, parser: P) -> Self {
-        let idx = 0;
-        Self {
-            backends,
-            parser,
-            idx,
-        }
+        Self { backends, parser }
     }
 }
 
@@ -29,27 +23,20 @@ where
 {
     // 尝试一次poll。失败，pending均忽略。
     // 返回成功发送的数量
-    pub fn try_poll_noreply(&mut self, cx: &mut Context, req: &Request) -> usize {
-        let me = &mut *self;
-        let mut succ = 0;
-        if me.backends.len() > 0 {
-            let noreply = me.to_noreply(req);
-            for w in me.backends.iter_mut() {
-                if let Poll::Ready(Ok(_)) = Pin::new(w).poll_write(cx, &noreply) {
-                    succ += 1;
-                }
-            }
-        }
-        succ
+    #[inline(always)]
+    pub fn try_poll_noreply(&mut self, cx: &mut Context, req: &Request) {
+        self.try_poll_noreply_seq(cx, req, self.backends.len())
     }
-    // 随机选择一个backend，进行回种
-    pub fn try_poll_noreply_one<A>(&mut self, cx: &mut Context, req: &Request) {
+    // 按顺序向num个backend回写noreply的数据
+    #[inline]
+    pub fn try_poll_noreply_seq(&mut self, cx: &mut Context, req: &Request, num: usize) {
         let me = &mut *self;
-        if me.backends.len() > 0 {
-            let idx = (me.idx + 1) % me.backends.len();
+        if num < me.backends.len() {
             let noreply = me.to_noreply(req);
-            let w = unsafe { me.backends.get_unchecked_mut(idx - 1) };
-            let _ = Pin::new(w).poll_write(cx, &noreply);
+            for idx in 0..num {
+                let w = unsafe { me.backends.get_unchecked_mut(idx) };
+                let _ = Pin::new(w).poll_write(cx, &noreply);
+            }
         }
     }
 

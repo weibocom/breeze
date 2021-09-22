@@ -31,6 +31,17 @@ impl BackendStream {
         }
     }
 
+    // 不使用cid. 当前stream，用于noreply请求
+    pub fn faked_clone(&self) -> Self {
+        Self {
+            id: Cid::fake(),
+            inner: self.inner.clone(),
+            instant: Instant::now(),
+            tx: 0,
+            op: Operation::Other,
+        }
+    }
+
     pub fn addr(&self) -> &str {
         &self.inner.addr()
     }
