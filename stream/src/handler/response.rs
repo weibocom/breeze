@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use ds::ResizedRingBuffer;
-
+use metrics::MetricName;
 use protocol::Protocol;
 
 use tokio::io::{AsyncRead, ReadBuf};
@@ -38,7 +38,6 @@ pub struct BridgeResponseToLocal<R, W, P> {
     spin_secs: usize,   // spin已经持续的时间，用来控制输出日志
     spin_last: Instant, // 上一次开始spin的时间
     tick: Interval,
-    name: String,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
@@ -47,7 +46,6 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
         W: ResponseHandler + Unpin,
     {
         Self {
-            name: metrics::name(w.metric_id()),
             seq: 0,
             w: w,
             r: r,
@@ -93,14 +91,14 @@ where
                 let last = me.spin_last.elapsed();
                 if last >= Duration::from_millis(5) {
                     if me.data.resize() {
-                        log::info!("{} resized {} {:?}", me.name, me.data, last);
+                        log::info!("{} resized {} {:?}", me.w.metric_id().name(), me.data, last);
                         continue;
                     }
                 }
                 // 每超过一秒钟输出一次日志
                 let secs = last.as_secs() as usize;
                 if secs > me.spin_secs {
-                    log::info!("{} buffer full {}, seq:{}", me.name, me.data, me.seq);
+                    log::info!("{} full {} -{}", me.w.metric_id().name(), me.data, me.seq);
                     me.spin_secs = secs;
                 }
                 continue;
@@ -129,7 +127,7 @@ where
                 }
             }
         }
-        log::info!("task complete:{}", me.name);
+        log::info!("task complete:{}", me.w.metric_id().name());
         Poll::Ready(Ok(()))
     }
 }

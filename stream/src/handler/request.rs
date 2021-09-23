@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 use futures::ready;
 use tokio::io::{AsyncWrite, BufWriter};
 
+use metrics::MetricName;
 use protocol::Request;
 
 pub struct Snapshot {
@@ -118,7 +119,7 @@ where
                 Poll::Ready(_) => {
                     log::debug!("snapshot {} {:?}", me.snapshot.len(), me.snapshot.cids);
                     if me.snapshot.len() == 0 {
-                        log::info!("{} eof.", metrics::name(me.handler.metric_id()));
+                        log::info!("{} eof.", me.handler.metric_id().name());
                         break;
                     }
                 }
@@ -131,7 +132,7 @@ where
         }
 
         ready!(w.as_mut().poll_shutdown(cx))?;
-        log::info!("task complete:{}", metrics::name(me.handler.metric_id()));
+        log::info!("task complete:{}", me.handler.metric_id().name());
         Poll::Ready(Ok(()))
     }
 }
