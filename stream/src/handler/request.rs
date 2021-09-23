@@ -118,7 +118,7 @@ where
                 Poll::Ready(_) => {
                     log::debug!("snapshot {} {:?}", me.snapshot.len(), me.snapshot.cids);
                     if me.snapshot.len() == 0 {
-                        log::info!("no request polled. eof-task complete");
+                        log::info!("{} eof.", metrics::name(me.handler.metric_id()));
                         break;
                     }
                 }
@@ -131,10 +131,7 @@ where
         }
 
         ready!(w.as_mut().poll_shutdown(cx))?;
-        log::info!(
-            "task complete:{}",
-            metrics::get_name(me.handler.metric_id())
-        );
+        log::info!("task complete:{}", metrics::name(me.handler.metric_id()));
         Poll::Ready(Ok(()))
     }
 }
