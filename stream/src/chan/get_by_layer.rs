@@ -3,8 +3,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use crate::backend::AddressEnable;
-use crate::{AsyncReadAll, AsyncWriteAll, Response};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Response};
 use protocol::{Operation, Protocol, Request};
 
 use futures::ready;
@@ -13,6 +12,7 @@ pub struct AsyncLayerGet<L, P> {
     // 当前从哪个layer开始发送请求
     idx: usize,
     layers: Vec<L>,
+    layers_writeback: Vec<L>,
     // 每一层访问的请求
     request: Request,
     response: Option<Response>,
@@ -25,13 +25,14 @@ pub struct AsyncLayerGet<L, P> {
 
 impl<L, P> AsyncLayerGet<L, P>
 where
-    L: AsyncWriteAll + AsyncWriteAll + AddressEnable + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
-    pub fn from_layers(layers: Vec<L>, p: P) -> Self {
+    pub fn from_layers(layers: Vec<L>, layers_writeback: Vec<L>, p: P) -> Self {
         Self {
             idx: 0,
             layers,
+            layers_writeback,
             request: Default::default(),
             response: None,
             requests_writeback: None,
@@ -90,7 +91,7 @@ where
         // 暂时保留，查问题的时候和sharding的req日志结合排查
         self.log_response(&item);
 
-        // 构建回种的请求
+        // 构建回种的cmd，并进行回种操作
         if self.idx > 0 {
             self.create_requests_wb(&item);
             self.do_write_back(cx);
@@ -175,8 +176,11 @@ where
                 // 每一层轮询回种所有请求
                 let mut i = 0;
                 while i < reqs_wb.len() {
-                    let reader = self.layers.get_mut(self.idx_layer_writeback).unwrap();
-                    let addr = reader.get_address();
+                    let reader = self
+                        .layers_writeback
+                        .get_mut(self.idx_layer_writeback)
+                        .unwrap();
+                    let addr = reader.addr();
                     let req = reqs_wb.get_mut(i).unwrap();
                     log::debug!(
                         "layer/{}/{} will write back req: {:?} to sever : {:?}",
@@ -203,7 +207,7 @@ where
 
 impl<L, P> AsyncWriteAll for AsyncLayerGet<L, P>
 where
-    L: AsyncWriteAll + AsyncWriteAll + AddressEnable + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
     // 请求某一层
@@ -219,7 +223,7 @@ where
 
 impl<L, P> AsyncReadAll for AsyncLayerGet<L, P>
 where
-    L: AsyncReadAll + AsyncWriteAll + AddressEnable + Unpin,
+    L: AsyncReadAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
     #[inline]
@@ -236,13 +240,12 @@ where
                     // 轮询出已经查到的keys
                     match me.parser.filter_by_key(&me.request, item.iter()) {
                         None => {
-                            // 所有请求都已返回
-                            // 处理response，并会根据req构建回写请求
+                            // 处理response，并会根据req进行回写操作
                             me.on_response(cx, item);
                             break;
                         }
                         Some(req) => {
-                            // 处理response，并会根据req构建回写请求
+                            // 处理response，并会根据req构建回写请求并进行回写操作
                             me.on_response(cx, item);
                             me.request = req;
                         }
@@ -308,5 +311,14 @@ fn get_key_hit_name_by_idx(idx: usize) -> &'static str {
         "hit_lunkown"
     } else {
         unsafe { NAMES_HIT.get_unchecked(idx) }
+    }
+}
+
+impl<L, P> Addressed for AsyncLayerGet<L, P>
+where
+    L: Addressed,
+{
+    fn addr(&self) -> Address {
+        self.layers.addr()
     }
 }

@@ -3,6 +3,7 @@ mod meta;
 //mod multi_get;
 mod get_by_layer;
 mod multi_get_sharding;
+mod noreply;
 mod operation;
 mod route;
 mod set_sync;
@@ -19,3 +20,4 @@ pub use route::AsyncOpRoute;
 pub use set_sync::AsyncSetSync;
 
 pub use get_by_layer::*;
+pub use noreply::*;

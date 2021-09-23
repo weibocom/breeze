@@ -1,4 +1,4 @@
-use crate::{AsyncReadAll, AsyncWriteAll, Request, Response, RingBufferStream};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Request, Response, RingBufferStream};
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
@@ -10,24 +10,7 @@ use ds::Cid;
 use futures::ready;
 use protocol::Operation;
 
-use enum_dispatch::enum_dispatch;
-
-#[enum_dispatch(AsyncReadAll)]
-pub enum BackendStream {
-    NotConnected(NotConnected),
-    Backend(Backend),
-}
-
-impl BackendStream {
-    pub fn not_connected() -> Self {
-        BackendStream::NotConnected(NotConnected)
-    }
-    pub fn from(id: Cid, inner: Arc<RingBufferStream>) -> Self {
-        BackendStream::Backend(Backend::from(id, inner))
-    }
-}
-
-pub struct Backend {
+pub struct BackendStream {
     id: Cid,
     inner: Arc<RingBufferStream>,
 
@@ -37,7 +20,7 @@ pub struct Backend {
     op: Operation,
 }
 
-impl Backend {
+impl BackendStream {
     pub fn from(id: Cid, stream: Arc<RingBufferStream>) -> Self {
         Self {
             id: id,
@@ -48,12 +31,23 @@ impl Backend {
         }
     }
 
+    // 不使用cid. 当前stream，用于noreply请求
+    pub fn faked_clone(&self) -> Self {
+        Self {
+            id: Cid::fake(),
+            inner: self.inner.clone(),
+            instant: Instant::now(),
+            tx: 0,
+            op: Operation::Other,
+        }
+    }
+
     pub fn addr(&self) -> &str {
         &self.inner.addr()
     }
 }
 
-impl AsyncReadAll for Backend {
+impl AsyncReadAll for BackendStream {
     #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
@@ -70,10 +64,13 @@ impl AsyncReadAll for Backend {
     }
 }
 
-impl AsyncWriteAll for Backend {
+impl AsyncWriteAll for BackendStream {
     #[inline(always)]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
+        if !buf.noreply() && me.id.faked() {
+            return Poll::Ready(Err(Error::new(ErrorKind::NotConnected, "faked cid")));
+        }
         me.instant = Instant::now();
         me.tx = buf.len();
         me.op = buf.operation();
@@ -81,66 +78,18 @@ impl AsyncWriteAll for Backend {
     }
 }
 
-impl Drop for Backend {
+impl Drop for BackendStream {
     #[inline(always)]
     fn drop(&mut self) {
-        self.inner.shutdown(self.id.id());
-    }
-}
-
-impl AsyncReadAll for BackendStream {
-    #[inline(always)]
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
-        let me = &mut *self;
-        match me {
-            BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_next(cx),
-            BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_next(cx),
+        if !self.id.faked() {
+            self.inner.shutdown(self.id.id());
         }
     }
 }
 
-impl AsyncWriteAll for BackendStream {
+impl Addressed for BackendStream {
     #[inline(always)]
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
-        let me = &mut *self;
-        match me {
-            BackendStream::Backend(ref mut stream) => Pin::new(stream).poll_write(cx, buf),
-            BackendStream::NotConnected(ref mut stream) => Pin::new(stream).poll_write(cx, buf),
-        }
-    }
-}
-
-pub struct NotConnected;
-impl AsyncReadAll for NotConnected {
-    #[inline(always)]
-    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<Response>> {
-        Poll::Ready(Err(Error::new(
-            ErrorKind::NotConnected,
-            "read from an unconnected stream",
-        )))
-    }
-}
-
-impl AsyncWriteAll for NotConnected {
-    #[inline(always)]
-    fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: &Request) -> Poll<Result<()>> {
-        Poll::Ready(Err(Error::new(
-            ErrorKind::NotConnected,
-            "write to an unconnected stream",
-        )))
-    }
-}
-
-pub trait AddressEnable {
-    fn get_address(&self) -> String;
-}
-
-impl AddressEnable for BackendStream {
-    #[inline(always)]
-    fn get_address(&self) -> String {
-        match self {
-            BackendStream::Backend(backend) => backend.addr().to_string(),
-            BackendStream::NotConnected(_) => "not connected".to_string(),
-        }
+    fn addr(&self) -> Address {
+        self.inner.addr().to_string().into()
     }
 }

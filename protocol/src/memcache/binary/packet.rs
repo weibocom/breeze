@@ -50,7 +50,7 @@ pub enum Magic {
 //     pub value: Vec<u8>,
 // }
 
-// // 总共有48个opcode，这里先只部分支持
+// 总共有48个opcode，这里先只部分支持
 #[allow(dead_code)]
 pub enum Opcode {
     Get = 0x00,
