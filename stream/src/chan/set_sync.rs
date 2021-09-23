@@ -8,30 +8,18 @@ use std::task::{Context, Poll};
 use futures::ready;
 use protocol::Protocol;
 
-use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
+use crate::{AsyncNoReply, AsyncReadAll, AsyncWriteAll, Request, Response};
 
 pub struct AsyncSetSync<M, F, P> {
     master: M,
-    master_done: bool,
-    // 所有往master写的数据，只需要往followers写，不需要读,
-    // 要么当前请求是noreply的，要么由其他的Reader负责读取
-    // 并且忽略所有返回结果即可。
-    followers: Vec<F>,
-    // 当前follower写入到的索引位置
-    f_idx: usize,
-    parser: P,
-    noreply: Option<Request>,
+    noreply: AsyncNoReply<F, P>,
 }
 
 impl<M, F, P> AsyncSetSync<M, F, P> {
     pub fn from_master(master: M, followers: Vec<F>, parser: P) -> Self {
         Self {
             master: master,
-            master_done: false,
-            followers: followers,
-            f_idx: 0,
-            parser: parser,
-            noreply: None,
+            noreply: AsyncNoReply::from(followers, parser),
         }
     }
 }
@@ -45,33 +33,10 @@ where
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         //log::debug!(" set req: {:?}", buf.data());
         let me = &mut *self;
-        if !me.master_done {
-            ready!(Pin::new(&mut me.master).poll_write(cx, buf))?;
-            me.master_done = true;
-            if me.followers.len() > 0 {
-                let noreply = if buf.noreply() {
-                    buf.clone()
-                } else {
-                    let data = me.parser.with_noreply(buf);
-                    let mut noreply = Request::from_request(data, buf.keys().clone().into(), buf);
-                    noreply.set_noreply();
-                    noreply
-                };
-                me.noreply = Some(noreply);
-            }
-        }
-        if me.followers.len() > 0 {
-            let noreply = me.noreply.as_ref().unwrap();
-            while me.f_idx < me.followers.len() {
-                let w = Pin::new(unsafe { me.followers.get_unchecked_mut(me.f_idx) });
-                if let Err(_e) = ready!(w.poll_write(cx, noreply)) {
-                    log::debug!("write follower failed idx:{} err:{:?}", me.f_idx, _e);
-                }
-                me.f_idx += 1;
-            }
-        }
-        me.f_idx = 0;
-        Poll::Ready(Ok(()))
+        let ok = ready!(Pin::new(&mut me.master).poll_write(cx, buf));
+        // 失败也同步数据。
+        let _succ = me.noreply.try_poll_noreply(cx, buf);
+        Poll::Ready(ok)
     }
 }
 impl<M, F, P> AsyncReadAll for AsyncSetSync<M, F, P>
@@ -82,13 +47,15 @@ where
 {
     #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
-        let me = &mut *self;
-        let response = ready!(Pin::new(&mut me.master).poll_next(cx))?;
-
-        me.f_idx = 0;
-        me.master_done = false;
-        me.noreply.take();
-
-        Poll::Ready(Ok(response))
+        Pin::new(&mut self.master).poll_next(cx)
+    }
+}
+impl<M, F, P> crate::Addressed for AsyncSetSync<M, F, P>
+where
+    M: crate::Addressed,
+    F: crate::Addressed,
+{
+    fn addr(&self) -> crate::Address {
+        self.master.addr()
     }
 }

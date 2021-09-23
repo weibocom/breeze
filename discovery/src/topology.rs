@@ -1,4 +1,4 @@
-use ds::{Cow, CowReadHandle, CowWriteHandle};
+use ds::{cow, CowReadHandle, CowWriteHandle};
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -27,7 +27,7 @@ pub fn topology<T>(t: T, service: &str) -> (TopologyWriteGuard<T>, TopologyReadG
 where
     T: TopologyWrite + Clone + ds::Update<(String, String)>,
 {
-    let (tx, rx) = ds::cow(t);
+    let (tx, rx) = cow(t);
     let name = service.to_string();
     let idx = name.find(':').unwrap_or(name.len());
     let mut path = name.clone().replace('+', "/");
@@ -58,13 +58,13 @@ unsafe impl<T> Sync for TopologyReadGuard<T> {}
 #[derive(Clone)]
 pub struct TopologyReadGuard<T> {
     init: Arc<AtomicBool>,
-    inner: CowReadHandle<Cow<T, TO>>,
+    inner: CowReadHandle<T>,
 }
 pub struct TopologyWriteGuard<T>
 where
     T: Clone + ds::Update<TO>,
 {
-    inner: CowWriteHandle<Cow<T, TO>, TO>,
+    inner: CowWriteHandle<T, TO>,
     name: String,
     path: String,
     init: Arc<AtomicBool>,
@@ -95,7 +95,7 @@ where
 {
     fn update(&mut self, name: &str, cfg: &str) {
         log::info!("topology updating. name:{}, cfg len:{}", name, cfg.len());
-        self.inner.write((name.to_string(), cfg.to_string()));
+        self.inner.write(&(name.to_string(), cfg.to_string()));
         if !self.init.load(Ordering::Relaxed) {
             self.init.store(true, Ordering::Release);
         }

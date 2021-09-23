@@ -132,14 +132,12 @@ impl MpmcRingBufferStream {
     }
     #[inline]
     pub fn poll_write(&self, cid: usize, _cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
+        // 连接关闭后，只停写，现有请求可以继续处理。
+        if self.closed.load(Ordering::Relaxed) {
+            return Poll::Ready(Err(Error::new(ErrorKind::NotFound, "mpmc closed")));
+        }
         self.check(cid)?;
-        log::debug!(
-            "write cid:{} len:{} id:{}, noreply:{}",
-            cid,
-            buf.len(),
-            buf.id(),
-            buf.noreply(),
-        );
+        log::debug!("write cid:{} req:{}", cid, buf);
         if buf.noreply() {
             self.noreply_tx.try_send(buf.clone()).map_err(|e| {
                 Error::new(
@@ -155,7 +153,6 @@ impl MpmcRingBufferStream {
         self.waker.wake();
         self.req_num.0.fetch_add(1, Ordering::Relaxed);
         log::debug!("write complete cid:{} len:{} ", cid, buf.len());
-        // noreply请求要等request sent之后才能返回。
         Poll::Ready(Ok(()))
     }
     #[inline(always)]
@@ -252,20 +249,17 @@ impl MpmcRingBufferStream {
                     log::info!("task: {} complete {}", name, self.addr);
                 }
                 Err(e) => {
-                    log::error!("task: {} complete with error:{:?} {}", name, e, self.addr);
+                    log::error!("task: {} complete. error:{:?} {}", name, e, self.addr);
                 }
             };
             self.done.store(true, Ordering::Release);
             let runnings = self.runnings.fetch_add(-1, Ordering::Release) - 1;
-            log::info!(
-                "task: {} task completed, runnings = {} done:{}",
-                name,
-                runnings,
-                self.done.load(Ordering::Acquire)
-            );
+            log::info!("{} task complet. runnings:{} ", name, runnings);
             self.waker.wake();
             if runnings == 0 {
                 log::info!("all threads attached completed. reset item status");
+                // sleep一段时间，减少因为reset导致status在cas时的状态冲突。
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 self.reset_item_status();
                 if !self.closed.load(Ordering::Acquire) {
                     notify.notify();
@@ -279,12 +273,15 @@ impl MpmcRingBufferStream {
             item.0.reset();
         }
     }
+    // 在资源被下线后，标识状态。当前请求继续，在poll_write时，判断closed状态，不再接收新后续请求。
+    pub(crate) fn try_close(&self) {
+        self.closed.store(true, Ordering::Relaxed);
+        log::info!("{} finished. stream will be closed later", self.addr);
+    }
     // 通常是某个资源被注释时调用。
-    fn close(&self) {
-        self.closed.store(true, Ordering::Release);
-        self.done.store(true, Ordering::Release);
-        self.waker.wake();
-        log::warn!("close: closing called");
+    pub(crate) fn shutdown_all(&self) {
+        self.closed.store(true, Ordering::Relaxed);
+        self.mark_done();
     }
 
     pub(crate) fn load_ping_ping(&self) -> (usize, usize) {
@@ -312,7 +309,7 @@ impl MpmcRingBufferStream {
 
 impl Drop for MpmcRingBufferStream {
     fn drop(&mut self) {
-        self.close();
+        log::info!("{} closed.", self.addr);
     }
 }
 

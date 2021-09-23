@@ -58,3 +58,13 @@ where
         unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_next(cx) }
     }
 }
+
+use crate::{Address, Addressed};
+impl<B> Addressed for AsyncOpRoute<B>
+where
+    B: Addressed,
+{
+    fn addr(&self) -> Address {
+        self.backends.addr()
+    }
+}
