@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{Cursor, Error, ErrorKind, Result};
+use std::io::{Error, ErrorKind, Result};
 use std::vec;
 
 use ds::{RingSlice, Slice};
@@ -131,9 +131,8 @@ impl Protocol for MemcacheBinary {
             let mut req_cmd: Vec<u8> = Vec::with_capacity(rsp_cmd.len());
 
             /*============= 构建request header =============*/
-            req_cmd.write_u8(Magic::Request as u8); // magic: [0]
-            req_cmd.write_u8(Opcode::SetQ as u8); // opcode: [1]
-                                                  // 构建 set request
+            req_cmd.push(Magic::Request as u8); // magic: [0]
+            req_cmd.push(Opcode::SetQ as u8); // opcode: [1]
             let mut key_len = rsp_cmd.key_len();
             let use_request_key = key_len == 0 && request.keys().len() == 1;
             if use_request_key {
@@ -145,8 +144,8 @@ impl Protocol for MemcacheBinary {
             req_cmd.write_u16(key_len); // key len: [2,3]
             let extra_len = rsp_cmd.extra_len() + 4 as u8; // get response中的extra 应该是4字节，作为set的 flag，另外4字节是set的expire
             debug_assert!(extra_len == 8);
-            req_cmd.write_u8(extra_len); // extra len: [4]
-            req_cmd.write_u8(0 as u8); // data type，全部为0: [5]
+            req_cmd.push(extra_len); // extra len: [4]
+            req_cmd.push(0 as u8); // data type，全部为0: [5]
             req_cmd.write_u16(0 as u16); // vbucket id, 回写全部为0,pos [6,7]
             let total_body_len = extra_len as u32 + key_len as u32 + rsp_cmd.value_len();
             req_cmd.write_u32(total_body_len); // total body len [8-11]

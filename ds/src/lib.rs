@@ -48,7 +48,7 @@ macro_rules! define_read_number {
 
 // big endian
 define_read_number!(
-    write_u8, u8;
+    // 备注：write_u8 可以直接用push代替
     write_u16, u16;
     write_u32, u32;
     write_u64, u64
