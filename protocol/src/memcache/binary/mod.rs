@@ -164,10 +164,12 @@ impl Protocol for MemcacheBinary {
                 );
             } else {
                 req_cmd.write(rsp_cmd.key().data());
-                log::info!(
-                    "will write back for key: {:?}",
-                    String::from_utf8(rsp_cmd.key().data())
-                );
+                unsafe {
+                    log::info!(
+                        "will write back for key: {:?}",
+                        String::from_utf8_unchecked(rsp_cmd.key().data())
+                    );
+                }
             }
             req_cmd.write(rsp_cmd.value().data());
             let cmds = vec![Slice::from(&req_cmd[0..req_cmd.len()])];
