@@ -26,7 +26,6 @@ where
     C: AsyncRead + AsyncWrite + Unpin,
     P: Protocol + Unpin,
 {
-    log::debug!("a new connection received.");
     CopyBidirectional {
         agent: agent,
         client: client,
