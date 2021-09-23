@@ -240,7 +240,7 @@ where
                     // 轮询出已经查到的keys
                     match me.parser.filter_by_key(&me.request, item.iter()) {
                         None => {
-                            // 处理response，并会根据进行回写操作
+                            // 处理response，并会根据req进行回写操作
                             me.on_response(cx, item);
                             break;
                         }

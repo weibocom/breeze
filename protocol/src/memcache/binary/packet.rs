@@ -10,7 +10,7 @@
 
 // // mc 二进制协议包，用于构建各种协议指令，所有mc协议构建均需放在这里 fishermen
 
-// // cmd的第一个字节，用于标示request or response
+// cmd的第一个字节，用于标示request or response
 #[allow(dead_code)]
 pub enum Magic {
     Request = 0x80,
@@ -69,6 +69,12 @@ pub enum Opcode {
     Touch = 0x1c,
     StartAuth = 0x21,
 }
+
+// // mc response的响应code
+// pub enum Status {
+//     NoError = 0x0000,
+//     // NotFound = 0x0001,
+// }
 
 // impl PacketHeader {
 //     pub fn write<W: io::Write>(&self, writer: &mut W) -> Result<()> {
@@ -169,6 +175,10 @@ pub enum Opcode {
 //             flag = Cursor::new(&self.extras).read_u32::<BigEndian>()?;
 //         }
 //         Ok(flag)
+//     }
+
+//     pub fn status_ok(&self) -> bool {
+//         self.header.vbucket_id_or_status == Status::NoError as u16
 //     }
 // }
 
