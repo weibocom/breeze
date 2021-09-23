@@ -87,14 +87,16 @@ lazy_static! {
     static ref ID_SEQ: RwLock<IdSequence> = RwLock::new(IdSequence::new());
 }
 
-pub fn register_name(name: &str) -> usize {
-    ID_SEQ
-        .write()
-        .unwrap()
-        .register_name(&crate::encode_addr(name))
+pub fn register_name(name: &str) -> MetricId {
+    MetricId(
+        ID_SEQ
+            .write()
+            .unwrap()
+            .register_name(&crate::encode_addr(name)),
+    )
 }
 
-pub fn register_names(names: Vec<&str>) -> usize {
+pub fn register_names(names: Vec<&str>) -> MetricId {
     let mut s: String = String::with_capacity(32);
     for name in names.iter() {
         s += &crate::encode_addr(name);

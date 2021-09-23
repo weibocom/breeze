@@ -14,6 +14,7 @@ use crate::{
     ResponseData, ResponseHandler, Snapshot,
 };
 use ds::{BitMap, SeqOffset};
+use metrics::MetricId;
 use protocol::Protocol;
 
 use cache_line_size::CacheAligned;
@@ -59,7 +60,7 @@ pub struct MpmcRingBufferStream {
 
     // 持有的远端资源地址（ip:port）
     addr: String,
-    metric_id: usize,
+    metric_id: MetricId,
 }
 
 impl MpmcRingBufferStream {
@@ -298,7 +299,7 @@ impl MpmcRingBufferStream {
     }
     #[inline(always)]
     pub(crate) fn metric_id(&self) -> usize {
-        self.metric_id
+        self.metric_id.id()
     }
 }
 
@@ -342,7 +343,7 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
     }
     #[inline]
     fn metric_id(&self) -> usize {
-        self.metric_id
+        self.metric_id.id()
     }
 }
 impl ResponseHandler for Arc<MpmcRingBufferStream> {
@@ -358,6 +359,6 @@ impl ResponseHandler for Arc<MpmcRingBufferStream> {
     }
     #[inline]
     fn metric_id(&self) -> usize {
-        self.metric_id
+        self.metric_id.id()
     }
 }
