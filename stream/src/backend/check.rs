@@ -2,7 +2,6 @@ use crate::{BackendStream, RingBufferStream};
 use ds::{Cid, Ids};
 use protocol::{Protocol, Resource};
 
-use std::io::Result;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -13,7 +12,7 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::{interval_at, Interval};
 
-use futures::executor::block_on;
+//use futures::executor::block_on;
 
 pub struct BackendBuilder {
     finished: Arc<AtomicBool>,
@@ -127,7 +126,7 @@ impl<P> BackendChecker<P> {
         let mut succ = false;
         if self.instant_conn.elapsed() >= expected {
             log::debug!("try to connect {} tries:{}", self.addr(), self.tries);
-            match block_on(async { self.reconnected_once().await }) {
+            match self.reconnected_once() {
                 Ok(_) => {
                     succ = true;
                     self.tries = 0;
@@ -140,15 +139,18 @@ impl<P> BackendChecker<P> {
         self.inited.store(true, Ordering::Release);
         succ
     }
-    async fn reconnected_once(&self) -> Result<()>
+    fn reconnected_once(&self) -> std::result::Result<(), Box<dyn std::error::Error>>
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         let addr = self.addr();
-        let stream =
-            tokio::time::timeout(Duration::from_secs(2), TcpStream::connect(addr)).await??;
-        log::debug!("connected to {}", addr);
+        use std::net::{SocketAddr, SocketAddrV4};
+        let sock: SocketAddrV4 = addr.parse()?;
+        let sock = SocketAddr::V4(sock);
+        let stream = std::net::TcpStream::connect_timeout(&sock, Duration::from_secs(2))?;
         let _ = stream.set_nodelay(true);
+        let stream = TcpStream::from_std(stream)?;
+        log::debug!("connected to {}", addr);
         let (r, w) = stream.into_split();
         let req_stream = self.inner.clone();
 
