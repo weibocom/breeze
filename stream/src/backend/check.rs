@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::time::{interval_at, Interval};
+use tokio::time::{interval_at, sleep, timeout, Interval};
 
 //use futures::executor::block_on;
 
@@ -30,7 +30,7 @@ impl BackendBuilder {
         let init = Arc::new(AtomicBool::new(false));
         let stream = Arc::new(RingBufferStream::with_capacity(parallel, biz, addr, rsrc));
         let checker = BackendChecker::from(stream.clone(), finished.clone(), init.clone(), parser);
-        tokio::spawn(async { checker.await });
+        tokio::spawn(async { checker.start_check().await });
 
         Self {
             stream: stream,
@@ -79,8 +79,6 @@ pub struct BackendChecker<P> {
     tick: Interval,
     req_num: usize, // 检查timeout时，上一次的请求号。
     parser: P,
-    close: Instant, // 关闭流的时间
-    complete: bool,
 }
 
 impl<P> BackendChecker<P> {
@@ -92,7 +90,7 @@ impl<P> BackendChecker<P> {
     ) -> Self {
         let (tx, rx) = channel(8);
         // 用一个random的耗时，将不同的backend的tick错开。
-        const SECS: u64 = 3;
+        const SECS: u64 = 2;
         let latency_ms: u64 = rand::random::<u64>() % (SECS * 1000);
         let start = Instant::now() + Duration::from_millis(latency_ms);
         let tick = interval_at(start.into(), Duration::from_secs(SECS));
@@ -110,26 +108,48 @@ impl<P> BackendChecker<P> {
             finished: finished,
             inited: inited,
             parser: parser,
-            complete: false,
-            close: Instant::now(),
         }
     }
-    fn connect(&mut self) -> bool
+    async fn start_check(mut self)
     where
-        P: Unpin + Send + Sync + Protocol + 'static + Clone,
+        P: Protocol,
+    {
+        let noop = futures_task::noop_waker();
+        let mut ctx = Context::from_waker(&noop);
+        while !self.finished.load(Ordering::Acquire) {
+            match self.rx.poll_recv(&mut ctx) {
+                Poll::Ready(Some(_)) => {
+                    self.connecting = true;
+                }
+                _ => {}
+            }
+            if self.connecting {
+                self.try_connect().await;
+            }
+            self.check_timeout();
+            self.tick.tick().await;
+        }
+        log::info!("finished {}. stream mark closed.", self.addr());
+        self.try_close();
+        sleep(Duration::from_secs(15)).await;
+        log::info!("complete {}. stream shutdown.", self.addr());
+        self.shutdown_all();
+    }
+    async fn try_connect(&mut self)
+    where
+        P: Protocol,
     {
         if self.tries == 0 {
             self.instant_conn = Instant::now();
         }
         let expected = Duration::from_secs(self.tries.min(31) as u64);
         self.tries += 1;
-        let mut succ = false;
         if self.instant_conn.elapsed() >= expected {
             log::debug!("try to connect {} tries:{}", self.addr(), self.tries);
-            match self.reconnected_once() {
+            match self.reconnected_once().await {
                 Ok(_) => {
-                    succ = true;
                     self.tries = 0;
+                    self.connecting = false;
                 }
                 Err(e) => {
                     log::warn!("failed to connect {} err:{}", self.addr(), e);
@@ -137,19 +157,14 @@ impl<P> BackendChecker<P> {
             };
         }
         self.inited.store(true, Ordering::Release);
-        succ
     }
-    fn reconnected_once(&self) -> std::result::Result<(), Box<dyn std::error::Error>>
+    async fn reconnected_once(&self) -> std::result::Result<(), Box<dyn std::error::Error>>
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
         let addr = self.addr();
-        use std::net::{SocketAddr, SocketAddrV4};
-        let sock: SocketAddrV4 = addr.parse()?;
-        let sock = SocketAddr::V4(sock);
-        let stream = std::net::TcpStream::connect_timeout(&sock, Duration::from_secs(2))?;
+        let stream = timeout(Duration::from_secs(2), TcpStream::connect(addr)).await??;
         let _ = stream.set_nodelay(true);
-        let stream = TcpStream::from_std(stream)?;
         log::debug!("connected to {}", addr);
         let (r, w) = stream.into_split();
         let req_stream = self.inner.clone();
@@ -217,51 +232,51 @@ impl<P> std::ops::Deref for BackendChecker<P> {
     }
 }
 
-use std::future::Future;
-use std::pin::Pin;
+//use std::future::Future;
+//use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures::ready;
+//use futures::ready;
 
-impl<P> Future for BackendChecker<P>
-where
-    P: Unpin + Send + Sync + Protocol + 'static + Clone,
-{
-    type Output = ();
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let me = &mut self;
-        // 没有结束，就一直check
-        while !me.finished.load(Ordering::Acquire) {
-            if me.connecting {
-                if me.connect() {
-                    me.connecting = false;
-                }
-            }
-            me.check_timeout();
-            match me.rx.poll_recv(cx) {
-                Poll::Ready(Some(_)) => {
-                    me.connecting = true;
-                    me.instant_timeout = Instant::now();
-                }
-                _ => {}
-            }
-            ready!(me.tick.poll_tick(cx));
-        }
-
-        if !me.complete {
-            log::info!(
-                "task finished {}. stream closed immediately, and shutdown in 15seconds.",
-                me.addr()
-            );
-            me.complete = true;
-            me.try_close();
-            me.close = Instant::now();
-        }
-        while me.close.elapsed() <= Duration::from_secs(15) {
-            ready!(me.tick.poll_tick(cx));
-        }
-        log::info!("stream shutting down. {}", me.addr());
-        me.shutdown_all();
-        Poll::Ready(())
-    }
-}
+//impl<P> Future for BackendChecker<P>
+//where
+//    P: Unpin + Send + Sync + Protocol + 'static + Clone,
+//{
+//    type Output = ();
+//    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//        let me = &mut self;
+//        // 没有结束，就一直check
+//        while !me.finished.load(Ordering::Acquire) {
+//            if me.connecting {
+//                if me.connect() {
+//                    me.connecting = false;
+//                }
+//            }
+//            me.check_timeout();
+//            match me.rx.poll_recv(cx) {
+//                Poll::Ready(Some(_)) => {
+//                    me.connecting = true;
+//                    me.instant_timeout = Instant::now();
+//                }
+//                _ => {}
+//            }
+//            ready!(me.tick.poll_tick(cx));
+//        }
+//
+//        if !me.complete {
+//            log::info!(
+//                "task finished {}. stream closed immediately, and shutdown in 15seconds.",
+//                me.addr()
+//            );
+//            me.complete = true;
+//            me.try_close();
+//            me.close = Instant::now();
+//        }
+//        while me.close.elapsed() <= Duration::from_secs(15) {
+//            ready!(me.tick.poll_tick(cx));
+//        }
+//        log::info!("stream shutting down. {}", me.addr());
+//        me.shutdown_all();
+//        Poll::Ready(())
+//    }
+//}
