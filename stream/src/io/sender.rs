@@ -17,14 +17,20 @@ pub(super) struct Sender {
     idx: usize,
     buff: Vec<u8>,
     done: bool, // 上一次请求是否结束
+    metric_id: usize,
+    size: usize, // 用于统计内存消耗
 }
 
 impl Sender {
-    pub fn new() -> Self {
+    pub fn new(metric_id: usize) -> Self {
+        let cap = 2048;
+        metrics::count("mem_buff_tx", cap as isize, metric_id);
         Self {
-            buff: Vec::with_capacity(2048),
+            buff: Vec::with_capacity(cap),
             idx: 0,
             done: true,
+            metric_id: metric_id,
+            size: cap,
         }
     }
     #[inline]
@@ -54,6 +60,11 @@ impl Sender {
         }
         ready!(self.flush(cx, w, rid, metric))?;
         self.done = true;
+        if self.buff.capacity() > self.size {
+            let delta = (self.buff.capacity() - self.size) as isize;
+            metrics::count("mem_buff_tx", delta, self.metric_id);
+            self.size = self.buff.capacity();
+        }
         Poll::Ready(Ok(()))
     }
     #[inline(always)]
@@ -102,5 +113,16 @@ impl protocol::BackwardWrite for Sender {
         let old = self.buff.len();
         self.write(data);
         update(&mut self.buff[old..old + data.len()]);
+    }
+}
+
+impl Drop for Sender {
+    #[inline]
+    fn drop(&mut self) {
+        metrics::count(
+            "mem_buff_tx",
+            self.buff.capacity() as isize * -1,
+            self.metric_id,
+        );
     }
 }

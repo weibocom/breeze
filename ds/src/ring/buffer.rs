@@ -84,7 +84,7 @@ impl RingBuffer {
         RingSlice::from(self.data.as_ptr(), self.size, self.read, self.write)
     }
     #[inline(always)]
-    pub(crate) fn cap(&self) -> usize {
+    pub fn cap(&self) -> usize {
         self.size
     }
 

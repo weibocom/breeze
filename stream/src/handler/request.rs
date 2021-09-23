@@ -51,7 +51,6 @@ pub trait RequestHandler {
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()>;
     fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)>;
     fn sent(&self, cid: usize, seq: usize, req: &Request);
-    fn metric_id(&self) -> usize;
 }
 
 pub struct BridgeRequestToBackend<H, W> {
@@ -64,18 +63,23 @@ pub struct BridgeRequestToBackend<H, W> {
     handler: H,
     w: BufWriter<W>,
     done: Arc<AtomicBool>,
+    metric_id: usize,
 }
 
+const WRITE_BUFF: usize = 128 * 1024;
 impl<H, W> BridgeRequestToBackend<H, W> {
-    pub fn from(handler: H, w: W, done: Arc<AtomicBool>) -> Self
+    pub fn from(handler: H, w: W, done: Arc<AtomicBool>, mid: usize) -> Self
     where
         W: AsyncWrite,
     {
+        // 在Drop时，会减掉
+        metrics::count("mem_buff_req", WRITE_BUFF as isize, mid);
         Self {
+            metric_id: mid,
             done: done,
             seq: 0,
             handler: handler,
-            w: BufWriter::with_capacity(128 * 1024, w),
+            w: BufWriter::with_capacity(WRITE_BUFF, w),
             snapshot: Snapshot::new(),
             cache: None,
             offset: 0,
@@ -119,7 +123,7 @@ where
                 Poll::Ready(_) => {
                     log::debug!("snapshot {} {:?}", me.snapshot.len(), me.snapshot.cids);
                     if me.snapshot.len() == 0 {
-                        log::info!("{} eof.", me.handler.metric_id().name());
+                        log::info!("{} eof.", me.metric_id.name());
                         break;
                     }
                 }
@@ -132,7 +136,13 @@ where
         }
 
         ready!(w.as_mut().poll_shutdown(cx))?;
-        log::info!("task complete:{}", me.handler.metric_id().name());
+        log::info!("task complete:{}", me.metric_id.name());
         Poll::Ready(Ok(()))
+    }
+}
+impl<H, W> Drop for BridgeRequestToBackend<H, W> {
+    #[inline]
+    fn drop(&mut self) {
+        metrics::count("mem_buff_req", WRITE_BUFF as isize * -1, self.metric_id);
     }
 }
