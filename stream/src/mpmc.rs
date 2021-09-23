@@ -1,5 +1,9 @@
 use std::future::Future;
-use std::io::{Error, ErrorKind, Result};
+use std::io::{
+    Error,
+    ErrorKind::{self, *},
+    Result,
+};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -7,7 +11,7 @@ use std::task::{Context, Poll};
 use super::status::*;
 use crate::{
     AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Notify, Request, RequestHandler,
-    ResponseData, ResponseHandler,
+    ResponseData, ResponseHandler, Snapshot,
 };
 use ds::{BitMap, SeqOffset};
 use protocol::Protocol;
@@ -70,7 +74,7 @@ impl MpmcRingBufferStream {
             .map(|_| CacheAligned(AtomicUsize::new(0)))
             .collect();
 
-        let (tx, rx) = bounded(2048);
+        let (tx, rx) = bounded(512);
 
         Self {
             items: items,
@@ -133,12 +137,9 @@ impl MpmcRingBufferStream {
         self.check(cid)?;
         log::debug!("write cid:{} req:{}", cid, buf);
         if buf.noreply() {
-            self.noreply_tx.try_send(buf.clone()).map_err(|e| {
-                Error::new(
-                    ErrorKind::Interrupted,
-                    format!("noreply data chan full:{:?}", e.to_string()),
-                )
-            })?;
+            self.noreply_tx
+                .try_send(buf.clone())
+                .map_err(|e| Error::new(Interrupted, format!("noreply data chan full:{:?}", e)))?;
         } else {
             let item = self.get_item(cid);
             item.place_request(buf);
@@ -307,7 +308,6 @@ impl Drop for MpmcRingBufferStream {
     }
 }
 
-use crate::req_handler::Snapshot;
 impl RequestHandler for Arc<MpmcRingBufferStream> {
     #[inline(always)]
     fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)> {
