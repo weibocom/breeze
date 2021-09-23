@@ -50,7 +50,8 @@ async fn _process_one(
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
 
-    let metric_id = metrics::register!(quard.protocol(), &quard.biz());
+    let mid = metrics::register!(quard.protocol(), &quard.biz());
+    let metric_id = mid.id();
     log::info!("service started. {}", quard);
 
     loop {
