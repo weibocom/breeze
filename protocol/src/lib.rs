@@ -61,13 +61,15 @@ pub trait Protocol: Unpin + Clone + 'static {
 #[enum_dispatch(Protocol)]
 #[derive(Clone)]
 pub enum Protocols {
-    Mc(memcache::Memcache),
+    McBin(memcache::MemcacheBin),
+    McText(memcache::MemcacheText),
 }
 
 impl Protocols {
     pub fn try_from(name: &str) -> Result<Self> {
         match name {
-            "mc" | "memcache" | "memcached" => Ok(Self::Mc(memcache::Memcache::new())),
+            "mc_bin" | "mc" | "memcache" | "memcached" => Ok(Self::McBin(memcache::MemcacheBin::new())),
+            "mc_text" | "memcache_text" | "memcached_text" => Ok(Self::McText(memcache::MemcacheText::new())),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("'{}' is not a valid protocol", name),
