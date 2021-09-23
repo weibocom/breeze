@@ -72,12 +72,6 @@ impl MpmcRingBufferStream {
 
         let (tx, rx) = bounded(2048);
 
-        let metric_id = metrics::register_names(vec![
-            rsrc.name(),
-            &metrics::encode_addr(biz),
-            &metrics::encode_addr(addr),
-        ]);
-
         Self {
             items: items,
             waker: AtomicWaker::new(),
@@ -94,7 +88,7 @@ impl MpmcRingBufferStream {
             noreply_rx: rx,
 
             addr: addr.to_string(),
-            metric_id: metric_id,
+            metric_id: metrics::register!(rsrc.name(), biz, addr),
         }
     }
     // 如果complete为true，则快速失败

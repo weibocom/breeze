@@ -50,9 +50,7 @@ async fn _process_one(
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
 
-    let r_type = quard.protocol();
-    let biz = quard.biz();
-    let metric_id = metrics::register_name(r_type + "." + &metrics::encode_addr(&biz));
+    let metric_id = metrics::register!(quard.protocol(), &quard.biz());
     log::info!("service started. {}", quard);
 
     loop {
@@ -70,8 +68,8 @@ async fn _process_one(
                 process_one_connection(client, top, endpoint, parser, session_id, metric_id).await
             {
                 log::warn!(
-                    "disconnected:biz:{} processed:{:?} {:?}",
-                    metrics::get_name(metric_id),
+                    "{} disconnected. {:?} {:?}",
+                    metrics::name(metric_id),
                     instant.elapsed(),
                     e
                 );
