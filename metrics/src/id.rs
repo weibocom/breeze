@@ -88,12 +88,7 @@ lazy_static! {
 }
 
 pub fn register_name(name: &str) -> MetricId {
-    MetricId(
-        ID_SEQ
-            .write()
-            .unwrap()
-            .register_name(&crate::encode_addr(name)),
-    )
+    MetricId(ID_SEQ.write().unwrap().register_name(name))
 }
 
 pub fn register_names(names: Vec<&str>) -> MetricId {
