@@ -16,8 +16,8 @@ impl IdSequence {
             indice: Default::default(),
         }
     }
-    fn register_name(&mut self, name: String) -> usize {
-        match self.indice.get(&name) {
+    fn register_name(&mut self, name: &str) -> usize {
+        match self.indice.get(name) {
             Some(seq) => *seq,
             None => {
                 let seq = self.seq;
@@ -28,7 +28,7 @@ impl IdSequence {
                 }
                 log::debug!("metrics-register: name:{} id:{}", name, seq);
                 self.names[seq] = name.to_owned();
-                self.indice.insert(name, self.seq);
+                self.indice.insert(name.to_owned(), self.seq);
                 self.seq += 1;
                 seq
             }
@@ -40,29 +40,35 @@ impl IdSequence {
     }
 }
 
+#[macro_export]
+macro_rules! register {
+    ($name:expr) => {
+        metrics::register_name($name)
+    };
+    ($first:expr, $($left:expr),+) => {
+        metrics::register_names(vec![$first, $($left),+])
+    };
+}
+
 lazy_static! {
     static ref ID_SEQ: RwLock<IdSequence> = RwLock::new(IdSequence::new());
 }
 
-pub fn register_name(name: String) -> usize {
-    ID_SEQ.write().unwrap().register_name(name.to_string())
+pub fn register_name(name: &str) -> usize {
+    ID_SEQ
+        .write()
+        .unwrap()
+        .register_name(&crate::encode_addr(name))
 }
 
 pub fn register_names(names: Vec<&str>) -> usize {
-    let mut s: Vec<u8> = Vec::with_capacity(32);
+    let mut s: String = String::with_capacity(32);
     for name in names.iter() {
-        s.reserve(name.len());
-        use std::ptr::copy_nonoverlapping as copy;
-        unsafe {
-            let offset = s.len() as isize;
-            copy(name.as_ptr(), s.as_mut_ptr().offset(offset), name.len());
-            s.set_len(s.len() + name.len());
-            s.push(b'.');
-        }
+        s += &crate::encode_addr(name);
+        s.push('.');
     }
     s.pop();
-
-    unsafe { register_name(String::from_utf8_unchecked(s)) }
+    register_name(&s)
 }
 
 #[inline(always)]

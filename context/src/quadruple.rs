@@ -78,11 +78,11 @@ impl Quadruple {
     pub fn address(&self) -> String {
         self.addr.to_owned()
     }
-    pub fn protocol(&self) -> String {
-        self.protocol.to_owned()
+    pub fn protocol(&self) -> &str {
+        &self.protocol
     }
-    pub fn service(&self) -> String {
-        self.service.to_owned()
+    pub fn service(&self) -> &str {
+        &self.service
     }
     // service的格式是 config+v1+breeze+feed.content.icy:user
     // 用'+'分隔的最后一个field是group:biz。取biz
