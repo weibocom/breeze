@@ -51,8 +51,12 @@ impl<P> CacheService<P> {
         let dist = topo.distribution();
         let (streams, write_back) = topo.mget();
         let mget_layers = build_mget(streams, p.clone(), hash, dist);
-        let _write_back = build_mget(write_back, p.clone(), hash, dist);
-        let mget = Gets(AsyncLayerGet::from_layers(mget_layers, p.clone()));
+        let mget_layers_writeback = build_mget(write_back, p.clone(), hash, dist);
+        let mget = Gets(AsyncLayerGet::from_layers(
+            mget_layers,
+            mget_layers_writeback,
+            p.clone(),
+        ));
 
         let master = AsyncSharding::from(topo.master(), hash, dist, p.clone());
         let noreply = build_layers(topo.followers(), hash, dist, p.clone());
@@ -61,8 +65,12 @@ impl<P> CacheService<P> {
         // 获取get through
         let (streams, write_back) = topo.get();
         let get_layers = build_layers(streams, hash, dist, p.clone());
-        let _write_back = build_mget(write_back, p.clone(), hash, dist);
-        let get = Get(AsyncLayerGet::from_layers(get_layers, p.clone()));
+        let get_layers_writeback = build_layers(write_back, hash, dist, p.clone());
+        let get = Get(AsyncLayerGet::from_layers(
+            get_layers,
+            get_layers_writeback,
+            p.clone(),
+        ));
 
         // meta与master共享一个物理连接。
         let meta = Meta(MetaStream::from(p.clone(), topo.master()));
