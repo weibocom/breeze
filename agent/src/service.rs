@@ -24,14 +24,15 @@ pub(super) async fn process_one(
     discovery.send(tx)?;
 
     // 等待初始化完成
-    let start = Instant::now();
+    let mut tries = 0usize;
     while !rx.inited() {
-        if start.elapsed() >= Duration::from_secs(3) {
-            log::info!("waiting inited. {} {:?}", quard, start.elapsed());
+        if tries >= 2 {
+            log::info!("waiting inited. {} ", quard);
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1 << (tries.min(10)))).await;
+        tries += 1;
     }
-    log::info!("service inited. {} elapsed:{:?}", quard, start.elapsed());
+    log::info!("service inited. {} ", quard);
 
     // 服务注册完成，侦听端口直到成功。
     while let Err(e) = _process_one(quard, parser.clone(), rx.clone(), session_id.clone()).await {
