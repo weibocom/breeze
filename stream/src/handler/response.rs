@@ -19,7 +19,6 @@ pub trait ResponseHandler {
     fn load_offset(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
     fn on_received(&self, seq: usize, response: protocol::Response);
-    fn metric_id(&self) -> usize;
 }
 
 unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
@@ -38,19 +37,23 @@ pub struct BridgeResponseToLocal<R, W, P> {
     spin_secs: usize,   // spin已经持续的时间，用来控制输出日志
     spin_last: Instant, // 上一次开始spin的时间
     tick: Interval,
+    metric_id: usize,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, done: Arc<AtomicBool>) -> Self
+    pub fn from(r: R, w: W, parser: P, done: Arc<AtomicBool>, mid: usize) -> Self
     where
         W: ResponseHandler + Unpin,
     {
+        let cap = 64 * 1024;
+        metrics::count("mem_buff_resp", cap, mid);
         Self {
+            metric_id: mid,
             seq: 0,
             w: w,
             r: r,
             parser: parser,
-            data: ResizedRingBuffer::with_capacity(64 * 1024),
+            data: ResizedRingBuffer::with_capacity(cap as usize),
             done: done,
 
             spins: 0,
@@ -91,14 +94,15 @@ where
                 let last = me.spin_last.elapsed();
                 if last >= Duration::from_millis(5) {
                     if me.data.resize() {
-                        log::info!("{} resized {} {:?}", me.w.metric_id().name(), me.data, last);
+                        metrics::count("mem_buff_resp", (me.data.cap() / 2) as isize, me.metric_id);
+                        log::info!("{} resized {} {:?}", me.metric_id.name(), me.data, last);
                         continue;
                     }
                 }
                 // 每超过一秒钟输出一次日志
                 let secs = last.as_secs() as usize;
                 if secs > me.spin_secs {
-                    log::info!("{} full {} -{}", me.w.metric_id().name(), me.data, me.seq);
+                    log::info!("{} full {} -{}", me.metric_id.name(), me.data, me.seq);
                     me.spin_secs = secs;
                 }
                 continue;
@@ -127,7 +131,13 @@ where
                 }
             }
         }
-        log::info!("task complete:{}", me.w.metric_id().name());
+        log::info!("task complete:{}", me.metric_id.name());
         Poll::Ready(Ok(()))
+    }
+}
+impl<R, W, P> Drop for BridgeResponseToLocal<R, W, P> {
+    #[inline]
+    fn drop(&mut self) {
+        metrics::count("mem_buff_resp", self.data.cap() as isize, self.metric_id);
     }
 }

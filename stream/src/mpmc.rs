@@ -220,40 +220,38 @@ impl MpmcRingBufferStream {
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            "req-handler",
-            BridgeRequestToBackend::from(self.clone(), w, self.done.clone()),
+            BridgeRequestToBackend::from(self.clone(), w, self.done.clone(), self.metric_id.id()),
         );
 
         //// 从response读取数据写入items
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            "response-handler",
-            BridgeResponseToLocal::from(r, self.clone(), parser, self.done.clone()),
+            BridgeResponseToLocal::from(
+                r,
+                self.clone(),
+                parser,
+                self.done.clone(),
+                self.metric_id.id(),
+            ),
         );
     }
-    fn start_bridge<F, N>(self: Arc<Self>, notify: N, name: &'static str, future: F)
+    fn start_bridge<F, N>(self: Arc<Self>, notify: N, future: F)
     where
         F: Future<Output = Result<()>> + Send + 'static,
         N: Notify + Send + 'static,
     {
         tokio::spawn(async move {
             let runnings = self.runnings.fetch_add(1, Ordering::Release) + 1;
-            log::debug!("{}-th task started, {} {}", runnings, name, self.addr);
-            match future.await {
-                Ok(_) => {
-                    log::info!("task: {} complete {}", name, self.addr);
-                }
-                Err(e) => {
-                    log::error!("task: {} complete. error:{:?} {}", name, e, self.addr);
-                }
+            log::debug!("{}-th task started, {} ", runnings, self.metric_id.name());
+            if let Err(e) = future.await {
+                log::error!("task complete. error:{:?} {}", e, self.metric_id.name());
             };
             self.done.store(true, Ordering::Release);
             let runnings = self.runnings.fetch_add(-1, Ordering::Release) - 1;
-            log::info!("{} task complet. runnings:{} ", name, runnings);
             self.waker.wake();
             if runnings == 0 {
-                log::info!("all threads attached completed. reset item status");
+                log::info!("all handler completed. {}", self.metric_id.name());
                 // sleep一段时间，减少因为reset导致status在cas时的状态冲突。
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 self.reset_item_status();
@@ -341,10 +339,6 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
             Poll::Ready(())
         }
     }
-    #[inline]
-    fn metric_id(&self) -> usize {
-        self.metric_id.id()
-    }
 }
 impl ResponseHandler for Arc<MpmcRingBufferStream> {
     // 获取已经被全部读取的字节的位置
@@ -356,9 +350,5 @@ impl ResponseHandler for Arc<MpmcRingBufferStream> {
     // 在从response读取的数据后调用。
     fn on_received(&self, seq: usize, first: protocol::Response) {
         self.place_response(seq, first);
-    }
-    #[inline]
-    fn metric_id(&self) -> usize {
-        self.metric_id.id()
     }
 }
