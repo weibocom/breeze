@@ -38,16 +38,21 @@ pub struct BridgeResponseToLocal<R, W, P> {
     spin_secs: usize,   // spin已经持续的时间，用来控制输出日志
     spin_last: Instant, // 上一次开始spin的时间
     tick: Interval,
+    name: String,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, done: Arc<AtomicBool>) -> Self {
+    pub fn from(r: R, w: W, parser: P, done: Arc<AtomicBool>) -> Self
+    where
+        W: ResponseHandler + Unpin,
+    {
         Self {
+            name: metrics::name(w.metric_id()),
             seq: 0,
             w: w,
             r: r,
             parser: parser,
-            data: ResizedRingBuffer::new(),
+            data: ResizedRingBuffer::with_capacity(64 * 1024),
             done: done,
 
             spins: 0,
@@ -78,9 +83,6 @@ where
                 if me.spins == 0 {
                     me.spin_last = Instant::now();
                 }
-                let read = offset;
-                let processed = me.data.processed();
-                let written = me.data.writtened();
                 me.spins += 1;
                 std::hint::spin_loop();
                 // 1024这个值并没有参考与借鉴。
@@ -88,22 +90,17 @@ where
                     ready!(me.tick.poll_tick(cx));
                     continue;
                 }
-                if me.spin_last.elapsed() >= Duration::from_millis(5) {
+                let last = me.spin_last.elapsed();
+                if last >= Duration::from_millis(5) {
                     if me.data.resize() {
-                        log::info!("resize: r:{} p:{} w:{}", read, processed, written);
+                        log::info!("{} resized {} {:?}", me.name, me.data, last);
                         continue;
                     }
                 }
                 // 每超过一秒钟输出一次日志
-                let secs = me.spin_last.elapsed().as_secs() as usize;
+                let secs = last.as_secs() as usize;
                 if secs > me.spin_secs {
-                    log::info!(
-                        "buffer full. read:{} processed:{} write:{}, seq:{}",
-                        offset,
-                        processed,
-                        written,
-                        me.seq
-                    );
+                    log::info!("{} buffer full {}, seq:{}", me.name, me.data, me.seq);
                     me.spin_secs = secs;
                 }
                 continue;
@@ -111,7 +108,6 @@ where
             me.spins = 0;
             let mut buf = ReadBuf::new(&mut buf);
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
-            // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
             log::debug!("{} bytes read.", n);
             if n == 0 {
@@ -133,7 +129,7 @@ where
                 }
             }
         }
-        log::info!("task complete:{}", metrics::get_name(me.w.metric_id()));
+        log::info!("task complete:{}", me.name);
         Poll::Ready(Ok(()))
     }
 }

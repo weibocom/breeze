@@ -65,6 +65,12 @@ pub fn register_names(names: Vec<&str>) -> usize {
     unsafe { register_name(String::from_utf8_unchecked(s)) }
 }
 
+#[inline(always)]
+pub fn name(id: usize) -> String {
+    get_name(id)
+}
+
+#[inline(always)]
 pub fn get_name(id: usize) -> String {
     ID_SEQ.read().unwrap().name(id).to_string()
 }
