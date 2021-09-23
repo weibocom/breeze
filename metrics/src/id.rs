@@ -1,6 +1,39 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+pub struct MetricId(usize);
+
+impl MetricId {
+    #[inline(always)]
+    pub fn id(&self) -> usize {
+        self.0
+    }
+    #[inline(always)]
+    pub fn name(&self) -> String {
+        name(self.0)
+    }
+    #[inline(always)]
+    pub fn with<F: Fn(&str) -> O, O>(&self, f: F) -> O {
+        f(ID_SEQ.read().unwrap().name(self.0))
+    }
+}
+
+pub trait MetricName {
+    fn name(&self) -> String;
+    fn with<F: Fn(&str) -> O, O>(&self, f: F) -> O;
+}
+
+impl MetricName for usize {
+    #[inline(always)]
+    fn name(&self) -> String {
+        name(*self)
+    }
+    #[inline(always)]
+    fn with<F: Fn(&str) -> O, O>(&self, f: F) -> O {
+        f(ID_SEQ.read().unwrap().name(*self))
+    }
+}
+
 struct IdSequence {
     seq: usize,
     names: Vec<String>,
