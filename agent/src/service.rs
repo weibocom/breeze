@@ -1,5 +1,6 @@
 use crossbeam_channel::Sender;
 use discovery::*;
+use metrics::MetricName;
 
 use net::listener::Listener;
 use std::io::{Error, ErrorKind, Result};
@@ -70,7 +71,7 @@ async fn _process_one(
             {
                 log::warn!(
                     "{} disconnected. {:?} {:?}",
-                    metrics::name(metric_id),
+                    metric_id.name(),
                     instant.elapsed(),
                     e
                 );
