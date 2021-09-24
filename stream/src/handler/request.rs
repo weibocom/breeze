@@ -66,7 +66,7 @@ pub struct BridgeRequestToBackend<H, W> {
     metric_id: usize,
 }
 
-const WRITE_BUFF: usize = 128 * 1024;
+const WRITE_BUFF: usize = 32 * 1024;
 impl<H, W> BridgeRequestToBackend<H, W> {
     pub fn from(handler: H, w: W, done: Arc<AtomicBool>, mid: usize) -> Self
     where
