@@ -84,9 +84,18 @@ where
                 debug_assert!(sharding_idx < me.statuses.len());
                 let status = unsafe { me.statuses.get_unchecked_mut(sharding_idx) };
                 if *status == Init {
-                    match Pin::new(unsafe { me.shards.get_unchecked_mut(sharding_idx) })
-                        .poll_write(cx, req)
-                    {
+                    let reader = unsafe { me.shards.get_unchecked_mut(sharding_idx) };
+                    // TODO 此处的noreply都是回写，用于一致性分析，临时加的日志，验证完毕后清理 fishermen
+                    if noreply {
+                        let key = me.parser.key(req);
+                        let addr = reader.addr();
+                        log::info!(
+                            "writeback key: {:?}, server: {:?}",
+                            String::from_utf8_lossy(key.data()),
+                            addr.addr()
+                        );
+                    }
+                    match Pin::new(reader).poll_write(cx, req) {
                         Poll::Pending => pending = true,
                         Poll::Ready(Ok(_)) => {
                             success = true;
