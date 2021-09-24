@@ -139,12 +139,9 @@ impl<P> BackendChecker<P> {
     where
         P: Protocol,
     {
-        if self.tries == 0 {
+        let expected = Duration::from_secs(1 << ((1 + self.tries).min(8)) as u64);
+        if self.tries == 0 || self.instant_conn.elapsed() >= expected {
             self.instant_conn = Instant::now();
-        }
-        let expected = Duration::from_secs(self.tries.min(31) as u64);
-        self.tries += 1;
-        if self.instant_conn.elapsed() >= expected {
             log::debug!("try to connect {} tries:{}", self.addr(), self.tries);
             match self.reconnected_once().await {
                 Ok(_) => {
@@ -152,10 +149,11 @@ impl<P> BackendChecker<P> {
                     self.connecting = false;
                 }
                 Err(e) => {
-                    log::warn!("failed to connect {} err:{}", self.addr(), e);
+                    log::warn!("{}-th connecting to {} err:{}", self.tries, self.addr(), e);
                 }
             };
         }
+        self.tries += 1;
         self.inited.store(true, Ordering::Release);
     }
     async fn reconnected_once(&self) -> std::result::Result<(), Box<dyn std::error::Error>>
