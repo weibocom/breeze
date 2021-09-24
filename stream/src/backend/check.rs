@@ -6,6 +6,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use tokio::net::TcpStream;
@@ -150,6 +151,7 @@ impl<P> BackendChecker<P> {
                 }
                 Err(e) => {
                     log::warn!("{}-th connecting to {} err:{}", self.tries, self.addr(), e);
+                    metrics::status("status", metrics::Status::Down, self.metric_id());
                 }
             };
         }
@@ -229,52 +231,3 @@ impl<P> std::ops::Deref for BackendChecker<P> {
         &self.inner
     }
 }
-
-//use std::future::Future;
-//use std::pin::Pin;
-use std::task::{Context, Poll};
-
-//use futures::ready;
-
-//impl<P> Future for BackendChecker<P>
-//where
-//    P: Unpin + Send + Sync + Protocol + 'static + Clone,
-//{
-//    type Output = ();
-//    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//        let me = &mut self;
-//        // 没有结束，就一直check
-//        while !me.finished.load(Ordering::Acquire) {
-//            if me.connecting {
-//                if me.connect() {
-//                    me.connecting = false;
-//                }
-//            }
-//            me.check_timeout();
-//            match me.rx.poll_recv(cx) {
-//                Poll::Ready(Some(_)) => {
-//                    me.connecting = true;
-//                    me.instant_timeout = Instant::now();
-//                }
-//                _ => {}
-//            }
-//            ready!(me.tick.poll_tick(cx));
-//        }
-//
-//        if !me.complete {
-//            log::info!(
-//                "task finished {}. stream closed immediately, and shutdown in 15seconds.",
-//                me.addr()
-//            );
-//            me.complete = true;
-//            me.try_close();
-//            me.close = Instant::now();
-//        }
-//        while me.close.elapsed() <= Duration::from_secs(15) {
-//            ready!(me.tick.poll_tick(cx));
-//        }
-//        log::info!("stream shutting down. {}", me.addr());
-//        me.shutdown_all();
-//        Poll::Ready(())
-//    }
-//}
