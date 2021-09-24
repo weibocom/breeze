@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Result};
+use std::vec;
 
 use ds::{RingSlice, Slice};
 use sharding::Sharding;
@@ -8,6 +9,11 @@ use crate::{MetaType, Operation, Protocol, Request, Response};
 
 mod meta;
 use meta::*;
+
+mod packet;
+use packet::*;
+
+use ds::Buffer;
 
 #[derive(Clone)]
 pub struct MemcacheBinary;
@@ -38,7 +44,7 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
-        debug_assert_eq!(req.operation(), Operation::Gets);
+        // debug_assert_eq!(req.operation(), Operation::Gets);
         unsafe {
             let klen = req.keys().len();
             let mut keys = Vec::with_capacity(klen);
@@ -94,6 +100,84 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
         parse_response(response)
+    }
+
+    // 一个response中可能包含1个或多个key-response响应，转换时需要注意，返回每个cmd的长度
+    // TODO: 对于get请求，需要根据请求获取key；对于gets请求，当前只支持请求response中带key的请求模式；
+    fn convert_to_writeback_request(
+        &self,
+        request: &Request,
+        response: &Response,
+        expire_seconds: u32,
+    ) -> Result<Vec<Request>> {
+        // 如果response中没有keys，说明不是get/gets，或者没有查到数据
+        if response.keys().len() == 0 {
+            log::info!("ignore for response has no results");
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "not keys found in response",
+            ));
+        }
+
+        let mut requests_wb = Vec::with_capacity(response.keys().len());
+        // 轮询response的cmds，构建回写request
+        for rsp_cmd in response.keys() {
+            // 只为status为ok的resp构建回种req
+            if !rsp_cmd.status_ok() {
+                continue;
+            }
+
+            // 先用rsp的长度预分配，避免频繁分配内存
+            let mut req_cmd: Vec<u8> = Vec::with_capacity(rsp_cmd.len());
+
+            /*============= 构建request header =============*/
+            req_cmd.push(Magic::Request as u8); // magic: [0]
+            req_cmd.push(Opcode::SetQ as u8); // opcode: [1]
+            let mut key_len = rsp_cmd.key_len();
+            let use_request_key = key_len == 0 && request.keys().len() == 1;
+            if use_request_key {
+                // 这里后面需要通过opaque来匹配key，目前暂时只支持getkq+getk/noop 方式
+                debug_assert!(request.keys().len() == 1);
+                debug_assert!(rsp_cmd.opaque() == request.keys()[0].opaque());
+                key_len = request.keys()[0].key_len();
+            }
+            req_cmd.write_u16(key_len); // key len: [2,3]
+            let extra_len = rsp_cmd.extra_len() + 4 as u8; // get response中的extra 应该是4字节，作为set的 flag，另外4字节是set的expire
+            debug_assert!(extra_len == 8);
+            req_cmd.push(extra_len); // extra len: [4]
+            req_cmd.push(0 as u8); // data type，全部为0: [5]
+            req_cmd.write_u16(0 as u16); // vbucket id, 回写全部为0,pos [6,7]
+            let total_body_len = extra_len as u32 + key_len as u32 + rsp_cmd.value_len();
+            req_cmd.write_u32(total_body_len); // total body len [8-11]
+            req_cmd.write_u32(0 as u32); // opaque: [12, 15]
+            req_cmd.write_u64(0 as u64); // cas: [16, 23]
+
+            /*============= 构建request body =============*/
+            req_cmd.write(rsp_cmd.extra_or_flag().data()); // extra之flag: [24, 27]
+            req_cmd.write_u32(expire_seconds); // extra之expiration：[28,31]
+            if use_request_key {
+                req_cmd.write(request.keys()[0].key().data());
+                log::info!(
+                    "will write back for key: {:?}",
+                    String::from_utf8_lossy(request.keys()[0].key().data())
+                );
+            } else {
+                req_cmd.write(rsp_cmd.key().data());
+                unsafe {
+                    log::info!(
+                        "will write back for key: {:?}",
+                        String::from_utf8_unchecked(rsp_cmd.key().data())
+                    );
+                }
+            }
+            req_cmd.write(rsp_cmd.value().data());
+            let cmds = vec![Slice::from(&req_cmd[0..req_cmd.len()])];
+            let req =
+                Request::from_data(req_cmd, cmds, request.id().clone(), true, Operation::Store);
+
+            requests_wb.push(req);
+        }
+        return Ok(requests_wb);
     }
 
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>

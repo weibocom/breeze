@@ -2,7 +2,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use discovery::TopologyRead;
+use discovery::{Inited, TopologyRead};
 use protocol::Protocol;
 
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
@@ -20,6 +20,15 @@ macro_rules! define_endpoint {
                 match &endpoint[..]{
                     $($ep => Ok(Self::$item(parser.into())),)+
                     _ => Err(Error::new(ErrorKind::InvalidData, format!("'{}' is not a valid endpoint", endpoint))),
+                }
+           }
+       }
+       impl<P> Inited for Topology<P> {
+           fn inited(&self) -> bool {
+                match self {
+                    $(
+                        Self::$item(p) => p.inited(),
+                    )+
                 }
            }
        }
@@ -47,7 +56,7 @@ $(
        }
 
        impl<P> ds::Update<(String, String)> for Topology<P> where P:Sync+Send+Protocol{
-           fn update(&mut self, o: &mut (String, String)) {
+           fn update(&mut self, o: &(String, String)) {
                match self {
                     $(Self::$item(s) => discovery::TopologyWrite::update(s, &o.0, &o.1),)+
                }

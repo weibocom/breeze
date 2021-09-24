@@ -26,14 +26,12 @@ where
     C: AsyncRead + AsyncWrite + Unpin,
     P: Protocol + Unpin,
 {
-    log::debug!("a new connection received.");
-    metrics::qps("cps", 1, metric_id);
     CopyBidirectional {
         agent: agent,
         client: client,
         parser: parser,
-        receiver: Receiver::new(),
-        sender: Sender::new(),
+        receiver: Receiver::new(metric_id),
+        sender: Sender::new(metric_id),
         sent: false,
         rid: RequestId::from(session_id, 0, metric_id),
         metric: IoMetric::from(metric_id),
@@ -106,7 +104,7 @@ where
             rid.incr();
             // 开始记录metric
             let duration = metric.duration();
-            const SLOW: Duration = Duration::from_millis(32);
+            const SLOW: Duration = Duration::from_millis(128);
             if duration >= SLOW {
                 log::info!("slow request: {}", metric);
             }

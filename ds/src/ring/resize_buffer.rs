@@ -25,11 +25,11 @@ impl DerefMut for ResizedRingBuffer {
 }
 
 impl ResizedRingBuffer {
-    pub fn new() -> Self {
+    pub fn with_capacity(cap: usize) -> Self {
         Self {
             old: Vec::new(),
             max_processed: std::usize::MAX,
-            inner: RingBuffer::with_capacity(64 * 1024),
+            inner: RingBuffer::with_capacity(cap),
         }
     }
     pub fn resize(&mut self) -> bool {
@@ -39,7 +39,7 @@ impl ResizedRingBuffer {
             log::debug!("overflow. {}", cap);
             return false;
         }
-        log::info!("ringbuffer: resize buffer to {}", cap);
+        log::debug!("resize buffer from {} to {} ", cap, self.cap());
         let new = self.inner.resize(cap);
         let old = std::mem::replace(&mut self.inner, new);
         self.max_processed = old.processed();
@@ -50,19 +50,15 @@ impl ResizedRingBuffer {
     pub fn reset_read(&mut self, read: usize) {
         self.inner.reset_read(read);
         if read >= self.max_processed {
-            for buff in self.old.iter() {
-                log::info!(
-                    "buffer released. old: ({},{},{}). new: ({},{},{})",
-                    buff.read(),
-                    buff.processed(),
-                    buff.writtened(),
-                    read,
-                    self.inner.processed(),
-                    self.writtened(),
-                );
-            }
             self.old.clear();
             self.max_processed = std::usize::MAX;
         }
+    }
+}
+
+use std::fmt::{self, Display, Formatter};
+impl Display for ResizedRingBuffer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "rrb:(inner:{}, old:{:?})", self.inner, self.old)
     }
 }

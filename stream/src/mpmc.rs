@@ -1,5 +1,9 @@
 use std::future::Future;
-use std::io::{Error, ErrorKind, Result};
+use std::io::{
+    Error,
+    ErrorKind::{self, *},
+    Result,
+};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -7,9 +11,10 @@ use std::task::{Context, Poll};
 use super::status::*;
 use crate::{
     AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Notify, Request, RequestHandler,
-    ResponseData, ResponseHandler,
+    ResponseData, ResponseHandler, Snapshot,
 };
 use ds::{BitMap, SeqOffset};
+use metrics::MetricId;
 use protocol::Protocol;
 
 use cache_line_size::CacheAligned;
@@ -55,7 +60,7 @@ pub struct MpmcRingBufferStream {
 
     // 持有的远端资源地址（ip:port）
     addr: String,
-    metric_id: usize,
+    metric_id: MetricId,
 }
 
 impl MpmcRingBufferStream {
@@ -70,13 +75,7 @@ impl MpmcRingBufferStream {
             .map(|_| CacheAligned(AtomicUsize::new(0)))
             .collect();
 
-        let (tx, rx) = bounded(2048);
-
-        let metric_id = metrics::register_names(vec![
-            rsrc.name(),
-            &metrics::encode_addr(biz),
-            &metrics::encode_addr(addr),
-        ]);
+        let (tx, rx) = bounded(512);
 
         Self {
             items: items,
@@ -94,7 +93,7 @@ impl MpmcRingBufferStream {
             noreply_rx: rx,
 
             addr: addr.to_string(),
-            metric_id: metric_id,
+            metric_id: metrics::register!(rsrc.name(), biz, addr),
         }
     }
     // 如果complete为true，则快速失败
@@ -115,6 +114,7 @@ impl MpmcRingBufferStream {
         self.resp_num.0.fetch_add(1, Ordering::Relaxed);
         Poll::Ready(Ok(data))
     }
+    #[inline]
     pub fn response_done(&self, cid: usize, response: &ResponseData) {
         let item = self.get_item(cid);
         item.response_done(response.seq());
@@ -123,6 +123,7 @@ impl MpmcRingBufferStream {
         log::debug!("done. cid:{} response: {}", cid, response);
     }
     // 释放cid的资源
+    #[inline]
     pub fn shutdown(&self, cid: usize) {
         log::debug!("mpmc: poll shutdown. cid:{}", cid);
         self.bits.unmark(cid);
@@ -130,21 +131,16 @@ impl MpmcRingBufferStream {
     }
     #[inline]
     pub fn poll_write(&self, cid: usize, _cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
+        // 连接关闭后，只停写，现有请求可以继续处理。
+        if self.closed.load(Ordering::Relaxed) {
+            return Poll::Ready(Err(Error::new(ErrorKind::NotFound, "mpmc closed")));
+        }
         self.check(cid)?;
-        log::debug!(
-            "write cid:{} len:{} id:{}, noreply:{}",
-            cid,
-            buf.len(),
-            buf.id(),
-            buf.noreply(),
-        );
+        log::debug!("write cid:{} req:{}", cid, buf);
         if buf.noreply() {
-            self.noreply_tx.try_send(buf.clone()).map_err(|e| {
-                Error::new(
-                    ErrorKind::Interrupted,
-                    format!("noreply data chan full:{:?}", e.to_string()),
-                )
-            })?;
+            self.noreply_tx
+                .try_send(buf.clone())
+                .map_err(|e| Error::new(Interrupted, format!("noreply data chan full:{:?}", e)))?;
         } else {
             let item = self.get_item(cid);
             item.place_request(buf);
@@ -153,7 +149,6 @@ impl MpmcRingBufferStream {
         self.waker.wake();
         self.req_num.0.fetch_add(1, Ordering::Relaxed);
         log::debug!("write complete cid:{} len:{} ", cid, buf.len());
-        // noreply请求要等request sent之后才能返回。
         Poll::Ready(Ok(()))
     }
     #[inline(always)]
@@ -225,49 +220,43 @@ impl MpmcRingBufferStream {
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            "bridge-send-req",
-            BridgeRequestToBackend::from(self.clone(), w, self.done.clone()),
+            BridgeRequestToBackend::from(self.clone(), w, self.done.clone(), self.metric_id.id()),
         );
 
         //// 从response读取数据写入items
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            "bridge-recv-response",
-            BridgeResponseToLocal::from(r, self.clone(), parser, self.done.clone()),
+            BridgeResponseToLocal::from(
+                r,
+                self.clone(),
+                parser,
+                self.done.clone(),
+                self.metric_id.id(),
+            ),
         );
     }
-    fn start_bridge<F, N>(self: Arc<Self>, notify: N, _name: &'static str, future: F)
+    fn start_bridge<F, N>(self: Arc<Self>, notify: N, future: F)
     where
         F: Future<Output = Result<()>> + Send + 'static,
         N: Notify + Send + 'static,
     {
         tokio::spawn(async move {
             let runnings = self.runnings.fetch_add(1, Ordering::Release) + 1;
-            log::info!("{} bridge task started, runnings = {}", _name, runnings);
-            match future.await {
-                Ok(_) => {
-                    log::info!("mpmc-task: {} complete", _name);
-                }
-                Err(_e) => {
-                    log::error!("mpmc-task: {} complete with error:{:?}", _name, _e);
-                }
+            log::debug!("{}-th task started, {} ", runnings, self.metric_id.name());
+            if let Err(e) = future.await {
+                log::error!("task complete. error:{:?} {}", e, self.metric_id.name());
             };
             self.done.store(true, Ordering::Release);
             let runnings = self.runnings.fetch_add(-1, Ordering::Release) - 1;
-            log::info!(
-                "mpmc-task: {} task completed, runnings = {} done:{}",
-                _name,
-                runnings,
-                self.done.load(Ordering::Acquire)
-            );
             self.waker.wake();
             if runnings == 0 {
-                log::info!("mpmc-task: all threads attached completed. reset item status");
+                log::info!("all handler completed. {}", self.metric_id.name());
+                // sleep一段时间，减少因为reset导致status在cas时的状态冲突。
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 self.reset_item_status();
                 if !self.closed.load(Ordering::Acquire) {
                     notify.notify();
-                    log::info!("mpmc-task: stream inited, try to connect");
                 }
             }
         });
@@ -278,12 +267,15 @@ impl MpmcRingBufferStream {
             item.0.reset();
         }
     }
+    // 在资源被下线后，标识状态。当前请求继续，在poll_write时，判断closed状态，不再接收新后续请求。
+    pub(crate) fn try_close(&self) {
+        self.closed.store(true, Ordering::Relaxed);
+        log::info!("{} finished. stream will be closed later", self.addr);
+    }
     // 通常是某个资源被注释时调用。
-    fn close(&self) {
-        self.closed.store(true, Ordering::Release);
-        self.done.store(true, Ordering::Release);
-        self.waker.wake();
-        log::warn!("close: closing called");
+    pub(crate) fn shutdown_all(&self) {
+        self.closed.store(true, Ordering::Relaxed);
+        self.mark_done();
     }
 
     pub(crate) fn load_ping_ping(&self) -> (usize, usize) {
@@ -305,20 +297,19 @@ impl MpmcRingBufferStream {
     }
     #[inline(always)]
     pub(crate) fn metric_id(&self) -> usize {
-        self.metric_id
+        self.metric_id.id()
     }
 }
 
 impl Drop for MpmcRingBufferStream {
     fn drop(&mut self) {
-        self.close();
+        log::info!("{} closed.", self.addr);
     }
 }
 
-use crate::req_handler::Snapshot;
 impl RequestHandler for Arc<MpmcRingBufferStream> {
     #[inline(always)]
-    fn take(&self, cid: usize, seq: usize) -> Request {
+    fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)> {
         self.bind_seq(cid, seq);
         self.get_item(cid).take_request(seq)
     }
@@ -359,10 +350,5 @@ impl ResponseHandler for Arc<MpmcRingBufferStream> {
     // 在从response读取的数据后调用。
     fn on_received(&self, seq: usize, first: protocol::Response) {
         self.place_response(seq, first);
-    }
-    fn wake(&self) {
-        for item in self.items.iter() {
-            item.0.try_wake();
-        }
     }
 }

@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use ds::ResizedRingBuffer;
-
+use metrics::MetricName;
 use protocol::Protocol;
 
 use tokio::io::{AsyncRead, ReadBuf};
@@ -19,7 +19,6 @@ pub trait ResponseHandler {
     fn load_offset(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
     fn on_received(&self, seq: usize, response: protocol::Response);
-    fn wake(&self);
 }
 
 unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
@@ -38,16 +37,23 @@ pub struct BridgeResponseToLocal<R, W, P> {
     spin_secs: usize,   // spin已经持续的时间，用来控制输出日志
     spin_last: Instant, // 上一次开始spin的时间
     tick: Interval,
+    metric_id: usize,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, done: Arc<AtomicBool>) -> Self {
+    pub fn from(r: R, w: W, parser: P, done: Arc<AtomicBool>, mid: usize) -> Self
+    where
+        W: ResponseHandler + Unpin,
+    {
+        let cap = 64 * 1024;
+        metrics::count("mem_buff_resp", cap, mid);
         Self {
+            metric_id: mid,
             seq: 0,
             w: w,
             r: r,
             parser: parser,
-            data: ResizedRingBuffer::new(),
+            data: ResizedRingBuffer::with_capacity(cap as usize),
             done: done,
 
             spins: 0,
@@ -67,7 +73,6 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        log::debug!("resp-handler: task polling.");
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
         while !me.done.load(Ordering::Acquire) {
@@ -79,9 +84,6 @@ where
                 if me.spins == 0 {
                     me.spin_last = Instant::now();
                 }
-                let read = offset;
-                let processed = me.data.processed();
-                let written = me.data.writtened();
                 me.spins += 1;
                 std::hint::spin_loop();
                 // 1024这个值并没有参考与借鉴。
@@ -89,27 +91,18 @@ where
                     ready!(me.tick.poll_tick(cx));
                     continue;
                 }
-                if me.spin_last.elapsed() >= Duration::from_millis(5) {
+                let last = me.spin_last.elapsed();
+                if last >= Duration::from_millis(5) {
                     if me.data.resize() {
-                        log::info!("resize: r:{} p:{} w:{}", read, processed, written);
+                        metrics::count("mem_buff_resp", (me.data.cap() / 2) as isize, me.metric_id);
+                        log::info!("{} resized {} {:?}", me.metric_id.name(), me.data, last);
                         continue;
                     }
                 }
-                // TODO: 目前在stats中，存在部分场景下，状态是response已返回，但没有接收的情况。
-                // 临时在这里面增加一个定期扫描并且进行wakeup的临时解决方案。
-                //if me.spin_last.elapsed() >= Duration::from_millis(50) {
-                //    me.w.wake();
-                //}
                 // 每超过一秒钟输出一次日志
-                let secs = me.spin_last.elapsed().as_secs() as usize;
+                let secs = last.as_secs() as usize;
                 if secs > me.spin_secs {
-                    log::info!(
-                        "buffer full. read:{} processed:{} write:{}, seq:{}",
-                        offset,
-                        processed,
-                        written,
-                        me.seq
-                    );
+                    log::info!("{} full {} -{}", me.metric_id.name(), me.data, me.seq);
                     me.spin_secs = secs;
                 }
                 continue;
@@ -117,7 +110,6 @@ where
             me.spins = 0;
             let mut buf = ReadBuf::new(&mut buf);
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
-            // 一共读取了n个字节
             let n = buf.capacity() - buf.remaining();
             log::debug!("{} bytes read.", n);
             if n == 0 {
@@ -139,7 +131,13 @@ where
                 }
             }
         }
-        log::info!("task complete");
+        log::info!("task complete:{}", me.metric_id.name());
         Poll::Ready(Ok(()))
+    }
+}
+impl<R, W, P> Drop for BridgeResponseToLocal<R, W, P> {
+    #[inline]
+    fn drop(&mut self) {
+        metrics::count("mem_buff_resp", self.data.cap() as isize, self.metric_id);
     }
 }
