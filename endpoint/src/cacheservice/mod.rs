@@ -12,9 +12,9 @@ use stream::{
 };
 
 type Backend = stream::BackendStream;
-type GetOperation<P> = AsyncLayerGet<AsyncSharding<Backend, P>, P>;
+type GetOperation<P> = AsyncLayerGet<AsyncSharding<Backend, P>, AsyncSharding<Backend, P>, P>;
 type MultiGetLayer<P> = AsyncMultiGetSharding<Backend, P>;
-type MultiGetOperation<P> = AsyncLayerGet<MultiGetLayer<P>, P>;
+type MultiGetOperation<P> = AsyncLayerGet<MultiGetLayer<P>, AsyncSharding<Backend, P>, P>;
 type Master<P> = AsyncSharding<Backend, P>;
 type Follower<P> = AsyncSharding<Backend, P>;
 type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>, P>;
@@ -51,7 +51,7 @@ impl<P> CacheService<P> {
         let dist = topo.distribution();
         let (streams, write_back) = topo.mget();
         let mget_layers = build_mget(streams, p.clone(), hash, dist);
-        let mget_layers_writeback = build_mget(write_back, p.clone(), hash, dist);
+        let mget_layers_writeback = build_layers(write_back, hash, dist, p.clone());
         let mget = Gets(AsyncLayerGet::from_layers(
             mget_layers,
             mget_layers_writeback,
