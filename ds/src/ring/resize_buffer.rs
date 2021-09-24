@@ -32,14 +32,13 @@ impl ResizedRingBuffer {
             inner: RingBuffer::with_capacity(cap),
         }
     }
+    #[inline]
     pub fn resize(&mut self) -> bool {
         let cap = self.inner.cap() * 2;
         // 8MB对于在线业务的一次请求，是一个足够大的值。
         if cap >= 8 * 1024 * 1024 {
-            log::debug!("overflow. {}", cap);
             return false;
         }
-        log::debug!("resize buffer from {} to {} ", cap, self.cap());
         let new = self.inner.resize(cap);
         let old = std::mem::replace(&mut self.inner, new);
         self.max_processed = old.processed();
@@ -53,6 +52,11 @@ impl ResizedRingBuffer {
             self.old.clear();
             self.max_processed = std::usize::MAX;
         }
+    }
+    // 所有数据都已经处理完成，并且数据已经填充完成
+    #[inline]
+    pub fn full(&self) -> bool {
+        self.read() == self.processed() && self.writtened() - self.read() == self.cap()
     }
 }
 
