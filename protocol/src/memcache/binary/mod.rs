@@ -157,18 +157,8 @@ impl Protocol for MemcacheBinary {
             req_cmd.write_u32(expire_seconds); // extra之expiration：[28,31]
             if use_request_key {
                 req_cmd.write(request.keys()[0].key().data());
-                log::info!(
-                    "will write back for key: {:?}",
-                    String::from_utf8_lossy(request.keys()[0].key().data())
-                );
             } else {
                 req_cmd.write(rsp_cmd.key().data());
-                unsafe {
-                    log::info!(
-                        "will write back for key: {:?}",
-                        String::from_utf8_unchecked(rsp_cmd.key().data())
-                    );
-                }
             }
             req_cmd.write(rsp_cmd.value().data());
             let cmds = vec![Slice::from(&req_cmd[0..req_cmd.len()])];
