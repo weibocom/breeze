@@ -4,16 +4,15 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use ds::ResizedRingBuffer;
 use metrics::MetricName;
 use protocol::Protocol;
 
+use futures::ready;
 use tokio::io::{AsyncRead, ReadBuf};
 use tokio::time::{interval, Interval};
-
-use futures::ready;
 
 pub trait ResponseHandler {
     fn load_offset(&self) -> usize;
@@ -32,12 +31,9 @@ pub struct BridgeResponseToLocal<R, W, P> {
     parser: P,
     data: ResizedRingBuffer,
 
-    // 用来做spin控制，避免长时间spin
-    spins: usize,
-    spin_secs: usize,   // spin已经持续的时间，用来控制输出日志
-    spin_last: Instant, // 上一次开始spin的时间
-    tick: Interval,
     metric_id: usize,
+    tick: Interval,
+    ticks: usize,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
@@ -45,10 +41,9 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
     where
         W: ResponseHandler + Unpin,
     {
-        let cap = 8 * 1024;
+        let cap = 4 * 1024;
         metrics::count("mem_buff_resp", cap, mid);
         Self {
-            metric_id: mid,
             seq: 0,
             w: w,
             r: r,
@@ -56,10 +51,9 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
             data: ResizedRingBuffer::with_capacity(cap as usize),
             done: done,
 
-            spins: 0,
-            spin_last: Instant::now(),
-            tick: interval(Duration::from_micros(50)),
-            spin_secs: 0,
+            ticks: 0,
+            tick: interval(Duration::from_micros(500)),
+            metric_id: mid,
         }
     }
 }
@@ -79,39 +73,25 @@ where
             let offset = me.w.load_offset();
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
-            log::debug!("{} bytes available oft:{}", buf.len(), offset);
             if buf.len() == 0 {
-                if me.spins == 0 {
-                    me.spin_last = Instant::now();
-                }
-                me.spins += 1;
-                std::hint::spin_loop();
-                // 127这个值并没有参考与借鉴。
-                if me.spins & 127 == 0 {
-                    ready!(me.tick.poll_tick(cx));
-                    continue;
-                }
-                let last = me.spin_last.elapsed();
-                if last >= Duration::from_millis(5) {
+                // me.data.full: 说明单个请求的size > cap。需要立即resize
+                // ticks >= 20: 说明可能某个请求处理比较慢，read未及时释放
+                // 这个不会是死循环，check线程会进行超时监控。
+                if me.data.full() || me.ticks >= 20 {
                     if me.data.resize() {
                         metrics::count("mem_buff_resp", (me.data.cap() / 2) as isize, me.metric_id);
-                        log::info!("{} resized {} {:?}", me.metric_id.name(), me.data, last);
+                        log::info!("{} resized {}", me.metric_id.name(), me.data);
                         continue;
                     }
                 }
-                // 每超过一秒钟输出一次日志
-                let secs = last.as_secs() as usize;
-                if secs > me.spin_secs {
-                    log::info!("{} full {} -{}", me.metric_id.name(), me.data, me.seq);
-                    me.spin_secs = secs;
-                }
+                ready!(me.tick.poll_tick(cx));
+                me.ticks += 1;
                 continue;
             }
-            me.spins = 0;
+            me.ticks = 0;
             let mut buf = ReadBuf::new(&mut buf);
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             let n = buf.capacity() - buf.remaining();
-            log::debug!("{} bytes read.", n);
             if n == 0 {
                 break; // EOF
             }
