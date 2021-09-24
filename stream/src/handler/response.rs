@@ -45,7 +45,7 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
     where
         W: ResponseHandler + Unpin,
     {
-        let cap = 64 * 1024;
+        let cap = 8 * 1024;
         metrics::count("mem_buff_resp", cap, mid);
         Self {
             metric_id: mid,
