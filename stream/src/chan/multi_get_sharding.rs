@@ -38,14 +38,6 @@ where
             err: None,
         }
     }
-
-    pub fn reset(&mut self) {
-        // 长度一般都非常小
-        for status in self.statuses.iter_mut() {
-            *status = Init;
-        }
-        self.shard_reqs.take();
-    }
 }
 
 impl<S, P> AsyncWriteAll for AsyncMultiGetSharding<S, P>
@@ -65,15 +57,11 @@ where
 
         let mut success = false;
         let mut pending = false;
-        let mut noreply = false;
         let mut reqs_len = 0;
         if let Some(shard_reqs) = me.shard_reqs.as_mut() {
             reqs_len = shard_reqs.len();
             for (i, req) in shard_reqs.iter() {
                 let sharding_idx = *i;
-                if req.noreply() {
-                    noreply = req.noreply();
-                }
                 // 暂时保留和get_by_layer的on_response 一起，方便排查问题
                 log::debug!(
                     "write req: {:?} to servers: {:?}",
@@ -99,10 +87,6 @@ where
                     }
                 }
             }
-        }
-        // 如果是noreply的回种请求，发送完毕，请求则完毕，需要进行重制
-        if noreply {
-            me.reset();
         }
 
         if pending {
@@ -157,11 +141,11 @@ where
             Poll::Pending
         } else {
             // 长度一般都非常小
-            // for status in me.statuses.iter_mut() {
-            //     *status = Init;
-            // }
-            // me.shard_reqs.take();
-            me.reset();
+            for status in me.statuses.iter_mut() {
+                *status = Init;
+            }
+            me.shard_reqs.take();
+
             me.response
                 .take()
                 .map(|item| Poll::Ready(Ok(item)))
