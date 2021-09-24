@@ -45,45 +45,15 @@ impl Namespace {
 }
 
 impl Namespace {
-    pub fn into_split(
-        self,
-    ) -> (
-        Vec<String>,
-        Vec<Vec<String>>,
-        Vec<Vec<Vec<String>>>,
-        String,
-        String,
-    ) {
-        let master = self.master.clone();
-        // followers包含： master-l1, slave, slave-l1
-        let mut followers: Vec<Vec<String>> = self.master_l1.clone();
-        if self.slave.len() > 0 {
-            followers.push(self.slave.clone());
+    // 可写的实例。第一组一定是master. 包含f： master, master-l1, slave, slave-l1
+    pub fn writers(&self) -> Vec<Vec<String>> {
+        let mut w = Vec::with_capacity(8);
+        if self.master.len() > 0 {
+            w.push(self.master.clone());
+            w.extend(self.master_l1.clone());
+            w.push(self.slave.clone());
+            w.extend(self.slave_l1.clone());
         }
-        followers.extend(self.slave_l1.clone());
-
-        // 保障严格的顺序:L1-master-slave; 同时将master也作为l1的一部分参与读取，使用者注意排重
-        let mut readers = Vec::new();
-        // readers: master-l1
-        if self.master_l1.len() > 0 {
-            let mut l1 = self.master_l1.clone();
-            l1.push(self.master.clone());
-            readers.push(l1);
-        }
-        // readers: master
-        readers.push(vec![self.master.clone()]);
-        // readers: slave
-        if self.slave.len() > 0 {
-            readers.push(vec![self.slave.clone()]);
-        }
-
-        log::debug!(
-            "config parsed rs: master:{:?}, followers:{:?}, readers:{:?}",
-            master,
-            followers,
-            readers
-        );
-
-        (master, followers, readers, self.hash, self.distribution)
+        w
     }
 }

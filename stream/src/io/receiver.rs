@@ -18,17 +18,20 @@ pub(super) struct Receiver {
     cap: usize,
     buff: Vec<u8>,
     req: Option<Request>,
+    metric_id: usize,
 }
 
 impl Receiver {
-    pub fn new() -> Self {
+    pub fn new(metric_id: usize) -> Self {
         let init_cap = 4 * 1024;
+        metrics::count("mem_buff_rx", init_cap as isize, metric_id);
         Self {
             buff: vec![0; init_cap],
             w: 0,
             cap: init_cap,
             r: 0,
             req: None,
+            metric_id: metric_id,
         }
     }
     #[inline(always)]
@@ -53,7 +56,7 @@ impl Receiver {
         P: Protocol + Unpin,
         W: AsyncWriteAll + ?Sized,
     {
-        log::debug!("r:{} w:{} ", self.r, self.w);
+        log::debug!("r:{} w:{} rid:{}", self.r, self.w, rid);
         while self.req.is_none() {
             if self.w > self.r {
                 self.req = parser.parse_request(Slice::from(&self.buff[self.r..self.w]))?;
@@ -83,14 +86,7 @@ impl Receiver {
         if let Some(ref mut req) = self.req {
             req.set_request_id(*rid);
             metric.req_done(req.operation(), req.len(), req.keys().len());
-            log::debug!(
-                "parsed: {}=>{} {}, keys:{} op:{}",
-                self.r,
-                req.len(),
-                rid,
-                req.keys().len(),
-                req.operation().name()
-            );
+            log::debug!("parsed: {} => {}", self.r, req);
             ready!(writer.as_mut().poll_write(cx, &req))?;
             self.r += req.len();
         }
@@ -161,10 +157,21 @@ impl Receiver {
             use std::ptr::copy_nonoverlapping as copy;
             unsafe { copy(self.buff.as_ptr(), new_buff.as_mut_ptr(), self.buff.len()) };
             // 如果还存在处理中的请求，buff clear掉之后可能指向一段已释放的内存。
+            // 当前是pingpong请求，因为不存在处理中的请求
+            // TODO
+            let delta = (cap - self.buff.len()) as isize;
+            metrics::count("mem_buff_rx", delta, self.metric_id);
             self.buff.clear();
             self.buff = new_buff;
             self.cap = cap;
             Ok(())
         }
+    }
+}
+
+impl Drop for Receiver {
+    #[inline(always)]
+    fn drop(&mut self) {
+        metrics::count("mem_buff_rx", self.buff.len() as isize * -1, self.metric_id);
     }
 }

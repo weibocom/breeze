@@ -1,22 +1,41 @@
 use std::sync::Arc;
 
 pub struct Cid {
+    faked: bool,
     id: usize,
-    ids: Arc<Ids>,
+    ids: Option<Arc<Ids>>,
 }
 
 impl Cid {
+    pub fn fake() -> Self {
+        Self {
+            faked: true,
+            id: std::usize::MAX,
+            ids: None,
+        }
+    }
     pub fn new(id: usize, ids: Arc<Ids>) -> Self {
-        Cid { id, ids }
+        Cid {
+            faked: false,
+            id: id,
+            ids: Some(ids),
+        }
     }
     #[inline(always)]
     pub fn id(&self) -> usize {
         self.id
     }
+    #[inline(always)]
+    pub fn faked(&self) -> bool {
+        self.faked
+    }
 }
 impl Drop for Cid {
+    #[inline(always)]
     fn drop(&mut self) {
-        self.ids.release(self.id);
+        if let Some(ids) = &self.ids {
+            ids.release(self.id);
+        }
     }
 }
 
@@ -46,6 +65,7 @@ impl Ids {
         None
     }
 
+    #[inline(always)]
     pub fn release(&self, id: usize) {
         unsafe {
             match self.bits.get_unchecked(id).compare_exchange(

@@ -62,10 +62,16 @@ pub(super) trait Binary<T> {
     fn noop(&self) -> bool;
     fn request(&self) -> bool;
     fn response(&self) -> bool;
-    fn body_len(&self) -> u32;
+    fn extra_len(&self) -> u8;
+    fn extra_or_flag(&self) -> T;
+    fn total_body_len(&self) -> u32;
+    fn opaque(&self) -> u32;
     fn status_ok(&self) -> bool;
     fn key(&self) -> T;
     fn key_len(&self) -> u16;
+    // 仅仅用于获取value长度，注意区分total body len
+    fn value_len(&self) -> u32;
+    fn value(&self) -> T;
     // id: 主要用来在多层请求时，用来对比request与response的key
     // 如果请求包含key，则直接获取key。
     // 如果不包含key，当前请求是get_q请求，则使用协议中的Opaque，作为key。
@@ -107,14 +113,30 @@ macro_rules! define_binary {
                 self.at(PacketPos::Magic as usize) == RESPONSE_MAGIC
             }
             #[inline(always)]
-            fn body_len(&self) -> u32 {
+            fn extra_len(&self) -> u8 {
+                debug_assert!(self.len() >= HEADER_LEN);
+                self.at(PacketPos::ExtrasLength as usize)
+            }
+            fn extra_or_flag(&self) -> Self {
+                // 读取flag时，需要有完整的packet
+                debug_assert!(self.len() >= HEADER_LEN);
+                let extra_len = self.extra_len() as usize;
+                self.sub_slice(HEADER_LEN, extra_len)
+            }
+            #[inline(always)]
+            fn total_body_len(&self) -> u32 {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.read_u32(PacketPos::TotalBodyLength as usize)
             }
             #[inline(always)]
+            fn opaque(&self) -> u32 {
+                debug_assert!(self.len() >= HEADER_LEN);
+                self.read_u32(PacketPos::Opaque as usize)
+            }
+            #[inline(always)]
             fn packet_len(&self) -> usize {
                 debug_assert!(self.len() >= HEADER_LEN);
-                self.body_len() as usize + HEADER_LEN
+                self.total_body_len() as usize + HEADER_LEN
             }
             #[inline(always)]
             fn status_ok(&self) -> bool {
@@ -130,11 +152,28 @@ macro_rules! define_binary {
             #[inline(always)]
             fn key(&self) -> Self {
                 debug_assert!(self.len() >= HEADER_LEN);
-                let extra_len = self.at(PacketPos::ExtrasLength as usize) as usize;
+                let extra_len = self.extra_len() as usize;
                 let offset = extra_len + HEADER_LEN;
                 let key_len = self.key_len() as usize;
                 debug_assert!(key_len + offset <= self.len());
                 self.sub_slice(offset, key_len)
+            }
+            // 仅仅用于获取value长度，注意区分total body len
+            fn value_len(&self) -> u32 {
+                let total_body_len = self.total_body_len();
+                let extra_len = self.extra_len() as u32;
+                let key_len = self.key_len() as u32;
+                total_body_len - extra_len - key_len
+            }
+            fn value(&self) -> Self {
+                debug_assert!(self.len() >= self.packet_len());
+                let total_body_len = self.total_body_len() as usize;
+                let extra_len = self.extra_len() as usize;
+                let key_len = self.key_len() as usize;
+                let value_len = total_body_len - extra_len - key_len;
+                let offset = HEADER_LEN + extra_len + key_len;
+
+                self.sub_slice(offset, value_len)
             }
             #[inline(always)]
             fn id(&self) -> Option<Self> {

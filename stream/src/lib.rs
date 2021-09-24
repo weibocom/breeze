@@ -1,9 +1,9 @@
+mod addr;
 pub mod backend;
 mod chan;
+mod handler;
 pub mod io;
 mod mpmc;
-mod req_handler;
-mod resp_handler;
 mod response;
 mod status;
 
@@ -14,10 +14,10 @@ pub use chan::*;
 pub use protocol::{Request, MAX_REQUEST_SIZE};
 pub use response::*;
 
-pub use backend::{Backend, BackendBuilder, BackendStream};
+pub use addr::*;
+pub use backend::{BackendBuilder, BackendStream};
+pub(crate) use handler::*;
 pub use mpmc::MpmcRingBufferStream as RingBufferStream;
-pub(crate) use req_handler::{BridgeRequestToBackend, RequestHandler};
-pub(crate) use resp_handler::{BridgeResponseToLocal, ResponseHandler};
 
 use std::io::Result;
 

@@ -6,7 +6,7 @@ mod bit_map_test {
         cfg: String,
     }
     impl ds::Update<(&str, &str)> for T {
-        fn update(&mut self, o: &mut (&str, &str)) {
+        fn update(&mut self, o: &(&str, &str)) {
             self.name = o.0.to_string();
             self.cfg = o.1.to_string();
         }
@@ -23,7 +23,7 @@ mod bit_map_test {
             assert_eq!(o.cfg, "cfg0");
         });
 
-        tx.write(("icy1", "cfg1"));
+        tx.write(&("icy1", "cfg1"));
 
         rx.read(|o| {
             assert_eq!(o.name, "icy1");

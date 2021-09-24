@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 use futures::ready;
 use tokio::io::{AsyncWrite, BufWriter};
 
+use metrics::MetricName;
 use protocol::Request;
 
 pub struct Snapshot {
@@ -40,7 +41,7 @@ impl Snapshot {
         H: Unpin + RequestHandler,
     {
         match self.cids.pop() {
-            Some(cid) => Some((cid, handler.take(cid, seq))),
+            Some(cid) => handler.take(cid, seq),
             None => self.reqs.pop().map(|req| (std::usize::MAX, req)),
         }
     }
@@ -48,7 +49,7 @@ impl Snapshot {
 pub trait RequestHandler {
     // 如果填充ss的长度为0，则说明handler没有要处理的数据流，提示到达eof。
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()>;
-    fn take(&self, cid: usize, seq: usize) -> Request;
+    fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)>;
     fn sent(&self, cid: usize, seq: usize, req: &Request);
 }
 
@@ -62,18 +63,23 @@ pub struct BridgeRequestToBackend<H, W> {
     handler: H,
     w: BufWriter<W>,
     done: Arc<AtomicBool>,
+    metric_id: usize,
 }
 
+const WRITE_BUFF: usize = 128 * 1024;
 impl<H, W> BridgeRequestToBackend<H, W> {
-    pub fn from(handler: H, w: W, done: Arc<AtomicBool>) -> Self
+    pub fn from(handler: H, w: W, done: Arc<AtomicBool>, mid: usize) -> Self
     where
         W: AsyncWrite,
     {
+        // 在Drop时，会减掉
+        metrics::count("mem_buff_req", WRITE_BUFF as isize, mid);
         Self {
+            metric_id: mid,
             done: done,
             seq: 0,
             handler: handler,
-            w: BufWriter::with_capacity(128 * 1024, w),
+            w: BufWriter::with_capacity(WRITE_BUFF, w),
             snapshot: Snapshot::new(),
             cache: None,
             offset: 0,
@@ -88,7 +94,6 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        log::debug!("task polling.");
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
         while !me.done.load(Ordering::Acquire) {
@@ -118,7 +123,7 @@ where
                 Poll::Ready(_) => {
                     log::debug!("snapshot {} {:?}", me.snapshot.len(), me.snapshot.cids);
                     if me.snapshot.len() == 0 {
-                        log::info!("no request polled. eof-task complete");
+                        log::info!("{} eof.", me.metric_id.name());
                         break;
                     }
                 }
@@ -129,7 +134,15 @@ where
                 }
             }
         }
-        log::info!("task complete");
+
+        ready!(w.as_mut().poll_shutdown(cx))?;
+        log::info!("task complete:{}", me.metric_id.name());
         Poll::Ready(Ok(()))
+    }
+}
+impl<H, W> Drop for BridgeRequestToBackend<H, W> {
+    #[inline]
+    fn drop(&mut self) {
+        metrics::count("mem_buff_req", WRITE_BUFF as isize * -1, self.metric_id);
     }
 }

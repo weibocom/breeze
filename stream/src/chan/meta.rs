@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Request, Response};
 use protocol::{MetaType, Protocol};
 
 pub struct MetaStream<P, B> {
@@ -55,5 +55,14 @@ where
             ErrorKind::Other,
             "all meta instance failed",
         )));
+    }
+}
+
+impl<P, B> Addressed for MetaStream<P, B>
+where
+    B: Addressed,
+{
+    fn addr(&self) -> Address {
+        self.instances.addr()
     }
 }

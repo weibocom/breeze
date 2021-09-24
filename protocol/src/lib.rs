@@ -20,7 +20,7 @@ use sharding::Sharding;
 pub const MAX_SENT_BUFFER_SIZE: usize = 1024 * 1024;
 
 #[enum_dispatch]
-pub trait Protocol: Unpin + Clone + 'static {
+pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
     fn parse_request(&self, buf: Slice) -> Result<Option<Request>>;
     // 需要跨分片访问的请求进行分片处理
     // 索引下标是分片id
@@ -36,6 +36,13 @@ pub trait Protocol: Unpin + Clone + 'static {
     fn key(&self, req: &Request) -> Slice;
     // 从response中解析出一个完成的response
     fn parse_response(&self, response: &RingSlice) -> Option<Response>;
+    // 将response转换为回种数据的cmd,并将数据写入request_buff中，返回待会写的cmds的Slice结构
+    fn convert_to_writeback_request(
+        &self,
+        request: &Request,
+        response: &Response,
+        expire_seconds: u32,
+    ) -> Result<Vec<Request>>;
     // 把resp里面存在的key都去掉，只保留未返回结果的key及对应的命令。
     // 如果所有的key都已返回，则返回None
     fn filter_by_key<'a, R>(&self, req: &Request, resp: R) -> Option<Request>
@@ -54,13 +61,15 @@ pub trait Protocol: Unpin + Clone + 'static {
 #[enum_dispatch(Protocol)]
 #[derive(Clone)]
 pub enum Protocols {
-    Mc(memcache::Memcache),
+    McBin(memcache::MemcacheBin),
+    McText(memcache::MemcacheText),
 }
 
 impl Protocols {
     pub fn try_from(name: &str) -> Result<Self> {
         match name {
-            "mc" | "memcache" | "memcached" => Ok(Self::Mc(memcache::Memcache::new())),
+            "mc_bin" | "mc" | "memcache" | "memcached" => Ok(Self::McBin(memcache::MemcacheBin::new())),
+            "mc_text" | "memcache_text" | "memcached_text" => Ok(Self::McText(memcache::MemcacheText::new())),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("'{}' is not a valid protocol", name),

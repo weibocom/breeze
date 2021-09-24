@@ -84,7 +84,7 @@ impl RingBuffer {
         RingSlice::from(self.data.as_ptr(), self.size, self.read, self.write)
     }
     #[inline(always)]
-    pub(crate) fn cap(&self) -> usize {
+    pub fn cap(&self) -> usize {
         self.size
     }
 
@@ -129,25 +129,28 @@ impl Drop for RingBuffer {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::RingBuffer;
-    use rand::Rng;
-    use std::ptr::copy_nonoverlapping;
-
-    fn rnd_write(w: &mut [u8], size: usize) -> Vec<u8> {
-        debug_assert!(size <= w.len());
-        let data: Vec<u8> = (0..size).map(|_| rand::random::<u8>()).collect();
-        unsafe { copy_nonoverlapping(data.as_ptr(), w.as_mut_ptr(), size) };
-        data
+use std::fmt::{self, Debug, Display, Formatter};
+impl Display for RingBuffer {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "rb:(cap:{} read:{} processed:{} write:{})",
+            self.size, self.read, self.processed, self.write
+        )
     }
-
-    #[test]
-    fn test_response_buffer() {
-        let cap = 32;
-        let mut buffer = RingBuffer::with_capacity(cap);
-        let data = rnd_write(buffer.as_mut_bytes(), cap);
-        let response = buffer.processing_bytes();
-        assert_eq!(response.available(), 0);
+}
+impl Debug for RingBuffer {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "rb:(ptr:{:#x} cap:{} read:{} processed:{} write:{})",
+            self.data.as_ptr() as usize,
+            self.size,
+            self.read,
+            self.processed,
+            self.write
+        )
     }
 }

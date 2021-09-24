@@ -41,6 +41,7 @@ impl Future for Sender {
         let mut me = &mut *self;
         ready!(me.packet.poll_flush(cx));
         loop {
+            let mut pending = false;
             match me.rx.poll_recv(cx) {
                 Poll::Ready(None) => {
                     break;
@@ -49,19 +50,25 @@ impl Future for Sender {
                     me.snapshot += s;
                 }
                 Poll::Pending => {
-                    // 判断是否可以flush
-                    let elapsed = me.last.elapsed();
-                    if elapsed >= Duration::from_secs(10) {
-                        me.last = Instant::now();
-                        me.snapshot
-                            .visit_item(elapsed.as_secs_f64(), &mut me.packet);
-                        ready!(me.packet.poll_flush(cx));
-                        me.snapshot.reset();
-                        continue;
-                    }
-                    // sleep 1s
-                    ready!(me.tick.poll_tick(cx));
+                    pending = true;
                 }
+            };
+            // 判断是否可以flush
+            let elapsed = me.last.elapsed();
+            static DURATION: Duration = Duration::from_secs(10);
+            if elapsed >= DURATION {
+                me.last = Instant::now();
+                // 写入机器信息
+                me.snapshot.host("host", crate::Host::default(), 0);
+                me.snapshot
+                    .visit_item(elapsed.as_secs_f64(), &mut me.packet);
+                me.snapshot.reset();
+                ready!(me.packet.poll_flush(cx));
+                continue;
+            }
+            // sleep 1s
+            if pending {
+                ready!(me.tick.poll_tick(cx));
             }
         }
         log::warn!("sender task complete");
