@@ -58,7 +58,7 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
 
             spins: 0,
             spin_last: Instant::now(),
-            tick: interval(Duration::from_micros(1)),
+            tick: interval(Duration::from_micros(50)),
             spin_secs: 0,
         }
     }
@@ -86,8 +86,8 @@ where
                 }
                 me.spins += 1;
                 std::hint::spin_loop();
-                // 1024这个值并没有参考与借鉴。
-                if me.spins & 1023 == 0 {
+                // 127这个值并没有参考与借鉴。
+                if me.spins & 127 == 0 {
                     ready!(me.tick.poll_tick(cx));
                     continue;
                 }
