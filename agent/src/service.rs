@@ -2,9 +2,10 @@ use net::listener::Listener;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::spawn;
 
+use context::Quadruple;
 use crossbeam_channel::Sender;
 use discovery::*;
 use metrics::MetricName;
@@ -13,7 +14,7 @@ use stream::io::{copy_bidirectional, ConnectStatus};
 // 一直侦听，直到成功侦听或者取消侦听（当前尚未支持取消侦听）
 // 1. 尝试侦听之前，先确保服务配置信息已经更新完成
 pub(super) async fn process_one(
-    quard: &context::Quadruple,
+    quard: &Quadruple,
     discovery: Sender<discovery::TopologyWriteGuard<endpoint::Topology<Protocols>>>,
     session_id: Arc<AtomicUsize>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -43,7 +44,7 @@ pub(super) async fn process_one(
 }
 
 async fn _process_one(
-    quard: &context::Quadruple,
+    quard: &Quadruple,
     p: Protocols,
     top: discovery::TopologyReadGuard<endpoint::Topology<Protocols>>,
     session_id: Arc<AtomicUsize>,
