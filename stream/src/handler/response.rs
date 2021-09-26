@@ -127,11 +127,11 @@ impl<R, W, P> Display for BridgeResponseToLocal<R, W, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} - seq:{} buffer:{} processing:{}",
+            "{} - seq:{} buffer:{} processing:{:?}",
             self.metric_id.name(),
             self.seq,
             self.data,
-            self.data.processing_bytes()
+            self.data.processing_bytes().data()
         )
     }
 }
