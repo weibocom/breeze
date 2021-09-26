@@ -1,16 +1,15 @@
-use crossbeam_channel::Sender;
-use discovery::*;
-use metrics::MetricName;
-
 use net::listener::Listener;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use stream::io::copy_bidirectional;
 use tokio::spawn;
 
+use crossbeam_channel::Sender;
+use discovery::*;
+use metrics::MetricName;
 use protocol::Protocols;
+use stream::io::{copy_bidirectional, ConnectStatus};
 // 一直侦听，直到成功侦听或者取消侦听（当前尚未支持取消侦听）
 // 1. 尝试侦听之前，先确保服务配置信息已经更新完成
 pub(super) async fn process_one(
@@ -18,8 +17,8 @@ pub(super) async fn process_one(
     discovery: Sender<discovery::TopologyWriteGuard<endpoint::Topology<Protocols>>>,
     session_id: Arc<AtomicUsize>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let parser = Protocols::try_from(&quard.protocol())?;
-    let top = endpoint::Topology::try_from(parser.clone(), quard.endpoint())?;
+    let p = Protocols::try_from(&quard.protocol())?;
+    let top = endpoint::Topology::try_from(p.clone(), quard.endpoint())?;
     let (tx, rx) = discovery::topology(top, &quard.service());
     // 注册，定期更新配置
     discovery.send(tx)?;
@@ -36,7 +35,7 @@ pub(super) async fn process_one(
     log::info!("service inited. {} ", quard);
 
     // 服务注册完成，侦听端口直到成功。
-    while let Err(e) = _process_one(quard, parser.clone(), rx.clone(), session_id.clone()).await {
+    while let Err(e) = _process_one(quard, p.clone(), rx.clone(), session_id.clone()).await {
         log::warn!("service process failed. {}, err:{:?}", quard, e);
         tokio::time::sleep(Duration::from_secs(6)).await;
     }
@@ -45,7 +44,7 @@ pub(super) async fn process_one(
 
 async fn _process_one(
     quard: &context::Quadruple,
-    parser: Protocols,
+    p: Protocols,
     top: discovery::TopologyReadGuard<endpoint::Topology<Protocols>>,
     session_id: Arc<AtomicUsize>,
 ) -> Result<()> {
@@ -59,15 +58,15 @@ async fn _process_one(
         let top = top.clone();
         // 等待初始化成功
         let (client, _addr) = l.accept().await?;
-        let endpoint = quard.endpoint().to_owned();
-        let parser = parser.clone();
+        let agent = quard.endpoint().to_owned();
+        let p = p.clone();
         let session_id = session_id.fetch_add(1, Ordering::AcqRel);
         spawn(async move {
             metrics::qps("conn", 1, metric_id);
             metrics::count("conn", 1, metric_id);
             let instant = Instant::now();
             if let Err(e) =
-                process_one_connection(client, top, endpoint, parser, session_id, metric_id).await
+                process_one_connection(client, top, agent, p, session_id, metric_id).await
             {
                 log::warn!(
                     "{} disconnected. {:?} {:?}",
@@ -82,23 +81,35 @@ async fn _process_one(
 }
 
 async fn process_one_connection(
-    client: net::Stream,
+    mut client: net::Stream,
     top: TopologyReadGuard<endpoint::Topology<Protocols>>,
     endpoint: String,
-    parser: Protocols,
+    p: Protocols,
     session_id: usize,
     metric_id: usize,
 ) -> Result<()> {
     use endpoint::Endpoint;
-    let agent = Endpoint::from_discovery(&endpoint, parser.clone(), top)
-        .await?
-        .ok_or_else(|| {
-            Error::new(
-                ErrorKind::NotFound,
-                format!("'{}' is not a valid endpoint type", endpoint),
-            )
-        })?;
-    copy_bidirectional(agent, client, parser, session_id, metric_id).await?;
+    let ticker = top.tick();
+    loop {
+        let agent = Endpoint::from_discovery(&endpoint, p.clone(), top.clone())
+            .await?
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::NotFound,
+                    format!("'{}' is not a valid endpoint type", endpoint),
+                )
+            })?;
+        let ticker = ticker.clone();
+        match copy_bidirectional(agent, &mut client, p.clone(), session_id, metric_id, ticker)
+            .await?
+        {
+            ConnectStatus::EOF => break,
+            ConnectStatus::Reuse => {
+                log::info!("{} connection({}) reused.", metric_id.name(), session_id);
+                metrics::qps("conn_reuse", 1, metric_id);
+            }
+        }
+    }
     Ok(())
 }
 

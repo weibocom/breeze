@@ -11,6 +11,7 @@ protocol = { path = "../protocol" }
 sharding = { path = "../sharding" }
 ds = { path = "../ds" }
 metrics = { path = "../metrics" }
+discovery = { path = "../discovery" }
 
 log = "0.4.14"
 futures = "0.3.17"
