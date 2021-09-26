@@ -78,9 +78,9 @@ where
                 // ticks >= 20: 说明可能某个请求处理比较慢，read未及时释放
                 // 这个不会是死循环，check线程会进行超时监控。
                 if me.data.full() || me.ticks >= 20 {
-                    if me.data.resize() {
+                    if me.data.scaleup() {
                         metrics::count("mem_buff_resp", (me.data.cap() / 2) as isize, me.metric_id);
-                        log::info!("{} resized {}", me.metric_id.name(), me.data);
+                        log::info!("{} resized {} - {}", me.metric_id.name(), me.data, me.ticks);
                         continue;
                     }
                 }
@@ -99,8 +99,7 @@ where
 
             // 在每次读完数据之后，检查buff使用率
             if me.seq & 63 == 0 {
-                let (l, cap) = (me.data.len(), me.data.cap());
-                metrics::ratio("mem_buff_resp", (l, cap), me.metric_id);
+                metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
             }
 
             // 处理等处理的数据
