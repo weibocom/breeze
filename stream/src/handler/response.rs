@@ -111,7 +111,7 @@ where
                 }
             }
         }
-        log::info!("task complete:{}", me.metric_id.name());
+        log::info!("task complete:{} {}", me.metric_id.name(), me.data);
         Poll::Ready(Ok(()))
     }
 }
