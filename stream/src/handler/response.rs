@@ -96,6 +96,13 @@ where
                 break; // EOF
             }
             me.data.advance_write(n);
+
+            // 在每次读完数据之后，检查buff使用率
+            if me.seq & 63 == 0 {
+                let (l, cap) = (me.data.len(), me.data.cap());
+                metrics::ratio("mem_buff_resp", (l, cap), me.metric_id);
+            }
+
             // 处理等处理的数据
             while me.data.processed() < me.data.writtened() {
                 let response = me.data.processing_bytes();
