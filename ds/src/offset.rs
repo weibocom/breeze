@@ -67,4 +67,14 @@ impl SeqOffset {
         log::debug!("offset: loaded = {}", offset);
         offset
     }
+    // 调用方确保reset与load不同时访问
+    #[inline]
+    pub fn reset(&self) {
+        while let Some(_) = self.l2.pop() {}
+        while let Some(_) = self.l3.pop() {}
+        self.offset.0.replace(0);
+        use std::mem::transmute;
+        let seqs: &mut HashMap<usize, usize> = unsafe { transmute(self.seqs.0.as_ptr()) };
+        seqs.clear();
+    }
 }
