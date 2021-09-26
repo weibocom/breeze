@@ -106,7 +106,7 @@ where
             rid.incr();
             // 开始记录metric
             let duration = metric.duration();
-            const SLOW: Duration = Duration::from_millis(128);
+            const SLOW: Duration = Duration::from_millis(1000);
             if duration >= SLOW {
                 log::info!("slow request: {}", metric);
             }
