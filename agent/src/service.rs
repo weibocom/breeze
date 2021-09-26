@@ -64,16 +64,10 @@ async fn _process_one(
         spawn(async move {
             metrics::qps("conn", 1, metric_id);
             metrics::count("conn", 1, metric_id);
-            let instant = Instant::now();
             if let Err(e) =
                 process_one_connection(client, top, agent, p, session_id, metric_id).await
             {
-                log::warn!(
-                    "{} disconnected. {:?} {:?}",
-                    metric_id.name(),
-                    instant.elapsed(),
-                    e
-                );
+                log::debug!("{} disconnected. {:?} ", metric_id.name(), e);
             }
             metrics::count("conn", -1, metric_id);
         });
