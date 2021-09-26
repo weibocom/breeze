@@ -8,11 +8,11 @@ use protocol::{Operation, Protocol, Request};
 
 use futures::ready;
 
-pub struct AsyncLayerGet<L, P> {
+pub struct AsyncLayerGet<L, B, P> {
     // 当前从哪个layer开始发送请求
     idx: usize,
     layers: Vec<L>,
-    layers_writeback: Vec<L>,
+    layers_writeback: Vec<B>,
     // 每一层访问的请求
     request: Request,
     response: Option<Response>,
@@ -23,12 +23,13 @@ pub struct AsyncLayerGet<L, P> {
     since: Instant, // 上一层请求开始的时间
 }
 
-impl<L, P> AsyncLayerGet<L, P>
+impl<L, B, P> AsyncLayerGet<L, B, P>
 where
     L: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
+    B: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
-    pub fn from_layers(layers: Vec<L>, layers_writeback: Vec<L>, p: P) -> Self {
+    pub fn from_layers(layers: Vec<L>, layers_writeback: Vec<B>, p: P) -> Self {
         Self {
             idx: 0,
             layers,
@@ -205,9 +206,10 @@ where
     }
 }
 
-impl<L, P> AsyncWriteAll for AsyncLayerGet<L, P>
+impl<L, B, P> AsyncWriteAll for AsyncLayerGet<L, B, P>
 where
     L: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
+    B: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
     // 请求某一层
@@ -221,9 +223,10 @@ where
     }
 }
 
-impl<L, P> AsyncReadAll for AsyncLayerGet<L, P>
+impl<L, B, P> AsyncReadAll for AsyncLayerGet<L, B, P>
 where
     L: AsyncReadAll + AsyncWriteAll + Addressed + Unpin,
+    B: AsyncReadAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
     #[inline]
@@ -314,7 +317,7 @@ fn get_key_hit_name_by_idx(idx: usize) -> &'static str {
     }
 }
 
-impl<L, P> Addressed for AsyncLayerGet<L, P>
+impl<L, B, P> Addressed for AsyncLayerGet<L, B, P>
 where
     L: Addressed,
 {

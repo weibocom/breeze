@@ -119,10 +119,7 @@ impl protocol::BackwardWrite for Sender {
 impl Drop for Sender {
     #[inline]
     fn drop(&mut self) {
-        metrics::count(
-            "mem_buff_tx",
-            self.buff.capacity() as isize * -1,
-            self.metric_id,
-        );
+        let cap = self.buff.capacity() as isize * -1;
+        metrics::count("mem_buff_tx", cap, self.metric_id);
     }
 }
