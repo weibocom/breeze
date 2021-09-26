@@ -75,7 +75,7 @@ impl MpmcRingBufferStream {
             .map(|_| CacheAligned(AtomicUsize::new(0)))
             .collect();
 
-        let (tx, rx) = bounded(512);
+        let (tx, rx) = bounded(64);
 
         Self {
             items: items,
@@ -217,6 +217,8 @@ impl MpmcRingBufferStream {
         std::sync::atomic::fence(Ordering::AcqRel);
         self.req_num.0.store(0, Ordering::Relaxed);
         self.resp_num.0.store(0, Ordering::Relaxed);
+        // 上一个线程已经结束。所以reset不会有date race
+        self.offset.0.reset();
         Self::start_bridge(
             self.clone(),
             notify.clone(),
