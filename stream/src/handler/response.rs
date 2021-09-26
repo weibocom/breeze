@@ -111,7 +111,7 @@ where
                 }
             }
         }
-        log::info!("task complete:{} {}", me.metric_id.name(), me.data);
+        log::info!("task complete:{} ", me);
         Poll::Ready(Ok(()))
     }
 }
@@ -119,5 +119,19 @@ impl<R, W, P> Drop for BridgeResponseToLocal<R, W, P> {
     #[inline]
     fn drop(&mut self) {
         metrics::count("mem_buff_resp", self.data.cap() as isize, self.metric_id);
+    }
+}
+use std::fmt::{self, Display, Formatter};
+impl<R, W, P> Display for BridgeResponseToLocal<R, W, P> {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} - seq:{} buffer:{} processing:{}",
+            self.metric_id.name(),
+            self.seq,
+            self.data,
+            self.data.processing_bytes()
+        )
     }
 }
