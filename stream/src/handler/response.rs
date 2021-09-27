@@ -97,11 +97,6 @@ where
             }
             me.data.advance_write(n);
 
-            // 在每次读完数据之后，检查buff使用率
-            if me.seq & 63 == 0 {
-                metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
-            }
-
             // 处理等处理的数据
             while me.data.processed() < me.data.writtened() {
                 let response = me.data.processing_bytes();
@@ -110,6 +105,8 @@ where
                     Some(r) => {
                         let seq = me.seq;
                         me.seq += 1;
+
+                        metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
 
                         me.data.advance_processed(r.len());
                         me.w.on_received(seq, r);
