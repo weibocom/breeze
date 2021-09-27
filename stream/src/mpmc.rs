@@ -116,10 +116,12 @@ impl MpmcRingBufferStream {
     }
     #[inline]
     pub fn response_done(&self, cid: usize, response: &ResponseData) {
-        let item = self.get_item(cid);
-        item.response_done(response.seq());
-        let (start, end) = response.location();
-        self.offset.0.insert(start, end);
+        if let Ok(_) = self.check(cid) {
+            let item = self.get_item(cid);
+            item.response_done(response.seq());
+            let (start, end) = response.location();
+            self.offset.0.insert(start, end);
+        }
         log::debug!("done. cid:{} response: {}", cid, response);
     }
     // 释放cid的资源
