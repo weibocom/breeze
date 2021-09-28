@@ -219,7 +219,7 @@ where
             self.request = req.clone();
             self.since = Instant::now();
         }
-        return self.do_write(cx);
+        self.do_write(cx)
     }
 }
 
@@ -266,7 +266,7 @@ where
             }
 
             if let Err(e) = ready!(me.do_write(cx)) {
-                log::warn!("found err when resend layer request:{:?}", e);
+                log::warn!("req resent error:{:?}. addr:{:?}", e, me.addr());
                 last_err = Some(e);
                 break;
             }
