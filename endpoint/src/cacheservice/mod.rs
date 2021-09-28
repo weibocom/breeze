@@ -127,7 +127,7 @@ where
     S: AsyncWriteAll + Addressed,
     P: Protocol + Clone,
 {
-    let mut layers: Vec<AsyncSharding<S, P>> = Vec::new();
+    let mut layers: Vec<AsyncSharding<S, P>> = Vec::with_capacity(pools.len());
     for p in pools {
         layers.push(AsyncSharding::from(p, h, distribution, parser.clone()));
     }
@@ -145,7 +145,7 @@ where
     S: AsyncWriteAll + Addressed,
     P: Clone,
 {
-    let mut layers: Vec<AsyncMultiGetSharding<S, P>> = Vec::new();
+    let mut layers: Vec<AsyncMultiGetSharding<S, P>> = Vec::with_capacity(pools.len());
     for p in pools {
         layers.push(AsyncMultiGetSharding::from_shard(p, parser.clone(), h, d));
     }
