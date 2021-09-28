@@ -97,7 +97,7 @@ where
             Poll::Ready(Err(me.err.take().unwrap_or(Error::new(
                 ErrorKind::NotFound,
                 format!(
-                    "sharding server({}) must be greater than 0. req sharding num({}) must be greater than 0. reqeust keys({}) must great than 0",
+                    "sharding server({}) > 0. req sharding num({}) > 0. reqeust keys({}) > 0",
                     me.shards.len(),
                     reqs_len,
                     multi.keys().len()
@@ -145,11 +145,17 @@ where
                 *status = Init;
             }
             me.shard_reqs.take();
+            let err = me.err.take();
 
             me.response
                 .take()
                 .map(|item| Poll::Ready(Ok(item)))
-                .unwrap_or_else(|| Poll::Ready(Err(me.err.take().unwrap())))
+                .unwrap_or_else(|| {
+                    Poll::Ready(Err(err.unwrap_or_else(|| {
+                        log::error!("bug: never run here:{:?}", me.addr());
+                        Error::new(ErrorKind::InvalidData, "unexpected error")
+                    })))
+                })
         }
     }
 }
