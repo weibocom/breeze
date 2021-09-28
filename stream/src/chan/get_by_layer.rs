@@ -266,7 +266,7 @@ where
             }
 
             if let Err(e) = ready!(me.do_write(cx)) {
-                log::warn!("req resent error:{:?}. addr:{:?}", e, me.addr());
+                log::debug!("req resent error:{:?}. addr:{:?}", e, me.addr());
                 last_err = Some(e);
                 break;
             }
