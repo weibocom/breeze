@@ -139,7 +139,7 @@ impl Protocol for MemcacheBinary {
                 req_cmd_len += key_len as usize;
             }
 
-            // 先用rsp的长度预分配，避免频繁分配内存，4是flag中expiretime的长度
+            // 先用rsp的精确长度预分配，避免频繁分配内存
             let mut req_cmd: Vec<u8> = Vec::with_capacity(req_cmd_len);
 
             /*============= 构建request header =============*/
