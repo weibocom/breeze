@@ -21,7 +21,7 @@ impl Monitor {
             last: ticker.cycle(),
             checkpoint: Instant::now(),
             ticker,
-            salt,
+            salt: salt.max(3), // 至少3秒后开始。给后端资源留够初始化的时间。
         }
     }
     // 检查是否需要。满足以下所有条件
