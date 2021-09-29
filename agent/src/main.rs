@@ -1,3 +1,8 @@
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 mod service;
 use context::Context;
 use crossbeam_channel::bounded;
@@ -9,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::spawn;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
     let ctx = Context::from_os_args();
     ctx.check()?;

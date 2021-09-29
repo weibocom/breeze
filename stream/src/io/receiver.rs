@@ -5,6 +5,7 @@ use std::task::{Context, Poll};
 use crate::AsyncWriteAll;
 
 use ds::Slice;
+use metrics::MetricName;
 use protocol::{Protocol, Request, RequestId, MAX_REQUEST_SIZE};
 
 use futures::ready;
@@ -104,7 +105,7 @@ impl Receiver {
             return Ok(());
         }
         if self.r == self.w {
-            log::info!("extends r == w. r:{} w:{}", self.r, self.w);
+            log::debug!("extends r == w. r:{} w:{}", self.r, self.w);
             self.reset();
             return Ok(());
         }
@@ -136,13 +137,7 @@ impl Receiver {
     }
     #[inline]
     fn extend(&mut self) -> Result<()> {
-        log::info!(
-            "extend: r:{} w:{} cap: from {} to {}",
-            self.r,
-            self.w,
-            self.cap,
-            2 * self.cap,
-        );
+        log::info!("{} extend to {}", self.metric_id.name(), 2 * self.cap);
         if self.cap >= MAX_REQUEST_SIZE {
             log::warn!("request size limited:{} >= {}", self.cap, MAX_REQUEST_SIZE);
             Err(Error::new(
@@ -151,16 +146,15 @@ impl Receiver {
             ))
         } else {
             // 说明容量不足。需要扩展
-            let cap = self.buff.len();
-            let cap = (cap * 2).min(MAX_REQUEST_SIZE);
+            let old = self.buff.len();
+            let cap = (old * 2).min(MAX_REQUEST_SIZE);
             let mut new_buff = vec![0u8; cap];
             use std::ptr::copy_nonoverlapping as copy;
             unsafe { copy(self.buff.as_ptr(), new_buff.as_mut_ptr(), self.buff.len()) };
             // 如果还存在处理中的请求，buff clear掉之后可能指向一段已释放的内存。
             // 当前是pingpong请求，因为不存在处理中的请求
             // TODO
-            let delta = (cap - self.buff.len()) as isize;
-            metrics::count("mem_buff_rx", delta, self.metric_id);
+            metrics::count("mem_buff_rx", (cap - old) as isize, self.metric_id);
             self.buff.clear();
             self.buff = new_buff;
             self.cap = cap;
@@ -172,6 +166,7 @@ impl Receiver {
 impl Drop for Receiver {
     #[inline(always)]
     fn drop(&mut self) {
-        metrics::count("mem_buff_rx", self.buff.len() as isize * -1, self.metric_id);
+        let cap = self.buff.capacity() as isize * -1;
+        metrics::count("mem_buff_rx", cap, self.metric_id);
     }
 }

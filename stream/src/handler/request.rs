@@ -66,7 +66,7 @@ pub struct BridgeRequestToBackend<H, W> {
     metric_id: usize,
 }
 
-const WRITE_BUFF: usize = 128 * 1024;
+const WRITE_BUFF: usize = 8 * 1024;
 impl<H, W> BridgeRequestToBackend<H, W> {
     pub fn from(handler: H, w: W, done: Arc<AtomicBool>, mid: usize) -> Self
     where
@@ -102,7 +102,6 @@ where
                 log::debug!("writing {} {} {}", req.len(), me.offset, req.id());
                 while me.offset < data.len() {
                     let n = ready!(w.as_mut().poll_write(cx, &data[me.offset..]))?;
-                    log::debug!("{}/{} bytes written {}", n, req.len(), req.id());
                     me.offset += n;
                 }
 
@@ -121,9 +120,7 @@ where
             me.cache.take();
             match me.handler.poll_fill_snapshot(cx, &mut me.snapshot) {
                 Poll::Ready(_) => {
-                    log::debug!("snapshot {} {:?}", me.snapshot.len(), me.snapshot.cids);
                     if me.snapshot.len() == 0 {
-                        log::info!("{} eof.", me.metric_id.name());
                         break;
                     }
                 }
@@ -136,7 +133,7 @@ where
         }
 
         ready!(w.as_mut().poll_shutdown(cx))?;
-        log::info!("task complete:{}", me.metric_id.name());
+        log::info!("task complete:{} seq:{}", me.metric_id.name(), me.seq);
         Poll::Ready(Ok(()))
     }
 }

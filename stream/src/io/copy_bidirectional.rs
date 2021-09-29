@@ -1,26 +1,25 @@
-use crate::{AsyncReadAll, AsyncWriteAll};
-
-use super::{IoMetric, Receiver, Sender};
-
-use protocol::{Operation, Protocol, RequestId};
-
-use futures::ready;
-
-use tokio::io::{AsyncRead, AsyncWrite};
-
 use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use futures::ready;
+use tokio::io::{AsyncRead, AsyncWrite};
+
+use super::{ConnectStatus, IoMetric, Monitor, Receiver, Sender};
+use crate::{AsyncReadAll, AsyncWriteAll};
+use discovery::TopologyTicker;
+use protocol::{Operation, Protocol, RequestId};
+
 pub async fn copy_bidirectional<A, C, P>(
     agent: A,
-    client: C,
+    client: &mut C,
     parser: P,
     session_id: usize,
     metric_id: usize,
-) -> Result<(u64, u64)>
+    ticker: TopologyTicker,
+) -> Result<ConnectStatus>
 where
     A: AsyncReadAll + AsyncWriteAll + Unpin,
     C: AsyncRead + AsyncWrite + Unpin,
@@ -35,6 +34,7 @@ where
         sent: false,
         rid: RequestId::from(session_id, 0, metric_id),
         metric: IoMetric::from(metric_id),
+        checker: Monitor::from(ticker),
     }
     .await
 }
@@ -46,25 +46,26 @@ where
 /// 4. 将response发往client;
 /// 5. 重复1
 /// 任何异常都会导致copy提前路上
-struct CopyBidirectional<A, C, P> {
+struct CopyBidirectional<'c, A, C, P> {
     agent: A,
-    client: C,
+    client: &'c mut C,
     parser: P,
     receiver: Receiver,
     sender: Sender,
     sent: bool, // 标识请求是否发送完成。用于ping-pong之间的协调
     rid: RequestId,
 
+    checker: Monitor,
     // 以下用来记录相关的metrics指标
     metric: IoMetric,
 }
-impl<A, C, P> Future for CopyBidirectional<A, C, P>
+impl<'c, A, C, P> Future for CopyBidirectional<'c, A, C, P>
 where
     A: AsyncReadAll + AsyncWriteAll + Unpin,
     C: AsyncRead + AsyncWrite + Unpin,
     P: Protocol + Unpin,
 {
-    type Output = Result<(u64, u64)>;
+    type Output = Result<ConnectStatus>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let CopyBidirectional {
@@ -76,6 +77,7 @@ where
             sent,
             rid,
             metric,
+            checker,
         } = &mut *self;
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
@@ -104,7 +106,7 @@ where
             rid.incr();
             // 开始记录metric
             let duration = metric.duration();
-            const SLOW: Duration = Duration::from_millis(128);
+            const SLOW: Duration = Duration::from_millis(1000);
             if duration >= SLOW {
                 log::info!("slow request: {}", metric);
             }
@@ -123,8 +125,13 @@ where
                 _ => {}
             }
             metric.reset();
+
+            // 说明当前有变更，需要重新建立连接
+            if checker.check() {
+                return Poll::Ready(Ok(ConnectStatus::Reuse));
+            }
         }
 
-        Poll::Ready(Ok((0, 0)))
+        Poll::Ready(Ok(ConnectStatus::EOF))
     }
 }
