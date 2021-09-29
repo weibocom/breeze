@@ -41,16 +41,20 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
     where
         W: ResponseHandler + Unpin,
     {
-        let cap = 4 * 1024;
-        metrics::count("mem_buff_resp", cap, mid);
+        let mut data = ResizedRingBuffer::new();
+        metrics::count("mem_buff_resp", data.cap() as isize, mid);
+        data.set_on_resize(move |old, delta| {
+            log::info!("buffer resized ({}, {}). {}", old, delta, mid.name());
+            metrics::count("mem_buff_resp", delta, mid);
+        });
+
         Self {
             seq: 0,
             w: w,
             r: r,
             parser: parser,
-            data: ResizedRingBuffer::with_capacity(cap as usize),
             done: done,
-
+            data: data,
             ticks: 0,
             tick: interval(Duration::from_micros(500)),
             metric_id: mid,
@@ -74,18 +78,7 @@ where
             me.data.reset_read(offset);
             let mut buf = me.data.as_mut_bytes();
             if buf.len() == 0 {
-                // me.data.full: 说明单个请求的size > cap。需要立即resize
-                // ticks >= 20: 说明可能某个请求处理比较慢，read未及时释放
-                // 这个不会是死循环，check线程会进行超时监控。
-                if me.data.full() || me.ticks >= 20 {
-                    if me.data.scaleup() {
-                        metrics::count("mem_buff_resp", (me.data.cap() / 2) as isize, me.metric_id);
-                        log::info!("{} resized {} - {}", me.metric_id.name(), me.data, me.ticks);
-                        continue;
-                    }
-                }
                 ready!(me.tick.poll_tick(cx));
-                me.ticks += 1;
                 continue;
             }
             me.ticks = 0;
@@ -116,12 +109,6 @@ where
         }
         log::info!("task complete:{} ", me);
         Poll::Ready(Ok(()))
-    }
-}
-impl<R, W, P> Drop for BridgeResponseToLocal<R, W, P> {
-    #[inline]
-    fn drop(&mut self) {
-        metrics::count("mem_buff_resp", self.data.cap() as isize, self.metric_id);
     }
 }
 use std::fmt::{self, Display, Formatter};
