@@ -134,6 +134,7 @@ impl AsRef<RingSlice> for Response {
 }
 
 impl Drop for Item {
+    #[inline]
     fn drop(&mut self) {
         if let Some((cid, done)) = self.done.take() {
             done.response_done(cid, &self.data);
@@ -150,11 +151,13 @@ impl AsRef<RingSlice> for Item {
 use std::ops::{Deref, DerefMut};
 impl Deref for Item {
     type Target = RingSlice;
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.data.data
     }
 }
 impl DerefMut for Item {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data.data
     }

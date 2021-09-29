@@ -16,7 +16,7 @@ discovery = { path = "../discovery" }
 log = "0.4.14"
 futures = "0.3.17"
 futures-task = "0.3.17"
-tokio = "1.11.0"
+tokio = "1.12.0"
 rand = "0.8.4"
 enum_dispatch = "0.3.7"
 bytes = "1.0.1"

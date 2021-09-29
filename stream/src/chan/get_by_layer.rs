@@ -16,9 +16,6 @@ pub struct AsyncLayerGet<L, B, P> {
     // 每一层访问的请求
     request: Request,
     response: Option<Response>,
-    // 用于回写的set noreply响应及请求
-    requests_writeback: Option<Vec<Request>>,
-    idx_layer_writeback: usize,
     parser: P,
     since: Instant, // 上一层请求开始的时间
 }
@@ -36,8 +33,6 @@ where
             layers_writeback,
             request: Default::default(),
             response: None,
-            requests_writeback: None,
-            idx_layer_writeback: 0,
             parser: p,
             since: Instant::now(),
         }
@@ -94,8 +89,7 @@ where
 
         // 构建回种的cmd，并进行回种操作
         if self.idx > 0 {
-            self.create_requests_wb(&item);
-            self.do_write_back(cx);
+            self.do_write_back(cx, &item);
         }
 
         let found = item.keys_num();
@@ -119,26 +113,16 @@ where
         }
     }
 
-    fn create_requests_wb(&mut self, resp: &Response) {
-        debug_assert!(self.requests_writeback.is_none());
-        if self.idx == 0 {
-            log::info!("should not create request for write back when call layer-0");
-            return;
-        }
-
+    // precondition：私有方法，调用者需要确保: self.idx>0
+    fn do_write_back(&mut self, cx: &mut Context<'_>, resp: &Response) {
         // TODO 暂定为1天，这个过期时间后续要从vintage中获取
         let expire_seconds = 24 * 3600;
 
         // 轮询response构建回写的request buff及keys
         let rsp_its = resp.iter();
-        let mut requests_wb: Vec<Request> = Vec::new();
+        let mut requests_wb: Vec<Request> = Vec::with_capacity(resp.keys_num());
         for rit in rsp_its {
             if rit.keys().len() == 0 {
-                if log::log_enabled!(log::Level::Debug) {
-                    let mut data = Vec::with_capacity(rit.len());
-                    rit.as_ref().copy_to_vec(&mut data);
-                    log::debug!("found empty keys response, data: {:?}", data);
-                }
                 continue;
             }
             let req_rs =
@@ -148,11 +132,7 @@ where
             if let Ok(mut reqs) = req_rs {
                 requests_wb.append(&mut reqs);
             } else {
-                log::warn!(
-                    "careful - not found keys from response items/{}, err: {:?}",
-                    resp.items.len(),
-                    req_rs.err()
-                );
+                log::warn!("convert writeback request failed, err:{:?}", req_rs.err());
             }
         }
 
@@ -162,47 +142,19 @@ where
         //记录回种的kps，metric
         metrics::qps("back_key", requests_wb.len(), resp.rid().metric_id());
 
-        self.requests_writeback = Some(requests_wb);
-    }
-
-    // 回种逻辑单独处理，不放在on_response中，否则处理pending时，需要保留response，逻辑会很ugly
-    fn do_write_back(&mut self, cx: &mut Context<'_>) {
-        if self.requests_writeback.is_none() {
-            return;
-        }
-
         // 从第0层开始，轮询回写所有回种请求
-        if let Some(reqs_wb) = self.requests_writeback.as_mut() {
-            while self.idx_layer_writeback < self.idx {
-                // 每一层轮询回种所有请求
-                let mut i = 0;
-                while i < reqs_wb.len() {
-                    let reader = self
-                        .layers_writeback
-                        .get_mut(self.idx_layer_writeback)
-                        .unwrap();
-                    let addr = reader.addr();
-                    let req = reqs_wb.get_mut(i).unwrap();
-                    log::debug!(
-                        "layer/{}/{} will write back req: {:?} to sever : {:?}",
-                        self.idx_layer_writeback,
-                        self.idx,
-                        req.data(),
-                        addr
-                    );
-                    let _ = Pin::new(reader).poll_write(cx, req);
-                    i += 1;
-                }
-                self.idx_layer_writeback += 1;
+        let mut idx_wb = 0;
+        while idx_wb < self.idx {
+            // 每一层轮询回种所有请求
+            let mut i = 0;
+            while i < requests_wb.len() {
+                let reader = self.layers_writeback.get_mut(idx_wb).unwrap();
+                let req = requests_wb.get_mut(i).unwrap();
+                let _ = Pin::new(reader).poll_write(cx, req);
+                i += 1;
             }
+            idx_wb += 1;
         }
-
-        // 发送完毕，take走
-        self.requests_writeback.take();
-
-        // 回写完毕，回写idx清零
-        self.idx_layer_writeback = 0;
-        // return Poll::Ready(Ok(()));
     }
 }
 
@@ -219,7 +171,7 @@ where
             self.request = req.clone();
             self.since = Instant::now();
         }
-        return self.do_write(cx);
+        self.do_write(cx)
     }
 }
 
@@ -266,7 +218,7 @@ where
             }
 
             if let Err(e) = ready!(me.do_write(cx)) {
-                log::warn!("found err when resend layer request:{:?}", e);
+                log::debug!("req resent error:{:?}. addr:{:?}", e, me.addr());
                 last_err = Some(e);
                 break;
             }

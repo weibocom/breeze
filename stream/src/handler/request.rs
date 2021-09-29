@@ -133,7 +133,7 @@ where
         }
 
         ready!(w.as_mut().poll_shutdown(cx))?;
-        log::info!("task complete:{}", me.metric_id.name());
+        log::info!("task complete:{} seq:{}", me.metric_id.name(), me.seq);
         Poll::Ready(Ok(()))
     }
 }

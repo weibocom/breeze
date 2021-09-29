@@ -5,6 +5,7 @@ use ds::RingSlice;
 pub struct Response {
     _op: Operation,
     inner: RingSlice,
+    // 包含成功返回的key
     keys: Vec<RingSlice>,
 }
 

@@ -130,10 +130,9 @@ impl<P> BackendChecker<P> {
             self.check_timeout();
             self.tick.tick().await;
         }
-        log::info!("finished {}. stream mark closed.", self.addr());
+        log::info!("finished {}. closing and shutting down.", self.addr());
         self.try_close();
         sleep(Duration::from_secs(15)).await;
-        log::info!("complete {}. stream shutdown.", self.addr());
         self.shutdown_all();
     }
     async fn try_connect(&mut self)
