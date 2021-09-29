@@ -84,10 +84,7 @@ impl Item {
                 return Some((self.id, req));
             }
         }
-        log::warn!(
-            "take request failed. status:{}. maybe the stream reset status before",
-            self.status()
-        );
+        log::warn!("take failed. status({}) may be reset before", self.status());
         None
     }
 
@@ -145,23 +142,15 @@ impl Item {
         // 1. response到达之前的状态是 RequestSent. 即请求已发出。 这是大多数场景
         // 2. 因为在req_handler中，是先发送请求，再调用
         //    bind_req来更新状态为RequestSent，有可能在这中间，response已经接收到了。此时的状态是RequestReceived。
-        self.status_cas(RequestSent as u8, ResponseReceived as u8);
+        self.try_status_cas(RequestSent as u8, ResponseReceived as u8);
         self.waker.wake();
     }
     #[inline(always)]
     fn try_status_cas(&self, old: u8, new: u8) -> bool {
         match self.status.compare_exchange(old, new, AcqRel, Acquire) {
             Ok(_) => true,
-            Err(cur) => {
-                let rid = self.rid.borrow();
-                log::error!(
-                    "cas {} => {}, {} found. seq:{} {}",
-                    old,
-                    new,
-                    cur,
-                    self.seq(),
-                    rid
-                );
+            Err(_cur) => {
+                log::error!("cas {} => {}, {} found. ", old, new, self);
                 false
             }
         }
@@ -172,14 +161,7 @@ impl Item {
             Ok(_) => {}
             Err(cur) => {
                 let rid = self.rid.borrow();
-                log::error!(
-                    "cas {} => {}, {} found. seq:{} {}",
-                    old,
-                    new,
-                    cur,
-                    self.seq(),
-                    rid
-                );
+                log::error!("cas {} => {}, {} found. ", old, new, self);
                 panic!("cas {} => {}, {} found. {}", old, new, cur, rid);
             }
         }
@@ -187,12 +169,12 @@ impl Item {
     // 在在sender把Response发送给client后，在Drop中会调用response_done，更新状态。
     #[inline]
     pub fn response_done(&self, seq: usize) {
-        // 把状态调整为Init
         debug_assert_eq!(self.status(), Read as u8);
-        self.status_cas(Read as u8, ItemStatus::Init as u8);
+        debug_assert_eq!(self.seq(), seq);
+        // 把状态调整为Init
         // 如果seq为0，说明有一种情况，之前连接进行过reset，但response已获取。
-        if self.seq() > 0 {
-            self.seq_cas(seq, 0);
+        if self.try_status_cas(Read as u8, ItemStatus::Init as u8) {
+            self.seq.store(0, Release);
         }
     }
     // reset只会把状态从shutdown变更为init
@@ -200,17 +182,25 @@ impl Item {
     pub(crate) fn reset(&self) {
         if self.status() != Init {
             let loc = self.response.take().location();
-            log::warn!(
-                "reset. id:{} {} seq:{} loc:{:?}",
-                self.id,
-                self.status(),
-                self.seq(),
-                loc,
-            );
+            log::warn!("reset. {} loc:{:?}", self, loc);
         }
         self.status.store(Init as u8, Release);
         self.seq.store(0, Release);
         self.request.take();
         self.waker.wake();
+    }
+}
+
+use std::fmt::{self, Display, Formatter};
+impl Display for Item {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "(item - id:{} seq:{} status:{} )",
+            self.id,
+            self.seq(),
+            self.status(),
+        )
     }
 }

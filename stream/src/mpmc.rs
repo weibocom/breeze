@@ -75,7 +75,7 @@ impl MpmcRingBufferStream {
             .map(|_| CacheAligned(AtomicUsize::new(0)))
             .collect();
 
-        let (tx, rx) = bounded(512);
+        let (tx, rx) = bounded(64);
 
         Self {
             items: items,
@@ -116,10 +116,12 @@ impl MpmcRingBufferStream {
     }
     #[inline]
     pub fn response_done(&self, cid: usize, response: &ResponseData) {
-        let item = self.get_item(cid);
-        item.response_done(response.seq());
-        let (start, end) = response.location();
-        self.offset.0.insert(start, end);
+        if let Ok(_) = self.check(cid) {
+            let item = self.get_item(cid);
+            item.response_done(response.seq());
+            let (start, end) = response.location();
+            self.offset.0.insert(start, end);
+        }
         log::debug!("done. cid:{} response: {}", cid, response);
     }
     // 释放cid的资源
@@ -217,6 +219,8 @@ impl MpmcRingBufferStream {
         std::sync::atomic::fence(Ordering::AcqRel);
         self.req_num.0.store(0, Ordering::Relaxed);
         self.resp_num.0.store(0, Ordering::Relaxed);
+        // 上一个线程已经结束。所以reset不会有date race
+        self.offset.0.reset();
         Self::start_bridge(
             self.clone(),
             notify.clone(),

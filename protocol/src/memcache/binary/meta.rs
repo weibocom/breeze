@@ -211,7 +211,7 @@ define_binary!(RingSlice);
 use crate::{Request, Response};
 #[macro_export]
 macro_rules! define_packet_parser {
-    ($fn_name:ident, $type_in:tt, $type_out:tt) => {
+    ($fn_name:ident, $type_in:tt, $type_out:tt, $key_ok:tt) => {
         #[inline]
         pub(super) fn $fn_name(r: &$type_in) -> Option<$type_out> {
             let mut read = 0usize;
@@ -224,7 +224,9 @@ macro_rules! define_packet_parser {
                     // 当前packet未读取完成
                     return None;
                 }
-                if !c_r.noop() {
+                // 1. 非noop的request请求，或者
+                // 2. 成功的response
+                if !c_r.noop() && ($key_ok || c_r.status_ok()) {
                     keys.push(c_r.sub_slice(0, packet_len));
                 }
                 read += packet_len;
@@ -240,5 +242,5 @@ macro_rules! define_packet_parser {
     };
 }
 
-define_packet_parser!(parse_request, Slice, Request);
-define_packet_parser!(parse_response, RingSlice, Response);
+define_packet_parser!(parse_request, Slice, Request, true);
+define_packet_parser!(parse_response, RingSlice, Response, false);

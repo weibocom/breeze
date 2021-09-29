@@ -2,11 +2,13 @@ extern crate json;
 
 use std::io::{Error, ErrorKind};
 
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 #[derive(Clone)]
 pub struct Vintage {
+    client: Client,
     base_url: Url,
 }
 
@@ -30,7 +32,10 @@ impl Response {
 
 impl Vintage {
     pub fn from_url(url: Url) -> Self {
-        Self { base_url: url }
+        Self {
+            base_url: url,
+            client: Client::new(),
+        }
     }
 
     async fn lookup<C>(&self, path: &str, index: &str) -> std::io::Result<Config<C>>
@@ -42,7 +47,8 @@ impl Vintage {
         gurl.set_path(path);
         log::debug!("lookup: path:{} index:{}", path, index);
 
-        let resp = reqwest::Client::new()
+        let resp = self
+            .client
             .get(gurl)
             .query(&[("index", index)])
             .send()
