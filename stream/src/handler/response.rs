@@ -44,7 +44,10 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
         let mut data = ResizedRingBuffer::new();
         metrics::count("mem_buff_resp", data.cap() as isize, mid);
         data.set_on_resize(move |old, delta| {
-            log::info!("buffer resized ({}, {}). {}", old, delta, mid.name());
+            if delta > old as isize && delta >= 32 * 1024 {
+                // 扩容的时候才输出日志
+                log::info!("buffer resized ({}, {}). {}", old, delta, mid.name());
+            }
             metrics::count("mem_buff_resp", delta, mid);
         });
 

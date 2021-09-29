@@ -41,7 +41,7 @@ impl DerefMut for ResizedRingBuffer {
 impl ResizedRingBuffer {
     // 最小512个字节，最大4M. 初始化为4k.
     pub fn new() -> Self {
-        Self::from(512, 4 * 1024 * 1024, 4 * 1024)
+        Self::from(512, 2 * 1024 * 1024, 512)
     }
     pub fn from(min: usize, max: usize, init: usize) -> Self {
         assert!(min <= init && init <= max);
@@ -94,7 +94,7 @@ impl ResizedRingBuffer {
                 }
                 self.scale_in_tick_num += 1;
                 if self.scale_in_tick_num & 1023 == 0 {
-                    const D: Duration = Duration::from_secs(60);
+                    const D: Duration = Duration::from_secs(60 * 5);
                     if self.scale_in_tick.elapsed() >= D {
                         let new = self.cap() / 2;
                         self._resize(new);
