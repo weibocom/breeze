@@ -127,20 +127,24 @@ impl Protocol for MemcacheBinary {
                 continue;
             }
 
-            // 先用rsp的长度预分配，避免频繁分配内存
-            let mut req_cmd: Vec<u8> = Vec::with_capacity(rsp_cmd.len());
-
-            /*============= 构建request header =============*/
-            req_cmd.push(Magic::Request as u8); // magic: [0]
-            req_cmd.push(Opcode::SetQ as u8); // opcode: [1]
+            // check response中是否有key，没有则使用request中的key，同时计算request的长度
             let mut key_len = rsp_cmd.key_len();
             let use_request_key = key_len == 0 && request.keys().len() == 1;
+            let mut req_cmd_len = rsp_cmd.len() + 4; // 4 为expire flag的长度
             if use_request_key {
                 // 这里后面需要通过opaque来匹配key，目前暂时只支持getkq+getk/noop 方式
                 debug_assert!(request.keys().len() == 1);
                 debug_assert!(rsp_cmd.opaque() == request.keys()[0].opaque());
                 key_len = request.keys()[0].key_len();
+                req_cmd_len += key_len as usize;
             }
+
+            // 先用rsp的精确长度预分配，避免频繁分配内存
+            let mut req_cmd: Vec<u8> = Vec::with_capacity(req_cmd_len);
+
+            /*============= 构建request header =============*/
+            req_cmd.push(Magic::Request as u8); // magic: [0]
+            req_cmd.push(Opcode::SetQ as u8); // opcode: [1]
             req_cmd.write_u16(key_len); // key len: [2,3]
             let extra_len = rsp_cmd.extra_len() + 4 as u8; // get response中的extra 应该是4字节，作为set的 flag，另外4字节是set的expire
             debug_assert!(extra_len == 8);
@@ -161,6 +165,14 @@ impl Protocol for MemcacheBinary {
                 req_cmd.write(rsp_cmd.key().data());
             }
             req_cmd.write(rsp_cmd.value().data());
+
+            if req_cmd.capacity() > req_cmd_len {
+                log::info!(
+                    "req writeback init capacity should bigger:{}/{}",
+                    req_cmd_len,
+                    req_cmd.capacity()
+                );
+            }
             let cmds = vec![Slice::from(&req_cmd[0..req_cmd.len()])];
             let req =
                 Request::from_data(req_cmd, cmds, request.id().clone(), true, Operation::Store);

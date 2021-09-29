@@ -32,18 +32,23 @@ impl ResizedRingBuffer {
             inner: RingBuffer::with_capacity(cap),
         }
     }
+    // 每次扩容两倍
     #[inline]
-    pub fn resize(&mut self) -> bool {
-        let cap = self.inner.cap() * 2;
+    pub fn scaleup(&mut self) -> bool {
+        let new = self.inner.cap() * 2;
         // 8MB对于在线业务的一次请求，是一个足够大的值。
-        if cap >= 8 * 1024 * 1024 {
+        if new >= 8 * 1024 * 1024 {
             return false;
         }
+        self.resize(new);
+        true
+    }
+    #[inline]
+    pub(crate) fn resize(&mut self, cap: usize) {
         let new = self.inner.resize(cap);
         let old = std::mem::replace(&mut self.inner, new);
         self.max_processed = old.processed();
         self.old.push(old);
-        true
     }
     #[inline(always)]
     pub fn reset_read(&mut self, read: usize) {

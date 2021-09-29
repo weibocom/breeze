@@ -26,15 +26,15 @@ impl<T> Inner<T> {
         P: Send + Sync + Protocol + 'static + Clone,
     {
         let mut all = HashMap::with_capacity(64);
-        let mut news = Vec::with_capacity(16);
+        let mut news = HashMap::with_capacity(16);
         // 新增
         self.addrs.visit(|addr| {
             all.insert(addr.to_string(), ());
             if !self.streams.contains_key(addr) {
-                news.push(addr.to_string());
+                news.insert(addr.to_owned(), ());
             }
         });
-        for addr in news {
+        for (addr, _) in news {
             // 添加新的builder
             self.streams.insert(
                 addr.to_string(),

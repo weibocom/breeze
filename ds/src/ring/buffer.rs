@@ -87,6 +87,16 @@ impl RingBuffer {
     pub fn cap(&self) -> usize {
         self.size
     }
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        debug_assert!(self.write >= self.read);
+        self.write - self.read
+    }
+    #[inline(always)]
+    pub fn ratio(&self) -> (usize, usize) {
+        assert!(self.write >= self.read);
+        (self.write - self.read, self.cap())
+    }
 
     // cap > self.len()
     pub(crate) fn resize(&self, cap: usize) -> Self {
