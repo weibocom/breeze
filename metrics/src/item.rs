@@ -3,25 +3,31 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub(crate) struct SnapshotItem<E> {
-    pub(crate) inner: Vec<HashMap<&'static str, E>>,
+    pub(crate) inner: HashMap<usize, HashMap<&'static str, E>>,
 }
 
 impl<E> SnapshotItem<E> {
     pub fn new() -> Self {
         Self {
-            inner: Vec::with_capacity(32),
+            inner: Default::default(),
         }
     }
     #[inline]
-    pub fn apply<V>(&mut self, pos: usize, key: &'static str, val: V)
+    pub fn apply<V>(&mut self, service: usize, key: &'static str, val: V)
     where
         E: AddAssign<V>,
         V: Into<E>,
     {
-        for _ in self.inner.len()..=pos {
-            self.inner.push(HashMap::with_capacity(16));
-        }
-        let ele = unsafe { self.inner.get_unchecked_mut(pos) };
+        //for _ in self.inner.len()..=pos {
+        //    self.inner.push(HashMap::with_capacity(16));
+        //}
+        //let ele = unsafe { self.inner.get_unchecked_mut(pos) };
+        let ele = if let Some(g) = self.inner.get_mut(&service) {
+            g
+        } else {
+            self.inner.insert(service, Default::default());
+            self.inner.get_mut(&service).unwrap()
+        };
         if let Some(e_val) = ele.get_mut(key) {
             *e_val += val;
         } else {
@@ -37,13 +43,13 @@ impl<E> SnapshotItem<E> {
         let me = Self {
             inner: std::mem::take(&mut self.inner),
         };
-        self.inner.reserve(me.inner.len());
-        for i in 0..self.inner.len() {
-            unsafe {
-                self.inner
-                    .push(HashMap::with_capacity(me.inner.get_unchecked(i).capacity()));
-            }
-        }
+        //self.inner.reserve(me.inner.len());
+        //for i in 0..self.inner.len() {
+        //    unsafe {
+        //        self.inner
+        //            .push(HashMap::with_capacity(me.inner.get_unchecked(i).capacity()));
+        //    }
+        //}
         me
     }
     #[inline]
@@ -52,7 +58,7 @@ impl<E> SnapshotItem<E> {
         E: KvItem,
     {
         if E::clear() {
-            for map in self.inner.iter_mut() {
+            for (_, map) in self.inner.iter_mut() {
                 map.clear();
             }
         }
@@ -66,7 +72,7 @@ where
 {
     #[inline]
     fn add_assign(&mut self, other: Self) {
-        for (i, group) in other.inner.into_iter().enumerate() {
+        for (i, group) in other.inner.into_iter() {
             for (k, v) in group {
                 self.apply(i, k, v);
             }
@@ -82,7 +88,7 @@ impl<E> Default for SnapshotItem<E> {
 
 use std::ops::Deref;
 impl<E> Deref for SnapshotItem<E> {
-    type Target = Vec<HashMap<&'static str, E>>;
+    type Target = HashMap<usize, HashMap<&'static str, E>>;
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
