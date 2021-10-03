@@ -43,8 +43,11 @@ where
     // 遍历所有层次，发送请求，直到一个成功。有一层成功返回true，更新层次索引，否则返回false
     #[inline]
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
+        // TODO 验证一下，最后只访问两层，对性能与命中率的影响
+        let layers = self.layers.len().min(2);
         // 当前layer的reader发送请求，直到发送成功
-        while self.idx < self.layers.len() {
+        //while self.idx < self.layers.len() {
+        while self.idx < layers {
             log::debug!("write to {}-th/{}", self.idx + 1, self.layers.len());
             let reader = unsafe { self.layers.get_unchecked_mut(self.idx) };
             match ready!(Pin::new(reader).poll_write(cx, &self.request)) {
