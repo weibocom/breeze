@@ -244,6 +244,7 @@ where
 }
 
 const NAMES: &[&'static str] = &["l0", "l1", "l2", "l3", "l4", "l5", "l6", "l7"];
+#[inline(always)]
 fn get_name_by_idx(idx: usize) -> &'static str {
     if idx >= NAMES.len() {
         "hit_lunkown"
@@ -261,6 +262,7 @@ const NAMES_HIT: &[&'static str] = &[
     "l6_hit_key",
     "l7_hit_key",
 ];
+#[inline(always)]
 fn get_key_hit_name_by_idx(idx: usize) -> &'static str {
     if idx >= NAMES_HIT.len() {
         "hit_lunkown"
