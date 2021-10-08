@@ -37,8 +37,8 @@ impl RingBuffer {
         self.processed
     }
     #[inline(always)]
-    pub fn reset_read(&mut self, read: usize) {
-        self.read = read;
+    pub fn advance_read(&mut self, n: usize) {
+        self.read += n;
     }
     #[inline(always)]
     pub fn writtened(&self) -> usize {

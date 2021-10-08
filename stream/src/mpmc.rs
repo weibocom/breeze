@@ -347,8 +347,8 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
 impl ResponseHandler for Arc<MpmcRingBufferStream> {
     // 获取已经被全部读取的字节的位置
     #[inline]
-    fn load_offset(&self) -> usize {
-        self.offset.0.load()
+    fn load_read(&self) -> usize {
+        self.offset.0.span()
     }
     #[inline]
     // 在从response读取的数据后调用。
