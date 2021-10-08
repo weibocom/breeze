@@ -258,16 +258,15 @@ impl Protocol for MemcacheBinary {
                         w.write(&pre);
                     }
                     // 把GETK/GET请求，转换成Quite请求。
-                    OP_CODE_GETK | OP_CODE_GET => w.write_on(response, |data| {
+                    OP_CODE_GETK | OP_CODE_GET => {
                         let op = if last.key_len() == 0 {
-                            OP_CODE_GETQ
+                            [response.at(0), OP_CODE_GETQ]
                         } else {
-                            OP_CODE_GETKQ
+                            [response.at(0), OP_CODE_GETKQ]
                         };
-                        let last_op_idx = response.len() - last.len() + PacketPos::Opcode as usize;
-                        data[last_op_idx] = op;
-                        debug_assert_eq!(data.len(), response.len());
-                    }),
+                        w.write(&op[..].into());
+                        w.write(&response.sub_slice(2, response.len() - 2));
+                    }
                     _ => w.write(response),
                 }
             }

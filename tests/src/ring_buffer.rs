@@ -1,26 +1,40 @@
 #[cfg(test)]
 mod tests {
-    //use ds::RingBuffer;
-    //use rand::Rng;
-    //use std::ptr::copy_nonoverlapping;
+    use ds::{RingBuffer, RingSlice};
     use std::time::{Duration, Instant};
 
-    //fn rnd_write(w: &mut [u8], size: usize) -> Vec<u8> {
-    //    debug_assert!(size <= w.len());
-    //    let data: Vec<u8> = (0..size).map(|_| rand::random::<u8>()).collect();
-    //    unsafe { copy_nonoverlapping(data.as_ptr(), w.as_mut_ptr(), size) };
-    //    data
-    //}
+    fn rnd_bytes(size: usize) -> Vec<u8> {
+        let data: Vec<u8> = (0..size).map(|_| rand::random::<u8>()).collect();
+        data
+    }
 
     #[test]
     fn test_ring_buffer() {
-        //let cap = 32;
-        //let mut buffer = RingBuffer::with_capacity(cap);
-        //let data = rnd_write(buffer.as_mut_bytes(), cap);
-        //let response = buffer.processing_bytes();
+        let cap = 32;
+        let data = rnd_bytes(cap);
+        let rs = RingSlice::from(data.as_ptr(), cap, 0, 17);
+        let mut buf = RingBuffer::with_capacity(cap);
+        buf.write(&rs);
+        assert_eq!(buf.len(), 17);
+        assert!(&(buf.data()) == &data[0..17]);
+        let rs = RingSlice::from(data.as_ptr(), cap, 32, 32 + 32);
+        buf.advance_read(buf.len());
+        let _n = buf.write(&rs);
+        assert_eq!(&buf.data(), &data[..]);
+        buf.advance_read(rs.len());
+        // 有折返的
+        let rs = RingSlice::from(data.as_ptr(), cap, 27, 27 + 19);
+        buf.write(&rs);
+        assert_eq!(buf.len(), rs.len());
+        assert_eq!(buf.len(), 19);
+        assert_eq!(buf.data(), rs);
+        let rs = RingSlice::from(data.as_ptr(), cap, 32, 32 + 32);
+        let n = buf.write(&rs);
+        assert_eq!(n, 32 - 19);
 
-        let mut rrb = ds::ResizedRingBuffer::from(256, 4 * 1024, 1024);
-        rrb.set_on_resize(|cap, delta| println!("resize {} => {}", cap, delta));
+        let mut rrb = ds::ResizedRingBuffer::from(256, 4 * 1024, 1024, |cap, delta| {
+            println!("resize {} => {}", cap, delta);
+        });
         assert_eq!(1024, rrb.cap());
         assert_eq!(0, rrb.len());
 
@@ -40,7 +54,7 @@ mod tests {
         assert_eq!(rrb.len(), 1024);
 
         rrb.advance_processed(1024);
-        rrb.reset_read(1024);
+        rrb.advance_read(1024);
 
         rrb.advance_processed(512);
         rrb.advance_write(1024);
@@ -61,7 +75,7 @@ mod tests {
 
         // 缩容
         rrb.advance_processed(2 * 1024);
-        rrb.reset_read(3 * 1024);
+        rrb.advance_read(1024);
         let ins = Instant::now();
         loop {
             rrb.advance_write(0);
@@ -71,7 +85,7 @@ mod tests {
             }
         }
         rrb.advance_processed(512);
-        rrb.reset_read(4 * 1024);
+        rrb.advance_read(4 * 1024);
         println!("buffer:{}", rrb);
     }
 }
