@@ -15,7 +15,8 @@ use tokio::io::{AsyncRead, ReadBuf};
 use tokio::time::{interval, Interval};
 
 pub trait ResponseHandler {
-    fn load_offset(&self) -> usize;
+    // 获取自上一次调用以来，成功读取并可以释放的字节数量
+    fn load_read(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
     fn on_received(&self, seq: usize, response: protocol::Response);
 }
@@ -77,8 +78,8 @@ where
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
         while !me.done.load(Ordering::Acquire) {
-            let offset = me.w.load_offset();
-            me.data.reset_read(offset);
+            let read = me.w.load_read();
+            me.data.advance_read(read);
             let mut buf = me.data.as_mut_bytes();
             if buf.len() == 0 {
                 ready!(me.tick.poll_tick(cx));

@@ -118,9 +118,9 @@ impl ResizedRingBuffer {
         self.old.push(old);
     }
     #[inline(always)]
-    pub fn reset_read(&mut self, read: usize) {
-        self.inner.reset_read(read);
-        if read >= self.max_processed {
+    pub fn advance_read(&mut self, n: usize) {
+        self.inner.advance_read(n);
+        if self.read() >= self.max_processed {
             let delta = self.old.iter().fold(0usize, |mut s, b| {
                 s += b.cap();
                 s

@@ -40,9 +40,15 @@ impl SeqOffset {
         }
     }
 
-    // load offset, [0.. offset)都已经调用insert被相应的span全部填充
+    #[inline]
+    pub fn span(&self) -> usize {
+        let old = self.offset.0.get();
+        self.sort_and_flatten() - old
+    }
+
+    // 把无序的区间按start排序，并且确保首尾相接. 返回最大的offset。
     #[inline(always)]
-    pub fn load(&self) -> usize {
+    pub fn sort_and_flatten(&self) -> usize {
         let mut offset = self.offset.0.get();
         use std::mem::transmute;
         let seqs: &mut HashMap<usize, usize> = unsafe { transmute(self.seqs.0.as_ptr()) };
