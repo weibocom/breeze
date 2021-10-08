@@ -75,7 +75,7 @@ impl MpmcRingBufferStream {
             .map(|_| CacheAligned(AtomicUsize::new(0)))
             .collect();
 
-        let (tx, rx) = bounded(64);
+        let (tx, rx) = bounded(32);
 
         Self {
             items: items,
