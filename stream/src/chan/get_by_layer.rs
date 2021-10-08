@@ -18,6 +18,7 @@ pub struct AsyncLayerGet<L, B, P> {
     response: Option<Response>,
     parser: P,
     since: Instant, // 上一层请求开始的时间
+    err: Option<Error>,
 }
 
 impl<L, B, P> AsyncLayerGet<L, B, P>
@@ -27,6 +28,7 @@ where
     P: Unpin + Protocol,
 {
     pub fn from_layers(layers: Vec<L>, layers_writeback: Vec<B>, p: P) -> Self {
+        assert_eq!(layers.len(), layers_writeback.len());
         Self {
             idx: 0,
             layers,
@@ -35,35 +37,29 @@ where
             response: None,
             parser: p,
             since: Instant::now(),
+            err: None,
         }
     }
-    // 发送请求，将current cmds发送到所有mc，如果失败，继续向下一层write，注意处理重入问题
-    // ready! 会返回Poll，所以这里还是返回Poll了
+    // 遍历所有层次，发送请求，直到一个成功。有一层成功返回true，更新层次索引，否则返回false
     #[inline]
-    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        // 当前layer的reader发送请求，直到发送成功
-        let mut last_err = None;
+    fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
         while self.idx < self.layers.len() {
             log::debug!("write to {}-th/{}", self.idx + 1, self.layers.len());
             let reader = unsafe { self.layers.get_unchecked_mut(self.idx) };
             match ready!(Pin::new(reader).poll_write(cx, &self.request)) {
-                Ok(_) => return Poll::Ready(Ok(())),
+                Ok(_) => return Poll::Ready(true),
                 Err(e) => {
                     self.idx += 1;
-                    last_err = Some(e);
+                    self.err = Some(e);
                 }
             }
         }
 
-        self.idx = 0;
-        // write req到所有资源失败，reset并返回err
-        Poll::Ready(Err(last_err.unwrap_or(Error::new(
-            ErrorKind::NotConnected,
-            "layer get do write error",
-        ))))
+        Poll::Ready(false)
     }
 
     // 只在打开Debug时打印并开启
+    #[inline(always)]
     fn log_response(&mut self, item: &Response) {
         if !log::log_enabled!(log::Level::Debug) {
             return;
@@ -87,12 +83,13 @@ where
         // 暂时保留，查问题的时候和sharding的req日志结合排查
         self.log_response(&item);
 
+        let found = item.keys_num();
+
         // 构建回种的cmd，并进行回种操作
-        if self.idx > 0 {
+        if self.idx > 0 && found > 0 {
             self.do_write_back(cx, &item);
         }
 
-        let found = item.keys_num();
         // 记录metrics
         let elapse = self.since.elapsed();
         self.since = Instant::now();
@@ -114,47 +111,35 @@ where
     }
 
     // precondition：私有方法，调用者需要确保: self.idx>0
+    #[inline]
     fn do_write_back(&mut self, cx: &mut Context<'_>, resp: &Response) {
+        debug_assert!(self.idx > 0);
         // TODO 暂定为1天，这个过期时间后续要从vintage中获取
-        let expire_seconds = 24 * 3600;
+        const EXP_SEC: u32 = 24 * 3600;
 
         // 轮询response构建回写的request buff及keys
-        let rsp_its = resp.iter();
-        let mut requests_wb: Vec<Request> = Vec::with_capacity(resp.keys_num());
-        for rit in rsp_its {
+        let mut keys = 0; // 回程的key
+        for rit in resp.iter() {
             if rit.keys().len() == 0 {
                 continue;
             }
-            let req_rs =
-                self.parser
-                    .convert_to_writeback_request(&self.request, rit, expire_seconds);
-
-            if let Ok(mut reqs) = req_rs {
-                requests_wb.append(&mut reqs);
-            } else {
-                log::warn!("convert writeback request failed, err:{:?}", req_rs.err());
+            if let Ok(reqs) = self
+                .parser
+                .convert_to_writeback_request(&self.request, rit, EXP_SEC)
+            {
+                keys += reqs.len(); // 一个回种的请求只有一个key
+                for req in reqs {
+                    debug_assert_eq!(req.keys().len(), 1);
+                    debug_assert!(req.noreply());
+                    // 只回程前n-1层
+                    for i in 0..self.idx {
+                        let reader = self.layers_writeback.get_mut(i).unwrap();
+                        let _ = Pin::new(reader).poll_write(cx, &req);
+                    }
+                }
             }
         }
-
-        if requests_wb.len() == 0 {
-            return;
-        }
-        //记录回种的kps，metric
-        metrics::qps("back_key", requests_wb.len(), resp.rid().metric_id());
-
-        // 从第0层开始，轮询回写所有回种请求
-        let mut idx_wb = 0;
-        while idx_wb < self.idx {
-            // 每一层轮询回种所有请求
-            let mut i = 0;
-            while i < requests_wb.len() {
-                let reader = self.layers_writeback.get_mut(idx_wb).unwrap();
-                let req = requests_wb.get_mut(i).unwrap();
-                let _ = Pin::new(reader).poll_write(cx, req);
-                i += 1;
-            }
-            idx_wb += 1;
-        }
+        metrics::qps("back_key", keys, resp.rid().metric_id());
     }
 }
 
@@ -171,7 +156,16 @@ where
             self.request = req.clone();
             self.since = Instant::now();
         }
-        self.do_write(cx)
+        if ready!(self.do_write(cx)) {
+            Poll::Ready(Ok(()))
+        } else {
+            self.idx = 0;
+            let last_err = self.err.take();
+            Poll::Ready(Err(last_err.unwrap_or(Error::new(
+                ErrorKind::NotConnected,
+                format!("layer poll write error. layers:{}", self.layers.len()),
+            ))))
+        }
     }
 }
 
@@ -185,22 +179,17 @@ where
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         debug_assert!(me.idx < me.layers.len());
-        let mut last_err = None;
-
-        while me.idx < me.layers.len() {
+        loop {
             let layer = unsafe { me.layers.get_unchecked_mut(me.idx) };
-            //let _servers = layer.get_address();
             match ready!(Pin::new(layer).poll_next(cx)) {
                 Ok(item) => {
                     // 轮询出已经查到的keys
                     match me.parser.filter_by_key(&me.request, item.iter()) {
                         None => {
-                            // 处理response，并会根据req进行回写操作
                             me.on_response(cx, item);
                             break;
                         }
                         Some(req) => {
-                            // 处理response，并会根据req构建回写请求并进行回写操作
                             me.on_response(cx, item);
                             me.request = req;
                         }
@@ -208,18 +197,12 @@ where
                 }
                 Err(e) => {
                     log::debug!("found err: {:?} idx:{}", e, me.idx);
-                    last_err = Some(e);
+                    me.err = Some(e);
                 }
             }
 
             me.idx += 1;
-            if me.idx >= me.layers.len() {
-                break;
-            }
-
-            if let Err(e) = ready!(me.do_write(cx)) {
-                log::debug!("req resent error:{:?}. addr:{:?}", e, me.addr());
-                last_err = Some(e);
+            if !ready!(me.do_write(cx)) {
                 break;
             }
         }
@@ -227,9 +210,10 @@ where
         // 先拿走response，然后重置，最后返回响应列表
         me.idx = 0;
         let response = me.response.take();
-        let old = std::mem::take(&mut self.request);
+        let old = std::mem::take(&mut me.request);
         drop(old);
         // 请求完毕，重置
+        let last_err = me.err.take();
         response
             .map(|item| Poll::Ready(Ok(item)))
             .unwrap_or_else(|| {
@@ -244,6 +228,7 @@ where
 }
 
 const NAMES: &[&'static str] = &["l0", "l1", "l2", "l3", "l4", "l5", "l6", "l7"];
+#[inline(always)]
 fn get_name_by_idx(idx: usize) -> &'static str {
     if idx >= NAMES.len() {
         "hit_lunkown"
@@ -261,6 +246,7 @@ const NAMES_HIT: &[&'static str] = &[
     "l6_hit_key",
     "l7_hit_key",
 ];
+#[inline(always)]
 fn get_key_hit_name_by_idx(idx: usize) -> &'static str {
     if idx >= NAMES_HIT.len() {
         "hit_lunkown"
