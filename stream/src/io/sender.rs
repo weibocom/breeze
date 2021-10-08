@@ -23,7 +23,7 @@ pub(super) struct Sender {
 
 impl Sender {
     pub fn new(metric_id: usize) -> Self {
-        let cap = 2048;
+        let cap = 512;
         metrics::count("mem_buff_tx", cap as isize, metric_id);
         Self {
             buff: Vec::with_capacity(cap),
