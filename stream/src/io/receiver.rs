@@ -24,7 +24,7 @@ pub(super) struct Receiver {
 
 impl Receiver {
     pub fn new(metric_id: usize) -> Self {
-        let init_cap = 4 * 1024;
+        let init_cap = 512;
         metrics::count("mem_buff_rx", init_cap as isize, metric_id);
         Self {
             buff: vec![0; init_cap],
@@ -147,7 +147,7 @@ impl Receiver {
         } else {
             // 说明容量不足。需要扩展
             let old = self.buff.len();
-            let cap = (old * 2).min(MAX_REQUEST_SIZE);
+            let cap = (old * 5 / 4).min(MAX_REQUEST_SIZE);
             let mut new_buff = vec![0u8; cap];
             use std::ptr::copy_nonoverlapping as copy;
             unsafe { copy(self.buff.as_ptr(), new_buff.as_mut_ptr(), self.buff.len()) };

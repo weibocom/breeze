@@ -37,11 +37,11 @@ impl Snapshot {
     #[inline]
     pub(crate) fn visit_item<P:KV>(&mut self, secs:f64, packet:&P) {
         $(
-            for (service, group) in self.$name.iter().enumerate(){
+            for (service, group) in self.$name.iter(){
                 for (key, item) in group.iter() {
                     item.with_item(
                         secs,
-                        |sub_key, v| packet.kv(service, key, sub_key, v)
+                        |sub_key, v| packet.kv(*service, key, sub_key, v)
                         );
                 }
             }

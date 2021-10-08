@@ -64,7 +64,8 @@ impl super::VisitAddress for Layer {
             layer_idx += 1;
             self.l1.iter().for_each(|addr| f(layer_idx, addr));
         }
-        if self.l2.len() > 0 {
+        // 目前分块下，slave放到了l1下。因此可能重复
+        if self.l2.len() > 0 && self.l0[l0_idx] != self.l2 {
             layer_idx += 1;
             self.l2.iter().for_each(|addr| f(layer_idx, addr));
         }
