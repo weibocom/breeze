@@ -113,7 +113,7 @@ impl ResizedRingBuffer {
         let new = self.inner.resize(cap);
         let old = std::mem::replace(&mut self.inner, new);
         self.max_processed = old.processed();
-        self.on_change(old.cap(), cap as isize);
+        self.on_change(old.cap(), self.cap() as isize);
         self.old.push(old);
     }
     #[inline(always)]
