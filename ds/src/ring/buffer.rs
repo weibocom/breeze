@@ -137,6 +137,7 @@ impl RingBuffer {
     // cap > self.len()
     #[inline]
     pub(crate) fn resize(&self, cap: usize) -> Self {
+        assert_eq!(cap & (cap - 1), 0);
         //let cap = cap.next_power_of_two();
         assert!(cap >= self.write - self.read);
         let mut new = Self::with_capacity(cap);
