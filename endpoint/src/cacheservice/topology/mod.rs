@@ -17,6 +17,8 @@ pub struct Topology<P> {
     mget: Inner<Layer>,
     noreply: Inner<Vec<Vec<String>>>,
     parser: P,
+    // 在没有master_l1与slave_l1时。所有的command共用一个物理连接
+    shared: Option<Inner<Vec<Vec<String>>>>,
 }
 
 impl<P> Topology<P> {
@@ -77,6 +79,11 @@ where
                     self.hash = ns.hash.to_owned();
                     self.distribution = ns.distribution.to_owned();
                     let p = &self.parser;
+
+                    // 如果配置中包不含有master_l1,
+                    // 则所有的请求共用一个物理连接。否则每一种op使用独立的连接
+                    if ns.master_l1.len() == 0 {}
+
                     self.master.set(ns.master.clone());
                     self.master.update(namespace, p);
 
@@ -104,6 +111,7 @@ impl<P> From<P> for Topology<P> {
             get: Default::default(),
             mget: Default::default(),
             noreply: Default::default(),
+            shared: Default::default(),
         };
         me.noreply.enable_fake_cid();
         me
