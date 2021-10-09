@@ -137,7 +137,6 @@ impl Receiver {
     }
     #[inline]
     fn extend(&mut self) -> Result<()> {
-        log::info!("{} extend to {}", self.metric_id.name(), 2 * self.cap);
         if self.cap >= MAX_REQUEST_SIZE {
             log::warn!("request size limited:{} >= {}", self.cap, MAX_REQUEST_SIZE);
             Err(Error::new(
@@ -147,7 +146,8 @@ impl Receiver {
         } else {
             // 说明容量不足。需要扩展
             let old = self.buff.len();
-            let cap = (old * 5 / 4).min(MAX_REQUEST_SIZE);
+            let cap = (old * 2).min(MAX_REQUEST_SIZE);
+            log::debug!("{} extend to {}", self.metric_id.name(), cap);
             let mut new_buff = vec![0u8; cap];
             use std::ptr::copy_nonoverlapping as copy;
             unsafe { copy(self.buff.as_ptr(), new_buff.as_mut_ptr(), self.buff.len()) };
