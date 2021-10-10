@@ -95,7 +95,7 @@ impl<P> BackendChecker<P> {
         let latency_ms: u64 = rand::random::<u64>() % (SECS * 1000);
         let start = Instant::now() + Duration::from_millis(latency_ms);
         let tick = interval_at(start.into(), Duration::from_secs(SECS));
-        let (req_num, _) = stream.load_ping_ping();
+        let (req_num, _) = stream.load_ping_pong();
         Self {
             tx: Arc::new(tx),
             rx: rx,
@@ -187,7 +187,7 @@ impl<P> BackendChecker<P> {
         const TIME_OUT: Duration = Duration::from_secs(4);
         // 已经done了，忽略
         let done = self.inner.done();
-        let (req_num, resp_num) = self.inner.load_ping_ping();
+        let (req_num, resp_num) = self.inner.load_ping_pong();
         if done || req_num != self.req_num || resp_num == req_num {
             self.req_num = req_num;
             self.instant_timeout = Instant::now();

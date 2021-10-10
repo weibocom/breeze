@@ -1,4 +1,4 @@
-use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Request, Response, MpmcStream};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, MpmcStream, Request, Response};
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
