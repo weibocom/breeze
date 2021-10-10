@@ -35,6 +35,8 @@ pub struct BridgeResponseToLocal<R, W, P> {
     metric_id: usize,
     tick: Interval,
     ticks: usize,
+
+    processed: usize,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
@@ -60,6 +62,7 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
             ticks: 0,
             tick: interval(Duration::from_micros(500)),
             metric_id: mid,
+            processed: 0,
         }
     }
 }
@@ -93,18 +96,17 @@ where
             me.data.advance_write(n);
 
             // 处理等处理的数据
-            while me.data.processed() < me.data.writtened() {
-                let response = me.data.processing_bytes();
-                match me.parser.parse_response(&response) {
+            while me.processed < me.data.writtened() {
+                let p_oft = me.processed - me.data.read();
+                let processing = me.data.data().sub_slice(p_oft, me.data.len() - p_oft);
+                match me.parser.parse_response(&processing) {
                     None => break,
                     Some(r) => {
                         let seq = me.seq;
                         me.seq += 1;
-
-                        metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
-
-                        me.data.advance_processed(r.len());
+                        me.processed += r.len();
                         me.w.on_received(seq, r);
+                        metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
                     }
                 }
             }
@@ -119,11 +121,11 @@ impl<R, W, P> Display for BridgeResponseToLocal<R, W, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} - seq:{} buffer:{} processing:{:?}",
+            "{} - seq:{} buffer:{} processed:{:?}",
             self.metric_id.name(),
             self.seq,
             self.data,
-            self.data.processing_bytes().data()
+            self.processed
         )
     }
 }
