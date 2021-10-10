@@ -282,7 +282,7 @@ impl MpmcStream {
         self.mark_done();
     }
 
-    pub(crate) fn load_ping_ping(&self) -> (usize, usize) {
+    pub(crate) fn load_ping_pong(&self) -> (usize, usize) {
         (
             self.req_num.0.load(Ordering::Relaxed),
             self.resp_num.0.load(Ordering::Relaxed),
