@@ -1,4 +1,4 @@
-use crate::{BackendStream, RingBufferStream};
+use crate::{BackendStream, MpmcStream};
 use ds::{Cid, Ids};
 use protocol::{Protocol, Resource};
 
@@ -18,7 +18,7 @@ use tokio::time::{interval_at, sleep, timeout, Interval};
 pub struct BackendBuilder {
     finished: Arc<AtomicBool>,
     inited: Arc<AtomicBool>,
-    stream: Arc<RingBufferStream>,
+    stream: Arc<MpmcStream>,
     ids: Arc<Ids>,
 }
 
@@ -29,7 +29,7 @@ impl BackendBuilder {
     {
         let finished = Arc::new(AtomicBool::new(false));
         let init = Arc::new(AtomicBool::new(false));
-        let stream = Arc::new(RingBufferStream::with_capacity(parallel, biz, addr, rsrc));
+        let stream = Arc::new(MpmcStream::with_capacity(parallel, biz, addr, rsrc));
         let checker = BackendChecker::from(stream.clone(), finished.clone(), init.clone(), parser);
         tokio::spawn(async { checker.start_check().await });
 
@@ -68,7 +68,7 @@ impl Drop for BackendBuilder {
 }
 
 pub struct BackendChecker<P> {
-    inner: Arc<RingBufferStream>,
+    inner: Arc<MpmcStream>,
     rx: Receiver<u8>,
     tx: Arc<Sender<u8>>,
     connecting: bool, // 当前是否需要重新建立连接
@@ -84,7 +84,7 @@ pub struct BackendChecker<P> {
 
 impl<P> BackendChecker<P> {
     fn from(
-        stream: Arc<RingBufferStream>,
+        stream: Arc<MpmcStream>,
         finished: Arc<AtomicBool>,
         inited: Arc<AtomicBool>,
         parser: P,
@@ -225,7 +225,7 @@ pub struct Notifier {
 }
 
 impl<P> std::ops::Deref for BackendChecker<P> {
-    type Target = RingBufferStream;
+    type Target = MpmcStream;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }

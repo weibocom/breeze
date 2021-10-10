@@ -1,4 +1,4 @@
-use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Request, Response, RingBufferStream};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Request, Response, MpmcStream};
 
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
@@ -12,7 +12,7 @@ use protocol::Operation;
 
 pub struct BackendStream {
     id: Cid,
-    inner: Arc<RingBufferStream>,
+    inner: Arc<MpmcStream>,
 
     // 用来记录metrics
     instant: Instant,
@@ -21,7 +21,7 @@ pub struct BackendStream {
 }
 
 impl BackendStream {
-    pub fn from(id: Cid, stream: Arc<RingBufferStream>) -> Self {
+    pub fn from(id: Cid, stream: Arc<MpmcStream>) -> Self {
         Self {
             id: id,
             inner: stream,
