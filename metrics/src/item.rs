@@ -18,10 +18,6 @@ impl<E> SnapshotItem<E> {
         E: AddAssign<V>,
         V: Into<E>,
     {
-        //for _ in self.inner.len()..=pos {
-        //    self.inner.push(HashMap::with_capacity(16));
-        //}
-        //let ele = unsafe { self.inner.get_unchecked_mut(pos) };
         let ele = if let Some(g) = self.inner.get_mut(&service) {
             g
         } else {
@@ -40,17 +36,9 @@ impl<E> SnapshotItem<E> {
     where
         E: KvItem,
     {
-        let me = Self {
+        Self {
             inner: std::mem::take(&mut self.inner),
-        };
-        //self.inner.reserve(me.inner.len());
-        //for i in 0..self.inner.len() {
-        //    unsafe {
-        //        self.inner
-        //            .push(HashMap::with_capacity(me.inner.get_unchecked(i).capacity()));
-        //    }
-        //}
-        me
+        }
     }
     #[inline]
     pub(crate) fn reset(&mut self)
