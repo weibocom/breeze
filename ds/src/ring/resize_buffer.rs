@@ -14,8 +14,6 @@ pub struct ResizedRingBuffer {
     // 下面的用来做扩缩容判断
     min: u32,
     max: u32,
-    scale_up_tick_num: u32,
-    scale_up_tick: Instant,
     scale_in_tick_num: u32,
     scale_in_tick: Instant,
     on_change: Callback,
@@ -52,8 +50,6 @@ impl ResizedRingBuffer {
             inner: RingBuffer::with_capacity(init),
             min: min as u32,
             max: max as u32,
-            scale_up_tick_num: 0,
-            scale_up_tick: Instant::now(),
             scale_in_tick_num: 0,
             scale_in_tick: Instant::now(),
             on_change: Box::new(cb),
@@ -62,25 +58,12 @@ impl ResizedRingBuffer {
     // 需要写入数据时，判断是否需要扩容
     #[inline(always)]
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
-        if self.inner.available() {
-            if self.scale_up_tick_num > 0 {
-                self.scale_up_tick_num = 0;
-            }
-            self.inner.as_mut_bytes()
-        } else {
-            if self.scale_up_tick_num == 0 {
-                self.scale_up_tick = Instant::now();
-            }
-            self.scale_up_tick_num += 1;
-            const D: Duration = Duration::from_millis(4);
-            // 所有的已读数据都已处理完成，立即扩容
-            // 连续超过4ms需要扩容
-            let scale = self.read() == self.processed() || self.scale_up_tick.elapsed() >= D;
-            if scale && self.cap() * 2 <= self.max as usize {
+        if !self.inner.available() {
+            if self.cap() * 2 <= self.max as usize {
                 self._resize(self.cap() * 2);
             }
-            self.inner.as_mut_bytes()
         }
+        self.inner.as_mut_bytes()
     }
     // 有数写入时，判断是否需要缩容
     #[inline]
@@ -93,9 +76,8 @@ impl ResizedRingBuffer {
                 if self.scale_in_tick_num == 0 {
                     self.scale_in_tick = Instant::now();
                 }
-                self.scale_in_tick_num += 1;
-                if self.scale_in_tick_num & 1023 == 0 {
-                    const D: Duration = Duration::from_secs(60 * 5);
+                if self.scale_in_tick_num & 511 == 0 {
+                    const D: Duration = Duration::from_secs(60 * 2);
                     if self.scale_in_tick.elapsed() >= D {
                         let new = self.cap() / 2;
                         self._resize(new);
@@ -112,7 +94,7 @@ impl ResizedRingBuffer {
         assert!(cap >= self.min as usize);
         let new = self.inner.resize(cap);
         let old = std::mem::replace(&mut self.inner, new);
-        self.max_processed = old.processed();
+        self.max_processed = old.writtened();
         self.on_change(old.cap(), self.cap() as isize);
         self.old.push(old);
     }
