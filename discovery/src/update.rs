@@ -61,12 +61,21 @@ where
                         String::new()
                     };
                     sigs.insert(t.name().to_string(), sig);
-                    services.insert(t.name().to_string(), t);
+                    services.insert(t.name().to_string(), (t, Instant::now()));
                 }
             }
             if last.elapsed() >= self.tick {
                 self.check_once(&mut services, &mut sigs).await;
                 last = Instant::now();
+            }
+            // gc
+            for (_, (t, update)) in services.iter_mut() {
+                // 一次topo更新后，在stream::io::Monitor里面会在255秒钟内更新逻辑连接。
+                // 因此，300秒后开始进行gc
+                if update.elapsed() >= Duration::from_secs(300) {
+                    t.gc();
+                    *update = Instant::now();
+                }
             }
             tick.tick().await;
         }
@@ -76,11 +85,11 @@ where
     // 其次从remote获取
     async fn check_once(
         &mut self,
-        services: &mut HashMap<String, T>,
+        services: &mut HashMap<String, (T, Instant)>,
         sigs: &mut HashMap<String, String>,
     ) {
         let mut cache: HashMap<String, (String, String)> = HashMap::with_capacity(services.len());
-        for (name, t) in services.iter_mut() {
+        for (name, (t, update)) in services.iter_mut() {
             let path = t.path().to_string();
             let sig = sigs.get_mut(name).expect("sig not inited");
             // 在某些场景下，同一个name被多个path共用。所以如果sig没有变更，则不需要额外处理更新。
@@ -90,6 +99,7 @@ where
                 }
                 if cfg.len() > 0 {
                     t.update(name, &cfg);
+                    *update = Instant::now();
                     *sig = cache_sig.to_owned();
                     continue;
                 }
@@ -97,6 +107,7 @@ where
 
             if let Some((remote_sig, cfg)) = self.load_from_discovery(&path, sig).await {
                 t.update(name, &cfg);
+                *update = Instant::now();
                 *sig = remote_sig.to_owned();
                 cache.insert(path, (remote_sig, cfg));
             }

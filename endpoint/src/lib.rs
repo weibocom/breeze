@@ -53,16 +53,12 @@ $(
                     $(Self::$item(s) => discovery::TopologyWrite::update(s, name, cfg),)+
                }
            }
-       }
-
-       impl<P> ds::Update<(String, String)> for Topology<P> where P:Sync+Send+Protocol{
-           fn update(&mut self, o: &(String, String)) {
+           fn gc(&mut self) {
                match self {
-                    $(Self::$item(s) => discovery::TopologyWrite::update(s, &o.0, &o.1),)+
+                    $(Self::$item(s) => discovery::TopologyWrite::gc(s),)+
                }
            }
        }
-
 
         pub enum Endpoint<P> {
             $($item($type_name<P>)),+
