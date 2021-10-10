@@ -17,7 +17,7 @@ pub use response::*;
 pub use addr::*;
 pub use backend::{BackendBuilder, BackendStream};
 pub(crate) use handler::*;
-pub use mpmc::MpmcRingBufferStream as RingBufferStream;
+pub use mpmc::MpmcStream;
 
 use std::io::Result;
 

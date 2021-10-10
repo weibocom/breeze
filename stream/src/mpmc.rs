@@ -24,11 +24,11 @@ use tokio::io::{AsyncRead, AsyncWrite};
 //use tokio::sync::mpsc::{channel, Receiver, Sender};
 use crossbeam_channel::{bounded, Receiver, Sender};
 
-unsafe impl Send for MpmcRingBufferStream {}
-unsafe impl Sync for MpmcRingBufferStream {}
+unsafe impl Send for MpmcStream {}
+unsafe impl Sync for MpmcStream {}
 
 // 支持并发读取的stream
-pub struct MpmcRingBufferStream {
+pub struct MpmcStream {
     items: Vec<CacheAligned<Item>>,
     waker: AtomicWaker,
     bits: BitMap,
@@ -63,7 +63,7 @@ pub struct MpmcRingBufferStream {
     metric_id: MetricId,
 }
 
-impl MpmcRingBufferStream {
+impl MpmcStream {
     // id必须小于parallel
     pub fn with_capacity(parallel: usize, biz: &str, addr: &str, rsrc: protocol::Resource) -> Self {
         let parallel = parallel.next_power_of_two();
@@ -305,13 +305,13 @@ impl MpmcRingBufferStream {
     }
 }
 
-impl Drop for MpmcRingBufferStream {
+impl Drop for MpmcStream {
     fn drop(&mut self) {
         log::info!("{} closed.", self.addr);
     }
 }
 
-impl RequestHandler for Arc<MpmcRingBufferStream> {
+impl RequestHandler for Arc<MpmcStream> {
     #[inline(always)]
     fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)> {
         self.bind_seq(cid, seq);
@@ -344,7 +344,7 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
         }
     }
 }
-impl ResponseHandler for Arc<MpmcRingBufferStream> {
+impl ResponseHandler for Arc<MpmcStream> {
     // 获取已经被全部读取的字节的位置
     #[inline]
     fn load_read(&self) -> usize {
