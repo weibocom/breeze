@@ -19,7 +19,7 @@ impl SeqOffset {
         debug_assert!(cap >= 1);
         //let cache = (0..cap).map(|_| CacheAligned(Item::new())).collect();
         Self {
-            l2: ArrayQueue::new(cap * 4),
+            l2: ArrayQueue::new(cap),
             l3: SegQueue::new(),
             offset: CacheAligned(Cell::new(0)),
             seqs: CacheAligned(Cell::new(HashMap::with_capacity(cap))),
