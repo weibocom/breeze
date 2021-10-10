@@ -13,11 +13,10 @@ use crate::{
     AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Notify, Request, RequestHandler,
     ResponseData, ResponseHandler, Snapshot,
 };
-use ds::{BitMap, SeqOffset};
+use ds::{BitMap, CacheAligned, SeqOffset};
 use metrics::MetricId;
 use protocol::Protocol;
 
-use cache_line_size::CacheAligned;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -69,10 +68,10 @@ impl MpmcStream {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= super::MAX_CONNECTIONS);
         let items = (0..parallel)
-            .map(|id| CacheAligned(Item::new(id)))
+            .map(|id| CacheAligned::new(Item::new(id)))
             .collect();
         let seq_cids = (0..parallel)
-            .map(|_| CacheAligned(AtomicUsize::new(0)))
+            .map(|_| CacheAligned::new(AtomicUsize::new(0)))
             .collect();
 
         let (tx, rx) = bounded(32);
@@ -83,12 +82,12 @@ impl MpmcStream {
             bits: BitMap::with_capacity(parallel),
             seq_cids: seq_cids,
             seq_mask: parallel - 1,
-            offset: CacheAligned(SeqOffset::with_capacity(parallel)),
+            offset: CacheAligned::new(SeqOffset::with_capacity(parallel)),
             done: Arc::new(AtomicBool::new(true)),
             closed: AtomicBool::new(false),
             runnings: AtomicIsize::new(0),
-            req_num: CacheAligned(AtomicUsize::new(0)),
-            resp_num: CacheAligned(AtomicUsize::new(0)),
+            req_num: CacheAligned::new(AtomicUsize::new(0)),
+            resp_num: CacheAligned::new(AtomicUsize::new(0)),
             noreply_tx: tx,
             noreply_rx: rx,
 
