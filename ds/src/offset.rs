@@ -1,4 +1,4 @@
-use cache_line_size::CacheAligned;
+use crate::CacheAligned;
 use crossbeam_queue::{ArrayQueue, SegQueue};
 
 use std::cell::Cell;
@@ -21,8 +21,8 @@ impl SeqOffset {
         Self {
             l2: ArrayQueue::new(cap),
             l3: SegQueue::new(),
-            offset: CacheAligned(Cell::new(0)),
-            seqs: CacheAligned(Cell::new(HashMap::with_capacity(cap))),
+            offset: CacheAligned::new(Cell::new(0)),
+            seqs: CacheAligned::new(Cell::new(HashMap::with_capacity(cap))),
         }
     }
     // 插入一个span, [start, end)。

@@ -13,8 +13,6 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::{interval_at, sleep, timeout, Interval};
 
-//use futures::executor::block_on;
-
 pub struct BackendBuilder {
     finished: Arc<AtomicBool>,
     inited: Arc<AtomicBool>,
