@@ -156,6 +156,18 @@ impl RingBuffer {
         self.read = 0;
         self.write = 0;
     }
+    #[inline(always)]
+    pub fn reset_read(&mut self) {
+        let l = self.len();
+        if l > 0 {
+            let mut data = Vec::with_capacity(l);
+            self.data().copy_to_vec(&mut data);
+            use std::ptr::copy_nonoverlapping as copy;
+            unsafe { copy(data.as_ptr(), self.data.as_ptr(), l) };
+        }
+        self.read = 0;
+        self.write = l;
+    }
 }
 
 impl Drop for RingBuffer {
