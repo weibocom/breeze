@@ -1,4 +1,4 @@
-use crate::{BackendStream, RingBufferStream};
+use crate::{BackendStream, MpmcStream};
 use ds::{Cid, Ids};
 use protocol::{Protocol, Resource};
 
@@ -13,12 +13,10 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::{interval_at, sleep, timeout, Interval};
 
-//use futures::executor::block_on;
-
 pub struct BackendBuilder {
     finished: Arc<AtomicBool>,
     inited: Arc<AtomicBool>,
-    stream: Arc<RingBufferStream>,
+    stream: Arc<MpmcStream>,
     ids: Arc<Ids>,
 }
 
@@ -29,7 +27,7 @@ impl BackendBuilder {
     {
         let finished = Arc::new(AtomicBool::new(false));
         let init = Arc::new(AtomicBool::new(false));
-        let stream = Arc::new(RingBufferStream::with_capacity(parallel, biz, addr, rsrc));
+        let stream = Arc::new(MpmcStream::with_capacity(parallel, biz, addr, rsrc));
         let checker = BackendChecker::from(stream.clone(), finished.clone(), init.clone(), parser);
         tokio::spawn(async { checker.start_check().await });
 
@@ -68,7 +66,7 @@ impl Drop for BackendBuilder {
 }
 
 pub struct BackendChecker<P> {
-    inner: Arc<RingBufferStream>,
+    inner: Arc<MpmcStream>,
     rx: Receiver<u8>,
     tx: Arc<Sender<u8>>,
     connecting: bool, // 当前是否需要重新建立连接
@@ -84,7 +82,7 @@ pub struct BackendChecker<P> {
 
 impl<P> BackendChecker<P> {
     fn from(
-        stream: Arc<RingBufferStream>,
+        stream: Arc<MpmcStream>,
         finished: Arc<AtomicBool>,
         inited: Arc<AtomicBool>,
         parser: P,
@@ -95,7 +93,7 @@ impl<P> BackendChecker<P> {
         let latency_ms: u64 = rand::random::<u64>() % (SECS * 1000);
         let start = Instant::now() + Duration::from_millis(latency_ms);
         let tick = interval_at(start.into(), Duration::from_secs(SECS));
-        let (req_num, _) = stream.load_ping_ping();
+        let (req_num, _) = stream.load_ping_pong();
         Self {
             tx: Arc::new(tx),
             rx: rx,
@@ -187,7 +185,7 @@ impl<P> BackendChecker<P> {
         const TIME_OUT: Duration = Duration::from_secs(4);
         // 已经done了，忽略
         let done = self.inner.done();
-        let (req_num, resp_num) = self.inner.load_ping_ping();
+        let (req_num, resp_num) = self.inner.load_ping_pong();
         if done || req_num != self.req_num || resp_num == req_num {
             self.req_num = req_num;
             self.instant_timeout = Instant::now();
@@ -225,7 +223,7 @@ pub struct Notifier {
 }
 
 impl<P> std::ops::Deref for BackendChecker<P> {
-    type Target = RingBufferStream;
+    type Target = MpmcStream;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }

@@ -68,8 +68,12 @@ pub enum Protocols {
 impl Protocols {
     pub fn try_from(name: &str) -> Result<Self> {
         match name {
-            "mc_bin" | "mc" | "memcache" | "memcached" => Ok(Self::McBin(memcache::MemcacheBin::new())),
-            "mc_text" | "memcache_text" | "memcached_text" => Ok(Self::McText(memcache::MemcacheText::new())),
+            "mc_bin" | "mc" | "memcache" | "memcached" => {
+                Ok(Self::McBin(memcache::MemcacheBin::new()))
+            }
+            "mc_text" | "memcache_text" | "memcached_text" => {
+                Ok(Self::McText(memcache::MemcacheText::new()))
+            }
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("'{}' is not a valid protocol", name),
@@ -99,6 +103,4 @@ impl Resource {
 
 pub trait BackwardWrite {
     fn write(&mut self, data: &RingSlice);
-    // f: 部分场景需要数据写入完成之后，对数据进行更新
-    fn write_on<F: Fn(&mut [u8])>(&mut self, data: &RingSlice, update: F);
 }

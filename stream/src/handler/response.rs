@@ -15,7 +15,8 @@ use tokio::io::{AsyncRead, ReadBuf};
 use tokio::time::{interval, Interval};
 
 pub trait ResponseHandler {
-    fn load_offset(&self) -> usize;
+    // 获取自上一次调用以来，成功读取并可以释放的字节数量
+    fn load_read(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
     fn on_received(&self, seq: usize, response: protocol::Response);
 }
@@ -34,6 +35,8 @@ pub struct BridgeResponseToLocal<R, W, P> {
     metric_id: usize,
     tick: Interval,
     ticks: usize,
+
+    processed: usize,
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
@@ -41,9 +44,7 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
     where
         W: ResponseHandler + Unpin,
     {
-        let mut data = ResizedRingBuffer::new();
-        metrics::count("mem_buff_resp", data.cap() as isize, mid);
-        data.set_on_resize(move |old, delta| {
+        let data = ResizedRingBuffer::new(move |old, delta| {
             if delta > old as isize && delta >= 32 * 1024 {
                 // 扩容的时候才输出日志
                 log::info!("buffer resized ({}, {}). {}", old, delta, mid.name());
@@ -61,6 +62,7 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
             ticks: 0,
             tick: interval(Duration::from_micros(500)),
             metric_id: mid,
+            processed: 0,
         }
     }
 }
@@ -77,8 +79,8 @@ where
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
         while !me.done.load(Ordering::Acquire) {
-            let offset = me.w.load_offset();
-            me.data.reset_read(offset);
+            let read = me.w.load_read();
+            me.data.advance_read(read);
             let mut buf = me.data.as_mut_bytes();
             if buf.len() == 0 {
                 ready!(me.tick.poll_tick(cx));
@@ -94,18 +96,17 @@ where
             me.data.advance_write(n);
 
             // 处理等处理的数据
-            while me.data.processed() < me.data.writtened() {
-                let response = me.data.processing_bytes();
-                match me.parser.parse_response(&response) {
+            while me.processed < me.data.writtened() {
+                let p_oft = me.processed - me.data.read();
+                let processing = me.data.data().sub_slice(p_oft, me.data.len() - p_oft);
+                match me.parser.parse_response(&processing) {
                     None => break,
                     Some(r) => {
                         let seq = me.seq;
                         me.seq += 1;
-
-                        metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
-
-                        me.data.advance_processed(r.len());
+                        me.processed += r.len();
                         me.w.on_received(seq, r);
+                        metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
                     }
                 }
             }
@@ -120,11 +121,11 @@ impl<R, W, P> Display for BridgeResponseToLocal<R, W, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} - seq:{} buffer:{} processing:{:?}",
+            "{} - seq:{} buffer:{} processed:{:?}",
             self.metric_id.name(),
             self.seq,
             self.data,
-            self.data.processing_bytes().data()
+            self.processed
         )
     }
 }

@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use protocol::Protocol;
-use stream::BackendStream;
+use stream::{BackendBuilder, BackendStream};
 
 mod inner;
 use inner::*;
@@ -17,6 +20,9 @@ pub struct Topology<P> {
     mget: Inner<Layer>,
     noreply: Inner<Vec<Vec<String>>>,
     parser: P,
+    // 在没有master_l1与slave_l1时。所有的command共用一个物理连接
+    share: Inner<Vec<Vec<String>>>,
+    shared: bool,
 }
 
 impl<P> Topology<P> {
@@ -27,20 +33,20 @@ impl<P> Topology<P> {
         &self.distribution
     }
     pub fn master(&self) -> Vec<BackendStream> {
-        self.master.select().pop().unwrap_or_default()
+        self.master
+            .select(Some(self.share.streams()))
+            .pop()
+            .expect("master empty")
     }
     // 第一个元素是master，去掉
     pub fn followers(&self) -> Vec<Vec<BackendStream>> {
-        self.noreply.select().split_off(1)
-    }
-    pub fn noreply(&self) -> Vec<Vec<BackendStream>> {
-        self.noreply.select()
+        self.noreply.select(Some(self.share.streams())).split_off(1)
     }
     pub fn get(&self) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
-        self.with_write_back(self.get.select())
+        self.with_write_back(self.get.select(self.shared()))
     }
     pub fn mget(&self) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
-        self.with_write_back(self.mget.select())
+        self.with_write_back(self.mget.select(self.shared()))
     }
     fn with_write_back(
         &self,
@@ -51,6 +57,13 @@ impl<P> Topology<P> {
             .map(|layer| layer.iter().map(|s| s.faked_clone()).collect())
             .collect();
         (streams, write_back)
+    }
+    fn shared(&self) -> Option<&HashMap<String, Arc<BackendBuilder>>> {
+        if self.shared {
+            Some(self.share.streams())
+        } else {
+            None
+        }
     }
 }
 
@@ -77,19 +90,33 @@ where
                     self.hash = ns.hash.to_owned();
                     self.distribution = ns.distribution.to_owned();
                     let p = &self.parser;
+
+                    self.share.set(ns.uniq_all());
+                    self.share.update(namespace, p);
+
+                    // 更新配置
                     self.master.set(ns.master.clone());
-                    self.master.update(namespace, p);
-
-                    self.noreply.set(ns.writers());
-                    self.noreply.update(namespace, p);
-
                     self.get.with(|t| t.update(&ns));
-                    self.get.update(namespace, p);
-
                     self.mget.with(|t| t.update(&ns));
-                    self.mget.update(namespace, p);
+                    self.noreply.set(ns.writers());
+
+                    // 如果配置中包不含有master_l1,
+                    // 则所有的请求共用一个物理连接。否则每一种op使用独立的连接
+                    if ns.master_l1.len() == 0 {
+                        self.shared = true;
+                    } else {
+                        self.shared = false;
+                        self.get.update(namespace, p);
+                        self.mget.update(namespace, p);
+                    };
                 }
             }
+        }
+    }
+    fn gc(&mut self) {
+        if self.shared {
+            self.get.take();
+            self.mget.take();
         }
     }
 }
@@ -104,6 +131,8 @@ impl<P> From<P> for Topology<P> {
             get: Default::default(),
             mget: Default::default(),
             noreply: Default::default(),
+            share: Default::default(),
+            shared: false,
         };
         me.noreply.enable_fake_cid();
         me
