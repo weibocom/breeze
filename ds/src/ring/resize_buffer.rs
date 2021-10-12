@@ -1,4 +1,4 @@
-use super::RingBuffer;
+use super::{RingBuffer, RingSlice};
 use std::time::{Duration, Instant};
 
 type Callback = Box<dyn Fn(usize, isize)>;
@@ -14,11 +14,9 @@ pub struct ResizedRingBuffer {
     // 下面的用来做扩缩容判断
     min: u32,
     max: u32,
-    scale_up_tick_num: u32,
-    scale_up_tick: Instant,
     scale_in_tick_num: u32,
     scale_in_tick: Instant,
-    on_change: Option<Callback>,
+    on_change: Callback,
 }
 
 use std::ops::{Deref, DerefMut};
@@ -40,46 +38,32 @@ impl DerefMut for ResizedRingBuffer {
 
 impl ResizedRingBuffer {
     // 最小512个字节，最大4M. 初始化为4k.
-    pub fn new() -> Self {
-        Self::from(512, 2 * 1024 * 1024, 512)
+    pub fn new<F: Fn(usize, isize) + 'static>(cb: F) -> Self {
+        Self::from(512, 2 * 1024 * 1024, 512, cb)
     }
-    pub fn from(min: usize, max: usize, init: usize) -> Self {
+    pub fn from<F: Fn(usize, isize) + 'static>(min: usize, max: usize, init: usize, cb: F) -> Self {
         assert!(min <= init && init <= max);
+        cb(0, init as isize);
         Self {
             max_processed: std::usize::MAX,
             old: Vec::new(),
             inner: RingBuffer::with_capacity(init),
             min: min as u32,
             max: max as u32,
-            scale_up_tick_num: 0,
-            scale_up_tick: Instant::now(),
             scale_in_tick_num: 0,
             scale_in_tick: Instant::now(),
-            on_change: None,
+            on_change: Box::new(cb),
         }
     }
     // 需要写入数据时，判断是否需要扩容
     #[inline(always)]
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
-        if self.inner.available() {
-            if self.scale_up_tick_num > 0 {
-                self.scale_up_tick_num = 0;
-            }
-            self.inner.as_mut_bytes()
-        } else {
-            if self.scale_up_tick_num == 0 {
-                self.scale_up_tick = Instant::now();
-            }
-            self.scale_up_tick_num += 1;
-            const D: Duration = Duration::from_millis(4);
-            // 所有的已读数据都已处理完成，立即扩容
-            // 连续超过4ms需要扩容
-            let scale = self.read() == self.processed() || self.scale_up_tick.elapsed() >= D;
-            if scale && self.cap() * 2 <= self.max as usize {
+        if !self.inner.available() {
+            if self.cap() * 2 <= self.max as usize {
                 self._resize(self.cap() * 2);
             }
-            self.inner.as_mut_bytes()
         }
+        self.inner.as_mut_bytes()
     }
     // 有数写入时，判断是否需要缩容
     #[inline]
@@ -92,9 +76,8 @@ impl ResizedRingBuffer {
                 if self.scale_in_tick_num == 0 {
                     self.scale_in_tick = Instant::now();
                 }
-                self.scale_in_tick_num += 1;
-                if self.scale_in_tick_num & 1023 == 0 {
-                    const D: Duration = Duration::from_secs(60 * 5);
+                if self.scale_in_tick_num & 511 == 0 {
+                    const D: Duration = Duration::from_secs(60 * 2);
                     if self.scale_in_tick.elapsed() >= D {
                         let new = self.cap() / 2;
                         self._resize(new);
@@ -111,30 +94,35 @@ impl ResizedRingBuffer {
         assert!(cap >= self.min as usize);
         let new = self.inner.resize(cap);
         let old = std::mem::replace(&mut self.inner, new);
-        self.max_processed = old.processed();
-        if let Some(ref f) = self.on_change {
-            f(old.cap(), cap as isize);
-        }
+        self.max_processed = old.writtened();
+        self.on_change(old.cap(), self.cap() as isize);
         self.old.push(old);
     }
     #[inline(always)]
-    pub fn reset_read(&mut self, read: usize) {
-        self.inner.reset_read(read);
-        if read >= self.max_processed {
+    pub fn advance_read(&mut self, n: usize) {
+        self.inner.advance_read(n);
+        if self.read() >= self.max_processed {
             let delta = self.old.iter().fold(0usize, |mut s, b| {
                 s += b.cap();
                 s
             });
-            if let Some(ref f) = self.on_change {
-                f(self.cap(), delta as isize * -1);
-            }
+            self.on_change(self.cap(), delta as isize * -1);
             self.old.clear();
             self.max_processed = std::usize::MAX;
         }
     }
     #[inline]
-    pub fn set_on_resize<F: Fn(usize, isize) + 'static>(&mut self, f: F) {
-        self.on_change = Some(Box::new(f));
+    fn on_change(&self, cap: usize, delta: isize) {
+        (*self.on_change)(cap, delta)
+    }
+    // 写入数据。返回是否写入成功。
+    // 当buffer无法再扩容以容纳data时，写入失败，其他写入成功
+    #[inline]
+    pub fn write(&mut self, data: &RingSlice) -> usize {
+        if self.avail() < data.len() {
+            self._resize(self.cap() + data.len());
+        }
+        self.inner.write(data)
     }
 }
 
@@ -144,3 +132,16 @@ impl Display for ResizedRingBuffer {
         write!(f, "rrb:(inner:{}, old:{:?})", self.inner, self.old)
     }
 }
+
+impl Drop for ResizedRingBuffer {
+    fn drop(&mut self) {
+        let cap = self.cap();
+        let delta = self.old.iter().fold(cap, |mut s, b| {
+            s += b.cap();
+            s
+        });
+        self.on_change(cap, delta as isize * -1);
+    }
+}
+unsafe impl Send for ResizedRingBuffer {}
+unsafe impl Sync for ResizedRingBuffer {}

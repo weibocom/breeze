@@ -50,10 +50,14 @@ impl<T> Inner<T> {
         //删除
         self.streams.retain(|addr, _| all.contains_key(addr));
     }
-    pub(crate) fn select(&self) -> Vec<Vec<BackendStream>>
+    pub(crate) fn select(
+        &self,
+        share: Option<&HashMap<String, Arc<BackendBuilder>>>,
+    ) -> Vec<Vec<BackendStream>>
     where
         T: VisitAddress,
     {
+        let builders = share.unwrap_or(&self.streams);
         let mut streams = HashMap::with_capacity(4);
 
         self.addrs.select(|layer, addr| {
@@ -61,7 +65,7 @@ impl<T> Inner<T> {
                 streams.insert(layer, Vec::with_capacity(8));
             }
             streams.get_mut(&layer).expect("layers").push(
-                self.streams
+                builders
                     .get(addr)
                     .expect("address match stream")
                     .build(self.fack_cid),
@@ -83,6 +87,15 @@ impl<T> Inner<T> {
     }
     pub(crate) fn enable_fake_cid(&mut self) {
         self.fack_cid = true;
+    }
+    pub(crate) fn streams(&self) -> &HashMap<String, Arc<BackendBuilder>> {
+        &self.streams
+    }
+    pub(crate) fn take(&mut self) {
+        if self.streams.len() > 0 {
+            log::info!("streams taken:{:?}", self.streams.keys());
+            self.streams.clear();
+        }
     }
 }
 

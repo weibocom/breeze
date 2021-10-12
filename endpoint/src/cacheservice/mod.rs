@@ -73,13 +73,15 @@ impl<P> CacheService<P> {
         ));
 
         // meta与master共享一个物理连接。
-        let meta = Meta(MetaStream::from(p.clone(), topo.master()));
+        //let meta = Meta(MetaStream::from(p.clone(), topo.master()));
         let mut operations = HashMap::with_capacity(4);
         operations.insert(protocol::Operation::Get, get);
         operations.insert(protocol::Operation::Gets, mget);
         operations.insert(protocol::Operation::Store, store);
-        operations.insert(protocol::Operation::Meta, meta);
-        let op_stream = AsyncOpRoute::from(operations);
+        //operations.insert(protocol::Operation::Meta, meta);
+        let mut alias = HashMap::new();
+        alias.insert(protocol::Operation::Meta, protocol::Operation::Store);
+        let op_stream = AsyncOpRoute::from(operations, alias);
 
         log::debug!("cs logic connection established:{:?}", op_stream.addr());
 

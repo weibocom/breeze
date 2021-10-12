@@ -5,9 +5,6 @@ use std::sync::{
     Arc,
 };
 
-// 更新top时的参数。
-type TO = (String, String);
-
 pub trait TopologyRead<T> {
     fn do_with<F, O>(&self, f: F) -> O
     where
@@ -16,6 +13,7 @@ pub trait TopologyRead<T> {
 
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
+    fn gc(&mut self);
 }
 
 #[derive(Clone)]
@@ -25,7 +23,7 @@ pub struct CowWrapper<T> {
 
 pub fn topology<T>(t: T, service: &str) -> (TopologyWriteGuard<T>, TopologyReadGuard<T>)
 where
-    T: TopologyWrite + Clone + ds::Update<(String, String)>,
+    T: TopologyWrite + Clone,
 {
     let (tx, rx) = cow(t);
     let name = service.to_string();
@@ -62,9 +60,9 @@ pub struct TopologyReadGuard<T> {
 }
 pub struct TopologyWriteGuard<T>
 where
-    T: Clone + ds::Update<TO>,
+    T: Clone,
 {
-    inner: CowWriteHandle<T, TO>,
+    inner: CowWriteHandle<T>,
     name: String,
     path: String,
     updates: Arc<AtomicUsize>,
@@ -91,18 +89,22 @@ where
 
 impl<T> TopologyWrite for TopologyWriteGuard<T>
 where
-    T: TopologyWrite + Clone + ds::Update<TO>,
+    T: TopologyWrite + Clone,
 {
     fn update(&mut self, name: &str, cfg: &str) {
         log::info!("topology updating. name:{}, cfg len:{}", name, cfg.len());
-        self.inner.write(&(name.to_string(), cfg.to_string()));
+        //self.inner.write(&(name.to_string(), cfg.to_string()));
+        self.inner.write(|t| t.update(name, cfg));
         self.updates.fetch_add(1, Ordering::Relaxed);
+    }
+    fn gc(&mut self) {
+        self.inner.write(|t| t.gc());
     }
 }
 
 impl<T> crate::ServiceId for TopologyWriteGuard<T>
 where
-    T: Clone + ds::Update<TO>,
+    T: Clone,
 {
     fn name(&self) -> &str {
         &self.name
@@ -124,7 +126,7 @@ impl<T> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
 
 impl<T> TopologyReadGuard<T>
 where
-    T: Clone + ds::Update<TO>,
+    T: Clone,
 {
     pub fn tick(&self) -> TopologyTicker {
         TopologyTicker(self.updates.clone())

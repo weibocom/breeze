@@ -1,4 +1,4 @@
-use cache_line_size::CacheAligned;
+use crate::CacheAligned;
 use crossbeam_queue::{ArrayQueue, SegQueue};
 
 use std::cell::Cell;
@@ -19,10 +19,10 @@ impl SeqOffset {
         debug_assert!(cap >= 1);
         //let cache = (0..cap).map(|_| CacheAligned(Item::new())).collect();
         Self {
-            l2: ArrayQueue::new(cap * 4),
+            l2: ArrayQueue::new(cap),
             l3: SegQueue::new(),
-            offset: CacheAligned(Cell::new(0)),
-            seqs: CacheAligned(Cell::new(HashMap::with_capacity(cap))),
+            offset: CacheAligned::new(Cell::new(0)),
+            seqs: CacheAligned::new(Cell::new(HashMap::with_capacity(cap))),
         }
     }
     // 插入一个span, [start, end)。
@@ -40,9 +40,15 @@ impl SeqOffset {
         }
     }
 
-    // load offset, [0.. offset)都已经调用insert被相应的span全部填充
+    #[inline]
+    pub fn span(&self) -> usize {
+        let old = self.offset.0.get();
+        self.sort_and_flatten() - old
+    }
+
+    // 把无序的区间按start排序，并且确保首尾相接. 返回最大的offset。
     #[inline(always)]
-    pub fn load(&self) -> usize {
+    pub fn sort_and_flatten(&self) -> usize {
         let mut offset = self.offset.0.get();
         use std::mem::transmute;
         let seqs: &mut HashMap<usize, usize> = unsafe { transmute(self.seqs.0.as_ptr()) };
