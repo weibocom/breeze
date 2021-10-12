@@ -53,10 +53,8 @@ mod tests {
         assert_eq!(rrb.cap(), 1024 * 2);
         assert_eq!(rrb.len(), 1024);
 
-        rrb.advance_processed(1024);
         rrb.advance_read(1024);
 
-        rrb.advance_processed(512);
         rrb.advance_write(1024);
         let buf = rrb.as_mut_bytes();
         assert_eq!(buf.len(), 1024);
@@ -74,7 +72,6 @@ mod tests {
         assert_eq!(buf.len(), 1024);
 
         // 缩容
-        rrb.advance_processed(2 * 1024);
         rrb.advance_read(1024);
         let ins = Instant::now();
         loop {
@@ -84,7 +81,6 @@ mod tests {
                 break;
             }
         }
-        rrb.advance_processed(512);
         rrb.advance_read(4 * 1024);
         println!("buffer:{}", rrb);
     }
