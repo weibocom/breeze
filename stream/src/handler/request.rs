@@ -1,8 +1,6 @@
 use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use futures::ready;
@@ -51,6 +49,7 @@ pub trait RequestHandler {
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()>;
     fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)>;
     fn sent(&self, cid: usize, seq: usize, req: &Request);
+    fn running(&self) -> bool;
 }
 
 pub struct BridgeRequestToBackend<H, W> {
@@ -62,13 +61,12 @@ pub struct BridgeRequestToBackend<H, W> {
     seq: usize,
     handler: H,
     w: BufWriter<W>,
-    done: Arc<AtomicBool>,
     metric_id: usize,
 }
 
 const WRITE_BUFF: usize = 8 * 1024;
 impl<H, W> BridgeRequestToBackend<H, W> {
-    pub fn from(handler: H, w: W, done: Arc<AtomicBool>, mid: usize) -> Self
+    pub fn from(handler: H, w: W, mid: usize) -> Self
     where
         W: AsyncWrite,
     {
@@ -76,7 +74,6 @@ impl<H, W> BridgeRequestToBackend<H, W> {
         metrics::count("mem_buff_req", WRITE_BUFF as isize, mid);
         Self {
             metric_id: mid,
-            done: done,
             seq: 0,
             handler: handler,
             w: BufWriter::with_capacity(WRITE_BUFF, w),
@@ -96,7 +93,7 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
-        while !me.done.load(Ordering::Acquire) {
+        while me.handler.running() {
             if let Some((ref cid, ref req)) = me.cache {
                 let data = req.data();
                 log::debug!("writing {} {} {}", req.len(), me.offset, req.id());

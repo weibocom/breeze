@@ -43,7 +43,7 @@ impl<B> AsyncWriteAll for AsyncOpRoute<B>
 where
     B: AsyncWriteAll + Unpin,
 {
-    #[inline]
+    #[inline(always)]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         // ping-pong请求，有写时，read一定是读完成了
@@ -57,7 +57,7 @@ impl<B> AsyncReadAll for AsyncOpRoute<B>
 where
     B: AsyncReadAll + Unpin,
 {
-    #[inline]
+    #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
         unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_next(cx) }
