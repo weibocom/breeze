@@ -1,8 +1,6 @@
 use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -19,6 +17,7 @@ pub trait ResponseHandler {
     fn load_read(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
     fn on_received(&self, seq: usize, response: protocol::Response);
+    fn running(&self) -> bool;
 }
 
 unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
@@ -26,7 +25,6 @@ unsafe impl<R, W, P> Sync for BridgeResponseToLocal<R, W, P> {}
 
 pub struct BridgeResponseToLocal<R, W, P> {
     seq: usize,
-    done: Arc<AtomicBool>,
     r: R,
     w: W,
     parser: P,
@@ -40,7 +38,7 @@ pub struct BridgeResponseToLocal<R, W, P> {
 }
 
 impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, done: Arc<AtomicBool>, mid: usize) -> Self
+    pub fn from(r: R, w: W, parser: P, mid: usize) -> Self
     where
         W: ResponseHandler + Unpin,
     {
@@ -57,7 +55,6 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
             w: w,
             r: r,
             parser: parser,
-            done: done,
             data: data,
             ticks: 0,
             tick: interval(Duration::from_micros(500)),
@@ -78,7 +75,7 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
-        while !me.done.load(Ordering::Acquire) {
+        while me.w.running() {
             let read = me.w.load_read();
             me.data.advance_read(read);
             let mut buf = me.data.as_mut_bytes();
