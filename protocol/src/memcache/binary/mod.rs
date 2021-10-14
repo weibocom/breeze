@@ -182,6 +182,7 @@ impl Protocol for MemcacheBinary {
         return Ok(requests_wb);
     }
 
+    #[inline(always)]
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
     where
         R: Iterator<Item = &'a Response>,
