@@ -22,10 +22,6 @@ impl ResponseData {
             seq: resp_seq,
         }
     }
-    //#[inline(always)]
-    //pub fn data(&self) -> &RingSlice {
-    //    &self.data
-    //}
     #[inline(always)]
     pub fn rid(&self) -> &RequestId {
         &self.req_id
@@ -70,7 +66,7 @@ impl Response {
     }
     #[inline]
     pub fn append(&mut self, other: Response) {
-        self.items.reserve(other.items.len());
+        self.items.reserve(other.items.len().max(16));
         self.items.extend(other.items);
     }
     #[inline]
