@@ -103,7 +103,7 @@ where
                         me.seq += 1;
                         me.processed += r.len();
                         me.w.on_received(seq, r);
-                        metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
+                        //metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
                     }
                 }
             }
