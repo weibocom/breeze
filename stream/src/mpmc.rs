@@ -10,8 +10,7 @@ use std::task::{Context, Poll};
 
 use super::status::*;
 use crate::{
-    AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Notify, Request, RequestHandler,
-    ResponseData, ResponseHandler, Snapshot,
+    AtomicWaker, Notify, Request, RequestHandler, ResponseData, ResponseHandler, Snapshot,
 };
 use ds::{BitMap, CacheAligned, SeqOffset};
 use metrics::MetricId;
@@ -21,7 +20,7 @@ use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 //use tokio::sync::mpsc::{channel, Receiver, Sender};
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crate::{bounded, Receiver, Sender};
 
 unsafe impl Send for MpmcStream {}
 unsafe impl Sync for MpmcStream {}
@@ -223,14 +222,14 @@ impl MpmcStream {
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            BridgeRequestToBackend::from(self.clone(), w, self.metric_id.id()),
+            RequestHandler::from(self.clone(), w, self.metric_id.id()),
         );
 
         //// 从response读取数据写入items
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            BridgeResponseToLocal::from(r, self.clone(), parser, self.metric_id.id()),
+            ResponseHandler::from(r, self.clone(), parser, self.metric_id.id()),
         );
     }
     fn start_bridge<F, N>(self: Arc<Self>, notify: N, future: F)
@@ -305,7 +304,7 @@ impl Drop for MpmcStream {
     }
 }
 
-impl RequestHandler for Arc<MpmcStream> {
+impl crate::handler::request::Handler for Arc<MpmcStream> {
     #[inline(always)]
     fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)> {
         self.bind_seq(cid, seq);
@@ -342,7 +341,7 @@ impl RequestHandler for Arc<MpmcStream> {
         !self.done()
     }
 }
-impl ResponseHandler for Arc<MpmcStream> {
+impl crate::handler::response::Handler for Arc<MpmcStream> {
     // 获取已经被全部读取的字节的位置
     #[inline]
     fn load_read(&self) -> usize {

@@ -36,7 +36,7 @@ impl Snapshot {
     #[inline(always)]
     fn take<H>(&mut self, handler: &H, seq: usize) -> Option<(usize, Request)>
     where
-        H: Unpin + RequestHandler,
+        H: Unpin + crate::handler::request::Handler,
     {
         match self.cids.pop() {
             Some(cid) => handler.take(cid, seq),
@@ -44,7 +44,7 @@ impl Snapshot {
         }
     }
 }
-pub trait RequestHandler {
+pub trait Handler {
     // 如果填充ss的长度为0，则说明handler没有要处理的数据流，提示到达eof。
     fn poll_fill_snapshot(&self, cx: &mut Context, ss: &mut Snapshot) -> Poll<()>;
     fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)>;
@@ -52,7 +52,7 @@ pub trait RequestHandler {
     fn running(&self) -> bool;
 }
 
-pub struct BridgeRequestToBackend<H, W> {
+pub struct RequestHandler<H, W> {
     snapshot: Snapshot,
     // 当前处理的请求
     cache: Option<(usize, Request)>,
@@ -65,7 +65,7 @@ pub struct BridgeRequestToBackend<H, W> {
 }
 
 const WRITE_BUFF: usize = 8 * 1024;
-impl<H, W> BridgeRequestToBackend<H, W> {
+impl<H, W> RequestHandler<H, W> {
     pub fn from(handler: H, w: W, mid: usize) -> Self
     where
         W: AsyncWrite,
@@ -83,13 +83,14 @@ impl<H, W> BridgeRequestToBackend<H, W> {
         }
     }
 }
-impl<H, W> Future for BridgeRequestToBackend<H, W>
+impl<H, W> Future for RequestHandler<H, W>
 where
-    H: Unpin + RequestHandler,
+    H: Unpin + Handler,
     W: AsyncWrite + Unpin,
 {
     type Output = Result<()>;
 
+    #[inline(always)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
@@ -134,7 +135,7 @@ where
         Poll::Ready(Ok(()))
     }
 }
-impl<H, W> Drop for BridgeRequestToBackend<H, W> {
+impl<H, W> Drop for RequestHandler<H, W> {
     #[inline]
     fn drop(&mut self) {
         metrics::count("mem_buff_req", WRITE_BUFF as isize * -1, self.metric_id);
