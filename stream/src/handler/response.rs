@@ -12,7 +12,7 @@ use futures::ready;
 use tokio::io::{AsyncRead, ReadBuf};
 use tokio::time::{interval, Interval};
 
-pub trait ResponseHandler {
+pub trait Handler {
     // 获取自上一次调用以来，成功读取并可以释放的字节数量
     fn load_read(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
@@ -20,10 +20,10 @@ pub trait ResponseHandler {
     fn running(&self) -> bool;
 }
 
-unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
-unsafe impl<R, W, P> Sync for BridgeResponseToLocal<R, W, P> {}
+unsafe impl<R, W, P> Send for ResponseHandler<R, W, P> {}
+unsafe impl<R, W, P> Sync for ResponseHandler<R, W, P> {}
 
-pub struct BridgeResponseToLocal<R, W, P> {
+pub struct ResponseHandler<R, W, P> {
     seq: usize,
     r: R,
     w: W,
@@ -37,10 +37,10 @@ pub struct BridgeResponseToLocal<R, W, P> {
     processed: usize,
 }
 
-impl<R, W, P> BridgeResponseToLocal<R, W, P> {
+impl<R, W, P> ResponseHandler<R, W, P> {
     pub fn from(r: R, w: W, parser: P, mid: usize) -> Self
     where
-        W: ResponseHandler + Unpin,
+        W: Handler + Unpin,
     {
         let data = ResizedRingBuffer::new(move |old, delta| {
             if delta > old as isize && delta >= 32 * 1024 {
@@ -64,11 +64,11 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
     }
 }
 
-impl<R, W, P> Future for BridgeResponseToLocal<R, W, P>
+impl<R, W, P> Future for ResponseHandler<R, W, P>
 where
     R: AsyncRead + Unpin,
     P: Protocol + Unpin,
-    W: ResponseHandler + Unpin,
+    W: Handler + Unpin,
 {
     type Output = Result<()>;
 
@@ -113,7 +113,7 @@ where
     }
 }
 use std::fmt::{self, Display, Formatter};
-impl<R, W, P> Display for BridgeResponseToLocal<R, W, P> {
+impl<R, W, P> Display for ResponseHandler<R, W, P> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
