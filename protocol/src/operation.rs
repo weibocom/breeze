@@ -4,7 +4,7 @@ pub const OPERATION_NUM: usize = 4;
 #[derive(Copy, Clone, Debug)]
 pub enum Operation {
     Get = 0u8,
-    Gets,
+    MGet,
     Store,
     Meta,
     Other,
@@ -17,16 +17,14 @@ impl Default for Operation {
     }
 }
 
+const OPS: [Operation; 5] = [Get, MGet, Store, Meta, Other];
+const OP_NAMES: [&'static str; OPS.len()] = ["get", "mget", "store", "meta", "other"];
+
 impl From<usize> for Operation {
     #[inline(always)]
     fn from(op: usize) -> Self {
-        match op {
-            0 => Get,
-            1 => Gets,
-            2 => Store,
-            3 => Meta,
-            _ => Other,
-        }
+        debug_assert!(op < OPS.len());
+        OPS[op]
     }
 }
 
@@ -37,11 +35,14 @@ impl PartialEq for Operation {
     }
 }
 impl Eq for Operation {}
-const OP_NAMES: [&'static str; 5] = ["get", "mget", "store", "meta", "other"];
 impl Operation {
     #[inline(always)]
     pub fn name(&self) -> &'static str {
         OP_NAMES[*self as u8 as usize]
+    }
+    #[inline(always)]
+    pub fn is_retrival(&self) -> bool {
+        *self as usize <= MGet as usize
     }
 }
 use std::hash::{Hash, Hasher};

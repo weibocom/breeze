@@ -51,7 +51,7 @@ impl Protocol for MemcacheText {
                 .as_str()
             {
                 "get" => Operation::Get,
-                "gets" => Operation::Gets,
+                "gets" => Operation::MGet,
                 "set" => Operation::Store,
                 "version\r\n" => Operation::Meta,
                 _ => Operation::Other,
@@ -89,7 +89,7 @@ impl Protocol for MemcacheText {
             read = read + split_req[0].len();
             if split_req.len() > 1 {
                 let mut key_position = 2 as usize;
-                if op.eq(&Operation::Gets) {
+                if op.eq(&Operation::MGet) {
                     key_position = split_req.len();
                 }
                 for i in 1..split_req.len() {
@@ -121,7 +121,7 @@ impl Protocol for MemcacheText {
     #[inline]
     fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
-        debug_assert_eq!(req.operation(), Operation::Gets);
+        debug_assert_eq!(req.operation(), Operation::MGet);
         unsafe {
             let klen = req.keys().len();
             let mut keys = Vec::with_capacity(klen);
@@ -199,7 +199,7 @@ impl Protocol for MemcacheText {
     where
         R: Iterator<Item = &'a Response>,
     {
-        debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::Gets);
+        debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::MGet);
         debug_assert!(req.keys().len() > 0);
         if self.is_single_get(req) {
             if let Some(response) = resp.next() {
