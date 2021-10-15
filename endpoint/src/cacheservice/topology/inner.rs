@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use super::VisitAddress;
 use protocol::{Protocol, Resource};
-use stream::{BackendBuilder, BackendStream};
+use stream::{BackendBuilder, BackendStream, LayerRole};
 
 #[derive(Clone, Default)]
 pub(crate) struct Inner<T> {
@@ -50,7 +50,7 @@ impl<T> Inner<T> {
         //删除
         self.streams.retain(|addr, _| all.contains_key(addr));
     }
-    pub(crate) fn select(&self) -> Vec<Vec<BackendStream>>
+    pub(crate) fn select(&self) -> Vec<(LayerRole, Vec<BackendStream>)>
     where
         T: VisitAddress,
     {
@@ -73,7 +73,11 @@ impl<T> Inner<T> {
             .map(|(k, v)| (k, v))
             .collect::<Vec<(usize, Vec<BackendStream>)>>();
         sorted.sort_by(|a, b| a.0.cmp(&b.0));
-        sorted.into_iter().map(|(_layer, s)| s).collect()
+        let mut layers = Vec::with_capacity(sorted.len());
+        for (idx, streams) in sorted {
+            layers.push((LayerRole::from(idx), streams));
+        }
+        layers
     }
 
     pub(crate) fn inited(&self) -> bool {

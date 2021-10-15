@@ -34,6 +34,8 @@ pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
     // 调用方必须确保req包含key，否则可能会panic
     fn meta_type(&self, req: &Request) -> MetaType;
     fn key(&self, req: &Request) -> Slice;
+    fn req_getcas(&self, req: &Request) -> bool;
+    fn req_cas_or_add(&self, req: &Request) -> bool;
     // 从response中解析出一个完成的response
     fn parse_response(&self, response: &RingSlice) -> Option<Response>;
     // 将response转换为回种数据的cmd,并将数据写入request_buff中，返回待会写的cmds的Slice结构
@@ -43,6 +45,8 @@ pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
         response: &Response,
         expire_seconds: u32,
     ) -> Result<Vec<Request>>;
+    // 对getCas指令做修正，以满足标准协议
+    fn convert_getCas(&self, request: &Request);
     // 把resp里面存在的key都去掉，只保留未返回结果的key及对应的命令。
     // 如果所有的key都已返回，则返回None
     fn filter_by_key<'a, R>(&self, req: &Request, resp: R) -> Option<Request>
@@ -68,8 +72,12 @@ pub enum Protocols {
 impl Protocols {
     pub fn try_from(name: &str) -> Result<Self> {
         match name {
-            "mc_bin" | "mc" | "memcache" | "memcached" => Ok(Self::McBin(memcache::MemcacheBin::new())),
-            "mc_text" | "memcache_text" | "memcached_text" => Ok(Self::McText(memcache::MemcacheText::new())),
+            "mc_bin" | "mc" | "memcache" | "memcached" => {
+                Ok(Self::McBin(memcache::MemcacheBin::new()))
+            }
+            "mc_text" | "memcache_text" | "memcached_text" => {
+                Ok(Self::McText(memcache::MemcacheText::new()))
+            }
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("'{}' is not a valid protocol", name),

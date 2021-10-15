@@ -17,6 +17,8 @@ pub enum Magic {
     Response = 0x81,
 }
 
+pub const CAS_LEN: usize = 8;
+
 // // pub const STATUS_OK: u16 = 0x0;
 // pub const SET_REQUEST_EXTRATS_LEN: u8 = 8;
 
@@ -68,6 +70,7 @@ pub enum Opcode {
     SetQ = 0x11,
     Touch = 0x1c,
     StartAuth = 0x21,
+    GETCAS = 0x48,
 }
 
 // // mc response的响应code

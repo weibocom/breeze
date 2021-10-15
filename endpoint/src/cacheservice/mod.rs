@@ -8,7 +8,7 @@ use discovery::TopologyRead;
 use protocol::Protocol;
 use stream::{
     Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync,
-    AsyncSharding, MetaStream,
+    AsyncSharding, LayerRole, MetaStream,
 };
 
 type Backend = stream::BackendStream;
@@ -58,7 +58,7 @@ impl<P> CacheService<P> {
             p.clone(),
         ));
 
-        let master = AsyncSharding::from(topo.master(), hash, dist, p.clone());
+        let master = AsyncSharding::from(LayerRole::Master, topo.master(), hash, dist, p.clone());
         let noreply = build_layers(topo.followers(), hash, dist, p.clone());
         let store = Store(AsyncSetSync::from_master(master, noreply, p.clone()));
 
@@ -118,7 +118,7 @@ where
 
 #[inline]
 fn build_layers<S, P>(
-    pools: Vec<Vec<S>>,
+    pools: Vec<(LayerRole, Vec<S>)>,
     h: &str,
     distribution: &str,
     parser: P,
@@ -128,15 +128,21 @@ where
     P: Protocol + Clone,
 {
     let mut layers: Vec<AsyncSharding<S, P>> = Vec::with_capacity(pools.len());
-    for p in pools {
-        layers.push(AsyncSharding::from(p, h, distribution, parser.clone()));
+    for (role, p) in pools {
+        layers.push(AsyncSharding::from(
+            role,
+            p,
+            h,
+            distribution,
+            parser.clone(),
+        ));
     }
     layers
 }
 
 #[inline]
 fn build_mget<S, P>(
-    pools: Vec<Vec<S>>,
+    pools: Vec<(LayerRole, Vec<S>)>,
     parser: P,
     h: &str,
     d: &str,
@@ -146,8 +152,14 @@ where
     P: Clone,
 {
     let mut layers: Vec<AsyncMultiGetSharding<S, P>> = Vec::with_capacity(pools.len());
-    for p in pools {
-        layers.push(AsyncMultiGetSharding::from_shard(p, parser.clone(), h, d));
+    for (role, p) in pools {
+        layers.push(AsyncMultiGetSharding::from_shard(
+            role,
+            p,
+            parser.clone(),
+            h,
+            d,
+        ));
     }
     layers
 }
