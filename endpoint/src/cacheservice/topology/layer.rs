@@ -1,5 +1,6 @@
 use rand::Rng;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use stream::LayerRole;
 
 struct Seq {
     inner: AtomicUsize,
@@ -54,20 +55,24 @@ impl super::VisitAddress for Layer {
     fn select<F: FnMut(usize, &str)>(&self, mut f: F) {
         assert!(self.l0.len() > 0);
         let l0_idx = self.seq.fetch_add(1, Ordering::AcqRel) % self.l0.len();
-        let mut layer_idx = 0;
+        // let mut layer_idx = 0;
         unsafe {
             self.l0.get_unchecked(l0_idx).iter().for_each(|addr| {
-                f(layer_idx, addr);
+                f(LayerRole::MasterL1 as usize, addr);
             });
         }
         if l0_idx > 0 && self.l1.len() > 0 {
-            layer_idx += 1;
-            self.l1.iter().for_each(|addr| f(layer_idx, addr));
+            // layer_idx += 1;
+            self.l1
+                .iter()
+                .for_each(|addr| f(LayerRole::Master as usize, addr));
         }
         // 目前分块下，slave放到了l1下。因此可能重复
         if self.l2.len() > 0 && self.l0[l0_idx] != self.l2 {
-            layer_idx += 1;
-            self.l2.iter().for_each(|addr| f(layer_idx, addr));
+            // layer_idx += 1;
+            self.l2
+                .iter()
+                .for_each(|addr| f(LayerRole::SlaveL1 as usize, addr));
         }
     }
 }

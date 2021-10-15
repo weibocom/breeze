@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Result};
+use stream::LayerRole;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Namespace {
@@ -51,8 +52,14 @@ impl Namespace {
         if self.master.len() > 0 {
             w.push(self.master.clone());
             w.extend(self.master_l1.clone());
+            // for ml1 in self.master_l1 {
+            //     w.push((LayerRole::MasterL1, ml1.clone()));
+            // }
             w.push(self.slave.clone());
             w.extend(self.slave_l1.clone());
+            // for sl1 in self.slave_l1 {
+            //     w.push((LayerRole::SlaveL1, sl1));
+            // }
         }
         w
     }

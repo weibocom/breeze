@@ -7,6 +7,10 @@ impl Address {
         self.inner.push_str(" | ");
         self.inner.push_str(&other.inner);
     }
+
+    pub fn to_string(&self) -> String {
+        self.inner.clone()
+    }
 }
 impl From<String> for Address {
     fn from(addr: String) -> Self {
@@ -68,4 +72,40 @@ impl PartialEq for Address {
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
+}
+
+pub trait FakedClone {
+    fn faked_clone(&self) -> Self;
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayerRole {
+    MasterL1 = 0,
+    Master = 1,
+    Slave = 2,
+    SlaveL1 = 3,
+    Noreply = 9,
+    Unknow = 10,
+}
+
+impl From<usize> for LayerRole {
+    fn from(layer_idx: usize) -> Self {
+        match layer_idx {
+            0 => LayerRole::MasterL1,
+            1 => LayerRole::Master,
+            2 => LayerRole::Slave,
+            3 => LayerRole::SlaveL1,
+            10 => LayerRole::Noreply,
+            _ => {
+                log::error!("Error: unknow layer_idx:{}", layer_idx);
+                debug_assert!(false);
+                LayerRole::Unknow
+            }
+        }
+    }
+}
+
+pub trait LayerRoleAble {
+    fn layer_role(&self) -> LayerRole;
+    fn is_master(&self) -> bool;
 }

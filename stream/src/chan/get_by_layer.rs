@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Response};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, LayerRoleAble, Response};
 use protocol::{Operation, Protocol, Request};
 
 use futures::ready;
@@ -16,6 +16,8 @@ pub struct AsyncLayerGet<L, B, P> {
     // 每一层访问的请求
     request: Request,
     response: Option<Response>,
+    master_idx: usize,
+    is_get_cas: bool,
     parser: P,
     since: Instant, // 上一层请求开始的时间
     err: Option<Error>,
@@ -23,26 +25,49 @@ pub struct AsyncLayerGet<L, B, P> {
 
 impl<L, B, P> AsyncLayerGet<L, B, P>
 where
-    L: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + Addressed + LayerRoleAble + Unpin,
     B: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
     pub fn from_layers(layers: Vec<L>, layers_writeback: Vec<B>, p: P) -> Self {
         assert_eq!(layers.len(), layers_writeback.len());
+        let mut master_idx = 0;
+        for layer in layers.iter() {
+            if !layer.is_master() {
+                master_idx += 1;
+            }
+        }
+        if master_idx >= layers.len() {
+            master_idx = 0;
+            log::error!("not found master idx: {:?}", layers.addr());
+        }
         Self {
             idx: 0,
             layers,
             layers_writeback,
             request: Default::default(),
             response: None,
+            master_idx,
+            is_get_cas: false,
             parser: p,
             since: Instant::now(),
             err: None,
         }
     }
-    // 遍历所有层次，发送请求，直到一个成功。有一层成功返回true，更新层次索引，否则返回false
+    // get: 遍历所有层次，发送请求，直到一个成功。有一层成功返回true，更新层次索引，否则返回false
+    // getCas: 只请求master
     #[inline]
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
+        // 目前只有getCas，还有其他的，再考虑更统一的方案 fishermen
+        // 对于get_cas，需要特殊处理：只请求master
+        if !self.is_get_cas {
+            self.is_get_cas = self.parser.req_getcas(&self.request);
+            if self.is_get_cas {
+                self.idx = self.master_idx;
+                self.parser.convert_getCas(&self.request);
+            }
+        }
+
         while self.idx < self.layers.len() {
             log::debug!("write to {}-th/{}", self.idx + 1, self.layers.len());
             let reader = unsafe { self.layers.get_unchecked_mut(self.idx) };
@@ -52,6 +77,10 @@ where
                     self.idx += 1;
                     self.err = Some(e);
                 }
+            }
+            // 对于get_cas,只请求一次，且只请求master，到了这里说明，请求失败
+            if self.is_get_cas {
+                break;
             }
         }
 
@@ -145,7 +174,7 @@ where
 
 impl<L, B, P> AsyncWriteAll for AsyncLayerGet<L, B, P>
 where
-    L: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + Addressed + LayerRoleAble + Unpin,
     B: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
@@ -159,8 +188,14 @@ where
         if ready!(self.do_write(cx)) {
             Poll::Ready(Ok(()))
         } else {
+            // 请求失败，reset
             self.idx = 0;
+            self.is_get_cas = false;
+            self.response.take();
+            let old = std::mem::take(&mut self.request);
+            drop(old);
             let last_err = self.err.take();
+
             Poll::Ready(Err(last_err.unwrap_or(Error::new(
                 ErrorKind::NotConnected,
                 format!("layer poll write error. layers:{}", self.layers.len()),
@@ -171,7 +206,7 @@ where
 
 impl<L, B, P> AsyncReadAll for AsyncLayerGet<L, B, P>
 where
-    L: AsyncReadAll + AsyncWriteAll + Addressed + Unpin,
+    L: AsyncReadAll + AsyncWriteAll + Addressed + LayerRoleAble + Unpin,
     B: AsyncReadAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
@@ -199,6 +234,9 @@ where
                     log::debug!("found err: {:?} idx:{}", e, me.idx);
                     me.err = Some(e);
                 }
+            }
+            if me.is_get_cas {
+                break;
             }
 
             me.idx += 1;

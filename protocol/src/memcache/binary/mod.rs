@@ -28,6 +28,14 @@ impl Protocol for MemcacheBinary {
         }
         // 更新op code标识位为noreply
         v[PacketPos::Opcode as usize] = NOREPLY_MAPPING[req[PacketPos::Opcode as usize] as usize];
+
+        // cas 置零
+        let mut idx: usize = 0;
+        while idx < CAS_LEN {
+            v[PacketPos::Cas as usize + idx] = 0;
+            idx += 1;
+        }
+
         v
     }
     #[inline(always)]
@@ -96,6 +104,31 @@ impl Protocol for MemcacheBinary {
         debug_assert_eq!(req.keys().len(), 1);
         req.key()
     }
+    // 对于二进制协议，get都会返回unique id，相当于get直接是文本协议的gets
+    // 多层访问要以master为基准，需要扩展一个新的getcas opcode
+    fn req_getcas(&self, req: &Request) -> bool {
+        if req.keys().len() == 1 {
+            return req.keys()[0].op() == OP_CODE_GETCAS;
+        }
+        return false;
+    }
+
+    // 多层访问，set 带了unique id就是cas；
+    // 多层访问中，cas、add等写操作，只支持非pipeline操作
+    fn req_cas_or_add(&self, req: &Request) -> bool {
+        debug_assert!(req.key().len() == 1);
+        let opcode = req.op();
+        if opcode == OP_CODE_ADD {
+            return true;
+        } else if opcode == OP_CODE_SET {
+            // 带cas的set是cas操作
+            if req.cas() != 0 {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // 会一直持续到非quite response，才算结束，而非仅仅用noop判断，以应对getkq...getkq + getk的场景
     #[inline]
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
@@ -180,6 +213,12 @@ impl Protocol for MemcacheBinary {
             requests_wb.push(req);
         }
         return Ok(requests_wb);
+    }
+
+    fn convert_getCas(&self, request: &Request) {
+        debug_assert!(request.keys().len() == 1);
+        debug_assert!(request.op() == OP_CODE_GETCAS);
+        request.update_u8(PacketPos::Opcode as usize, OP_CODE_GET);
     }
 
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>

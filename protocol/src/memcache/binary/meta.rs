@@ -29,8 +29,9 @@ pub(super) const COMMAND_IDX: [u8; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 // OP_CODE对应的noreply code。
+// 注意：根据业务逻辑，add会转换成setq
 pub(super) const NOREPLY_MAPPING: [u8; 128] = [
-    0x09, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x09, 0x0a, 0x0b, 0x0d, 0x0d, 0x19, 0x1a,
+    0x09, 0x11, 0x11, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x09, 0x0a, 0x0b, 0x0d, 0x0d, 0x19, 0x1a,
     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
     0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
     0x30, 0x32, 0x32, 0x34, 0x34, 0x36, 0x36, 0x38, 0x38, 0x3a, 0x3a, 0x3c, 0x3c, 0x3d, 0x3e, 0x3f,
@@ -46,6 +47,10 @@ pub(super) const OP_CODE_NOOP: u8 = 0x0a;
 pub(super) const OP_CODE_GETK: u8 = 0x0c;
 pub(super) const OP_CODE_GETKQ: u8 = 0x0d;
 pub(super) const OP_CODE_GETQ: u8 = 0x09;
+// 这个专门为getcas扩展
+pub(super) const OP_CODE_GETCAS: u8 = 0x48;
+pub(super) const OP_CODE_ADD: u8 = 0x02;
+pub(super) const OP_CODE_SET: u8 = 0x01;
 
 // 0x09: getq
 // 0x0d: getkq
@@ -66,6 +71,7 @@ pub(super) trait Binary<T> {
     fn extra_or_flag(&self) -> T;
     fn total_body_len(&self) -> u32;
     fn opaque(&self) -> u32;
+    fn cas(&self) -> u64;
     fn status_ok(&self) -> bool;
     fn key(&self) -> T;
     fn key_len(&self) -> u16;
@@ -83,6 +89,11 @@ pub(super) trait Binary<T> {
     fn quite_get(&self) -> bool;
     // 截取末尾的noop请求
     fn take_noop(&self) -> T;
+
+    // // 变更request的opcode
+    // fn update_opcode(&self, opcode: u8);
+    // // 变更request的cas
+    // fn update_cas(&self, cas: u64);
 }
 
 use ds::{RingSlice, Slice};
@@ -132,6 +143,11 @@ macro_rules! define_binary {
             fn opaque(&self) -> u32 {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.read_u32(PacketPos::Opaque as usize)
+            }
+            #[inline(always)]
+            fn cas(&self) -> u64 {
+                debug_assert!(self.len() >= HEADER_LEN);
+                self.read_u64(PacketPos::Cas as usize)
             }
             #[inline(always)]
             fn packet_len(&self) -> usize {
@@ -201,6 +217,11 @@ macro_rules! define_binary {
                 debug_assert!(noop.data() == NOOP_REQEUST || noop.data() == NOOP_RESPONSE);
                 noop
             }
+
+            // fn update_opcode(&self, opcode: u8) {
+            //     debug_assert!(self.len() >= HEADER_LEN);
+            //     self.data
+            // }
         }
     };
 }

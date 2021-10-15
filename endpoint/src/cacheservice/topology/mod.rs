@@ -1,5 +1,5 @@
 use protocol::Protocol;
-use stream::BackendStream;
+use stream::{BackendStream, LayerRole};
 
 mod inner;
 use inner::*;
@@ -27,29 +27,49 @@ impl<P> Topology<P> {
         &self.distribution
     }
     pub fn master(&self) -> Vec<BackendStream> {
-        self.master.select().pop().unwrap_or_default()
+        // self.master.select().pop().unwrap_or_default()
+        let master = self.master.select().pop();
+        return master.unwrap().1;
     }
     // 第一个元素是master，去掉
-    pub fn followers(&self) -> Vec<Vec<BackendStream>> {
+    pub fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
         self.noreply.select().split_off(1)
     }
-    pub fn noreply(&self) -> Vec<Vec<BackendStream>> {
+    pub fn noreply(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
         self.noreply.select()
     }
-    pub fn get(&self) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
+    pub fn get(
+        &self,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    ) {
         self.with_write_back(self.get.select())
     }
-    pub fn mget(&self) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
+    pub fn mget(
+        &self,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    ) {
         self.with_write_back(self.mget.select())
     }
     fn with_write_back(
         &self,
-        streams: Vec<Vec<BackendStream>>,
-    ) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
-        let write_back = streams
-            .iter()
-            .map(|layer| layer.iter().map(|s| s.faked_clone()).collect())
-            .collect();
+        streams: Vec<(LayerRole, Vec<BackendStream>)>,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    ) {
+        // let write_back = streams
+        //     .iter()
+        //     .map(|(role, streams)| (role.clone(), streams.iter().map(|s|s.faked_clone()))
+        //     .collect();
+        //.map(|layer| layer.iter().map(|s| s.faked_clone()).collect())
+        let mut write_back = Vec::with_capacity(streams.len());
+        for (idx, l_vec) in streams.iter() {
+            write_back.push((idx.clone(), l_vec.iter().map(|s| s.faked_clone()).collect()));
+        }
         (streams, write_back)
     }
 }
@@ -134,7 +154,7 @@ impl VisitAddress for Vec<String> {
     }
     fn select<F: FnMut(usize, &str)>(&self, mut f: F) {
         for (_i, addr) in self.iter().enumerate() {
-            f(0, addr);
+            f(LayerRole::Unknow as usize, addr);
         }
     }
 }

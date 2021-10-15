@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Result, Write};
 
+use crate::memcache::Command;
 use crate::{MetaType, Operation, Protocol, Request, Response};
 
 use ds::{RingSlice, Slice};
@@ -173,6 +174,14 @@ impl Protocol for MemcacheText {
         debug_assert_eq!(req.keys().len(), 1);
         req.keys().get(0).unwrap().clone()
     }
+    fn req_getcas(&self, request: &Request) -> bool {
+        let op = self.parse_operation(request);
+        op == Command::Gets
+    }
+    fn req_cas_or_add(&self, request: &Request) -> bool {
+        let op = self.parse_operation(request);
+        op == Command::Cas || op == Command::Add
+    }
     // 会一直持续到非quite response，才算结束，而非仅仅用noop判断，以应对getkq...getkq + getk的场景
     #[inline]
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
@@ -193,6 +202,11 @@ impl Protocol for MemcacheText {
             }
         }
         Some(Response::from(response.clone(), Operation::Other, keys))
+    }
+
+    fn convert_getCas(&self, _request: &Request) {
+        // ascii protocol need do noth.
+        return;
     }
 
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
@@ -306,5 +320,32 @@ impl MemcacheText {
             }
         }
         return keys;
+    }
+
+    fn parse_operation(&self, request: &Request) -> Command {
+        // let req_slice = Slice::from(request.data());
+        let split_req = request.split(" ".as_ref());
+        let mut read = 0 as usize;
+        let mut keys: Vec<Slice> = vec![];
+
+        match String::from_utf8(split_req[0].data().to_vec())
+            .unwrap()
+            .to_lowercase()
+            .as_str()
+        {
+            "get" => Command::Get,
+            "gets" => Command::Gets,
+            "set" => Command::Set,
+            "cas" => Command::Cas,
+            "add" => Command::Add,
+            "version\r\n" => Command::Version,
+            _ => {
+                log::error!(
+                    "found unknown command:{:?}",
+                    String::from_utf8(split_req[0].data().to_vec())
+                );
+                Command::Unknown
+            }
+        }
     }
 }
