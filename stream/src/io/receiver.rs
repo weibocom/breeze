@@ -1,48 +1,34 @@
-use std::io::{Error, ErrorKind, Result};
+use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::AsyncWriteAll;
-
-use ds::Slice;
-use metrics::MetricName;
-use protocol::{Protocol, Request, RequestId, MAX_REQUEST_SIZE};
-
 use futures::ready;
-
-use super::IoMetric;
 use tokio::io::{AsyncRead, ReadBuf};
 
+use ds::ResizedRingBuffer;
+use metrics::MetricName;
+use protocol::{Protocol, Request, RequestId};
+
+use super::IoMetric;
+use crate::AsyncWriteAll;
+
 pub(super) struct Receiver {
-    r: usize, // 上一个request的读取位置
-    w: usize, // 当前buffer写入的位置
-    cap: usize,
-    buff: Vec<u8>,
+    buff: ResizedRingBuffer,
     req: Option<Request>,
-    metric_id: usize,
 }
 
 impl Receiver {
     pub fn new(metric_id: usize) -> Self {
-        let init_cap = 512;
-        metrics::count("mem_buff_rx", init_cap as isize, metric_id);
-        Self {
-            buff: vec![0; init_cap],
-            w: 0,
-            cap: init_cap,
-            r: 0,
-            req: None,
-            metric_id: metric_id,
-        }
-    }
-    #[inline(always)]
-    fn reset(&mut self) {
-        if self.w == self.r {
-            self.r = 0;
-            self.w = 0;
-        }
+        let buff = ResizedRingBuffer::new(move |old, delta| {
+            if delta > old as isize && delta >= 32 * 1024 {
+                log::info!("buffer resized ({}, {}). {}", old, delta, metric_id.name());
+            }
+            metrics::count("mem_buff_rx", delta, metric_id);
+        });
+        Self { buff, req: None }
     }
     // 返回当前请求的size，以及请求的类型。
+    #[inline]
     pub fn poll_copy_one<R, W, P>(
         &mut self,
         cx: &mut Context,
@@ -57,29 +43,33 @@ impl Receiver {
         P: Protocol + Unpin,
         W: AsyncWriteAll + ?Sized,
     {
-        log::debug!("r:{} w:{} rid:{}", self.r, self.w, rid);
+        log::debug!("buff:{} rid:{}", self.buff, rid);
         while self.req.is_none() {
-            if self.w > self.r {
-                self.req = parser.parse_request(Slice::from(&self.buff[self.r..self.w]))?;
+            if self.buff.len() > 0 {
+                //  每一次ping-pong之后，都会通过reset将read重置为0.
+                //  确保RingSlice可以转换成唯一一个Slice
+                debug_assert_eq!(self.buff.read(), 0);
+                let mut slices = self.buff.data().as_slices();
+                debug_assert_eq!(slices.len(), 1);
+                self.req = parser.parse_request(slices.pop().expect("request slice"))?;
                 if self.req.is_some() {
                     break;
                 }
             }
             // 说明当前已经没有处理中的完整的请求。内存可以安全的move，
             // 不会导致已有的request，因为move，导致请求失败或者panic.
-            self.try_extends()?;
             // 数据不足。要从stream中读取
-            let mut buff = ReadBuf::new(&mut self.buff[self.w..]);
+            let mut buff = ReadBuf::new(self.buff.as_mut_bytes());
             ready!(reader.as_mut().poll_read(cx, &mut buff))?;
             let read = buff.filled().len();
             if read == 0 {
-                if self.w > self.r {
-                    log::warn!("eof, but {} bytes left.", self.w - self.r);
+                if self.buff.len() > 0 {
+                    log::warn!("eof, but {} bytes left.", self.buff.len());
                 }
                 metric.reset();
                 return Poll::Ready(Ok(()));
             }
-            self.w += read;
+            self.buff.advance_write(read);
             metric.req_received(read);
             log::debug!("{} bytes received.{}", read, rid);
         }
@@ -87,86 +77,13 @@ impl Receiver {
         if let Some(ref mut req) = self.req {
             req.set_request_id(*rid);
             metric.req_done(req.operation(), req.len(), req.keys().len());
-            log::debug!("parsed: {} => {}", self.r, req);
+            log::debug!("parsed: {} => {}", self.buff, req);
             ready!(writer.as_mut().poll_write(cx, &req))?;
-            self.r += req.len();
+            self.buff.advance_read(req.len());
         }
-        self.reset();
+        // 把read重置为0.避免ringbuffer形成ring。
+        self.buff.reset_read();
         self.req.take();
         Poll::Ready(Ok(()))
-    }
-
-    // 调用者需要确保，extends之前，所有完整的请求都已完成处理。不存在处理中的请求，避免内存指向错误, 导致数据异常或者panic。
-    // 如果r > 0. 先进行一次move。通过是client端发送的是pipeline请求时会出现这种情况
-    // 每次扩容两倍，最多扩容1MB，超过1MB就会扩容失败
-    #[inline(always)]
-    fn try_extends(&mut self) -> Result<()> {
-        if self.w != self.cap {
-            return Ok(());
-        }
-        if self.r == self.w {
-            log::debug!("extends r == w. r:{} w:{}", self.r, self.w);
-            self.reset();
-            return Ok(());
-        }
-        if self.r > 0 {
-            self.move_data();
-            Ok(())
-        } else {
-            self.extend()
-        }
-    }
-    #[inline]
-    fn move_data(&mut self) {
-        debug_assert!(self.r > 0);
-        // 有可能是因为pipeline，所以上一次request结束后，可能还有未处理的请求数据
-        // 把[r..w]的数据copy到最0位置
-        log::info!("move: r:{} w:{} ", self.r, self.w);
-        use std::ptr::copy;
-        let len = self.w - self.r;
-        debug_assert!(len > 0);
-        unsafe {
-            copy(
-                self.buff.as_ptr().offset(self.r as isize),
-                self.buff.as_mut_ptr(),
-                len,
-            );
-        }
-        self.r = 0;
-        self.w = len;
-    }
-    #[inline]
-    fn extend(&mut self) -> Result<()> {
-        log::info!("{} extend to {}", self.metric_id.name(), 2 * self.cap);
-        if self.cap >= MAX_REQUEST_SIZE {
-            log::warn!("request size limited:{} >= {}", self.cap, MAX_REQUEST_SIZE);
-            Err(Error::new(
-                ErrorKind::InvalidInput,
-                "max request size limited: 1mb",
-            ))
-        } else {
-            // 说明容量不足。需要扩展
-            let old = self.buff.len();
-            let cap = (old * 5 / 4).min(MAX_REQUEST_SIZE);
-            let mut new_buff = vec![0u8; cap];
-            use std::ptr::copy_nonoverlapping as copy;
-            unsafe { copy(self.buff.as_ptr(), new_buff.as_mut_ptr(), self.buff.len()) };
-            // 如果还存在处理中的请求，buff clear掉之后可能指向一段已释放的内存。
-            // 当前是pingpong请求，因为不存在处理中的请求
-            // TODO
-            metrics::count("mem_buff_rx", (cap - old) as isize, self.metric_id);
-            self.buff.clear();
-            self.buff = new_buff;
-            self.cap = cap;
-            Ok(())
-        }
-    }
-}
-
-impl Drop for Receiver {
-    #[inline(always)]
-    fn drop(&mut self) {
-        let cap = self.buff.capacity() as isize * -1;
-        metrics::count("mem_buff_rx", cap, self.metric_id);
     }
 }

@@ -1,5 +1,6 @@
 mod addr;
 pub mod backend;
+mod bounded;
 mod chan;
 mod handler;
 pub mod io;
@@ -16,8 +17,9 @@ pub use response::*;
 
 pub use addr::*;
 pub use backend::{BackendBuilder, BackendStream};
+use bounded::*;
 pub(crate) use handler::*;
-pub use mpmc::MpmcRingBufferStream as RingBufferStream;
+pub use mpmc::MpmcStream;
 
 use std::io::Result;
 
@@ -48,7 +50,7 @@ pub trait AsyncReadAll {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>>;
 }
 
-pub const MAX_CONNECTIONS: usize = 256;
+pub const MAX_CONNECTIONS: usize = 128;
 
 // 当stream退出时，通知
 pub trait Notify {

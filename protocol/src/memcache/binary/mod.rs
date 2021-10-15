@@ -52,7 +52,7 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
-        // debug_assert_eq!(req.operation(), Operation::Gets);
+        // debug_assert_eq!(req.operation(), Operation::MGet);
         unsafe {
             let klen = req.keys().len();
             let mut keys = Vec::with_capacity(klen);
@@ -105,10 +105,10 @@ impl Protocol for MemcacheBinary {
         req.key()
     }
     // 对于二进制协议，get都会返回unique id，相当于get直接是文本协议的gets
-    // 多层访问要以master为基准，需要扩展一个新的getcas opcode
-    fn req_getcas(&self, req: &Request) -> bool {
+    // 多层访问要以master为基准，需要扩展一个新的gets opcode
+    fn req_gets(&self, req: &Request) -> bool {
         if req.keys().len() == 1 {
-            return req.keys()[0].op() == OP_CODE_GETCAS;
+            return req.keys()[0].op() == OP_CODE_GETS;
         }
         return false;
     }
@@ -215,17 +215,19 @@ impl Protocol for MemcacheBinary {
         return Ok(requests_wb);
     }
 
-    fn convert_getCas(&self, request: &Request) {
+    #[inline(always)]
+    fn convert_gets(&self, request: &Request) {
         debug_assert!(request.keys().len() == 1);
-        debug_assert!(request.op() == OP_CODE_GETCAS);
+        debug_assert!(request.op() == OP_CODE_GETS);
         request.update_u8(PacketPos::Opcode as usize, OP_CODE_GET);
     }
 
+    #[inline(always)]
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
     where
         R: Iterator<Item = &'a Response>,
     {
-        debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::Gets);
+        debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::MGet);
         debug_assert!(req.keys().len() > 0);
         if self.is_single_get(req) {
             if let Some(response) = resp.next() {
@@ -297,16 +299,15 @@ impl Protocol for MemcacheBinary {
                         w.write(&pre);
                     }
                     // 把GETK/GET请求，转换成Quite请求。
-                    OP_CODE_GETK | OP_CODE_GET => w.write_on(response, |data| {
+                    OP_CODE_GETK | OP_CODE_GET => {
                         let op = if last.key_len() == 0 {
-                            OP_CODE_GETQ
+                            [response.at(0), OP_CODE_GETQ]
                         } else {
-                            OP_CODE_GETKQ
+                            [response.at(0), OP_CODE_GETKQ]
                         };
-                        let last_op_idx = response.len() - last.len() + PacketPos::Opcode as usize;
-                        data[last_op_idx] = op;
-                        debug_assert_eq!(data.len(), response.len());
-                    }),
+                        w.write(&op[..].into());
+                        w.write(&response.sub_slice(2, response.len() - 2));
+                    }
                     _ => w.write(response),
                 }
             }

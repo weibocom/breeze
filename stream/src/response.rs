@@ -1,4 +1,4 @@
-use super::RingBufferStream;
+use super::MpmcStream;
 use ds::RingSlice;
 use protocol::RequestId;
 
@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 pub(crate) struct Item {
     data: ResponseData,
-    done: Option<(usize, Arc<RingBufferStream>)>,
+    done: Option<(usize, Arc<MpmcStream>)>,
 }
 
 pub struct ResponseData {
@@ -22,10 +22,6 @@ impl ResponseData {
             seq: resp_seq,
         }
     }
-    //#[inline(always)]
-    //pub fn data(&self) -> &RingSlice {
-    //    &self.data
-    //}
     #[inline(always)]
     pub fn rid(&self) -> &RequestId {
         &self.req_id
@@ -59,7 +55,7 @@ pub struct Response {
 
 impl Response {
     #[inline]
-    pub fn from(slice: ResponseData, cid: usize, release: Arc<RingBufferStream>) -> Self {
+    pub fn from(slice: ResponseData, cid: usize, release: Arc<MpmcStream>) -> Self {
         Self {
             rid: slice.req_id,
             items: vec![Item {
@@ -70,7 +66,7 @@ impl Response {
     }
     #[inline]
     pub fn append(&mut self, other: Response) {
-        self.items.reserve(other.items.len());
+        self.items.reserve(other.items.len().max(16));
         self.items.extend(other.items);
     }
     #[inline]

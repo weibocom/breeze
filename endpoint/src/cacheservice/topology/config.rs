@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Result};
-use stream::LayerRole;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Namespace {
@@ -62,5 +61,12 @@ impl Namespace {
             // }
         }
         w
+    }
+    pub fn uniq_all(&self) -> Vec<Vec<String>> {
+        let mut all = vec![self.master.clone()];
+        all.extend(self.master_l1.clone());
+        all.extend(self.slave_l1.clone());
+        all.push(self.slave.clone());
+        all
     }
 }

@@ -3,7 +3,6 @@ use ds::RingSlice;
 
 #[derive(Default)]
 pub struct Response {
-    _op: Operation,
     inner: RingSlice,
     // 包含成功返回的key
     keys: Vec<RingSlice>,
@@ -11,9 +10,8 @@ pub struct Response {
 
 impl Response {
     #[inline]
-    pub fn from(data: RingSlice, op: Operation, keys: Vec<RingSlice>) -> Self {
+    pub fn from(data: RingSlice, _op: Operation, keys: Vec<RingSlice>) -> Self {
         Self {
-            _op: op,
             inner: data,
             keys: keys,
         }
@@ -51,12 +49,6 @@ use std::fmt::{self, Display, Formatter};
 impl Display for Response {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "op:{:?} key len:{} data:{}",
-            self._op,
-            self.keys.len(),
-            self.inner
-        )
+        write!(f, "key len:{} data:{}", self.keys.len(), self.inner)
     }
 }

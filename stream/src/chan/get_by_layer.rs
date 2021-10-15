@@ -17,7 +17,7 @@ pub struct AsyncLayerGet<L, B, P> {
     request: Request,
     response: Option<Response>,
     master_idx: usize,
-    is_get_cas: bool,
+    is_gets: bool,
     parser: P,
     since: Instant, // 上一层请求开始的时间
     err: Option<Error>,
@@ -48,23 +48,23 @@ where
             request: Default::default(),
             response: None,
             master_idx,
-            is_get_cas: false,
+            is_gets: false,
             parser: p,
             since: Instant::now(),
             err: None,
         }
     }
     // get: 遍历所有层次，发送请求，直到一个成功。有一层成功返回true，更新层次索引，否则返回false
-    // getCas: 只请求master
+    // gets: 只请求master
     #[inline]
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
-        // 目前只有getCas，还有其他的，再考虑更统一的方案 fishermen
-        // 对于get_cas，需要特殊处理：只请求master
-        if !self.is_get_cas {
-            self.is_get_cas = self.parser.req_getcas(&self.request);
-            if self.is_get_cas {
+        // 目前只有gets，还有其他的，再考虑更统一的方案 fishermen
+        // 对于gets，需要特殊处理：只请求master
+        if !self.is_gets {
+            self.is_gets = self.parser.req_gets(&self.request);
+            if self.is_gets {
                 self.idx = self.master_idx;
-                self.parser.convert_getCas(&self.request);
+                self.parser.convert_gets(&self.request);
             }
         }
 
@@ -78,8 +78,8 @@ where
                     self.err = Some(e);
                 }
             }
-            // 对于get_cas,只请求一次，且只请求master，到了这里说明，请求失败
-            if self.is_get_cas {
+            // 对于gets,只请求一次，且只请求master，到了这里说明，请求失败
+            if self.is_gets {
                 break;
             }
         }
@@ -127,7 +127,7 @@ where
         metrics::duration(get_name_by_idx(self.idx), elapse, metric_id);
 
         match self.request.operation() {
-            Operation::Gets => {
+            Operation::MGet => {
                 match self.response.as_mut() {
                     Some(response) => response.append(item),
                     None => self.response = Some(item),
@@ -190,7 +190,7 @@ where
         } else {
             // 请求失败，reset
             self.idx = 0;
-            self.is_get_cas = false;
+            self.is_gets = false;
             self.response.take();
             let old = std::mem::take(&mut self.request);
             drop(old);
@@ -235,7 +235,7 @@ where
                     me.err = Some(e);
                 }
             }
-            if me.is_get_cas {
+            if me.is_gets {
                 break;
             }
 

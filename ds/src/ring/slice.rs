@@ -104,8 +104,7 @@ impl RingSlice {
                     result.push(self.sub_slice(pos, self.len() - pos));
                 }
                 return result;
-            }
-            else {
+            } else {
                 let new_pos = new_pos.unwrap();
                 result.push(self.sub_slice(pos, new_pos));
                 if new_pos + splitter.len() == self.end - self.start {
@@ -130,8 +129,7 @@ impl RingSlice {
                 if self.read_u8(offset + i + j) != s[j] {
                     i += 1;
                     break;
-                }
-                else {
+                } else {
                     found_len = found_len + 1;
                 }
             }
