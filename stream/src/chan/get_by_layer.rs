@@ -98,7 +98,7 @@ where
         metrics::duration(get_name_by_idx(self.idx), elapse, metric_id);
 
         match self.request.operation() {
-            Operation::Gets => {
+            Operation::MGet => {
                 match self.response.as_mut() {
                     Some(response) => response.append(item),
                     None => self.response = Some(item),
