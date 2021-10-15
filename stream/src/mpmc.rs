@@ -10,25 +10,23 @@ use std::task::{Context, Poll};
 
 use super::status::*;
 use crate::{
-    AtomicWaker, BridgeRequestToBackend, BridgeResponseToLocal, Notify, Request, RequestHandler,
-    ResponseData, ResponseHandler, Snapshot,
+    AtomicWaker, Notify, Request, RequestHandler, ResponseData, ResponseHandler, Snapshot,
 };
-use ds::{BitMap, SeqOffset};
+use ds::{BitMap, CacheAligned, SeqOffset};
 use metrics::MetricId;
 use protocol::Protocol;
 
-use cache_line_size::CacheAligned;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 //use tokio::sync::mpsc::{channel, Receiver, Sender};
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crate::{bounded, Receiver, Sender};
 
-unsafe impl Send for MpmcRingBufferStream {}
-unsafe impl Sync for MpmcRingBufferStream {}
+unsafe impl Send for MpmcStream {}
+unsafe impl Sync for MpmcStream {}
 
 // 支持并发读取的stream
-pub struct MpmcRingBufferStream {
+pub struct MpmcStream {
     items: Vec<CacheAligned<Item>>,
     waker: AtomicWaker,
     bits: BitMap,
@@ -55,7 +53,7 @@ pub struct MpmcRingBufferStream {
     noreply_tx: Sender<Request>,
     noreply_rx: Receiver<Request>,
 
-    done: Arc<AtomicBool>,
+    done: AtomicBool,
     closed: AtomicBool,
 
     // 持有的远端资源地址（ip:port）
@@ -63,16 +61,16 @@ pub struct MpmcRingBufferStream {
     metric_id: MetricId,
 }
 
-impl MpmcRingBufferStream {
+impl MpmcStream {
     // id必须小于parallel
     pub fn with_capacity(parallel: usize, biz: &str, addr: &str, rsrc: protocol::Resource) -> Self {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= super::MAX_CONNECTIONS);
         let items = (0..parallel)
-            .map(|id| CacheAligned(Item::new(id)))
+            .map(|id| CacheAligned::new(Item::new(id)))
             .collect();
         let seq_cids = (0..parallel)
-            .map(|_| CacheAligned(AtomicUsize::new(0)))
+            .map(|_| CacheAligned::new(AtomicUsize::new(0)))
             .collect();
 
         let (tx, rx) = bounded(32);
@@ -83,12 +81,12 @@ impl MpmcRingBufferStream {
             bits: BitMap::with_capacity(parallel),
             seq_cids: seq_cids,
             seq_mask: parallel - 1,
-            offset: CacheAligned(SeqOffset::with_capacity(parallel)),
-            done: Arc::new(AtomicBool::new(true)),
+            offset: CacheAligned::new(SeqOffset::with_capacity(parallel)),
+            done: AtomicBool::new(true),
             closed: AtomicBool::new(false),
             runnings: AtomicIsize::new(0),
-            req_num: CacheAligned(AtomicUsize::new(0)),
-            resp_num: CacheAligned(AtomicUsize::new(0)),
+            req_num: CacheAligned::new(AtomicUsize::new(0)),
+            resp_num: CacheAligned::new(AtomicUsize::new(0)),
             noreply_tx: tx,
             noreply_rx: rx,
 
@@ -224,20 +222,14 @@ impl MpmcRingBufferStream {
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            BridgeRequestToBackend::from(self.clone(), w, self.done.clone(), self.metric_id.id()),
+            RequestHandler::from(self.clone(), w, self.metric_id.id()),
         );
 
         //// 从response读取数据写入items
         Self::start_bridge(
             self.clone(),
             notify.clone(),
-            BridgeResponseToLocal::from(
-                r,
-                self.clone(),
-                parser,
-                self.done.clone(),
-                self.metric_id.id(),
-            ),
+            ResponseHandler::from(r, self.clone(), parser, self.metric_id.id()),
         );
     }
     fn start_bridge<F, N>(self: Arc<Self>, notify: N, future: F)
@@ -282,12 +274,13 @@ impl MpmcRingBufferStream {
         self.mark_done();
     }
 
-    pub(crate) fn load_ping_ping(&self) -> (usize, usize) {
+    pub(crate) fn load_ping_pong(&self) -> (usize, usize) {
         (
             self.req_num.0.load(Ordering::Relaxed),
             self.resp_num.0.load(Ordering::Relaxed),
         )
     }
+    #[inline(always)]
     pub(crate) fn done(&self) -> bool {
         self.done.load(Ordering::Acquire)
     }
@@ -305,13 +298,13 @@ impl MpmcRingBufferStream {
     }
 }
 
-impl Drop for MpmcRingBufferStream {
+impl Drop for MpmcStream {
     fn drop(&mut self) {
         log::info!("{} closed.", self.addr);
     }
 }
 
-impl RequestHandler for Arc<MpmcRingBufferStream> {
+impl crate::handler::request::Handler for Arc<MpmcStream> {
     #[inline(always)]
     fn take(&self, cid: usize, seq: usize) -> Option<(usize, Request)> {
         self.bind_seq(cid, seq);
@@ -343,16 +336,24 @@ impl RequestHandler for Arc<MpmcRingBufferStream> {
             Poll::Ready(())
         }
     }
+    #[inline(always)]
+    fn running(&self) -> bool {
+        !self.done()
+    }
 }
-impl ResponseHandler for Arc<MpmcRingBufferStream> {
+impl crate::handler::response::Handler for Arc<MpmcStream> {
     // 获取已经被全部读取的字节的位置
     #[inline]
     fn load_read(&self) -> usize {
         self.offset.0.span()
     }
-    #[inline]
     // 在从response读取的数据后调用。
+    #[inline]
     fn on_received(&self, seq: usize, first: protocol::Response) {
         self.place_response(seq, first);
+    }
+    #[inline(always)]
+    fn running(&self) -> bool {
+        !self.done()
     }
 }

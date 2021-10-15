@@ -70,7 +70,7 @@ pub enum Opcode {
     SetQ = 0x11,
     Touch = 0x1c,
     StartAuth = 0x21,
-    GETCAS = 0x48,
+    GETS = 0x48,
 }
 
 // // mc response的响应code

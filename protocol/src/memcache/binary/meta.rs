@@ -47,8 +47,8 @@ pub(super) const OP_CODE_NOOP: u8 = 0x0a;
 pub(super) const OP_CODE_GETK: u8 = 0x0c;
 pub(super) const OP_CODE_GETKQ: u8 = 0x0d;
 pub(super) const OP_CODE_GETQ: u8 = 0x09;
-// 这个专门为getcas扩展
-pub(super) const OP_CODE_GETCAS: u8 = 0x48;
+// 这个专门为gets扩展
+pub(super) const OP_CODE_GETS: u8 = 0x48;
 pub(super) const OP_CODE_ADD: u8 = 0x02;
 pub(super) const OP_CODE_SET: u8 = 0x01;
 

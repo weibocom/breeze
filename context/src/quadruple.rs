@@ -52,9 +52,9 @@ impl Quadruple {
             );
             return None;
         }
-        #[cfg(feature = "listen_all")]
+        #[cfg(feature = "listen-all")]
         let local_ip = "0.0.0.0";
-        #[cfg(not(feature = "listen_all"))]
+        #[cfg(not(feature = "listen-all"))]
         let local_ip = "127.0.0.1";
 
         let addr = local_ip.to_string() + ":" + protocol_fields[1];

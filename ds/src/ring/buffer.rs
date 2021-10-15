@@ -10,7 +10,6 @@ pub struct RingBuffer {
     data: NonNull<u8>,
     size: usize,
     read: usize,
-    processed: usize,
     write: usize,
 }
 
@@ -24,17 +23,12 @@ impl RingBuffer {
             size: buff_size,
             data: ptr,
             read: 0,
-            processed: 0,
             write: 0,
         }
     }
     #[inline]
     pub fn read(&self) -> usize {
         self.read
-    }
-    #[inline(always)]
-    pub fn processed(&self) -> usize {
-        self.processed
     }
     #[inline(always)]
     pub fn advance_read(&mut self, n: usize) {
@@ -45,10 +39,6 @@ impl RingBuffer {
         self.write
     }
     #[inline(always)]
-    pub fn advance_processed(&mut self, n: usize) {
-        self.processed += n;
-    }
-    #[inline(always)]
     pub fn advance_write(&mut self, n: usize) {
         self.write += n;
     }
@@ -56,7 +46,7 @@ impl RingBuffer {
     fn mask(&self, offset: usize) -> usize {
         offset & (self.size - 1)
     }
-    // 如果无法写入，则返回一个长度为0的slice
+    // 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
     #[inline(always)]
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
         let offset = self.mask(self.write);
@@ -73,10 +63,33 @@ impl RingBuffer {
         };
         unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
     }
-    // 返回已写入，未处理的字节。即从[processed,write)的字节
+    #[inline]
+    pub fn write(&mut self, data: &RingSlice) -> usize {
+        let mut n = 0;
+        for s in data.as_slices() {
+            let src = s.data();
+            let mut l = 0;
+            while l < src.len() {
+                let dst = self.as_mut_bytes();
+                let c = (src.len() - l).min(dst.len());
+                if c == 0 {
+                    return n;
+                }
+                use std::ptr::copy_nonoverlapping as copy;
+                unsafe { copy(src.as_ptr().offset(l as isize), dst.as_mut_ptr(), c) };
+                self.advance_write(c);
+                l += c;
+                n += c;
+            }
+        }
+        n
+    }
+    // 返回可读取的数据。可能只返回部分数据。如果要返回所有的可读数据，使用 data 方法。
     #[inline(always)]
-    pub fn processing_bytes(&self) -> RingSlice {
-        RingSlice::from(self.data.as_ptr(), self.size, self.processed, self.write)
+    pub fn as_bytes(&self) -> &[u8] {
+        let offset = self.mask(self.read);
+        let n = (self.cap() - offset).min(self.len());
+        unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
     }
     // 返回已写入的所有数据，包括已处理未确认的
     #[inline(always)]
@@ -97,17 +110,23 @@ impl RingBuffer {
         self.read() + self.cap() > self.writtened()
     }
     #[inline(always)]
+    pub(crate) fn avail(&self) -> usize {
+        self.cap() - self.len()
+    }
+    #[inline(always)]
     pub fn ratio(&self) -> (usize, usize) {
         assert!(self.write >= self.read);
         (self.write - self.read, self.cap())
     }
 
     // cap > self.len()
+    #[inline]
     pub(crate) fn resize(&self, cap: usize) -> Self {
+        //assert_eq!(cap & (cap - 1), 0);
+        //let cap = cap.next_power_of_two();
         assert!(cap >= self.write - self.read);
         let mut new = Self::with_capacity(cap);
         new.read = self.read;
-        new.processed = self.processed;
         new.write = self.read;
         let old_data = self.data();
         use std::ptr::copy_nonoverlapping as copy;
@@ -129,9 +148,25 @@ impl RingBuffer {
             }
         }
         assert_eq!(self.write, new.write);
-        assert_eq!(self.processed, new.processed);
         assert_eq!(self.read, new.read);
         new
+    }
+    #[inline(always)]
+    pub fn reset(&mut self) {
+        self.read = 0;
+        self.write = 0;
+    }
+    #[inline(always)]
+    pub fn reset_read(&mut self) {
+        let l = self.len();
+        if l > 0 {
+            let mut data = Vec::with_capacity(l);
+            self.data().copy_to_vec(&mut data);
+            use std::ptr::copy_nonoverlapping as copy;
+            unsafe { copy(data.as_ptr(), self.data.as_ptr(), l) };
+        }
+        self.read = 0;
+        self.write = l;
     }
 }
 
@@ -149,8 +184,8 @@ impl Display for RingBuffer {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "rb:(cap:{} read:{} processed:{} write:{})",
-            self.size, self.read, self.processed, self.write
+            "rb:(cap:{} read:{} write:{})",
+            self.size, self.read, self.write
         )
     }
 }
@@ -159,12 +194,14 @@ impl Debug for RingBuffer {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "rb:(ptr:{:#x} cap:{} read:{} processed:{} write:{})",
+            "rb:(ptr:{:#x} cap:{} read:{} write:{})",
             self.data.as_ptr() as usize,
             self.size,
             self.read,
-            self.processed,
             self.write
         )
     }
 }
+
+unsafe impl Send for RingBuffer {}
+unsafe impl Sync for RingBuffer {}
