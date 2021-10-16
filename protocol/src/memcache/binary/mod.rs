@@ -116,7 +116,7 @@ impl Protocol for MemcacheBinary {
     // 多层访问，set 带了unique id就是cas；
     // 多层访问中，cas、add等写操作，只支持非pipeline操作
     fn req_cas_or_add(&self, req: &Request) -> bool {
-        debug_assert!(req.key().len() == 1);
+        debug_assert!(req.keys().len() == 1);
         let opcode = req.op();
         if opcode == OP_CODE_ADD {
             return true;

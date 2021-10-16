@@ -18,10 +18,10 @@ pub struct Topology<P> {
     master: Inner<Vec<String>>,
     get: Inner<Layer>,
     mget: Inner<Layer>,
-    noreply: Inner<Vec<Vec<String>>>,
+    noreply: Inner<Vec<(LayerRole, Vec<String>)>>,
     parser: P,
     // 在没有master_l1与slave_l1时。所有的command共用一个物理连接
-    share: Inner<Vec<Vec<String>>>,
+    share: Inner<Vec<(LayerRole, Vec<String>)>>,
     shared: bool,
 }
 
@@ -199,7 +199,7 @@ impl<P> discovery::Inited for Topology<P> {
 
 pub(crate) trait VisitAddress {
     fn visit<F: FnMut(&str)>(&self, f: F);
-    fn select<F: FnMut(usize, &str)>(&self, f: F);
+    fn select<F: FnMut(LayerRole, usize, &str)>(&self, f: F);
 }
 
 impl VisitAddress for Vec<String> {
@@ -208,24 +208,26 @@ impl VisitAddress for Vec<String> {
             f(addr)
         }
     }
-    fn select<F: FnMut(usize, &str)>(&self, mut f: F) {
+    // 每一层可能有多个pool，所以usize表示pool编号，新增LayerRole表示层次
+    fn select<F: FnMut(LayerRole, usize, &str)>(&self, mut f: F) {
         for (_i, addr) in self.iter().enumerate() {
-            f(LayerRole::Unknow as usize, addr);
+            f(LayerRole::Unknow, 0, addr);
         }
     }
 }
-impl VisitAddress for Vec<Vec<String>> {
+impl VisitAddress for Vec<(LayerRole, Vec<String>)> {
     fn visit<F: FnMut(&str)>(&self, mut f: F) {
-        for layers in self.iter() {
+        for (_role, layers) in self.iter() {
             for addr in layers.iter() {
                 f(addr)
             }
         }
     }
-    fn select<F: FnMut(usize, &str)>(&self, mut f: F) {
-        for (i, layers) in self.iter().enumerate() {
+    fn select<F: FnMut(LayerRole, usize, &str)>(&self, mut f: F) {
+        // for (i, layers) in self.iter().enumerate() {
+        for (i, (role, layers)) in self.iter().enumerate() {
             for addr in layers.iter() {
-                f(i, addr);
+                f(role.clone(), i, addr);
             }
         }
     }
