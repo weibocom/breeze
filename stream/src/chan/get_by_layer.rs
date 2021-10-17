@@ -33,9 +33,10 @@ where
         assert_eq!(layers.len(), layers_writeback.len());
         let mut master_idx = 0;
         for layer in layers.iter() {
-            if !layer.is_master() {
-                master_idx += 1;
+            if layer.is_master() {
+                break;
             }
+            master_idx += 1;
         }
         if master_idx >= layers.len() {
             master_idx = 0;
@@ -69,7 +70,12 @@ where
         }
 
         while self.idx < self.layers.len() {
-            log::debug!("write to {}-th/{}", self.idx + 1, self.layers.len());
+            log::debug!(
+                "write to {}-th/{}:{:?}",
+                self.idx + 1,
+                self.layers.len(),
+                self.request.data()
+            );
             let reader = unsafe { self.layers.get_unchecked_mut(self.idx) };
             match ready!(Pin::new(reader).poll_write(cx, &self.request)) {
                 Ok(_) => return Poll::Ready(true),
@@ -247,9 +253,11 @@ where
 
         // 先拿走response，然后重置，最后返回响应列表
         me.idx = 0;
+        me.is_gets = false;
         let response = me.response.take();
         let old = std::mem::take(&mut me.request);
         drop(old);
+
         // 请求完毕，重置
         let last_err = me.err.take();
         response

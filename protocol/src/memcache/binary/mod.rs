@@ -35,7 +35,6 @@ impl Protocol for MemcacheBinary {
             v[PacketPos::Cas as usize + idx] = 0;
             idx += 1;
         }
-
         v
     }
     #[inline(always)]
@@ -107,8 +106,8 @@ impl Protocol for MemcacheBinary {
     // 对于二进制协议，get都会返回unique id，相当于get直接是文本协议的gets
     // 多层访问要以master为基准，需要扩展一个新的gets opcode
     fn req_gets(&self, req: &Request) -> bool {
-        if req.keys().len() == 1 {
-            return req.keys()[0].op() == OP_CODE_GETS;
+        if req.keys().len() > 0 {
+            return req.keys()[0].op() == OP_CODE_GETS || req.keys()[0].op() == OP_CODE_GETSQ;
         }
         return false;
     }
@@ -217,9 +216,17 @@ impl Protocol for MemcacheBinary {
 
     #[inline(always)]
     fn convert_gets(&self, request: &Request) {
-        debug_assert!(request.keys().len() == 1);
-        debug_assert!(request.op() == OP_CODE_GETS);
-        request.update_u8(PacketPos::Opcode as usize, OP_CODE_GET);
+        debug_assert!(request.keys().len() > 0);
+        debug_assert!(self.req_gets(request));
+        // 对于单cmd请求：gets转换为get;
+        // 对于多个cmd请求（包括1个或多个gets + noop：转换为getkq
+        if request.keys().len() == 1 && request.len() == request.keys()[0].len() {
+            request.keys()[0].update_u8(PacketPos::Opcode as usize, OP_CODE_GET);
+        } else {
+            for cmd in request.keys().iter() {
+                cmd.update_u8(PacketPos::Opcode as usize, OP_CODE_GETKQ);
+            }
+        }
     }
 
     #[inline(always)]

@@ -31,7 +31,8 @@ where
     #[inline]
     pub fn try_poll_noreply_seq(&mut self, cx: &mut Context, req: &Request, num: usize) {
         let me = &mut *self;
-        if num < me.backends.len() {
+        // if num < me.backends.len() {
+        if num <= me.backends.len() {
             let noreply = me.to_noreply(req);
             for idx in 0..num {
                 let w = unsafe { me.backends.get_unchecked_mut(idx) };

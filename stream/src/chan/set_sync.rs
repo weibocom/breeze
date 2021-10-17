@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures::ready;
-use protocol::Protocol;
+use protocol::{Operation, Protocol};
 
 use crate::{AsyncNoReply, AsyncReadAll, AsyncWriteAll, Request, Response};
 
@@ -52,6 +52,10 @@ where
             return Poll::Ready(ok);
         }
 
+        // TODO: meta 使用了store的路由，此处需要提前返回，是否合适？待和icy讨论 fishermen
+        if buf.operation() != Operation::Store {
+            return Poll::Ready(ok);
+        }
         // 失败也同步数据。
         let _succ = me.noreply.try_poll_noreply(cx, buf);
         Poll::Ready(ok)

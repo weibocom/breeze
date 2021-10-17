@@ -78,7 +78,7 @@ impl<P> CacheService<P> {
         operations.insert(protocol::Operation::Get, get);
         operations.insert(protocol::Operation::MGet, mget);
         operations.insert(protocol::Operation::Store, store);
-        //operations.insert(protocol::Operation::Meta, meta);
+        // operations.insert(protocol::Operation::Meta, meta);
         let mut alias = HashMap::new();
         alias.insert(protocol::Operation::Meta, protocol::Operation::Store);
         let op_stream = AsyncOpRoute::from(operations, alias);
