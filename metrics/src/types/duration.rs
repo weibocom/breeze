@@ -27,7 +27,6 @@ impl AddAssign for DurationItem {
     #[inline(always)]
     fn add_assign(&mut self, other: Self) {
         self.count += other.count;
-        // 因为这些元素是并发的，所以取耗时时，取最大的即可。而不是直接相加
         self.elapse_us += other.elapse_us;
         for i in 0..self.intervals.len() {
             self.intervals[i] += other.intervals[i];
@@ -84,8 +83,8 @@ impl crate::kv::KvItem for DurationItem {
 // 通过耗时，获取对应的耗时区间，一共分为9个区间
 // 左开，右闭区间
 #[inline(always)]
-pub(crate) fn get_interval_idx_by_duration_us(duration_us: usize) -> usize {
-    for (i, us) in (0..DURATION_INTERVALS.len()).enumerate() {
+fn get_interval_idx_by_duration_us(duration_us: usize) -> usize {
+    for (i, &us) in DURATION_INTERVALS.iter().enumerate() {
         if duration_us <= us {
             return i;
         }
@@ -93,7 +92,7 @@ pub(crate) fn get_interval_idx_by_duration_us(duration_us: usize) -> usize {
     DURATION_INTERVALS.len() - 1
 }
 const INTERVAL_SIZE: usize = 6;
-pub(crate) const DURATION_INTERVALS: [usize; INTERVAL_SIZE] = [
+const DURATION_INTERVALS: [usize; INTERVAL_SIZE] = [
     Duration::from_millis(4).as_micros() as usize,
     Duration::from_millis(64).as_micros() as usize,
     Duration::from_millis(256).as_micros() as usize,
@@ -107,7 +106,7 @@ const NAMES: [&'static str; INTERVAL_SIZE] = [
     "itvl64-256ms",
     "itvl256ms-1s",
     "itvl1s-4s",
-    "itvl4s+",
+    "itvl4s-MAX",
 ];
 #[inline(always)]
 fn get_interval_name(idx: usize) -> &'static str {

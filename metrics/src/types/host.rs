@@ -30,7 +30,7 @@ impl crate::kv::KvItem for Host {
             }
         }
     }
-    #[inline]
+    #[inline(always)]
     fn clear() -> bool {
         false
     }
