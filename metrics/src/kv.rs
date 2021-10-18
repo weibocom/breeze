@@ -4,6 +4,7 @@ pub(crate) trait KvItem: Clone {
     // secs: 是耗时。单位为秒
     fn with_item<F: Fn(&'static str, f64)>(&self, secs: f64, f: F);
     // 在SnapshotItem中，每个统计周期结束后，是否要将存量数据进行清理。
+    #[inline(always)]
     fn clear() -> bool {
         true
     }
