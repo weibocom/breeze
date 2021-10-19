@@ -1,4 +1,4 @@
-use clap::{AppSettings, Clap};
+use clap::Parser;
 use std::io::{Error, ErrorKind, Result};
 use std::path::Path;
 use url::Url;
@@ -6,13 +6,12 @@ use url::Url;
 mod quadruple;
 pub use quadruple::Quadruple;
 
-#[derive(Clap, Debug)]
+#[derive(Parser)]
 #[clap(
     name = "resource mesh",
     version = "BREEZE_VERSION_PLACE_HOLDER",
     author = "IF"
 )]
-#[clap(setting = AppSettings::ColoredHelp)]
 pub struct Context {
     #[clap(long, about("port for suvervisor"), default_value("9984"))]
     port: u16,
