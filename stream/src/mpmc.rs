@@ -9,12 +9,10 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use super::status::*;
-use crate::{
-    AtomicWaker, Notify, Request, RequestHandler, ResponseData, ResponseHandler, Snapshot,
-};
+use crate::{AtomicWaker, Notify, Request, RequestHandler, ResponseHandler, Snapshot};
 use ds::{BitMap, CacheAligned, SeqOffset};
 use metrics::MetricId;
-use protocol::Protocol;
+use protocol::{Protocol, RequestId, Response};
 
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -104,19 +102,19 @@ impl MpmcStream {
         }
     }
     #[inline(always)]
-    pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<ResponseData>> {
+    pub fn poll_next(&self, cid: usize, cx: &mut Context) -> Poll<Result<(RequestId, Response)>> {
         self.check(cid)?;
         let item = self.get_item(cid);
         let data = ready!(item.poll_read(cx))?;
-        log::debug!("next. cid:{} len:{} rid:{} ", cid, data.len(), data.rid());
+        log::debug!("next. cid:{} rid:{:?} ", cid, data);
         self.resp_num.0.fetch_add(1, Ordering::Relaxed);
         Poll::Ready(Ok(data))
     }
     #[inline]
-    pub fn response_done(&self, cid: usize, response: &ResponseData) {
+    pub fn response_done(&self, cid: usize, response: &Response) {
         if let Ok(_) = self.check(cid) {
             let item = self.get_item(cid);
-            item.response_done(response.seq());
+            item.response_done();
             let (start, end) = response.location();
             self.offset.0.insert(start, end);
         }

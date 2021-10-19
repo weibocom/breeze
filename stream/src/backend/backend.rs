@@ -51,7 +51,7 @@ impl AsyncReadAll for BackendStream {
     #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
-        let slice = ready!(me.inner.poll_next(me.id.id(), cx))?;
+        let (rid, slice) = ready!(me.inner.poll_next(me.id.id(), cx))?;
 
         let elapst = me.instant.elapsed();
         let rx = slice.len();
@@ -60,7 +60,7 @@ impl AsyncReadAll for BackendStream {
         metrics::qps("bytes.tx", me.tx, metric_id);
         metrics::duration(me.op.name(), elapst, metric_id);
 
-        Poll::Ready(Ok(Response::from(slice, me.id.id(), me.inner.clone())))
+        Poll::Ready(Ok(Response::from(rid, slice, me.id.id(), me.inner.clone())))
     }
 }
 
