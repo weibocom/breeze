@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use super::{ConnectStatus, IoMetric, Monitor, Receiver, Sender};
 use crate::{AsyncReadAll, AsyncWriteAll};
 use discovery::TopologyTicker;
-use protocol::{Operation, Protocol, RequestId};
+use protocol::{Protocol, RequestId};
 
 pub async fn copy_bidirectional<A, C, P>(
     agent: A,
@@ -113,16 +113,13 @@ where
             metrics::duration(metric.op.name(), duration, metric.metric_id);
             metrics::qps("bytes.tx", metric.resp_bytes, metric.metric_id);
             metrics::qps("bytes.rx", metric.req_bytes, metric.metric_id);
-            match metric.op {
-                Operation::Get | Operation::Gets => {
-                    metrics::qps("key", metric.req_keys_num, metric.metric_id);
-                    metrics::ratio(
-                        "hit",
-                        (metric.resp_keys_num, metric.req_keys_num),
-                        metric.metric_id,
-                    );
-                }
-                _ => {}
+            if metric.op.is_retrival() {
+                metrics::qps("key", metric.req_keys_num, metric.metric_id);
+                metrics::ratio(
+                    "hit",
+                    (metric.resp_keys_num, metric.req_keys_num),
+                    metric.metric_id,
+                );
             }
             metric.reset();
 

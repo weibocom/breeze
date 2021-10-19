@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Response};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, LayerRoleAble, Response};
 use protocol::{Operation, Protocol, Request};
 
 use futures::ready;
@@ -16,6 +16,8 @@ pub struct AsyncLayerGet<L, B, P> {
     // 每一层访问的请求
     request: Request,
     response: Option<Response>,
+    master_idx: usize,
+    is_gets: bool,
     parser: P,
     since: Instant, // 上一层请求开始的时间
     err: Option<Error>,
@@ -23,28 +25,57 @@ pub struct AsyncLayerGet<L, B, P> {
 
 impl<L, B, P> AsyncLayerGet<L, B, P>
 where
-    L: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + Addressed + LayerRoleAble + Unpin,
     B: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
     pub fn from_layers(layers: Vec<L>, layers_writeback: Vec<B>, p: P) -> Self {
         assert_eq!(layers.len(), layers_writeback.len());
+        let mut master_idx = 0;
+        for layer in layers.iter() {
+            if layer.is_master() {
+                break;
+            }
+            master_idx += 1;
+        }
+        if master_idx >= layers.len() {
+            master_idx = 0;
+            log::error!("not found master idx: {:?}", layers.addr());
+        }
         Self {
             idx: 0,
             layers,
             layers_writeback,
             request: Default::default(),
             response: None,
+            master_idx,
+            is_gets: false,
             parser: p,
             since: Instant::now(),
             err: None,
         }
     }
-    // 遍历所有层次，发送请求，直到一个成功。有一层成功返回true，更新层次索引，否则返回false
+    // get: 遍历所有层次，发送请求，直到一个成功。有一层成功返回true，更新层次索引，否则返回false
+    // gets: 只请求master
     #[inline]
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
+        // 目前只有gets，还有其他的，再考虑更统一的方案 fishermen
+        // 对于gets，需要特殊处理：只请求master
+        if !self.is_gets {
+            self.is_gets = self.parser.req_gets(&self.request);
+            if self.is_gets {
+                self.idx = self.master_idx;
+                self.parser.convert_gets(&self.request);
+            }
+        }
+
         while self.idx < self.layers.len() {
-            log::debug!("write to {}-th/{}", self.idx + 1, self.layers.len());
+            log::debug!(
+                "write to {}-th/{}:{:?}",
+                self.idx + 1,
+                self.layers.len(),
+                self.request.data()
+            );
             let reader = unsafe { self.layers.get_unchecked_mut(self.idx) };
             match ready!(Pin::new(reader).poll_write(cx, &self.request)) {
                 Ok(_) => return Poll::Ready(true),
@@ -52,6 +83,10 @@ where
                     self.idx += 1;
                     self.err = Some(e);
                 }
+            }
+            // 对于gets,只请求一次，且只请求master，到了这里说明，请求失败
+            if self.is_gets {
+                break;
             }
         }
 
@@ -98,7 +133,7 @@ where
         metrics::duration(get_name_by_idx(self.idx), elapse, metric_id);
 
         match self.request.operation() {
-            Operation::Gets => {
+            Operation::MGet => {
                 match self.response.as_mut() {
                     Some(response) => response.append(item),
                     None => self.response = Some(item),
@@ -145,7 +180,7 @@ where
 
 impl<L, B, P> AsyncWriteAll for AsyncLayerGet<L, B, P>
 where
-    L: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
+    L: AsyncWriteAll + AsyncWriteAll + Addressed + LayerRoleAble + Unpin,
     B: AsyncWriteAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
@@ -159,8 +194,14 @@ where
         if ready!(self.do_write(cx)) {
             Poll::Ready(Ok(()))
         } else {
+            // 请求失败，reset
             self.idx = 0;
+            self.is_gets = false;
+            self.response.take();
+            let old = std::mem::take(&mut self.request);
+            drop(old);
             let last_err = self.err.take();
+
             Poll::Ready(Err(last_err.unwrap_or(Error::new(
                 ErrorKind::NotConnected,
                 format!("layer poll write error. layers:{}", self.layers.len()),
@@ -171,7 +212,7 @@ where
 
 impl<L, B, P> AsyncReadAll for AsyncLayerGet<L, B, P>
 where
-    L: AsyncReadAll + AsyncWriteAll + Addressed + Unpin,
+    L: AsyncReadAll + AsyncWriteAll + Addressed + LayerRoleAble + Unpin,
     B: AsyncReadAll + AsyncWriteAll + Addressed + Unpin,
     P: Unpin + Protocol,
 {
@@ -200,6 +241,9 @@ where
                     me.err = Some(e);
                 }
             }
+            if me.is_gets {
+                break;
+            }
 
             me.idx += 1;
             if !ready!(me.do_write(cx)) {
@@ -209,9 +253,11 @@ where
 
         // 先拿走response，然后重置，最后返回响应列表
         me.idx = 0;
+        me.is_gets = false;
         let response = me.response.take();
         let old = std::mem::take(&mut me.request);
         drop(old);
+
         // 请求完毕，重置
         let last_err = me.err.take();
         response

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Result, Write};
 
+use crate::memcache::Command;
 use crate::{MetaType, Operation, Protocol, Request, Response};
 
 use ds::{RingSlice, Slice};
@@ -51,7 +52,7 @@ impl Protocol for MemcacheText {
                 .as_str()
             {
                 "get" => Operation::Get,
-                "gets" => Operation::Gets,
+                "gets" => Operation::MGet,
                 "set" => Operation::Store,
                 "version\r\n" => Operation::Meta,
                 _ => Operation::Other,
@@ -89,7 +90,7 @@ impl Protocol for MemcacheText {
             read = read + split_req[0].len();
             if split_req.len() > 1 {
                 let mut key_position = 2 as usize;
-                if op.eq(&Operation::Gets) {
+                if op.eq(&Operation::MGet) {
                     key_position = split_req.len();
                 }
                 for i in 1..split_req.len() {
@@ -121,7 +122,7 @@ impl Protocol for MemcacheText {
     #[inline]
     fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
-        debug_assert_eq!(req.operation(), Operation::Gets);
+        debug_assert_eq!(req.operation(), Operation::MGet);
         unsafe {
             let klen = req.keys().len();
             let mut keys = Vec::with_capacity(klen);
@@ -173,6 +174,14 @@ impl Protocol for MemcacheText {
         debug_assert_eq!(req.keys().len(), 1);
         req.keys().get(0).unwrap().clone()
     }
+    fn req_gets(&self, request: &Request) -> bool {
+        let op = self.parse_operation(request);
+        op == Command::Gets
+    }
+    fn req_cas_or_add(&self, request: &Request) -> bool {
+        let op = self.parse_operation(request);
+        op == Command::Cas || op == Command::Add
+    }
     // 会一直持续到非quite response，才算结束，而非仅仅用noop判断，以应对getkq...getkq + getk的场景
     #[inline]
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
@@ -195,11 +204,16 @@ impl Protocol for MemcacheText {
         Some(Response::from(response.clone(), Operation::Other, keys))
     }
 
+    fn convert_gets(&self, _request: &Request) {
+        // ascii protocol need do noth.
+        return;
+    }
+
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
     where
         R: Iterator<Item = &'a Response>,
     {
-        debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::Gets);
+        debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::MGet);
         debug_assert!(req.keys().len() > 0);
         if self.is_single_get(req) {
             if let Some(response) = resp.next() {
@@ -306,5 +320,29 @@ impl MemcacheText {
             }
         }
         return keys;
+    }
+
+    fn parse_operation(&self, request: &Request) -> Command {
+        // let req_slice = Slice::from(request.data());
+        let split_req = request.split(" ".as_ref());
+        match String::from_utf8(split_req[0].data().to_vec())
+            .unwrap()
+            .to_lowercase()
+            .as_str()
+        {
+            "get" => Command::Get,
+            "gets" => Command::Gets,
+            "set" => Command::Set,
+            "cas" => Command::Cas,
+            "add" => Command::Add,
+            "version\r\n" => Command::Version,
+            _ => {
+                log::error!(
+                    "found unknown command:{:?}",
+                    String::from_utf8(split_req[0].data().to_vec())
+                );
+                Command::Unknown
+            }
+        }
     }
 }

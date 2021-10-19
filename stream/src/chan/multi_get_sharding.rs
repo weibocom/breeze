@@ -8,11 +8,16 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Names, Request, Response};
+use crate::{
+    Address, Addressed, AsyncReadAll, AsyncWriteAll, LayerRole, LayerRoleAble, Names, Request,
+    Response,
+};
 use protocol::Protocol;
 use sharding::Sharding;
 
 pub struct AsyncMultiGetSharding<S, P> {
+    // 该层在分层中的角色role
+    role: LayerRole,
     // 成功发送请求的shards
     statuses: Vec<Status>,
     shards: Vec<S>,
@@ -27,11 +32,12 @@ impl<S, P> AsyncMultiGetSharding<S, P>
 where
     S: Addressed,
 {
-    pub fn from_shard(shards: Vec<S>, p: P, hash: &str, d: &str) -> Self {
+    pub fn from_shard(role: LayerRole, shards: Vec<S>, p: P, hash: &str, d: &str) -> Self {
         Self {
+            role,
             alg: Sharding::from(hash, d, shards.names()),
             statuses: vec![Status::Init; shards.len()],
-            shards: shards,
+            shards,
             shard_reqs: None,
             parser: p,
             response: None,
@@ -182,6 +188,15 @@ enum Status {
 impl PartialEq for Status {
     fn eq(&self, o: &Status) -> bool {
         *self as u8 == *o as u8
+    }
+}
+
+impl<S, P> LayerRoleAble for AsyncMultiGetSharding<S, P> {
+    fn layer_role(&self) -> LayerRole {
+        self.role.clone()
+    }
+    fn is_master(&self) -> bool {
+        self.role == LayerRole::Master
     }
 }
 

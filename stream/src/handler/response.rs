@@ -1,8 +1,6 @@
 use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -14,19 +12,19 @@ use futures::ready;
 use tokio::io::{AsyncRead, ReadBuf};
 use tokio::time::{interval, Interval};
 
-pub trait ResponseHandler {
+pub trait Handler {
     // 获取自上一次调用以来，成功读取并可以释放的字节数量
     fn load_read(&self) -> usize;
     // 从backend接收到response，并且完成协议解析时调用
     fn on_received(&self, seq: usize, response: protocol::Response);
+    fn running(&self) -> bool;
 }
 
-unsafe impl<R, W, P> Send for BridgeResponseToLocal<R, W, P> {}
-unsafe impl<R, W, P> Sync for BridgeResponseToLocal<R, W, P> {}
+unsafe impl<R, W, P> Send for ResponseHandler<R, W, P> {}
+unsafe impl<R, W, P> Sync for ResponseHandler<R, W, P> {}
 
-pub struct BridgeResponseToLocal<R, W, P> {
+pub struct ResponseHandler<R, W, P> {
     seq: usize,
-    done: Arc<AtomicBool>,
     r: R,
     w: W,
     parser: P,
@@ -39,10 +37,10 @@ pub struct BridgeResponseToLocal<R, W, P> {
     processed: usize,
 }
 
-impl<R, W, P> BridgeResponseToLocal<R, W, P> {
-    pub fn from(r: R, w: W, parser: P, done: Arc<AtomicBool>, mid: usize) -> Self
+impl<R, W, P> ResponseHandler<R, W, P> {
+    pub fn from(r: R, w: W, parser: P, mid: usize) -> Self
     where
-        W: ResponseHandler + Unpin,
+        W: Handler + Unpin,
     {
         let data = ResizedRingBuffer::new(move |old, delta| {
             if delta > old as isize && delta >= 32 * 1024 {
@@ -57,7 +55,6 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
             w: w,
             r: r,
             parser: parser,
-            done: done,
             data: data,
             ticks: 0,
             tick: interval(Duration::from_micros(500)),
@@ -67,18 +64,18 @@ impl<R, W, P> BridgeResponseToLocal<R, W, P> {
     }
 }
 
-impl<R, W, P> Future for BridgeResponseToLocal<R, W, P>
+impl<R, W, P> Future for ResponseHandler<R, W, P>
 where
     R: AsyncRead + Unpin,
     P: Protocol + Unpin,
-    W: ResponseHandler + Unpin,
+    W: Handler + Unpin,
 {
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
-        while !me.done.load(Ordering::Acquire) {
+        while me.w.running() {
             let read = me.w.load_read();
             me.data.advance_read(read);
             let mut buf = me.data.as_mut_bytes();
@@ -106,7 +103,7 @@ where
                         me.seq += 1;
                         me.processed += r.len();
                         me.w.on_received(seq, r);
-                        metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
+                        //metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
                     }
                 }
             }
@@ -116,7 +113,7 @@ where
     }
 }
 use std::fmt::{self, Display, Formatter};
-impl<R, W, P> Display for BridgeResponseToLocal<R, W, P> {
+impl<R, W, P> Display for ResponseHandler<R, W, P> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(

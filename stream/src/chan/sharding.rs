@@ -4,11 +4,16 @@ use std::task::{Context, Poll};
 
 use protocol::Protocol;
 
-use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, Names, Request, Response};
+use crate::{
+    Address, Addressed, AsyncReadAll, AsyncWriteAll, LayerRole, LayerRoleAble, Names, Request,
+    Response,
+};
 
 use crate::Sharding;
 
 pub struct AsyncSharding<B, P> {
+    // 该层在分层中的角色role
+    role: LayerRole,
     idx: usize,
     // 用于modula分布以及一致性hash定位server
     shards: Vec<B>,
@@ -20,10 +25,17 @@ impl<B, P> AsyncSharding<B, P>
 where
     B: Addressed,
 {
-    pub fn from(shards: Vec<B>, hash: &str, distribution: &str, parser: P) -> Self {
+    pub fn from(
+        role: LayerRole,
+        shards: Vec<B>,
+        hash: &str,
+        distribution: &str,
+        parser: P,
+    ) -> Self {
         let idx = 0;
         let policy = Sharding::from(hash, distribution, shards.names());
         Self {
+            role,
             idx,
             shards,
             policy,
@@ -75,5 +87,15 @@ where
 {
     fn addr(&self) -> Address {
         self.shards.addr()
+    }
+}
+
+impl<B, P> LayerRoleAble for AsyncSharding<B, P> {
+    fn layer_role(&self) -> LayerRole {
+        self.role.clone()
+    }
+
+    fn is_master(&self) -> bool {
+        self.role == LayerRole::Master
     }
 }

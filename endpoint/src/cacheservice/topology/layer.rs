@@ -1,5 +1,6 @@
 use rand::Rng;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use stream::LayerRole;
 
 struct Seq {
     inner: AtomicUsize,
@@ -48,26 +49,35 @@ impl super::VisitAddress for Layer {
         // l1 已经包含在l0中。无须再进行遍历
         self.l2.visit(f);
     }
-    // 先从l0中随机选择一组。
+    // 先从l0中随机选择一组（第0组是master）；
     // 如果从l0选择的一组不是第0组，再选择l1
     // 选择l2
-    fn select<F: FnMut(usize, &str)>(&self, mut f: F) {
+    fn select<F: FnMut(LayerRole, usize, &str)>(&self, mut f: F) {
         assert!(self.l0.len() > 0);
         let l0_idx = self.seq.fetch_add(1, Ordering::AcqRel) % self.l0.len();
-        let mut layer_idx = 0;
+        let mut pool_idx = 0;
         unsafe {
             self.l0.get_unchecked(l0_idx).iter().for_each(|addr| {
-                f(layer_idx, addr);
+                // 第0组L1是master
+                if l0_idx != 0 {
+                    f(LayerRole::MasterL1, pool_idx, addr);
+                } else {
+                    f(LayerRole::Master, pool_idx, addr);
+                }
             });
         }
         if l0_idx > 0 && self.l1.len() > 0 {
-            layer_idx += 1;
-            self.l1.iter().for_each(|addr| f(layer_idx, addr));
+            pool_idx += 1;
+            self.l1
+                .iter()
+                .for_each(|addr| f(LayerRole::Master, pool_idx, addr));
         }
         // 目前分块下，slave放到了l1下。因此可能重复
         if self.l2.len() > 0 && self.l0[l0_idx] != self.l2 {
-            layer_idx += 1;
-            self.l2.iter().for_each(|addr| f(layer_idx, addr));
+            pool_idx += 1;
+            self.l2
+                .iter()
+                .for_each(|addr| f(LayerRole::SlaveL1, pool_idx, addr));
         }
     }
 }
