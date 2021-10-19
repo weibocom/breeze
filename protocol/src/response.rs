@@ -40,13 +40,20 @@ impl Deref for Response {
     }
 }
 impl DerefMut for Response {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
 }
 
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 impl Display for Response {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "key len:{} data:{}", self.keys.len(), self.inner)
+    }
+}
+impl Debug for Response {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "key len:{} data:{}", self.keys.len(), self.inner)
