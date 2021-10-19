@@ -120,8 +120,8 @@ where
 
         let found = item.keys_num();
 
-        // 构建回种的cmd，并进行回种操作
-        if self.idx > 0 && found > 0 {
+        // 构建回种的cmd，并进行回种操作，注意对gets不进行回种
+        if self.idx > 0 && found > 0 && !self.is_gets {
             self.do_write_back(cx, &item);
         }
 
