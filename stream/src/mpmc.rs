@@ -1,14 +1,10 @@
 use std::future::Future;
-use std::io::{
-    Error,
-    ErrorKind::{self, *},
-    Result,
-};
+use std::io::{Error, ErrorKind::*, Result};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use super::status::*;
+use super::status::Status;
 use crate::{AtomicWaker, Notify, Request, RequestHandler, ResponseHandler, Snapshot};
 use ds::{BitMap, CacheAligned, SeqOffset};
 use metrics::MetricId;
@@ -17,7 +13,6 @@ use protocol::{Protocol, RequestId, Response};
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-//use tokio::sync::mpsc::{channel, Receiver, Sender};
 use crate::{bounded, Receiver, Sender};
 
 unsafe impl Send for MpmcStream {}
@@ -25,7 +20,7 @@ unsafe impl Sync for MpmcStream {}
 
 // 支持并发读取的stream
 pub struct MpmcStream {
-    items: Vec<CacheAligned<Item>>,
+    items: Vec<CacheAligned<Status>>,
     waker: AtomicWaker,
     bits: BitMap,
 
@@ -37,9 +32,8 @@ pub struct MpmcStream {
     // 已经成功读取response的最小的offset，在ReadRrom里面使用
     offset: CacheAligned<SeqOffset>,
 
-    // 在运行当中的线程数。一共会有三个
-    // 1. BridgeRequestToBackend: 把请求发送到backend
-    // 2. BridgeResponseToLocal: 把response数据从backend server读取到items
+    // 1. RequestHandler
+    // 2. ResponseHandler
     runnings: AtomicIsize,
 
     // resp_num - req_num就是正在处理中的请求。用来检查timeout
@@ -65,7 +59,7 @@ impl MpmcStream {
         let parallel = parallel.next_power_of_two();
         assert!(parallel <= super::MAX_CONNECTIONS);
         let items = (0..parallel)
-            .map(|id| CacheAligned::new(Item::new(id)))
+            .map(|id| CacheAligned::new(Status::new(id)))
             .collect();
         let seq_cids = (0..parallel)
             .map(|_| CacheAligned::new(AtomicUsize::new(0)))
@@ -96,7 +90,7 @@ impl MpmcStream {
     #[inline(always)]
     fn check(&self, _cid: usize) -> Result<()> {
         if self.done.load(Ordering::Acquire) {
-            Err(Error::new(ErrorKind::NotConnected, "mpmc is done"))
+            Err(Error::new(NotConnected, "mpmc is done"))
         } else {
             Ok(())
         }
@@ -131,7 +125,7 @@ impl MpmcStream {
     pub fn poll_write(&self, cid: usize, _cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         // 连接关闭后，只停写，现有请求可以继续处理。
         if self.closed.load(Ordering::Relaxed) {
-            return Poll::Ready(Err(Error::new(ErrorKind::NotFound, "mpmc closed")));
+            return Poll::Ready(Err(Error::new(NotFound, "mpmc closed")));
         }
         self.check(cid)?;
         log::debug!("write cid:{} req:{}", cid, buf);
@@ -150,7 +144,7 @@ impl MpmcStream {
         Poll::Ready(Ok(()))
     }
     #[inline(always)]
-    fn get_item(&self, cid: usize) -> &Item {
+    fn get_item(&self, cid: usize) -> &Status {
         debug_assert!(cid < self.items.len());
         unsafe { &self.items.get_unchecked(cid).0 }
     }
@@ -172,6 +166,7 @@ impl MpmcStream {
                 .store(cid, Ordering::Release);
         };
     }
+    #[inline(always)]
     fn place_response(&self, seq: usize, response: protocol::Response) {
         unsafe {
             let seq_idx = self.mask_seq(seq);

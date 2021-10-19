@@ -38,7 +38,7 @@ impl PartialEq<ItemStatus> for u8 {
 
 unsafe impl Send for ItemStatus {}
 #[derive(Default)]
-pub struct Item {
+pub struct Status {
     id: usize,
     seq: AtomicUsize, // 用来做request与response的同步
     status: AtomicU8, // 0: 待接收请求。
@@ -50,9 +50,9 @@ pub struct Item {
     waker: AtomicWaker,
 }
 
-unsafe impl Send for Item {}
+unsafe impl Send for Status {}
 
-impl Item {
+impl Status {
     pub fn new(cid: usize) -> Self {
         Self {
             id: cid,
@@ -191,7 +191,7 @@ impl Item {
 }
 
 use std::fmt::{self, Display, Formatter};
-impl Display for Item {
+impl Display for Status {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
