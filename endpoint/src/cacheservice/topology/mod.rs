@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use protocol::Protocol;
-use stream::{BackendBuilder, BackendStream};
+use stream::{BackendBuilder, BackendStream, LayerRole};
 
 mod inner;
 use inner::*;
@@ -18,10 +18,10 @@ pub struct Topology<P> {
     master: Inner<Vec<String>>,
     get: Inner<Layer>,
     mget: Inner<Layer>,
-    noreply: Inner<Vec<Vec<String>>>,
+    noreply: Inner<Vec<(LayerRole, Vec<String>)>>,
     parser: P,
     // 在没有master_l1与slave_l1时。所有的command共用一个物理连接
-    share: Inner<Vec<Vec<String>>>,
+    share: Inner<Vec<(LayerRole, Vec<String>)>>,
     shared: bool,
 }
 
@@ -33,29 +33,76 @@ impl<P> Topology<P> {
         &self.distribution
     }
     pub fn master(&self) -> Vec<BackendStream> {
+        // <<<<<<< HEAD
+        //         // self.master.select().pop().unwrap_or_default()
+        //         let master = self.master.select().pop();
+        //         return master.unwrap().1;
+        //     }
+        //     // 第一个元素是master，去掉
+        //     pub fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
+        //         self.noreply.select().split_off(1)
+        //     }
+        //     pub fn noreply(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
+        //         self.noreply.select()
+        //     }
+        //     pub fn get(
+        //         &self,
+        //     ) -> (
+        //         Vec<(LayerRole, Vec<BackendStream>)>,
+        //         Vec<(LayerRole, Vec<BackendStream>)>,
+        //     ) {
+        //         self.with_write_back(self.get.select())
+        //     }
+        //     pub fn mget(
+        //         &self,
+        //     ) -> (
+        //         Vec<(LayerRole, Vec<BackendStream>)>,
+        //         Vec<(LayerRole, Vec<BackendStream>)>,
+        //     ) {
+        //         self.with_write_back(self.mget.select())
+        // =======
         self.master
             .select(Some(self.share.streams()))
             .pop()
             .expect("master empty")
+            .1
     }
     // 第一个元素是master，去掉
-    pub fn followers(&self) -> Vec<Vec<BackendStream>> {
+    pub fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
         self.noreply.select(Some(self.share.streams())).split_off(1)
     }
-    pub fn get(&self) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
+    pub fn get(
+        &self,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    ) {
         self.with_write_back(self.get.select(self.shared()))
     }
-    pub fn mget(&self) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
+    pub fn mget(
+        &self,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    ) {
         self.with_write_back(self.mget.select(self.shared()))
     }
     fn with_write_back(
         &self,
-        streams: Vec<Vec<BackendStream>>,
-    ) -> (Vec<Vec<BackendStream>>, Vec<Vec<BackendStream>>) {
-        let write_back = streams
-            .iter()
-            .map(|layer| layer.iter().map(|s| s.faked_clone()).collect())
-            .collect();
+        streams: Vec<(LayerRole, Vec<BackendStream>)>,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    ) {
+        // let write_back = streams
+        //     .iter()
+        //     .map(|(role, streams)| (role.clone(), streams.iter().map(|s|s.faked_clone()))
+        //     .collect();
+        //.map(|layer| layer.iter().map(|s| s.faked_clone()).collect())
+        let mut write_back = Vec::with_capacity(streams.len());
+        for (idx, l_vec) in streams.iter() {
+            write_back.push((idx.clone(), l_vec.iter().map(|s| s.faked_clone()).collect()));
+        }
         (streams, write_back)
     }
     fn shared(&self) -> Option<&HashMap<String, Arc<BackendBuilder>>> {
@@ -152,7 +199,7 @@ impl<P> discovery::Inited for Topology<P> {
 
 pub(crate) trait VisitAddress {
     fn visit<F: FnMut(&str)>(&self, f: F);
-    fn select<F: FnMut(usize, &str)>(&self, f: F);
+    fn select<F: FnMut(LayerRole, usize, &str)>(&self, f: F);
 }
 
 impl VisitAddress for Vec<String> {
@@ -161,24 +208,26 @@ impl VisitAddress for Vec<String> {
             f(addr)
         }
     }
-    fn select<F: FnMut(usize, &str)>(&self, mut f: F) {
+    // 每一层可能有多个pool，所以usize表示pool编号，新增LayerRole表示层次
+    fn select<F: FnMut(LayerRole, usize, &str)>(&self, mut f: F) {
         for (_i, addr) in self.iter().enumerate() {
-            f(0, addr);
+            f(LayerRole::Unknow, 0, addr);
         }
     }
 }
-impl VisitAddress for Vec<Vec<String>> {
+impl VisitAddress for Vec<(LayerRole, Vec<String>)> {
     fn visit<F: FnMut(&str)>(&self, mut f: F) {
-        for layers in self.iter() {
+        for (_role, layers) in self.iter() {
             for addr in layers.iter() {
                 f(addr)
             }
         }
     }
-    fn select<F: FnMut(usize, &str)>(&self, mut f: F) {
-        for (i, layers) in self.iter().enumerate() {
+    fn select<F: FnMut(LayerRole, usize, &str)>(&self, mut f: F) {
+        // for (i, layers) in self.iter().enumerate() {
+        for (i, (role, layers)) in self.iter().enumerate() {
             for addr in layers.iter() {
-                f(i, addr);
+                f(role.clone(), i, addr);
             }
         }
     }

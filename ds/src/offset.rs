@@ -3,12 +3,14 @@ use crossbeam_queue::{ArrayQueue, SegQueue};
 
 use std::cell::Cell;
 use std::collections::HashMap;
-//use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 无锁，支持并发更新offset，按顺序读取offset的数据结构
 pub struct SeqOffset {
     l2: ArrayQueue<(usize, usize)>,
     l3: SegQueue<(usize, usize)>,
+    // 空跑时，l3.pop也会带来额外的cpu消耗。用l3_num避免
+    l3_num: CacheAligned<AtomicUsize>,
     // 只有一个线程访问
     offset: CacheAligned<Cell<usize>>,
     seqs: CacheAligned<Cell<HashMap<usize, usize>>>,
@@ -21,6 +23,7 @@ impl SeqOffset {
         Self {
             l2: ArrayQueue::new(cap),
             l3: SegQueue::new(),
+            l3_num: CacheAligned::new(AtomicUsize::new(0)),
             offset: CacheAligned::new(Cell::new(0)),
             seqs: CacheAligned::new(Cell::new(HashMap::with_capacity(cap))),
         }
@@ -37,6 +40,7 @@ impl SeqOffset {
         if let Err(_) = self.l2.push((start, end)) {
             log::debug!("l2 missed. start:{} end:{}", start, end);
             self.l3.push((start, end));
+            self.l3_num.0.fetch_add(1, Ordering::AcqRel);
         }
     }
 
@@ -59,12 +63,17 @@ impl SeqOffset {
                 seqs.insert(start, end);
             }
         }
-        while let Some((start, end)) = self.l3.pop() {
-            if offset == start {
-                offset = end;
-            } else {
-                seqs.insert(start, end);
+        if self.l3_num.0.load(Ordering::Acquire) > 0 {
+            let mut n = 0;
+            while let Some((start, end)) = self.l3.pop() {
+                if offset == start {
+                    offset = end;
+                } else {
+                    seqs.insert(start, end);
+                }
+                n += 1;
             }
+            self.l3_num.0.fetch_sub(n, Ordering::AcqRel);
         }
         while let Some(end) = seqs.remove(&offset) {
             offset = end;

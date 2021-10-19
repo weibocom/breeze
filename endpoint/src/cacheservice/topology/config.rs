@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Result};
+use stream::LayerRole;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Namespace {
@@ -46,21 +47,33 @@ impl Namespace {
 
 impl Namespace {
     // 可写的实例。第一组一定是master. 包含f： master, master-l1, slave, slave-l1
-    pub fn writers(&self) -> Vec<Vec<String>> {
+    pub fn writers(&self) -> Vec<(LayerRole, Vec<String>)> {
         let mut w = Vec::with_capacity(8);
         if self.master.len() > 0 {
-            w.push(self.master.clone());
-            w.extend(self.master_l1.clone());
-            w.push(self.slave.clone());
-            w.extend(self.slave_l1.clone());
+            w.push((LayerRole::Master, self.master.clone()));
+            // w.extend(self.master_l1.clone());
+            for ml1 in self.master_l1.iter() {
+                w.push((LayerRole::MasterL1, ml1.clone()));
+            }
+            w.push((LayerRole::Slave, self.slave.clone()));
+            // w.extend(self.slave_l1.clone());
+            for sl1 in self.slave_l1.iter() {
+                w.push((LayerRole::SlaveL1, sl1.clone()));
+            }
         }
         w
     }
-    pub fn uniq_all(&self) -> Vec<Vec<String>> {
-        let mut all = vec![self.master.clone()];
-        all.extend(self.master_l1.clone());
-        all.extend(self.slave_l1.clone());
-        all.push(self.slave.clone());
+    pub fn uniq_all(&self) -> Vec<(LayerRole, Vec<String>)> {
+        let mut all = vec![(LayerRole::Master, self.master.clone())];
+        // all.extend(self.master_l1.clone());
+        for ml1 in self.master_l1.iter() {
+            all.push((LayerRole::MasterL1, ml1.clone()));
+        }
+        // all.extend(self.slave_l1.clone());
+        for sl1 in self.slave_l1.iter() {
+            all.push((LayerRole::SlaveL1, sl1.clone()));
+        }
+        all.push((LayerRole::Slave, self.slave.clone()));
         all
     }
 }

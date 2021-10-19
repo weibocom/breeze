@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use super::VisitAddress;
 use protocol::{Protocol, Resource};
-use stream::{BackendBuilder, BackendStream};
+use stream::{Addressed, BackendBuilder, BackendStream, LayerRole};
 
 #[derive(Clone, Default)]
 pub(crate) struct Inner<T> {
@@ -50,34 +50,45 @@ impl<T> Inner<T> {
         //删除
         self.streams.retain(|addr, _| all.contains_key(addr));
     }
+
     pub(crate) fn select(
         &self,
         share: Option<&HashMap<String, Arc<BackendBuilder>>>,
-    ) -> Vec<Vec<BackendStream>>
+    ) -> Vec<(LayerRole, Vec<BackendStream>)>
     where
         T: VisitAddress,
     {
         let builders = share.unwrap_or(&self.streams);
         let mut streams = HashMap::with_capacity(4);
 
-        self.addrs.select(|layer, addr| {
-            if !streams.contains_key(&layer) {
-                streams.insert(layer, Vec::with_capacity(8));
+        self.addrs.select(|role, pool, addr| {
+            if !streams.contains_key(&pool) {
+                streams.insert(pool, (role, Vec::with_capacity(8)));
             }
-            streams.get_mut(&layer).expect("layers").push(
+            streams.get_mut(&pool).expect("pools").1.push(
                 builders
                     .get(addr)
                     .expect("address match stream")
                     .build(self.fack_cid),
             )
         });
-        // 按照layer排序。
+        // 按照pool排序。
         let mut sorted = streams
             .into_iter()
-            .map(|(k, v)| (k, v))
-            .collect::<Vec<(usize, Vec<BackendStream>)>>();
-        sorted.sort_by(|a, b| a.0.cmp(&b.0));
-        sorted.into_iter().map(|(_layer, s)| s).collect()
+            .map(|(k, (role, v))| (role, k, v))
+            .collect::<Vec<(LayerRole, usize, Vec<BackendStream>)>>();
+        sorted.sort_by(|a, b| a.1.cmp(&b.1));
+        let mut layers = Vec::with_capacity(sorted.len());
+        for (role, pool, streams) in sorted {
+            log::info!(
+                "builded for layer:{:?}, pool:{}, addr:{:?}",
+                role,
+                pool,
+                streams.addr()
+            );
+            layers.push((role, streams));
+        }
+        layers
     }
 
     pub(crate) fn inited(&self) -> bool {

@@ -1,5 +1,6 @@
 mod addr;
 pub mod backend;
+mod bounded;
 mod chan;
 mod handler;
 pub mod io;
@@ -16,6 +17,7 @@ pub use response::*;
 
 pub use addr::*;
 pub use backend::{BackendBuilder, BackendStream};
+use bounded::*;
 pub(crate) use handler::*;
 pub use mpmc::MpmcStream;
 

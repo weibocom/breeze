@@ -22,7 +22,9 @@ impl Slice {
         unsafe { std::slice::from_raw_parts(self.ptr as *const u8, self.len) }
     }
     pub fn data_with_pos(&self, pos: usize) -> &[u8] {
-        unsafe { std::slice::from_raw_parts((self.ptr as *const u8).offset(pos as isize), self.len - pos) }
+        unsafe {
+            std::slice::from_raw_parts((self.ptr as *const u8).offset(pos as isize), self.len - pos)
+        }
     }
     #[inline(always)]
     pub fn len(&self) -> usize {
@@ -68,8 +70,7 @@ impl Slice {
                     result.push(self.sub_slice(pos, self.len() - pos));
                 }
                 return result;
-            }
-            else {
+            } else {
                 let new_pos = new_pos.unwrap();
                 result.push(self.sub_slice(pos, new_pos));
                 if new_pos + splitter.len() == self.len {
@@ -80,7 +81,36 @@ impl Slice {
         }
     }
     fn find_sub(&self, pos: usize, needle: &[u8]) -> Option<usize> {
-        self.data_with_pos(pos).windows(needle.len()).position(|window| window == needle)
+        self.data_with_pos(pos)
+            .windows(needle.len())
+            .position(|window| window == needle)
+    }
+
+    pub fn update_u8(&self, pos: usize, val: u8) -> bool {
+        if pos >= self.len {
+            return false;
+        }
+        let data = self.ptr as *mut u8;
+        let d = unsafe { data.offset(pos as isize) };
+        unsafe { *d = val };
+        return true;
+    }
+
+    pub fn update(&self, pos: usize, val: &[u8]) -> bool {
+        if pos >= self.len || val.len() > (self.len - pos) {
+            log::error!("slice update false for val is too long");
+            return false;
+        }
+        let data = self.ptr as *mut u8;
+        let mut idx = pos as isize;
+        for v in val {
+            let d = unsafe { data.offset(idx) };
+            unsafe {
+                *d = *v;
+            }
+            idx += 1;
+        }
+        return true;
     }
 }
 

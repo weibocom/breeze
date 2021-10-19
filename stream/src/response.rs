@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 pub(crate) struct Item {
     data: ResponseData,
-    done: Option<(usize, Arc<MpmcStream>)>,
+    cid: usize,
+    stream: Arc<MpmcStream>,
 }
 
 pub struct ResponseData {
@@ -22,10 +23,6 @@ impl ResponseData {
             seq: resp_seq,
         }
     }
-    //#[inline(always)]
-    //pub fn data(&self) -> &RingSlice {
-    //    &self.data
-    //}
     #[inline(always)]
     pub fn rid(&self) -> &RequestId {
         &self.req_id
@@ -59,18 +56,17 @@ pub struct Response {
 
 impl Response {
     #[inline]
-    pub fn from(slice: ResponseData, cid: usize, release: Arc<MpmcStream>) -> Self {
-        Self {
-            rid: slice.req_id,
-            items: vec![Item {
-                data: slice,
-                done: Some((cid, release)),
-            }],
-        }
+    pub fn from(data: ResponseData, cid: usize, stream: Arc<MpmcStream>) -> Self {
+        let rid = data.req_id;
+        let mut items = Vec::with_capacity(4);
+        items.push(Item { data, cid, stream });
+        Self { rid, items }
     }
     #[inline]
     pub fn append(&mut self, other: Response) {
-        self.items.reserve(other.items.len());
+        if self.items.capacity() - self.items.len() < other.items.len() {
+            self.items.reserve(other.items.len().max(16));
+        }
         self.items.extend(other.items);
     }
     #[inline]
@@ -136,9 +132,7 @@ impl AsRef<RingSlice> for Response {
 impl Drop for Item {
     #[inline]
     fn drop(&mut self) {
-        if let Some((cid, done)) = self.done.take() {
-            done.response_done(cid, &self.data);
-        }
+        self.stream.response_done(self.cid, &self.data);
     }
 }
 
