@@ -22,7 +22,7 @@ pub struct Topology<P> {
     parser: P,
     // 在没有master_l1与slave_l1时。所有的command共用一个物理连接
     share: Inner<Vec<(LayerRole, Vec<String>)>>,
-    shared: bool,
+    pub(crate) shared: bool,
 }
 
 impl<P> Topology<P> {
@@ -137,9 +137,14 @@ where
                     self.hash = ns.hash.to_owned();
                     self.distribution = ns.distribution.to_owned();
                     let p = &self.parser;
+                    let c = if !self.shared {
+                        stream::MAX_CONNECTIONS
+                    } else {
+                        stream::MAX_CONNECTIONS_LOW
+                    };
 
                     self.share.set(ns.uniq_all());
-                    self.share.update(namespace, p);
+                    self.share.update(namespace, p, c);
 
                     // 更新配置
                     self.master.set(ns.master.clone());
@@ -153,8 +158,8 @@ where
                         self.shared = true;
                     } else {
                         self.shared = false;
-                        self.get.update(namespace, p);
-                        self.mget.update(namespace, p);
+                        self.get.update(namespace, p, c);
+                        self.mget.update(namespace, p, c);
                     };
                 }
             }
