@@ -20,7 +20,7 @@ impl<T> Inner<T> {
     pub(crate) fn set(&mut self, addrs: T) {
         self.addrs = addrs;
     }
-    pub(crate) fn update<P>(&mut self, namespace: &str, parser: &P, c: usize)
+    pub(crate) fn update<P>(&mut self, namespace: &str, parser: &P)
     where
         T: VisitAddress,
         P: Send + Sync + Protocol + 'static + Clone,
@@ -41,7 +41,7 @@ impl<T> Inner<T> {
                 Arc::new(BackendBuilder::from(
                     parser.clone(),
                     &addr,
-                    c,
+                    stream::MAX_CONNECTIONS,
                     Resource::Memcache,
                     namespace,
                 )),
@@ -80,7 +80,7 @@ impl<T> Inner<T> {
         sorted.sort_by(|a, b| a.1.cmp(&b.1));
         let mut layers = Vec::with_capacity(sorted.len());
         for (role, pool, streams) in sorted {
-            log::debug!(
+            log::info!(
                 "builded for layer:{:?}, pool:{}, addr:{:?}",
                 role,
                 pool,
