@@ -49,42 +49,37 @@ impl<P> CacheService<P> {
         assert!(topo.inited());
         let hash = topo.hash();
         let dist = topo.distribution();
-        let mut operations = HashMap::with_capacity(4);
-        let mut alias = HashMap::new();
+        let (streams, write_back) = topo.mget();
+        let mget_layers = build_mget(streams, p.clone(), hash, dist);
+        let mget_layers_writeback = build_layers(write_back, hash, dist, p.clone());
+        let mget = MGet(AsyncLayerGet::from_layers(
+            mget_layers,
+            mget_layers_writeback,
+            p.clone(),
+        ));
+
         let master = AsyncSharding::from(LayerRole::Master, topo.master(), hash, dist, p.clone());
         let noreply = build_layers(topo.followers(), hash, dist, p.clone());
         let store = Store(AsyncSetSync::from_master(master, noreply, p.clone()));
-        operations.insert(protocol::Operation::Store, store);
 
-        // 连接不共享
-        if !topo.shared {
-            let (streams, write_back) = topo.mget();
-            let mget_layers = build_mget(streams, p.clone(), hash, dist);
-            let mget_layers_writeback = build_layers(write_back, hash, dist, p.clone());
-            let mget = MGet(AsyncLayerGet::from_layers(
-                mget_layers,
-                mget_layers_writeback,
-                p.clone(),
-            ));
-
-            // 获取get through
-            let (streams, write_back) = topo.get();
-            let get_layers = build_layers(streams, hash, dist, p.clone());
-            let get_layers_writeback = build_layers(write_back, hash, dist, p.clone());
-            let get = Get(AsyncLayerGet::from_layers(
-                get_layers,
-                get_layers_writeback,
-                p.clone(),
-            ));
-            operations.insert(protocol::Operation::Get, get);
-            operations.insert(protocol::Operation::MGet, mget);
-        } else {
-            // master共享一个物理连接。
-            alias.insert(protocol::Operation::Get, protocol::Operation::Get);
-            alias.insert(protocol::Operation::MGet, protocol::Operation::MGet);
-        }
+        // 获取get through
+        let (streams, write_back) = topo.get();
+        let get_layers = build_layers(streams, hash, dist, p.clone());
+        let get_layers_writeback = build_layers(write_back, hash, dist, p.clone());
+        let get = Get(AsyncLayerGet::from_layers(
+            get_layers,
+            get_layers_writeback,
+            p.clone(),
+        ));
 
         // meta与master共享一个物理连接。
+        //let meta = Meta(MetaStream::from(p.clone(), topo.master()));
+        let mut operations = HashMap::with_capacity(4);
+        operations.insert(protocol::Operation::Get, get);
+        operations.insert(protocol::Operation::MGet, mget);
+        operations.insert(protocol::Operation::Store, store);
+        // operations.insert(protocol::Operation::Meta, meta);
+        let mut alias = HashMap::new();
         alias.insert(protocol::Operation::Meta, protocol::Operation::Store);
         let op_stream = AsyncOpRoute::from(operations, alias);
 
@@ -103,7 +98,7 @@ impl<P> AsyncReadAll for CacheService<P>
 where
     P: Protocol,
 {
-    #[inline(always)]
+    #[inline]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         Pin::new(&mut self.inner).poll_next(cx)
     }
@@ -113,7 +108,7 @@ impl<P> AsyncWriteAll for CacheService<P>
 where
     P: Protocol,
 {
-    #[inline(always)]
+    #[inline]
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
