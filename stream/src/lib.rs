@@ -50,7 +50,10 @@ pub trait AsyncReadAll {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>>;
 }
 
+// 一个后端的物理连接支持的client的逻辑连接的数量。
 pub const MAX_CONNECTIONS: usize = 128;
+// 为了节省内存，部分场景下启用低连接模式
+pub const MAX_CONNECTIONS_LOW: usize = 64;
 
 // 当stream退出时，通知
 pub trait Notify {
