@@ -4,8 +4,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering::*};
 use std::task::{Context, Poll};
 
-use crate::ResponseData;
-use protocol::{Request, RequestId};
+use protocol::{Request, RequestId, Response};
 
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -39,7 +38,7 @@ impl PartialEq<ItemStatus> for u8 {
 
 unsafe impl Send for ItemStatus {}
 #[derive(Default)]
-pub struct Item {
+pub struct Status {
     id: usize,
     seq: AtomicUsize, // 用来做request与response的同步
     status: AtomicU8, // 0: 待接收请求。
@@ -51,9 +50,9 @@ pub struct Item {
     waker: AtomicWaker,
 }
 
-unsafe impl Send for Item {}
+unsafe impl Send for Status {}
 
-impl Item {
+impl Status {
     pub fn new(cid: usize) -> Self {
         Self {
             id: cid,
@@ -107,7 +106,7 @@ impl Item {
     }
     // 有两种可能的状态。
     #[inline]
-    pub fn poll_read(&self, cx: &mut Context) -> Poll<Result<ResponseData>> {
+    pub fn poll_read(&self, cx: &mut Context) -> Poll<Result<(RequestId, Response)>> {
         let mut status = self.status();
         if status != ResponseReceived {
             self.waker.register(cx.waker());
@@ -126,12 +125,12 @@ impl Item {
         }
     }
     #[inline(always)]
-    fn take_response(&self) -> ResponseData {
+    fn take_response(&self) -> (RequestId, Response) {
         let response = self.response.take();
         let rid = self.rid.take();
         self.status_cas(ResponseReceived as u8, Read as u8);
         log::debug!("take response {:?}", response.location());
-        ResponseData::from(response, rid, self.seq())
+        (rid, response)
     }
     #[inline]
     pub fn place_response(&self, response: protocol::Response, seq: usize) {
@@ -168,9 +167,9 @@ impl Item {
     }
     // 在在sender把Response发送给client后，在Drop中会调用response_done，更新状态。
     #[inline]
-    pub fn response_done(&self, seq: usize) {
+    pub fn response_done(&self) {
         debug_assert_eq!(self.status(), Read as u8);
-        debug_assert_eq!(self.seq(), seq);
+        //debug_assert_eq!(self.seq(), seq);
         // 把状态调整为Init
         // 如果seq为0，说明有一种情况，之前连接进行过reset，但response已获取。
         if self.try_status_cas(Read as u8, ItemStatus::Init as u8) {
@@ -192,7 +191,7 @@ impl Item {
 }
 
 use std::fmt::{self, Display, Formatter};
-impl Display for Item {
+impl Display for Status {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
