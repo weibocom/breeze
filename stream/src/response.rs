@@ -5,48 +5,9 @@ use protocol::RequestId;
 use std::sync::Arc;
 
 pub(crate) struct Item {
-    data: ResponseData,
+    data: protocol::Response,
     cid: usize,
     stream: Arc<MpmcStream>,
-}
-
-pub struct ResponseData {
-    data: protocol::Response,
-    req_id: RequestId,
-    seq: usize, // response的seq
-}
-impl ResponseData {
-    pub fn from(data: protocol::Response, rid: RequestId, resp_seq: usize) -> Self {
-        Self {
-            data: data,
-            req_id: rid,
-            seq: resp_seq,
-        }
-    }
-    #[inline(always)]
-    pub fn rid(&self) -> &RequestId {
-        &self.req_id
-    }
-    #[inline(always)]
-    pub fn seq(&self) -> usize {
-        self.seq
-    }
-}
-
-impl std::ops::Deref for ResponseData {
-    type Target = protocol::Response;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-use std::fmt::{self, Display, Formatter};
-impl Display for ResponseData {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "rid:{} data:{}", self.req_id, self.data)
-    }
 }
 
 pub struct Response {
@@ -56,8 +17,12 @@ pub struct Response {
 
 impl Response {
     #[inline]
-    pub fn from(data: ResponseData, cid: usize, stream: Arc<MpmcStream>) -> Self {
-        let rid = data.req_id;
+    pub fn from(
+        rid: RequestId,
+        data: protocol::Response,
+        cid: usize,
+        stream: Arc<MpmcStream>,
+    ) -> Self {
         let mut items = Vec::with_capacity(4);
         items.push(Item { data, cid, stream });
         Self { rid, items }
@@ -73,7 +38,7 @@ impl Response {
     pub fn keys_num(&self) -> usize {
         let mut num = 0;
         for item in &self.items {
-            num += item.data.data.keys().len();
+            num += item.data.keys().len();
         }
         num
     }
@@ -82,7 +47,7 @@ impl Response {
         self.rid
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn iter(&self) -> ResponseIter {
         ResponseIter {
             response: self,
@@ -107,7 +72,7 @@ impl<'a> Iterator for ResponseIter<'a> {
         } else {
             let idx = self.idx;
             self.idx += 1;
-            unsafe { Some(&self.response.items.get_unchecked(idx).data.data) }
+            unsafe { Some(&self.response.items.get_unchecked(idx).data) }
         }
     }
     #[inline]
@@ -137,8 +102,9 @@ impl Drop for Item {
 }
 
 impl AsRef<RingSlice> for Item {
+    #[inline(always)]
     fn as_ref(&self) -> &RingSlice {
-        &self.data.data
+        &self.data
     }
 }
 
@@ -147,12 +113,12 @@ impl Deref for Item {
     type Target = RingSlice;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.data.data
+        &self.data
     }
 }
 impl DerefMut for Item {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data.data
+        &mut self.data
     }
 }
