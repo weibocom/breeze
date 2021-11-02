@@ -1,6 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 
 pub mod memcache;
+pub mod redis;
 
 mod operation;
 pub use operation::*;
@@ -67,17 +68,21 @@ pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
 pub enum Protocols {
     McBin(memcache::MemcacheBin),
     McText(memcache::MemcacheText),
+    // RdBin(redis::RedisBin),
+    // RdText(redis::RedisText),
 }
 
 impl Protocols {
     pub fn try_from(name: &str) -> Result<Self> {
         match name {
-            "mc_bin" | "mc" | "memcache" | "memcached" => {
+            "mc_bin" | "mc" | "memcache" | "memcached" | "rd_bin" | "rd" | "redis" => {
                 Ok(Self::McBin(memcache::MemcacheBin::new()))
             }
-            "mc_text" | "memcache_text" | "memcached_text" => {
+            "mc_text" | "memcache_text" | "memcached_text" | "redis_text" | "redis_text" => {
                 Ok(Self::McText(memcache::MemcacheText::new()))
             }
+            // "rd_bin" | "rd" | "redis" => Ok(Self::McBin(memcache::MemcacheBin::new())),
+            // "redis_text" | "redis_text" => Ok(Self::McText(memcache::MemcacheText::new())),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("'{}' is not a valid protocol", name),
@@ -94,6 +99,7 @@ pub enum MetaType {
 #[derive(Copy, Clone)]
 pub enum Resource {
     Memcache,
+    Redis,
 }
 
 impl Resource {
@@ -101,6 +107,7 @@ impl Resource {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Memcache => "mc",
+            Self::Redis => "rd",
         }
     }
 }
