@@ -80,7 +80,7 @@ impl<T> Inner<T> {
         sorted.sort_by(|a, b| a.1.cmp(&b.1));
         let mut layers = Vec::with_capacity(sorted.len());
         for (role, pool, streams) in sorted {
-            log::info!(
+            log::debug!(
                 "builded for layer:{:?}, pool:{}, addr:{:?}",
                 role,
                 pool,

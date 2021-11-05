@@ -75,6 +75,13 @@ impl Sender {
         while self.buf.len() > 0 {
             let data = self.buf.as_bytes();
             let n = ready!(w.as_mut().poll_write(cx, data))?;
+            log::debug!(
+                "flush to client, rid:{:?}/{}/{} - {:?}",
+                rid,
+                n,
+                data.len(),
+                data
+            );
             if n == 0 {
                 return Poll::Ready(Err(Error::new(ErrorKind::WriteZero, "write zero response")));
             }

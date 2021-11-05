@@ -77,7 +77,12 @@ impl Receiver {
         if let Some(ref mut req) = self.req {
             req.set_request_id(*rid);
             metric.req_done(req.operation(), req.len(), req.keys().len());
-            log::debug!("parsed: {} => {}", self.buff, req);
+            log::debug!(
+                "parsed client req/{:?}:  {} => {}",
+                req.id(),
+                self.buff,
+                req
+            );
             ready!(writer.as_mut().poll_write(cx, &req))?;
             self.buff.advance_read(req.len());
         }
