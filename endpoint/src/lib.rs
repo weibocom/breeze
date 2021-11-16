@@ -97,6 +97,7 @@ $(
 }
 
 mod cacheservice;
+mod redisservice;
 //mod pipe;
 
 use cacheservice::CacheService;
