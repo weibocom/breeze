@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::io::Result;
 
@@ -8,6 +7,12 @@ use stream::{
     Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync,
     AsyncSharding, LayerRole, MetaStream,
 };
+
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
+pub use crate::topology::Topology;
 
 
 type Backend = stream::BackendStream;
@@ -25,11 +30,11 @@ AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOpe
 // 第一级先进行读写分离
 // 第二级按key进行hash
 // 第三级进行pipeline与server进行交互
-pub struct CacheService<P> {
+pub struct RedisService<P> {
     inner: AsyncOpRoute<Operation<P>>,
 }
 
-impl<P> CacheService<P> {
+impl<P> RedisService<P> {
     pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
         where
             D: TopologyRead<super::Topology<P>>,
@@ -88,13 +93,7 @@ impl<P> CacheService<P> {
     }
 }
 
-use std::pin::Pin;
-use std::task::{Context, Poll};
-
-use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
-use crate::cacheservice::Topology;
-
-impl<P> AsyncReadAll for CacheService<P>
+impl<P> AsyncReadAll for RedisService<P>
     where
         P: Protocol,
 {
@@ -104,7 +103,7 @@ impl<P> AsyncReadAll for CacheService<P>
     }
 }
 
-impl<P> AsyncWriteAll for CacheService<P>
+impl<P> AsyncWriteAll for RedisService<P>
     where
         P: Protocol,
 {
