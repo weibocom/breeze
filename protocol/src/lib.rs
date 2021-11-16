@@ -9,6 +9,8 @@ mod request;
 pub use request::*;
 
 mod response;
+pub mod redis;
+
 pub use response::*;
 
 use enum_dispatch::enum_dispatch;
@@ -67,6 +69,7 @@ pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
 pub enum Protocols {
     McBin(memcache::MemcacheBin),
     McText(memcache::MemcacheText),
+    Redis(redis::RedisResp2),
 }
 
 impl Protocols {
@@ -77,6 +80,9 @@ impl Protocols {
             }
             "mc_text" | "memcache_text" | "memcached_text" => {
                 Ok(Self::McText(memcache::MemcacheText::new()))
+            }
+            "rs" | "redis" => {
+                Ok(Self::Redis(redis::RedisResp2::new()))
             }
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
