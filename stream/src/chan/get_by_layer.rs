@@ -21,6 +21,7 @@ pub struct AsyncLayerGet<L, B, P> {
     parser: P,
     since: Instant, // 上一层请求开始的时间
     err: Option<Error>,
+    do_writeback: bool,
 }
 
 impl<L, B, P> AsyncLayerGet<L, B, P>
@@ -30,7 +31,11 @@ where
     P: Unpin + Protocol,
 {
     pub fn from_layers(layers: Vec<L>, layers_writeback: Vec<B>, p: P) -> Self {
-        assert_eq!(layers.len(), layers_writeback.len());
+        let mut do_writeback = false;
+        if layers_writeback.len() > 0 {
+            assert_eq!(layers.len(), layers_writeback.len());
+            do_writeback = true;
+        }
         let mut master_idx = 0;
         for layer in layers.iter() {
             if layer.is_master() {
@@ -53,6 +58,7 @@ where
             parser: p,
             since: Instant::now(),
             err: None,
+            do_writeback,
         }
     }
     // get: 遍历所有层次，发送请求，直到一个成功。有一层成功返回true，更新层次索引，否则返回false
@@ -121,7 +127,7 @@ where
         let found = item.keys_num();
 
         // 构建回种的cmd，并进行回种操作，注意对gets不进行回种
-        if self.idx > 0 && found > 0 && !self.is_gets {
+        if self.do_writeback && self.idx > 0 && found > 0 && !self.is_gets {
             self.do_write_back(cx, &item);
         }
 
