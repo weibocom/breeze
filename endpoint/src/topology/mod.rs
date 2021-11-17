@@ -20,6 +20,7 @@ pub struct Topology<P> {
     hash: String,         // hash策略
     distribution: String, //distribution策略
     master: Inner<Vec<String>>,
+    slaves: Inner<Vec<(LayerRole, Vec<String>)>>,
     get: Inner<Layer>,
     mget: Inner<Layer>,
     noreply: Inner<Vec<(LayerRole, Vec<String>)>>,
@@ -72,6 +73,10 @@ impl<P> ServiceTopo for Topology<P> {
             .expect("master empty")
             .1
     }
+    // 适用于第一个master，后边都是slave的模式
+    fn slaves(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
+        self.slaves.select(Some(self.share.streams())).split_off(1)
+    }
     // 第一个元素是master，去掉
     fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
         self.noreply.select(Some(self.share.streams())).split_off(1)
@@ -96,6 +101,7 @@ impl<P> ServiceTopo for Topology<P> {
     fn topo_inited(&self) -> bool {
         self.master.len() > 0
             && self.master.inited()
+            && self.slaves.inited()
             && self.get.inited()
             && self.mget.inited()
             && self.noreply.inited()
@@ -131,6 +137,7 @@ where
 
                     // 更新配置
                     self.master.set(ns.master.clone());
+                    self.slaves.set(ns.writers());
                     self.get.with(|t| t.update(&ns));
                     self.mget.with(|t| t.update(&ns));
                     self.noreply.set(ns.writers());
@@ -163,6 +170,7 @@ impl<P> From<P> for Topology<P> {
             hash: Default::default(),
             distribution: Default::default(),
             master: Default::default(),
+            slaves: Default::default(),
             get: Default::default(),
             mget: Default::default(),
             noreply: Default::default(),

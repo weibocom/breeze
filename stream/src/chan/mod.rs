@@ -22,3 +22,5 @@ pub use set_sync::AsyncSetSync;
 
 pub use get_by_layer::*;
 pub use noreply::*;
+
+pub use seq_load_balance::SeqLoadBalance;
