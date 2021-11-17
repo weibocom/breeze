@@ -120,8 +120,7 @@ where
         }
         let namespace = &name[idx + 1..];
 
-        //match Namespace::parse(cfg, namespace) {
-        match Namespace::new() {
+        match Namespace::parse(cfg, namespace) {
             Err(e) => {
                 log::info!("parse config. error:{} name:{} cfg:{}", e, name, cfg.len());
             }

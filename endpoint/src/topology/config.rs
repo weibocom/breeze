@@ -24,35 +24,9 @@ pub struct Namespace {
 }
 
 impl Namespace {
-    pub(crate) fn new() -> Result<Namespace> {
-        let new_one = Namespace {
-            hash: "crc32".to_string(),
-            distribution: "modula".to_string(),
-            hash_tag: "".to_string(),
-            master: vec!["10.185.13.228:56810".to_string(), "10.30.99.54:56811".to_string(), "10.13.224.231:56812".to_string()],
-            master_l1: vec![vec!["10.185.19.150:56810".to_string(), "10.41.28.157:56810".to_string()],
-                            vec!["10.13.113.201:56811".to_string(),"10.73.31.149:56811".to_string()],
-                            vec!["10.41.11.223:56812".to_string(), "10.30.212.46:56812".to_string()]],
-            slave: vec![],
-            slave_l1: vec![]
-        };
-        Ok(new_one)
-    }
     pub(crate) fn parse(group_cfg: &str, namespace: &str) -> Result<Namespace> {
-        let test_cfg = "
-basic:
-  access_mod:rw
-  hash: crc32
-  distribution: modula
-  listen: 56810,56811,56812
-  resource_type: eredis
-backends:
-  - 10.185.13.228:56810,10.185.19.150:56810,10.41.28.157:56810
-  - 10.30.99.54:56811,10.13.113.201:56811,10.73.31.149:56811
-  - 10.13.224.231:56812,10.41.11.223:56812,10.30.212.46:56812";
         log::debug!("group_cfg:{:?}", group_cfg);
-        log::debug!("group_cfg:{:?}", test_cfg);
-        match serde_yaml::from_str::<HashMap<String, Namespace>>(test_cfg) {
+        match serde_yaml::from_str::<HashMap<String, Namespace>>(group_cfg) {
             Err(e) => {
                 return Err(Error::new(
                     ErrorKind::InvalidData,
