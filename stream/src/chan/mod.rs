@@ -8,6 +8,7 @@ mod operation;
 mod route;
 mod set_sync;
 mod sharding;
+mod seq_load_balance;
 
 //pub use get_sync::AsyncGetSync;
 pub use meta::MetaStream;
