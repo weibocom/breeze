@@ -40,6 +40,7 @@ impl Protocol for RedisResp2 {
             let single_row = split_req.get(i).unwrap();
             read = read + 2 + single_row.len();
         }
+        read = read + 2;
         Ok(Some(Request::from(
             req.sub_slice(0, read),
             op,
@@ -80,6 +81,7 @@ impl Protocol for RedisResp2 {
     }
     #[inline]
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
+        println!("parse response {}", String::from_utf8(response.data()).unwrap());
         let mut keys = vec![];
         Some(Response::from(response.clone(), Operation::Other, keys))
     }

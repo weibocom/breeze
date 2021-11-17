@@ -31,13 +31,14 @@ impl<B> SeqLoadBalance<B>
 
 impl<B> AsyncWriteAll for SeqLoadBalance<B>
     where
-        B: AsyncWriteAll + Unpin,
+        B: Addressed + AsyncWriteAll + Unpin,
 {
     #[inline]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
         let seq = me.seq.fetch_add(1, Release);
         let index = seq % me.targets.len();
+        log::debug!("load balance sequence = {}, address: {}", index, me.targets.get_unchecked_mut(index).addr().to_string());
         unsafe { Pin::new(me.targets.get_unchecked_mut(index)).poll_write(cx, buf) }
     }
 }

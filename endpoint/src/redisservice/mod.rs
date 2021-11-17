@@ -80,7 +80,7 @@ impl<P> RedisService<P> {
         let dist = topo.distribution();
 
         let master = AsyncSharding::from(LayerRole::Master, topo.master(), hash, dist, p.clone());
-        let slaves = build_load_balance(topo.followers());
+        let slaves = build_load_balance(topo.slaves());
         let get = build_get(slaves, hash, dist, p.clone());
         let store = Store(AsyncSetSync::from_master(master, Vec::new(), p.clone()));
 
