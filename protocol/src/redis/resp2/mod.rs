@@ -81,7 +81,6 @@ impl Protocol for RedisResp2 {
     }
     #[inline]
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
-        println!("parse response {}", String::from_utf8(response.data()).unwrap());
         let mut keys = vec![];
         Some(Response::from(response.clone(), Operation::Other, keys))
     }
