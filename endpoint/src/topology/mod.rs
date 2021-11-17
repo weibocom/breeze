@@ -11,6 +11,10 @@ use layer::*;
 mod config;
 use config::*;
 
+use crate::ServiceTopo;
+
+// use crate::ServiceTopo;
+
 #[derive(Clone)]
 pub struct Topology<P> {
     hash: String,         // hash策略
@@ -26,67 +30,6 @@ pub struct Topology<P> {
 }
 
 impl<P> Topology<P> {
-    pub(crate) fn hash(&self) -> &str {
-        &self.hash
-    }
-    pub(crate) fn distribution(&self) -> &str {
-        &self.distribution
-    }
-    pub fn master(&self) -> Vec<BackendStream> {
-        // <<<<<<< HEAD
-        //         // self.master.select().pop().unwrap_or_default()
-        //         let master = self.master.select().pop();
-        //         return master.unwrap().1;
-        //     }
-        //     // 第一个元素是master，去掉
-        //     pub fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
-        //         self.noreply.select().split_off(1)
-        //     }
-        //     pub fn noreply(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
-        //         self.noreply.select()
-        //     }
-        //     pub fn get(
-        //         &self,
-        //     ) -> (
-        //         Vec<(LayerRole, Vec<BackendStream>)>,
-        //         Vec<(LayerRole, Vec<BackendStream>)>,
-        //     ) {
-        //         self.with_write_back(self.get.select())
-        //     }
-        //     pub fn mget(
-        //         &self,
-        //     ) -> (
-        //         Vec<(LayerRole, Vec<BackendStream>)>,
-        //         Vec<(LayerRole, Vec<BackendStream>)>,
-        //     ) {
-        //         self.with_write_back(self.mget.select())
-        // =======
-        self.master
-            .select(Some(self.share.streams()))
-            .pop()
-            .expect("master empty")
-            .1
-    }
-    // 第一个元素是master，去掉
-    pub fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
-        self.noreply.select(Some(self.share.streams())).split_off(1)
-    }
-    pub fn get(
-        &self,
-    ) -> (
-        Vec<(LayerRole, Vec<BackendStream>)>,
-        Vec<(LayerRole, Vec<BackendStream>)>,
-    ) {
-        self.with_write_back(self.get.select(self.shared()))
-    }
-    pub fn mget(
-        &self,
-    ) -> (
-        Vec<(LayerRole, Vec<BackendStream>)>,
-        Vec<(LayerRole, Vec<BackendStream>)>,
-    ) {
-        self.with_write_back(self.mget.select(self.shared()))
-    }
     fn with_write_back(
         &self,
         streams: Vec<(LayerRole, Vec<BackendStream>)>,
@@ -111,6 +54,51 @@ impl<P> Topology<P> {
         } else {
             None
         }
+    }
+}
+
+impl<P> ServiceTopo for Topology<P> {
+    fn hash(&self) -> &str {
+        &self.hash
+    }
+    fn distribution(&self) -> &str {
+        &self.distribution
+    }
+
+    fn master(&self) -> Vec<BackendStream> {
+        self.master
+            .select(Some(self.share.streams()))
+            .pop()
+            .expect("master empty")
+            .1
+    }
+    // 第一个元素是master，去掉
+    fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
+        self.noreply.select(Some(self.share.streams())).split_off(1)
+    }
+    fn get(
+        &self,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    ) {
+        self.with_write_back(self.get.select(self.shared()))
+    }
+    fn mget(
+        &self,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    ) {
+        self.with_write_back(self.mget.select(self.shared()))
+    }
+
+    fn topo_inited(&self) -> bool {
+        self.master.len() > 0
+            && self.master.inited()
+            && self.get.inited()
+            && self.mget.inited()
+            && self.noreply.inited()
     }
 }
 

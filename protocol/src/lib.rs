@@ -100,6 +100,7 @@ pub enum MetaType {
 #[derive(Copy, Clone)]
 pub enum Resource {
     Memcache,
+    Redis,
 }
 
 impl Resource {
@@ -107,6 +108,7 @@ impl Resource {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Memcache => "mc",
+            Self::Redis => "redis",
         }
     }
 }

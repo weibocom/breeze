@@ -1,17 +1,12 @@
 use std::collections::HashMap;
 use std::io::Result;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 use discovery::TopologyRead;
 use protocol::Protocol;
 use stream::{
-    Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOperation, AsyncOpRoute, AsyncSetSync,
+    Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync,
     AsyncSharding, LayerRole, MetaStream,
 };
-use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
-
-pub use crate::topology::Topology;
 
 type Backend = stream::BackendStream;
 type GetOperation<P> = AsyncLayerGet<AsyncSharding<Backend, P>, AsyncSharding<Backend, P>, P>;
@@ -90,6 +85,13 @@ impl<P> CacheService<P> {
         Ok(Self { inner: op_stream })
     }
 }
+
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
+
+use crate::{ServiceTopo, Topology};
 
 impl<P> AsyncReadAll for CacheService<P>
 where
