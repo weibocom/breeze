@@ -15,7 +15,10 @@ log = "0.4.14"
 crossbeam-queue = "0.3.2"
 cfg-if = "1"
 
+#dns resolver
+trust-dns-resolver = "0.20.0"
+#trust-dns = "0.20.0"
+
 [features]
 default = ["single-thread"]
 single-thread = []
-

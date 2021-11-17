@@ -1,3 +1,5 @@
+mod seq;
+
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -5,7 +7,7 @@ use std::task::{Context, Poll};
 use discovery::{Inited, TopologyRead};
 use protocol::Protocol;
 
-use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
+use stream::{AsyncReadAll, AsyncWriteAll, BackendStream, LayerRole, Request, Response};
 
 macro_rules! define_endpoint {
     ($($top:ty, $item:ident, $type_name:tt, $ep:expr);+) => {
@@ -22,6 +24,15 @@ macro_rules! define_endpoint {
                     _ => Err(Error::new(ErrorKind::InvalidData, format!("'{}' is not a valid endpoint", endpoint))),
                 }
            }
+
+            pub fn to_concrete_topo(&self) -> Box<&dyn ServiceTopo> {
+                match self {
+                    $(
+                        Self::$item(t) => Box::new(t),
+                    )+
+                }
+            }
+
        }
        impl<P> Inited for Topology<P> {
            fn inited(&self) -> bool {
@@ -33,19 +44,19 @@ macro_rules! define_endpoint {
            }
        }
 
-$(
-    // 支持Topology enum自动转换成具体的类型
-    impl<P> std::ops::Deref for Topology<P> {
-        type Target = $top;
-        fn deref(&self) -> &Self::Target {
-            match self {
-                Self::$item(t) => t,
-                // 如果有多个实现，把该注释去掉
-                //_ => panic!("topology {} not matched", stringify!($top)),
-            }
-        }
-    }
-)+
+// $(
+//     // 支持Topology enum自动转换成具体的类型
+//     impl<P> std::ops::Deref for Topology<P> {
+//         type Target = $top;
+//         fn deref(&self) -> &Self::Target {
+//             match self {
+//                 Self::$item(t) => t,
+//                 // 如果有多个实现，把该注释去掉
+//                 //_ => panic!("topology {} not matched", stringify!($top)),
+//             }
+//         }
+//     }
+// )+
 
        impl<P> discovery::TopologyWrite for Topology<P> where P:Sync+Send+Protocol{
            fn update(&mut self, name: &str, cfg: &str) {
@@ -97,12 +108,45 @@ $(
 }
 
 mod cacheservice;
+mod redisservice;
 //mod pipe;
 
 use cacheservice::CacheService;
+use redisservice::RedisService;
 //use pipe::{Pipe, PipeTopology};
 
 define_endpoint! {
 //    PipeTopology, Pipe,         Pipe,         "pipe";
-    cacheservice::Topology<P>, CacheService, CacheService, "cs"
+    cacheservice::Topology<P>, CacheService, CacheService, "cs";
+    redisservice::Topology<P>, RedisService, RedisService, "rs"
+}
+
+pub trait ServiceTopo {
+    fn hash(&self) -> &str;
+    fn distribution(&self) -> &str;
+    fn listen_ports(&self) -> Vec<u16> {
+        vec![]
+    }
+    fn topo_inited(&self) -> bool;
+
+    fn get(
+        &self,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    );
+    fn mget(
+        &self,
+    ) -> (
+        Vec<(LayerRole, Vec<BackendStream>)>,
+        Vec<(LayerRole, Vec<BackendStream>)>,
+    );
+    // fn get(&mut self) -> Vec<(LayerRole, Vec<BackendStream>)>;
+    // fn mget(&mut self) -> Vec<(LayerRole, Vec<BackendStream>)>;
+    // fn shared(&self) -> Option<&HashMap<String, Arc<BackendBuilder>>>;
+
+    fn master(&self) -> Vec<BackendStream>;
+    fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
+        vec![]
+    }
 }
