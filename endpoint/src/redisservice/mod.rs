@@ -26,10 +26,6 @@ type MetaOperation<P> = MetaStream<P, Backend>;
 type Operation<P> =
 AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation<P>>;
 
-// 三级访问策略。
-// 第一级先进行读写分离
-// 第二级按key进行hash
-// 第三级进行pipeline与server进行交互
 pub struct RedisService<P> {
     inner: AsyncOpRoute<Operation<P>>,
 }
@@ -53,41 +49,25 @@ impl<P> RedisService<P> {
         assert!(topo.inited());
         let hash = topo.hash();
         let dist = topo.distribution();
-        let (streams, write_back) = topo.mget();
-        let mget_layers = build_mget(streams, p.clone(), hash, dist);
-        let mget_layers_writeback = build_layers(write_back, hash, dist, p.clone());
-        let mget = MGet(AsyncLayerGet::from_layers(
-            mget_layers,
-            mget_layers_writeback,
-            p.clone(),
-        ));
 
         let master = AsyncSharding::from(LayerRole::Master, topo.master(), hash, dist, p.clone());
-        let noreply = build_layers(topo.followers(), hash, dist, p.clone());
-        let store = Store(AsyncSetSync::from_master(master, noreply, p.clone()));
+        let slaves = build_layers(topo.followers(), hash, dist, p.clone());
+        let store = Store(AsyncSetSync::from_master(master, Vec::new(), p.clone()));
 
-        // 获取get through
-        let (streams, write_back) = topo.get();
-        let get_layers = build_layers(streams, hash, dist, p.clone());
-        let get_layers_writeback = build_layers(write_back, hash, dist, p.clone());
         let get = Get(AsyncLayerGet::from_layers(
-            get_layers,
-            get_layers_writeback,
+            slaves,
+            Vec::new(),
             p.clone(),
         ));
 
-        // meta与master共享一个物理连接。
-        //let meta = Meta(MetaStream::from(p.clone(), topo.master()));
         let mut operations = HashMap::with_capacity(4);
         operations.insert(protocol::Operation::Get, get);
-        operations.insert(protocol::Operation::MGet, mget);
         operations.insert(protocol::Operation::Store, store);
-        // operations.insert(protocol::Operation::Meta, meta);
         let mut alias = HashMap::new();
         alias.insert(protocol::Operation::Meta, protocol::Operation::Store);
         let op_stream = AsyncOpRoute::from(operations, alias);
 
-        log::debug!("cs logic connection established:{:?}", op_stream.addr());
+        log::debug!("redis server logic connection established:{:?}", op_stream.addr());
 
         Ok(Self { inner: op_stream })
     }
