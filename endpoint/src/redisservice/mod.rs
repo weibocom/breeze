@@ -6,7 +6,7 @@ use discovery::TopologyRead;
 use protocol::Protocol;
 use stream::{
     Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync,
-    AsyncSharding, LayerRole, MetaStream,
+    AsyncSharding, LayerRole, MetaStream, SeqLoadBalance,
 };
 
 use std::pin::Pin;
@@ -17,7 +17,7 @@ use crate::ServiceTopo;
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
 type Backend = stream::BackendStream;
-type GetOperation<P> = AsyncLayerGet<AsyncSharding<Backend, P>, AsyncSharding<Backend, P>, P>;
+type GetOperation<P> = AsyncLayerGet<SeqLoadBalance<Backend, P>, SeqLoadBalance<Backend, P>, P>;
 type MultiGetLayer<P> = AsyncMultiGetSharding<Backend, P>;
 type MultiGetOperation<P> = AsyncLayerGet<MultiGetLayer<P>, AsyncSharding<Backend, P>, P>;
 type Master<P> = AsyncSharding<Backend, P>;
@@ -79,7 +79,7 @@ impl<P> RedisService<P> {
         let dist = topo.distribution();
 
         let master = AsyncSharding::from(LayerRole::Master, topo.master(), hash, dist, p.clone());
-        let slaves = build_layers(topo.followers(), hash, dist, p.clone());
+        let slaves = build_load_balance(topo.followers(), p.clone());
         let store = Store(AsyncSetSync::from_master(master, Vec::new(), p.clone()));
 
         let get = Get(AsyncLayerGet::from_layers(
@@ -198,29 +198,25 @@ where
 
 // <<<<<<< HEAD
 #[inline]
-fn build_layers<S, P>(
+fn build_load_balance<S, P>(
     // =======
     // // 对于redis，读写都只请求一层
     // #[inline]
     // fn build_get_layers<S, P>(
     // >>>>>>> redis_conn_manage
     pools: Vec<(LayerRole, Vec<S>)>,
-    h: &str,
-    distribution: &str,
     parser: P,
-) -> Vec<AsyncSharding<S, P>>
+) -> Vec<SeqLoadBalance<S, P>>
 // <<<<<<< HEAD
 where
     S: AsyncWriteAll + Addressed,
     P: Protocol + Clone,
 {
-    let mut layers: Vec<AsyncSharding<S, P>> = Vec::with_capacity(pools.len());
+    let mut load_balance: Vec<SeqLoadBalance<S, P>> = Vec::with_capacity(pools.len());
     for (role, p) in pools {
-        layers.push(AsyncSharding::from(
+        load_balance.push(SeqLoadBalance::from(
             role,
             p,
-            h,
-            distribution,
             parser.clone(),
         ));
         // =======
@@ -234,7 +230,7 @@ where
         //         layers.push(layer);
         // >>>>>>> redis_conn_manage
     }
-    layers
+    load_balance
 }
 
 // <<<<<<< HEAD

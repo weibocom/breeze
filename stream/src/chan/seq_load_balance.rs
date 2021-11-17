@@ -1,8 +1,8 @@
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
-use protocol::{Protocol, Request, Response};
-use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, LayerRole, LayerRoleAble};
+use protocol::{Protocol, Request};
+use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, LayerRole, LayerRoleAble, Response};
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 
@@ -43,6 +43,20 @@ impl<B, P> AsyncWriteAll for SeqLoadBalance<B, P>
         let seq = me.seq.fetch_add(1, Release);
         let index = seq % me.targets.len();
         unsafe { Pin::new(me.targets.get_unchecked_mut(index)).poll_write(cx, buf) }
+    }
+}
+
+impl<B, P> AsyncReadAll for SeqLoadBalance<B, P>
+    where
+        B: AsyncReadAll + Unpin,
+        P: Protocol + Unpin,
+{
+    #[inline(always)]
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
+        let me = &mut *self;
+        let seq = me.seq.fetch_add(1, Release);
+        let index = seq % me.targets.len();
+        unsafe { Pin::new(me.targets.get_unchecked_mut(index)).poll_next(cx) }
     }
 }
 
