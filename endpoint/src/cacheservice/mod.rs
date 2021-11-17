@@ -36,17 +36,17 @@ impl<P> CacheService<P> {
         D: TopologyRead<super::Topology<P>>,
         P: protocol::Protocol,
     {
-        discovery.do_with(|t| Self::from_topology::<D>(p.clone(), t))
+        discovery.do_with(|t| Self::from_topology::<D>(p.clone(), t.to_concrete_topo()))
     }
-    fn from_topology<D>(p: P, topo: &Topology<P>) -> Result<Self>
+    fn from_topology<D>(p: P, topo: Box<&dyn ServiceTopo>) -> Result<Self>
     where
         D: TopologyRead<super::Topology<P>>,
         P: protocol::Protocol,
     {
         // 初始化完成一定会保障master存在，并且长度不为0.
-        use discovery::Inited;
+        // use discovery::Inited;
         use AsyncOperation::*;
-        assert!(topo.inited());
+        assert!(topo.topo_inited());
         let hash = topo.hash();
         let dist = topo.distribution();
         let (streams, write_back) = topo.mget();
@@ -93,6 +93,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
+
+use crate::ServiceTopo;
 
 impl<P> AsyncReadAll for CacheService<P>
 where
