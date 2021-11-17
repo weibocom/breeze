@@ -14,7 +14,7 @@ impl Protocol for RedisResp2 {
         let mut split_first_vu8 = Vec::new();
         split_first_vu8.push(split_req[0].data().to_vec()[1]);
         let split_count = String::from_utf8(split_first_vu8).unwrap().parse::<usize>().unwrap();
-        if split_req.len() < (split_count + 1) {
+        if split_req.len() < (split_count * 2 + 1) {
             return Ok(None);
         }
         let mut read = 0 as usize;
@@ -34,12 +34,13 @@ impl Protocol for RedisResp2 {
 
         read = read + split_req[0].len();
         for i in 1..split_req.len() {
-            if i >= split_count {
+            if i >= split_count * 2 + 1 {
                 break;
             }
             let single_row = split_req.get(i).unwrap();
             read = read + 2 + single_row.len();
         }
+        read = read + 2;
         Ok(Some(Request::from(
             req.sub_slice(0, read),
             op,
@@ -165,8 +166,8 @@ impl RedisResp2 {
 
     fn parse_operation(&self, request: &Request) -> Command {
         // let req_slice = Slice::from(request.data());
-        let split_req = request.split(" ".as_ref());
-        match String::from_utf8(split_req[0].data().to_vec())
+        let split_req = request.split("\r\n".as_ref());
+        match String::from_utf8(split_req[2].data().to_vec())
             .unwrap()
             .to_lowercase()
             .as_str()
@@ -176,7 +177,7 @@ impl RedisResp2 {
             _ => {
                 log::error!(
                     "found unknown command:{:?}",
-                    String::from_utf8(split_req[0].data().to_vec())
+                    String::from_utf8(split_req[2].data().to_vec())
                 );
                 Command::Unknown
             }

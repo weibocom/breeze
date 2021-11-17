@@ -220,4 +220,8 @@ pub trait ServiceTopo {
     fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
         vec![]
     }
+
+    fn slaves(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
+        vec![]
+    }
 }
