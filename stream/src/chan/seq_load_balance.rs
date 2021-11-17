@@ -6,36 +6,32 @@ use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, LayerRole, LayerRol
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 
-pub struct SeqLoadBalance<B, P> {
+pub struct SeqLoadBalance<B> {
     // 该层在分层中的角色role
     role: LayerRole,
     seq: AtomicUsize,
     targets: Vec<B>,
-    parser: P,
 }
 
-impl<B, P> SeqLoadBalance<B, P>
+impl<B> SeqLoadBalance<B>
     where
         B: Addressed,
 {
     pub fn from(
         role: LayerRole,
         targets: Vec<B>,
-        parser: P,
     ) -> Self {
         Self {
             role,
             seq: AtomicUsize::from(0 as usize),
             targets,
-            parser,
         }
     }
 }
 
-impl<B, P> AsyncWriteAll for SeqLoadBalance<B, P>
+impl<B> AsyncWriteAll for SeqLoadBalance<B>
     where
         B: AsyncWriteAll + Unpin,
-        P: Protocol + Unpin,
 {
     #[inline]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
@@ -46,10 +42,9 @@ impl<B, P> AsyncWriteAll for SeqLoadBalance<B, P>
     }
 }
 
-impl<B, P> AsyncReadAll for SeqLoadBalance<B, P>
+impl<B> AsyncReadAll for SeqLoadBalance<B>
     where
         B: AsyncReadAll + Unpin,
-        P: Protocol + Unpin,
 {
     #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
@@ -60,7 +55,7 @@ impl<B, P> AsyncReadAll for SeqLoadBalance<B, P>
     }
 }
 
-impl<B, P> Addressed for SeqLoadBalance<B, P>
+impl<B> Addressed for SeqLoadBalance<B>
     where
         B: Addressed,
 {
@@ -69,7 +64,7 @@ impl<B, P> Addressed for SeqLoadBalance<B, P>
     }
 }
 
-impl<B, P> LayerRoleAble for SeqLoadBalance<B, P> {
+impl<B> LayerRoleAble for SeqLoadBalance<B> {
     fn layer_role(&self) -> LayerRole {
         self.role.clone()
     }
