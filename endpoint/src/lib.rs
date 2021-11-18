@@ -1,3 +1,4 @@
+mod cacheservice;
 mod seq;
 
 use futures::Stream;
@@ -7,11 +8,13 @@ use std::task::{Context, Poll};
 use tokio::io::AsyncWrite;
 
 use cacheservice::CacheService;
+use cacheservice::MemcacheNamespace;
 use discovery::{Inited, TopologyRead};
 use protocol::Protocol;
+use redisservice::RedisService;
 use topology::Topology as ServiceTopology;
 // <<<<<<< HEAD
-use redisservice::RedisService;
+use redisservice::RedisNamespace;
 use stream::{AsyncReadAll, AsyncWriteAll, BackendStream, LayerRole, Request, Response};
 // =======
 
@@ -25,7 +28,10 @@ pub enum Topology<P> {
 }
 
 // <<<<<<< HEAD
-impl<P> Topology<P> {
+impl<P> Topology<P>
+where
+    P: Protocol,
+{
     pub fn try_from(parser: P, endpoint: String) -> Result<Self> {
         match &endpoint[..] {
             "rs" => Ok(Self::RedisService(parser.into())),
@@ -176,7 +182,6 @@ where
         }
     }
 }
-mod cacheservice;
 mod redisservice;
 mod topology;
 //mod pipe;

@@ -1,3 +1,6 @@
+mod config;
+
+pub use config::MemcacheNamespace;
 use std::collections::HashMap;
 use std::io::Result;
 

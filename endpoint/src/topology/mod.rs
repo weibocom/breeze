@@ -2,23 +2,26 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use protocol::Protocol;
+use protocol::Resource;
 use stream::{BackendBuilder, BackendStream, LayerRole};
 
 mod inner;
 use inner::*;
 mod layer;
 use layer::*;
-mod config;
-use config::*;
 
+use crate::MemcacheNamespace;
+use crate::RedisNamespace;
 use crate::ServiceTopo;
 
-// use crate::ServiceTopo;
-
+// master: Vec1<Vec2<String>>: Vec2<String> 代表一组完整的资源， Vec1负责负载均衡策略
 #[derive(Clone)]
 pub struct Topology<P> {
+    resource: Resource,
+    access_mod: String,
     hash: String,         // hash策略
     distribution: String, //distribution策略
+    listen_ports: Vec<u16>,
     master: Inner<Vec<String>>,
     slaves: Inner<Vec<(LayerRole, Vec<String>)>>,
     get: Inner<Layer>,
@@ -73,9 +76,10 @@ impl<P> ServiceTopo for Topology<P> {
             .expect("master empty")
             .1
     }
-    // 适用于第一个master，后边都是slave的模式
+    // 所有slave连接
     fn slaves(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
-        self.slaves.select(Some(self.share.streams())).split_off(1)
+        // self.slaves.select(Some(self.share.streams())).split_off(1)
+        self.slaves.select(Some(self.share.streams()))
     }
     // 第一个元素是master，去掉
     fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
@@ -120,39 +124,74 @@ where
         }
         let namespace = &name[idx + 1..];
 
-        match Namespace::parse(cfg, namespace) {
-            Err(e) => {
-                log::info!("parse config. error:{} name:{} cfg:{}", e, name, cfg.len());
-            }
-            Ok(ns) => {
-                if ns.master.len() == 0 {
-                    log::info!("cacheservice empty. {} => {}", name, cfg);
-                } else {
-                    self.hash = ns.hash.to_owned();
-                    self.distribution = ns.distribution.to_owned();
-                    let p = &self.parser;
+        match self.resource {
+            Resource::Memcache => {
+                match MemcacheNamespace::parse(cfg, namespace) {
+                    Err(e) => {
+                        log::info!("parse config. error:{} name:{} cfg:{}", e, name, cfg.len());
+                    }
+                    Ok(ns) => {
+                        if ns.master.len() == 0 {
+                            log::info!("cacheservice empty. {} => {}", name, cfg);
+                        } else {
+                            self.hash = ns.hash.to_owned();
+                            self.distribution = ns.distribution.to_owned();
+                            let p = &self.parser;
 
-                    self.share.set(ns.uniq_all());
-                    self.share.update(namespace, p);
+                            self.share.set(ns.uniq_all());
+                            self.share.update(namespace, p);
 
-                    // 更新配置
-                    self.master.set(ns.master.clone());
-                    self.slaves.set(ns.writers());
-                    self.get.with(|t| t.update(&ns));
-                    self.mget.with(|t| t.update(&ns));
-                    self.noreply.set(ns.writers());
+                            // 更新配置
+                            self.master.set(ns.master.clone());
+                            self.slaves.set(ns.writers());
+                            self.get.with(|t| t.update_for_memcache(&ns));
+                            self.mget.with(|t| t.update_for_memcache(&ns));
+                            self.noreply.set(ns.writers());
 
-                    // 如果配置中包不含有master_l1,
-                    // 则所有的请求共用一个物理连接。否则每一种op使用独立的连接
-                    if ns.master_l1.len() == 0 {
-                        self.shared = true;
-                    } else {
-                        self.shared = false;
-                        self.get.update(namespace, p);
-                        self.mget.update(namespace, p);
-                    };
+                            // 如果配置中包不含有master_l1,
+                            // 则所有的请求共用一个物理连接。否则每一种op使用独立的连接
+                            if ns.master_l1.len() == 0 {
+                                self.shared = true;
+                            } else {
+                                self.shared = false;
+                                self.get.update(namespace, p);
+                                self.mget.update(namespace, p);
+                            };
+                        }
+                    }
                 }
             }
+            Resource::Redis => match RedisNamespace::parse(cfg, namespace) {
+                Err(e) => {
+                    log::info!("parse config. error:{} name:{} cfg:{}", e, name, cfg.len());
+                }
+                Ok(ns) => {
+                    if ns.master.len() == 0 {
+                        log::warn!("redisservice/{} no master:{}", name, cfg);
+                        return;
+                    }
+
+                    self.access_mod = ns.basic.access_mod.clone();
+                    self.hash = ns.basic.hash.clone();
+                    self.distribution = ns.basic.distribution.clone();
+                    self.listen_ports = ns.parse_listen_ports();
+                    self.master.set(ns.master.clone());
+                    self.get.with(|layer| layer.update_for_redis(&ns));
+                    self.mget.with(|layer| layer.update_for_redis(&ns));
+                    // TODO：standby(读备用连接) 逻辑如何与topo整合，待和channel层协调 fishermen
+                    // self.standby.set(ns.master());
+
+                    // 如果没有slave，读写共享相同的物理连接
+                    if ns.slaves.len() == 0 {
+                        self.shared = true;
+                        self.share.set(vec![(LayerRole::Master, ns.master.clone())]);
+                        self.share.update(namespace, &self.parser);
+                    } else {
+                        self.shared = false;
+                        self.master.update(namespace, &self.parser);
+                    }
+                }
+            },
         }
     }
     fn gc(&mut self) {
@@ -163,12 +202,18 @@ where
     }
 }
 
-impl<P> From<P> for Topology<P> {
+impl<P> From<P> for Topology<P>
+where
+    P: Protocol,
+{
     fn from(parser: P) -> Self {
         let mut me = Self {
+            resource: parser.resource(),
             parser: parser,
+            access_mod: Default::default(),
             hash: Default::default(),
             distribution: Default::default(),
+            listen_ports: Default::default(),
             master: Default::default(),
             slaves: Default::default(),
             get: Default::default(),

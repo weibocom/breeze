@@ -1,19 +1,25 @@
-use std::collections::HashMap;
-use ds::{RingSlice, Slice};
-use crate::{MetaType, Operation, Protocol, Request, Response};
-use std::io::Result;
-use sharding::Sharding;
 use crate::redis::Command;
+use crate::{MetaType, Operation, Protocol, Request, Resource, Response};
+use ds::{RingSlice, Slice};
+use sharding::Sharding;
+use std::collections::HashMap;
+use std::io::Result;
 
 #[derive(Clone)]
 pub struct RedisResp2;
 impl Protocol for RedisResp2 {
+    fn resource(&self) -> Resource {
+        Resource::Redis
+    }
     #[inline(always)]
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
         let split_req = req.split("\r\n".as_ref());
         let mut split_first_vu8 = Vec::new();
         split_first_vu8.push(split_req[0].data().to_vec()[1]);
-        let split_count = String::from_utf8(split_first_vu8).unwrap().parse::<usize>().unwrap();
+        let split_count = String::from_utf8(split_first_vu8)
+            .unwrap()
+            .parse::<usize>()
+            .unwrap();
         if split_req.len() < (split_count * 2 + 1) {
             return Ok(None);
         }
@@ -100,17 +106,17 @@ impl Protocol for RedisResp2 {
     }
     //单查询暂不需要
     fn filter_by_key<'a, R>(&self, req: &Request, mut resp: R) -> Option<Request>
-        where
-            R: Iterator<Item = &'a Response>,
+    where
+        R: Iterator<Item = &'a Response>,
     {
         None
     }
 
     #[inline]
     fn write_response<'a, R, W>(&self, r: R, w: &mut W)
-        where
-            W: crate::BackwardWrite,
-            R: Iterator<Item = &'a Response>,
+    where
+        W: crate::BackwardWrite,
+        R: Iterator<Item = &'a Response>,
     {
         let (mut left, _) = r.size_hint();
         for response in r {
@@ -151,8 +157,8 @@ impl RedisResp2 {
     // 轮询response，找出本次查询到的keys，loop所在的位置
     #[inline(always)]
     fn keys_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
-        where
-            T: Iterator<Item = &'a Response>,
+    where
+        T: Iterator<Item = &'a Response>,
     {
         let mut keys = HashMap::with_capacity(exptects * 3 / 2);
         // 解析response中的key
