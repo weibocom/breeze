@@ -5,10 +5,7 @@ use std::io::Result;
 
 use discovery::TopologyRead;
 use protocol::Protocol;
-use stream::{
-    Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync,
-    AsyncSharding, LayerRole, MetaStream, SeqLoadBalance,
-};
+use stream::{Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync, AsyncSharding, LayerRole, MetaStream, SeqLoadBalance, LayerRoleAble};
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -18,7 +15,7 @@ use crate::ServiceTopo;
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
 type Backend = stream::BackendStream;
-type GetOperation<P> = AsyncLayerGet<AsyncSharding<SeqLoadBalance<Backend>, P>, AsyncSharding<SeqLoadBalance<Backend>, P>, P>;
+type GetOperation<P> = AsyncLayerGet<SeqLoadBalance<AsyncSharding<Backend, P>>, SeqLoadBalance<AsyncSharding<Backend, P>>, P>;
 type MultiGetLayer<P> = AsyncMultiGetSharding<Backend, P>;
 type MultiGetOperation<P> = AsyncLayerGet<MultiGetLayer<P>, AsyncSharding<Backend, P>, P>;
 type Master<P> = AsyncSharding<Backend, P>;
@@ -80,8 +77,7 @@ impl<P> RedisService<P> {
         let dist = topo.distribution();
 
         let master = AsyncSharding::from(LayerRole::Master, topo.master(), hash, dist, p.clone());
-        let slaves = build_load_balance(topo.slaves());
-        let get = build_get(slaves, hash, dist, p.clone());
+        let get = build_get(topo.slaves(), hash, dist, p.clone());
         let store = Store(AsyncSetSync::from_master(master, Vec::new(), p.clone()));
 
         let get = Get(AsyncLayerGet::from_layers(
@@ -204,22 +200,60 @@ fn build_get<S, P>(
     h: &str,
     distribution: &str,
     parser: P,
+) -> Vec<SeqLoadBalance<AsyncSharding<S, P>>>
+    where
+        S: AsyncWriteAll + Addressed + Unpin,
+        P: Protocol + Clone,
+{
+    let sharding = build_sharding(pools, h, distribution, parser);
+    let sharding_merged = merge_by_layer(sharding);
+    let load_balance = build_load_balance(sharding_merged);
+    load_balance
+}
+
+
+#[inline]
+fn merge_by_layer<S>(
+    pools: Vec<S>,
+) -> Vec<(LayerRole, Vec<S>)>
+    where S: LayerRoleAble
+{
+    let mut layer_role_map: HashMap<LayerRole, Vec<S>> = HashMap::with_capacity(pools.len());
+    for pool in pools {
+        let single_layer: &mut Vec<S> = match layer_role_map.entry(pool.layer_role().clone()) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => v.insert(Vec::new()),
+        };
+        single_layer.push(pool);
+    }
+    let layer_role_vec = layer_role_map.into_iter()
+        .map(|(key, value)| (key, value))
+        .collect();
+    layer_role_vec
+}
+
+#[inline]
+fn build_sharding<S, P>(
+    pools: Vec<(LayerRole, Vec<S>)>,
+    h: &str,
+    distribution: &str,
+    parser: P,
 ) -> Vec<AsyncSharding<S, P>>
     where
         S: AsyncWriteAll + Addressed,
         P: Protocol + Clone,
 {
-    let mut shadings: Vec<AsyncSharding<S, P>> = Vec::with_capacity(pools.len());
+    let mut sharding: Vec<AsyncSharding<S, P>> = Vec::with_capacity(pools.len());
     for (role, p) in pools {
-        shadings.push(AsyncSharding::from(
+        sharding.push(AsyncSharding::from(
             role,
             p,
             h,
             distribution,
             parser.clone(),
-        ));
+        ))
     }
-    shadings
+    sharding
 }
 
 // <<<<<<< HEAD
@@ -231,18 +265,14 @@ fn build_load_balance<S>(
     // fn build_get_layers<S, P>(
     // >>>>>>> redis_conn_manage
     pools: Vec<(LayerRole, Vec<S>)>,
-) -> Vec<(LayerRole, Vec<SeqLoadBalance<S>>)>
+) -> Vec<SeqLoadBalance<S>>
 // <<<<<<< HEAD
 where
     S: AsyncWriteAll + Addressed,
 {
-    let mut load_balance_map: HashMap<LayerRole, Vec<SeqLoadBalance<S>>> = HashMap::with_capacity(pools.len());
+    let mut load_balance: Vec<SeqLoadBalance<S>> = Vec::with_capacity(pools.len());
     for (role, p) in pools {
-        let load_balance_vec: &mut Vec<SeqLoadBalance<S>> = match load_balance_map.entry(role) {
-            Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => v.insert(Vec::new()),
-        };
-        load_balance_vec.push(SeqLoadBalance::from(
+        load_balance.push(SeqLoadBalance::from(
             role.clone(),
             p,
         ))
@@ -257,9 +287,6 @@ where
         //         layers.push(layer);
         // >>>>>>> redis_conn_manage
     }
-    let load_balance = load_balance_map.into_iter()
-        .map(|(key, value)| (key, value))
-        .collect();
     load_balance
 }
 
