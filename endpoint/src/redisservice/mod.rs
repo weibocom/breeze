@@ -1,5 +1,7 @@
+mod config;
+
 use std::collections::hash_map::Entry;
-// <<<<<<< HEAD
+
 use std::collections::HashMap;
 use std::io::Result;
 
@@ -10,15 +12,19 @@ use stream::{
     AsyncSharding, LayerRole, MetaStream, SeqLoadBalance,
 };
 
-use std::pin::Pin;
-use std::task::{Context, Poll};
-
 pub use crate::topology::Topology;
 use crate::ServiceTopo;
+pub use config::RedisNamespace;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
 type Backend = stream::BackendStream;
-type GetOperation<P> = AsyncLayerGet<AsyncSharding<SeqLoadBalance<Backend>, P>, AsyncSharding<SeqLoadBalance<Backend>, P>, P>;
+type GetOperation<P> = AsyncLayerGet<
+    AsyncSharding<SeqLoadBalance<Backend>, P>,
+    AsyncSharding<SeqLoadBalance<Backend>, P>,
+    P,
+>;
 type MultiGetLayer<P> = AsyncMultiGetSharding<Backend, P>;
 type MultiGetOperation<P> = AsyncLayerGet<MultiGetLayer<P>, AsyncSharding<Backend, P>, P>;
 type Master<P> = AsyncSharding<Backend, P>;
@@ -84,11 +90,7 @@ impl<P> RedisService<P> {
         let get = build_get(slaves, hash, dist, p.clone());
         let store = Store(AsyncSetSync::from_master(master, Vec::new(), p.clone()));
 
-        let get = Get(AsyncLayerGet::from_layers(
-            get,
-            Vec::new(),
-            p.clone(),
-        ));
+        let get = Get(AsyncLayerGet::from_layers(get, Vec::new(), p.clone()));
 
         let mut operations = HashMap::with_capacity(4);
         operations.insert(protocol::Operation::Get, get);
@@ -97,7 +99,10 @@ impl<P> RedisService<P> {
         alias.insert(protocol::Operation::Meta, protocol::Operation::Store);
         let op_stream = AsyncOpRoute::from(operations, alias);
 
-        log::debug!("redis server logic connection established:{:?}", op_stream.addr());
+        log::debug!(
+            "redis server logic connection established:{:?}",
+            op_stream.addr()
+        );
 
         Ok(Self { inner: op_stream })
     }
@@ -205,9 +210,9 @@ fn build_get<S, P>(
     distribution: &str,
     parser: P,
 ) -> Vec<AsyncSharding<S, P>>
-    where
-        S: AsyncWriteAll + Addressed,
-        P: Protocol + Clone,
+where
+    S: AsyncWriteAll + Addressed,
+    P: Protocol + Clone,
 {
     let mut shadings: Vec<AsyncSharding<S, P>> = Vec::with_capacity(pools.len());
     for (role, p) in pools {
@@ -236,16 +241,14 @@ fn build_load_balance<S>(
 where
     S: AsyncWriteAll + Addressed,
 {
-    let mut load_balance_map: HashMap<LayerRole, Vec<SeqLoadBalance<S>>> = HashMap::with_capacity(pools.len());
+    let mut load_balance_map: HashMap<LayerRole, Vec<SeqLoadBalance<S>>> =
+        HashMap::with_capacity(pools.len());
     for (role, p) in pools {
         let load_balance_vec: &mut Vec<SeqLoadBalance<S>> = match load_balance_map.entry(role) {
             Entry::Occupied(o) => o.into_mut(),
             Entry::Vacant(v) => v.insert(Vec::new()),
         };
-        load_balance_vec.push(SeqLoadBalance::from(
-            role.clone(),
-            p,
-        ))
+        load_balance_vec.push(SeqLoadBalance::from(role.clone(), p))
         // =======
         // where
         //     S: AsyncWriteAll + Addressed,
@@ -257,7 +260,8 @@ where
         //         layers.push(layer);
         // >>>>>>> redis_conn_manage
     }
-    let load_balance = load_balance_map.into_iter()
+    let load_balance = load_balance_map
+        .into_iter()
         .map(|(key, value)| (key, value))
         .collect();
     load_balance
