@@ -88,10 +88,15 @@ impl<P> RedisService<P> {
         let dist = topo.distribution();
 
         let master = AsyncSharding::from(LayerRole::Master, topo.master(), hash, dist, p.clone());
-        let get = build_get(topo.slaves(), hash, dist, p.clone());
         let store = Store(AsyncSetSync::from_master(master, Vec::new(), p.clone()));
 
-        let get = Get(AsyncLayerGet::from_layers(get, Vec::new(), p.clone()));
+        let get_layers = build_get(topo.slaves(), hash, dist, p.clone());
+        let get_padding_layer: Vec<SeqLoadBalance<AsyncSharding<Backend, P>>> = vec![];
+        let get = Get(AsyncLayerGet::from_layers(
+            get_layers,
+            get_padding_layer,
+            p.clone(),
+        ));
 
         let mut operations = HashMap::with_capacity(4);
         operations.insert(protocol::Operation::Get, get);
@@ -279,14 +284,9 @@ fn build_load_balance<S>(
 where
     S: AsyncWriteAll + Addressed,
 {
-    let mut load_balance_map: HashMap<LayerRole, Vec<SeqLoadBalance<S>>> =
-        HashMap::with_capacity(pools.len());
+    let mut load_balance: Vec<SeqLoadBalance<S>> = Vec::with_capacity(pools.len());
     for (role, p) in pools {
-        let load_balance_vec: &mut Vec<SeqLoadBalance<S>> = match load_balance_map.entry(role) {
-            Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => v.insert(Vec::new()),
-        };
-        load_balance_vec.push(SeqLoadBalance::from(role.clone(), p))
+        load_balance.push(SeqLoadBalance::from(role.clone(), p))
 
         // =======
         // where
@@ -299,10 +299,6 @@ where
         //         layers.push(layer);
         // >>>>>>> redis_conn_manage
     }
-    let load_balance = load_balance_map
-        .into_iter()
-        .map(|(key, value)| (key, value))
-        .collect();
 
     load_balance
 }
