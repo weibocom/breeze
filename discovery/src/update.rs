@@ -1,3 +1,5 @@
+use crate::resource;
+
 // 定期更新discovery.
 use super::{Discover, ServiceId, TopologyWrite};
 use crossbeam_channel::Receiver;
@@ -98,7 +100,9 @@ where
                     continue;
                 }
                 if cfg.len() > 0 {
-                    t.update(name, &cfg);
+                    let res = t.resource();
+                    let hosts = resource::parse_cfg_hosts(res, cfg).await;
+                    t.update(name, &cfg, &hosts);
                     *update = Instant::now();
                     *sig = cache_sig.to_owned();
                     continue;
@@ -106,7 +110,9 @@ where
             }
 
             if let Some((remote_sig, cfg)) = self.load_from_discovery(&path, sig).await {
-                t.update(name, &cfg);
+                let res = t.resource();
+                let hosts = resource::parse_cfg_hosts(res, &cfg).await;
+                t.update(name, &cfg, &hosts);
                 *update = Instant::now();
                 *sig = remote_sig.to_owned();
                 cache.insert(path, (remote_sig, cfg));
@@ -119,11 +125,15 @@ where
         let name = t.name().to_string();
         // 用path查找，用name更新。
         if let Ok((sig, cfg)) = self.try_load_from_snapshot(&path).await {
-            t.update(&name, &cfg);
+            let res = t.resource();
+            let hosts = resource::parse_cfg_hosts(res, &cfg).await;
+            t.update(&name, &cfg, &hosts);
             Some((sig, cfg))
         } else {
             if let Some((sig, cfg)) = self.load_from_discovery(&path, "").await {
-                t.update(&name, &cfg);
+                let res = t.resource();
+                let hosts = resource::parse_cfg_hosts(res, &cfg).await;
+                t.update(&name, &cfg, &hosts);
                 Some((sig, cfg))
             } else {
                 None
