@@ -65,6 +65,16 @@ impl RedisNamespace {
         }
     }
 
+    // 包括N组slave，一组master
+    pub(crate) fn readers(&self) -> Vec<(LayerRole, Vec<String>)> {
+        let mut readers = Vec::with_capacity(self.slaves.len() + 1);
+        for s in self.slaves.clone() {
+            readers.push((LayerRole::Slave, s));
+        }
+        readers.push((LayerRole::Master, self.master.clone()));
+        readers
+    }
+
     // fn init(&mut self, hosts: &HashMap<String, Vec<String>>) {
     //     let addrs: Vec<&str> = bk.split(",").collect();
     //     debug_assert!(addrs.len() > 0);

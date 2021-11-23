@@ -254,11 +254,7 @@ pub trait ServiceTopo {
     // fn shared(&self) -> Option<&HashMap<String, Arc<BackendBuilder>>>;
 
     fn master(&self) -> Vec<BackendStream>;
-    fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
-        vec![]
-    }
+    fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)>;
 
-    fn slaves(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
-        vec![]
-    }
+    fn slaves(&self) -> Vec<(LayerRole, Vec<BackendStream>)>;
 }

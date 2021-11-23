@@ -229,7 +229,7 @@ where
 #[inline]
 fn merge_by_layer<S>(pools: Vec<S>) -> Vec<(LayerRole, Vec<S>)>
 where
-    S: LayerRoleAble,
+    S: LayerRoleAble + Addressed,
 {
     let mut layer_role_map: HashMap<LayerRole, Vec<S>> = HashMap::with_capacity(pools.len());
     for pool in pools {
@@ -237,12 +237,14 @@ where
             Entry::Occupied(o) => o.into_mut(),
             Entry::Vacant(v) => v.insert(Vec::new()),
         };
+
         single_layer.push(pool);
     }
     let layer_role_vec = layer_role_map
         .into_iter()
         .map(|(key, value)| (key, value))
         .collect();
+
     layer_role_vec
 }
 
