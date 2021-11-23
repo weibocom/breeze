@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 mod tests {
     use ds::Slice;
@@ -14,6 +13,7 @@ mod tests {
         let version_request = Slice::from("version\r\n".as_ref());
 
         let parser = protocol::memcache::MemcacheText::new();
+        let parser = protocol::redis::RedisText::new();
         let get_parse_result = parser.parse_request(get_request);
         let get_not_supported_parse_result = parser.parse_request(get_not_supported_request);
         let gets_parse_result = parser.parse_request(gets_request);

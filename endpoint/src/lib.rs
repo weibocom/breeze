@@ -13,6 +13,7 @@ macro_rules! define_endpoint {
        #[derive(Clone)]
        pub enum Topology<P> {
             $($item($top)),+
+
        }
 
        impl<P> Topology<P>  {
@@ -98,11 +99,14 @@ $(
 
 mod cacheservice;
 //mod pipe;
-
+//mod redisservice;
 use cacheservice::CacheService;
+//use redisservice::RedisService;
 //use pipe::{Pipe, PipeTopology};
 
 define_endpoint! {
 //    PipeTopology, Pipe,         Pipe,         "pipe";
-    cacheservice::Topology<P>, CacheService, CacheService, "cs"
+    // cacheservice::Topology<P>, CacheService, CacheService, "mc";
+    // redisservice::Topology<P>, RedisService, RedisService, "rs"
+    cacheservice::Topology<P>, CacheService, CacheService, "rs"
 }

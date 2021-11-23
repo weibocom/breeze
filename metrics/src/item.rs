@@ -6,6 +6,7 @@ pub(crate) struct SnapshotItem<E> {
     pub(crate) inner: HashMap<usize, HashMap<&'static str, E>>,
 }
 
+//boedn3cjnxkwqs
 impl<E> SnapshotItem<E> {
     pub fn new() -> Self {
         Self {
