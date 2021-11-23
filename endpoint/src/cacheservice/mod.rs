@@ -47,6 +47,7 @@ impl<P> CacheService<P> {
         use discovery::Inited;
         use AsyncOperation::*;
         assert!(topo.inited());
+
         let hash = topo.hash();
         let dist = topo.distribution();
         let (streams, write_back) = topo.mget();
