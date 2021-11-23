@@ -203,6 +203,7 @@ where
                     self.share.set(ns.uniq_all());
                     self.share.update(self.namespace.as_str(), &self.parser);
                     self.master.set(ns.master.clone());
+                    self.slaves.set(ns.readers());
                     self.get.with(|layer| layer.update_for_redis(&ns));
                     self.mget.with(|layer| layer.update_for_redis(&ns));
                     // TODO：standby(读备用连接) 逻辑如何与topo整合，待和channel层协调 fishermen
