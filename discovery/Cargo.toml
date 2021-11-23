@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 #log = { path = "../log" }
 ds = { path = "../ds" }
+protocol = { path = "../protocol" }
 
 log = "0.4.14"
 url = "2.2.2"

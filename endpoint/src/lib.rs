@@ -1,16 +1,20 @@
 mod cacheservice;
 mod seq;
 
+use ds::cow;
 use futures::Stream;
+use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::io::AsyncWrite;
 
 use cacheservice::CacheService;
 use cacheservice::MemcacheNamespace;
-use discovery::{Inited, TopologyRead};
-use protocol::Protocol;
+use discovery::{Inited, TopologyRead, TopologyReadGuard, TopologyWrite, TopologyWriteGuard};
+use protocol::{Protocol, Resource};
 use redisservice::RedisService;
 use topology::Topology as ServiceTopology;
 // <<<<<<< HEAD
@@ -109,10 +113,16 @@ impl<P> discovery::TopologyWrite for Topology<P>
 where
     P: Sync + Send + Protocol,
 {
-    fn update(&mut self, name: &str, cfg: &str) {
+    fn resource(&self) -> protocol::Resource {
         match self {
-            Self::RedisService(r) => discovery::TopologyWrite::update(r, name, cfg),
-            Self::CacheService(c) => discovery::TopologyWrite::update(c, name, cfg),
+            Self::RedisService(_) => Resource::Redis,
+            Self::CacheService(_) => Resource::Memcache,
+        }
+    }
+    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, Vec<String>>) {
+        match self {
+            Self::RedisService(r) => discovery::TopologyWrite::update(r, name, cfg, hosts),
+            Self::CacheService(c) => discovery::TopologyWrite::update(c, name, cfg, hosts),
         }
     }
 
@@ -195,6 +205,28 @@ mod topology;
 // //    PipeTopology, Pipe,         Pipe,         "pipe";
 //     cacheservice::Topology<P>, CacheService, CacheService, "cs";
 //     redisservice::Topology<P>, RedisService, RedisService, "rs"
+// }
+
+// pub fn topology<P: Protocol>(
+//     t: Topology<P>,
+//     service: &str,
+// ) -> (
+//     TopologyWriteGuard<Topology<P>>,
+//     TopologyReadGuard<Topology<P>>,
+// ) {
+//     let resource = t.resource();
+//     let (tx, rx) = cow(t);
+//     let name = service.to_string();
+//     let idx = name.find(':').unwrap_or(name.len());
+//     let mut path = name.clone().replace('+', "/");
+//     path.truncate(idx);
+
+//     let updates = Arc::new(AtomicUsize::new(0));
+
+//     (
+//         TopologyWriteGuard::from(tx, resource, name, path, updates.clone()),
+//         TopologyReadGuard::from(updates, rx),
+//     )
 // }
 
 pub trait ServiceTopo {
