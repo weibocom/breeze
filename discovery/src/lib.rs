@@ -1,8 +1,10 @@
+mod resource;
 mod topology;
 mod update;
 mod vintage;
 pub use update::*;
 
+use resource::*;
 pub use topology::*;
 use vintage::Vintage;
 
