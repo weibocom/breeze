@@ -24,19 +24,30 @@ impl Protocol for RedisResp2 {
             return Ok(None);
         }
         let mut read = 0 as usize;
+        let cmd = String::from_utf8(split_req[2].data().to_vec())
+            .unwrap()
+            .to_lowercase();
         let op = {
-            match String::from_utf8(split_req[2].data().to_vec())
-                .unwrap()
-                .to_lowercase()
-                .as_str()
+            match cmd.as_str()
             {
                 "get" => Operation::Get,
                 "set" => Operation::Store,
+                "select" => Operation::Meta,
                 _ => Operation::Other,
             }
         };
         let mut keys: Vec<Slice> = vec![];
-        keys.push(split_req[4].clone());
+
+        //if cmd.as_str() == "command" {
+        //    return Ok(None);
+        //}
+        //meta命令不一定有key，把命令词放进去
+        if op == Operation::Meta || op == Operation::Other {
+            keys.push(split_req[2].clone());
+        }
+        else {
+            keys.push(split_req[4].clone());
+        }
 
         read = read + split_req[0].len();
         for i in 1..split_req.len() {
