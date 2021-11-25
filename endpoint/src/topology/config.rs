@@ -27,19 +27,19 @@ use crate::redisservice::RedisNamespace;
 //     pub slave_l1: Vec<Vec<String>>,
 // }
 
-pub enum Namespace {
-    Memcache(MemcacheNamespace),
-    Redis(RedisNamespace),
-}
+// pub enum Namespace {
+//     Memcache(MemcacheNamespace),
+//     Redis(RedisNamespace),
+// }
 
-impl Namespace {
-    fn from(rtype: &ResourceType) -> Self {
-        match rtype {
-            ResourceType::Memcache => Memcache(MemcacheNamespace),
-            ResourceType::Redis => Redis(RedisNamespace),
-        }
-    }
-}
+// impl Namespace {
+//     fn from(rtype: &ResourceType) -> Self {
+//         match rtype {
+//             ResourceType::Memcache => Memcache(MemcacheNamespace),
+//             ResourceType::Redis => Redis(RedisNamespace),
+//         }
+//     }
+// }
 
 // impl Namespace {
 //     pub(crate) fn parse(group_cfg: &str, namespace: &str) -> Result<Namespace> {
