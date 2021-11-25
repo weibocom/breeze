@@ -41,7 +41,7 @@ impl<P> CacheService<P> {
         P: protocol::Protocol,
     {
         discovery.do_with(|t| match t {
-            Topology::CacheService(mem_topo) => {
+            Topology::MemcacheTopo(mem_topo) => {
                 return Self::from_topology::<D>(p.clone(), mem_topo);
             }
             _ => {
