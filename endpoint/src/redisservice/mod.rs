@@ -51,7 +51,7 @@ impl<P> RedisService<P> {
         P: protocol::Protocol,
     {
         discovery.do_with(|t| match t {
-            Topology::RedisService(r) => return Self::from_topology::<D>(p.clone(), r),
+            Topology::RedisTopo(r) => return Self::from_topology::<D>(p.clone(), r),
             _ => {
                 log::warn!("malformed redis discovery");
                 Err(Error::new(

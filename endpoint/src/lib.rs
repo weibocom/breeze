@@ -1,77 +1,18 @@
 mod cacheservice;
 mod redisservice;
-mod seq;
 mod topology;
 
-use std::collections::HashMap;
-use std::io::{Error, ErrorKind, Result};
+use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use cacheservice::CacheService;
-use cacheservice::MemcacheTopology;
-use discovery::{Inited, TopologyRead};
-use protocol::{Protocol, Resource};
+use discovery::TopologyRead;
+use protocol::Protocol;
 use redisservice::RedisNamespace;
 use redisservice::RedisService;
-use redisservice::RedisTopology;
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
-
-#[derive(Clone)]
-pub enum Topology<P> {
-    RedisService(RedisTopology<P>),
-    CacheService(MemcacheTopology<P>),
-}
-
-impl<P> Topology<P>
-where
-    P: Protocol,
-{
-    pub fn try_from(parser: P, endpoint: String) -> Result<Self> {
-        match &endpoint[..] {
-            "rs" => Ok(Self::RedisService(parser.into())),
-            "cs" => Ok(Self::CacheService(parser.into())),
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("'{}' is not a valid endpoint", endpoint),
-            )),
-        }
-    }
-}
-
-impl<P> Inited for Topology<P> {
-    fn inited(&self) -> bool {
-        match self {
-            Self::RedisService(r) => r.inited(),
-            Self::CacheService(c) => c.inited(),
-        }
-    }
-}
-
-impl<P> discovery::TopologyWrite for Topology<P>
-where
-    P: Sync + Send + Protocol,
-{
-    fn resource(&self) -> protocol::Resource {
-        match self {
-            Self::RedisService(_) => Resource::Redis,
-            Self::CacheService(_) => Resource::Memcache,
-        }
-    }
-    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, Vec<String>>) {
-        match self {
-            Self::RedisService(r) => discovery::TopologyWrite::update(r, name, cfg, hosts),
-            Self::CacheService(c) => discovery::TopologyWrite::update(c, name, cfg, hosts),
-        }
-    }
-
-    fn gc(&mut self) {
-        match self {
-            Self::RedisService(r) => discovery::TopologyWrite::gc(r),
-            Self::CacheService(c) => discovery::TopologyWrite::gc(c),
-        }
-    }
-}
+pub use topology::Topology;
 
 pub enum Endpoint<P> {
     RedisService { redis_service: RedisService<P> },
