@@ -8,6 +8,7 @@ mod operation;
 mod route;
 mod set_sync;
 mod sharding;
+mod seq_load_balance;
 
 //pub use get_sync::AsyncGetSync;
 pub use meta::MetaStream;
@@ -21,3 +22,5 @@ pub use set_sync::AsyncSetSync;
 
 pub use get_by_layer::*;
 pub use noreply::*;
+
+pub use seq_load_balance::SeqLoadBalance;

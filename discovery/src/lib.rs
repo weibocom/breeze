@@ -1,7 +1,10 @@
+mod resource;
 mod topology;
 mod update;
 mod vintage;
-//use std::error;
+pub use update::*;
+
+use resource::*;
 pub use topology::*;
 pub use update::*;
 use vintage::Vintage;

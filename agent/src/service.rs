@@ -20,6 +20,7 @@ pub(super) async fn process_one(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let p = Protocols::try_from(&quard.protocol())?;
     let top = endpoint::Topology::try_from(p.clone(), quard.endpoint())?;
+
     let (tx, rx) = discovery::topology(top, &quard.service());
     // 注册，定期更新配置
     discovery.send(tx)?;

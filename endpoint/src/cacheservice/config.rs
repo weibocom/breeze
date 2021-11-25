@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind, Result};
 use stream::LayerRole;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct Namespace {
+pub struct MemcacheNamespace {
     #[serde(default)]
     pub hash: String, // eg: bkdr
     #[serde(default)]
@@ -23,10 +23,10 @@ pub struct Namespace {
     pub slave_l1: Vec<Vec<String>>,
 }
 
-impl Namespace {
-    pub(crate) fn parse(group_cfg: &str, namespace: &str) -> Result<Namespace> {
+impl MemcacheNamespace {
+    pub(crate) fn parse(group_cfg: &str, namespace: &str) -> Result<MemcacheNamespace> {
         log::debug!("group_cfg:{:?}", group_cfg);
-        match serde_yaml::from_str::<HashMap<String, Namespace>>(group_cfg) {
+        match serde_yaml::from_str::<HashMap<String, MemcacheNamespace>>(group_cfg) {
             Err(e) => {
                 return Err(Error::new(
                     ErrorKind::InvalidData,
@@ -45,7 +45,7 @@ impl Namespace {
     }
 }
 
-impl Namespace {
+impl MemcacheNamespace {
     // 可写的实例。第一组一定是master. 包含f： master, master-l1, slave, slave-l1
     pub fn writers(&self) -> Vec<(LayerRole, Vec<String>)> {
         let mut w = Vec::with_capacity(8);

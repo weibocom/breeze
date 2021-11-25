@@ -9,7 +9,9 @@ pub use operation::*;
 mod request;
 pub use request::*;
 
+pub mod redis;
 mod response;
+
 pub use response::*;
 
 use enum_dispatch::enum_dispatch;
@@ -22,6 +24,7 @@ pub const MAX_SENT_BUFFER_SIZE: usize = 1024 * 1024;
 
 #[enum_dispatch]
 pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
+    fn resource(&self) -> Resource;
     fn parse_request(&self, buf: Slice) -> Result<Option<Request>>;
     // 需要跨分片访问的请求进行分片处理
     // 索引下标是分片id
@@ -68,8 +71,12 @@ pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
 pub enum Protocols {
     McBin(memcache::MemcacheBin),
     McText(memcache::MemcacheText),
+<<<<<<< HEAD
     // RdBin(redis::RedisBin),
     // RdText(redis::RedisText),
+=======
+    Redis(redis::RedisResp2),
+>>>>>>> 1e786ee2a73e9358e7f3bf82280b5c8396f254df
 }
 
 impl Protocols {
@@ -81,8 +88,12 @@ impl Protocols {
             "mc_text" | "memcache_text" | "memcached_text" | "redis_text" | "redis_text" => {
                 Ok(Self::McText(memcache::MemcacheText::new()))
             }
+<<<<<<< HEAD
             // "rd_bin" | "rd" | "redis" => Ok(Self::McBin(memcache::MemcacheBin::new())),
             // "redis_text" | "redis_text" => Ok(Self::McText(memcache::MemcacheText::new())),
+=======
+            "rs" | "redis" => Ok(Self::Redis(redis::RedisResp2::new())),
+>>>>>>> 1e786ee2a73e9358e7f3bf82280b5c8396f254df
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("'{}' is not a valid protocol", name),
@@ -107,7 +118,7 @@ impl Resource {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Memcache => "mc",
-            Self::Redis => "rd",
+            Self::Redis => "redis",
         }
     }
 }

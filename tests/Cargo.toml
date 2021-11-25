@@ -15,3 +15,7 @@ rust-crypto = "0.2.36"
 byteorder = "1.4.3"
 
 crossbeam-channel = "*"
+
+
+#redis 
+redis = "0.21.4"

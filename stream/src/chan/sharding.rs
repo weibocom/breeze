@@ -65,6 +65,7 @@ where
                 ),
             )));
         }
+        log::debug!("key = {}, goto idx {}", String::from_utf8(key.data().to_vec()).unwrap(), me.idx);
         unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf) }
     }
 }
