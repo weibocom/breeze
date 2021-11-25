@@ -75,23 +75,6 @@ impl RedisNamespace {
         readers
     }
 
-    // fn init(&mut self, hosts: &HashMap<String, Vec<String>>) {
-    //     let addrs: Vec<&str> = bk.split(",").collect();
-    //     debug_assert!(addrs.len() > 0);
-    //     self.master.push(addrs[0].to_string());
-    //     if addrs.len() == 1 {
-    //         continue;
-    //     }
-    //     let mut shard = Vec::with_capacity(6);
-    //     let mut idx = 1;
-    //     while idx < addrs.len() {
-    //         shard.push(addrs[idx].to_string());
-    //         idx += 1;
-    //     }
-    //     self.slaves.push(shard);
-    // }
-    // }
-
     async fn lookup_hosts(&mut self, resolver: &DnsResolver) -> HashMap<String, Vec<String>> {
         let mut host_addrs = HashMap::with_capacity(self.backends.len());
         for b in self.backends.clone() {
@@ -117,7 +100,6 @@ impl RedisNamespace {
 
         for bk in self.backends.clone() {
             let addrs: Vec<&str> = bk.split(",").collect();
-            log::info!("+++++ ns: {:?}, addrs: {:?}", self, addrs);
 
             // 解析master
             let master_ips = self.host_addrs.get(addrs[0]).unwrap();
