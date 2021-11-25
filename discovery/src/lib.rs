@@ -1,9 +1,9 @@
 mod topology;
 mod update;
 mod vintage;
-pub use update::*;
-
+//use std::error;
 pub use topology::*;
+pub use update::*;
 use vintage::Vintage;
 
 use std::io::Result;
@@ -25,6 +25,9 @@ pub enum Config<C> {
 #[enum_dispatch]
 pub trait Discover {
     async fn get_service<C>(&self, name: &str, sig: &str) -> Result<Config<C>>
+    where
+        C: Unpin + Send + From<String>;
+    async fn get_recurservice<C>(&self, uname: String, sig: String) -> Result<Config<C>>
     where
         C: Unpin + Send + From<String>;
 }
@@ -58,6 +61,13 @@ impl<T: Discover + Send + Unpin + Sync> Discover for std::sync::Arc<T> {
         C: Unpin + Send + From<String>,
     {
         (**self).get_service(name, sig).await
+    }
+    #[inline]
+    async fn get_recurservice<C>(&self, uname: String, sig: String) -> std::io::Result<Config<C>>
+    where
+        C: Unpin + Send + From<String>,
+    {
+        (**self).get_recurservice(uname, sig).await
     }
 }
 

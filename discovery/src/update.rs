@@ -91,6 +91,7 @@ where
         let mut cache: HashMap<String, (String, String)> = HashMap::with_capacity(services.len());
         for (name, (t, update)) in services.iter_mut() {
             let path = t.path().to_string();
+            //println!("serivices is {:?},{:?}", name, update);
             let sig = sigs.get_mut(name).expect("sig not inited");
             // 在某些场景下，同一个name被多个path共用。所以如果sig没有变更，则不需要额外处理更新。
             if let Some((cache_sig, cfg)) = cache.get(&path) {
@@ -105,7 +106,9 @@ where
                 }
             }
 
-            if let Some((remote_sig, cfg)) = self.load_from_discovery(&path, sig).await {
+            if let Some((remote_sig, cfg)) = self.load_from_discovery(&path, sig).await
+            // self.load_from_discovery(&path, sig, path.to_owned()).await
+            {
                 t.update(name, &cfg);
                 *update = Instant::now();
                 *sig = remote_sig.to_owned();
@@ -117,11 +120,13 @@ where
     async fn init(&self, t: &mut T) -> Option<(String, String)> {
         let path = t.path().to_string();
         let name = t.name().to_string();
+        println!("name is {}", name);
         // 用path查找，用name更新。
         if let Ok((sig, cfg)) = self.try_load_from_snapshot(&path).await {
             t.update(&name, &cfg);
             Some((sig, cfg))
         } else {
+            //if let Some((sig, cfg)) = self.load_from_discovery(&path, "", path.to_owned()).await {
             if let Some((sig, cfg)) = self.load_from_discovery(&path, "").await {
                 t.update(&name, &cfg);
                 Some((sig, cfg))
@@ -145,7 +150,12 @@ where
         log::info!("{} snapshot loaded:sig:{} cfg:{}", name, sig, cfg.len());
         Ok((sig, cfg))
     }
-    async fn load_from_discovery(&self, path: &str, sig: &str) -> Option<(String, String)> {
+    async fn load_from_discovery(
+        &self,
+        path: &str,
+        sig: &str,
+        //uname: String,
+    ) -> Option<(String, String)> {
         use super::Config;
         match self.discovery.get_service::<String>(path, &sig).await {
             Err(e) => {
@@ -162,6 +172,25 @@ where
                 }
             },
         }
+        match self
+            .discovery
+            .get_recurservice::<String>(path.to_owned(), sig.to_owned())
+            .await
+        {
+            Err(e) => {
+                log::warn!("load service topology failed. name:{}, e:{:?}", path, e);
+            }
+            Ok(c) => match c {
+                Config::NotChanged => {}
+                Config::NotFound => {
+                    log::info!("{} not found in discovery", path);
+                }
+                Config::Config(sig, cfg) => {
+                    self.dump_to_snapshot(&path, &sig, &cfg).await;
+                    return Some((sig, cfg));
+                }
+            },
+        }
         None
     }
     fn _path(&self, name: &str) -> PathBuf {
@@ -172,7 +201,8 @@ where
         pb
     }
     async fn dump_to_snapshot(&self, name: &str, sig: &str, cfg: &str) {
-        log::debug!("dump {} to snapshot. sig:{} cfg:{}", name, sig, cfg.len());
+        log::info!("dump {} to snapshot. sig:{} cfg:{}", name, sig, cfg.len());
+        //log::debug!("dump {} to snapshot. sig:{} cfg:{}", name, sig, cfg.len());
         match self.try_dump_to_snapshot(name, sig, cfg).await {
             Ok(_) => {}
             Err(e) => {
