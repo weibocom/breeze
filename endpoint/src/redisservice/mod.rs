@@ -1,8 +1,11 @@
 mod config;
+mod topo;
 
 use std::collections::hash_map::Entry;
 
 use std::collections::HashMap;
+use std::io::Error;
+use std::io::ErrorKind;
 use std::io::Result;
 
 use discovery::TopologyRead;
@@ -12,12 +15,13 @@ use stream::{
     AsyncSharding, LayerRole, LayerRoleAble, MetaStream, SeqLoadBalance,
 };
 
-pub use crate::topology::Topology;
-use crate::ServiceTopo;
 pub use config::RedisNamespace;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
+pub use topo::RedisTopology;
+
+use crate::Topology;
 
 type Backend = stream::BackendStream;
 
@@ -38,46 +42,28 @@ type Operation<P> =
 
 pub struct RedisService<P> {
     inner: AsyncOpRoute<Operation<P>>,
-    // =======
-    // mod topology;
-
-    // use discovery::TopologyRead;
-    // use protocol::Protocol;
-    // use std::{collections::HashMap, io::Result};
-    // use stream::{
-    //     Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync,
-    //     AsyncSharding, AsyncWriteAll, LayerRole, MetaStream,
-    // };
-    // pub use topology::Topology;
-
-    // type Backend = stream::BackendStream;
-    // type GetOperation<P> = AsyncLayerGet<AsyncSharding<Backend, P>, AsyncSharding<Backend, P>, P>;
-    // type MGetLayer<P> = AsyncMultiGetSharding<Backend, P>;
-    // type MGetOperation<P> = AsyncLayerGet<MGetLayer<P>, AsyncSharding<Backend, P>, P>;
-    // type Master<P> = AsyncSharding<Backend, P>;
-    // // store： 对于MS，没有followers，对于Hash，需要设置followers
-    // type StoreOperation<P> = AsyncSetSync<Master<P>, Master<P>, P>;
-    // type MetaOperation<P> = MetaStream<P, Backend>;
-    // type RedisOperation<P> =
-    //     AsyncOperation<GetOperation<P>, MGetOperation<P>, StoreOperation<P>, MetaOperation<P>>;
-
-    // pub struct RedisService<P> {
-    //     inner: AsyncOpRoute<RedisOperation<P>>,
-    // >>>>>>> redis_conn_manage
 }
 
 impl<P> RedisService<P> {
     pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
-    // <<<<<<< HEAD
     where
-        D: TopologyRead<super::Topology<P>>,
+        D: TopologyRead<Topology<P>>,
         P: protocol::Protocol,
     {
-        discovery.do_with(|t| Self::from_topology::<D>(p.clone(), t))
+        discovery.do_with(|t| match t {
+            Topology::RedisService(r) => return Self::from_topology::<D>(p.clone(), r),
+            _ => {
+                log::warn!("malformed redis discovery");
+                Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "malformed discovery for redis",
+                ))
+            }
+        })
     }
-    fn from_topology<D>(p: P, topo: &Topology<P>) -> Result<Self>
+    fn from_topology<D>(p: P, topo: &RedisTopology<P>) -> Result<Self>
     where
-        D: TopologyRead<super::Topology<P>>,
+        D: TopologyRead<Topology<P>>,
         P: protocol::Protocol,
     {
         // 初始化完成一定会保障master存在，并且长度不为0.
