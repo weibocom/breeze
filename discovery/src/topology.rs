@@ -10,6 +10,7 @@ use std::{
 };
 
 pub trait TopologyRead<T> {
+    fn resource(&self) -> Resource;
     fn do_with<F, O>(&self, f: F) -> O
     where
         F: Fn(&T) -> O;
@@ -48,6 +49,7 @@ where
             updates: updates.clone(),
         },
         TopologyReadGuard {
+            resource: resource,
             inner: rx,
             updates: updates,
         },
@@ -62,6 +64,7 @@ unsafe impl<T> Send for TopologyReadGuard<T> {}
 unsafe impl<T> Sync for TopologyReadGuard<T> {}
 #[derive(Clone)]
 pub struct TopologyReadGuard<T> {
+    resource: Resource,
     updates: Arc<AtomicUsize>,
     inner: CowReadHandle<T>,
 }
@@ -77,6 +80,9 @@ where
 }
 
 impl<T> TopologyRead<T> for TopologyReadGuard<T> {
+    fn resource(&self) -> Resource {
+        self.resource
+    }
     fn do_with<F, O>(&self, f: F) -> O
     where
         F: Fn(&T) -> O,
@@ -126,6 +132,9 @@ where
 }
 
 impl<T> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
+    fn resource(&self) -> Resource {
+        return self.resource;
+    }
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where

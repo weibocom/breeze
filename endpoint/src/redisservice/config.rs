@@ -290,7 +290,6 @@ fn least_multiple(a: usize, b: usize) -> usize {
 
 #[cfg(test)]
 mod config_test {
-    use std::collections::HashMap;
 
     use ds::DnsResolver;
     use serde::{Deserialize, Serialize};
