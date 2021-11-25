@@ -6,7 +6,7 @@ use protocol::{Protocol, Resource};
 use stream::{Addressed, BackendBuilder, BackendStream, LayerRole};
 
 #[derive(Clone, Default)]
-pub(crate) struct Inner<T> {
+pub struct Inner<T> {
     // noreply场景下，不占用逻辑连接。
     fack_cid: bool,
     pub(crate) addrs: T,
@@ -95,8 +95,8 @@ impl<T> Inner<T> {
         &self,
         share: Option<&HashMap<String, Arc<BackendBuilder>>>,
     ) -> Vec<(LayerRole, Vec<BackendStream>)>
-        where
-            T: VisitAddress,
+    where
+        T: VisitAddress,
     {
         let layers = self.select(share);
         let mut slave_layers = Vec::with_capacity(layers.len());

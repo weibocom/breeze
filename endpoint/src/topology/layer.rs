@@ -36,7 +36,7 @@ use crate::{cacheservice::MemcacheNamespace, redisservice::RedisNamespace, seq::
 //     }
 // }
 #[derive(Clone)]
-pub(crate) struct Layer {
+pub struct Layer {
     resource: Resource,
     seq: Seq,
     l0: Vec<Vec<String>>,              // 包含master, master-l1
@@ -70,7 +70,8 @@ impl super::VisitAddress for Layer {
     fn select<F: FnMut(LayerRole, usize, &str)>(&self, mut f: F) {
         // TODO: 对于redis，这里需要按线上调整，迁移redisservice/topology中的对应逻辑过来 fishermen
         match self.resource {
-            Redis => return,
+            Resource::Redis => return,
+            _ => {}
         }
         assert!(self.l0.len() > 0);
         let l0_idx = self.seq.fetch_add(1, Ordering::AcqRel) % self.l0.len();
