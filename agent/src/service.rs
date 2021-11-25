@@ -1,3 +1,4 @@
+use endpoint::Topology;
 use net::listener::Listener;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -78,7 +79,7 @@ async fn _process_one(
 
 async fn process_one_connection(
     mut client: net::Stream,
-    top: TopologyReadGuard<endpoint::Topology<Protocols>>,
+    top: TopologyReadGuard<Topology<Protocols>>,
     endpoint: String,
     p: Protocols,
     session_id: usize,
