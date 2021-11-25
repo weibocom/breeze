@@ -1,37 +1,28 @@
 mod cacheservice;
+mod redisservice;
 mod seq;
+mod topology;
 
-use ds::cow;
-use futures::Stream;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::io::AsyncWrite;
 
 use cacheservice::CacheService;
-use cacheservice::MemcacheNamespace;
-use discovery::{Inited, TopologyRead, TopologyReadGuard, TopologyWrite, TopologyWriteGuard};
+use cacheservice::MemcacheTopology;
+use discovery::{Inited, TopologyRead};
 use protocol::{Protocol, Resource};
-use redisservice::RedisService;
-use topology::Topology as ServiceTopology;
-// <<<<<<< HEAD
 use redisservice::RedisNamespace;
-use stream::{AsyncReadAll, AsyncWriteAll, BackendStream, LayerRole, Request, Response};
-// =======
-
-// use stream::{AsyncReadAll, AsyncWriteAll, BackendStream, LayerRole, Request, Response};
-// >>>>>>> redis_conn_manage
+use redisservice::RedisService;
+use redisservice::RedisTopology;
+use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
 
 #[derive(Clone)]
 pub enum Topology<P> {
-    RedisService(ServiceTopology<P>),
-    CacheService(ServiceTopology<P>),
+    RedisService(RedisTopology<P>),
+    CacheService(MemcacheTopology<P>),
 }
 
-// <<<<<<< HEAD
 impl<P> Topology<P>
 where
     P: Protocol,
@@ -53,58 +44,6 @@ impl<P> Inited for Topology<P> {
         match self {
             Self::RedisService(r) => r.inited(),
             Self::CacheService(c) => c.inited(),
-        }
-    }
-}
-// =======
-//        impl<P> Topology<P>  {
-//            pub fn try_from(parser:P, endpoint:String) -> Result<Self> {
-//                 match &endpoint[..]{
-//                     $($ep => Ok(Self::$item(parser.into())),)+
-//                     _ => Err(Error::new(ErrorKind::InvalidData, format!("'{}' is not a valid endpoint", endpoint))),
-//                 }
-//            }
-
-//             pub fn to_concrete_topo(&self) -> Box<&dyn ServiceTopo> {
-//                 match self {
-//                     $(
-//                         Self::$item(t) => Box::new(t),
-//                     )+
-//                 }
-//             }
-
-//        }
-//        impl<P> Inited for Topology<P> {
-//            fn inited(&self) -> bool {
-//                 match self {
-//                     $(
-//                         Self::$item(p) => p.inited(),
-//                     )+
-//                 }
-//            }
-//        }
-
-// // $(
-// //     // 支持Topology enum自动转换成具体的类型
-// //     impl<P> std::ops::Deref for Topology<P> {
-// //         type Target = $top;
-// //         fn deref(&self) -> &Self::Target {
-// //             match self {
-// //                 Self::$item(t) => t,
-// //                 // 如果有多个实现，把该注释去掉
-// //                 //_ => panic!("topology {} not matched", stringify!($top)),
-// //             }
-// //         }
-// //     }
-// // )+
-// >>>>>>> redis_conn_manage
-
-impl<P> std::ops::Deref for Topology<P> {
-    type Target = ServiceTopology<P>;
-    fn deref(&self) -> &ServiceTopology<P> {
-        match self {
-            Self::RedisService(r) => r.clone(),
-            Self::CacheService(c) => c.clone(),
         }
     }
 }
@@ -191,70 +130,4 @@ where
             //Endpoint::RedisService {ref mut p} => Pin::new(p).poll_next(cx),
         }
     }
-}
-mod redisservice;
-mod topology;
-//mod pipe;
-//mod pipe;
-
-// use cacheservice::CacheService;
-// use redisservice::RedisService;
-//use pipe::{Pipe, PipeTopology};
-
-// define_endpoint! {
-// //    PipeTopology, Pipe,         Pipe,         "pipe";
-//     cacheservice::Topology<P>, CacheService, CacheService, "cs";
-//     redisservice::Topology<P>, RedisService, RedisService, "rs"
-// }
-
-// pub fn topology<P: Protocol>(
-//     t: Topology<P>,
-//     service: &str,
-// ) -> (
-//     TopologyWriteGuard<Topology<P>>,
-//     TopologyReadGuard<Topology<P>>,
-// ) {
-//     let resource = t.resource();
-//     let (tx, rx) = cow(t);
-//     let name = service.to_string();
-//     let idx = name.find(':').unwrap_or(name.len());
-//     let mut path = name.clone().replace('+', "/");
-//     path.truncate(idx);
-
-//     let updates = Arc::new(AtomicUsize::new(0));
-
-//     (
-//         TopologyWriteGuard::from(tx, resource, name, path, updates.clone()),
-//         TopologyReadGuard::from(updates, rx),
-//     )
-// }
-
-pub trait ServiceTopo {
-    fn hash(&self) -> &str;
-    fn distribution(&self) -> &str;
-    fn listen_ports(&self) -> Vec<u16> {
-        vec![]
-    }
-    fn topo_inited(&self) -> bool;
-
-    fn get(
-        &self,
-    ) -> (
-        Vec<(LayerRole, Vec<BackendStream>)>,
-        Vec<(LayerRole, Vec<BackendStream>)>,
-    );
-    fn mget(
-        &self,
-    ) -> (
-        Vec<(LayerRole, Vec<BackendStream>)>,
-        Vec<(LayerRole, Vec<BackendStream>)>,
-    );
-    // fn get(&mut self) -> Vec<(LayerRole, Vec<BackendStream>)>;
-    // fn mget(&mut self) -> Vec<(LayerRole, Vec<BackendStream>)>;
-    // fn shared(&self) -> Option<&HashMap<String, Arc<BackendBuilder>>>;
-
-    fn master(&self) -> Vec<BackendStream>;
-    fn followers(&self) -> Vec<(LayerRole, Vec<BackendStream>)>;
-
-    fn slaves(&self) -> Vec<(LayerRole, Vec<BackendStream>)>;
 }
