@@ -16,8 +16,13 @@ pub struct Vintage {
 struct Node {
     index: String,
     data: String,
+    children: Vec<Children>,
 }
-
+#[derive(Serialize, Deserialize, Debug)]
+struct Children {
+    name: String,
+    data: String,
+}
 #[derive(Serialize, Deserialize, Debug)]
 struct Response {
     message: String,
