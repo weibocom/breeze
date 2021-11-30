@@ -1,7 +1,7 @@
 use ds::DnsResolver;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Error, ErrorKind, Result},
 };
 
@@ -30,7 +30,10 @@ pub struct Basic {
 
 impl RedisNamespace {
     // 此处只处理域名，不解析
-    pub(crate) async fn parse_hosts(cfg: &str) -> Result<HashMap<String, Vec<String>>> {
+    pub(crate) async fn parse_hosts(
+        dns_resolver: &DnsResolver,
+        cfg: &str,
+    ) -> Result<HashMap<String, HashSet<String>>> {
         log::debug!("redis config: {}", cfg);
         match serde_yaml::from_str::<RedisNamespace>(cfg) {
             Err(e) => {
@@ -38,14 +41,13 @@ impl RedisNamespace {
                 return Err(Error::new(ErrorKind::AddrNotAvailable, e));
             }
             Ok(rs) => {
-                let dns_resolver = DnsResolver::with_sysy_conf();
-                let hosts = rs.all_hosts(&dns_resolver).await?;
+                let hosts = rs.all_hosts(dns_resolver).await?;
                 Ok(hosts)
             }
         }
     }
 
-    async fn all_hosts(&self, resolver: &DnsResolver) -> Result<HashMap<String, Vec<String>>> {
+    async fn all_hosts(&self, resolver: &DnsResolver) -> Result<HashMap<String, HashSet<String>>> {
         let mut host_addrs = HashMap::with_capacity(self.backends.len());
         for b in self.backends.clone() {
             let hosts = b.split(",");

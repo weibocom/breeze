@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use protocol::Protocol;
 use protocol::Resource;
@@ -9,7 +10,6 @@ use crate::RedisNamespace;
 
 #[derive(Clone)]
 pub struct RedisTopology<P> {
-    // resource: Resource,
     namespace: String,
     access_mod: String,
     hash: String,         // hash策略
@@ -17,6 +17,7 @@ pub struct RedisTopology<P> {
     listen_ports: Vec<u16>,
     master: Inner<Vec<String>>,
     slaves: Inner<Vec<(LayerRole, Vec<String>)>>,
+    last_cfg: String,
     parser: P,
     // 在没有slave时。所有的command共用一个物理连接
     share: Inner<Vec<(LayerRole, Vec<String>)>>,
@@ -55,7 +56,7 @@ where
     fn resource(&self) -> Resource {
         Resource::Redis
     }
-    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, Vec<String>>) {
+    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, HashSet<String>>) {
         let idx = name.find(':').unwrap_or(name.len());
         if idx == 0 || idx >= name.len() - 1 {
             log::info!("not a valid cache service name:{} no namespace found", name);
@@ -80,6 +81,9 @@ where
                     log::warn!("redisservice/{} :{}", name, cfg);
                     return;
                 }
+                // 首先备份一份cfg，为后续更新hosts时使用
+                self.last_cfg = cfg.to_string();
+
                 self.access_mod = ns.basic.access_mod.clone();
                 self.hash = ns.basic.hash.clone();
                 self.distribution = ns.basic.distribution.clone();
@@ -103,6 +107,17 @@ where
             }
         }
     }
+
+    fn update_hosts(
+        &mut self,
+        name: &str,
+        hosts: &HashMap<String, std::collections::HashSet<String>>,
+    ) {
+        log::info!("update hosts for redis {}", name);
+        let cfg = self.last_cfg.clone();
+        self.update(name, cfg.as_str(), hosts);
+    }
+
     fn gc(&mut self) {
         // if self.shared {
         //     self.get.take();
@@ -125,6 +140,7 @@ where
             listen_ports: Default::default(),
             master: Default::default(),
             slaves: Default::default(),
+            last_cfg: Default::default(),
             share: Default::default(),
             shared: false,
         }
