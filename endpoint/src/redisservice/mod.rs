@@ -291,45 +291,26 @@ where
     load_balance
 }
 
-// <<<<<<< HEAD
-#[inline]
-fn build_mget<S, P>(
-    pools: Vec<(LayerRole, Vec<S>)>,
-    parser: P,
-    h: &str,
-    d: &str,
-) -> Vec<AsyncMultiGetSharding<S, P>>
-where
-    S: AsyncWriteAll + Addressed,
-    P: Clone,
-{
-    let mut layers: Vec<AsyncMultiGetSharding<S, P>> = Vec::with_capacity(pools.len());
-    for (role, p) in pools {
-        layers.push(AsyncMultiGetSharding::from_shard(
-            role,
-            p,
-            parser.clone(),
-            h,
-            d,
-        ));
-        // =======
-        // // 对于redis，读写都只请求一层
-        // #[inline]
-        // fn build_mget_layers<S, P>(
-        //     pools: Vec<(LayerRole, Vec<S>)>,
-        //     h: &str,
-        //     distribution: &str,
-        //     parser: P,
-        // ) -> Vec<AsyncMultiGetSharding<S, P>>
-        // where
-        //     S: AsyncWriteAll + Addressed,
-        //     P: Protocol + Clone,
-        // {
-        //     let mut layers: Vec<AsyncMultiGetSharding<S, P>> = Vec::with_capacity(pools.len());
-        //     for (r, p) in pools {
-        //         let layer = AsyncMultiGetSharding::from_shard(r, p, parser.clone(), h, distribution);
-        //         layers.push(layer);
-        // >>>>>>> redis_conn_manage
-    }
-    layers
-}
+// #[inline]
+// fn build_mget<S, P>(
+//     pools: Vec<(LayerRole, Vec<S>)>,
+//     parser: P,
+//     h: &str,
+//     d: &str,
+// ) -> Vec<AsyncMultiGetSharding<S, P>>
+// where
+//     S: AsyncWriteAll + Addressed,
+//     P: Clone,
+// {
+//     let mut layers: Vec<AsyncMultiGetSharding<S, P>> = Vec::with_capacity(pools.len());
+//     for (role, p) in pools {
+//         layers.push(AsyncMultiGetSharding::from_shard(
+//             role,
+//             p,
+//             parser.clone(),
+//             h,
+//             d,
+//         ));
+//     }
+//     layers
+// }
