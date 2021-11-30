@@ -52,7 +52,10 @@ where
         let mut tick = interval(Duration::from_secs(1));
         let mut services = HashMap::new();
         let mut sigs = HashMap::new();
-        let mut last = Instant::now();
+        let mut last_checked_cfg = Instant::now();
+        let mut last_checked_hosts = Instant::now();
+        let mut rd_sec = 50 + rand::random::<u64>() % 20;
+
         // 所有service上一次请求配置所对应的host及ips
         let mut last_hosts: HashMap<String, HashMap<String, HashSet<String>>> =
             HashMap::with_capacity(10);
@@ -74,16 +77,20 @@ where
                     services.insert(t.name().to_string(), (t, Instant::now()));
                 }
             }
-            if last.elapsed() >= self.tick {
+            if last_checked_cfg.elapsed() >= self.tick {
                 self.check_once(&dns_resolver, &mut services, &mut sigs, &mut last_hosts)
                     .await;
-                last = Instant::now();
+                last_checked_cfg = Instant::now();
             }
 
-            // check hosts，每2秒左右进行一次全量探测
-            if last.elapsed() >= Duration::from_secs(2) {
+            // check hosts，每50-70秒左右进行一次全量探测
+            if last_checked_hosts.elapsed() >= Duration::from_secs(rd_sec) {
+                log::debug!("checking hosts....");
+                rd_sec = 50 + rand::random::<u64>() % 20;
                 self.update_topo_hosts(&dns_resolver, &mut services, &mut last_hosts)
                     .await;
+                log::debug!("checked hosts....");
+                last_checked_hosts = Instant::now();
             }
 
             // gc
