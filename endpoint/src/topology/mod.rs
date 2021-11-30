@@ -3,7 +3,7 @@ mod layer;
 mod seq;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Error, ErrorKind, Result},
 };
 
@@ -58,10 +58,21 @@ where
             Self::MemcacheTopo(_) => Resource::Memcache,
         }
     }
-    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, Vec<String>>) {
+    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, HashSet<String>>) {
         match self {
             Self::RedisTopo(r) => discovery::TopologyWrite::update(r, name, cfg, hosts),
             Self::MemcacheTopo(c) => discovery::TopologyWrite::update(c, name, cfg, hosts),
+        }
+    }
+
+    fn update_hosts(
+        &mut self,
+        name: &str,
+        hosts: &HashMap<String, std::collections::HashSet<String>>,
+    ) {
+        match self {
+            Self::RedisTopo(r) => r.update_hosts(name, hosts),
+            Self::MemcacheTopo(m) => m.update_hosts(name, hosts),
         }
     }
 

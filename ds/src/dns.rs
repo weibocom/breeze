@@ -1,12 +1,12 @@
 use std::{
-    collections::HashMap,
+    collections::HashSet,
     io::{Error, ErrorKind, Result},
     sync::Arc,
 };
 
 use trust_dns_resolver::{
     config::{ResolverConfig, ResolverOpts},
-    AsyncResolver, Resolver, TokioConnection, TokioConnectionProvider, TokioHandle,
+    AsyncResolver, TokioConnection, TokioConnectionProvider, TokioHandle,
 };
 
 #[derive(Clone, Debug)]
@@ -31,7 +31,7 @@ impl DnsResolver {
     }
 
     // 解析host得到ip，可能是ipv4 也可能是 ipv6
-    pub async fn lookup_ips(&self, host: &str) -> Result<Vec<String>> {
+    pub async fn lookup_ips(&self, host: &str) -> Result<HashSet<String>> {
         let mut host_real = host;
         let mut port_real = "";
         let host_port: Vec<&str> = host.split(":").collect();
@@ -40,14 +40,14 @@ impl DnsResolver {
             port_real = host_port[1];
         }
 
-        let mut addrs = Vec::with_capacity(8);
+        let mut addrs = HashSet::with_capacity(8);
         match self.resolver.lookup_ip(host_real).await {
             Ok(lips) => {
                 for lip in lips.into_iter() {
                     if port_real.len() > 0 {
-                        addrs.push(lip.to_string() + ":" + port_real);
+                        addrs.insert(lip.to_string() + ":" + port_real);
                     } else {
-                        addrs.push(lip.to_string());
+                        addrs.insert(lip.to_string());
                     }
                 }
             }
