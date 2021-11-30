@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use protocol::Protocol;
@@ -102,7 +103,7 @@ where
     fn resource(&self) -> Resource {
         Resource::Memcache
     }
-    fn update(&mut self, name: &str, cfg: &str, _hosts: &HashMap<String, Vec<String>>) {
+    fn update(&mut self, name: &str, cfg: &str, _hosts: &HashMap<String, HashSet<String>>) {
         let idx = name.find(':').unwrap_or(name.len());
         if idx == 0 || idx >= name.len() - 1 {
             log::info!("not a valid cache service name:{} no namespace found", name);
@@ -150,6 +151,13 @@ where
                 }
             }
         }
+    }
+    fn update_hosts(
+        &mut self,
+        _name: &str,
+        _hosts: &HashMap<String, std::collections::HashSet<String>>,
+    ) {
+        log::warn!("should not come here!!!");
     }
     fn gc(&mut self) {
         if self.shared {

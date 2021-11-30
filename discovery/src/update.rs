@@ -3,6 +3,8 @@ use crate::resource;
 // 定期更新discovery.
 use super::{Discover, ServiceId, TopologyWrite};
 use crossbeam_channel::Receiver;
+use ds::DnsResolver;
+use protocol::Resource;
 use std::io::{Error, ErrorKind, Result};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -10,7 +12,7 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::interval;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub fn start_watch_discovery<D, T>(snapshot: &str, discovery: D, rx: Receiver<T>, tick: Duration)
 where
@@ -51,13 +53,19 @@ where
         let mut services = HashMap::new();
         let mut sigs = HashMap::new();
         let mut last = Instant::now();
+        // 所有service上一次请求配置所对应的host及ips
+        let mut last_hosts: HashMap<String, HashMap<String, HashSet<String>>> =
+            HashMap::with_capacity(10);
+        let dns_resolver = DnsResolver::with_sysy_conf();
         loop {
             while let Ok(mut t) = self.rx.try_recv() {
                 if services.contains_key(t.name()) {
                     log::error!("service duplicatedly registered:{}", t.name());
                 } else {
                     log::info!("service {} path:{} registered ", t.name(), t.path());
-                    let sig = if let Some((sig, _cfg)) = self.init(&mut t).await {
+                    let sig = if let Some((sig, _cfg)) =
+                        self.init(&dns_resolver, &mut t, &mut last_hosts).await
+                    {
                         sig
                     } else {
                         String::new()
@@ -67,9 +75,17 @@ where
                 }
             }
             if last.elapsed() >= self.tick {
-                self.check_once(&mut services, &mut sigs).await;
+                self.check_once(&dns_resolver, &mut services, &mut sigs, &mut last_hosts)
+                    .await;
                 last = Instant::now();
             }
+
+            // check hosts，每2秒左右进行一次全量探测
+            if last.elapsed() >= Duration::from_secs(2) {
+                self.update_topo_hosts(&dns_resolver, &mut services, &mut last_hosts)
+                    .await;
+            }
+
             // gc
             for (_, (t, update)) in services.iter_mut() {
                 // 一次topo更新后，在stream::io::Monitor里面会在255秒钟内更新逻辑连接。
@@ -85,56 +101,125 @@ where
     // 从rx里面获取所有已注册的服务列表
     // 先从cache中取
     // 其次从remote获取
+    // 如果配置不变，还check host对应ip并更新
     async fn check_once(
         &mut self,
+        dns_resolver: &DnsResolver,
         services: &mut HashMap<String, (T, Instant)>,
         sigs: &mut HashMap<String, String>,
+        last_hosts: &mut HashMap<String, HashMap<String, HashSet<String>>>,
     ) {
         let mut cache: HashMap<String, (String, String)> = HashMap::with_capacity(services.len());
         for (name, (t, update)) in services.iter_mut() {
             let path = t.path().to_string();
             let sig = sigs.get_mut(name).expect("sig not inited");
-            // 在某些场景下，同一个name被多个path共用。所以如果sig没有变更，则不需要额外处理更新。
+            // 在某些场景下，同一个path被多个name共用。所以如果sig没有变更，则不需要额外处理更新。
             if let Some((cache_sig, cfg)) = cache.get(&path) {
                 if cache_sig == sig {
                     continue;
                 }
                 if cfg.len() > 0 {
-                    let res = t.resource();
-                    let hosts = resource::parse_cfg_hosts(res, cfg).await;
-                    t.update(name, &cfg, &hosts);
-                    *update = Instant::now();
-                    *sig = cache_sig.to_owned();
+                    if self.update_topo(&dns_resolver, t, cfg, last_hosts).await {
+                        // 更新topo成功后，才会变更sign值
+                        *update = Instant::now();
+                        *sig = cache_sig.to_owned();
+                    }
                     continue;
                 }
             }
 
             if let Some((remote_sig, cfg)) = self.load_from_discovery(&path, sig).await {
-                let res = t.resource();
-                let hosts = resource::parse_cfg_hosts(res, &cfg).await;
-                t.update(name, &cfg, &hosts);
-                *update = Instant::now();
-                *sig = remote_sig.to_owned();
-                cache.insert(path, (remote_sig, cfg));
+                if self.update_topo(&dns_resolver, t, &cfg, last_hosts).await {
+                    // 更新topo成功后，才会变更sign值
+                    *update = Instant::now();
+                    *sig = remote_sig.to_owned();
+                    cache.insert(path, (remote_sig, cfg));
+                }
             }
         }
     }
-    // 先从snapshot加载，再从远程加载
-    async fn init(&self, t: &mut T) -> Option<(String, String)> {
-        let path = t.path().to_string();
+
+    async fn update_topo(
+        &self,
+        dns_resolver: &DnsResolver,
+        t: &mut T,
+        cfg: &str,
+        last_hosts: &mut HashMap<String, HashMap<String, HashSet<String>>>,
+    ) -> bool {
+        let res = t.resource();
         let name = t.name().to_string();
+        match resource::parse_cfg_hosts(dns_resolver, &res, cfg).await {
+            Ok(hosts) => {
+                log::debug!("updating topo/{} cfg...", name);
+                t.update(name.as_str(), &cfg, &hosts);
+                last_hosts.insert(name, hosts);
+                return true;
+            }
+            Err(e) => {
+                log::warn!("updated topo/{} failed: {:?}", name, e);
+                return false;
+            }
+        }
+    }
+
+    // 更新hosts的ip列表，对于业务topo，只有所有hosts都解析成功，才更新，否则忽略等下次
+    async fn update_topo_hosts(
+        &self,
+        dns_resolver: &DnsResolver,
+        services: &mut HashMap<String, (T, Instant)>,
+        last_hosts: &mut HashMap<String, HashMap<String, HashSet<String>>>,
+    ) {
+        let empty_hosts = HashMap::with_capacity(0);
+        for (name, (t, _)) in services.iter_mut() {
+            if !self.need_check_hosts(&t.resource()) {
+                continue;
+            }
+
+            let old = last_hosts.get(name).unwrap_or(&empty_hosts);
+            if old.len() == 0 {
+                log::warn!("{} has no hosts", name);
+                return;
+            }
+            // 获取host对应的ips，check是否发生变化
+            let mut h = Vec::with_capacity(old.len());
+            h.extend(old.keys().clone());
+            // hosts全部parse成功，才会更新，否则不更新
+            match resource::lookup_hosts(&dns_resolver, h).await {
+                Ok(new) => {
+                    if new.eq(old) {
+                        return;
+                    }
+                    if new.len() > 0 {
+                        log::debug!("update {}'s hosts, old: {:?}, new: {:?}", name, old, new);
+                        t.update_hosts(&name, &new);
+                        last_hosts.insert(name.clone(), new);
+                    }
+                }
+                Err(e) => log::warn!("ignore updating {}'s hosts for: {:?}", name, e),
+            }
+        }
+    }
+
+    // 先从snapshot加载，再从远程加载
+    async fn init(
+        &self,
+        dns_resolver: &DnsResolver,
+        t: &mut T,
+        last_hosts: &mut HashMap<String, HashMap<String, HashSet<String>>>,
+    ) -> Option<(String, String)> {
+        let path = t.path().to_string();
         // 用path查找，用name更新。
         if let Ok((sig, cfg)) = self.try_load_from_snapshot(&path).await {
-            let res = t.resource();
-            let hosts = resource::parse_cfg_hosts(res, &cfg).await;
-            t.update(&name, &cfg, &hosts);
-            Some((sig, cfg))
+            if self.update_topo(dns_resolver, t, &cfg, last_hosts).await {
+                return Some((sig, cfg));
+            }
+            return None;
         } else {
             if let Some((sig, cfg)) = self.load_from_discovery(&path, "").await {
-                let res = t.resource();
-                let hosts = resource::parse_cfg_hosts(res, &cfg).await;
-                t.update(&name, &cfg, &hosts);
-                Some((sig, cfg))
+                if self.update_topo(dns_resolver, t, &cfg, last_hosts).await {
+                    return Some((sig, cfg));
+                }
+                return None;
             } else {
                 None
             }
@@ -173,6 +258,13 @@ where
             },
         }
         None
+    }
+    // 是否需要检查业务topo的hosts，目前只有redis才需要
+    fn need_check_hosts(&self, resource: &Resource) -> bool {
+        match resource {
+            Resource::Redis => return true,
+            _ => return false,
+        }
     }
     fn _path(&self, name: &str) -> PathBuf {
         let base = name.replace("/", "+");

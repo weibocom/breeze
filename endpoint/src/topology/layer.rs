@@ -2,7 +2,7 @@ use protocol::Resource;
 use std::sync::atomic::Ordering;
 use stream::LayerRole;
 
-use crate::{cacheservice::MemcacheNamespace, redisservice::RedisNamespace};
+use crate::cacheservice::MemcacheNamespace;
 
 use super::Seq;
 
@@ -88,13 +88,13 @@ impl Layer {
         self.l2.push((LayerRole::Slave, ns.slave.clone()));
     }
 
-    pub(crate) fn update_for_redis(&mut self, ns: &RedisNamespace) {
-        debug_assert!(self.l1.len() == 0);
-        self.l1 = ns.master.clone();
+    // pub(crate) fn update_for_redis(&mut self, ns: &RedisNamespace) {
+    //     debug_assert!(self.l1.len() == 0);
+    //     self.l1 = ns.master.clone();
 
-        self.l2.clear();
-        for p in ns.slaves.clone() {
-            self.l2.push((LayerRole::Slave, p));
-        }
-    }
+    //     self.l2.clear();
+    //     for p in ns.slaves.clone() {
+    //         self.l2.push((LayerRole::Slave, p));
+    //     }
+    // }
 }
