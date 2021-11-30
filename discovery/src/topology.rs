@@ -2,7 +2,7 @@ use ds::{cow, CowReadHandle, CowWriteHandle};
 use protocol::Resource;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -18,7 +18,8 @@ pub trait TopologyRead<T> {
 
 pub trait TopologyWrite {
     fn resource(&self) -> Resource;
-    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, Vec<String>>);
+    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, HashSet<String>>);
+    fn update_hosts(&mut self, name: &str, hosts: &HashMap<String, HashSet<String>>);
     fn gc(&mut self);
 }
 
@@ -108,10 +109,15 @@ where
     fn resource(&self) -> Resource {
         self.resource.clone()
     }
-    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, Vec<String>>) {
+    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, HashSet<String>>) {
         log::info!("topology updating. name:{}, cfg len:{}", name, cfg.len());
         //self.inner.write(&(name.to_string(), cfg.to_string()));
         self.inner.write(|t| t.update(name, cfg, hosts));
+        self.updates.fetch_add(1, Ordering::Relaxed);
+    }
+    fn update_hosts(&mut self, name: &str, hosts: &HashMap<String, HashSet<String>>) {
+        log::info!("topology updating hosts, name:{}, hosts:{:?}", name, hosts);
+        self.inner.write(|t| t.update_hosts(name, hosts));
         self.updates.fetch_add(1, Ordering::Relaxed);
     }
     fn gc(&mut self) {
