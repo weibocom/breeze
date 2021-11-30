@@ -1,9 +1,8 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Error, ErrorKind, Result},
 };
 
-use ds::DnsResolver;
 use serde::{Deserialize, Serialize};
 use stream::LayerRole;
 
@@ -19,7 +18,7 @@ pub struct RedisNamespace {
 
     // TODO 下面这几个稍后抽取到更高一层次 fishermen
     #[serde(default)]
-    pub(crate) host_addrs: HashMap<String, Vec<String>>,
+    pub(crate) host_addrs: HashMap<String, HashSet<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -75,24 +74,24 @@ impl RedisNamespace {
         readers
     }
 
-    async fn lookup_hosts(&mut self, resolver: &DnsResolver) -> HashMap<String, Vec<String>> {
-        let mut host_addrs = HashMap::with_capacity(self.backends.len());
-        for b in self.backends.clone() {
-            let hosts = b.split(",");
-            for h in hosts {
-                let ips = resolver.lookup_ips(h).await.unwrap();
-                host_addrs.insert(h.to_string(), ips);
-            }
-        }
-        host_addrs
-    }
+    // async fn lookup_hosts(&mut self, resolver: &DnsResolver) -> HashMap<String, HashSet<String>> {
+    //     let mut host_addrs = HashMap::with_capacity(self.backends.len());
+    //     for b in self.backends.clone() {
+    //         let hosts = b.split(",");
+    //         for h in hosts {
+    //             let ips = resolver.lookup_ips(h).await.unwrap();
+    //             host_addrs.insert(h.to_string(), ips);
+    //         }
+    //     }
+    //     host_addrs
+    // }
 
     // 根据域名重新构建master、slave
-    pub fn refresh_backends(&mut self, hosts: &HashMap<String, Vec<String>>) {
-        // if self.host_addrs.eq(hosts) {
-        //     log::info!("hosts not changed, so ignore refresh");
-        //     return;
-        // }
+    pub fn refresh_backends(&mut self, hosts: &HashMap<String, HashSet<String>>) {
+        if self.host_addrs.eq(hosts) {
+            log::info!("hosts not changed, so ignore refresh");
+            return;
+        }
 
         self.host_addrs = hosts.clone();
         let mut master = Vec::with_capacity(self.backends.len());
@@ -108,7 +107,9 @@ impl RedisNamespace {
                 return;
             }
             debug_assert!(master_ips.len() == 1);
-            master.push(master_ips[0].clone());
+            for mip in master_ips.iter() {
+                master.push(mip);
+            }
 
             // 解析slave dns
             if addrs.len() == 1 {
@@ -273,6 +274,8 @@ fn least_multiple(a: usize, b: usize) -> usize {
 #[cfg(test)]
 mod config_test {
 
+    use std::collections::{HashMap, HashSet};
+
     use ds::DnsResolver;
     use serde::{Deserialize, Serialize};
     use tokio::runtime::Runtime;
@@ -285,6 +288,21 @@ mod config_test {
     }
 
     // use super::RedisNamespace;
+
+    async fn lookup_hosts(
+        ns: &RedisNamespace,
+        resolver: &DnsResolver,
+    ) -> HashMap<String, HashSet<String>> {
+        let mut host_addrs = HashMap::with_capacity(8);
+        for b in ns.backends.clone() {
+            let hosts = b.split(",");
+            for h in hosts {
+                let ips = resolver.lookup_ips(h).await.unwrap();
+                host_addrs.insert(h.to_string(), ips);
+            }
+        }
+        host_addrs
+    }
 
     #[test]
     fn test_parse() {
@@ -304,7 +322,7 @@ mod config_test {
         rt.block_on(async {
             let mut rs = RedisNamespace::parse(cfg, "redismeshtest").unwrap();
             let resolver = DnsResolver::with_sysy_conf();
-            let hosts = rs.lookup_hosts(&resolver).await;
+            let hosts = lookup_hosts(&rs, &resolver).await;
             rs.refresh_backends(&hosts);
             print!("parse redis config:");
             println!("{}", cfg);

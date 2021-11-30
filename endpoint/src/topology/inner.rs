@@ -91,22 +91,22 @@ impl<T> Inner<T> {
         layers
     }
 
-    pub(crate) fn select_slaves(
-        &self,
-        share: Option<&HashMap<String, Arc<BackendBuilder>>>,
-    ) -> Vec<(LayerRole, Vec<BackendStream>)>
-    where
-        T: VisitAddress,
-    {
-        let layers = self.select(share);
-        let mut slave_layers = Vec::with_capacity(layers.len());
-        for (layer_role, backends) in layers {
-            if layer_role == LayerRole::Slave || layer_role == LayerRole::SlaveL1 {
-                slave_layers.push((layer_role, backends));
-            }
-        }
-        slave_layers
-    }
+    // pub(crate) fn select_slaves(
+    //     &self,
+    //     share: Option<&HashMap<String, Arc<BackendBuilder>>>,
+    // ) -> Vec<(LayerRole, Vec<BackendStream>)>
+    // where
+    //     T: VisitAddress,
+    // {
+    //     let layers = self.select(share);
+    //     let mut slave_layers = Vec::with_capacity(layers.len());
+    //     for (layer_role, backends) in layers {
+    //         if layer_role == LayerRole::Slave || layer_role == LayerRole::SlaveL1 {
+    //             slave_layers.push((layer_role, backends));
+    //         }
+    //     }
+    //     slave_layers
+    // }
 
     pub(crate) fn inited(&self) -> bool {
         self.streams
