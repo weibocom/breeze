@@ -24,13 +24,19 @@ pub enum Config<C> {
     Config(String, C), // 第一个元素是签名，第二个是数据
 }
 
+// pub enum Configg {
+//     Configg(String), // 第一个元素是签名，第二个是数据
+// }
+
 #[async_trait]
 #[enum_dispatch]
 pub trait Discover {
-    async fn get_service<C>(&self, name: &str, sig: &str) -> Result<Config<C>>
-    where
-        C: Unpin + Send + From<String>;
-    async fn get_recurservice<C>(&self, uname: String, sig: String) -> Result<Config<C>>
+    async fn get_service<C>(
+        &self,
+        name: &str,
+        sig: &str,
+        kindof_database: &str,
+    ) -> Result<Config<C>>
     where
         C: Unpin + Send + From<String>;
 }
@@ -59,18 +65,16 @@ impl Discovery {
 #[async_trait]
 impl<T: Discover + Send + Unpin + Sync> Discover for std::sync::Arc<T> {
     #[inline]
-    async fn get_service<C>(&self, name: &str, sig: &str) -> std::io::Result<Config<C>>
+    async fn get_service<C>(
+        &self,
+        name: &str,
+        sig: &str,
+        kindof_database: &str,
+    ) -> std::io::Result<Config<C>>
     where
         C: Unpin + Send + From<String>,
     {
-        (**self).get_service(name, sig).await
-    }
-    #[inline]
-    async fn get_recurservice<C>(&self, uname: String, sig: String) -> std::io::Result<Config<C>>
-    where
-        C: Unpin + Send + From<String>,
-    {
-        (**self).get_recurservice(uname, sig).await
+        (**self).get_service(name, sig, kindof_database).await
     }
 }
 

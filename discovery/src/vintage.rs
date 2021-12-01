@@ -11,25 +11,30 @@ pub struct Vintage {
     base_url: Url,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct RNode {
     index: String,
     data: String,
     children: Vec<RChildren>,
 }
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct RChildren {
     name: String,
     data: String,
 }
-#[derive(Serialize, Deserialize, Debug)]
+impl RChildren {
+    fn rname(self) -> (String, String) {
+        (self.name, self.data)
+    }
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct RResponse {
     message: String,
     node: RNode,
 }
 impl RResponse {
-    fn rd_into(self) -> String {
-        self.node.index
+    fn rd_into(self) -> (String, String, Vec<RChildren>) {
+        (self.node.index, self.node.data, self.node.children)
     }
 }
 
@@ -67,8 +72,6 @@ impl Vintage {
         let mut gurl = self.base_url.clone();
         gurl.set_path(path);
         log::debug!("lookup: path:{} index:{}", path, index);
-        // self.arurl::<String>(gurl.to_string());
-        //println!("gurl {}", gurl.to_string());
         let resp = self
             .client
             .get(gurl)
@@ -85,7 +88,6 @@ impl Vintage {
                     .json()
                     .await
                     .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-                println!("resp is {:?}", resp);
                 if resp.message != "ok" {
                     Err(Error::new(ErrorKind::Other, resp.message))
                 } else {
@@ -104,131 +106,128 @@ impl Vintage {
             }
         }
     }
-    #[async_recursion]
-    async fn arurl<C>(&self, uname: String, index: String) -> std::io::Result<Config<C>>
-    where
-        C: From<String>,
-    {
-        let mut ss = self.base_url.clone().to_string();
-        ss.push_str(&uname);
-        let aurl = Url::parse(&ss).unwrap();
 
-        //println!("the begin url is {}", ss);
-        let http_resp = self
+    async fn finddata(&self, end_url: String, index: String) -> std::io::Result<String> {
+        let resp = self
             .client
-            .get(aurl)
+            .get(end_url)
             .query(&[("children", "true")])
             .send()
             .await
             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-        let resp: RResponse = http_resp
+        let resp: Response = resp
             .json()
             .await
             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-        let f_index = resp.rd_into();
-        println!("f_index is {}", f_index);
-        // if f_index==index {
-        //     Ok(Config::NotChanged)
-        // }else {
+        let (t_index, data) = resp.into();
+        Ok(data)
+    }
 
-        // }
-        //rd_into 获取初始的index
-        // for child in resp.node.children.iter() {
-        //     let last_child = child;
-        //     let last_data = &last_child.data;
-        //     let last_name = &last_child.name;
-        //     let mut recur_name = uname.clone();
-        //     recur_name.push_str("/");
-        //     recur_name.push_str(&last_name);
-        //     if last_data.is_empty() {
-        //         //println!("-------------递归---------------");
-        //         self.arurl::<String>(recur_name.clone(), index.clone())
-        //             .await?;
-        //     } else {
-        //         //println!("------------data非空-------------");
-        //         let mut end_url = ss.clone();
-        //         end_url.push_str("/");
-        //         end_url.push_str(&last_name);
-        //         println!("end url is {}", end_url);
-        //         let http_resp = self
-        //             .client
-        //             .get(end_url)
-        //             .query(&[("index", index.clone())])
-        //             .send()
-        //             .await
-        //             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-        //         //println!("http_resp is {:?}", http_resp);
-        //         // match http_resp.status().as_u16() {
-        //         //     // not modified
-        //         //     304 => Ok(Config::NotChanged),
-        //         //     404 => Ok(Config::NotFound),
-        //         //     200 => {
-        //         // let resp: Response = http_resp
-        //         //     .json()
-        //         //     .await
-        //         //     .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-        //         // println!("resp is {:?}", resp);
-        //         //         if resp.message != "ok" {
-        //         //             Err(Error::new(ErrorKind::Other, resp.message));
-        //         //         } else {
-        //         //             let (t_index, data) = resp.into();
-        //         //             if t_index == index {
-        //         //                 return Ok(Config::NotChanged);
-        //         //             } else {
-        //         //                 log::info!(" from {} to {} len:{}", index, t_index, data.len());
-        //         //                 Ok(Config::Config(&t_index, C::from(data)))
-        //         //             }
-        //         //         }
-        //         //     }
-        //         //     status => {
-        //         //         let msg = format!("{} not a valid vintage status.", status);
-        //         //         return Err(Error::new(ErrorKind::Other, msg));
-        //         //     }
-        //         // }
-        //         let resp: Response = http_resp
-        //             .json()
-        //             .await
-        //             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-        //         // println!("resp is {:?}", resp);
-        //         // let (index, t_data) = resp.into();
-        //         // if &t_data == last_data {
-        //         //     return Ok(Config::NotChanged);
-        //         // } else {
-        //         //     log::info!(
-        //         //         " from {} to {} len:{}",
-        //         //         //end_url.clone(),
-        //         //         last_data,
-        //         //         t_data,
-        //         //         last_data.len()
-        //         //     );
-        //         //     return Ok(Config::Config(t_data, C::from(index)));
-        //         // }
-        //     }
-        // }
-        //println!("resp  hou is {:?}", resp);
-        //Ok(())
-        Ok(Config::NotChanged)
+    #[async_recursion]
+    async fn recursion(&self, url: String, index: String) -> std::io::Result<String> {
+        let mut end_url = Url::parse(&url).unwrap();
+        let http_resp = self
+            .client
+            .get(end_url)
+            .query(&[("children", "true")])
+            .send()
+            .await
+            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        let uresp: RResponse = http_resp
+            .json()
+            .await
+            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        let (t_index, mut data, children) = uresp.clone().rd_into();
+        let mut sdata = String::new();
+        for child in children.iter() {
+            let end_child = child;
+            let end_data = &end_child.data;
+            let end_name = &end_child.name;
+            let mut end_url = url.clone();
+            end_url.push_str("/");
+            end_url.push_str(&end_name);
+            if end_data.is_empty() {
+                sdata.push_str(&self.recursion(end_url, index.clone()).await?);
+            } else {
+                sdata.push_str("\n");
+                sdata.push_str(&self.finddata(end_url, index.clone()).await?);
+            }
+        }
+        Ok(sdata)
+    }
+    async fn rdlookup<C>(&self, uname: String, index: String) -> std::io::Result<Config<C>>
+    where
+        C: From<String>,
+    {
+        let mut f_url = self.base_url.clone().to_string();
+        f_url.push_str(&uname);
+        let aurl = Url::parse(&f_url).unwrap();
+
+        let http_resp = self
+            .client
+            .get(aurl)
+            .query(&[("children", "true"), ("index", &index)])
+            .send()
+            .await
+            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        match http_resp.status().as_u16() {
+            // not modified
+            304 => Ok(Config::NotChanged),
+            404 => Ok(Config::NotFound),
+            200 => {
+                let uresp: RResponse = http_resp
+                    .json()
+                    .await
+                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+                let (t_index, mut data, children) = uresp.clone().rd_into();
+                if uresp.message != "ok" {
+                    Err(Error::new(ErrorKind::Other, uresp.message))
+                } else {
+                    if t_index == index {
+                        Ok(Config::NotChanged)
+                    } else {
+                        data = self.recursion(f_url, t_index.clone()).await?;
+                        log::info!(" from {} to {} len:{}", index, t_index, data.len());
+                        Ok(Config::Config(t_index, C::from(data)))
+                    }
+                }
+            }
+            status => {
+                let msg = format!("{} not a valid vintage status.", status);
+                Err(Error::new(ErrorKind::Other, msg))
+            }
+        }
     }
 }
 
 use super::Config;
 use async_trait::async_trait;
-
+//use protocol::Resource;
 #[async_trait]
 impl super::Discover for Vintage {
     #[inline]
-    async fn get_service<C>(&self, name: &str, sig: &str) -> std::io::Result<Config<C>>
+    async fn get_service<C>(
+        &self,
+        name: &str,
+        sig: &str,
+        kindof_database: &str,
+    ) -> std::io::Result<Config<C>>
     where
         C: Unpin + Send + From<String>,
     {
-        self.lookup(name, sig).await
-        // self.arurl(name).await
-    }
-    #[inline]
-    async fn get_recurservice<C>(&self, uname: String, sig: String) -> std::io::Result<Config<C>>
-    where
-        C: Unpin + Send + From<String>,
-    {
-        self.arurl(uname, sig).await
+        match kindof_database {
+            "mc" => {
+                println!("mcccccccccccccc");
+                self.lookup(name, sig).await
+            }
+            "redis" => {
+                println!("redisssssssssss");
+                self.rdlookup(name.to_owned(), sig.to_owned()).await
+            }
+            _ => {
+                let msg = format!("not a valid vintage database");
+                return Err(Error::new(ErrorKind::Other, msg));
+            }
+        }
     }
 }

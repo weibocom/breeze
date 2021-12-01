@@ -9,7 +9,6 @@ pub use operation::*;
 mod request;
 pub use request::*;
 
-pub mod redis;
 mod response;
 
 pub use response::*;
@@ -71,12 +70,7 @@ pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
 pub enum Protocols {
     McBin(memcache::MemcacheBin),
     McText(memcache::MemcacheText),
-<<<<<<< HEAD
-    // RdBin(redis::RedisBin),
-    // RdText(redis::RedisText),
-=======
     Redis(redis::RedisResp2),
->>>>>>> 1e786ee2a73e9358e7f3bf82280b5c8396f254df
 }
 
 impl Protocols {
@@ -88,12 +82,7 @@ impl Protocols {
             "mc_text" | "memcache_text" | "memcached_text" | "redis_text" | "redis_text" => {
                 Ok(Self::McText(memcache::MemcacheText::new()))
             }
-<<<<<<< HEAD
-            // "rd_bin" | "rd" | "redis" => Ok(Self::McBin(memcache::MemcacheBin::new())),
-            // "redis_text" | "redis_text" => Ok(Self::McText(memcache::MemcacheText::new())),
-=======
             "rs" | "redis" => Ok(Self::Redis(redis::RedisResp2::new())),
->>>>>>> 1e786ee2a73e9358e7f3bf82280b5c8396f254df
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("'{}' is not a valid protocol", name),

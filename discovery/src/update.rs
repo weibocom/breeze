@@ -56,6 +56,7 @@ where
                 if services.contains_key(t.name()) {
                     log::error!("service duplicatedly registered:{}", t.name());
                 } else {
+                    //t.name is 3+config+cloud+redis+testbreeze+onlytest:onlytest path 去掉冒号之前
                     log::info!("service {} path:{} registered ", t.name(), t.path());
                     let sig = if let Some((sig, _cfg)) = self.init(&mut t).await {
                         sig
@@ -93,7 +94,6 @@ where
         let mut cache: HashMap<String, (String, String)> = HashMap::with_capacity(services.len());
         for (name, (t, update)) in services.iter_mut() {
             let path = t.path().to_string();
-            //println!("serivices is {:?},{:?}", name, update);
             let sig = sigs.get_mut(name).expect("sig not inited");
             // 在某些场景下，同一个name被多个path共用。所以如果sig没有变更，则不需要额外处理更新。
             if let Some((cache_sig, cfg)) = cache.get(&path) {
@@ -109,8 +109,11 @@ where
                     continue;
                 }
             }
-
-            if let Some((remote_sig, cfg)) = self.load_from_discovery(&path, sig).await {
+            let res = t.resource();
+            let kindof_database = resource::name_kind(res);
+            if let Some((remote_sig, cfg)) =
+                self.load_from_discovery(&path, sig, kindof_database).await
+            {
                 let res = t.resource();
                 let hosts = resource::parse_cfg_hosts(res, &cfg).await;
                 t.update(name, &cfg, &hosts);
@@ -124,7 +127,8 @@ where
     async fn init(&self, t: &mut T) -> Option<(String, String)> {
         let path = t.path().to_string();
         let name = t.name().to_string();
-        println!("name is {}", name);
+        let kindof_database = resource::name_kind(t.resource());
+        println!("judge mc/redis{}", kindof_database);
         // 用path查找，用name更新。
         if let Ok((sig, cfg)) = self.try_load_from_snapshot(&path).await {
             let res = t.resource();
@@ -133,7 +137,7 @@ where
             Some((sig, cfg))
         } else {
             //if let Some((sig, cfg)) = self.load_from_discovery(&path, "", path.to_owned()).await {
-            if let Some((sig, cfg)) = self.load_from_discovery(&path, "").await {
+            if let Some((sig, cfg)) = self.load_from_discovery(&path, "", kindof_database).await {
                 let res = t.resource();
                 let hosts = resource::parse_cfg_hosts(res, &cfg).await;
                 t.update(&name, &cfg, &hosts);
@@ -162,10 +166,14 @@ where
         &self,
         path: &str,
         sig: &str,
-        //uname: String,
+        kindof_database: &str,
     ) -> Option<(String, String)> {
         use super::Config;
-        match self.discovery.get_service::<String>(path, &sig).await {
+        match self
+            .discovery
+            .get_service::<String>(path, &sig, kindof_database)
+            .await
+        {
             Err(e) => {
                 log::warn!("load service topology failed. path:{}, e:{:?}", path, e);
             }
@@ -180,25 +188,7 @@ where
                 }
             },
         }
-        match self
-            .discovery
-            .get_recurservice::<String>(path.to_owned(), sig.to_owned())
-            .await
-        {
-            Err(e) => {
-                log::warn!("load service topology failed. name:{}, e:{:?}", path, e);
-            }
-            Ok(c) => match c {
-                Config::NotChanged => {}
-                Config::NotFound => {
-                    log::info!("{} not found in discovery", path);
-                }
-                Config::Config(sig, cfg) => {
-                    self.dump_to_snapshot(&path, &sig, &cfg).await;
-                    return Some((sig, cfg));
-                }
-            },
-        }
+
         None
     }
     fn _path(&self, name: &str) -> PathBuf {
