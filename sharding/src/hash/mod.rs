@@ -28,7 +28,7 @@ pub enum Hasher {
 
 // crc32-short和crc32-range长度相同，所以此处选一个
 const CRC32_BASE_LEN: usize = "crc32-range".len();
-const CRC32_RANGE_UID_PREFIX_LEN: usize = "crc32-range-uid-".len();
+const CRC32_RANGE_ID_PREFIX_LEN: usize = "crc32-range-id-".len();
 
 impl Hasher {
     pub fn from(alg: &str) -> Self {
