@@ -11,7 +11,8 @@ mod hash_test {
 
     use crypto::digest::Digest;
     use crypto::md5::Md5;
-    use sharding::hash::{Bkdr, Crc32, Hash};
+    use sharding::hash::crc32::Crc32Short;
+    use sharding::hash::{Bkdr, Hash};
     use std::ops::Bound::Included;
 
     #[test]
@@ -144,7 +145,7 @@ mod hash_test {
                     let key = props[0].trim();
                     let hash_in_java = props[1].trim();
 
-                    let hash = Crc32 {}.hash(key.as_bytes());
+                    let hash = Crc32Short {}.hash(key.as_bytes());
                     let hash_in_java_u64 = hash_in_java.parse::<u64>().unwrap();
                     if hash != hash_in_java_u64 {
                         println!(
