@@ -15,9 +15,10 @@ pub enum Distribute {
 
 impl Distribute {
     pub fn from(distribution: &str, names: Vec<String>) -> Self {
-        match distribution {
-            "modula" | "Modula" | "MODULA" => Self::Modula(Modula::from(names.len())),
-            "ketama" | "Ketama" | "KETAMA" => Self::Consistent(Consistent::from(names)),
+        let dist = distribution.to_ascii_lowercase();
+        match dist.as_str() {
+            "modula" => Self::Modula(Modula::from(names.len())),
+            "ketama" => Self::Consistent(Consistent::from(names)),
             "range" => Self::Range(Range::from(names.len())),
             _ => {
                 log::warn!("'{}' is not valid , use modula instead", distribution);
