@@ -110,8 +110,8 @@ impl Crc32Range {
             }
         } else {
             // format: crc32-range-uid-xxx，如果xxx不是合法数字，则直接使用全部的key来hash
-            debug_assert!(alg.len() > (super::CRC32_RANGE_UID_PREFIX_LEN));
-            let start = &alg[super::CRC32_RANGE_UID_PREFIX_LEN..];
+            debug_assert!(alg.len() > (super::CRC32_RANGE_ID_PREFIX_LEN));
+            let start = &alg[super::CRC32_RANGE_ID_PREFIX_LEN..];
             if let Ok(s) = start.parse::<usize>() {
                 return Self {
                     start: s,
@@ -176,7 +176,7 @@ mod crc_test {
     fn crc32_redis_test() {
         println!("===========crc32-redis test start...");
         let key = "123456789012345678.abc";
-        let crc32 = Crc32Range::from("crc32-range-uid-0");
+        let crc32 = Crc32Range::from("crc32-range-id-0");
         let hash = crc32.hash(key.as_bytes());
         println!("crc32-redis - hash:{}, key:{}", hash, key);
     }
