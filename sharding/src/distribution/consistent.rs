@@ -11,6 +11,7 @@ pub struct Consistent {
 impl Consistent {
     pub fn index(&self, hash: u64) -> usize {
         let hash = hash as i64;
+
         // 从[hash, max)范围从map中寻找节点
         let idxs = self.buckets.range((Included(hash), Included(i64::MAX)));
         for (_h, idx) in idxs {
