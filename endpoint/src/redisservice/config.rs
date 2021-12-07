@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     io::{Error, ErrorKind, Result},
+    slice::SliceIndex,
 };
 
 use serde::{Deserialize, Serialize};
@@ -64,13 +65,20 @@ impl RedisNamespace {
         }
     }
 
-    // 包括N组slave，一组master
+    // 返回每个分片下的ip列表，master对应分片ip会作为slave返回
     pub(crate) fn readers(&self) -> Vec<(LayerRole, Vec<String>)> {
-        let mut readers = Vec::with_capacity(self.slaves.len() + 1);
-        for s in self.slaves.clone() {
-            readers.push((LayerRole::Slave, s));
+        if self.slaves.len() != self.master.len() {
+            return vec![];
         }
-        readers.push((LayerRole::Master, self.master.clone()));
+        let mut readers = Vec::with_capacity(self.slaves.len());
+        let mut idx = 0;
+        for s in self.slaves.clone().iter_mut() {
+            s.push(self.master.get(idx).unwrap().clone());
+            readers.push((LayerRole::Slave, s.to_owned()));
+            idx += 1;
+        }
+
+        // readers.push((LayerRole::Master, self.master.clone()));
         readers
     }
 
@@ -86,7 +94,7 @@ impl RedisNamespace {
     //     host_addrs
     // }
 
-    // 根据域名重新构建master、slave
+    // 根据backend域名重新构建master、slave
     pub fn refresh_backends(&mut self, hosts: &HashMap<String, HashSet<String>>) {
         if self.host_addrs.eq(hosts) {
             log::info!("hosts not changed, so ignore refresh");
@@ -97,6 +105,7 @@ impl RedisNamespace {
         let mut master = Vec::with_capacity(self.backends.len());
         let mut slave_shards = Vec::with_capacity(self.backends.len());
 
+        // 轮询backend，设置master、slave的分片列表
         for bk in self.backends.clone() {
             let addrs: Vec<&str> = bk.split(",").collect();
 
@@ -108,7 +117,7 @@ impl RedisNamespace {
             }
             debug_assert!(master_ips.len() == 1);
             for mip in master_ips.iter() {
-                master.push(mip);
+                master.push(mip.clone());
             }
 
             // 解析slave dns
@@ -131,35 +140,9 @@ impl RedisNamespace {
             slave_shards.push(sshard);
         }
 
-        // 设置master的ip pool列表
-        self.master.clear();
-        for m in master {
-            self.master.push(m.to_string());
-        }
-
-        // 轮询设置slave的ip pool列表
-        let mut slaves = Vec::with_capacity(slave_shards.len());
-        let mut shard_count = Vec::with_capacity(slave_shards.len());
-        for s in slave_shards.clone() {
-            debug_assert!(s.len() > 0);
-            shard_count.push(s.len());
-        }
-
-        let pool_count = least_multiple_array(&shard_count);
-        let mut pidx = 0;
-        while pidx < pool_count {
-            let mut pool = Vec::with_capacity(slave_shards.len());
-            let mut sidx = 0;
-            while sidx < slave_shards.len() {
-                let pos = pidx % slave_shards[sidx].len();
-                pool.push(slave_shards[sidx][pos].to_string());
-                sidx += 1;
-            }
-            slaves.push(pool);
-            pidx += 1;
-        }
-        self.slaves.clear();
-        self.slaves.extend(slaves);
+        // 设置master、slaves列表
+        self.master = master;
+        self.slaves = slave_shards;
         log::info!("after refresh redis cfg: {:?}", self);
     }
 
@@ -171,64 +154,6 @@ impl RedisNamespace {
         }
         all
     }
-
-    // 目前先支持dns模式，待走通后且确认ip格式后，再调整支持ips格式 fishermen
-    // async fn parse_backends(&mut self) {
-    //     // TODO 联调需要，暂时在每次parse时构建一个resolver，后续考虑优化（更好的用法见topology/config） fishermen
-    //     let dns_resolver = DnsResolver::with_sysy_conf();
-    //     let mut master: Vec<IpAddr> = Vec::with_capacity(self.backends.len());
-    //     let mut slave_shards: Vec<Vec<IpAddr>> = Vec::with_capacity(self.backends.len());
-    //     for bk in self.backends.clone() {
-    //         let addrs: Vec<&str> = bk.split(",").collect();
-
-    //         // 解析master
-    //         let master_ips = dns_resolver.lookup_ips(addrs[0]).await;
-    //         if master_ips.len() == 0 {
-    //             log::warn!("parse config for redis failed: {}", addrs[0]);
-    //             return;
-    //         }
-    //         debug_assert!(master_ips.len() == 1);
-    //         master.push(master_ips[0]);
-
-    //         // 解析slave dns
-    //         if addrs.len() == 1 {
-    //             continue;
-    //         }
-    //         debug_assert!(addrs.len() == 2);
-    //         let slave_shard_ips = dns_resolver.lookup_ips(addrs[1]);
-    //         if slave_shard_ips.len() == 0 {
-    //             log::warn!("parse config for redis/slave failed: {}", addrs[1]);
-    //             return;
-    //         }
-    //         slave_shards.push(slave_shard_ips);
-    //     }
-
-    //     // 设置master的ip pool列表
-    //     self.master.clear();
-    //     for m in master {
-    //         self.master.push(m.to_string());
-    //     }
-
-    //     // 轮询设置slave的ip pool列表
-    //     let mut shard_count = Vec::with_capacity(slave_shards.len());
-    //     for s in slave_shards.clone() {
-    //         debug_assert!(s.len() > 0);
-    //         shard_count.push(s.len());
-    //     }
-    //     let pool_count = least_multiple_array(&shard_count);
-    //     let mut pidx = 0;
-    //     while pidx < pool_count {
-    //         let mut pool = Vec::with_capacity(slave_shards.len());
-    //         let mut sidx = 0;
-    //         while sidx < slave_shards.len() {
-    //             let pos = pidx % slave_shards[sidx].len();
-    //             pool.push(slave_shards[sidx][pos].to_string());
-    //             sidx += 1;
-    //         }
-    //         self.slaves.push(pool);
-    //         pidx += 1;
-    //     }
-    // }
 
     pub(crate) fn parse_listen_ports(&self) -> Vec<u16> {
         if self.basic.listen.len() == 0 {
@@ -245,31 +170,32 @@ impl RedisNamespace {
     }
 }
 
+// TODO 改为按分片请求方式，避免域名较多、且每个域名下ip较多的情况下，资源池数量过大
 // 求数组中的最大公约数
-fn least_multiple_array(arr: &[usize]) -> usize {
-    if arr.len() == 0 {
-        return 1;
-    }
-    let mut rs = arr[0];
-    for u in arr {
-        rs = least_multiple(rs, *u);
-    }
-    rs
-}
+// fn least_multiple_array(arr: &[usize]) -> usize {
+//     if arr.len() == 0 {
+//         return 1;
+//     }
+//     let mut rs = arr[0];
+//     for u in arr {
+//         rs = least_multiple(rs, *u);
+//     }
+//     rs
+// }
 
-//辗转相除法求最大公约数
-fn greatest_divisor(a: usize, b: usize) -> usize {
-    if a % b == 0 {
-        return b;
-    } else {
-        return greatest_divisor(b, a % b);
-    }
-}
+// //辗转相除法求最大公约数
+// fn greatest_divisor(a: usize, b: usize) -> usize {
+//     if a % b == 0 {
+//         return b;
+//     } else {
+//         return greatest_divisor(b, a % b);
+//     }
+// }
 
-//公式法求最小公倍数
-fn least_multiple(a: usize, b: usize) -> usize {
-    a * b / greatest_divisor(a, b)
-}
+// //公式法求最小公倍数
+// fn least_multiple(a: usize, b: usize) -> usize {
+//     a * b / greatest_divisor(a, b)
+// }
 
 #[cfg(test)]
 mod config_test {

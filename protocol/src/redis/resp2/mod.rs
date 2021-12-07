@@ -28,8 +28,7 @@ impl Protocol for RedisResp2 {
             .unwrap()
             .to_lowercase();
         let op = {
-            match cmd.as_str()
-            {
+            match cmd.as_str() {
                 "get" => Operation::Get,
                 "set" => Operation::Store,
                 "select" => Operation::Meta,
@@ -44,8 +43,7 @@ impl Protocol for RedisResp2 {
         //meta命令不一定有key，把命令词放进去
         if op == Operation::Meta || op == Operation::Other {
             keys.push(split_req[2].clone());
-        }
-        else {
+        } else {
             keys.push(split_req[4].clone());
         }
 
