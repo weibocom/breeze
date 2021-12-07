@@ -89,20 +89,19 @@ where
                 self.listen_ports = ns.parse_listen_ports();
 
                 // 这些需要在解析域名完毕后才能进行
+                self.share.set(ns.uniq_all());
+                self.share.update(self.namespace.as_str(), &self.parser);
                 self.master.set(ns.master.clone());
                 self.slaves.set(ns.readers());
 
-                // 如果没有slave，读写共享相同的物理连接
+                // 如果没有slave，后续各种操作都共享物理连接
                 if ns.slaves.len() == 0 {
                     self.shared = true;
-                    // self.share.set(ns.uniq_all());
-                    // self.share.update(self.namespace.as_str(), &self.parser);
                     self.share.set(vec![(LayerRole::Master, ns.master.clone())]);
                     self.share.update(self.namespace.as_str(), &self.parser);
                 } else {
                     self.shared = false;
-                    self.master.update(self.namespace.as_str(), &self.parser);
-                    self.slaves.update(self.namespace.as_str(), &self.parser);
+                    // self.master.update(self.namespace.as_str(), &self.parser);
                 }
             }
         }
