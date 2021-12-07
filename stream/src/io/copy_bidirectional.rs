@@ -107,9 +107,9 @@ where
             // 开始记录metric
             let duration = metric.duration();
             const SLOW: Duration = Duration::from_millis(200);
-            if duration >= SLOW {
+            //if duration >= SLOW {
                 log::info!("slow request: {}", metric);
-            }
+            //}
             metrics::duration(metric.op.name(), duration, metric.metric_id);
             metrics::qps("bytes.tx", metric.resp_bytes, metric.metric_id);
             metrics::qps("bytes.rx", metric.req_bytes, metric.metric_id);
