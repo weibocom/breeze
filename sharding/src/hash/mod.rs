@@ -41,7 +41,7 @@ impl Hasher {
         match alg_match {
             "bkdr" => Self::Bkdr(Default::default()),
             "crc32-short" => Self::Crc32Short(Default::default()),
-            "crc32-range" => Self::Crc32Range(Default::default()),
+            "crc32-range" => Self::Crc32Range(Crc32Range::from(alg_lower.as_str())),
             _ => {
                 // 默认采用mc的crc32-s hash
                 log::warn!("found unknow hash:{}, use crc32-short instead", alg);
