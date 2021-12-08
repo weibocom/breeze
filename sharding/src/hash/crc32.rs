@@ -137,7 +137,6 @@ impl super::Hash for Crc32Range {
             log::warn!("found negative crc range hash for key:{:?}", key);
             hash = hash.wrapping_abs();
         }
-
         hash as u64
     }
 }
