@@ -46,7 +46,7 @@ where
 
 impl<B, P> AsyncWriteAll for AsyncSharding<B, P>
 where
-    B: AsyncWriteAll + Unpin,
+    B: Addressed + AsyncWriteAll + Unpin,
     P: Protocol + Unpin,
 {
     #[inline]
@@ -65,7 +65,7 @@ where
                 ),
             )));
         }
-        log::debug!("key = {}, goto idx {}", String::from_utf8(key.data().to_vec()).unwrap(), me.idx);
+        log::debug!("key = {}, goto idx {}, address = {}", String::from_utf8(key.data().to_vec()).unwrap(), me.idx, me.shards.get(me.idx).unwrap().addr().to_string());
         unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf) }
     }
 }
