@@ -37,7 +37,7 @@ impl Hasher {
         if alg_match.len() > CRC32_BASE_LEN {
             alg_match = &alg_match[0..CRC32_BASE_LEN];
         }
-        log::info!("will match hash: {}", alg_match);
+
         match alg_match {
             "bkdr" => Self::Bkdr(Default::default()),
             "crc32-short" => Self::Crc32Short(Default::default()),
