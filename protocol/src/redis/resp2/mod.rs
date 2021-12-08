@@ -32,6 +32,7 @@ impl Protocol for RedisResp2 {
                 "get" => Operation::Get,
                 "set" => Operation::Store,
                 "select" => Operation::Meta,
+                "ping" => Operation::Meta,
                 _ => Operation::Other,
             }
         };
@@ -56,6 +57,12 @@ impl Protocol for RedisResp2 {
             read = read + 2 + single_row.len();
         }
         read = read + 2;
+        unsafe {
+            log::debug!(
+                "parsed req: {:?}",
+                String::from_utf8_unchecked(req.to_vec())
+            );
+        }
         Ok(Some(Request::from(
             req.sub_slice(0, read),
             op,
