@@ -90,7 +90,7 @@ where
             let n = buf.capacity() - buf.remaining();
             if n == 0 {
                 eof = true;
-                break; // EOF
+                continue; // EOF
             }
             me.data.advance_write(n);
 
