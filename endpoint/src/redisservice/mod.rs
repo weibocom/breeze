@@ -26,8 +26,8 @@ use crate::Topology;
 type Backend = stream::BackendStream;
 
 type GetOperation<P> = AsyncLayerGet<
-    SeqLoadBalance<AsyncSharding<Backend, P>>,
-    SeqLoadBalance<AsyncSharding<Backend, P>>,
+    AsyncSharding<SeqLoadBalance<Backend>, P>,
+    AsyncSharding<SeqLoadBalance<Backend>, P>,
     P,
 >;
 
@@ -77,7 +77,7 @@ impl<P> RedisService<P> {
         let store = Store(AsyncSetSync::from_master(master, Vec::new(), p.clone()));
 
         let get_layers = build_get(topo.slaves(), hash, dist, p.clone());
-        let get_padding_layer: Vec<SeqLoadBalance<AsyncSharding<Backend, P>>> = vec![];
+        let get_padding_layer: Vec<AsyncSharding<SeqLoadBalance<Backend>, P>> = vec![];
         let get = Get(AsyncLayerGet::from_layers(
             get_layers,
             get_padding_layer,
@@ -201,15 +201,15 @@ fn build_get<S, P>(
     h: &str,
     distribution: &str,
     parser: P,
-) -> Vec<SeqLoadBalance<AsyncSharding<S, P>>>
+) -> Vec<AsyncSharding<SeqLoadBalance<S>, P>>
 where
     S: AsyncWriteAll + Addressed + Unpin,
     P: Protocol + Clone,
 {
-    let sharding = build_sharding(pools, h, distribution, parser);
-    let sharding_merged = merge_by_layer(sharding);
-    let load_balance = build_load_balance(sharding_merged);
-    load_balance
+    let load_balance = build_load_balance(pools);
+    let load_balance_merged = merge_by_layer(load_balance);
+    let sharding = build_sharding(load_balance_merged, h, distribution, parser);
+    sharding
 }
 
 #[inline]
