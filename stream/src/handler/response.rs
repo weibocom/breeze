@@ -75,6 +75,7 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
+        let mut eof = false;
         while me.w.running() {
             let read = me.w.load_read();
             me.data.advance_read(read);
@@ -88,6 +89,7 @@ where
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             let n = buf.capacity() - buf.remaining();
             if n == 0 {
+                eof = true;
                 break; // EOF
             }
             me.data.advance_write(n);
@@ -108,7 +110,7 @@ where
                 }
             }
         }
-        log::info!("task complete:{} ", me);
+        log::info!("task complete:eof = {}, running = {}, me = {} ", eof, me.w.running(),me);
         Poll::Ready(Ok(()))
     }
 }
