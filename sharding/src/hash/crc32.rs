@@ -155,7 +155,8 @@ impl super::Hash for Crc32Range {
 
 #[cfg(test)]
 mod crc_test {
-    use crate::{bkdr::Bkdr, Hash};
+
+    use crate::{bkdr::Bkdr, distribution::Distribute, Hash};
 
     use super::{Crc32Range, Crc32Short};
 
@@ -175,9 +176,17 @@ mod crc_test {
     #[test]
     fn crc32_redis_test() {
         println!("===========crc32-redis test start...");
-        let key = "123456789012345678.abc";
+        let key = "4711424389024351.repost";
         let crc32 = Crc32Range::from("crc32-range-id-0");
         let hash = crc32.hash(key.as_bytes());
-        println!("crc32-redis - hash:{}, key:{}", hash, key);
+
+        let mut shards = Vec::with_capacity(8);
+        for _i in 0..8 {
+            shards.push("1".to_string());
+        }
+        let dist = Distribute::from("range", shards);
+        let idx = dist.index(hash);
+
+        println!("crc32-redis - key:{}, hash:{}, dist:{}", key, hash, idx);
     }
 }
