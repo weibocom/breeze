@@ -13,6 +13,7 @@ pub(crate) struct Item {
 pub struct Response {
     rid: RequestId,
     pub(crate) items: Vec<Item>,
+    key_indexes: Vec<Vec<usize>>,
 }
 
 impl Response {
@@ -25,7 +26,7 @@ impl Response {
     ) -> Self {
         let mut items = Vec::with_capacity(4);
         items.push(Item { data, cid, stream });
-        Self { rid, items }
+        Self { rid, items, key_indexes: vec![]}
     }
     #[inline]
     pub fn append(&mut self, other: Response) {
@@ -53,6 +54,16 @@ impl Response {
             response: self,
             idx: 0,
         }
+    }
+
+    #[inline]
+    pub fn append_index(&mut self, index: Vec<usize>) {
+        self.key_indexes.push(index);
+    }
+
+    #[inline]
+    pub fn indexes(&self) -> Vec<Vec<usize>> {
+        self.key_indexes.clone()
     }
 }
 
