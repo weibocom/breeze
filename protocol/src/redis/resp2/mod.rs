@@ -1,6 +1,10 @@
+// mod parser;
+// use parser::RedisRESP;
+
 use crate::redis::Command;
 use crate::{MetaType, Operation, Protocol, Request, Resource, Response};
 use ds::{RingSlice, Slice};
+
 use sharding::Sharding;
 use std::collections::HashMap;
 use std::io::Result;
@@ -10,6 +14,9 @@ pub struct RedisResp2;
 impl Protocol for RedisResp2 {
     fn resource(&self) -> Resource {
         Resource::Redis
+    }
+    fn need_check_master(&self) -> bool {
+        false
     }
     #[inline(always)]
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
@@ -93,9 +100,11 @@ impl Protocol for RedisResp2 {
         debug_assert_eq!(req.keys().len(), 1);
         req.keys().get(0).unwrap().clone()
     }
+    // redis 没有get请求是必须请求master
     fn req_gets(&self, request: &Request) -> bool {
-        let op = self.parse_operation(request);
-        op == Command::Gets
+        // let op = self.parse_operation(request);
+        // op == Command::Gets
+        false
     }
     fn req_cas_or_add(&self, request: &Request) -> bool {
         let op = self.parse_operation(request);

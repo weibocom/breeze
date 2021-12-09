@@ -258,34 +258,14 @@ where
     sharding
 }
 
-// <<<<<<< HEAD
 #[inline]
-fn build_load_balance<S>(
-    // =======
-    // // 对于redis，读写都只请求一层
-    // #[inline]
-    // fn build_get_layers<S, P>(
-    // >>>>>>> redis_conn_manage
-    pools: Vec<(LayerRole, Vec<S>)>,
-) -> Vec<SeqLoadBalance<S>>
-// <<<<<<< HEAD
+fn build_load_balance<S>(pools: Vec<(LayerRole, Vec<S>)>) -> Vec<SeqLoadBalance<S>>
 where
     S: AsyncWriteAll + Addressed,
 {
     let mut load_balance: Vec<SeqLoadBalance<S>> = Vec::with_capacity(pools.len());
     for (role, p) in pools {
         load_balance.push(SeqLoadBalance::from(role.clone(), p))
-
-        // =======
-        // where
-        //     S: AsyncWriteAll + Addressed,
-        //     P: Protocol + Clone,
-        // {
-        //     let mut layers: Vec<AsyncSharding<S, P>> = Vec::with_capacity(pools.len());
-        //     for (r, p) in pools {
-        //         let layer = AsyncSharding::from(r, p, h, distribution, parser.clone());
-        //         layers.push(layer);
-        // >>>>>>> redis_conn_manage
     }
 
     load_balance
