@@ -7,6 +7,18 @@ pub const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 
 use std::sync::Arc;
 
+#[derive(Debug)]
+pub struct Token {
+    // meta postion in multibulk，对于slice里说，pos=meta_pos+meta_len
+    pub meta_pos: usize,
+    // meta len，长度的长度
+    pub meta_len: usize,
+    // token data position，有效信息位置
+    pub pos: usize,
+    // token data len，有效信息的长度
+    pub len: usize,
+}
+
 #[derive(Default, Clone)]
 pub struct Request {
     noreply: bool,
@@ -14,6 +26,7 @@ pub struct Request {
     keys: Vec<Slice>,
     inner: Slice,
     id: RequestId,
+    tokens: Vec<Token>,
 
     // 如果内存是由Request管理的，则将data交由_data，避免copy成本。
     // 如果不是，里面存储的是Vec::EMPTY，这个clone是零开销的，本身不占用内存。
@@ -39,6 +52,7 @@ impl Request {
             _data: Arc::new(data),
             keys: keys,
             op: req.op,
+            tokens: Default::default(),
         }
     }
     // request 自己接管data，构建一个全新的request
@@ -56,6 +70,7 @@ impl Request {
             _data: Arc::new(data),
             keys: keys,
             op: op,
+            tokens: Default::default(),
         }
     }
     #[inline(always)]
@@ -90,6 +105,10 @@ impl Request {
     pub fn last_key(&self) -> &Slice {
         debug_assert!(self.keys.len() > 0);
         unsafe { &self.keys.get_unchecked(self.keys.len() - 1) }
+    }
+    #[inline(always)]
+    pub fn set_tokens(&self, tokens: Vec<Token>) {
+        self.tokens = tokens;
     }
 }
 
