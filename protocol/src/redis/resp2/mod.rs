@@ -21,16 +21,18 @@ impl Protocol for RedisResp2 {
     #[inline(always)]
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
         let split_req = req.split("\r\n".as_ref());
-        let mut split_first_vu8 = Vec::new();
-        split_first_vu8.push(split_req[0].data().to_vec()[1]);
-        let split_count = String::from_utf8(split_first_vu8)
+        let first_line = split_req[0].data().to_vec();
+        let mut first_line_vec = Vec::new();
+        for i in 1..first_line.len() {
+            first_line_vec.push(first_line[i]);
+        }
+        let split_count = String::from_utf8(first_line_vec)
             .unwrap()
             .parse::<usize>()
             .unwrap();
         if split_req.len() < (split_count * 2 + 1) {
             return Ok(None);
         }
-        let mut read = 0 as usize;
         let cmd = String::from_utf8(split_req[2].data().to_vec())
             .unwrap()
             .to_lowercase();
@@ -40,30 +42,12 @@ impl Protocol for RedisResp2 {
                 "set" => Operation::Store,
                 "select" => Operation::Meta,
                 "ping" => Operation::Meta,
+                "mget" => Operation::MGet,
                 _ => Operation::Other,
             }
         };
-        let mut keys: Vec<Slice> = vec![];
 
-        //if cmd.as_str() == "command" {
-        //    return Ok(None);
-        //}
-        //meta命令不一定有key，把命令词放进去
-        if op == Operation::Meta || op == Operation::Other {
-            keys.push(split_req[2].clone());
-        } else {
-            keys.push(split_req[4].clone());
-        }
-
-        read = read + split_req[0].len();
-        for i in 1..split_req.len() {
-            if i >= split_count * 2 + 1 {
-                break;
-            }
-            let single_row = split_req.get(i).unwrap();
-            read = read + 2 + single_row.len();
-        }
-        read = read + 2;
+        let (keys, read) = self.parse_keys_and_length(op, split_count, &split_req);
         unsafe {
             log::debug!(
                 "parsed req: {:?}",
@@ -77,9 +61,56 @@ impl Protocol for RedisResp2 {
         )))
     }
     #[inline]
-    fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
-        // 只有multiget才有分片
-        Vec::new()
+    fn sharding(&self, req: &Request, shard: &Sharding) -> (Vec<(usize, Request)>, Vec<Vec<usize>>) {
+        debug_assert_eq!(req.operation(), Operation::MGet);
+        unsafe {
+            let klen = req.keys().len();
+            let mut keys = Vec::with_capacity(klen);
+            for key in req.keys() {
+                keys.push(key.clone());
+            }
+            debug_assert!(keys.len() > 0);
+
+            let sharded = shard.shardings(keys);
+            if sharded.len() == 1 {
+                let mut ret = Vec::with_capacity(1);
+                let (s_idx, _) = sharded.iter().enumerate().next().expect("only one shard");
+                ret.push((s_idx, req.clone()));
+                let single_shard = sharded.get(0).unwrap();
+                let mut positions = Vec::new();
+                for i in single_shard {
+                    positions.push(i.clone());
+                }
+                return (ret, vec![positions]);
+            }
+            let mut sharded_req = Vec::with_capacity(sharded.len());
+            for (s_idx, indice) in sharded.iter().enumerate() {
+                if indice.is_empty() {
+                    continue;
+                }
+                let mut part_num = 1 as usize;
+                let mut keys: Vec<Slice> = Vec::with_capacity(indice.len() + 1);
+                let mut cmd = Vec::with_capacity(req.len());
+                let cmd_head = String::from("*") + &*(indice.len() + 1).to_string() + "\r\n";
+                cmd.append(&mut Vec::from(cmd_head));
+                cmd.append(&mut Vec::from("$4\r\nmget\r\n"));
+                for idx in indice.iter() {
+                    part_num = part_num + 1;
+                    debug_assert!(*idx < klen);
+                    let single_key = req.keys().get_unchecked(*idx);
+                    let key_offset = cmd.len() + 1;
+                    let item = String::from("$") + &*single_key.len().to_string() + "\r\n" + &*String::from_utf8(single_key.data().to_vec()).unwrap() + "\r\n";
+                    cmd.append(&mut Vec::from(item));
+                    keys.push(Slice::new(
+                        cmd.as_ptr().offset(key_offset as isize) as usize,
+                        single_key.len(),
+                    ));
+                }
+                let new = Request::from_request(cmd, keys, req);
+                sharded_req.push((s_idx, new));
+            }
+            (sharded_req, sharded)
+        }
     }
     #[inline]
     fn with_noreply(&self, req: &[u8]) -> Vec<u8> {
@@ -138,26 +169,89 @@ impl Protocol for RedisResp2 {
     }
 
     #[inline]
-    fn write_response<'a, R, W>(&self, r: R, w: &mut W)
+    fn write_response<'a, R, W>(&self, r: R, w: &mut W, indexes: Vec<Vec<usize>>)
     where
         W: crate::BackwardWrite,
         R: Iterator<Item = &'a Response>,
     {
+        let mut merge_results = !indexes.is_empty();
         let (mut left, _) = r.size_hint();
+        let mut i = 0;
+        let mut results_vec: Vec<Vec<u8>> = vec![];
+        let mut result_vec_max = 0 as usize;
         for response in r {
             left -= 1;
-            if left == 0 {
-                w.write(response);
-                break;
-            }
-            let kl = response.keys().len();
-            if kl > 0 {
-                let index_result = response.as_ref().find_sub(0, "END\r\n".as_ref());
-                if index_result.is_some() {
-                    let index = index_result.unwrap();
-                    w.write(&response.sub_slice(0, index));
+            if !merge_results {
+                if left == 0 {
+                    w.write(response);
+                    break;
                 }
             }
+            else {
+                let response_lines = response.data().split("\r\n".as_ref());
+
+                let first_line = response_lines[0].data().to_vec();
+                let mut first_line_vec = Vec::new();
+                for i in 1..first_line.len() {
+                    first_line_vec.push(first_line[i]);
+                }
+                let split_count = String::from_utf8(first_line_vec)
+                    .unwrap()
+                    .parse::<usize>()
+                    .unwrap();
+                let index = indexes[i].clone();
+                debug_assert_eq!(split_count, index.len());
+                let mut j = 1;
+                let mut items_count = 0;
+                while j < response_lines.len() {
+                    let single_line = response_lines[j].data().to_vec();
+                    let single_line_string = String::from_utf8(single_line.clone()).unwrap();
+                    let my_index = index[items_count];
+                    while result_vec_max <= my_index {
+                        results_vec.push(vec![]);
+                        result_vec_max = result_vec_max + 1;
+                    }
+                    if single_line_string.starts_with("+") ||
+                        single_line_string.starts_with("-") ||
+                        single_line_string.starts_with("*") ||
+                        single_line_string.starts_with(":") ||
+                        single_line_string.starts_with("$-1") {
+                        let single_result = results_vec.get_mut(my_index).unwrap();
+                        single_result.append(&mut single_line.clone());
+                        single_result.append(&mut Vec::from("\r\n"));
+                    }
+                    else {
+                        let mut single_result = results_vec.get_mut(my_index).unwrap();
+                        single_result.append(&mut single_line.clone());
+                        single_result.append(&mut Vec::from("\r\n"));
+                        j = j + 1;
+                        if j < response_lines.len() {
+                            single_result.append(&mut response_lines[j].data().to_vec().clone());
+                            single_result.append(&mut Vec::from("\r\n"));
+                        }
+                    }
+                    j = j + 1;
+                    items_count = items_count + 1;
+
+                }
+                if left == 0 {
+                    let mut total_len = 0 as usize;
+                    for result in &results_vec {
+                        total_len += result.len();
+                    }
+                    let mut response_data = Vec::with_capacity(total_len + 10);
+                    let first_response_line = String::from("*") + &*(results_vec.len()).to_string() + "\r\n";
+                    response_data.append(&mut Vec::from(first_response_line));
+                    for mut result in results_vec {
+                        response_data.append(&mut result);
+                    }
+                    let response_slice = RingSlice::from(response_data.as_ptr(), response_data.len().next_power_of_two(), 0, response_data.len());
+                    let response = Response::from(response_slice, Operation::MGet, vec![]);
+                    w.write(&*response);
+                    break;
+                }
+            }
+            i = i + 1;
         }
     }
 }
@@ -213,5 +307,36 @@ impl RedisResp2 {
                 Command::Unknown
             }
         }
+    }
+
+    fn parse_keys_and_length(&self, op: Operation, item_count: usize, split_req: &Vec<Slice>) -> (Vec<Slice>, usize) {
+        let mut keys = Vec::with_capacity(item_count);
+        let mut has_multi_keys = false;
+
+        if op == Operation::Meta || op == Operation::Other {
+            //meta命令不一定有key，把命令词放进去
+            keys.push(split_req[2].clone());
+        } else if op == Operation::Get || op == Operation::Store{
+            keys.push(split_req[4].clone());
+        }
+        else {
+            has_multi_keys = true;
+        }
+
+        let mut read = 0 as usize;
+        let mut key_pos = 4;
+        for i in 0..split_req.len() {
+            if i >= item_count * 2 + 1 {
+                break;
+            }
+            let single_row = split_req.get(i).unwrap();
+
+            read = read + 2 + single_row.len();
+            if i == key_pos && has_multi_keys {
+                keys.push(single_row.clone());
+                key_pos = key_pos + 2;
+            }
+        }
+        (keys, read)
     }
 }
