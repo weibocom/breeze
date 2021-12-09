@@ -99,7 +99,7 @@ impl Sender {
     where
         P: Protocol,
     {
-        parser.write_response(response.iter(), self);
+        parser.write_response(response.iter(), self, response.indexes());
     }
 }
 
