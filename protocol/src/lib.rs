@@ -27,7 +27,7 @@ pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
     fn parse_request(&self, buf: Slice) -> Result<Option<Request>>;
     // 需要跨分片访问的请求进行分片处理
     // 索引下标是分片id
-    fn sharding(&self, req: &Request, sharding: &Sharding) -> Vec<(usize, Request)>;
+    fn sharding(&self, req: &Request, sharding: &Sharding) -> (Vec<(usize, Request)>, Vec<Vec<usize>>);
     // req是一个完整的store类型的请求；
     // 当前协议支持noreply
     // 当前req不是noreply
@@ -55,7 +55,7 @@ pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
     fn filter_by_key<'a, R>(&self, req: &Request, resp: R) -> Option<Request>
     where
         R: Iterator<Item = &'a Response>;
-    fn write_response<'a, R, W>(&self, r: R, w: &mut W)
+    fn write_response<'a, R, W>(&self, r: R, w: &mut W, indexes: Vec<Vec<usize>>)
     where
         W: BackwardWrite,
         R: Iterator<Item = &'a Response>;
