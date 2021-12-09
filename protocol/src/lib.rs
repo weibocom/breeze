@@ -24,6 +24,7 @@ pub const MAX_SENT_BUFFER_SIZE: usize = 1024 * 1024;
 #[enum_dispatch]
 pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
     fn resource(&self) -> Resource;
+    fn need_check_master(&self) -> bool;
     fn parse_request(&self, buf: Slice) -> Result<Option<Request>>;
     // 需要跨分片访问的请求进行分片处理
     // 索引下标是分片id

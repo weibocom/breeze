@@ -21,6 +21,9 @@ impl Protocol for MemcacheBinary {
     fn resource(&self) -> crate::Resource {
         crate::Resource::Memcache
     }
+    fn need_check_master(&self) -> bool {
+        return true;
+    }
     // 当前请求必须不是noreply的
     #[inline]
     fn with_noreply(&self, req: &[u8]) -> Vec<u8> {

@@ -37,16 +37,20 @@ where
             do_writeback = true;
         }
         let mut master_idx = 0;
-        for layer in layers.iter() {
-            if layer.is_master() {
-                break;
+        // 只有协议有必须请求master的cmd，才查master idx
+        if p.need_check_master() {
+            for layer in layers.iter() {
+                if layer.is_master() {
+                    break;
+                }
+                master_idx += 1;
             }
-            master_idx += 1;
+            if master_idx >= layers.len() {
+                master_idx = 0;
+                log::error!("not found master idx: {:?}", layers.addr());
+            }
         }
-        if master_idx >= layers.len() {
-            master_idx = 0;
-            log::error!("not found master idx: {:?}", layers.addr());
-        }
+
         Self {
             idx: 0,
             layers,
@@ -66,8 +70,8 @@ where
     #[inline]
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
         // 目前只有gets，还有其他的，再考虑更统一的方案 fishermen
-        // 对于gets，需要特殊处理：只请求master
-        if !self.is_gets {
+        // 对于mc的gets，需要特殊处理：只请求master
+        if self.parser.need_check_master() && !self.is_gets {
             self.is_gets = self.parser.req_gets(&self.request);
             if self.is_gets {
                 self.idx = self.master_idx;
