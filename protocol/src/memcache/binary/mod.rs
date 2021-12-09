@@ -52,7 +52,7 @@ impl Protocol for MemcacheBinary {
         }
     }
     #[inline]
-    fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
+    fn sharding(&self, req: &Request, shard: &Sharding) -> (Vec<(usize, Request)>, Vec<Vec<usize>>) {
         // 只有multiget才有分片
         // debug_assert_eq!(req.operation(), Operation::MGet);
         unsafe {
@@ -94,7 +94,7 @@ impl Protocol for MemcacheBinary {
                     sharded_req.push((s_idx, new));
                 }
             }
-            sharded_req
+            (sharded_req, sharded)
         }
     }
 
@@ -285,7 +285,7 @@ impl Protocol for MemcacheBinary {
     // 如果是noop请求，需要将前n-1个response中的noop给truncate掉。
     // 如果是getkq + getk。则需要将前n-1个请求最后一个getk请求，变更为getkq
     #[inline]
-    fn write_response<'a, R, W>(&self, r: R, w: &mut W)
+    fn write_response<'a, R, W>(&self, r: R, w: &mut W, indexes: Vec<Vec<usize>>)
     where
         W: crate::BackwardWrite,
         R: Iterator<Item = &'a Response>,
