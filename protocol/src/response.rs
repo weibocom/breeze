@@ -25,6 +25,10 @@ impl Response {
         debug_assert!(self.keys.len() > 0);
         unsafe { &self.keys.get_unchecked(self.keys.len() - 1) }
     }
+    #[inline]
+    pub fn data(&self) -> &RingSlice {
+        &self.inner
+    }
 }
 impl AsRef<RingSlice> for Response {
     #[inline(always)]
