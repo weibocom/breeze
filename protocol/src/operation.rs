@@ -7,6 +7,7 @@ pub enum Operation {
     MGet,
     Store,
     Meta,
+    Quit,
     Other,
 }
 
