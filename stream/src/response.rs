@@ -26,7 +26,25 @@ impl Response {
     ) -> Self {
         let mut items = Vec::with_capacity(4);
         items.push(Item { data, cid, stream });
-        Self { rid, items, key_indexes: vec![]}
+        Self {
+            rid,
+            items,
+            key_indexes: vec![],
+        }
+    }
+    // TODO: just for quit test fishermen
+    pub fn with_quit(rid: RequestId, cid: usize) -> Self {
+        Response::from(
+            rid,
+            protocol::Response::with_quit(),
+            cid,
+            Arc::new(MpmcStream::with_capacity(
+                1,
+                "test",
+                "test",
+                protocol::Resource::Redis,
+            )),
+        )
     }
     #[inline]
     pub fn append(&mut self, other: Response) {
