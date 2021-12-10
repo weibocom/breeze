@@ -61,7 +61,11 @@ impl Protocol for RedisResp2 {
         )))
     }
     #[inline]
-    fn sharding(&self, req: &Request, shard: &Sharding) -> (Vec<(usize, Request)>, Vec<Vec<usize>>) {
+    fn sharding(
+        &self,
+        req: &Request,
+        shard: &Sharding,
+    ) -> (Vec<(usize, Request)>, Vec<Vec<usize>>) {
         debug_assert_eq!(req.operation(), Operation::MGet);
         unsafe {
             let klen = req.keys().len();
@@ -99,7 +103,11 @@ impl Protocol for RedisResp2 {
                     debug_assert!(*idx < klen);
                     let single_key = req.keys().get_unchecked(*idx);
                     let key_offset = cmd.len() + 1;
-                    let item = String::from("$") + &*single_key.len().to_string() + "\r\n" + &*String::from_utf8(single_key.data().to_vec()).unwrap() + "\r\n";
+                    let item = String::from("$")
+                        + &*single_key.len().to_string()
+                        + "\r\n"
+                        + &*String::from_utf8(single_key.data().to_vec()).unwrap()
+                        + "\r\n";
                     cmd.append(&mut Vec::from(item));
                     keys.push(Slice::new(
                         cmd.as_ptr().offset(key_offset as isize) as usize,
@@ -138,8 +146,9 @@ impl Protocol for RedisResp2 {
         false
     }
     fn req_cas_or_add(&self, request: &Request) -> bool {
-        let op = self.parse_operation(request);
-        op == Command::Cas || op == Command::Add
+        // let op = self.parse_operation(request);
+        // op == Command::Cas || op == Command::Add
+        false
     }
     #[inline]
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
@@ -186,8 +195,7 @@ impl Protocol for RedisResp2 {
                     w.write(response);
                     break;
                 }
-            }
-            else {
+            } else {
                 let response_lines = response.data().split("\r\n".as_ref());
 
                 let first_line = response_lines[0].data().to_vec();
@@ -211,16 +219,16 @@ impl Protocol for RedisResp2 {
                         results_vec.push(vec![]);
                         result_vec_max = result_vec_max + 1;
                     }
-                    if single_line_string.starts_with("+") ||
-                        single_line_string.starts_with("-") ||
-                        single_line_string.starts_with("*") ||
-                        single_line_string.starts_with(":") ||
-                        single_line_string.starts_with("$-1") {
+                    if single_line_string.starts_with("+")
+                        || single_line_string.starts_with("-")
+                        || single_line_string.starts_with("*")
+                        || single_line_string.starts_with(":")
+                        || single_line_string.starts_with("$-1")
+                    {
                         let single_result = results_vec.get_mut(my_index).unwrap();
                         single_result.append(&mut single_line.clone());
                         single_result.append(&mut Vec::from("\r\n"));
-                    }
-                    else {
+                    } else {
                         let mut single_result = results_vec.get_mut(my_index).unwrap();
                         single_result.append(&mut single_line.clone());
                         single_result.append(&mut Vec::from("\r\n"));
@@ -232,7 +240,6 @@ impl Protocol for RedisResp2 {
                     }
                     j = j + 1;
                     items_count = items_count + 1;
-
                 }
                 if left == 0 {
                     let mut total_len = 0 as usize;
@@ -240,12 +247,18 @@ impl Protocol for RedisResp2 {
                         total_len += result.len();
                     }
                     let mut response_data = Vec::with_capacity(total_len + 10);
-                    let first_response_line = String::from("*") + &*(results_vec.len()).to_string() + "\r\n";
+                    let first_response_line =
+                        String::from("*") + &*(results_vec.len()).to_string() + "\r\n";
                     response_data.append(&mut Vec::from(first_response_line));
                     for mut result in results_vec {
                         response_data.append(&mut result);
                     }
-                    let response_slice = RingSlice::from(response_data.as_ptr(), response_data.len().next_power_of_two(), 0, response_data.len());
+                    let response_slice = RingSlice::from(
+                        response_data.as_ptr(),
+                        response_data.len().next_power_of_two(),
+                        0,
+                        response_data.len(),
+                    );
                     let response = Response::from(response_slice, Operation::MGet, vec![]);
                     w.write(&*response);
                     break;
@@ -309,17 +322,21 @@ impl RedisResp2 {
         }
     }
 
-    fn parse_keys_and_length(&self, op: Operation, item_count: usize, split_req: &Vec<Slice>) -> (Vec<Slice>, usize) {
+    fn parse_keys_and_length(
+        &self,
+        op: Operation,
+        item_count: usize,
+        split_req: &Vec<Slice>,
+    ) -> (Vec<Slice>, usize) {
         let mut keys = Vec::with_capacity(item_count);
         let mut has_multi_keys = false;
 
         if op == Operation::Meta || op == Operation::Other {
             //meta命令不一定有key，把命令词放进去
             keys.push(split_req[2].clone());
-        } else if op == Operation::Get || op == Operation::Store{
+        } else if op == Operation::Get || op == Operation::Store {
             keys.push(split_req[4].clone());
-        }
-        else {
+        } else {
             has_multi_keys = true;
         }
 
