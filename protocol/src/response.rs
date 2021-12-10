@@ -8,6 +8,8 @@ pub struct Response {
     keys: Vec<RingSlice>,
 }
 
+static QUIT: &str = "+OK\r\n";
+
 impl Response {
     #[inline]
     pub fn from(data: RingSlice, _op: Operation, keys: Vec<RingSlice>) -> Self {
@@ -15,6 +17,12 @@ impl Response {
             inner: data,
             keys: keys,
         }
+    }
+    // TODO：这个后续放在Protocol，暂时加这里for test fishermen
+    pub fn with_quit() -> Self {
+        let data_slice = RingSlice::from(QUIT.as_ptr(), QUIT.len(), 0, QUIT.len());
+        let keys = vec![data_slice.clone()];
+        Response::from(data_slice, Operation::Quit, keys)
     }
     #[inline]
     pub fn keys(&self) -> &[RingSlice] {

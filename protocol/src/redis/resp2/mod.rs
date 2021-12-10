@@ -20,6 +20,7 @@ impl Protocol for RedisResp2 {
     }
     #[inline(always)]
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
+        log::debug!("recv redis:{}", String::from_utf8_lossy(req.data()));
         let split_req = req.split("\r\n".as_ref());
         let first_line = split_req[0].data().to_vec();
         let mut first_line_vec = Vec::new();
@@ -43,6 +44,7 @@ impl Protocol for RedisResp2 {
                 "select" => Operation::Meta,
                 "ping" => Operation::Meta,
                 "mget" => Operation::MGet,
+                "quit" => Operation::Quit,
                 _ => Operation::Other,
             }
         };
