@@ -26,7 +26,8 @@ pub struct Request {
     keys: Vec<Slice>,
     inner: Slice,
     id: RequestId,
-    tokens: Vec<Token>,
+    //tokens: Vec<Token>,
+    tokens: Vec<String>,
 
     // 如果内存是由Request管理的，则将data交由_data，避免copy成本。
     // 如果不是，里面存储的是Vec::EMPTY，这个clone是零开销的，本身不占用内存。
@@ -107,7 +108,7 @@ impl Request {
         unsafe { &self.keys.get_unchecked(self.keys.len() - 1) }
     }
     #[inline(always)]
-    pub fn set_tokens(&self, tokens: Vec<Token>) {
+    pub fn set_tokens(&mut self, tokens: Vec<String>) {
         self.tokens = tokens;
     }
 }

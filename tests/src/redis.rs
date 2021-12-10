@@ -14,7 +14,8 @@ mod redis_test {
         }
         let client = client_rs.unwrap();
         let mut conn = client.get_connection().unwrap();
-        let key = "4711424389024351.repost";
+        // let key = "4711424389024351.repost";
+        let key = "4644340120948897";
 
         match conn.get::<String, String>(key.to_string()) {
             Ok(v) => println!("get/{}, value: {}", key, v),
