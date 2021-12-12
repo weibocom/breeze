@@ -20,7 +20,8 @@ impl Response {
     }
     // TODO：这个后续放在Protocol，暂时加这里for test fishermen
     pub fn with_quit() -> Self {
-        let data_slice = RingSlice::from(QUIT.as_ptr(), QUIT.len(), 0, QUIT.len());
+        let data_slice =
+            RingSlice::from(QUIT.as_ptr(), QUIT.len().next_power_of_two(), 0, QUIT.len());
         let keys = vec![data_slice.clone()];
         Response::from(data_slice, Operation::Quit, keys)
     }
