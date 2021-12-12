@@ -1,5 +1,5 @@
-// mod parser;
-// use parser::RedisRESP;
+mod parser;
+use parser::RedisRESP;
 
 use crate::redis::Command;
 use crate::{MetaType, Operation, Protocol, Request, Resource, Response};
@@ -20,7 +20,6 @@ impl Protocol for RedisResp2 {
     }
     #[inline(always)]
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
-        log::debug!("recv redis:{}", String::from_utf8_lossy(req.data()));
         let split_req = req.split("\r\n".as_ref());
         let first_line = split_req[0].data().to_vec();
         let mut first_line_vec = Vec::new();
