@@ -50,8 +50,12 @@ where
         let me = &mut *self;
         // 对于quit指令，不转发，直接返回
         if buf.operation() == Operation::Quit {
-            let msg = String::from_utf8_lossy(buf.data());
-            log::warn!("found quit protocol:{}", msg);
+            unsafe {
+                log::debug!(
+                    "found quit req: {:?}",
+                    String::from_utf8_unchecked(buf.to_vec())
+                );
+            }
             self.quit_req = Some(buf.clone());
             return Poll::Ready(Ok(()));
         }

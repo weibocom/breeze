@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 use std::time::Instant;
 
 use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, LayerRoleAble, Response};
-use protocol::{Operation, Protocol, Request};
+use protocol::{Operation, Protocol, Request, Resource};
 
 use futures::ready;
 
