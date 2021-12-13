@@ -311,6 +311,39 @@ impl Protocol for RedisResp2 {
             i = i + 1;
         }
     }
+
+    //redis的meta命令直接返回
+    #[inline(always)]
+    fn is_direct_response(&self, request: &Request) -> bool {
+        request.operation() == Operation::Meta
+    }
+
+    #[inline]
+    fn write_direct_response<'a, W>(&self, request: &Request, w: &mut W)
+        where
+            W: crate::BackwardWrite,
+    {
+        let split_req = request.split("\r\n".as_ref());
+        let cmd = String::from_utf8(split_req[2].data().to_vec())
+            .unwrap()
+            .to_lowercase();
+        let mut response_data = Vec::new();
+        match cmd.as_str() {
+            "select" => {
+                response_data = Vec::from("+OK\r\n");
+            }
+            "ping" => {
+                response_data = Vec::from("+PONG\r\n");
+            }
+            _ => {
+                response_data = Vec::from("-UNKNOWN COMMAND\r\n");
+            }
+        }
+        let response_slice = RingSlice::from(response_data.as_ptr(), response_data.len().next_power_of_two(), 0, response_data.len());
+        let response = Response::from(response_slice, Operation::Meta, vec![]);
+        w.write(&*response);
+    }
+
 }
 
 impl RedisResp2 {
