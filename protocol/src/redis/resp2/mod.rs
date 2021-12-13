@@ -1,6 +1,3 @@
-// mod parser;
-// use parser::RedisRESP;
-
 use crate::redis::Command;
 use crate::{MetaType, Operation, Protocol, Request, Resource, Response};
 use ds::{RingSlice, Slice};
@@ -154,7 +151,63 @@ impl Protocol for RedisResp2 {
     #[inline]
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
         let mut keys = vec![];
-        Some(Response::from(response.clone(), Operation::Other, keys))
+        let mut data = response.clone();
+        let mut end_with_cr_lf = response.data().ends_with(&*Vec::from("\r\n"));
+        let response_lines = response.split("\r\n".as_ref());
+        if response_lines.len() == 1 && !end_with_cr_lf {
+            return None;
+        }
+        let first_line = String::from_utf8(response_lines[0].data()).unwrap();
+        if RedisResp2::is_single_line(first_line.clone()) {
+            data = response.sub_slice(0, response_lines[0].len() + 2);
+        } else if RedisResp2::is_bulk_string(first_line.clone()) {
+            if (response_lines.len() == 2 && end_with_cr_lf) || response_lines.len() > 2 {
+                let len = response_lines[0].len() + 2 + response_lines[1].len() + 2;
+                data = response.sub_slice(0, len);
+            } else {
+                return None;
+            }
+        } else if RedisResp2::is_array(first_line.clone()) {
+            let mut len = 0 as usize;
+            let element_count = RedisResp2::get_array_element_count(first_line.clone());
+            let mut parsed_element_count = 0 as usize;
+            let mut array_parsed = false;
+            let mut is_first_line = true;
+            let mut hold_element_count = false;
+            let mut line_count = 0 as usize;
+            let total_count = response_lines.len();
+            for response_line in response_lines {
+                line_count += 1;
+                if line_count >= total_count && !end_with_cr_lf {
+                    break;
+                }
+                if is_first_line {
+                    len = len + response_line.len() + 2;
+                    is_first_line = false;
+                    continue;
+                }
+                len = len + response_line.len() + 2;
+                if !hold_element_count {
+                    parsed_element_count += 1;
+                } else {
+                    hold_element_count = false;
+                }
+                if RedisResp2::is_bulk_string(String::from_utf8(response_line.data()).unwrap()) {
+                    hold_element_count = true;
+                    continue;
+                }
+                if parsed_element_count >= element_count {
+                    array_parsed = true;
+                    break;
+                }
+            }
+            if array_parsed {
+                data = response.sub_slice(0, len);
+            } else {
+                return None;
+            }
+        }
+        Some(Response::from(data, Operation::Other, keys))
     }
 
     fn convert_to_writeback_request(
@@ -199,15 +252,8 @@ impl Protocol for RedisResp2 {
             } else {
                 let response_lines = response.data().split("\r\n".as_ref());
 
-                let first_line = response_lines[0].data().to_vec();
-                let mut first_line_vec = Vec::new();
-                for i in 1..first_line.len() {
-                    first_line_vec.push(first_line[i]);
-                }
-                let split_count = String::from_utf8(first_line_vec)
-                    .unwrap()
-                    .parse::<usize>()
-                    .unwrap();
+                let first_line = String::from_utf8(response_lines[0].data().to_vec()).unwrap();
+                let split_count = RedisResp2::get_array_element_count(first_line);
                 let index = indexes[i].clone();
                 debug_assert_eq!(split_count, index.len());
                 let mut j = 1;
@@ -220,11 +266,8 @@ impl Protocol for RedisResp2 {
                         results_vec.push(vec![]);
                         result_vec_max = result_vec_max + 1;
                     }
-                    if single_line_string.starts_with("+")
-                        || single_line_string.starts_with("-")
-                        || single_line_string.starts_with("*")
-                        || single_line_string.starts_with(":")
-                        || single_line_string.starts_with("$-1")
+                    if RedisResp2::is_single_line(single_line_string.clone())
+                        || RedisResp2::is_array(single_line_string.clone())
                     {
                         let single_result = results_vec.get_mut(my_index).unwrap();
                         single_result.append(&mut single_line.clone());
@@ -356,5 +399,33 @@ impl RedisResp2 {
             }
         }
         (keys, read)
+    }
+
+    fn is_single_line(line: String) -> bool {
+        line.starts_with("+")
+            || line.starts_with("-")
+            || line.starts_with(":")
+            || line.starts_with("$-1")
+    }
+
+    fn is_bulk_string(line: String) -> bool {
+        line.starts_with("$") && !line.starts_with("$-1")
+    }
+
+    fn is_array(line: String) -> bool {
+        line.starts_with("*")
+    }
+
+    fn get_array_element_count(line: String) -> usize {
+        let line_vec = Vec::from(line);
+        let mut first_line_vec = Vec::new();
+        for i in 1..line_vec.len() {
+            first_line_vec.push(line_vec[i]);
+        }
+        let split_count = String::from_utf8(first_line_vec)
+            .unwrap()
+            .parse::<usize>()
+            .unwrap();
+        split_count
     }
 }
