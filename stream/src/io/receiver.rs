@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -37,6 +38,7 @@ impl Receiver {
         parser: &P,
         rid: &RequestId,
         metric: &mut IoMetric,
+        direct_response_queue: &mut VecDeque<Request>,
     ) -> Poll<Result<()>>
     where
         R: AsyncRead + ?Sized,
@@ -85,7 +87,12 @@ impl Receiver {
                     String::from_utf8_unchecked(req.data().to_vec())
                 );
             }
-            ready!(writer.as_mut().poll_write(cx, &req))?;
+            if parser.is_direct_response(req) {
+                direct_response_queue.push_back(req.clone());
+            }
+            else {
+                ready!(writer.as_mut().poll_write(cx, &req))?;
+            }
             self.buff.advance_read(req.len());
         }
         // 把read重置为0.避免ringbuffer形成ring。
