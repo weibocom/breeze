@@ -154,20 +154,16 @@ impl Protocol for RedisResp2 {
         let mut data = response.clone();
         let response_lines = response.split("\r\n".as_ref());
         let first_line = String::from_utf8(response_lines[0].data()).unwrap();
-        if RedisResp2::is_single_line(first_line.clone())
-        {
+        if RedisResp2::is_single_line(first_line.clone()) {
             data = response.sub_slice(0, response_lines[0].len() + 2);
-        }
-        else if RedisResp2::is_bulk_string(first_line.clone()) {
+        } else if RedisResp2::is_bulk_string(first_line.clone()) {
             if response_lines.len() > 1 {
                 let len = response_lines[0].len() + 2 + response_lines[1].len() + 2;
                 data = response.sub_slice(0, len);
-            }
-            else {
+            } else {
                 return None;
             }
-        }
-        else if RedisResp2::is_array(first_line.clone()) {
+        } else if RedisResp2::is_array(first_line.clone()) {
             let mut len = 0 as usize;
             let element_count = RedisResp2::get_array_element_count(first_line.clone());
             let mut parsed_element_count = 0 as usize;
@@ -175,27 +171,29 @@ impl Protocol for RedisResp2 {
             let mut is_first_line = true;
             let mut hold_element_count = false;
             for response_line in response_lines {
-                if parsed_element_count >= element_count {
-                    array_parsed = true;
-                    break;
-                }
                 if is_first_line {
                     len = len + response_line.len() + 2;
                     is_first_line = false;
                     continue;
                 }
+                len = len + response_line.len() + 2;
                 if !hold_element_count {
                     parsed_element_count += 1;
+                } else {
+                    hold_element_count = false;
                 }
                 if RedisResp2::is_bulk_string(String::from_utf8(response_line.data()).unwrap()) {
                     hold_element_count = true;
+                    continue;
                 }
-                len = len + response_line.len() + 2;
+                if parsed_element_count >= element_count {
+                    array_parsed = true;
+                    break;
+                }
             }
             if array_parsed {
                 data = response.sub_slice(0, len);
-            }
-            else {
+            } else {
                 return None;
             }
         }
@@ -405,7 +403,7 @@ impl RedisResp2 {
     }
 
     fn is_array(line: String) -> bool {
-            line.starts_with("*")
+        line.starts_with("*")
     }
 
     fn get_array_element_count(line: String) -> usize {
