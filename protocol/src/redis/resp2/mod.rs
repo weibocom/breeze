@@ -1,5 +1,5 @@
-mod parser;
-use parser::RedisRESP;
+// mod parser;
+// use parser::RedisRESP;
 
 use crate::redis::Command;
 use crate::{MetaType, Operation, Protocol, Request, Resource, Response};
