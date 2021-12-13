@@ -69,6 +69,12 @@ pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
     fn convert(&self, _response: &Response, _noreply: bool) -> Option<Request> {
         todo!("convert not supported");
     }
+
+    fn is_direct_response(&self, request: &Request) -> bool;
+
+    fn write_direct_response<'a, W>(&self, request: &Request, w: &mut W)
+        where
+            W: BackwardWrite;
 }
 #[enum_dispatch(Protocol)]
 #[derive(Clone)]

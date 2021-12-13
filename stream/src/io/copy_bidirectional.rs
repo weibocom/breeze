@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
@@ -8,7 +9,7 @@ use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use super::{ConnectStatus, IoMetric, Monitor, Receiver, Sender};
-use crate::{AsyncReadAll, AsyncWriteAll};
+use crate::{AsyncReadAll, AsyncWriteAll, Request};
 use discovery::TopologyTicker;
 use protocol::{Protocol, RequestId};
 
@@ -81,6 +82,7 @@ where
         } = &mut *self;
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
+        let mut direct_response_queue: VecDeque<Request> = VecDeque::new();
         loop {
             metric.enter();
             if !*sent {
@@ -91,6 +93,7 @@ where
                     parser,
                     rid,
                     metric,
+                    &mut direct_response_queue,
                 ))?;
                 if metric.req_bytes == 0 {
                     log::debug!("eof:no bytes received {}", rid);
@@ -99,7 +102,15 @@ where
                 *sent = true;
                 log::debug!("req sent.{} {}", metric.req_bytes, rid);
             }
-            ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser, rid, metric))?;
+            ready!(sender.poll_copy_one(
+                cx,
+                agent.as_mut(),
+                client.as_mut(),
+                parser,
+                rid,
+                metric,
+                &mut direct_response_queue,
+            ))?;
             metric.response_done();
             log::debug!("resp sent {} {}", metric.resp_bytes, *rid);
             *sent = false;
