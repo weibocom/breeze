@@ -152,12 +152,16 @@ impl Protocol for RedisResp2 {
     fn parse_response(&self, response: &RingSlice) -> Option<Response> {
         let mut keys = vec![];
         let mut data = response.clone();
+        let mut end_with_cr_lf = response.data().ends_with(&*Vec::from("\r\n"));
         let response_lines = response.split("\r\n".as_ref());
+        if response_lines.len() == 1 && !end_with_cr_lf {
+            return None;
+        }
         let first_line = String::from_utf8(response_lines[0].data()).unwrap();
         if RedisResp2::is_single_line(first_line.clone()) {
             data = response.sub_slice(0, response_lines[0].len() + 2);
         } else if RedisResp2::is_bulk_string(first_line.clone()) {
-            if response_lines.len() > 1 {
+            if (response_lines.len() == 2 && end_with_cr_lf) || response_lines.len() > 2 {
                 let len = response_lines[0].len() + 2 + response_lines[1].len() + 2;
                 data = response.sub_slice(0, len);
             } else {
@@ -170,7 +174,13 @@ impl Protocol for RedisResp2 {
             let mut array_parsed = false;
             let mut is_first_line = true;
             let mut hold_element_count = false;
+            let mut line_count = 0 as usize;
+            let total_count = response_lines.len();
             for response_line in response_lines {
+                line_count += 1;
+                if line_count >= total_count && !end_with_cr_lf {
+                    break;
+                }
                 if is_first_line {
                     len = len + response_line.len() + 2;
                     is_first_line = false;
