@@ -326,6 +326,17 @@ impl Protocol for MemcacheBinary {
             }
         }
     }
+
+    //memcached暂时没有直接返回的请求
+    fn is_direct_response(&self, _request: &Request) -> bool {
+        false
+    }
+
+    #[inline]
+    fn write_direct_response<'a, W>(&self, _request: &Request, _w: &mut W)
+        where
+            W: crate::BackwardWrite,
+    {}
 }
 
 impl MemcacheBinary {
