@@ -1,8 +1,9 @@
 extern crate json;
-
 use async_recursion::async_recursion;
+use merge_yaml_hash::MergeYamlHash;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use url::Url;
 #[derive(Clone)]
@@ -13,8 +14,9 @@ pub struct Vintage {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct RNode {
-    index: String,
+    name: String,
     data: String,
+    index: String,
     children: Vec<RChildren>,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -33,8 +35,8 @@ struct RResponse {
     node: RNode,
 }
 impl RResponse {
-    fn rd_into(self) -> (String, String, Vec<RChildren>) {
-        (self.node.index, self.node.data, self.node.children)
+    fn rd_into(self) -> (String, String, String) {
+        (self.node.name, self.node.index, self.node.data)
     }
 }
 
@@ -54,6 +56,21 @@ impl Response {
     fn into(self) -> (String, String) {
         (self.node.index, self.node.data)
     }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct Redisyaml {
+    //basic: HashMap<String, String>,
+    basic: HashMap<String, String>,
+    backends: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct Basic {
+    access_mod: String,
+    hash: String,
+    distribution: String,
+    listen: String,
+    resource_type: String,
 }
 
 impl Vintage {
@@ -107,24 +124,14 @@ impl Vintage {
         }
     }
 
-    async fn finddata(&self, end_url: String, index: String) -> std::io::Result<String> {
-        let resp = self
-            .client
-            .get(end_url)
-            .query(&[("children", "true")])
-            .send()
-            .await
-            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-        let resp: Response = resp
-            .json()
-            .await
-            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-        let (t_index, data) = resp.into();
-        Ok(data)
-    }
-
     #[async_recursion]
-    async fn recursion(&self, url: String, index: String) -> std::io::Result<String> {
+    async fn recursion(
+        &self,
+        mut url: String,
+        index: String,
+        mut map: HashMap<String, String>,
+    ) -> std::io::Result<HashMap<String, String>> {
+        // ) -> std::io::Result<String> {
         let mut end_url = Url::parse(&url).unwrap();
         let http_resp = self
             .client
@@ -137,23 +144,23 @@ impl Vintage {
             .json()
             .await
             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-        let (t_index, mut data, children) = uresp.clone().rd_into();
-        let mut sdata = String::new();
-        for child in children.iter() {
-            let end_child = child;
-            let end_data = &end_child.data;
-            let end_name = &end_child.name;
+        let (mut t_name, index, mut t_data) = uresp.clone().rd_into();
+        let mut vec: Vec<String> = vec![];
+        for child in uresp.node.children.iter() {
+            t_name = child.name.clone();
+            t_data = child.data.clone();
             let mut end_url = url.clone();
             end_url.push_str("/");
-            end_url.push_str(&end_name);
-            if end_data.is_empty() {
-                sdata.push_str(&self.recursion(end_url, index.clone()).await?);
+            end_url.push_str(&t_name);
+            if t_data.is_empty() {
+                map = self
+                    .recursion(end_url.clone(), index.clone(), map.clone())
+                    .await?;
             } else {
-                sdata.push_str("\n");
-                sdata.push_str(&self.finddata(end_url, index.clone()).await?);
+                map.insert(end_url.clone(), t_data.clone());
             }
         }
-        Ok(sdata)
+        Ok(map)
     }
     async fn rdlookup<C>(&self, uname: String, index: String) -> std::io::Result<Config<C>>
     where
@@ -179,15 +186,59 @@ impl Vintage {
                     .json()
                     .await
                     .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-                let (t_index, mut data, children) = uresp.clone().rd_into();
+                let (t_name, t_index, mut data) = uresp.clone().rd_into();
                 if uresp.message != "ok" {
                     Err(Error::new(ErrorKind::Other, uresp.message))
                 } else {
                     if t_index == index {
                         Ok(Config::NotChanged)
                     } else {
-                        data = self.recursion(f_url, t_index.clone()).await?;
+                        let mut map = HashMap::new();
+                        let mut map1 = HashMap::new();
+                        map = self.recursion(f_url, t_index.clone(), map).await?;
+                        let mut value1 = String::new();
+                        let mut value2 = String::new();
+                        let mut value3 = String::new();
+                        for (key, val) in &map {
+                            if key.contains("shard0") {
+                                // println!("map{:?}", map);
+                                // value1 = map.iter().collect();
+                                //vec.push(map.clone().into_values().collect());
+                                value1.push_str(val);
+                            } else if key.contains("shard1") {
+                                value2.push_str(val);
+                            } else if key.contains("shard2") {
+                                value3.push_str(val);
+                            } else {
+                                let len = key.rfind('/').unwrap_or(0);
+                                let name = key.clone().split_off(len + 1);
+                                map1.insert(name, val.to_string());
+                            }
+                        }
+
+                        let arr = vec![value1, value2, value3];
+                        //println!("map is {:?}", map);
+
+                        let yaml: Redisyaml = Redisyaml {
+                            basic: map1,
+                            backends: arr,
+                        };
+                        match serde_yaml::to_string::<Redisyaml>(&yaml.clone()) {
+                            Err(e) => {
+                                println!("parse to yaml cfg failed:{:?}", e);
+                                return Err(Error::new(ErrorKind::AddrNotAvailable, e));
+                            }
+                            Ok(to_yaml) => {
+                                data = to_yaml;
+                                //sdata.push_str(&to_yaml.clone());
+                            }
+                        };
+                        //data.remove(0);
+                        //data.remove(1);
+                        // data.remove(2);
+                        //  println!("最终的sdata\n{}", data);
                         log::info!(" from {} to {} len:{}", index, t_index, data.len());
+                        //Ok(Config::NotChanged)
                         Ok(Config::Config(t_index, C::from(data)))
                     }
                 }
@@ -216,14 +267,8 @@ impl super::Discover for Vintage {
         C: Unpin + Send + From<String>,
     {
         match kindof_database {
-            "mc" => {
-                println!("mcccccccccccccc");
-                self.lookup(name, sig).await
-            }
-            "redis" => {
-                println!("redisssssssssss");
-                self.rdlookup(name.to_owned(), sig.to_owned()).await
-            }
+            "mc" => self.lookup(name, sig).await,
+            "redis" => self.rdlookup(name.to_owned(), sig.to_owned()).await,
             _ => {
                 let msg = format!("not a valid vintage database");
                 return Err(Error::new(ErrorKind::Other, msg));
