@@ -100,7 +100,7 @@ where
                     break;
                 }
                 *sent = true;
-                log::debug!("req sent.{} {}", metric.req_bytes, rid);
+                log::info!("req sent.{} {}", metric.req_bytes, rid);
             }
             ready!(sender.poll_copy_one(
                 cx,
@@ -112,12 +112,12 @@ where
                 &mut direct_response_queue,
             ))?;
             metric.response_done();
-            log::debug!("resp sent {} {}", metric.resp_bytes, *rid);
+            log::info!("resp sent {} {}", metric.resp_bytes, *rid);
             *sent = false;
             rid.incr();
             // 开始记录metric
             let duration = metric.duration();
-            const SLOW: Duration = Duration::from_millis(1);
+            const SLOW: Duration = Duration::from_millis(0);
             if duration >= SLOW {
                 log::info!("slow request: {}", metric);
             }
