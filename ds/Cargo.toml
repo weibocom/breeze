@@ -7,6 +7,8 @@ edition = "2018"
 
 [dependencies]
 #log = { path = "../log" }
+tokio = {version = "1.12.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
+mimalloc = { version = "*", default-features = false }
 
 byteorder = "1.4.3"
 rand = "0.8.4"
@@ -15,7 +17,10 @@ log = "0.4.14"
 crossbeam-queue = "0.3.2"
 cfg-if = "1"
 
+#dns resolver
+trust-dns-resolver = "0.20.0"
+#trust-dns = "0.20.0"
+
 [features]
 default = ["single-thread"]
 single-thread = []
-

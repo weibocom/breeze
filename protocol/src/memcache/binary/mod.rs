@@ -18,6 +18,9 @@ use ds::Buffer;
 #[derive(Clone)]
 pub struct MemcacheBinary;
 impl Protocol for MemcacheBinary {
+    fn resource(&self) -> crate::Resource {
+        crate::Resource::Memcache
+    }
     // 当前请求必须不是noreply的
     #[inline]
     fn with_noreply(&self, req: &[u8]) -> Vec<u8> {

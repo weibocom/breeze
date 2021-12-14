@@ -1,3 +1,5 @@
+use crate::resource;
+
 // 定期更新discovery.
 use super::{Discover, ServiceId, TopologyWrite};
 use crossbeam_channel::Receiver;
@@ -54,6 +56,7 @@ where
                 if services.contains_key(t.name()) {
                     log::error!("service duplicatedly registered:{}", t.name());
                 } else {
+                    //t.name is 3+config+cloud+redis+testbreeze+onlytest:onlytest path 去掉冒号之前
                     log::info!("service {} path:{} registered ", t.name(), t.path());
                     let sig = if let Some((sig, _cfg)) = self.init(&mut t).await {
                         sig
@@ -98,15 +101,22 @@ where
                     continue;
                 }
                 if cfg.len() > 0 {
-                    t.update(name, &cfg);
+                    let res = t.resource();
+                    let hosts = resource::parse_cfg_hosts(res, cfg).await;
+                    t.update(name, &cfg, &hosts);
                     *update = Instant::now();
                     *sig = cache_sig.to_owned();
                     continue;
                 }
             }
-
-            if let Some((remote_sig, cfg)) = self.load_from_discovery(&path, sig).await {
-                t.update(name, &cfg);
+            let res = t.resource();
+            let kindof_database = resource::name_kind(res);
+            if let Some((remote_sig, cfg)) =
+                self.load_from_discovery(&path, sig, kindof_database).await
+            {
+                let res = t.resource();
+                let hosts = resource::parse_cfg_hosts(res, &cfg).await;
+                t.update(name, &cfg, &hosts);
                 *update = Instant::now();
                 *sig = remote_sig.to_owned();
                 cache.insert(path, (remote_sig, cfg));
@@ -117,13 +127,20 @@ where
     async fn init(&self, t: &mut T) -> Option<(String, String)> {
         let path = t.path().to_string();
         let name = t.name().to_string();
+        let kindof_database = resource::name_kind(t.resource());
+        println!("judge mc/redis{}", kindof_database);
         // 用path查找，用name更新。
         if let Ok((sig, cfg)) = self.try_load_from_snapshot(&path).await {
-            t.update(&name, &cfg);
+            let res = t.resource();
+            let hosts = resource::parse_cfg_hosts(res, &cfg).await;
+            t.update(&name, &cfg, &hosts);
             Some((sig, cfg))
         } else {
-            if let Some((sig, cfg)) = self.load_from_discovery(&path, "").await {
-                t.update(&name, &cfg);
+            //if let Some((sig, cfg)) = self.load_from_discovery(&path, "", path.to_owned()).await {
+            if let Some((sig, cfg)) = self.load_from_discovery(&path, "", kindof_database).await {
+                let res = t.resource();
+                let hosts = resource::parse_cfg_hosts(res, &cfg).await;
+                t.update(&name, &cfg, &hosts);
                 Some((sig, cfg))
             } else {
                 None
@@ -145,9 +162,18 @@ where
         log::info!("{} snapshot loaded:sig:{} cfg:{}", name, sig, cfg.len());
         Ok((sig, cfg))
     }
-    async fn load_from_discovery(&self, path: &str, sig: &str) -> Option<(String, String)> {
+    async fn load_from_discovery(
+        &self,
+        path: &str,
+        sig: &str,
+        kindof_database: &str,
+    ) -> Option<(String, String)> {
         use super::Config;
-        match self.discovery.get_service::<String>(path, &sig).await {
+        match self
+            .discovery
+            .get_service::<String>(path, &sig, kindof_database)
+            .await
+        {
             Err(e) => {
                 log::warn!("load service topology failed. path:{}, e:{:?}", path, e);
             }
@@ -162,6 +188,7 @@ where
                 }
             },
         }
+
         None
     }
     fn _path(&self, name: &str) -> PathBuf {
@@ -172,7 +199,8 @@ where
         pb
     }
     async fn dump_to_snapshot(&self, name: &str, sig: &str, cfg: &str) {
-        log::debug!("dump {} to snapshot. sig:{} cfg:{}", name, sig, cfg.len());
+        log::info!("dump {} to snapshot. sig:{} cfg:{}", name, sig, cfg.len());
+        //log::debug!("dump {} to snapshot. sig:{} cfg:{}", name, sig, cfg.len());
         match self.try_dump_to_snapshot(name, sig, cfg).await {
             Ok(_) => {}
             Err(e) => {

@@ -1,7 +1,10 @@
-mod topology;
-pub use topology::Topology;
+mod config;
+mod topo;
 
+pub use config::MemcacheNamespace;
 use std::collections::HashMap;
+use std::io::Error;
+use std::io::ErrorKind;
 use std::io::Result;
 
 use discovery::TopologyRead;
@@ -10,6 +13,7 @@ use stream::{
     Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync,
     AsyncSharding, LayerRole, MetaStream,
 };
+pub use topo::MemcacheTopology;
 
 type Backend = stream::BackendStream;
 type GetOperation<P> = AsyncLayerGet<AsyncSharding<Backend, P>, AsyncSharding<Backend, P>, P>;
@@ -33,20 +37,31 @@ pub struct CacheService<P> {
 impl<P> CacheService<P> {
     pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
     where
-        D: TopologyRead<super::Topology<P>>,
+        D: TopologyRead<Topology<P>>,
         P: protocol::Protocol,
     {
-        discovery.do_with(|t| Self::from_topology::<D>(p.clone(), t))
+        discovery.do_with(|t| match t {
+            Topology::CacheService(mem_topo) => {
+                return Self::from_topology::<D>(p.clone(), mem_topo);
+            }
+            _ => {
+                log::warn!("malformed discovery for cacheservice");
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "malformed cacheservice discovery",
+                ));
+            }
+        })
     }
-    fn from_topology<D>(p: P, topo: &Topology<P>) -> Result<Self>
+    fn from_topology<D>(p: P, topo: &MemcacheTopology<P>) -> Result<Self>
     where
-        D: TopologyRead<super::Topology<P>>,
         P: protocol::Protocol,
     {
         // 初始化完成一定会保障master存在，并且长度不为0.
         use discovery::Inited;
         use AsyncOperation::*;
         assert!(topo.inited());
+
         let hash = topo.hash();
         let dist = topo.distribution();
         let (streams, write_back) = topo.mget();
@@ -93,6 +108,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
+
+use crate::Topology;
 
 impl<P> AsyncReadAll for CacheService<P>
 where
