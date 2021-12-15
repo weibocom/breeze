@@ -93,6 +93,12 @@ where
                 continue; // EOF
             }
             me.data.advance_write(n);
+            let p_oft = me.processed - me.data.read();
+            let processing = me.data.data().sub_slice(p_oft, me.data.len() - p_oft);
+            let mut data_string = String::from_utf8(processing.data()).unwrap();
+            data_string = data_string.replace("\r", "\\r");
+            data_string = data_string.replace("\n", "\\n");
+            log::info!("received from redis, data = {}", data_string);
 
             // 处理等处理的数据
             while me.processed < me.data.writtened() {

@@ -54,10 +54,7 @@ impl Receiver {
                 debug_assert_eq!(self.buff.read(), 0);
                 let mut slices = self.buff.data().as_slices();
                 debug_assert_eq!(slices.len(), 1);
-                let parse_begin = Instant::now();
                 self.req = parser.parse_request(slices.pop().expect("request slice"))?;
-                let parse_duration = Instant::now().duration_since(parse_begin);
-                log::info!("parse request {} duration: {:?}", rid, parse_duration);
                 if self.req.is_some() {
                     break;
                 }
@@ -77,7 +74,7 @@ impl Receiver {
             }
             self.buff.advance_write(read);
             metric.req_received(read);
-            log::info!("{} bytes received.{}", read, rid);
+            log::info!("{} bytes received, session_id = {}", read, rid.session_id());
         }
         // 到这req一定存在，不用take+unwrap是为了在出现pending的时候，不重新insert
         if let Some(ref mut req) = self.req {
