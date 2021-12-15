@@ -155,6 +155,10 @@ mod rid {
         pub fn metric_id(&self) -> usize {
             self.metric_id
         }
+        #[inline(always)]
+        pub fn session_id(&self) -> usize {
+            self.session_id
+        }
     }
     use std::fmt;
     impl fmt::Display for RequestId {
