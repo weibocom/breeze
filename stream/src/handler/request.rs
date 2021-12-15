@@ -100,6 +100,10 @@ where
                 log::debug!("writing {} {} {}", req.len(), me.offset, req.id());
                 while me.offset < data.len() {
                     let n = ready!(w.as_mut().poll_write(cx, &data[me.offset..]))?;
+                    let mut send_string = String::from_utf8(data[me.offset..].to_vec()).unwrap();
+                    send_string = send_string.replace("\r", "\\r");
+                    send_string = send_string.replace("\n", "\\n");
+                    log::info!("write cid {}, data {}", cid, send_string);
                     me.offset += n;
                 }
 
@@ -124,6 +128,7 @@ where
                 }
                 Poll::Pending => {
                     log::debug!("pending. seq:{}", me.seq);
+                    log::info!("request flused");
                     ready!(w.as_mut().poll_flush(cx))?;
                     return Poll::Pending;
                 }
