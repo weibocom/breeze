@@ -54,7 +54,9 @@ impl AsyncReadAll for BackendStream {
         let (rid, slice) = ready!(me.inner.poll_next(me.id.id(), cx))?;
 
         let elapst = me.instant.elapsed();
-        log::info!("recv from backend, cost = {:?}", elapst);
+        let mut content = String::from_utf8(slice.data().data()).unwrap();
+        content = content.replace("\r\n", "\\r\\n");
+        log::info!("recv from backend, address = {}, cost = {:?}, rid = {}, content = {}", me.addr().clone(), elapst, rid, content);
         let rx = slice.len();
         let metric_id = me.inner.metric_id();
         metrics::qps("bytes.rx", rx, metric_id);
