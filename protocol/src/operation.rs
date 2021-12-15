@@ -1,5 +1,5 @@
 use Operation::*;
-pub const OPERATION_NUM: usize = 4;
+pub const OPERATION_NUM: usize = 6;
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub enum Operation {
