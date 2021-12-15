@@ -142,7 +142,7 @@ impl MpmcStream {
         }
         self.waker.wake();
         self.req_num.0.fetch_add(1, Ordering::Relaxed);
-        log::info!("write complete cid:{} len:{} cost: {:?}", cid, buf.len(), Instant::now().duration_since(write_begin));
+        log::debug!("write complete cid:{} len:{} cost: {:?}", cid, buf.len(), Instant::now().duration_since(write_begin));
         Poll::Ready(Ok(()))
     }
     #[inline(always)]
