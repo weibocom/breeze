@@ -190,6 +190,10 @@ mod rid {
         pub fn metric_id(&self) -> usize {
             self.metric_id
         }
+        #[inline(always)]
+        pub fn session_id(&self) -> usize {
+            self.session_id
+        }
     }
 
     impl fmt::Display for RequestId {
