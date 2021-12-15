@@ -12,6 +12,7 @@ use protocol::{Protocol, RequestId, Response};
 
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::time::Instant;
 
 use crate::{bounded, Receiver, Sender};
 
@@ -124,6 +125,7 @@ impl MpmcStream {
     #[inline]
     pub fn poll_write(&self, cid: usize, _cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         // 连接关闭后，只停写，现有请求可以继续处理。
+        let write_begin = Instant::now();
         if self.closed.load(Ordering::Relaxed) {
             return Poll::Ready(Err(Error::new(NotFound, "mpmc closed")));
         }
@@ -140,7 +142,7 @@ impl MpmcStream {
         }
         self.waker.wake();
         self.req_num.0.fetch_add(1, Ordering::Relaxed);
-        log::debug!("write complete cid:{} len:{} ", cid, buf.len());
+        log::info!("write complete cid:{} len:{} cost: {:?}", cid, buf.len(), Instant::now().duration_since(write_begin));
         Poll::Ready(Ok(()))
     }
     #[inline(always)]
