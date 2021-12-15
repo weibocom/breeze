@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
+use tokio::time::Instant;
 
 pub struct SeqLoadBalance<B> {
     // 该层在分层中的角色role
@@ -34,13 +35,16 @@ impl<B> AsyncWriteAll for SeqLoadBalance<B>
 {
     #[inline]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
+        let write_begin = Instant::now();
         let me = &mut *self;
         let seq = me.seq.fetch_add(1, Release);
         me.idx = seq % me.targets.len();
-        log::debug!(
-            "load balance sequence = {}, address: {}",
+        let write_cost = Instant::now().duration_since(write_begin);
+        log::info!(
+            "load balance sequence = {}, address: {}, cost: {:?}",
             me.idx,
-            me.targets.get(me.idx).unwrap().addr().to_string()
+            me.targets.get(me.idx).unwrap().addr().to_string(),
+            write_cost,
         );
         unsafe { Pin::new(me.targets.get_unchecked_mut(me.idx)).poll_write(cx, buf) }
     }

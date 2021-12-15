@@ -1,6 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Instant;
 
 use protocol::Protocol;
 
@@ -51,6 +52,7 @@ where
 {
     #[inline]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
+        let write_begin = Instant::now();
         let me = &mut *self;
         debug_assert!(me.idx < me.shards.len());
         let key = me.parser.key(buf);
@@ -65,7 +67,8 @@ where
                 ),
             )));
         }
-        log::debug!("key = {}, goto idx {}, address = {}", String::from_utf8(key.data().to_vec()).unwrap(), me.idx, me.shards.get(me.idx).unwrap().addr().to_string());
+        let write_cost = Instant::now().duration_since(write_begin);
+        log::info!("key = {}, goto idx {}, address = {}, cost = {:?}", String::from_utf8(key.data().to_vec()).unwrap(), me.idx, me.shards.get(me.idx).unwrap().addr().to_string(), write_cost);
         unsafe { Pin::new(me.shards.get_unchecked_mut(me.idx)).poll_write(cx, buf) }
     }
 }
