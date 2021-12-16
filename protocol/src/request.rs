@@ -204,8 +204,12 @@ mod rid {
     }
 
     impl fmt::Display for RequestId {
-        fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            Ok(())
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "(rid: {} => {} metric:{})",
+                self.session_id, self.seq, self.metric_id
+            )
         }
     }
 }
