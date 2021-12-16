@@ -73,19 +73,23 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        log::info!("come into response handler poll");
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
         let mut eof = false;
         while me.w.running() {
+            log::info!("response handler poll loop");
             let read = me.w.load_read();
             me.data.advance_read(read);
             let mut buf = me.data.as_mut_bytes();
             if buf.len() == 0 {
+                log::info!("come into response handler poll_tick");
                 ready!(me.tick.poll_tick(cx));
                 continue;
             }
             me.ticks = 0;
             let mut buf = ReadBuf::new(&mut buf);
+            log::info!("come into response handler poll_read");
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             let n = buf.capacity() - buf.remaining();
             if n == 0 {
