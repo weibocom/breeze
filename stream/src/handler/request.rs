@@ -97,13 +97,10 @@ where
         while me.handler.running() {
             if let Some((ref cid, ref req)) = me.cache {
                 let data = req.data();
-                log::debug!("writing {} {} {}", req.len(), me.offset, req.id());
+                log::info!("writing cid: {} len: {} offset: {} rid: {}", cid, req.len(), me.offset, req.id());
                 while me.offset < data.len() {
                     let n = ready!(w.as_mut().poll_write(cx, &data[me.offset..]))?;
-                    let mut send_string = String::from_utf8(data[me.offset..].to_vec()).unwrap();
-                    send_string = send_string.replace("\r", "\\r");
-                    send_string = send_string.replace("\n", "\\n");
-                    log::info!("write cid {}, data {}", cid, send_string);
+                    log::info!("writed cid: {} len: {} offset: {} rid: {}", cid, req.len(), me.offset, req.id());
                     me.offset += n;
                 }
 
@@ -128,7 +125,6 @@ where
                 }
                 Poll::Pending => {
                     log::debug!("pending. seq:{}", me.seq);
-                    log::info!("request flused");
                     ready!(w.as_mut().poll_flush(cx))?;
                     return Poll::Pending;
                 }
