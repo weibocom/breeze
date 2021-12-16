@@ -92,6 +92,7 @@ where
 
     #[inline(always)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        log::info!("come into poll");
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
         while me.handler.running() {
@@ -119,12 +120,13 @@ where
             me.cache.take();
             match me.handler.poll_fill_snapshot(cx, &mut me.snapshot) {
                 Poll::Ready(_) => {
+                    log::info!("ready. seq:{}, len: {}", me.seq, me.snapshot.len());
                     if me.snapshot.len() == 0 {
                         break;
                     }
                 }
                 Poll::Pending => {
-                    log::debug!("pending. seq:{}", me.seq);
+                    log::info!("pending. seq:{}", me.seq);
                     ready!(w.as_mut().poll_flush(cx))?;
                     return Poll::Pending;
                 }
