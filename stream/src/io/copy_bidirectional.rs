@@ -100,7 +100,7 @@ where
                     break;
                 }
                 *sent = true;
-                log::info!("req sent.{} {}", metric.req_bytes, rid.session_id());
+                log::debug!("req sent.{} {}", metric.req_bytes, rid.session_id());
             }
             ready!(sender.poll_copy_one(
                 cx,
@@ -112,7 +112,7 @@ where
                 &mut direct_response_queue,
             ))?;
             metric.response_done();
-            log::info!("resp sent {} {}", metric.resp_bytes, rid.session_id());
+            log::debug!("resp sent {} {}", metric.resp_bytes, rid.session_id());
             *sent = false;
             rid.incr();
             // 开始记录metric
