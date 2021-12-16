@@ -92,18 +92,16 @@ where
 
     #[inline(always)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        log::info!("come into poll");
         let me = &mut *self;
         let mut w = Pin::new(&mut me.w);
         while me.handler.running() {
             if let Some((ref cid, ref req)) = me.cache {
                 let data = req.data();
-                log::debug!("writing {} {} {}", req.len(), me.offset, req.id());
+                log::info!("writing cid: {} len: {} offset: {} rid: {}", cid, req.len(), me.offset, req.id());
                 while me.offset < data.len() {
                     let n = ready!(w.as_mut().poll_write(cx, &data[me.offset..]))?;
-                    let mut send_string = String::from_utf8(data[me.offset..].to_vec()).unwrap();
-                    send_string = send_string.replace("\r", "\\r");
-                    send_string = send_string.replace("\n", "\\n");
-                    log::info!("write cid {}, data {}", cid, send_string);
+                    log::info!("writed cid: {} len: {} offset: {} rid: {}", cid, req.len(), me.offset, req.id());
                     me.offset += n;
                 }
 
@@ -122,13 +120,13 @@ where
             me.cache.take();
             match me.handler.poll_fill_snapshot(cx, &mut me.snapshot) {
                 Poll::Ready(_) => {
+                    log::info!("ready. seq:{}, len: {}", me.seq, me.snapshot.len());
                     if me.snapshot.len() == 0 {
                         break;
                     }
                 }
                 Poll::Pending => {
-                    log::debug!("pending. seq:{}", me.seq);
-                    log::info!("request flused");
+                    log::info!("pending. seq:{}", me.seq);
                     ready!(w.as_mut().poll_flush(cx))?;
                     return Poll::Pending;
                 }
