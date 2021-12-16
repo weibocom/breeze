@@ -10,7 +10,7 @@ use protocol::Protocol;
 
 use futures::ready;
 use tokio::io::{AsyncRead, ReadBuf};
-use tokio::time::{interval, Interval};
+use tokio::time::{Instant, interval, Interval};
 
 pub trait Handler {
     // 获取自上一次调用以来，成功读取并可以释放的字节数量
@@ -104,13 +104,18 @@ where
             while me.processed < me.data.writtened() {
                 let p_oft = me.processed - me.data.read();
                 let processing = me.data.data().sub_slice(p_oft, me.data.len() - p_oft);
+                let parse_begin = Instant::now();
                 match me.parser.parse_response(&processing) {
                     None => break,
                     Some(r) => {
+                        let parse_end = Instant::now();
                         let seq = me.seq;
                         me.seq += 1;
                         me.processed += r.len();
                         me.w.on_received(seq, r);
+                        let on_recv_end = Instant::now();
+                        let parse_content = String::from_utf8(processing.data()).unwrap().replace("\r", "\\r").replace("\n", "\\n");
+                        log::info!("parse {} cost {:?}, on recv cost {:?}", parse_content, parse_end.duration_since(parse_begin), on_recv_end.duration_since(parse_end));
                         //metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
                     }
                 }
