@@ -51,6 +51,7 @@ impl AsyncReadAll for BackendStream {
     #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
+        log::info!("call poll next, address = {}, cost = {:?}", me.addr(), Instant::now().duration_since(me.instant));
         let (rid, slice) = ready!(me.inner.poll_next(me.id.id(), cx))?;
 
         let elapst = me.instant.elapsed();

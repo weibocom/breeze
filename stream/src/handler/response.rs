@@ -10,7 +10,7 @@ use protocol::Protocol;
 
 use futures::ready;
 use tokio::io::{AsyncRead, ReadBuf};
-use tokio::time::{interval, Interval};
+use tokio::time::{Instant, interval, Interval};
 
 pub trait Handler {
     // 获取自上一次调用以来，成功读取并可以释放的字节数量
@@ -73,19 +73,23 @@ where
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        log::info!("come into response handler poll");
         let me = &mut *self;
         let mut reader = Pin::new(&mut me.r);
         let mut eof = false;
         while me.w.running() {
+            log::info!("response handler poll loop");
             let read = me.w.load_read();
             me.data.advance_read(read);
             let mut buf = me.data.as_mut_bytes();
             if buf.len() == 0 {
+                log::info!("come into response handler poll_tick");
                 ready!(me.tick.poll_tick(cx));
                 continue;
             }
             me.ticks = 0;
             let mut buf = ReadBuf::new(&mut buf);
+            log::info!("come into response handler poll_read");
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             let n = buf.capacity() - buf.remaining();
             if n == 0 {
@@ -104,13 +108,18 @@ where
             while me.processed < me.data.writtened() {
                 let p_oft = me.processed - me.data.read();
                 let processing = me.data.data().sub_slice(p_oft, me.data.len() - p_oft);
+                let parse_begin = Instant::now();
                 match me.parser.parse_response(&processing) {
                     None => break,
                     Some(r) => {
+                        let parse_end = Instant::now();
                         let seq = me.seq;
                         me.seq += 1;
                         me.processed += r.len();
                         me.w.on_received(seq, r);
+                        let on_recv_end = Instant::now();
+                        let parse_content = String::from_utf8(processing.data()).unwrap().replace("\r", "\\r").replace("\n", "\\n");
+                        log::info!("parse {} cost {:?}, on recv cost {:?}", parse_content, parse_end.duration_since(parse_begin), on_recv_end.duration_since(parse_end));
                         //metrics::ratio("mem_buff_resp", me.data.ratio(), me.metric_id);
                     }
                 }

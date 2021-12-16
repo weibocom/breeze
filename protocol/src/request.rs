@@ -177,12 +177,19 @@ mod rid {
     use std::fmt;
     #[derive(Default, Debug, PartialEq, Clone, Copy)]
     pub struct RequestId {
+        session_id: usize, // 关联至一个client的实际的connection
+        seq: usize,        // 自增序列号
         metric_id: usize,
     }
+
     impl RequestId {
         #[inline(always)]
-        pub fn from(_session_id: usize, _seq: usize, metric_id: usize) -> Self {
-            Self { metric_id }
+        pub fn from(session_id: usize, seq: usize, metric_id: usize) -> Self {
+            Self {
+                session_id,
+                seq,
+                metric_id,
+            }
         }
         #[inline(always)]
         pub fn incr(&mut self) {}
@@ -190,11 +197,19 @@ mod rid {
         pub fn metric_id(&self) -> usize {
             self.metric_id
         }
+        #[inline(always)]
+        pub fn session_id(&self) -> usize {
+            self.session_id
+        }
     }
 
     impl fmt::Display for RequestId {
-        fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            Ok(())
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "(rid: {} => {} metric:{})",
+                self.session_id, self.seq, self.metric_id
+            )
         }
     }
 }
