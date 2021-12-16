@@ -140,6 +140,7 @@ impl MpmcStream {
             item.place_request(buf);
             self.bits.mark(cid);
         }
+        log::info!("wake from poll_write");
         self.waker.wake();
         self.req_num.0.fetch_add(1, Ordering::Relaxed);
         log::debug!("write complete cid:{} len:{} cost: {:?}", cid, buf.len(), Instant::now().duration_since(write_begin));
@@ -240,6 +241,7 @@ impl MpmcStream {
             };
             self.done.store(true, Ordering::Release);
             let runnings = self.runnings.fetch_add(-1, Ordering::Release) - 1;
+            log::info!("wake from start_bridge");
             self.waker.wake();
             if runnings == 0 {
                 log::info!("all handler completed. {}", self.metric_id.name());
@@ -282,6 +284,7 @@ impl MpmcStream {
 
     pub(crate) fn mark_done(&self) {
         self.done.store(true, Ordering::Release);
+        log::info!("wake from mark_done");
         self.waker.wake();
     }
     pub(crate) fn addr(&self) -> &str {
