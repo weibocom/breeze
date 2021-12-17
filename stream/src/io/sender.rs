@@ -42,6 +42,7 @@ impl Sender {
         rid: &RequestId,
         metric: &mut IoMetric,
         direct_response_queue: &mut VecDeque<Request>,
+        debug_response: &mut Option<Vec<u8>>,
     ) -> Poll<Result<()>>
     where
         R: AsyncReadAll + ?Sized,
@@ -56,6 +57,7 @@ impl Sender {
                 metric.response_ready(response.keys_num());
                 log::debug!("io-sender-poll: response polled. {:?}", rid);
                 // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
+                debug_response.insert(response.items[0].data());
                 self.write_to_buffer(response, parser);
             }
             else {
