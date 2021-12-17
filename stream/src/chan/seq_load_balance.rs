@@ -40,7 +40,7 @@ impl<B> AsyncWriteAll for SeqLoadBalance<B>
         let seq = me.seq.fetch_add(1, Release);
         me.idx = seq % me.targets.len();
         let write_cost = Instant::now().duration_since(write_begin);
-        log::info!(
+        log::debug!(
             "load balance sequence = {}, address: {}, cost: {:?}",
             me.idx,
             me.targets.get(me.idx).unwrap().addr().to_string(),
