@@ -56,6 +56,9 @@ impl Slice {
     }
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> Self {
+        if offset + len > self.len {
+            log::error!("slice length error: {:?}", Backtrace::new())
+        }
         debug_assert!(offset + len <= self.len);
         Self::new(self.ptr + offset, len)
     }
@@ -126,6 +129,8 @@ impl Default for Slice {
         Slice { ptr: 0, len: 0 }
     }
 }
+
+use std::backtrace::Backtrace;
 use std::ops::Deref;
 impl Deref for Slice {
     type Target = [u8];
