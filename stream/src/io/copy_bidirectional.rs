@@ -36,6 +36,8 @@ where
         rid: RequestId::from(session_id, 0, metric_id),
         metric: IoMetric::from(metric_id),
         checker: Monitor::from(ticker),
+        current_request: None,
+        current_response: None,
     }
     .await
 }
@@ -59,6 +61,8 @@ struct CopyBidirectional<'c, A, C, P> {
     checker: Monitor,
     // 以下用来记录相关的metrics指标
     metric: IoMetric,
+    current_request: Option<Vec<u8>>,
+    current_response: Option<Vec<u8>>,
 }
 impl<'c, A, C, P> Future for CopyBidirectional<'c, A, C, P>
 where
@@ -79,13 +83,13 @@ where
             rid,
             metric,
             checker,
+            current_request,
+            current_response,
         } = &mut *self;
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
         let mut direct_response_queue: VecDeque<Request> = VecDeque::new();
         loop {
-            let mut request: Option<Request> = None;
-            let mut response: Option<Vec<u8>> = None;
             metric.enter();
             if !*sent {
                 ready!(receiver.poll_copy_one(
@@ -96,7 +100,7 @@ where
                     rid,
                     metric,
                     &mut direct_response_queue,
-                    &mut request,
+                    current_request,
                 ))?;
                 if metric.req_bytes == 0 {
                     log::debug!("eof:no bytes received {}", rid);
@@ -113,18 +117,18 @@ where
                 rid,
                 metric,
                 &mut direct_response_queue,
-                &mut response,
+                current_response,
             ))?;
             metric.response_done();
-            if request.is_some() && response.is_some() {
-                let request_str = String::from_utf8(request.clone().unwrap().to_vec());
-                let response_str = String::from_utf8(response.clone().unwrap());
+            if current_request.is_some() && current_response.is_some() {
+                let request_str = String::from_utf8(current_request.clone().unwrap());
+                let response_str = String::from_utf8(current_response.clone().unwrap());
                 if request_str.is_ok() && response_str.is_ok() {
                     log::info!("rid = {}, request = {}, response = {}", rid, request_str.unwrap(), response_str.unwrap());
                 }
             }
-            request.take();
-            response.take();
+            current_request.take();
+            current_response.take();
             log::debug!("resp sent {} {}", metric.resp_bytes, rid.session_id());
             *sent = false;
             rid.incr();
