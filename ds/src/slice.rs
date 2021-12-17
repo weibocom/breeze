@@ -132,7 +132,6 @@ impl Default for Slice {
     }
 }
 
-use std::backtrace::Backtrace;
 use std::ops::Deref;
 impl Deref for Slice {
     type Target = [u8];
