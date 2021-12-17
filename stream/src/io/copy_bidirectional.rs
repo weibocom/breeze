@@ -9,7 +9,7 @@ use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use super::{ConnectStatus, IoMetric, Monitor, Receiver, Sender};
-use crate::{AsyncReadAll, AsyncWriteAll, Request};
+use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
 use discovery::TopologyTicker;
 use protocol::{Protocol, RequestId};
 
@@ -84,6 +84,8 @@ where
         let mut agent = Pin::new(&mut *agent);
         let mut direct_response_queue: VecDeque<Request> = VecDeque::new();
         loop {
+            let mut request: Option<Request> = None;
+            let mut response: Option<Vec<u8>> = None;
             metric.enter();
             if !*sent {
                 ready!(receiver.poll_copy_one(
@@ -94,6 +96,7 @@ where
                     rid,
                     metric,
                     &mut direct_response_queue,
+                    &mut request,
                 ))?;
                 if metric.req_bytes == 0 {
                     log::debug!("eof:no bytes received {}", rid);
@@ -110,8 +113,18 @@ where
                 rid,
                 metric,
                 &mut direct_response_queue,
+                &mut response,
             ))?;
             metric.response_done();
+            if request.is_some() && response.is_some() {
+                let request_str = String::from_utf8(request.clone().unwrap().to_vec());
+                let response_str = String::from_utf8(response.clone().unwrap());
+                if request_str.is_ok() && response_str.is_ok() {
+                    log::info!("rid = {}, request = {}, response = {}", rid, request_str.unwrap(), response_str.unwrap());
+                }
+            }
+            request.take();
+            response.take();
             log::debug!("resp sent {} {}", metric.resp_bytes, rid.session_id());
             *sent = false;
             rid.incr();
