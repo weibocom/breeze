@@ -1,3 +1,5 @@
+use backtrace::Backtrace;
+
 /// 使用者确保Slice持有的数据不会被释放。
 #[derive(Clone, Debug)]
 pub struct Slice {
