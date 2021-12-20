@@ -332,7 +332,6 @@ impl Protocol for RedisResp2 {
         where
             W: crate::BackwardWrite,
     {
-        log::info!("call split at write_direct_response");
         let split_req = request.split("\r\n".as_ref());
         let cmd = String::from_utf8(split_req[2].data().to_vec())
             .unwrap()
@@ -391,7 +390,6 @@ impl RedisResp2 {
 
     fn parse_operation(&self, request: &Request) -> Command {
         // let req_slice = Slice::from(request.data());
-        log::info!("call split at parse_operation");
         let split_req = request.split("\r\n".as_ref());
         match String::from_utf8(split_req[2].data().to_vec())
             .unwrap()

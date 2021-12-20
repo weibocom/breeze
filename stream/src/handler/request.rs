@@ -100,10 +100,10 @@ where
                 let data = req.data();
                 while me.offset < data.len() {
                     let n = ready!(w.as_mut().poll_write(cx, &data[me.offset..]))?;
-                    let data_str = String::from_utf8(data[me.offset..].to_vec());
-                    if data_str.is_ok() {
-                        log::info!("seq: {}, send to redis: {:?} data: {}", me.seq, me.handler.addr(), data_str.unwrap().replace("\r\n", "\\r\\n"));
-                    }
+                    //let data_str = String::from_utf8(data[me.offset..].to_vec());
+                    //if data_str.is_ok() {
+                    //    log::info!("seq: {}, send to redis: {:?} data: {}", me.seq, me.handler.addr(), data_str.unwrap().replace("\r\n", "\\r\\n"));
+                    //}
                     me.offset += n;
                 }
 
