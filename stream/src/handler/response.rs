@@ -103,10 +103,10 @@ where
                 match me.parser.parse_response(&processing) {
                     None => break,
                     Some(r) => {
-                        let data_str = String::from_utf8(r.data().data());
-                        if data_str.is_ok() {
-                            log::info!("seq: {}, receive from redis: {:?} data: {}", me.seq, me.w.addr(), data_str.unwrap().replace("\r\n", "\\r\\n"));
-                        }
+                        //let data_str = String::from_utf8(r.data().data());
+                        //if data_str.is_ok() {
+                        //    log::info!("seq: {}, receive from redis: {:?} data: {}", me.seq, me.w.addr(), data_str.unwrap().replace("\r\n", "\\r\\n"));
+                        //}
                         let seq = me.seq;
                         me.seq += 1;
                         me.processed += r.len();
