@@ -17,6 +17,7 @@ impl Protocol for RedisResp2 {
     }
     #[inline(always)]
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
+        log::info!("call split at parse_request");
         let split_req = req.split("\r\n".as_ref());
         let first_line = split_req[0].data().to_vec();
         let mut first_line_vec = Vec::new();
@@ -52,6 +53,7 @@ impl Protocol for RedisResp2 {
                 String::from_utf8_unchecked(req.to_vec())
             );
         }
+        log::info!("call sub_slice at parse_request");
         Ok(Some(Request::from(
             req.sub_slice(0, read),
             op,
@@ -323,6 +325,7 @@ impl Protocol for RedisResp2 {
         where
             W: crate::BackwardWrite,
     {
+        log::info!("call split at write_direct_response");
         let split_req = request.split("\r\n".as_ref());
         let cmd = String::from_utf8(split_req[2].data().to_vec())
             .unwrap()
@@ -381,6 +384,7 @@ impl RedisResp2 {
 
     fn parse_operation(&self, request: &Request) -> Command {
         // let req_slice = Slice::from(request.data());
+        log::info!("call split at parse_operation");
         let split_req = request.split("\r\n".as_ref());
         match String::from_utf8(split_req[2].data().to_vec())
             .unwrap()
