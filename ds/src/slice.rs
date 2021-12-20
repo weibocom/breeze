@@ -59,7 +59,7 @@ impl Slice {
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> Self {
         if offset + len > self.len {
-            log::error!("slice length error: {:?}", Backtrace::new())
+            log::error!("slice length error: offset = {}, len = {}, self.len = {}, trace = {:?}", offset, len, self.len, Backtrace::new())
         }
         debug_assert!(offset + len <= self.len);
         Self::new(self.ptr + offset, len)
