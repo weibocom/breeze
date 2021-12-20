@@ -70,7 +70,7 @@ async fn _process_one(
             if let Err(e) =
                 process_one_connection(client, top, agent, p, session_id, metric_id).await
             {
-                log::debug!("{} disconnected. {:?} ", metric_id.name(), e);
+                log::info!("{} disconnected. {:?} ", metric_id.name(), e);
             }
             metrics::count("conn", -1, metric_id);
         });
