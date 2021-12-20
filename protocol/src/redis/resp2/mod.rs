@@ -17,7 +17,6 @@ impl Protocol for RedisResp2 {
     }
     #[inline(always)]
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
-        log::info!("call split at parse_request");
         let split_req = req.split("\r\n".as_ref());
         let mut end_with_cr_lf = req.data().ends_with("\r\n".as_ref());
         if split_req.len() < 2 && !end_with_cr_lf {
@@ -440,13 +439,13 @@ impl RedisResp2 {
             }
             let single_row = split_req.get(i).unwrap();
 
-            if i == item_count * 2 && !end_with_cr_lf {
-                break;
-            }
             read = read + 2 + single_row.len();
             if i == key_pos && has_multi_keys {
                 keys.push(single_row.clone());
                 key_pos = key_pos + 2;
+            }
+            if i == item_count * 2 && end_with_cr_lf {
+                full_request = true;
             }
         }
         if full_request {
