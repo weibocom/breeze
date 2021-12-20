@@ -43,7 +43,7 @@ impl BackendStream {
     }
 
     pub fn addr(&self) -> &str {
-        &self.inner.addr()
+        &self.inner.address()
     }
 }
 
