@@ -1,8 +1,14 @@
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::IntoStringError;
 use std::future::Future;
 use std::io::{Error, ErrorKind::*, Result};
+use std::ops::Add;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use super::status::Status;
 use crate::{Address, Addressed, AtomicWaker, Notify, Request, RequestHandler, ResponseHandler, Snapshot};
@@ -52,6 +58,8 @@ pub struct MpmcStream {
     // 持有的远端资源地址（ip:port）
     addr: String,
     metric_id: MetricId,
+    //send_times: Vec<CacheAligned<Instant>>,
+    send_times: RefCell<HashMap<usize, Instant>>,
 }
 
 impl MpmcStream {
@@ -65,6 +73,10 @@ impl MpmcStream {
         let seq_cids = (0..parallel)
             .map(|_| CacheAligned::new(AtomicUsize::new(0)))
             .collect();
+
+        //let send_times = (0..parallel)
+        //    .map(|id| CacheAligned::new(Instant::now()))
+        //    .collect();
 
         let (tx, rx) = bounded(32);
 
@@ -85,6 +97,7 @@ impl MpmcStream {
 
             addr: addr.to_string(),
             metric_id: metrics::register!(rsrc.name(), biz, addr),
+            send_times: RefCell::new(HashMap::with_capacity(1024)),
         }
     }
     // 如果complete为true，则快速失败
@@ -177,6 +190,10 @@ impl MpmcStream {
                 .get_unchecked(seq_idx)
                 .0
                 .load(Ordering::Acquire) as usize;
+            let send_time = self.send_times.borrow_mut().get(&cid).unwrap().clone();
+            if send_time.elapsed() > Duration::from_millis(50) {
+                log::info!("get result from redis: {} cost: {:?}", self.addr, send_time.elapsed());
+            }
             let mut item = self.get_item(cid);
             if seq != item.seq() {
                 for it in self.items.iter() {
@@ -306,7 +323,10 @@ impl crate::handler::request::Handler for Arc<MpmcStream> {
         self.get_item(cid).take_request(seq)
     }
     #[inline(always)]
-    fn sent(&self, _cid: usize, _seq: usize, req: &Request) {
+    fn sent(&self, cid: usize, _seq: usize, req: &Request) {
+        unsafe {
+            &self.send_times.borrow_mut().insert(cid, Instant::now());
+        }
         if req.noreply() {
             // noreply的请求，发送即接收
             self.resp_num.0.fetch_add(1, Ordering::Relaxed);
