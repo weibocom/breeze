@@ -58,9 +58,18 @@ impl Slice {
     }
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> Self {
-        if offset + len > self.len {
-            log::error!("slice length error: offset = {}, len = {}, self.len = {}, trace = {:?}", offset, len, self.len, Backtrace::new())
+        let mut data_str = String::from_utf8(self.data().to_vec());
+        if data_str.is_ok() {
+            if offset + len > self.len {
+                log::error!("slice length error: offset = {}, len = {}, self.len = {}, self.data = {}, trace = {:?}", offset, len, self.len, data_str.unwrap().replace("\r\n", "\\r\\n"), Backtrace::new())
+            }
         }
+        else {
+            if offset + len > self.len {
+                log::error!("slice length error: offset = {}, len = {}, self.len = {}, self.data is not utf8, trace = {:?}", offset, len, self.len, Backtrace::new())
+            }
+        }
+
         debug_assert!(offset + len <= self.len);
         Self::new(self.ptr + offset, len)
     }
