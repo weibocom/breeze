@@ -120,13 +120,13 @@ where
                 current_response,
             ))?;
             metric.response_done();
-            if current_request.is_some() && current_response.is_some() {
-                let request_str = String::from_utf8(current_request.clone().unwrap());
-                let response_str = String::from_utf8(current_response.clone().unwrap());
-                if request_str.is_ok() && response_str.is_ok() {
-                    log::info!("rid = {}, request = {}, response = {}", rid, request_str.unwrap().replace("\r\n", "\\r\\n"), response_str.unwrap().replace("\r\n", "\\r\\n"));
-                }
-            }
+            //if current_request.is_some() && current_response.is_some() {
+            //    let request_str = String::from_utf8(current_request.clone().unwrap());
+            //    let response_str = String::from_utf8(current_response.clone().unwrap());
+            //    if request_str.is_ok() && response_str.is_ok() {
+            //        log::info!("rid = {}, request = {}, response = {}", rid, request_str.unwrap().replace("\r\n", "\\r\\n"), response_str.unwrap().replace("\r\n", "\\r\\n"));
+            //    }
+            //}
             current_request.take();
             current_response.take();
             log::debug!("resp sent {} {}", metric.resp_bytes, rid.session_id());
