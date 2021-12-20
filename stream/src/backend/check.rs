@@ -46,7 +46,7 @@ impl BackendBuilder {
                 .next()
                 .map(|cid| Cid::new(cid, self.ids.clone()))
                 .unwrap_or_else(|| {
-                    log::info!("connection id overflow. {}", self.stream.addr());
+                    log::info!("connection id overflow. {}", self.stream.address());
                     Cid::fake()
                 })
         };
@@ -128,7 +128,7 @@ impl<P> BackendChecker<P> {
             self.check_timeout();
             self.tick.tick().await;
         }
-        log::info!("finished {}. closing and shutting down.", self.addr());
+        log::info!("finished {}. closing and shutting down.", self.address());
         self.try_close();
         sleep(Duration::from_secs(15)).await;
         self.shutdown_all();
@@ -140,14 +140,14 @@ impl<P> BackendChecker<P> {
         let expected = Duration::from_secs(1 << ((1 + self.tries).min(8)) as u64);
         if self.tries == 0 || self.instant_conn.elapsed() >= expected {
             self.instant_conn = Instant::now();
-            log::debug!("try to connect {} tries:{}", self.addr(), self.tries);
+            log::debug!("try to connect {} tries:{}", self.address(), self.tries);
             match self.reconnected_once().await {
                 Ok(_) => {
                     self.tries = 0;
                     self.connecting = false;
                 }
                 Err(e) => {
-                    log::warn!("{}-th connecting to {} err:{}", self.tries, self.addr(), e);
+                    log::warn!("{}-th connecting to {} err:{}", self.tries, self.address(), e);
                     metrics::status("status", metrics::Status::Down, self.metric_id());
                 }
             };
@@ -159,7 +159,7 @@ impl<P> BackendChecker<P> {
     where
         P: Unpin + Send + Sync + Protocol + 'static + Clone,
     {
-        let addr = self.addr();
+        let addr = self.address();
         let stream = timeout(Duration::from_secs(2), TcpStream::connect(addr)).await??;
         let _ = stream.set_nodelay(true);
         log::debug!("connected to {}", addr);
@@ -202,7 +202,7 @@ impl<P> BackendChecker<P> {
             elap,
             req_num,
             resp_num,
-            self.addr()
+            self.address()
         );
         self.inner.mark_done();
         metrics::status("status", metrics::Status::Timeout, self.metric_id());
