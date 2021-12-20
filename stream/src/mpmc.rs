@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use super::status::Status;
-use crate::{AtomicWaker, Notify, Request, RequestHandler, ResponseHandler, Snapshot};
+use crate::{Address, Addressed, AtomicWaker, Notify, Request, RequestHandler, ResponseHandler, Snapshot};
 use ds::{BitMap, CacheAligned, SeqOffset};
 use metrics::MetricId;
 use protocol::{Protocol, RequestId, Response};
@@ -284,7 +284,7 @@ impl MpmcStream {
         self.done.store(true, Ordering::Release);
         self.waker.wake();
     }
-    pub(crate) fn addr(&self) -> &str {
+    pub(crate) fn address(&self) -> &str {
         &self.addr
     }
     #[inline(always)]
@@ -350,5 +350,11 @@ impl crate::handler::response::Handler for Arc<MpmcStream> {
     #[inline(always)]
     fn running(&self) -> bool {
         !self.done()
+    }
+}
+
+impl Addressed for Arc<MpmcStream> {
+    fn addr(&self) -> Address {
+        Address::from(self.addr.clone())
     }
 }
