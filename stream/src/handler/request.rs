@@ -8,6 +8,7 @@ use tokio::io::{AsyncWrite, BufWriter};
 
 use metrics::MetricName;
 use protocol::Request;
+use crate::Addressed;
 
 pub struct Snapshot {
     cids: Vec<usize>,
@@ -85,7 +86,7 @@ impl<H, W> RequestHandler<H, W> {
 }
 impl<H, W> Future for RequestHandler<H, W>
 where
-    H: Unpin + Handler,
+    H: Unpin + Handler + Addressed,
     W: AsyncWrite + Unpin,
 {
     type Output = Result<()>;
@@ -99,6 +100,10 @@ where
                 let data = req.data();
                 while me.offset < data.len() {
                     let n = ready!(w.as_mut().poll_write(cx, &data[me.offset..]))?;
+                    let data_str = String::from_utf8(data[me.offset..].to_vec());
+                    if data_str.is_ok() {
+                        log::info!("seq: {}, send to redis: {:?} data: {}", me.seq, me.handler.addr(), data_str.unwrap().replace("\r\n", "\\r\\n"));
+                    }
                     me.offset += n;
                 }
 
