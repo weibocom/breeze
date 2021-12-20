@@ -18,8 +18,8 @@ impl Default for Operation {
     }
 }
 
-const OPS: [Operation; 5] = [Get, MGet, Store, Meta, Other];
-const OP_NAMES: [&'static str; OPS.len()] = ["get", "mget", "store", "meta", "other"];
+const OPS: [Operation; 6] = [Get, MGet, Store, Meta, Quit, Other];
+const OP_NAMES: [&'static str; OPS.len()] = ["get", "mget", "store", "meta", "quit", "other"];
 
 impl From<usize> for Operation {
     #[inline(always)]
