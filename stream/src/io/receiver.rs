@@ -40,6 +40,7 @@ impl Receiver {
         rid: &RequestId,
         metric: &mut IoMetric,
         direct_response_queue: &mut VecDeque<Request>,
+        request: &mut Option<Vec<u8>>,
     ) -> Poll<Result<()>>
     where
         R: AsyncRead + ?Sized,
@@ -98,7 +99,7 @@ impl Receiver {
         }
         // 把read重置为0.避免ringbuffer形成ring。
         self.buff.reset_read();
-        self.req.take();
+        request.replace(self.req.take().unwrap().to_vec());
         Poll::Ready(Ok(()))
     }
 }
