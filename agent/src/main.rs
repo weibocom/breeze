@@ -18,7 +18,7 @@ use tokio::spawn;
 
 use backtrace::Backtrace;
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 5)]
+#[tokio::main(flavor = "multi_thread", worker_threads = 6)]
 //#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     panic::set_hook(Box::new(|panic_info| {
