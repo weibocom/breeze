@@ -19,7 +19,7 @@ impl Protocol for RedisResp2 {
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
         log::info!("call split at parse_request");
         let split_req = req.split("\r\n".as_ref());
-        let mut end_with_cr_lf = req.data().ends_with(&*Vec::from("\r\n"));
+        let mut end_with_cr_lf = req.data().ends_with("\r\n".as_ref());
         if split_req.len() < 2 && !end_with_cr_lf {
             return Ok(None);
         }
