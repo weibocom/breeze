@@ -1,8 +1,7 @@
-use std::collections::VecDeque;
 use crate::{AsyncReadAll, Response};
 
 use ds::{ResizedRingBuffer, RingSlice};
-use protocol::{Protocol, Request, RequestId};
+use protocol::{Protocol, RequestId};
 
 use futures::ready;
 
@@ -41,7 +40,6 @@ impl Sender {
         parser: &P,
         rid: &RequestId,
         metric: &mut IoMetric,
-        direct_response_queue: &mut VecDeque<Request>,
     ) -> Poll<Result<()>>
     where
         R: AsyncReadAll + ?Sized,
@@ -50,20 +48,12 @@ impl Sender {
     {
         // cache里面有数据，当前请求是上一次pending触发
         if self.done {
-            if direct_response_queue.is_empty() {
-                log::debug!("io-sender-poll: poll response from agent. {:?}", rid);
-                let response = ready!(r.as_mut().poll_next(cx))?;
-                metric.response_ready(response.keys_num());
-                log::debug!("io-sender-poll: response polled. {:?}", rid);
-                // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
-                self.write_to_buffer(response, parser);
-            }
-            else {
-                log::debug!("io-sender-poll: direct response for {:?}", rid);
-                self.write_direct_response(direct_response_queue.front().unwrap(), parser);
-                direct_response_queue.pop_front();
-                metric.response_ready(0);
-            }
+            log::debug!("io-sender-poll: poll response from agent. {:?}", rid);
+            let response = ready!(r.as_mut().poll_next(cx))?;
+            metric.response_ready(response.keys_num());
+            log::debug!("io-sender-poll: response polled. {:?}", rid);
+            // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
+            self.write_to_buffer(response, parser);
             self.done = false;
         }
         ready!(self.flush(cx, w, rid, metric))?;
@@ -85,15 +75,6 @@ impl Sender {
         while self.buf.len() > 0 {
             let data = self.buf.as_bytes();
             let n = ready!(w.as_mut().poll_write(cx, data))?;
-            unsafe {
-                log::debug!(
-                    "+++++ flush to client, rid:{:?}/{}/{} - {:?}",
-                    rid,
-                    n,
-                    data.len(),
-                    String::from_utf8_unchecked(data.to_vec())
-                );
-            }
             if n == 0 {
                 return Poll::Ready(Err(Error::new(ErrorKind::WriteZero, "write zero response")));
             }
@@ -111,15 +92,7 @@ impl Sender {
     where
         P: Protocol,
     {
-        parser.write_response(response.iter(), self, response.indexes());
-    }
-
-    #[inline(always)]
-    fn write_direct_response<P>(&mut self, request: &Request, parser: &P)
-        where
-            P: Protocol,
-    {
-        parser.write_direct_response(request, self);
+        parser.write_response(response.iter(), self);
     }
 }
 

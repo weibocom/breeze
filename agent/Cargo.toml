@@ -2,12 +2,13 @@
 name = "agent"
 version = "0.0.1"
 authors = ["icy"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 context = { path = "../context" }
+sharding = { path = "../sharding" }
 net = { path = "../net"}
 protocol = { path = "../protocol" }
 endpoint = { path = "../endpoint" }
@@ -21,3 +22,4 @@ ds = { path = "../ds" }
 
 tokio = {version = "1.12.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
 mimalloc = { version = "*", default-features = false }
+
