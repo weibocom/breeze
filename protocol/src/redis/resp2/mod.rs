@@ -18,6 +18,10 @@ impl Protocol for RedisResp2 {
     #[inline(always)]
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
         let split_req = req.split("\r\n".as_ref());
+        let mut end_with_cr_lf = req.data().ends_with("\r\n".as_ref());
+        if split_req.len() < 2 && !end_with_cr_lf {
+            return Ok(None);
+        }
         let first_line = split_req[0].data().to_vec();
         let mut first_line_vec = Vec::new();
         for i in 1..first_line.len() {
@@ -45,18 +49,23 @@ impl Protocol for RedisResp2 {
             }
         };
 
-        let (keys, read) = self.parse_keys_and_length(op, split_count, &split_req);
+        let (keys, read) = self.parse_keys_and_length(op, split_count, &split_req, end_with_cr_lf);
         unsafe {
             log::debug!(
                 "parsed req: {:?}",
                 String::from_utf8_unchecked(req.to_vec())
             );
         }
-        Ok(Some(Request::from(
-            req.sub_slice(0, read),
-            op,
-            keys.clone(),
-        )))
+        if read > 0 {
+            Ok(Some(Request::from(
+                req.sub_slice(0, read),
+                op,
+                keys.clone(),
+            )))
+        }
+        else {
+            Ok(None)
+        }
     }
     #[inline]
     fn sharding(
@@ -404,6 +413,7 @@ impl RedisResp2 {
         op: Operation,
         item_count: usize,
         split_req: &Vec<Slice>,
+        end_with_cr_lf: bool,
     ) -> (Vec<Slice>, usize) {
         let mut keys = Vec::with_capacity(item_count);
         let mut has_multi_keys = false;
@@ -419,8 +429,10 @@ impl RedisResp2 {
 
         let mut read = 0 as usize;
         let mut key_pos = 4;
+        let mut full_request = false;
         for i in 0..split_req.len() {
             if i >= item_count * 2 + 1 {
+                full_request = true;
                 break;
             }
             let single_row = split_req.get(i).unwrap();
@@ -430,8 +442,16 @@ impl RedisResp2 {
                 keys.push(single_row.clone());
                 key_pos = key_pos + 2;
             }
+            if i == item_count * 2 && end_with_cr_lf {
+                full_request = true;
+            }
         }
-        (keys, read)
+        if full_request {
+            (keys, read)
+        }
+        else {
+            (vec![], 0)
+        }
     }
 
     fn is_single_line(line: String) -> bool {

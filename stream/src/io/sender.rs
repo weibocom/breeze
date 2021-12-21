@@ -40,6 +40,11 @@ impl Sender {
         parser: &P,
         rid: &RequestId,
         metric: &mut IoMetric,
+<<<<<<< HEAD
+=======
+        direct_response_queue: &mut VecDeque<Request>,
+        debug_response: &mut Option<Vec<u8>>,
+>>>>>>> dev
     ) -> Poll<Result<()>>
     where
         R: AsyncReadAll + ?Sized,
@@ -48,12 +53,30 @@ impl Sender {
     {
         // cache里面有数据，当前请求是上一次pending触发
         if self.done {
+<<<<<<< HEAD
             log::debug!("io-sender-poll: poll response from agent. {:?}", rid);
             let response = ready!(r.as_mut().poll_next(cx))?;
             metric.response_ready(response.keys_num());
             log::debug!("io-sender-poll: response polled. {:?}", rid);
             // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
             self.write_to_buffer(response, parser);
+=======
+            if direct_response_queue.is_empty() {
+                log::debug!("io-sender-poll: poll response from agent. {:?}", rid);
+                let response = ready!(r.as_mut().poll_next(cx))?;
+                metric.response_ready(response.keys_num());
+                log::debug!("io-sender-poll: response polled. {:?}", rid);
+                // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
+                debug_response.replace(response.items[0].data());
+                self.write_to_buffer(response, parser);
+            }
+            else {
+                log::debug!("io-sender-poll: direct response for {:?}", rid);
+                self.write_direct_response(direct_response_queue.front().unwrap(), parser);
+                direct_response_queue.pop_front();
+                metric.response_ready(0);
+            }
+>>>>>>> dev
             self.done = false;
         }
         ready!(self.flush(cx, w, rid, metric))?;
