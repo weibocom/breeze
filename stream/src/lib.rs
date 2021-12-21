@@ -50,7 +50,7 @@ pub trait AsyncReadAll {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Response>>;
 }
 
-pub const MAX_CONNECTIONS: usize = 128;
+pub const MAX_CONNECTIONS: usize = 256;
 
 // 当stream退出时，通知
 pub trait Notify {
