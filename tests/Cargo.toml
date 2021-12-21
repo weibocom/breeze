@@ -1,7 +1,7 @@
 [package]
 name = "tests"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,7 +15,3 @@ rust-crypto = "0.2.36"
 byteorder = "1.4.3"
 
 crossbeam-channel = "*"
-
-
-#redis 
-redis = "0.21.4"

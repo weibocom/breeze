@@ -2,15 +2,17 @@
 name = "protocol"
 version = "0.1.0"
 authors = ["icy"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 ds = { path = "../ds" }
+metrics = { path = "../metrics" }
 sharding = { path = "../sharding" }
 
 log = "0.4.14"
 enum_dispatch = "0.3.7"
 byteorder = "1.4.3"
 bytes = "1.0.1"
+atomic-waker = "*"

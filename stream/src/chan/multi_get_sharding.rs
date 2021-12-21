@@ -24,7 +24,6 @@ pub struct AsyncMultiGetSharding<S, P> {
     parser: P,
     response: Option<Response>,
     shard_reqs: Option<Vec<(usize, Request)>>,
-    shard_indexes: Option<Vec<Vec<usize>>>,
     alg: Sharding,
     err: Option<Error>,
 }
@@ -40,7 +39,6 @@ where
             statuses: vec![Status::Init; shards.len()],
             shards,
             shard_reqs: None,
-            shard_indexes: None,
             parser: p,
             response: None,
             err: None,
@@ -58,9 +56,7 @@ where
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, multi: &Request) -> Poll<Result<()>> {
         let mut me = &mut *self;
         if me.shard_reqs.is_none() {
-            let (shard_reqs, shard_indexes) = me.parser.sharding(multi, &me.alg);
-            me.shard_reqs = Some(shard_reqs);
-            me.shard_indexes = Some(shard_indexes);
+            me.shard_reqs = Some(me.parser.sharding(multi, &me.alg));
         }
         //let shard_reqs = me.shard_reqs.as_mut().expect("multi get sharding");
         // debug_assert!(shard_reqs.len() > 0);
@@ -133,20 +129,10 @@ where
                 let mut r = Pin::new(unsafe { me.shards.get_unchecked_mut(*i) });
                 match r.as_mut().poll_next(cx) {
                     Poll::Pending => pending = true,
-                    Poll::Ready(Ok(mut r)) => {
-                        let mut key_index: Option<&Vec<usize>> = None;
-                        if me.shard_indexes.is_some() {
-                            key_index = me.shard_indexes.as_ref().unwrap().get(i.clone());
-                        }
+                    Poll::Ready(Ok(r)) => {
                         match me.response.as_mut() {
-                            Some(exists) => {
-                                exists.append(r);
-                                exists.append_index(key_index.unwrap().clone());
-                            }
-                            None => {
-                                r.append_index(key_index.unwrap().clone());
-                                me.response = Some(r);
-                            }
+                            Some(exists) => exists.append(r),
+                            None => me.response = Some(r),
                         };
                         *status = Done;
                     }
@@ -165,7 +151,6 @@ where
                 *status = Init;
             }
             me.shard_reqs.take();
-            me.shard_indexes.take();
             let err = me.err.take();
 
             me.response

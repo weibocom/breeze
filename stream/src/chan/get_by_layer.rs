@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 use std::time::Instant;
 
 use crate::{Address, Addressed, AsyncReadAll, AsyncWriteAll, LayerRoleAble, Response};
-use protocol::{Operation, Protocol, Request, Resource};
+use protocol::{Operation, Protocol, Request};
 
 use futures::ready;
 
@@ -21,7 +21,6 @@ pub struct AsyncLayerGet<L, B, P> {
     parser: P,
     since: Instant, // 上一层请求开始的时间
     err: Option<Error>,
-    do_writeback: bool,
 }
 
 impl<L, B, P> AsyncLayerGet<L, B, P>
@@ -31,26 +30,18 @@ where
     P: Unpin + Protocol,
 {
     pub fn from_layers(layers: Vec<L>, layers_writeback: Vec<B>, p: P) -> Self {
-        let mut do_writeback = false;
-        if layers_writeback.len() > 0 {
-            assert_eq!(layers.len(), layers_writeback.len());
-            do_writeback = true;
-        }
+        assert_eq!(layers.len(), layers_writeback.len());
         let mut master_idx = 0;
-        // 只有协议有必须请求master的cmd，才查master idx
-        if p.need_check_master() {
-            for layer in layers.iter() {
-                if layer.is_master() {
-                    break;
-                }
-                master_idx += 1;
+        for layer in layers.iter() {
+            if layer.is_master() {
+                break;
             }
-            if master_idx >= layers.len() {
-                master_idx = 0;
-                log::error!("not found master idx: {:?}", layers.addr());
-            }
+            master_idx += 1;
         }
-
+        if master_idx >= layers.len() {
+            master_idx = 0;
+            log::error!("not found master idx: {:?}", layers.addr());
+        }
         Self {
             idx: 0,
             layers,
@@ -62,7 +53,6 @@ where
             parser: p,
             since: Instant::now(),
             err: None,
-            do_writeback,
         }
     }
     // get: 遍历所有层次，发送请求，直到一个成功。有一层成功返回true，更新层次索引，否则返回false
@@ -70,8 +60,8 @@ where
     #[inline]
     fn do_write(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
         // 目前只有gets，还有其他的，再考虑更统一的方案 fishermen
-        // 对于mc的gets，需要特殊处理：只请求master
-        if self.parser.need_check_master() && !self.is_gets {
+        // 对于gets，需要特殊处理：只请求master
+        if !self.is_gets {
             self.is_gets = self.parser.req_gets(&self.request);
             if self.is_gets {
                 self.idx = self.master_idx;
@@ -131,7 +121,7 @@ where
         let found = item.keys_num();
 
         // 构建回种的cmd，并进行回种操作，注意对gets不进行回种
-        if self.do_writeback && self.idx > 0 && found > 0 && !self.is_gets {
+        if self.idx > 0 && found > 0 && !self.is_gets {
             self.do_write_back(cx, &item);
         }
 
