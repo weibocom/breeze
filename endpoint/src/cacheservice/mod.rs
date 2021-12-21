@@ -1,184 +1,74 @@
 mod config;
-mod topo;
+pub mod topo;
 
-pub use config::MemcacheNamespace;
-use std::collections::HashMap;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::io::Result;
-
-use discovery::TopologyRead;
-use protocol::Protocol;
-use stream::{
-    Addressed, AsyncLayerGet, AsyncMultiGetSharding, AsyncOpRoute, AsyncOperation, AsyncSetSync,
-    AsyncSharding, LayerRole, MetaStream,
-};
-pub use topo::MemcacheTopology;
-
-type Backend = stream::BackendStream;
-type GetOperation<P> = AsyncLayerGet<AsyncSharding<Backend, P>, AsyncSharding<Backend, P>, P>;
-type MultiGetLayer<P> = AsyncMultiGetSharding<Backend, P>;
-type MultiGetOperation<P> = AsyncLayerGet<MultiGetLayer<P>, AsyncSharding<Backend, P>, P>;
-type Master<P> = AsyncSharding<Backend, P>;
-type Follower<P> = AsyncSharding<Backend, P>;
-type StoreOperation<P> = AsyncSetSync<Master<P>, Follower<P>, P>;
-type MetaOperation<P> = MetaStream<P, Backend>;
-type Operation<P> =
-    AsyncOperation<GetOperation<P>, MultiGetOperation<P>, StoreOperation<P>, MetaOperation<P>>;
-
-// 三级访问策略。
-// 第一级先进行读写分离
-// 第二级按key进行hash
-// 第三级进行pipeline与server进行交互
-pub struct CacheService<P> {
-    inner: AsyncOpRoute<Operation<P>>,
+// 63位用来标识是否初始化了。
+// 62次高位存储请求类型：0是get, 1是set
+// 0~48位：是索引。
+#[repr(transparent)]
+struct Context {
+    ctx: protocol::Context,
 }
 
-impl<P> CacheService<P> {
-    pub async fn from_discovery<D>(p: P, discovery: D) -> Result<Self>
-    where
-        D: TopologyRead<Topology<P>>,
-        P: protocol::Protocol,
-    {
-        discovery.do_with(|t| match t {
-            Topology::MemcacheTopo(mem_topo) => {
-                return Self::from_topology::<D>(p.clone(), mem_topo);
-            }
-            _ => {
-                log::warn!("malformed discovery for cacheservice");
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "malformed cacheservice discovery",
-                ));
-            }
-        })
+const H_MASK: u64 = 0xffff << 48;
+impl Context {
+    #[inline(always)]
+    fn from(ctx: protocol::Context) -> Self {
+        Self { ctx }
     }
-    fn from_topology<D>(p: P, topo: &MemcacheTopology<P>) -> Result<Self>
-    where
-        P: protocol::Protocol,
-    {
-        // 初始化完成一定会保障master存在，并且长度不为0.
-        use discovery::Inited;
-        use AsyncOperation::*;
-        assert!(topo.inited());
-
-        let hash = topo.hash();
-        let dist = topo.distribution();
-        let (streams, write_back) = topo.mget();
-        let mget_layers = build_mget(streams, p.clone(), hash, dist);
-        let mget_layers_writeback = build_layers(write_back, hash, dist, p.clone());
-        let mget = MGet(AsyncLayerGet::from_layers(
-            mget_layers,
-            mget_layers_writeback,
-            p.clone(),
-        ));
-
-        let master = AsyncSharding::from(LayerRole::Master, topo.master(), hash, dist, p.clone());
-        let noreply = build_layers(topo.followers(), hash, dist, p.clone());
-        let store = Store(AsyncSetSync::from_master(master, noreply, p.clone()));
-
-        // 获取get through
-        let (streams, write_back) = topo.get();
-        let get_layers = build_layers(streams, hash, dist, p.clone());
-        let get_layers_writeback = build_layers(write_back, hash, dist, p.clone());
-        let get = Get(AsyncLayerGet::from_layers(
-            get_layers,
-            get_layers_writeback,
-            p.clone(),
-        ));
-
-        // meta与master共享一个物理连接。
-        //let meta = Meta(MetaStream::from(p.clone(), topo.master()));
-        let mut operations = HashMap::with_capacity(4);
-        operations.insert(protocol::Operation::Get, get);
-        operations.insert(protocol::Operation::MGet, mget);
-        operations.insert(protocol::Operation::Store, store);
-        // operations.insert(protocol::Operation::Meta, meta);
-        let mut alias = HashMap::new();
-        alias.insert(protocol::Operation::Meta, protocol::Operation::Store);
-        let op_stream = AsyncOpRoute::from(operations, alias);
-
-        log::debug!("cs logic connection established:{:?}", op_stream.addr());
-
-        Ok(Self { inner: op_stream })
+    // 检查是否初始化，如果未初始化则进行初始化。
+    #[inline(always)]
+    fn check_and_inited(&mut self, write: bool) -> bool {
+        if self.ctx > 0 {
+            true
+        } else {
+            let inited = 0b10 | write as u64;
+            self.ctx = inited << 62;
+            false
+        }
     }
-}
-
-use std::pin::Pin;
-use std::task::{Context, Poll};
-
-use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
-
-use crate::Topology;
-
-impl<P> AsyncReadAll for CacheService<P>
-where
-    P: Protocol,
-{
-    #[inline]
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
-        Pin::new(&mut self.inner).poll_next(cx)
+    #[inline(always)]
+    fn is_write(&self) -> bool {
+        self.ctx & (1 << 62) > 0
     }
-}
-
-impl<P> AsyncWriteAll for CacheService<P>
-where
-    P: Protocol,
-{
-    #[inline]
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &Request,
-    ) -> Poll<Result<()>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
+    // 获取idx，并将原有的idx+1
+    #[inline(always)]
+    fn take_write_idx(&mut self) -> u16 {
+        let idx = self.ctx as u16;
+        self.ctx += 1;
+        idx
     }
-}
+    // 低16位存储是下一次的idx
+    // 如果是写请求，低16位，是索引
+    // 如果是读请求，则
+    #[inline(always)]
+    fn take_read_idx(&mut self) -> u16 {
+        let mut low_48bit = self.low();
+        let hight_16bit = self.hight();
 
-#[inline]
-fn build_layers<S, P>(
-    pools: Vec<(LayerRole, Vec<S>)>,
-    h: &str,
-    distribution: &str,
-    parser: P,
-) -> Vec<AsyncSharding<S, P>>
-where
-    S: AsyncWriteAll + Addressed,
-    P: Protocol + Clone,
-{
-    let mut layers: Vec<AsyncSharding<S, P>> = Vec::with_capacity(pools.len());
-    for (role, p) in pools {
-        layers.push(AsyncSharding::from(
-            role,
-            p,
-            h,
-            distribution,
-            parser.clone(),
-        ));
-    }
-    layers
-}
+        // 低16位是最后一次读取的idx。需要取16~31位的值
+        low_48bit >>= 16;
+        let idx = low_48bit as u16;
 
-#[inline]
-fn build_mget<S, P>(
-    pools: Vec<(LayerRole, Vec<S>)>,
-    parser: P,
-    h: &str,
-    d: &str,
-) -> Vec<AsyncMultiGetSharding<S, P>>
-where
-    S: AsyncWriteAll + Addressed,
-    P: Clone,
-{
-    let mut layers: Vec<AsyncMultiGetSharding<S, P>> = Vec::with_capacity(pools.len());
-    for (role, p) in pools {
-        layers.push(AsyncMultiGetSharding::from_shard(
-            role,
-            p,
-            parser.clone(),
-            h,
-            d,
-        ));
+        self.ctx = hight_16bit | low_48bit;
+        idx
     }
-    layers
+    #[inline(always)]
+    fn hight(&self) -> u64 {
+        self.ctx & H_MASK
+    }
+    #[inline(always)]
+    fn low(&self) -> u64 {
+        self.ctx & (!H_MASK)
+    }
+    // 把idx写入到低48位。原有的idx往高位移动。
+    #[inline(always)]
+    fn write_back_idx(&mut self, idx: u16) {
+        let hight_16bit = self.hight();
+        let low_48bit = (self.low() << 16) | idx as u64;
+        self.ctx = hight_16bit | low_48bit;
+    }
+    #[inline(always)]
+    fn index(&self) -> u16 {
+        self.ctx as u16
+    }
 }
