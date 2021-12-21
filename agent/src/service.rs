@@ -60,7 +60,19 @@ async fn _process_one(
     loop {
         let top = top.clone();
         // 等待初始化成功
-        let (client, _addr) = l.accept().await?;
+        let (client, addr) = l.accept().await?;
+        let addr = match addr {
+            SocketAddr::Tcp(a) => {
+                let mut addr_str = String::new();
+                addr_str = addr_str + &*a.ip().to_string() + ":" + &*a.port().to_string();
+                addr_str
+            }
+            SocketAddr::Unix(a) => {
+                let mut addr_str = String::new();
+                addr_str = addr_str + &*a.as_pathname().unwrap().to_str().unwrap();
+                addr_str
+            }
+        };
         let agent = quard.endpoint().to_owned();
         let p = p.clone();
         let session_id = session_id.fetch_add(1, Ordering::AcqRel);
@@ -68,7 +80,7 @@ async fn _process_one(
             metrics::qps("conn", 1, metric_id);
             metrics::count("conn", 1, metric_id);
             if let Err(e) =
-                process_one_connection(client, top, agent, p, session_id, metric_id).await
+                process_one_connection(addr, client, top, agent, p, session_id, metric_id).await
             {
                 log::info!("{} disconnected. {:?} ", metric_id.name(), e);
             }
@@ -78,6 +90,7 @@ async fn _process_one(
 }
 
 async fn process_one_connection(
+    addr: String,
     mut client: net::Stream,
     top: TopologyReadGuard<Topology<Protocols>>,
     endpoint: String,
@@ -97,7 +110,7 @@ async fn process_one_connection(
                 )
             })?;
         let ticker = ticker.clone();
-        match copy_bidirectional(agent, &mut client, p.clone(), session_id, metric_id, ticker)
+        match copy_bidirectional(addr.clone(), agent, &mut client, p.clone(), session_id, metric_id, ticker)
             .await?
         {
             ConnectStatus::EOF => break,
@@ -111,6 +124,8 @@ async fn process_one_connection(
 }
 
 use tokio::net::TcpListener;
+use net::SocketAddr;
+
 // 监控一个端口，主要用于进程监控
 pub(super) async fn listener_for_supervisor(port: u16) -> Result<TcpListener> {
     let addr = format!("127.0.0.1:{}", port);
