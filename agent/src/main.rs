@@ -2,9 +2,6 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-//#[global_allocator]
-//static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
 mod service;
 use context::Context;
 use crossbeam_channel::bounded;
@@ -15,9 +12,35 @@ use tokio::spawn;
 
 use protocol::Result;
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
-//#[tokio::main(flavor = "current_thread")]
+use std::ops::Deref;
+use std::panic;
+
+use backtrace::Backtrace;
+
+#[tokio::main(flavor = "multi_thread", worker_threads = 5)]
 async fn main() -> Result<()> {
+    panic::set_hook(Box::new(|panic_info| {
+        let (filename, line) = panic_info
+            .location()
+            .map(|loc| (loc.file(), loc.line()))
+            .unwrap_or(("<unknown>", 0));
+
+        let cause = panic_info
+            .payload()
+            .downcast_ref::<String>()
+            .map(String::deref);
+
+        let cause = cause.unwrap_or_else(|| {
+            panic_info
+                .payload()
+                .downcast_ref::<&str>()
+                .map(|s| *s)
+                .unwrap_or("<cause unknown>")
+        });
+
+        log::error!("A panic occurred at {}:{}: {}", filename, line, cause);
+        log::error!("panic backtrace: {:?}", Backtrace::new())
+    }));
     let ctx = Context::from_os_args();
     ctx.check()?;
 

@@ -1,3 +1,5 @@
+use backtrace::Backtrace;
+
 /// 使用者确保Slice持有的数据不会被释放。
 #[derive(Clone, Debug)]
 pub struct Slice {
@@ -56,6 +58,18 @@ impl Slice {
     }
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> Self {
+        let mut data_str = String::from_utf8(self.data().to_vec());
+        if data_str.is_ok() {
+            if offset + len > self.len {
+                log::error!("slice length error: offset = {}, len = {}, self.len = {}, self.data = {}, trace = {:?}", offset, len, self.len, data_str.unwrap().replace("\r\n", "\\r\\n"), Backtrace::new())
+            }
+        }
+        else {
+            if offset + len > self.len {
+                log::error!("slice length error: offset = {}, len = {}, self.len = {}, self.data is not utf8, trace = {:?}", offset, len, self.len, Backtrace::new())
+            }
+        }
+
         debug_assert!(offset + len <= self.len);
         Self::new(self.ptr + offset, len)
     }
@@ -126,6 +140,7 @@ impl Default for Slice {
         Slice { ptr: 0, len: 0 }
     }
 }
+
 use std::ops::Deref;
 impl Deref for Slice {
     type Target = [u8];

@@ -18,6 +18,8 @@ tokio = "1.13.0"
 futures = "0.3.17"
 atomic-waker = "*"
 
+backtrace = "0.3.63"
+
 [features]
 default = ["single-thread"]
 single-thread = []
