@@ -7,7 +7,7 @@ pub struct Sharding {
 pub mod hash;
 use hash::*;
 
-mod distribution;
+pub mod distribution;
 use distribution::*;
 
 use std::ops::Deref;
@@ -16,7 +16,7 @@ impl Sharding {
     pub fn from(hash_alg: &str, distribution: &str, names: Vec<String>) -> Self {
         let num = names.len();
         let h = Hasher::from(hash_alg);
-        let d = Distribute::from(distribution, names);
+        let d = Distribute::from(distribution, &names);
         Self {
             hash: h,
             distribution: d,
@@ -25,7 +25,7 @@ impl Sharding {
     }
     #[inline(always)]
     pub fn sharding(&self, key: &[u8]) -> usize {
-        let hash = self.hash.hash(key);
+        let hash = self.hash.hash(&key);
         let idx = self.distribution.index(hash);
         debug_assert!(idx < self.num);
         idx
