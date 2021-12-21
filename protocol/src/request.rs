@@ -1,244 +1,93 @@
-use crate::Operation;
-/// Request对象在从stream::io::Client::poll_next生成，
-/// 同一个连接，在下一次调用该方法前，Request的内存不会被释放，不会被覆盖，是安全的
-use ds::Slice;
-
-pub const MAX_REQUEST_SIZE: usize = 1024 * 1024;
-
-use std::sync::Arc;
-
-#[derive(Debug)]
-pub struct Token {
-    // meta postion in multibulk，对于slice里说，pos=meta_pos+meta_len
-    pub meta_pos: usize,
-    // meta len，长度的长度
-    pub meta_len: usize,
-    // token data position，有效信息位置
-    pub pos: usize,
-    // token data len，有效信息的长度
-    pub len: usize,
-}
-
-#[derive(Default, Clone)]
+use crate::callback::CallbackContext;
+use crate::{Command, Context, Error, HashedCommand, Operation};
+use std::fmt::{self, Debug, Display, Formatter};
 pub struct Request {
-    noreply: bool,
-    op: Operation,
-    keys: Vec<Slice>,
-    inner: Slice,
-    id: RequestId,
-    //tokens: Vec<Token>,
-    tokens: Vec<String>,
-
-    // 如果内存是由Request管理的，则将data交由_data，避免copy成本。
-    // 如果不是，里面存储的是Vec::EMPTY，这个clone是零开销的，本身不占用内存。
-    _data: Arc<Vec<u8>>,
+    ctx: *mut CallbackContext,
 }
 
+impl crate::Request for Request {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.req().len()
+    }
+    #[inline(always)]
+    fn read(&self, oft: usize) -> &[u8] {
+        self.req().read(oft)
+    }
+    #[inline(always)]
+    fn operation(&self) -> Operation {
+        self.req().operation()
+    }
+    #[inline(always)]
+    fn hash(&self) -> u64 {
+        self.req().hash()
+    }
+    #[inline(always)]
+    fn sentonly(&self) -> bool {
+        self.req().sentonly()
+    }
+    #[inline(always)]
+    fn on_sent(&mut self) {
+        self.ctx().on_sent();
+    }
+    #[inline(always)]
+    fn on_complete(self, resp: Command) {
+        self.ctx().on_complete(resp);
+    }
+    #[inline(always)]
+    fn on_err(self, err: Error) {
+        self.ctx().on_err(err);
+    }
+    #[inline(always)]
+    fn mut_context(&mut self) -> &mut Context {
+        self.ctx().ctx.as_mut_flag()
+    }
+    #[inline(always)]
+    fn write_back(&mut self, wb: bool) {
+        self.ctx().ctx.write_back(wb);
+    }
+    #[inline(always)]
+    fn try_next(&mut self, goon: bool) {
+        self.ctx().ctx.try_next(goon);
+    }
+}
 impl Request {
     #[inline(always)]
-    pub fn from(data: Slice, op: Operation, keys: Vec<Slice>) -> Self {
-        Self {
-            inner: data,
-            op: op,
-            keys: keys,
-            ..Default::default()
-        }
+    pub fn new(ctx: *mut CallbackContext) -> Self {
+        Self { ctx }
     }
     #[inline(always)]
-    pub fn from_request(data: Vec<u8>, keys: Vec<Slice>, req: &Request) -> Self {
-        Self {
-            inner: Slice::from(&data),
-            id: req.id,
-            noreply: req.noreply,
-            _data: Arc::new(data),
-            keys: keys,
-            op: req.op,
-            tokens: Default::default(),
-        }
+    pub fn start(self) {
+        self.ctx().start()
     }
-    // request 自己接管data，构建一个全新的request
-    pub fn from_data(
-        data: Vec<u8>,
-        keys: Vec<Slice>,
-        id: RequestId,
-        noreply: bool,
-        op: Operation,
-    ) -> Self {
-        Self {
-            inner: Slice::from(&data),
-            id: id,
-            noreply: noreply,
-            _data: Arc::new(data),
-            keys: keys,
-            op: op,
-            tokens: Default::default(),
-        }
+
+    #[inline(always)]
+    fn req(&self) -> &HashedCommand {
+        self.ctx().request()
     }
     #[inline(always)]
-    pub fn operation(&self) -> Operation {
-        self.op
-    }
-    #[inline(always)]
-    pub fn id(&self) -> RequestId {
-        self.id
-    }
-    #[inline(always)]
-    pub fn set_noreply(&mut self) {
-        self.noreply = true;
-    }
-    #[inline(always)]
-    pub fn noreply(&self) -> bool {
-        self.noreply
-    }
-    #[inline(always)]
-    pub fn data(&self) -> &[u8] {
-        return self.inner.data();
-    }
-    #[inline(always)]
-    pub fn set_request_id(&mut self, id: RequestId) {
-        self.id = id;
-    }
-    #[inline(always)]
-    pub fn keys(&self) -> &[Slice] {
-        &self.keys
-    }
-    #[inline(always)]
-    pub fn last_key(&self) -> &Slice {
-        debug_assert!(self.keys.len() > 0);
-        unsafe { &self.keys.get_unchecked(self.keys.len() - 1) }
-    }
-    #[inline(always)]
-    pub fn set_tokens(&mut self, tokens: Vec<String>) {
-        self.tokens = tokens;
+    fn ctx(&self) -> &mut CallbackContext {
+        unsafe { &mut *self.ctx }
     }
 }
 
-use std::ops::Deref;
-impl Deref for Request {
-    type Target = Slice;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+impl Clone for Request {
+    fn clone(&self) -> Self {
+        panic!("request sould never be cloned!");
     }
 }
-impl AsRef<Slice> for Request {
-    #[inline(always)]
-    fn as_ref(&self) -> &Slice {
-        &self.inner
-    }
-}
-
-pub use rid::RequestId;
-
-#[cfg(debug_assertions)]
-mod rid {
-    #[derive(Default, Debug, PartialEq, Clone, Copy)]
-    pub struct RequestId {
-        session_id: usize, // 关联至一个client的实际的connection
-        seq: usize,        // 自增序列号
-        metric_id: usize,
-    }
-
-    impl RequestId {
-        #[inline(always)]
-        pub fn from(session_id: usize, seq: usize, metric_id: usize) -> Self {
-            Self {
-                session_id,
-                seq,
-                metric_id,
-            }
-        }
-        #[inline(always)]
-        pub fn incr(&mut self) {
-            self.seq += 1;
-        }
-        #[inline(always)]
-        pub fn metric_id(&self) -> usize {
-            self.metric_id
-        }
-        #[inline(always)]
-        pub fn session_id(&self) -> usize {
-            self.session_id
-        }
-    }
-    use std::fmt;
-    impl fmt::Display for RequestId {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(
-                f,
-                "(rid: {} => {} metric:{})",
-                self.session_id, self.seq, self.metric_id
-            )
-        }
-    }
-}
-
-#[cfg(not(debug_assertions))]
-mod rid {
-    use std::fmt;
-    #[derive(Default, Debug, PartialEq, Clone, Copy)]
-    pub struct RequestId {
-        session_id: usize, // 关联至一个client的实际的connection
-        seq: usize,        // 自增序列号
-        metric_id: usize,
-    }
-
-    impl RequestId {
-        #[inline(always)]
-        pub fn from(session_id: usize, seq: usize, metric_id: usize) -> Self {
-            Self {
-                session_id,
-                seq,
-                metric_id,
-            }
-        }
-        #[inline(always)]
-        pub fn incr(&mut self) {}
-        #[inline(always)]
-        pub fn metric_id(&self) -> usize {
-            self.metric_id
-        }
-        #[inline(always)]
-        pub fn session_id(&self) -> usize {
-            self.session_id
-        }
-    }
-
-    impl fmt::Display for RequestId {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(
-                f,
-                "(rid: {} => {} metric:{})",
-                self.session_id, self.seq, self.metric_id
-            )
-        }
-    }
-}
-
-use std::fmt::{self, Display, Formatter};
 impl Display for Request {
-    #[inline]
+    #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "(len:{} keys:{} data:{:?} {})",
-            self.len(),
-            self.keys.len(),
-            self.data(),
-            self.id
-        )
+        write!(f, "{}", self.ctx())
     }
 }
-use std::fmt::Debug;
 impl Debug for Request {
-    #[inline]
+    #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "(len:{} keys:{} data:{:?} {})",
-            self.len(),
-            self.keys.len(),
-            self.data(),
-            self.id
-        )
+        Display::fmt(self, f)
     }
 }
+
+unsafe impl Send for Request {}
+unsafe impl Sync for Request {}

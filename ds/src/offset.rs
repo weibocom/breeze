@@ -17,6 +17,9 @@ pub struct SeqOffset {
 }
 
 impl SeqOffset {
+    pub fn new() -> Self {
+        Self::with_capacity(32)
+    }
     pub fn with_capacity(cap: usize) -> Self {
         debug_assert!(cap >= 1);
         //let cache = (0..cap).map(|_| CacheAligned(Item::new())).collect();
@@ -93,3 +96,6 @@ impl SeqOffset {
         seqs.clear();
     }
 }
+
+unsafe impl Send for SeqOffset {}
+unsafe impl Sync for SeqOffset {}

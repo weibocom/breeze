@@ -1,8 +1,6 @@
-use std::collections::VecDeque;
 use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Instant;
 
 use futures::ready;
 use tokio::io::{AsyncRead, ReadBuf};
@@ -39,7 +37,6 @@ impl Receiver {
         parser: &P,
         rid: &RequestId,
         metric: &mut IoMetric,
-        direct_response_queue: &mut VecDeque<Request>,
     ) -> Poll<Result<()>>
     where
         R: AsyncRead + ?Sized,
@@ -74,26 +71,14 @@ impl Receiver {
             }
             self.buff.advance_write(read);
             metric.req_received(read);
-            log::debug!("{} bytes received, session_id = {}", read, rid.session_id());
+            log::debug!("{} bytes received.{}", read, rid);
         }
         // 到这req一定存在，不用take+unwrap是为了在出现pending的时候，不重新insert
         if let Some(ref mut req) = self.req {
             req.set_request_id(*rid);
             metric.req_done(req.operation(), req.len(), req.keys().len());
-            unsafe {
-                log::debug!(
-                    "++++ parsed client req/{:?}:  {} => {:?}",
-                    req.id(),
-                    self.buff,
-                    String::from_utf8_unchecked(req.data().to_vec())
-                );
-            }
-            if parser.is_direct_response(req) {
-                direct_response_queue.push_back(req.clone());
-            }
-            else {
-                ready!(writer.as_mut().poll_write(cx, &req))?;
-            }
+            log::debug!("parsed: {} => {}", self.buff, req);
+            ready!(writer.as_mut().poll_write(cx, &req))?;
             self.buff.advance_read(req.len());
         }
         // 把read重置为0.避免ringbuffer形成ring。

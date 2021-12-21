@@ -1,154 +1,221 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
-use protocol::Protocol;
-use protocol::Resource;
-use stream::{BackendStream, LayerRole};
+use discovery::TopologyWrite;
+use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
+use sharding::hash::Hasher;
 
-use crate::topology::*;
-use crate::RedisNamespace;
-
+use super::config::RedisNamespace;
+use discovery::dns::{self, IPPort};
 #[derive(Clone)]
-pub struct RedisTopology<P> {
-    namespace: String,
-    access_mod: String,
-    hash: String,         // hash策略
-    distribution: String, //distribution策略
-    listen_ports: Vec<u16>,
-    master: Inner<Vec<String>>,
-    slaves: Inner<Vec<(LayerRole, Vec<String>)>>,
-    last_cfg: String,
+pub struct RedisService<B, E, Req, P> {
+    // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
+    shards: Vec<Vec<(String, E)>>,
+    r_idx: Vec<Arc<AtomicUsize>>, // 选择哪个从读取数据
+    // 不同sharding的url。第0个是master
+    shards_url: Vec<Vec<String>>,
+    hasher: Hasher,
+    updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
-    // 在没有slave时。所有的command共用一个物理连接
-    share: Inner<Vec<(LayerRole, Vec<String>)>>,
-    shared: bool,
+    service: String,
+    _mark: std::marker::PhantomData<(B, Req)>,
 }
-
-impl<P> RedisTopology<P>
-where
-    P: Protocol,
-{
-    pub(crate) fn hash(&self) -> &str {
-        &self.hash
-    }
-    pub(crate) fn distribution(&self) -> &str {
-        &self.distribution
-    }
-
-    pub(crate) fn master(&self) -> Vec<BackendStream> {
-        self.master
-            .select(Some(self.share.streams()))
-            .pop()
-            .expect("master empty")
-            .1
-    }
-    // 所有slave连接
-    pub(crate) fn slaves(&self) -> Vec<(LayerRole, Vec<BackendStream>)> {
-        self.slaves.select(Some(self.share.streams()))
-    }
-}
-
-impl<P> discovery::TopologyWrite for RedisTopology<P>
-where
-    P: Send + Sync + Protocol,
-{
-    fn resource(&self) -> Resource {
-        Resource::Redis
-    }
-    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, HashSet<String>>) {
-        let idx = name.find(':').unwrap_or(name.len());
-        if idx == 0 || idx >= name.len() - 1 {
-            log::info!("not a valid cache service name:{} no namespace found", name);
-            return;
-        }
-        let namespace = &name[idx + 1..];
-        self.namespace = namespace.to_string();
-
-        match RedisNamespace::parse(cfg, namespace) {
-            Err(e) => {
-                log::info!(
-                    "parse redis config failed. error:{} name:{} cfg:{}",
-                    e,
-                    name,
-                    cfg
-                );
-            }
-            Ok(mut ns) => {
-                ns.refresh_backends(hosts);
-
-                if ns.master.len() == 0 {
-                    log::warn!("redisservice/{} :{}", name, cfg);
-                    return;
-                }
-                // 首先备份一份cfg，为后续更新hosts时使用
-                self.last_cfg = cfg.to_string();
-
-                self.access_mod = ns.basic.access_mod.clone();
-                self.hash = ns.basic.hash.clone();
-                self.distribution = ns.basic.distribution.clone();
-                self.listen_ports = ns.parse_listen_ports();
-
-                // 这些需要在解析域名完毕后才能进行
-                self.share.set(ns.uniq_all());
-                self.share.update(self.namespace.as_str(), &self.parser);
-                self.master.set(ns.master.clone());
-                self.slaves.set(ns.readers());
-
-                // 如果没有slave，后续各种操作都共享物理连接
-                if ns.slaves.len() == 0 {
-                    self.shared = true;
-                    self.share.set(vec![(LayerRole::Master, ns.master.clone())]);
-                    self.share.update(self.namespace.as_str(), &self.parser);
-                } else {
-                    self.shared = false;
-                    // self.master.update(self.namespace.as_str(), &self.parser);
-                }
-            }
-        }
-    }
-
-    fn update_hosts(
-        &mut self,
-        name: &str,
-        hosts: &HashMap<String, std::collections::HashSet<String>>,
-    ) {
-        log::info!("update hosts for redis {}", name);
-        let cfg = self.last_cfg.clone();
-        self.update(name, cfg.as_str(), hosts);
-    }
-
-    fn gc(&mut self) {
-        // if self.shared {
-        //     self.get.take();
-        //     self.mget.take();
-        // }
-    }
-}
-
-impl<P> From<P> for RedisTopology<P>
-where
-    P: Protocol,
-{
+impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
+    #[inline]
     fn from(parser: P) -> Self {
         Self {
-            namespace: Default::default(),
-            parser: parser,
-            access_mod: Default::default(),
-            hash: Default::default(),
-            distribution: Default::default(),
-            listen_ports: Default::default(),
-            master: Default::default(),
-            slaves: Default::default(),
-            last_cfg: Default::default(),
-            share: Default::default(),
-            shared: false,
+            parser,
+            shards: Default::default(),
+            r_idx: Default::default(),
+            shards_url: Default::default(),
+            hasher: Default::default(),
+            updated: Default::default(),
+            service: Default::default(),
+            _mark: Default::default(),
         }
     }
 }
+impl<B, E, Req, P> Topology for RedisService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+    B: Send + Sync,
+{
+    #[inline]
+    fn hasher(&self) -> &Hasher {
+        &self.hasher
+    }
+}
 
-// 所有的stream都初始化完成
-impl<P> discovery::Inited for RedisTopology<P> {
+impl<B: Send + Sync, E, Req, P> protocol::Endpoint for RedisService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+{
+    type Item = Req;
+    #[inline(always)]
+    fn send(&self, mut req: Self::Item) {
+        debug_assert_ne!(self.shards.len(), 0);
+        let shard_idx = req.hash() as usize % self.shards.len();
+        let shard = unsafe { self.shards.get_unchecked(shard_idx) };
+        let mut idx = 0;
+        // 如果有从，并且是读请求。
+        if shard.len() >= 2 && !req.operation().is_store() {
+            debug_assert_eq!(self.shards.len(), self.r_idx.len());
+            let ctx = *req.context_mut();
+            // 高4个字节是第一次的索引
+            // 低4个字节是下一次读取的索引
+            let (mut first, next) = (ctx >> 32, ctx & 0xffffffff);
+            let seq;
+            if ctx == 0 {
+                seq = unsafe {
+                    self.r_idx
+                        .get_unchecked(shard_idx)
+                        .fetch_add(1, Ordering::Relaxed)
+                        & 65535
+                };
+            } else {
+                seq = next as usize + 1;
+            }
+            idx = seq % (self.shards.len() - 1) + 1;
+            if first == 0 {
+                first = idx as u64;
+            }
+            *req.context_mut() = (first << 32) | next;
+
+            // 减一，是把主减掉
+            req.try_next((next - first) < self.shards.len() as u64 - 1);
+        }
+        debug_assert!(idx < self.shards.len());
+        shard[idx].1.send(req);
+    }
+}
+impl<B, E, Req, P> TopologyWrite for RedisService<B, E, Req, P>
+where
+    B: Builder<P, Req, E>,
+    P: Protocol,
+    E: Endpoint<Item = Req>,
+{
+    #[inline]
+    fn update(&mut self, namespace: &str, cfg: &str) {
+        match serde_yaml::from_str::<RedisNamespace>(cfg) {
+            Err(e) => log::info!("failed to parse redis namespace:{},{:?}", namespace, e),
+            Ok(ns) => {
+                self.hasher = Hasher::from(&ns.basic.hash);
+                let mut shards_url = Vec::new();
+                for shard in ns.backends.iter() {
+                    let mut shard_url = Vec::new();
+                    for url_port in shard.split(",") {
+                        // 注册域名。后续可以通常lookup进行查询。
+                        let host = url_port.host();
+                        if !self.updated.contains_key(host) {
+                            let notify: Arc<AtomicBool> = Arc::default();
+                            self.updated.insert(host.to_string(), notify.clone());
+                            dns::register(host, notify);
+                        }
+                        shard_url.push(url_port.to_string());
+                    }
+                    shards_url.push(shard_url);
+                }
+                log::info!("top updated to {:?}", shards_url);
+                self.shards_url = shards_url;
+            }
+        }
+        self.service = namespace.to_string();
+    }
+    // 满足以下两个条件之一，则需要更新：
+    // 1. 存在某dns未成功解析，并且dns数据准备就绪
+    // 2. 近期有dns更新。
+    #[inline]
+    fn need_load(&self) -> bool {
+        self.shards.len() != self.shards_url.len()
+            || self
+                .updated
+                .iter()
+                .fold(false, |acc, (_k, v)| acc || v.load(Ordering::Acquire))
+    }
+    #[inline]
+    fn load(&mut self) {
+        // 把通知放在最前面，避免丢失通知。
+        for (_, updated) in self.updated.iter() {
+            updated.store(false, Ordering::Release);
+        }
+
+        let old_streams = self.shards.split_off(0);
+        let mut old = HashMap::with_capacity(old_streams.len());
+        for shard in old_streams {
+            for (addr, endpoint) in shard {
+                // 一个ip可能存在于多个域名中。
+                old.entry(addr).or_insert(Vec::new()).push(endpoint);
+            }
+        }
+        // 遍历所有的shards_url
+        for shard in self.shards_url.iter() {
+            let mut endpoints = Vec::new();
+            if shard.len() > 0 {
+                let master_url = &shard[0];
+                let masters = dns::lookup_ips(master_url.host());
+                if masters.len() > 0 {
+                    // 忽略多个masterip的情况
+                    let master_ip = &masters[0];
+                    let master_addr = master_ip.to_string() + ":" + master_url.port();
+                    let timeout = Duration::from_millis(500);
+                    let master = self.take_or_build(&mut old, &master_addr, timeout);
+                    endpoints.push((master_addr, master));
+
+                    // slave
+                    for url_port in &shard[1..] {
+                        let url = url_port.host();
+                        let port = url_port.port();
+                        for slave_ip in dns::lookup_ips(url) {
+                            let addr = slave_ip + ":" + port;
+                            let timeout = Duration::from_millis(200);
+                            let slave = self.take_or_build(&mut old, &addr, timeout);
+                            endpoints.push((addr, slave));
+                        }
+                    }
+                }
+            }
+            self.shards.push(endpoints);
+        }
+        log::info!("loading complete:{}", self.service);
+    }
+}
+impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
+where
+    E: discovery::Inited,
+{
+    // 每一个域名都有对应的endpoint，并且都初始化完成。
+    #[inline]
     fn inited(&self) -> bool {
-        self.master.len() > 0 && self.master.inited()
+        // 每一个分片都有初始, 并且至少有一主一从。
+        self.shards.len() == self.shards_url.len()
+            && self.shards.iter().fold(true, |inited, shard| {
+                inited && shard.len() >= 2 && shard.iter().fold(true, |i, e| i && e.1.inited())
+            })
+    }
+}
+impl<B, E, Req, P> RedisService<B, E, Req, P>
+where
+    B: Builder<P, Req, E>,
+    P: Protocol,
+    E: Endpoint<Item = Req>,
+{
+    #[inline]
+    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Duration) -> E {
+        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
+            Some(Some(end)) => end,
+            _ => B::build(
+                &addr,
+                self.parser.clone(),
+                Resource::Redis,
+                &self.service,
+                timeout,
+            ),
+        }
     }
 }
