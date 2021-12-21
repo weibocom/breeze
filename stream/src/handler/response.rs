@@ -35,6 +35,8 @@ pub struct ResponseHandler<R, W, P> {
     ticks: usize,
 
     processed: usize,
+    poll_times: usize,
+    last_log_time: Instant,
 }
 
 impl<R, W, P> ResponseHandler<R, W, P> {
@@ -60,6 +62,8 @@ impl<R, W, P> ResponseHandler<R, W, P> {
             tick: interval(Duration::from_micros(500)),
             metric_id: mid,
             processed: 0,
+            poll_times: 0,
+            last_log_time: Instant::now(),
         }
     }
 }
@@ -74,6 +78,12 @@ where
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
+        me.poll_times += 1;
+        if me.last_log_time.elapsed() >= Duration::from_secs(60) {
+            log::info!("recv from redis: {:?} poll times: {}", me.w.addr(), me.poll_times);
+            me.poll_times = 0;
+            me.last_log_time = Instant::now();
+        }
         let mut reader = Pin::new(&mut me.r);
         let mut eof = false;
         while me.w.running() {
