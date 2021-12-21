@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::ready;
 use tokio::io::{AsyncRead, ReadBuf};
@@ -17,6 +17,8 @@ use crate::AsyncWriteAll;
 pub(super) struct Receiver {
     buff: ResizedRingBuffer,
     req: Option<Request>,
+    poll_times: usize,
+    last_log_time: Instant,
 }
 
 impl Receiver {
@@ -27,12 +29,13 @@ impl Receiver {
             }
             metrics::count("mem_buff_rx", delta, metric_id);
         });
-        Self { buff, req: None }
+        Self { buff, req: None, poll_times: 0, last_log_time: Instant::now() }
     }
     // 返回当前请求的size，以及请求的类型。
     #[inline]
     pub fn poll_copy_one<R, W, P>(
         &mut self,
+        addr: String,
         cx: &mut Context,
         mut reader: Pin<&mut R>,
         mut writer: Pin<&mut W>,
@@ -47,6 +50,12 @@ impl Receiver {
         P: Protocol + Unpin,
         W: AsyncWriteAll + ?Sized,
     {
+        self.poll_times += 1;
+        if self.last_log_time.elapsed() >= Duration::from_secs(60) {
+            log::info!("recv from client: {} poll times: {}", addr, self.poll_times);
+            self.poll_times = 0;
+            self.last_log_time = Instant::now();
+        }
         log::debug!("buff:{} rid:{}", self.buff, rid);
         while self.req.is_none() {
             if self.buff.len() > 0 {
