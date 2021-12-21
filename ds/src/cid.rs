@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 pub struct Cid {
@@ -36,6 +37,12 @@ impl Drop for Cid {
         if let Some(ids) = &self.ids {
             ids.release(self.id);
         }
+    }
+}
+
+impl Display for Cid {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "cid: (faked = {}, id = {})", self.faked, self.id)
     }
 }
 
