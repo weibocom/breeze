@@ -125,7 +125,7 @@ where
             let n = buf.capacity() - buf.remaining();
             if n == 0 {
                 eof = true;
-                continue; // EOF
+                break; // EOF
             }
             me.data.advance_write(n);
             let p_oft = me.processed - me.data.read();
