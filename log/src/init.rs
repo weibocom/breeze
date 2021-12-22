@@ -41,7 +41,7 @@ pub fn init(path: &str, l: &str) -> Result<()> {
     ));
     let logfile = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
-            "[breeze] {d} - {l} - {t} - {m}{n}",
+            "[breeze.{P}] {d} - {l} - {t} - {m}{n}",
         )))
         .build(file, policy)
         .unwrap();
