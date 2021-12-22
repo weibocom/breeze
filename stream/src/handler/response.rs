@@ -35,10 +35,6 @@ pub struct ResponseHandler<R, W, P> {
     ticks: usize,
 
     processed: usize,
-    poll_times: usize,
-    last_log_time: Instant,
-    poll_read_pending_times: usize,
-    poll_tick_times: usize,
 }
 
 impl<R, W, P> ResponseHandler<R, W, P> {
@@ -64,10 +60,6 @@ impl<R, W, P> ResponseHandler<R, W, P> {
             tick: interval(Duration::from_micros(500)),
             metric_id: mid,
             processed: 0,
-            poll_times: 0,
-            last_log_time: Instant::now(),
-            poll_read_pending_times: 0,
-            poll_tick_times: 0,
         }
     }
 }
@@ -82,18 +74,6 @@ where
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
-        let mut polled_a_lot = false;
-        me.poll_times += 1;
-        if me.last_log_time.elapsed() >= Duration::from_secs(60) {
-            if me.poll_times > 10000 {
-                polled_a_lot = true;
-            }
-            log::info!("recv from redis: {:?} poll times: {}, poll from recv times: {}, poll from tick times: {}", me.w.addr(), me.poll_times, me.poll_read_pending_times, me.poll_tick_times);
-            me.poll_times = 0;
-            me.poll_read_pending_times = 0;
-            me.poll_tick_times = 0;
-            me.last_log_time = Instant::now();
-        }
         let mut reader = Pin::new(&mut me.r);
         let mut eof = false;
         while me.w.running() {
@@ -101,27 +81,12 @@ where
             me.data.advance_read(read);
             let mut buf = me.data.as_mut_bytes();
             if buf.len() == 0 {
-                //ready!(me.tick.poll_tick(cx));
-                let r = me.tick.poll_tick(cx);
-                match r {
-                    core::task::Poll::Ready(t) => {}
-                    core::task::Poll::Pending => {
-                        me.poll_tick_times += 1;
-                        return core::task::Poll::Pending
-                    },
-                }
+                ready!(me.tick.poll_tick(cx));
                 continue;
             }
             me.ticks = 0;
             let mut buf = ReadBuf::new(&mut buf);
-            let r = reader.as_mut().poll_read(cx, &mut buf);
-            match r {
-                core::task::Poll::Ready(t) => {}
-                core::task::Poll::Pending => {
-                    me.poll_read_pending_times += 1;
-                    return core::task::Poll::Pending
-                },
-            }
+            ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             let n = buf.capacity() - buf.remaining();
             if n == 0 {
                 eof = true;
@@ -135,15 +100,6 @@ where
             while me.processed < me.data.writtened() {
                 let p_oft = me.processed - me.data.read();
                 let processing = me.data.data().sub_slice(p_oft, me.data.len() - p_oft);
-                if polled_a_lot {
-                    let response_str = String::from_utf8(processing.data());
-                    if response_str.is_ok() {
-                        log::info!("recv from redis: {:?} poll times over 10000, response: {}", me.w.addr(), response_str.unwrap().replace("\r", "\\r").replace("\n", "\\n"));
-                    }
-                    else {
-                        log::info!("recv from redis: {:?} poll times over 10000, response: {:?}", me.w.addr(), processing.data());
-                    }
-                }
                 match me.parser.parse_response(&processing) {
                     None => break,
                     Some(r) => {
