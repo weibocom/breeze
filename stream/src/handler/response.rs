@@ -81,7 +81,7 @@ where
         let mut polled_a_lot = false;
         me.poll_times += 1;
         if me.last_log_time.elapsed() >= Duration::from_secs(60) {
-            if poll_times > 10000 {
+            if me.poll_times > 10000 {
                 polled_a_lot = true;
             }
             log::info!("recv from redis: {:?} poll times: {}", me.w.addr(), me.poll_times);
