@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 #log = { path = "../log" }
-tokio = {version = "1.12.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
+tokio = {version = "1.15.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
 mimalloc = { version = "*", default-features = false }
 
 byteorder = "1.4.3"
