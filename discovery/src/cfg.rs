@@ -35,10 +35,7 @@ where
     // 初始化。
     pub(crate) async fn init<C: Cache>(&mut self, snapshot: &str, discovery: &mut C) {
         match self.load_from_snapshot(snapshot).await {
-            Ok((cfg, sig)) => {
-                self.sig = sig;
-                self.update(&cfg)
-            }
+            Ok((cfg, sig)) => self.update(&cfg, sig),
             Err(_e) => self.check_update(snapshot, discovery).await,
         }
     }
@@ -50,9 +47,9 @@ where
             if !dump && !update {
                 return;
             }
-            self.sig = sig;
             if update {
-                self.update(&cfg);
+                log::info!("updating {:?} => {:?} cfg len:{}", self, sig, cfg.len());
+                self.update(&cfg, sig);
             }
             self.dump(snapshot, &cfg).await;
         }
@@ -67,9 +64,9 @@ where
             }
         }
     }
-    fn update(&mut self, cfg: &str) {
+    fn update(&mut self, cfg: &str, sig: Sig) {
+        self.sig = sig;
         let name = self.service().namespace().to_string();
-        log::info!("updating {:?}  namespace:{}", self, name);
         self.inner.update(&name, cfg);
         self.last_update = Instant::now();
     }

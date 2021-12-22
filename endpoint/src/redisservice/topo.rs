@@ -121,7 +121,9 @@ where
                     }
                     shards_url.push(shard_url);
                 }
-                log::info!("top updated to {:?}", shards_url);
+                if self.shards_url.len() > 0 {
+                    log::info!("top updated from {:?} to {:?}", self.shards_url, shards_url);
+                }
                 self.shards_url = shards_url;
             }
         }
