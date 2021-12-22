@@ -14,6 +14,7 @@ use discovery::TopologyTicker;
 use protocol::{Protocol, RequestId};
 
 pub async fn copy_bidirectional<A, C, P>(
+    addr: String,
     agent: A,
     client: &mut C,
     parser: P,
@@ -27,6 +28,7 @@ where
     P: Protocol + Unpin,
 {
     CopyBidirectional {
+        addr,
         agent: agent,
         client: client,
         parser: parser,
@@ -50,6 +52,7 @@ where
 /// 5. 重复1
 /// 任何异常都会导致copy提前路上
 struct CopyBidirectional<'c, A, C, P> {
+    addr: String,
     agent: A,
     client: &'c mut C,
     parser: P,
@@ -74,6 +77,7 @@ where
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let CopyBidirectional {
+            addr,
             agent,
             client,
             parser,
@@ -93,6 +97,7 @@ where
             metric.enter();
             if !*sent {
                 ready!(receiver.poll_copy_one(
+                    addr.to_string(),
                     cx,
                     client.as_mut(),
                     agent.as_mut(),

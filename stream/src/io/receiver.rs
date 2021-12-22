@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::ready;
 use tokio::io::{AsyncRead, ReadBuf};
@@ -27,12 +27,13 @@ impl Receiver {
             }
             metrics::count("mem_buff_rx", delta, metric_id);
         });
-        Self { buff, req: None }
+        Self { buff, req: None, }
     }
     // 返回当前请求的size，以及请求的类型。
     #[inline]
     pub fn poll_copy_one<R, W, P>(
         &mut self,
+        addr: String,
         cx: &mut Context,
         mut reader: Pin<&mut R>,
         mut writer: Pin<&mut W>,
