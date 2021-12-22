@@ -78,8 +78,12 @@ where
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
+        let mut polled_a_lot = false;
         me.poll_times += 1;
         if me.last_log_time.elapsed() >= Duration::from_secs(60) {
+            if poll_times > 10000 {
+                polled_a_lot = true;
+            }
             log::info!("recv from redis: {:?} poll times: {}", me.w.addr(), me.poll_times);
             me.poll_times = 0;
             me.last_log_time = Instant::now();
@@ -110,6 +114,15 @@ where
             while me.processed < me.data.writtened() {
                 let p_oft = me.processed - me.data.read();
                 let processing = me.data.data().sub_slice(p_oft, me.data.len() - p_oft);
+                if polled_a_lot {
+                    let response_str = String::from_utf8(processing.data());
+                    if response_str.is_ok() {
+                        log::info!("recv from redis: {:?} poll times over 10000, response: {}", me.w.addr(), response_str.unwrap().replace("\r", "\\r").replace("\n", "\\n"));
+                    }
+                    else {
+                        log::info!("recv from redis: {:?} poll times over 10000, response: {:?}", me.w.addr(), processing.data());
+                    }
+                }
                 match me.parser.parse_response(&processing) {
                     None => break,
                     Some(r) => {
