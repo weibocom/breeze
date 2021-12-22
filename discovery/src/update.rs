@@ -53,7 +53,7 @@ where
                 if services.contains_key(&service) {
                     log::error!("service duplicatedly registered:{}", service);
                 } else {
-                    log::info!("service path:{:?} registered ", service);
+                    log::debug!("service path:{:?} registered ", service);
                     let mut t: crate::cfg::Config<T> = t.into();
                     t.init(&self.snapshot, &mut self.discovery).await;
                     services.insert(service, t);
