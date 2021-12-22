@@ -1,8 +1,14 @@
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::IntoStringError;
 use std::future::Future;
 use std::io::{Error, ErrorKind::*, Result};
+use std::ops::Add;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use super::status::Status;
 use crate::{Address, Addressed, AtomicWaker, Notify, Request, RequestHandler, ResponseHandler, Snapshot};
@@ -306,7 +312,7 @@ impl crate::handler::request::Handler for Arc<MpmcStream> {
         self.get_item(cid).take_request(seq)
     }
     #[inline(always)]
-    fn sent(&self, _cid: usize, _seq: usize, req: &Request) {
+    fn sent(&self, cid: usize, _seq: usize, req: &Request) {
         if req.noreply() {
             // noreply的请求，发送即接收
             self.resp_num.0.fetch_add(1, Ordering::Relaxed);
