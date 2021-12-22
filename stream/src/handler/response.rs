@@ -37,6 +37,8 @@ pub struct ResponseHandler<R, W, P> {
     processed: usize,
     poll_times: usize,
     last_log_time: Instant,
+    poll_read_pending_times: usize,
+    poll_tick_times: usize,
 }
 
 impl<R, W, P> ResponseHandler<R, W, P> {
@@ -64,6 +66,8 @@ impl<R, W, P> ResponseHandler<R, W, P> {
             processed: 0,
             poll_times: 0,
             last_log_time: Instant::now(),
+            poll_read_pending_times: 0,
+            poll_tick_times: 0,
         }
     }
 }
@@ -84,8 +88,10 @@ where
             if me.poll_times > 10000 {
                 polled_a_lot = true;
             }
-            log::info!("recv from redis: {:?} poll times: {}", me.w.addr(), me.poll_times);
+            log::info!("recv from redis: {:?} poll times: {}, poll from recv times: {}, poll from tick times: {}", me.w.addr(), me.poll_times, me.poll_read_pending_times, me.poll_tick_times);
             me.poll_times = 0;
+            me.poll_read_pending_times = 0;
+            me.poll_tick_times = 0;
             me.last_log_time = Instant::now();
         }
         let mut reader = Pin::new(&mut me.r);
@@ -95,12 +101,27 @@ where
             me.data.advance_read(read);
             let mut buf = me.data.as_mut_bytes();
             if buf.len() == 0 {
-                ready!(me.tick.poll_tick(cx));
+                //ready!(me.tick.poll_tick(cx));
+                let r = me.tick.poll_tick(cx);
+                match r {
+                    core::task::Poll::Ready(t) => {}
+                    core::task::Poll::Pending => {
+                        me.poll_tick_times += 1;
+                        return core::task::Poll::Pending
+                    },
+                }
                 continue;
             }
             me.ticks = 0;
             let mut buf = ReadBuf::new(&mut buf);
-            ready!(reader.as_mut().poll_read(cx, &mut buf))?;
+            let r = reader.as_mut().poll_read(cx, &mut buf);
+            match r {
+                core::task::Poll::Ready(t) => {}
+                core::task::Poll::Pending => {
+                    me.poll_read_pending_times += 1;
+                    return core::task::Poll::Pending
+                },
+            }
             let n = buf.capacity() - buf.remaining();
             if n == 0 {
                 eof = true;
