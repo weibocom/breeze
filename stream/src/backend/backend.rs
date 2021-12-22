@@ -22,9 +22,6 @@ pub struct BackendStream {
 
 impl BackendStream {
     pub fn from(id: Cid, stream: Arc<MpmcStream>) -> Self {
-        if stream.address() == "10.75.10.90:8017" || stream.address() == "10.75.10.209:8010" || stream.address() == "10.75.1.180:8015" {
-            log::info!("new stream from address {}, cid: {}", stream.address(), id);
-        }
         Self {
             id: id,
             inner: stream,
@@ -84,10 +81,6 @@ impl AsyncWriteAll for BackendStream {
 impl Drop for BackendStream {
     #[inline(always)]
     fn drop(&mut self) {
-        let self_address = self.inner.address();
-        if self_address == "10.75.10.90:8017" || self_address == "10.75.10.209:8010" || self_address == "10.75.1.180:8015" {
-            log::info!("drop stream from address {}, cid: {}", self_address, self.id);
-        }
         if !self.id.faked() {
             self.inner.shutdown(self.id.id());
         }
