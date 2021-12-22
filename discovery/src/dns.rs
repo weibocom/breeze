@@ -10,10 +10,7 @@ use tokio::sync::mpsc::{
     unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender,
 };
 
-use trust_dns_resolver::{
-    config::{ResolverConfig, ResolverOpts},
-    AsyncResolver, TokioConnection, TokioConnectionProvider, TokioHandle,
-};
+use trust_dns_resolver::{AsyncResolver, TokioConnection, TokioConnectionProvider, TokioHandle};
 
 use ds::{CowReadHandle, CowWriteHandle};
 use once_cell::sync::OnceCell;
@@ -53,29 +50,6 @@ pub fn lookup_ips(host: &str) -> Vec<String> {
 
 fn system_resolver() -> Resolver {
     AsyncResolver::from_system_conf(TokioHandle).expect("crate dns resolver")
-}
-
-#[cfg(test)]
-mod test {
-    use tokio::runtime::Runtime;
-
-    use crate::DnsResolver;
-
-    #[test]
-    fn test_lookup_dns() {
-        let rt = Runtime::new().unwrap();
-        rt.block_on(async {
-            let dns = DnsResolver::with_sysy_conf();
-            let host = "baidu.com";
-            let ips = dns.lookup_ips(host).await;
-            println!("async parse dns/{} ips:", host);
-            for ip in ips {
-                println!(" {:?}", ip);
-            }
-        });
-
-        println!("parsed succeed!");
-    }
 }
 
 #[derive(Default, Clone, Debug)]
@@ -126,7 +100,7 @@ impl Record {
                 }
             }
             Err(e) => {
-                log::info!("refresh host failed:{}, {:?}", host, e);
+                log::debug!("refresh host failed:{}, {:?}", host, e);
             }
         }
         None
@@ -134,9 +108,9 @@ impl Record {
     async fn refresh(&mut self, host: &str, resolver: &mut Resolver) {
         if let Some(addrs) = self.check_refresh(host, resolver).await {
             // 第一次注册不输出日志。变更时再输出
-            //if self.ips.len() > 0 {
-            log::info!("host {} updated from {:?} to {:?}", host, self.ips, addrs);
-            //}
+            if self.ips.len() > 0 {
+                log::info!("host {} updated from {:?} to {:?}", host, self.ips, addrs);
+            }
             self.ips = addrs;
             self.stale = true;
         }
@@ -235,7 +209,7 @@ impl DnsCache {
         for (host, record) in &self.hosts {
             if record.stale {
                 record.notify();
-                log::info!("host {} refreshed {:?}", host, record.ips);
+                log::debug!("host {} refreshed {:?}", host, record.ips);
             }
         }
     }

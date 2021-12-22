@@ -99,8 +99,6 @@ where
     T: TopologyWrite + Clone,
 {
     fn update(&mut self, name: &str, cfg: &str) {
-        log::info!("topology updating. name:{}, cfg len:{}", name, cfg.len());
-        //self.inner.write(&(name.to_string(), cfg.to_string()));
         self.inner.write(|t| t.update(name, cfg));
         self.updates.fetch_add(1, Ordering::AcqRel);
     }
