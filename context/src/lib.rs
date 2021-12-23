@@ -13,12 +13,12 @@ pub use quadruple::Quadruple;
     author = "IF"
 )]
 pub struct Context {
-    #[clap(long, about("port for suvervisor"), default_value("9984"))]
+    #[clap(long, help("port for suvervisor"), default_value("9984"))]
     port: u16,
     #[clap(
         short,
         long,
-        about("service registry url. e.g. vintage://127.0.0.1:8080"),
+        help("service registry url. e.g. vintage://127.0.0.1:8080"),
         default_value("vintage://127.0.0.1:8080")
     )]
     discovery: Url,
@@ -26,7 +26,7 @@ pub struct Context {
     #[clap(
         short,
         long,
-        about("interval of updating config (unit second)"),
+        help("interval of updating config (unit second)"),
         default_value("15")
     )]
     tick_sec: usize,
@@ -34,34 +34,34 @@ pub struct Context {
     #[clap(
         short,
         long,
-        about("path for saving snapshot of service topology."),
+        help("path for saving snapshot of service topology."),
         default_value("/tmp/breeze/snapshot")
     )]
     snapshot: String,
     #[clap(
         short('p'),
         long,
-        about("path for unix domain socket to listen."),
+        help("path for unix domain socket to listen."),
         default_value("/tmp/breeze/socks")
     )]
     service_path: String,
-    #[clap(short, long, about("starting in upgrade mode"))]
+    #[clap(short, long, help("starting in upgrade mode"))]
     upgrade: bool,
 
-    #[clap(short, long, about("log path"), default_value("/tmp/breeze/logs"))]
+    #[clap(short, long, help("log path"), default_value("/tmp/breeze/logs"))]
     log_dir: String,
 
-    #[clap(short, long, about("metrics url"))]
+    #[clap(short, long, help("metrics url"))]
     metrics_url: Option<String>,
 
     #[clap(
         long,
-        about("establish a connection to select an local ip"),
+        help("establish a connection to select an local ip"),
         default_value("10.10.10.10:53")
     )]
     pub metrics_probe: String,
 
-    #[clap(long, about("log level. debug|info|warn|error"), default_value("info"))]
+    #[clap(long, help("log level. debug|info|warn|error"), default_value("info"))]
     pub log_level: String,
 }
 
