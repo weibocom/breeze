@@ -7,6 +7,7 @@ pub enum Error {
     NotInit,
     Closed,
     QueueFull,
+    ProtocolIncomplete,
     RequestProtocolNotValid,
     ResponseProtocolNotValid,
     ProtocolNotSupported,
@@ -35,4 +36,9 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "error: {:?}", self)
     }
+}
+
+pub enum ProtocolType {
+    Request,
+    Response,
 }
