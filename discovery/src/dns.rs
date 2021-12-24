@@ -10,10 +10,7 @@ use tokio::sync::mpsc::{
     unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender,
 };
 
-use trust_dns_resolver::{
-    config::{ResolverConfig, ResolverOpts},
-    AsyncResolver, TokioConnection, TokioConnectionProvider, TokioHandle,
-};
+use trust_dns_resolver::{AsyncResolver, TokioConnection, TokioConnectionProvider, TokioHandle};
 
 use ds::{CowReadHandle, CowWriteHandle};
 use once_cell::sync::OnceCell;
@@ -106,27 +103,32 @@ impl Record {
     }
     // 如果有更新，则返回等更新的ip。
     async fn check_refresh(&self, host: &str, resolver: &mut Resolver) -> Option<Vec<IpAddr>> {
-        if let Ok(ips) = resolver.lookup_ip(host).await {
-            // 必须有IP。
-            let mut exists = 0;
-            let mut cnt = 0;
-            for ip in ips.iter() {
-                log::debug!("{} resolved ip {}", host, ip);
-                cnt += 1;
-                if self.ips.contains(&ip) {
-                    exists += 1;
-                }
-            }
-            if cnt == 0 {
-                log::info!("no ip resolved: {}", host);
-                return None;
-            }
-            if self.ips.len() == 0 || exists != self.ips.len() {
-                let mut addrs = Vec::new();
+        match resolver.lookup_ip(host).await {
+            Ok(ips) => {
+                // 必须有IP。
+                let mut exists = 0;
+                let mut cnt = 0;
                 for ip in ips.iter() {
-                    addrs.push(ip);
+                    log::debug!("{} resolved ip {}", host, ip);
+                    cnt += 1;
+                    if self.ips.contains(&ip) {
+                        exists += 1;
+                    }
                 }
-                return Some(addrs);
+                if cnt == 0 {
+                    log::info!("no ip resolved: {}", host);
+                    return None;
+                }
+                if self.ips.len() == 0 || exists != self.ips.len() {
+                    let mut addrs = Vec::new();
+                    for ip in ips.iter() {
+                        addrs.push(ip);
+                    }
+                    return Some(addrs);
+                }
+            }
+            Err(e) => {
+                log::debug!("refresh host failed:{}, {:?}", host, e);
             }
         }
         None
@@ -135,7 +137,7 @@ impl Record {
         if let Some(addrs) = self.check_refresh(host, resolver).await {
             // 第一次注册不输出日志。变更时再输出
             if self.ips.len() > 0 {
-                log::info!("host updated from {:?} to {:?}", self.ips, addrs);
+                log::info!("host {} updated from {:?} to {:?}", host, self.ips, addrs);
             }
             self.ips = addrs;
             self.stale = true;
@@ -235,7 +237,7 @@ impl DnsCache {
         for (host, record) in &self.hosts {
             if record.stale {
                 record.notify();
-                log::info!("host {} refreshed {:?}", host, record.ips);
+                log::debug!("host {} refreshed {:?}", host, record.ips);
             }
         }
     }
