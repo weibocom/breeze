@@ -4,7 +4,7 @@ use crypto::md5::Md5;
 use std::collections::BTreeMap;
 use std::ops::Bound::Included;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct Consistent {
     buckets: BTreeMap<i64, usize>,
 }
