@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Modula {
     Pow2(Pow2),
     Other(Other),
@@ -22,7 +22,7 @@ impl Modula {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct Pow2 {
     mask: usize,
 }
@@ -38,7 +38,7 @@ impl Pow2 {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct Other {
     len: usize,
 }

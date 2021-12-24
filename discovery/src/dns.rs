@@ -64,15 +64,15 @@ fn system_resolver() -> Resolver {
 mod test {
     use tokio::runtime::Runtime;
 
-    use crate::DnsResolver;
+    // use crate::DnsResolver;
 
     #[test]
     fn test_lookup_dns() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let dns = DnsResolver::with_sysy_conf();
+            // let dns = DnsResolver::with_sysy_conf();
             let host = "baidu.com";
-            let ips = dns.lookup_ips(host).await;
+            let ips = super::lookup_ips(host);
             println!("async parse dns/{} ips:", host);
             for ip in ips {
                 println!(" {:?}", ip);

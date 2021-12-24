@@ -60,7 +60,12 @@ where
     #[inline(always)]
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
-        let shard_idx = req.hash() as usize % self.shards.len();
+        // TODO：原分布算法计算有问题，先临时实现，验证流程 fishermen
+        // let shard_idx = req.hash() as usize % self.shards.len();
+        const RANGE_LEN: u64 = 256;
+        let interval = RANGE_LEN / self.shards.len() as u64;
+        let shard_idx = (req.hash() / interval) as usize;
+
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         let mut idx = 0;
         // 如果有从，并且是读请求。
@@ -107,7 +112,9 @@ where
             Ok(ns) => {
                 self.hasher = Hasher::from(&ns.basic.hash);
                 let mut shards_url = Vec::new();
+                let mut read_idx = Vec::with_capacity(ns.backends.len());
                 for shard in ns.backends.iter() {
+                    read_idx.push(Arc::new(AtomicUsize::from(0)));
                     let mut shard_url = Vec::new();
                     for url_port in shard.split(",") {
                         // 注册域名。后续可以通常lookup进行查询。
@@ -123,6 +130,7 @@ where
                 }
                 log::info!("top updated to {:?}", shards_url);
                 self.shards_url = shards_url;
+                self.r_idx = read_idx;
             }
         }
         self.service = namespace.to_string();

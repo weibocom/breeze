@@ -23,6 +23,12 @@ impl RingSlice {
         };
         me
     }
+
+    #[inline(always)]
+    pub fn capacity(&self) -> usize {
+        self.cap
+    }
+
     #[inline(always)]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
         debug_assert!(offset + len <= self.len());
@@ -141,6 +147,13 @@ impl RingSlice {
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     pub fn index_lf_cr(&self, offset: usize) -> Option<usize> {
         self.find_sub(offset, &[b'\r', b'\n'])
+    }
+
+    #[inline]
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(self.len());
+        self.copy_to_vec(&mut v);
+        v
     }
 }
 

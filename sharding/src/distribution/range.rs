@@ -1,4 +1,5 @@
 // 按区间进行分布，比如[0,16)分区，每段间隔是4，则分为4个区间：[0,4),[4,8),[8,12),[12,16)
+#[derive(Clone, Debug, Default)]
 pub struct Range {
     interval: u64,
 }
