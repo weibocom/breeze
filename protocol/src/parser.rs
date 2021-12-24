@@ -73,6 +73,14 @@ pub trait Builder {
 pub struct Flag {
     v: u64,
 }
+
+const REQ_BIT_PADDING_RSP: u8 = 32;
+const REQ_BIT_KEY_COUNT: u8 = 16;
+// const REQ_BIT_FIRST_KEY: u8 = 8;
+const REQ_BIT_VAL_FIRST_KEY: u64 = 1 << 8;
+
+const RSP_BIT_META_LEN: u8 = 16;
+const RSP_BIT_TOKEN_LEN: u8 = 8;
 impl Flag {
     // first = true 满足所有条件1. 当前请求是multiget；2. 拆分了多个子请求；3. 是`第一`个子请求；
     // last  = true 满足所有条件1. 当前请求是multiget；2. 拆分了多个子请求；3. 是`最后`一个子请求；
@@ -81,6 +89,73 @@ impl Flag {
         let v = ((op_code as u64) << 8) | (op as u64);
         Self { v }
     }
+
+    // **********************  TODO: redis相关，需要按协议分拆 start **********************
+    // TODO: 后续flag需要根据协议进行分别构建 speedup fishermen
+    #[inline(always)]
+    pub fn from_mkey_op(first_key: bool, key_count: u16, padding_rsp: u8, op: Operation) -> Self {
+        let mut v = 0u64;
+        if key_count > 0 {
+            v |= (key_count as u64) << REQ_BIT_KEY_COUNT;
+
+            // 只有多个key时，first key才有意义
+            if first_key {
+                v |= REQ_BIT_VAL_FIRST_KEY;
+            }
+        }
+
+        if padding_rsp > 0 {
+            v |= (padding_rsp as u64) << REQ_BIT_PADDING_RSP;
+        }
+
+        // operation 需要小雨
+        v |= op as u64;
+
+        Self { v }
+    }
+
+    // meta len 正常不会超过20，256绰绰有余
+    pub fn from_metalen_tokencount(metalen: u8, tokencount: u8) -> Self {
+        let mut v = 0u64;
+        if metalen > 0 {
+            v |= (metalen as u64) >> RSP_BIT_META_LEN;
+        }
+        if tokencount > 0 {
+            v |= (tokencount as u64) >> RSP_BIT_TOKEN_LEN;
+        }
+        Self { v }
+    }
+
+    pub fn padding_rsp(&self) -> u8 {
+        const MASK: u64 = 1 << REQ_BIT_PADDING_RSP - 1;
+        let p = (self.v >> REQ_BIT_PADDING_RSP) & MASK;
+        p as u8
+    }
+
+    pub fn key_count(&self) -> u16 {
+        const MASK: u64 = 1u64 << REQ_BIT_KEY_COUNT - 1;
+        let count = self.v >> REQ_BIT_KEY_COUNT & MASK;
+        return count as u16;
+    }
+
+    pub fn is_first_key(&self) -> bool {
+        (self.v & REQ_BIT_VAL_FIRST_KEY) == REQ_BIT_VAL_FIRST_KEY
+    }
+
+    pub fn meta_len(&self) -> u8 {
+        const MASK: u64 = 1 << RSP_BIT_META_LEN - 1;
+        let len = self.v >> RSP_BIT_META_LEN & MASK;
+        len as u8
+    }
+
+    pub fn token_len(&self) -> u8 {
+        const MASK: u64 = 1u64 << RSP_BIT_TOKEN_LEN - 1;
+        let len = self.v >> RSP_BIT_TOKEN_LEN & MASK;
+        len as u8
+    }
+
+    // **********************  TODO: redis相关，需要按协议分拆 end！speedup **********************
+
     #[inline(always)]
     pub fn new() -> Self {
         Self { v: 0 }
