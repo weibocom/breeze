@@ -14,9 +14,8 @@ impl Rtt {
         // qps
         let (ss, cur) = self.count.load_and_snapshot();
         let count = cur - ss;
-        w.write(&id.path, id.key, "qps", count as f64 / secs);
-
         if count > 0 {
+            w.write(&id.path, id.key, "qps", count as f64 / secs);
             // avg_us
             let (ss, cur) = self.avg_us.load_and_snapshot();
             w.write(
@@ -28,8 +27,10 @@ impl Rtt {
 
             // slow qps
             let (ss, cur) = self.slow.load_and_snapshot();
-            let slow = (cur - ss) as f64;
-            w.write(&id.path, id.key, "qps.itvl200ms-MAX", slow / secs);
+            if cur > ss {
+                let slow = (cur - ss) as f64;
+                w.write(&id.path, id.key, "qps.itvl200ms-MAX", slow / secs);
+            }
         }
     }
 

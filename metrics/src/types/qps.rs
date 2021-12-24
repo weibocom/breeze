@@ -8,6 +8,8 @@ impl Qps {
     #[inline(always)]
     pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
         let (last, cur) = self.inner.load_and_snapshot();
-        w.write(&id.path, id.key, id.t.name(), (cur - last) as f64 / secs);
+        if cur > last {
+            w.write(&id.path, id.key, id.t.name(), (cur - last) as f64 / secs);
+        }
     }
 }
