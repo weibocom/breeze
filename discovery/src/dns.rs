@@ -49,35 +49,7 @@ pub fn lookup_ips(host: &str) -> Vec<String> {
 }
 
 fn system_resolver() -> Resolver {
-    AsyncResolver::new(
-        ResolverConfig::default(),
-        ResolverOpts::default(),
-        TokioHandle,
-    )
-    .expect("crate dns resolver")
-}
-
-#[cfg(test)]
-mod test {
-    use tokio::runtime::Runtime;
-
-    // use crate::DnsResolver;
-
-    #[test]
-    fn test_lookup_dns() {
-        let rt = Runtime::new().unwrap();
-        rt.block_on(async {
-            // let dns = DnsResolver::with_sysy_conf();
-            let host = "baidu.com";
-            let ips = super::lookup_ips(host);
-            println!("async parse dns/{} ips:", host);
-            for ip in ips {
-                println!(" {:?}", ip);
-            }
-        });
-
-        println!("parsed succeed!");
-    }
+    AsyncResolver::from_system_conf(TokioHandle).expect("crate dns resolver")
 }
 
 #[derive(Default, Clone, Debug)]
