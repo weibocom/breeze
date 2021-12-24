@@ -120,6 +120,17 @@ impl MemGuard {
         let guard = 0 as *const _;
         Self { mem, guard, cap }
     }
+
+    pub fn from_ringslice(data: RingSlice) -> Self {
+        let guard = 0 as *const _;
+        let cap = data.capacity();
+        Self {
+            mem: data,
+            guard,
+            cap,
+        }
+    }
+
     #[inline(always)]
     pub fn data(&self) -> &RingSlice {
         &self.mem
