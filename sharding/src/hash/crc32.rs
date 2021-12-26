@@ -70,12 +70,7 @@ pub(crate) fn crc32_raw<K: super::HashKey>(key: &K, start: usize, only_digit: bo
     crc ^= CRC_SEED;
     crc &= CRC_SEED;
     if crc < 0 {
-        log::warn!(
-            "negative hash key:{:?},[{}/{}]",
-            key.vec_data(),
-            start,
-            only_digit
-        );
+        log::warn!("negative hash key:{:?},[{}/{}]", key, start, only_digit);
     }
     crc
 }
@@ -97,7 +92,7 @@ impl super::Hash for Crc32Short {
         let crc = crc32_raw(key, 0, false);
         let mut rs = (crc >> 16) & 0x7fff;
         if rs < 0 {
-            log::warn!("found negative crc32 hash for key:{:?}", key.vec_data());
+            log::warn!("found negative crc32 hash for key:{:?}", key);
             rs = rs.wrapping_mul(-1);
         }
 
@@ -140,7 +135,7 @@ impl super::Hash for Crc32Range {
             .wrapping_div(DEFAULT_RANGE_SPLIT)
             .wrapping_rem(DEFAULT_RANGE_SPLIT);
         if hash < 0 {
-            log::warn!("found negative crc range hash for key:{:?}", key.vec_data());
+            log::warn!("found negative crc range hash for key:{:?}", key);
             hash = hash.wrapping_abs();
         }
         hash as u64
