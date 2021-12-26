@@ -63,6 +63,8 @@ pub trait Stream {
     fn slice(&self) -> ds::RingSlice;
     fn update(&mut self, idx: usize, val: u8);
     fn take(&mut self, n: usize) -> ds::MemGuard;
+    // 在解析一个流的不同的req/response时，有时候需要共享数据。
+    fn context(&mut self) -> &mut u64;
 }
 
 pub trait Builder {
