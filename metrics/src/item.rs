@@ -34,8 +34,8 @@ impl ItemRc {
         !self.inner.is_null()
     }
     #[inline(always)]
-    pub fn try_init(&mut self, idx: usize) {
-        if let Some(item) = crate::get_metric(idx) {
+    pub fn try_init(&mut self, id: &Arc<Id>) {
+        if let Some(item) = crate::get_metric(id) {
             debug_assert!(!item.is_null());
             self.inner = item;
             debug_assert!(self.inited());
