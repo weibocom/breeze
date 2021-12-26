@@ -54,10 +54,10 @@ impl Default for Hasher {
     }
 }
 
-pub trait HashKey {
+pub trait HashKey: std::fmt::Debug {
     fn len(&self) -> usize;
     fn at(&self, idx: usize) -> u8;
-    fn vec_data(&self) -> Vec<u8>;
+    //fn vec_data(&self) -> Vec<u8>;
 }
 
 impl HashKey for &[u8] {
@@ -69,12 +69,12 @@ impl HashKey for &[u8] {
     fn at(&self, idx: usize) -> u8 {
         unsafe { *self.as_ptr().offset(idx as isize) }
     }
-    #[inline(always)]
-    fn vec_data(&self) -> Vec<u8> {
-        let mut data = Vec::with_capacity(self.len());
-        data.extend(*self);
-        data
-    }
+    //#[inline(always)]
+    //fn vec_data(&self) -> Vec<u8> {
+    //    let mut data = Vec::with_capacity(self.len());
+    //    data.extend(*self);
+    //    data
+    //}
 }
 
 impl HashKey for ds::RingSlice {
@@ -86,8 +86,8 @@ impl HashKey for ds::RingSlice {
     fn at(&self, idx: usize) -> u8 {
         (*self).at(idx)
     }
-    #[inline(always)]
-    fn vec_data(&self) -> Vec<u8> {
-        self.to_vec()
-    }
+    //#[inline(always)]
+    //fn vec_data(&self) -> Vec<u8> {
+    //    self.to_vec()
+    //}
 }
