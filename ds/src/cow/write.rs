@@ -30,6 +30,12 @@ impl<T> CowWriteHandle<T> {
         f(&mut t);
         self.r_handle.update(t);
     }
+    pub fn update(&mut self, t: T)
+    where
+        T: Clone,
+    {
+        self.write(move |p| *p = t.clone());
+    }
     pub fn copy(&self) -> T
     where
         T: Clone,
