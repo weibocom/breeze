@@ -53,7 +53,8 @@ impl Protocol for MemcacheBinary {
                 hash = RND.fetch_add(1, Ordering::Relaxed);
             }
             let guard = data.take(packet_len);
-            let cmd = HashedCommand::new(guard, hash, flag);
+            // TODO 目前mc暂时不用key_count，先设置为0，等又需要再调整逻辑 fishermen
+            let cmd = HashedCommand::new(guard, hash, flag, 0);
             // get请求不能是quiet
             debug_assert!(!(cmd.operation().is_retrival() && cmd.sentonly()));
             process.process(cmd, last);
@@ -75,7 +76,8 @@ impl Protocol for MemcacheBinary {
                 if r.status_ok() {
                     flag.set_status_ok();
                 }
-                return Ok(Some(Command::new(flag, data.take(pl))));
+                // TODO: response 目前不会用到key_count
+                return Ok(Some(Command::new(flag, 1, data.take(pl))));
             }
         }
         Ok(None)
@@ -201,6 +203,7 @@ impl MemcacheBinary {
         flag.set_sentonly();
 
         let guard = ds::MemGuard::from_vec(req_cmd);
-        Some(HashedCommand::new(guard, hash, flag))
+        // TODO: 目前mc不需要用key_count，等又需要再调整
+        Some(HashedCommand::new(guard, hash, flag, 1))
     }
 }
