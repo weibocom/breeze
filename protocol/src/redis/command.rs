@@ -4,16 +4,16 @@ use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Clone, Copy)]
 pub(crate) struct CommandProperties {
-    // cmd 参数的个数
-    arity: i64,
+    // cmd 参数的个数，对于不确定的cmd，如mget、mset用负数表示最小数量
+    arity: i8,
     /// cmd的类型
     op: Operation,
-    /// First argument that is a key
-    first_key_index: i64,
-    /// Last argument that is a key
-    last_key_index: i64,
+    /// 第一个key所在的位置
+    first_key_index: u8,
+    /// 最后一个key所在的位置，注意对于multi-key cmd，用负数表示相对位置
+    last_key_index: i8,
     /// key 步长，get的步长为1，mset的步长为2，like:k1 v1 k2 v2
-    key_step: usize,
+    key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
     padding_rsp: u8,
     noforward: bool,
@@ -65,7 +65,8 @@ impl CommandProperties {
         if self.last_key_index >= 0 {
             return self.last_key_index as usize;
         } else {
-            return token_count + self.last_key_index as usize;
+            // 最后一个key的idx为负数，
+            return (token_count as i64 + self.last_key_index as i64) as usize;
         }
     }
 
@@ -112,11 +113,11 @@ impl Commands {
     fn add_support(
         &mut self,
         name: &'static str,
-        arity: i64,
+        arity: i8,
         op: Operation,
-        first_key_index: i64,
-        last_key_index: i64,
-        key_step: usize,
+        first_key_index: u8,
+        last_key_index: i8,
+        key_step: u8,
         padding_rsp: u8,
         multi: bool,
         noforward: bool,
@@ -154,6 +155,7 @@ lazy_static! {
                 ("quit" ,2, Meta, 0, 0, 0, 0, false, true),
                 ("incr" ,2, Store, 1, 1, 1, 2, false, false),
                 ("decr" ,2, Store, 1, 1, 1, 2, false, false),
+                ("mget", -2, MGet, 1, -1, 1, 2, true, false),
 
             // TODO: 随着测试，逐步打开，注意加上padding rsp fishermen
             // "setnx" => (3, Operation::Store, 1, 1, 1),

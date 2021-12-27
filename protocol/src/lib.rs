@@ -42,6 +42,7 @@ impl Resource {
     }
 }
 
+use std::str::from_utf8;
 use std::time::Duration;
 pub trait Builder<P, R, E> {
     fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Duration) -> E
@@ -55,6 +56,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl ResponseWriter for Vec<u8> {
     #[inline(always)]
     fn write(&mut self, data: &[u8]) -> Result<()> {
+        log::debug!("+++++ write rsp:{:?}", from_utf8(data));
         ds::vec::Buffer::write(self, data);
         Ok(())
     }
