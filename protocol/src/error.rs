@@ -16,6 +16,7 @@ pub enum Error {
     TopChanged,
     WriteResponseErr,
     NoResponseFound,
+    CommandNotSupported,
     Quit,
     Timeout((Duration, u32)),
     Pending, // 在连接退出时，仍然有请求在队列中没有发送。

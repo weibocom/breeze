@@ -92,10 +92,11 @@ impl Redis {
         // cmd的name在第一个str，解析并进行cmd校验
         // TODO: 还有映射的指令，后面再结合eredis整理fishermen
         let cmd_token = tokens.get(0).unwrap();
-        let name_data = cmd_token.bare_data(&buf).to_vec();
-        let cmdname = to_str(&name_data, ProtocolType::Request)?;
-
-        let prop = command::command_properties(cmdname);
+        //let name_data = cmd_token.bare_data(&buf);
+        //let name_data = cmd_token.bare_data(&buf).to_vec();
+        //let cmdname = to_str(&name_data, ProtocolType::Request)?;
+        let cmdname = cmd_token.bare_data(&buf);
+        let prop = command::SUPPORTED.get_by_name(&cmdname)?;
         let last_key_idx = prop.last_key_index(tokens.len());
         let share_tokens_count = tokens.len() - (last_key_idx - prop.first_key_index() + 1);
         prop.validate(tokens.len());
@@ -125,7 +126,10 @@ impl Redis {
             let reqdata = buf.sub_slice(0, pos);
             let guard = MemGuard::from_ringslice(reqdata);
             // TODO: flag 还需要针对指令进行进一步设计
-            let flag = Flag::from_mkey_op(false, prop.padding_rsp(), prop.operation().clone());
+            let mut flag = Flag::from_mkey_op(false, prop.padding_rsp(), prop.operation().clone());
+            if prop.noforward() {
+                flag.set_noforward();
+            }
             let cmd = HashedCommand::new(guard, hash, flag, key_count);
 
             // 处理完毕的字节需要take
