@@ -18,6 +18,9 @@ pub struct BackendChecker<P, Req> {
     init: Switcher,
     parser: P,
     s_metric: Metric,
+    bytes_tx: Metric,
+    bytes_rx: Metric,
+    rtt: Metric,
     addr: String,
     last_conn: Instant,
     timeout: Duration,
@@ -42,6 +45,9 @@ impl<P, Req> BackendChecker<P, Req> {
             init,
             parser,
             s_metric: path.status("reconn"),
+            bytes_tx: path.qps("bytes.tx"),
+            bytes_rx: path.qps("bytes.rx"),
+            rtt: path.rtt("req"),
             last_conn: Instant::now(),
             timeout,
         }
@@ -63,7 +69,20 @@ impl<P, Req> BackendChecker<P, Req> {
                 StreamGuard::from(GuardedBuffer::new(2048, 1 << 20, 16 * 1024, |_, _| {})).into();
             let mut pending = VecDeque::with_capacity(31);
             let p = self.parser.clone();
-            if let Err(e) = Handler::from(rx, &mut pending, &mut buf, w, r, p, self.timeout).await {
+            if let Err(e) = Handler::from(
+                rx,
+                &mut pending,
+                &mut buf,
+                w,
+                r,
+                &mut self.bytes_tx,
+                &mut self.bytes_rx,
+                &mut self.rtt,
+                p,
+                self.timeout,
+            )
+            .await
+            {
                 log::info!("{} handler error:{:?}", self.s_metric, e);
             }
             // 先关闭，关闭之后不会有新的请求发送
