@@ -52,6 +52,7 @@ where
 use ds::{GuardedBuffer, MemGuard, RingSlice};
 // 已写入未处理的数据流。
 pub struct StreamGuard {
+    ctx: u64,
     pub(crate) buf: GuardedBuffer,
 }
 impl protocol::Stream for StreamGuard {
@@ -75,11 +76,15 @@ impl protocol::Stream for StreamGuard {
     fn slice(&self) -> RingSlice {
         self.buf.read()
     }
+    #[inline(always)]
+    fn context(&mut self) -> &mut u64 {
+        &mut self.ctx
+    }
 }
 impl From<GuardedBuffer> for StreamGuard {
     #[inline]
     fn from(buf: GuardedBuffer) -> Self {
-        Self { buf: buf }
+        Self { buf, ctx: 0 }
     }
 }
 impl StreamGuard {

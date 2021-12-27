@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{Id, Item, Metric};
+use crate::{Id, IdSequence, Item, Metric};
 
 const CHUNK_SIZE: usize = 4096;
 
@@ -12,31 +12,42 @@ use tokio::sync::mpsc::{
 pub struct Metrics {
     // chunks只扩容，不做其他变更。
     chunks: Vec<*const Item>,
-    register: Sender<(Arc<Id>, usize)>,
+    register: Sender<Arc<Id>>,
     len: usize,
+    id_idx: IdSequence,
 }
 
 impl Metrics {
-    fn new(register: Sender<(Arc<Id>, usize)>) -> Self {
+    fn new(register: Sender<Arc<Id>>) -> Self {
         Self {
             // 在metric register handler中，按需要扩容chunks
             chunks: Vec::new(),
             register,
             len: 0,
+            id_idx: Default::default(),
         }
     }
     pub(crate) fn register(&self, id: Id) -> Metric {
         let id = Arc::new(id);
-        let (idx, inited) = crate::register_name(&id);
-        if !inited {
-            log::debug!("register request sent:{:?} idx:{}", id, idx);
-            if let Err(e) = self.register.send((id, idx)) {
-                log::info!("send register metric failed. id:{:?} idx:{}", e, idx)
+        self.try_send_register(id.clone());
+        Metric::from(id)
+    }
+    pub(crate) fn try_send_register(&self, id: Arc<Id>) {
+        if self.id_idx.get_idx(&id).is_none() {
+            // 需要注册。可能会多次重复注册，在接收的时候去重处理。
+            log::debug!("metric registering {:?}", id);
+            if let Err(e) = self.register.send(id.clone()) {
+                log::info!("send register metric failed. id:{:?} id:{:?}", e, id)
             };
         }
-        Metric::from(idx)
     }
-    fn init(&mut self, id: Arc<Id>, idx: usize) {
+    fn init(&mut self, id: Arc<Id>) {
+        // 检查是否已经初始化
+        if let Some(idx) = self.id_idx.get_idx(&id) {
+            debug_assert!(self.get_item(idx).inited());
+            return;
+        }
+        let idx = self.id_idx.register_name(&id);
         self.reserve(idx);
         self.len = (idx + 1).max(self.len);
         if let Some(mut item) = self.get_item(idx).try_lock() {
@@ -56,8 +67,8 @@ impl Metrics {
         unsafe { &*self.chunks.get_unchecked(slot).offset(offset as isize) }
     }
     #[inline]
-    fn check_and_get_item(&self, idx: usize) -> Option<*const Item> {
-        if idx < self.len {
+    fn check_and_get_item(&self, id: &Arc<Id>) -> Option<*const Item> {
+        if let Some(idx) = self.id_idx.get_idx(id) {
             let item = self.get_item(idx);
             if item.inited() {
                 return Some(item);
@@ -100,8 +111,8 @@ pub(crate) fn register_metric(id: Id) -> Metric {
     get_metrics().register(id)
 }
 #[inline]
-pub(crate) fn get_metric(idx: usize) -> Option<*const Item> {
-    get_metrics().check_and_get_item(idx)
+pub(crate) fn get_metric(id: &Arc<Id>) -> Option<*const Item> {
+    get_metrics().check_and_get_item(id)
 }
 
 use ds::ReadGuard;
@@ -134,13 +145,13 @@ impl Display for Metrics {
 }
 
 struct MetricRegister {
-    rx: Receiver<(Arc<Id>, usize)>,
+    rx: Receiver<Arc<Id>>,
     metrics: CowWriteHandle<Metrics>,
     tick: Interval,
 }
 
 impl MetricRegister {
-    fn new(rx: Receiver<(Arc<Id>, usize)>, metrics: CowWriteHandle<Metrics>) -> Self {
+    fn new(rx: Receiver<Arc<Id>>, metrics: CowWriteHandle<Metrics>) -> Self {
         let mut tick = interval(std::time::Duration::from_secs(3));
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         Self { rx, metrics, tick }
@@ -161,13 +172,14 @@ impl Future for MetricRegister {
         loop {
             ready!(me.tick.poll_tick(cx));
             // 至少有一个，避免不必要的write请求
-            if let Some((id, idx)) = ready!(me.rx.poll_recv(cx)) {
-                me.metrics.write(|m| {
-                    m.init(id.clone(), idx);
-                    while let Poll::Ready(Some((id, idx))) = me.rx.poll_recv(cx) {
-                        m.init(id, idx);
-                    }
-                });
+            if let Some(id) = ready!(me.rx.poll_recv(cx)) {
+                let mut metrics: Metrics = me.metrics.get().clone();
+                metrics.init(id);
+                while let Poll::Ready(Some(id)) = me.rx.poll_recv(cx) {
+                    metrics.init(id);
+                }
+                // 更新。
+                me.metrics.update(metrics);
             }
         }
     }
