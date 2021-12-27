@@ -223,6 +223,10 @@ impl Protocol for Redis {
     #[inline(always)]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         let response = data.slice();
+        log::debug!(
+            "++++ will parse rsp:{:?}",
+            from_utf8(response.to_vec().as_slice())
+        );
         // 响应目前只记录meta前缀长度
         let mut pos = 0;
         match response.at(0) as char {
@@ -289,8 +293,9 @@ impl Protocol for Redis {
             }
             '$' => {
                 // one bulk
+                pos += 1;
                 let (leno, meta_len) = parse_len(
-                    response.sub_slice(0, response.len()),
+                    response.sub_slice(pos, response.len() - pos),
                     "rsp-bulk",
                     ProtocolType::Response,
                 )?;
