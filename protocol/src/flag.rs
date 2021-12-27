@@ -45,16 +45,16 @@ impl Flag {
     pub fn from_metalen_tokencount(metalen: u8, tokencount: u8) -> Self {
         let mut v = 0u64;
         if metalen > 0 {
-            v |= (metalen as u64) >> RSP_BIT_META_LEN;
+            v |= (metalen as u64) << RSP_BIT_META_LEN;
         }
         if tokencount > 0 {
-            v |= (tokencount as u64) >> RSP_BIT_TOKEN_LEN;
+            v |= (tokencount as u64) << RSP_BIT_TOKEN_LEN;
         }
         Self { v }
     }
 
     pub fn padding_rsp(&self) -> u8 {
-        const MASK: u64 = 1 << REQ_BIT_PADDING_RSP - 1;
+        const MASK: u64 = (1 << 8) - 1;
         let p = (self.v >> REQ_BIT_PADDING_RSP) & MASK;
         p as u8
     }
@@ -65,14 +65,14 @@ impl Flag {
     }
 
     pub fn meta_len(&self) -> u8 {
-        const MASK: u64 = 1 << RSP_BIT_META_LEN - 1;
-        let len = self.v >> RSP_BIT_META_LEN & MASK;
+        const MASK: u64 = (1 << 8) - 1;
+        let len = (self.v >> RSP_BIT_META_LEN) & MASK;
         len as u8
     }
 
-    pub fn token_len(&self) -> u8 {
-        const MASK: u64 = 1u64 << RSP_BIT_TOKEN_LEN - 1;
-        let len = self.v >> RSP_BIT_TOKEN_LEN & MASK;
+    pub fn token_count(&self) -> u8 {
+        const MASK: u64 = (1u64 << 8) - 1;
+        let len = (self.v >> RSP_BIT_TOKEN_LEN) & MASK;
         len as u8
     }
 
