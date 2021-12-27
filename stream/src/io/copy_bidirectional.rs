@@ -8,11 +8,7 @@ use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use super::{ConnectStatus, IoMetric, Monitor, Receiver, Sender};
-<<<<<<< HEAD
-use crate::{AsyncReadAll, AsyncWriteAll};
-=======
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
->>>>>>> dev
 use discovery::TopologyTicker;
 use protocol::{Protocol, RequestId};
 
@@ -101,11 +97,8 @@ where
                     parser,
                     rid,
                     metric,
-<<<<<<< HEAD
-=======
                     &mut direct_response_queue,
                     current_request,
->>>>>>> dev
                 ))?;
                 if metric.req_bytes == 0 {
                     log::debug!("eof:no bytes received {}", rid);
@@ -114,11 +107,7 @@ where
                 *sent = true;
                 log::debug!("req sent.{} {}", metric.req_bytes, rid);
             }
-<<<<<<< HEAD
-            ready!(sender.poll_copy_one(cx, agent.as_mut(), client.as_mut(), parser, rid, metric))?;
-            metric.response_done();
-            log::debug!("resp sent {} {}", metric.resp_bytes, *rid);
-=======
+
             ready!(sender.poll_copy_one(
                 cx,
                 agent.as_mut(),
@@ -140,7 +129,7 @@ where
             current_request.take();
             current_response.take();
             log::debug!("resp sent {} {}", metric.resp_bytes, rid.session_id());
->>>>>>> dev
+
             *sent = false;
             rid.incr();
             // 开始记录metric
