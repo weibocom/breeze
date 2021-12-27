@@ -18,6 +18,7 @@ pub(crate) struct CommandProperties {
     padding_rsp: u8,
     noforward: bool,
     supported: bool,
+    multi: bool, // 该命令是否可能会包含多个key
 }
 
 // 默认响应
@@ -102,7 +103,7 @@ impl Commands {
         let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
         debug_assert!(idx < self.supported.len());
         let cmd = unsafe { self.supported.get_unchecked(idx) };
-        if cmd.op.is_valid() {
+        if cmd.supported {
             Ok(cmd)
         } else {
             Err(crate::Error::CommandNotSupported)
@@ -117,6 +118,7 @@ impl Commands {
         last_key_index: i64,
         key_step: usize,
         padding_rsp: u8,
+        multi: bool,
         noforward: bool,
     ) {
         let name = name.to_uppercase();
@@ -133,6 +135,7 @@ impl Commands {
             padding_rsp,
             noforward,
             supported: true,
+            multi,
         };
     }
 }
@@ -141,16 +144,16 @@ lazy_static! {
    pub(super) static ref SUPPORTED: Commands = {
         let mut cmds = Commands::new();
         use Operation::*;
-    for (name, arity, op, first_key_index, last_key_index, key_step, padding_rsp, noforward)
+    for (name, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward)
         in vec![
-                ("get" ,2, Get, 1, 1, 1, 2, false),
-                ("set" ,3, Store, 1, 1, 1, 2, false),
-                ("ping" ,-1, Meta, 0, 0, 0, 1, true),
+                ("get" ,2, Get, 1, 1, 1, 2, false, false),
+                ("set" ,3, Store, 1, 1, 1, 2, false, false),
+                ("ping" ,-1, Meta, 0, 0, 0, 1, false, true),
                 // 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
-                ("select" ,2, Meta, 0, 0, 0, 0, true),
-                ("quit" ,2, Meta, 0, 0, 0, 0, true),
-                ("incr" ,2, Store, 1, 1, 1, 2, false),
-                ("decr" ,2, Store, 1, 1, 1, 2, false),
+                ("select" ,2, Meta, 0, 0, 0, 0, false, true),
+                ("quit" ,2, Meta, 0, 0, 0, 0, false, true),
+                ("incr" ,2, Store, 1, 1, 1, 2, false, false),
+                ("decr" ,2, Store, 1, 1, 1, 2, false, false),
 
             // TODO: 随着测试，逐步打开，注意加上padding rsp fishermen
             // "setnx" => (3, Operation::Store, 1, 1, 1),
@@ -315,6 +318,7 @@ lazy_static! {
         last_key_index,
         key_step,
         padding_rsp,
+        multi,
         noforward
     ) ;
             }
