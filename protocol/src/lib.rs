@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
 
+mod flag;
 pub mod memcache;
 pub mod parser;
 pub mod redis;
@@ -8,6 +9,7 @@ pub mod req;
 pub mod resp;
 mod topo;
 
+pub use flag::*;
 pub use parser::Proto as Protocol;
 pub use parser::*;
 pub use topo::*;
