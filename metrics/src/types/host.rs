@@ -18,8 +18,8 @@ impl Host {
     #[inline]
     pub(crate) fn snapshot<W: crate::ItemWriter>(w: &mut W, _secs: f64) {
         let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
-        w.write("host", "cpu", "", percent as f64);
-        w.write("host", "mem", "", MEMORY.load(Ordering::Relaxed) as f64);
+        w.write("mesh", "host", "cpu", percent as f64);
+        w.write("mesh", "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
     }
 }
 
