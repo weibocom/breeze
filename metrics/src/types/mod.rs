@@ -11,8 +11,10 @@ pub(crate) use qps::*;
 pub(crate) use rtt::*;
 pub(crate) use status::*;
 
-use crate::ItemRc;
+use crate::{Id, ItemRc};
 pub use data::*;
+
+use std::sync::Arc;
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -57,22 +59,29 @@ impl MetricType {
 }
 
 pub struct Metric {
-    idx: usize,
+    cache: i64, // 未初始化完成前，数据cache
+    id: Arc<Id>,
     item: ItemRc,
 }
 impl Metric {
     #[inline(always)]
-    pub(crate) fn from(idx: usize) -> Self {
+    pub(crate) fn from(id: Arc<Id>) -> Self {
         let mut me = Self {
-            idx,
+            id,
             item: ItemRc::uninit(),
+            cache: 0,
         };
         me.try_inited();
         me
     }
     #[inline(always)]
     fn try_inited(&mut self) {
-        self.item.try_init(self.idx);
+        self.item.try_init(&self.id);
+        if self.cache > 0 && self.item.inited() {
+            // flush cache
+            self.item.data().flush(self.cache);
+            self.cache = 0;
+        }
     }
 }
 use std::fmt::Debug;
@@ -83,6 +92,7 @@ impl<T: MetricData + Debug> AddAssign<T> for Metric {
         if self.item.inited() {
             m.incr_to(self.item.data());
         } else {
+            m.incr_to_cache(&mut self.cache);
             self.try_inited();
         }
     }
@@ -94,6 +104,7 @@ impl<T: MetricData> SubAssign<T> for Metric {
         if self.item.inited() {
             m.decr_to(self.item.data());
         } else {
+            m.decr_to_cache(&mut self.cache);
             self.try_inited();
         }
     }
@@ -101,7 +112,7 @@ impl<T: MetricData> SubAssign<T> for Metric {
 use std::fmt::{self, Display, Formatter};
 impl Display for Metric {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "name:{:?}", self.idx)
+        write!(f, "name:{:?}", self.id)
     }
 }
 unsafe impl Sync for Metric {}
