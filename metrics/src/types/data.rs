@@ -15,6 +15,17 @@ impl ItemData {
         self.id = id;
     }
     #[inline(always)]
+    pub(crate) fn flush(&self, cache: i64) {
+        use MetricType::*;
+        match self.id.t {
+            // count类的才启用cache。
+            Count => self.incr_num(cache),
+            Empty => panic!("metric type empty, not inited"),
+            _ => {}
+        }
+    }
+
+    #[inline(always)]
     pub(crate) fn snapshot<W: ItemWriter>(&self, w: &mut W, secs: f64) {
         use MetricType::*;
         unsafe {
@@ -57,7 +68,9 @@ impl Debug for InnerData {
 }
 pub trait MetricData {
     fn incr_to(self, data: &ItemData);
+    fn incr_to_cache(self, cache: &mut i64);
     fn decr_to(self, data: &ItemData);
+    fn decr_to_cache(self, cache: &mut i64);
 }
 use crate::ToNumber;
 impl<T: ToNumber> MetricData for T {
@@ -68,6 +81,14 @@ impl<T: ToNumber> MetricData for T {
     #[inline(always)]
     fn decr_to(self, data: &ItemData) {
         data.incr_num(self.int() * -1);
+    }
+    #[inline(always)]
+    fn incr_to_cache(self, cache: &mut i64) {
+        *cache += self.int();
+    }
+    #[inline(always)]
+    fn decr_to_cache(self, cache: &mut i64) {
+        *cache -= self.int();
     }
 }
 use std::time::Duration;
@@ -80,4 +101,8 @@ impl MetricData for Duration {
     fn decr_to(self, _data: &ItemData) {
         debug_assert!(0 == 1);
     }
+    #[inline(always)]
+    fn incr_to_cache(self, _cache: &mut i64) {}
+    #[inline(always)]
+    fn decr_to_cache(self, _cache: &mut i64) {}
 }
