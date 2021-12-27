@@ -18,12 +18,7 @@ impl Rtt {
             w.write(&id.path, id.key, "qps", count as f64 / secs);
             // avg_us
             let (ss, cur) = self.avg_us.load_and_snapshot();
-            w.write(
-                &id.path,
-                id.key,
-                "avg_us",
-                (cur - ss) as f64 / count as f64 / secs,
-            );
+            w.write(&id.path, id.key, "avg_us", (cur - ss) as f64 / count as f64);
 
             // slow qps
             let (ss, cur) = self.slow.load_and_snapshot();
