@@ -125,13 +125,8 @@ impl Redis {
             let reqdata = buf.sub_slice(0, pos);
             let guard = MemGuard::from_ringslice(reqdata);
             // TODO: flag 还需要针对指令进行进一步设计
-            let flag = Flag::from_mkey_op(
-                false,
-                key_count,
-                prop.padding_rsp(),
-                prop.operation().clone(),
-            );
-            let cmd = HashedCommand::new(guard, hash, flag);
+            let flag = Flag::from_mkey_op(false, prop.padding_rsp(), prop.operation().clone());
+            let cmd = HashedCommand::new(guard, hash, flag, key_count);
 
             // 处理完毕的字节需要take
             stream.take(pos);
@@ -189,20 +184,10 @@ impl Redis {
             let guard = MemGuard::from_vec(rdata);
             // flag 目前包含3个属性：key-count，is-first-key，operation
             let flag: Flag = match kidx == first_key_idx {
-                true => Flag::from_mkey_op(
-                    true,
-                    key_count,
-                    prop.padding_rsp(),
-                    prop.operation().clone(),
-                ),
-                false => Flag::from_mkey_op(
-                    false,
-                    key_count,
-                    prop.padding_rsp(),
-                    prop.operation().clone(),
-                ),
+                true => Flag::from_mkey_op(true, prop.padding_rsp(), prop.operation().clone()),
+                false => Flag::from_mkey_op(false, prop.padding_rsp(), prop.operation().clone()),
             };
-            let cmd = HashedCommand::new(guard, hash, flag);
+            let cmd = HashedCommand::new(guard, hash, flag, key_count);
 
             // 处理完毕的字节需要take
             stream.take(pos);
@@ -259,13 +244,14 @@ impl Protocol for Redis {
 
                 // 记录meta 长度
                 debug_assert!(pos < 256);
-                let flag = Flag::from_metalen_tokencount(pos as u8, token_count as u8);
+                let mut flag = Flag::from_metalen_tokencount(pos as u8, token_count as u8);
                 if token_count > 1 {
-                    log::warn!(
+                    log::error!(
                         "found special resp with tokens/{}: {:?}",
                         token_count,
                         response
                     );
+                    return Err(Error::ProtocolNotSupported);
                 }
 
                 // 解析并验证bulk tokens：$3\r\n123\r\n
@@ -297,8 +283,9 @@ impl Protocol for Redis {
                     }
                 }
 
-                // 到了这里，response已经解析完毕
-                return Ok(Some(Command::new(flag, data.take(pos))));
+                flag.set_status_ok();
+                // 到了这里，response已经解析完毕,对于resp，每个cmd并不知晓自己的key数量是0还是1
+                return Ok(Some(Command::new(flag, 0, data.take(pos))));
             }
             '$' => {
                 // one bulk
@@ -319,8 +306,9 @@ impl Protocol for Redis {
                     // 只有bare len大于0，才会有bare data + \r\n
                     pos += token::REDIS_SPLIT_LEN;
                 }
-                let flag = Flag::from_metalen_tokencount(0, 1u8);
-                return Ok(Some(Command::new(flag, data.take(pos))));
+                let mut flag = Flag::from_metalen_tokencount(0, 1u8);
+                flag.set_status_ok();
+                return Ok(Some(Command::new(flag, 0, data.take(pos))));
             }
             _ => {
                 // others
@@ -329,8 +317,9 @@ impl Protocol for Redis {
                         // i 为pos，+1 为len，再+1到下一个字符\n
                         // let rdata = response.sub_slice(0, i + 1 + 1);
                         let len = i + 1 + 1;
-                        let flag = Flag::from_metalen_tokencount(0, 1u8);
-                        return Ok(Some(Command::new(flag, data.take(len))));
+                        let mut flag = Flag::from_metalen_tokencount(0, 1u8);
+                        flag.set_status_ok();
+                        return Ok(Some(Command::new(flag, 0, data.take(len))));
                     }
                 }
                 return Err(Error::ProtocolIncomplete);
@@ -346,7 +335,7 @@ impl Protocol for Redis {
         // 首先确认request是否multi-key
         let key_count = ctx.request().key_count();
         let is_mkey_first = match key_count > 1 {
-            true => ctx.request().is_first_key(),
+            true => ctx.request().is_mkey_first(),
             false => false,
         };
 
@@ -354,7 +343,7 @@ impl Protocol for Redis {
         let resp = ctx.response();
         let mut oft = 0usize;
         if key_count > 1 {
-            // 对于多个key，需要去掉所有resp的meta前缀
+            // 对于多个key，不管是不是第一个key对应的rsp，都需要去掉resp的meta前缀
             oft = resp.meta_len() as usize;
         }
         let len = resp.len() - oft;
