@@ -82,6 +82,7 @@ pub(crate) fn command_properties(command_name: &str) -> CommandProperties {
             "quit" => (2, Operation::Meta, 0, 0, 0, 0),
             "incr" => (2, Operation::Store, 1, 1, 1, 2),
             "decr" => (2, Operation::Store, 1, 1, 1, 2),
+            "mget" => (-2, Operation::MGet, 1, -1, 1, 2),
 
             // TODO: 随着测试，逐步打开，注意加上padding rsp fishermen
             // "setnx" => (3, Operation::Store, 1, 1, 1),
