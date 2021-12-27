@@ -1,6 +1,8 @@
 use crate::Operation;
+use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
+#[derive(Default, Clone, Copy)]
 pub(crate) struct CommandProperties {
     // cmd 参数的个数
     arity: i64,
@@ -14,6 +16,8 @@ pub(crate) struct CommandProperties {
     key_step: usize,
     // 指令在不路由或者无server响应时的响应位置，
     padding_rsp: u8,
+    noforward: bool,
+    supported: bool,
 }
 
 // 默认响应
@@ -54,7 +58,8 @@ impl CommandProperties {
     #[inline]
     pub fn last_key_index(&self, token_count: usize) -> usize {
         debug_assert!(
-            token_count as i64 > self.first_key_index && token_count as i64 > self.last_key_index
+            token_count as i64 > self.first_key_index as i64
+                && token_count as i64 > self.last_key_index as i64
         );
         if self.last_key_index >= 0 {
             return self.last_key_index as usize;
@@ -70,18 +75,82 @@ impl CommandProperties {
     pub fn padding_rsp(&self) -> u8 {
         self.padding_rsp
     }
+    #[inline(always)]
+    pub fn noforward(&self) -> bool {
+        self.noforward
+    }
 }
 
-pub(crate) fn command_properties(command_name: &str) -> CommandProperties {
-    let (arity, op, first_key_index, last_key_index, key_step, padding_rsp) =
-        match command_name.to_ascii_lowercase().as_str() {
-            "get" => (2, Operation::Get, 1, 1, 1, 2),
-            "set" => (3, Operation::Store, 1, 1, 1, 2),
-            "ping" => (-1, Operation::Meta, 0, 0, 0, 1),
-            "select" => (2, Operation::Meta, 0, 0, 0, 0),
-            "quit" => (2, Operation::Meta, 0, 0, 0, 0),
-            "incr" => (2, Operation::Store, 1, 1, 1, 2),
-            "decr" => (2, Operation::Store, 1, 1, 1, 2),
+// https://redis.io/commands 一共145大类命令。使用 crate::sharding::Hash::Crc32
+// 算法能够完整的将其映射到0~4095这个区间。因为使用这个避免大量的match消耗。
+pub(super) struct Commands {
+    supported: [CommandProperties; Self::MAPPING_RANGE],
+    hash: Crc32,
+}
+impl Commands {
+    const MAPPING_RANGE: usize = 4096;
+    fn new() -> Self {
+        Self {
+            supported: [CommandProperties::default(); Self::MAPPING_RANGE],
+            hash: Crc32::default(),
+        }
+    }
+    // 不支持会返回协议错误
+    #[inline(always)]
+    pub(crate) fn get_by_name(&self, cmd: &ds::RingSlice) -> crate::Result<&CommandProperties> {
+        let uppercase = UppercaseHashKey::new(cmd);
+        let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
+        debug_assert!(idx < self.supported.len());
+        let cmd = unsafe { self.supported.get_unchecked(idx) };
+        if cmd.op.is_valid() {
+            Ok(cmd)
+        } else {
+            Err(crate::Error::CommandNotSupported)
+        }
+    }
+    fn add_support(
+        &mut self,
+        name: &'static str,
+        arity: i64,
+        op: Operation,
+        first_key_index: i64,
+        last_key_index: i64,
+        key_step: usize,
+        padding_rsp: u8,
+        noforward: bool,
+    ) {
+        let name = name.to_uppercase();
+        let idx = self.hash.hash(&name.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
+        debug_assert!(idx < self.supported.len());
+        // 之前没有添加过。
+        debug_assert!(!self.supported[idx].supported);
+        self.supported[idx] = CommandProperties {
+            arity,
+            op,
+            first_key_index,
+            last_key_index,
+            key_step,
+            padding_rsp,
+            noforward,
+            supported: true,
+        };
+    }
+}
+
+lazy_static! {
+   pub(super) static ref SUPPORTED: Commands = {
+        let mut cmds = Commands::new();
+        use Operation::*;
+    for (name, arity, op, first_key_index, last_key_index, key_step, padding_rsp, noforward)
+        in vec![
+                ("get" ,2, Get, 1, 1, 1, 2, false),
+                ("set" ,3, Store, 1, 1, 1, 2, false),
+                ("ping" ,-1, Meta, 0, 0, 0, 1, true),
+                // 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
+                ("select" ,2, Meta, 0, 0, 0, 0, true),
+                ("quit" ,2, Meta, 0, 0, 0, 0, true),
+                ("incr" ,2, Store, 1, 1, 1, 2, false),
+                ("decr" ,2, Store, 1, 1, 1, 2, false),
 
             // TODO: 随着测试，逐步打开，注意加上padding rsp fishermen
             // "setnx" => (3, Operation::Store, 1, 1, 1),
@@ -237,15 +306,18 @@ pub(crate) fn command_properties(command_name: &str) -> CommandProperties {
             // "slowlog" => (-2, Operation::Get, 0, 0, 0),
             // "wait" => (3, Operation::Meta, 0, 0, 0),
             // "latency" => (-2, Operation::Meta, 0, 0, 0),
-            _ => (0, Operation::Other, 0, 0, 0, 0),
-        };
-
-    CommandProperties {
+            ] {
+    cmds.add_support(
+        name,
         arity,
         op,
         first_key_index,
         last_key_index,
         key_step,
         padding_rsp,
-    }
+        noforward
+    ) ;
+            }
+        cmds
+    };
 }

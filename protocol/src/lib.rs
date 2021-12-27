@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 pub mod memcache;
 pub mod parser;
 pub mod redis;
