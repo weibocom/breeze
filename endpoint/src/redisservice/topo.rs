@@ -68,13 +68,13 @@ where
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         let mut idx = 0;
-        // 如果有从，并且是读请求。
+        // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.len() >= 2 && !req.operation().is_store() {
             debug_assert_eq!(self.shards.len(), self.r_idx.len());
             let ctx = *req.context_mut();
             // 高4个字节是第一次的索引
             // 低4个字节是下一次读取的索引
-            let (mut first, next) = (ctx >> 32, ctx & 0xffffffff);
+            let (mut first, mut next) = (ctx >> 32, ctx & 0xffffffff);
             let seq;
             if ctx == 0 {
                 seq = unsafe {
@@ -86,16 +86,19 @@ where
             } else {
                 seq = next as usize + 1;
             }
-            idx = seq % (self.shards.len() - 1) + 1;
+            // shard 第一个元素是master，默认情况下需要规避
+            // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
+            idx = seq % (shard.len() - 1) + 1;
             if first == 0 {
                 first = idx as u64;
             }
+            next = idx as u64;
             *req.context_mut() = (first << 32) | next;
 
             // 减一，是把主减掉
-            req.try_next((next - first) < self.shards.len() as u64 - 1);
+            req.try_next((next - first) < shard.len() as u64 - 1);
         }
-        debug_assert!(idx < self.shards.len());
+        debug_assert!(idx < shard.len());
         shard[idx].1.send(req);
     }
 }
@@ -114,7 +117,8 @@ where
                 let mut shards_url = Vec::new();
                 let mut read_idx = Vec::with_capacity(ns.backends.len());
                 for shard in ns.backends.iter() {
-                    read_idx.push(Arc::new(AtomicUsize::from(0)));
+                    let rd = rand::random::<u32>() as usize;
+                    read_idx.push(Arc::new(AtomicUsize::from(rd)));
                     let mut shard_url = Vec::new();
                     for url_port in shard.split(",") {
                         // 注册域名。后续可以通常lookup进行查询。
