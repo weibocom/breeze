@@ -74,13 +74,13 @@ pub struct Flag {
     v: u64,
 }
 
+// 高5字节，归各种协议私用，低3个字节，共享
+const RSP_BIT_META_LEN: u8 = 40;
+const RSP_BIT_TOKEN_LEN: u8 = 48;
 const REQ_BIT_PADDING_RSP: u8 = 32;
-const REQ_BIT_KEY_COUNT: u8 = 16;
-// const REQ_BIT_FIRST_KEY: u8 = 8;
-const REQ_BIT_VAL_FIRST_KEY: u64 = 1 << 8;
+const REQ_BIT_MKEY_FIRST: u8 = 24;
+// const REQ_BIT_VAL_MKEY_FIRST: u64 = 1 << 24;
 
-const RSP_BIT_META_LEN: u8 = 16;
-const RSP_BIT_TOKEN_LEN: u8 = 8;
 impl Flag {
     // first = true 满足所有条件1. 当前请求是multiget；2. 拆分了多个子请求；3. 是`第一`个子请求；
     // last  = true 满足所有条件1. 当前请求是multiget；2. 拆分了多个子请求；3. 是`最后`一个子请求；
@@ -93,15 +93,12 @@ impl Flag {
     // **********************  TODO: redis相关，需要按协议分拆 start **********************
     // TODO: 后续flag需要根据协议进行分别构建 speedup fishermen
     #[inline(always)]
-    pub fn from_mkey_op(first_key: bool, key_count: u16, padding_rsp: u8, op: Operation) -> Self {
+    pub fn from_mkey_op(mkey_first: bool, padding_rsp: u8, op: Operation) -> Self {
         let mut v = 0u64;
-        if key_count > 0 {
-            v |= (key_count as u64) << REQ_BIT_KEY_COUNT;
-
-            // 只有多个key时，first key才有意义
-            if first_key {
-                v |= REQ_BIT_VAL_FIRST_KEY;
-            }
+        // 只有多个key时，first key才有意义
+        if mkey_first {
+            const MKEY_FIRST_VAL: u64 = 1 << REQ_BIT_MKEY_FIRST;
+            v |= MKEY_FIRST_VAL;
         }
 
         if padding_rsp > 0 {
@@ -132,14 +129,9 @@ impl Flag {
         p as u8
     }
 
-    pub fn key_count(&self) -> u16 {
-        const MASK: u64 = 1u64 << REQ_BIT_KEY_COUNT - 1;
-        let count = self.v >> REQ_BIT_KEY_COUNT & MASK;
-        return count as u16;
-    }
-
-    pub fn is_first_key(&self) -> bool {
-        (self.v & REQ_BIT_VAL_FIRST_KEY) == REQ_BIT_VAL_FIRST_KEY
+    pub fn is_mkey_first(&self) -> bool {
+        const MASK_MKF: u64 = 1 << REQ_BIT_MKEY_FIRST;
+        (self.v & MASK_MKF) == MASK_MKF
     }
 
     pub fn meta_len(&self) -> u8 {
@@ -220,6 +212,7 @@ impl Flag {
 
 pub struct Command {
     flag: Flag,
+    key_count: u16,
     cmd: ds::MemGuard,
 }
 
@@ -230,12 +223,20 @@ pub struct HashedCommand {
 
 impl Command {
     #[inline(always)]
-    pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
-        Self { flag, cmd }
+    pub fn new(flag: Flag, key_count: u16, cmd: ds::MemGuard) -> Self {
+        Self {
+            flag,
+            key_count,
+            cmd,
+        }
     }
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.cmd.len()
+    }
+    #[inline(always)]
+    pub fn key_count(&self) -> u16 {
+        self.key_count
     }
     #[inline(always)]
     pub fn read(&self, oft: usize) -> &[u8] {
@@ -280,10 +281,14 @@ impl std::ops::DerefMut for HashedCommand {
 use ds::MemGuard;
 impl HashedCommand {
     #[inline(always)]
-    pub fn new(cmd: MemGuard, hash: u64, flag: Flag) -> Self {
+    pub fn new(cmd: MemGuard, hash: u64, flag: Flag, key_count: u16) -> Self {
         Self {
             hash,
-            cmd: Command { flag, cmd },
+            cmd: Command {
+                flag,
+                key_count,
+                cmd,
+            },
         }
     }
     #[inline(always)]
