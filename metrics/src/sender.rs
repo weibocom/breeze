@@ -14,8 +14,8 @@ pub(crate) struct Sender {
 }
 
 impl Sender {
-    pub(crate) fn new(addr: &str) -> Self {
-        let mut tick = interval(Duration::from_secs(10));
+    pub(crate) fn new(addr: &str, cycle: Duration) -> Self {
+        let mut tick = interval(cycle);
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         Self {
