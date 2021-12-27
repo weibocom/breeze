@@ -50,6 +50,8 @@ where
             if update {
                 log::info!("updating {:?} => {:?} cfg len:{}", self, sig, cfg.len());
                 self.update(&cfg, sig);
+            } else {
+                self.sig = sig;
             }
             self.dump(snapshot, &cfg).await;
         }
