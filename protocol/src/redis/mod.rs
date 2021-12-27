@@ -42,6 +42,12 @@ impl Redis {
         if buf.at(pos) as char != '*' {
             return Err(Error::RequestProtocolNotValid);
         }
+
+        log::debug!(
+            "+++ will parse req:{:?}",
+            from_utf8(buf.to_vec().as_slice())
+        );
+
         pos += 1;
         let len = buf.len();
         let (token_counto, int_len) = parse_len(
@@ -71,7 +77,8 @@ impl Redis {
             }
             let meta_pos = pos;
             pos += 1;
-            let (token_leno, meta_len) =
+            // 注意：meta_left_len是剔除了$的长度
+            let (token_leno, meta_left_len) =
                 parse_len(buf.sub_slice(pos, len - pos), "bulk", ProtocolType::Request)?;
             let token_len = match token_leno {
                 Some(l) => l,
@@ -80,8 +87,8 @@ impl Redis {
             if token_len >= MAX_MSG_LEN {
                 return Err(Error::RequestProtocolNotValid);
             }
-            pos += meta_len;
-            let token = Token::from(meta_pos, meta_len, pos, token_len);
+            pos += meta_left_len;
+            let token = Token::from(meta_pos, meta_left_len + 1, pos, token_len);
             tokens.push(token);
             pos += token_len + 2;
             if pos > len || (pos == len && i != token_count - 1) {
@@ -108,11 +115,6 @@ impl Redis {
             let mut key_count = 0;
             let hash;
             if prop.first_key_index() == 0 {
-                log::info!(
-                    "++++++++ cmdnme:{:?}, cmd: {:?}",
-                    cmdname,
-                    to_str(&buf.to_vec(), ProtocolType::Request)?
-                );
                 debug_assert!(prop.operation().is_meta());
                 use std::sync::atomic::{AtomicU64, Ordering};
                 static RND: AtomicU64 = AtomicU64::new(0);
@@ -146,7 +148,10 @@ impl Redis {
         let first_key_token = tokens.get(prop.first_key_index()).unwrap();
         let last_key_token = tokens.get(last_key_idx).unwrap();
         let prefix = buf
-            .sub_slice(cmd_token.meta_pos, first_key_token.meta_pos)
+            .sub_slice(
+                cmd_token.meta_pos,
+                first_key_token.meta_pos - cmd_token.meta_pos,
+            )
             .to_vec();
         let suffix = buf
             .sub_slice(last_key_token.end_pos(), len - last_key_token.end_pos())
@@ -180,11 +185,14 @@ impl Redis {
                 rdata.extend(token.bulk_data(&buf).to_vec());
                 j += 1;
             }
-            rdata.extend(suffix.clone());
+            if suffix.len() > 0 {
+                rdata.extend(suffix.clone());
+            }
 
             let key_token = tokens.get(kidx).unwrap();
             let hash = alg.hash(&key_token.bare_data(&buf));
 
+            log::debug!("++++++ will send sub-req:{:?}", from_utf8(rdata.as_slice()));
             let guard = MemGuard::from_vec(rdata);
             // flag 目前包含3个属性：key-count，is-first-key，operation
             let flag: Flag = match kidx == first_key_idx {
@@ -193,15 +201,19 @@ impl Redis {
             };
             let cmd = HashedCommand::new(guard, hash, flag, key_count);
 
-            // 处理完毕的字节需要take
-            stream.take(pos);
-
             // process cmd
             process.process(cmd, kidx == last_key_idx);
 
             // key处理完毕，跳到下一个key
             kidx += prop.key_step();
         }
+
+        log::debug!(
+            "++++++ processed req: {:?}",
+            from_utf8(buf.to_vec().as_slice())
+        );
+        // 处理完毕的字节需要take
+        stream.take(pos);
 
         Ok(())
     }
@@ -238,7 +250,7 @@ impl Protocol for Redis {
                 pos += 1;
                 let len = response.len();
                 // multibulks count
-                let (token_counto, meta_lenlen) = parse_len(
+                let (token_counto, meta_left_lenlen) = parse_len(
                     response.sub_slice(pos, len - pos),
                     "bulk",
                     ProtocolType::Response,
@@ -248,11 +260,12 @@ impl Protocol for Redis {
                     Some(c) => c,
                     None => 0,
                 };
-                pos += meta_lenlen;
+                pos += meta_left_lenlen;
 
                 // 记录meta 长度
                 debug_assert!(pos < 256);
                 let mut flag = Flag::from_metalen_tokencount(pos as u8, token_count as u8);
+
                 if token_count > 1 {
                     log::error!(
                         "found special resp with tokens/{}: {:?}",
@@ -272,7 +285,7 @@ impl Protocol for Redis {
                     }
 
                     pos += 1;
-                    let (token_leno, meta_len) = parse_len(
+                    let (token_leno, meta_left_len) = parse_len(
                         response.sub_slice(pos, len - pos),
                         "bulk",
                         ProtocolType::Response,
@@ -285,7 +298,8 @@ impl Protocol for Redis {
                     if token_len >= MAX_MSG_LEN {
                         log::warn!("careful too long token: {}", token_len);
                     }
-                    pos += meta_len + token_len + token::REDIS_SPLIT_LEN;
+                    // 走过$2\r\nab\r\n
+                    pos += meta_left_len + token_len + token::REDIS_SPLIT_LEN;
                     if pos > len || (pos == len && i != token_count - 1) {
                         return Err(Error::ProtocolIncomplete);
                     }
@@ -298,7 +312,7 @@ impl Protocol for Redis {
             '$' => {
                 // one bulk
                 pos += 1;
-                let (leno, meta_len) = parse_len(
+                let (leno, meta_left_len) = parse_len(
                     response.sub_slice(pos, response.len() - pos),
                     "rsp-bulk",
                     ProtocolType::Response,
@@ -310,7 +324,7 @@ impl Protocol for Redis {
                 if len > MAX_MSG_LEN {
                     log::warn!("found too long respons/{}", len);
                 }
-                pos += meta_len + len;
+                pos += meta_left_len + len;
                 if len > 0 {
                     // 只有bare len大于0，才会有bare data + \r\n
                     pos += token::REDIS_SPLIT_LEN;
@@ -355,6 +369,7 @@ impl Protocol for Redis {
             // 对于多个key，不管是不是第一个key对应的rsp，都需要去掉resp的meta前缀
             oft = resp.meta_len() as usize;
         }
+
         let len = resp.len() - oft;
 
         // 首先发送完整的meta
@@ -364,7 +379,7 @@ impl Protocol for Redis {
             let meta = format!("*{}\r\n", key_count);
             w.write(meta.as_bytes())?;
         }
-
+        // log::debug!("+++++ key_count:{}, oft:{}, is_mkey_first:{}", key_count, oft, is_mkey_first);
         // 发送剩余rsp
         while oft < len {
             let data = resp.read(oft);
@@ -389,11 +404,8 @@ impl Protocol for Redis {
     }
 }
 
-pub fn parse_len(
-    data: RingSlice,
-    name: &str,
-    ptype: ProtocolType,
-) -> Result<(Option<usize>, usize)> {
+// 解析bulk长度，起始位置是$2\r\n中的$的下一个元素，所以返回的元组中第二个长度比meta的实际长度小1
+fn parse_len(data: RingSlice, name: &str, ptype: ProtocolType) -> Result<(Option<usize>, usize)> {
     if data.len() <= 2 {
         return Err(Error::ProtocolIncomplete);
     }
