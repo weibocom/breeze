@@ -31,9 +31,8 @@ impl Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        debug_assert!(stream.len() > 0);
         if stream.len() < 4 {
-            return Ok(());
+            return Err(Error::ProtocolIncomplete);
         }
 
         // 解析multibulk count：*5\r\n
@@ -226,12 +225,18 @@ impl Protocol for Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        match self.parse_request_inner(stream, alg, process) {
-            Ok(_) => Ok(()),
-            Err(e) => match e {
-                Error::ProtocolIncomplete => Ok(()),
-                _ => Err(e),
-            },
+        let mut count = 0;
+        loop {
+            match self.parse_request_inner(stream, alg, process) {
+                Ok(_) => count += 1,
+                Err(e) => match e {
+                    Error::ProtocolIncomplete => return Ok(()),
+                    _ => return Err(e),
+                },
+            }
+            if count > 1000 {
+                log::warn!("too big pipeline: {}", count);
+            }
         }
     }
 
@@ -379,7 +384,7 @@ impl Protocol for Redis {
             let meta = format!("*{}\r\n", key_count);
             w.write(meta.as_bytes())?;
         }
-        // log::debug!("+++++ key_count:{}, oft:{}, is_mkey_first:{}", key_count, oft, is_mkey_first);
+
         // 发送剩余rsp
         while oft < len {
             let data = resp.read(oft);
