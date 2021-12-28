@@ -147,15 +147,20 @@ lazy_static! {
         use Operation::*;
     for (name, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward)
         in vec![
-                ("get" ,2, Get, 1, 1, 1, 2, false, false),
-                ("set" ,3, Store, 1, 1, 1, 2, false, false),
+                // meta 指令
                 ("ping" ,-1, Meta, 0, 0, 0, 1, false, true),
                 // 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
                 ("select" ,2, Meta, 0, 0, 0, 0, false, true),
                 ("quit" ,2, Meta, 0, 0, 0, 0, false, true),
+
+                ("get" ,2, Get, 1, 1, 1, 2, false, false),
+                ("mget", -2, MGet, 1, -1, 1, 2, true, false),
+
+                ("set" ,3, Store, 1, 1, 1, 2, false, false),
                 ("incr" ,2, Store, 1, 1, 1, 2, false, false),
                 ("decr" ,2, Store, 1, 1, 1, 2, false, false),
-                ("mget", -2, MGet, 1, -1, 1, 2, true, false),
+                ("mincr", -2, Store, 1, -1, 1, 2, true, false),
+                ("mset", -3, Store, 1, -1, 2, 2, true, false),
 
             // TODO: 随着测试，逐步打开，注意加上padding rsp fishermen
             // "setnx" => (3, Operation::Store, 1, 1, 1),
