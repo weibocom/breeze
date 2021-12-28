@@ -84,7 +84,7 @@ impl CommandProperties {
     }
     // 该命令是否可能会包含多个key
     #[inline(always)]
-    pub fn multi(&self) -> bool {
+    pub fn _multi(&self) -> bool {
         self.multi
     }
 }
