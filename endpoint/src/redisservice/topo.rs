@@ -63,11 +63,11 @@ where
         debug_assert_ne!(self.shards.len(), 0);
         // TODO：原分布算法计算有问题，先临时实现，验证流程 fishermen
         // let shard_idx = req.hash() as usize % self.shards.len();
-        let mut newhash = req
+        let newhash = req
             .hash()
             .wrapping_div(DIST_RANGE_SPLIT_DEFAULT)
             .wrapping_rem(DIST_RANGE_SPLIT_DEFAULT);
-        debug_assert!(newhash > 0);
+        debug_assert!(newhash >= 0);
         let interval = DIST_RANGE_SPLIT_DEFAULT as u64 / self.shards.len() as u64;
         let shard_idx = (newhash as u64 / interval) as usize;
 
