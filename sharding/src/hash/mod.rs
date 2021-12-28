@@ -36,7 +36,6 @@ impl Hasher {
             alg_match = &alg_match[0..CRC32_RANGE_OR_SHORT_LEN];
         }
 
-        log::debug!("++++++hash:{}, raw:{}", alg_match, alg);
         match alg_match {
             "bkdr" => Self::Bkdr(Default::default()),
             "crc32-short" => Self::Crc32Short(Default::default()),
