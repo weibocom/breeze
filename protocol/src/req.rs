@@ -1,9 +1,11 @@
 use crate::{Command, Operation};
 use std::fmt::{Debug, Display};
+use std::time::Instant;
 
 pub type Context = u64;
 
 pub trait Request: Debug + Display + Send + Sync + 'static + Unpin {
+    fn start_at(&self) -> Instant;
     fn operation(&self) -> Operation;
     fn len(&self) -> usize;
     fn hash(&self) -> i64;

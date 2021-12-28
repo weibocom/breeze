@@ -13,6 +13,8 @@ use tokio::time::{interval, Interval, MissedTickBehavior};
 use crate::buffer::StreamGuard;
 use crate::timeout::TimeoutChecker;
 
+use metrics::Metric;
+
 pub(crate) struct Handler<'r, Req, P, W, R> {
     data: &'r mut Receiver<Req>,
     pending: &'r mut VecDeque<Req>,
@@ -30,6 +32,11 @@ pub(crate) struct Handler<'r, Req, P, W, R> {
     // 做超时控制
     timeout: TimeoutChecker,
     tick: Interval, // 多长时间检查一次
+
+    // metrics
+    bytes_rx: &'r mut Metric,
+    bytes_tx: &'r mut Metric,
+    rtt: &'r mut Metric,
 }
 impl<'r, Req, P, W, R> Future for Handler<'r, Req, P, W, R>
 where
@@ -69,6 +76,9 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
         buf: &'r mut StreamGuard,
         tx: W,
         rx: R,
+        bytes_tx: &'r mut Metric,
+        bytes_rx: &'r mut Metric,
+        rtt: &'r mut Metric,
         parser: P,
         cycle: Duration,
     ) -> Self
@@ -93,6 +103,9 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
 
             timeout,
             tick,
+            bytes_tx,
+            bytes_rx,
+            rtt,
         }
     }
     // 发送request.
@@ -117,6 +130,7 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
                         self.pending.pop_back();
                     }
                 }
+                *self.bytes_tx += self.oft_c;
                 self.oft_c = 0;
                 self.flushing = true;
                 self.cache = false;
@@ -147,6 +161,7 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
             if num == 0 {
                 return Poll::Ready(Ok(()));
             }
+            *self.bytes_rx += num;
             use protocol::Stream;
             while self.buf.len() > 0 {
                 match self.parser.parse_response(self.buf)? {
@@ -155,6 +170,8 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
                         self.timeout.tick();
                         debug_assert_ne!(self.pending.len(), 0);
                         let req = self.pending.pop_front().expect("take response");
+                        // 统计请求耗时。
+                        *self.rtt += req.start_at().elapsed();
                         req.on_complete(cmd);
                     }
                 }
