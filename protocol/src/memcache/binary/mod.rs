@@ -132,7 +132,11 @@ impl Protocol for MemcacheBinary {
         w: &mut W,
     ) -> Result<()> {
         match req.op_code() {
-            OP_CODE_NOOP => w.write(&NOOP_RESPONSE),
+            OP_CODE_NOOP => {
+                // 第一个字节变更为Response，其他的与Request保持一致
+                w.write_u8(RESPONSE_MAGIC)?;
+                w.write_slice(req.data(), 1)
+            }
             0xb => w.write(&VERSION_RESPONSE),
             0x10 => w.write(&STAT_RESPONSE),
             0x07 | 0x17 => Err(Error::Quit),
