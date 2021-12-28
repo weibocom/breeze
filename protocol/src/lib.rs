@@ -24,6 +24,21 @@ pub mod request;
 pub trait ResponseWriter {
     // 写数据，一次写完
     fn write(&mut self, data: &[u8]) -> Result<()>;
+    #[inline(always)]
+    fn write_u8(&mut self, v: u8) -> Result<()> {
+        self.write(&[v])
+    }
+    #[inline(always)]
+    fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
+        let mut oft = oft;
+        let len = data.len();
+        while oft < len {
+            let data = data.read(oft);
+            oft += data.len();
+            self.write(data)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -58,6 +73,11 @@ impl ResponseWriter for Vec<u8> {
     fn write(&mut self, data: &[u8]) -> Result<()> {
         log::debug!("+++++ write rsp:{:?}", from_utf8(data));
         ds::vec::Buffer::write(self, data);
+        Ok(())
+    }
+    #[inline(always)]
+    fn write_u8(&mut self, v: u8) -> Result<()> {
+        self.push(v);
         Ok(())
     }
 }
