@@ -118,7 +118,7 @@ impl Redis {
                 debug_assert!(prop.operation().is_meta());
                 use std::sync::atomic::{AtomicU64, Ordering};
                 static RND: AtomicU64 = AtomicU64::new(0);
-                hash = RND.fetch_add(1, Ordering::Relaxed);
+                hash = RND.fetch_add(1, Ordering::Relaxed) as i64;
             } else {
                 let ktoken = tokens.get(prop.first_key_index()).unwrap();
                 hash = alg.hash(&ktoken.bare_data(&buf));

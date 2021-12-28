@@ -6,7 +6,7 @@ pub type Context = u64;
 pub trait Request: Debug + Display + Send + Sync + 'static + Unpin {
     fn operation(&self) -> Operation;
     fn len(&self) -> usize;
-    fn hash(&self) -> u64;
+    fn hash(&self) -> i64;
     fn on_sent(&mut self);
     fn sentonly(&self) -> bool;
     fn read(&self, oft: usize) -> &[u8];
