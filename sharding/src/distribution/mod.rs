@@ -13,6 +13,8 @@ pub enum Distribute {
     Range(Range),
 }
 
+pub const DIST_RANGE_SPLIT_DEFAULT: i64 = 256;
+
 impl Distribute {
     pub fn from(distribution: &str, names: &Vec<String>) -> Self {
         let dist = distribution.to_ascii_lowercase();
@@ -27,7 +29,7 @@ impl Distribute {
         }
     }
     #[inline(always)]
-    pub fn index(&self, hash: u64) -> usize {
+    pub fn index(&self, hash: i64) -> usize {
         match self {
             Self::Consistent(d) => d.index(hash),
             Self::Modula(d) => d.index(hash),
