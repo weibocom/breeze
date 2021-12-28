@@ -81,6 +81,11 @@ impl CommandProperties {
     pub fn noforward(&self) -> bool {
         self.noforward
     }
+    // 该命令是否可能会包含多个key
+    #[inline(always)]
+    pub fn _multi(&self) -> bool {
+        self.multi
+    }
 }
 
 // https://redis.io/commands 一共145大类命令。使用 crate::sharding::Hash::Crc32
