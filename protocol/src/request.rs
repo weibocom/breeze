@@ -7,6 +7,11 @@ pub struct Request {
 
 impl crate::Request for Request {
     #[inline(always)]
+    fn start_at(&self) -> std::time::Instant {
+        self.ctx().start_at()
+    }
+
+    #[inline(always)]
     fn len(&self) -> usize {
         self.req().len()
     }
