@@ -44,12 +44,6 @@ pub(super) enum PacketPos {
 }
 pub(super) const HEADER_LEN: usize = 24;
 
-//pub(super) const NOOP_REQEUST: &[u8] = &[
-//    128, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-//];
-pub(super) const NOOP_RESPONSE: [u8; 24] = [
-    129, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
 // 对应版本号为: 0.0.1
 pub(super) const VERSION_RESPONSE: [u8; 29] = [
     0x81, 0x0b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00,
