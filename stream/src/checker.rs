@@ -133,7 +133,7 @@ impl<P, Req> BackendChecker<P, Req> {
                 }
                 Err(e) => {
                     self.init.on();
-                    log::info!("{}-th conn to {} err:{}", tries, self.addr, e);
+                    log::debug!("{}-th conn to {} err:{}", tries, self.addr, e);
                 }
             }
             tries += 1;
