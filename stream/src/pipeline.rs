@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
+//use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use std::time::Instant;
 
@@ -51,6 +52,7 @@ where
         tx_buf: Vec::with_capacity(1024),
         cb,
         start: Instant::now(),
+        start_init: false,
         first: true, // 默认当前请求是第一个
     }
     .await;
@@ -75,6 +77,7 @@ struct CopyBidirectional<'a, C, P> {
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
     // 如果一个multiget被拆分成多个请求，则start存储的是第一个请求的时间。
     start: Instant,
+    start_init: bool,
     first: bool, // 当前解析的请求是否是第一个。
 }
 impl<'a, C, P> Future for CopyBidirectional<'a, C, P>
@@ -158,20 +161,22 @@ where
             pending,
             parser,
             start,
+            start_init,
             metrics,
             ..
         } = self;
         let mut w = Pin::new(client);
+        let mut flush = false;
         // 处理回调
         while let Some(ctx) = pending.front_mut() {
+            // 当前请求是第一个请求
+            if !*start_init {
+                *start = ctx.start_at();
+            }
             if !ctx.complete() {
                 break;
             }
             let mut ctx = pending.pop_front().expect("front");
-            // 当前请求是第一个请求
-            if ctx.first() {
-                *start = ctx.start_at();
-            }
             let last = ctx.last();
             let op = ctx.request().operation();
 
@@ -187,13 +192,19 @@ where
             // 但mesh通常与client部署在同一台物理机上，buffer flush的耗时通常在微秒级。
             if last {
                 *metrics.ops(op) += start.elapsed();
+                flush = true;
+                *start_init = false;
             }
 
             if tx_buf.len() >= 32 * 1024 {
                 ready!(Self::poll_flush(cx, tx_idx, tx_buf, w.as_mut()))?;
             }
         }
-        Self::poll_flush(cx, tx_idx, tx_buf, w.as_mut())
+        if flush {
+            Self::poll_flush(cx, tx_idx, tx_buf, w.as_mut())
+        } else {
+            Poll::Ready(Ok(()))
+        }
     }
     // 把response数据flush到client
     #[inline(always)]
