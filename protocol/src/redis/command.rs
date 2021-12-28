@@ -18,6 +18,7 @@ pub(crate) struct CommandProperties {
     padding_rsp: u8,
     noforward: bool,
     supported: bool,
+    #[allow(dead_code)]
     multi: bool, // 该命令是否可能会包含多个key
 }
 
@@ -83,7 +84,7 @@ impl CommandProperties {
     }
     // 该命令是否可能会包含多个key
     #[inline(always)]
-    pub fn _multi(&self) -> bool {
+    pub fn multi(&self) -> bool {
         self.multi
     }
 }
