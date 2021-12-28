@@ -163,6 +163,11 @@ where
                 return;
             }
             self.hasher = Hasher::from(&ns.hash);
+            log::debug!(
+                "++++++ update memcache config with hash:{}: config:{}",
+                ns.hash,
+                cfg
+            );
             let dist = &ns.distribution;
 
             let old_streams = self.streams.split_off(0);
