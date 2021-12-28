@@ -14,8 +14,15 @@ impl Range {
         }
     }
 
-    pub fn index(&self, hash: u64) -> usize {
-        let rs = hash / self.interval;
+    pub fn index(&self, hash: i64) -> usize {
+        let mut val = hash
+            .wrapping_div(super::DIST_RANGE_SPLIT_DEFAULT)
+            .wrapping_rem(super::DIST_RANGE_SPLIT_DEFAULT);
+        if val < 0 {
+            log::warn!("found negative crc range pre hash:{:?}", val);
+            val = val.wrapping_abs();
+        }
+        let rs = val as u64 / self.interval;
         rs as usize
     }
 }
