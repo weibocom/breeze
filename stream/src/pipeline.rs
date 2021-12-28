@@ -50,6 +50,7 @@ where
         waker: &*waker,
         tx_idx: 0,
         tx_buf: Vec::with_capacity(1024),
+        flush: false,
         cb,
         start: Instant::now(),
         start_init: false,
@@ -70,6 +71,7 @@ struct CopyBidirectional<'a, C, P> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
     tx_idx: usize,
+    flush: bool,
     tx_buf: Vec<u8>,
     cb: CallbackPtr,
 
@@ -163,10 +165,10 @@ where
             start,
             start_init,
             metrics,
+            flush,
             ..
         } = self;
         let mut w = Pin::new(client);
-        let mut flush = false;
         // 处理回调
         while let Some(ctx) = pending.front_mut() {
             // 当前请求是第一个请求
@@ -192,37 +194,40 @@ where
             // 但mesh通常与client部署在同一台物理机上，buffer flush的耗时通常在微秒级。
             if last {
                 *metrics.ops(op) += start.elapsed();
-                flush = true;
+                *flush = true;
                 *start_init = false;
             }
 
             if tx_buf.len() >= 32 * 1024 {
-                ready!(Self::poll_flush(cx, tx_idx, tx_buf, w.as_mut()))?;
+                *flush = true;
+                ready!(Self::poll_flush(cx, flush, tx_idx, tx_buf, w.as_mut()))?;
             }
         }
-        if flush {
-            Self::poll_flush(cx, tx_idx, tx_buf, w.as_mut())
-        } else {
-            Poll::Ready(Ok(()))
-        }
+        Self::poll_flush(cx, flush, tx_idx, tx_buf, w.as_mut())
     }
     // 把response数据flush到client
     #[inline(always)]
     fn poll_flush(
         cx: &mut Context,
+        flush: &mut bool,
         idx: &mut usize,
         buf: &mut Vec<u8>,
         mut writer: Pin<&mut C>,
     ) -> Poll<Result<()>> {
-        if buf.len() > 0 {
-            while *idx < buf.len() {
-                *idx += ready!(writer.as_mut().poll_write(cx, &buf[*idx..]))?;
+        if *flush {
+            if buf.len() > 0 {
+                while *idx < buf.len() {
+                    let old = *idx;
+                    *idx += ready!(writer.as_mut().poll_write(cx, &buf[*idx..]))?;
+                    log::info!("write resp [{}..{}] {:?}", old, *idx, &buf[old..*idx]);
+                }
+                *idx = 0;
+                unsafe {
+                    buf.set_len(0);
+                }
+                ready!(writer.as_mut().poll_flush(cx)?);
             }
-            *idx = 0;
-            unsafe {
-                buf.set_len(0);
-            }
-            ready!(writer.as_mut().poll_flush(cx)?);
+            *flush = false;
         }
         Poll::Ready(Ok(()))
     }
