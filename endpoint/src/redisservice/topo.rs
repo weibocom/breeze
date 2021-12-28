@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use discovery::TopologyWrite;
 use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
+use sharding::distribution::DIST_RANGE_SPLIT_DEFAULT;
 use sharding::hash::Hasher;
 
 use super::config::RedisNamespace;
@@ -62,11 +63,24 @@ where
         debug_assert_ne!(self.shards.len(), 0);
         // TODO：原分布算法计算有问题，先临时实现，验证流程 fishermen
         // let shard_idx = req.hash() as usize % self.shards.len();
-        const RANGE_LEN: u64 = 256;
-        let interval = RANGE_LEN / self.shards.len() as u64;
-        let shard_idx = (req.hash() / interval) as usize;
+        let mut newhash = req
+            .hash()
+            .wrapping_div(DIST_RANGE_SPLIT_DEFAULT)
+            .wrapping_rem(DIST_RANGE_SPLIT_DEFAULT);
+        debug_assert!(newhash > 0);
+        let interval = DIST_RANGE_SPLIT_DEFAULT as u64 / self.shards.len() as u64;
+        let shard_idx = (newhash as u64 / interval) as usize;
+
+        let mut i = 0;
+        for vs in self.shards.iter() {
+            for v in vs.iter() {
+                log::debug!("+++333+++ i/{}: {}", i, v.0);
+            }
+            i += 1;
+        }
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
+        log::debug!("++++++ shard_idx:{}", shard_idx);
         let mut idx = 0;
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.len() >= 2 && !req.operation().is_store() {
@@ -98,6 +112,21 @@ where
             // 减一，是把主减掉
             req.try_next((next - first) < shard.len() as u64 - 1);
         }
+
+        let mut i = 0;
+        log::debug!(
+            "++++++++++ idx:{}, shard.len:{}, shards.len:{:?}",
+            idx,
+            shard.len(),
+            self.shards.len()
+        );
+        i = 0;
+        for vs in self.shards.iter() {
+            for v in vs.iter() {
+                log::debug!("+++444+++ i/{}: {}", i, v.0);
+            }
+            i += 1;
+        }
         debug_assert!(idx < shard.len());
         shard[idx].1.send(req);
     }
@@ -114,6 +143,11 @@ where
             Err(e) => log::info!("failed to parse redis namespace:{},{:?}", namespace, e),
             Ok(ns) => {
                 self.hasher = Hasher::from(&ns.basic.hash);
+                log::debug!(
+                    "++++++ update redis config with hash:{}, cfg: {:?}",
+                    ns.basic.hash,
+                    cfg
+                );
                 let mut shards_url = Vec::new();
                 let mut read_idx = Vec::with_capacity(ns.backends.len());
                 for shard in ns.backends.iter() {
@@ -168,6 +202,7 @@ where
             }
         }
         // 遍历所有的shards_url
+        let mut loaded = false;
         for shard in self.shards_url.iter() {
             let mut endpoints = Vec::new();
             if shard.len() > 0 {
@@ -192,11 +227,35 @@ where
                             endpoints.push((addr, slave));
                         }
                     }
+                    loaded = true;
+                } else {
+                    log::warn!("+++++ parsing host/{} failed", master_url);
+                    loaded = false;
+                    break;
                 }
             }
-            self.shards.push(endpoints);
+            if loaded {
+                self.shards.push(endpoints);
+            }
         }
-        log::info!("loading complete:{}", self.service);
+
+        // ======== for test
+        log::info!("loading complete {} for:{}", loaded, self.service);
+        let mut i = 0;
+        for vs in self.shards.iter() {
+            for v in vs.iter() {
+                log::debug!("+++111+++ i/{}: {}", i, v.0);
+            }
+            i += 1;
+        }
+
+        i = 0;
+        for vs in self.shards.iter() {
+            for v in vs.iter() {
+                log::debug!("+++222+++ i/{}: {}", i, v.0);
+            }
+            i += 1;
+        }
     }
 }
 impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
