@@ -14,7 +14,7 @@ impl Modula {
     }
 
     #[inline(always)]
-    pub fn index(&self, hash: u64) -> usize {
+    pub fn index(&self, hash: i64) -> usize {
         match self {
             Self::Pow2(m) => m.index(hash),
             Self::Other(m) => m.index(hash),
@@ -33,7 +33,7 @@ impl Pow2 {
         Self { mask }
     }
     #[inline(always)]
-    pub fn index(&self, hash: u64) -> usize {
+    pub fn index(&self, hash: i64) -> usize {
         hash as usize & self.mask
     }
 }
@@ -47,7 +47,7 @@ impl Other {
         Self { len: shard_num }
     }
     #[inline(always)]
-    pub fn index(&self, hash: u64) -> usize {
+    pub fn index(&self, hash: i64) -> usize {
         hash as usize % self.len
     }
 }

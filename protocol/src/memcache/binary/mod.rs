@@ -50,7 +50,7 @@ impl Protocol for MemcacheBinary {
                 debug_assert!(req.operation().is_meta() || req.noop());
                 use std::sync::atomic::{AtomicU64, Ordering};
                 static RND: AtomicU64 = AtomicU64::new(0);
-                hash = RND.fetch_add(1, Ordering::Relaxed);
+                hash = RND.fetch_add(1, Ordering::Relaxed) as i64;
             }
             let guard = data.take(packet_len);
             // TODO 目前mc暂时不用key_count，先设置为0，等又需要再调整逻辑 fishermen
