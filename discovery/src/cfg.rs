@@ -44,11 +44,20 @@ where
         if let Some((cfg, sig)) = discovery.get(&service.name(), &self.sig, &self.inner).await {
             let dump = self.sig != sig;
             let update = self.sig.digest != sig.digest;
+            log::debug!(
+                "++++++++ discovery geted {:?} => {:?} cfg: {:?}, dump:{}, update:{}",
+                self,
+                sig,
+                cfg,
+                dump,
+                update
+            );
             if !dump && !update {
                 return;
             }
+
             if update {
-                log::info!("updating {:?} => {:?} cfg len:{}", self, sig, cfg.len());
+                log::info!("updating {:?} => {:?} cfg: {:?}", self, sig, cfg);
                 self.update(&cfg, sig);
             } else {
                 self.sig = sig;

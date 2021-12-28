@@ -24,7 +24,7 @@ impl crate::Request for Request {
         self.req().operation()
     }
     #[inline(always)]
-    fn hash(&self) -> u64 {
+    fn hash(&self) -> i64 {
         self.req().hash()
     }
     #[inline(always)]

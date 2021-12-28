@@ -7,7 +7,8 @@ pub use crc32::*;
 use enum_dispatch::enum_dispatch;
 #[enum_dispatch]
 pub trait Hash {
-    fn hash<S: HashKey>(&self, key: &S) -> u64;
+    // hash 可能返回负数
+    fn hash<S: HashKey>(&self, key: &S) -> i64;
 }
 
 #[enum_dispatch(Hash)]
@@ -19,17 +20,23 @@ pub enum Hasher {
 }
 
 // crc32-short和crc32-range长度相同，所以此处选一个
-const CRC32_BASE_LEN: usize = "crc32-range".len();
-const CRC32_RANGE_ID_PREFIX_LEN: usize = "crc32-range-id-".len();
+const CRC32_RANGE_OR_SHORT_LEN: usize = "crc32-range".len();
+// 使用整个key做hash
+const CRC32_RANGE: &str = "crc32-range";
+// 对整个key中的第一串数字做hash
+const CRC32_RANGE_ID: &str = "crc32-range-id";
+// skip掉xxx个字节，然后对剩余key中的第一串数字做hash
+const CRC32_RANGE_ID_PREFIX: &str = "crc32-range-id-";
 
 impl Hasher {
     pub fn from(alg: &str) -> Self {
         let alg_lower = alg.to_ascii_lowercase();
         let mut alg_match = alg_lower.as_str();
-        if alg_match.len() > CRC32_BASE_LEN {
-            alg_match = &alg_match[0..CRC32_BASE_LEN];
+        if alg_match.len() > CRC32_RANGE_OR_SHORT_LEN {
+            alg_match = &alg_match[0..CRC32_RANGE_OR_SHORT_LEN];
         }
 
+        log::debug!("++++++hash:{}, raw:{}", alg_match, alg);
         match alg_match {
             "bkdr" => Self::Bkdr(Default::default()),
             "crc32-short" => Self::Crc32Short(Default::default()),
