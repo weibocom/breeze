@@ -79,7 +79,7 @@ pub struct Command {
 }
 
 pub struct HashedCommand {
-    hash: u64,
+    hash: i64,
     cmd: Command,
 }
 
@@ -143,7 +143,7 @@ impl std::ops::DerefMut for HashedCommand {
 use ds::MemGuard;
 impl HashedCommand {
     #[inline(always)]
-    pub fn new(cmd: MemGuard, hash: u64, flag: Flag, key_count: u16) -> Self {
+    pub fn new(cmd: MemGuard, hash: i64, flag: Flag, key_count: u16) -> Self {
         Self {
             hash,
             cmd: Command {
@@ -154,7 +154,7 @@ impl HashedCommand {
         }
     }
     #[inline(always)]
-    pub fn hash(&self) -> u64 {
+    pub fn hash(&self) -> i64 {
         self.hash
     }
 }
