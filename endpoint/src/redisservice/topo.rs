@@ -71,14 +71,6 @@ where
         let interval = DIST_RANGE_SPLIT_DEFAULT as u64 / self.shards.len() as u64;
         let shard_idx = (newhash as u64 / interval) as usize;
 
-        let mut i = 0;
-        for vs in self.shards.iter() {
-            for v in vs.iter() {
-                log::debug!("+++333+++ i/{}: {}", i, v.0);
-            }
-            i += 1;
-        }
-
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         log::debug!("++++++ shard_idx:{}", shard_idx);
         let mut idx = 0;
@@ -113,20 +105,6 @@ where
             req.try_next((next - first) < shard.len() as u64 - 1);
         }
 
-        let mut i = 0;
-        log::debug!(
-            "++++++++++ idx:{}, shard.len:{}, shards.len:{:?}",
-            idx,
-            shard.len(),
-            self.shards.len()
-        );
-        i = 0;
-        for vs in self.shards.iter() {
-            for v in vs.iter() {
-                log::debug!("+++444+++ i/{}: {}", i, v.0);
-            }
-            i += 1;
-        }
         debug_assert!(idx < shard.len());
         shard[idx].1.send(req);
     }
@@ -143,11 +121,7 @@ where
             Err(e) => log::info!("failed to parse redis namespace:{},{:?}", namespace, e),
             Ok(ns) => {
                 self.hasher = Hasher::from(&ns.basic.hash);
-                log::debug!(
-                    "++++++ update redis config with hash:{}, cfg: {:?}",
-                    ns.basic.hash,
-                    cfg
-                );
+                log::info!("update redis cfg: {:?}", cfg);
                 let mut shards_url = Vec::new();
                 let mut read_idx = Vec::with_capacity(ns.backends.len());
                 for shard in ns.backends.iter() {
@@ -239,23 +213,7 @@ where
             }
         }
 
-        // ======== for test
         log::info!("loading complete {} for:{}", loaded, self.service);
-        let mut i = 0;
-        for vs in self.shards.iter() {
-            for v in vs.iter() {
-                log::debug!("+++111+++ i/{}: {}", i, v.0);
-            }
-            i += 1;
-        }
-
-        i = 0;
-        for vs in self.shards.iter() {
-            for v in vs.iter() {
-                log::debug!("+++222+++ i/{}: {}", i, v.0);
-            }
-            i += 1;
-        }
     }
 }
 impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
