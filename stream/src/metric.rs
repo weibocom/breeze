@@ -1,7 +1,7 @@
 use metrics::{Metric, Path};
 use protocol::{Operation, OPS};
 macro_rules! define_metrics {
-    ($($t:ident:$($name:ident),+);+) => {
+    ($($t:ident:$($name:ident-$key:expr),+);+) => {
         pub struct CbMetrics {
             $(
                 $(
@@ -31,7 +31,7 @@ macro_rules! define_metrics {
                     ops,
                     $(
                         $(
-                            $name: path.$t(stringify!($name)),
+                            $name: path.$t(stringify!($key)),
                         )+
                     )+
                 }
@@ -40,7 +40,7 @@ macro_rules! define_metrics {
     };
 }
 
-define_metrics!(qps: tx, rx, err, cps, kps, conn;
-count:conn_num;
-rtt:avg
+define_metrics!(qps: tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn;
+count:conn_num-conn;
+rtt:avg-avg
 );
