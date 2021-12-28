@@ -217,9 +217,7 @@ where
         if *flush {
             if buf.len() > 0 {
                 while *idx < buf.len() {
-                    let old = *idx;
                     *idx += ready!(writer.as_mut().poll_write(cx, &buf[*idx..]))?;
-                    log::info!("write resp [{}..{}] {:?}", old, *idx, &buf[old..*idx]);
                 }
                 *idx = 0;
                 unsafe {
