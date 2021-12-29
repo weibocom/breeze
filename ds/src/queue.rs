@@ -30,7 +30,7 @@ impl<T> PinnedQueue<T> {
     }
     #[inline(always)]
     pub fn new() -> Self {
-        Self::with_capacity(8)
+        Self::with_capacity(32)
     }
     // 把数据推入back，并且返回原有的引用
     #[inline(always)]
