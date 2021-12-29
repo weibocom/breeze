@@ -1,8 +1,8 @@
 extern crate json;
 use async_recursion::async_recursion;
-use merge_yaml_hash::MergeYamlHash;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use url::Url;
@@ -59,8 +59,8 @@ impl Response {
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct Redisyaml {
-    //basic: HashMap<String, String>,
     basic: HashMap<String, String>,
+    //backends: Vec<Vec<String>>,
     backends: Vec<String>,
 }
 
@@ -161,6 +161,7 @@ impl Vintage {
         }
         Ok(map)
     }
+
     async fn rdlookup<C>(&self, uname: String, index: String) -> std::io::Result<Config<C>>
     where
         C: From<String>,
@@ -193,31 +194,45 @@ impl Vintage {
                         Ok(Config::NotChanged)
                     } else {
                         let mut map = HashMap::new();
-                        let mut map1 = HashMap::new();
+                        let mut basicdata = HashMap::new();
+                        let mut backendsdata = Vec::new();
+                        let mut mapbackends = HashMap::new();
                         map = self.recursion(f_url, t_index.clone(), map).await?;
-                        let mut value1 = String::new();
-                        let mut value2 = String::new();
-                        let mut value3 = String::new();
                         for (key, val) in &map {
-                            if key.contains("shard0") {
-                                //arr.push(val);
-                                value1.push_str(val);
-                            } else if key.contains("shard1") {
-                                value2.push_str(val);
-                            } else if key.contains("shard2") {
-                                value3.push_str(val);
+                            if key.contains("shards") {
+                                mapbackends.insert(key.to_string(), val.to_string());
+                                let mut vec: Vec<String> =
+                                    mapbackends.clone().into_values().collect();
+                                vec.sort();
+                                let mut sort_domain = String::new();
+                                let mut rest = Vec::new();
+                                for i in 0..vec.len() {
+                                    let backend_len = vec[i].rfind(':').unwrap_or(0);
+                                    let name = vec[i].clone().split_off(backend_len + 1);
+                                    for j in (i + 1)..vec.len() {
+                                        if vec[j].contains(&name) {
+                                            sort_domain.push_str(&vec[i].clone());
+                                            sort_domain.push_str(",");
+                                            sort_domain.push_str(&vec[j].clone());
+                                            if sort_domain.contains(",") {
+                                                rest.push(sort_domain.clone());
+                                                sort_domain.clear();
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                                backendsdata = rest;
                             } else {
-                                let len = key.rfind('/').unwrap_or(0);
-                                let name = key.clone().split_off(len + 1);
-                                map1.insert(name, val.to_string());
+                                let basic_len = key.rfind('/').unwrap_or(0);
+                                let name = key.clone().split_off(basic_len + 1);
+                                basicdata.insert(name, val.to_string());
                             }
                         }
-
-                        let arr = vec![value1, value2, value3];
-
+                        println!("basbdnaxhs----{:?}", backendsdata);
                         let yaml: Redisyaml = Redisyaml {
-                            basic: map1,
-                            backends: arr,
+                            basic: basicdata,
+                            backends: backendsdata,
                         };
                         match serde_yaml::to_string::<Redisyaml>(&yaml.clone()) {
                             Err(e) => {
@@ -226,17 +241,13 @@ impl Vintage {
                             }
                             Ok(to_yaml) => {
                                 data = to_yaml;
-                                //sdata.push_str(&to_yaml.clone());
                             }
                         };
-                        // data.remove(0);
-                        //data.remove(1);
-                        // data.remove(2);
-                        //data.replace("---", " ");
+
                         println!("最终的sdata\n{}", data);
                         log::info!(" from {} to {} len:{}", index, t_index, data.len());
-                        Ok(Config::NotChanged)
-                        //Ok(Config::Config(t_index, C::from(data)))
+                        //Ok(Config::NotChanged)
+                        Ok(Config::Config(t_index, C::from(data)))
                     }
                 }
             }
