@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::ready;
 use protocol::{Error, Protocol, Request, Result};
@@ -37,6 +37,9 @@ pub(crate) struct Handler<'r, Req, P, W, R> {
     //bytes_rx: &'r mut Metric,
     //bytes_tx: &'r mut Metric,
     rtt: &'r mut Metric,
+
+    // 验证tokio 调整框架调度延迟
+    last_schedule: Instant,
 }
 impl<'r, Req, P, W, R> Future for Handler<'r, Req, P, W, R>
 where
@@ -53,10 +56,16 @@ where
         if me.pending.len() == 0 {
             me.timeout.reset()
         }
+        if me.pending.len() > 0 || me.flushing {
+            if me.last_schedule.elapsed() >= Duration::from_millis(10) {
+                log::info!("schedule {:?} rtt:{}", me.last_schedule.elapsed(), me.rtt);
+            }
+        }
         loop {
             let request = me.poll_request(cx)?;
             let _flush = me.poll_flush(cx)?;
             let _response = me.poll_response(cx)?;
+            me.last_schedule = Instant::now();
             if me.pending.len() > 0 {
                 //ready!(_response);
                 ready!(me.tick.poll_tick(cx));
@@ -106,6 +115,7 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
             //bytes_tx,
             //bytes_rx,
             rtt,
+            last_schedule: Instant::now(),
         }
     }
     // 发送request.
