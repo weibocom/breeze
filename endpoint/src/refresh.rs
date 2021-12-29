@@ -42,7 +42,7 @@ impl<T: Topology + Clone + 'static> Topology for RefreshTopology<T> {
     }
 }
 impl<T: Endpoint + Clone + 'static> RefreshTopology<T> {
-    #[inline]
+    #[inline(always)]
     pub fn static_send<R: Into<T::Item>>(receiver: usize, req: R) {
         let req = req.into();
         let top = receiver as *const Self;
