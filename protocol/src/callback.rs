@@ -40,6 +40,7 @@ pub struct CallbackContext {
     waker: *const AtomicWaker,
     callback: CallbackPtr,
     start: Instant,
+    tries: usize,
 }
 
 impl CallbackContext {
@@ -62,6 +63,7 @@ impl CallbackContext {
             response: MaybeUninit::uninit(),
             callback: cb,
             start: Instant::now(),
+            tries: 0,
         }
     }
 
@@ -77,6 +79,7 @@ impl CallbackContext {
         log::debug!("on-complete:{} resp:{}", self, resp);
         // 异步请求不关注response。
         if !self.is_in_async_write_back() {
+            self.tries += 1;
             self.write(resp);
         }
         self.on_done();
@@ -102,7 +105,8 @@ impl CallbackContext {
     fn need_goon(&self) -> bool {
         if !self.is_in_async_write_back() {
             // 正常访问请求。
-            self.ctx.try_next && !self.response_ok()
+            // 除非出现了error，否则最多只尝试一次
+            self.ctx.try_next && !self.response_ok() && self.tries < 2
         } else {
             // write back请求
             self.ctx.write_back
