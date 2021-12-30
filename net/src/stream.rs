@@ -9,6 +9,7 @@ impl From<TcpStream> for Stream {
     #[inline]
     fn from(stream: TcpStream) -> Self {
         //Self::Tcp(BufStream::with_capacity(2048, 2048, stream))
+        let _ = stream.set_nodelay(true);
         Self::Tcp(stream)
     }
 }
