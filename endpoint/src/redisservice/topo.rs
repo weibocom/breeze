@@ -203,7 +203,7 @@ where
                     }
                     loaded = true;
                 } else {
-                    log::warn!("+++ parsing host/{} failed", master_url);
+                    log::warn!("parsing host/{} failed", master_url);
                     loaded = false;
                     break;
                 }
