@@ -124,17 +124,22 @@ impl Redis {
                 key_count = 1;
             }
 
-            let reqdata = buf.sub_slice(0, pos);
-            let guard = MemGuard::from_ringslice(reqdata);
+            // let reqdata = buf.sub_slice(0, pos);
+            // let guard = MemGuard::from_ringslice(reqdata);
+
             // TODO: flag 还需要针对指令进行进一步设计
             let mut flag = Flag::from_mkey_op(false, prop.padding_rsp(), prop.operation().clone());
             if prop.noforward() {
                 flag.set_noforward();
             }
+            log::debug!(
+                "+++ will process:{:?}",
+                from_utf8(buf.sub_slice(0, pos).to_vec().as_slice())
+            );
+            let guard = stream.take(pos);
             let cmd = HashedCommand::new(guard, hash, flag, key_count);
 
             // 处理完毕的字节需要take
-            stream.take(pos);
 
             // process cmd
             process.process(cmd, true);
@@ -216,33 +221,8 @@ impl Redis {
 
         Ok(())
     }
-}
 
-impl Protocol for Redis {
-    fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
-        &self,
-        stream: &mut S,
-        alg: &H,
-        process: &mut P,
-    ) -> Result<()> {
-        let mut count = 0;
-        loop {
-            match self.parse_request_inner(stream, alg, process) {
-                Ok(_) => count += 1,
-                Err(e) => match e {
-                    Error::ProtocolIncomplete => return Ok(()),
-                    _ => return Err(e),
-                },
-            }
-            if count > 1000 {
-                log::warn!("too big pipeline: {}", count);
-            }
-        }
-    }
-
-    // 为每一个req解析一个response
-    #[inline(always)]
-    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+    fn parse_response_inner<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         let response = data.slice();
         log::debug!(
             "+++ will parse rsp:{:?}",
@@ -304,7 +284,10 @@ impl Protocol for Redis {
                         log::warn!("careful too long token: {}", token_len);
                     }
                     // 走过$2\r\nab\r\n
-                    pos += meta_left_len + token_len + token::REDIS_SPLIT_LEN;
+                    pos += meta_left_len + token_len;
+                    if token_count > 0 {
+                        pos += token::REDIS_SPLIT_LEN;
+                    }
                     if pos > len || (pos == len && i != token_count - 1) {
                         return Err(Error::ProtocolIncomplete);
                     }
@@ -317,25 +300,33 @@ impl Protocol for Redis {
             '$' => {
                 // one bulk
                 pos += 1;
-                let (leno, meta_left_len) = parse_len(
+                let (dataleno, meta_len) = parse_len(
                     response.sub_slice(pos, response.len() - pos),
                     "rsp-bulk",
                     ProtocolType::Response,
                 )?;
-                let len = match leno {
+                let datalen = match dataleno {
                     Some(l) => l,
                     None => 0,
                 };
-                if len > MAX_MSG_LEN {
-                    log::warn!("found too long respons/{}", len);
+                if datalen > MAX_MSG_LEN {
+                    log::warn!("found too long respons/{}", datalen);
                 }
-                pos += meta_left_len + len;
-                if len > 0 {
+                pos += meta_len + datalen;
+                if datalen > 0 {
                     // 只有bare len大于0，才会有bare data + \r\n
                     pos += token::REDIS_SPLIT_LEN;
                 }
                 let mut flag = Flag::from_metalen_tokencount(0, 1u8);
                 flag.set_status_ok();
+                if pos > response.len() {
+                    log::warn!(
+                        "+++++ response is incompleted pos:{}, len:{}",
+                        pos,
+                        response.len()
+                    );
+                    return Err(Error::ProtocolIncomplete);
+                }
                 return Ok(Some(Command::new(flag, 0, data.take(pos))));
             }
             _ => {
@@ -352,6 +343,41 @@ impl Protocol for Redis {
                 }
                 return Err(Error::ProtocolIncomplete);
             }
+        }
+    }
+}
+
+impl Protocol for Redis {
+    fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
+        &self,
+        stream: &mut S,
+        alg: &H,
+        process: &mut P,
+    ) -> Result<()> {
+        let mut count = 0;
+        loop {
+            match self.parse_request_inner(stream, alg, process) {
+                Ok(_) => count += 1,
+                Err(e) => match e {
+                    Error::ProtocolIncomplete => return Ok(()),
+                    _ => return Err(e),
+                },
+            }
+            if count > 1000 {
+                log::warn!("too big pipeline: {}", count);
+            }
+        }
+    }
+
+    // 为每一个req解析一个response
+    #[inline(always)]
+    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+        match self.parse_response_inner(data) {
+            Ok(cmd) => return Ok(cmd),
+            Err(e) => match e {
+                Error::ProtocolIncomplete => return Ok(None),
+                _ => return Err(e),
+            },
         }
     }
     #[inline(always)]
@@ -404,6 +430,7 @@ impl Protocol for Redis {
         let rsp_idx = req.padding_rsp() as usize;
         debug_assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
+        log::debug!("+++ will write no rsp:{}", rsp);
         w.write(rsp.as_bytes())?;
         Ok(())
     }
@@ -429,11 +456,16 @@ fn parse_len(data: RingSlice, name: &str, ptype: ProtocolType) -> Result<(Option
             idx += 1;
             while data.at(idx) as char != '\r' {
                 idx += 1;
-                if idx == len {
+                if idx >= len {
                     return Err(Error::ProtocolIncomplete);
                 }
             }
+            count = 0;
             count_op = None;
+            log::debug!(
+                "+++ found 0 len bulk:{:?}",
+                from_utf8(data.to_vec().as_slice())
+            );
             break;
         } else if c < '0' || c > '9' {
             log::warn!("found malformed len for {}", name);
@@ -442,13 +474,18 @@ fn parse_len(data: RingSlice, name: &str, ptype: ProtocolType) -> Result<(Option
         count *= 10;
         count += c as usize - '0' as usize;
         idx += 1;
-        if idx == len {
+        if idx >= len {
             return Err(Error::ProtocolIncomplete);
         }
-        count_op = Some(count);
     }
 
     idx += 1;
+    if idx >= len {
+        return Err(Error::ProtocolIncomplete);
+    }
+    if count > 0 {
+        count_op = Some(count);
+    }
     if data.at(idx) as char != '\n' {
         return Err(invalid_err);
     }
