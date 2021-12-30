@@ -3,11 +3,17 @@ extern crate lazy_static;
 
 mod flag;
 pub mod memcache;
-pub mod parser;
 pub mod redis;
-pub mod req;
-pub mod resp;
-mod topo;
+
+mod operation;
+pub use operation::*;
+
+mod request;
+pub use request::*;
+
+mod response;
+
+pub use response::*;
 
 pub use flag::*;
 pub use parser::Proto as Protocol;
@@ -28,14 +34,29 @@ pub trait ResponseWriter {
     fn write_u8(&mut self, v: u8) -> Result<()> {
         self.write(&[v])
     }
-    #[inline(always)]
-    fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
-        let mut oft = oft;
-        let len = data.len();
-        while oft < len {
-            let data = data.read(oft);
-            oft += data.len();
-            self.write(data)?;
+}
+#[enum_dispatch(Protocol)]
+#[derive(Clone)]
+pub enum Protocols {
+    McBin(memcache::MemcacheBin),
+    McText(memcache::MemcacheText),
+    Redis(redis::RedisResp2),
+}
+
+impl Protocols {
+    pub fn try_from(name: &str) -> Result<Self> {
+        match name {
+            "mc_bin" | "mc" | "memcache" | "memcached" | "rd_bin" | "rd" | "redis" => {
+                Ok(Self::McBin(memcache::MemcacheBin::new()))
+            }
+            "mc_text" | "memcache_text" | "memcached_text" | "redis_text" | "redis_text" => {
+                Ok(Self::McText(memcache::MemcacheText::new()))
+            }
+            "rs" | "redis" => Ok(Self::Redis(redis::RedisResp2::new())),
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("'{}' is not a valid protocol", name),
+            )),
         }
         Ok(())
     }

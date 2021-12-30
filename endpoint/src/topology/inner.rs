@@ -42,7 +42,10 @@ impl<T> Inner<T> {
                     parser.clone(),
                     &addr,
                     stream::MAX_CONNECTIONS,
-                    Resource::Memcache,
+                    {
+                        Resource::Memcache;
+                        Resource::Redis
+                    },
                     namespace,
                 )),
             );
