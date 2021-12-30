@@ -72,7 +72,7 @@ where
         let shard_idx = (newhash as u64 / interval) as usize;
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-        log::debug!("++++++ shard_idx:{}", shard_idx);
+        // log::debug!("+++ shard_idx:{}, req.hash: {}", shard_idx, req.hash());
         let mut idx = 0;
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.len() >= 2 && !req.operation().is_store() {
@@ -203,7 +203,7 @@ where
                     }
                     loaded = true;
                 } else {
-                    log::warn!("+++++ parsing host/{} failed", master_url);
+                    log::warn!("+++ parsing host/{} failed", master_url);
                     loaded = false;
                     break;
                 }
