@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::ready;
 use protocol::{Error, Protocol, Request, Result};
@@ -34,9 +34,12 @@ pub(crate) struct Handler<'r, Req, P, W, R> {
     tick: Interval, // 多长时间检查一次
 
     // metrics
-    bytes_rx: &'r mut Metric,
-    bytes_tx: &'r mut Metric,
+    //bytes_rx: &'r mut Metric,
+    //bytes_tx: &'r mut Metric,
     rtt: &'r mut Metric,
+
+    // 验证tokio 调整框架调度延迟
+    last_schedule: Instant,
 }
 impl<'r, Req, P, W, R> Future for Handler<'r, Req, P, W, R>
 where
@@ -53,10 +56,16 @@ where
         if me.pending.len() == 0 {
             me.timeout.reset()
         }
+        if me.pending.len() > 0 || me.flushing {
+            if me.last_schedule.elapsed() >= Duration::from_millis(10) {
+                log::info!("schedule {:?} rtt:{}", me.last_schedule.elapsed(), me.rtt);
+            }
+        }
         loop {
             let request = me.poll_request(cx)?;
             let _flush = me.poll_flush(cx)?;
             let _response = me.poll_response(cx)?;
+            me.last_schedule = Instant::now();
             if me.pending.len() > 0 {
                 //ready!(_response);
                 ready!(me.tick.poll_tick(cx));
@@ -76,8 +85,8 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
         buf: &'r mut StreamGuard,
         tx: W,
         rx: R,
-        bytes_tx: &'r mut Metric,
-        bytes_rx: &'r mut Metric,
+        //bytes_tx: &'r mut Metric,
+        //bytes_rx: &'r mut Metric,
         rtt: &'r mut Metric,
         parser: P,
         cycle: Duration,
@@ -103,9 +112,10 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
 
             timeout,
             tick,
-            bytes_tx,
-            bytes_rx,
+            //bytes_tx,
+            //bytes_rx,
             rtt,
+            last_schedule: Instant::now(),
         }
     }
     // 发送request.
@@ -130,7 +140,7 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
                         self.pending.pop_back();
                     }
                 }
-                *self.bytes_tx += self.oft_c;
+                //*self.bytes_tx += self.oft_c;
                 self.oft_c = 0;
                 self.flushing = true;
                 self.cache = false;
@@ -161,7 +171,7 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
             if num == 0 {
                 return Poll::Ready(Ok(()));
             }
-            *self.bytes_rx += num;
+            //*self.bytes_rx += num;
             use protocol::Stream;
             while self.buf.len() > 0 {
                 match self.parser.parse_response(self.buf)? {
