@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
+use std::str::from_utf8;
 //use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use std::time::Instant;
@@ -215,6 +216,7 @@ where
         mut writer: Pin<&mut C>,
     ) -> Poll<Result<()>> {
         if *flush {
+            log::debug!("will flush rsp:{:?}", from_utf8(buf.as_slice()));
             if buf.len() > 0 {
                 while *idx < buf.len() {
                     *idx += ready!(writer.as_mut().poll_write(cx, &buf[*idx..]))?;

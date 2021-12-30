@@ -50,7 +50,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
 }
 
 pub trait RequestProcessor {
-    // last: 满足以下所有条件时为true:
+    // last: 如果非multi-key cmd，则直接为true；
+    // 如果是multi-key cmd，则满足以下所有条件时为true:
     // 1. 当前请求是multiget请求；
     // 2. 请求被拆分成了多个子请求；
     // 3. 当前子请求为最后一个；
