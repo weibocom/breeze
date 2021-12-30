@@ -71,7 +71,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl ResponseWriter for Vec<u8> {
     #[inline(always)]
     fn write(&mut self, data: &[u8]) -> Result<()> {
-        log::debug!("+++++ write rsp:{:?}", from_utf8(data));
         ds::vec::Buffer::write(self, data);
         Ok(())
     }

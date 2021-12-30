@@ -191,7 +191,7 @@ impl Redis {
             let key_token = tokens.get(kidx).unwrap();
             let hash = alg.hash(&key_token.bare_data(&buf));
 
-            log::debug!("++++++ will send sub-req:{:?}", from_utf8(rdata.as_slice()));
+            log::debug!("+++ will send sub-req:{:?}", from_utf8(rdata.as_slice()));
             let guard = MemGuard::from_vec(rdata);
             // flag 目前包含3个属性：key-count，is-first-key，operation
             let flag: Flag = match kidx == first_key_idx {
@@ -208,7 +208,7 @@ impl Redis {
         }
 
         log::debug!(
-            "++++++ processed req: {:?}",
+            "+++ processed req: {:?}",
             from_utf8(buf.to_vec().as_slice())
         );
         // 处理完毕的字节需要take
@@ -245,7 +245,7 @@ impl Protocol for Redis {
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         let response = data.slice();
         log::debug!(
-            "++++ will parse rsp:{:?}",
+            "+++ will parse rsp:{:?}",
             from_utf8(response.to_vec().as_slice())
         );
         // 响应目前只记录meta前缀长度
