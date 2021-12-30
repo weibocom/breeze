@@ -40,12 +40,12 @@ impl RingSlice {
         )
     }
     // 从start开始的所有数据。start不是offset，是绝对值。
-    #[inline(always)]
-    pub fn take(&self, start: usize) -> RingSlice {
-        debug_assert!(start >= self.start);
-        debug_assert!(start <= self.end);
-        Self::from(self.ptr(), self.cap, start, self.end)
-    }
+    //#[inline(always)]
+    //pub fn take(&self, start: usize) -> RingSlice {
+    //    debug_assert!(start >= self.start);
+    //    debug_assert!(start <= self.end);
+    //    Self::from(self.ptr(), self.cap, start, self.end)
+    //}
     // 读取数据. 可能只读取可读数据的一部分。
     #[inline(always)]
     pub fn read(&self, offset: usize) -> &[u8] {
@@ -67,7 +67,6 @@ impl RingSlice {
             v.write(data);
         }
     }
-
     #[inline(always)]
     fn mask(&self, oft: usize) -> usize {
         (self.cap - 1) & oft
@@ -145,8 +144,18 @@ impl RingSlice {
         None
     }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
-    pub fn index_lf_cr(&self, offset: usize) -> Option<usize> {
-        self.find_sub(offset, &[b'\r', b'\n'])
+    #[inline(always)]
+    pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
+        for i in offset..self.len() - 1 {
+            // 先找'\r'
+            if self.at(i) == b'\r' {
+                // 再验证'\n'
+                if self.at(i + 1) == b'\n' {
+                    return Some(i);
+                }
+            }
+        }
+        None
     }
 
     #[inline]
@@ -201,6 +210,22 @@ impl PartialEq<[u8]> for RingSlice {
         if self.len() == other.len() {
             for i in 0..other.len() {
                 if self.at(i) != other[i] {
+                    return false;
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+}
+// 内容相等
+impl PartialEq<Self> for RingSlice {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        if self.len() == other.len() {
+            for i in 0..other.len() {
+                if self.at(i) != other.at(i) {
                     return false;
                 }
             }
