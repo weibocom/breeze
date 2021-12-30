@@ -156,6 +156,10 @@ mod mem {
         drop(g1);
         reader.num = 1;
         guard.write(&mut reader);
+        drop(g3);
+
+        drop(g0);
+        guard.gc();
 
         println!("buf:{}", guard);
     }
