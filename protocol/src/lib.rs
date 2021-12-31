@@ -57,7 +57,6 @@ impl Resource {
     }
 }
 
-use std::str::from_utf8;
 use std::time::Duration;
 pub trait Builder<P, R, E> {
     fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Duration) -> E
