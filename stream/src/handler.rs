@@ -57,7 +57,7 @@ where
             me.timeout.reset()
         }
         if me.pending.len() > 0 || me.flushing {
-            if me.last_schedule.elapsed() >= Duration::from_millis(10) {
+            if me.last_schedule.elapsed() >= Duration::from_millis(200) {
                 log::info!("schedule {:?} rtt:{}", me.last_schedule.elapsed(), me.rtt);
             }
         }

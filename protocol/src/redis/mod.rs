@@ -1,4 +1,6 @@
 mod command;
+mod flag;
+mod packet;
 mod token;
 
 use std::str::from_utf8;
@@ -9,6 +11,8 @@ use crate::{
     HashedCommand, Protocol, RequestProcessor, Result, Stream,
 };
 use ds::{MemGuard, RingSlice};
+use flag::RedisFlager;
+use packet::Packet;
 use sharding::hash::Hash;
 
 // redis 协议最多支持10w个token
@@ -125,10 +129,7 @@ impl Redis {
             }
 
             // TODO: flag 还需要针对指令进行进一步设计
-            let mut flag = Flag::from_mkey_op(false, prop.padding_rsp(), prop.operation().clone());
-            if prop.noforward() {
-                flag.set_noforward();
-            }
+            let flag = prop.flag();
             log::debug!(
                 "+++ will process:{:?}",
                 from_utf8(buf.sub_slice(0, pos).to_vec().as_slice())
@@ -197,10 +198,10 @@ impl Redis {
             log::debug!("+++ will send sub-req:{:?}", from_utf8(rdata.as_slice()));
             let guard = MemGuard::from_vec(rdata);
             // flag 目前包含3个属性：key-count，is-first-key，operation
-            let flag: Flag = match kidx == first_key_idx {
-                true => Flag::from_mkey_op(true, prop.padding_rsp(), prop.operation().clone()),
-                false => Flag::from_mkey_op(false, prop.padding_rsp(), prop.operation().clone()),
-            };
+            let mut flag = prop.flag();
+            if kidx == first_key_idx {
+                flag.set_mkey_first();
+            }
             let cmd = HashedCommand::new(guard, hash, flag, key_count);
 
             // process cmd
@@ -250,7 +251,9 @@ impl Redis {
 
                 // 记录meta 长度
                 debug_assert!(pos < 256);
-                let mut flag = Flag::from_metalen_tokencount(pos as u8, token_count as u8);
+                let mut flag = Flag::new();
+                flag.set_meta_len(pos as u8);
+                flag.set_token_count(token_count as u8);
 
                 if token_count > 1 {
                     log::error!(
@@ -323,7 +326,8 @@ impl Redis {
                     // 只有bare len大于0，才会有bare data + \r\n
                     pos += token::REDIS_SPLIT_LEN;
                 }
-                let mut flag = Flag::from_metalen_tokencount(0, 1u8);
+                let mut flag = Flag::new();
+                flag.set_token_count(1u8);
                 flag.set_status_ok();
                 if pos > response.len() {
                     log::warn!(
@@ -347,7 +351,9 @@ impl Redis {
                         // i 为pos，+1 为len，再+1到下一个字符\n
                         // let rdata = response.sub_slice(0, i + 1 + 1);
                         let pos = i + 1 + 1;
-                        let mut flag = Flag::from_metalen_tokencount(0, 1u8);
+                        let len = i + 1 + 1;
+                        let mut flag = Flag::new();
+                        flag.set_token_count(1u8);
                         flag.set_status_ok();
                         debug_assert!(pos <= data.len());
                         log::debug!(
@@ -361,39 +367,151 @@ impl Redis {
             }
         }
     }
+    #[inline(always)]
+    fn check_start(&self, c: u8) -> Result<()> {
+        Ok(())
+    }
+    #[inline(always)]
+    fn check_str(&self, c: u8) -> Result<()> {
+        Ok(())
+    }
+    #[inline(always)]
+    fn parse_request_single_pipeline<S: Stream, H: Hash, P: RequestProcessor>(
+        &self,
+        stream: &mut S,
+        alg: &H,
+        process: &mut P,
+    ) -> Result<()> {
+        let mut data = stream.slice();
+        let mut oft = 0;
+        let mut bulk_num = 0;
+        let mut bulk_num_parsed = 0;
+        let mut op_code = 0;
+        while oft < data.len() {
+            if bulk_num == 0 {
+                self.check_start(data.at(oft))?;
+                oft += 1;
+                bulk_num = data.num(&mut oft)?;
+            }
+            debug_assert_ne!(bulk_num, 0);
+            if op_code == 0 {
+                // 解析cmd
+                self.check_str(data.at(oft))?;
+                oft += 1;
+                let cmd_len = data.num(&mut oft)?;
+                if oft + cmd_len + 2 <= data.len() {
+                    // 说明command已经就绪
+                    op_code = command::get_op_code(&data.sub_slice(oft, cmd_len));
+                    oft += cmd_len + 2;
+                    bulk_num_parsed += 1;
+                }
+            }
+            debug_assert_ne!(op_code, 0);
+            let cfg = command::get_cfg(op_code)?;
+            // 不支持multi key的请求
+            assert!(!cfg.multi);
+            let mut hash = 0;
+            if cfg.has_single_key() {
+                oft += 1;
+                let key_len = data.num(&mut oft)?;
+                // 计算hash
+                hash = alg.hash(&data.sub_slice(oft, key_len));
+                oft += key_len + 2;
+                bulk_num_parsed += 1;
+            }
+            // 忽略处理所有的bulket
+            while bulk_num_parsed < bulk_num {
+                oft += 1;
+                let num = data.num(&mut oft)?;
+                oft += num + 2;
+                bulk_num_parsed += 1;
+            }
+
+            if oft > data.len() {
+                break;
+            }
+
+            debug_assert_eq!(bulk_num_parsed, bulk_num);
+            // 单个请求暂时不需要使用op_code
+            let flag = cfg.flag();
+            let cmd = stream.take(oft);
+            let req = HashedCommand::new(cmd, hash, flag, 0);
+            process.process(req, true);
+            oft = 0;
+            bulk_num = 0;
+            op_code = 0;
+            bulk_num_parsed = 0;
+            data = stream.slice();
+        }
+        Ok(())
+    }
+    #[inline(always)]
+    fn parse_response_single<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
+        let data = s.slice();
+        if data.len() >= 4 {
+            debug_assert_ne!(data.at(0), b'*');
+            let mut oft = 0;
+            match data.at(0) {
+                b'-' | b':' | b'+' => data.line(&mut oft)?,
+                b'$' => {
+                    if data.at(1) == b'-' {
+                        data.line(&mut oft)?;
+                    } else {
+                        oft += 1;
+                        let num = data.num(&mut oft)?;
+                        oft += num + 2;
+                    }
+                }
+                _ => panic!("not supported"),
+            }
+            if oft <= data.len() {
+                let mem = s.take(oft);
+                let mut flag = Flag::new();
+                // redis不需要重试
+                flag.set_status_ok();
+                return Ok(Some(Command::new(flag, 0, mem)));
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl Protocol for Redis {
+    #[inline(always)]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        let mut count = 0;
-        loop {
-            match self.parse_request_inner(stream, alg, process) {
-                Ok(_) => count += 1,
-                Err(e) => match e {
-                    Error::ProtocolIncomplete => return Ok(()),
-                    _ => return Err(e),
-                },
-            }
-            if count > 1000 {
-                log::warn!("too big pipeline: {}", count);
-            }
+        log::debug!("parse request, data:{:?}", stream.slice().to_vec());
+        match self.parse_request_single_pipeline(stream, alg, process) {
+            Ok(_) => Ok(()),
+            Err(Error::ProtocolIncomplete) => Ok(()),
+            e => e,
         }
+        //let mut count = 0;
+        //loop {
+        //    match self.parse_request_inner(stream, alg, process) {
+        //        Ok(_) => count += 1,
+        //        Err(e) => match e {
+        //            Error::ProtocolIncomplete => return Ok(()),
+        //            _ => return Err(e),
+        //        },
+        //    }
+        //    if count > 1000 {
+        //        log::warn!("too big pipeline: {}", count);
+        //    }
+        //}
     }
 
     // 为每一个req解析一个response
     #[inline(always)]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        match self.parse_response_inner(data) {
-            Ok(cmd) => return Ok(cmd),
-            Err(e) => match e {
-                Error::ProtocolIncomplete => return Ok(None),
-                _ => return Err(e),
-            },
+        match self.parse_response_single(data) {
+            Ok(cmd) => Ok(cmd),
+            Err(Error::ProtocolIncomplete) => Ok(None),
+            e => e,
         }
     }
     #[inline(always)]
@@ -402,38 +520,40 @@ impl Protocol for Redis {
         ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
+        let response = ctx.response();
+        w.write_slice(response.data(), 0)
         // 首先确认request是否multi-key
-        let key_count = ctx.request().key_count();
-        let is_mkey_first = match key_count > 1 {
-            true => ctx.request().is_mkey_first(),
-            false => false,
-        };
+        //let key_count = ctx.request().key_count();
+        //let is_mkey_first = match key_count > 1 {
+        //    true => ctx.request().is_mkey_first(),
+        //    false => false,
+        //};
 
-        // 如果是多个key的req，需要过滤掉每个resp的meta
-        let resp = ctx.response();
-        let mut oft = 0usize;
-        if key_count > 1 {
-            // 对于多个key，不管是不是第一个key对应的rsp，都需要去掉resp的meta前缀
-            oft = resp.meta_len() as usize;
-        }
+        //// 如果是多个key的req，需要过滤掉每个resp的meta
+        //let resp = ctx.response();
+        //let mut oft = 0usize;
+        //if key_count > 1 {
+        //    // 对于多个key，不管是不是第一个key对应的rsp，都需要去掉resp的meta前缀
+        //    oft = resp.meta_len() as usize;
+        //}
 
-        let len = resp.len() - oft;
+        //let len = resp.len() - oft;
 
-        // 首先发送完整的meta
-        // TODO: 1 如果有分片全部不可用，需要构建默认异常响应;
-        // TODO: 2 特殊多key的响应 key_count 可能等于token数量？需要确认（理论上不应该存在） fishermen
-        if is_mkey_first {
-            let meta = format!("*{}\r\n", key_count);
-            w.write(meta.as_bytes())?;
-        }
+        //// 首先发送完整的meta
+        //// TODO: 1 如果有分片全部不可用，需要构建默认异常响应;
+        //// TODO: 2 特殊多key的响应 key_count 可能等于token数量？需要确认（理论上不应该存在） fishermen
+        //if is_mkey_first {
+        //    let meta = format!("*{}\r\n", key_count);
+        //    w.write(meta.as_bytes())?;
+        //}
 
-        // 发送剩余rsp
-        while oft < len {
-            let data = resp.read(oft);
-            w.write(data)?;
-            oft += data.len();
-        }
-        Ok(())
+        //// 发送剩余rsp
+        //while oft < len {
+        //    let data = resp.read(oft);
+        //    w.write(data)?;
+        //    oft += data.len();
+        //}
+        //Ok(())
 
         // 多个key，第一个response增加multi-bulk-len前缀，后面所有的response去掉bulk-len前缀
     }
