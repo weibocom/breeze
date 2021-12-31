@@ -129,13 +129,14 @@ impl Redis {
             }
 
             // TODO: flag 还需要针对指令进行进一步设计
-            let flag = prop.flag();
+            let mut flag = prop.flag();
             log::debug!(
                 "+++ will process:{:?}",
                 from_utf8(buf.sub_slice(0, pos).to_vec().as_slice())
             );
+            flag.set_key_count(key_count);
             let guard = stream.take(pos);
-            let cmd = HashedCommand::new(guard, hash, flag, key_count);
+            let cmd = HashedCommand::new(guard, hash, flag);
 
             // 处理完毕的字节需要take
 
@@ -202,7 +203,8 @@ impl Redis {
             if kidx == first_key_idx {
                 flag.set_mkey_first();
             }
-            let cmd = HashedCommand::new(guard, hash, flag, key_count);
+            flag.set_key_count(key_count);
+            let cmd = HashedCommand::new(guard, hash, flag);
 
             // process cmd
             process.process(cmd, kidx == last_key_idx);
@@ -435,7 +437,7 @@ impl Redis {
             // 单个请求暂时不需要使用op_code
             let flag = cfg.flag();
             let cmd = stream.take(oft);
-            let req = HashedCommand::new(cmd, hash, flag, 0);
+            let req = HashedCommand::new(cmd, hash, flag);
             process.process(req, true);
             oft = 0;
             bulk_num = 0;
