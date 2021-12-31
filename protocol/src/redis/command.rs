@@ -1,13 +1,14 @@
-use crate::Operation;
+use crate::{OpCode, Operation};
 use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Clone, Copy)]
 pub(crate) struct CommandProperties {
+    pub(super) op_code: OpCode,
     // cmd 参数的个数，对于不确定的cmd，如mget、mset用负数表示最小数量
-    arity: i8,
+    pub(super) arity: i8,
     /// cmd的类型
-    op: Operation,
+    pub(super) op: Operation,
     /// 第一个key所在的位置
     first_key_index: u8,
     /// 最后一个key所在的位置，注意对于multi-key cmd，用负数表示相对位置
@@ -15,11 +16,10 @@ pub(crate) struct CommandProperties {
     /// key 步长，get的步长为1，mset的步长为2，like:k1 v1 k2 v2
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
-    padding_rsp: u8,
-    noforward: bool,
-    supported: bool,
-    #[allow(dead_code)]
-    multi: bool, // 该命令是否可能会包含多个key
+    pub(super) padding_rsp: u8,
+    pub(super) noforward: bool,
+    pub(super) supported: bool,
+    pub(super) multi: bool, // 该命令是否可能会包含多个key
 }
 
 // 默认响应
@@ -82,10 +82,24 @@ impl CommandProperties {
     pub fn noforward(&self) -> bool {
         self.noforward
     }
-    // 该命令是否可能会包含多个key
     #[inline(always)]
-    pub fn _multi(&self) -> bool {
-        self.multi
+    pub(super) fn has_single_key(&self) -> bool {
+        self.first_key_index as i32 == self.last_key_index as i32 && self.first_key_index == 1
+    }
+    #[inline(always)]
+    pub(super) fn has_single_val(&self) -> bool {
+        self.has_single_key() && self.arity == 3
+    }
+    #[inline(always)]
+    pub(super) fn flag(&self) -> crate::Flag {
+        use super::flag::RedisFlager;
+        let mut flag = crate::Flag::from_op(self.op_code, self.op);
+        flag.set_padding_rsp(self.padding_rsp);
+        if self.noforward {
+            flag.set_noforward();
+        }
+
+        flag
     }
 }
 
@@ -103,18 +117,30 @@ impl Commands {
             hash: Crc32::default(),
         }
     }
-    // 不支持会返回协议错误
     #[inline(always)]
-    pub(crate) fn get_by_name(&self, cmd: &ds::RingSlice) -> crate::Result<&CommandProperties> {
-        let uppercase = UppercaseHashKey::new(cmd);
+    pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
+        let uppercase = UppercaseHashKey::new(name);
         let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
-        debug_assert!(idx < self.supported.len());
-        let cmd = unsafe { self.supported.get_unchecked(idx) };
+        // op_code 0表示未定义。不存在
+        debug_assert_ne!(idx, 0);
+        idx as u16
+    }
+    #[inline(always)]
+    pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
+        debug_assert!((op_code as usize) < self.supported.len());
+        let cmd = unsafe { self.supported.get_unchecked(op_code as usize) };
         if cmd.supported {
             Ok(cmd)
         } else {
             Err(crate::Error::CommandNotSupported)
         }
+    }
+    // 不支持会返回协议错误
+    #[inline(always)]
+    pub(crate) fn get_by_name(&self, cmd: &ds::RingSlice) -> crate::Result<&CommandProperties> {
+        let uppercase = UppercaseHashKey::new(cmd);
+        let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
+        self.get_by_op(idx as u16)
     }
     fn add_support(
         &mut self,
@@ -134,6 +160,7 @@ impl Commands {
         // 之前没有添加过。
         debug_assert!(!self.supported[idx].supported);
         self.supported[idx] = CommandProperties {
+            op_code: idx as u16,
             arity,
             op,
             first_key_index,
@@ -145,6 +172,15 @@ impl Commands {
             multi,
         };
     }
+}
+
+#[inline(always)]
+pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
+    SUPPORTED.get_op_code(cmd)
+}
+#[inline(always)]
+pub(super) fn get_cfg<'a>(op_code: u16) -> crate::Result<&'a CommandProperties> {
+    SUPPORTED.get_by_op(op_code)
 }
 
 lazy_static! {
