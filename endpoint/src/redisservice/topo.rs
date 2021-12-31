@@ -97,8 +97,10 @@ where
             idx = seq % (shard.len() - 1) + 1;
             if first == 0 {
                 first = idx as u64;
+                next = idx as u64 + 1;
+            } else {
+                next += 1;
             }
-            next = idx as u64;
             *req.context_mut() = (first << 32) | next;
 
             // 减一，是把主减掉
