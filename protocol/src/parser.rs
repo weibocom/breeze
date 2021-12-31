@@ -75,7 +75,6 @@ pub trait Builder {
 
 pub struct Command {
     flag: Flag,
-    key_count: u16,
     cmd: ds::MemGuard,
 }
 
@@ -87,19 +86,11 @@ pub struct HashedCommand {
 impl Command {
     #[inline(always)]
     pub fn new(flag: Flag, key_count: u16, cmd: ds::MemGuard) -> Self {
-        Self {
-            flag,
-            key_count,
-            cmd,
-        }
+        Self { flag, cmd }
     }
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.cmd.len()
-    }
-    #[inline(always)]
-    pub fn key_count(&self) -> u16 {
-        self.key_count
     }
     #[inline(always)]
     pub fn read(&self, oft: usize) -> &[u8] {
@@ -144,14 +135,10 @@ impl std::ops::DerefMut for HashedCommand {
 use ds::MemGuard;
 impl HashedCommand {
     #[inline(always)]
-    pub fn new(cmd: MemGuard, hash: i64, flag: Flag, key_count: u16) -> Self {
+    pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {
         Self {
             hash,
-            cmd: Command {
-                flag,
-                key_count,
-                cmd,
-            },
+            cmd: Command { flag, cmd },
         }
     }
     #[inline(always)]

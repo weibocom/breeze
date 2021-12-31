@@ -8,6 +8,8 @@ const REQ_BIT_MKEY_FIRST: u8 = 24;
 //
 
 pub(super) trait RedisFlager {
+    fn set_key_count(&mut self, cnt: u16);
+    fn key_count(&self) -> u16;
     fn set_mkey_first(&mut self);
     fn mkey_first(&self) -> bool;
     fn set_padding_rsp(&mut self, idx: u8);
@@ -19,6 +21,15 @@ pub(super) trait RedisFlager {
 }
 
 impl RedisFlager for crate::Flag {
+    #[inline(always)]
+    fn set_key_count(&mut self, cnt: u16) {
+        debug_assert_eq!(self.key_count(), 0);
+        *self.ext_mut() |= cnt as u64;
+    }
+    #[inline(always)]
+    fn key_count(&self) -> u16 {
+        self.ext() as u16
+    }
     #[inline(always)]
     fn set_mkey_first(&mut self) {
         *self.ext_mut() |= 1 << REQ_BIT_MKEY_FIRST;
