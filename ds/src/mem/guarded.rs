@@ -48,7 +48,7 @@ impl GuardedBuffer {
         self.taken += n;
         let ptr = guard as *const AtomicU32;
         MemGuard::new(data, ptr)
-    }
+}
     #[inline(always)]
     pub fn gc(&mut self) {
         while let Some(guard) = self.guards.front_mut() {
