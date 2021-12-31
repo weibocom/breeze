@@ -90,18 +90,18 @@ where
                         & 65535
                 };
             } else {
-                seq = next as usize + 1;
+                seq = next as usize;
             }
             // shard 第一个元素是master，默认情况下需要规避
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
             idx = seq % (shard.len() - 1) + 1;
             if first == 0 {
                 first = idx as u64;
+                next = idx as u64 + 1;
+            } else {
+                next = seq as u64 + 1;
             }
-            next = match seq >= (u32::MAX as usize) {
-                true => 0,
-                false => seq as u64,
-            };
+
             *req.context_mut() = (first << 32) | next;
 
             // 减一，是把主减掉
