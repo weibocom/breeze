@@ -90,7 +90,7 @@ where
                         & 65535
                 };
             } else {
-                seq = next as usize + 1;
+                seq = next as usize;
             }
             // shard 第一个元素是master，默认情况下需要规避
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
@@ -178,7 +178,6 @@ where
             }
         }
         // 遍历所有的shards_url
-        let mut loaded = false;
         for shard in self.shards_url.iter() {
             let mut endpoints = Vec::new();
             if shard.len() > 0 {
@@ -203,19 +202,13 @@ where
                             endpoints.push((addr, slave));
                         }
                     }
-                    loaded = true;
-                } else {
-                    log::warn!("parsing host/{} failed", master_url);
-                    loaded = false;
-                    break;
                 }
             }
-            if loaded {
-                self.shards.push(endpoints);
-            }
+            // 无论怎样，需要都要将endpoints push进去。需要占位，保证shard位置与url中的位置对齐
+            self.shards.push(endpoints);
         }
 
-        log::info!("loading complete {} for:{}", loaded, self.service);
+        log::info!("loading complete {}", self.service);
     }
 }
 impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
