@@ -99,8 +99,9 @@ where
                 first = idx as u64;
                 next = idx as u64 + 1;
             } else {
-                next += 1;
+                next = seq as u64 + 1;
             }
+
             *req.context_mut() = (first << 32) | next;
 
             // 减一，是把主减掉

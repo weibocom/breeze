@@ -90,7 +90,7 @@ impl Redis {
             let token = Token::from(meta_pos, meta_left_len + 1, pos, token_len);
             tokens.push(token);
             pos += token_len + 2;
-            if pos > len || (pos == len && i != token_count - 1) {
+            if pos > len || (pos == len && i != (token_count - 1)) {
                 return Err(Error::ProtocolIncomplete);
             }
         }
@@ -124,9 +124,6 @@ impl Redis {
                 key_count = 1;
             }
 
-            // let reqdata = buf.sub_slice(0, pos);
-            // let guard = MemGuard::from_ringslice(reqdata);
-
             // TODO: flag 还需要针对指令进行进一步设计
             let mut flag = Flag::from_mkey_op(false, prop.padding_rsp(), prop.operation().clone());
             if prop.noforward() {
@@ -143,6 +140,7 @@ impl Redis {
 
             // process cmd
             process.process(cmd, true);
+            log::debug!("+++ msg processed!");
             return Ok(());
         }
 
@@ -223,6 +221,9 @@ impl Redis {
     }
 
     fn parse_response_inner<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+        if data.len() <= 2 {
+            return Err(Error::ProtocolIncomplete);
+        }
         let response = data.slice();
         log::debug!(
             "+++ will parse rsp:{:?}",
@@ -295,6 +296,11 @@ impl Redis {
 
                 flag.set_status_ok();
                 // 到了这里，response已经解析完毕,对于resp，每个cmd并不知晓自己的key数量是0还是1
+                debug_assert!(pos <= len);
+                log::debug!(
+                    "+++ parsed rsp: {:?}",
+                    from_utf8(response.sub_slice(0, pos).to_vec().as_slice())
+                );
                 return Ok(Some(Command::new(flag, 0, data.take(pos))));
             }
             '$' => {
@@ -327,6 +333,11 @@ impl Redis {
                     );
                     return Err(Error::ProtocolIncomplete);
                 }
+                debug_assert!(pos <= data.len());
+                log::debug!(
+                    "+++ parsed rsp: {:?}",
+                    from_utf8(response.sub_slice(0, pos).to_vec().as_slice())
+                );
                 return Ok(Some(Command::new(flag, 0, data.take(pos))));
             }
             _ => {
@@ -335,10 +346,15 @@ impl Redis {
                     if response.at(i) as char == '\r' && response.at(i + 1) as char == '\n' {
                         // i 为pos，+1 为len，再+1到下一个字符\n
                         // let rdata = response.sub_slice(0, i + 1 + 1);
-                        let len = i + 1 + 1;
+                        let pos = i + 1 + 1;
                         let mut flag = Flag::from_metalen_tokencount(0, 1u8);
                         flag.set_status_ok();
-                        return Ok(Some(Command::new(flag, 0, data.take(len))));
+                        debug_assert!(pos <= data.len());
+                        log::debug!(
+                            "+++ parsed rsp: {:?}",
+                            from_utf8(response.sub_slice(0, pos).to_vec().as_slice())
+                        );
+                        return Ok(Some(Command::new(flag, 0, data.take(pos))));
                     }
                 }
                 return Err(Error::ProtocolIncomplete);
