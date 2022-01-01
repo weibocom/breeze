@@ -8,28 +8,31 @@ pub(super) trait Packet {
 }
 
 impl Packet for ds::RingSlice {
+    // 第一个字节是类型标识。 '*' '$'等等，由调用方确认。
     #[inline(always)]
     fn num(&self, oft: &mut usize) -> crate::Result<usize> {
-        if *oft + 1 < self.len() {
+        if *oft + 2 < self.len() {
+            debug_assert!(is_valid_leading_num_char(self.at(*oft)));
+            *oft += 1;
             let mut val: usize = 0;
             while *oft < self.len() - 1 {
                 let b = self.at(*oft);
                 *oft += 1;
                 if b == b'\r' {
-                    break;
+                    if self.at(*oft) == b'\n' {
+                        *oft += 1;
+                        return Ok(val);
+                    }
+                    // \r后面没有接\n。错误的协议
+                    return Err(crate::Error::RequestProtocolNotValidNoReturn);
                 }
-                if b > b'9' || b < b'0' {
-                    return Err(crate::Error::RequestProtocolNotValidDigit);
+                if is_number_digit(b) {
+                    val = val * 10 + (b - b'0') as usize;
+                    if val <= std::u32::MAX as usize {
+                        continue;
+                    }
                 }
-                val = val * 10 + (b - b'0') as usize;
-                if val >= std::u32::MAX as usize {
-                    return Err(crate::Error::RequestProtocolNotValidNumberOverFlow);
-                }
-            }
-
-            if self.at(*oft) == b'\n' {
-                *oft += 1;
-                return Ok(val);
+                return Err(crate::Error::RequestProtocolNotValidNumber);
             }
         }
         Err(crate::Error::ProtocolIncomplete)
@@ -43,4 +46,13 @@ impl Packet for ds::RingSlice {
             Err(crate::Error::ProtocolIncomplete)
         }
     }
+}
+#[inline(always)]
+fn is_number_digit(d: u8) -> bool {
+    d >= b'0' && d <= b'9'
+}
+// 这个字节后面会带一个数字。
+#[inline(always)]
+fn is_valid_leading_num_char(d: u8) -> bool {
+    d == b'$' || d == b'*'
 }
