@@ -1,9 +1,11 @@
-use crate::{OpCode, Operation};
+use crate::{HashedCommand, OpCode, Operation};
+use ds::{MemGuard, RingSlice};
 use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Clone, Copy)]
 pub(crate) struct CommandProperties {
+    pub(super) name: &'static str,
     pub(super) op_code: OpCode,
     // cmd 参数的个数，对于不确定的cmd，如mget、mset用负数表示最小数量
     pub(super) arity: i8,
@@ -17,20 +19,19 @@ pub(crate) struct CommandProperties {
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
     pub(super) padding_rsp: u8,
+    pub(super) has_val: bool,
+    pub(super) has_key: bool,
     pub(super) noforward: bool,
     pub(super) supported: bool,
     pub(super) multi: bool, // 该命令是否可能会包含多个key
+    // need bulk number只对multi key请求的有意义
+    pub(super) need_bulk_num: bool, // mset所有的请求只返回一个+OK，不需要在首个请求前加*bulk_num。其他的都需要
 }
 
 // 默认响应
-pub const PADDING_RSP_TABLE: [&str; 3] = [
-    // idx 0
-    "+OK\r\n",
-    // idx 1, ping的回应
-    "+PONG\r\n",
-    // idx 2：redis无响应
-    "-ERR redis no available\r\n",
-];
+// 第0个表示quit
+pub const PADDING_RSP_TABLE: [&str; 4] =
+    ["", "+OK\r\n", "+PONG\r\n", "-ERR redis no available\r\n"];
 
 impl CommandProperties {
     #[inline]
@@ -83,14 +84,6 @@ impl CommandProperties {
         self.noforward
     }
     #[inline(always)]
-    pub(super) fn has_single_key(&self) -> bool {
-        self.first_key_index as i32 == self.last_key_index as i32 && self.first_key_index == 1
-    }
-    #[inline(always)]
-    pub(super) fn has_single_val(&self) -> bool {
-        self.has_single_key() && self.arity == 3
-    }
-    #[inline(always)]
     pub(super) fn flag(&self) -> crate::Flag {
         use super::flag::RedisFlager;
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
@@ -100,6 +93,35 @@ impl CommandProperties {
         }
 
         flag
+    }
+    #[inline]
+    pub(super) fn build_request(
+        &self,
+        hash: i64,
+        bulk_num: u16,
+        first: bool,
+        data: RingSlice,
+    ) -> HashedCommand {
+        use ds::Buffer;
+        debug_assert!(self.name.len() < 10);
+        let mut cmd = Vec::with_capacity(8 + data.len());
+        cmd.push(b'*');
+        // 1个cmd, 1个key，1个value。一共3个bulk
+        cmd.push((2 + self.has_val as u8) + b'0');
+        cmd.push(b'$');
+        cmd.write(self.name.len().to_string());
+        cmd.write(self.name);
+        data.copy_to_vec(&mut cmd);
+        let mut flag = self.flag();
+        use super::flag::RedisFlager;
+        if first {
+            flag.set_mkey_first();
+            // mset只有一个返回值。
+            // 其他的multi请求的key的数量就是bulk_num
+            flag.set_key_count(bulk_num);
+        }
+        let cmd: MemGuard = MemGuard::from_vec(cmd);
+        HashedCommand::new(cmd, hash, flag)
     }
 }
 
@@ -153,13 +175,17 @@ impl Commands {
         padding_rsp: u8,
         multi: bool,
         noforward: bool,
+        has_key: bool,
+        has_val: bool,
+        need_bulk_num: bool,
     ) {
-        let name = name.to_uppercase();
-        let idx = self.hash.hash(&name.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
+        let uppercase = name.to_uppercase();
+        let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
         debug_assert!(idx < self.supported.len());
         // 之前没有添加过。
         debug_assert!(!self.supported[idx].supported);
         self.supported[idx] = CommandProperties {
+            name,
             op_code: idx as u16,
             arity,
             op,
@@ -170,6 +196,9 @@ impl Commands {
             noforward,
             supported: true,
             multi,
+            has_key,
+            has_val,
+            need_bulk_num,
         };
     }
 }
@@ -182,27 +211,26 @@ pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
 pub(super) fn get_cfg<'a>(op_code: u16) -> crate::Result<&'a CommandProperties> {
     SUPPORTED.get_by_op(op_code)
 }
-
 lazy_static! {
    pub(super) static ref SUPPORTED: Commands = {
         let mut cmds = Commands::new();
         use Operation::*;
-    for (name, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward)
+    for (name, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num)
         in vec![
                 // meta 指令
-                ("ping" ,-1, Meta, 0, 0, 0, 1, false, true),
+                ("ping" ,-1, Meta, 0, 0, 0, 2, false, true, false, false, false),
                 // 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
-                ("select" ,2, Meta, 0, 0, 0, 0, false, true),
-                ("quit" ,2, Meta, 0, 0, 0, 0, false, true),
+                ("select" ,2, Meta, 0, 0, 0, 1, false, true, false, false, false),
+                ("quit" ,2, Meta, 0, 0, 0, 0, false, true, false, false, false),
 
-                ("get" ,2, Get, 1, 1, 1, 2, false, false),
-                ("mget", -2, MGet, 1, -1, 1, 2, true, false),
+                ("get" ,2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("mget", -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
 
-                ("set" ,3, Store, 1, 1, 1, 2, false, false),
-                ("incr" ,2, Store, 1, 1, 1, 2, false, false),
-                ("decr" ,2, Store, 1, 1, 1, 2, false, false),
-                ("mincr", -2, Store, 1, -1, 1, 2, true, false),
-                ("mset", -3, Store, 1, -1, 2, 2, true, false),
+                ("set" ,3, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("incr" ,2, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("decr" ,2, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("mincr", -2, Store, 1, -1, 1, 3, true, false, true, false, true),
+                ("mset", -3, Store, 1, -1, 2, 3, true, false, true, true, true),
 
             // TODO: 随着测试，逐步打开，注意加上padding rsp fishermen
             // "setnx" => (3, Operation::Store, 1, 1, 1),
@@ -368,7 +396,10 @@ lazy_static! {
         key_step,
         padding_rsp,
         multi,
-        noforward
+        noforward,
+        has_key,
+        has_val,
+        need_bulk_num
     ) ;
             }
         cmds
