@@ -371,11 +371,11 @@ impl Redis {
     }
     #[inline(always)]
     fn check_start(&self, c: u8) -> Result<()> {
-        Ok(())
-    }
-    #[inline(always)]
-    fn check_str(&self, c: u8) -> Result<()> {
-        Ok(())
+        if c != b'*' {
+            Err(Error::RequestProtocolNotValidStar)
+        } else {
+            Ok(())
+        }
     }
     #[inline(always)]
     fn parse_request_single_pipeline<S: Stream, H: Hash, P: RequestProcessor>(
@@ -392,14 +392,10 @@ impl Redis {
         while oft < data.len() {
             if bulk_num == 0 {
                 self.check_start(data.at(oft))?;
-                oft += 1;
                 bulk_num = data.num(&mut oft)?;
             }
             debug_assert_ne!(bulk_num, 0);
             if op_code == 0 {
-                // 解析cmd
-                self.check_str(data.at(oft))?;
-                oft += 1;
                 let cmd_len = data.num(&mut oft)?;
                 if oft + cmd_len + 2 <= data.len() {
                     // 说明command已经就绪
@@ -414,7 +410,6 @@ impl Redis {
             assert!(!cfg.multi);
             let mut hash = 0;
             if cfg.has_single_key() {
-                oft += 1;
                 let key_len = data.num(&mut oft)?;
                 // 计算hash
                 hash = alg.hash(&data.sub_slice(oft, key_len));
@@ -423,12 +418,10 @@ impl Redis {
             }
             // 忽略处理所有的bulket
             while bulk_num_parsed < bulk_num {
-                oft += 1;
                 let num = data.num(&mut oft)?;
                 oft += num + 2;
                 bulk_num_parsed += 1;
             }
-
             if oft > data.len() {
                 break;
             }
@@ -459,7 +452,6 @@ impl Redis {
                     if data.at(1) == b'-' {
                         data.line(&mut oft)?;
                     } else {
-                        oft += 1;
                         let num = data.num(&mut oft)?;
                         oft += num + 2;
                     }
