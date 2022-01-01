@@ -384,59 +384,70 @@ impl Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        let mut data = stream.slice();
+        let data = stream.slice();
+        debug_assert_eq!(std::mem::size_of::<flag::ContextFlag>(), 8);
+        let ctx: &mut flag::ContextFlag = unsafe { std::mem::transmute(stream.context()) };
         let mut oft = 0;
-        let mut bulk_num = 0;
-        let mut bulk_num_parsed = 0;
-        let mut op_code = 0;
         while oft < data.len() {
+            let start = oft;
+            let mut bulk_num = ctx.bulk_num;
+            let mut op_code = ctx.op_code;
             if bulk_num == 0 {
                 self.check_start(data.at(oft))?;
-                bulk_num = data.num(&mut oft)?;
+                bulk_num = data.num(&mut oft)? as u16;
+                debug_assert_ne!(bulk_num, 0);
             }
-            debug_assert_ne!(bulk_num, 0);
+            log::info!("bulk_num:{}", bulk_num);
             if op_code == 0 {
-                let cmd_len = data.num(&mut oft)?;
-                if oft + cmd_len + 2 <= data.len() {
-                    // 说明command已经就绪
-                    op_code = command::get_op_code(&data.sub_slice(oft, cmd_len));
-                    oft += cmd_len + 2;
-                    bulk_num_parsed += 1;
-                }
+                let cmd_len = data.num_and_skip(&mut oft)?;
+                op_code = command::get_op_code(&data.sub_slice(oft - cmd_len - 2, cmd_len));
+                bulk_num -= 1;
             }
-            debug_assert_ne!(op_code, 0);
             let cfg = command::get_cfg(op_code)?;
-            // 不支持multi key的请求
-            assert!(!cfg.multi);
+            log::info!("cmd:{}", cfg.name);
             let mut hash = 0;
-            if cfg.has_single_key() {
-                let key_len = data.num(&mut oft)?;
-                // 计算hash
-                hash = alg.hash(&data.sub_slice(oft, key_len));
-                oft += key_len + 2;
-                bulk_num_parsed += 1;
+            if cfg.multi {
+                let mut first = *stream.context() == 0;
+                while bulk_num > 0 {
+                    let start = oft;
+                    let key_len = data.num_and_skip(&mut oft)?;
+                    hash = alg.hash(&data.sub_slice(oft - key_len - 2, key_len));
+                    if cfg.has_val {
+                        let _val_len = data.num_and_skip(&mut oft)?;
+                    }
+                    let kv = data.sub_slice(start, oft - start);
+                    let req = cfg.build_request(hash, bulk_num, first, kv);
+                    stream.ignore(oft - start);
+                    if first {
+                        // 设置op_code必须放在第一次发送数据成功之后进行。否则可能导致重入时，op_code大于0，oft未更新
+                        ctx.op_code = op_code;
+                        first = false;
+                    }
+                    bulk_num -= 1;
+                    ctx.bulk_num = bulk_num as u16;
+                    process.process(req, bulk_num == 0);
+                }
+            } else {
+                log::info!("runhere============= 1 ===== oft:{}", oft);
+                if cfg.has_key {
+                    let key_len = data.num_and_skip(&mut oft)?;
+                    hash = alg.hash(&data.sub_slice(oft - key_len - 2, key_len));
+                    bulk_num -= 1;
+                }
+                log::info!("runhere============= 2 ===== oft:{} hash:{}", oft, hash);
+                while bulk_num > 0 {
+                    log::info!("runhere============= 4 ===== oft:{} hash:{}", oft, hash);
+                    let _num = data.num_and_skip(&mut oft)?;
+                    bulk_num -= 1;
+                }
+                log::info!("runhere============= 5 ===== oft:{} hash:{}", oft, hash);
+                let flag = cfg.flag();
+                let cmd = stream.take(oft - start);
+                let req = HashedCommand::new(cmd, hash, flag);
+                process.process(req, true);
+                log::info!("runhere============= 6 ===== oft:{} hash:{}", oft, hash);
             }
-            // 忽略处理所有的bulket
-            while bulk_num_parsed < bulk_num {
-                let num = data.num(&mut oft)?;
-                oft += num + 2;
-                bulk_num_parsed += 1;
-            }
-            if oft > data.len() {
-                break;
-            }
-
-            debug_assert_eq!(bulk_num_parsed, bulk_num);
-            // 单个请求暂时不需要使用op_code
-            let flag = cfg.flag();
-            let cmd = stream.take(oft);
-            let req = HashedCommand::new(cmd, hash, flag);
-            process.process(req, true);
-            oft = 0;
-            bulk_num = 0;
-            op_code = 0;
-            bulk_num_parsed = 0;
-            data = stream.slice();
+            *stream.context() = 0;
         }
         Ok(())
     }
@@ -478,7 +489,7 @@ impl Protocol for Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        log::debug!("parse request, data:{:?}", stream.slice().to_vec());
+        log::info!("parse request, data:{:?}", stream.slice().to_vec());
         match self.parse_request_single_pipeline(stream, alg, process) {
             Ok(_) => Ok(()),
             Err(Error::ProtocolIncomplete) => Ok(()),
@@ -514,8 +525,28 @@ impl Protocol for Redis {
         ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
+        let req = ctx.request();
+        let op_code = req.op_code();
+        let cfg = command::get_cfg(op_code)?;
         let response = ctx.response();
-        w.write_slice(response.data(), 0)
+        if !cfg.multi {
+            w.write_slice(response.data(), 0)
+        } else {
+            let ext = req.ext();
+            let first = ext.mkey_first();
+            if first || cfg.need_bulk_num {
+                if first {
+                    w.write_u8(b'*')?;
+                    w.write(ext.key_count().to_string().as_bytes())?;
+                }
+                w.write_slice(response.data(), 0)
+            } else {
+                // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
+                // mset always return +OK
+                // https://redis.io/commands/mset
+                Ok(())
+            }
+        }
         // 首先确认request是否multi-key
         //let key_count = ctx.request().key_count();
         //let is_mkey_first = match key_count > 1 {
@@ -561,8 +592,13 @@ impl Protocol for Redis {
         debug_assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
         log::debug!("+++ will write no rsp:{}", rsp);
-        w.write(rsp.as_bytes())?;
-        Ok(())
+        if rsp.len() > 0 {
+            w.write(rsp.as_bytes())
+        } else {
+            // quit
+            debug_assert_eq!(rsp_idx, 0);
+            Err(crate::Error::Quit)
+        }
     }
 }
 
