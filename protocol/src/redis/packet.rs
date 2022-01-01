@@ -4,12 +4,14 @@ pub(super) trait Packet {
     // 如果数据不全，则返回ProtocolIncomplete
     // 1. number; 2. 返回下一次扫描的oft的位置
     fn num(&self, oft: &mut usize) -> crate::Result<usize>;
+    // 计算当前的数字，并且将其跳过。如果跑过的字节数比计算的num少，则返回ProtocolIncomplete
+    fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize>;
     fn line(&self, oft: &mut usize) -> crate::Result<()>;
 }
 
 impl Packet for ds::RingSlice {
     // 第一个字节是类型标识。 '*' '$'等等，由调用方确认。
-    #[inline(always)]
+    #[inline]
     fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         if *oft + 2 < self.len() {
             debug_assert!(is_valid_leading_num_char(self.at(*oft)));
@@ -36,6 +38,16 @@ impl Packet for ds::RingSlice {
             }
         }
         Err(crate::Error::ProtocolIncomplete)
+    }
+    #[inline]
+    fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize> {
+        let num = self.num(oft)?;
+        *oft += num + 2;
+        if *oft <= self.len() {
+            Ok(num)
+        } else {
+            Err(crate::Error::ProtocolIncomplete)
+        }
     }
     #[inline(always)]
     fn line(&self, oft: &mut usize) -> crate::Result<()> {
