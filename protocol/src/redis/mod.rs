@@ -8,7 +8,7 @@ use token::Token;
 
 use crate::{
     error::ProtocolType, redis::command::PADDING_RSP_TABLE, Command, Commander, Error, Flag,
-    HashedCommand, Protocol, RequestProcessor, Result, Stream,
+    HashedCommand, Protocol, RequestProcessor, Result, Stream, Utf8,
 };
 use ds::{MemGuard, RingSlice};
 use flag::RedisFlager;
@@ -46,10 +46,7 @@ impl Redis {
             return Err(Error::RequestProtocolNotValid);
         }
 
-        log::debug!(
-            "+++ will parse req:{:?}",
-            from_utf8(buf.to_vec().as_slice())
-        );
+        log::debug!("+++ will parse req:{:?}", buf.utf8());
 
         pos += 1;
         let len = buf.len();
@@ -130,10 +127,7 @@ impl Redis {
 
             // TODO: flag 还需要针对指令进行进一步设计
             let mut flag = prop.flag();
-            log::debug!(
-                "+++ will process:{:?}",
-                from_utf8(buf.sub_slice(0, pos).to_vec().as_slice())
-            );
+            log::debug!("+++ will process:{:?}", buf.sub_slice(0, pos).utf8());
             flag.set_key_count(key_count);
             let guard = stream.take(pos);
             let cmd = HashedCommand::new(guard, hash, flag);
@@ -151,15 +145,12 @@ impl Redis {
         // 共享第一个token/cmd及第一个key之前的数据，及最后一个key之后的数据
         let first_key_token = tokens.get(prop.first_key_index()).unwrap();
         let last_key_token = tokens.get(last_key_idx).unwrap();
-        let prefix = buf
-            .sub_slice(
-                cmd_token.meta_pos,
-                first_key_token.meta_pos - cmd_token.meta_pos,
-            )
-            .to_vec();
-        let suffix = buf
-            .sub_slice(last_key_token.end_pos(), len - last_key_token.end_pos())
-            .to_vec();
+        let prefix = buf.sub_slice(
+            cmd_token.meta_pos,
+            first_key_token.meta_pos - cmd_token.meta_pos,
+        );
+
+        let suffix = buf.sub_slice(last_key_token.end_pos(), len - last_key_token.end_pos());
         let first_key_idx = prop.first_key_index();
 
         // 轮询构建协议，并处理
@@ -181,22 +172,24 @@ impl Redis {
             let mut rdata: Vec<u8> = Vec::with_capacity(len);
             // 需要确定出了key之外，其他所有的token都要复制
             rdata.extend(format!("*{}\r\n", share_tokens_count + prop.key_step()).as_bytes());
-            // prefix.copy_to_vec(&rdata);
-            rdata.extend(prefix.clone());
+            prefix.copy_to_vec(&mut rdata);
+            //rdata.extend(prefix.clone());
             let mut j = 0;
             while j < prop.key_step() {
                 let token = tokens.get(kidx + j).unwrap();
-                rdata.extend(token.bulk_data(&buf).to_vec());
+                token.bulk_data(&buf).copy_to_vec(&mut rdata);
+                //rdata.extend(token.bulk_data(&buf).to_vec());
                 j += 1;
             }
             if suffix.len() > 0 {
-                rdata.extend(suffix.clone());
+                suffix.copy_to_vec(&mut rdata);
+                //rdata.extend(suffix.clone());
             }
 
             let key_token = tokens.get(kidx).unwrap();
             let hash = alg.hash(&key_token.bare_data(&buf));
 
-            log::debug!("+++ will send sub-req:{:?}", from_utf8(rdata.as_slice()));
+            log::debug!("+++ will send sub-req:{:?}", from_utf8(&rdata));
             let guard = MemGuard::from_vec(rdata);
             // flag 目前包含3个属性：key-count，is-first-key，operation
             let mut flag = prop.flag();
@@ -213,10 +206,7 @@ impl Redis {
             kidx += prop.key_step();
         }
 
-        log::debug!(
-            "+++ processed req: {:?}",
-            from_utf8(buf.to_vec().as_slice())
-        );
+        log::debug!("+++ processed req: {:?}", buf.utf8());
         // 处理完毕的字节需要take
         stream.take(pos);
 
@@ -228,10 +218,7 @@ impl Redis {
             return Err(Error::ProtocolIncomplete);
         }
         let response = data.slice();
-        log::debug!(
-            "+++ will parse rsp:{:?}",
-            from_utf8(response.to_vec().as_slice())
-        );
+        log::debug!("+++ will parse rsp:{:?}", response);
         // 响应目前只记录meta前缀长度
         let mut pos = 0;
         match response.at(0) as char {
@@ -302,10 +289,7 @@ impl Redis {
                 flag.set_status_ok();
                 // 到了这里，response已经解析完毕,对于resp，每个cmd并不知晓自己的key数量是0还是1
                 debug_assert!(pos <= len);
-                log::debug!(
-                    "+++ parsed rsp: {:?}",
-                    from_utf8(response.sub_slice(0, pos).to_vec().as_slice())
-                );
+                log::debug!("+++ parsed rsp: {:?}", response.sub_slice(0, pos));
                 return Ok(Some(Command::new(flag, 0, data.take(pos))));
             }
             '$' => {
@@ -340,10 +324,7 @@ impl Redis {
                     return Err(Error::ProtocolIncomplete);
                 }
                 debug_assert!(pos <= data.len());
-                log::debug!(
-                    "+++ parsed rsp: {:?}",
-                    from_utf8(response.sub_slice(0, pos).to_vec().as_slice())
-                );
+                log::debug!("+++ parsed rsp: {:?}", response.sub_slice(0, pos));
                 return Ok(Some(Command::new(flag, 0, data.take(pos))));
             }
             _ => {
@@ -358,23 +339,12 @@ impl Redis {
                         flag.set_token_count(1u8);
                         flag.set_status_ok();
                         debug_assert!(pos <= data.len());
-                        log::debug!(
-                            "+++ parsed rsp: {:?}",
-                            from_utf8(response.sub_slice(0, pos).to_vec().as_slice())
-                        );
+                        log::debug!("+++ parsed rsp: {:?}", response.sub_slice(0, pos));
                         return Ok(Some(Command::new(flag, 0, data.take(pos))));
                     }
                 }
                 return Err(Error::ProtocolIncomplete);
             }
-        }
-    }
-    #[inline(always)]
-    fn check_start(&self, c: u8) -> Result<()> {
-        if c != b'*' {
-            Err(Error::RequestProtocolNotValidStar)
-        } else {
-            Ok(())
         }
     }
     #[inline(always)]
@@ -384,70 +354,55 @@ impl Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        let data = stream.slice();
-        debug_assert_eq!(std::mem::size_of::<flag::ContextFlag>(), 8);
-        let ctx: &mut flag::ContextFlag = unsafe { std::mem::transmute(stream.context()) };
-        let mut oft = 0;
-        while oft < data.len() {
-            let start = oft;
-            let mut bulk_num = ctx.bulk_num;
-            let mut op_code = ctx.op_code;
-            if bulk_num == 0 {
-                self.check_start(data.at(oft))?;
-                bulk_num = data.num(&mut oft)? as u16;
-                debug_assert_ne!(bulk_num, 0);
-            }
-            log::info!("bulk_num:{}", bulk_num);
-            if op_code == 0 {
-                let cmd_len = data.num_and_skip(&mut oft)?;
-                op_code = command::get_op_code(&data.sub_slice(oft - cmd_len - 2, cmd_len));
-                bulk_num -= 1;
-            }
-            let cfg = command::get_cfg(op_code)?;
-            log::info!("cmd:{}", cfg.name);
+        let mut packet = packet::RequestPacket::new(stream);
+        while packet.available() {
+            log::info!("== 0.0 == {}", packet);
+            packet.parse_bulk_num()?;
+            log::info!("== 0.1 == {}", packet);
+            packet.parse_cmd()?;
+            log::info!("== 0.2 == {}", packet);
+            let cfg = command::get_cfg(packet.op_code())?;
+            log::info!("cmd:{:?}", cfg);
             let mut hash = 0;
             if cfg.multi {
-                let mut first = *stream.context() == 0;
-                while bulk_num > 0 {
-                    let start = oft;
-                    let key_len = data.num_and_skip(&mut oft)?;
-                    hash = alg.hash(&data.sub_slice(oft - key_len - 2, key_len));
+                packet.multi_ready();
+                log::info!("== 1.1 == {}", packet);
+                while packet.has_bulk() {
+                    // take会将first变为false, 需要在take之前调用。
+                    let (bulk, first) = (packet.bulk(), packet.first);
+                    debug_assert!(cfg.has_key);
+                    let key = packet.parse_key()?;
+                    hash = alg.hash(&key);
+                    log::info!("== 1.2 == :{:?}", packet);
                     if cfg.has_val {
-                        let _val_len = data.num_and_skip(&mut oft)?;
+                        packet.ignore_one_bulk()?;
+                        log::info!("== 1.3 ==  {:?}", packet);
                     }
-                    let kv = data.sub_slice(start, oft - start);
-                    let req = cfg.build_request(hash, bulk_num, first, kv);
-                    stream.ignore(oft - start);
-                    if first {
-                        // 设置op_code必须放在第一次发送数据成功之后进行。否则可能导致重入时，op_code大于0，oft未更新
-                        ctx.op_code = op_code;
-                        first = false;
-                    }
-                    bulk_num -= 1;
-                    ctx.bulk_num = bulk_num as u16;
-                    process.process(req, bulk_num == 0);
+                    let kv = packet.take();
+                    log::info!("=== 1.3.1 take == kv:{:?}", kv.data());
+                    let req = cfg.build_request(hash, bulk, first, kv.data());
+                    log::info!("== 1.4 == req:{} {:?}", req, packet);
+                    process.process(req, packet.complete());
                 }
             } else {
-                log::info!("runhere============= 1 ===== oft:{}", oft);
+                log::info!("runhere============= 1 ===== {:?}", packet);
                 if cfg.has_key {
-                    let key_len = data.num_and_skip(&mut oft)?;
-                    hash = alg.hash(&data.sub_slice(oft - key_len - 2, key_len));
-                    bulk_num -= 1;
+                    let key = packet.parse_key()?;
+                    hash = alg.hash(&key);
                 }
-                log::info!("runhere============= 2 ===== oft:{} hash:{}", oft, hash);
-                while bulk_num > 0 {
-                    log::info!("runhere============= 4 ===== oft:{} hash:{}", oft, hash);
-                    let _num = data.num_and_skip(&mut oft)?;
-                    bulk_num -= 1;
-                }
-                log::info!("runhere============= 5 ===== oft:{} hash:{}", oft, hash);
+                log::info!("runhere============= 2 ===== {:?} hash:{:?}", packet, hash);
+                packet.ignore_all_bulks()?;
+                log::info!("runhere============= 5 ===== {:?} hash:{}", packet, hash);
                 let flag = cfg.flag();
-                let cmd = stream.take(oft - start);
+                let cmd = packet.take();
                 let req = HashedCommand::new(cmd, hash, flag);
                 process.process(req, true);
-                log::info!("runhere============= 6 ===== oft:{} hash:{}", oft, hash);
+                log::info!(
+                    "runhere============= 6 ===== oft:{:?} hash:{}",
+                    packet,
+                    hash
+                );
             }
-            *stream.context() = 0;
         }
         Ok(())
     }
@@ -463,19 +418,18 @@ impl Redis {
                     if data.at(1) == b'-' {
                         data.line(&mut oft)?;
                     } else {
-                        let num = data.num(&mut oft)?;
-                        oft += num + 2;
+                        let _num = data.num_and_skip(&mut oft)?;
                     }
                 }
                 _ => panic!("not supported"),
             }
-            if oft <= data.len() {
-                let mem = s.take(oft);
-                let mut flag = Flag::new();
-                // redis不需要重试
-                flag.set_status_ok();
-                return Ok(Some(Command::new(flag, 0, mem)));
-            }
+            debug_assert!(oft <= data.len());
+            let mem = s.take(oft);
+            let mut flag = Flag::new();
+            // redis不需要重试
+            flag.set_status_ok();
+            log::info!("response parsed. {} => {:?}", mem.len(), mem.data());
+            return Ok(Some(Command::new(flag, 0, mem)));
         }
         Ok(None)
     }
@@ -489,7 +443,6 @@ impl Protocol for Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        log::info!("parse request, data:{:?}", stream.slice().to_vec());
         match self.parse_request_single_pipeline(stream, alg, process) {
             Ok(_) => Ok(()),
             Err(Error::ProtocolIncomplete) => Ok(()),
@@ -535,9 +488,10 @@ impl Protocol for Redis {
             let ext = req.ext();
             let first = ext.mkey_first();
             if first || cfg.need_bulk_num {
-                if first {
+                if first && cfg.need_bulk_num {
                     w.write_u8(b'*')?;
                     w.write(ext.key_count().to_string().as_bytes())?;
+                    w.write(b"\r\n")?;
                 }
                 w.write_slice(response.data(), 0)
             } else {
@@ -588,10 +542,10 @@ impl Protocol for Redis {
         req: &HashedCommand,
         w: &mut W,
     ) -> Result<()> {
-        let rsp_idx = req.padding_rsp() as usize;
+        let rsp_idx = req.ext().padding_rsp() as usize;
         debug_assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
-        log::debug!("+++ will write no rsp:{}", rsp);
+        log::info!("+++ will write no rsp. req:{}", req);
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
         } else {
@@ -628,10 +582,7 @@ fn parse_len(data: RingSlice, name: &str, ptype: ProtocolType) -> Result<(Option
             }
             count = 0;
             count_op = None;
-            log::debug!(
-                "+++ found 0 len bulk:{:?}",
-                from_utf8(data.to_vec().as_slice())
-            );
+            log::debug!("+++ found 0 len bulk:{:?}", data);
             break;
         } else if c < '0' || c > '9' {
             log::warn!("found malformed len for {}", name);
