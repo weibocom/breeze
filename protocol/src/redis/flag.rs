@@ -33,22 +33,16 @@ pub(super) trait RedisFlager {
     fn token_count(&self) -> u8;
 }
 
-// 必须是64个字节
-pub(super) struct ContextFlag {
-    pub(super) op_code: u16,
-    pub(super) bulk_num: u16,
-    _padding: u32,
-}
-
 #[inline(always)]
 fn set(v: &mut u64, shift: u8, mask: u64, val: u64) {
     debug_assert!(val <= mask);
     debug_assert_eq!(get(v, shift, mask), 0);
-    *v |= val << shift
+    *v |= val << shift;
+    debug_assert_eq!(val, get(v, shift, mask));
 }
 #[inline(always)]
 fn get(v: &u64, shift: u8, mask: u64) -> u64 {
-    (*v & mask) >> shift
+    (*v >> shift) & mask
 }
 
 impl RedisFlager for u64 {
@@ -64,6 +58,7 @@ impl RedisFlager for u64 {
     fn set_mkey_first(&mut self) {
         debug_assert!(!self.mkey_first());
         *self |= 1 << MKEY_FIRST_SHIFT;
+        debug_assert!(self.mkey_first());
     }
     #[inline(always)]
     fn mkey_first(&self) -> bool {
