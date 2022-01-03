@@ -1,7 +1,7 @@
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct RingSlice {
     ptr: usize,
     cap: usize,
@@ -158,8 +158,9 @@ impl RingSlice {
         None
     }
 
-    #[inline]
-    pub fn to_vec(&self) -> Vec<u8> {
+    // 只用来debug
+    #[inline(always)]
+    fn to_vec(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(self.len());
         self.copy_to_vec(&mut v);
         v
@@ -245,13 +246,28 @@ impl From<&[u8]> for RingSlice {
     }
 }
 use std::fmt;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 impl Display for RingSlice {
+    #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "ptr:{} start:{} end:{} cap:{}",
             self.ptr, self.start, self.end, self.cap
+        )
+    }
+}
+impl Debug for RingSlice {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ptr:{} start:{} end:{} cap:{} => {:?}",
+            self.ptr,
+            self.start,
+            self.end,
+            self.cap,
+            self.to_vec()
         )
     }
 }

@@ -129,10 +129,11 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
             if self.cache {
                 debug_assert!(self.pending.len() > 0);
                 if let Some(req) = self.pending.back_mut() {
-                    log::debug!("data sent: {}", req);
                     while self.oft_c < req.len() {
                         let data = req.read(self.oft_c);
-                        self.oft_c += ready!(Pin::new(&mut self.tx).poll_write(cx, data))?;
+                        let n = ready!(Pin::new(&mut self.tx).poll_write(cx, data))?;
+                        self.oft_c += n;
+                        log::info!("{} bytes sent => {:?}", n, &data[0..n]);
                     }
                     req.on_sent();
                     if req.sentonly() {
