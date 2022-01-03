@@ -120,13 +120,15 @@ use once_cell::sync::OnceCell;
 static METRICS: OnceCell<CowReadHandle<Metrics>> = OnceCell::new();
 
 use ds::{CowReadHandle, CowWriteHandle};
-pub fn start_register_metrics() {
+pub(crate) fn build_register_task() -> MetricRegister {
     debug_assert!(METRICS.get().is_none());
     let (register_tx, register_rx) = unbounded_channel();
     let (tx, rx) = ds::cow(Metrics::new(register_tx));
     let _ = METRICS.set(rx);
-    let registra = MetricRegister::new(register_rx, tx);
-    tokio::spawn(registra);
+    MetricRegister::new(register_rx, tx)
+}
+pub fn start_register_metrics() {
+    tokio::spawn(build_register_task());
 }
 
 unsafe impl Sync for Metrics {}
@@ -144,7 +146,7 @@ impl Display for Metrics {
     }
 }
 
-struct MetricRegister {
+pub(crate) struct MetricRegister {
     rx: Receiver<Arc<Id>>,
     metrics: CowWriteHandle<Metrics>,
     tick: Interval,
