@@ -3,9 +3,10 @@ use ds::{MemGuard, RingSlice};
 use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct CommandProperties {
     pub(super) name: &'static str,
+    pub(super) mname: &'static str, // 将multi key映射成单个key的get命令，发送到backend
     pub(super) op_code: OpCode,
     // cmd 参数的个数，对于不确定的cmd，如mget、mset用负数表示最小数量
     pub(super) arity: i8,
@@ -94,23 +95,27 @@ impl CommandProperties {
 
         flag
     }
+    // bulk_num只有在first=true时才有意义。
     #[inline]
     pub(super) fn build_request(
         &self,
         hash: i64,
         bulk_num: u16,
         first: bool,
-        data: RingSlice,
+        data: &RingSlice,
     ) -> HashedCommand {
         use ds::Buffer;
         debug_assert!(self.name.len() < 10);
-        let mut cmd = Vec::with_capacity(8 + data.len());
+        let mut cmd = Vec::with_capacity(16 + data.len());
         cmd.push(b'*');
         // 1个cmd, 1个key，1个value。一共3个bulk
         cmd.push((2 + self.has_val as u8) + b'0');
+        cmd.write("\r\n");
         cmd.push(b'$');
-        cmd.write(self.name.len().to_string());
-        cmd.write(self.name);
+        cmd.write(self.mname.len().to_string());
+        cmd.write("\r\n");
+        cmd.write(self.mname);
+        cmd.write("\r\n");
         data.copy_to_vec(&mut cmd);
         let mut flag = self.flag();
         use super::flag::RedisFlager;
@@ -118,7 +123,12 @@ impl CommandProperties {
             flag.set_mkey_first();
             // mset只有一个返回值。
             // 其他的multi请求的key的数量就是bulk_num
-            flag.set_key_count(bulk_num);
+            debug_assert!(self.key_step == 1 || self.key_step == 2);
+            let mut key_num = bulk_num;
+            if self.key_step == 2 {
+                key_num >>= 1;
+            }
+            flag.set_key_count(key_num);
         }
         let cmd: MemGuard = MemGuard::from_vec(cmd);
         HashedCommand::new(cmd, hash, flag)
@@ -167,6 +177,7 @@ impl Commands {
     fn add_support(
         &mut self,
         name: &'static str,
+        mname: &'static str,
         arity: i8,
         op: Operation,
         first_key_index: u8,
@@ -186,6 +197,7 @@ impl Commands {
         debug_assert!(!self.supported[idx].supported);
         self.supported[idx] = CommandProperties {
             name,
+            mname,
             op_code: idx as u16,
             arity,
             op,
@@ -215,22 +227,24 @@ lazy_static! {
    pub(super) static ref SUPPORTED: Commands = {
         let mut cmds = Commands::new();
         use Operation::*;
-    for (name, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num)
+    for (name, mname, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num)
         in vec![
                 // meta 指令
-                ("ping" ,-1, Meta, 0, 0, 0, 2, false, true, false, false, false),
+                ("command", "command" ,-1, Meta, 0, 0, 0, 1, false, true, false, false, false),
+                ("ping", "ping" ,-1, Meta, 0, 0, 0, 2, false, true, false, false, false),
                 // 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
-                ("select" ,2, Meta, 0, 0, 0, 1, false, true, false, false, false),
-                ("quit" ,2, Meta, 0, 0, 0, 0, false, true, false, false, false),
+                ("select", "ping" ,2, Meta, 0, 0, 0, 1, false, true, false, false, false),
+                ("quit", "quit" ,2, Meta, 0, 0, 0, 0, false, true, false, false, false),
 
-                ("get" ,2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("mget", -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
+                ("get" , "get",2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("mget", "get", -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
 
-                ("set" ,3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("incr" ,2, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("decr" ,2, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("mincr", -2, Store, 1, -1, 1, 3, true, false, true, false, true),
-                ("mset", -3, Store, 1, -1, 2, 3, true, false, true, true, true),
+                ("set" ,"set", 3, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("incr" ,"incr", 2, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("decr" ,"decr", 2, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("mincr","incr",  -2, Store, 1, -1, 1, 3, true, false, true, false, true),
+                // mset不需要bulk number
+                ("mset", "set", -3, Store, 1, -1, 2, 3, true, false, true, true, false),
 
             // TODO: 随着测试，逐步打开，注意加上padding rsp fishermen
             // "setnx" => (3, Operation::Store, 1, 1, 1),
@@ -362,7 +376,6 @@ lazy_static! {
             // "bitop" => (-4, Operation::Store, 2, -1, 1),
             // "bitcount" => (-2, Operation::Get, 1, 1, 1),
             // "bitpos" => (-3, Operation::Get, 1, 1, 1),
-            // "command" => (0, Operation::Meta, 0, 0, 0),
             // "geoadd" => (-5, Operation::Store, 1, 1, 1),
             // "georadius" => (-6, Operation::Get, 1, 1, 1),
             // "georadiusbymember" => (-5, Operation::Get, 1, 1, 1),
@@ -389,6 +402,7 @@ lazy_static! {
             ] {
     cmds.add_support(
         name,
+        mname,
         arity,
         op,
         first_key_index,
