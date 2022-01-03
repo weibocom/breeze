@@ -11,6 +11,7 @@ pub(crate) struct Sender {
     tick: Interval,
     packet: PacketBuffer,
     last: Instant,
+    host: super::Host,
 }
 
 impl Sender {
@@ -22,9 +23,10 @@ impl Sender {
             packet: PacketBuffer::new(addr.to_string()),
             last: Instant::now(),
             tick: interval(cycle),
+            host: super::Host::new(),
         }
     }
-    pub fn start_sending(self) {
+    pub(crate) fn start_sending(self) {
         tokio::spawn(async move {
             log::info!("metric-send: task started:{}", &self.packet.addr);
             self.await;
@@ -32,6 +34,7 @@ impl Sender {
     }
 }
 
+// 这个Future包含了大量的cpu、io等重型操作。需要将该future放在spawn_local中操作。
 impl Future for Sender {
     type Output = ();
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -39,13 +42,18 @@ impl Future for Sender {
         ready!(me.packet.poll_flush(cx));
         loop {
             ready!(me.tick.poll_tick(cx));
+            let start = Instant::now();
             // 判断是否可以flush
             let elapsed = me.last.elapsed().as_secs_f64().round();
             if elapsed as usize > 0 {
+                // 这是一个block 操作，
                 let metrics = crate::get_metrics();
                 metrics.write(&mut me.packet, elapsed);
-                crate::Host::snapshot(&mut me.packet, elapsed);
+                me.host.snapshot(&mut me.packet, elapsed);
                 me.last = Instant::now();
+                if start.elapsed() >= Duration::from_millis(10) {
+                    log::warn!("metric collect elased too much time:{:?}", start.elapsed());
+                }
             }
             ready!(me.packet.poll_flush(cx));
         }
