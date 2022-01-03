@@ -44,6 +44,9 @@ where
         let mut rb = ReadBuf::new(buf);
         let out = Pin::new(&mut **client).poll_read(cx, &mut rb);
         let r = rb.capacity() - rb.remaining();
+        if r > 0 {
+            log::info!("{} bytes received ==> {:?}", r, &buf[0..r]);
+        }
         *n += r;
 
         (r, out)
