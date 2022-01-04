@@ -356,52 +356,45 @@ impl Redis {
     ) -> Result<()> {
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
-            log::info!("== 0.0 == {}", packet);
             packet.parse_bulk_num()?;
-            log::info!("== 0.1 == {}", packet);
             packet.parse_cmd()?;
-            log::info!("== 0.2 == {}", packet);
             let cfg = command::get_cfg(packet.op_code())?;
-            log::info!("cmd:{:?}", cfg);
+            log::debug!("cmd:{:?}", cfg);
             let mut hash = 0;
             if cfg.multi {
                 packet.multi_ready();
-                log::info!("== 1.1 == {}", packet);
+                log::debug!("== 1.1 == {}", packet);
                 while packet.has_bulk() {
                     // take会将first变为false, 需要在take之前调用。
                     let (bulk, first) = (packet.bulk(), packet.first);
                     debug_assert!(cfg.has_key);
                     let key = packet.parse_key()?;
                     hash = alg.hash(&key);
-                    log::info!("== 1.2 == :{:?}", packet);
+                    log::debug!("== 1.2 == :{:?}", packet);
                     if cfg.has_val {
                         packet.ignore_one_bulk()?;
-                        log::info!("== 1.3 ==  {:?}", packet);
+                        log::debug!("== 1.3 ==  {:?}", packet);
                     }
                     let kv = packet.take();
-                    log::info!("=== 1.3.1 take == kv:{:?}", kv.data());
+                    log::debug!("=== 1.3.1 take == kv:{:?}", kv.data());
                     let req = cfg.build_request(hash, bulk, first, kv.data());
-                    log::info!("== 1.4 == req:{} {:?}", req, packet);
+                    log::debug!("== 1.4 == req:{} {:?}", req, packet);
                     process.process(req, packet.complete());
                 }
             } else {
-                log::info!("runhere============= 1 ===== {:?}", packet);
+                log::debug!(" == runhere============= 1 ===== {:?}", packet);
                 if cfg.has_key {
                     let key = packet.parse_key()?;
                     hash = alg.hash(&key);
                 }
-                log::info!("runhere============= 2 ===== {:?} hash:{:?}", packet, hash);
+                log::debug!(" == runhere==== 2 ===== {:?} hash:{:?}", packet, hash);
                 packet.ignore_all_bulks()?;
-                log::info!("runhere============= 5 ===== {:?} hash:{}", packet, hash);
+                log::debug!(" == runhere== 5 ===== {:?} hash:{}", packet, hash);
                 let flag = cfg.flag();
                 let cmd = packet.take();
                 let req = HashedCommand::new(cmd, hash, flag);
                 process.process(req, true);
-                log::info!(
-                    "runhere============= 6 ===== oft:{:?} hash:{}",
-                    packet,
-                    hash
-                );
+                log::debug!(" == runhere=== 6 ===== oft:{:?} hash:{}", packet, hash);
             }
         }
         Ok(())
@@ -428,7 +421,7 @@ impl Redis {
             let mut flag = Flag::new();
             // redis不需要重试
             flag.set_status_ok();
-            log::info!("response parsed. {} => {:?}", mem.len(), mem.data());
+            log::debug!("response parsed. {} => {:?}", mem.len(), mem.data());
             return Ok(Some(Command::new(flag, 0, mem)));
         }
         Ok(None)
@@ -545,7 +538,7 @@ impl Protocol for Redis {
         let rsp_idx = req.ext().padding_rsp() as usize;
         debug_assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
-        log::info!("+++ will write no rsp. req:{}", req);
+        log::debug!("+++ will write no rsp. req:{}", req);
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
         } else {
