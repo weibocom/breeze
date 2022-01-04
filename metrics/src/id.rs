@@ -22,6 +22,10 @@ impl Path {
         }
     }
     #[inline]
+    pub fn ratio(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::Ratio)
+    }
+    #[inline]
     pub fn qps(&self, key: &'static str) -> Metric {
         self.with_type(key, MetricType::Qps)
     }
