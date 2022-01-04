@@ -39,23 +39,3 @@ impl Host {
         }
     }
 }
-
-fn loop_refresh(cycle: Duration) {
-    let mut process = Process::current().expect("cannot get current process");
-    loop {
-        if let Ok(percent) = process.cpu_percent() {
-            CPU_PERCENT.store((percent * 100.0) as usize, Ordering::Relaxed);
-        }
-        if let Ok(mem) = process.memory_info() {
-            MEMORY.store(mem.rss() as usize, Ordering::Relaxed);
-        }
-        std::thread::sleep(cycle);
-    }
-}
-
-// 获取cpu等信息时，需要读取/proc文件，为避免阻塞操作，将这个task独立于runtime，放在一个独立的系统线程中运行。
-pub(crate) fn start_host_refresher(cycle: Duration) {
-    std::thread::spawn(move || {
-        loop_refresh(cycle);
-    });
-}
