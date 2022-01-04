@@ -64,6 +64,10 @@ pub trait Stream {
     fn slice(&self) -> ds::RingSlice;
     fn update(&mut self, idx: usize, val: u8);
     fn take(&mut self, n: usize) -> ds::MemGuard;
+    #[inline(always)]
+    fn ignore(&mut self, n: usize) {
+        let _ = self.take(n);
+    }
     // 在解析一个流的不同的req/response时，有时候需要共享数据。
     fn context(&mut self) -> &mut u64;
 }
@@ -75,7 +79,6 @@ pub trait Builder {
 
 pub struct Command {
     flag: Flag,
-    key_count: u16,
     cmd: ds::MemGuard,
 }
 
@@ -87,19 +90,11 @@ pub struct HashedCommand {
 impl Command {
     #[inline(always)]
     pub fn new(flag: Flag, key_count: u16, cmd: ds::MemGuard) -> Self {
-        Self {
-            flag,
-            key_count,
-            cmd,
-        }
+        Self { flag, cmd }
     }
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.cmd.len()
-    }
-    #[inline(always)]
-    pub fn key_count(&self) -> u16 {
-        self.key_count
     }
     #[inline(always)]
     pub fn read(&self, oft: usize) -> &[u8] {
@@ -144,14 +139,10 @@ impl std::ops::DerefMut for HashedCommand {
 use ds::MemGuard;
 impl HashedCommand {
     #[inline(always)]
-    pub fn new(cmd: MemGuard, hash: i64, flag: Flag, key_count: u16) -> Self {
+    pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {
         Self {
             hash,
-            cmd: Command {
-                flag,
-                key_count,
-                cmd,
-            },
+            cmd: Command { flag, cmd },
         }
     }
     #[inline(always)]

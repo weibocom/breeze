@@ -48,7 +48,7 @@ impl GuardedBuffer {
         self.taken += n;
         let ptr = guard as *const AtomicU32;
         MemGuard::new(data, ptr)
-    }
+}
     #[inline(always)]
     pub fn gc(&mut self) {
         while let Some(guard) = self.guards.front_mut() {
@@ -121,15 +121,16 @@ impl MemGuard {
         Self { mem, guard, cap }
     }
 
-    pub fn from_ringslice(data: RingSlice) -> Self {
-        let guard = 0 as *const _;
-        let cap = data.capacity();
-        Self {
-            mem: data,
-            guard,
-            cap,
-        }
-    }
+    // TODO： 警示：ringslice 所有权属于其他，所以在drop时会存在问题，暂时保存，备忘, 2022.7 之后再删除 fishermen
+    // pub fn from_ringslice(data: RingSlice) -> Self {
+    //     let guard = 0 as *const _;
+    //     let cap = data.capacity();
+    //     Self {
+    //         mem: data,
+    //         guard,
+    //         cap,
+    //     }
+    // }
 
     #[inline(always)]
     pub fn data(&self) -> &RingSlice {

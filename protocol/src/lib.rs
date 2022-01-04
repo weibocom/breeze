@@ -8,6 +8,7 @@ pub mod redis;
 pub mod req;
 pub mod resp;
 mod topo;
+mod utf8;
 
 pub use flag::*;
 pub use parser::Proto as Protocol;
@@ -20,6 +21,7 @@ pub use operation::*;
 
 pub mod callback;
 pub mod request;
+pub(crate) use utf8::*;
 
 pub trait ResponseWriter {
     // 写数据，一次写完
@@ -57,7 +59,6 @@ impl Resource {
     }
 }
 
-use std::str::from_utf8;
 use std::time::Duration;
 pub trait Builder<P, R, E> {
     fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Duration) -> E
@@ -71,11 +72,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl ResponseWriter for Vec<u8> {
     #[inline(always)]
     fn write(&mut self, data: &[u8]) -> Result<()> {
+        log::info!(
+            "writing response (cap enough:{}):{:?}",
+            data.len() + self.len() <= self.capacity(),
+            data
+        );
         ds::vec::Buffer::write(self, data);
         Ok(())
     }
     #[inline(always)]
     fn write_u8(&mut self, v: u8) -> Result<()> {
+        log::info!("writing response:{}", v);
         self.push(v);
         Ok(())
     }

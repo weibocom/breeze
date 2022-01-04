@@ -38,7 +38,7 @@ impl Protocol for MemcacheBinary {
                 data.update(idx, mapped_op_code);
             }
             // 存储原始的op_code
-            let mut flag = Flag::from_op(op_code, COMMAND_IDX[op_code as usize].into());
+            let mut flag = Flag::from_op(op_code as u16, COMMAND_IDX[op_code as usize].into());
             if NOREPLY_MAPPING[req.op() as usize] == req.op() {
                 flag.set_sentonly();
             }
@@ -54,7 +54,7 @@ impl Protocol for MemcacheBinary {
             }
             let guard = data.take(packet_len);
             // TODO 目前mc暂时不用key_count，先设置为0，等又需要再调整逻辑 fishermen
-            let cmd = HashedCommand::new(guard, hash, flag, 0);
+            let cmd = HashedCommand::new(guard, hash, flag);
             // get请求不能是quiet
             debug_assert!(!(cmd.operation().is_retrival() && cmd.sentonly()));
             process.process(cmd, last);
@@ -72,7 +72,7 @@ impl Protocol for MemcacheBinary {
             let r = data.slice();
             let pl = r.packet_len();
             if len >= pl {
-                let mut flag = Flag::from_op(r.op(), r.operation());
+                let mut flag = Flag::from_op(r.op() as u16, r.operation());
                 if r.status_ok() {
                     flag.set_status_ok();
                 }
@@ -97,7 +97,7 @@ impl Protocol for MemcacheBinary {
         }
         if old_op_code != resp.op_code() {
             // 更新resp opcode
-            resp.data_mut().update_opcode(old_op_code);
+            resp.data_mut().update_opcode(old_op_code as u8);
         }
         let len = resp.len();
         let mut oft = 0;
@@ -131,7 +131,7 @@ impl Protocol for MemcacheBinary {
         req: &HashedCommand,
         w: &mut W,
     ) -> Result<()> {
-        match req.op_code() {
+        match req.op_code() as u8 {
             OP_CODE_NOOP => {
                 // 第一个字节变更为Response，其他的与Request保持一致
                 w.write_u8(RESPONSE_MAGIC)?;
@@ -156,7 +156,7 @@ impl MemcacheBinary {
         data.clear_cas();
         // 更新flag
         let op = COMMAND_IDX[op_code as usize].into();
-        req.reset_flag(op_code, op);
+        req.reset_flag(op_code as u16, op);
         // 设置只发送标签，发送完成即请求完成。
         req.set_sentonly();
         debug_assert!(req.operation().is_store());
@@ -203,11 +203,11 @@ impl MemcacheBinary {
         rsp_cmd.value().copy_to_vec(&mut req_cmd);
 
         let hash = req.hash();
-        let mut flag = Flag::from_op(op, COMMAND_IDX[op as usize].into());
+        let mut flag = Flag::from_op(op as u16, COMMAND_IDX[op as usize].into());
         flag.set_sentonly();
 
         let guard = ds::MemGuard::from_vec(req_cmd);
         // TODO: 目前mc不需要用key_count，等又需要再调整
-        Some(HashedCommand::new(guard, hash, flag, 1))
+        Some(HashedCommand::new(guard, hash, flag))
     }
 }
