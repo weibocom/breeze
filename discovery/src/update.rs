@@ -8,24 +8,19 @@ use crate::cache::DiscoveryCache;
 use crate::path::ToName;
 use std::collections::HashMap;
 
-pub fn start_watch_discovery<D, T>(snapshot: &str, discovery: D, rx: Receiver<T>, tick: Duration)
+pub async fn watch_discovery<D, T>(snapshot: String, discovery: D, rx: Receiver<T>, tick: Duration)
 where
     T: Send + TopologyWrite + ServiceId + 'static + Sync,
     D: Send + Sync + Discover + Unpin + 'static,
 {
-    let snapshot = snapshot.to_string();
     let cache = DiscoveryCache::new(discovery);
-    tokio::spawn(async move {
-        log::info!("discovery watch task started");
-        let mut refresher = Refresher {
-            snapshot: snapshot,
-            discovery: cache,
-            rx: rx,
-            tick: tick,
-        };
-        refresher.watch().await;
-        log::info!("discovery watch task complete");
-    });
+    let mut refresher = Refresher {
+        snapshot: snapshot,
+        discovery: cache,
+        rx: rx,
+        tick: tick,
+    };
+    refresher.watch().await
 }
 unsafe impl<D, T> Send for Refresher<D, T> {}
 unsafe impl<D, T> Sync for Refresher<D, T> {}
@@ -43,11 +38,13 @@ where
     T: Send + TopologyWrite + ServiceId + 'static + Sync,
 {
     async fn watch(&mut self) {
+        log::info!("task started ==> topology refresher");
         // 降低tick的频率，便于快速从chann中接收新的服务。
         let mut tick = interval(Duration::from_secs(1));
         let mut services = HashMap::new();
         let mut last = Instant::now();
         loop {
+            let start = Instant::now();
             while let Ok(t) = self.rx.try_recv() {
                 let service = t.service().name();
                 if services.contains_key(&service) {
@@ -65,6 +62,9 @@ where
             }
             for (_service, t) in services.iter_mut() {
                 t.try_load();
+            }
+            if start.elapsed() >= Duration::from_millis(10) {
+                log::warn!("cfg refresh elpased:{:?}", start.elapsed());
             }
             tick.tick().await;
         }
