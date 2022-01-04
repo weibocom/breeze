@@ -72,17 +72,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl ResponseWriter for Vec<u8> {
     #[inline(always)]
     fn write(&mut self, data: &[u8]) -> Result<()> {
-        log::info!(
-            "writing response (cap enough:{}):{:?}",
-            data.len() + self.len() <= self.capacity(),
-            data
-        );
         ds::vec::Buffer::write(self, data);
         Ok(())
     }
     #[inline(always)]
     fn write_u8(&mut self, v: u8) -> Result<()> {
-        log::info!("writing response:{}", v);
         self.push(v);
         Ok(())
     }

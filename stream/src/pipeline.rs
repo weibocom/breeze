@@ -216,7 +216,7 @@ where
         mut writer: Pin<&mut C>,
     ) -> Poll<Result<()>> {
         if *flush {
-            log::info!("+++ will flush rsp:{:?}", from_utf8(&buf));
+            log::debug!("+++ will flush rsp:{:?}", from_utf8(&buf));
             if buf.len() > 0 {
                 while *idx < buf.len() {
                     *idx += ready!(writer.as_mut().poll_write(cx, &buf[*idx..]))?;
