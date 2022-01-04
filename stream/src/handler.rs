@@ -57,7 +57,7 @@ where
             me.timeout.reset()
         }
         if me.pending.len() > 0 || me.flushing {
-            if me.last_schedule.elapsed() >= Duration::from_millis(200) {
+            if me.last_schedule.elapsed() >= Duration::from_millis(50) {
                 log::info!("schedule {:?} rtt:{}", me.last_schedule.elapsed(), me.rtt);
             }
         }
@@ -133,7 +133,6 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
                         let data = req.read(self.oft_c);
                         let n = ready!(Pin::new(&mut self.tx).poll_write(cx, data))?;
                         self.oft_c += n;
-                        log::info!("{} bytes sent => {:?}", n, &data[0..n]);
                     }
                     req.on_sent();
                     if req.sentonly() {
