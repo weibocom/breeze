@@ -7,8 +7,8 @@ use context::Context;
 use crossbeam_channel::bounded;
 use discovery::*;
 
+use rt::spawn;
 use std::time::Duration;
-use tokio::spawn;
 
 use protocol::Result;
 

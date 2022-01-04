@@ -76,7 +76,7 @@ impl<T: Clone + 'static> Refresher<T> {
         }
     }
     fn start_refresh(self) {
-        tokio::spawn(self);
+        rt::spawn(self);
     }
     fn refresh(&mut self) {
         self.last_cycle = self.reader.cycle();

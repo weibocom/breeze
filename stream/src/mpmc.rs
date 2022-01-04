@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use super::status::Status;
-use crate::{Address, Addressed, AtomicWaker, Notify, Request, RequestHandler, ResponseHandler, Snapshot};
+use crate::{
+    Address, Addressed, AtomicWaker, Notify, Request, RequestHandler, ResponseHandler, Snapshot,
+};
 use ds::{BitMap, CacheAligned, SeqOffset};
 use metrics::MetricId;
 use protocol::{Protocol, RequestId, Response};
@@ -142,7 +144,12 @@ impl MpmcStream {
         }
         self.waker.wake();
         self.req_num.0.fetch_add(1, Ordering::Relaxed);
-        log::debug!("write complete cid:{} len:{} cost: {:?}", cid, buf.len(), Instant::now().duration_since(write_begin));
+        log::debug!(
+            "write complete cid:{} len:{} cost: {:?}",
+            cid,
+            buf.len(),
+            Instant::now().duration_since(write_begin)
+        );
         Poll::Ready(Ok(()))
     }
     #[inline(always)]
@@ -232,7 +239,7 @@ impl MpmcStream {
         F: Future<Output = Result<()>> + Send + 'static,
         N: Notify + Send + 'static,
     {
-        tokio::spawn(async move {
+        rt::spawn(async move {
             let runnings = self.runnings.fetch_add(1, Ordering::Release) + 1;
             log::debug!("{}-th task started, {} ", runnings, self.metric_id.name());
             if let Err(e) = future.await {

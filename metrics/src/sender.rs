@@ -38,7 +38,6 @@ impl Future for Sender {
         ready!(me.packet.poll_flush(cx));
         loop {
             ready!(me.tick.poll_tick(cx));
-            let start = Instant::now();
             // 判断是否可以flush
             let elapsed = me.last.elapsed().as_secs_f64().round();
             if elapsed as usize > 0 {
@@ -47,7 +46,6 @@ impl Future for Sender {
                 metrics.write(&mut me.packet, elapsed);
                 me.host.snapshot(&mut me.packet, elapsed);
                 me.last = Instant::now();
-                log::info!("metric collect elased :{:?}", start.elapsed());
             }
             ready!(me.packet.poll_flush(cx));
         }

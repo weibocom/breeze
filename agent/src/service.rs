@@ -1,7 +1,7 @@
 use net::listener::Listener;
+use rt::spawn;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::spawn;
 
 use context::Quadruple;
 use crossbeam_channel::Sender;

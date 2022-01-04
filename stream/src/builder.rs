@@ -32,7 +32,7 @@ impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for Backe
         let r = run.clone();
         let mut checker =
             BackendChecker::from(addr, rx, r, f, init.clone(), parser, &path, timeout);
-        tokio::spawn(async move { checker.start_check().await });
+        rt::spawn(async move { checker.start_check().await });
         Backend {
             finish,
             init,
