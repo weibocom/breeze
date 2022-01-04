@@ -20,14 +20,14 @@ static REGISTER: OnceCell<Sender<RegisterItem>> = OnceCell::new();
 type RegisterItem = (String, Arc<AtomicBool>);
 type Resolver = AsyncResolver<TokioConnection, TokioConnectionProvider>;
 
-pub fn start_dns_resolver_refresher() {
+pub async fn start_dns_resolver_refresher() {
     let resolver = system_resolver();
     let (tx, rx) = ds::cow(Default::default());
     let (reg_tx, reg_rx) = unbounded_channel();
     let _ = DNSCACHE.set(rx);
     let _ = REGISTER.set(reg_tx);
 
-    tokio::spawn(start_watch_dns(tx, reg_rx, resolver));
+    start_watch_dns(tx, reg_rx, resolver).await
 }
 
 pub fn register(host: &str, notify: Arc<AtomicBool>) {
@@ -152,7 +152,7 @@ async fn start_watch_dns(
     mut rx: Receiver<RegisterItem>,
     mut resolver: Resolver,
 ) {
-    log::info!("dns cache refresher started");
+    log::info!("task started ==> dns cache refresher");
     use std::task::Poll;
     let noop = noop_waker::noop_waker();
     let mut ctx = std::task::Context::from_waker(&noop);
@@ -180,6 +180,7 @@ async fn start_watch_dns(
         if last.elapsed() < CYCLE {
             continue;
         }
+        let start = Instant::now();
         let mut updated = HashMap::new();
         let r_cache = cache.get();
         for (host, record) in &r_cache.hosts {
@@ -197,6 +198,8 @@ async fn start_watch_dns(
             cache.get().notify();
         }
         last = Instant::now();
+
+        log::info!("refresh dns elapsed:{:?}", start.elapsed());
     }
 }
 
