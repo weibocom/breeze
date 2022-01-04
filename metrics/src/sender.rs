@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use futures::ready;
 use tokio::time::{interval, Interval, MissedTickBehavior};
 
-pub(crate) struct Sender {
+pub struct Sender {
     tick: Interval,
     packet: PacketBuffer,
     last: Instant,
@@ -15,9 +15,11 @@ pub(crate) struct Sender {
 }
 
 impl Sender {
-    pub(crate) fn new(addr: &str, cycle: Duration) -> Self {
+    pub fn new(addr: &str, cycle: Duration) -> Self {
         let mut tick = interval(cycle);
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+        log::info!("task started ==> metric sender");
 
         Self {
             packet: PacketBuffer::new(addr.to_string()),
@@ -25,12 +27,6 @@ impl Sender {
             tick: interval(cycle),
             host: super::Host::new(),
         }
-    }
-    pub(crate) fn start_sending(self) {
-        tokio::spawn(async move {
-            log::info!("metric-send: task started:{}", &self.packet.addr);
-            self.await;
-        });
     }
 }
 
@@ -51,9 +47,7 @@ impl Future for Sender {
                 metrics.write(&mut me.packet, elapsed);
                 me.host.snapshot(&mut me.packet, elapsed);
                 me.last = Instant::now();
-                if start.elapsed() >= Duration::from_millis(10) {
-                    log::warn!("metric collect elased too much time:{:?}", start.elapsed());
-                }
+                log::info!("metric collect elased :{:?}", start.elapsed());
             }
             ready!(me.packet.poll_flush(cx));
         }
