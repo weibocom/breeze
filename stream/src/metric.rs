@@ -36,6 +36,11 @@ macro_rules! define_metrics {
                     )+
                 }
             }
+            // debug only
+            #[inline(always)]
+            pub fn biz(&self) -> &Metric {
+                &self.cps
+            }
         }
     };
 }

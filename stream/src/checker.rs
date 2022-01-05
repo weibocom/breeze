@@ -18,8 +18,6 @@ pub struct BackendChecker<P, Req> {
     init: Switcher,
     parser: P,
     s_metric: Metric,
-    //bytes_tx: Metric,
-    //bytes_rx: Metric,
     rtt: Metric,
     addr: String,
     last_conn: Instant,
@@ -67,22 +65,12 @@ impl<P, Req> BackendChecker<P, Req> {
             use crate::gc::DelayedDrop;
             let mut buf: DelayedDrop<_> =
                 StreamGuard::from(GuardedBuffer::new(2048, 1 << 20, 16 * 1024, |_, _| {})).into();
-            let mut pending = VecDeque::with_capacity(31);
+            let pending = &mut VecDeque::with_capacity(31);
             let p = self.parser.clone();
-            if let Err(e) = Handler::from(
-                rx,
-                &mut pending,
-                &mut buf,
-                w,
-                r,
-                //&mut self.bytes_tx,
-                //&mut self.bytes_rx,
-                &mut self.rtt,
-                p,
-                self.timeout,
-            )
-            .await
-            {
+            let handler =
+                Handler::from(rx, pending, &mut buf, w, r, &mut self.rtt, p, self.timeout);
+            let handler = rt::StatsFuture::from(handler);
+            if let Err(e) = handler.await {
                 log::info!("{} handler error:{:?}", self.s_metric, e);
             }
             // 先关闭，关闭之后不会有新的请求发送
