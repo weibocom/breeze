@@ -99,7 +99,10 @@ where
     T: TopologyWrite + Clone,
 {
     fn update(&mut self, name: &str, cfg: &str) {
-        self.inner.write(|t| t.update(name, cfg));
+        self.inner.write(|t| {
+            t.update(name, cfg);
+            t.load();
+        });
         self.updates.fetch_add(1, Ordering::AcqRel);
     }
     #[inline(always)]
