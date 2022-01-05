@@ -1,6 +1,8 @@
 use crate::{Error, Result};
 use ds::RingSlice;
 
+const CRLF_LEN: usize = b"\r\n".len();
+
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
 #[repr(C)]
@@ -73,7 +75,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.ctx.op_code == 0 {
             let cmd_len = self.data.num_and_skip(&mut self.oft)?;
             self.ctx.bulk -= 1;
-            let cmd = self.data.sub_slice(self.oft - cmd_len - 2, cmd_len);
+            let start = self.oft - cmd_len - CRLF_LEN;
+            let cmd = self.data.sub_slice(start, cmd_len);
             self.ctx.op_code = super::command::get_op_code(&cmd);
             debug_assert_ne!(self.ctx.op_code, 0);
         }
@@ -83,9 +86,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(super) fn parse_key(&mut self) -> Result<RingSlice> {
         debug_assert_ne!(self.ctx.op_code, 0);
         debug_assert_ne!(self.ctx.bulk, 0);
-        let start = self.oft;
         let key_len = self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
+        let start = self.oft - CRLF_LEN - key_len;
         Ok(self.data.sub_slice(start, key_len))
     }
     #[inline(always)]
