@@ -386,6 +386,7 @@ impl Redis {
                 if cfg.has_key {
                     let key = packet.parse_key()?;
                     hash = alg.hash(&key);
+                    debug_assert_ne!(hash, 0);
                 }
                 log::debug!(" == runhere==== 2 ===== {:?} hash:{:?}", packet, hash);
                 packet.ignore_all_bulks()?;
