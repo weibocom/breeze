@@ -41,7 +41,7 @@ where
     .into();
     let waker: DelayedDrop<_> = AtomicWaker::default().into();
     let mut pending: DelayedDrop<_> = VecDeque::with_capacity(127).into();
-    let ret = CopyBidirectional {
+    let pipeline = CopyBidirectional {
         metrics,
         hash,
         rx_buf: &mut rx_buf,
@@ -56,10 +56,10 @@ where
         start: Instant::now(),
         start_init: false,
         first: true, // 默认当前请求是第一个
-    }
-    .await;
+    };
+    let pipeline = rt::StatsFuture::from(pipeline);
+    let ret = pipeline.await;
     crate::gc::delayed_drop((rx_buf, pending, waker));
-
     ret
 }
 
@@ -225,8 +225,8 @@ where
                 unsafe {
                     buf.set_len(0);
                 }
-                ready!(writer.as_mut().poll_flush(cx)?);
             }
+            ready!(writer.as_mut().poll_flush(cx)?);
             *flush = false;
         }
         Poll::Ready(Ok(()))
@@ -259,5 +259,28 @@ impl<'a, C, P> Drop for CopyBidirectional<'a, C, P> {
     #[inline(always)]
     fn drop(&mut self) {
         *self.metrics.conn_num() -= 1;
+    }
+}
+
+use std::fmt::{self, Debug, Formatter};
+impl<'a, C, P> rt::ReEnter for CopyBidirectional<'a, C, P> {
+    #[inline(always)]
+    fn need_process(&self) -> bool {
+        self.pending.len() > 0 || self.tx_idx < self.tx_buf.len()
+    }
+}
+impl<'a, C, P> Debug for CopyBidirectional<'a, C, P> {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "pending:{} flush:{} rx buf: {} tx oft:{} tx buf len:{} copy_bidirectional => {}",
+            self.pending.len(),
+            self.flush,
+            self.rx_buf.len(),
+            self.tx_idx,
+            self.tx_buf.len(),
+            self.metrics.biz(),
+        )
     }
 }
