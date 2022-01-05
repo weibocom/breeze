@@ -16,6 +16,7 @@ impl NumberInner {
         let ss = self.ss.load(Ordering::Relaxed);
         let cur = self.cur.load(Ordering::Relaxed);
         self.ss.store(cur, Ordering::Relaxed);
+        //println!("ss{},cur{}", ss, cur);
         (ss, cur)
     }
 }
@@ -53,3 +54,19 @@ macro_rules! impl_to_number {
     };
 }
 impl_to_number!(i8, u8, i16, u16, i32, u32, isize, usize, i64, u64);
+// pub trait ToRatio {
+//     fn int(&self) -> (i64, i64);
+// }
+// macro_rules! impl_to_ratio {
+//     ($($t:ty,ty),+) => {
+//         $(
+//         impl ToRatio for $t {
+//             #[inline(always)]
+//             fn int(&self) -> (i64,i64) {
+//                 *self as (i64,i64)
+//             }
+//         }
+//         )+
+//     };
+// }
+// impl_to_ratio!((i8,i8),(i8,i8));
