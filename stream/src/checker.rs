@@ -20,6 +20,7 @@ pub struct BackendChecker<P, Req> {
     s_metric: Metric,
     //bytes_tx: Metric,
     //bytes_rx: Metric,
+    // ratio: Metric,
     rtt: Metric,
     addr: String,
     last_conn: Instant,

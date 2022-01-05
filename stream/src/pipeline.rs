@@ -32,6 +32,7 @@ where
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
+    *metrics.right() += 1;
     let mut rx_buf: DelayedDrop<_> = StreamGuard::from(GuardedBuffer::new(
         1024,
         1 << 20,

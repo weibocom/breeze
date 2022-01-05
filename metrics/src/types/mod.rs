@@ -2,12 +2,14 @@ mod data;
 mod host;
 mod number;
 mod qps;
+mod ratio;
 mod rtt;
 mod status;
 
 pub(crate) use host::*;
 pub(crate) use number::*;
 pub(crate) use qps::*;
+pub(crate) use ratio::*;
 pub(crate) use rtt::*;
 pub(crate) use status::*;
 
@@ -24,13 +26,15 @@ pub(crate) enum MetricType {
     Status,
     RTT,   // 耗时
     Count, // 计算总的数量，与时间无关。
+    Ratio,
 }
 
 pub(crate) trait Snapshot {
     fn snapshot<W: crate::ItemWriter>(&self, w: &mut W, secs: f64);
 }
 
-static METRICS_NAMES: [&'static str; 5] = ["none", "qps", "status", "rtt", "num"];
+//static METRICS_NAMES: [&'static str; 5] = ["none", "qps", "status", "rtt", "num"];
+static METRICS_NAMES: [&'static str; 6] = ["none", "qps", "status", "rtt", "num", "ratio"];
 
 impl Default for MetricType {
     fn default() -> Self {
@@ -47,7 +51,7 @@ impl MetricType {
     pub(crate) fn is_num(&self) -> bool {
         use MetricType::*;
         match self {
-            Qps | Status | Count => true,
+            Ratio | Qps | Status | Count => true,
             _ => false,
         }
     }

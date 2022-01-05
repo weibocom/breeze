@@ -141,6 +141,7 @@ where
             metrics::duration(metric.op.name(), duration, metric.metric_id);
             metrics::qps("bytes.tx", metric.resp_bytes, metric.metric_id);
             metrics::qps("bytes.rx", metric.req_bytes, metric.metric_id);
+
             if metric.op.is_retrival() {
                 metrics::qps("key", metric.req_keys_num, metric.metric_id);
                 metrics::ratio(

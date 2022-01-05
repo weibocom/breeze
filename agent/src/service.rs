@@ -96,7 +96,7 @@ async fn _process_one(
 use tokio::net::TcpListener;
 // 监控一个端口，主要用于进程监控
 pub(super) async fn listener_for_supervisor(port: u16) -> Result<TcpListener> {
-    let addr = format!("127.0.0.1:{}", port);
+    let addr = format!("10.222.76.140:{}", port);
     let l = TcpListener::bind(&addr).await?;
     Ok(l)
 }

@@ -30,6 +30,7 @@ impl ItemData {
         use MetricType::*;
         unsafe {
             match self.id.t {
+                Ratio => self.inner.ratio.snapshot(&*self.id, w, secs),
                 Qps => self.inner.qps.snapshot(&*self.id, w, secs),
                 Count => self.inner.number.snapshot(&*self.id, w, secs),
                 Status => self.inner.status.snapshot(&*self.id, w, secs),
@@ -44,7 +45,7 @@ impl ItemData {
         unsafe { self.inner.number.incr(num) };
     }
 }
-use super::{Number, Qps, Rtt, StatusData};
+use super::{Number, Qps, Ratio, Rtt, StatusData};
 use std::mem::ManuallyDrop;
 // InnerData存储在Item里面，每一个chunk的生命周期都是static的。
 union InnerData {
@@ -53,6 +54,7 @@ union InnerData {
     qps: ManuallyDrop<Qps>,
     status: ManuallyDrop<StatusData>,
     rtt: ManuallyDrop<Rtt>,
+    ratio: ManuallyDrop<Ratio>,
 }
 impl Default for InnerData {
     #[inline(always)]

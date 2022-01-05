@@ -22,6 +22,10 @@ impl Path {
         }
     }
     #[inline]
+    pub fn ratio(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::Ratio)
+    }
+    #[inline]
     pub fn qps(&self, key: &'static str) -> Metric {
         self.with_type(key, MetricType::Qps)
     }
@@ -43,10 +47,12 @@ impl Path {
         for name in self.path.iter() {
             s += &crate::encode_addr(name.as_ref());
             s.push('.');
+            println!("type里的--s{},name{}", s, name);
         }
         s.pop();
         s.shrink_to_fit();
         let id = Id { path: s, key, t };
+        println!("type里的id{:?}", id);
         crate::register_metric(id)
     }
 }

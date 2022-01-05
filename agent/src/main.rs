@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     elog::init(ctx.log_dir(), &ctx.log_level)?;
     metrics::start_metric_sender(&ctx.metrics_url());
     metrics::init_local_ip(&ctx.metrics_probe);
-
+    //  metrics::ratio("ratio", 20, 2000);
     let discovery = Discovery::from_url(ctx.discovery());
     let (tx, rx) = bounded(128);
     discovery::dns::start_dns_resolver_refresher();

@@ -27,8 +27,11 @@ macro_rules! define_metrics {
             pub fn new(path:&Path) -> Self {
                 let ops: [Metric; OPS.len()] =
                     array_init::array_init(|idx| path.rtt(OPS[idx].name()));
+                   // let rat: [Metric; OPS.len()] =
+                    //array_init::array_init(|idx| path.ratio(OPS[idx].name()));
                 Self {
                     ops,
+                    //rat,
                     $(
                         $(
                             $name: path.$t(stringify!($key)),
@@ -36,11 +39,14 @@ macro_rules! define_metrics {
                     )+
                 }
             }
+
+
         }
     };
 }
 
 define_metrics!(qps: tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn;
 count:conn_num-conn;
-rtt:avg-avg
+rtt:avg-avg;
+ratio:right-sum
 );
