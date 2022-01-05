@@ -135,9 +135,8 @@ where
                         // 注册域名。后续可以通常lookup进行查询。
                         let host = url_port.host();
                         if !self.updated.contains_key(host) {
-                            let notify: Arc<AtomicBool> = Arc::default();
-                            self.updated.insert(host.to_string(), notify.clone());
-                            dns::register(host, notify);
+                            let watcher = dns::register(host);
+                            self.updated.insert(host.to_string(), watcher);
                         }
                         shard_url.push(url_port.to_string());
                     }

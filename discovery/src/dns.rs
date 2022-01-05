@@ -15,29 +15,22 @@ use trust_dns_resolver::{AsyncResolver, TokioConnection, TokioConnectionProvider
 use ds::{CowReadHandle, CowWriteHandle};
 use once_cell::sync::OnceCell;
 static DNSCACHE: OnceCell<CowReadHandle<DnsCache>> = OnceCell::new();
-static REGISTER: OnceCell<Sender<RegisterItem>> = OnceCell::new();
 
 type RegisterItem = (String, Arc<AtomicBool>);
 type Resolver = AsyncResolver<TokioConnection, TokioConnectionProvider>;
 
 pub async fn start_dns_resolver_refresher() {
     let resolver = system_resolver();
-    let (tx, rx) = ds::cow(Default::default());
     let (reg_tx, reg_rx) = unbounded_channel();
+    let cache = DnsCache::from(reg_tx);
+    let (tx, rx) = ds::cow(cache);
     let _ = DNSCACHE.set(rx);
-    let _ = REGISTER.set(reg_tx);
 
     start_watch_dns(tx, reg_rx, resolver).await
 }
 
-pub fn register(host: &str, notify: Arc<AtomicBool>) {
-    if let Err(e) = REGISTER
-        .get()
-        .expect("not inited")
-        .send((host.to_string(), notify))
-    {
-        log::warn!("register host watcher failed. {}:{:?}", host, e);
-    }
+pub fn register(host: &str) -> Arc<AtomicBool> {
+    DNSCACHE.get().expect("not inited").get().watch(host)
 }
 
 pub fn lookup_ips(host: &str) -> Vec<String> {
@@ -59,6 +52,10 @@ struct Record {
     ips: Vec<IpAddr>,
 }
 impl Record {
+    fn first_watch(&self) -> Arc<AtomicBool> {
+        debug_assert_ne!(self.subscribers.len(), 0);
+        self.subscribers[0].clone()
+    }
     fn watch(&mut self, s: Arc<AtomicBool>) {
         self.subscribers.push(s);
     }
@@ -199,20 +196,39 @@ async fn start_watch_dns(
         }
         last = Instant::now();
 
-        log::info!("refresh dns elapsed:{:?}", start.elapsed());
+        log::debug!("refresh dns elapsed:{:?}", start.elapsed());
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct DnsCache {
+    tx: Sender<RegisterItem>,
     hosts: HashMap<String, Record>,
 }
 impl DnsCache {
+    fn from(tx: Sender<RegisterItem>) -> Self {
+        Self {
+            tx,
+            hosts: Default::default(),
+        }
+    }
     fn notify(&self) {
         for (host, record) in &self.hosts {
             if record.stale {
                 record.notify();
                 log::debug!("host {} refreshed {:?}", host, record.ips);
+            }
+        }
+    }
+    fn watch(&self, addr: &str) -> Arc<AtomicBool> {
+        match self.hosts.get(addr) {
+            Some(record) => record.first_watch(),
+            None => {
+                let watcher = Arc::new(AtomicBool::new(false));
+                if let Err(e) = self.tx.send((addr.to_string(), watcher.clone())) {
+                    log::info!("watcher failed to {} => {:?}", addr, e);
+                }
+                watcher
             }
         }
     }
