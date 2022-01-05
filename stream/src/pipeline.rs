@@ -32,6 +32,7 @@ where
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
+    // *metrics.right() =（req/resp）请求key/返回保包中总key(每一次key和);
     let mut rx_buf: DelayedDrop<_> = StreamGuard::from(GuardedBuffer::new(
         1024,
         1 << 20,
