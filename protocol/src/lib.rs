@@ -8,6 +8,7 @@ pub mod redis;
 pub mod req;
 pub mod resp;
 mod topo;
+mod utf8;
 
 pub use flag::*;
 pub use parser::Proto as Protocol;
@@ -20,6 +21,7 @@ pub use operation::*;
 
 pub mod callback;
 pub mod request;
+pub(crate) use utf8::*;
 
 pub trait ResponseWriter {
     // 写数据，一次写完

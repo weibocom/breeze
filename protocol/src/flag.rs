@@ -3,6 +3,9 @@ use crate::{OpCode, Operation};
 pub struct Flag {
     op_code: OpCode,
     op: Operation,
+    sentonly: bool,
+    status_ok: bool,
+    noforward: bool,
     v: u64,
 }
 
@@ -11,36 +14,34 @@ impl Flag {
     // last  = true 满足所有条件1. 当前请求是multiget；2. 拆分了多个子请求；3. 是`最后`一个子请求；
     #[inline(always)]
     pub fn from_op(op_code: OpCode, op: Operation) -> Self {
-        Self { op_code, op, v: 0 }
+        Self {
+            op_code,
+            op,
+            ..Default::default()
+        }
     }
 
     #[inline(always)]
     pub fn new() -> Self {
         Self::default()
     }
-    // 低位第一个字节是operation位
-    // 第二个字节是op_code
-    const STATUS_OK: u8 = 16;
-    const SEND_ONLY: u8 = 17;
-    const NO_FORWARD: u8 = 18;
-
     #[inline(always)]
-    pub fn set_status_ok(&mut self) -> &mut Self {
-        self.mark(Self::STATUS_OK);
-        self
+    pub fn set_status_ok(&mut self) {
+        debug_assert_eq!(self.ok(), false);
+        self.status_ok = true;
     }
     #[inline(always)]
     pub fn ok(&self) -> bool {
-        self.marked(Self::STATUS_OK)
+        self.status_ok
     }
     #[inline(always)]
-    pub fn set_sentonly(&mut self) -> &mut Self {
-        self.mark(Self::SEND_ONLY);
-        self
+    pub fn set_sentonly(&mut self) {
+        debug_assert!(!self.sentonly());
+        self.sentonly = true;
     }
     #[inline(always)]
     pub fn sentonly(&self) -> bool {
-        self.marked(Self::SEND_ONLY)
+        self.sentonly
     }
     #[inline(always)]
     pub fn operation(&self) -> Operation {
@@ -51,13 +52,13 @@ impl Flag {
         self.op_code
     }
     #[inline(always)]
-    pub fn set_noforward(&mut self) -> &mut Self {
-        self.mark(Self::NO_FORWARD);
-        self
+    pub fn set_noforward(&mut self) {
+        debug_assert!(!self.noforward());
+        self.noforward = true;
     }
     #[inline(always)]
     pub fn noforward(&self) -> bool {
-        self.marked(Self::NO_FORWARD)
+        self.noforward
     }
 
     #[inline(always)]

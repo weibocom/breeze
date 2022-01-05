@@ -110,22 +110,20 @@ static SENDER: OnceCell<Sender<DelayedByTime<Delayed>>> = OnceCell::new();
 use tokio::sync::mpsc::{
     unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender,
 };
-pub fn start_delay_drop() {
+pub fn start_delay_drop() -> DelayedDropHandler {
     let (tx, rx) = unbounded_channel();
     SENDER.set(tx).expect("inited yet");
 
-    tokio::spawn(async {
-        DelayedDropHandler {
-            rx,
-            tick: interval(Duration::from_secs(1)),
-            cache: None,
-        }
-        .await;
-    });
-    log::info!("delayed drop task started");
+    log::info!("task started ==> delayed instance gc");
+
+    DelayedDropHandler {
+        rx,
+        tick: interval(Duration::from_secs(1)),
+        cache: None,
+    }
 }
 use tokio::time::{interval, Duration, Instant, Interval};
-struct DelayedDropHandler {
+pub struct DelayedDropHandler {
     rx: Receiver<DelayedByTime<Delayed>>,
     tick: Interval,
     cache: Option<DelayedByTime<Delayed>>,

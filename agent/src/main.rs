@@ -7,8 +7,8 @@ use context::Context;
 use crossbeam_channel::bounded;
 use discovery::*;
 
+use rt::spawn;
 use std::time::Duration;
-use tokio::spawn;
 
 use protocol::Result;
 
@@ -47,16 +47,32 @@ async fn main() -> Result<()> {
 
     let _l = service::listener_for_supervisor(ctx.port()).await?;
     elog::init(ctx.log_dir(), &ctx.log_level)?;
+<<<<<<< HEAD
     metrics::start_metric_sender(&ctx.metrics_url());
     metrics::init_local_ip(&ctx.metrics_probe);
     //  metrics::ratio("ratio", 20, 2000);
+=======
+
+    // 在专用线程中初始化4个定时任务。
+    metrics::init_local_ip(&ctx.metrics_probe);
+    let mut spawner = rt::DedicatedSpawner::new();
+    let metric_cycle = Duration::from_secs(10);
+    spawner.spawn(metrics::Sender::new(&ctx.metrics_url(), metric_cycle));
+    spawner.spawn(metrics::MetricRegister::default());
+    spawner.spawn(discovery::dns::start_dns_resolver_refresher());
+    use discovery::watch_discovery;
+>>>>>>> 5f77a1bbd599b086f936d370d45c2de34a99a3cc
     let discovery = Discovery::from_url(ctx.discovery());
     let (tx, rx) = bounded(128);
-    discovery::dns::start_dns_resolver_refresher();
+    let snapshot = ctx.snapshot().to_string();
+    let tick = ctx.tick();
+    spawner.spawn(watch_discovery(snapshot, discovery, rx, tick));
+    spawner.spawn(stream::start_delay_drop());
+    log::info!("starting a dedicated thread for periodic tasks");
+    spawner.start_on_dedicated_thread();
+
     // 启动定期更新资源配置线程
-    discovery::start_watch_discovery(ctx.snapshot(), discovery, rx, ctx.tick());
     // 部分资源需要延迟drop。
-    stream::start_delay_drop();
 
     log::info!("====> server inited <====");
 
