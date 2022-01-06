@@ -7,13 +7,14 @@ use discovery::TopologyWrite;
 use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
 use sharding::distribution::DIST_RANGE_SPLIT_DEFAULT;
 use sharding::hash::Hasher;
+use sharding::ReplicaSelect;
 
 use super::config::RedisNamespace;
 use discovery::dns::{self, IPPort};
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
-    shards: Vec<Vec<(String, E)>>,
+    shards: Vec<Shard<E>>,
     r_idx: Vec<Arc<AtomicUsize>>, // 选择哪个从读取数据
     // 不同sharding的url。第0个是master
     shards_url: Vec<Vec<String>>,
@@ -73,43 +74,31 @@ where
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         // log::debug!("+++ shard_idx:{}, req.hash: {}", shard_idx, req.hash());
-        let mut idx = 0;
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
-        if shard.len() >= 2 && !req.operation().is_store() {
+        if shard.has_slave() && !req.operation().is_store() {
             debug_assert_eq!(self.shards.len(), self.r_idx.len());
             let ctx = *req.context_mut();
-            // 高4个字节是第一次的索引
-            // 低4个字节是下一次读取的索引
-            let (mut first, mut next) = (ctx >> 32, ctx & 0xffffffff);
-            let seq;
-            if ctx == 0 {
-                seq = unsafe {
-                    self.r_idx
-                        .get_unchecked(shard_idx)
-                        .fetch_add(1, Ordering::Relaxed)
-                        & 65535
-                };
+            // 高4个字节是执行的次数
+            // 低4个字节是上一次访问的索引
+            let runs;
+            let (idx, endpoint) = if ctx == 0 {
+                runs = 1;
+                shard.select()
             } else {
-                seq = next as usize;
-            }
+                let last = ctx as u32; // 低16位
+                runs = 1 + (ctx >> 32) as u32; // 次低16位
+                shard.next(last as usize)
+            };
             // shard 第一个元素是master，默认情况下需要规避
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
-            idx = seq % (shard.len() - 1) + 1;
-            if first == 0 {
-                first = idx as u64;
-                next = idx as u64 + 1;
-            } else {
-                next = seq as u64 + 1;
-            }
+            *req.context_mut() = ((runs as u64) << 32) | (idx as u64);
+            log::info!("slave idx:{}", idx);
+            req.try_next((runs as usize) < shard.slaves.len());
 
-            *req.context_mut() = (first << 32) | next;
-
-            // 减一，是把主减掉
-            req.try_next((next - first) < shard.len() as u64 - 1);
+            endpoint.1.send(req)
+        } else {
+            shard.master().send(req)
         }
-
-        debug_assert!(idx < shard.len());
-        shard[idx].1.send(req);
     }
 }
 impl<B, E, Req, P> TopologyWrite for RedisService<B, E, Req, P>
@@ -172,40 +161,45 @@ where
         let old_streams = self.shards.split_off(0);
         let mut old = HashMap::with_capacity(old_streams.len());
         for shard in old_streams {
-            for (addr, endpoint) in shard {
+            old.entry(shard.master.0)
+                .or_insert(Vec::new())
+                .push(shard.master.1);
+            for (addr, endpoint) in shard.slaves.into_inner() {
                 // 一个ip可能存在于多个域名中。
                 old.entry(addr).or_insert(Vec::new()).push(endpoint);
             }
         }
         // 遍历所有的shards_url
         for shard in self.shards_url.iter() {
-            let mut endpoints = Vec::new();
             if shard.len() > 0 {
                 let master_url = &shard[0];
                 let masters = dns::lookup_ips(master_url.host());
-                if masters.len() > 0 {
-                    // 忽略多个masterip的情况
-                    let master_ip = &masters[0];
-                    let master_addr = master_ip.to_string() + ":" + master_url.port();
-                    let timeout = Duration::from_millis(500);
-                    let master = self.take_or_build(&mut old, &master_addr, timeout);
-                    endpoints.push((master_addr, master));
+                if masters.len() == 0 {
+                    log::info!("master host not lookuped:{}", master_url);
+                    break;
+                }
+                // 忽略多个masterip的情况
+                let master_ip = &masters[0];
+                let master_addr = master_ip.to_string() + ":" + master_url.port();
+                let timeout = Duration::from_millis(500);
+                let master = self.take_or_build(&mut old, &master_addr, timeout);
 
-                    // slave
-                    for url_port in &shard[1..] {
-                        let url = url_port.host();
-                        let port = url_port.port();
-                        for slave_ip in dns::lookup_ips(url) {
-                            let addr = slave_ip + ":" + port;
-                            let timeout = Duration::from_millis(200);
-                            let slave = self.take_or_build(&mut old, &addr, timeout);
-                            endpoints.push((addr, slave));
-                        }
+                // slave
+                let mut replicas = Vec::with_capacity(8);
+                for url_port in &shard[1..] {
+                    let url = url_port.host();
+                    let port = url_port.port();
+                    for slave_ip in dns::lookup_ips(url) {
+                        let addr = slave_ip + ":" + port;
+                        let timeout = Duration::from_millis(200);
+                        let slave = self.take_or_build(&mut old, &addr, timeout);
+                        replicas.push((addr, slave));
                     }
                 }
+                // 无论怎样，需要都要将endpoints push进去。需要占位，保证shard位置与url中的位置对齐
+                self.shards
+                    .push(Shard::random(master_addr, master, replicas));
             }
-            // 无论怎样，需要都要将endpoints push进去。需要占位，保证shard位置与url中的位置对齐
-            self.shards.push(endpoints);
         }
 
         log::info!("loading complete {}", self.service);
@@ -220,9 +214,10 @@ where
     fn inited(&self) -> bool {
         // 每一个分片都有初始, 并且至少有一主一从。
         self.shards.len() == self.shards_url.len()
-            && self.shards.iter().fold(true, |inited, shard| {
-                inited && shard.len() >= 2 && shard.iter().fold(true, |i, e| i && e.1.inited())
-            })
+            && self
+                .shards
+                .iter()
+                .fold(true, |inited, shard| inited && shard.inited())
     }
 }
 impl<B, E, Req, P> RedisService<B, E, Req, P>
@@ -243,5 +238,50 @@ where
                 timeout,
             ),
         }
+    }
+}
+#[derive(Clone)]
+struct Shard<E> {
+    master: (String, E),
+    slaves: ReplicaSelect<(String, E)>,
+}
+impl<E> Shard<E> {
+    #[inline(always)]
+    fn random(master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+        Self {
+            master: (master_host, master),
+            slaves: ReplicaSelect::random(replicas),
+        }
+    }
+    #[inline(always)]
+    fn has_slave(&self) -> bool {
+        self.slaves.len() > 0
+    }
+    #[inline(always)]
+    fn master(&self) -> &E {
+        &self.master.1
+    }
+    #[inline(always)]
+    fn select(&self) -> (usize, &(String, E)) {
+        unsafe { self.slaves.unsafe_select() }
+    }
+    #[inline(always)]
+    fn next(&self, idx: usize) -> (usize, &(String, E)) {
+        unsafe { self.slaves.unsafe_next(idx) }
+    }
+}
+impl<E: discovery::Inited> Shard<E> {
+    // 1. 主已经初始化
+    // 2. 有从
+    // 3. 所有的从已经初始化
+    #[inline(always)]
+    fn inited(&self) -> bool {
+        self.master().inited()
+            && self.has_slave()
+            && self
+                .slaves
+                .as_ref()
+                .iter()
+                .fold(true, |inited, (_, e)| inited && e.inited())
     }
 }
