@@ -4,8 +4,6 @@ use discovery::Inited;
 use protocol::Protocol;
 use sharding::hash::Hasher;
 
-//use stream::{AsyncReadAll, AsyncWriteAll, Request, Response};
-
 pub use protocol::Endpoint;
 
 macro_rules! define_topology {
