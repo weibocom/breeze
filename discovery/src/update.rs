@@ -52,7 +52,6 @@ where
         let mut services = HashMap::new();
         let mut last = Instant::now();
         loop {
-            let start = Instant::now();
             while let Ok(t) = self.rx.try_recv() {
                 let service = t.service().name();
                 if services.contains_key(&service) {
@@ -72,9 +71,6 @@ where
             }
             for (_service, t) in services.iter_mut() {
                 t.try_load();
-            }
-            if start.elapsed() >= Duration::from_millis(10) {
-                log::warn!("cfg refresh elpased:{:?}", start.elapsed());
             }
             tick.tick().await;
         }
