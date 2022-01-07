@@ -29,6 +29,8 @@ pub struct Basic {
     pub(crate) listen: String,
     #[serde(default)]
     resource_type: String,
+    #[serde(default)]
+    pub(crate) selector: String,
 }
 
 // #[derive(Debug, Clone, Deserialize, Serialize)]
