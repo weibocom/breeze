@@ -60,7 +60,9 @@ async fn main() -> Result<()> {
     let (tx, rx) = bounded(128);
     let snapshot = ctx.snapshot().to_string();
     let tick = ctx.tick();
-    spawner.spawn(watch_discovery(snapshot, discovery, rx, tick));
+    let mut fix = discovery::Fixed::default();
+    fix.register(ctx.idc_path(), sharding::build_refresh_idc());
+    spawner.spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
     spawner.spawn(stream::start_delay_drop());
     log::info!("starting a dedicated thread for periodic tasks");
     spawner.start_on_dedicated_thread();

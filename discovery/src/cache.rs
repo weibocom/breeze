@@ -89,6 +89,9 @@ impl<D: Discover + Send + Sync> DiscoveryCache<D> {
             sig.clear();
         }
     }
+    pub(crate) fn inner(&self) -> &D {
+        &self.discovery
+    }
 }
 
 unsafe impl<D> Send for DiscoveryCache<D> {}

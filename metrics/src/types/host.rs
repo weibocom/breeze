@@ -1,14 +1,6 @@
-use lazy_static::*;
 use psutil::process::Process;
-use std::sync::RwLock;
-lazy_static! {
-    static ref PROCESS: RwLock<Process> =
-        RwLock::new(Process::current().expect("cannot get current process"));
-}
-// 采集宿主机的基本信息
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 static CPU_PERCENT: AtomicUsize = AtomicUsize::new(0);
 static MEMORY: AtomicUsize = AtomicUsize::new(0);
 
