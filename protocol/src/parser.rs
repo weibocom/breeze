@@ -89,7 +89,7 @@ pub struct HashedCommand {
 
 impl Command {
     #[inline(always)]
-    pub fn new(flag: Flag, key_count: u16, cmd: ds::MemGuard) -> Self {
+    pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
         Self { flag, cmd }
     }
     #[inline(always)]
