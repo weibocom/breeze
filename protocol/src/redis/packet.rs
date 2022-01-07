@@ -16,10 +16,14 @@ impl RequestContext {
     #[inline(always)]
     fn reset(&mut self) {
         debug_assert_eq!(std::mem::size_of::<Self>(), 8);
-        *self.u64() = 0;
+        *self.u64_mut() = 0;
     }
     #[inline(always)]
-    fn u64(&mut self) -> &mut u64 {
+    fn u64(&mut self) -> u64 {
+        *self.u64_mut()
+    }
+    #[inline(always)]
+    fn u64_mut(&mut self) -> &mut u64 {
         unsafe { std::mem::transmute(self) }
     }
     #[inline(always)]
@@ -111,6 +115,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.oft > self.oft_last {
             self.stream.ignore(self.oft - self.oft_last);
             self.oft_last = self.oft;
+
+            debug_assert_ne!(self.ctx.op_code, 0);
+            // 更新
+            *self.stream.context() = self.ctx.u64();
         }
     }
     #[inline(always)]
@@ -120,10 +128,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.oft_last = self.oft;
         self.first = false;
         // 更新上下文的bulk num。
-        *self.stream.context() = *self.ctx.u64();
+        *self.stream.context() = self.ctx.u64();
         if self.ctx.bulk == 0 {
             self.ctx.reset();
-            debug_assert_eq!(*self.ctx.u64(), 0);
+            debug_assert_eq!(self.ctx.u64(), 0);
             *self.stream.context() = 0;
         }
         self.stream.take(data.len())
