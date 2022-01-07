@@ -31,8 +31,13 @@ pub(crate) struct CommandProperties {
 
 // 默认响应
 // 第0个表示quit
-pub const PADDING_RSP_TABLE: [&str; 4] =
-    ["", "+OK\r\n", "+PONG\r\n", "-ERR redis no available\r\n"];
+pub const PADDING_RSP_TABLE: [&str; 5] = [
+    "",
+    "+OK\r\n",
+    "+PONG\r\n",
+    "-ERR redis no available\r\n",
+    "-ERR not supported command\r\n",
+];
 
 impl CommandProperties {
     #[inline]
@@ -233,7 +238,8 @@ lazy_static! {
                 ("command", "command" ,-1, Meta, 0, 0, 0, 1, false, true, false, false, false),
                 ("ping", "ping" ,-1, Meta, 0, 0, 0, 2, false, true, false, false, false),
                 // 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
-                ("select", "ping" ,2, Meta, 0, 0, 0, 1, false, true, false, false, false),
+                ("select", "select" ,2, Meta, 0, 0, 0, 1, false, true, false, false, false),
+                ("hello", "hello" ,2, Meta, 0, 0, 0, 4, false, true, false, false, false),
                 ("quit", "quit" ,2, Meta, 0, 0, 0, 0, false, true, false, false, false),
 
                 ("get" , "get",2, Get, 1, 1, 1, 3, false, false, true, false, false),
