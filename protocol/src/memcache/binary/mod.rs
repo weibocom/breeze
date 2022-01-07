@@ -73,11 +73,8 @@ impl Protocol for MemcacheBinary {
             let pl = r.packet_len();
             if len >= pl {
                 let mut flag = Flag::from_op(r.op() as u16, r.operation());
-                if r.status_ok() {
-                    flag.set_status_ok();
-                }
-                // TODO: response 目前不会用到key_count
-                return Ok(Some(Command::new(flag, 1, data.take(pl))));
+                flag.set_status_ok(r.status_ok());
+                return Ok(Some(Command::new(flag, data.take(pl))));
             }
         }
         Ok(None)
