@@ -26,9 +26,9 @@ impl Flag {
         Self::default()
     }
     #[inline(always)]
-    pub fn set_status_ok(&mut self) {
+    pub fn set_status_ok(&mut self, ok: bool) {
         debug_assert_eq!(self.ok(), false);
-        self.status_ok = true;
+        self.status_ok = ok;
     }
     #[inline(always)]
     pub fn ok(&self) -> bool {
