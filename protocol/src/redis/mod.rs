@@ -104,19 +104,6 @@ impl Protocol for Redis {
             Err(Error::ProtocolIncomplete) => Ok(()),
             e => e,
         }
-        //let mut count = 0;
-        //loop {
-        //    match self.parse_request_inner(stream, alg, process) {
-        //        Ok(_) => count += 1,
-        //        Err(e) => match e {
-        //            Error::ProtocolIncomplete => return Ok(()),
-        //            _ => return Err(e),
-        //        },
-        //    }
-        //    if count > 1000 {
-        //        log::warn!("too big pipeline: {}", count);
-        //    }
-        //}
     }
 
     // 为每一个req解析一个response
