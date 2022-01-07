@@ -15,6 +15,7 @@ pub use quadruple::Quadruple;
 pub struct Context {
     #[clap(long, help("port for suvervisor"), default_value("9984"))]
     port: u16,
+
     #[clap(
         short,
         long,
@@ -22,6 +23,14 @@ pub struct Context {
         default_value("vintage://127.0.0.1:8080")
     )]
     discovery: Url,
+
+    #[clap(
+        short,
+        long,
+        help("idc config path"),
+        default_value("/3/config/breeze/idc_region")
+    )]
+    idc_path: String,
 
     #[clap(
         short,
@@ -110,6 +119,9 @@ impl Context {
     }
     pub fn snapshot(&self) -> &str {
         &self.snapshot
+    }
+    pub fn idc_path(&self) -> String {
+        self.idc_path.clone()
     }
 }
 

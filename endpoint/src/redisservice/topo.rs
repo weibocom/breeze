@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,10 +15,10 @@ use discovery::dns::{self, IPPort};
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
     shards: Vec<Shard<E>>,
-    r_idx: Vec<Arc<AtomicUsize>>, // 选择哪个从读取数据
     // 不同sharding的url。第0个是master
     shards_url: Vec<Vec<String>>,
     hasher: Hasher,
+    selector: String, // 从的选择策略。
     updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
     service: String,
@@ -30,12 +30,12 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
         Self {
             parser,
             shards: Default::default(),
-            r_idx: Default::default(),
             shards_url: Default::default(),
             hasher: Default::default(),
             updated: Default::default(),
             service: Default::default(),
             _mark: Default::default(),
+            selector: Default::default(),
         }
     }
 }
@@ -76,23 +76,21 @@ where
         // log::debug!("+++ shard_idx:{}, req.hash: {}", shard_idx, req.hash());
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
-            debug_assert_eq!(self.shards.len(), self.r_idx.len());
             let ctx = *req.context_mut();
             // 高4个字节是执行的次数
             // 低4个字节是上一次访问的索引
             let runs;
             let (idx, endpoint) = if ctx == 0 {
-                runs = 1;
+                runs = 0;
                 shard.select()
             } else {
                 let last = ctx as u32; // 低16位
-                runs = 1 + (ctx >> 32) as u32; // 次低16位
-                shard.next(last as usize)
+                runs = (ctx >> 32) as u32; // 次低16位
+                shard.next(last as usize, runs as usize)
             };
             // shard 第一个元素是master，默认情况下需要规避
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
-            *req.context_mut() = ((runs as u64) << 32) | (idx as u64);
-            log::info!("slave idx:{}", idx);
+            *req.context_mut() = ((1 + runs as u64) << 32) | (idx as u64);
             req.try_next((runs as usize) < shard.slaves.len());
 
             endpoint.1.send(req)
@@ -113,12 +111,9 @@ where
             Err(e) => log::info!("failed to parse redis namespace:{},{:?}", namespace, e),
             Ok(ns) => {
                 self.hasher = Hasher::from(&ns.basic.hash);
-                log::info!("update redis cfg: {:?}", cfg);
+                self.selector = ns.basic.selector;
                 let mut shards_url = Vec::new();
-                let mut read_idx = Vec::with_capacity(ns.backends.len());
                 for shard in ns.backends.iter() {
-                    let rd = rand::random::<u32>() as usize;
-                    read_idx.push(Arc::new(AtomicUsize::from(rd)));
                     let mut shard_url = Vec::new();
                     for url_port in shard.split(",") {
                         // 注册域名。后续可以通常lookup进行查询。
@@ -135,7 +130,6 @@ where
                     log::info!("top updated from {:?} to {:?}", self.shards_url, shards_url);
                 }
                 self.shards_url = shards_url;
-                self.r_idx = read_idx;
             }
         }
         self.service = namespace.to_string();
@@ -158,6 +152,37 @@ where
             updated.store(false, Ordering::Release);
         }
 
+        // 所有的ip要都能解析出主从域名
+        let mut addrs = Vec::with_capacity(self.shards_url.len());
+        for shard in self.shards_url.iter() {
+            if shard.len() < 2 {
+                log::warn!("{} both master and slave required.", self.service);
+                return;
+            }
+            let master_url = &shard[0];
+            let masters = dns::lookup_ips(master_url.host());
+            if masters.len() == 0 {
+                log::debug!("{} master not looked up", master_url);
+                return;
+            }
+            let master = String::from(&masters[0]) + ":" + master_url.port();
+            let mut slaves = Vec::with_capacity(8);
+            for url_port in &shard[1..] {
+                let url = url_port.host();
+                let port = url_port.port();
+                for slave_ip in dns::lookup_ips(url) {
+                    let addr = slave_ip + ":" + port;
+                    slaves.push(addr);
+                }
+            }
+            if slaves.len() == 0 {
+                log::debug!("{:?} slave not looked up", &shard[1..]);
+                return;
+            }
+            addrs.push((master, slaves));
+        }
+        // 到这之后，所有的shard都能解析出ip
+
         let old_streams = self.shards.split_off(0);
         let mut old = HashMap::with_capacity(old_streams.len());
         for shard in old_streams {
@@ -170,39 +195,24 @@ where
             }
         }
         // 遍历所有的shards_url
-        for shard in self.shards_url.iter() {
-            if shard.len() > 0 {
-                let master_url = &shard[0];
-                let masters = dns::lookup_ips(master_url.host());
-                if masters.len() == 0 {
-                    log::info!("master host not lookuped:{}", master_url);
-                    break;
-                }
-                // 忽略多个masterip的情况
-                let master_ip = &masters[0];
-                let master_addr = master_ip.to_string() + ":" + master_url.port();
-                let timeout = Duration::from_millis(500);
-                let master = self.take_or_build(&mut old, &master_addr, timeout);
+        for (master_addr, slaves) in addrs {
+            debug_assert_ne!(master_addr.len(), 0);
+            debug_assert_ne!(slaves.len(), 0);
+            let timeout = Duration::from_millis(500);
+            let master = self.take_or_build(&mut old, &master_addr, timeout);
 
-                // slave
-                let mut replicas = Vec::with_capacity(8);
-                for url_port in &shard[1..] {
-                    let url = url_port.host();
-                    let port = url_port.port();
-                    for slave_ip in dns::lookup_ips(url) {
-                        let addr = slave_ip + ":" + port;
-                        let timeout = Duration::from_millis(200);
-                        let slave = self.take_or_build(&mut old, &addr, timeout);
-                        replicas.push((addr, slave));
-                    }
-                }
-                // 无论怎样，需要都要将endpoints push进去。需要占位，保证shard位置与url中的位置对齐
-                self.shards
-                    .push(Shard::random(master_addr, master, replicas));
+            // slave
+            let mut replicas = Vec::with_capacity(8);
+            for addr in slaves {
+                let timeout = Duration::from_millis(200);
+                let slave = self.take_or_build(&mut old, &addr, timeout);
+                replicas.push((addr, slave));
             }
+            let shard = Shard::selector(&self.selector, master_addr, master, replicas);
+            self.shards.push(shard);
         }
-
-        log::info!("loading complete {}", self.service);
+        debug_assert_eq!(self.shards.len(), self.shards_url.len());
+        log::info!("{} load complete => {}", self.service, self.shards.len());
     }
 }
 impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
@@ -247,10 +257,10 @@ struct Shard<E> {
 }
 impl<E> Shard<E> {
     #[inline(always)]
-    fn random(master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(s: &str, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
-            slaves: ReplicaSelect::random(replicas),
+            slaves: ReplicaSelect::from(s, replicas),
         }
     }
     #[inline(always)]
@@ -266,8 +276,8 @@ impl<E> Shard<E> {
         unsafe { self.slaves.unsafe_select() }
     }
     #[inline(always)]
-    fn next(&self, idx: usize) -> (usize, &(String, E)) {
-        unsafe { self.slaves.unsafe_next(idx) }
+    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+        unsafe { self.slaves.unsafe_next(idx, runs) }
     }
 }
 impl<E: discovery::Inited> Shard<E> {
