@@ -36,7 +36,7 @@ pub const PADDING_RSP_TABLE: [&str; 5] = [
     "+OK\r\n",
     "+PONG\r\n",
     "-ERR redis no available\r\n",
-    "-ERR not supported command\r\n",
+    "-ERR unknown command\r\n",
 ];
 
 impl CommandProperties {
