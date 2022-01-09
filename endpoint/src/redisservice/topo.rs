@@ -81,16 +81,16 @@ where
             // 低4个字节是上一次访问的索引
             let runs;
             let (idx, endpoint) = if ctx == 0 {
-                runs = 0;
+                runs = 1;
                 shard.select()
             } else {
                 let last = ctx as u32; // 低16位
-                runs = (ctx >> 32) as u32; // 次低16位
-                shard.next(last as usize, runs as usize)
+                runs = 1 + (ctx >> 32) as u32; // 次低16位
+                shard.next(last as usize, runs as usize - 1)
             };
             // shard 第一个元素是master，默认情况下需要规避
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
-            *req.context_mut() = ((1 + runs as u64) << 32) | (idx as u64);
+            *req.context_mut() = ((runs as u64) << 32) | (idx as u64);
             req.try_next((runs as usize) < shard.slaves.len());
 
             endpoint.1.send(req)
