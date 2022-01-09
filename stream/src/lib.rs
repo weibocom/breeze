@@ -16,7 +16,7 @@ pub use builder::BackendBuilder as Builder;
 pub use builder::*;
 
 pub(crate) mod checker;
-pub(crate) mod timeout;
+//pub(crate) mod timeout;
 
 pub(crate) mod gc;
 pub use gc::start_delay_drop;

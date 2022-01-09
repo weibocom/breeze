@@ -111,6 +111,13 @@ impl<T: MetricData> SubAssign<T> for Metric {
 }
 use std::fmt::{self, Display, Formatter};
 impl Display for Metric {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "name:{:?}", self.id.path)
+    }
+}
+impl Debug for Metric {
+    #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "name:{:?}", self.id)
     }
