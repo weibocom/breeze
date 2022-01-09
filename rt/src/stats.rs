@@ -4,46 +4,79 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
+use futures::ready;
+use tokio::time::{interval, Interval};
+
 pub trait ReEnter {
-    // 重入之后是否有数据需要处理。
-    fn need_process(&self) -> bool;
+    // 发送的请求数量
+    #[inline(always)]
+    fn num_tx(&self) -> usize {
+        0
+    }
+    // 接收到的请求数量
+    #[inline(always)]
+    fn num_rx(&self) -> usize {
+        0
+    }
 }
 //  统计
 //  1. 每次poll的执行耗时
 //  2. 重入耗时间隔
-pub struct StatsFuture<F> {
+pub struct Timeout<F> {
     last: Instant,
+    last_rx: Instant, // 上一次有接收到请求的时间
     inner: F,
+    timeout: Duration,
+    tick: Interval,
 }
-impl<F: Future + Unpin + ReEnter + Debug> From<F> for StatsFuture<F> {
+impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
     #[inline]
-    fn from(f: F) -> Self {
+    pub fn from(f: F, timeout: Duration) -> Self {
+        let tick = interval(timeout / 2);
         Self {
             inner: f,
             last: Instant::now(),
+            last_rx: Instant::now(),
+            timeout,
+            tick,
         }
     }
 }
 
-impl<F: Future + ReEnter + Debug + Unpin> Future for StatsFuture<F> {
+use protocol::Result;
+impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeout<F> {
     type Output = F::Output;
     #[inline(always)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.inner.need_process() {
+        let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
+        if tx > rx {
             let elapsed = self.last.elapsed();
             if elapsed >= Duration::from_millis(20) {
-                log::info!("reenter schedule elapsed:{:?} => {:?}", elapsed, self.inner);
+                log::info!("reenter {:?} {} > {} => {:?}", elapsed, tx, rx, self.inner);
+            }
+            if elapsed >= self.timeout {
+                log::info!(
+                    "receive no response after {:?}. tx:{} rx:{} => {:?}",
+                    elapsed,
+                    tx,
+                    rx,
+                    self.inner
+                );
+                return Poll::Ready(Err(protocol::Error::Timeout(elapsed)));
             }
         }
-        // 统计一次poll需要的时间
-        let start = Instant::now();
         let ret = Pin::new(&mut self.inner).poll(cx);
-        if start.elapsed() >= Duration::from_millis(10) {
-            log::info!("poll elapsed:{:?} => {:?}", start.elapsed(), self.inner);
+        let (tx_post, rx_post) = (self.inner.num_tx(), self.inner.num_rx());
+        if tx_post > rx_post {
+            self.last = Instant::now();
+            if rx_post > rx {
+                self.last_rx = self.last;
+            }
+            loop {
+                ready!(self.tick.poll_tick(cx));
+            }
+        } else {
+            ret
         }
-
-        self.last = Instant::now();
-
-        ret
     }
 }
