@@ -67,9 +67,8 @@ impl<P, Req> BackendChecker<P, Req> {
                 StreamGuard::from(GuardedBuffer::new(2048, 1 << 20, 16 * 1024, |_, _| {})).into();
             let pending = &mut VecDeque::with_capacity(31);
             let p = self.parser.clone();
-            let handler =
-                Handler::from(rx, pending, &mut buf, w, r, &mut self.rtt, p, self.timeout);
-            let handler = rt::StatsFuture::from(handler);
+            let handler = Handler::from(rx, pending, &mut buf, w, r, &mut self.rtt, p);
+            let handler = rt::Timeout::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 log::info!("{} handler error:{:?}", self.s_metric, e);
             }
