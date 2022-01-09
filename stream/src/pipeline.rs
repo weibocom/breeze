@@ -57,7 +57,8 @@ where
         start_init: false,
         first: true, // 默认当前请求是第一个
     };
-    let pipeline = rt::StatsFuture::from(pipeline);
+    let timeout = std::time::Duration::from_secs(3);
+    let pipeline = rt::Timeout::from(pipeline, timeout);
     let ret = pipeline.await;
     crate::gc::delayed_drop((rx_buf, pending, waker));
     ret
@@ -263,12 +264,7 @@ impl<'a, C, P> Drop for CopyBidirectional<'a, C, P> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<'a, C, P> rt::ReEnter for CopyBidirectional<'a, C, P> {
-    #[inline(always)]
-    fn need_process(&self) -> bool {
-        self.pending.len() > 0 || self.tx_idx < self.tx_buf.len()
-    }
-}
+impl<'a, C, P> rt::ReEnter for CopyBidirectional<'a, C, P> {}
 impl<'a, C, P> Debug for CopyBidirectional<'a, C, P> {
     #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
