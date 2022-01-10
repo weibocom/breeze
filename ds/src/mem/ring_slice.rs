@@ -1,25 +1,12 @@
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
-use crate::Slice;
-
-#[derive(Clone, Debug)]
+#[derive(Default)]
 pub struct RingSlice {
-    ptr: *const u8,
+    ptr: usize,
     cap: usize,
     start: usize,
     end: usize,
-}
-
-impl Default for RingSlice {
-    fn default() -> Self {
-        RingSlice {
-            ptr: 0 as *mut u8,
-            start: 0,
-            end: 0,
-            cap: 0,
-        }
-    }
 }
 
 impl RingSlice {
@@ -29,49 +16,60 @@ impl RingSlice {
         debug_assert_eq!(cap, cap.next_power_of_two());
         debug_assert!(end >= start);
         let me = Self {
-            ptr: ptr,
+            ptr: ptr as usize,
             cap: cap,
             start: start,
             end: end,
         };
         me
     }
+
+    #[inline(always)]
+    pub fn capacity(&self) -> usize {
+        self.cap
+    }
+
     #[inline(always)]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
         debug_assert!(offset + len <= self.len());
         Self::from(
-            self.ptr,
+            self.ptr(),
             self.cap,
             self.start + offset,
             self.start + offset + len,
         )
     }
-    #[inline]
-    pub fn as_slices(&self) -> Vec<Slice> {
-        let mut slices = Vec::with_capacity(2);
-
-        let mut read = self.start;
-        while read < self.end {
-            let oft = read & (self.cap - 1);
-            let l = (self.cap - oft).min(self.end - read);
-            slices.push(unsafe { Slice::new(self.ptr.offset(oft as isize) as usize, l) });
-            read += l;
-        }
-
-        slices
+    // 从start开始的所有数据。start不是offset，是绝对值。
+    //#[inline(always)]
+    //pub fn take(&self, start: usize) -> RingSlice {
+    //    debug_assert!(start >= self.start);
+    //    debug_assert!(start <= self.end);
+    //    Self::from(self.ptr(), self.cap, start, self.end)
+    //}
+    // 读取数据. 可能只读取可读数据的一部分。
+    #[inline(always)]
+    pub fn read(&self, offset: usize) -> &[u8] {
+        debug_assert!(offset < self.len());
+        let oft = self.mask(self.start + offset);
+        let l = (self.cap - oft).min(self.end - self.start - offset);
+        //println!("read data offset:{} start offset:{} l:{}", offset, oft, l);
+        unsafe { std::slice::from_raw_parts(self.ptr().offset(oft as isize), l) }
     }
-    #[inline]
-    pub fn data(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(self.len());
-        self.copy_to_vec(&mut v);
-        v
-    }
-    #[inline]
+    #[inline(always)]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
-        v.reserve(self.len());
-        for slice in self.as_slices() {
-            slice.copy_to_vec(v);
+        let len = self.len();
+        v.reserve(len);
+        let mut oft = 0;
+        use crate::Buffer;
+        while oft < len {
+            let data = self.read(oft);
+            oft += data.len();
+            v.write(data);
         }
+    }
+    #[inline(always)]
+    fn mask(&self, oft: usize) -> usize {
+        (self.cap - 1) & oft
     }
 
     #[inline(always)]
@@ -82,16 +80,22 @@ impl RingSlice {
     #[inline(always)]
     pub fn at(&self, idx: usize) -> u8 {
         debug_assert!(idx < self.len());
-        unsafe {
-            *self
-                .ptr
-                .offset(((self.start + idx) & (self.cap - 1)) as isize)
-        }
+        unsafe { *self.oft_ptr(idx) }
     }
-
     #[inline(always)]
-    pub fn location(&self) -> (usize, usize) {
-        (self.start, self.end)
+    pub fn update(&mut self, idx: usize, b: u8) {
+        debug_assert!(idx < self.len());
+        unsafe { *self.oft_ptr(idx) = b }
+    }
+    #[inline(always)]
+    pub fn ptr(&self) -> *mut u8 {
+        self.ptr as *mut u8
+    }
+    #[inline(always)]
+    unsafe fn oft_ptr(&self, idx: usize) -> *mut u8 {
+        debug_assert!(idx < self.len());
+        let oft = self.mask(self.start + idx);
+        self.ptr().offset(oft as isize)
     }
 
     pub fn split(&self, splitter: &[u8]) -> Vec<Self> {
@@ -140,8 +144,26 @@ impl RingSlice {
         None
     }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
-    pub fn index_lf_cr(&self, offset: usize) -> Option<usize> {
-        self.find_sub(offset, &[b'\r', b'\n'])
+    #[inline(always)]
+    pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
+        for i in offset..self.len() - 1 {
+            // 先找'\r'
+            if self.at(i) == b'\r' {
+                // 再验证'\n'
+                if self.at(i + 1) == b'\n' {
+                    return Some(i);
+                }
+            }
+        }
+        None
+    }
+
+    // 只用来debug
+    #[inline(always)]
+    fn to_vec(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(self.len());
+        self.copy_to_vec(&mut v);
+        v
     }
 }
 
@@ -159,15 +181,15 @@ macro_rules! define_read_number {
                 let oft_start = (self.start + offset) & (self.cap - 1);
                 let oft_end = self.end & (self.cap - 1);
                 if oft_end > oft_start || self.cap >= oft_start + SIZE {
-                    let b = from_raw_parts(self.ptr.offset(oft_start as isize), SIZE);
+                    let b = from_raw_parts(self.ptr().offset(oft_start as isize), SIZE);
                     $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
                 } else {
                     // start索引更高
                     // 拐弯了
                     let mut b = [0u8; SIZE];
                     let n = self.cap - oft_start;
-                    copy_nonoverlapping(self.ptr.offset(oft_start as isize), b.as_mut_ptr(), n);
-                    copy_nonoverlapping(self.ptr, b.as_mut_ptr().offset(n as isize), SIZE - n);
+                    copy_nonoverlapping(self.ptr().offset(oft_start as isize), b.as_mut_ptr(), n);
+                    copy_nonoverlapping(self.ptr(), b.as_mut_ptr().offset(n as isize), SIZE - n);
                     $type_name::from_be_bytes(b)
                 }
             }
@@ -184,8 +206,8 @@ impl RingSlice {
 }
 
 impl PartialEq<[u8]> for RingSlice {
+    #[inline]
     fn eq(&self, other: &[u8]) -> bool {
-        println!("eq ref slice");
         if self.len() == other.len() {
             for i in 0..other.len() {
                 if self.at(i) != other[i] {
@@ -198,17 +220,12 @@ impl PartialEq<[u8]> for RingSlice {
         }
     }
 }
-
-impl PartialEq<Slice> for RingSlice {
-    fn eq(&self, other: &Slice) -> bool {
-        self == other.data()
-    }
-}
-impl Eq for RingSlice {}
-impl PartialEq for RingSlice {
+// 内容相等
+impl PartialEq<Self> for RingSlice {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         if self.len() == other.len() {
-            for i in 0..self.len() {
+            for i in 0..other.len() {
                 if self.at(i) != other.at(i) {
                     return false;
                 }
@@ -219,48 +236,38 @@ impl PartialEq for RingSlice {
         }
     }
 }
-
-use std::hash::{Hash, Hasher};
-impl Hash for RingSlice {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        let slices = self.as_slices();
-        unsafe {
-            if slices.len() == 1 {
-                slices.get_unchecked(0).data().hash(state);
-            } else {
-                let mut v = Vec::with_capacity(self.len());
-                self.copy_to_vec(&mut v);
-                v.hash(state);
-            }
-        }
-    }
-}
-
-impl From<Slice> for RingSlice {
-    #[inline]
-    fn from(s: Slice) -> Self {
-        let len = s.len();
-        let cap = len.next_power_of_two();
-        Self::from(s.as_ptr(), cap, 0, s.len())
-    }
-}
 impl From<&[u8]> for RingSlice {
     #[inline]
     fn from(s: &[u8]) -> Self {
+        debug_assert_ne!(s.len(), 0);
         let len = s.len();
         let cap = len.next_power_of_two();
-        Self::from(s.as_ptr(), cap, 0, s.len())
+        Self::from(s.as_ptr() as *mut u8, cap, 0, s.len())
     }
 }
 use std::fmt;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 impl Display for RingSlice {
+    #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RingSlice: ptr:{} start:{} end:{} cap:{}",
-            self.ptr as usize, self.start, self.end, self.cap
+            "ptr:{} start:{} end:{} cap:{}",
+            self.ptr, self.start, self.end, self.cap
+        )
+    }
+}
+impl Debug for RingSlice {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ptr:{} start:{} end:{} cap:{} => {:?}",
+            self.ptr,
+            self.start,
+            self.end,
+            self.cap,
+            self.to_vec()
         )
     }
 }

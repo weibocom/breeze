@@ -78,7 +78,7 @@ pub trait FakedClone {
     fn faked_clone(&self) -> Self;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LayerRole {
     MasterL1 = 0,
     Master = 1,

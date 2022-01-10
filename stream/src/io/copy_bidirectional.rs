@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::future::Future;
 use std::io::Result;
 use std::pin::Pin;
@@ -92,7 +91,6 @@ where
         } = &mut *self;
         let mut client = Pin::new(&mut *client);
         let mut agent = Pin::new(&mut *agent);
-        let mut direct_response_queue: VecDeque<Request> = VecDeque::new();
         loop {
             metric.enter();
             if !*sent {
@@ -112,8 +110,9 @@ where
                     break;
                 }
                 *sent = true;
-                log::debug!("req sent.{} {}", metric.req_bytes, rid.session_id());
+                log::debug!("req sent.{} {}", metric.req_bytes, rid);
             }
+
             ready!(sender.poll_copy_one(
                 cx,
                 agent.as_mut(),
@@ -135,11 +134,12 @@ where
             current_request.take();
             current_response.take();
             log::debug!("resp sent {} {}", metric.resp_bytes, rid.session_id());
+
             *sent = false;
             rid.incr();
             // 开始记录metric
             let duration = metric.duration();
-            const SLOW: Duration = Duration::from_millis(200);
+            const SLOW: Duration = Duration::from_millis(1000);
             if duration >= SLOW {
                 log::info!("slow request: {}", metric);
             }

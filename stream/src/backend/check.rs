@@ -29,7 +29,7 @@ impl BackendBuilder {
         let init = Arc::new(AtomicBool::new(false));
         let stream = Arc::new(MpmcStream::with_capacity(parallel, biz, addr, rsrc));
         let checker = BackendChecker::from(stream.clone(), finished.clone(), init.clone(), parser);
-        tokio::spawn(async { checker.start_check().await });
+        rt::spawn(async { checker.start_check().await });
 
         Self {
             stream: stream,
@@ -147,7 +147,12 @@ impl<P> BackendChecker<P> {
                     self.connecting = false;
                 }
                 Err(e) => {
-                    log::warn!("{}-th connecting to {} err:{}", self.tries, self.address(), e);
+                    log::warn!(
+                        "{}-th connecting to {} err:{}",
+                        self.tries,
+                        self.address(),
+                        e
+                    );
                     metrics::status("status", metrics::Status::Down, self.metric_id());
                 }
             };
