@@ -1,8 +1,7 @@
-use std::collections::VecDeque;
 use crate::{AsyncReadAll, Response};
 
 use ds::{ResizedRingBuffer, RingSlice};
-use protocol::{Protocol, Request, RequestId};
+use protocol::{Protocol, RequestId};
 
 use futures::ready;
 
@@ -59,8 +58,7 @@ impl Sender {
                 // cache 之后，response会立即释放。避免因数据写入到client耗时过长，导致资源难以释放
                 debug_response.replace(response.items[0].data());
                 self.write_to_buffer(response, parser);
-            }
-            else {
+            } else {
                 log::debug!("io-sender-poll: direct response for {:?}", rid);
                 self.write_direct_response(direct_response_queue.front().unwrap(), parser);
                 direct_response_queue.pop_front();
@@ -87,15 +85,6 @@ impl Sender {
         while self.buf.len() > 0 {
             let data = self.buf.as_bytes();
             let n = ready!(w.as_mut().poll_write(cx, data))?;
-            unsafe {
-                log::debug!(
-                    "+++++ flush to client, rid:{:?}/{}/{} - {:?}",
-                    rid,
-                    n,
-                    data.len(),
-                    String::from_utf8_unchecked(data.to_vec())
-                );
-            }
             if n == 0 {
                 return Poll::Ready(Err(Error::new(ErrorKind::WriteZero, "write zero response")));
             }
@@ -113,15 +102,7 @@ impl Sender {
     where
         P: Protocol,
     {
-        parser.write_response(response.iter(), self, response.indexes());
-    }
-
-    #[inline(always)]
-    fn write_direct_response<P>(&mut self, request: &Request, parser: &P)
-        where
-            P: Protocol,
-    {
-        parser.write_direct_response(request, self);
+        parser.write_response(response.iter(), self);
     }
 }
 

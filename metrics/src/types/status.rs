@@ -1,26 +1,15 @@
-// 描述状态。比如宕机、在线等.
+use crate::{Id, ItemWriter, NumberInner};
 
-#[derive(Clone, Debug)]
-pub enum Status {
-    Init,
-    Down,
-    Timeout,
+pub(crate) struct StatusData {
+    inner: NumberInner,
 }
-use std::ops::AddAssign;
-impl AddAssign for Status {
+impl StatusData {
+    // 只计数。
     #[inline(always)]
-    fn add_assign(&mut self, other: Status) {
-        *self = other
-    }
-}
-
-impl crate::kv::KvItem for Status {
-    #[inline]
-    fn with_item<F: Fn(&'static str, f64)>(&self, _secs: f64, f: F) {
-        match self {
-            Self::Down => f("down", 1 as f64),
-            Self::Timeout => f("timeout", 1 as f64),
-            Self::Init => {}
+    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
+        let (ss, cur) = self.inner.load_and_snapshot();
+        if cur > ss {
+            w.write(&id.path, id.key, "down", 1f64);
         }
     }
 }

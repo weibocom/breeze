@@ -1,3 +1,4 @@
+#[derive(Clone, Debug)]
 pub enum Modula {
     Pow2(Pow2),
     Other(Other),
@@ -13,7 +14,7 @@ impl Modula {
     }
 
     #[inline(always)]
-    pub fn index(&self, hash: u64) -> usize {
+    pub fn index(&self, hash: i64) -> usize {
         match self {
             Self::Pow2(m) => m.index(hash),
             Self::Other(m) => m.index(hash),
@@ -21,6 +22,7 @@ impl Modula {
     }
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct Pow2 {
     mask: usize,
 }
@@ -31,11 +33,12 @@ impl Pow2 {
         Self { mask }
     }
     #[inline(always)]
-    pub fn index(&self, hash: u64) -> usize {
+    pub fn index(&self, hash: i64) -> usize {
         hash as usize & self.mask
     }
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct Other {
     len: usize,
 }
@@ -44,7 +47,7 @@ impl Other {
         Self { len: shard_num }
     }
     #[inline(always)]
-    pub fn index(&self, hash: u64) -> usize {
+    pub fn index(&self, hash: i64) -> usize {
         hash as usize % self.len
     }
 }
