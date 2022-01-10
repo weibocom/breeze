@@ -1,56 +1,48 @@
 use ds::{cow, CowReadHandle, CowWriteHandle};
-use protocol::Resource;
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
+pub trait TopologyGroup {}
+
 pub trait TopologyRead<T> {
-    fn resource(&self) -> Resource;
     fn do_with<F, O>(&self, f: F) -> O
     where
         F: Fn(&T) -> O;
 }
 
 pub trait TopologyWrite {
-    fn resource(&self) -> Resource;
-    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, HashSet<String>>);
-    fn update_hosts(&mut self, name: &str, hosts: &HashMap<String, HashSet<String>>);
-    fn gc(&mut self);
-}
-
-#[derive(Clone)]
-pub struct CowWrapper<T> {
-    inner: T,
+    fn update(&mut self, name: &str, cfg: &str);
+    #[inline(always)]
+    fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
+        vec![("", cfg)]
+    }
+    // 部分场景下，配置更新后，还需要load 命名服务，比如dns。
+    #[inline]
+    fn need_load(&self) -> bool {
+        false
+    }
+    #[inline]
+    fn load(&mut self) {}
 }
 
 pub fn topology<T>(t: T, service: &str) -> (TopologyWriteGuard<T>, TopologyReadGuard<T>)
 where
     T: TopologyWrite + Clone,
 {
-    let resource = t.resource();
     let (tx, rx) = cow(t);
-    let name = service.to_string();
-    let idx = name.find(':').unwrap_or(name.len());
-    let mut path = name.clone().replace('+', "/");
-    path.truncate(idx);
 
     let updates = Arc::new(AtomicUsize::new(0));
 
     (
         TopologyWriteGuard {
             inner: tx,
-            resource: resource,
-            name: name,
-            path: path,
+            service: service.to_string(),
             updates: updates.clone(),
         },
         TopologyReadGuard {
-            resource: resource,
             inner: rx,
             updates: updates,
         },
@@ -60,12 +52,17 @@ where
 pub trait Inited {
     fn inited(&self) -> bool;
 }
+impl<T: Inited> Inited for std::sync::Arc<T> {
+    #[inline]
+    fn inited(&self) -> bool {
+        (&**self).inited()
+    }
+}
 
 unsafe impl<T> Send for TopologyReadGuard<T> {}
 unsafe impl<T> Sync for TopologyReadGuard<T> {}
 #[derive(Clone)]
 pub struct TopologyReadGuard<T> {
-    resource: Resource,
     updates: Arc<AtomicUsize>,
     inner: CowReadHandle<T>,
 }
@@ -74,16 +71,11 @@ where
     T: Clone,
 {
     inner: CowWriteHandle<T>,
-    resource: Resource,
-    name: String,
-    path: String,
+    service: String,
     updates: Arc<AtomicUsize>,
 }
 
 impl<T> TopologyRead<T> for TopologyReadGuard<T> {
-    fn resource(&self) -> Resource {
-        self.resource
-    }
     fn do_with<F, O>(&self, f: F) -> O
     where
         F: Fn(&T) -> O,
@@ -106,22 +98,24 @@ impl<T> TopologyWrite for TopologyWriteGuard<T>
 where
     T: TopologyWrite + Clone,
 {
-    fn resource(&self) -> Resource {
-        self.resource.clone()
+    fn update(&mut self, name: &str, cfg: &str) {
+        self.inner.write(|t| {
+            t.update(name, cfg);
+            t.load();
+        });
+        self.updates.fetch_add(1, Ordering::AcqRel);
     }
-    fn update(&mut self, name: &str, cfg: &str, hosts: &HashMap<String, HashSet<String>>) {
-        log::info!("topology updating. name:{}, cfg len:{}", name, cfg.len());
-        //self.inner.write(&(name.to_string(), cfg.to_string()));
-        self.inner.write(|t| t.update(name, cfg, hosts));
-        self.updates.fetch_add(1, Ordering::Relaxed);
+    #[inline(always)]
+    fn disgroup<'a>(&self, path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
+        self.inner.get().disgroup(path, cfg)
     }
-    fn update_hosts(&mut self, name: &str, hosts: &HashMap<String, HashSet<String>>) {
-        log::info!("topology updating hosts, name:{}, hosts:{:?}", name, hosts);
-        self.inner.write(|t| t.update_hosts(name, hosts));
-        self.updates.fetch_add(1, Ordering::Relaxed);
+    #[inline]
+    fn need_load(&self) -> bool {
+        self.inner.get().need_load()
     }
-    fn gc(&mut self) {
-        self.inner.write(|t| t.gc());
+    #[inline]
+    fn load(&mut self) {
+        self.inner.write(|t| t.load())
     }
 }
 
@@ -129,18 +123,13 @@ impl<T> crate::ServiceId for TopologyWriteGuard<T>
 where
     T: Clone,
 {
-    fn name(&self) -> &str {
-        &self.name
-    }
-    fn path(&self) -> &str {
-        &self.path
+    // 从name中获取不包含目录的base。
+    fn service(&self) -> &str {
+        &self.service
     }
 }
 
 impl<T> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
-    fn resource(&self) -> Resource {
-        return self.resource;
-    }
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where
@@ -150,21 +139,9 @@ impl<T> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
     }
 }
 
-impl<T> TopologyReadGuard<T>
-where
-    T: Clone,
-{
-    pub fn tick(&self) -> TopologyTicker {
-        TopologyTicker(self.updates.clone())
-    }
-}
-
-// topology更新了多少次. 可以通过这个进行订阅更新通知
-#[derive(Clone)]
-pub struct TopologyTicker(Arc<AtomicUsize>);
-impl TopologyTicker {
+impl<T> TopologyReadGuard<T> {
     #[inline]
     pub fn cycle(&self) -> usize {
-        self.0.load(Ordering::Relaxed)
+        self.updates.load(Ordering::Acquire)
     }
 }

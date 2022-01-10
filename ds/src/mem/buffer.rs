@@ -32,6 +32,7 @@ impl RingBuffer {
     }
     #[inline(always)]
     pub fn advance_read(&mut self, n: usize) {
+        debug_assert!(n <= self.len());
         self.read += n;
     }
     #[inline(always)]
@@ -43,7 +44,7 @@ impl RingBuffer {
         self.write += n;
     }
     #[inline(always)]
-    fn mask(&self, offset: usize) -> usize {
+    pub fn mask(&self, offset: usize) -> usize {
         offset & (self.size - 1)
     }
     // 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
@@ -63,27 +64,6 @@ impl RingBuffer {
         };
         unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
     }
-    #[inline]
-    pub fn write(&mut self, data: &RingSlice) -> usize {
-        let mut n = 0;
-        for s in data.as_slices() {
-            let src = s.data();
-            let mut l = 0;
-            while l < src.len() {
-                let dst = self.as_mut_bytes();
-                let c = (src.len() - l).min(dst.len());
-                if c == 0 {
-                    return n;
-                }
-                use std::ptr::copy_nonoverlapping as copy;
-                unsafe { copy(src.as_ptr().offset(l as isize), dst.as_mut_ptr(), c) };
-                self.advance_write(c);
-                l += c;
-                n += c;
-            }
-        }
-        n
-    }
     // 返回可读取的数据。可能只返回部分数据。如果要返回所有的可读数据，使用 data 方法。
     #[inline(always)]
     pub fn as_bytes(&self) -> &[u8] {
@@ -91,10 +71,16 @@ impl RingBuffer {
         let n = (self.cap() - offset).min(self.len());
         unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
     }
-    // 返回已写入的所有数据，包括已处理未确认的
     #[inline(always)]
     pub fn data(&self) -> RingSlice {
         RingSlice::from(self.data.as_ptr(), self.size, self.read, self.write)
+    }
+    // 从指定位置开始的数据
+    #[inline(always)]
+    pub fn slice(&self, read: usize, len: usize) -> RingSlice {
+        debug_assert!(read >= self.read);
+        debug_assert!(read + len <= self.write);
+        RingSlice::from(self.data.as_ptr(), self.size, read, read + len)
     }
     #[inline(always)]
     pub fn cap(&self) -> usize {
@@ -118,35 +104,33 @@ impl RingBuffer {
         assert!(self.write >= self.read);
         (self.write - self.read, self.cap())
     }
+    #[inline(always)]
+    pub fn write(&mut self, data: &RingSlice) -> usize {
+        let mut w = 0;
+        while w < data.len() {
+            let src = data.read(w);
+            debug_assert!(src.len() > 0);
+            let dst = self.as_mut_bytes();
+            if dst.len() == 0 {
+                break;
+            }
+            let l = src.len().min(dst.len());
+            use std::ptr::copy_nonoverlapping as copy;
+            unsafe { copy(src.as_ptr(), dst.as_mut_ptr(), l) };
+            self.advance_write(l);
+            w += l;
+        }
+        w
+    }
 
     // cap > self.len()
     #[inline]
     pub(crate) fn resize(&self, cap: usize) -> Self {
-        //assert_eq!(cap & (cap - 1), 0);
-        //let cap = cap.next_power_of_two();
         assert!(cap >= self.write - self.read);
         let mut new = Self::with_capacity(cap);
         new.read = self.read;
         new.write = self.read;
-        let old_data = self.data();
-        use std::ptr::copy_nonoverlapping as copy;
-        for slice in old_data.as_slices() {
-            let mut offset = 0usize;
-            while offset < slice.len() {
-                let dst = new.as_mut_bytes();
-                // 向ring-buffer写入slice数据的时候，可能会分段。
-                let count = dst.len().min(slice.len() - offset);
-                unsafe {
-                    copy(
-                        slice.as_ptr().offset(offset as isize),
-                        dst.as_mut_ptr(),
-                        count,
-                    );
-                }
-                new.advance_write(count);
-                offset += count;
-            }
-        }
+        new.write(&self.data());
         assert_eq!(self.write, new.write);
         assert_eq!(self.read, new.read);
         new
@@ -167,6 +151,27 @@ impl RingBuffer {
         }
         self.read = 0;
         self.write = l;
+    }
+
+    #[inline(always)]
+    pub fn update(&mut self, idx: usize, val: u8) {
+        debug_assert!(idx < self.len());
+        unsafe {
+            *self
+                .data
+                .as_ptr()
+                .offset(self.mask(self.read + idx) as isize) = val
+        }
+    }
+    #[inline(always)]
+    pub fn at(&self, idx: usize) -> u8 {
+        debug_assert!(idx < self.len());
+        unsafe {
+            *self
+                .data
+                .as_ptr()
+                .offset(self.mask(self.read + idx) as isize)
+        }
     }
 }
 

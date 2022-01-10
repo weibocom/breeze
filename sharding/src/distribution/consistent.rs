@@ -4,14 +4,14 @@ use crypto::md5::Md5;
 use std::collections::BTreeMap;
 use std::ops::Bound::Included;
 
+#[derive(Clone, Debug, Default)]
 pub struct Consistent {
     buckets: BTreeMap<i64, usize>,
 }
 
 impl Consistent {
-    pub fn index(&self, hash: u64) -> usize {
-        let hash = hash as i64;
-
+    pub fn index(&self, hash: i64) -> usize {
+        // let hash = hash as i64;
         // 从[hash, max)范围从map中寻找节点
         let idxs = self.buckets.range((Included(hash), Included(i64::MAX)));
         for (_h, idx) in idxs {
@@ -26,7 +26,7 @@ impl Consistent {
         return 0;
     }
 
-    pub fn from(shards: Vec<String>) -> Self {
+    pub fn from(shards: &Vec<String>) -> Self {
         let mut map = BTreeMap::default();
         for idx in 0..shards.len() {
             let factor = 40;
