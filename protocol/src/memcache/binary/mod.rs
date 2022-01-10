@@ -45,15 +45,16 @@ impl Protocol for MemcacheBinary {
             if NO_FORWARD_OPS[op_code as usize] == 1 {
                 flag.set_noforward();
             }
-            let mut hash = alg.hash(&req.key());
-            if hash == 0 {
+            let key = req.key();
+            let hash = if key.len() > 0 {
+                alg.hash(&key)
+            } else {
                 debug_assert!(req.operation().is_meta() || req.noop());
                 use std::sync::atomic::{AtomicU64, Ordering};
                 static RND: AtomicU64 = AtomicU64::new(0);
-                hash = RND.fetch_add(1, Ordering::Relaxed) as i64;
-            }
+                RND.fetch_add(1, Ordering::Relaxed) as i64
+            };
             let guard = data.take(packet_len);
-            // TODO 目前mc暂时不用key_count，先设置为0，等又需要再调整逻辑 fishermen
             let cmd = HashedCommand::new(guard, hash, flag);
             // get请求不能是quiet
             debug_assert!(!(cmd.operation().is_retrival() && cmd.sentonly()));
