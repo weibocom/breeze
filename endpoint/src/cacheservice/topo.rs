@@ -125,7 +125,9 @@ where
         if !ctx.check_and_inited(false) {
             let readable = self.r_num - self.has_slave as u16;
             debug_assert!(readable == self.r_num || readable + 1 == self.r_num);
-            idx = self.rnd_idx.fetch_add(1, Ordering::Relaxed) % readable as usize;
+            // 每个shard发送1024个请求再换下一个shard
+            const SHIFT: u8 = 10;
+            idx = (self.rnd_idx.fetch_add(1, Ordering::Relaxed) >> SHIFT) % readable as usize;
             // 第一次访问，没有取到master，则下一次一定可以取到master
             // 如果取到了master，有slave也可以继续访问
             try_next = idx != 0 || self.has_slave;
