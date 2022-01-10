@@ -1,10 +1,12 @@
 use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use futures::ready;
+use metrics::TASK_NUM;
 use tokio::time::{interval, Interval};
 
 pub trait ReEnter {
@@ -23,6 +25,7 @@ pub trait ReEnter {
 //  1. 每次poll的执行耗时
 //  2. 重入耗时间隔
 pub struct Timeout<F> {
+    id: usize,
     last: Instant,
     last_rx: Instant, // 上一次有接收到请求的时间
     inner: F,
@@ -32,13 +35,16 @@ pub struct Timeout<F> {
 impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
     #[inline]
     pub fn from(f: F, timeout: Duration) -> Self {
+        TASK_NUM.fetch_add(1, Ordering::Relaxed);
         let tick = interval(timeout / 2);
+        static SEQ: AtomicUsize = AtomicUsize::new(0);
         Self {
             inner: f,
             last: Instant::now(),
             last_rx: Instant::now(),
             timeout,
             tick,
+            id: SEQ.fetch_add(1, Ordering::Relaxed),
         }
     }
 }
@@ -52,7 +58,8 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
         if tx > rx {
             if self.last.elapsed() >= Duration::from_millis(20) {
                 log::info!(
-                    "reenter {:?} {} > {} => {:?}",
+                    "reenter-{} {:?} {} > {} => {:?}",
+                    self.id,
                     self.last.elapsed(),
                     tx,
                     rx,
@@ -62,12 +69,14 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
             if self.last_rx.elapsed() >= self.timeout {
                 let elapsed = self.last_rx.elapsed();
                 log::info!(
-                    "receive no response after {:?}. tx:{} rx:{} => {:?}",
+                    "reenter-{} timeout {:?}. ({} {}) => {:?}",
+                    self.id,
                     elapsed,
                     tx,
                     rx,
                     self.inner
                 );
+                TASK_NUM.fetch_sub(1, Ordering::Relaxed);
                 return Poll::Ready(Err(protocol::Error::Timeout(elapsed)));
             }
         } else {
@@ -85,7 +94,9 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
                 ready!(self.tick.poll_tick(cx));
             }
         } else {
-            ret
+            let ret = ready!(ret);
+            TASK_NUM.fetch_sub(1, Ordering::Relaxed);
+            Poll::Ready(ret)
         }
     }
 }
