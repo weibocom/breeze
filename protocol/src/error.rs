@@ -44,6 +44,7 @@ impl Display for Error {
     }
 }
 
+#[allow(dead_code)]
 pub enum ProtocolType {
     Request,
     Response,
