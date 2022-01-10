@@ -1,118 +1,78 @@
+use crate::{Metric, MetricType};
+#[derive(Debug, Hash, PartialEq, Eq, Default)]
+pub struct Id {
+    pub(crate) path: String,
+    pub(crate) key: &'static str,
+    pub(crate) t: MetricType,
+}
+impl Id {
+    #[inline(always)]
+    pub(crate) fn valid(&self) -> bool {
+        self.path.len() > 0 && !self.t.is_empty()
+    }
+}
+
+pub struct Path {
+    path: Vec<String>,
+}
+impl Path {
+    pub fn new<T: ToString>(names: Vec<T>) -> Self {
+        Self {
+            path: names.into_iter().map(|s| s.to_string()).collect(),
+        }
+    }
+    #[inline]
+    pub fn qps(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::Qps)
+    }
+    #[inline]
+    pub fn status(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::Status)
+    }
+    #[inline]
+    pub fn rtt(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::RTT)
+    }
+    #[inline]
+    pub fn count(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::Count)
+    }
+    #[inline]
+    fn with_type(&self, key: &'static str, t: MetricType) -> Metric {
+        let mut s: String = String::with_capacity(256);
+        for name in self.path.iter() {
+            s += &crate::encode_addr(name.as_ref());
+            s.push('.');
+        }
+        s.pop();
+        s.shrink_to_fit();
+        let id = Id { path: s, key, t };
+        crate::register_metric(id)
+    }
+}
+
 use std::collections::HashMap;
-use std::sync::RwLock;
-
-pub struct MetricId(usize);
-
-impl MetricId {
-    #[inline(always)]
-    pub fn id(&self) -> usize {
-        self.0
-    }
-    #[inline(always)]
-    pub fn name(&self) -> String {
-        name(self.0)
-    }
-    #[inline(always)]
-    pub fn with<F: Fn(&str) -> O, O>(&self, f: F) -> O {
-        f(ID_SEQ.read().unwrap().name(self.0))
-    }
-}
-
-pub trait MetricName {
-    fn name(&self) -> String;
-    fn with<F: Fn(&str) -> O, O>(&self, f: F) -> O;
-}
-
-impl MetricName for usize {
-    #[inline(always)]
-    fn name(&self) -> String {
-        name(*self)
-    }
-    #[inline(always)]
-    fn with<F: Fn(&str) -> O, O>(&self, f: F) -> O {
-        f(ID_SEQ.read().unwrap().name(*self))
-    }
-}
-
-struct IdSequence {
+use std::sync::Arc;
+#[derive(Default, Clone)]
+pub(crate) struct IdSequence {
     seq: usize,
-    names: Vec<String>,
-    indice: HashMap<String, usize>,
+    indice: HashMap<Arc<Id>, usize>,
 }
 
 impl IdSequence {
-    fn new() -> Self {
-        // 初始化里面metric id是0表示，所有业务共享的元数据信息
-        Self {
-            seq: 1,
-            names: vec!["mesh".to_string()],
-            indice: Default::default(),
-        }
+    pub(crate) fn get_idx(&self, id: &Arc<Id>) -> Option<usize> {
+        self.indice.get(id).map(|idx| *idx)
     }
-    fn register_name(&mut self, name: &str) -> usize {
+    pub(crate) fn register_name(&mut self, name: &Arc<Id>) -> usize {
         match self.indice.get(name) {
             Some(seq) => *seq,
             None => {
                 let seq = self.seq;
-                if self.names.len() <= seq {
-                    for _ in self.names.len()..=seq {
-                        self.names.push("".to_string());
-                    }
-                }
-                log::debug!("metrics-register: name:{} id:{}", name, seq);
-                self.names[seq] = name.to_owned();
-                self.indice.insert(name.to_owned(), self.seq);
+                log::debug!("metric name registered. index:{} name:{}", seq, name.path);
+                self.indice.insert(name.clone(), seq);
                 self.seq += 1;
                 seq
             }
         }
     }
-    fn name(&self, id: usize) -> &str {
-        debug_assert!(id < self.names.len());
-        &self.names[id]
-    }
 }
-
-#[macro_export]
-macro_rules! register {
-    ($name:expr) => {
-        metrics::register_name($name)
-    };
-    ($first:expr, $($left:expr),+) => {
-        metrics::register_names(vec![$first, $($left),+])
-    };
-}
-
-lazy_static! {
-    static ref ID_SEQ: RwLock<IdSequence> = RwLock::new(IdSequence::new());
-}
-
-pub fn register_name(name: &str) -> MetricId {
-    MetricId(ID_SEQ.write().unwrap().register_name(name))
-}
-
-pub fn register_names(names: Vec<&str>) -> MetricId {
-    let mut s: String = String::with_capacity(32);
-    for name in names.iter() {
-        s += &crate::encode_addr(name);
-        s.push('.');
-    }
-    s.pop();
-    register_name(&s)
-}
-
-#[inline(always)]
-pub fn name(id: usize) -> String {
-    get_name(id)
-}
-
-#[inline(always)]
-pub fn get_name(id: usize) -> String {
-    ID_SEQ.read().unwrap().name(id).to_string()
-}
-pub fn with_name<F: Fn(&str)>(id: usize, f: F) {
-    f(ID_SEQ.read().unwrap().name(id));
-}
-
-// 这个id是通过register_name生成
-pub fn unregister_by_id(_id: usize) {}
