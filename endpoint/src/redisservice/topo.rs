@@ -76,22 +76,24 @@ where
         // log::debug!("+++ shard_idx:{}, req.hash: {}", shard_idx, req.hash());
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
-            let ctx = *req.context_mut();
-            // 高4个字节是执行的次数
-            // 低4个字节是上一次访问的索引
-            let runs;
-            let (idx, endpoint) = if ctx == 0 {
-                runs = 1;
+            let ctx = super::transmute(req.context_mut());
+            let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
             } else {
-                let last = ctx as u32; // 低16位
-                runs = 1 + (ctx >> 32) as u32; // 次低16位
-                shard.next(last as usize, runs as usize - 1)
+                if (ctx.runs as usize) < shard.slaves.len() {
+                    shard.next(ctx.idx as usize, ctx.runs as usize)
+                } else {
+                    // 说明只有一个从，并且从访问失败了，会通过主访问。
+                    (ctx.idx as usize, &shard.master)
+                }
             };
-            // shard 第一个元素是master，默认情况下需要规避
+            ctx.idx = idx as u32;
+            ctx.runs += 1;
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
-            *req.context_mut() = ((runs as u64) << 32) | (idx as u64);
-            req.try_next((runs as usize) < shard.slaves.len());
+            // 1. 第一次访问. （无论如何都允许try_next，如果只有一个从，则下一次失败时访问主）
+            // 2. 有多个从，访问的次数小于从的数量
+            let try_next = ctx.runs == 1 || (ctx.runs as usize) < shard.slaves.len();
+            req.try_next(try_next);
 
             endpoint.1.send(req)
         } else {
