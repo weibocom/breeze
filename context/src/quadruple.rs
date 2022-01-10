@@ -90,8 +90,8 @@ impl Quadruple {
         let fields: Vec<&str> = self.service.split(|c| c == '+' || c == ':').collect();
         fields.last().expect("biz").to_string()
     }
-    pub fn endpoint(&self) -> String {
-        self.endpoint.to_owned()
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
     }
     // 从discovery同步数据的间隔周期
     pub fn tick(&self) -> Duration {

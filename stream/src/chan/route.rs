@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use crate::{AsyncReadAll, AsyncWriteAll, Request, Response};
-use protocol::{Operation, Protocol, OPERATION_NUM};
+use protocol::{Operation, OPERATION_NUM};
 
 /// 这个只支持ping-pong请求。将请求按照固定的路由策略分发到不同的dest
 /// 并且AsyncOpRoute的buf必须包含一个完整的请求。
@@ -12,7 +12,6 @@ pub struct AsyncOpRoute<B> {
     backends: Vec<B>,
     idx: usize,
     route: [u8; OPERATION_NUM],
-    quit_req: Option<Request>,
 }
 
 impl<B> AsyncOpRoute<B> {
@@ -36,7 +35,6 @@ impl<B> AsyncOpRoute<B> {
             backends,
             idx,
             route,
-            quit_req: None,
         }
     }
 }
@@ -48,17 +46,6 @@ where
     #[inline(always)]
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &Request) -> Poll<Result<()>> {
         let me = &mut *self;
-        // 对于quit指令，不转发，直接返回
-        if buf.operation() == Operation::Quit {
-            unsafe {
-                log::debug!(
-                    "found quit req: {:?}",
-                    String::from_utf8_unchecked(buf.to_vec())
-                );
-            }
-            self.quit_req = Some(buf.clone());
-            return Poll::Ready(Ok(()));
-        }
         // ping-pong请求，有写时，read一定是读完成了
         me.idx = me.route[buf.operation() as usize] as usize;
         debug_assert!(me.idx < me.backends.len());
@@ -73,10 +60,6 @@ where
     #[inline(always)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<Response>> {
         let me = &mut *self;
-        if let Some(req) = me.quit_req.take() {
-            let spec_cid = 88usize;
-            return Poll::Ready(Ok(Response::with_quit(req.id().clone(), spec_cid)));
-        }
         unsafe { Pin::new(me.backends.get_unchecked_mut(me.idx)).poll_next(cx) }
     }
 }
