@@ -159,141 +159,135 @@ pub(super) trait Binary<T> {
 }
 
 use ds::RingSlice;
-macro_rules! define_binary {
-    ($type_name:tt) => {
-        impl Binary<$type_name> for $type_name {
-            #[inline(always)]
-            fn op(&self) -> u8 {
-                debug_assert!(self.len() >= HEADER_LEN);
-                self.at(PacketPos::Opcode as usize)
-            }
-            #[inline(always)]
-            fn noop(&self) -> bool {
-                self.op() == OP_CODE_NOOP
-            }
-            #[inline(always)]
-            fn operation(&self) -> Operation {
-                (COMMAND_IDX[self.op() as usize]).into()
-            }
-            #[inline(always)]
-            fn request(&self) -> bool {
-                debug_assert!(self.len() > 0);
-                self.at(PacketPos::Magic as usize) == REQUEST_MAGIC
-            }
-            #[inline(always)]
-            fn response(&self) -> bool {
-                debug_assert!(self.len() > 0);
-                self.at(PacketPos::Magic as usize) == RESPONSE_MAGIC
-            }
-            #[inline(always)]
-            fn extra_len(&self) -> u8 {
-                debug_assert!(self.len() >= HEADER_LEN);
-                self.at(PacketPos::ExtrasLength as usize)
-            }
-            fn extra_or_flag(&self) -> Self {
-                // 读取flag时，需要有完整的packet
-                debug_assert!(self.len() >= HEADER_LEN);
-                let extra_len = self.extra_len() as usize;
-                self.sub_slice(HEADER_LEN, extra_len)
-            }
-            #[inline(always)]
-            fn total_body_len(&self) -> u32 {
-                debug_assert!(self.len() >= HEADER_LEN);
-                self.read_u32(PacketPos::TotalBodyLength as usize)
-            }
-            #[inline(always)]
-            fn opaque(&self) -> u32 {
-                debug_assert!(self.len() >= HEADER_LEN);
-                self.read_u32(PacketPos::Opaque as usize)
-            }
-            #[inline(always)]
-            fn cas(&self) -> u64 {
-                debug_assert!(self.len() >= HEADER_LEN);
-                self.read_u64(PacketPos::Cas as usize)
-            }
-            #[inline(always)]
-            fn packet_len(&self) -> usize {
-                debug_assert!(self.len() >= HEADER_LEN);
-                self.total_body_len() as usize + HEADER_LEN
-            }
-            #[inline(always)]
-            fn status_ok(&self) -> bool {
-                debug_assert!(self.len() >= HEADER_LEN);
-                debug_assert_eq!(self.at(PacketPos::Magic as usize), RESPONSE_MAGIC);
-                self.at(6) == 0 && self.at(7) == 0
-            }
-            #[inline(always)]
-            fn key_len(&self) -> u16 {
-                debug_assert!(self.len() >= HEADER_LEN);
-                self.read_u16(PacketPos::Key as usize)
-            }
-            #[inline(always)]
-            fn key(&self) -> Self {
-                debug_assert!(self.len() >= HEADER_LEN);
-                let extra_len = self.extra_len() as usize;
-                let offset = extra_len + HEADER_LEN;
-                let key_len = self.key_len() as usize;
-                debug_assert!(key_len + offset <= self.len());
-                self.sub_slice(offset, key_len)
-            }
-            // 仅仅用于获取value长度，注意区分total body len
-            fn value_len(&self) -> u32 {
-                let total_body_len = self.total_body_len();
-                let extra_len = self.extra_len() as u32;
-                let key_len = self.key_len() as u32;
-                total_body_len - extra_len - key_len
-            }
-            fn value(&self) -> Self {
-                debug_assert!(self.len() >= self.packet_len());
-                let total_body_len = self.total_body_len() as usize;
-                let extra_len = self.extra_len() as usize;
-                let key_len = self.key_len() as usize;
-                let value_len = total_body_len - extra_len - key_len;
-                let offset = HEADER_LEN + extra_len + key_len;
+impl Binary<RingSlice> for RingSlice {
+    #[inline(always)]
+    fn op(&self) -> u8 {
+        debug_assert!(self.len() >= HEADER_LEN);
+        self.at(PacketPos::Opcode as usize)
+    }
+    #[inline(always)]
+    fn noop(&self) -> bool {
+        self.op() == OP_CODE_NOOP
+    }
+    #[inline(always)]
+    fn operation(&self) -> Operation {
+        (COMMAND_IDX[self.op() as usize]).into()
+    }
+    #[inline(always)]
+    fn request(&self) -> bool {
+        debug_assert!(self.len() > 0);
+        self.at(PacketPos::Magic as usize) == REQUEST_MAGIC
+    }
+    #[inline(always)]
+    fn response(&self) -> bool {
+        debug_assert!(self.len() > 0);
+        self.at(PacketPos::Magic as usize) == RESPONSE_MAGIC
+    }
+    #[inline(always)]
+    fn extra_len(&self) -> u8 {
+        debug_assert!(self.len() >= HEADER_LEN);
+        self.at(PacketPos::ExtrasLength as usize)
+    }
+    fn extra_or_flag(&self) -> Self {
+        // 读取flag时，需要有完整的packet
+        debug_assert!(self.len() >= HEADER_LEN);
+        let extra_len = self.extra_len() as usize;
+        self.sub_slice(HEADER_LEN, extra_len)
+    }
+    #[inline(always)]
+    fn total_body_len(&self) -> u32 {
+        debug_assert!(self.len() >= HEADER_LEN);
+        self.read_u32(PacketPos::TotalBodyLength as usize)
+    }
+    #[inline(always)]
+    fn opaque(&self) -> u32 {
+        debug_assert!(self.len() >= HEADER_LEN);
+        self.read_u32(PacketPos::Opaque as usize)
+    }
+    #[inline(always)]
+    fn cas(&self) -> u64 {
+        debug_assert!(self.len() >= HEADER_LEN);
+        self.read_u64(PacketPos::Cas as usize)
+    }
+    #[inline(always)]
+    fn packet_len(&self) -> usize {
+        debug_assert!(self.len() >= HEADER_LEN);
+        self.total_body_len() as usize + HEADER_LEN
+    }
+    #[inline(always)]
+    fn status_ok(&self) -> bool {
+        debug_assert!(self.len() >= HEADER_LEN);
+        debug_assert_eq!(self.at(PacketPos::Magic as usize), RESPONSE_MAGIC);
+        self.at(6) == 0 && self.at(7) == 0
+    }
+    #[inline(always)]
+    fn key_len(&self) -> u16 {
+        debug_assert!(self.len() >= HEADER_LEN);
+        self.read_u16(PacketPos::Key as usize)
+    }
+    #[inline(always)]
+    fn key(&self) -> Self {
+        debug_assert!(self.len() >= HEADER_LEN);
+        let extra_len = self.extra_len() as usize;
+        let offset = extra_len + HEADER_LEN;
+        let key_len = self.key_len() as usize;
+        debug_assert!(key_len + offset <= self.len());
+        self.sub_slice(offset, key_len)
+    }
+    // 仅仅用于获取value长度，注意区分total body len
+    fn value_len(&self) -> u32 {
+        let total_body_len = self.total_body_len();
+        let extra_len = self.extra_len() as u32;
+        let key_len = self.key_len() as u32;
+        total_body_len - extra_len - key_len
+    }
+    fn value(&self) -> Self {
+        debug_assert!(self.len() >= self.packet_len());
+        let total_body_len = self.total_body_len() as usize;
+        let extra_len = self.extra_len() as usize;
+        let key_len = self.key_len() as usize;
+        let value_len = total_body_len - extra_len - key_len;
+        let offset = HEADER_LEN + extra_len + key_len;
 
-                self.sub_slice(offset, value_len)
-            }
-            #[inline(always)]
-            fn id(&self) -> Option<Self> {
-                debug_assert!(self.len() >= HEADER_LEN);
-                match self.op() {
-                    OP_CODE_NOOP => None,
-                    OP_CODE_GET | OP_CODE_GETQ => Some(self.sub_slice(12, 4)),
-                    _ => {
-                        debug_assert!(self.key_len() > 0);
-                        Some(self.key())
-                    }
-                }
-            }
-            // 需要应对gek个各种姿势： getkq...getkq + noop, getkq...getkq + getk，对于quite cmd，肯定是multiget的非结尾请求
-            #[inline(always)]
-            fn quite_get(&self) -> bool {
-                QUITE_GET_TABLE[self.op() as usize] == 1
-            }
-
-            // 截取末尾的noop请求
-            #[inline(always)]
-            fn take_noop(&self) -> Self {
-                debug_assert!(self.len() >= HEADER_LEN);
-                let noop = self.sub_slice(self.len() - HEADER_LEN, HEADER_LEN);
-                //debug_assert!(noop.data() == NOOP_REQEUST || noop.data() == NOOP_RESPONSE);
-                noop
-            }
-
-            #[inline(always)]
-            fn update_opcode(&mut self, opcode: u8) {
-                debug_assert!(self.len() >= HEADER_LEN);
-                self.update(PacketPos::Opcode as usize, opcode);
-            }
-            #[inline(always)]
-            fn clear_cas(&mut self) {
-                debug_assert!(self.len() >= HEADER_LEN);
-                for i in PacketPos::Cas as usize..PacketPos::Cas as usize + CAS_LEN {
-                    self.update(i, 0);
-                }
+        self.sub_slice(offset, value_len)
+    }
+    #[inline(always)]
+    fn id(&self) -> Option<Self> {
+        debug_assert!(self.len() >= HEADER_LEN);
+        match self.op() {
+            OP_CODE_NOOP => None,
+            OP_CODE_GET | OP_CODE_GETQ => Some(self.sub_slice(12, 4)),
+            _ => {
+                debug_assert!(self.key_len() > 0);
+                Some(self.key())
             }
         }
-    };
-}
+    }
+    // 需要应对gek个各种姿势： getkq...getkq + noop, getkq...getkq + getk，对于quite cmd，肯定是multiget的非结尾请求
+    #[inline(always)]
+    fn quite_get(&self) -> bool {
+        QUITE_GET_TABLE[self.op() as usize] == 1
+    }
 
-define_binary!(RingSlice);
+    // 截取末尾的noop请求
+    #[inline(always)]
+    fn take_noop(&self) -> Self {
+        debug_assert!(self.len() >= HEADER_LEN);
+        let noop = self.sub_slice(self.len() - HEADER_LEN, HEADER_LEN);
+        //debug_assert!(noop.data() == NOOP_REQEUST || noop.data() == NOOP_RESPONSE);
+        noop
+    }
+
+    #[inline(always)]
+    fn update_opcode(&mut self, opcode: u8) {
+        debug_assert!(self.len() >= HEADER_LEN);
+        self.update(PacketPos::Opcode as usize, opcode);
+    }
+    #[inline(always)]
+    fn clear_cas(&mut self) {
+        debug_assert!(self.len() >= HEADER_LEN);
+        for i in PacketPos::Cas as usize..PacketPos::Cas as usize + CAS_LEN {
+            self.update(i, 0);
+        }
+    }
+}

@@ -129,6 +129,9 @@ impl Protocol for MemcacheBinary {
         req: &HashedCommand,
         w: &mut W,
     ) -> Result<()> {
+        if req.sentonly() {
+            return Ok(());
+        }
         match req.op_code() as u8 {
             OP_CODE_NOOP => {
                 // 第一个字节变更为Response，其他的与Request保持一致
@@ -138,24 +141,29 @@ impl Protocol for MemcacheBinary {
             0x0b => w.write(&VERSION_RESPONSE),
             0x10 => w.write(&STAT_RESPONSE),
             0x07 | 0x17 => Err(Error::Quit),
+            // quite get 请求。什么都不做
+            0x09 | 0x0d => Ok(()),
             // set请求。返回 0x05 Item Not Stored
-            0x01 => {
-                let mut response = [0; HEADER_LEN];
-                response[PacketPos::Magic as usize] = RESPONSE_MAGIC;
-                response[PacketPos::Opcode as usize] = req.op_code() as u8;
-                response[PacketPos::Status as usize + 1] = 0x05;
-                //复制 Opaque
-                let r_data = req.data();
-                for i in PacketPos::Opaque as usize..PacketPos::Opcode as usize + 4 {
-                    response[i] = r_data.at(i);
-                }
-                w.write(&response)
-            }
+            0x01 => w.write(&self.build_empty_response(0x5, req.data())),
+            // get 请求。返回0x01 NotFound
+            0x00 => w.write(&self.build_empty_response(0x1, req.data())),
             _ => Err(Error::NoResponseFound),
         }
     }
 }
 impl MemcacheBinary {
+    #[inline(always)]
+    fn build_empty_response(&self, status: u8, req: &ds::RingSlice) -> [u8; HEADER_LEN] {
+        let mut response = [0; HEADER_LEN];
+        response[PacketPos::Magic as usize] = RESPONSE_MAGIC;
+        response[PacketPos::Opcode as usize] = req.op();
+        response[PacketPos::Status as usize + 1] = status;
+        //复制 Opaque
+        for i in PacketPos::Opaque as usize..PacketPos::Opcode as usize + 4 {
+            response[i] = req.at(i);
+        }
+        response
+    }
     #[inline(always)]
     fn build_write_back_inplace(&self, req: &mut HashedCommand) {
         let data = req.data_mut();
