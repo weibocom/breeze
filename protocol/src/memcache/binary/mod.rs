@@ -135,9 +135,22 @@ impl Protocol for MemcacheBinary {
                 w.write_u8(RESPONSE_MAGIC)?;
                 w.write_slice(req.data(), 1)
             }
-            0xb => w.write(&VERSION_RESPONSE),
+            0x0b => w.write(&VERSION_RESPONSE),
             0x10 => w.write(&STAT_RESPONSE),
             0x07 | 0x17 => Err(Error::Quit),
+            // set请求。返回 0x05 Item Not Stored
+            0x01 => {
+                let mut response = [0; HEADER_LEN];
+                response[PacketPos::Magic as usize] = RESPONSE_MAGIC;
+                response[PacketPos::Opcode as usize] = req.op_code() as u8;
+                response[PacketPos::Status as usize + 1] = 0x05;
+                //复制 Opaque
+                let r_data = req.data();
+                for i in PacketPos::Opaque as usize..PacketPos::Opcode as usize + 4 {
+                    response[i] = r_data.at(i);
+                }
+                w.write(&response)
+            }
             _ => Err(Error::NoResponseFound),
         }
     }
