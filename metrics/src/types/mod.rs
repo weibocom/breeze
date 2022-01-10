@@ -4,12 +4,14 @@ mod number;
 mod qps;
 mod rtt;
 mod status;
+pub(crate) mod tasks;
 
 pub(crate) use host::*;
 pub(crate) use number::*;
 pub(crate) use qps::*;
 pub(crate) use rtt::*;
 pub(crate) use status::*;
+pub use tasks::TASK_NUM;
 
 use crate::{Id, ItemRc};
 pub use data::*;
