@@ -3,6 +3,7 @@ use ds::{MemGuard, RingSlice};
 use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
+#[allow(dead_code)]
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct CommandProperties {
     pub(super) name: &'static str,
@@ -39,6 +40,7 @@ pub const PADDING_RSP_TABLE: [&str; 5] = [
     "-ERR unknown command\r\n",
 ];
 
+#[allow(dead_code)]
 impl CommandProperties {
     #[inline]
     pub fn operation(&self) -> &Operation {
@@ -173,6 +175,7 @@ impl Commands {
         }
     }
     // 不支持会返回协议错误
+    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn get_by_name(&self, cmd: &ds::RingSlice) -> crate::Result<&CommandProperties> {
         let uppercase = UppercaseHashKey::new(cmd);
