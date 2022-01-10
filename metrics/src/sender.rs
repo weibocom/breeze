@@ -44,6 +44,8 @@ impl Future for Sender {
                 // 这是一个block 操作，
                 let metrics = crate::get_metrics();
                 metrics.write(&mut me.packet, elapsed);
+                // 写入task的总的数量
+                crate::types::tasks::snapshot(&mut me.packet, elapsed);
                 me.host.snapshot(&mut me.packet, elapsed);
                 me.last = Instant::now();
             }
