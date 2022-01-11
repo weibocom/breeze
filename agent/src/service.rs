@@ -78,7 +78,7 @@ async fn _process_one(
         let p = p.clone();
         let cb = cb.clone();
         let metrics = StreamMetrics::new(path);
-        log::info!("connection established:{:?}", path);
+        log::debug!("connection established:{:?}", path);
         spawn(async move {
             use protocol::Topology;
             let hasher = top.hasher();

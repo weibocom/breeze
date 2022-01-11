@@ -159,7 +159,7 @@ impl MemcacheBinary {
         response[PacketPos::Opcode as usize] = req.op();
         response[PacketPos::Status as usize + 1] = status;
         //复制 Opaque
-        for i in PacketPos::Opaque as usize..PacketPos::Opcode as usize + 4 {
+        for i in PacketPos::Opaque as usize..PacketPos::Opaque as usize + 4 {
             response[i] = req.at(i);
         }
         response
