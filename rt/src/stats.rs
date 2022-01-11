@@ -41,8 +41,6 @@ impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
         let m_timeout = Path::new(vec!["mesh"]).qps("timeout");
         let mut m_task = Path::new(vec!["mesh"]).count("task");
         m_task += 1;
-        log::info!("timeout task crated:{:?}", f);
-
         Self {
             inner: f,
             last: Instant::now(),
@@ -61,6 +59,7 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
     type Output = F::Output;
     #[inline(always)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.m_task.try_flush();
         let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
         if tx > rx {
             let reenter = self.last.elapsed();
@@ -73,7 +72,6 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
                 return Poll::Ready(Err(protocol::Error::Timeout(elapsed)));
             }
         } else {
-            self.m_task.try_flush();
             self.last_rx = Instant::now();
         }
         let ret = Pin::new(&mut self.inner).poll(cx);
