@@ -78,6 +78,7 @@ async fn _process_one(
         let p = p.clone();
         let cb = cb.clone();
         let metrics = StreamMetrics::new(path);
+        log::info!("connection established:{:?}", path);
         spawn(async move {
             use protocol::Topology;
             let hasher = top.hasher();
@@ -86,7 +87,7 @@ async fn _process_one(
                 match e {
                     Error::Quit => {} // client发送quit协议退出
                     Error::ReadEof => {}
-                    e => log::debug!("disconnected. {:?} ", e),
+                    e => log::info!("disconnected. {:?} ", e),
                 }
             }
         });

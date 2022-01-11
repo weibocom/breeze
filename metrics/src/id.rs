@@ -12,6 +12,7 @@ impl Id {
     }
 }
 
+#[derive(Debug)]
 pub struct Path {
     path: Vec<String>,
 }
