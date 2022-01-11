@@ -1,12 +1,11 @@
 use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use futures::ready;
-use metrics::TASK_NUM;
+use metrics::{Metric, Path};
 use tokio::time::{interval, Interval};
 
 pub trait ReEnter {
@@ -25,26 +24,34 @@ pub trait ReEnter {
 //  1. 每次poll的执行耗时
 //  2. 重入耗时间隔
 pub struct Timeout<F> {
-    id: usize,
     last: Instant,
     last_rx: Instant, // 上一次有接收到请求的时间
     inner: F,
     timeout: Duration,
     tick: Interval,
+    m_task: Metric,
+    m_reenter: Metric,
+    m_timeout: Metric,
 }
 impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
     #[inline]
     pub fn from(f: F, timeout: Duration) -> Self {
-        TASK_NUM.fetch_add(1, Ordering::Relaxed);
         let tick = interval(timeout / 2);
-        static SEQ: AtomicUsize = AtomicUsize::new(0);
+        let m_reenter = Path::new(vec!["mesh"]).rtt("reenter10ms+");
+        let m_timeout = Path::new(vec!["mesh"]).qps("timeout");
+        let mut m_task = Path::new(vec!["mesh"]).count("task");
+        m_task += 1;
+        log::info!("timeout task crated:{:?}", f);
+
         Self {
             inner: f,
             last: Instant::now(),
             last_rx: Instant::now(),
             timeout,
             tick,
-            id: SEQ.fetch_add(1, Ordering::Relaxed),
+            m_reenter,
+            m_timeout,
+            m_task,
         }
     }
 }
@@ -56,30 +63,17 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
         if tx > rx {
-            if self.last.elapsed() >= Duration::from_millis(20) {
-                log::info!(
-                    "reenter-{} {:?} {} > {} => {:?}",
-                    self.id,
-                    self.last.elapsed(),
-                    tx,
-                    rx,
-                    self.inner
-                );
+            let reenter = self.last.elapsed();
+            if reenter >= Duration::from_millis(10) {
+                self.m_reenter += reenter;
             }
             if self.last_rx.elapsed() >= self.timeout {
                 let elapsed = self.last_rx.elapsed();
-                log::info!(
-                    "reenter-{} timeout {:?}. ({} {}) => {:?}",
-                    self.id,
-                    elapsed,
-                    tx,
-                    rx,
-                    self.inner
-                );
-                TASK_NUM.fetch_sub(1, Ordering::Relaxed);
+                self.m_timeout += 1;
                 return Poll::Ready(Err(protocol::Error::Timeout(elapsed)));
             }
         } else {
+            self.m_task.try_flush();
             self.last_rx = Instant::now();
         }
         let ret = Pin::new(&mut self.inner).poll(cx);
@@ -95,8 +89,13 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
             }
         } else {
             let ret = ready!(ret);
-            TASK_NUM.fetch_sub(1, Ordering::Relaxed);
             Poll::Ready(ret)
         }
+    }
+}
+impl<F> Drop for Timeout<F> {
+    #[inline]
+    fn drop(&mut self) {
+        self.m_task -= 1;
     }
 }
