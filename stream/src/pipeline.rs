@@ -94,6 +94,7 @@ where
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         self.waker.register(cx.waker());
+        self.metrics.conn_num().try_flush();
         loop {
             // 从client接收数据写入到buffer
             let request = self.poll_fill_buff(cx)?;
