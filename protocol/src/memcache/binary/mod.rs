@@ -39,12 +39,8 @@ impl Protocol for MemcacheBinary {
             }
             // 存储原始的op_code
             let mut flag = Flag::from_op(op_code as u16, COMMAND_IDX[op_code as usize].into());
-            if NOREPLY_MAPPING[req.op() as usize] == req.op() {
-                flag.set_sentonly();
-            }
-            if NO_FORWARD_OPS[op_code as usize] == 1 {
-                flag.set_noforward();
-            }
+            flag.set_sentonly(NOREPLY_MAPPING[req.op() as usize] == req.op());
+            flag.set_noforward(NO_FORWARD_OPS[op_code as usize] == 1);
             let key = req.key();
             let hash = if key.len() > 0 {
                 alg.hash(&key)
@@ -177,7 +173,7 @@ impl MemcacheBinary {
         let op = COMMAND_IDX[op_code as usize].into();
         req.reset_flag(op_code as u16, op);
         // 设置只发送标签，发送完成即请求完成。
-        req.set_sentonly();
+        req.set_sentonly(true);
         debug_assert!(req.operation().is_store());
         debug_assert!(req.sentonly());
     }
@@ -223,7 +219,7 @@ impl MemcacheBinary {
 
         let hash = req.hash();
         let mut flag = Flag::from_op(op as u16, COMMAND_IDX[op as usize].into());
-        flag.set_sentonly();
+        flag.set_sentonly(true);
 
         let guard = ds::MemGuard::from_vec(req_cmd);
         // TODO: 目前mc不需要用key_count，等又需要再调整

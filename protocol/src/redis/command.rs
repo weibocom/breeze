@@ -96,10 +96,7 @@ impl CommandProperties {
         use super::flag::RedisFlager;
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
         flag.set_padding_rsp(self.padding_rsp);
-        if self.noforward {
-            flag.set_noforward();
-        }
-
+        flag.set_noforward(self.noforward);
         flag
     }
     // bulk_num只有在first=true时才有意义。
