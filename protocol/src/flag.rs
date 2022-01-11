@@ -35,9 +35,9 @@ impl Flag {
         self.status_ok
     }
     #[inline(always)]
-    pub fn set_sentonly(&mut self) {
-        debug_assert!(!self.sentonly());
-        self.sentonly = true;
+    pub fn set_sentonly(&mut self, sentonly: bool) {
+        debug_assert!(self.sentonly() && sentonly);
+        self.sentonly = sentonly;
     }
     #[inline(always)]
     pub fn sentonly(&self) -> bool {
@@ -52,9 +52,9 @@ impl Flag {
         self.op_code
     }
     #[inline(always)]
-    pub fn set_noforward(&mut self) {
+    pub fn set_noforward(&mut self, noforward: bool) {
         debug_assert!(!self.noforward());
-        self.noforward = true;
+        self.noforward = noforward;
     }
     #[inline(always)]
     pub fn noforward(&self) -> bool {
