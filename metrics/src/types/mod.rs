@@ -4,14 +4,14 @@ mod number;
 mod qps;
 mod rtt;
 mod status;
-pub(crate) mod tasks;
+//pub(crate) mod tasks;
 
 pub(crate) use host::*;
 pub(crate) use number::*;
 pub(crate) use qps::*;
 pub(crate) use rtt::*;
 pub(crate) use status::*;
-pub use tasks::TASK_NUM;
+//pub use tasks::TASK_NUM;
 
 use crate::{Id, ItemRc};
 pub use data::*;
@@ -79,6 +79,10 @@ impl Metric {
     #[inline(always)]
     fn try_inited(&mut self) {
         self.item.try_init(&self.id);
+        self.try_flush();
+    }
+    #[inline(always)]
+    pub fn try_flush(&mut self) {
         if self.cache > 0 && self.item.inited() {
             // flush cache
             self.item.data().flush(self.cache);
