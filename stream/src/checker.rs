@@ -70,7 +70,7 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = Handler::from(rx, pending, &mut buf, w, r, &mut self.rtt, p);
             let handler = rt::Timeout::from(handler, self.timeout);
             if let Err(e) = handler.await {
-                log::info!("{} handler error:{:?}", self.s_metric, e);
+                log::info!("{} error:{:?} pending:{}", self.s_metric, e, pending.len());
             }
             // 先关闭，关闭之后不会有新的请求发送
             self.run.off();
