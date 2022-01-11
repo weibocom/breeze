@@ -190,6 +190,9 @@ where
                 ctx.async_start_write_back(parser, cb.exp_sec());
             } else {
                 let req = ctx.request();
+                if !req.noforward() {
+                    log::info!("no response found:{}", req);
+                }
                 parser.write_no_response(req, tx_buf)?;
             }
 
