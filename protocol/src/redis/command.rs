@@ -120,7 +120,8 @@ impl CommandProperties {
         cmd.write("\r\n");
         cmd.write(self.mname);
         cmd.write("\r\n");
-        data.copy_to_vec(&mut cmd);
+        cmd.write_slice(data);
+        //data.copy_to_vec(&mut cmd);
         let mut flag = self.flag();
         use super::flag::RedisFlager;
         if first {
