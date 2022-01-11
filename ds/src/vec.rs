@@ -5,6 +5,7 @@ macro_rules! define_read_number {
             $(
             fn $fn_name(&mut self, num:$type_name);
             )+
+            fn write_slice(&mut self, slice:&crate::RingSlice);
         }
 
         impl Buffer for Vec<u8> {
@@ -21,6 +22,10 @@ macro_rules! define_read_number {
                     );
                     self.set_len(self.len() + b.len());
                 }
+            }
+            #[inline(always)]
+            fn write_slice(&mut self, data:&crate::RingSlice) {
+                data.copy_to_vec(self);
             }
         $(
             #[inline(always)]
