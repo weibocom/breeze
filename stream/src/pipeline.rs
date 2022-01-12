@@ -191,7 +191,7 @@ where
             } else {
                 let req = ctx.request();
                 if !req.noforward() {
-                    log::info!("no response found:{}", req);
+                    *metrics.noresponse() += 1;
                 }
                 parser.write_no_response(req, tx_buf)?;
             }
