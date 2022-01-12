@@ -36,7 +36,6 @@ impl Flag {
     }
     #[inline(always)]
     pub fn set_sentonly(&mut self, sentonly: bool) {
-        debug_assert!(self.sentonly() && sentonly);
         self.sentonly = sentonly;
     }
     #[inline(always)]
