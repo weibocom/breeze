@@ -42,7 +42,7 @@ impl Hasher {
             "crc32-range" => Self::Crc32Range(Crc32Range::from(alg_lower.as_str())),
             _ => {
                 // 默认采用mc的crc32-s hash
-                log::warn!("found unknow hash:{}, use crc32-short instead", alg);
+                log::debug!("found unknow hash:{}, use crc32-short instead", alg);
                 Self::Crc32Short(Default::default())
             } // _ => Self::Crc32(Default::default()),
         }
