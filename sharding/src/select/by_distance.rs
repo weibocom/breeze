@@ -190,7 +190,7 @@ impl DistanceCalculator {
                     distances.insert(zones[0].to_string(), d);
                 }
                 self.distances = distances;
-                log::info!("zones:{:?}", self);
+                log::debug!("zones:{:?}", self);
             }
         };
     }
