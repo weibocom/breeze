@@ -1,6 +1,5 @@
 pub(crate) mod buffer;
 pub(crate) mod handler;
-pub mod io;
 pub mod pipeline;
 mod shards;
 pub use protocol::callback::*;
