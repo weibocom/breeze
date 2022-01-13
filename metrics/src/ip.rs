@@ -6,13 +6,17 @@ pub fn encode_addr(addr: &str) -> String {
 
 // 通过建立一次连接获取本地通讯的IP
 pub static LOCAL_IP_BY_CONNECT: OnceCell<String> = OnceCell::new();
+pub static RAW_LOCAL_IP_BY_CONNECT: OnceCell<String> = OnceCell::new();
 lazy_static! {
     static ref LOCAL_IP_STATIC: String =
         encode_addr(&local_ip_address::local_ip().expect("local ip").to_string());
 }
 
-pub(crate) fn local_ip() -> &'static String {
+pub fn local_ip() -> &'static str {
     LOCAL_IP_BY_CONNECT.get_or_init(|| LOCAL_IP_STATIC.to_owned())
+}
+pub fn raw_local_ip() -> &'static str {
+    RAW_LOCAL_IP_BY_CONNECT.get_or_init(|| LOCAL_IP_STATIC.to_owned())
 }
 
 use std::io::Result;
@@ -22,6 +26,7 @@ fn _init_local_ip(addr: &str) -> Result<()> {
     let local = encode_addr(&(TcpStream::connect(addr)?.local_addr()?.ip().to_string()));
 
     log::info!("local ip inited:{}", local);
+    let _ = RAW_LOCAL_IP_BY_CONNECT.set(local.replace("_", "."));
     let _ = LOCAL_IP_BY_CONNECT.set(local);
     Ok(())
 }
