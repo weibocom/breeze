@@ -67,7 +67,7 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
     where
         W: AsyncWrite + Unpin,
     {
-        let tx_buf_size = 8192;
+        let tx_buf_size = 4096;
         Self {
             data,
             cache: false,
