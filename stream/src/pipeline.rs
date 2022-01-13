@@ -32,13 +32,7 @@ where
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
-    let mut rx_buf: DelayedDrop<_> = StreamGuard::from(GuardedBuffer::new(
-        1024,
-        1 << 20,
-        32 * 1024,
-        |_old, _delta| {},
-    ))
-    .into();
+    let mut rx_buf: DelayedDrop<_> = StreamGuard::new().into();
     let waker: DelayedDrop<_> = AtomicWaker::default().into();
     let mut pending: DelayedDrop<_> = VecDeque::with_capacity(127).into();
     let pipeline = CopyBidirectional {
