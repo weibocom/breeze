@@ -8,7 +8,7 @@ use tokio::time::{sleep, timeout};
 use protocol::{Error, Protocol, Request};
 
 use crate::handler::Handler;
-use ds::{GuardedBuffer, Switcher};
+use ds::Switcher;
 use metrics::{Metric, Path};
 
 pub struct BackendChecker<P, Req> {
@@ -63,8 +63,7 @@ impl<P, Req> BackendChecker<P, Req> {
             log::debug!("handler started:{}", self.s_metric);
             use crate::buffer::StreamGuard;
             use crate::gc::DelayedDrop;
-            let mut buf: DelayedDrop<_> =
-                StreamGuard::from(GuardedBuffer::new(2048, 1 << 20, 16 * 1024, |_, _| {})).into();
+            let mut buf: DelayedDrop<_> = StreamGuard::new().into();
             let pending = &mut VecDeque::with_capacity(31);
             let p = self.parser.clone();
             let handler = Handler::from(rx, pending, &mut buf, w, r, &mut self.rtt, p);
