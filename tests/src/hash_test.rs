@@ -17,7 +17,6 @@ mod hash_test {
     #[test]
     fn hash_check() {
         // 将java生成的随机key及hash，每种size都copy的几条过来，用于日常验证
-        //let path = "/Users/fishermen/works/weibo/git/java/api-commons/";
         let path = "./records/";
         let bkdr10 = format!("{}{}", path, "bkdr_10.log");
         let bkdr15 = format!("{}{}", path, "bkdr_15.log");
