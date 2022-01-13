@@ -70,7 +70,7 @@ impl Vintage {
                     if t_index == index {
                         Ok(Config::NotChanged)
                     } else {
-                        log::info!("{} from {} to {} len:{}", path, index, t_index, data.len());
+                        log::info!("{} '{}' => '{}' len:{}", path, index, t_index, data.len());
                         Ok(Config::Config(t_index, C::from(data)))
                     }
                 }
