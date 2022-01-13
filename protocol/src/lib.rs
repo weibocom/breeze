@@ -1,99 +1,52 @@
-use std::io::{Error, ErrorKind, Result};
+#[macro_use]
+extern crate lazy_static;
 
+mod flag;
 pub mod memcache;
+pub mod parser;
+pub mod redis;
+pub mod req;
+pub mod resp;
+mod topo;
+mod utf8;
 
+pub use flag::*;
+pub use parser::Proto as Protocol;
+pub use parser::*;
+pub use topo::*;
+
+pub use req::*;
 mod operation;
 pub use operation::*;
 
-mod request;
-pub use request::*;
+pub mod callback;
+pub mod request;
+pub use utf8::*;
 
-mod response;
-pub use response::*;
-
-use enum_dispatch::enum_dispatch;
-
-use ds::{RingSlice, Slice};
-use sharding::Sharding;
-
-// 往client写入时，最大的buffer大小。
-pub const MAX_SENT_BUFFER_SIZE: usize = 1024 * 1024;
-
-#[enum_dispatch]
-pub trait Protocol: Unpin + Clone + 'static + Send + Sync {
-    fn parse_request(&self, buf: Slice) -> Result<Option<Request>>;
-    // 需要跨分片访问的请求进行分片处理
-    // 索引下标是分片id
-    fn sharding(&self, req: &Request, sharding: &Sharding) -> Vec<(usize, Request)>;
-    // req是一个完整的store类型的请求；
-    // 当前协议支持noreply
-    // 当前req不是noreply
-    fn with_noreply(&self, _req: &[u8]) -> Vec<u8> {
-        todo!("not supported")
+pub trait ResponseWriter {
+    // 写数据，一次写完
+    fn write(&mut self, data: &[u8]) -> Result<()>;
+    #[inline(always)]
+    fn write_u8(&mut self, v: u8) -> Result<()> {
+        self.write(&[v])
     }
-    // 调用方必须确保req包含key，否则可能会panic
-    fn meta_type(&self, req: &Request) -> MetaType;
-    fn key(&self, req: &Request) -> Slice;
-    fn req_gets(&self, req: &Request) -> bool;
-    fn req_cas_or_add(&self, req: &Request) -> bool;
-    // 从response中解析出一个完成的response
-    fn parse_response(&self, response: &RingSlice) -> Option<Response>;
-    // 将response转换为回种数据的cmd,并将数据写入request_buff中，返回待会写的cmds的Slice结构
-    fn convert_to_writeback_request(
-        &self,
-        request: &Request,
-        response: &Response,
-        expire_seconds: u32,
-    ) -> Result<Vec<Request>>;
-    // 对gets指令做修正，以满足标准协议
-    fn convert_gets(&self, request: &Request);
-    // 把resp里面存在的key都去掉，只保留未返回结果的key及对应的命令。
-    // 如果所有的key都已返回，则返回None
-    fn filter_by_key<'a, R>(&self, req: &Request, resp: R) -> Option<Request>
-    where
-        R: Iterator<Item = &'a Response>;
-    fn write_response<'a, R, W>(&self, r: R, w: &mut W)
-    where
-        W: BackwardWrite,
-        R: Iterator<Item = &'a Response>;
-    // 把一个response，通常是一个get对应的返回，转换为一个Request。
-    // 用于将数据从一个实例同步到另外一个实例
-    fn convert(&self, _response: &Response, _noreply: bool) -> Option<Request> {
-        todo!("convert not supported");
-    }
-}
-#[enum_dispatch(Protocol)]
-#[derive(Clone)]
-pub enum Protocols {
-    McBin(memcache::MemcacheBin),
-    McText(memcache::MemcacheText),
-}
-
-impl Protocols {
-    pub fn try_from(name: &str) -> Result<Self> {
-        match name {
-            "mc_bin" | "mc" | "memcache" | "memcached" => {
-                Ok(Self::McBin(memcache::MemcacheBin::new()))
-            }
-            "mc_text" | "memcache_text" | "memcached_text" => {
-                Ok(Self::McText(memcache::MemcacheText::new()))
-            }
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("'{}' is not a valid protocol", name),
-            )),
+    #[inline(always)]
+    fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
+        let mut oft = oft;
+        let len = data.len();
+        while oft < len {
+            let data = data.read(oft);
+            oft += data.len();
+            self.write(data)?;
         }
+        Ok(())
     }
-}
-
-#[derive(Debug)]
-pub enum MetaType {
-    Version,
 }
 
 #[derive(Copy, Clone)]
 pub enum Resource {
     Memcache,
+    Redis,
 }
 
 impl Resource {
@@ -101,10 +54,30 @@ impl Resource {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Memcache => "mc",
+            Self::Redis => "redis",
         }
     }
 }
 
-pub trait BackwardWrite {
-    fn write(&mut self, data: &RingSlice);
+use std::time::Duration;
+pub trait Builder<P, R, E> {
+    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Duration) -> E
+    where
+        E: Endpoint<Item = R>;
+}
+mod error;
+pub use error::Error;
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl ResponseWriter for Vec<u8> {
+    #[inline(always)]
+    fn write(&mut self, data: &[u8]) -> Result<()> {
+        ds::vec::Buffer::write(self, data);
+        Ok(())
+    }
+    #[inline(always)]
+    fn write_u8(&mut self, v: u8) -> Result<()> {
+        self.push(v);
+        Ok(())
+    }
 }

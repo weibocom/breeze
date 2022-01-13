@@ -1,8 +1,9 @@
 mod binary;
-mod text;
+//mod text;
 
 pub use binary::MemcacheBinary as MemcacheBin;
-pub use text::MemcacheText;
+pub use binary::MemcacheBinary;
+//pub use text::MemcacheText;
 
 #[derive(Debug, PartialEq)]
 pub enum Command {
