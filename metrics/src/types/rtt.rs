@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::{Id, ItemWriter, NumberInner};
-const SLOW: i64 = Duration::from_millis(200).as_micros() as i64;
+const SLOW: i64 = Duration::from_millis(100).as_micros() as i64;
 pub struct Rtt {
     count: NumberInner,
     avg_us: NumberInner,
@@ -26,7 +26,7 @@ impl Rtt {
             let (ss, cur) = self.slow.load_and_snapshot();
             if cur > ss {
                 let slow = (cur - ss) as f64;
-                w.write(&id.path, id.key, "qps.itvl200ms-MAX", slow / secs);
+                w.write(&id.path, id.key, "qps.itvl100ms+", slow / secs);
             }
         }
     }
