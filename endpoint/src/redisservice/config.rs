@@ -102,7 +102,7 @@ pub struct Basic {
 //        let mut master = Vec::with_capacity(self.backends.len());
 //        let mut slave_shards = Vec::with_capacity(self.backends.len());
 //
-//        // 轮询backend，设置master、slave的分片列表
+//        //
 //        for bk in self.backends.clone() {
 //            let addrs: Vec<&str> = bk.split(",").collect();
 //
@@ -229,17 +229,7 @@ pub struct Basic {
 //
 //    #[test]
 //    fn test_parse() {
-//        let cfg = "redismeshtest:
-//          basic:
-//            access_mod: rw
-//            hash: crc32
-//            distribution: modula
-//            listen: 56810,56811,56812
-//            resource_type: eredis
-//          backends:
-//            - rm56810.eos.grid.sina.com.cn:56810,rs56810.hebe.grid.sina.com.cn:56810
-//            - rm56811.eos.grid.sina.com.cn:56811,rs56811.hebe.grid.sina.com.cn:56811
-//            - rm56812.eos.grid.sina.com.cn:56812,rs56812.hebe.grid.sina.com.cn:56812";
+//        let cfg = "redismeshtest:  ............;
 //
 //        let rt = Runtime::new().unwrap();
 //        rt.block_on(async {
