@@ -8,7 +8,7 @@ use tokio::time::{sleep, timeout};
 use protocol::{Error, Protocol, Request};
 
 use crate::handler::Handler;
-use ds::{GuardedBuffer, Switcher};
+use ds::Switcher;
 use metrics::{Metric, Path};
 
 pub struct BackendChecker<P, Req> {
