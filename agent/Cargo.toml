@@ -2,12 +2,13 @@
 name = "agent"
 version = "0.0.1"
 authors = ["icy"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 context = { path = "../context" }
+sharding = { path = "../sharding" }
 net = { path = "../net"}
 protocol = { path = "../protocol" }
 endpoint = { path = "../endpoint" }
@@ -15,9 +16,13 @@ discovery = { path = "../discovery" }
 elog = { path = "../log", package = "log" }
 stream = { path = "../stream" }
 metrics = { path = "../metrics" }
+rt = { path = "../rt" }
+
 crossbeam-channel = "0.5.1"
 log = "0.4.14"
 ds = { path = "../ds" }
+backtrace = "0.3.63"
 
-tokio = {version = "1.12.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
+tokio = {version = "1.15.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
 mimalloc = { version = "*", default-features = false }
+

@@ -34,54 +34,158 @@ const CRC32TAB: [i64; 256] = [
 ];
 
 const CRC_SEED: i64 = 0xFFFFFFFF;
-#[derive(Default)]
+
+// 用于兼容jdk版本crc32算法
+#[derive(Default, Clone, Debug)]
 pub struct Crc32 {}
 
-//TODO 参考java 内部实现版本 以及 api-commons中crc32 hash算法调整，手动测试各种长度key，hash一致，需要线上继续验证 fishermen
-impl super::Hash for Crc32 {
-    fn hash(&self, key: &[u8]) -> u64 {
-        let mut crc: i64 = CRC_SEED;
-        for c in key {
-            crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (*c as i64)) & 0xff) as usize];
-        }
-        crc ^= CRC_SEED;
-        crc &= CRC_SEED;
+// 用于mc crc32 short hash变种
+#[derive(Default, Clone, Debug)]
+pub struct Crc32Short {}
 
+// 用于redis的区间crc32变种
+#[derive(Default, Clone, Debug)]
+pub struct Crc32Range {
+    start: usize,
+    only_digit: bool, // 是否只对digit部分进行hash
+}
+
+// 在start为0且only_num为false时，兼容crc32的原始实现，与java.util.zip.CRC32的多种长度数据的计算结果相同（jdk的CRC32核心算法是native不可见）
+pub(crate) fn crc32_raw<K: super::HashKey>(key: &K, start: usize, only_digit: bool) -> i64 {
+    let mut crc: i64 = CRC_SEED;
+    debug_assert!(start < key.len());
+    for i in start..key.len() {
+        let c = key.at(i);
+        if only_digit && !c.is_ascii_digit() {
+            break;
+        }
+        crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+    }
+    crc ^= CRC_SEED;
+    crc &= CRC_SEED;
+    if crc < 0 {
+        log::warn!("negative hash key:{:?},[{}/{}]", key, start, only_digit);
+    }
+    crc
+}
+
+impl super::Hash for Crc32 {
+    fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
+        crc32_raw(key, 0, false)
+    }
+}
+
+// 兼容api-commons中mc crc32 hash算法调整，手动测试各种长度key，hash一致；
+// 理论上应该与线上一致，注意跟进线上不一致场景 fishermen
+impl super::Hash for Crc32Short {
+    fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
+        let crc = crc32_raw(key, 0, false);
         let mut rs = (crc >> 16) & 0x7fff;
         if rs < 0 {
+            log::warn!("found negative crc32 hash for key:{:?}", key);
             rs = rs.wrapping_mul(-1);
         }
-        return rs as u64;
+
+        rs
     }
 }
 
-impl Crc32 {
-    // crc-32 标准规范实现，与mc实现存在差异
-    fn _hash_spec(&mut self, key: &[u8]) -> u64 {
-        let mut crc: i64 = !0;
-        for c in key {
-            crc = CRC32TAB[((crc ^ *c as i64) & 0xFF) as usize] ^ (crc >> 8);
+// 兼容api-commons中redis的crc32 hash算法，同时支持各种场景的hash计算，线上待验证 fishermen
+impl Crc32Range {
+    pub fn from(alg: &str) -> Self {
+        if alg.eq(super::CRC32_RANGE) {
+            // format: crc32-range
+            Self {
+                start: 0,
+                only_digit: false,
+            }
+        } else if alg.eq(super::CRC32_RANGE_ID) {
+            Self {
+                start: 0,
+                only_digit: true,
+            }
+        } else {
+            // format: crc32-range-id or crc32-range-id-xxx，如果xxx不是合法数字，则直接使用全部的key来hash
+            // crc32-range-id: 从key的第一个数字开始解析id；
+            // crc32-range-id-2： 掠过2个字节的前缀，然后开始解析数字
+            debug_assert!(alg.len() > (super::CRC32_RANGE_ID_PREFIX.len()));
+            let start = &alg[super::CRC32_RANGE_ID_PREFIX.len()..];
+            if let Ok(s) = start.parse::<usize>() {
+                return Self {
+                    start: s,
+                    only_digit: true,
+                };
+            } else {
+                return Self {
+                    start: 0,
+                    only_digit: true,
+                };
+            }
         }
-        return (crc ^ !0) as u64;
     }
 }
+
+impl super::Hash for Crc32Range {
+    fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
+        let crc = crc32_raw(key, self.start, self.only_digit);
+        crc
+        // 这部分逻辑转移到send中，让 hashgen 256只出现在一个地方 fishermen
+        // let mut hash = crc
+        //     .wrapping_div(DEFAULT_RANGE_SPLIT)
+        //     .wrapping_rem(DEFAULT_RANGE_SPLIT);
+        // if hash < 0 {
+        //     log::warn!("found negative crc range hash for key:{:?}", key);
+        //     hash = hash.wrapping_abs();
+        // }
+        // hash
+    }
+}
+
+// impl Crc32 {
+//     // crc-32 标准规范实现，与mc/jdk实现存在差异
+//     fn _hash_spec(&mut self, key: &[u8]) -> u64 {
+//         let mut crc: i64 = !0;
+//         for c in key {
+//             crc = CRC32TAB[((crc ^ *c as i64) & 0xFF) as usize] ^ (crc >> 8);
+//         }
+//         return (crc ^ !0) as u64;
+//     }
+// }
 
 #[cfg(test)]
 mod crc_test {
-    use crate::{bkdr::Bkdr, Hash};
 
-    use super::Crc32;
+    use crate::{bkdr::Bkdr, distribution::Distribute, Hash};
+
+    use super::{Crc32Range, Crc32Short};
 
     #[test]
-    fn crc32_test() {
+    fn crc32_mc_test() {
         // let key = "123";
         let key = "12345678901234567890123456789.fri";
-        let mut crc = Crc32 {};
-        let _hash = crc.hash(key.as_bytes());
+        let crc = Crc32Short {};
+        let _hash = crc.hash(&key.as_bytes());
         println!("crc32 - key: {}, hash: {}", key, _hash);
 
-        let mut bkdr = Bkdr {};
-        let bkdr_hash = bkdr.hash(key.as_bytes());
+        let bkdr = Bkdr {};
+        let bkdr_hash = bkdr.hash(&key.as_bytes());
         println!("bkdr - key: {}, hash: {}", key, bkdr_hash);
+    }
+
+    #[test]
+    fn crc32_redis_test() {
+        println!("===========crc32-redis test start...");
+        let key = "4711424389024351.repost";
+        let crc32 = Crc32Range::from("crc32-range-id-0");
+        let hash = crc32.hash(&key.as_bytes());
+
+        let mut shards = Vec::with_capacity(8);
+        for _i in 0..8 {
+            shards.push("1".to_string());
+        }
+        let dist = Distribute::from("range", &shards);
+        let idx = dist.index(hash);
+
+        println!("crc32-redis - key:{}, hash:{}, dist:{}", key, hash, idx);
     }
 }

@@ -1,5 +1,5 @@
 use std::ptr::NonNull;
-use std::sync::atomic::{fence, AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 #[derive(Clone)]
 pub struct CowReadHandle<T> {
@@ -34,7 +34,7 @@ pub struct CowReadHandleInner<T> {
     dropping: AtomicPtr<T>,
     _t: std::marker::PhantomData<T>,
 }
-struct ReadGuard<'rh, T> {
+pub struct ReadGuard<'rh, T> {
     inner: &'rh CowReadHandle<T>,
 }
 impl<'rh, T> std::ops::Deref for ReadGuard<'rh, T> {
@@ -54,9 +54,8 @@ impl<'rh, T> std::ops::Deref for ReadGuard<'rh, T> {
 
 impl<'rh, T> Drop for ReadGuard<'rh, T> {
     fn drop(&mut self) {
-        let enters = self.inner.enters.fetch_sub(1, Ordering::AcqRel);
-        if enters == 1 && self.inner.epoch.load(Ordering::Acquire) {
-            self.inner.epoch.store(false, Ordering::Release);
+        // 删除dropping
+        if self.inner.enters.fetch_sub(1, Ordering::AcqRel) == 1 {
             self.inner.take();
         }
     }
@@ -65,6 +64,10 @@ impl<T> CowReadHandle<T> {
     pub fn read<F: Fn(&T) -> R, R>(&self, f: F) -> R {
         f(&self.enter())
     }
+    #[inline]
+    pub fn get(&self) -> ReadGuard<'_, T> {
+        self.enter()
+    }
     fn enter(&self) -> ReadGuard<'_, T> {
         self.enters.fetch_add(1, Ordering::AcqRel);
         ReadGuard { inner: self }
@@ -72,20 +75,15 @@ impl<T> CowReadHandle<T> {
     // 先把原有的数据swap出来，存储到dropping中。所有的reader请求都迁移到inner之后，将dropping中的数据删除。
     // 在ReadGuard中处理
     pub(crate) fn update(&self, t: T) {
+        debug_assert!(self.epoch.load(Ordering::Acquire));
         let w_handle = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(t))) };
         let old = self.inner.inner.swap(w_handle.as_ptr(), Ordering::Release);
-        fence(Ordering::SeqCst);
         let dropped = self.dropping.swap(old, Ordering::Release);
         self.drop_old(dropped);
-        self.epoch.store(true, Ordering::Release);
-        // 把数据存储到dropping中。由ReadGuard处理
-        if self.enters.load(Ordering::Acquire) == 0 {
-            // 当前没有请求，可以安全释放数据
-            self.epoch.store(false, Ordering::Release);
-            self.take();
-        } else {
-            // 不为0，则交给ReadGuard处理
-        }
+        // 确保安全
+        let guard = self.enter();
+        self.epoch.store(false, Ordering::Release);
+        drop(guard);
     }
     // 把dropping的数据转换出来，并且删除
     fn take(&self) {
