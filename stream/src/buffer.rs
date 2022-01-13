@@ -92,6 +92,10 @@ impl From<GuardedBuffer> for StreamGuard {
 }
 impl StreamGuard {
     #[inline]
+    pub fn new() -> Self {
+        Self::from(GuardedBuffer::new(1024, 1 << 20, 1024, |_old, _delta| {}))
+    }
+    #[inline]
     pub fn pending(&self) -> usize {
         self.buf.pending()
     }

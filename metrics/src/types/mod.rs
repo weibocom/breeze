@@ -7,6 +7,7 @@ mod status;
 //pub(crate) mod tasks;
 
 pub(crate) use host::*;
+pub use host::{decr_task, incr_task};
 pub(crate) use number::*;
 pub(crate) use qps::*;
 pub(crate) use rtt::*;
