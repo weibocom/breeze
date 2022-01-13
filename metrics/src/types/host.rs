@@ -1,8 +1,10 @@
 use psutil::process::Process;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 static CPU_PERCENT: AtomicUsize = AtomicUsize::new(0);
 static MEMORY: AtomicUsize = AtomicUsize::new(0);
+
+static TASK_NUM: AtomicIsize = AtomicIsize::new(0);
 
 pub struct Host {
     process: Process,
@@ -21,6 +23,9 @@ impl Host {
         let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
         w.write("mesh", "host", "cpu", percent as f64);
         w.write("mesh", "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
+
+        let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
+        w.write("mesh", "task", "num", tasks);
     }
     pub(crate) fn refresh(&mut self) {
         if let Ok(percent) = self.process.cpu_percent() {
@@ -30,4 +35,13 @@ impl Host {
             MEMORY.store(mem.rss() as usize, Ordering::Relaxed);
         }
     }
+}
+
+#[inline]
+pub fn incr_task() {
+    TASK_NUM.fetch_add(1, Ordering::Relaxed);
+}
+#[inline]
+pub fn decr_task() {
+    TASK_NUM.fetch_sub(1, Ordering::Relaxed);
 }
