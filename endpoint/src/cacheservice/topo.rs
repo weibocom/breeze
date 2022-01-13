@@ -184,7 +184,7 @@ where
             let master = self.build(old, ns.master, dist, namespace, mto);
             self.streams.push(master);
 
-            let rto = Duration::from_millis(100);
+            let rto = Duration::from_millis(30);
             // master_l1
             self.has_l1 = ns.master_l1.len() > 0;
             for l1 in ns.master_l1 {

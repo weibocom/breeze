@@ -206,7 +206,7 @@ where
             // slave
             let mut replicas = Vec::with_capacity(8);
             for addr in slaves {
-                let timeout = Duration::from_millis(100);
+                let timeout = Duration::from_millis(30);
                 let slave = self.take_or_build(&mut old, &addr, timeout);
                 replicas.push((addr, slave));
             }
