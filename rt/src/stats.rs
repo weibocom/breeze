@@ -29,7 +29,6 @@ pub struct Timeout<F> {
     inner: F,
     timeout: Duration,
     tick: Interval,
-    m_task: Metric,
     m_reenter: Metric,
     m_timeout: Metric,
 }
@@ -39,8 +38,7 @@ impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
         let tick = interval(timeout / 2);
         let m_reenter = Path::new(vec!["mesh"]).rtt("reenter10ms+");
         let m_timeout = Path::new(vec!["mesh"]).qps("timeout");
-        let mut m_task = Path::new(vec!["mesh"]).count("task");
-        m_task += 1;
+        metrics::incr_task();
         Self {
             inner: f,
             last: Instant::now(),
@@ -49,7 +47,6 @@ impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
             tick,
             m_reenter,
             m_timeout,
-            m_task,
         }
     }
 }
@@ -59,20 +56,19 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
     type Output = F::Output;
     #[inline(always)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.m_task.try_flush();
+        let now = Instant::now();
         let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
         if tx > rx {
-            let reenter = self.last.elapsed();
-            if reenter >= Duration::from_millis(10) {
-                self.m_reenter += reenter;
+            if now - self.last >= Duration::from_millis(10) {
+                let elapsed = now - self.last;
+                self.m_reenter += elapsed;
             }
-            if self.last_rx.elapsed() >= self.timeout {
-                let elapsed = self.last_rx.elapsed();
+            if now - self.last_rx >= self.timeout {
                 self.m_timeout += 1;
-                return Poll::Ready(Err(protocol::Error::Timeout(elapsed)));
+                return Poll::Ready(Err(protocol::Error::Timeout(now - self.last_rx)));
             }
         } else {
-            self.last_rx = Instant::now();
+            self.last_rx = now;
         }
         let ret = Pin::new(&mut self.inner).poll(cx);
         let (tx_post, rx_post) = (self.inner.num_tx(), self.inner.num_rx());
@@ -86,14 +82,13 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
                 ready!(self.tick.poll_tick(cx));
             }
         } else {
-            let ret = ready!(ret);
-            Poll::Ready(ret)
+            ret
         }
     }
 }
 impl<F> Drop for Timeout<F> {
     #[inline]
     fn drop(&mut self) {
-        self.m_task -= 1;
+        metrics::decr_task();
     }
 }
