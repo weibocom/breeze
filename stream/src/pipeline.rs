@@ -10,7 +10,6 @@ use ds::AtomicWaker;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use ds::GuardedBuffer;
 use protocol::Stream;
 use protocol::{HashedCommand, Protocol, Result};
 use sharding::hash::Hasher;
