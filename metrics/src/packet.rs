@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::task::{Context, Poll};
 
 use futures::ready;
@@ -7,7 +6,7 @@ use tokio::net::UdpSocket;
 #[derive(Default)]
 pub struct PacketBuffer {
     idx: usize,
-    buff: RefCell<Vec<u8>>, // 没有在请求的关键路径上。是异步发送metrics
+    buff: Vec<u8>, // 没有在请求的关键路径上。是异步发送metrics
     pub(crate) addr: String,
     socket: Option<UdpSocket>,
 }
@@ -21,17 +20,17 @@ impl PacketBuffer {
     }
     #[inline]
     pub fn poll_flush(&mut self, cx: &mut Context) -> Poll<()> {
-        if self.idx < self.buff.borrow().len() {
+        if self.idx < self.buff.len() {
             if let Err(e) = ready!(self._poll_flush(cx)) {
                 log::warn!("failed to flush metrics:{} ", e);
                 self.socket.take();
             }
-            if self.buff.borrow().len() >= 4 * 1024 * 1024 {
-                log::info!("metric size:{}", self.buff.borrow().len());
+            if self.buff.len() >= 4 * 1024 * 1024 {
+                log::info!("metric size:{}", self.buff.len());
             }
             self.idx = 0;
-            let mut buff = self.buff.borrow_mut();
-            unsafe { buff.set_len(0) };
+            self.buff.clear();
+            unsafe { self.buff.set_len(0) };
         }
         Poll::Ready(())
     }
@@ -43,33 +42,32 @@ impl PacketBuffer {
             self.socket = Some(UdpSocket::from_std(sock)?);
         }
         if let Some(ref mut sock) = self.socket.as_mut() {
-            let buff = self.buff.borrow();
             // 一次最多发送4k。
-            while self.idx < buff.len() {
+            while self.idx < self.buff.len() {
                 let packet_size = 1024;
 
-                let mut end = (self.idx + packet_size).min(buff.len() - 1);
+                let mut end = (self.idx + packet_size).min(self.buff.len() - 1);
                 // 找着下一行。避免换行
-                while end < buff.len() {
-                    if buff[end] == b'\n' {
+                while end < self.buff.len() {
+                    if self.buff[end] == b'\n' {
                         break;
                     }
                     end += 1;
                 }
-                self.idx += ready!(sock.poll_send(cx, &buff[self.idx..=end]))?;
+                self.idx += ready!(sock.poll_send(cx, &self.buff[self.idx..=end]))?;
             }
         }
         Poll::Ready(Ok(()))
     }
 }
 
-impl crate::kv::KV for PacketBuffer {
+impl crate::item::ItemWriter for PacketBuffer {
     #[inline]
-    fn kv(&self, sid: usize, key: &str, sub_key: &str, v: f64) {
+    fn write(&mut self, name: &str, key: &str, sub_key: &str, v: f64) {
         use ds::Buffer;
-        let mut buff = self.buff.borrow_mut();
+        let buff = &mut self.buff;
         buff.write("breeze.");
-        buff.write(crate::get_name(sid));
+        buff.write(name);
         buff.write(".byhost.");
         buff.write(super::ip::local_ip());
         buff.write(".");

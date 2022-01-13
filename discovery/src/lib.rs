@@ -1,8 +1,15 @@
+pub(crate) mod cache;
+pub(crate) mod cfg;
 mod topology;
 mod update;
 mod vintage;
 pub use update::*;
+pub mod dns;
+mod fixed;
+mod path;
+mod sig;
 
+pub use fixed::Fixed;
 pub use topology::*;
 use vintage::Vintage;
 
@@ -62,8 +69,5 @@ impl<T: Discover + Send + Unpin + Sync> Discover for std::sync::Arc<T> {
 }
 
 pub trait ServiceId {
-    // 这个是服务的名称，唯一标识一个服务。
-    fn name(&self) -> &str;
-    // 多个服务可能共用一份配置，会有相同的路径, 用于从discover获取配置信息
-    fn path(&self) -> &str;
+    fn service(&self) -> &str;
 }
