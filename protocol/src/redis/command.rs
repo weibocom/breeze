@@ -283,6 +283,7 @@ lazy_static! {
                 ("zcount", "zcount",                      4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("zlexcount", "zlexcount",                4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("zscore", "zscore",                      3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("zscan", "zscan",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
 
                 // hash 相关 multi, noforward, has_key, has_val, need_bulk_num
                 ("hset", "hset",                          4, Store, 1, 1, 1, 3, false, false, true, true, false),
@@ -333,71 +334,79 @@ lazy_static! {
                 ("ltrim", "ltrim",                          4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("lrem", "lrem",                            4, Get, 1, 1, 1, 3, false, false, true, false, false),
 
+                // string 相关指令，包括 bit, str
+                ("setbit", "setbit",                        4, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("getbit", "getbit",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("bitcount", "bitcount",                   -2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("bitpos", "bitpos",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("bitfield", "bitfield",                   -2, Get, 1, 1, 1, 3, false, false, true, false, false),
 
-            // TODO: 随着测试，逐步打开，注意加上padding rsp fishermen
+                ("setrange", "setrange",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("getrange", "getrange",                    4, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("getset", "getset",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
 
+                // 测试完毕后规整到incr附近
+                ("incrby", "incrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("decrby", "decrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("incrbyfloat", "incrbyfloat",              3, Store, 1, 1, 1, 3, false, false, true, true, false),
+
+                // set 相关指令
+                ("sadd", "sadd",                           -3, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("srem", "srem",                           -3, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("sismember", "sismember",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("scard", "scard",                          2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("spop", "spop",                           -2, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("srandmember", "srandmember",             -2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("smembers", "smembers",                    2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("sscan", "sscan",                         -3, Get, 1, 1, 1, 3, false, false, true, false, false),
+
+                // geo 相关指令
+                ("geoadd", "geoadd",                       -5, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("georadius", "georadius",                 -6, Operation::Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("georadiusbymember", "georadiusbymember", -5, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("geohash", "geohash",                     -2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("geopos", "geopos",                       -2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("geodist", "geodist",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
+
+                // pf相关指令
+                ("pfadd", "pfadd",                         -2, Store, 1, 1, 1, 3, false, false, true, false, false),
+
+                // 涉及多个key，先不支持了
+                // ("pfcount", "pfcount", -2, Get, 1, -1, 1, 3, false, false, true, false, false),
+                // "pfmerge" => (-2, Operation::Store, 1, -1, 1),
+                // ("pfselftest", "pfselftest", 1, Get, 1, 1, 1, 3, false, false, true, false, false),
+                // "pfdebug" => (-3, Operation::Store, 0, 0, 0),
+
+
+
+            // TODO: 暂时不支持的指令，启用时注意加上padding rsp fishermen
             // "psetex" => (4, Operation::Store, 1, 1, 1),
-
             // "strlen" => (2, Operation::Get, 1, 1, 1),
-
-            // "setbit" => (4, Operation::Store, 1, 1, 1),
-            // "getbit" => (3, Operation::Get, 1, 1, 1),
-            // "setrange" => (4, Operation::Store, 1, 1, 1),
-            // "getrange" => (4, Operation::Get, 1, 1, 1),
             // "substr" => (4, Operation::Get, 1, 1, 1),
-            // "incr" => (2, Operation::Store, 1, 1, 1),
-            // "decr" => (2, Operation::Store, 1, 1, 1),
-            // "mget" => (-2, Operation::MGet, 1, -1, 1),
-
             // "rpoplpush" => (3, Operation::Store, 1, 2, 1),
             // "brpop" => (-3, Operation::Store, 1, -2, 1),
             // "blpop" => (-3, Operation::Store, 1, -2, 1),
             // "brpoplpush" => (4, Operation::Store, 1, 2, 1),
 
-
-
-            // "sadd" => (-3, Operation::Store, 1, 1, 1),
-            // "srem" => (-3, Operation::Store, 1, 1, 1),
-            // "smove" => (4, Operation::Store, 1, 2, 1),
-            // "sismember" => (3, Operation::Get, 1, 1, 1),
-            // "scard" => (2, Operation::Get, 1, 1, 1),
-            // // 虽然是read类型指令，但涉及到删除集合中的元素，先当作store指令
-            // "spop" => (-2, Operation::Store, 1, 1, 1),
-            // "srandmember" => (-2, Operation::Get, 1, 1, 1),
+            // 涉及多个key的操作，暂不支持
+            // "bitop" => (-4, Operation::Store, 2, -1, 1),
             // "sinter" => (-2, Operation::Get, 1, -1, 1),
             // "sinterstore" => (-3, Operation::Store, 1, -1, 1),
             // "sunion" => (-2, Operation::Get, 1, -1, 1),
             // "sunionstore" => (-3, Operation::Store, 1, -1, 1),
             // "sdiff" => (-2, Operation::Get, 1, -1, 1),
             // "sdiffstore" => (-3, Operation::Store, 1, -1, 1),
-            // "smembers" => (2, Operation::Get, 1, 1, 1),
-            // "sscan" => (-3, Operation::Get, 1, 1, 1),
-
-
-
-
-
+            // "smove" => (4, Operation::Store, 1, 2, 1),
             // "zunionstore" => (-4, Operation::Store, 0, 0, 0),
             // "zinterstore" => (-4, Operation::Store, 0, 0, 0),
 
-
-
-
-            // "zscan" => (-3, Operation::Get, 1, 1, 1),
-
-
-
-
             // "hstrlen" => (3, Operation::Get, 1, 1, 1),
 
-            // "incrby" => (3, Operation::Store, 1, 1, 1),
-            // "decrby" => (3, Operation::Store, 1, 1, 1),
-            // "incrbyfloat" => (3, Operation::Store, 1, 1, 1),
-            // "getset" => (3, Operation::Store, 1, 1, 1),
-            // "mset" => (-3, Operation::Store, 1, -1, 2),
+
+
+
             // "msetnx" => (-3, Operation::Store, 1, -1, 2),
             // "randomkey" => (1, Operation::Get, 0, 0, 0),
-            // // "select" => (2, Operation::Meta, 0, 0, 0),
             // "move" => (3, Operation::Store, 1, 1, 1),
             // "rename" => (3, Operation::Store, 1, 2, 1),
             // "renamenx" => (3, Operation::Store, 1, 2, 1),
@@ -408,7 +417,6 @@ lazy_static! {
             // "scan" => (-2, Operation::Get, 0, 0, 0),
             // "dbsize" => (1, Operation::Get, 0, 0, 0),
             // "auth" => (2, Operation::Meta, 0, 0, 0),
-            // // "ping" => (-1, Operation::Meta, 0, 0, 0),
             // "echo" => (2, Operation::Meta, 0, 0, 0),
             // info 先不在client支持
             // "info" => (-1, Operation::Meta, 0, 0, 0),
@@ -431,20 +439,6 @@ lazy_static! {
             // "evalsha" => (-3, Operation::Store, 0, 0, 0),
             // "script" => (-2, Operation::Get, 0, 0, 0),
             // "time" => (1, Operation::Get, 0, 0, 0),
-            // "bitop" => (-4, Operation::Store, 2, -1, 1),
-            // "bitcount" => (-2, Operation::Get, 1, 1, 1),
-            // "bitpos" => (-3, Operation::Get, 1, 1, 1),
-            // "geoadd" => (-5, Operation::Store, 1, 1, 1),
-            // "georadius" => (-6, Operation::Get, 1, 1, 1),
-            // "georadiusbymember" => (-5, Operation::Get, 1, 1, 1),
-            // "geohash" => (-2, Operation::Get, 1, 1, 1),
-            // "geopos" => (-2, Operation::Get, 1, 1, 1),
-            // "geodist" => (-4, Operation::Get, 1, 1, 1),
-            // "pfselftest" => (1, Operation::Get, 1, 1, 1),
-            // "pfadd" => (-2, Operation::Store, 1, 1, 1),
-            // "pfcount" => (-2, Operation::Get, 1, -1, 1),
-            // "pfmerge" => (-2, Operation::Store, 1, -1, 1),
-            // "pfdebug" => (-3, Operation::Store, 0, 0, 0),
 
             // ********** 二期实现
             // 事务类、脚本类cmd，暂时先不支持，二期再处理 fishermen

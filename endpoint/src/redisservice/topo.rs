@@ -107,6 +107,7 @@ where
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
+        log::debug!("+++ update cfg:{}", cfg);
         match serde_yaml::from_str::<RedisNamespace>(cfg) {
             Err(e) => log::info!("failed to parse redis namespace:{},{:?}", namespace, e),
             Ok(ns) => {
