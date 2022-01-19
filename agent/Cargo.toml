@@ -17,10 +17,9 @@ elog = { path = "../log", package = "log" }
 stream = { path = "../stream" }
 metrics = { path = "../metrics" }
 rt = { path = "../rt" }
-
-crossbeam-channel = "0.5.1"
-log = "0.4.14"
 ds = { path = "../ds" }
+
+log = "0.4.14"
 backtrace = "0.3.63"
 
 tokio = {version = "1.15.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}

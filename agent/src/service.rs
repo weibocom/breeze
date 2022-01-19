@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use context::Quadruple;
-use crossbeam_channel::Sender;
 use discovery::TopologyWriteGuard;
+use ds::chan::Sender;
 use metrics::Path;
 use protocol::callback::{Callback, CallbackPtr};
 use protocol::{Parser, Result};

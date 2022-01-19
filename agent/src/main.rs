@@ -4,7 +4,6 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 mod service;
 use context::Context;
-use crossbeam_channel::bounded;
 use discovery::*;
 
 use rt::spawn;
@@ -57,7 +56,7 @@ async fn main() -> Result<()> {
     spawner.spawn(discovery::dns::start_dns_resolver_refresher());
     use discovery::watch_discovery;
     let discovery = Discovery::from_url(ctx.discovery());
-    let (tx, rx) = bounded(128);
+    let (tx, rx) = ds::chan::bounded(128);
     let snapshot = ctx.snapshot().to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
