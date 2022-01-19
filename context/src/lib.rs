@@ -144,7 +144,7 @@ impl ListenerIter {
                         continue;
                     }
                     if let Some(one) = Quadruple::parse(&name) {
-                        log::info!("service parsed :{}", one);
+                        log::debug!("service parsed :{}", one);
                         listeners.push(one);
                         self.processed.insert(name.to_string(), ());
                     }

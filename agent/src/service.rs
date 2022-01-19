@@ -52,7 +52,6 @@ pub(super) async fn process_one(
     }
     switcher.off();
 
-    // TODO 延迟一秒，释放top内存。
     // 因为回调，有可能在连接释放的时候，还在引用top。
     tokio::time::sleep(Duration::from_secs(3)).await;
     Ok(())
@@ -78,6 +77,7 @@ async fn _process_one(
         let p = p.clone();
         let cb = cb.clone();
         let metrics = StreamMetrics::new(path);
+        let path = format!("{:?}", path);
         log::debug!("connection established:{:?}", path);
         spawn(async move {
             use protocol::Topology;
@@ -87,7 +87,7 @@ async fn _process_one(
                 match e {
                     Error::Quit => {} // client发送quit协议退出
                     Error::ReadEof => {}
-                    e => log::info!("disconnected. {:?} ", e),
+                    e => log::info!("{:?} disconnected. {:?}", path, e),
                 }
             }
         });
