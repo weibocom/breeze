@@ -35,8 +35,8 @@ pub struct Timeout<F> {
 impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
     #[inline]
     pub fn from(f: F, timeout: Duration) -> Self {
-        let tick = interval(timeout / 2);
-        let m_reenter = Path::new(vec!["mesh"]).rtt("reenter10ms+");
+        let tick = interval(timeout);
+        let m_reenter = Path::new(vec!["mesh"]).rtt("reenter10ms");
         let m_timeout = Path::new(vec!["mesh"]).qps("timeout");
         metrics::incr_task();
         Self {
