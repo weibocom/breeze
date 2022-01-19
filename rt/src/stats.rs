@@ -30,14 +30,12 @@ pub struct Timeout<F> {
     timeout: Duration,
     tick: Interval,
     m_reenter: Metric,
-    m_timeout: Metric,
 }
 impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
     #[inline]
     pub fn from(f: F, timeout: Duration) -> Self {
         let tick = interval(timeout);
         let m_reenter = Path::new(vec!["mesh"]).rtt("reenter10ms");
-        let m_timeout = Path::new(vec!["mesh"]).qps("timeout");
         metrics::incr_task();
         Self {
             inner: f,
@@ -46,7 +44,6 @@ impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
             timeout,
             tick,
             m_reenter,
-            m_timeout,
         }
     }
 }
@@ -64,7 +61,6 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
                 self.m_reenter += elapsed;
             }
             if now - self.last_rx >= self.timeout {
-                self.m_timeout += 1;
                 return Poll::Ready(Err(protocol::Error::Timeout(now - self.last_rx)));
             }
         } else {

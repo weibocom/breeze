@@ -30,8 +30,7 @@ impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for Backe
         let f = finish.clone();
         let path = Path::new(vec![rsrc.name(), service, addr]);
         let r = run.clone();
-        let mut checker =
-            BackendChecker::from(addr, rx, r, f, init.clone(), parser, &path, timeout);
+        let mut checker = BackendChecker::from(addr, rx, r, f, init.clone(), parser, path, timeout);
         rt::spawn(async move { checker.start_check().await });
         Backend {
             finish,

@@ -50,8 +50,6 @@ where
         start_init: false,
         first: true, // 默认当前请求是第一个
     };
-    let timeout = std::time::Duration::from_secs(3);
-    let pipeline = rt::Timeout::from(pipeline, timeout);
     let ret = pipeline.await;
     crate::gc::delayed_drop((rx_buf, pending, waker));
     ret

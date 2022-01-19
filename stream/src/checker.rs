@@ -17,11 +17,10 @@ pub struct BackendChecker<P, Req> {
     finish: Switcher,
     init: Switcher,
     parser: P,
-    s_metric: Metric,
-    rtt: Metric,
     addr: String,
     last_conn: Instant,
     timeout: Duration,
+    path: Path,
 }
 
 impl<P, Req> BackendChecker<P, Req> {
@@ -32,7 +31,7 @@ impl<P, Req> BackendChecker<P, Req> {
         finish: Switcher,
         init: Switcher,
         parser: P,
-        path: &Path,
+        path: Path,
         timeout: Duration,
     ) -> Self {
         Self {
@@ -42,12 +41,9 @@ impl<P, Req> BackendChecker<P, Req> {
             finish,
             init,
             parser,
-            s_metric: path.status("reconn"),
-            //bytes_tx: path.qps("bytes.tx"),
-            //bytes_rx: path.qps("bytes.rx"),
-            rtt: path.rtt("req"),
             last_conn: Instant::now(),
             timeout,
+            path,
         }
     }
     pub(crate) async fn start_check(&mut self)
@@ -55,21 +51,26 @@ impl<P, Req> BackendChecker<P, Req> {
         P: Protocol,
         Req: Request,
     {
+        let mut s_metric = self.path.status("reconn");
+        let mut m_timeout = self.path.qps("timeout");
         while !self.finish.get() {
-            let stream = self.try_connect().await;
+            let stream = self.try_connect(&mut s_metric).await;
             let (r, w) = stream.into_split();
             let rx = &mut self.rx;
             self.run.on();
-            log::debug!("handler started:{}", self.s_metric);
+            log::debug!("handler started:{}", s_metric);
             use crate::buffer::StreamGuard;
             use crate::gc::DelayedDrop;
             let mut buf: DelayedDrop<_> = StreamGuard::new().into();
             let pending = &mut VecDeque::with_capacity(31);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, pending, &mut buf, w, r, &mut self.rtt, p);
+            let handler = Handler::from(rx, pending, &mut buf, w, r, p, &self.path);
             let handler = rt::Timeout::from(handler, self.timeout);
             if let Err(e) = handler.await {
-                log::info!("{} error:{:?} pending:{}", self.s_metric, e, pending.len());
+                if let protocol::Error::Timeout(_) = e {
+                    m_timeout += 1;
+                }
+                log::info!("{} error:{:?} pending:{}", s_metric, e, pending.len());
             }
             // 先关闭，关闭之后不会有新的请求发送
             self.run.off();
@@ -90,9 +91,9 @@ impl<P, Req> BackendChecker<P, Req> {
             crate::gc::delayed_drop(buf);
         }
         debug_assert!(!self.run.get());
-        log::info!("{} finished {}", self.s_metric, self.addr);
+        log::info!("{} finished {}", s_metric, self.addr);
     }
-    async fn try_connect(&mut self) -> TcpStream
+    async fn try_connect(&mut self, reconn: &mut Metric) -> TcpStream
     where
         P: Protocol,
         Req: Request,
@@ -108,7 +109,7 @@ impl<P, Req> BackendChecker<P, Req> {
         loop {
             if self.init.get() {
                 // 第一次初始化不计算。
-                self.s_metric += 1;
+                *reconn += 1;
             }
             log::debug!("try to connect {} tries:{}", self.addr, tries);
             match self.reconnected_once().await {
