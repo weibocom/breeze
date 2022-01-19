@@ -15,9 +15,8 @@ rand = "0.8.4"
 cache_line_size = "1.0.0"
 log = "0.4.14"
 crossbeam-queue = "0.3.2"
+crossbeam-channel = "0.5.1"
 cfg-if = "1"
 futures = "0.3.17"
 atomic-waker = "*"
-
 backtrace = "0.3.63"
-

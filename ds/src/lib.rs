@@ -1,3 +1,4 @@
+pub mod chan;
 mod cow;
 mod mem;
 pub mod queue;
