@@ -22,6 +22,8 @@ pub struct RedisService<B, E, Req, P> {
     updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
     service: String,
+    timeout_master: Duration,
+    timeout_slave: Duration,
     _mark: std::marker::PhantomData<(B, Req)>,
 }
 impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
@@ -34,8 +36,10 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             hasher: Default::default(),
             updated: Default::default(),
             service: Default::default(),
-            _mark: Default::default(),
             selector: Default::default(),
+            timeout_master: Duration::from_millis(250),
+            timeout_slave: Duration::from_millis(100),
+            _mark: Default::default(),
         }
     }
 }
@@ -109,30 +113,29 @@ where
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
-        match serde_yaml::from_str::<RedisNamespace>(cfg) {
-            Err(e) => log::info!("failed to parse redis namespace:{},{:?}", namespace, e),
-            Ok(ns) => {
-                self.hasher = Hasher::from(&ns.basic.hash);
-                self.selector = ns.basic.selector;
-                let mut shards_url = Vec::new();
-                for shard in ns.backends.iter() {
-                    let mut shard_url = Vec::new();
-                    for url_port in shard.split(",") {
-                        // 注册域名。后续可以通常lookup进行查询。
-                        let host = url_port.host();
-                        if !self.updated.contains_key(host) {
-                            let watcher = dns::register(host);
-                            self.updated.insert(host.to_string(), watcher);
-                        }
-                        shard_url.push(url_port.to_string());
+        if let Some(ns) = RedisNamespace::try_from(cfg) {
+            self.timeout_master = ns.timeout_master();
+            self.timeout_slave = ns.timeout_slave();
+            self.hasher = Hasher::from(&ns.basic.hash);
+            self.selector = ns.basic.selector;
+            let mut shards_url = Vec::new();
+            for shard in ns.backends.iter() {
+                let mut shard_url = Vec::new();
+                for url_port in shard.split(",") {
+                    // 注册域名。后续可以通常lookup进行查询。
+                    let host = url_port.host();
+                    if !self.updated.contains_key(host) {
+                        let watcher = dns::register(host);
+                        self.updated.insert(host.to_string(), watcher);
                     }
-                    shards_url.push(shard_url);
+                    shard_url.push(url_port.to_string());
                 }
-                if self.shards_url.len() > 0 {
-                    log::info!("top updated from {:?} to {:?}", self.shards_url, shards_url);
-                }
-                self.shards_url = shards_url;
+                shards_url.push(shard_url);
             }
+            if self.shards_url.len() > 0 {
+                log::info!("top updated from {:?} to {:?}", self.shards_url, shards_url);
+            }
+            self.shards_url = shards_url;
         }
         self.service = namespace.to_string();
     }
@@ -200,21 +203,19 @@ where
         for (master_addr, slaves) in addrs {
             debug_assert_ne!(master_addr.len(), 0);
             debug_assert_ne!(slaves.len(), 0);
-            let timeout = Duration::from_millis(500);
-            let master = self.take_or_build(&mut old, &master_addr, timeout);
+            let master = self.take_or_build(&mut old, &master_addr, self.timeout_master);
 
             // slave
             let mut replicas = Vec::with_capacity(8);
             for addr in slaves {
-                let timeout = Duration::from_millis(150);
-                let slave = self.take_or_build(&mut old, &addr, timeout);
+                let slave = self.take_or_build(&mut old, &addr, self.timeout_slave);
                 replicas.push((addr, slave));
             }
             let shard = Shard::selector(&self.selector, master_addr, master, replicas);
             self.shards.push(shard);
         }
         debug_assert_eq!(self.shards.len(), self.shards_url.len());
-        log::info!("{} load complete => {}", self.service, self.shards.len());
+        log::debug!("{} load complete => {}", self.service, self.shards.len());
     }
 }
 impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
