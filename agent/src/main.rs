@@ -1,3 +1,4 @@
+use git_version::git_version;
 use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -17,9 +18,11 @@ use std::panic;
 
 use backtrace::Backtrace;
 
+const GIT_VERSION: &str = git_version!();
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 //#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    println!("git version = {}", GIT_VERSION);
     panic::set_hook(Box::new(|panic_info| {
         let (filename, line) = panic_info
             .location()
