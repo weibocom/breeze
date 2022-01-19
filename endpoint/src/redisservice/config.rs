@@ -16,12 +16,6 @@ pub struct RedisNamespace {
     // TODO 下面这几个稍后抽取到更高一层次 fishermen
     #[serde(default)]
     pub(crate) host_addrs: HashMap<String, HashSet<String>>,
-
-    #[serde(default)]
-    pub(crate) timeout_ms_master: u32,
-
-    #[serde(default)]
-    pub(crate) timeout_ms_slave: u32,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -38,6 +32,10 @@ pub struct Basic {
     resource_type: String,
     #[serde(default)]
     pub(crate) selector: String,
+    #[serde(default)]
+    pub(crate) timeout_ms_master: u32,
+    #[serde(default)]
+    pub(crate) timeout_ms_slave: u32,
 }
 
 impl RedisNamespace {
@@ -50,9 +48,9 @@ impl RedisNamespace {
             .ok()
     }
     pub(super) fn timeout_master(&self) -> Duration {
-        Duration::from_millis(250.max(self.timeout_ms_master as u64))
+        Duration::from_millis(250.max(self.basic.timeout_ms_master as u64))
     }
     pub(super) fn timeout_slave(&self) -> Duration {
-        Duration::from_millis(100.max(self.timeout_ms_slave as u64))
+        Duration::from_millis(100.max(self.basic.timeout_ms_slave as u64))
     }
 }
