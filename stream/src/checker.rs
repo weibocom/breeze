@@ -53,9 +53,13 @@ impl<P, Req> BackendChecker<P, Req> {
     {
         let mut s_metric = self.path.status("reconn");
         let mut m_timeout = self.path.qps("timeout");
+        let mut tries = 0;
         while !self.finish.get() {
-            let stream = self.try_connect(&mut s_metric).await;
-            let (r, w) = stream.into_split();
+            let stream = self.try_connect(&mut s_metric, &mut tries).await;
+            if stream.is_none() {
+                continue;
+            }
+            let (r, w) = stream.expect("not expected").into_split();
             let rx = &mut self.rx;
             self.run.on();
             log::debug!("handler started:{}", s_metric);
@@ -93,40 +97,34 @@ impl<P, Req> BackendChecker<P, Req> {
         debug_assert!(!self.run.get());
         log::info!("{} finished {}", s_metric, self.addr);
     }
-    async fn try_connect(&mut self, reconn: &mut Metric) -> TcpStream
+    async fn try_connect(&mut self, reconn: &mut Metric, tries: &mut usize) -> Option<TcpStream>
     where
         P: Protocol,
         Req: Request,
     {
         if self.init.get() {
-            // 之前已经初始化过，离上一次成功连接需要超过10s。保护后端资源
-            const DELAY: Duration = Duration::from_secs(15);
-            if self.last_conn.elapsed() < DELAY {
-                sleep(DELAY - self.last_conn.elapsed()).await;
+            // 第一次初始化不计算。
+            *reconn += 1;
+        }
+        log::debug!("try to connect {} tries:{}", self.addr, tries);
+        match self.reconnected_once().await {
+            Ok(stream) => {
+                self.init.on();
+                self.last_conn = Instant::now();
+                *tries = 0;
+                return Some(stream);
+            }
+            Err(e) => {
+                self.init.on();
+                log::debug!("{}-th conn to {} err:{}", tries, self.addr, e);
             }
         }
-        let mut tries = 0;
-        loop {
-            if self.init.get() {
-                // 第一次初始化不计算。
-                *reconn += 1;
-            }
-            log::debug!("try to connect {} tries:{}", self.addr, tries);
-            match self.reconnected_once().await {
-                Ok(stream) => {
-                    self.init.on();
-                    self.last_conn = Instant::now();
-                    return stream;
-                }
-                Err(e) => {
-                    self.init.on();
-                    log::debug!("{}-th conn to {} err:{}", tries, self.addr, e);
-                }
-            }
-            tries += 1;
-
-            sleep(Duration::from_secs(7)).await;
-        }
+        *tries += 1;
+        // 之前已经初始化过，离上一次成功连接需要超过10s。保护后端资源
+        // sleep 2~128秒
+        let secs = 1 << (8.min(*tries));
+        sleep(Duration::from_secs(secs)).await;
+        None
     }
     #[inline]
     async fn reconnected_once(&self) -> std::result::Result<TcpStream, Box<dyn std::error::Error>>
