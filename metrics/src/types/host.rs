@@ -18,10 +18,13 @@ pub struct Host {
 impl Host {
     #[inline]
     pub(crate) fn new() -> Self {
+        let full= git_version!().to_string();
+        let splitted: Vec<&str> = full.split("-").collect();
+        let version = splitted[splitted.len() - 1];
         Self {
             start: Instant::now(),
             process: Process::current().expect("cannot get current process"),
-            version: git_version!().to_string().replace("-", "_"),
+            version: version.to_string(),
         }
     }
     #[inline]

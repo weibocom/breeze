@@ -11,7 +11,7 @@ use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use protocol::{HashedCommand, Protocol, Result};
-use protocol::{Operation, Stream};
+use protocol::Stream;
 use sharding::hash::Hasher;
 
 use crate::buffer::{Reader, StreamGuard};
