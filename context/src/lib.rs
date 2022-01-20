@@ -16,6 +16,9 @@ pub struct Context {
     #[clap(long, help("port for suvervisor"), default_value("9984"))]
     port: u16,
 
+    #[clap(long, help("number of open file"), default_value("204800"))]
+    pub no_file: u64,
+
     #[clap(
         short,
         long,
