@@ -68,9 +68,7 @@ impl Debug for InnerData {
 }
 pub trait MetricData {
     fn incr_to(self, data: &ItemData);
-    fn incr_to_cache(self, cache: &mut i64);
-    fn decr_to(self, data: &ItemData);
-    fn decr_to_cache(self, cache: &mut i64);
+    fn incr_to_cache(self, id: &Arc<Id>);
 }
 use crate::ToNumber;
 impl<T: ToNumber> MetricData for T {
@@ -79,16 +77,8 @@ impl<T: ToNumber> MetricData for T {
         data.incr_num(self.int());
     }
     #[inline(always)]
-    fn decr_to(self, data: &ItemData) {
-        data.incr_num(self.int() * -1);
-    }
-    #[inline(always)]
-    fn incr_to_cache(self, cache: &mut i64) {
-        *cache += self.int();
-    }
-    #[inline(always)]
-    fn decr_to_cache(self, cache: &mut i64) {
-        *cache -= self.int();
+    fn incr_to_cache(self, id: &Arc<Id>) {
+        crate::register_cache(id, self.int());
     }
 }
 use std::time::Duration;
@@ -98,11 +88,5 @@ impl MetricData for Duration {
         unsafe { data.inner.rtt.incr(self) };
     }
     #[inline(always)]
-    fn decr_to(self, _data: &ItemData) {
-        debug_assert!(0 == 1);
-    }
-    #[inline(always)]
-    fn incr_to_cache(self, _cache: &mut i64) {}
-    #[inline(always)]
-    fn decr_to_cache(self, _cache: &mut i64) {}
+    fn incr_to_cache(self, _cache: &Arc<Id>) {}
 }
