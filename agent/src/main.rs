@@ -43,6 +43,10 @@ async fn main() -> Result<()> {
     }));
     let ctx = Context::from_os_args();
     ctx.check()?;
+    // set number of file
+    if let Err(e) = rlimit::setrlimit(rlimit::Resource::NOFILE, ctx.no_file, ctx.no_file) {
+        log::info!("set rlimit to {} failed:{:?}", ctx.no_file, e);
+    }
 
     let _l = service::listener_for_supervisor(ctx.port()).await?;
     elog::init(ctx.log_dir(), &ctx.log_level)?;

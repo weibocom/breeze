@@ -2,12 +2,15 @@ use psutil::process::Process;
 
 use git_version::git_version;
 use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
+use std::time::Instant;
+
 static CPU_PERCENT: AtomicUsize = AtomicUsize::new(0);
 static MEMORY: AtomicUsize = AtomicUsize::new(0);
 
 static TASK_NUM: AtomicIsize = AtomicIsize::new(0);
 
 pub struct Host {
+    start: Instant,
     process: Process,
     version: String,
 }
@@ -16,6 +19,7 @@ impl Host {
     #[inline]
     pub(crate) fn new() -> Self {
         Self {
+            start: Instant::now(),
             process: Process::current().expect("cannot get current process"),
             version: git_version!().to_string().replace("-", "_"),
         }
@@ -30,6 +34,12 @@ impl Host {
         let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
         w.write("base", "task", "num", tasks);
         w.write("base", "version", self.version.as_str(), 1.0);
+        w.write(
+            "mesh",
+            "host",
+            "uptime_sec",
+            self.start.elapsed().as_secs() as f64,
+        );
     }
     pub(crate) fn refresh(&mut self) {
         if let Ok(percent) = self.process.cpu_percent() {
