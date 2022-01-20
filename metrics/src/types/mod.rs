@@ -62,7 +62,6 @@ impl MetricType {
 }
 
 pub struct Metric {
-    cache: i64, // 未初始化完成前，数据cache
     id: Arc<Id>,
     item: ItemRc,
 }
@@ -72,7 +71,6 @@ impl Metric {
         let mut me = Self {
             id,
             item: ItemRc::uninit(),
-            cache: 0,
         };
         me.try_inited();
         me
@@ -80,15 +78,6 @@ impl Metric {
     #[inline(always)]
     fn try_inited(&mut self) {
         self.item.try_init(&self.id);
-        self.try_flush();
-    }
-    #[inline(always)]
-    pub fn try_flush(&mut self) {
-        if self.cache > 0 && self.item.inited() {
-            // flush cache
-            self.item.data().flush(self.cache);
-            self.cache = 0;
-        }
     }
 }
 use std::fmt::Debug;
@@ -99,21 +88,16 @@ impl<T: MetricData + Debug> AddAssign<T> for Metric {
         if self.item.inited() {
             m.incr_to(self.item.data());
         } else {
-            m.incr_to_cache(&mut self.cache);
+            m.incr_to_cache(&self.id);
             self.try_inited();
         }
     }
 }
 use std::ops::SubAssign;
-impl<T: MetricData> SubAssign<T> for Metric {
+impl<T: MetricData + std::ops::Neg<Output = T> + Debug> SubAssign<T> for Metric {
     #[inline(always)]
     fn sub_assign(&mut self, m: T) {
-        if self.item.inited() {
-            m.decr_to(self.item.data());
-        } else {
-            m.decr_to_cache(&mut self.cache);
-            self.try_inited();
-        }
+        *self += -m;
     }
 }
 use std::fmt::{self, Display, Formatter};

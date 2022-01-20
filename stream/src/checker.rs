@@ -52,7 +52,8 @@ impl<P, Req> BackendChecker<P, Req> {
         Req: Request,
     {
         let mut s_metric = self.path.status("reconn");
-        let mut m_timeout = self.path.qps("timeout");
+        let mut m_timeout_biz = self.path.qps("timeout");
+        let mut m_timeout = Path::new(vec!["mesh"]).rtt("timeout");
         let mut tries = 0;
         while !self.finish.get() {
             let stream = self.try_connect(&mut s_metric, &mut tries).await;
@@ -73,6 +74,7 @@ impl<P, Req> BackendChecker<P, Req> {
             if let Err(e) = handler.await {
                 if let protocol::Error::Timeout(_) = e {
                     m_timeout += 1;
+                    m_timeout_biz += 1;
                 }
                 log::info!("{} error:{:?} pending:{}", s_metric, e, pending.len());
             }
@@ -105,13 +107,21 @@ impl<P, Req> BackendChecker<P, Req> {
         if self.init.get() {
             // 第一次初始化不计算。
             *reconn += 1;
+            // 等于0说明一次成功都没有
+            if *tries > 0 {
+                // 距离上一次成功连接需要超过60秒
+                let elapsed = self.last_conn.elapsed();
+                if elapsed < Duration::from_secs(60) {
+                    sleep(Duration::from_secs(60) - elapsed).await;
+                }
+            }
         }
         log::debug!("try to connect {} tries:{}", self.addr, tries);
         match self.reconnected_once().await {
             Ok(stream) => {
                 self.init.on();
                 self.last_conn = Instant::now();
-                *tries = 0;
+                *tries += 1;
                 return Some(stream);
             }
             Err(e) => {
@@ -119,10 +129,8 @@ impl<P, Req> BackendChecker<P, Req> {
                 log::debug!("{}-th conn to {} err:{}", tries, self.addr, e);
             }
         }
-        *tries += 1;
-        // 之前已经初始化过，离上一次成功连接需要超过10s。保护后端资源
-        // sleep 2~128秒
-        let secs = 1 << (8.min(*tries));
+        // 失败了，sleep一段时间再重试
+        let secs = 1 << (6.min(*tries + 1));
         sleep(Duration::from_secs(secs)).await;
         None
     }
