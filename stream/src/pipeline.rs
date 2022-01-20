@@ -10,8 +10,8 @@ use ds::AtomicWaker;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use protocol::Stream;
 use protocol::{HashedCommand, Protocol, Result};
+use protocol::{Operation, Stream};
 use sharding::hash::Hasher;
 
 use crate::buffer::{Reader, StreamGuard};
@@ -189,6 +189,12 @@ where
             // 数据写完，统计耗时。当前数据只写入到buffer中，
             // 但mesh通常与client部署在同一台物理机上，buffer flush的耗时通常在微秒级。
             if last {
+                if op.is_query() {
+                    *metrics.key() += 1;
+                    if unsafe { ctx.response().ok() } {
+                        *metrics.hit() += 1;
+                    }
+                }
                 *metrics.ops(op) += start.elapsed();
                 *flush = true;
                 *start_init = false;

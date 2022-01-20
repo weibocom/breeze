@@ -310,17 +310,18 @@ impl CallbackContextPtr {
     }
     //需要在on_done时主动销毁self对象
     #[inline(always)]
-    pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P, exp: u32) {
-        debug_assert!(self.ctx.inited);
-        debug_assert!(self.complete());
-        if !self.is_write_back() || !unsafe { self.response().ok() } {
+    pub fn async_start_write_back<P: crate::Protocol>(&mut self, parser: &P, exp: u32) {
+        let mut me = &mut unsafe { self.inner.as_mut() };
+        debug_assert!(me.ctx.inited);
+        debug_assert!(me.complete());
+        if !me.is_write_back() || !unsafe { me.response().ok() } {
             return;
         }
-        if let Some(new) = parser.build_writeback_request(&mut self, exp) {
-            self.with_request(new);
+        if let Some(new) = parser.build_writeback_request(self, exp) {
+            me.with_request(new);
         }
         // 还会有异步请求，内存释放交给异步操作完成后的on_done来处理
-        self.ctx.drop_on_done = true;
+        me.ctx.drop_on_done = true;
         unsafe {
             let ctx = self.inner.as_mut();
             ctx.try_drop_response();
