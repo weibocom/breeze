@@ -4,7 +4,6 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 mod service;
 use context::Context;
-use crossbeam_channel::bounded;
 use discovery::*;
 
 use rt::spawn;
@@ -44,6 +43,10 @@ async fn main() -> Result<()> {
     }));
     let ctx = Context::from_os_args();
     ctx.check()?;
+    // set number of file
+    if let Err(e) = rlimit::setrlimit(rlimit::Resource::NOFILE, ctx.no_file, ctx.no_file) {
+        log::info!("set rlimit to {} failed:{:?}", ctx.no_file, e);
+    }
 
     let _l = service::listener_for_supervisor(ctx.port()).await?;
     elog::init(ctx.log_dir(), &ctx.log_level)?;
@@ -57,7 +60,7 @@ async fn main() -> Result<()> {
     spawner.spawn(discovery::dns::start_dns_resolver_refresher());
     use discovery::watch_discovery;
     let discovery = Discovery::from_url(ctx.discovery());
-    let (tx, rx) = bounded(128);
+    let (tx, rx) = ds::chan::bounded(128);
     let snapshot = ctx.snapshot().to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
