@@ -35,7 +35,7 @@ impl Host {
         w.write("base", "task", "num", tasks);
         w.write("base", "version", self.version.as_str(), 1.0);
         w.write(
-            "mesh",
+            "base",
             "host",
             "uptime_sec",
             self.start.elapsed().as_secs() as f64,
