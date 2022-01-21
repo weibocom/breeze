@@ -2,6 +2,7 @@ use psutil::process::Process;
 
 use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 use std::time::Instant;
+use crate::BASE_PATH;
 
 static CPU_PERCENT: AtomicUsize = AtomicUsize::new(0);
 static MEMORY: AtomicUsize = AtomicUsize::new(0);
@@ -27,14 +28,14 @@ impl Host {
     pub(crate) fn snapshot<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
         self.refresh();
         let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
-        w.write("base", "host", "cpu", percent as f64);
-        w.write("base", "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
+        w.write(BASE_PATH, "host", "cpu", percent as f64);
+        w.write(BASE_PATH, "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
 
         let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
-        w.write("base", "task", "num", tasks);
-        w.write("base", "version", self.version, 1.0);
+        w.write(BASE_PATH, "task", "num", tasks);
+        w.write(BASE_PATH, "version", self.version, 1.0);
         w.write(
-            "base",
+            BASE_PATH,
             "host",
             "uptime_sec",
             self.start.elapsed().as_secs() as f64,
