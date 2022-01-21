@@ -1,5 +1,6 @@
 use psutil::process::Process;
 
+use git_version::git_version;
 use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 use std::time::Instant;
 
@@ -11,27 +12,33 @@ static TASK_NUM: AtomicIsize = AtomicIsize::new(0);
 pub struct Host {
     start: Instant,
     process: Process,
+    version: String,
 }
 
 impl Host {
     #[inline]
     pub(crate) fn new() -> Self {
+        let full= git_version!().to_string();
+        let splitted: Vec<&str> = full.split("-").collect();
+        let version = splitted[splitted.len() - 1];
         Self {
             start: Instant::now(),
             process: Process::current().expect("cannot get current process"),
+            version: version.to_string(),
         }
     }
     #[inline]
     pub(crate) fn snapshot<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
         self.refresh();
         let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
-        w.write("mesh", "host", "cpu", percent as f64);
-        w.write("mesh", "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
+        w.write("base", "host", "cpu", percent as f64);
+        w.write("base", "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
 
         let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
-        w.write("mesh", "task", "num", tasks);
+        w.write("base", "task", "num", tasks);
+        w.write("base", "version", self.version.as_str(), 1.0);
         w.write(
-            "mesh",
+            "base",
             "host",
             "uptime_sec",
             self.start.elapsed().as_secs() as f64,

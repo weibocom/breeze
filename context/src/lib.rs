@@ -75,6 +75,9 @@ pub struct Context {
 
     #[clap(long, help("log level. debug|info|warn|error"), default_value("info"))]
     pub log_level: String,
+
+    #[clap(long, help("service pool"), default_value("default_pool"))]
+    service_pool: String,
 }
 
 impl Context {
@@ -125,6 +128,9 @@ impl Context {
     }
     pub fn idc_path(&self) -> String {
         self.idc_path.clone()
+    }
+    pub fn service_pool(&self) -> String {
+        self.service_pool.clone()
     }
 }
 

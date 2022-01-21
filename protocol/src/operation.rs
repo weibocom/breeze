@@ -67,6 +67,10 @@ impl Operation {
     pub fn is_meta(&self) -> bool {
         *self as usize == Meta as usize
     }
+    #[inline(always)]
+    pub fn is_query(&self) -> bool {
+        *self == Get || *self == Gets || *self == MGet
+    }
 }
 use std::hash::{Hash, Hasher};
 impl Hash for Operation {
