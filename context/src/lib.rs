@@ -81,9 +81,9 @@ pub fn get_short_version() -> &'static str {
     let mut idx = VERSION.rfind('-').unwrap_or(0);
     if &VERSION[idx..] == "-modified" && idx > 0 {
         idx = VERSION[0..idx].rfind('-').unwrap_or(0);
-        if idx < VERSION.len() && VERSION.as_bytes()[idx] == b'-' {
-            idx += 1
-        }
+    }
+    if idx < VERSION.len() && VERSION.as_bytes()[idx] == b'-' {
+        idx += 1
     }
     &VERSION[idx..]
 }
