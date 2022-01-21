@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{FromArgMatches, IntoApp, Parser};
 use std::io::{Error, ErrorKind, Result};
 use std::path::Path;
 use url::Url;
@@ -7,11 +7,7 @@ mod quadruple;
 pub use quadruple::Quadruple;
 
 #[derive(Parser)]
-#[clap(
-    name = "resource mesh",
-    version = "BREEZE_VERSION_PLACE_HOLDER",
-    author = "IF"
-)]
+#[clap(name = "breeze", version = "0.0.1", author = "IF")]
 pub struct Context {
     #[clap(long, help("port for suvervisor"), default_value("9984"))]
     port: u16,
@@ -80,10 +76,24 @@ pub struct Context {
     service_pool: String,
 }
 
+static VERSION: &'static str = git_version::git_version!();
+pub fn get_short_version() -> &'static str {
+    let mut idx = VERSION.rfind('-').unwrap_or(0);
+    if &VERSION[idx..] == "-modified" && idx > 0 {
+        idx = VERSION[0..idx - 1].rfind('-').unwrap_or(0);
+        if idx < VERSION.len() && idx > 0 {
+            idx += 1
+        }
+    }
+    &VERSION[idx..]
+}
+
 impl Context {
     #[inline]
     pub fn from_os_args() -> Self {
-        Context::parse()
+        let app = <Self as IntoApp>::into_app().version(get_short_version());
+        let matches = app.get_matches();
+        <Self as FromArgMatches>::from_arg_matches(&matches).expect("parse args failed")
     }
     pub fn port(&self) -> u16 {
         self.port

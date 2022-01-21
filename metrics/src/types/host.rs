@@ -1,6 +1,5 @@
 use psutil::process::Process;
 
-use git_version::git_version;
 use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 use std::time::Instant;
 
@@ -12,19 +11,16 @@ static TASK_NUM: AtomicIsize = AtomicIsize::new(0);
 pub struct Host {
     start: Instant,
     process: Process,
-    version: String,
+    version: &'static str,
 }
 
 impl Host {
     #[inline]
     pub(crate) fn new() -> Self {
-        let full= git_version!().to_string();
-        let splitted: Vec<&str> = full.split("-").collect();
-        let version = splitted[splitted.len() - 1];
         Self {
             start: Instant::now(),
             process: Process::current().expect("cannot get current process"),
-            version: version.to_string(),
+            version: context::get_short_version(),
         }
     }
     #[inline]
@@ -36,7 +32,7 @@ impl Host {
 
         let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
         w.write("base", "task", "num", tasks);
-        w.write("base", "version", self.version.as_str(), 1.0);
+        w.write("base", "version", self.version, 1.0);
         w.write(
             "base",
             "host",
