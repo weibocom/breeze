@@ -28,7 +28,8 @@ impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for Backe
         let init: Switcher = false.into();
         let run: Switcher = false.into();
         let f = finish.clone();
-        let path = Path::new(vec![rsrc.name(), service, addr]);
+        let path_prefix = rsrc.name().to_string() + "_backend";
+        let path = Path::new(vec![path_prefix.as_str(), service, addr]);
         let r = run.clone();
         let mut checker = BackendChecker::from(addr, rx, r, f, init.clone(), parser, path, timeout);
         rt::spawn(async move { checker.start_check().await });
