@@ -322,13 +322,10 @@ impl CallbackContextPtr {
         }
         // 还会有异步请求，内存释放交给异步操作完成后的on_done来处理
         me.ctx.drop_on_done = true;
-        unsafe {
-            let ctx = self.inner.as_mut();
-            ctx.try_drop_response();
-            // write_back请求是异步的，不需要response
-            log::debug!("start write back:{}", self.inner.as_ref());
-            ctx.continute();
-        }
+        me.try_drop_response();
+        // write_back请求是异步的，不需要response
+        log::debug!("start write back:{}", unsafe { self.inner.as_ref() });
+        me.continute();
     }
 }
 
