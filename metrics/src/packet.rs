@@ -56,10 +56,6 @@ impl PacketBuffer {
                     }
                     end += 1;
                 }
-                println!(
-                    "send metric: {}",
-                    String::from_utf8(self.buff[self.idx..=end].to_vec()).unwrap()
-                );
                 self.idx += ready!(sock.poll_send(cx, &self.buff[self.idx..=end]))?;
             }
         }
