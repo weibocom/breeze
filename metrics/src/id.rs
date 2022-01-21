@@ -11,7 +11,7 @@ impl Id {
         self.path.len() > 0 && !self.t.is_empty()
     }
 }
-
+pub const BASE_PATH: &str = "base";
 #[derive(Debug)]
 pub struct Path {
     path: Vec<String>,
