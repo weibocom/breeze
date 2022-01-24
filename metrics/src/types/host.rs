@@ -2,6 +2,7 @@ use psutil::process::Process;
 
 use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 use std::time::Instant;
+use crate::BASE_PATH;
 
 static CPU_PERCENT: AtomicUsize = AtomicUsize::new(0);
 static MEMORY: AtomicUsize = AtomicUsize::new(0);
@@ -11,6 +12,7 @@ static TASK_NUM: AtomicIsize = AtomicIsize::new(0);
 pub struct Host {
     start: Instant,
     process: Process,
+    version: &'static str,
 }
 
 impl Host {
@@ -19,19 +21,21 @@ impl Host {
         Self {
             start: Instant::now(),
             process: Process::current().expect("cannot get current process"),
+            version: context::get_short_version(),
         }
     }
     #[inline]
     pub(crate) fn snapshot<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
         self.refresh();
         let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
-        w.write("mesh", "host", "cpu", percent as f64);
-        w.write("mesh", "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
+        w.write(BASE_PATH, "host", "cpu", percent as f64);
+        w.write(BASE_PATH, "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
 
         let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
-        w.write("mesh", "task", "num", tasks);
+        w.write(BASE_PATH, "task", "num", tasks);
+        w.write(BASE_PATH, "version", self.version, 1.0);
         w.write(
-            "mesh",
+            BASE_PATH,
             "host",
             "uptime_sec",
             self.start.elapsed().as_secs() as f64,

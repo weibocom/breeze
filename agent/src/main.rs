@@ -55,7 +55,11 @@ async fn main() -> Result<()> {
     metrics::init_local_ip(&ctx.metrics_probe);
     let mut spawner = rt::DedicatedSpawner::new();
     let metric_cycle = Duration::from_secs(10);
-    spawner.spawn(metrics::Sender::new(&ctx.metrics_url(), metric_cycle));
+    spawner.spawn(metrics::Sender::new(
+        &ctx.metrics_url(),
+        &ctx.service_pool(),
+        metric_cycle,
+    ));
     spawner.spawn(metrics::MetricRegister::default());
     spawner.spawn(discovery::dns::start_dns_resolver_refresher());
     use discovery::watch_discovery;
