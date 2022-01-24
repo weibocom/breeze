@@ -175,6 +175,13 @@ where
             let last = ctx.last();
             let op = ctx.request().operation();
 
+            if op.is_query() {
+                *metrics.key() += 1;
+                if unsafe { ctx.response().ok() } {
+                    *metrics.hit() += 1;
+                }
+            }
+
             if ctx.inited() {
                 parser.write_response(&mut ctx, tx_buf)?;
                 ctx.async_start_write_back(parser, cb.exp_sec());

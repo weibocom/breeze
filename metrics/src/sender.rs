@@ -15,14 +15,14 @@ pub struct Sender {
 }
 
 impl Sender {
-    pub fn new(addr: &str, cycle: Duration) -> Self {
+    pub fn new(addr: &str, service_pool: &str, cycle: Duration) -> Self {
         let mut tick = interval(cycle);
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         log::info!("task started ==> metric sender");
 
         Self {
-            packet: PacketBuffer::new(addr.to_string()),
+            packet: PacketBuffer::new(addr.to_string(), service_pool.to_string()),
             last: Instant::now(),
             tick: interval(cycle),
             host: super::Host::new(),

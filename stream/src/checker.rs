@@ -9,7 +9,7 @@ use protocol::{Error, Protocol, Request};
 
 use crate::handler::Handler;
 use ds::Switcher;
-use metrics::{Metric, Path};
+use metrics::{Metric, Path, BASE_PATH};
 
 pub struct BackendChecker<P, Req> {
     rx: Receiver<Req>,
@@ -53,7 +53,7 @@ impl<P, Req> BackendChecker<P, Req> {
     {
         let mut s_metric = self.path.status("reconn");
         let mut m_timeout_biz = self.path.qps("timeout");
-        let mut m_timeout = Path::new(vec!["mesh"]).rtt("timeout");
+        let mut m_timeout = Path::new(vec![BASE_PATH]).qps("timeout");
         let mut tries = 0;
         while !self.finish.get() {
             let stream = self.try_connect(&mut s_metric, &mut tries).await;
