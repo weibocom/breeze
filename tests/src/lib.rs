@@ -8,3 +8,4 @@ mod mem;
 mod ring_slice;
 //mod size;
 //mod slice;
+mod redis;

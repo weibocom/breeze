@@ -1,4 +1,5 @@
 use crate::ResizedRingBuffer;
+use std::str::from_utf8;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use super::RingSlice;
@@ -191,11 +192,24 @@ impl Drop for GuardedBuffer {
     fn drop(&mut self) {
         // 如果guards不为0，说明MemGuard未释放，当前buffer销毁后，会导致MemGuard指向内存错误。
         log::debug!(
-            "guarded buffer dropped:{}, guards.len:{}/{}",
+            "++++GuardedBuffer1  guarded buffer dropped:{}, guards.len:{}/{}",
             self,
             self.guards.len(),
             self.guards.fix_len(),
         );
+        while let Some(guard) = self.guards.front_mut() {
+            let guard = guard.load(Ordering::Acquire);
+            log::debug!(
+                "+++ GuardedBuffer2, inner.data:{:?}",
+                from_utf8(self.inner.data().to_vec().as_slice())
+            );
+            if guard == 0 {
+                log::debug!("+++ GuardedBuffer3 ,guard:{}", guard);
+                break;
+            }
+            self.inner.advance_read(guard as usize);
+            self.guards.pop_front();
+        }
         assert_eq!(self.guards.len(), 0);
     }
 }

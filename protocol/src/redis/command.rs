@@ -1,3 +1,5 @@
+use std::str::from_utf8;
+
 use crate::{HashedCommand, OpCode, Operation};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Crc32, Hash, UppercaseHashKey};
@@ -200,6 +202,17 @@ impl Commands {
     ) {
         let uppercase = name.to_uppercase();
         let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
+
+        // if self.supported[idx].supported {
+        log::debug!(
+            "cmd:{}/{} with hash:{}, conflict:{}",
+            name,
+            self.supported[idx].name,
+            idx,
+            self.supported[idx].supported
+        );
+        // }
+
         debug_assert!(idx < self.supported.len());
         // 之前没有添加过。
         debug_assert!(!self.supported[idx].supported);
@@ -272,12 +285,16 @@ lazy_static! {
                 ("zremrangebyscore", "zremrangebyscore",  4, Store, 1, 1, 1, 3, false, false, true, false, false),
                 ("zremrangebylex", "zremrangebylex",      4, Store, 1, 1, 1, 3, false, false, true, false, false),
                 ("zrevrange", "zrevrange",               -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zrevrank", "zrevrank",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
+
                 ("zcard" , "zcard",                       2, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("zrange", "zrange",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("zrank", "zrank",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("zrangebyscore", "zrangebyscore",       -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zrevrangebyscore", "zrevrangebyscore", -4, Get, 1, 1, 1, 3, false, false, true, false, false),
+
+                // TODO: 验证先不支持这两个，避免在 hash冲突 vs 栈溢出 之间摇摆，或者后续把这个放到堆上？ fishermen
+                // ("zrevrank", "zrevrank",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                // ("zrevrangebyscore", "zrevrangebyscore", -4, Get, 1, 1, 1, 3, false, false, true, false, false),
+
                 ("zrangebylex", "zrangebylex",           -4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("zrevrangebylex", "zrevrangebylex",     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("zcount", "zcount",                      4, Get, 1, 1, 1, 3, false, false, true, false, false),
@@ -317,7 +334,6 @@ lazy_static! {
                 ("lsgetall", "lsgetall",                   -3, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("lsdump", "lsdump",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("lslen", "lslen",                         -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-
 
                 // list 相关指令
                 ("rpush", "rpush",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
@@ -468,6 +484,7 @@ lazy_static! {
         need_bulk_num
     ) ;
             }
+            log::debug!("++++ after init, cmds.len:{}", cmds.supported.len());
         cmds
     };
 }

@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::str::from_utf8;
 //use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use std::time::Instant;
@@ -96,9 +95,12 @@ where
         self.waker.register(cx.waker());
         loop {
             // 从client接收数据写入到buffer
+            log::debug!("+++ before poll_fill_buff...");
             let request = self.poll_fill_buff(cx)?;
             // 解析buffer中的请求，并且发送请求。
+            log::debug!("+++ before parse req...");
             self.parse_request()?;
+            log::debug!("+++ after parse req...");
             // 把已经返回的response，写入到buffer中。
             let response = self.process_pending(cx)?;
 
@@ -119,7 +121,9 @@ where
         let mut cx = Context::from_waker(cx.waker());
         let mut rx = Reader::from(client, &mut cx);
         loop {
+            log::debug!("+++ before read from client...");
             ready!(rx_buf.buf.write(&mut rx))?;
+            log::debug!("+++ after read from client!");
             let num = rx.check_eof_num()?;
             // buffer full
             if num == 0 {

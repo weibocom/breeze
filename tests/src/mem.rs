@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod mem {
     use ds::{RingBuffer, RingSlice};
-    use std::time::{Duration, Instant};
 
     fn rnd_bytes(size: usize) -> Vec<u8> {
         let data: Vec<u8> = (0..size).map(|_| rand::random::<u8>()).collect();
@@ -128,7 +127,7 @@ mod mem {
             source: Vec::from("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
             num: 0,
         };
-        use ds::{GuardedBuffer, MemGuard};
+        use ds::GuardedBuffer;
         let mut guard = GuardedBuffer::new(128, 1024, 128, |_, _| {});
         let empty = guard.read();
         assert_eq!(empty.len(), 0);

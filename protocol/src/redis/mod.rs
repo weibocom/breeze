@@ -28,11 +28,19 @@ impl Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
+        log::debug!(
+            "+++ will parse cmd:{:?}",
+            from_utf8(stream.slice().to_vec().as_slice())
+        );
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
+            log::debug!("+++ before parse bulk num");
             packet.parse_bulk_num()?;
+            log::debug!("+++ before parse cmd");
             packet.parse_cmd()?;
+            log::debug!("+++ before parse cmd cfg");
             let cfg = command::get_cfg(packet.op_code())?;
+            log::debug!("+++ after parsed cmd cfg.multi:{}", cfg.multi);
             let mut hash = 0;
             if cfg.multi {
                 packet.multi_ready();
@@ -77,8 +85,12 @@ impl Redis {
     #[inline(always)]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
+        log::info!(
+            "+++ will parse rsp: {:?}",
+            from_utf8(data.to_vec().as_slice())
+        );
         if data.len() >= 4 {
-            debug_assert_ne!(data.at(0), b'*');
+            // debug_assert_ne!(data.at(0), b'*');
             let mut oft = 0;
             match data.at(0) {
                 b'-' | b':' | b'+' => data.line(&mut oft)?,
@@ -89,10 +101,21 @@ impl Redis {
                         let _num = data.num_and_skip(&mut oft)?;
                     }
                 }
+                b'*' => {
+                    let mut bulk_count = data.num(&mut oft)?;
+                    while bulk_count > 0 {
+                        data.num_and_skip(&mut oft)?;
+                        bulk_count -= 1;
+                    }
+                }
                 _ => panic!("not supported"),
             }
             debug_assert!(oft <= data.len());
             let mem = s.take(oft);
+            log::info!(
+                "+++ parsed rsp: {:?}",
+                from_utf8(mem.data().to_vec().as_slice())
+            );
             let mut flag = Flag::new();
             // redis不需要重试
             flag.set_status_ok(true);
