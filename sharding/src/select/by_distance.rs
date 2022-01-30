@@ -35,7 +35,7 @@ impl<T: Addr> Distance<T> {
         let seq = Arc::new(AtomicUsize::new(rand::random::<u16>() as usize));
         // 最小是1，最大是65536
         let batch_shift = batch.max(1).next_power_of_two().min(65536).trailing_zeros() as u8;
-        log::info!(
+        log::debug!(
             "local:{} {} {:?}",
             len_local,
             replicas.len(),

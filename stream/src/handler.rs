@@ -10,7 +10,7 @@ use tokio::sync::mpsc::Receiver;
 
 use crate::buffer::StreamGuard;
 
-use metrics::Metric;
+use metrics::{Metric, Path};
 
 pub(crate) struct Handler<'r, Req, P, W, R> {
     data: &'r mut Receiver<Req>,
@@ -30,7 +30,7 @@ pub(crate) struct Handler<'r, Req, P, W, R> {
     num_rx: usize,
     num_tx: usize,
 
-    rtt: &'r mut Metric,
+    rtt: Metric,
 }
 impl<'r, Req, P, W, R> Future for Handler<'r, Req, P, W, R>
 where
@@ -61,8 +61,8 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
         buf: &'r mut StreamGuard,
         tx: W,
         rx: R,
-        rtt: &'r mut Metric,
         parser: P,
+        path: &Path,
     ) -> Self
     where
         W: AsyncWrite + Unpin,
@@ -78,7 +78,7 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
             oft_c: 0,
             buf,
             flushing: false,
-            rtt,
+            rtt: path.rtt("req"),
             num_rx: 0,
             num_tx: 0,
         }
@@ -147,7 +147,7 @@ impl<'r, Req, P, W, R> Handler<'r, Req, P, W, R> {
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
-                        *self.rtt += req.start_at().elapsed();
+                        self.rtt += req.start_at().elapsed();
                         req.on_complete(cmd);
                     }
                 }

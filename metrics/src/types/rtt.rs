@@ -26,7 +26,7 @@ impl Rtt {
             let (ss, cur) = self.slow.load_and_snapshot();
             if cur > ss {
                 let slow = (cur - ss) as f64;
-                w.write(&id.path, id.key, "qps.itvl100ms+", slow / secs);
+                w.write(&id.path, id.key, "qps_itvl100ms", slow / secs);
             }
         }
     }

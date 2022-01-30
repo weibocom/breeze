@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Hash)]
 pub struct Namespace {
@@ -18,19 +19,36 @@ pub struct Namespace {
     pub slave: Vec<String>,
     #[serde(default)]
     pub slave_l1: Vec<Vec<String>>,
+
+    #[serde(default)]
+    pub timeout_ms_master: u32,
+    #[serde(default)]
+    pub timeout_ms_slave: u32,
 }
 
 impl Namespace {
-    pub(crate) fn parse<F: FnMut(Self)>(cfg: &str, namespace: &str, mut f: F) {
+    pub(crate) fn try_from(cfg: &str, namespace: &str) -> Option<Self> {
         log::debug!("namespace:{} cfg:{} updating", namespace, cfg);
         match serde_yaml::from_str::<Namespace>(cfg) {
-            Ok(ns) => {
-                f(ns);
-            }
             Err(e) => {
                 log::warn!("parse namespace error. {} msg:{:?}", namespace, e);
+                None
+            }
+            Ok(ns) => {
+                if ns.master.len() == 0 {
+                    log::info!("cache service master empty. namespace:{}", namespace);
+                    None
+                } else {
+                    Some(ns)
+                }
             }
         }
+    }
+    pub(super) fn timeout_master(&self) -> Duration {
+        Duration::from_millis(250.max(self.timeout_ms_master as u64))
+    }
+    pub(super) fn timeout_slave(&self) -> Duration {
+        Duration::from_millis(100.max(self.timeout_ms_slave as u64))
     }
 }
 

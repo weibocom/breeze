@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{FromArgMatches, IntoApp, Parser};
 use std::io::{Error, ErrorKind, Result};
 use std::path::Path;
 use url::Url;
@@ -7,14 +7,13 @@ mod quadruple;
 pub use quadruple::Quadruple;
 
 #[derive(Parser)]
-#[clap(
-    name = "resource mesh",
-    version = "BREEZE_VERSION_PLACE_HOLDER",
-    author = "IF"
-)]
+#[clap(name = "breeze", version = "0.0.1", author = "IF")]
 pub struct Context {
     #[clap(long, help("port for suvervisor"), default_value("9984"))]
     port: u16,
+
+    #[clap(long, help("number of open file"), default_value("204800"))]
+    pub no_file: u64,
 
     #[clap(
         short,
@@ -72,12 +71,29 @@ pub struct Context {
 
     #[clap(long, help("log level. debug|info|warn|error"), default_value("info"))]
     pub log_level: String,
+
+    #[clap(long, help("service pool"), default_value("default_pool"))]
+    service_pool: String,
+}
+
+static VERSION: &'static str = git_version::git_version!();
+pub fn get_short_version() -> &'static str {
+    let mut idx = VERSION.rfind('-').unwrap_or(0);
+    if &VERSION[idx..] == "-modified" && idx > 0 {
+        idx = VERSION[0..idx].rfind('-').unwrap_or(0);
+    }
+    if idx < VERSION.len() && VERSION.as_bytes()[idx] == b'-' {
+        idx += 1
+    }
+    &VERSION[idx..]
 }
 
 impl Context {
     #[inline]
     pub fn from_os_args() -> Self {
-        Context::parse()
+        let app = <Self as IntoApp>::into_app().version(get_short_version());
+        let matches = app.get_matches();
+        <Self as FromArgMatches>::from_arg_matches(&matches).expect("parse args failed")
     }
     pub fn port(&self) -> u16 {
         self.port
@@ -123,6 +139,9 @@ impl Context {
     pub fn idc_path(&self) -> String {
         self.idc_path.clone()
     }
+    pub fn service_pool(&self) -> String {
+        self.service_pool.clone()
+    }
 }
 
 use std::collections::HashMap;
@@ -144,7 +163,7 @@ impl ListenerIter {
                         continue;
                     }
                     if let Some(one) = Quadruple::parse(&name) {
-                        log::info!("service parsed :{}", one);
+                        log::debug!("service parsed :{}", one);
                         listeners.push(one);
                         self.processed.insert(name.to_string(), ());
                     }
