@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{Id, IdSequence, Item, Metric};
+use crate::{Id, IdSequence, Item, Metric, MetricType};
 
 const CHUNK_SIZE: usize = 4096;
 
@@ -12,13 +12,13 @@ use tokio::sync::mpsc::{
 pub struct Metrics {
     // chunks只扩容，不做其他变更。
     chunks: Vec<*const Item>,
-    register: Sender<Arc<Id>>,
+    register: Sender<(Arc<Id>, i64)>,
     len: usize,
     id_idx: IdSequence,
 }
 
 impl Metrics {
-    fn new(register: Sender<Arc<Id>>) -> Self {
+    fn new(register: Sender<(Arc<Id>, i64)>) -> Self {
         Self {
             // 在metric register handler中，按需要扩容chunks
             chunks: Vec::new(),
@@ -32,12 +32,22 @@ impl Metrics {
         self.try_send_register(id.clone());
         Metric::from(id)
     }
+    // 在初始化完成之前，部分数据需要先缓存处理。
+    // 只缓存Count类型的数据
+    #[inline]
+    pub(crate) fn cache(&self, id: &Arc<Id>, cache: i64) {
+        if let MetricType::Count = id.t {
+            if let Err(e) = self.register.send((id.clone(), cache)) {
+                log::info!("cache error. id:{:?} cache:{} {:?}", id, cache, e);
+            }
+        }
+    }
     pub(crate) fn try_send_register(&self, id: Arc<Id>) {
         if self.id_idx.get_idx(&id).is_none() {
             // 需要注册。可能会多次重复注册，在接收的时候去重处理。
             log::debug!("metric registering {:?}", id);
-            if let Err(e) = self.register.send(id.clone()) {
-                log::info!("send register metric failed. id:{:?} id:{:?}", e, id)
+            if let Err(e) = self.register.send((id.clone(), 0)) {
+                log::info!("send register metric failed. {:?} id:{:?}", e, id)
             };
         }
     }
@@ -111,6 +121,11 @@ pub(crate) fn register_metric(id: Id) -> Metric {
     get_metrics().register(id)
 }
 #[inline]
+pub(crate) fn register_cache(id: &Arc<Id>, cache: i64) {
+    debug_assert!(METRICS.get().is_some());
+    get_metrics().cache(id, cache)
+}
+#[inline]
 pub(crate) fn get_metric(id: &Arc<Id>) -> Option<*const Item> {
     get_metrics().check_and_get_item(id)
 }
@@ -136,17 +151,40 @@ impl Display for Metrics {
     }
 }
 
+use std::collections::HashMap;
 pub struct MetricRegister {
-    rx: Receiver<Arc<Id>>,
+    rx: Receiver<(Arc<Id>, i64)>,
     metrics: CowWriteHandle<Metrics>,
     tick: Interval,
+    cache: Option<HashMap<Arc<Id>, i64>>,
+    metrics_r: Option<Metrics>,
 }
 
 impl MetricRegister {
-    fn new(rx: Receiver<Arc<Id>>, metrics: CowWriteHandle<Metrics>) -> Self {
+    fn new(rx: Receiver<(Arc<Id>, i64)>, metrics: CowWriteHandle<Metrics>) -> Self {
         let mut tick = interval(std::time::Duration::from_secs(3));
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        Self { rx, metrics, tick }
+        Self {
+            rx,
+            metrics,
+            tick,
+            cache: None,
+            metrics_r: None,
+        }
+    }
+    fn process_one(&mut self, id: Arc<Id>, cache: i64) {
+        if cache == 0 {
+            // 说明是初始化
+            self.metrics_r
+                .get_or_insert_with(|| self.metrics.get().clone())
+                .init(id);
+        } else {
+            *self
+                .cache
+                .get_or_insert_with(|| HashMap::with_capacity(128))
+                .entry(id)
+                .or_insert(cache) += cache;
+        }
     }
 }
 impl Default for MetricRegister {
@@ -173,15 +211,28 @@ impl Future for MetricRegister {
         let me = &mut *self;
         loop {
             ready!(me.tick.poll_tick(cx));
-            // 至少有一个，避免不必要的write请求
-            if let Some(id) = ready!(me.rx.poll_recv(cx)) {
-                let mut metrics: Metrics = me.metrics.get().clone();
-                metrics.init(id);
-                while let Poll::Ready(Some(id)) = me.rx.poll_recv(cx) {
-                    metrics.init(id);
-                }
-                // 更新。
+            while let Poll::Ready(Some((id, cache))) = me.rx.poll_recv(cx) {
+                me.process_one(id, cache);
+            }
+            // 注册。
+            if let Some(metrics) = me.metrics_r.take() {
                 me.metrics.update(metrics);
+            }
+            // flush cache
+            if let Some(mut cache) = me.cache.take() {
+                let metrics = me.metrics.get();
+                for (id, v) in cache.iter_mut() {
+                    if let Some(item) = metrics.check_and_get_item(id) {
+                        // 已经初始化完成，flush cache
+                        unsafe { (&*item).data().flush(*v) };
+                        *v = 0;
+                    }
+                }
+                // 删除所有cache为0的值
+                cache.retain(|_k, v| *v > 0);
+                if cache.len() > 0 {
+                    me.cache = Some(cache);
+                }
             }
         }
     }

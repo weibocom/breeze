@@ -13,7 +13,4 @@ sharding = { path = "../sharding" }
 
 log = "0.4.14"
 enum_dispatch = "0.3.7"
-byteorder = "1.4.3"
-bytes = "1.0.1"
-atomic-waker = "*"
 lazy_static = "1.4.0"

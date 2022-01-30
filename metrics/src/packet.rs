@@ -8,13 +8,15 @@ pub struct PacketBuffer {
     idx: usize,
     buff: Vec<u8>, // 没有在请求的关键路径上。是异步发送metrics
     pub(crate) addr: String,
+    service_pool: String,
     socket: Option<UdpSocket>,
 }
 
 impl PacketBuffer {
-    pub fn new(addr: String) -> Self {
+    pub fn new(addr: String, service_pool: String) -> Self {
         Self {
-            addr: addr,
+            addr,
+            service_pool,
             ..Default::default()
         }
     }
@@ -67,13 +69,15 @@ impl crate::item::ItemWriter for PacketBuffer {
         use ds::Buffer;
         let buff = &mut self.buff;
         buff.write("breeze.");
-        buff.write(name);
-        buff.write(".byhost.");
+        buff.write(self.service_pool.as_str());
+        buff.write(".");
         buff.write(super::ip::local_ip());
+        buff.write(".");
+        buff.write(name);
         buff.write(".");
         buff.write(key);
         if sub_key.len() > 0 {
-            buff.write(".");
+            buff.write("_");
             buff.write(sub_key);
         }
         buff.write(":");

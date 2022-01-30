@@ -1,6 +1,6 @@
 // 定期更新discovery.
 use super::{Discover, ServiceId, TopologyWrite};
-use crossbeam_channel::Receiver;
+use ds::chan::Receiver;
 use std::time::{Duration, Instant};
 use tokio::time::interval;
 

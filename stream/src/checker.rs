@@ -9,7 +9,7 @@ use protocol::{Error, Protocol, Request};
 
 use crate::handler::Handler;
 use ds::Switcher;
-use metrics::{Metric, Path};
+use metrics::{Metric, Path, BASE_PATH};
 
 pub struct BackendChecker<P, Req> {
     rx: Receiver<Req>,
@@ -17,11 +17,10 @@ pub struct BackendChecker<P, Req> {
     finish: Switcher,
     init: Switcher,
     parser: P,
-    s_metric: Metric,
-    rtt: Metric,
     addr: String,
     last_conn: Instant,
     timeout: Duration,
+    path: Path,
 }
 
 impl<P, Req> BackendChecker<P, Req> {
@@ -32,7 +31,7 @@ impl<P, Req> BackendChecker<P, Req> {
         finish: Switcher,
         init: Switcher,
         parser: P,
-        path: &Path,
+        path: Path,
         timeout: Duration,
     ) -> Self {
         Self {
@@ -42,12 +41,9 @@ impl<P, Req> BackendChecker<P, Req> {
             finish,
             init,
             parser,
-            s_metric: path.status("reconn"),
-            //bytes_tx: path.qps("bytes.tx"),
-            //bytes_rx: path.qps("bytes.rx"),
-            rtt: path.rtt("req"),
             last_conn: Instant::now(),
             timeout,
+            path,
         }
     }
     pub(crate) async fn start_check(&mut self)
@@ -55,21 +51,32 @@ impl<P, Req> BackendChecker<P, Req> {
         P: Protocol,
         Req: Request,
     {
+        let mut s_metric = self.path.status("reconn");
+        let mut m_timeout_biz = self.path.qps("timeout");
+        let mut m_timeout = Path::new(vec![BASE_PATH]).qps("timeout");
+        let mut tries = 0;
         while !self.finish.get() {
-            let stream = self.try_connect().await;
-            let (r, w) = stream.into_split();
+            let stream = self.try_connect(&mut s_metric, &mut tries).await;
+            if stream.is_none() {
+                continue;
+            }
+            let (r, w) = stream.expect("not expected").into_split();
             let rx = &mut self.rx;
             self.run.on();
-            log::debug!("handler started:{}", self.s_metric);
+            log::debug!("handler started:{}", s_metric);
             use crate::buffer::StreamGuard;
             use crate::gc::DelayedDrop;
             let mut buf: DelayedDrop<_> = StreamGuard::new().into();
             let pending = &mut VecDeque::with_capacity(31);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, pending, &mut buf, w, r, &mut self.rtt, p);
+            let handler = Handler::from(rx, pending, &mut buf, w, r, p, &self.path);
             let handler = rt::Timeout::from(handler, self.timeout);
             if let Err(e) = handler.await {
-                log::info!("{} error:{:?} pending:{}", self.s_metric, e, pending.len());
+                if let protocol::Error::Timeout(_) = e {
+                    m_timeout += 1;
+                    m_timeout_biz += 1;
+                }
+                log::info!("{} error:{:?} pending:{}", s_metric, e, pending.len());
             }
             // 先关闭，关闭之后不会有新的请求发送
             self.run.off();
@@ -90,42 +97,42 @@ impl<P, Req> BackendChecker<P, Req> {
             crate::gc::delayed_drop(buf);
         }
         debug_assert!(!self.run.get());
-        log::info!("{} finished {}", self.s_metric, self.addr);
+        log::info!("{} finished {}", s_metric, self.addr);
     }
-    async fn try_connect(&mut self) -> TcpStream
+    async fn try_connect(&mut self, reconn: &mut Metric, tries: &mut usize) -> Option<TcpStream>
     where
         P: Protocol,
         Req: Request,
     {
         if self.init.get() {
-            // 之前已经初始化过，离上一次成功连接需要超过10s。保护后端资源
-            const DELAY: Duration = Duration::from_secs(15);
-            if self.last_conn.elapsed() < DELAY {
-                sleep(DELAY - self.last_conn.elapsed()).await;
-            }
-        }
-        let mut tries = 0;
-        loop {
-            if self.init.get() {
-                // 第一次初始化不计算。
-                self.s_metric += 1;
-            }
-            log::debug!("try to connect {} tries:{}", self.addr, tries);
-            match self.reconnected_once().await {
-                Ok(stream) => {
-                    self.init.on();
-                    self.last_conn = Instant::now();
-                    return stream;
-                }
-                Err(e) => {
-                    self.init.on();
-                    log::debug!("{}-th conn to {} err:{}", tries, self.addr, e);
+            // 第一次初始化不计算。
+            *reconn += 1;
+            // 等于0说明一次成功都没有
+            if *tries > 0 {
+                // 距离上一次成功连接需要超过60秒
+                let elapsed = self.last_conn.elapsed();
+                if elapsed < Duration::from_secs(60) {
+                    sleep(Duration::from_secs(60) - elapsed).await;
                 }
             }
-            tries += 1;
-
-            sleep(Duration::from_secs(7)).await;
         }
+        log::debug!("try to connect {} tries:{}", self.addr, tries);
+        match self.reconnected_once().await {
+            Ok(stream) => {
+                self.init.on();
+                self.last_conn = Instant::now();
+                *tries += 1;
+                return Some(stream);
+            }
+            Err(e) => {
+                self.init.on();
+                log::debug!("{}-th conn to {} err:{}", tries, self.addr, e);
+            }
+        }
+        // 失败了，sleep一段时间再重试
+        let secs = 1 << (6.min(*tries + 1));
+        sleep(Duration::from_secs(secs)).await;
+        None
     }
     #[inline]
     async fn reconnected_once(&self) -> std::result::Result<TcpStream, Box<dyn std::error::Error>>

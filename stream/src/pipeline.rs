@@ -50,8 +50,6 @@ where
         start_init: false,
         first: true, // 默认当前请求是第一个
     };
-    let timeout = std::time::Duration::from_secs(3);
-    let pipeline = rt::Timeout::from(pipeline, timeout);
     let ret = pipeline.await;
     crate::gc::delayed_drop((rx_buf, pending, waker));
     ret
@@ -87,7 +85,6 @@ where
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         self.waker.register(cx.waker());
-        self.metrics.conn_num().try_flush();
         loop {
             // 从client接收数据写入到buffer
             let request = self.poll_fill_buff(cx)?;
@@ -177,6 +174,13 @@ where
             let mut ctx = pending.pop_front().expect("front");
             let last = ctx.last();
             let op = ctx.request().operation();
+
+            if op.is_query() {
+                *metrics.key() += 1;
+                if unsafe { ctx.response().ok() } {
+                    *metrics.hit() += 1;
+                }
+            }
 
             if ctx.inited() {
                 parser.write_response(&mut ctx, tx_buf)?;

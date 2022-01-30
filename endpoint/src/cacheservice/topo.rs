@@ -159,11 +159,7 @@ where
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
-        super::config::Namespace::parse(cfg, namespace, |ns| {
-            if ns.master.len() == 0 {
-                log::info!("cache service master empty. namespace:{}", namespace);
-                return;
-            }
+        if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
             let dist = &ns.distribution;
 
@@ -179,12 +175,13 @@ where
                     old.insert(e.1, e.0);
                 }
             }
-            let mto = Duration::from_millis(500);
+            let mto = ns.timeout_master();
+            let rto = ns.timeout_slave();
+
             // 准备master
             let master = self.build(old, ns.master, dist, namespace, mto);
             self.streams.push(master);
 
-            let rto = Duration::from_millis(150);
             // master_l1
             self.has_l1 = ns.master_l1.len() > 0;
             for l1 in ns.master_l1 {
@@ -203,8 +200,8 @@ where
                 let g = self.build(old, sl1, dist, namespace, rto);
                 self.streams.push(g);
             }
-            // old 会被dopped
-        });
+        }
+        // old 会被dopped
     }
     // 不同的业务共用一个配置。把不同的业务配置给拆分开
     #[inline]
