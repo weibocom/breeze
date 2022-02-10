@@ -76,7 +76,7 @@ impl<P, Req> BackendChecker<P, Req> {
                     m_timeout += 1;
                     m_timeout_biz += 1;
                 }
-                log::info!("{} error:{:?} pending:{}", s_metric, e, pending.len());
+                log::debug!("{}  waiting response :{:?} {}", s_metric, e, pending.len());
             }
             // 先关闭，关闭之后不会有新的请求发送
             self.run.off();
