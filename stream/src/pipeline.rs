@@ -177,7 +177,7 @@ where
 
             if op.is_query() {
                 *metrics.key() += 1;
-                if unsafe { ctx.response().ok() } {
+                if ctx.response_ok() {
                     *metrics.hit() += 1;
                 }
             }
