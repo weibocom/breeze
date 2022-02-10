@@ -30,11 +30,14 @@ pub(super) async fn process_one(
     // 等待初始化完成
     let mut tries = 0usize;
     while !rx.inited() {
-        if tries >= 2 {
-            log::warn!("waiting inited. {} ", quard);
-        }
-        tokio::time::sleep(Duration::from_secs(1 << (tries.min(10)))).await;
         tries += 1;
+        let sleep = if tries <= 10 {
+            Duration::from_secs(1)
+        } else {
+            log::warn!("waiting inited. {} tries:{}", quard, tries);
+            Duration::from_secs(1 << (tries.min(10)))
+        };
+        tokio::time::sleep(sleep).await;
     }
     log::debug!("service inited. {} ", quard);
     let switcher = ds::Switcher::from(true);
@@ -87,7 +90,8 @@ async fn _process_one(
                 match e {
                     Error::Quit => {} // client发送quit协议退出
                     Error::ReadEof => {}
-                    e => log::info!("{:?} disconnected. {:?}", path, e),
+                    // clieng 异常退出
+                    e => log::debug!("{:?} disconnected. {:?}", path, e),
                 }
             }
         });

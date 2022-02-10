@@ -1,7 +1,9 @@
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 #[derive(Debug, Clone)]
 pub struct Quadruple {
+    id: usize,
+    parsed_at: Instant,
     name: String,
     service: String,
     family: String,
@@ -25,7 +27,7 @@ impl Quadruple {
         let fields: Vec<&str> = name.split('@').collect();
         if fields.len() != 3 {
             log::warn!(
-                "not a valid service file name:{}. must contains 4 fields seperated by '@'",
+                "not a valid service name:{}. must contains 4 fields seperated by '@'",
                 name
             );
             return None;
@@ -35,7 +37,7 @@ impl Quadruple {
         let protocol_fields: Vec<&str> = protocol_item.split(':').collect();
         if protocol_fields.len() != 2 {
             log::warn!(
-                "not a valid service file name::{} protocol {} must be splited by ':'",
+                "not a valid service name::{} protocol {} must be splited by ':'",
                 name,
                 protocol_item
             );
@@ -45,7 +47,7 @@ impl Quadruple {
         let family = "tcp";
         if let Err(e) = protocol_fields[1].parse::<u16>() {
             log::warn!(
-                "not a valid service file name:{} not a valid port:{} error:{:?}",
+                "not a valid service name:{} not a valid port:{} error:{:?}",
                 name,
                 protocol_fields[1],
                 e
@@ -60,13 +62,17 @@ impl Quadruple {
         let addr = local_ip.to_string() + ":" + protocol_fields[1];
 
         let backend = fields[2];
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static ID_SEQ: AtomicUsize = AtomicUsize::new(1);
         Some(Self {
+            id: ID_SEQ.fetch_add(1, Ordering::AcqRel),
             name: name.to_owned(),
             service: service.to_owned(),
             family: family.to_string(),
             protocol: protocol.to_owned(),
             endpoint: backend.to_string(),
             addr: addr.to_string(),
+            parsed_at: Instant::now(),
         })
     }
     pub fn name(&self) -> String {
@@ -104,8 +110,14 @@ impl fmt::Display for Quadruple {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "(name:{}, service:{}, prot:{}, addr:{}, endpoint:{})",
-            self.name, self.service, self.protocol, self.addr, self.endpoint
+            "(id:{} name:{}, service:{}, prot:{}, addr:{}, endpoint:{} since parsed:{:?})",
+            self.id,
+            self.name,
+            self.service,
+            self.protocol,
+            self.addr,
+            self.endpoint,
+            self.parsed_at.elapsed()
         )
     }
 }
