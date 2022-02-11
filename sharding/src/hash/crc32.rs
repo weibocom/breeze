@@ -53,7 +53,7 @@ pub struct Crc32Range {
 // 在start为0且only_num为false时，兼容crc32的原始实现，与java.util.zip.CRC32的多种长度数据的计算结果相同（jdk的CRC32核心算法是native不可见）
 pub(crate) fn crc32_raw<K: super::HashKey>(key: &K, start: usize, only_digit: bool) -> i64 {
     let mut crc: i64 = CRC_SEED;
-    debug_assert!(start < key.len());
+    // debug_assert!(start < key.len());
     for i in start..key.len() {
         let c = key.at(i);
         if only_digit && !c.is_ascii_digit() {
