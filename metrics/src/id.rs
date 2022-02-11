@@ -1,4 +1,4 @@
-use crate::{Metric, MetricType};
+use crate::MetricType;
 #[derive(Debug, Hash, PartialEq, Eq, Default)]
 pub struct Id {
     pub(crate) path: String,
@@ -12,45 +12,6 @@ impl Id {
     }
 }
 pub const BASE_PATH: &str = "base";
-#[derive(Debug)]
-pub struct Path {
-    path: Vec<String>,
-}
-impl Path {
-    pub fn new<T: ToString>(names: Vec<T>) -> Self {
-        Self {
-            path: names.into_iter().map(|s| s.to_string()).collect(),
-        }
-    }
-    #[inline]
-    pub fn qps(&self, key: &'static str) -> Metric {
-        self.with_type(key, MetricType::Qps)
-    }
-    #[inline]
-    pub fn status(&self, key: &'static str) -> Metric {
-        self.with_type(key, MetricType::Status)
-    }
-    #[inline]
-    pub fn rtt(&self, key: &'static str) -> Metric {
-        self.with_type(key, MetricType::RTT)
-    }
-    #[inline]
-    pub fn count(&self, key: &'static str) -> Metric {
-        self.with_type(key, MetricType::Count)
-    }
-    #[inline]
-    fn with_type(&self, key: &'static str, t: MetricType) -> Metric {
-        let mut s: String = String::with_capacity(256);
-        for name in self.path.iter() {
-            s += &crate::encode_addr(name.as_ref());
-            s.push('.');
-        }
-        s.pop();
-        s.shrink_to_fit();
-        let id = Id { path: s, key, t };
-        crate::register_metric(id)
-    }
-}
 
 use std::collections::HashMap;
 use std::sync::Arc;
