@@ -176,8 +176,8 @@ impl<T> From<T> for DelayedByTime<T> {
 impl<T: Until> Until for DelayedByTime<T> {
     #[inline]
     fn droppable(&mut self) -> bool {
-        if !self.inner.droppable() || self.start.elapsed() >= Duration::from_secs(15) {
-            log::warn!("delay drop in 15 seconds");
+        if self.start.elapsed() >= Duration::from_secs(15) {
+            log::warn!("delay drop in {:?}", self.start.elapsed());
         }
         self.inner.droppable() || self.start.elapsed() >= Duration::from_secs(15)
     }
