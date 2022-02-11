@@ -5,6 +5,7 @@
 //mod memcached_text;
 mod mem;
 //mod queue;
+// mod redis;
 mod ring_slice;
 //mod size;
 //mod slice;
