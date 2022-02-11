@@ -7,6 +7,7 @@ use crate::{
     redis::command::PADDING_RSP_TABLE, Command, Commander, Error, Flag, HashedCommand, Protocol,
     RequestProcessor, Result, Stream,
 };
+use ds::RingSlice;
 use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
@@ -40,7 +41,7 @@ impl Redis {
                     let (bulk, first) = (packet.bulk(), packet.first);
                     debug_assert!(cfg.has_key);
                     let key = packet.parse_key()?;
-                    hash = check_hash(alg.hash(&key));
+                    hash = calculate_hash(alg, &key);
                     if cfg.has_val {
                         packet.ignore_one_bulk()?;
                     }
@@ -51,13 +52,15 @@ impl Redis {
             } else {
                 if cfg.has_key {
                     let key = packet.parse_key()?;
-                    hash = alg.hash(&key);
+                    hash = calculate_hash(alg, &key);
                     debug_assert_ne!(hash, 0);
+                } else {
+                    hash = defalut_hash();
                 }
                 packet.ignore_all_bulks()?;
                 let flag = cfg.flag();
                 let cmd = packet.take();
-                let req = HashedCommand::new(cmd, check_hash(hash), flag);
+                let req = HashedCommand::new(cmd, hash, flag);
                 process.process(req, true);
             }
         }
@@ -67,7 +70,7 @@ impl Redis {
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
         if data.len() >= 2 {
-            debug_assert_ne!(data.at(0), b'*');
+            // debug_assert_ne!(data.at(0), b'*');
             let mut oft = 0;
             match data.at(0) {
                 b'-' | b':' | b'+' => data.line(&mut oft)?,
@@ -76,6 +79,13 @@ impl Redis {
                         data.line(&mut oft)?;
                     } else {
                         let _num = data.num_and_skip(&mut oft)?;
+                    }
+                }
+                b'*' => {
+                    let mut bulk_count = data.num(&mut oft)?;
+                    while bulk_count > 0 {
+                        data.num_and_skip(&mut oft)?;
+                        bulk_count -= 1;
                     }
                 }
                 _ => panic!("not supported"),
@@ -192,8 +202,10 @@ impl Protocol for Redis {
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
         } else {
-            // quit
+            // quit，先发+OK，再返回err
             debug_assert_eq!(rsp_idx, 0);
+            let ok_rs = PADDING_RSP_TABLE.get(1).unwrap().as_bytes();
+            w.write(ok_rs)?;
             Err(crate::Error::Quit)
         }
     }
@@ -271,12 +283,18 @@ static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0?
 #[inline(always)]
-fn check_hash(hash: i64) -> i64 {
-    if hash == 0 {
+fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
+    if key.len() == 0 {
         AUTO.fetch_add(1, Ordering::Relaxed)
     } else {
+        let hash = alg.hash(key);
+        debug_assert!(hash != 0);
         hash
     }
+}
+
+fn defalut_hash() -> i64 {
+    AUTO.fetch_add(1, Ordering::Relaxed)
 }
 
 impl Redis {
