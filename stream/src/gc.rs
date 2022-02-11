@@ -177,7 +177,7 @@ impl<T: Until> Until for DelayedByTime<T> {
     #[inline]
     fn droppable(&mut self) -> bool {
         if self.inner.droppable() || self.start.elapsed() >= Duration::from_secs(15) {
-            log::error!("delay drop in 15 seconds");
+            log::warn!("delay drop in 15 seconds");
             true
         } else {
             false
