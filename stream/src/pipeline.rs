@@ -174,9 +174,9 @@ where
             let mut ctx = pending.pop_front().expect("front");
             let last = ctx.last();
             let op = ctx.request().operation();
+            *metrics.key() += 1;
 
             if op.is_query() {
-                *metrics.key() += 1;
                 let hit = ctx.response_ok() as usize;
                 *metrics.hit() += hit;
                 *metrics.cache() += (hit, 1);
