@@ -33,7 +33,7 @@ impl Redis {
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
             let cfg = command::get_cfg(packet.op_code())?;
-            let mut hash = 0;
+            let mut hash;
             if cfg.multi {
                 packet.multi_ready();
                 while packet.has_bulk() {
