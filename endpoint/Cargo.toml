@@ -17,7 +17,7 @@ stream = { path = "../stream" }
 log = "0.4.14"
 rt = { path = "../rt" }
 
-tokio = "1.15.0"
+tokio = "1.16.1"
 byteorder = "1.4.3"
 bytes = "1.0.1"
 

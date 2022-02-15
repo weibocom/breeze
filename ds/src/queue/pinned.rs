@@ -165,15 +165,17 @@ impl<T> PinnedQueue<T> {
     fn grow(&mut self) {
         debug_assert_eq!(self.fix_len(), 0);
         debug_assert_ne!(self.ext.len(), 0);
-        // drop old
-        let _v = unsafe { Vec::from_raw_parts(self.fix, 0, self.cap as usize) };
-        self.cap = self.cap * 2;
-        let mut new = Vec::with_capacity(self.cap() * 2);
-        self.fix = new.as_mut_ptr();
-        let _ = std::mem::ManuallyDrop::new(new);
-        self.head = 0;
-        self.tail = 0;
-        //println!("grown {}", self);
+        if self.ext.len() > (self.cap() >> 1) {
+            // drop old
+            let _v = unsafe { Vec::from_raw_parts(self.fix, 0, self.cap as usize) };
+            self.cap = (self.cap * 2).max(64);
+            let mut new = Vec::with_capacity(self.cap());
+            self.fix = new.as_mut_ptr();
+            let _ = std::mem::ManuallyDrop::new(new);
+            self.head = 0;
+            self.tail = 0;
+            log::info!("grown {}", self);
+        }
     }
 }
 
@@ -205,6 +207,7 @@ impl<T> Drop for PinnedQueue<T> {
                     ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.fix, tail));
                 }
             }
+            let _v = Vec::from_raw_parts(self.fix, 0, self.cap as usize);
         }
     }
 }

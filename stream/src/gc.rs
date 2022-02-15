@@ -18,7 +18,9 @@ pub(crate) trait Until {
 pub struct DelayedDrop<T> {
     inner: *mut T,
 }
+use log::log;
 use std::ops::{Deref, DerefMut};
+
 impl<T> Deref for DelayedDrop<T> {
     type Target = T;
     #[inline(always)]
@@ -174,7 +176,10 @@ impl<T> From<T> for DelayedByTime<T> {
 impl<T: Until> Until for DelayedByTime<T> {
     #[inline]
     fn droppable(&mut self) -> bool {
-        self.inner.droppable() || self.start.elapsed() >= Duration::from_secs(15)
+        if self.start.elapsed() >= Duration::from_secs(10) {
+            log::warn!("delay drop in {:?}", self.start.elapsed());
+        }
+        self.inner.droppable() || self.start.elapsed() >= Duration::from_secs(10)
     }
 }
 

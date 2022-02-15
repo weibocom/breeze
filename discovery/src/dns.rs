@@ -70,7 +70,8 @@ impl Record {
             }
         }
     }
-    // 如果有更新，则返回等更新的ip。
+    // 如果有更新，则返回lookup的ip。
+    // 无更新则返回None
     async fn check_refresh(&self, host: &str, resolver: &mut Resolver) -> Option<Vec<IpAddr>> {
         match resolver.lookup_ip(host).await {
             Ok(ips) => {
@@ -171,6 +172,8 @@ async fn start_watch_dns(
             // 更新cache
             cache.write(move |t| *t = w_cache.clone());
             cache.get().notify();
+            // 再次快速尝试读取新注册的数据
+            continue;
         }
         // 每一秒种tick一次，检查是否
         tick.tick().await;
@@ -224,6 +227,7 @@ impl DnsCache {
         match self.hosts.get(addr) {
             Some(record) => record.first_watch(),
             None => {
+                log::debug!("{} watching", addr);
                 let watcher = Arc::new(AtomicBool::new(false));
                 if let Err(e) = self.tx.send((addr.to_string(), watcher.clone())) {
                     log::info!("watcher failed to {} => {:?}", addr, e);
@@ -234,8 +238,7 @@ impl DnsCache {
     }
     fn register(&mut self, host: String, notify: Arc<AtomicBool>) {
         log::debug!("host {} registered to cache", host);
-        let record = self.hosts.entry(host).or_default();
-        record.watch(notify);
+        self.hosts.entry(host).or_default().watch(notify);
     }
     fn lookup(&self, host: &str) -> Vec<String> {
         let mut addrs = Vec::new();
@@ -249,14 +252,16 @@ impl DnsCache {
         }
         addrs
     }
-    pub async fn refresh_one(&mut self, host: &str, resolver: &mut Resolver) {
-        if let Some(record) = self.hosts.get_mut(host) {
-            record.refresh(host, resolver).await;
-        }
+    async fn refresh_one(&mut self, host: &str, resolver: &mut Resolver) {
+        self.hosts
+            .get_mut(host)
+            .expect("not register")
+            .refresh(host, resolver)
+            .await;
     }
-    pub async fn refresh(&mut self, resolver: &mut Resolver) {
-        for (host, record) in self.hosts.iter_mut() {
-            record.refresh(host, resolver).await;
-        }
-    }
+    //async fn refresh(&mut self, resolver: &mut Resolver) {
+    //    for (host, record) in self.hosts.iter_mut() {
+    //        record.refresh(host, resolver).await;
+    //    }
+    //}
 }

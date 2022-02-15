@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{Id, IdSequence, Item, Metric, MetricType};
+use crate::{Id, IdSequence, Item, Metric};
 
 const CHUNK_SIZE: usize = 4096;
 
@@ -36,7 +36,7 @@ impl Metrics {
     // 只缓存Count类型的数据
     #[inline]
     pub(crate) fn cache(&self, id: &Arc<Id>, cache: i64) {
-        if let MetricType::Count = id.t {
+        if id.t.need_flush() {
             if let Err(e) = self.register.send((id.clone(), cache)) {
                 log::info!("cache error. id:{:?} cache:{} {:?}", id, cache, e);
             }
@@ -61,6 +61,7 @@ impl Metrics {
         self.reserve(idx);
         self.len = (idx + 1).max(self.len);
         if let Some(mut item) = self.get_item(idx).try_lock() {
+            log::debug!("item inited:{:?}", id);
             item.init(id);
             return;
         }
@@ -210,7 +211,6 @@ impl Future for MetricRegister {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
         loop {
-            ready!(me.tick.poll_tick(cx));
             while let Poll::Ready(Some((id, cache))) = me.rx.poll_recv(cx) {
                 me.process_one(id, cache);
             }
@@ -233,7 +233,10 @@ impl Future for MetricRegister {
                 if cache.len() > 0 {
                     me.cache = Some(cache);
                 }
+                // 有更新，说明channel里面可能还有数据等待处理。
+                continue;
             }
+            ready!(me.tick.poll_tick(cx));
         }
     }
 }
