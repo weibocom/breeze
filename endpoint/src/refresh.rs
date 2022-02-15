@@ -91,7 +91,7 @@ impl<T: Clone + 'static> Refresher<T> {
     fn try_clear(&mut self) {
         if self.dropping.len() > 0 && self.last_time.elapsed() >= Duration::from_secs(30) {
             for ep in self.dropping.split_off(0) {
-                unsafe { std::ptr::drop_in_place(ep as *mut T) };
+                let _ = unsafe { Box::from_raw(ep as *mut T) };
             }
             debug_assert_eq!(self.dropping.len(), 0);
         }

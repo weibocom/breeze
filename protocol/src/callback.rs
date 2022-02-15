@@ -113,7 +113,7 @@ impl CallbackContext {
         }
     }
     #[inline(always)]
-    fn response_ok(&self) -> bool {
+    pub fn response_ok(&self) -> bool {
         unsafe { self.ctx.inited && self.response().ok() }
     }
     #[inline(always)]

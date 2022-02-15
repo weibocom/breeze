@@ -177,9 +177,9 @@ where
 
             if op.is_query() {
                 *metrics.key() += 1;
-                if unsafe { ctx.response().ok() } {
-                    *metrics.hit() += 1;
-                }
+                let hit = ctx.response_ok() as usize;
+                *metrics.hit() += hit;
+                *metrics.cache() += (hit, 1);
             }
 
             if ctx.inited() {
