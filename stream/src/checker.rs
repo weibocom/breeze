@@ -53,14 +53,15 @@ impl<P, Req> BackendChecker<P, Req> {
     {
         let mut s_metric = self.path.status("reconn");
         let mut m_timeout_biz = self.path.qps("timeout");
-        let mut m_timeout = Path::new(vec![BASE_PATH]).qps("timeout");
+        let mut m_timeout = Path::base().qps("timeout");
         let mut tries = 0;
         while !self.finish.get() {
             let stream = self.try_connect(&mut s_metric, &mut tries).await;
             if stream.is_none() {
                 continue;
             }
-            let (r, w) = stream.expect("not expected").into_split();
+            let stream = stream.expect("not expected");
+            let (r, w) = stream.into_split();
             let rx = &mut self.rx;
             self.run.on();
             log::debug!("handler started:{}", s_metric);
