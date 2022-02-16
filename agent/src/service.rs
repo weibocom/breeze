@@ -1,4 +1,4 @@
-use net::listener::Listener;
+use net::Listener;
 use rt::spawn;
 use std::sync::Arc;
 use std::time::Duration;
