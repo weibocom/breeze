@@ -6,12 +6,12 @@ mod hash_test {
     use std::{
         fs::File,
         io::{BufRead, BufReader},
-        u64,
     };
 
     use crypto::digest::Digest;
     use crypto::md5::Md5;
-    use sharding::hash::{Bkdr, Crc32, Hash};
+    use protocol::Request;
+    use sharding::hash::{Bkdr, Crc32, Hash, Hasher};
     use std::ops::Bound::Included;
 
     #[test]
@@ -76,6 +76,20 @@ mod hash_test {
         println!("readers: {:?}", readers);
     }
 
+    #[test]
+    fn raw_hash() {
+        let val1 = 123456789012;
+        let key1 = format!("{}", val1);
+        let key2 = format!("{}abc", val1);
+
+        let hasher = Hasher::from("raw");
+        let hash1 = hasher.hash(&key1[0..].as_bytes());
+        let hash2 = hasher.hash(&key2[0..].as_bytes());
+        println!("key:{}/{}, hash:{}/{}", key1, key2, hash1, hash2);
+        debug_assert_eq!(hash1, val1);
+        debug_assert_eq!(hash2, val1);
+    }
+
     fn bkdr_check(path: &str) {
         let file = File::open(path).unwrap();
         let mut reader = BufReader::new(file);
@@ -103,8 +117,8 @@ mod hash_test {
                     //     hash_in_java.len(),
                     // );
 
-                    let hash = Bkdr {}.hash(key.as_bytes());
-                    let hash_in_java_u64 = hash_in_java.parse::<u64>().unwrap();
+                    let hash = Bkdr {}.hash(&key.as_bytes());
+                    let hash_in_java_u64 = hash_in_java.parse::<i64>().unwrap();
                     if hash != hash_in_java_u64 {
                         println!(
                             "bkdr found error - line in java: {}, rust hash: {}",
@@ -143,8 +157,8 @@ mod hash_test {
                     let key = props[0].trim();
                     let hash_in_java = props[1].trim();
 
-                    let hash = Crc32 {}.hash(key.as_bytes());
-                    let hash_in_java_u64 = hash_in_java.parse::<u64>().unwrap();
+                    let hash = Crc32 {}.hash(&key.as_bytes());
+                    let hash_in_java_u64 = hash_in_java.parse::<i64>().unwrap();
                     if hash != hash_in_java_u64 {
                         println!(
                             "crc32 found error - line in java: {}, rust hash: {}",
@@ -257,7 +271,7 @@ mod hash_test {
         fn get_hash_server(&self, key: &str) -> (i64, String) {
             // 一致性hash，选择hash环的第一个节点，不支持漂移，避免脏数据 fishermen
             let bk = Bkdr {};
-            let h = bk.hash(key.as_bytes()) as usize;
+            let h = bk.hash(&key.as_bytes()) as usize;
             let idxs = self
                 .consistent_map
                 .range((Included(h as i64), Included(i64::MAX)));
