@@ -11,3 +11,4 @@ log = "0.4.14"
 futures = "0.3.17"
 protocol = { path = "../protocol" }
 metrics = { path = "../metrics" }
+ds = { path = "../ds" }
