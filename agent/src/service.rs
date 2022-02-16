@@ -77,6 +77,7 @@ async fn _process_one(
         let top = top.clone();
         // 等待初始化成功
         let (client, _addr) = l.accept().await?;
+        let client = rt::Stream::from(client);
         let p = p.clone();
         let cb = cb.clone();
         let metrics = StreamMetrics::new(path);
