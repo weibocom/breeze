@@ -9,7 +9,7 @@ use protocol::{Error, Protocol, Request};
 
 use crate::handler::Handler;
 use ds::Switcher;
-use metrics::{Metric, Path, BASE_PATH};
+use metrics::{Metric, Path};
 
 pub struct BackendChecker<P, Req> {
     rx: Receiver<Req>,
@@ -60,8 +60,7 @@ impl<P, Req> BackendChecker<P, Req> {
             if stream.is_none() {
                 continue;
             }
-            let stream = stream.expect("not expected");
-            let (r, w) = stream.into_split();
+            let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
             self.run.on();
             log::debug!("handler started:{}", s_metric);
@@ -70,7 +69,7 @@ impl<P, Req> BackendChecker<P, Req> {
             let mut buf: DelayedDrop<_> = StreamGuard::new().into();
             let pending = &mut VecDeque::with_capacity(31);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, pending, &mut buf, w, r, p, &self.path);
+            let handler = Handler::from(rx, pending, &mut buf, stream, p, &self.path);
             let handler = rt::Timeout::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 if let protocol::Error::Timeout(_) = e {
