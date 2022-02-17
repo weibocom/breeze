@@ -1,8 +1,10 @@
 use metrics::{Metric, Path};
 pub struct MetricStream<S> {
     write: Metric,
+    w_pending: Metric,
     read_hit: Metric,
     read: Metric,
+    r_pending: Metric,
     s: S,
 }
 
@@ -18,11 +20,16 @@ impl<S> From<S> for MetricStream<S> {
         let read = Path::base().qps("poll_read");
         let read_hit = Path::base().ratio("poll_read");
         let write = Path::base().qps("poll_write");
+        let r_pending = Path::base().qps("r_pending");
+        let w_pending = Path::base().qps("w_pending");
+
         Self {
             s,
             read,
             read_hit,
             write,
+            r_pending,
+            w_pending,
         }
     }
 }
@@ -39,6 +46,9 @@ impl<S: AsyncRead + Unpin> AsyncRead for MetricStream<S> {
         self.read += 1;
         let hit = (buf.remaining() != pre) as i64;
         self.read_hit += (hit, 1);
+        if ret.is_pending() {
+            self.r_pending += 1;
+        }
         ret
     }
 }
@@ -54,7 +64,11 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for MetricStream<S> {
             log::info!("write zero len");
         }
         self.write += 1;
-        Pin::new(&mut self.s).poll_write(cx, buf)
+        let r = Pin::new(&mut self.s).poll_write(cx, buf);
+        if r.is_pending() {
+            self.w_pending += 1;
+        }
+        r
     }
     #[inline(always)]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {

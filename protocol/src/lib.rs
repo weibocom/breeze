@@ -30,6 +30,11 @@ pub trait Writer {
     fn write_u8(&mut self, v: u8) -> Result<()> {
         self.write(&[v])
     }
+
+    // hint: 提示可能优先写入到cache
+    #[inline(always)]
+    fn cache(&mut self, _hint: bool) {}
+
     #[inline(always)]
     fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
         let mut oft = oft;

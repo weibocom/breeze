@@ -77,26 +77,21 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         S: AsyncWrite + protocol::Writer + Unpin,
     {
         let mut c = 0;
-        while let Poll::Ready(req) = self.data.poll_recv(cx) {
-            match req {
-                None => return Poll::Ready(Err(Error::QueueClosed)), // 说明当前实例已经被销毁，需要退出。
-                Some(mut req) => {
-                    c += 1;
-                    self.s.write_slice(req.data(), 0)?;
-                    req.on_sent();
-                    if req.sentonly() {
-                        // 发送即接收
-                        self.num_rx += 1;
-                    } else {
-                        self.pending.push_back(req);
-                    }
-                }
+        self.s.cache(false);
+        while let Some(mut req) = ready!(self.data.poll_recv(cx)) {
+            c += 1;
+            if c == 2 {
+                self.s.cache(true);
+            }
+            self.s.write_slice(req.data(), 0)?;
+            req.on_sent();
+            if req.sentonly() {
+                self.num_rx += 1;
+            } else {
+                self.pending.push_back(req);
             }
         }
-        if c > 1 {
-            log::info!("caching found:{:?}, {}", self, c);
-        }
-        Poll::Pending
+        Poll::Ready(Err(Error::QueueClosed))
     }
     #[inline(always)]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>>
