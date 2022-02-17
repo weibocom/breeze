@@ -163,6 +163,7 @@ where
             ..
         } = self;
         // 处理回调
+        let mut c = 0;
         while let Some(ctx) = pending.front_mut() {
             // 当前请求是第一个请求
             if !*start_init {
@@ -171,6 +172,7 @@ where
             if !ctx.complete() {
                 break;
             }
+            c += 1;
             let mut ctx = pending.pop_front().expect("front");
             let last = ctx.last();
             let op = ctx.request().operation();
@@ -199,6 +201,9 @@ where
                 *metrics.ops(op) += start.elapsed();
                 *flush = true;
                 *start_init = false;
+            }
+            if c > 1 {
+                log::info!("pipeline found: {}", c);
             }
         }
         Ok(())
