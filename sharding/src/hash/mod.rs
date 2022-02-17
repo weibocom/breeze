@@ -1,8 +1,10 @@
 pub mod bkdr;
 pub mod crc32;
+pub mod raw;
 
 pub use bkdr::Bkdr;
 pub use crc32::*;
+pub use raw::Raw;
 
 use enum_dispatch::enum_dispatch;
 #[enum_dispatch]
@@ -17,6 +19,7 @@ pub enum Hasher {
     Bkdr(Bkdr),
     Crc32Short(Crc32Short), // mc short crc32
     Crc32Range(Crc32Range), // redis crc32 range hash
+    Raw(Raw),               // redis raw, long型字符串直接用数字作为hash
 }
 
 // crc32-short和crc32-range长度相同，所以此处选一个
@@ -40,6 +43,7 @@ impl Hasher {
             "bkdr" => Self::Bkdr(Default::default()),
             "crc32-short" => Self::Crc32Short(Default::default()),
             "crc32-range" => Self::Crc32Range(Crc32Range::from(alg_lower.as_str())),
+            "raw" => Self::Raw(Raw::from(Default::default())),
             _ => {
                 // 默认采用mc的crc32-s hash
                 log::debug!("found unknow hash:{}, use crc32-short instead", alg);

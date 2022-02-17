@@ -1,11 +1,12 @@
 // mod offset;
 //mod bit_map;
 //mod cow;
-//mod hash_test;
+// mod hash_test;
+mod distribute;
 //mod memcached_text;
 mod mem;
 //mod queue;
-// mod redis;
+mod redis;
 mod ring_slice;
 //mod size;
 //mod slice;
