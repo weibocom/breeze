@@ -17,13 +17,8 @@ pub(crate) struct Handler<'r, Req, P, S> {
     pending: &'r mut VecDeque<Req>,
 
     s: S,
-    // 用来处理发送数据
-    cache: bool, // pending的尾部数据是否需要发送。true: 需要发送
-    oft_c: usize,
-    // 处理接收数据
     buf: &'r mut StreamGuard,
     parser: P,
-    flushing: bool,
 
     // 处理timeout
     num_rx: usize,
@@ -34,7 +29,7 @@ pub(crate) struct Handler<'r, Req, P, S> {
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
     Req: Request + Unpin,
-    S: AsyncRead + AsyncWrite + Unpin,
+    S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
     P: Protocol + Unpin,
 {
     type Output = Result<()>;
@@ -61,58 +56,47 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         path: &Path,
     ) -> Self
     where
-        S: AsyncRead + AsyncWrite + Unpin,
+        S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
     {
         Self {
             data,
-            cache: false,
             pending: pending,
             s,
             parser,
-            oft_c: 0,
             buf,
-            flushing: false,
             rtt: path.rtt("req"),
             num_rx: 0,
             num_tx: 0,
         }
     }
-    // 发送request.
+    // 发送request. 读空所有的request，并且发送。直到pending或者error
     #[inline(always)]
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>>
     where
         Req: Request,
-        S: AsyncWrite + Unpin,
+        S: AsyncWrite + protocol::Writer + Unpin,
     {
-        loop {
-            if self.cache {
-                debug_assert!(self.pending.len() > 0);
-                if let Some(req) = self.pending.back_mut() {
-                    while self.oft_c < req.len() {
-                        let data = req.read(self.oft_c);
-                        self.flushing = true;
-                        let n = ready!(Pin::new(&mut self.s).poll_write(cx, data))?;
-                        self.oft_c += n;
-                    }
+        let mut c = 0;
+        while let Poll::Ready(req) = self.data.poll_recv(cx) {
+            match req {
+                None => return Poll::Ready(Err(Error::QueueClosed)), // 说明当前实例已经被销毁，需要退出。
+                Some(mut req) => {
+                    c += 1;
+                    self.s.write_slice(req.data(), 0)?;
                     req.on_sent();
                     if req.sentonly() {
-                        // 只发送的请求，不需要等待response，pop掉。
-                        self.pending.pop_back();
+                        // 发送即接收
                         self.num_rx += 1;
+                    } else {
+                        self.pending.push_back(req);
                     }
-                }
-                self.oft_c = 0;
-                self.cache = false;
-            }
-            match ready!(self.data.poll_recv(cx)) {
-                None => return Poll::Ready(Err(Error::QueueClosed)), // 说明当前实例已经被销毁，需要退出。
-                Some(req) => {
-                    self.pending.push_back(req);
-                    self.cache = true;
-                    self.num_tx += 1;
                 }
             }
         }
+        if c > 1 {
+            log::info!("caching found:{:?}, {}", self, c);
+        }
+        Poll::Pending
     }
     #[inline(always)]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>>
@@ -152,7 +136,6 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         S: AsyncWrite + Unpin,
     {
         ready!(Pin::new(&mut self.s).poll_flush(cx))?;
-        self.flushing = false;
         Poll::Ready(Ok(()))
     }
 }
@@ -173,14 +156,6 @@ use std::fmt::{self, Debug, Formatter};
 impl<'r, Req, P, S> Debug for Handler<'r, Req, P, S> {
     #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "handler pending:{} flushing:{} cached:{} oft:{} {}",
-            self.pending.len(),
-            self.flushing,
-            self.cache,
-            self.oft_c,
-            self.rtt,
-        )
+        write!(f, "handler pending:{} {}", self.pending.len(), self.rtt,)
     }
 }

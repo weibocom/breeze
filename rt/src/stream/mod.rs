@@ -46,30 +46,28 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.s).poll_write(cx, buf)
-        //let mut oft = 0;
-        //if self.buf.len() == 0 {
-        //    let _ = Pin::new(&mut self.s).poll_write(cx, buf)?.map(|n| oft = n);
-        //}
-        //if oft < buf.len() {
-        //    use ds::Buffer;
-        //    self.buf.write(&buf[oft..])
-        //}
-        //Poll::Ready(Ok(buf.len()))
+        let mut oft = 0;
+        if self.buf.len() == 0 {
+            let _ = Pin::new(&mut self.s).poll_write(cx, buf)?.map(|n| oft = n);
+        }
+        if oft < buf.len() {
+            use ds::Buffer;
+            self.buf.write(&buf[oft..])
+        }
+        Poll::Ready(Ok(buf.len()))
     }
     #[inline(always)]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.s).poll_flush(cx)
-        //let Self { s, idx, buf } = &mut *self;
-        //let mut w = Pin::new(s);
-        //while *idx < buf.len() {
-        //    *idx += ready!(w.as_mut().poll_write(cx, &buf[*idx..]))?;
-        //}
-        //if *idx == buf.len() {
-        //    *idx = 0;
-        //    unsafe { buf.set_len(0) };
-        //}
-        //w.poll_flush(cx)
+        let Self { s, idx, buf } = &mut *self;
+        let mut w = Pin::new(s);
+        while *idx < buf.len() {
+            *idx += ready!(w.as_mut().poll_write(cx, &buf[*idx..]))?;
+        }
+        if *idx == buf.len() {
+            *idx = 0;
+            unsafe { buf.set_len(0) };
+        }
+        w.poll_flush(cx)
     }
     #[inline(always)]
     fn poll_shutdown(
@@ -81,12 +79,12 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
     }
 }
 
-//impl<S: AsyncWrite + Unpin> protocol::ResponseWriter for Stream<S> {
-//    #[inline]
-//    fn write(&mut self, data: &[u8]) -> protocol::Result<()> {
-//        let noop = noop_waker::noop_waker();
-//        let mut ctx = Context::from_waker(&noop);
-//        let _ = Pin::new(&mut self.s).poll_write(&mut ctx, data)?;
-//        Ok(())
-//    }
-//}
+impl<S: AsyncWrite + Unpin> protocol::Writer for Stream<S> {
+    #[inline]
+    fn write(&mut self, data: &[u8]) -> protocol::Result<()> {
+        let noop = noop_waker::noop_waker();
+        let mut ctx = Context::from_waker(&noop);
+        let _ = Pin::new(&mut self.s).poll_write(&mut ctx, data)?;
+        Ok(())
+    }
+}

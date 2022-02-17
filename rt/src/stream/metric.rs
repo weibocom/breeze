@@ -50,6 +50,9 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for MetricStream<S> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
+        if buf.len() == 0 {
+            log::info!("write zero len");
+        }
         self.write += 1;
         Pin::new(&mut self.s).poll_write(cx, buf)
     }

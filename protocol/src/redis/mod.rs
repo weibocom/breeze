@@ -126,11 +126,7 @@ impl Protocol for Redis {
         }
     }
     #[inline(always)]
-    fn write_response<C: Commander, W: crate::ResponseWriter>(
-        &self,
-        ctx: &mut C,
-        w: &mut W,
-    ) -> Result<()> {
+    fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
         let req = ctx.request();
         let op_code = req.op_code();
         let cfg = command::get_cfg(op_code)?;
@@ -190,11 +186,7 @@ impl Protocol for Redis {
         // 多个key，第一个response增加multi-bulk-len前缀，后面所有的response去掉bulk-len前缀
     }
     #[inline(always)]
-    fn write_no_response<W: crate::ResponseWriter>(
-        &self,
-        req: &HashedCommand,
-        w: &mut W,
-    ) -> Result<()> {
+    fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
         let rsp_idx = req.ext().padding_rsp() as usize;
         debug_assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();

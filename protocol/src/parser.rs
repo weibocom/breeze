@@ -29,16 +29,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         process: &mut P,
     ) -> Result<()>;
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
-    fn write_response<C: Commander, W: crate::ResponseWriter>(
-        &self,
-        ctx: &mut C,
-        w: &mut W,
-    ) -> Result<()>;
-    fn write_no_response<W: crate::ResponseWriter>(
-        &self,
-        _req: &HashedCommand,
-        _w: &mut W,
-    ) -> Result<()> {
+    fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()>;
+    fn write_no_response<W: crate::Writer>(&self, _req: &HashedCommand, _w: &mut W) -> Result<()> {
         Err(Error::NoResponseFound)
     }
     // 构建回写请求。
