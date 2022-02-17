@@ -9,8 +9,7 @@ use ds::AtomicWaker;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use protocol::Stream;
-use protocol::{HashedCommand, Protocol, Result};
+use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 use sharding::hash::Hasher;
 
 use crate::buffer::{Reader, StreamGuard};
@@ -25,7 +24,7 @@ pub async fn copy_bidirectional<'a, C, P>(
     parser: P,
 ) -> Result<()>
 where
-    C: AsyncRead + AsyncWrite + Unpin,
+    C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
 {
     *metrics.conn() += 1; // cps
@@ -41,8 +40,6 @@ where
         parser,
         pending: &mut pending,
         waker: &*waker,
-        tx_idx: 0,
-        tx_buf: Vec::with_capacity(1024),
         flush: false,
         cb,
         start: Instant::now(),
@@ -62,9 +59,7 @@ struct CopyBidirectional<'a, C, P> {
     parser: P,
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
-    tx_idx: usize,
     flush: bool,
-    tx_buf: Vec<u8>,
     cb: CallbackPtr,
 
     metrics: StreamMetrics,
@@ -76,7 +71,7 @@ struct CopyBidirectional<'a, C, P> {
 }
 impl<'a, C, P> Future for CopyBidirectional<'a, C, P>
 where
-    C: AsyncRead + AsyncWrite + Unpin,
+    C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
 {
     type Output = Result<()>;
@@ -106,7 +101,7 @@ where
 }
 impl<'a, C, P> CopyBidirectional<'a, C, P>
 where
-    C: AsyncRead + AsyncWrite + Unpin,
+    C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
 {
     // 从client读取request流的数据到buffer。
@@ -152,8 +147,8 @@ where
     #[inline(always)]
     fn process_pending(&mut self) -> Result<()> {
         let Self {
+            client,
             cb,
-            tx_buf,
             pending,
             parser,
             start,
@@ -163,7 +158,7 @@ where
             ..
         } = self;
         // 处理回调
-        let mut c = 0;
+        client.cache(pending.len() > 1);
         while let Some(ctx) = pending.front_mut() {
             // 当前请求是第一个请求
             if !*start_init {
@@ -172,9 +167,12 @@ where
             if !ctx.complete() {
                 break;
             }
-            c += 1;
             let mut ctx = pending.pop_front().expect("front");
             let last = ctx.last();
+            if !last {
+                // 当前不是最后一个值。也优先写入cache
+                client.cache(true);
+            }
             let op = ctx.request().operation();
             *metrics.key() += 1;
 
@@ -185,14 +183,14 @@ where
             }
 
             if ctx.inited() {
-                parser.write_response(&mut ctx, tx_buf)?;
+                parser.write_response(&mut ctx, client)?;
                 ctx.async_start_write_back(parser, cb.exp_sec());
             } else {
                 let req = ctx.request();
                 if !req.noforward() {
                     *metrics.noresponse() += 1;
                 }
-                parser.write_no_response(req, tx_buf)?;
+                parser.write_no_response(req, client)?;
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，
@@ -202,9 +200,6 @@ where
                 *flush = true;
                 *start_init = false;
             }
-            if c > 1 {
-                log::info!("pipeline found: {}", c);
-            }
         }
         Ok(())
     }
@@ -212,21 +207,7 @@ where
     #[inline(always)]
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         if self.flush {
-            let Self {
-                tx_buf,
-                tx_idx,
-                client,
-                ..
-            } = self;
-            let mut w = Pin::new(client);
-            if tx_buf.len() > 0 {
-                while *tx_idx < tx_buf.len() {
-                    *tx_idx += ready!(w.as_mut().poll_write(cx, &tx_buf[*tx_idx..]))?;
-                }
-                *tx_idx = 0;
-                unsafe { tx_buf.set_len(0) };
-            }
-            ready!(w.as_mut().poll_flush(cx)?);
+            ready!(Pin::new(&mut self.client).as_mut().poll_flush(cx)?);
             self.flush = false;
         }
         Poll::Ready(Ok(()))
@@ -269,12 +250,10 @@ impl<'a, C, P> Debug for CopyBidirectional<'a, C, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pending:{} flush:{} rx buf: {} tx oft:{} tx buf len:{} copy_bidirectional => {}",
+            "pending:{} flush:{} rx buf: {}  copy_bidirectional => {}",
             self.pending.len(),
             self.flush,
             self.rx_buf.len(),
-            self.tx_idx,
-            self.tx_buf.len(),
             self.metrics.biz(),
         )
     }
