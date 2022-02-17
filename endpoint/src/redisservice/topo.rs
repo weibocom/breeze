@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use discovery::TopologyWrite;
 use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
-use sharding::distribution::DIST_RANGE_SPLIT_DEFAULT;
+use sharding::distribution::Distribute;
 use sharding::hash::Hasher;
 use sharding::ReplicaSelect;
 
@@ -18,6 +18,7 @@ pub struct RedisService<B, E, Req, P> {
     // 不同sharding的url。第0个是master
     shards_url: Vec<Vec<String>>,
     hasher: Hasher,
+    distribute: Distribute,
     selector: String, // 从的选择策略。
     updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
@@ -34,6 +35,7 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             shards: Default::default(),
             shards_url: Default::default(),
             hasher: Default::default(),
+            distribute: Default::default(),
             updated: Default::default(),
             service: Default::default(),
             selector: Default::default(),
@@ -66,15 +68,15 @@ where
     #[inline(always)]
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
-        // TODO：原分布算法计算有问题，先临时实现，验证流程 fishermen
-        // let shard_idx = req.hash() as usize % self.shards.len();
-        let newhash = req
-            .hash()
-            .wrapping_div(DIST_RANGE_SPLIT_DEFAULT)
-            .wrapping_rem(DIST_RANGE_SPLIT_DEFAULT);
-        debug_assert!(newhash >= 0);
-        let interval = DIST_RANGE_SPLIT_DEFAULT as u64 / self.shards.len() as u64;
-        let shard_idx = (newhash as u64 / interval) as usize;
+        // TODO：这部分逻辑转移到distribution中进行,待验证 fishermen
+        // let newhash = req
+        //     .hash()
+        //     .wrapping_div(DIST_RANGE_SPLIT_DEFAULT)
+        //     .wrapping_rem(DIST_RANGE_SPLIT_DEFAULT);
+        // debug_assert!(newhash >= 0);
+        // let interval = DIST_RANGE_SPLIT_DEFAULT as u64 / self.shards.len() as u64;
+        // let shard_idx = (newhash as u64 / interval) as usize;
+        let shard_idx = self.distribute.index(req.hash());
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         // log::debug!("+++ shard_idx:{}, req.hash: {}", shard_idx, req.hash());
@@ -114,9 +116,15 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
+            if ns.backends.len() < 1 {
+                log::warn!("ignore malformed redis cfg with no backends/{}", cfg);
+                return;
+            }
+
             self.timeout_master = ns.timeout_master();
             self.timeout_slave = ns.timeout_slave();
             self.hasher = Hasher::from(&ns.basic.hash);
+            self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
             self.selector = ns.basic.selector;
             let mut shards_url = Vec::new();
             for shard in ns.backends.iter() {
