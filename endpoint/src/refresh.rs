@@ -58,7 +58,7 @@ struct Refresher<T> {
     switcher: Switcher,
     reader: TopologyReadGuard<T>,
     ep: Arc<AtomicPtr<T>>,
-    dropping: Vec<usize>,
+    dropping: Vec<(usize, Instant)>,
     last_time: Instant,
     last_cycle: usize,
     tick: Interval,
@@ -83,16 +83,16 @@ impl<T: Clone + 'static> Refresher<T> {
         let ep = Box::leak(Box::new(self.reader.do_with(|t| t.clone())));
         let old = self.ep.swap(ep, Ordering::Relaxed);
         if !old.is_null() {
-            self.dropping.push(old as usize);
+            self.dropping.push((old as usize, Instant::now()));
         }
         self.last_time = Instant::now();
     }
-    // 连续超过30秒钟没有refresh，则销毁所有dropping实例。
+    // 等到ep被swap后30秒再释放，防止其他线程仍在使用
     fn try_clear(&mut self) {
-        if self.dropping.len() > 0 && self.last_time.elapsed() >= Duration::from_secs(30) {
-            for ep in self.dropping.split_off(0) {
-                let _ = unsafe { Box::from_raw(ep as *mut T) };
-            }
+        if self.dropping.len() > 0 && self.dropping[0].1.elapsed() >= Duration::from_secs(600) {
+            let (ep, swap_time) = self.dropping.pop().unwrap();
+            log::info!("clear dropped topo since {:?}", swap_time);
+            let _ = unsafe { Box::from_raw(ep as *mut T) };
             debug_assert_eq!(self.dropping.len(), 0);
         }
     }
