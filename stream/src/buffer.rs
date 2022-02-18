@@ -93,7 +93,7 @@ impl From<GuardedBuffer> for StreamGuard {
 impl StreamGuard {
     #[inline]
     pub fn new() -> Self {
-        Self::from(GuardedBuffer::new(1024, 8 << 20, 1024, |_old, _delta| {}))
+        Self::from(GuardedBuffer::new(1024, 2 << 20, 1024, |_old, _delta| {}))
     }
     #[inline]
     pub fn pending(&self) -> usize {
