@@ -106,7 +106,12 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
             ready!(self.buf.buf.write(&mut reader))?;
             // num == 0 说明是buffer满了。等待下一次事件，buffer释放后再读取。
             let num = reader.check_eof_num()?;
-            log::debug!("{} bytes received.", num);
+            if num == 0 {
+                log::info!("buffer full:{:?}", self);
+                // TODO: 可能触发多次重试失败。
+                return Poll::Ready(Err(Error::ResponseBufferFull));
+            }
+            log::debug!("{} bytes received. {:?}", num, self);
             use protocol::Stream;
             while self.buf.len() > 0 {
                 match self.parser.parse_response(self.buf)? {
@@ -121,7 +126,6 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                     }
                 }
             }
-            // TODO: 当前buf不能满。如果满了，说明最大buf已溢出
         }
         Poll::Ready(Ok(()))
     }
@@ -151,6 +155,12 @@ use std::fmt::{self, Debug, Formatter};
 impl<'r, Req, P, S> Debug for Handler<'r, Req, P, S> {
     #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "handler pending:{} {}", self.pending.len(), self.rtt,)
+        write!(
+            f,
+            "handler pending:{} {} buf:{}",
+            self.pending.len(),
+            self.rtt,
+            self.buf
+        )
     }
 }
