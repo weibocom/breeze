@@ -107,7 +107,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
             // num == 0 说明是buffer满了。等待下一次事件，buffer释放后再读取。
             let num = reader.check_eof_num()?;
             if num == 0 {
-                log::info!("buffer full:{:?}", self);
+                log::debug!("buffer full:{:?}", self);
                 // TODO: 可能触发多次重试失败。
                 return Poll::Ready(Err(Error::ResponseBufferFull));
             }
