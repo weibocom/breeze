@@ -71,7 +71,6 @@ impl Redis {
         let data = s.slice();
         // log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
         if data.len() >= 2 {
-            // debug_assert_ne!(data.at(0), b'*');
             let mut oft = 0;
             match data.at(0) {
                 b'-' | b':' | b'+' => data.line(&mut oft)?,
@@ -85,12 +84,14 @@ impl Redis {
                         bulk_count -= 1;
                     }
                 }
-                _ => panic!("not supported"),
+                _ => {
+                    use crate::Utf8;
+                    log::info!("not supported:{:?}, {:?}", data.utf8(), data);
+                    panic!("not supported");
+                }
             }
             debug_assert!(oft <= data.len());
             let mem = s.take(oft);
-            use crate::Utf8;
-            log::debug!("response parsed:{:?}", mem.data().utf8());
             let mut flag = Flag::new();
             // redis不需要重试
             flag.set_status_ok(true);

@@ -176,11 +176,15 @@ pub(super) trait Packet {
 
 impl Packet for ds::RingSlice {
     // 第一个字节是类型标识。 '*' '$'等等，由调用方确认。
+    // 三种额外的情况处理
+    // $0\r\n\r\n  ==> 长度为0的字符串
+    // $-1\r\n     ==> null
+    // *0\r\n      ==> 0 bulk number
     #[inline]
     fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         if *oft + 2 < self.len() {
             debug_assert!(is_valid_leading_num_char(self.at(*oft)));
-            // -1 则直接跳过.
+            let start = *oft;
             *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
             let mut val: usize = 0;
             while *oft < self.len() - 1 {
@@ -189,8 +193,15 @@ impl Packet for ds::RingSlice {
                 if b == b'\r' {
                     if self.at(*oft) == b'\n' {
                         *oft += 1;
-                        // 确认前面的4个字节是 -1\r\n
-                        debug_assert!(val != 0 || (val == 0 && self.at(*oft - 4) == b'-'));
+                        if val == 0 {
+                            // 如果是长度为$0\r\n\r\n
+                            if self.at(start) == b'$' && self.at(start + 1) == b'0' {
+                                *oft += 2;
+                                if *oft > self.len() {
+                                    break;
+                                }
+                            }
+                        }
                         return Ok(val);
                     }
                     // \r后面没有接\n。错误的协议
@@ -203,10 +214,14 @@ impl Packet for ds::RingSlice {
                     }
                 }
                 use crate::Utf8;
-                log::info!("parse failed not valid number:{:?}", self.read(0).utf8());
+                log::info!(
+                    "oft:{} not valid number:{:?}, {:?}",
+                    *oft,
+                    self.utf8(),
+                    self
+                );
                 return Err(crate::Error::RequestProtocolNotValidNumber);
             }
-            return Ok(val);
         }
         Err(crate::Error::ProtocolIncomplete)
     }
@@ -273,7 +288,7 @@ impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(packet => stream len:{} parsing bulk num: {} op_code:{} oft:({} => {})) first:{} ",
+            "(packet => len:{} bulk num: {} op_code:{} oft:({} => {})) first:{} ",
             self.data.len(),
             self.bulk(),
             self.op_code(),
@@ -291,7 +306,9 @@ impl<'a, S: crate::Stream> Debug for RequestPacket<'a, S> {
 }
 
 // 在Packet::num时，需要跳过第一个symbol(可能是*也可能是$)，如果下一个字符是
-// '-'，则说明当前的num是0，则需要跳过额外的2个字节，即 -1
+// '-'，则说明当前的num是0，则需要3个字节，即 "$-1".  格式为 $-1\r\n
+// '0'，则说明格式为 $0\r\n\r\n. 需跳过4字节，"$0\r\n"。
+// 其他只需要跳过 $或者*这一个字节即可。
 const NUM_SKIPS: [u8; 256] = [
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
