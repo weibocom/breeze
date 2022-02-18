@@ -181,33 +181,27 @@ impl Packet for ds::RingSlice {
         if *oft + 2 < self.len() {
             debug_assert!(is_valid_leading_num_char(self.at(*oft)));
             *oft += 1;
-            let mut val: usize = 0;
-            while *oft < self.len() - 1 {
-                let b = self.at(*oft);
+            // 对于$-1\r\n 直接skip到\r\n，并返回0
+            if self.at(*oft) == '-' as u8 {
                 *oft += 1;
-                if b == b'\r' {
-                    if self.at(*oft) == b'\n' {
-                        *oft += 1;
-                        return Ok(val);
-                    }
-                    // \r后面没有接\n。错误的协议
-                    return Err(crate::Error::RequestProtocolNotValidNoReturn);
+                let val = num_inner(&self, oft)?;
+                // 默认只有$-1\r\n
+                if val > 1 {
+                    log::warn!("be careful - found unknow len: -{}", val);
                 }
-                if is_number_digit(b) {
-                    val = val * 10 + (b - b'0') as usize;
-                    if val <= std::u32::MAX as usize {
-                        continue;
-                    }
-                }
-                return Err(crate::Error::RequestProtocolNotValidNumber);
+                return Ok(0usize);
             }
+            let val = num_inner(&self, oft)?;
+            return Ok(val);
         }
         Err(crate::Error::ProtocolIncomplete)
     }
     #[inline]
     fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize> {
         let num = self.num(oft)?;
-        *oft += num + 2;
+        if num > 0 {
+            *oft += num + 2;
+        }
         if *oft <= self.len() {
             Ok(num)
         } else {
@@ -233,6 +227,30 @@ fn is_number_digit(d: u8) -> bool {
 fn is_valid_leading_num_char(d: u8) -> bool {
     d == b'$' || d == b'*'
 }
+fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
+    let mut val = 0;
+    while *oft < data.len() - 1 {
+        let b = data.at(*oft);
+        *oft += 1;
+        if b == b'\r' {
+            if data.at(*oft) == b'\n' {
+                *oft += 1;
+                return Ok(val);
+            }
+            // \r后面没有接\n。错误的协议
+            return Err(crate::Error::RequestProtocolNotValidNoReturn);
+        }
+        if is_number_digit(b) {
+            val = val * 10 + (b - b'0') as usize;
+            if val <= std::u32::MAX as usize {
+                continue;
+            }
+        }
+        return Err(crate::Error::RequestProtocolNotValidNumber);
+    }
+    Err(crate::Error::ProtocolIncomplete)
+}
+
 use std::fmt::{self, Debug, Display, Formatter};
 impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     #[inline(always)]
