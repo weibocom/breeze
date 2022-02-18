@@ -180,18 +180,30 @@ impl Packet for ds::RingSlice {
     fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         if *oft + 2 < self.len() {
             debug_assert!(is_valid_leading_num_char(self.at(*oft)));
-            *oft += 1;
-            // 对于$-1\r\n 直接skip到\r\n，并返回0
-            if self.at(*oft) == '-' as u8 {
+            // -1 则直接跳过.
+            *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
+            let mut val: usize = 0;
+            while *oft < self.len() - 1 {
+                let b = self.at(*oft);
                 *oft += 1;
-                let val = num_inner(&self, oft)?;
-                // 默认只有$-1\r\n
-                if val > 1 {
-                    log::warn!("be careful - found unknow len: -{}", val);
+                if b == b'\r' {
+                    if self.at(*oft) == b'\n' {
+                        *oft += 1;
+                        // 确认前面的4个字节是 -1\r\n
+                        debug_assert!(val != 0 || (val == 0 && self.at(*oft - 4) == b'-'));
+                        return Ok(val);
+                    }
+                    // \r后面没有接\n。错误的协议
+                    return Err(crate::Error::RequestProtocolNotValidNoReturn);
                 }
-                return Ok(0usize);
+                if is_number_digit(b) {
+                    val = val * 10 + (b - b'0') as usize;
+                    if val <= std::u32::MAX as usize {
+                        continue;
+                    }
+                }
+                return Err(crate::Error::RequestProtocolNotValidNumber);
             }
-            let val = num_inner(&self, oft)?;
             return Ok(val);
         }
         Err(crate::Error::ProtocolIncomplete)
@@ -200,6 +212,7 @@ impl Packet for ds::RingSlice {
     fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize> {
         let num = self.num(oft)?;
         if num > 0 {
+            // skip num个字节 + "\r\n" 2个字节
             *oft += num + 2;
         }
         if *oft <= self.len() {
@@ -227,6 +240,7 @@ fn is_number_digit(d: u8) -> bool {
 fn is_valid_leading_num_char(d: u8) -> bool {
     d == b'$' || d == b'*'
 }
+#[allow(dead_code)]
 fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
     let mut val = 0;
     while *oft < data.len() - 1 {
@@ -273,3 +287,16 @@ impl<'a, S: crate::Stream> Debug for RequestPacket<'a, S> {
         Display::fmt(self, f)
     }
 }
+
+// 在Packet::num时，需要跳过第一个symbol(可能是*也可能是$)，如果下一个字符是
+// '-'，则说明当前的num是0，则需要跳过额外的2个字节，即 -1
+const NUM_SKIPS: [u8; 256] = [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+];

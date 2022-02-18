@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use futures::ready;
-use metrics::{BASE_PATH, Metric, Path};
+use metrics::{Metric, Path, BASE_PATH};
 use tokio::time::{interval, Interval};
 
 pub trait ReEnter {
@@ -34,7 +34,7 @@ pub struct Timeout<F> {
 impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
     #[inline]
     pub fn from(f: F, timeout: Duration) -> Self {
-        let tick = interval(timeout);
+        let tick = interval(timeout.max(Duration::from_millis(100)));
         let m_reenter = Path::new(vec![BASE_PATH]).rtt("reenter10ms");
         metrics::incr_task();
         Self {

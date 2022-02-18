@@ -76,11 +76,7 @@ impl Redis {
             match data.at(0) {
                 b'-' | b':' | b'+' => data.line(&mut oft)?,
                 b'$' => {
-                    if data.at(1) == b'-' {
-                        data.line(&mut oft)?;
-                    } else {
-                        let _num = data.num_and_skip(&mut oft)?;
-                    }
+                    let _num = data.num_and_skip(&mut oft)?;
                 }
                 b'*' => {
                     let mut bulk_count = data.num(&mut oft)?;
@@ -93,6 +89,8 @@ impl Redis {
             }
             debug_assert!(oft <= data.len());
             let mem = s.take(oft);
+            use crate::Utf8;
+            log::debug!("response parsed:{:?}", mem.data().utf8());
             let mut flag = Flag::new();
             // redis不需要重试
             flag.set_status_ok(true);

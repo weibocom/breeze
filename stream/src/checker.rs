@@ -72,11 +72,14 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = Handler::from(rx, pending, &mut buf, stream, p, &self.path);
             let handler = rt::Timeout::from(handler, self.timeout);
             if let Err(e) = handler.await {
-                if let protocol::Error::Timeout(_) = e {
-                    m_timeout += 1;
-                    m_timeout_biz += 1;
+                match e {
+                    protocol::Error::Timeout(_) => {
+                        m_timeout += 1;
+                        m_timeout_biz += 1;
+                        log::debug!("{} error: {:?} {}", s_metric, e, pending.len());
+                    }
+                    _ => log::info!("{} error: {:?} {}", s_metric, e, pending.len()),
                 }
-                log::debug!("{}  waiting response :{:?} {}", s_metric, e, pending.len());
             }
             // 先关闭，关闭之后不会有新的请求发送
             self.run.off();
