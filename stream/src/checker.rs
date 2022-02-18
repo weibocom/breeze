@@ -76,14 +76,9 @@ impl<P, Req> BackendChecker<P, Req> {
                     protocol::Error::Timeout(_) => {
                         m_timeout += 1;
                         m_timeout_biz += 1;
-<<<<<<< Updated upstream
                         log::debug!("{} error: {:?} {}", s_metric, e, pending.len());
                     }
                     _ => log::info!("{} error: {:?} {}", s_metric, e, pending.len()),
-=======
-                    }
-                    _ => log::info!("{} handler error: {:?} {}", s_metric, e, pending.len()),
->>>>>>> Stashed changes
                 }
             }
             // 先关闭，关闭之后不会有新的请求发送
