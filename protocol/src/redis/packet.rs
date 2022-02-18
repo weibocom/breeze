@@ -189,7 +189,10 @@ impl Packet for ds::RingSlice {
                 if b == b'\r' {
                     if self.at(*oft) == b'\n' {
                         *oft += 1;
+<<<<<<< Updated upstream
                         // 确认前面的4个字节是 -1\r\n
+=======
+>>>>>>> Stashed changes
                         debug_assert!(val != 0 || (val == 0 && self.at(*oft - 4) == b'-'));
                         return Ok(val);
                     }
@@ -202,6 +205,8 @@ impl Packet for ds::RingSlice {
                         continue;
                     }
                 }
+                use crate::Utf8;
+                log::info!("parse failed not valid number:{:?}", self.read(0).utf8());
                 return Err(crate::Error::RequestProtocolNotValidNumber);
             }
             return Ok(val);
