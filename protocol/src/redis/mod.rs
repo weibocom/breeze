@@ -288,7 +288,7 @@ fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
         AUTO.fetch_add(1, Ordering::Relaxed)
     } else {
         let hash = alg.hash(key);
-        debug_assert!(hash != 0);
+        //debug_assert!(hash != 0);
         hash
     }
 }
