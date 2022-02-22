@@ -63,16 +63,20 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
     }
     #[inline(always)]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        let Self { s, idx, buf, .. } = &mut *self;
-        let mut w = Pin::new(s);
-        while *idx < buf.len() {
-            *idx += ready!(w.as_mut().poll_write(cx, &buf[*idx..]))?;
+        if self.buf.len() > 0 {
+            let Self { s, idx, buf, .. } = &mut *self;
+            let mut w = Pin::new(s);
+            while *idx < buf.len() {
+                *idx += ready!(w.as_mut().poll_write(cx, &buf[*idx..]))?;
+            }
+            if *idx == buf.len() {
+                *idx = 0;
+                unsafe { buf.set_len(0) };
+            }
+            w.poll_flush(cx)
+        } else {
+            Poll::Ready(Ok(()))
         }
-        if *idx == buf.len() {
-            *idx = 0;
-            unsafe { buf.set_len(0) };
-        }
-        w.poll_flush(cx)
     }
     #[inline(always)]
     fn poll_shutdown(
