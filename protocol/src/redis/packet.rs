@@ -69,6 +69,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.bulk() == 0 {
             self.check_start()?;
             self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
+            self.first = true;
             debug_assert_ne!(self.bulk(), 0);
         }
         Ok(())

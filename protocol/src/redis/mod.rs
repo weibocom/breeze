@@ -70,6 +70,7 @@ impl Redis {
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
         // log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
+        use crate::Utf8;
         if data.len() >= 2 {
             let mut oft = 0;
             match data.at(0) {
@@ -85,7 +86,6 @@ impl Redis {
                     }
                 }
                 _ => {
-                    use crate::Utf8;
                     log::info!("not supported:{:?}, {:?}", data.utf8(), data);
                     panic!("not supported");
                 }
@@ -132,6 +132,7 @@ impl Protocol for Redis {
         let cfg = command::get_cfg(op_code)?;
         let response = ctx.response();
         if !cfg.multi {
+            debug_assert_ne!(response.data().at(0), b'*');
             w.write_slice(response.data(), 0)
         } else {
             let ext = req.ext();
@@ -184,6 +185,7 @@ fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
     }
 }
 
+#[inline(always)]
 fn defalut_hash() -> i64 {
     AUTO.fetch_add(1, Ordering::Relaxed)
 }
