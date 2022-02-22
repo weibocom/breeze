@@ -28,6 +28,7 @@ pub trait Writer {
     fn write(&mut self, data: &[u8]) -> Result<()>;
     #[inline(always)]
     fn write_u8(&mut self, v: u8) -> Result<()> {
+        self.cache(true);
         self.write(&[v])
     }
 
@@ -42,6 +43,10 @@ pub trait Writer {
         while oft < len {
             let data = data.read(oft);
             oft += data.len();
+            if oft < len {
+                // 说明有多次写入，将其cache下来
+                self.cache(true);
+            }
             self.write(data)?;
         }
         Ok(())
