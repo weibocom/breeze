@@ -6,6 +6,8 @@ pub struct MetricStream<S> {
     read: Metric,
     r_pending: Metric,
     s: S,
+    #[allow(dead_code)]
+    id: usize,
 }
 
 use std::io::{self};
@@ -22,8 +24,10 @@ impl<S> From<S> for MetricStream<S> {
         let write = Path::base().qps("poll_write");
         let r_pending = Path::base().qps("r_pending");
         let w_pending = Path::base().qps("w_pending");
+        let id = ds::rand::next_seq();
 
         Self {
+            id,
             s,
             read,
             read_hit,
@@ -49,6 +53,10 @@ impl<S: AsyncRead + Unpin> AsyncRead for MetricStream<S> {
         if ret.is_pending() {
             self.r_pending += 1;
         }
+        //if hit > 0 {
+        //    use protocol::Utf8;
+        //    log::info!("poll_read-{} data:{:?}", self.id, buf.filled().utf8());
+        //}
         ret
     }
 }
@@ -60,14 +68,13 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for MetricStream<S> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        if buf.len() == 0 {
-            log::info!("write zero len");
-        }
         self.write += 1;
         let r = Pin::new(&mut self.s).poll_write(cx, buf);
         if r.is_pending() {
             self.w_pending += 1;
         }
+        //use protocol::Utf8;
+        //log::info!("poll_write-{} data:{:?}", self.id, buf.utf8());
         r
     }
     #[inline(always)]
