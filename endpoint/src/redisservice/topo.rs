@@ -1,3 +1,4 @@
+use log::log;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -77,6 +78,9 @@ where
         // let interval = DIST_RANGE_SPLIT_DEFAULT as u64 / self.shards.len() as u64;
         // let shard_idx = (newhash as u64 / interval) as usize;
         let shard_idx = self.distribute.index(req.hash());
+        if shard_idx >= self.shards.len() {
+            log::info!("shard index out of bounds, shard_idx = {}, shards.len = {}, self.distribute = {:?}", shard_idx, self.shards.len(), self.distribute);
+        }
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         // log::debug!("+++ shard_idx:{}, req.hash: {}", shard_idx, req.hash());
@@ -103,6 +107,14 @@ where
 
             endpoint.1.send(req)
         } else {
+            if !shard.has_slave() {
+                log::info!(
+                    "shard has no slave, shard_idx = {}, shards.len = {}, self.distribute = {:?}",
+                    shard_idx,
+                    self.shards.len(),
+                    self.distribute
+                );
+            }
             shard.master().send(req)
         }
     }
