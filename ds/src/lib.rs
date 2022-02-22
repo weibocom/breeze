@@ -2,6 +2,7 @@ pub mod chan;
 mod cow;
 mod mem;
 pub mod queue;
+pub mod rand;
 pub mod vec;
 mod waker;
 
