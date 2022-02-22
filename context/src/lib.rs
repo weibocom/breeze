@@ -99,7 +99,7 @@ pub fn get_short_version() -> &'static str {
 impl Context {
     #[inline]
     pub fn from_os_args() -> Self {
-        let app = <Self as IntoApp>::into_app().version(get_short_version());
+        let app = <Self as IntoApp>::command().version(get_short_version());
         let matches = app.get_matches();
         <Self as FromArgMatches>::from_arg_matches(&matches).expect("parse args failed")
     }
