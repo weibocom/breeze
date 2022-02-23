@@ -1,8 +1,8 @@
 use psutil::process::Process;
 
+use crate::BASE_PATH;
 use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 use std::time::Instant;
-use crate::BASE_PATH;
 
 static CPU_PERCENT: AtomicUsize = AtomicUsize::new(0);
 static MEMORY: AtomicUsize = AtomicUsize::new(0);
@@ -29,7 +29,12 @@ impl Host {
         self.refresh();
         let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
         w.write(BASE_PATH, "host", "cpu", percent as f64);
-        w.write(BASE_PATH, "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
+        w.write(
+            BASE_PATH,
+            "host",
+            "mem",
+            MEMORY.load(Ordering::Relaxed) as f64,
+        );
 
         let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
         w.write(BASE_PATH, "task", "num", tasks);
@@ -40,6 +45,7 @@ impl Host {
             "uptime_sec",
             self.start.elapsed().as_secs() as f64,
         );
+        w.write(BASE_PATH, "exception", "coredump", 0.0);
     }
     pub(crate) fn refresh(&mut self) {
         if let Ok(percent) = self.process.cpu_percent() {
@@ -48,6 +54,10 @@ impl Host {
         if let Ok(mem) = self.process.memory_info() {
             MEMORY.store(mem.rss() as usize, Ordering::Relaxed);
         }
+    }
+
+    pub(crate) fn coredump<W: crate::ItemWriter>(&mut self, w: &mut W) {
+        w.write(BASE_PATH, "exception", "coredump", 1000.0);
     }
 }
 

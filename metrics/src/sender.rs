@@ -28,6 +28,11 @@ impl Sender {
             host: super::Host::new(),
         }
     }
+
+    pub fn poll_send_coredump(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        self.host.coredump(&mut self.packet);
+        self.packet.poll_flush(cx)
+    }
 }
 
 // 这个Future包含了大量的cpu、io等重型操作。需要将该future放在spawn_local中操作。
