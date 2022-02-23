@@ -10,7 +10,8 @@ const CRLF_LEN: usize = b"\r\n".len();
 struct RequestContext {
     bulk: u16,
     op_code: u16,
-    _ignore: u32,
+    first: bool, // 在multi-get请求中是否是第一个请求。
+    _ignore: [u8; 3],
 }
 impl RequestContext {
     #[inline(always)]
@@ -40,7 +41,6 @@ pub(super) struct RequestPacket<'a, S> {
     ctx: RequestContext,
     oft_last: usize,
     oft: usize,
-    pub(super) first: bool,
 }
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline(always)]
@@ -51,7 +51,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             oft_last: 0,
             oft: 0,
             data,
-            first: ctx.bulk == 0,
             ctx,
             stream,
         }
@@ -69,7 +68,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.bulk() == 0 {
             self.check_start()?;
             self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
-            self.first = true;
+            self.ctx.first = true;
             debug_assert_ne!(self.bulk(), 0);
         }
         Ok(())
@@ -127,8 +126,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         debug_assert!(self.oft_last < self.oft);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
-        self.first = false;
         // 更新上下文的bulk num。
+        self.ctx.first = false;
         *self.stream.context() = self.ctx.u64();
         if self.ctx.bulk == 0 {
             self.ctx.reset();
@@ -149,6 +148,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         } else {
             Ok(())
         }
+    }
+    #[inline(always)]
+    pub(super) fn first(&self) -> bool {
+        self.ctx.first
     }
     #[inline(always)]
     pub(super) fn bulk(&self) -> u16 {
@@ -289,13 +292,13 @@ impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(packet => len:{} bulk num: {} op_code:{} oft:({} => {})) first:{} ",
+            "(packet => len:{} bulk num: {} op_code:{} oft:({} => {})) first:{}",
             self.data.len(),
             self.bulk(),
             self.op_code(),
             self.oft_last,
             self.oft,
-            self.first,
+            self.first()
         )
     }
 }

@@ -12,6 +12,8 @@ use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
 
+use crate::Utf8;
+
 // redis 协议最多支持10w个token
 //const MAX_TOKEN_COUNT: usize = 100000;
 //// 最大消息支持1M
@@ -38,7 +40,8 @@ impl Redis {
                 packet.multi_ready();
                 while packet.has_bulk() {
                     // take会将first变为false, 需要在take之前调用。
-                    let (bulk, first) = (packet.bulk(), packet.first);
+                    let bulk = packet.bulk();
+                    let first = packet.first();
                     debug_assert!(cfg.has_key);
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
@@ -70,7 +73,6 @@ impl Redis {
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
         // log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
-        use crate::Utf8;
         if data.len() >= 2 {
             let mut oft = 0;
             match data.at(0) {
