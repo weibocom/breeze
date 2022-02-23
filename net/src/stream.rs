@@ -109,10 +109,6 @@ impl Bind for tokio::net::UnixListener {
 }
 
 define_stream!(
-    //"unix", Unix,    tokio::net::UnixStream,     tokio::net::UnixListener,    tokio::net::unix::SocketAddr;
-    "tcp",
-    Tcp,
-    tokio::net::TcpStream,
-    tokio::net::TcpListener,
-    std::net::SocketAddr
+    "unix", Unix,    tokio::net::UnixStream,     tokio::net::UnixListener,    tokio::net::unix::SocketAddr;
+    "tcp",  Tcp,     tokio::net::TcpStream,      tokio::net::TcpListener,     std::net::SocketAddr
 );

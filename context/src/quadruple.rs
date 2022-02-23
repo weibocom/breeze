@@ -18,7 +18,7 @@ impl Quadruple {
     // service: 服务名称
     // protocol: 处理client连接的协议。memcache、redis等支持的协议.  格式为 mc:port.
     // backend_type: 后端资源的类型。是cacheservice、redis_dns等等
-    pub(super) fn parse(name: &str) -> Option<Self> {
+    pub(super) fn parse(path: &str, name: &str) -> Option<Self> {
         let name = Path::new(name)
             .file_name()
             .map(|s| s.to_str())
@@ -34,33 +34,38 @@ impl Quadruple {
         }
         let service = fields[0];
         let protocol_item = fields[1];
+        // 第一个field是应用协议名称(mc, redis)；
+        // 第二个元素如果没有，则是unix协议，如果有则是tcp协议，该值必须是端口
         let protocol_fields: Vec<&str> = protocol_item.split(':').collect();
-        if protocol_fields.len() != 2 {
-            log::warn!(
-                "not a valid service name::{} protocol {} must be splited by ':'",
-                name,
-                protocol_item
-            );
-            return None;
-        }
+        let (family, addr) = match protocol_fields.len() {
+            1 => ("unix", path.to_string() + "/" + name + ".sock"),
+            2 => {
+                if let Err(e) = protocol_fields[1].parse::<u16>() {
+                    log::warn!(
+                        "not a valid service name:{} not a valid port:{} error:{:?}",
+                        name,
+                        protocol_fields[1],
+                        e
+                    );
+                    return None;
+                }
+                #[cfg(feature = "listen-all")]
+                let local_ip = "0.0.0.0";
+                #[cfg(not(feature = "listen-all"))]
+                let local_ip = "127.0.0.1";
+                let addr = local_ip.to_string() + ":" + protocol_fields[1];
+                ("tcp", addr)
+            }
+            _ => {
+                log::warn!(
+                    "not a valid service name::{} protocol {} must be splited by ':'",
+                    name,
+                    protocol_item
+                );
+                return None;
+            }
+        };
         let protocol = protocol_fields[0];
-        let family = "tcp";
-        if let Err(e) = protocol_fields[1].parse::<u16>() {
-            log::warn!(
-                "not a valid service name:{} not a valid port:{} error:{:?}",
-                name,
-                protocol_fields[1],
-                e
-            );
-            return None;
-        }
-        #[cfg(feature = "listen-all")]
-        let local_ip = "0.0.0.0";
-        #[cfg(not(feature = "listen-all"))]
-        let local_ip = "127.0.0.1";
-
-        let addr = local_ip.to_string() + ":" + protocol_fields[1];
-
         let backend = fields[2];
         use std::sync::atomic::{AtomicUsize, Ordering};
         static ID_SEQ: AtomicUsize = AtomicUsize::new(1);

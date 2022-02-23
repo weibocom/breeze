@@ -170,7 +170,7 @@ impl ListenerIter {
                     if self.processed.contains_key(&name) {
                         continue;
                     }
-                    if let Some(one) = Quadruple::parse(&name) {
+                    if let Some(one) = Quadruple::parse(&self.path, &name) {
                         log::debug!("service parsed :{}", one);
                         listeners.push(one);
                         self.processed.insert(name.to_string(), ());
