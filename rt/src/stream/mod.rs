@@ -17,6 +17,7 @@ pub struct Stream<S> {
     buf: Vec<u8>,
     buf_first: bool,
     cache: metrics::Metric,
+    buf_tx: metrics::Metric,
 }
 impl<S> From<S> for Stream<S> {
     #[inline]
@@ -27,6 +28,7 @@ impl<S> From<S> for Stream<S> {
             buf: Vec::new(),
             buf_first: false,
             cache: metrics::Path::base().qps("poll_write_cache"),
+            buf_tx: metrics::Path::base().num("mem_buf_tx"),
         }
     }
 }
@@ -62,6 +64,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
             let _ = Pin::new(&mut self.s).poll_write(cx, buf)?.map(|n| oft = n);
         }
         if oft < buf.len() {
+            self.reserve(buf.len() - oft);
             self.cache += 1;
             use ds::Buffer;
             self.buf.write(&buf[oft..])
@@ -109,5 +112,30 @@ impl<S: AsyncWrite + Unpin> protocol::Writer for Stream<S> {
         if self.buf_first != hint {
             self.buf_first = hint;
         }
+    }
+}
+impl<S> Stream<S> {
+    #[inline(always)]
+    fn reserve(&mut self, size: usize) {
+        if self.buf.capacity() - self.buf.len() < size {
+            let cap = (size + self.buf.len()).max(512).next_power_of_two();
+            let grow = cap - self.buf.capacity();
+            //log::info!(
+            //    "reserved {} buffer resized from {} {} => {}",
+            //    size,
+            //    self.buf.len(),
+            //    self.buf.capacity(),
+            //    cap
+            //);
+            self.buf.reserve(grow);
+            self.buf_tx += grow;
+            debug_assert_eq!(cap, self.buf.capacity());
+        }
+    }
+}
+impl<S> Drop for Stream<S> {
+    #[inline(always)]
+    fn drop(&mut self) {
+        self.buf_tx -= self.buf.capacity() as i64;
     }
 }
