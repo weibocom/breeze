@@ -51,6 +51,13 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         let mut oft = 0;
+        if self.buf.len() > 0 && buf.len() > 4 * 1024 {
+            log::info!(
+                "big data write to buffer. buf:{} {}",
+                self.buf.len(),
+                buf.len()
+            );
+        }
         if self.buf.len() == 0 && !self.buf_first {
             let _ = Pin::new(&mut self.s).poll_write(cx, buf)?.map(|n| oft = n);
         }
