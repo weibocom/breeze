@@ -55,6 +55,7 @@ impl<P, Req> BackendChecker<P, Req> {
         let mut m_timeout_biz = self.path.qps("timeout");
         let mut m_timeout = Path::base().qps("timeout");
         let mut tries = 0;
+        let mut init_cap = 1024;
         while !self.finish.get() {
             let stream = self.try_connect(&mut s_metric, &mut tries).await;
             if stream.is_none() {
@@ -66,7 +67,7 @@ impl<P, Req> BackendChecker<P, Req> {
             log::debug!("handler started:{}", s_metric);
             use crate::buffer::StreamGuard;
             use crate::gc::DelayedDrop;
-            let mut buf: DelayedDrop<_> = StreamGuard::new().into();
+            let mut buf: DelayedDrop<_> = StreamGuard::init(init_cap).into();
             let pending = &mut VecDeque::with_capacity(31);
             let p = self.parser.clone();
             let handler = Handler::from(rx, pending, &mut buf, stream, p, &self.path);
@@ -96,6 +97,7 @@ impl<P, Req> BackendChecker<P, Req> {
             while let Some(req) = pending.pop_front() {
                 req.on_err(Error::Waiting);
             }
+            init_cap = buf.cap() / 2;
             // buf需要延迟释放
             crate::gc::delayed_drop(buf);
         }
