@@ -144,6 +144,13 @@ where
                 log::info!("top updated from {:?} to {:?}", self.shards_url, shards_url);
             }
             self.shards_url = shards_url;
+            if self.shards_url.len() & self.shards_url.len() - 1 != 0 {
+                log::warn!(
+                    "namespace {} shards len is not power of two:{}",
+                    namespace,
+                    self.shards_url.len()
+                );
+            }
         }
         self.service = namespace.to_string();
     }
