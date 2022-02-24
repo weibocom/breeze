@@ -116,9 +116,10 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
-            if ns.backends.len() < 1 {
-                log::warn!("ignore malformed redis cfg with no backends/{}", cfg);
-                return;
+            let len = ns.backends.len();
+            let power_two = len > 0 && ((len & len - 1) == 0);
+            if !power_two {
+                log::info!("update error shard num {} is not power of two", len);
             }
 
             self.timeout_master = ns.timeout_master();
@@ -144,13 +145,6 @@ where
                 log::info!("top updated from {:?} to {:?}", self.shards_url, shards_url);
             }
             self.shards_url = shards_url;
-            if self.shards_url.len() & self.shards_url.len() - 1 != 0 {
-                log::warn!(
-                    "namespace {} shards len is not power of two:{}",
-                    namespace,
-                    self.shards_url.len()
-                );
-            }
         }
         self.service = namespace.to_string();
     }
