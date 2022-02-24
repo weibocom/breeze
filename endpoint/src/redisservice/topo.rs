@@ -119,7 +119,8 @@ where
             let len = ns.backends.len();
             let power_two = len > 0 && ((len & len - 1) == 0);
             if !power_two {
-                log::info!("update error shard num {} is not power of two", len);
+                log::error!("{} shard num {} is not power of two", self.service, len);
+                return;
             }
 
             self.timeout_master = ns.timeout_master();
@@ -235,7 +236,8 @@ where
     #[inline]
     fn inited(&self) -> bool {
         // 每一个分片都有初始, 并且至少有一主一从。
-        self.shards.len() == self.shards_url.len()
+        self.shards.len() > 0
+            && self.shards.len() == self.shards_url.len()
             && self
                 .shards
                 .iter()
