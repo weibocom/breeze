@@ -16,7 +16,12 @@ pub struct GuardedBuffer {
 }
 
 impl GuardedBuffer {
-    pub fn new<F: Fn(usize, isize) + 'static>(min: usize, max: usize, init: usize, cb: F) -> Self {
+    pub fn new<F: FnMut(usize, isize) + 'static>(
+        min: usize,
+        max: usize,
+        init: usize,
+        cb: F,
+    ) -> Self {
         Self {
             inner: ResizedRingBuffer::from(min, max, init, cb),
             guards: PinnedQueue::new(),
@@ -29,10 +34,23 @@ impl GuardedBuffer {
         R: BuffRead<Out = O>,
     {
         self.gc();
+        let (c, mut out) = self.fill(r, 0);
+        if c {
+            let (_, o) = self.fill(r, 1);
+            out = o
+        }
+        out
+    }
+    #[inline(always)]
+    fn fill<R, O>(&mut self, r: &mut R, _i: usize) -> (bool, O)
+    where
+        R: BuffRead<Out = O>,
+    {
         let b = self.inner.as_mut_bytes();
+        let size = b.len();
         let (n, out) = r.read(b);
         self.inner.advance_write(n);
-        out
+        (size == n, out)
     }
     #[inline(always)]
     pub fn read(&self) -> RingSlice {
@@ -48,7 +66,7 @@ impl GuardedBuffer {
         self.taken += n;
         let ptr = guard as *const AtomicU32;
         MemGuard::new(data, ptr)
-}
+    }
     #[inline(always)]
     pub fn gc(&mut self) {
         while let Some(guard) = self.guards.front_mut() {

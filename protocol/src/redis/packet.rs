@@ -10,7 +10,8 @@ const CRLF_LEN: usize = b"\r\n".len();
 struct RequestContext {
     bulk: u16,
     op_code: u16,
-    _ignore: u32,
+    first: bool, // 在multi-get请求中是否是第一个请求。
+    _ignore: [u8; 3],
 }
 impl RequestContext {
     #[inline(always)]
@@ -40,7 +41,6 @@ pub(super) struct RequestPacket<'a, S> {
     ctx: RequestContext,
     oft_last: usize,
     oft: usize,
-    pub(super) first: bool,
 }
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline(always)]
@@ -51,7 +51,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             oft_last: 0,
             oft: 0,
             data,
-            first: ctx.bulk == 0,
             ctx,
             stream,
         }
@@ -69,6 +68,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.bulk() == 0 {
             self.check_start()?;
             self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
+            self.ctx.first = true;
             debug_assert_ne!(self.bulk(), 0);
         }
         Ok(())
@@ -126,8 +126,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         debug_assert!(self.oft_last < self.oft);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
-        self.first = false;
         // 更新上下文的bulk num。
+        self.ctx.first = false;
         *self.stream.context() = self.ctx.u64();
         if self.ctx.bulk == 0 {
             self.ctx.reset();
@@ -148,6 +148,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         } else {
             Ok(())
         }
+    }
+    #[inline(always)]
+    pub(super) fn first(&self) -> bool {
+        self.ctx.first
     }
     #[inline(always)]
     pub(super) fn bulk(&self) -> u16 {
@@ -176,11 +180,16 @@ pub(super) trait Packet {
 
 impl Packet for ds::RingSlice {
     // 第一个字节是类型标识。 '*' '$'等等，由调用方确认。
+    // 三种额外的情况处理
+    // $0\r\n\r\n  ==> 长度为0的字符串
+    // $-1\r\n     ==> null
+    // *0\r\n      ==> 0 bulk number
     #[inline]
     fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         if *oft + 2 < self.len() {
             debug_assert!(is_valid_leading_num_char(self.at(*oft)));
-            *oft += 1;
+            let start = *oft;
+            *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
             let mut val: usize = 0;
             while *oft < self.len() - 1 {
                 let b = self.at(*oft);
@@ -188,6 +197,15 @@ impl Packet for ds::RingSlice {
                 if b == b'\r' {
                     if self.at(*oft) == b'\n' {
                         *oft += 1;
+                        if val == 0 {
+                            // 如果是长度为$0\r\n\r\n
+                            if self.at(start) == b'$' && self.at(start + 1) == b'0' {
+                                *oft += 2;
+                                if *oft > self.len() {
+                                    break;
+                                }
+                            }
+                        }
                         return Ok(val);
                     }
                     // \r后面没有接\n。错误的协议
@@ -199,6 +217,13 @@ impl Packet for ds::RingSlice {
                         continue;
                     }
                 }
+                use crate::Utf8;
+                log::info!(
+                    "oft:{} not valid number:{:?}, {:?}",
+                    *oft,
+                    self.utf8(),
+                    self
+                );
                 return Err(crate::Error::RequestProtocolNotValidNumber);
             }
         }
@@ -207,7 +232,10 @@ impl Packet for ds::RingSlice {
     #[inline]
     fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize> {
         let num = self.num(oft)?;
-        *oft += num + 2;
+        if num > 0 {
+            // skip num个字节 + "\r\n" 2个字节
+            *oft += num + 2;
+        }
         if *oft <= self.len() {
             Ok(num)
         } else {
@@ -233,19 +261,44 @@ fn is_number_digit(d: u8) -> bool {
 fn is_valid_leading_num_char(d: u8) -> bool {
     d == b'$' || d == b'*'
 }
+#[allow(dead_code)]
+fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
+    let mut val = 0;
+    while *oft < data.len() - 1 {
+        let b = data.at(*oft);
+        *oft += 1;
+        if b == b'\r' {
+            if data.at(*oft) == b'\n' {
+                *oft += 1;
+                return Ok(val);
+            }
+            // \r后面没有接\n。错误的协议
+            return Err(crate::Error::RequestProtocolNotValidNoReturn);
+        }
+        if is_number_digit(b) {
+            val = val * 10 + (b - b'0') as usize;
+            if val <= std::u32::MAX as usize {
+                continue;
+            }
+        }
+        return Err(crate::Error::RequestProtocolNotValidNumber);
+    }
+    Err(crate::Error::ProtocolIncomplete)
+}
+
 use std::fmt::{self, Debug, Display, Formatter};
 impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(packet => stream len:{} parsing bulk num: {} op_code:{} oft:({} => {})) first:{} ",
+            "(packet => len:{} bulk num: {} op_code:{} oft:({} => {})) first:{}",
             self.data.len(),
             self.bulk(),
             self.op_code(),
             self.oft_last,
             self.oft,
-            self.first,
+            self.first()
         )
     }
 }
@@ -255,3 +308,18 @@ impl<'a, S: crate::Stream> Debug for RequestPacket<'a, S> {
         Display::fmt(self, f)
     }
 }
+
+// 在Packet::num时，需要跳过第一个symbol(可能是*也可能是$)，如果下一个字符是
+// '-'，则说明当前的num是0，则需要3个字节，即 "$-1".  格式为 $-1\r\n
+// '0'，则说明格式为 $0\r\n\r\n. 需跳过4字节，"$0\r\n"。
+// 其他只需要跳过 $或者*这一个字节即可。
+const NUM_SKIPS: [u8; 256] = [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+];

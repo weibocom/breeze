@@ -78,7 +78,7 @@ impl Protocol for MemcacheBinary {
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline(always)]
-    fn write_response<C: crate::Commander, W: crate::ResponseWriter>(
+    fn write_response<C: crate::Commander, W: crate::Writer>(
         &self,
         ctx: &mut C,
         w: &mut W,
@@ -120,11 +120,7 @@ impl Protocol for MemcacheBinary {
         }
     }
     #[inline(always)]
-    fn write_no_response<W: crate::ResponseWriter>(
-        &self,
-        req: &HashedCommand,
-        w: &mut W,
-    ) -> Result<()> {
+    fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
         if req.sentonly() {
             return Ok(());
         }

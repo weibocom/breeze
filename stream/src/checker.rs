@@ -9,7 +9,7 @@ use protocol::{Error, Protocol, Request};
 
 use crate::handler::Handler;
 use ds::Switcher;
-use metrics::{Metric, Path, BASE_PATH};
+use metrics::{Metric, Path};
 
 pub struct BackendChecker<P, Req> {
     rx: Receiver<Req>,
@@ -53,14 +53,14 @@ impl<P, Req> BackendChecker<P, Req> {
     {
         let mut s_metric = self.path.status("reconn");
         let mut m_timeout_biz = self.path.qps("timeout");
-        let mut m_timeout = Path::new(vec![BASE_PATH]).qps("timeout");
+        let mut m_timeout = Path::base().qps("timeout");
         let mut tries = 0;
         while !self.finish.get() {
             let stream = self.try_connect(&mut s_metric, &mut tries).await;
             if stream.is_none() {
                 continue;
             }
-            let (r, w) = stream.expect("not expected").into_split();
+            let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
             self.run.on();
             log::debug!("handler started:{}", s_metric);
@@ -69,14 +69,17 @@ impl<P, Req> BackendChecker<P, Req> {
             let mut buf: DelayedDrop<_> = StreamGuard::new().into();
             let pending = &mut VecDeque::with_capacity(31);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, pending, &mut buf, w, r, p, &self.path);
+            let handler = Handler::from(rx, pending, &mut buf, stream, p, &self.path);
             let handler = rt::Timeout::from(handler, self.timeout);
             if let Err(e) = handler.await {
-                if let protocol::Error::Timeout(_) = e {
-                    m_timeout += 1;
-                    m_timeout_biz += 1;
+                match e {
+                    protocol::Error::Timeout(_) => {
+                        m_timeout += 1;
+                        m_timeout_biz += 1;
+                        log::debug!("{} error: {:?} {}", s_metric, e, pending.len());
+                    }
+                    _ => log::info!("{} error: {:?} {}", s_metric, e, pending.len()),
                 }
-                log::debug!("{}  waiting response :{:?} {}", s_metric, e, pending.len());
             }
             // 先关闭，关闭之后不会有新的请求发送
             self.run.off();

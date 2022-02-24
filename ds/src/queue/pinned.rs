@@ -174,7 +174,7 @@ impl<T> PinnedQueue<T> {
             let _ = std::mem::ManuallyDrop::new(new);
             self.head = 0;
             self.tail = 0;
-            log::info!("grown {}", self);
+            //log::info!("grown {}", self);
         }
     }
 }

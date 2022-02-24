@@ -6,3 +6,6 @@ pub use task::*;
 
 mod stats;
 pub use stats::*;
+
+mod stream;
+pub use stream::*;

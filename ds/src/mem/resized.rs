@@ -1,7 +1,7 @@
 use super::{RingBuffer, RingSlice};
 use std::time::{Duration, Instant};
 
-type Callback = Box<dyn Fn(usize, isize)>;
+type Callback = Box<dyn FnMut(usize, isize)>;
 // 支持自动扩缩容的ring buffer。
 // 扩容时机：在reserve_bytes_mut时触发扩容判断。如果当前容量满，或者超过4ms时间处理过的内存未通过reset释放。
 // 缩容时机： 每写入回收内存时判断，如果连续1分钟使用率小于25%，则缩容一半
@@ -37,7 +37,12 @@ impl DerefMut for ResizedRingBuffer {
 }
 
 impl ResizedRingBuffer {
-    pub fn from<F: Fn(usize, isize) + 'static>(min: usize, max: usize, init: usize, cb: F) -> Self {
+    pub fn from<F: FnMut(usize, isize) + 'static>(
+        min: usize,
+        max: usize,
+        init: usize,
+        mut cb: F,
+    ) -> Self {
         assert!(min <= init && init <= max);
         cb(0, init as isize);
         Self {
@@ -76,7 +81,7 @@ impl ResizedRingBuffer {
         // 每连续1024次请求判断一次。
         if self.scale_in_tick_num & 511 == 0 {
             // 避免过多的调用Instant::now()
-            if self.scale_in_tick_num == 128 {
+            if self.scale_in_tick_num == 1024 {
                 self.last = Instant::now();
             }
             // 使用率低于25%， 超过1小时， 超过1024+512次。
@@ -112,7 +117,7 @@ impl ResizedRingBuffer {
         }
     }
     #[inline]
-    fn on_change(&self, cap: usize, delta: isize) {
+    fn on_change(&mut self, cap: usize, delta: isize) {
         (*self.on_change)(cap, delta)
     }
     // 写入数据。返回是否写入成功。
