@@ -16,6 +16,10 @@ impl crate::Request for Request {
         self.req().len()
     }
     #[inline(always)]
+    fn data(&self) -> &ds::RingSlice {
+        self.req().data()
+    }
+    #[inline(always)]
     fn read(&self, oft: usize) -> &[u8] {
         self.req().read(oft)
     }

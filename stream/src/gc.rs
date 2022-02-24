@@ -18,7 +18,6 @@ pub(crate) trait Until {
 pub struct DelayedDrop<T> {
     inner: *mut T,
 }
-use log::log;
 use std::ops::{Deref, DerefMut};
 
 impl<T> Deref for DelayedDrop<T> {

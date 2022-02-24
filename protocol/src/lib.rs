@@ -23,13 +23,19 @@ pub mod callback;
 pub mod request;
 pub use utf8::*;
 
-pub trait ResponseWriter {
+pub trait Writer {
     // 写数据，一次写完
     fn write(&mut self, data: &[u8]) -> Result<()>;
     #[inline(always)]
     fn write_u8(&mut self, v: u8) -> Result<()> {
+        self.cache(true);
         self.write(&[v])
     }
+
+    // hint: 提示可能优先写入到cache
+    #[inline(always)]
+    fn cache(&mut self, _hint: bool) {}
+
     #[inline(always)]
     fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
         let mut oft = oft;
@@ -37,6 +43,10 @@ pub trait ResponseWriter {
         while oft < len {
             let data = data.read(oft);
             oft += data.len();
+            if oft < len {
+                // 说明有多次写入，将其cache下来
+                self.cache(true);
+            }
             self.write(data)?;
         }
         Ok(())
@@ -69,7 +79,7 @@ mod error;
 pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl ResponseWriter for Vec<u8> {
+impl Writer for Vec<u8> {
     #[inline(always)]
     fn write(&mut self, data: &[u8]) -> Result<()> {
         ds::vec::Buffer::write(self, data);

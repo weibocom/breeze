@@ -62,12 +62,16 @@ pub struct Path {
     path: Vec<String>,
 }
 impl Path {
+    #[inline]
+    pub fn base() -> Self {
+        Self::new(vec![crate::BASE_PATH])
+    }
+    #[inline]
     pub fn new<T: ToString>(names: Vec<T>) -> Self {
         Self {
             path: names.into_iter().map(|s| s.to_string()).collect(),
         }
     }
-    #[inline]
     fn with_type(&self, key: &'static str, t: MetricType) -> Metric {
         let mut s: String = String::with_capacity(256);
         for name in self.path.iter() {

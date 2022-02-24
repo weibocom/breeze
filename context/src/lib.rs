@@ -1,4 +1,6 @@
+extern crate lazy_static;
 use clap::{FromArgMatches, IntoApp, Parser};
+use lazy_static::lazy_static;
 use std::io::{Error, ErrorKind, Result};
 use std::path::Path;
 use url::Url;
@@ -76,22 +78,28 @@ pub struct Context {
     service_pool: String,
 }
 
-static VERSION: &'static str = git_version::git_version!();
+const VERSION: &'static str = git_version::git_version!();
+lazy_static! {
+    static ref SHORT_VERSION: &'static str = {
+        let mut idx = VERSION.rfind('-').unwrap_or(0);
+        if &VERSION[idx..] == "-modified" && idx > 0 {
+            idx = VERSION[0..idx].rfind('-').unwrap_or(0);
+        }
+        if idx < VERSION.len() && VERSION.as_bytes()[idx] == b'-' {
+            idx += 1
+        }
+        &VERSION[idx..]
+    };
+}
+#[inline(always)]
 pub fn get_short_version() -> &'static str {
-    let mut idx = VERSION.rfind('-').unwrap_or(0);
-    if &VERSION[idx..] == "-modified" && idx > 0 {
-        idx = VERSION[0..idx].rfind('-').unwrap_or(0);
-    }
-    if idx < VERSION.len() && VERSION.as_bytes()[idx] == b'-' {
-        idx += 1
-    }
-    &VERSION[idx..]
+    &SHORT_VERSION
 }
 
 impl Context {
     #[inline]
     pub fn from_os_args() -> Self {
-        let app = <Self as IntoApp>::into_app().version(get_short_version());
+        let app = <Self as IntoApp>::command().version(get_short_version());
         let matches = app.get_matches();
         <Self as FromArgMatches>::from_arg_matches(&matches).expect("parse args failed")
     }
@@ -162,7 +170,7 @@ impl ListenerIter {
                     if self.processed.contains_key(&name) {
                         continue;
                     }
-                    if let Some(one) = Quadruple::parse(&name) {
+                    if let Some(one) = Quadruple::parse(&self.path, &name) {
                         log::debug!("service parsed :{}", one);
                         listeners.push(one);
                         self.processed.insert(name.to_string(), ());
