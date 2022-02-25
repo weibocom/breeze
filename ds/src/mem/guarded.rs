@@ -74,8 +74,11 @@ impl GuardedBuffer {
             if guard == 0 {
                 break;
             }
-            self.inner.advance_read(guard as usize);
+            // 在crate::gc::Until::droppable里面用 pending() == 0来判断是否可以drop
+            // 在drop时，assert了guards.len() == 0
+            // 因此，需要将pop_front放在advance_read之前
             self.guards.pop_front();
+            self.inner.advance_read(guard as usize);
         }
     }
     // 已经take但不能释放的字节数量。
@@ -122,6 +125,7 @@ impl MemGuard {
     #[inline(always)]
     fn new(data: RingSlice, guard: *const AtomicU32) -> Self {
         debug_assert!(!guard.is_null());
+        assert_ne!(data.len(), 0);
         unsafe { debug_assert_eq!((&*guard).load(Ordering::Acquire), 0) };
         Self {
             mem: data,
@@ -133,22 +137,12 @@ impl MemGuard {
     pub fn from_vec(data: Vec<u8>) -> Self {
         let mem: RingSlice = data.as_slice().into();
         //debug_assert_eq!(data.capacity(), mem.len());
+        assert_ne!(data.len(), 0);
         let cap = data.capacity();
         let _ = std::mem::ManuallyDrop::new(data);
         let guard = 0 as *const _;
         Self { mem, guard, cap }
     }
-
-    // TODO： 警示：ringslice 所有权属于其他，所以在drop时会存在问题，暂时保存，备忘, 2022.7 之后再删除 fishermen
-    // pub fn from_ringslice(data: RingSlice) -> Self {
-    //     let guard = 0 as *const _;
-    //     let cap = data.capacity();
-    //     Self {
-    //         mem: data,
-    //         guard,
-    //         cap,
-    //     }
-    // }
 
     #[inline(always)]
     pub fn data(&self) -> &RingSlice {
@@ -208,7 +202,13 @@ impl Drop for GuardedBuffer {
     #[inline]
     fn drop(&mut self) {
         // 如果guards不为0，说明MemGuard未释放，当前buffer销毁后，会导致MemGuard指向内存错误。
-        log::debug!("guarded buffer dropped:{}", self);
-        assert_eq!(self.guards.len(), 0);
+        if self.guards.len() != 0 {
+            log::info!("non-zero guarded buffer dropped:{}", self);
+            let len = self.guards.len();
+            while let Some(g) = self.guards.pop_front() {
+                log::info!("guarded:{}", g.load(Ordering::Acquire));
+            }
+            assert_eq!(len, 0);
+        }
     }
 }

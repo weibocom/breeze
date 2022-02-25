@@ -28,7 +28,6 @@ pub trait Writer {
     fn write(&mut self, data: &[u8]) -> Result<()>;
     #[inline(always)]
     fn write_u8(&mut self, v: u8) -> Result<()> {
-        self.cache(true);
         self.write(&[v])
     }
 

@@ -116,8 +116,10 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
-            if ns.backends.len() < 1 {
-                log::warn!("ignore malformed redis cfg with no backends/{}", cfg);
+            let len = ns.backends.len();
+            let power_two = len > 0 && ((len & len - 1) == 0);
+            if !power_two {
+                log::error!("{} shard num {} is not power of two", self.service, len);
                 return;
             }
 
@@ -234,7 +236,8 @@ where
     #[inline]
     fn inited(&self) -> bool {
         // 每一个分片都有初始, 并且至少有一主一从。
-        self.shards.len() == self.shards_url.len()
+        self.shards.len() > 0
+            && self.shards.len() == self.shards_url.len()
             && self
                 .shards
                 .iter()
