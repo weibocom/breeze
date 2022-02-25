@@ -7,11 +7,11 @@ pub struct Ratio {
 impl Ratio {
     #[inline(always)]
     pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
-        let (hit_last, hit_cur) = self.hit.load_and_snapshot();
-        let (total_last, total_cur) = self.total.load_and_snapshot();
-        if total_cur > total_last {
+        let hit = self.hit.take();
+        let total = self.total.take();
+        if total > 0 {
             const PREC: i64 = 10000;
-            let ratio = (hit_cur - hit_last) as f64 / (total_cur - total_last) as f64;
+            let ratio = hit as f64 / total as f64;
             // 保留2位小数精度
             let ratio = ((ratio * PREC as f64) as i64 as f64) / PREC as f64;
             w.write(&id.path, id.key, id.t.name(), ratio);
