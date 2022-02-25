@@ -74,8 +74,11 @@ impl GuardedBuffer {
             if guard == 0 {
                 break;
             }
-            self.inner.advance_read(guard as usize);
+            // 在crate::gc::Until::droppable里面用 pending() == 0来判断是否可以drop
+            // 在drop时，assert了guards.len() == 0
+            // 因此，需要将pop_front放在advance_read之前
             self.guards.pop_front();
+            self.inner.advance_read(guard as usize);
         }
     }
     // 已经take但不能释放的字节数量。
