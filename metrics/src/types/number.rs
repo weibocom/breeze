@@ -4,19 +4,38 @@ use crate::{Id, ItemWriter};
 
 pub(crate) struct NumberInner {
     cur: AtomicI64,
-    ss: AtomicI64,
 }
 impl NumberInner {
+    #[inline]
+    fn load(&self) -> i64 {
+        self.cur.load(Ordering::Relaxed)
+    }
     #[inline(always)]
     pub(crate) fn incr(&self, v: i64) {
         self.cur.fetch_add(v, Ordering::Relaxed);
     }
     #[inline(always)]
-    pub(crate) fn load_and_snapshot(&self) -> (i64, i64) {
-        let ss = self.ss.load(Ordering::Relaxed);
-        let cur = self.cur.load(Ordering::Relaxed);
-        self.ss.store(cur, Ordering::Relaxed);
-        (ss, cur)
+    pub(crate) fn take(&self) -> i64 {
+        let cur = self.load();
+        if cur > 0 {
+            self.cur.fetch_sub(cur, Ordering::Relaxed);
+        }
+        cur
+    }
+    #[inline]
+    pub(crate) fn zero(&self) -> i64 {
+        let cur = self.load();
+        if cur > 0 {
+            self.cur.store(0, Ordering::Relaxed);
+        }
+        cur
+    }
+    #[inline]
+    pub(crate) fn max(&self, v: i64) {
+        let cur = self.load();
+        if cur < v {
+            self.cur.store(v, Ordering::Relaxed);
+        }
     }
 }
 
