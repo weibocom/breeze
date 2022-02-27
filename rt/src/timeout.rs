@@ -19,6 +19,11 @@ pub trait ReEnter {
     fn num_rx(&self) -> usize {
         0
     }
+    // 在Future.poll返回前执行。
+    // 可能会多次执行，直到close返回true。
+    // true: 成功关闭，释放相关资源
+    // false: 还有资源未释放
+    fn close(&mut self) -> bool;
 }
 //  统计
 //  1. 每次poll的执行耗时
@@ -30,8 +35,10 @@ pub struct Timeout<F> {
     timeout: Duration,
     tick: Interval,
     m_reenter: Metric,
+    ready: bool,
+    out: Option<Result<()>>,
 }
-impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
+impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Timeout<F> {
     #[inline]
     pub fn from(f: F, timeout: Duration) -> Self {
         let tick = interval(timeout.max(Duration::from_millis(100)));
@@ -44,15 +51,12 @@ impl<F: Future + Unpin + ReEnter + Debug> Timeout<F> {
             timeout,
             tick,
             m_reenter,
+            ready: false,
+            out: None,
         }
     }
-}
-
-use protocol::Result;
-impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeout<F> {
-    type Output = F::Output;
-    #[inline(always)]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    #[inline]
+    fn poll_run(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let now = Instant::now();
         let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
         if tx > rx {
@@ -80,6 +84,28 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
         } else {
             ret
         }
+    }
+}
+
+use protocol::Result;
+impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeout<F> {
+    type Output = F::Output;
+    #[inline(always)]
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if !self.ready {
+            self.out = Some(ready!(self.as_mut().poll_run(cx)));
+            self.ready = true;
+            // 复用last来统计close的耗时
+            self.last = Instant::now();
+        }
+        // close
+        while !self.inner.close() {
+            ready!(self.tick.poll_tick(cx));
+        }
+        if self.last.elapsed() >= Duration::from_millis(500) {
+            log::info!("poll complete:{:?} {:?}", self.inner, self.last.elapsed());
+        }
+        Poll::Ready(self.out.take().unwrap())
     }
 }
 impl<F> Drop for Timeout<F> {

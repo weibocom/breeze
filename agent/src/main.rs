@@ -54,11 +54,10 @@ async fn main() -> Result<()> {
     // 在专用线程中初始化4个定时任务。
     metrics::init_local_ip(&ctx.metrics_probe);
     let mut spawner = rt::DedicatedSpawner::new();
-    let metric_cycle = Duration::from_secs(10);
     spawner.spawn(metrics::Sender::new(
         &ctx.metrics_url(),
         &ctx.service_pool(),
-        metric_cycle,
+        Duration::from_secs(10),
     ));
     spawner.spawn(metrics::MetricRegister::default());
     spawner.spawn(discovery::dns::start_dns_resolver_refresher());
@@ -70,7 +69,7 @@ async fn main() -> Result<()> {
     let mut fix = discovery::Fixed::default();
     fix.register(ctx.idc_path(), sharding::build_refresh_idc());
     spawner.spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
-    spawner.spawn(stream::start_delay_drop());
+    //spawner.spawn(stream::start_delay_drop());
     log::info!("starting a dedicated thread for periodic tasks");
     spawner.start_on_dedicated_thread();
 

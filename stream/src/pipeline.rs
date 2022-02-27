@@ -13,7 +13,6 @@ use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 use sharding::hash::Hasher;
 
 use crate::buffer::{Reader, StreamGuard};
-use crate::gc::DelayedDrop;
 use crate::{CallbackContext, CallbackContextPtr, CallbackPtr, Request, StreamMetrics};
 
 pub async fn copy_bidirectional<'a, C, P>(
@@ -29,36 +28,32 @@ where
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
-    let mut rx_buf: DelayedDrop<_> = StreamGuard::new().into();
-    let waker: DelayedDrop<_> = AtomicWaker::default().into();
-    let mut pending: DelayedDrop<_> = VecDeque::with_capacity(127).into();
     let pipeline = CopyBidirectional {
         metrics,
         hash,
-        rx_buf: &mut rx_buf,
+        rx_buf: StreamGuard::new(),
         client,
         parser,
-        pending: &mut pending,
-        waker: &*waker,
+        pending: VecDeque::with_capacity(63),
+        waker: AtomicWaker::default(),
         flush: false,
         cb,
         start: Instant::now(),
         start_init: false,
         first: true, // 默认当前请求是第一个
     };
-    let ret = pipeline.await;
-    crate::gc::delayed_drop((rx_buf, pending, waker));
-    ret
+    let timeout = std::time::Duration::from_millis(0);
+    rt::Timeout::from(pipeline, timeout).await
 }
 
 // TODO TODO CopyBidirectional在退出时，需要确保不存在pending中的请求，否则需要会存在内存访问异常。
 struct CopyBidirectional<'a, C, P> {
-    rx_buf: &'a mut StreamGuard,
+    rx_buf: StreamGuard,
     hash: &'a Hasher,
     client: C,
     parser: P,
-    pending: &'a mut VecDeque<CallbackContextPtr>,
-    waker: &'a AtomicWaker,
+    pending: VecDeque<CallbackContextPtr>,
+    waker: AtomicWaker,
     flush: bool,
     cb: CallbackPtr,
 
@@ -141,7 +136,7 @@ where
             cb,
             first,
         };
-        parser.parse_request(*rx_buf, *hash, &mut processor)
+        parser.parse_request(rx_buf, *hash, &mut processor)
     }
     // 处理pending中的请求，并且把数据发送到buffer
     #[inline(always)]
@@ -244,7 +239,19 @@ impl<'a, C, P> Drop for CopyBidirectional<'a, C, P> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<'a, C, P> rt::ReEnter for CopyBidirectional<'a, C, P> {}
+impl<'a, C, P> rt::ReEnter for CopyBidirectional<'a, C, P> {
+    #[inline]
+    fn close(&mut self) -> bool {
+        // 剔除已完成的请求
+        while let Some(ctx) = self.pending.front_mut() {
+            if !ctx.complete() {
+                break;
+            }
+            self.pending.pop_front();
+        }
+        self.rx_buf.try_gc() && self.pending.len() == 0
+    }
+}
 impl<'a, C, P> Debug for CopyBidirectional<'a, C, P> {
     #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

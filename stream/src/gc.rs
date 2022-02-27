@@ -77,9 +77,7 @@ pub(crate) fn delayed_drop<T: Until + Into<Delayed>>(mut t: T) {
 impl Until for StreamGuard {
     #[inline]
     fn droppable(&mut self) -> bool {
-        self.gc();
-        log::debug!("handler buf pending:{}", self.pending());
-        self.pending() == 0
+        self.try_gc()
     }
 }
 impl Until for Pipeline {
@@ -94,9 +92,7 @@ impl Until for Pipeline {
             }
         }
         let buf = &mut self.0;
-        buf.gc();
-        log::debug!("pipeline buff:{} queue:{}", buf.pending(), queue.len());
-        buf.pending() == 0 && queue.len() == 0
+        buf.try_gc() && queue.len() == 0
     }
 }
 impl<T: Until> Until for DelayedDrop<T> {
