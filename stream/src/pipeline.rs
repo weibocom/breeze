@@ -249,6 +249,8 @@ impl<'a, C, P> rt::ReEnter for CopyBidirectional<'a, C, P> {
             }
             self.pending.pop_front();
         }
+        // take走，close后不需要再wake。避免Future drop后再次被wake，导致UB
+        self.waker.take();
         self.rx_buf.try_gc() && self.pending.len() == 0
     }
 }
