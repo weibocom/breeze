@@ -10,12 +10,12 @@ use tokio::time::{interval, Interval};
 
 pub trait ReEnter {
     // 发送的请求数量
-    #[inline(always)]
+    #[inline]
     fn num_tx(&self) -> usize {
         0
     }
     // 接收到的请求数量
-    #[inline(always)]
+    #[inline]
     fn num_rx(&self) -> usize {
         0
     }
@@ -90,7 +90,7 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Timeout<F> {
 use protocol::Result;
 impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeout<F> {
     type Output = F::Output;
-    #[inline(always)]
+    #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if !self.ready {
             self.out = Some(ready!(self.as_mut().poll_run(cx)));

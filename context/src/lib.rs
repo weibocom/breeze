@@ -91,7 +91,7 @@ lazy_static! {
         &VERSION[idx..]
     };
 }
-#[inline(always)]
+#[inline]
 pub fn get_short_version() -> &'static str {
     &SHORT_VERSION
 }

@@ -41,7 +41,7 @@ impl GuardedBuffer {
         }
         out
     }
-    #[inline(always)]
+    #[inline]
     fn fill<R, O>(&mut self, r: &mut R, _i: usize) -> (bool, O)
     where
         R: BuffRead<Out = O>,
@@ -52,12 +52,12 @@ impl GuardedBuffer {
         self.inner.advance_write(n);
         (size == n, out)
     }
-    #[inline(always)]
+    #[inline]
     pub fn read(&self) -> RingSlice {
         self.inner
             .slice(self.taken, self.inner.writtened() - self.taken)
     }
-    #[inline(always)]
+    #[inline]
     pub fn take(&mut self, n: usize) -> MemGuard {
         debug_assert!(n > 0);
         debug_assert!(self.taken + n <= self.writtened());
@@ -67,7 +67,7 @@ impl GuardedBuffer {
         let ptr = guard as *const AtomicU32;
         MemGuard::new(data, ptr)
     }
-    #[inline(always)]
+    #[inline]
     pub fn gc(&mut self) {
         while let Some(guard) = self.guards.front_mut() {
             let guard = guard.load(Ordering::Acquire);
@@ -86,20 +86,20 @@ impl GuardedBuffer {
     pub fn pending(&self) -> usize {
         self.taken - self.inner.read()
     }
-    #[inline(always)]
+    #[inline]
     pub fn update(&mut self, idx: usize, val: u8) {
         let oft = self.offset(idx);
         self.inner.update(oft, val);
     }
-    #[inline(always)]
+    #[inline]
     pub fn at(&self, idx: usize) -> u8 {
         self.inner.at(self.offset(idx))
     }
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         self.inner.len() - self.pending()
     }
-    #[inline(always)]
+    #[inline]
     fn offset(&self, oft: usize) -> usize {
         self.pending() + oft
     }
@@ -122,7 +122,7 @@ pub struct MemGuard {
 }
 
 impl MemGuard {
-    #[inline(always)]
+    #[inline]
     fn new(data: RingSlice, guard: *const AtomicU32) -> Self {
         debug_assert!(!guard.is_null());
         assert_ne!(data.len(), 0);
@@ -133,7 +133,7 @@ impl MemGuard {
             cap: 0,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn from_vec(data: Vec<u8>) -> Self {
         let mem: RingSlice = data.as_slice().into();
         //debug_assert_eq!(data.capacity(), mem.len());
@@ -144,19 +144,19 @@ impl MemGuard {
         Self { mem, guard, cap }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn data(&self) -> &RingSlice {
         &self.mem
     }
-    #[inline(always)]
+    #[inline]
     pub fn data_mut(&mut self) -> &mut RingSlice {
         &mut self.mem
     }
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         self.mem.len()
     }
-    #[inline(always)]
+    #[inline]
     pub fn read(&self, oft: usize) -> &[u8] {
         self.mem.read(oft)
     }
@@ -180,14 +180,14 @@ use std::ops::{Deref, DerefMut};
 
 impl Deref for GuardedBuffer {
     type Target = ResizedRingBuffer;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
 impl DerefMut for GuardedBuffer {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }

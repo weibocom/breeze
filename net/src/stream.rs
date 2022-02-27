@@ -7,7 +7,7 @@ pub enum Stream {
     )+
 }
 impl tokio::io::AsyncRead for Stream {
-    #[inline(always)]
+    #[inline]
     fn poll_read( self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> Poll<Result<()>> {
         match self.get_mut() {
             $(
@@ -18,7 +18,7 @@ impl tokio::io::AsyncRead for Stream {
 }
 
 impl tokio::io::AsyncWrite for Stream {
-    #[inline(always)]
+    #[inline]
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
         match self.get_mut() {
             $(
@@ -26,7 +26,7 @@ impl tokio::io::AsyncWrite for Stream {
             )+
         }
     }
-    #[inline(always)]
+    #[inline]
     fn poll_flush(self: Pin<&mut Self>,cx: &mut Context<'_>) -> Poll<Result<()>> {
         match self.get_mut() {
             $(
@@ -34,7 +34,7 @@ impl tokio::io::AsyncWrite for Stream {
             )+
         }
     }
-    #[inline(always)]
+    #[inline]
     fn poll_shutdown(self: Pin<&mut Self>,cx: &mut Context<'_>) -> Poll<Result<()>> {
         match self.get_mut() {
             $(

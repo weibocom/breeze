@@ -22,19 +22,19 @@ use std::ops::{Deref, DerefMut};
 
 impl<T> Deref for DelayedDrop<T> {
     type Target = T;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         unsafe { &*self.inner }
     }
 }
 impl<T> DerefMut for DelayedDrop<T> {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.inner }
     }
 }
 impl<T> From<T> for DelayedDrop<T> {
-    #[inline(always)]
+    #[inline]
     fn from(t: T) -> Self {
         let b = Box::new(t);
         Self {
@@ -43,7 +43,7 @@ impl<T> From<T> for DelayedDrop<T> {
     }
 }
 impl<T> Drop for DelayedDrop<T> {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         debug_assert!(!self.inner.is_null());
         unsafe {
@@ -128,7 +128,7 @@ pub struct DelayedDropHandler {
 impl Future for DelayedDropHandler {
     type Output = ();
 
-    #[inline(always)]
+    #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
             ready!(self.tick.poll_tick(cx));

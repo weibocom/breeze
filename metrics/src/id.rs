@@ -6,7 +6,7 @@ pub struct Id {
     pub(crate) t: MetricType,
 }
 impl Id {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn valid(&self) -> bool {
         self.path.len() > 0 && !self.t.is_empty()
     }

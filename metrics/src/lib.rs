@@ -28,7 +28,7 @@ pub struct Metric {
     item: ItemRc,
 }
 impl Metric {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn from(id: Arc<Id>) -> Self {
         let mut me = Self {
             id,
@@ -37,13 +37,13 @@ impl Metric {
         me.try_inited();
         me
     }
-    #[inline(always)]
+    #[inline]
     fn try_inited(&mut self) {
         self.item.try_init(&self.id);
     }
 }
 impl<T: MetricData + Debug> AddAssign<T> for Metric {
-    #[inline(always)]
+    #[inline]
     fn add_assign(&mut self, m: T) {
         if self.item.inited() {
             m.incr_to(self.item.data());
@@ -55,20 +55,20 @@ impl<T: MetricData + Debug> AddAssign<T> for Metric {
 }
 use std::ops::SubAssign;
 impl<T: MetricData + std::ops::Neg<Output = T> + Debug> SubAssign<T> for Metric {
-    #[inline(always)]
+    #[inline]
     fn sub_assign(&mut self, m: T) {
         *self += -m;
     }
 }
 use std::fmt::{self, Display, Formatter};
 impl Display for Metric {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "name:{:?}", self.id.path)
     }
 }
 impl Debug for Metric {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "name:{:?}", self.id)
     }

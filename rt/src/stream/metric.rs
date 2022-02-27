@@ -39,7 +39,7 @@ impl<S> From<S> for MetricStream<S> {
 }
 
 impl<S: AsyncRead + Unpin> AsyncRead for MetricStream<S> {
-    #[inline(always)]
+    #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -62,7 +62,7 @@ impl<S: AsyncRead + Unpin> AsyncRead for MetricStream<S> {
 }
 
 impl<S: AsyncWrite + Unpin> AsyncWrite for MetricStream<S> {
-    #[inline(always)]
+    #[inline]
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -77,11 +77,11 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for MetricStream<S> {
         //log::info!("poll_write-{} data:{:?}", self.id, buf.utf8());
         r
     }
-    #[inline(always)]
+    #[inline]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.s).poll_flush(cx)
     }
-    #[inline(always)]
+    #[inline]
     fn poll_shutdown(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,

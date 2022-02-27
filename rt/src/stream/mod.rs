@@ -33,7 +33,7 @@ impl<S> From<S> for Stream<S> {
     }
 }
 impl<S: AsyncRead + Unpin> AsyncRead for Stream<S> {
-    #[inline(always)]
+    #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -47,7 +47,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
     // 先将数据写入到io
     // 未写完的写入到buf
     // 不返回Pending
-    #[inline(always)]
+    #[inline]
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -74,7 +74,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
         }
         Poll::Ready(Ok(data.len()))
     }
-    #[inline(always)]
+    #[inline]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         if self.buf.len() > 0 {
             let Self { s, idx, buf, .. } = &mut *self;
@@ -91,7 +91,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
             Poll::Ready(Ok(()))
         }
     }
-    #[inline(always)]
+    #[inline]
     fn poll_shutdown(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -114,7 +114,7 @@ impl<S: AsyncWrite + Unpin> protocol::Writer for Stream<S> {
         }
     }
     // hint: 提示可能优先写入到cache
-    #[inline(always)]
+    #[inline]
     fn cache(&mut self, hint: bool) {
         if self.write_to_buf != hint {
             self.write_to_buf = hint;
@@ -122,7 +122,7 @@ impl<S: AsyncWrite + Unpin> protocol::Writer for Stream<S> {
     }
 }
 impl<S> Stream<S> {
-    #[inline(always)]
+    #[inline]
     fn reserve(&mut self, size: usize) {
         if self.buf.capacity() - self.buf.len() < size {
             let cap = (size + self.buf.len()).max(512).next_power_of_two();
@@ -134,7 +134,7 @@ impl<S> Stream<S> {
     }
 }
 impl<S> Drop for Stream<S> {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         self.buf_tx -= self.buf.capacity() as i64;
     }
