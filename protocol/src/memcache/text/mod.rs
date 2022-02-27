@@ -40,7 +40,7 @@ impl Protocol for MemcacheText {
         }
         v
     }
-    #[inline(always)]
+    #[inline]
     fn parse_request(&self, req: Slice) -> Result<Option<Request>> {
         let split_req = req.split(" ".as_ref());
         let mut read = 0 as usize;
@@ -169,7 +169,7 @@ impl Protocol for MemcacheText {
     fn meta_type(&self, _req: &Request) -> MetaType {
         MetaType::Version
     }
-    #[inline(always)]
+    #[inline]
     fn key(&self, req: &Request) -> Slice {
         debug_assert_eq!(req.keys().len(), 1);
         req.keys().get(0).unwrap().clone()
@@ -293,7 +293,7 @@ impl MemcacheText {
     pub fn new() -> Self {
         MemcacheText
     }
-    #[inline(always)]
+    #[inline]
     fn _noreply(&self, req: &[u8]) -> bool {
         req.ends_with(" noreply\r\n".as_ref())
     }
@@ -307,7 +307,7 @@ impl MemcacheText {
         }
     }
     // 轮询response，找出本次查询到的keys，loop所在的位置
-    #[inline(always)]
+    #[inline]
     fn keys_response<'a, T>(&self, resp: T, exptects: usize) -> HashMap<RingSlice, ()>
     where
         T: Iterator<Item = &'a Response>,

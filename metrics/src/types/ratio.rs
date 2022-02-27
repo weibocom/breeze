@@ -5,7 +5,7 @@ pub struct Ratio {
     total: NumberInner,
 }
 impl Ratio {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
         let hit = self.hit.take();
         let total = self.total.take();
@@ -17,7 +17,7 @@ impl Ratio {
             w.write(&id.path, id.key, id.t.name(), ratio);
         }
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn incr<T: crate::ToNumber>(&self, ratio: (T, T)) {
         self.hit.incr(ratio.0.int());
         self.total.incr(ratio.1.int());

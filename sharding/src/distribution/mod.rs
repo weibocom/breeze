@@ -52,7 +52,7 @@ impl Distribute {
             }
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn index(&self, hash: i64) -> usize {
         match self {
             Self::Consistent(d) => d.index(hash),

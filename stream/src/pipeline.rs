@@ -100,7 +100,7 @@ where
     P: Protocol + Unpin,
 {
     // 从client读取request流的数据到buffer。
-    #[inline(always)]
+    #[inline]
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         if self.pending.len() == 0 {
             let Self { client, rx_buf, .. } = self;
@@ -114,7 +114,7 @@ where
         Poll::Ready(Ok(()))
     }
     // 解析buffer，并且发送请求.
-    #[inline(always)]
+    #[inline]
     fn parse_request(&mut self) -> Result<()> {
         if self.rx_buf.len() == 0 {
             return Ok(());
@@ -139,7 +139,7 @@ where
         parser.parse_request(rx_buf, *hash, &mut processor)
     }
     // 处理pending中的请求，并且把数据发送到buffer
-    #[inline(always)]
+    #[inline]
     fn process_pending(&mut self) -> Result<()> {
         let Self {
             client,
@@ -199,7 +199,7 @@ where
         Ok(())
     }
     // 把response数据flush到client
-    #[inline(always)]
+    #[inline]
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         if self.flush {
             ready!(Pin::new(&mut self.client).as_mut().poll_flush(cx)?);
@@ -217,7 +217,7 @@ struct Visitor<'a> {
 }
 
 impl<'a> protocol::RequestProcessor for Visitor<'a> {
-    #[inline(always)]
+    #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
         let first = *self.first;
         // 如果当前是最后一个子请求，那下一个请求就是一个全新的请求。
@@ -232,7 +232,7 @@ impl<'a> protocol::RequestProcessor for Visitor<'a> {
     }
 }
 impl<'a, C, P> Drop for CopyBidirectional<'a, C, P> {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         *self.metrics.conn_num() -= 1;
     }
@@ -253,7 +253,7 @@ impl<'a, C, P> rt::ReEnter for CopyBidirectional<'a, C, P> {
     }
 }
 impl<'a, C, P> Debug for CopyBidirectional<'a, C, P> {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,

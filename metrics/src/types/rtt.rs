@@ -11,7 +11,7 @@ pub struct Rtt {
 }
 
 impl Rtt {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
         // qps
         let count = self.count.take();
@@ -35,7 +35,7 @@ impl Rtt {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn incr(&self, d: Duration) {
         self.count.incr(1);
         let us = d.as_micros() as i64;

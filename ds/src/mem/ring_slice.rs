@@ -10,7 +10,7 @@ pub struct RingSlice {
 }
 
 impl RingSlice {
-    #[inline(always)]
+    #[inline]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
         debug_assert!(cap > 0);
         debug_assert_eq!(cap, cap.next_power_of_two());
@@ -24,12 +24,12 @@ impl RingSlice {
         me
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn capacity(&self) -> usize {
         self.cap
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
         debug_assert!(offset + len <= self.len());
         Self::from(
@@ -40,14 +40,14 @@ impl RingSlice {
         )
     }
     // 从start开始的所有数据。start不是offset，是绝对值。
-    //#[inline(always)]
+    //#[inline]
     //pub fn take(&self, start: usize) -> RingSlice {
     //    debug_assert!(start >= self.start);
     //    debug_assert!(start <= self.end);
     //    Self::from(self.ptr(), self.cap, start, self.end)
     //}
     // 读取数据. 可能只读取可读数据的一部分。
-    #[inline(always)]
+    #[inline]
     pub fn read(&self, offset: usize) -> &[u8] {
         debug_assert!(offset < self.len());
         let oft = self.mask(self.start + offset);
@@ -55,7 +55,7 @@ impl RingSlice {
         //println!("read data offset:{} start offset:{} l:{}", offset, oft, l);
         unsafe { std::slice::from_raw_parts(self.ptr().offset(oft as isize), l) }
     }
-    #[inline(always)]
+    #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
         let len = self.len();
         v.reserve(len);
@@ -67,31 +67,31 @@ impl RingSlice {
             v.write(data);
         }
     }
-    #[inline(always)]
+    #[inline]
     fn mask(&self, oft: usize) -> usize {
         (self.cap - 1) & oft
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         debug_assert!(self.end >= self.start);
         self.end - self.start
     }
-    #[inline(always)]
+    #[inline]
     pub fn at(&self, idx: usize) -> u8 {
         debug_assert!(idx < self.len());
         unsafe { *self.oft_ptr(idx) }
     }
-    #[inline(always)]
+    #[inline]
     pub fn update(&mut self, idx: usize, b: u8) {
         debug_assert!(idx < self.len());
         unsafe { *self.oft_ptr(idx) = b }
     }
-    #[inline(always)]
+    #[inline]
     pub fn ptr(&self) -> *mut u8 {
         self.ptr as *mut u8
     }
-    #[inline(always)]
+    #[inline]
     unsafe fn oft_ptr(&self, idx: usize) -> *mut u8 {
         debug_assert!(idx < self.len());
         let oft = self.mask(self.start + idx);
@@ -144,7 +144,7 @@ impl RingSlice {
         None
     }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
-    #[inline(always)]
+    #[inline]
     pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
         for i in offset..self.len() - 1 {
             // 先找'\r'
@@ -159,7 +159,7 @@ impl RingSlice {
     }
 
     // 只用来debug
-    #[inline(always)]
+    #[inline]
     fn to_vec(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(self.len());
         self.copy_to_vec(&mut v);
@@ -248,7 +248,7 @@ impl From<&[u8]> for RingSlice {
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 impl Display for RingSlice {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -258,7 +258,7 @@ impl Display for RingSlice {
     }
 }
 impl Debug for RingSlice {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,

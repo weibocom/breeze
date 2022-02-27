@@ -58,7 +58,7 @@ impl<R> Drop for Backend<R> {
 
 impl<R: Request> Endpoint for Backend<R> {
     type Item = R;
-    #[inline(always)]
+    #[inline]
     fn send(&self, req: R) {
         if let Err(e) = self.tx.try_send(req) {
             match e {

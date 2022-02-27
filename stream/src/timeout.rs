@@ -10,7 +10,7 @@ pub(crate) struct TimeoutChecker {
 }
 
 impl TimeoutChecker {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn new(cycle: Duration, least: u32) -> Self {
         Self {
             cycle,
@@ -19,17 +19,17 @@ impl TimeoutChecker {
             ticks: 0,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn tick(&mut self) {
         self.ticks += 1;
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn reset(&mut self) {
         self.ticks = 0; // 重新开始
         self.checkpoint = Instant::now();
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn check(&mut self) -> Result<()> {
         if self.ticks >= self.least as usize {
             self.reset();

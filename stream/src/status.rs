@@ -17,20 +17,20 @@ pub enum ItemStatus {
 }
 const STATUSES: [ItemStatus; 5] = [Init, RequestReceived, RequestSent, ResponseReceived, Read];
 impl From<u8> for ItemStatus {
-    #[inline(always)]
+    #[inline]
     fn from(s: u8) -> Self {
         STATUSES[s as usize]
     }
 }
 use ItemStatus::*;
 impl PartialEq<u8> for ItemStatus {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &u8) -> bool {
         *self as u8 == *other
     }
 }
 impl PartialEq<ItemStatus> for u8 {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &ItemStatus) -> bool {
         *self == *other as u8
     }
@@ -62,7 +62,7 @@ impl Status {
     }
     // 把buf的指针保存下来。
     // 上面的假设待验证
-    #[inline(always)]
+    #[inline]
     pub fn place_request(&self, req: &Request) {
         debug_assert_eq!(self.status.load(Acquire), ItemStatus::Init as u8);
         self.status_cas(Init as u8, RequestReceived as u8);
@@ -71,7 +71,7 @@ impl Status {
     }
     // 如果状态不是RequestReceived, 则返回None.
     // 有可能是连接被重置导致。
-    #[inline(always)]
+    #[inline]
     pub fn take_request(&self, seq: usize) -> Option<(usize, Request)> {
         if self.try_status_cas(RequestReceived as u8, RequestSent as u8) {
             log::debug!("take request. {} seq:{} ", self.rid.borrow(), seq);
@@ -87,17 +87,17 @@ impl Status {
         None
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn seq(&self) -> usize {
         self.seq.load(Acquire)
     }
 
-    #[inline(always)]
+    #[inline]
     fn status(&self) -> u8 {
         self.status.load(Acquire)
     }
 
-    #[inline(always)]
+    #[inline]
     fn seq_cas(&self, old: usize, new: usize) {
         match self.seq.compare_exchange(old, new, AcqRel, Acquire) {
             Ok(_) => {}
@@ -124,7 +124,7 @@ impl Status {
             RequestReceived | RequestSent => Poll::Pending,
         }
     }
-    #[inline(always)]
+    #[inline]
     fn take_response(&self) -> (RequestId, Response) {
         let response = self.response.take();
         let rid = self.rid.take();
@@ -144,7 +144,7 @@ impl Status {
         self.try_status_cas(RequestSent as u8, ResponseReceived as u8);
         self.waker.wake();
     }
-    #[inline(always)]
+    #[inline]
     fn try_status_cas(&self, old: u8, new: u8) -> bool {
         match self.status.compare_exchange(old, new, AcqRel, Acquire) {
             Ok(_) => true,
@@ -154,7 +154,7 @@ impl Status {
             }
         }
     }
-    #[inline(always)]
+    #[inline]
     fn status_cas(&self, old: u8, new: u8) {
         match self.status.compare_exchange(old, new, AcqRel, Acquire) {
             Ok(_) => {}

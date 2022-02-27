@@ -28,12 +28,12 @@ impl<T> PinnedQueue<T> {
             fix_tail: true,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn new() -> Self {
         Self::with_capacity(32)
     }
     // 把数据推入back，并且返回原有的引用
-    #[inline(always)]
+    #[inline]
     pub fn push_back(&mut self, t: T) -> &mut T {
         if self.fix_tail {
             let ptr = self.tailer();
@@ -49,7 +49,7 @@ impl<T> PinnedQueue<T> {
             self.ext.back_mut().expect("ext back mut")
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn pop_front(&mut self) -> Option<T> {
         //println!("pop front:{}", self);
         if self.len() == 0 {
@@ -59,7 +59,7 @@ impl<T> PinnedQueue<T> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub unsafe fn pop_front_unchecked(&mut self) -> T {
         debug_assert_ne!(self.len(), 0);
         if self.fix_head {
@@ -87,7 +87,7 @@ impl<T> PinnedQueue<T> {
             t
         }
     }
-    #[inline(always)]
+    #[inline]
     unsafe fn front_mut_unchecked(&mut self) -> &mut T {
         debug_assert_ne!(self.len(), 0);
         if self.fix_head {
@@ -98,7 +98,7 @@ impl<T> PinnedQueue<T> {
             self.ext.front_mut().expect("ext front")
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn front_unchecked(&self) -> &T {
         debug_assert_ne!(self.len(), 0);
         if self.fix_head {
@@ -109,7 +109,7 @@ impl<T> PinnedQueue<T> {
             self.ext.front().expect("ext front")
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn front_mut(&mut self) -> Option<&mut T> {
         if self.len() == 0 {
             None
@@ -118,50 +118,50 @@ impl<T> PinnedQueue<T> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         self.fix_len() + self.ext.len()
     }
-    #[inline(always)]
+    #[inline]
     fn mask(&self, pos: usize) -> usize {
         (self.cap as usize - 1) & pos
     }
-    #[inline(always)]
+    #[inline]
     fn ptr(&self, pos: usize) -> *mut T {
         unsafe { self.fix.offset(self.mask(pos) as isize) }
     }
-    #[inline(always)]
+    #[inline]
     fn tailer(&mut self) -> *mut T {
         self.ptr(self.tail)
     }
-    #[inline(always)]
+    #[inline]
     fn header(&self) -> *mut T {
         self.ptr(self.head)
     }
-    #[inline(always)]
+    #[inline]
     fn fix_len(&self) -> usize {
         self.tail - self.head
     }
     // 检查fix是否已满
-    #[inline(always)]
+    #[inline]
     fn is_full(&self) -> bool {
         self.fix_len() >= self.cap as usize
     }
-    #[inline(always)]
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    #[inline(always)]
+    #[inline]
     fn fix_empty(&self) -> bool {
         self.head == self.tail
     }
-    #[inline(always)]
+    #[inline]
     fn cap(&self) -> usize {
         self.cap as usize
     }
 
     // fix为空时才能grow, 每次grow后会重置head与tail指针
-    #[inline(always)]
+    #[inline]
     fn grow(&mut self) {
         debug_assert_eq!(self.fix_len(), 0);
         debug_assert_ne!(self.ext.len(), 0);

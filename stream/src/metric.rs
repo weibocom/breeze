@@ -13,13 +13,13 @@ macro_rules! define_metrics {
         impl CbMetrics {
             $(
             $(
-            #[inline(always)]
+            #[inline]
             pub fn $name(&mut self) -> &mut Metric {
                 &mut self.$name
             }
             )+
             )+
-            #[inline(always)]
+            #[inline]
             pub fn ops(&mut self, op:Operation) -> &mut Metric {
                 debug_assert!(op.id() < self.ops.len());
                 unsafe{self.ops.get_unchecked_mut(op.id()) }
@@ -37,7 +37,7 @@ macro_rules! define_metrics {
                 }
             }
             // debug only
-            #[inline(always)]
+            #[inline]
             pub fn biz(&self) -> &Metric {
                 &self.cps
             }

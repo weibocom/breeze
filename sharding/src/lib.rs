@@ -27,7 +27,7 @@ impl Sharding {
             num: num,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn sharding(&self, key: &[u8]) -> usize {
         let hash = self.hash.hash(&key);
         let idx = self.distribution.index(hash);

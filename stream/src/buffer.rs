@@ -14,14 +14,14 @@ pub(crate) struct Reader<'a, C> {
 }
 
 impl<'a, C> Reader<'a, C> {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn from(client: &'a mut C, cx: &'a mut Context<'a>) -> Self {
         let n = 0;
         let b = 0;
         Self { n, client, cx, b }
     }
     // 如果eof了，则返回错误，否则返回读取的num数量
-    #[inline(always)]
+    #[inline]
     pub(crate) fn check_eof_num(&self) -> Result<usize> {
         // buffer不够，有读取的数据，则认定为流未结束。
         if self.n > 0 || self.b == 0 {
@@ -37,7 +37,7 @@ where
     C: AsyncRead + Unpin,
 {
     type Out = Poll<std::io::Result<()>>;
-    #[inline(always)]
+    #[inline]
     fn read(&mut self, buf: &mut [u8]) -> (usize, Self::Out) {
         let Self { n, client, cx, b } = self;
         *b += buf.len();
@@ -59,27 +59,27 @@ pub struct StreamGuard {
     pub(crate) buf: GuardedBuffer,
 }
 impl protocol::Stream for StreamGuard {
-    #[inline(always)]
+    #[inline]
     fn update(&mut self, idx: usize, val: u8) {
         self.buf.update(idx, val);
     }
-    #[inline(always)]
+    #[inline]
     fn at(&self, idx: usize) -> u8 {
         self.buf.at(idx)
     }
-    #[inline(always)]
+    #[inline]
     fn take(&mut self, n: usize) -> MemGuard {
         self.buf.take(n)
     }
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.buf.len()
     }
-    #[inline(always)]
+    #[inline]
     fn slice(&self) -> RingSlice {
         self.buf.read()
     }
-    #[inline(always)]
+    #[inline]
     fn context(&mut self) -> &mut u64 {
         &mut self.ctx
     }

@@ -10,11 +10,11 @@ impl NumberInner {
     fn load(&self) -> i64 {
         self.cur.load(Ordering::Relaxed)
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn incr(&self, v: i64) {
         self.cur.fetch_add(v, Ordering::Relaxed);
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn take(&self) -> i64 {
         let cur = self.load();
         if cur > 0 {
@@ -44,12 +44,12 @@ pub struct Number {
 }
 impl Number {
     // 只计数。
-    #[inline(always)]
+    #[inline]
     pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
         let cur = self.inner.cur.load(Ordering::Relaxed);
         w.write(&id.path, id.key, id.t.name(), cur as f64);
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn incr(&self, v: i64) {
         self.inner.incr(v);
     }
@@ -63,7 +63,7 @@ macro_rules! impl_to_number {
     ($($t:ty),+) => {
         $(
         impl ToNumber for $t {
-            #[inline(always)]
+            #[inline]
             fn int(&self) -> i64 {
                 *self as i64
             }

@@ -23,7 +23,7 @@ use crate::Utf8;
 pub struct Redis;
 
 impl Redis {
-    #[inline(always)]
+    #[inline]
     fn parse_request_inner<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
@@ -69,7 +69,7 @@ impl Redis {
         }
         Ok(())
     }
-    #[inline(always)]
+    #[inline]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
         // log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
@@ -104,7 +104,7 @@ impl Redis {
 }
 
 impl Protocol for Redis {
-    #[inline(always)]
+    #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
@@ -119,7 +119,7 @@ impl Protocol for Redis {
     }
 
     // 为每一个req解析一个response
-    #[inline(always)]
+    #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         match self.parse_response_inner(data) {
             Ok(cmd) => Ok(cmd),
@@ -127,7 +127,7 @@ impl Protocol for Redis {
             e => e,
         }
     }
-    #[inline(always)]
+    #[inline]
     fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
         let req = ctx.request();
         let op_code = req.op_code();
@@ -154,7 +154,7 @@ impl Protocol for Redis {
             }
         }
     }
-    #[inline(always)]
+    #[inline]
     fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
         let rsp_idx = req.ext().padding_rsp() as usize;
         debug_assert!(rsp_idx < PADDING_RSP_TABLE.len());
@@ -176,7 +176,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0?
-#[inline(always)]
+#[inline]
 fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
     if key.len() == 0 {
         AUTO.fetch_add(1, Ordering::Relaxed)
@@ -187,7 +187,7 @@ fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
     }
 }
 
-#[inline(always)]
+#[inline]
 fn defalut_hash() -> i64 {
     AUTO.fetch_add(1, Ordering::Relaxed)
 }

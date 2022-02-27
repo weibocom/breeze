@@ -8,7 +8,7 @@ pub struct Switcher {
     inner: Arc<AtomicBool>,
 }
 impl From<bool> for Switcher {
-    #[inline(always)]
+    #[inline]
     fn from(state: bool) -> Self {
         Self {
             inner: Arc::new(AtomicBool::new(state)),
@@ -17,15 +17,15 @@ impl From<bool> for Switcher {
 }
 
 impl Switcher {
-    #[inline(always)]
+    #[inline]
     pub fn get(&self) -> bool {
         self.inner.load(Ordering::Acquire)
     }
-    #[inline(always)]
+    #[inline]
     pub fn off(&self) {
         self.inner.store(false, Ordering::Release);
     }
-    #[inline(always)]
+    #[inline]
     pub fn on(&self) {
         self.inner.store(true, Ordering::Release);
     }
