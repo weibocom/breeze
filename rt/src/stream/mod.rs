@@ -126,7 +126,7 @@ impl<S> Stream<S> {
     fn reserve(&mut self, size: usize) {
         if self.buf.capacity() - self.buf.len() < size {
             let cap = (size + self.buf.len()).max(512).next_power_of_two();
-            let grow = cap - self.buf.capacity();
+            let grow = cap - self.buf.len();
             self.buf.reserve(grow);
             self.buf_tx += grow;
             debug_assert_eq!(cap, self.buf.capacity());

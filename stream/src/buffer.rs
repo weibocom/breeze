@@ -114,13 +114,14 @@ impl StreamGuard {
         self.buf.pending()
     }
     #[inline]
-    pub fn gc(&mut self) {
-        self.buf.gc()
+    pub fn try_gc(&mut self) -> bool {
+        self.buf.gc();
+        self.pending() == 0
     }
-    #[inline]
-    pub fn cap(&self) -> usize {
-        self.buf.cap()
-    }
+    //#[inline]
+    //pub fn cap(&self) -> usize {
+    //    self.buf.cap()
+    //}
 }
 
 use std::fmt::{self, Display, Formatter};

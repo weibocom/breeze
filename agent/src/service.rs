@@ -86,12 +86,10 @@ async fn _process_one(
         spawn(async move {
             use protocol::Topology;
             let hasher = top.hasher();
-            use protocol::Error;
             if let Err(e) = copy_bidirectional(cb, metrics, hasher, client, p).await {
                 match e {
-                    Error::Quit => {} // client发送quit协议退出
-                    Error::ReadEof => {}
-                    // clieng 异常退出
+                    //protocol::Error::Quit => {} // client发送quit协议退出
+                    //protocol::Error::ReadEof => {}
                     e => log::debug!("{:?} disconnected. {:?}", path, e),
                 }
             }

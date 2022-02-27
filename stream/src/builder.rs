@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use tokio::sync::mpsc::channel;
-use tokio::sync::mpsc::{error::TrySendError, Sender};
+use ds::chan::mpsc::{channel, Sender, TrySendError};
 
 use ds::Switcher;
 
@@ -26,20 +25,12 @@ impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for Backe
         let (tx, rx) = channel(256);
         let finish: Switcher = false.into();
         let init: Switcher = false.into();
-        let run: Switcher = false.into();
         let f = finish.clone();
         let path_prefix = rsrc.name().to_string() + "_backend";
         let path = Path::new(vec![path_prefix.as_str(), service, addr]);
-        let r = run.clone();
-        let mut checker = BackendChecker::from(addr, rx, r, f, init.clone(), parser, path, timeout);
+        let mut checker = BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout);
         rt::spawn(async move { checker.start_check().await });
-        Backend {
-            finish,
-            init,
-            run,
-            tx,
-        }
-        .into()
+        Backend { finish, init, tx }.into()
     }
 }
 
@@ -49,8 +40,6 @@ pub struct Backend<R> {
     finish: Switcher,
     // 由checker设置，标识是否初始化完成。
     init: Switcher,
-    // 由checker设置，标识当前资源是否在提供服务。
-    run: Switcher,
 }
 
 impl<R> discovery::Inited for Backend<R> {
@@ -71,15 +60,12 @@ impl<R: Request> Endpoint for Backend<R> {
     type Item = R;
     #[inline(always)]
     fn send(&self, req: R) {
-        if self.run.get() {
-            if let Err(e) = self.tx.try_send(req) {
-                match e {
-                    TrySendError::Closed(r) => r.on_err(Error::QueueFull),
-                    TrySendError::Full(r) => r.on_err(Error::QueueFull),
-                }
+        if let Err(e) = self.tx.try_send(req) {
+            match e {
+                TrySendError::Closed(r) => r.on_err(Error::ChanFull),
+                TrySendError::Full(r) => r.on_err(Error::ChanFull),
+                TrySendError::Disabled(r) => r.on_err(Error::ChanDisabled),
             }
-        } else {
-            req.on_err(Error::Closed);
         }
     }
 }
