@@ -4,8 +4,8 @@ pub use spawner::*;
 mod task;
 pub use task::*;
 
-mod stats;
-pub use stats::*;
+mod timeout;
+pub use timeout::*;
 
 mod stream;
 pub use stream::*;

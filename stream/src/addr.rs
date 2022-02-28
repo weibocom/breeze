@@ -68,7 +68,7 @@ where
 }
 
 impl PartialEq for Address {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
     }

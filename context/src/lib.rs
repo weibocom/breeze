@@ -8,11 +8,14 @@ use url::Url;
 mod quadruple;
 pub use quadruple::Quadruple;
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[clap(name = "breeze", version = "0.0.1", author = "IF")]
 pub struct Context {
     #[clap(long, help("port for suvervisor"), default_value("9984"))]
     port: u16,
+
+    #[clap(short, long, help("number of threads"), default_value("4"))]
+    pub thread_num: u8,
 
     #[clap(long, help("number of open file"), default_value("204800"))]
     pub no_file: u64,
@@ -91,7 +94,7 @@ lazy_static! {
         &VERSION[idx..]
     };
 }
-#[inline(always)]
+#[inline]
 pub fn get_short_version() -> &'static str {
     &SHORT_VERSION
 }

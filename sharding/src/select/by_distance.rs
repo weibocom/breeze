@@ -48,20 +48,20 @@ impl<T: Addr> Distance<T> {
             seq,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn len(&self) -> usize {
         self.replicas.len()
     }
-    #[inline(always)]
+    #[inline]
     fn local_len(&self) -> usize {
         self.len_local as usize
     }
-    #[inline(always)]
+    #[inline]
     fn remote_len(&self) -> usize {
         self.len() - self.local_len()
     }
     // 只从local获取
-    #[inline(always)]
+    #[inline]
     pub unsafe fn unsafe_select(&self) -> (usize, &T) {
         debug_assert_ne!(self.len(), 0);
         let idx = if self.len() == 0 {
@@ -72,7 +72,7 @@ impl<T: Addr> Distance<T> {
         };
         (idx, self.replicas.get_unchecked(idx))
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T) {
         debug_assert!(runs < self.len());
         // 还可以从local中取

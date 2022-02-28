@@ -15,50 +15,50 @@ pub enum ReplicaSelect<T> {
 }
 
 impl<T: Addr> ReplicaSelect<T> {
-    #[inline(always)]
+    #[inline]
     pub fn from(name: &str, replicas: Vec<T>) -> Self {
         match name {
             "random" => Self::random(replicas),
             _ => Self::distance(replicas),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn random(replicas: Vec<T>) -> Self {
         Self::Random(Random::from(replicas))
     }
-    #[inline(always)]
+    #[inline]
     pub fn distance(replicas: Vec<T>) -> Self {
         Self::Distance(Distance::from(replicas))
     }
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         match self {
             Self::Random(r) => r.replicas.len(),
             Self::Distance(r) => r.len(),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn into_inner(self) -> Vec<T> {
         match self {
             Self::Random(r) => r.replicas,
             Self::Distance(r) => r.replicas,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn as_ref(&self) -> &[T] {
         match self {
             Self::Random(r) => &r.replicas,
             Self::Distance(r) => &r.replicas[0..self.len()],
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn unsafe_select(&self) -> (usize, &T) {
         match self {
             Self::Random(r) => r.unsafe_select(),
             Self::Distance(r) => r.unsafe_select(),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T) {
         match self {
             Self::Random(r) => r.unsafe_next(idx),

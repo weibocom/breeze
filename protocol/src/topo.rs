@@ -5,7 +5,7 @@ use sharding::hash::Hasher;
 pub trait Endpoint: Sized + Send + Sync {
     type Item;
     fn send(&self, req: Self::Item);
-    #[inline(always)]
+    #[inline]
     fn static_send(receiver: usize, req: Self::Item) {
         let e = unsafe { &*(receiver as *const Self) };
         e.send(req);
@@ -17,7 +17,7 @@ where
     T: Endpoint<Item = R>,
 {
     type Item = R;
-    #[inline(always)]
+    #[inline]
     fn send(&self, req: R) {
         (*self).send(req)
     }
@@ -28,7 +28,7 @@ where
     T: Endpoint<Item = R>,
 {
     type Item = R;
-    #[inline(always)]
+    #[inline]
     fn send(&self, req: R) {
         (**self).send(req)
     }
@@ -43,7 +43,7 @@ impl<T> Topology for std::sync::Arc<T>
 where
     T: Topology,
 {
-    #[inline(always)]
+    #[inline]
     fn hasher(&self) -> &Hasher {
         (**self).hasher()
     }
@@ -60,7 +60,7 @@ pub struct BorrowPtr<T> {
     guard: BorrowPtrGuard,
 }
 impl<T> BorrowPtr<T> {
-    #[inline(always)]
+    #[inline]
     pub fn new(ptr: T) -> Self {
         let ptr = Box::leak(Box::new(ptr)) as *const T;
         Self {
@@ -68,18 +68,18 @@ impl<T> BorrowPtr<T> {
             guard: Arc::new(AtomicUsize::new(1)),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn as_ref(&self) -> &T {
         &*self.ptr
     }
-    #[inline(always)]
+    #[inline]
     pub fn borrow(&self) -> (BorrowRawPtr, BorrowPtrGuard) {
         self.guard.fetch_add(1, Ordering::AcqRel);
         (self.ptr as usize, self.guard.clone())
     }
 }
 impl<T> Drop for BorrowPtr<T> {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         let borrowd = self.guard.fetch_sub(1, Ordering::Relaxed);
         println!("borrowed return:{}", borrowd);
@@ -96,7 +96,7 @@ where
     T: Borrow,
 {
     type Item = T::Item;
-    #[inline(always)]
+    #[inline]
     unsafe fn borrow(&self) -> (*const Self::Item, BorrowPtrGuard) {
         (**self).borrow()
     }

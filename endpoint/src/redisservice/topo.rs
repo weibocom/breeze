@@ -66,7 +66,7 @@ where
     P: Protocol,
 {
     type Item = Req;
-    #[inline(always)]
+    #[inline]
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
         // TODO：这部分逻辑转移到distribution中进行,待验证 fishermen
@@ -125,8 +125,10 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
-            if ns.backends.len() < 1 {
-                log::warn!("ignore malformed redis cfg with no backends/{}", cfg);
+            let len = ns.backends.len();
+            let power_two = len > 0 && ((len & len - 1) == 0);
+            if !power_two {
+                log::error!("{} shard num {} is not power of two", self.service, len);
                 return;
             }
 
@@ -243,7 +245,8 @@ where
     #[inline]
     fn inited(&self) -> bool {
         // 每一个分片都有初始, 并且至少有一主一从。
-        self.shards.len() == self.shards_url.len()
+        self.shards.len() > 0
+            && self.shards.len() == self.shards_url.len()
             && self
                 .shards
                 .iter()
@@ -276,26 +279,26 @@ struct Shard<E> {
     slaves: ReplicaSelect<(String, E)>,
 }
 impl<E> Shard<E> {
-    #[inline(always)]
+    #[inline]
     fn selector(s: &str, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
             slaves: ReplicaSelect::from(s, replicas),
         }
     }
-    #[inline(always)]
+    #[inline]
     fn has_slave(&self) -> bool {
         self.slaves.len() > 0
     }
-    #[inline(always)]
+    #[inline]
     fn master(&self) -> &E {
         &self.master.1
     }
-    #[inline(always)]
+    #[inline]
     fn select(&self) -> (usize, &(String, E)) {
         unsafe { self.slaves.unsafe_select() }
     }
-    #[inline(always)]
+    #[inline]
     fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
         unsafe { self.slaves.unsafe_next(idx, runs) }
     }
@@ -304,7 +307,7 @@ impl<E: discovery::Inited> Shard<E> {
     // 1. 主已经初始化
     // 2. 有从
     // 3. 所有的从已经初始化
-    #[inline(always)]
+    #[inline]
     fn inited(&self) -> bool {
         self.master().inited()
             && self.has_slave()

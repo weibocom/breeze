@@ -56,7 +56,7 @@ pub trait Stream {
     fn slice(&self) -> ds::RingSlice;
     fn update(&mut self, idx: usize, val: u8);
     fn take(&mut self, n: usize) -> ds::MemGuard;
-    #[inline(always)]
+    #[inline]
     fn ignore(&mut self, n: usize) {
         let _ = self.take(n);
     }
@@ -80,36 +80,36 @@ pub struct HashedCommand {
 }
 
 impl Command {
-    #[inline(always)]
+    #[inline]
     pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
         Self { flag, cmd }
     }
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         self.cmd.len()
     }
-    #[inline(always)]
+    #[inline]
     pub fn read(&self, oft: usize) -> &[u8] {
         self.cmd.read(oft)
     }
-    #[inline(always)]
+    #[inline]
     pub fn data(&self) -> &ds::RingSlice {
         self.cmd.data()
     }
-    #[inline(always)]
+    #[inline]
     pub fn data_mut(&mut self) -> &mut ds::RingSlice {
         self.cmd.data_mut()
     }
 }
 impl std::ops::Deref for Command {
     type Target = Flag;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.flag
     }
 }
 impl std::ops::DerefMut for Command {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.flag
     }
@@ -117,33 +117,33 @@ impl std::ops::DerefMut for Command {
 
 impl std::ops::Deref for HashedCommand {
     type Target = Command;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.cmd
     }
 }
 impl std::ops::DerefMut for HashedCommand {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.cmd
     }
 }
 use ds::MemGuard;
 impl HashedCommand {
-    #[inline(always)]
+    #[inline]
     pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {
         Self {
             hash,
             cmd: Command { flag, cmd },
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn hash(&self) -> i64 {
         self.hash
     }
 }
 impl AsRef<Command> for HashedCommand {
-    #[inline(always)]
+    #[inline]
     fn as_ref(&self) -> &Command {
         &self.cmd
     }

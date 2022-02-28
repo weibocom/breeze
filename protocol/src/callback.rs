@@ -22,12 +22,12 @@ impl Callback {
             exp_sec,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn send(&self, req: Request) {
         log::debug!("request sending:{}", req);
         (self.cb)(self.receiver, req);
     }
-    #[inline(always)]
+    #[inline]
     pub fn exp_sec(&self) -> u32 {
         self.exp_sec
     }
@@ -44,7 +44,7 @@ pub struct CallbackContext {
 }
 
 impl CallbackContext {
-    #[inline(always)]
+    #[inline]
     pub fn new(
         req: HashedCommand,
         waker: &AtomicWaker,
@@ -67,14 +67,14 @@ impl CallbackContext {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn on_sent(&mut self) {
         log::debug!("request sent: {} ", self);
         if self.request().sentonly() {
             self.on_done();
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn on_complete(&mut self, resp: Command) {
         log::debug!("on-complete:{} resp:{}", self, resp);
         // 异步请求不关注response。
@@ -84,9 +84,9 @@ impl CallbackContext {
         }
         self.on_done();
     }
-    #[inline(always)]
+    #[inline]
     pub fn on_response(&self) {}
-    #[inline(always)]
+    #[inline]
     fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
         if self.need_goon() {
@@ -101,7 +101,7 @@ impl CallbackContext {
             self.manual_drop();
         }
     }
-    #[inline(always)]
+    #[inline]
     fn need_goon(&self) -> bool {
         if !self.is_in_async_write_back() {
             // 正常访问请求。
@@ -112,11 +112,11 @@ impl CallbackContext {
             self.ctx.write_back
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn response_ok(&self) -> bool {
         unsafe { self.ctx.inited && self.response().ok() }
     }
-    #[inline(always)]
+    #[inline]
     pub fn on_err(&mut self, err: Error) {
         match err {
             Error::Closed => {}
@@ -124,48 +124,48 @@ impl CallbackContext {
         }
         self.on_done();
     }
-    #[inline(always)]
+    #[inline]
     pub fn request(&self) -> &HashedCommand {
         &self.request
     }
-    #[inline(always)]
+    #[inline]
     pub fn with_request(&mut self, new: HashedCommand) {
         self.request = new;
     }
     // 在使用前，先得判断inited
-    #[inline(always)]
+    #[inline]
     pub unsafe fn response(&self) -> &Command {
         debug_assert!(self.inited());
         self.response.assume_init_ref()
     }
-    #[inline(always)]
+    #[inline]
     pub fn complete(&self) -> bool {
         self.ctx.complete.load(Ordering::Acquire)
     }
-    #[inline(always)]
+    #[inline]
     pub fn inited(&self) -> bool {
         self.ctx.inited
     }
-    #[inline(always)]
+    #[inline]
     fn is_write_back(&self) -> bool {
         self.ctx.write_back
     }
-    #[inline(always)]
+    #[inline]
     fn write(&mut self, resp: Command) {
         debug_assert!(!self.complete());
         self.try_drop_response();
         self.response.write(resp);
         self.ctx.inited = true;
     }
-    #[inline(always)]
+    #[inline]
     fn wake(&self) {
         unsafe { (&*self.waker).wake() }
     }
-    #[inline(always)]
+    #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut Self {
         self as *mut _
     }
-    #[inline(always)]
+    #[inline]
     pub fn start(&mut self) {
         log::debug!("request started:{}", self);
         if self.request().noforward() {
@@ -175,29 +175,29 @@ impl CallbackContext {
             self.send();
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn send(&mut self) {
         let req = Request::new(self.as_mut_ptr());
         (*self.callback).send(req);
     }
-    #[inline(always)]
+    #[inline]
     pub fn start_at(&self) -> Instant {
         self.start
     }
 
-    #[inline(always)]
+    #[inline]
     fn continute(&mut self) {
         self.send();
     }
-    #[inline(always)]
+    #[inline]
     pub fn as_mut_context(&mut self) -> &mut Context {
         &mut self.ctx
     }
-    #[inline(always)]
+    #[inline]
     fn is_in_async_write_back(&self) -> bool {
         self.ctx.drop_on_done
     }
-    #[inline(always)]
+    #[inline]
     fn try_drop_response(&mut self) {
         if self.ctx.inited {
             log::debug!("drop response:{}", unsafe { self.response() });
@@ -205,22 +205,22 @@ impl CallbackContext {
             self.ctx.inited = false;
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn first(&self) -> bool {
         self.ctx.first
     }
-    #[inline(always)]
+    #[inline]
     pub fn last(&self) -> bool {
         self.ctx.last
     }
-    #[inline(always)]
+    #[inline]
     fn manual_drop(&mut self) {
         unsafe { Box::from_raw(self) };
     }
 }
 
 impl Drop for CallbackContext {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         debug_assert!(self.complete());
         if self.ctx.inited {
@@ -246,23 +246,23 @@ pub struct Context {
 }
 
 impl Context {
-    #[inline(always)]
+    #[inline]
     pub fn as_mut_flag(&mut self) -> &mut crate::Context {
         &mut self.flag
     }
-    #[inline(always)]
+    #[inline]
     pub fn try_next(&mut self, goon: bool) {
         self.try_next = goon;
     }
-    #[inline(always)]
+    #[inline]
     pub fn write_back(&mut self, wb: bool) {
         self.write_back = wb;
     }
-    #[inline(always)]
+    #[inline]
     pub fn is_write_back(&self) -> bool {
         self.write_back
     }
-    #[inline(always)]
+    #[inline]
     pub fn is_inited(&self) -> bool {
         self.inited
     }
@@ -270,20 +270,20 @@ impl Context {
 
 use std::fmt::{self, Debug, Display, Formatter};
 impl Display for CallbackContext {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.ctx, self.request())
     }
 }
 impl Debug for CallbackContext {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(self, f)
     }
 }
 
 impl Display for Context {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -304,12 +304,12 @@ pub struct CallbackContextPtr {
 }
 
 impl CallbackContextPtr {
-    #[inline(always)]
+    #[inline]
     pub fn build_request(&mut self) -> Request {
         unsafe { Request::new(self.inner.as_mut()) }
     }
     //需要在on_done时主动销毁self对象
-    #[inline(always)]
+    #[inline]
     pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P, exp: u32) {
         debug_assert!(self.ctx.inited);
         debug_assert!(self.complete());
@@ -332,7 +332,7 @@ impl CallbackContextPtr {
 }
 
 impl From<CallbackContext> for CallbackContextPtr {
-    #[inline(always)]
+    #[inline]
     fn from(ctx: CallbackContext) -> Self {
         let ptr = Box::leak(Box::new(ctx));
         let inner = unsafe { NonNull::new_unchecked(ptr) };
@@ -341,7 +341,7 @@ impl From<CallbackContext> for CallbackContextPtr {
 }
 
 impl Drop for CallbackContextPtr {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         // 如果ignore为true，说明当前内存手工释放
         unsafe {
@@ -381,7 +381,7 @@ pub struct CallbackPtr {
 }
 impl Deref for CallbackPtr {
     type Target = Callback;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         debug_assert!(!self.ptr.is_null());
         unsafe { &*self.ptr }
@@ -397,20 +397,20 @@ impl From<&Callback> for CallbackPtr {
 }
 
 impl crate::Commander for CallbackContextPtr {
-    #[inline(always)]
+    #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
         &mut self.request
     }
-    #[inline(always)]
+    #[inline]
     fn request(&self) -> &HashedCommand {
         &self.request
     }
-    #[inline(always)]
+    #[inline]
     fn response(&self) -> &Command {
         debug_assert!(self.ctx.inited);
         unsafe { self.inner.as_ref().response() }
     }
-    #[inline(always)]
+    #[inline]
     fn response_mut(&mut self) -> &mut Command {
         debug_assert!(self.inited());
         unsafe { self.response.assume_init_mut() }

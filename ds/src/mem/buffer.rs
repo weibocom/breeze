@@ -30,25 +30,25 @@ impl RingBuffer {
     pub fn read(&self) -> usize {
         self.read
     }
-    #[inline(always)]
+    #[inline]
     pub fn advance_read(&mut self, n: usize) {
         debug_assert!(n <= self.len());
         self.read += n;
     }
-    #[inline(always)]
+    #[inline]
     pub fn writtened(&self) -> usize {
         self.write
     }
-    #[inline(always)]
+    #[inline]
     pub fn advance_write(&mut self, n: usize) {
         self.write += n;
     }
-    #[inline(always)]
+    #[inline]
     pub fn mask(&self, offset: usize) -> usize {
         offset & (self.size - 1)
     }
     // 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
-    #[inline(always)]
+    #[inline]
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
         let offset = self.mask(self.write);
         let n = if self.read + self.size == self.write {
@@ -65,46 +65,46 @@ impl RingBuffer {
         unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
     }
     // 返回可读取的数据。可能只返回部分数据。如果要返回所有的可读数据，使用 data 方法。
-    #[inline(always)]
+    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         let offset = self.mask(self.read);
         let n = (self.cap() - offset).min(self.len());
         unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
     }
-    #[inline(always)]
+    #[inline]
     pub fn data(&self) -> RingSlice {
         RingSlice::from(self.data.as_ptr(), self.size, self.read, self.write)
     }
     // 从指定位置开始的数据
-    #[inline(always)]
+    #[inline]
     pub fn slice(&self, read: usize, len: usize) -> RingSlice {
         debug_assert!(read >= self.read);
         debug_assert!(read + len <= self.write);
         RingSlice::from(self.data.as_ptr(), self.size, read, read + len)
     }
-    #[inline(always)]
+    #[inline]
     pub fn cap(&self) -> usize {
         self.size
     }
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         debug_assert!(self.write >= self.read);
         self.write - self.read
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn available(&self) -> bool {
         self.read() + self.cap() > self.writtened()
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn avail(&self) -> usize {
         self.cap() - self.len()
     }
-    #[inline(always)]
+    #[inline]
     pub fn ratio(&self) -> (usize, usize) {
         assert!(self.write >= self.read);
         (self.write - self.read, self.cap())
     }
-    #[inline(always)]
+    #[inline]
     pub fn write(&mut self, data: &RingSlice) -> usize {
         let mut w = 0;
         while w < data.len() {
@@ -135,12 +135,12 @@ impl RingBuffer {
         assert_eq!(self.read, new.read);
         new
     }
-    #[inline(always)]
+    #[inline]
     pub fn reset(&mut self) {
         self.read = 0;
         self.write = 0;
     }
-    #[inline(always)]
+    #[inline]
     pub fn reset_read(&mut self) {
         let l = self.len();
         if l > 0 {
@@ -153,7 +153,7 @@ impl RingBuffer {
         self.write = l;
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn update(&mut self, idx: usize, val: u8) {
         debug_assert!(idx < self.len());
         unsafe {
@@ -163,7 +163,7 @@ impl RingBuffer {
                 .offset(self.mask(self.read + idx) as isize) = val
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn at(&self, idx: usize) -> u8 {
         debug_assert!(idx < self.len());
         unsafe {

@@ -66,7 +66,7 @@ impl Response {
         self.rid
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn iter(&self) -> ResponseIter {
         ResponseIter {
             response: self,
@@ -116,7 +116,7 @@ unsafe impl Sync for Response {}
 
 impl AsRef<RingSlice> for Response {
     // 如果有多个item,应该使迭代方式
-    #[inline(always)]
+    #[inline]
     fn as_ref(&self) -> &RingSlice {
         debug_assert!(self.items.len() == 1);
         unsafe { &self.items.get_unchecked(self.items.len() - 1) }
@@ -131,7 +131,7 @@ impl Drop for Item {
 }
 
 impl AsRef<RingSlice> for Item {
-    #[inline(always)]
+    #[inline]
     fn as_ref(&self) -> &RingSlice {
         &self.data
     }
