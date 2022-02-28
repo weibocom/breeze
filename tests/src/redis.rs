@@ -7,7 +7,7 @@ mod redis_test {
 
     use redis::{Client, Commands, Connection};
 
-    const BASE_URL: &str = "redis://localhost:56810";
+    const BASE_URL: &str = "redis://localhost:10064";
 
     #[test]
     fn test_get() {
@@ -15,7 +15,8 @@ mod redis_test {
         let mut conn = get_conn().unwrap();
 
         // let key = "4711424389024351.repost";
-        let key = "100.abc";
+        // let key = "100.abc";
+        let key = "0.schv";
 
         match conn.get::<String, String>(key.to_string()) {
             Ok(v) => println!("get/{}, value: {}", key, v),
@@ -25,7 +26,7 @@ mod redis_test {
     }
 
     #[test]
-    fn test_get_set() {
+    fn test_set() {
         println!("in redis test....");
         let mut conn = get_conn().unwrap();
         let key = "k1";
