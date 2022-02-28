@@ -41,6 +41,7 @@ where
         let flush = me.poll_flush(cx)?;
         let response = me.poll_response(cx)?;
         ready!(response);
+        assert_eq!(self.num_tx, self.num_rx);
         ready!(flush);
         ready!(request);
         Poll::Ready(Ok(()))
@@ -73,6 +74,9 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         let mut c = 0;
         self.s.cache(false);
         while let Some(mut req) = ready!(self.data.poll_recv(cx)) {
+            self.num_tx += 1;
+            //use protocol::Utf8;
+            //log::info!("request received {:?} {:?}", self, req.data().utf8());
             c += 1;
             if c == 2 {
                 self.s.cache(true);
@@ -84,7 +88,6 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
             } else {
                 self.pending.push_back(req);
             }
-            self.num_tx += 1;
         }
         Poll::Ready(Err(Error::QueueClosed))
     }
@@ -117,6 +120,13 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
+                        //use protocol::Utf8;
+                        //log::info!(
+                        //    "{:?} => response received: {:?} => {:?}",
+                        //    self,
+                        //    req.data().utf8(),
+                        //    cmd.data().utf8()
+                        //);
                         req.on_complete(cmd);
                     }
                 }
@@ -135,7 +145,9 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
 }
 unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
 unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
-impl<'r, Req: Request, P, S> rt::ReEnter for Handler<'r, Req, P, S> {
+impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin> rt::ReEnter
+    for Handler<'r, Req, P, S>
+{
     #[inline]
     fn num_rx(&self) -> usize {
         self.num_rx
@@ -157,6 +169,10 @@ impl<'r, Req: Request, P, S> rt::ReEnter for Handler<'r, Req, P, S> {
         while let Some(req) = self.pending.pop_front() {
             req.on_err(Error::Waiting);
         }
+        // 3. cancel
+        use rt::Cancel;
+        self.s.cancel();
+
         self.buf.try_gc()
     }
 }
@@ -167,7 +183,9 @@ impl<'r, Req, P, S> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler pending:{} {} buf:{}",
+            "handler tx_seq:{} rx_seq:{} pending:{} {} buf:{}",
+            self.num_tx,
+            self.num_rx,
             self.pending.len(),
             self.rtt,
             self.buf
