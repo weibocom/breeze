@@ -160,7 +160,7 @@ impl RingSlice {
 
     // 只用来debug
     #[inline(always)]
-    fn to_vec(&self) -> Vec<u8> {
+    pub fn to_vec(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(self.len());
         self.copy_to_vec(&mut v);
         v
