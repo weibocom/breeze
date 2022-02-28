@@ -1,6 +1,7 @@
 //use tokio::io::BufStream;
 macro_rules! define_stream {
     ($($name:expr, $var:ident, $t:ty, $listener:ty, $addr:ty);+) => {
+#[derive(Debug)]
 pub enum Stream {
     $(
         $var($t),

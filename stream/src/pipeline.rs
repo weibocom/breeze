@@ -239,7 +239,7 @@ impl<'a, C, P> Drop for CopyBidirectional<'a, C, P> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<'a, C, P> rt::ReEnter for CopyBidirectional<'a, C, P> {
+impl<'a, C: AsyncRead + AsyncWrite + Unpin, P> rt::ReEnter for CopyBidirectional<'a, C, P> {
     #[inline]
     fn close(&mut self) -> bool {
         // 剔除已完成的请求
@@ -251,6 +251,8 @@ impl<'a, C, P> rt::ReEnter for CopyBidirectional<'a, C, P> {
         }
         // take走，close后不需要再wake。避免Future drop后再次被wake，导致UB
         self.waker.take();
+        use rt::Cancel;
+        self.client.cancel();
         self.rx_buf.try_gc() && self.pending.len() == 0
     }
 }

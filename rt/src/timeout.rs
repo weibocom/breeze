@@ -6,7 +6,10 @@ use std::time::{Duration, Instant};
 
 use futures::ready;
 use metrics::{Metric, Path, BASE_PATH};
-use tokio::time::{interval, Interval};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    time::{interval, Interval},
+};
 
 pub trait ReEnter {
     // 发送的请求数量
@@ -25,6 +28,22 @@ pub trait ReEnter {
     // false: 还有资源未释放
     fn close(&mut self) -> bool;
 }
+pub trait Cancel {
+    fn cancel(&mut self);
+}
+impl<T: AsyncRead + AsyncWrite + Unpin> Cancel for T {
+    // cancel掉Stream，避免在Future::ready后，drop之前，后再次wake导致panic
+    fn cancel(&mut self) {
+        let noop = noop_waker::noop_waker();
+        let mut ctx = std::task::Context::from_waker(&noop);
+        let mut stream = Pin::new(self);
+        let _ = stream.as_mut().poll_shutdown(&mut ctx);
+        let mut ignore = [0u8; 8];
+        let mut buf = tokio::io::ReadBuf::new(&mut ignore);
+
+        let _ = stream.as_mut().poll_read(&mut ctx, &mut buf);
+    }
+}
 //  统计
 //  1. 每次poll的执行耗时
 //  2. 重入耗时间隔
@@ -41,7 +60,7 @@ pub struct Timeout<F> {
 impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Timeout<F> {
     #[inline]
     pub fn from(f: F, timeout: Duration) -> Self {
-        let tick = interval(timeout.max(Duration::from_millis(100)));
+        let tick = interval(timeout.max(Duration::from_millis(50)));
         let m_reenter = Path::new(vec![BASE_PATH]).rtt("reenter10ms");
         metrics::incr_task();
         Self {
@@ -102,9 +121,13 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
         while !self.inner.close() {
             ready!(self.tick.poll_tick(cx));
         }
-        if self.last.elapsed() >= Duration::from_millis(500) {
-            log::info!("poll complete:{:?} {:?}", self.inner, self.last.elapsed());
-        }
+        //log::info!(
+        //    "poll complete:{:?} {:?} {:?} out:{:?}",
+        //    self.inner,
+        //    self.last.elapsed(),
+        //    self.last_rx.elapsed(),
+        //    self.out
+        //);
         Poll::Ready(self.out.take().unwrap())
     }
 }

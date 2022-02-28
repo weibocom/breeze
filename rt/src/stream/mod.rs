@@ -32,7 +32,7 @@ impl<S> From<S> for Stream<S> {
         }
     }
 }
-impl<S: AsyncRead + Unpin> AsyncRead for Stream<S> {
+impl<S: AsyncRead + Unpin + std::fmt::Debug> AsyncRead for Stream<S> {
     #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -43,7 +43,7 @@ impl<S: AsyncRead + Unpin> AsyncRead for Stream<S> {
     }
 }
 
-impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
+impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
     // 先将数据写入到io
     // 未写完的写入到buf
     // 不返回Pending
@@ -101,7 +101,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Stream<S> {
     }
 }
 
-impl<S: AsyncWrite + Unpin> protocol::Writer for Stream<S> {
+impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     #[inline]
     fn write(&mut self, data: &[u8]) -> protocol::Result<()> {
         if data.len() <= 4 {
