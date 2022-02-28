@@ -7,6 +7,9 @@ pub enum Error {
     NotInit,
     Closed,
     QueueFull,
+    ChanFull,
+    ChanDisabled,
+    ChanClosed,
     ProtocolIncomplete,
     RequestProtocolNotValid,
     RequestProtocolNotValidNumber,
@@ -31,7 +34,7 @@ pub enum Error {
 }
 
 impl From<std::io::Error> for Error {
-    #[inline(always)]
+    #[inline]
     fn from(err: std::io::Error) -> Self {
         Self::IO(err)
     }

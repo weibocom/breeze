@@ -73,7 +73,7 @@ where
     P: Protocol,
 {
     type Item = Req;
-    #[inline(always)]
+    #[inline]
     fn send(&self, mut req: Self::Item) {
         debug_assert!(self.r_num > 0);
 
@@ -102,7 +102,7 @@ impl<B: Send + Sync, E, Req: Request, P: Protocol> CacheService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
 {
-    #[inline(always)]
+    #[inline]
     fn get_context_store(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         ctx.check_and_inited(true);
@@ -119,7 +119,7 @@ where
         };
         (idx, try_next, write_back)
     }
-    #[inline(always)]
+    #[inline]
     fn get_context_get(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         if !ctx.check_and_inited(false) {

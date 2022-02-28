@@ -13,19 +13,19 @@ pub struct ItemData {
 }
 
 impl ItemData {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn init_id(&mut self, id: Arc<Id>) {
         debug_assert!(!self.id.valid());
         self.id = id;
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn flush(&self, cache: i64) {
         if self.id.t.need_flush() {
             unsafe { self.incr_num(cache) };
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn incr_num(&self, num: i64) {
         debug_assert!(self.id.t.is_num());
         self.inner.num.incr(num);
@@ -33,24 +33,24 @@ impl ItemData {
 }
 use crate::ToNumber;
 impl<T: ToNumber> MetricData for T {
-    #[inline(always)]
+    #[inline]
     fn incr_to(self, data: &ItemData) {
         unsafe { data.incr_num(self.int()) };
     }
-    #[inline(always)]
+    #[inline]
     fn incr_to_cache(self, id: &Arc<Id>) {
         crate::register_cache(id, self.int());
     }
 }
 use std::time::Duration;
 impl MetricData for Duration {
-    #[inline(always)]
+    #[inline]
     fn incr_to(self, data: &ItemData) {
         unsafe { data.inner.rtt.incr(self) };
     }
 }
 impl<T: ToNumber> MetricData for (T, T) {
-    #[inline(always)]
+    #[inline]
     fn incr_to(self, data: &ItemData) {
         unsafe { data.inner.ratio.incr(self) };
     }
@@ -95,29 +95,29 @@ pub(crate) enum MetricType {
 }
 
 impl MetricType {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn is_empty(&self) -> bool {
         *self as u8 == Self::Empty as u8
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn is_num(&self) -> bool {
         static IS_NUMS:[bool; MetricType::var_num()] = [false, $($is_num),+];
         debug_assert!((*self as usize) < IS_NUMS.len());
         IS_NUMS[*self as usize]
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn need_flush(&self) -> bool {
         static NEED_FLUSH:[bool; MetricType::var_num()] = [false, $($need_flush),+];
         debug_assert!((*self as usize) < NEED_FLUSH.len());
         NEED_FLUSH[*self as usize]
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn name(&self) -> &'static str{
         static METRICS_NAMES:[&'static str; MetricType::var_num()] = ["none", $(stringify!($name)),+];
         debug_assert!((*self as usize) < METRICS_NAMES.len());
         METRICS_NAMES[*self as usize]
     }
-    #[inline(always)]
+    #[inline]
     const fn var_num() -> usize {
         const NUM:usize = 1 $( + (stringify!($name).len() > 0) as usize)+;
         NUM
@@ -142,7 +142,7 @@ union InnerData {
 }
 
 impl Default for InnerData {
-    #[inline(always)]
+    #[inline]
     fn default() -> Self {
         Self { empty: [0u8; 48] }
     }
@@ -155,7 +155,7 @@ impl std::fmt::Debug for InnerData {
 }
 
 impl ItemData {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn snapshot<W: ItemWriter>(&self, w: &mut W, secs: f64) {
         use MetricType::*;
         unsafe {

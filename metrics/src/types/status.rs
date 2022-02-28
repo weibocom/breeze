@@ -5,10 +5,10 @@ pub(crate) struct StatusData {
 }
 impl StatusData {
     // 只计数。
-    #[inline(always)]
+    #[inline]
     pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
-        let (ss, cur) = self.inner.load_and_snapshot();
-        if cur > ss {
+        let down = self.inner.take() > 0;
+        if down {
             w.write(&id.path, id.key, "down", 1f64);
         }
     }

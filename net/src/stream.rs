@@ -1,13 +1,14 @@
 //use tokio::io::BufStream;
 macro_rules! define_stream {
     ($($name:expr, $var:ident, $t:ty, $listener:ty, $addr:ty);+) => {
+#[derive(Debug)]
 pub enum Stream {
     $(
         $var($t),
     )+
 }
 impl tokio::io::AsyncRead for Stream {
-    #[inline(always)]
+    #[inline]
     fn poll_read( self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> Poll<Result<()>> {
         match self.get_mut() {
             $(
@@ -18,7 +19,7 @@ impl tokio::io::AsyncRead for Stream {
 }
 
 impl tokio::io::AsyncWrite for Stream {
-    #[inline(always)]
+    #[inline]
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
         match self.get_mut() {
             $(
@@ -26,7 +27,7 @@ impl tokio::io::AsyncWrite for Stream {
             )+
         }
     }
-    #[inline(always)]
+    #[inline]
     fn poll_flush(self: Pin<&mut Self>,cx: &mut Context<'_>) -> Poll<Result<()>> {
         match self.get_mut() {
             $(
@@ -34,7 +35,7 @@ impl tokio::io::AsyncWrite for Stream {
             )+
         }
     }
-    #[inline(always)]
+    #[inline]
     fn poll_shutdown(self: Pin<&mut Self>,cx: &mut Context<'_>) -> Poll<Result<()>> {
         match self.get_mut() {
             $(

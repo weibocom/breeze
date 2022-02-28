@@ -6,8 +6,6 @@ pub struct MetricStream<S> {
     read: Metric,
     r_pending: Metric,
     s: S,
-    #[allow(dead_code)]
-    id: usize,
 }
 
 use std::io::{self};
@@ -24,10 +22,8 @@ impl<S> From<S> for MetricStream<S> {
         let write = Path::base().qps("poll_write");
         let r_pending = Path::base().qps("r_pending");
         let w_pending = Path::base().qps("w_pending");
-        let id = ds::rand::next_seq();
 
         Self {
-            id,
             s,
             read,
             read_hit,
@@ -38,8 +34,8 @@ impl<S> From<S> for MetricStream<S> {
     }
 }
 
-impl<S: AsyncRead + Unpin> AsyncRead for MetricStream<S> {
-    #[inline(always)]
+impl<S: AsyncRead + Unpin + std::fmt::Debug> AsyncRead for MetricStream<S> {
+    #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -55,14 +51,14 @@ impl<S: AsyncRead + Unpin> AsyncRead for MetricStream<S> {
         }
         //if hit > 0 {
         //    use protocol::Utf8;
-        //    log::info!("poll_read-{} data:{:?}", self.id, buf.filled().utf8());
+        //    log::info!("poll_read-{:?} data:{:?}", self.s, buf.filled().utf8());
         //}
         ret
     }
 }
 
-impl<S: AsyncWrite + Unpin> AsyncWrite for MetricStream<S> {
-    #[inline(always)]
+impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for MetricStream<S> {
+    #[inline]
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -74,14 +70,14 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for MetricStream<S> {
             self.w_pending += 1;
         }
         //use protocol::Utf8;
-        //log::info!("poll_write-{} data:{:?}", self.id, buf.utf8());
+        //log::info!("poll_write-{:?} data:{:?}", self.s, buf.utf8());
         r
     }
-    #[inline(always)]
+    #[inline]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.s).poll_flush(cx)
     }
-    #[inline(always)]
+    #[inline]
     fn poll_shutdown(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,

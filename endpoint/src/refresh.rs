@@ -30,19 +30,19 @@ impl<T: Clone + 'static> RefreshTopology<T> {
 }
 impl<T: Endpoint + Clone + 'static> Endpoint for RefreshTopology<T> {
     type Item = T::Item;
-    #[inline(always)]
+    #[inline]
     fn send(&self, req: T::Item) {
         self.top().send(req);
     }
 }
 impl<T: Topology + Clone + 'static> Topology for RefreshTopology<T> {
-    #[inline(always)]
+    #[inline]
     fn hasher(&self) -> &Hasher {
         self.top().hasher()
     }
 }
 impl<T: Endpoint + Clone + 'static> RefreshTopology<T> {
-    #[inline(always)]
+    #[inline]
     pub fn static_send<R: Into<T::Item>>(receiver: usize, req: R) {
         let req = req.into();
         let top = receiver as *const Self;

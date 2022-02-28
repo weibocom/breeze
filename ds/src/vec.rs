@@ -23,12 +23,12 @@ macro_rules! define_read_number {
                     self.set_len(self.len() + b.len());
                 }
             }
-            #[inline(always)]
+            #[inline]
             fn write_slice(&mut self, data:&crate::RingSlice) {
                 data.copy_to_vec(self);
             }
         $(
-            #[inline(always)]
+            #[inline]
             fn $fn_name(&mut self, num: $type_name) {
                 self.write(num.to_be_bytes());
             }

@@ -14,20 +14,20 @@ struct RequestContext {
     _ignore: [u8; 3],
 }
 impl RequestContext {
-    #[inline(always)]
+    #[inline]
     fn reset(&mut self) {
         debug_assert_eq!(std::mem::size_of::<Self>(), 8);
         *self.u64_mut() = 0;
     }
-    #[inline(always)]
+    #[inline]
     fn u64(&mut self) -> u64 {
         *self.u64_mut()
     }
-    #[inline(always)]
+    #[inline]
     fn u64_mut(&mut self) -> &mut u64 {
         unsafe { std::mem::transmute(self) }
     }
-    #[inline(always)]
+    #[inline]
     fn from(v: u64) -> Self {
         unsafe { std::mem::transmute(v) }
     }
@@ -43,7 +43,7 @@ pub(super) struct RequestPacket<'a, S> {
     oft: usize,
 }
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
-    #[inline(always)]
+    #[inline]
     pub(super) fn new(stream: &'a mut S) -> Self {
         let ctx = RequestContext::from(*stream.context());
         let data = stream.slice();
@@ -55,15 +55,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             stream,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn has_bulk(&self) -> bool {
         self.bulk() > 0
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn available(&self) -> bool {
         self.oft < self.data.len()
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn parse_bulk_num(&mut self) -> Result<()> {
         if self.bulk() == 0 {
             self.check_start()?;
@@ -73,7 +73,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
         Ok(())
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn parse_cmd(&mut self) -> Result<()> {
         // 需要确保，如果op_code不为0，则之前的数据一定处理过。
         if self.ctx.op_code == 0 {
@@ -86,7 +86,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
         Ok(())
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn parse_key(&mut self) -> Result<RingSlice> {
         debug_assert_ne!(self.ctx.op_code, 0);
         debug_assert_ne!(self.ctx.bulk, 0);
@@ -95,14 +95,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         let start = self.oft - CRLF_LEN - key_len;
         Ok(self.data.sub_slice(start, key_len))
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn ignore_one_bulk(&mut self) -> Result<()> {
         debug_assert_ne!(self.ctx.bulk, 0);
         self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         Ok(())
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn ignore_all_bulks(&mut self) -> Result<()> {
         while self.bulk() > 0 {
             self.ignore_one_bulk()?;
@@ -110,7 +110,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Ok(())
     }
     // 忽略掉之前的数据，通常是multi请求的前面部分。
-    #[inline(always)]
+    #[inline]
     pub(super) fn multi_ready(&mut self) {
         if self.oft > self.oft_last {
             self.stream.ignore(self.oft - self.oft_last);
@@ -121,7 +121,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             *self.stream.context() = self.ctx.u64();
         }
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
         debug_assert!(self.oft_last < self.oft);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
@@ -136,12 +136,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
         self.stream.take(data.len())
     }
-    #[inline(always)]
+    #[inline]
     fn current(&self) -> u8 {
         debug_assert!(self.available());
         self.data.at(self.oft)
     }
-    #[inline(always)]
+    #[inline]
     fn check_start(&self) -> Result<()> {
         if self.current() != b'*' {
             Err(Error::RequestProtocolNotValidStar)
@@ -149,19 +149,19 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             Ok(())
         }
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn first(&self) -> bool {
         self.ctx.first
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn bulk(&self) -> u16 {
         self.ctx.bulk
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn op_code(&self) -> u16 {
         self.ctx.op_code
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn complete(&self) -> bool {
         self.ctx.bulk == 0
     }
@@ -242,7 +242,7 @@ impl Packet for ds::RingSlice {
             Err(crate::Error::ProtocolIncomplete)
         }
     }
-    #[inline(always)]
+    #[inline]
     fn line(&self, oft: &mut usize) -> crate::Result<()> {
         if let Some(idx) = self.find_lf_cr(*oft) {
             *oft = idx + 2;
@@ -252,12 +252,12 @@ impl Packet for ds::RingSlice {
         }
     }
 }
-#[inline(always)]
+#[inline]
 fn is_number_digit(d: u8) -> bool {
     d >= b'0' && d <= b'9'
 }
 // 这个字节后面会带一个数字。
-#[inline(always)]
+#[inline]
 fn is_valid_leading_num_char(d: u8) -> bool {
     d == b'$' || d == b'*'
 }
@@ -288,7 +288,7 @@ fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
 
 use std::fmt::{self, Debug, Display, Formatter};
 impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -303,7 +303,7 @@ impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     }
 }
 impl<'a, S: crate::Stream> Debug for RequestPacket<'a, S> {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(self, f)
     }

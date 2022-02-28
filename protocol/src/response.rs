@@ -40,7 +40,7 @@ impl Response {
     }
 }
 impl AsRef<RingSlice> for Response {
-    #[inline(always)]
+    #[inline]
     fn as_ref(&self) -> &RingSlice {
         &self.inner
     }
@@ -53,7 +53,7 @@ impl Deref for Response {
     }
 }
 impl DerefMut for Response {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }

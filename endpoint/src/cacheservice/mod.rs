@@ -11,12 +11,12 @@ struct Context {
 
 const H_MASK: u64 = 0xffff << 48;
 impl Context {
-    #[inline(always)]
+    #[inline]
     fn from(ctx: protocol::Context) -> Self {
         Self { ctx }
     }
     // 检查是否初始化，如果未初始化则进行初始化。
-    #[inline(always)]
+    #[inline]
     fn check_and_inited(&mut self, write: bool) -> bool {
         if self.ctx > 0 {
             true
@@ -26,12 +26,12 @@ impl Context {
             false
         }
     }
-    #[inline(always)]
+    #[inline]
     fn is_write(&self) -> bool {
         self.ctx & (1 << 62) > 0
     }
     // 获取idx，并将原有的idx+1
-    #[inline(always)]
+    #[inline]
     fn take_write_idx(&mut self) -> u16 {
         let idx = self.ctx as u16;
         self.ctx += 1;
@@ -40,7 +40,7 @@ impl Context {
     // 低16位存储是下一次的idx
     // 如果是写请求，低16位，是索引
     // 如果是读请求，则
-    #[inline(always)]
+    #[inline]
     fn take_read_idx(&mut self) -> u16 {
         let mut low_48bit = self.low();
         let hight_16bit = self.hight();
@@ -52,22 +52,22 @@ impl Context {
         self.ctx = hight_16bit | low_48bit;
         idx
     }
-    #[inline(always)]
+    #[inline]
     fn hight(&self) -> u64 {
         self.ctx & H_MASK
     }
-    #[inline(always)]
+    #[inline]
     fn low(&self) -> u64 {
         self.ctx & (!H_MASK)
     }
     // 把idx写入到低48位。原有的idx往高位移动。
-    #[inline(always)]
+    #[inline]
     fn write_back_idx(&mut self, idx: u16) {
         let hight_16bit = self.hight();
         let low_48bit = (self.low() << 16) | idx as u64;
         self.ctx = hight_16bit | low_48bit;
     }
-    #[inline(always)]
+    #[inline]
     fn index(&self) -> u16 {
         self.ctx as u16
     }

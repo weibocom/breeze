@@ -4,19 +4,38 @@ use crate::{Id, ItemWriter};
 
 pub(crate) struct NumberInner {
     cur: AtomicI64,
-    ss: AtomicI64,
 }
 impl NumberInner {
-    #[inline(always)]
+    #[inline]
+    fn load(&self) -> i64 {
+        self.cur.load(Ordering::Relaxed)
+    }
+    #[inline]
     pub(crate) fn incr(&self, v: i64) {
         self.cur.fetch_add(v, Ordering::Relaxed);
     }
-    #[inline(always)]
-    pub(crate) fn load_and_snapshot(&self) -> (i64, i64) {
-        let ss = self.ss.load(Ordering::Relaxed);
-        let cur = self.cur.load(Ordering::Relaxed);
-        self.ss.store(cur, Ordering::Relaxed);
-        (ss, cur)
+    #[inline]
+    pub(crate) fn take(&self) -> i64 {
+        let cur = self.load();
+        if cur > 0 {
+            self.cur.fetch_sub(cur, Ordering::Relaxed);
+        }
+        cur
+    }
+    #[inline]
+    pub(crate) fn zero(&self) -> i64 {
+        let cur = self.load();
+        if cur > 0 {
+            self.cur.store(0, Ordering::Relaxed);
+        }
+        cur
+    }
+    #[inline]
+    pub(crate) fn max(&self, v: i64) {
+        let cur = self.load();
+        if cur < v {
+            self.cur.store(v, Ordering::Relaxed);
+        }
     }
 }
 
@@ -25,12 +44,12 @@ pub struct Number {
 }
 impl Number {
     // 只计数。
-    #[inline(always)]
+    #[inline]
     pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
         let cur = self.inner.cur.load(Ordering::Relaxed);
         w.write(&id.path, id.key, id.t.name(), cur as f64);
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn incr(&self, v: i64) {
         self.inner.incr(v);
     }
@@ -44,7 +63,7 @@ macro_rules! impl_to_number {
     ($($t:ty),+) => {
         $(
         impl ToNumber for $t {
-            #[inline(always)]
+            #[inline]
             fn int(&self) -> i64 {
                 *self as i64
             }

@@ -41,7 +41,7 @@ impl GuardedBuffer {
         }
         out
     }
-    #[inline(always)]
+    #[inline]
     fn fill<R, O>(&mut self, r: &mut R, _i: usize) -> (bool, O)
     where
         R: BuffRead<Out = O>,
@@ -52,12 +52,12 @@ impl GuardedBuffer {
         self.inner.advance_write(n);
         (size == n, out)
     }
-    #[inline(always)]
+    #[inline]
     pub fn read(&self) -> RingSlice {
         self.inner
             .slice(self.taken, self.inner.writtened() - self.taken)
     }
-    #[inline(always)]
+    #[inline]
     pub fn take(&mut self, n: usize) -> MemGuard {
         debug_assert!(n > 0);
         debug_assert!(self.taken + n <= self.writtened());
@@ -67,15 +67,18 @@ impl GuardedBuffer {
         let ptr = guard as *const AtomicU32;
         MemGuard::new(data, ptr)
     }
-    #[inline(always)]
+    #[inline]
     pub fn gc(&mut self) {
         while let Some(guard) = self.guards.front_mut() {
             let guard = guard.load(Ordering::Acquire);
             if guard == 0 {
                 break;
             }
-            self.inner.advance_read(guard as usize);
+            // 在crate::gc::Until::droppable里面用 pending() == 0来判断是否可以drop
+            // 在drop时，assert了guards.len() == 0
+            // 因此，需要将pop_front放在advance_read之前
             self.guards.pop_front();
+            self.inner.advance_read(guard as usize);
         }
     }
     // 已经take但不能释放的字节数量。
@@ -83,20 +86,20 @@ impl GuardedBuffer {
     pub fn pending(&self) -> usize {
         self.taken - self.inner.read()
     }
-    #[inline(always)]
+    #[inline]
     pub fn update(&mut self, idx: usize, val: u8) {
         let oft = self.offset(idx);
         self.inner.update(oft, val);
     }
-    #[inline(always)]
+    #[inline]
     pub fn at(&self, idx: usize) -> u8 {
         self.inner.at(self.offset(idx))
     }
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         self.inner.len() - self.pending()
     }
-    #[inline(always)]
+    #[inline]
     fn offset(&self, oft: usize) -> usize {
         self.pending() + oft
     }
@@ -119,9 +122,10 @@ pub struct MemGuard {
 }
 
 impl MemGuard {
-    #[inline(always)]
+    #[inline]
     fn new(data: RingSlice, guard: *const AtomicU32) -> Self {
         debug_assert!(!guard.is_null());
+        assert_ne!(data.len(), 0);
         unsafe { debug_assert_eq!((&*guard).load(Ordering::Acquire), 0) };
         Self {
             mem: data,
@@ -129,40 +133,30 @@ impl MemGuard {
             cap: 0,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn from_vec(data: Vec<u8>) -> Self {
         let mem: RingSlice = data.as_slice().into();
         //debug_assert_eq!(data.capacity(), mem.len());
+        assert_ne!(data.len(), 0);
         let cap = data.capacity();
         let _ = std::mem::ManuallyDrop::new(data);
         let guard = 0 as *const _;
         Self { mem, guard, cap }
     }
 
-    // TODO： 警示：ringslice 所有权属于其他，所以在drop时会存在问题，暂时保存，备忘, 2022.7 之后再删除 fishermen
-    // pub fn from_ringslice(data: RingSlice) -> Self {
-    //     let guard = 0 as *const _;
-    //     let cap = data.capacity();
-    //     Self {
-    //         mem: data,
-    //         guard,
-    //         cap,
-    //     }
-    // }
-
-    #[inline(always)]
+    #[inline]
     pub fn data(&self) -> &RingSlice {
         &self.mem
     }
-    #[inline(always)]
+    #[inline]
     pub fn data_mut(&mut self) -> &mut RingSlice {
         &mut self.mem
     }
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         self.mem.len()
     }
-    #[inline(always)]
+    #[inline]
     pub fn read(&self, oft: usize) -> &[u8] {
         self.mem.read(oft)
     }
@@ -186,14 +180,14 @@ use std::ops::{Deref, DerefMut};
 
 impl Deref for GuardedBuffer {
     type Target = ResizedRingBuffer;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
 impl DerefMut for GuardedBuffer {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -208,7 +202,13 @@ impl Drop for GuardedBuffer {
     #[inline]
     fn drop(&mut self) {
         // 如果guards不为0，说明MemGuard未释放，当前buffer销毁后，会导致MemGuard指向内存错误。
-        log::debug!("guarded buffer dropped:{}", self);
-        assert_eq!(self.guards.len(), 0);
+        if self.guards.len() != 0 {
+            log::info!("non-zero guarded buffer dropped:{}", self);
+            let len = self.guards.len();
+            while let Some(g) = self.guards.pop_front() {
+                log::info!("guarded:{}", g.load(Ordering::Acquire));
+            }
+            assert_eq!(len, 0);
+        }
     }
 }

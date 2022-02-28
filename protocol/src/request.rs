@@ -6,75 +6,75 @@ pub struct Request {
 }
 
 impl crate::Request for Request {
-    #[inline(always)]
+    #[inline]
     fn start_at(&self) -> std::time::Instant {
         self.ctx().start_at()
     }
 
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.req().len()
     }
-    #[inline(always)]
+    #[inline]
     fn data(&self) -> &ds::RingSlice {
         self.req().data()
     }
-    #[inline(always)]
+    #[inline]
     fn read(&self, oft: usize) -> &[u8] {
         self.req().read(oft)
     }
-    #[inline(always)]
+    #[inline]
     fn operation(&self) -> Operation {
         self.req().operation()
     }
-    #[inline(always)]
+    #[inline]
     fn hash(&self) -> i64 {
         self.req().hash()
     }
-    #[inline(always)]
+    #[inline]
     fn sentonly(&self) -> bool {
         self.req().sentonly()
     }
-    #[inline(always)]
+    #[inline]
     fn on_sent(&mut self) {
         self.ctx().on_sent();
     }
-    #[inline(always)]
+    #[inline]
     fn on_complete(self, resp: Command) {
         self.ctx().on_complete(resp);
     }
-    #[inline(always)]
+    #[inline]
     fn on_err(self, err: Error) {
         self.ctx().on_err(err);
     }
-    #[inline(always)]
+    #[inline]
     fn mut_context(&mut self) -> &mut Context {
         self.ctx().ctx.as_mut_flag()
     }
-    #[inline(always)]
+    #[inline]
     fn write_back(&mut self, wb: bool) {
         self.ctx().ctx.write_back(wb);
     }
-    #[inline(always)]
+    #[inline]
     fn try_next(&mut self, goon: bool) {
         self.ctx().ctx.try_next(goon);
     }
 }
 impl Request {
-    #[inline(always)]
+    #[inline]
     pub fn new(ctx: *mut CallbackContext) -> Self {
         Self { ctx }
     }
-    #[inline(always)]
+    #[inline]
     pub fn start(self) {
         self.ctx().start()
     }
 
-    #[inline(always)]
+    #[inline]
     fn req(&self) -> &HashedCommand {
         self.ctx().request()
     }
-    #[inline(always)]
+    #[inline]
     fn ctx(&self) -> &mut CallbackContext {
         unsafe { &mut *self.ctx }
     }
@@ -86,13 +86,13 @@ impl Clone for Request {
     }
 }
 impl Display for Request {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.ctx())
     }
 }
 impl Debug for Request {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(self, f)
     }

@@ -22,19 +22,19 @@ use std::ops::{Deref, DerefMut};
 
 impl<T> Deref for DelayedDrop<T> {
     type Target = T;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         unsafe { &*self.inner }
     }
 }
 impl<T> DerefMut for DelayedDrop<T> {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.inner }
     }
 }
 impl<T> From<T> for DelayedDrop<T> {
-    #[inline(always)]
+    #[inline]
     fn from(t: T) -> Self {
         let b = Box::new(t);
         Self {
@@ -43,7 +43,7 @@ impl<T> From<T> for DelayedDrop<T> {
     }
 }
 impl<T> Drop for DelayedDrop<T> {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         debug_assert!(!self.inner.is_null());
         unsafe {
@@ -77,9 +77,7 @@ pub(crate) fn delayed_drop<T: Until + Into<Delayed>>(mut t: T) {
 impl Until for StreamGuard {
     #[inline]
     fn droppable(&mut self) -> bool {
-        self.gc();
-        log::debug!("handler buf pending:{}", self.pending());
-        self.pending() == 0
+        self.try_gc()
     }
 }
 impl Until for Pipeline {
@@ -94,9 +92,7 @@ impl Until for Pipeline {
             }
         }
         let buf = &mut self.0;
-        buf.gc();
-        log::debug!("pipeline buff:{} queue:{}", buf.pending(), queue.len());
-        buf.pending() == 0 && queue.len() == 0
+        buf.try_gc() && queue.len() == 0
     }
 }
 impl<T: Until> Until for DelayedDrop<T> {
@@ -132,7 +128,7 @@ pub struct DelayedDropHandler {
 impl Future for DelayedDropHandler {
     type Output = ();
 
-    #[inline(always)]
+    #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
             ready!(self.tick.poll_tick(cx));
