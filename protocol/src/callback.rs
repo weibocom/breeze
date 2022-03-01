@@ -97,6 +97,7 @@ impl CallbackContext {
             debug_assert!(!self.complete());
             self.ctx.complete.store(true, Ordering::Release);
             self.wake();
+            self.ctx.finished.store(true, Ordering::Release);
         } else {
             self.manual_drop();
         }
@@ -141,6 +142,11 @@ impl CallbackContext {
     #[inline]
     pub fn complete(&self) -> bool {
         self.ctx.complete.load(Ordering::Acquire)
+    }
+    #[inline]
+    pub fn finished(&self) -> bool {
+        assert!(self.complete());
+        self.ctx.finished.load(Ordering::Acquire)
     }
     #[inline]
     pub fn inited(&self) -> bool {
@@ -235,9 +241,10 @@ unsafe impl Send for CallbackContext {}
 unsafe impl Sync for CallbackContext {}
 #[derive(Default)]
 pub struct Context {
+    complete: AtomicBool, // 当前请求是否完成
+    finished: AtomicBool, // 在请求完成并且执行了wakeup
     drop_on_done: bool,   // on_done时，是否手工销毁
     try_next: bool,       // 请求失败是否需要重试
-    complete: AtomicBool, // 当前请求是否完成
     inited: bool,         // response是否已经初始化
     write_back: bool,     // 请求结束后，是否需要回写。
     first: bool,          // 当前请求是否是所有子请求的第一个
@@ -287,7 +294,7 @@ impl Display for Context {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "complete:{} init:{},async mode:{} try_next:{} write back:{}  context:{}",
+            "complete:{} init:{},async :{} try:{} write back:{}  context:{}",
             self.complete.load(Ordering::Relaxed),
             self.inited,
             self.drop_on_done,
