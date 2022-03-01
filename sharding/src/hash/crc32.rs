@@ -47,31 +47,75 @@ pub struct Crc32Short {}
 #[derive(Default, Clone, Debug)]
 pub struct Crc32Range {
     start: usize,
-    only_digit: bool, // 是否只对digit部分进行hash
+    hash_key_type: HashKeyType, // 是否只对digit部分进行hash
+}
+
+#[derive(Clone, Debug)]
+pub enum HashKeyType {
+    All,       // 全字符串做hash
+    OnlyDigit, // hash key只是数字子串
+    PointStop, // 截止"."之前的部分，对应业务的getSqlKey
+}
+
+impl Default for HashKeyType {
+    fn default() -> Self {
+        return HashKeyType::All;
+    }
+}
+
+impl Display for HashKeyType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name: &str;
+        match self {
+            Self::All => name = "all",
+            Self::OnlyDigit => name = "onlyDigit",
+            Self::PointStop => name = "pointStop",
+        }
+        return write!(f, "{}", name);
+    }
 }
 
 // 在start为0且only_num为false时，兼容crc32的原始实现，与java.util.zip.CRC32的多种长度数据的计算结果相同（jdk的CRC32核心算法是native不可见）
-pub(crate) fn crc32_raw<K: super::HashKey>(key: &K, start: usize, only_digit: bool) -> i64 {
+pub(crate) fn crc32_raw<K: super::HashKey>(
+    key: &K,
+    start: usize,
+    hash_key_typ: &HashKeyType,
+) -> i64 {
     let mut crc: i64 = CRC_SEED;
     // debug_assert!(start < key.len());
     for i in start..key.len() {
         let c = key.at(i);
-        if only_digit && !c.is_ascii_digit() {
-            break;
+
+        match hash_key_typ {
+            // 对于用数字类型做hash，则遇到非数字结束
+            HashKeyType::OnlyDigit => {
+                if !c.is_ascii_digit() {
+                    break;
+                }
+            }
+            // 对于用“.”做分割的sql key，遇到“.”停止
+            HashKeyType::PointStop => {
+                if c == '.' as u8 {
+                    break;
+                }
+            }
+            // do nothing
+            HashKeyType::All => {}
         }
+
         crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
     }
     crc ^= CRC_SEED;
     crc &= CRC_SEED;
     if crc < 0 {
-        log::warn!("negative hash key:{:?},[{}/{}]", key, start, only_digit);
+        log::warn!("negative hash key:{:?},[{}/{}]", key, start, hash_key_typ);
     }
     crc
 }
 
 impl super::Hash for Crc32 {
     fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        crc32_raw(key, 0, false)
+        crc32_raw(key, 0, &HashKeyType::All)
     }
 }
 
@@ -79,7 +123,7 @@ impl super::Hash for Crc32 {
 // 理论上应该与线上一致，注意跟进线上不一致场景 fishermen
 impl super::Hash for Crc32Short {
     fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        let crc = crc32_raw(key, 0, false);
+        let crc = crc32_raw(key, 0, &HashKeyType::All);
         let mut rs = (crc >> 16) & 0x7fff;
         if rs < 0 {
             log::warn!("found negative crc32 hash for key:{:?}", key);
@@ -93,33 +137,46 @@ impl super::Hash for Crc32Short {
 // 兼容api-commons中redis的crc32 hash算法，同时支持各种场景的hash计算，线上待验证 fishermen
 impl Crc32Range {
     pub fn from(alg: &str) -> Self {
-        if alg.eq(super::CRC32_RANGE) {
-            // format: crc32-range
-            Self {
-                start: 0,
-                only_digit: false,
-            }
-        } else if alg.eq(super::CRC32_RANGE_ID) {
-            Self {
-                start: 0,
-                only_digit: true,
-            }
-        } else {
-            // format: crc32-range-id or crc32-range-id-xxx，如果xxx不是合法数字，则直接使用全部的key来hash
-            // crc32-range-id: 从key的第一个数字开始解析id；
-            // crc32-range-id-2： 掠过2个字节的前缀，然后开始解析数字
-            debug_assert!(alg.len() > (super::CRC32_RANGE_ID_PREFIX.len()));
-            let start = &alg[super::CRC32_RANGE_ID_PREFIX.len()..];
-            if let Ok(s) = start.parse::<usize>() {
-                return Self {
-                    start: s,
-                    only_digit: true,
-                };
-            } else {
-                return Self {
+        match alg {
+            super::CRC32_RANGE => {
+                // format: crc32-range
+                Self {
                     start: 0,
-                    only_digit: true,
-                };
+                    hash_key_type: HashKeyType::All,
+                }
+            }
+            super::CRC32_RANGE_ID => {
+                // format: crc32-range-id
+                Self {
+                    start: 0,
+                    hash_key_type: HashKeyType::OnlyDigit,
+                }
+            }
+            super::CRC32_RANGE_POINT => {
+                // format: crc32-range-point
+                Self {
+                    start: 0,
+                    hash_key_type: HashKeyType::PointStop,
+                }
+            }
+            _ => {
+                // format: crc32-range-id-xxx，如果xxx不是合法数字，则直接使用全部的key来hash
+                // crc32-range-id: 从key的第一个数字开始解析id；
+                // crc32-range-id-2： 掠过2个字节的前缀，然后开始解析数字
+                debug_assert!(alg.len() > (super::CRC32_RANGE_ID_PREFIX.len()));
+                let start = &alg[super::CRC32_RANGE_ID_PREFIX.len()..];
+                if let Ok(s) = start.parse::<usize>() {
+                    return Self {
+                        start: s,
+                        hash_key_type: HashKeyType::OnlyDigit,
+                    };
+                } else {
+                    log::warn!("use crc32-range for fingding malformed hash: {}", alg);
+                    return Self {
+                        start: 0,
+                        hash_key_type: HashKeyType::All,
+                    };
+                }
             }
         }
     }
@@ -127,17 +184,8 @@ impl Crc32Range {
 
 impl super::Hash for Crc32Range {
     fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        let crc = crc32_raw(key, self.start, self.only_digit);
+        let crc = crc32_raw(key, self.start, &self.hash_key_type);
         crc
-        // 这部分逻辑转移到send中，让 hashgen 256只出现在一个地方 fishermen
-        // let mut hash = crc
-        //     .wrapping_div(DEFAULT_RANGE_SPLIT)
-        //     .wrapping_rem(DEFAULT_RANGE_SPLIT);
-        // if hash < 0 {
-        //     log::warn!("found negative crc range hash for key:{:?}", key);
-        //     hash = hash.wrapping_abs();
-        // }
-        // hash
     }
 }
 
@@ -151,6 +199,8 @@ impl super::Hash for Crc32Range {
 //         return (crc ^ !0) as u64;
 //     }
 // }
+
+use std::fmt::Display;
 
 #[cfg(test)]
 mod crc_test {
