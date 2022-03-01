@@ -261,6 +261,7 @@ lazy_static! {
 
                 ("expire",   "expire",     3, Store, 1, 1, 1, 3, false, false, true, false, false),
                 ("expireat", "expireat",   3, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("persist", "persist",     2, Store, 1, 1, 1, 3, false, false, true, false, false),
 
                 // zset 相关指令
                 ("zadd", "zadd",                         -4, Store, 1, 1, 1, 3, false, false, true, false, false),
@@ -417,7 +418,6 @@ lazy_static! {
             // info 先不在client支持
             // "info" => (-1, Operation::Meta, 0, 0, 0),
 
-            // "persist" => (2, Operation::Store, 1, 1, 1),
             // "config" => (-2, Operation::Meta, 0, 0, 0),
             // "subscribe" => (-2, Operation::Get, 0, 0, 0),
             // "evalsha" => (-3, Operation::Store, 0, 0, 0),
