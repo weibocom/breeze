@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
 use futures::ready;
-use protocol::{Error, Protocol, Request, Result};
+use protocol::{Error, Protocol, Request, Result, Stream};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::buffer::StreamGuard;
@@ -41,7 +41,6 @@ where
         let flush = me.poll_flush(cx)?;
         let response = me.poll_response(cx)?;
         ready!(response);
-        assert_eq!(self.num_tx, self.num_rx);
         ready!(flush);
         ready!(request);
         Poll::Ready(Ok(()))
@@ -101,7 +100,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         while self.pending.len() > 0 {
             let mut cx = Context::from_waker(cx.waker());
             let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx);
-            ready!(self.buf.buf.write(&mut reader))?;
+            let poll_read = self.buf.buf.write(&mut reader)?;
             // num == 0 说明是buffer满了。等待下一次事件，buffer释放后再读取。
             let num = reader.check_eof_num()?;
             if num == 0 {
@@ -110,7 +109,6 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                 return Poll::Ready(Err(Error::ResponseBufferFull));
             }
             log::debug!("{} bytes received. {:?}", num, self);
-            use protocol::Stream;
             while self.buf.len() > 0 {
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
@@ -131,6 +129,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                     }
                 }
             }
+            ready!(poll_read);
         }
         Poll::Ready(Ok(()))
     }

@@ -128,6 +128,6 @@ use std::fmt::{self, Display, Formatter};
 impl Display for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "StreamGuard :{} ", self.buf)
+        write!(f, "ctx:{} StreamGuard :{}", self.ctx, self.buf,)
     }
 }
