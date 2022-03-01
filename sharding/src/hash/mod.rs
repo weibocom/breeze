@@ -30,6 +30,8 @@ const CRC32_RANGE: &str = "crc32-range";
 const CRC32_RANGE_ID: &str = "crc32-range-id";
 // skip掉xxx个字节，然后对剩余key中的第一串数字做hash
 const CRC32_RANGE_ID_PREFIX: &str = "crc32-range-id-";
+// 兼容业务中的getSqlKey方式，即用"."之前内容做hash
+const CRC32_RANGE_POINT: &str = "crc32-range-point";
 
 impl Hasher {
     pub fn from(alg: &str) -> Self {
@@ -51,7 +53,7 @@ impl Hasher {
             } // _ => Self::Crc32(Default::default()),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn crc32_short() -> Self {
         Self::Crc32Short(Default::default())
     }
@@ -71,15 +73,15 @@ pub trait HashKey: std::fmt::Debug {
 }
 
 impl HashKey for &[u8] {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         (*self).len()
     }
-    #[inline(always)]
+    #[inline]
     fn at(&self, idx: usize) -> u8 {
         unsafe { *self.as_ptr().offset(idx as isize) }
     }
-    //#[inline(always)]
+    //#[inline]
     //fn vec_data(&self) -> Vec<u8> {
     //    let mut data = Vec::with_capacity(self.len());
     //    data.extend(*self);
@@ -88,15 +90,15 @@ impl HashKey for &[u8] {
 }
 
 impl HashKey for ds::RingSlice {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         (*self).len()
     }
-    #[inline(always)]
+    #[inline]
     fn at(&self, idx: usize) -> u8 {
         (*self).at(idx)
     }
-    //#[inline(always)]
+    //#[inline]
     //fn vec_data(&self) -> Vec<u8> {
     //    self.to_vec()
     //}
@@ -109,17 +111,17 @@ pub struct UppercaseHashKey<'a, T> {
 }
 
 impl<'a, T: HashKey> super::HashKey for UppercaseHashKey<'a, T> {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.inner.len()
     }
-    #[inline(always)]
+    #[inline]
     fn at(&self, idx: usize) -> u8 {
         TO_UPPER_CASE_TABLE[self.inner.at(idx) as usize]
     }
 }
 impl<'a, T> UppercaseHashKey<'a, T> {
-    #[inline(always)]
+    #[inline]
     pub fn new(t: &'a T) -> Self {
         Self { inner: t }
     }

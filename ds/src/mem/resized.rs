@@ -23,14 +23,14 @@ use std::ops::{Deref, DerefMut};
 
 impl Deref for ResizedRingBuffer {
     type Target = RingBuffer;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
 impl DerefMut for ResizedRingBuffer {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -57,7 +57,7 @@ impl ResizedRingBuffer {
         }
     }
     // 需要写入数据时，判断是否需要扩容
-    #[inline(always)]
+    #[inline]
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
         if !self.inner.available() {
             if self.cap() * 2 <= self.max as usize {
@@ -103,7 +103,7 @@ impl ResizedRingBuffer {
         self.on_change(old.cap(), self.cap() as isize);
         self.old.push(old);
     }
-    #[inline(always)]
+    #[inline]
     pub fn advance_read(&mut self, n: usize) {
         self.inner.advance_read(n);
         if self.read() >= self.max_processed {

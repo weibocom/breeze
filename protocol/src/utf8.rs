@@ -5,7 +5,7 @@ pub trait Utf8 {
     fn utf8(&self) -> Result<String, Utf8Error>;
 }
 impl Utf8 for ds::RingSlice {
-    #[inline(always)]
+    #[inline]
     fn utf8(&self) -> Result<String, Utf8Error> {
         let mut v: Vec<u8> = Vec::with_capacity(self.len());
         self.copy_to_vec(&mut v);
@@ -14,13 +14,13 @@ impl Utf8 for ds::RingSlice {
 }
 
 impl Utf8 for &[u8] {
-    #[inline(always)]
+    #[inline]
     fn utf8(&self) -> Result<String, Utf8Error> {
         str::from_utf8(self).map(|s| s.to_string())
     }
 }
 impl Utf8 for Vec<u8> {
-    #[inline(always)]
+    #[inline]
     fn utf8(&self) -> Result<String, Utf8Error> {
         str::from_utf8(self).map(|s| s.to_string())
     }

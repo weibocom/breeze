@@ -15,7 +15,7 @@ pub trait TopologyRead<T> {
 
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
-    #[inline(always)]
+    #[inline]
     fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
         vec![("", cfg)]
     }
@@ -105,7 +105,7 @@ where
         });
         self.updates.fetch_add(1, Ordering::AcqRel);
     }
-    #[inline(always)]
+    #[inline]
     fn disgroup<'a>(&self, path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
         self.inner.get().disgroup(path, cfg)
     }

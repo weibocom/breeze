@@ -87,11 +87,11 @@ impl CommandProperties {
     pub fn padding_rsp(&self) -> u8 {
         self.padding_rsp
     }
-    #[inline(always)]
+    #[inline]
     pub fn noforward(&self) -> bool {
         self.noforward
     }
-    #[inline(always)]
+    #[inline]
     pub(super) fn flag(&self) -> crate::Flag {
         use super::flag::RedisFlager;
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
@@ -154,7 +154,7 @@ impl Commands {
             hash: Crc32::default(),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
         let uppercase = UppercaseHashKey::new(name);
         let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
@@ -162,7 +162,7 @@ impl Commands {
         debug_assert_ne!(idx, 0);
         idx as u16
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
         debug_assert!((op_code as usize) < self.supported.len());
         let cmd = unsafe { self.supported.get_unchecked(op_code as usize) };
@@ -174,7 +174,7 @@ impl Commands {
     }
     // 不支持会返回协议错误
     #[allow(dead_code)]
-    #[inline(always)]
+    #[inline]
     pub(crate) fn get_by_name(&self, cmd: &ds::RingSlice) -> crate::Result<&CommandProperties> {
         let uppercase = UppercaseHashKey::new(cmd);
         let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
@@ -221,11 +221,11 @@ impl Commands {
     }
 }
 
-#[inline(always)]
+#[inline]
 pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
     SUPPORTED.get_op_code(cmd)
 }
-#[inline(always)]
+#[inline]
 pub(super) fn get_cfg<'a>(op_code: u16) -> crate::Result<&'a CommandProperties> {
     SUPPORTED.get_by_op(op_code)
 }
@@ -261,6 +261,7 @@ lazy_static! {
 
                 ("expire",   "expire",     3, Store, 1, 1, 1, 3, false, false, true, false, false),
                 ("expireat", "expireat",   3, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("persist", "persist",     2, Store, 1, 1, 1, 3, false, false, true, false, false),
 
                 // zset 相关指令
                 ("zadd", "zadd",                         -4, Store, 1, 1, 1, 3, false, false, true, false, false),
@@ -417,7 +418,6 @@ lazy_static! {
             // info 先不在client支持
             // "info" => (-1, Operation::Meta, 0, 0, 0),
 
-            // "persist" => (2, Operation::Store, 1, 1, 1),
             // "config" => (-2, Operation::Meta, 0, 0, 0),
             // "subscribe" => (-2, Operation::Get, 0, 0, 0),
             // "evalsha" => (-3, Operation::Store, 0, 0, 0),

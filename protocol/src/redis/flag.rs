@@ -33,100 +33,100 @@ pub(super) trait RedisFlager {
     fn token_count(&self) -> u8;
 }
 
-#[inline(always)]
+#[inline]
 fn set(v: &mut u64, shift: u8, mask: u64, val: u64) {
     debug_assert!(val <= mask);
     debug_assert_eq!(get(v, shift, mask), 0);
     *v |= val << shift;
     debug_assert_eq!(val, get(v, shift, mask));
 }
-#[inline(always)]
+#[inline]
 fn get(v: &u64, shift: u8, mask: u64) -> u64 {
     (*v >> shift) & mask
 }
 
 impl RedisFlager for u64 {
-    #[inline(always)]
+    #[inline]
     fn set_key_count(&mut self, cnt: u16) {
         set(self, KEY_COUNT_SHIFT, KEY_COUNT_MASK, cnt as u64)
     }
-    #[inline(always)]
+    #[inline]
     fn key_count(&self) -> u16 {
         get(self, KEY_COUNT_SHIFT, KEY_COUNT_MASK) as u16
     }
-    #[inline(always)]
+    #[inline]
     fn set_mkey_first(&mut self) {
         debug_assert!(!self.mkey_first());
         *self |= 1 << MKEY_FIRST_SHIFT;
         debug_assert!(self.mkey_first());
     }
-    #[inline(always)]
+    #[inline]
     fn mkey_first(&self) -> bool {
         *self & (1 << MKEY_FIRST_SHIFT) > 0
     }
-    #[inline(always)]
+    #[inline]
     fn set_padding_rsp(&mut self, padding: u8) {
         set(self, PADDING_RSP_SHIFT, PADDING_RSP_MASK, padding as u64);
     }
-    #[inline(always)]
+    #[inline]
     fn padding_rsp(&self) -> u8 {
         get(self, PADDING_RSP_SHIFT, PADDING_RSP_MASK) as u8
     }
-    #[inline(always)]
+    #[inline]
     fn set_meta_len(&mut self, l: u8) {
         set(self, META_LEN_SHIFT, META_LEN_MASK, l as u64);
     }
-    #[inline(always)]
+    #[inline]
     fn meta_len(&self) -> u8 {
         get(self, META_LEN_SHIFT, META_LEN_MASK) as u8
     }
-    #[inline(always)]
+    #[inline]
     fn set_token_count(&mut self, c: u8) {
         set(self, TOKEN_LEN_SHIFT, TOKEN_LEN_MASK, c as u64);
     }
-    #[inline(always)]
+    #[inline]
     fn token_count(&self) -> u8 {
         get(self, TOKEN_LEN_SHIFT, TOKEN_LEN_MASK) as u8
     }
 }
 impl RedisFlager for crate::Flag {
-    #[inline(always)]
+    #[inline]
     fn set_key_count(&mut self, cnt: u16) {
         self.ext_mut().set_key_count(cnt);
     }
-    #[inline(always)]
+    #[inline]
     fn key_count(&self) -> u16 {
         self.ext().key_count()
     }
-    #[inline(always)]
+    #[inline]
     fn set_mkey_first(&mut self) {
         self.ext_mut().set_mkey_first();
     }
-    #[inline(always)]
+    #[inline]
     fn mkey_first(&self) -> bool {
         self.ext().mkey_first()
     }
-    #[inline(always)]
+    #[inline]
     fn set_padding_rsp(&mut self, padding: u8) {
         self.ext_mut().set_padding_rsp(padding);
     }
-    #[inline(always)]
+    #[inline]
     fn padding_rsp(&self) -> u8 {
         self.ext().padding_rsp()
     }
-    #[inline(always)]
+    #[inline]
     fn set_meta_len(&mut self, l: u8) {
         self.ext_mut().set_meta_len(l);
     }
-    #[inline(always)]
+    #[inline]
     fn meta_len(&self) -> u8 {
         self.ext().meta_len()
     }
-    #[inline(always)]
+    #[inline]
     fn set_token_count(&mut self, c: u8) {
         self.ext_mut().set_token_count(c);
     }
-    #[inline(always)]
+    #[inline]
     fn token_count(&self) -> u8 {
         self.ext().token_count()
     }

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::str::from_utf8;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -65,7 +66,7 @@ where
     P: Protocol,
 {
     type Item = Req;
-    #[inline(always)]
+    #[inline]
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
         // TODO：这部分逻辑转移到distribution中进行,待验证 fishermen
@@ -79,7 +80,15 @@ where
         let shard_idx = self.distribute.index(req.hash());
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-        // log::debug!("+++ shard_idx:{}, req.hash: {}", shard_idx, req.hash());
+        // TODO 先保留到2022.12，用于快速定位hash分片问题 fishermen
+        if log::log_enabled!(log::Level::Debug) {
+            log::debug!(
+                "+++ shard_idx:{}, req: {:?}",
+                shard_idx,
+                from_utf8(&req.data().to_vec())
+            );
+        }
+
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
             let ctx = super::transmute(req.context_mut());
@@ -270,26 +279,26 @@ struct Shard<E> {
     slaves: ReplicaSelect<(String, E)>,
 }
 impl<E> Shard<E> {
-    #[inline(always)]
+    #[inline]
     fn selector(s: &str, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
             slaves: ReplicaSelect::from(s, replicas),
         }
     }
-    #[inline(always)]
+    #[inline]
     fn has_slave(&self) -> bool {
         self.slaves.len() > 0
     }
-    #[inline(always)]
+    #[inline]
     fn master(&self) -> &E {
         &self.master.1
     }
-    #[inline(always)]
+    #[inline]
     fn select(&self) -> (usize, &(String, E)) {
         unsafe { self.slaves.unsafe_select() }
     }
-    #[inline(always)]
+    #[inline]
     fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
         unsafe { self.slaves.unsafe_next(idx, runs) }
     }
@@ -298,7 +307,7 @@ impl<E: discovery::Inited> Shard<E> {
     // 1. 主已经初始化
     // 2. 有从
     // 3. 所有的从已经初始化
-    #[inline(always)]
+    #[inline]
     fn inited(&self) -> bool {
         self.master().inited()
             && self.has_slave()

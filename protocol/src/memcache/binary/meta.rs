@@ -102,30 +102,30 @@ use ds::{RingSlice, Slice};
 macro_rules! define_binary {
     ($type_name:tt) => {
         impl Binary<$type_name> for $type_name {
-            #[inline(always)]
+            #[inline]
             fn op(&self) -> u8 {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.at(PacketPos::Opcode as usize)
             }
-            #[inline(always)]
+            #[inline]
             fn noop(&self) -> bool {
                 self.op() == OP_CODE_NOOP
             }
-            #[inline(always)]
+            #[inline]
             fn operation(&self) -> Operation {
                 (COMMAND_IDX[self.op() as usize] as usize).into()
             }
-            #[inline(always)]
+            #[inline]
             fn request(&self) -> bool {
                 debug_assert!(self.len() > 0);
                 self.at(PacketPos::Magic as usize) == REQUEST_MAGIC
             }
-            #[inline(always)]
+            #[inline]
             fn response(&self) -> bool {
                 debug_assert!(self.len() > 0);
                 self.at(PacketPos::Magic as usize) == RESPONSE_MAGIC
             }
-            #[inline(always)]
+            #[inline]
             fn extra_len(&self) -> u8 {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.at(PacketPos::ExtrasLength as usize)
@@ -136,38 +136,38 @@ macro_rules! define_binary {
                 let extra_len = self.extra_len() as usize;
                 self.sub_slice(HEADER_LEN, extra_len)
             }
-            #[inline(always)]
+            #[inline]
             fn total_body_len(&self) -> u32 {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.read_u32(PacketPos::TotalBodyLength as usize)
             }
-            #[inline(always)]
+            #[inline]
             fn opaque(&self) -> u32 {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.read_u32(PacketPos::Opaque as usize)
             }
-            #[inline(always)]
+            #[inline]
             fn cas(&self) -> u64 {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.read_u64(PacketPos::Cas as usize)
             }
-            #[inline(always)]
+            #[inline]
             fn packet_len(&self) -> usize {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.total_body_len() as usize + HEADER_LEN
             }
-            #[inline(always)]
+            #[inline]
             fn status_ok(&self) -> bool {
                 debug_assert!(self.len() >= HEADER_LEN);
                 debug_assert_eq!(self.at(PacketPos::Magic as usize), RESPONSE_MAGIC);
                 self.at(6) == 0 && self.at(7) == 0
             }
-            #[inline(always)]
+            #[inline]
             fn key_len(&self) -> u16 {
                 debug_assert!(self.len() >= HEADER_LEN);
                 self.read_u16(PacketPos::Key as usize)
             }
-            #[inline(always)]
+            #[inline]
             fn key(&self) -> Self {
                 debug_assert!(self.len() >= HEADER_LEN);
                 let extra_len = self.extra_len() as usize;
@@ -193,7 +193,7 @@ macro_rules! define_binary {
 
                 self.sub_slice(offset, value_len)
             }
-            #[inline(always)]
+            #[inline]
             fn id(&self) -> Option<Self> {
                 debug_assert!(self.len() >= HEADER_LEN);
                 match self.op() {
@@ -206,13 +206,13 @@ macro_rules! define_binary {
                 }
             }
             // 需要应对gek个各种姿势： getkq...getkq + noop, getkq...getkq + getk，对于quite cmd，肯定是multiget的非结尾请求
-            #[inline(always)]
+            #[inline]
             fn quite_get(&self) -> bool {
                 MULT_GETS[self.op() as usize] == 1
             }
 
             // 截取末尾的noop请求
-            #[inline(always)]
+            #[inline]
             fn take_noop(&self) -> Self {
                 debug_assert!(self.len() >= HEADER_LEN);
                 let noop = self.sub_slice(self.len() - HEADER_LEN, HEADER_LEN);

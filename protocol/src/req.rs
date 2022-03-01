@@ -18,7 +18,7 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin {
     fn read(&self, oft: usize) -> &[u8];
     fn on_complete(self, resp: Command);
     fn on_err(self, err: crate::Error);
-    #[inline(always)]
+    #[inline]
     fn context_mut(&mut self) -> &mut Context {
         self.mut_context()
     }

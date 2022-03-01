@@ -13,7 +13,7 @@ impl Modula {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn index(&self, hash: i64) -> usize {
         match self {
             Self::Pow2(m) => m.index(hash),
@@ -32,7 +32,7 @@ impl Pow2 {
         let mask = if shard_num == 0 { 0 } else { shard_num - 1 };
         Self { mask }
     }
-    #[inline(always)]
+    #[inline]
     pub fn index(&self, hash: i64) -> usize {
         hash as usize & self.mask
     }
@@ -46,7 +46,7 @@ impl Other {
     pub fn from(shard_num: usize) -> Self {
         Self { len: shard_num }
     }
-    #[inline(always)]
+    #[inline]
     pub fn index(&self, hash: i64) -> usize {
         hash as usize % self.len
     }
