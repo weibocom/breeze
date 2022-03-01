@@ -13,9 +13,9 @@ mod distribute_test {
         for i in 0..shards_count {
             shards.push(format!("192.168.10.{}", i));
         }
-        let dist = Distribute::from("range-1024", &shards);
+        let dist = Distribute::from("range-512", &shards);
 
-        let key = "1234567890.fri";
+        let key = "0.schv";
         let hash = hasher.hash(&key.as_bytes());
         let idx = dist.index(hash);
         println!("key:{}, hash:{}, idx: {}", key, hash, idx);
