@@ -26,16 +26,16 @@ pub use utf8::*;
 pub trait Writer {
     // 写数据，一次写完
     fn write(&mut self, data: &[u8]) -> Result<()>;
-    #[inline(always)]
+    #[inline]
     fn write_u8(&mut self, v: u8) -> Result<()> {
         self.write(&[v])
     }
 
     // hint: 提示可能优先写入到cache
-    #[inline(always)]
+    #[inline]
     fn cache(&mut self, _hint: bool) {}
 
-    #[inline(always)]
+    #[inline]
     fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
         let mut oft = oft;
         let len = data.len();
@@ -79,12 +79,12 @@ pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Writer for Vec<u8> {
-    #[inline(always)]
+    #[inline]
     fn write(&mut self, data: &[u8]) -> Result<()> {
         ds::vec::Buffer::write(self, data);
         Ok(())
     }
-    #[inline(always)]
+    #[inline]
     fn write_u8(&mut self, v: u8) -> Result<()> {
         self.push(v);
         Ok(())

@@ -10,7 +10,7 @@ use crate::{Command, HashedCommand, Protocol, RequestProcessor};
 use sharding::hash::Hash;
 impl Protocol for MemcacheBinary {
     // 解析请求。把所有的multi-get请求转换成单一的n个get请求。
-    #[inline(always)]
+    #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         data: &mut S,
@@ -58,7 +58,7 @@ impl Protocol for MemcacheBinary {
         }
         Ok(())
     }
-    #[inline(always)]
+    #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         debug_assert!(data.len() > 0);
         if data.at(PacketPos::Magic as usize) != RESPONSE_MAGIC {
@@ -77,7 +77,7 @@ impl Protocol for MemcacheBinary {
         Ok(None)
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
-    #[inline(always)]
+    #[inline]
     fn write_response<C: crate::Commander, W: crate::Writer>(
         &self,
         ctx: &mut C,
@@ -119,7 +119,7 @@ impl Protocol for MemcacheBinary {
             None
         }
     }
-    #[inline(always)]
+    #[inline]
     fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
         if req.sentonly() {
             return Ok(());
@@ -144,7 +144,7 @@ impl Protocol for MemcacheBinary {
     }
 }
 impl MemcacheBinary {
-    #[inline(always)]
+    #[inline]
     fn build_empty_response(&self, status: u8, req: &ds::RingSlice) -> [u8; HEADER_LEN] {
         let mut response = [0; HEADER_LEN];
         response[PacketPos::Magic as usize] = RESPONSE_MAGIC;
@@ -156,7 +156,7 @@ impl MemcacheBinary {
         }
         response
     }
-    #[inline(always)]
+    #[inline]
     fn build_write_back_inplace(&self, req: &mut HashedCommand) {
         let data = req.data_mut();
         debug_assert!(data.len() >= HEADER_LEN);
@@ -173,7 +173,7 @@ impl MemcacheBinary {
         debug_assert!(req.operation().is_store());
         debug_assert!(req.sentonly());
     }
-    #[inline(always)]
+    #[inline]
     fn build_write_back_get(
         &self,
         req: &HashedCommand,

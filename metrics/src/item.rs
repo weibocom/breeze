@@ -23,17 +23,17 @@ pub struct ItemRc {
     pub(crate) inner: *const Item,
 }
 impl ItemRc {
-    #[inline(always)]
+    #[inline]
     pub fn uninit() -> ItemRc {
         Self {
             inner: 0 as *const _,
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn inited(&self) -> bool {
         !self.inner.is_null()
     }
-    #[inline(always)]
+    #[inline]
     pub fn try_init(&mut self, id: &Arc<Id>) {
         if let Some(item) = crate::get_metric(id) {
             debug_assert!(!item.is_null());
@@ -46,7 +46,7 @@ impl ItemRc {
 use std::ops::Deref;
 impl Deref for ItemRc {
     type Target = Item;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         debug_assert!(self.inited());
         unsafe { &*self.inner }
@@ -75,17 +75,17 @@ impl Item {
         self.data.init_id(id);
         self.incr_rc();
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn inited(&self) -> bool {
         self.rc() > 0
     }
-    #[inline(always)]
+    #[inline]
     pub(crate) fn data(&self) -> &ItemData {
         debug_assert!(self.inited());
         &self.data
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn snapshot<W: crate::ItemWriter>(&self, w: &mut W, secs: f64) {
         self.data().snapshot(w, secs);
     }

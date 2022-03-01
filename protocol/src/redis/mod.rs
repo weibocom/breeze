@@ -23,13 +23,18 @@ use crate::Utf8;
 pub struct Redis;
 
 impl Redis {
-    #[inline(always)]
+    #[inline]
     fn parse_request_inner<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
+        // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
+        if log::log_enabled!(log::Level::Debug) {
+            log::debug!("+++ rec req:{:?}", from_utf8(&stream.slice().to_vec()));
+        }
+
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
             packet.parse_bulk_num()?;
@@ -69,10 +74,34 @@ impl Redis {
         }
         Ok(())
     }
-    #[inline(always)]
+
+    #[inline]
+    fn num_skip_all(&self, data: &RingSlice, mut oft: &mut usize) -> Result<Option<Command>> {
+        let mut bulk_count = data.num(&mut oft)?;
+        while bulk_count > 0 {
+            match data.at(*oft) {
+                b'$' => {
+                    data.num_and_skip(&mut oft)?;
+                }
+                b'*' => {
+                    self.num_skip_all(data, oft)?;
+                }
+                _ => {
+                    log::info!("not supported type:{:?}, {:?}", data.utf8(), data);
+                    panic!("not supported in num_skip_all");
+                }
+            }
+            // data.num_and_skip(&mut oft)?;
+            bulk_count -= 1;
+        }
+        Ok(None)
+    }
+
+    #[inline]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
-        // log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
+        log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
+
         if data.len() >= 2 {
             let mut oft = 0;
             match data.at(0) {
@@ -81,11 +110,12 @@ impl Redis {
                     let _num = data.num_and_skip(&mut oft)?;
                 }
                 b'*' => {
-                    let mut bulk_count = data.num(&mut oft)?;
-                    while bulk_count > 0 {
-                        data.num_and_skip(&mut oft)?;
-                        bulk_count -= 1;
-                    }
+                    // let mut bulk_count = data.num(&mut oft)?;
+                    // while bulk_count > 0 {
+                    //     data.num_and_skip(&mut oft)?;
+                    //     bulk_count -= 1;
+                    // }
+                    self.num_skip_all(&data, &mut oft)?;
                 }
                 _ => {
                     log::info!("not supported:{:?}, {:?}", data.utf8(), data);
@@ -104,7 +134,7 @@ impl Redis {
 }
 
 impl Protocol for Redis {
-    #[inline(always)]
+    #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
@@ -119,7 +149,7 @@ impl Protocol for Redis {
     }
 
     // 为每一个req解析一个response
-    #[inline(always)]
+    #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         match self.parse_response_inner(data) {
             Ok(cmd) => Ok(cmd),
@@ -127,14 +157,15 @@ impl Protocol for Redis {
             e => e,
         }
     }
-    #[inline(always)]
+    #[inline]
     fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
         let req = ctx.request();
         let op_code = req.op_code();
         let cfg = command::get_cfg(op_code)?;
         let response = ctx.response();
         if !cfg.multi {
-            debug_assert_ne!(response.data().at(0), b'*');
+            // 对于hscan，虽然是单个key，也会返回*2 fishermen
+            // debug_assert_ne!(response.data().at(0), b'*');
             w.write_slice(response.data(), 0)
         } else {
             let ext = req.ext();
@@ -154,12 +185,15 @@ impl Protocol for Redis {
             }
         }
     }
-    #[inline(always)]
+    #[inline]
     fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
         let rsp_idx = req.ext().padding_rsp() as usize;
         debug_assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
-        log::debug!("+++ will write no rsp. req:{}", req);
+        // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
+        if log::log_enabled!(log::Level::Debug) {
+            log::debug!("+++ will write no rsp. req:{}", req);
+        }
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
         } else {
@@ -172,11 +206,14 @@ impl Protocol for Redis {
     }
 }
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::{
+    str::from_utf8,
+    sync::atomic::{AtomicI64, Ordering},
+};
 static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0?
-#[inline(always)]
+#[inline]
 fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
     if key.len() == 0 {
         AUTO.fetch_add(1, Ordering::Relaxed)
@@ -187,7 +224,7 @@ fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
     }
 }
 
-#[inline(always)]
+#[inline]
 fn defalut_hash() -> i64 {
     AUTO.fetch_add(1, Ordering::Relaxed)
 }

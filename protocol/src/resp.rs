@@ -10,7 +10,7 @@ pub trait Response {
 //    cb: C,
 //}
 //impl<C> Response<C> {
-//    #[inline(always)]
+//    #[inline]
 //    pub fn from(cmd: ResponseCmd, seq: usize, cb: C) -> Self {
 //        Self { seq, cmd, cb }
 //    }
@@ -21,7 +21,7 @@ pub trait Response {
 //}
 //
 //impl ResponseCmd {
-//    //#[inline(always)]
+//    //#[inline]
 //    //pub fn len(&self) -> usize {
 //    //    self.cmd.len()
 //    //}

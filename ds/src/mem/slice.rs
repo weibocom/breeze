@@ -6,18 +6,18 @@ pub struct Slice {
 }
 
 impl Slice {
-    #[inline(always)]
+    #[inline]
     pub fn new(ptr: usize, len: usize) -> Self {
         Self { ptr, len }
     }
-    #[inline(always)]
+    #[inline]
     pub fn from(data: &[u8]) -> Self {
         Self {
             ptr: data.as_ptr() as usize,
             len: data.len(),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn data(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.ptr as *const u8, self.len) }
     }
@@ -26,24 +26,24 @@ impl Slice {
             std::slice::from_raw_parts((self.ptr as *const u8).offset(pos as isize), self.len - pos)
         }
     }
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
-    #[inline(always)]
+    #[inline]
     pub fn as_ptr(&self) -> *const u8 {
         self.ptr as *const u8
     }
-    #[inline(always)]
+    #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
         self.ptr as *mut u8
     }
-    #[inline(always)]
+    #[inline]
     pub fn backwards(&mut self, n: usize) {
         debug_assert!(self.len >= n);
         self.len -= n;
     }
-    #[inline(always)]
+    #[inline]
     pub fn at(&self, pos: usize) -> u8 {
         debug_assert!(pos < self.len());
         unsafe { *(self.ptr as *const u8).offset(pos as isize) }
@@ -115,7 +115,7 @@ impl Slice {
 }
 
 impl AsRef<[u8]> for Slice {
-    #[inline(always)]
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         self.data()
     }
@@ -152,7 +152,7 @@ use std::convert::TryInto;
 use std::slice::from_raw_parts;
 macro_rules! define_read_number {
     ($fn_name:ident, $type_name:tt) => {
-        #[inline(always)]
+        #[inline]
         pub fn $fn_name(&self, offset: usize) -> $type_name {
             const SIZE: usize = std::mem::size_of::<$type_name>();
             debug_assert!(self.len() >= offset + SIZE);
