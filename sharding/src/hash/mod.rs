@@ -30,6 +30,8 @@ const CRC32_RANGE: &str = "crc32-range";
 const CRC32_RANGE_ID: &str = "crc32-range-id";
 // skip掉xxx个字节，然后对剩余key中的第一串数字做hash
 const CRC32_RANGE_ID_PREFIX: &str = "crc32-range-id-";
+// 兼容业务中的getSqlKey方式，即用"."之前内容做hash
+const CRC32_RANGE_POINT: &str = "crc32-range-point";
 
 impl Hasher {
     pub fn from(alg: &str) -> Self {

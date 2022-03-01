@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod hash_test {
+mod shard_test {
     //#![feature(map_first_last)]
     use std::collections::BTreeMap;
 
@@ -10,12 +10,12 @@ mod hash_test {
 
     use crypto::digest::Digest;
     use crypto::md5::Md5;
-    use protocol::Request;
-    use sharding::hash::{Bkdr, Crc32, Hash, Hasher};
+    use sharding::distribution::Distribute;
+    use sharding::hash::{Bkdr, Hash, Hasher};
     use std::ops::Bound::Included;
 
     #[test]
-    fn hash_check() {
+    fn shard_check() {
         // 将java生成的随机key及hash，每种size都copy的几条过来，用于日常验证
         let path = "./records/";
         let bkdr10 = format!("{}{}", path, "bkdr_10.log");
@@ -27,20 +27,69 @@ mod hash_test {
         bkdr_check(&bkdr20);
         bkdr_check(&bkdr50);
 
-        let crc10 = format!("{}{}", path, "crc32_10.log");
-        let crc15 = format!("{}{}", path, "crc32_15.log");
-        let crc20 = format!("{}{}", path, "crc32_20.log");
-        let crc50 = format!("{}{}", path, "crc32_50.log");
-        crc32_check(&crc10);
-        crc32_check(&crc15);
-        crc32_check(&crc20);
-        crc32_check(&crc50);
+        // will check crc32
+        let shard_count = 8;
+        let mut servers = Vec::with_capacity(shard_count);
+        for i in 0..shard_count {
+            servers.push(format!("192.168.0.{}", i).to_string());
+        }
+        let dist = Distribute::from("range-256", &servers);
 
-        let consis10 = format!("{}{}", path, "consistent_10.log");
+        let hasher = Hasher::from("crc32-short");
+        let crc10 = format!("{}{}", path, "crc32_short_10.log");
+        let crc15 = format!("{}{}", path, "crc32_short_15.log");
+        let crc20 = format!("{}{}", path, "crc32_short_20.log");
+        let crc50 = format!("{}{}", path, "crc32_short_50.log");
+        crc32_check(&crc10, &hasher, &dist);
+        crc32_check(&crc15, &hasher, &dist);
+        crc32_check(&crc20, &hasher, &dist);
+        crc32_check(&crc50, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32-range");
+        let crc10 = format!("{}{}", path, "crc32_range_10.log");
+        let crc15 = format!("{}{}", path, "crc32_range_15.log");
+        let crc20 = format!("{}{}", path, "crc32_range_20.log");
+        let crc50 = format!("{}{}", path, "crc32_range_50.log");
+        crc32_check(&crc10, &hasher, &dist);
+        crc32_check(&crc15, &hasher, &dist);
+        crc32_check(&crc20, &hasher, &dist);
+        crc32_check(&crc50, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32-range-id");
+        let crc10 = format!("{}{}", path, "crc32_range_id_10.log");
+        let crc15 = format!("{}{}", path, "crc32_range_id_15.log");
+        let crc20 = format!("{}{}", path, "crc32_range_id_20.log");
+        let crc50 = format!("{}{}", path, "crc32_range_id_50.log");
+        crc32_check(&crc10, &hasher, &dist);
+        crc32_check(&crc15, &hasher, &dist);
+        crc32_check(&crc20, &hasher, &dist);
+        crc32_check(&crc50, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32-range-id-5");
+        let crc10 = format!("{}{}", path, "crc32_range_id_5_10.log");
+        let crc15 = format!("{}{}", path, "crc32_range_id_5_15.log");
+        let crc20 = format!("{}{}", path, "crc32_range_id_5_20.log");
+        let crc50 = format!("{}{}", path, "crc32_range_id_5_50.log");
+        crc32_check(&crc10, &hasher, &dist);
+        crc32_check(&crc15, &hasher, &dist);
+        crc32_check(&crc20, &hasher, &dist);
+        crc32_check(&crc50, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32-range-point");
+        let crc10 = format!("{}{}", path, "crc32_range_point_10.log");
+        let crc15 = format!("{}{}", path, "crc32_range_point_15.log");
+        let crc20 = format!("{}{}", path, "crc32_range_point_20.log");
+        let crc50 = format!("{}{}", path, "crc32_range_point_50.log");
+        crc32_check(&crc10, &hasher, &dist);
+        crc32_check(&crc15, &hasher, &dist);
+        crc32_check(&crc20, &hasher, &dist);
+        crc32_check(&crc50, &hasher, &dist);
+
+        // let consis10 = format!("{}{}", path, "consistent_10.log");
         // let consis15 = format!("{}{}", path, "consistent_15.log");
         // let consis20 = format!("{}{}", path, "consistent_20.log");
         // let consis50 = format!("{}{}", path, "consistent_50.log");
-        consistent_check(&consis10);
+        // consistent_check(&consis10);
         // consistent_check(&consis15);
         // consistent_check(&consis20);
         // consistent_check(&consis50);
@@ -95,6 +144,7 @@ mod hash_test {
         let mut reader = BufReader::new(file);
 
         let mut num = 0;
+        let shard_count = 8;
         loop {
             let mut line = String::new();
             match reader.read_line(&mut line) {
@@ -108,7 +158,7 @@ mod hash_test {
                     let props = line.split(" ").collect::<Vec<&str>>();
                     debug_assert!(props.len() == 2);
                     let key = props[0].trim();
-                    let hash_in_java = props[1].trim();
+                    let idx_in_java = props[1].trim();
                     // println!(
                     //     "{} line: key: {}, hash: {}, hash-len:{}",
                     //     num,
@@ -117,12 +167,12 @@ mod hash_test {
                     //     hash_in_java.len(),
                     // );
 
-                    let hash = Bkdr {}.hash(&key.as_bytes());
-                    let hash_in_java_u64 = hash_in_java.parse::<i64>().unwrap();
-                    if hash != hash_in_java_u64 {
+                    let idx = Bkdr {}.hash(&key.as_bytes()) % shard_count;
+                    let idx_in_java_u64 = idx_in_java.parse::<i64>().unwrap();
+                    if idx != idx_in_java_u64 {
                         println!(
-                            "bkdr found error - line in java: {}, rust hash: {}",
-                            line, hash
+                            "bkdr found error - line in java: {}, rust idx: {}",
+                            line, idx
                         );
                         panic!("bkdr found error in bkdr");
                     }
@@ -137,7 +187,9 @@ mod hash_test {
         println!("check bkdr hash from file: {}", path);
     }
 
-    fn crc32_check(path: &str) {
+    fn crc32_check(path: &str, hasher: &Hasher, dist: &Distribute) {
+        println!("will check crc32 file: {}", path);
+
         let file = File::open(path).unwrap();
         let mut reader = BufReader::new(file);
 
@@ -155,16 +207,17 @@ mod hash_test {
                     let props = line.split(" ").collect::<Vec<&str>>();
                     debug_assert!(props.len() == 2);
                     let key = props[0].trim();
-                    let hash_in_java = props[1].trim();
+                    let idx_in_java = props[1].trim();
 
-                    let hash = Crc32 {}.hash(&key.as_bytes());
-                    let hash_in_java_u64 = hash_in_java.parse::<i64>().unwrap();
-                    if hash != hash_in_java_u64 {
+                    let h = hasher.hash(&key.as_bytes());
+                    let idx = dist.index(h) as i64;
+                    let idx_in_java_u64 = idx_in_java.parse::<i64>().unwrap();
+                    if idx != idx_in_java_u64 {
                         println!(
-                            "crc32 found error - line in java: {}, rust hash: {}",
-                            line, hash
+                            "crc32 found error - line in java: {}, rust idx: {}",
+                            line, idx
                         );
-                        panic!("bkdr found error in crc32");
+                        panic!("crc32 check error");
                     }
                     // println!(
                     //     "crc32 succeed - key: {}, rust: {}, java: {}",
@@ -174,7 +227,7 @@ mod hash_test {
                 Err(e) => println!("Stop read for err: {}", e),
             }
         }
-        println!("check crc32 hash from file: {}", path);
+        println!("check crc32 from file: {} completed!", path);
     }
 
     fn consistent_check(path: &str) {
