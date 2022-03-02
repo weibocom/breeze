@@ -47,7 +47,7 @@ impl Redis {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
                     let first = packet.first();
-                    debug_assert!(cfg.has_key);
+                    assert!(cfg.has_key);
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
                     if cfg.has_val {
@@ -61,7 +61,7 @@ impl Redis {
                 if cfg.has_key {
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
-                    debug_assert_ne!(hash, 0);
+                    assert_ne!(hash, 0);
                 } else {
                     hash = defalut_hash();
                 }
@@ -122,7 +122,7 @@ impl Redis {
                     panic!("not supported");
                 }
             }
-            debug_assert!(oft <= data.len());
+            assert!(oft <= data.len());
             let mem = s.take(oft);
             let mut flag = Flag::new();
             // redis不需要重试
@@ -165,7 +165,7 @@ impl Protocol for Redis {
         let response = ctx.response();
         if !cfg.multi {
             // 对于hscan，虽然是单个key，也会返回*2 fishermen
-            // debug_assert_ne!(response.data().at(0), b'*');
+            // assert_ne!(response.data().at(0), b'*');
             w.write_slice(response.data(), 0)
         } else {
             let ext = req.ext();
@@ -188,7 +188,7 @@ impl Protocol for Redis {
     #[inline]
     fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
         let rsp_idx = req.ext().padding_rsp() as usize;
-        debug_assert!(rsp_idx < PADDING_RSP_TABLE.len());
+        assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
@@ -198,7 +198,7 @@ impl Protocol for Redis {
             w.write(rsp.as_bytes())
         } else {
             // quit，先发+OK，再返回err
-            debug_assert_eq!(rsp_idx, 0);
+            assert_eq!(rsp_idx, 0);
             let ok_rs = PADDING_RSP_TABLE.get(1).unwrap().as_bytes();
             w.write(ok_rs)?;
             Err(crate::Error::Quit)
@@ -219,7 +219,7 @@ fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
         AUTO.fetch_add(1, Ordering::Relaxed)
     } else {
         let hash = alg.hash(key);
-        debug_assert!(hash != 0);
+        assert!(hash != 0);
         hash
     }
 }

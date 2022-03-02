@@ -75,7 +75,7 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, mut req: Self::Item) {
-        debug_assert!(self.r_num > 0);
+        assert!(self.r_num > 0);
 
         let mut idx: usize = 0; // master
         if !req.operation().master_only() {
@@ -124,7 +124,7 @@ where
         let (idx, try_next, write_back);
         if !ctx.check_and_inited(false) {
             let readable = self.r_num - self.has_slave as u16;
-            debug_assert!(readable == self.r_num || readable + 1 == self.r_num);
+            assert!(readable == self.r_num || readable + 1 == self.r_num);
             // 每个shard发送1024个请求再换下一个shard
             const SHIFT: u8 = 10;
             idx = (self.rnd_idx.fetch_add(1, Ordering::Relaxed) >> SHIFT) % readable as usize;

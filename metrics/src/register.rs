@@ -54,7 +54,7 @@ impl Metrics {
     fn init(&mut self, id: Arc<Id>) {
         // 检查是否已经初始化
         if let Some(idx) = self.id_idx.get_idx(&id) {
-            debug_assert!(self.get_item(idx).inited());
+            assert!(self.get_item(idx).inited());
             return;
         }
         let idx = self.id_idx.register_name(&id);
@@ -71,8 +71,8 @@ impl Metrics {
         self.chunks.len() * CHUNK_SIZE
     }
     fn get_item(&self, idx: usize) -> &Item {
-        debug_assert!(idx < self.len);
-        debug_assert!(idx < self.cap());
+        assert!(idx < self.len);
+        assert!(idx < self.cap());
         let slot = idx / CHUNK_SIZE;
         let offset = idx % CHUNK_SIZE;
         unsafe { &*self.chunks.get_unchecked(slot).offset(offset as isize) }
@@ -112,18 +112,18 @@ impl Metrics {
 
 #[inline]
 pub(crate) fn get_metrics<'a>() -> ReadGuard<'a, Metrics> {
-    debug_assert!(METRICS.get().is_some());
+    assert!(METRICS.get().is_some());
     unsafe { METRICS.get_unchecked().get() }
 }
 
 #[inline]
 pub(crate) fn register_metric(id: Id) -> Metric {
-    debug_assert!(METRICS.get().is_some());
+    assert!(METRICS.get().is_some());
     get_metrics().register(id)
 }
 #[inline]
 pub(crate) fn register_cache(id: &Arc<Id>, cache: i64) {
-    debug_assert!(METRICS.get().is_some());
+    assert!(METRICS.get().is_some());
     get_metrics().cache(id, cache)
 }
 #[inline]
@@ -191,7 +191,7 @@ impl MetricRegister {
 impl Default for MetricRegister {
     fn default() -> Self {
         log::info!("task started ==> metric register");
-        debug_assert!(METRICS.get().is_none());
+        assert!(METRICS.get().is_none());
         let (register_tx, register_rx) = unbounded_channel();
         let (tx, rx) = ds::cow(Metrics::new(register_tx));
         let _ = METRICS.set(rx);

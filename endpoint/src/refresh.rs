@@ -93,7 +93,7 @@ impl<T: Clone + 'static> Refresher<T> {
             for ep in self.dropping.split_off(0) {
                 let _ = unsafe { Box::from_raw(ep as *mut T) };
             }
-            debug_assert_eq!(self.dropping.len(), 0);
+            assert_eq!(self.dropping.len(), 0);
         }
     }
     fn check(&self) -> bool {

@@ -13,7 +13,7 @@ impl Range {
         let mut slot = DIST_RANGE_SLOT_COUNT_DEFAULT;
         // 带slot count数的range
         if name.starts_with(DIST_RANGE_WITH_SLOT_PREFIX) {
-            debug_assert!(name.starts_with(DIST_RANGE_WITH_SLOT_PREFIX));
+            assert!(name.starts_with(DIST_RANGE_WITH_SLOT_PREFIX));
             let slot_str = &name[DIST_RANGE_WITH_SLOT_PREFIX.len()..];
             if let Ok(s) = slot_str.parse::<u64>() {
                 slot = s;
@@ -21,7 +21,7 @@ impl Range {
                 log::warn!("found unknown distribution: {}, will use range", name);
             }
         }
-        debug_assert!(shards > 0 && slot >= shards as u64);
+        assert!(shards > 0 && slot >= shards as u64);
         Range {
             slot: slot,
             interval: slot / shards as u64,

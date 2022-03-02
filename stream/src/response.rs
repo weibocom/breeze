@@ -118,7 +118,7 @@ impl AsRef<RingSlice> for Response {
     // 如果有多个item,应该使迭代方式
     #[inline]
     fn as_ref(&self) -> &RingSlice {
-        debug_assert!(self.items.len() == 1);
+        assert!(self.items.len() == 1);
         unsafe { &self.items.get_unchecked(self.items.len() - 1) }
     }
 }

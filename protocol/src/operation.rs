@@ -26,7 +26,7 @@ const OP_NAMES: [&'static str; OPS.len()] = ["get", "mget", "gets", "store", "me
 impl From<u8> for Operation {
     #[inline]
     fn from(op_idx: u8) -> Self {
-        debug_assert!((op_idx as usize) < OPS.len());
+        assert!((op_idx as usize) < OPS.len());
         OPS[op_idx as usize]
     }
 }

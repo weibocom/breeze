@@ -10,7 +10,7 @@ pub struct Random<T> {
 impl<T> Random<T> {
     #[inline]
     pub fn from(replicas: Vec<T>) -> Self {
-        debug_assert_ne!(replicas.len(), 0);
+        assert_ne!(replicas.len(), 0);
         let idx = Arc::new(AtomicUsize::new(rand::random::<u16>() as usize));
         Self { idx, replicas }
     }

@@ -61,9 +61,9 @@ impl<T> PinnedQueue<T> {
 
     #[inline]
     pub unsafe fn pop_front_unchecked(&mut self) -> T {
-        debug_assert_ne!(self.len(), 0);
+        assert_ne!(self.len(), 0);
         if self.fix_head {
-            debug_assert_ne!(self.fix_len(), 0);
+            assert_ne!(self.fix_len(), 0);
             let t = self.header().read();
             self.head += 1;
             if self.fix_empty() {
@@ -77,10 +77,10 @@ impl<T> PinnedQueue<T> {
             }
             t
         } else {
-            debug_assert_ne!(self.ext.len(), 0);
+            assert_ne!(self.ext.len(), 0);
             let t = self.ext.pop_front().expect("take front");
             if self.ext.len() == 0 {
-                debug_assert_eq!(self.fix_len(), 0);
+                assert_eq!(self.fix_len(), 0);
                 self.fix_head = true;
                 self.fix_tail = true;
             }
@@ -89,23 +89,23 @@ impl<T> PinnedQueue<T> {
     }
     #[inline]
     unsafe fn front_mut_unchecked(&mut self) -> &mut T {
-        debug_assert_ne!(self.len(), 0);
+        assert_ne!(self.len(), 0);
         if self.fix_head {
-            debug_assert_ne!(self.fix_len(), 0);
+            assert_ne!(self.fix_len(), 0);
             &mut *self.header()
         } else {
-            debug_assert_ne!(self.ext.len(), 0);
+            assert_ne!(self.ext.len(), 0);
             self.ext.front_mut().expect("ext front")
         }
     }
     #[inline]
     pub unsafe fn front_unchecked(&self) -> &T {
-        debug_assert_ne!(self.len(), 0);
+        assert_ne!(self.len(), 0);
         if self.fix_head {
-            debug_assert_ne!(self.fix_len(), 0);
+            assert_ne!(self.fix_len(), 0);
             &*self.header()
         } else {
-            debug_assert_ne!(self.ext.len(), 0);
+            assert_ne!(self.ext.len(), 0);
             self.ext.front().expect("ext front")
         }
     }
@@ -163,8 +163,8 @@ impl<T> PinnedQueue<T> {
     // fix为空时才能grow, 每次grow后会重置head与tail指针
     #[inline]
     fn grow(&mut self) {
-        debug_assert_eq!(self.fix_len(), 0);
-        debug_assert_ne!(self.ext.len(), 0);
+        assert_eq!(self.fix_len(), 0);
+        assert_ne!(self.ext.len(), 0);
         if self.ext.len() > (self.cap() >> 1) {
             // drop old
             let _v = unsafe { Vec::from_raw_parts(self.fix, 0, self.cap as usize) };

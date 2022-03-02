@@ -31,7 +31,7 @@ impl Sharding {
     pub fn sharding(&self, key: &[u8]) -> usize {
         let hash = self.hash.hash(&key);
         let idx = self.distribution.index(hash);
-        debug_assert!(idx < self.num);
+        assert!(idx < self.num);
         idx
     }
     // key: sharding idx

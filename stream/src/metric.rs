@@ -21,7 +21,7 @@ macro_rules! define_metrics {
             )+
             #[inline]
             pub fn ops(&mut self, op:Operation) -> &mut Metric {
-                debug_assert!(op.id() < self.ops.len());
+                assert!(op.id() < self.ops.len());
                 unsafe{self.ops.get_unchecked_mut(op.id()) }
             }
             pub fn new(path:&Path) -> Self {
