@@ -12,9 +12,9 @@ pub struct RingSlice {
 impl RingSlice {
     #[inline]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
-        debug_assert!(cap > 0);
-        debug_assert_eq!(cap, cap.next_power_of_two());
-        debug_assert!(end >= start);
+        assert!(cap > 0);
+        assert_eq!(cap, cap.next_power_of_two());
+        assert!(end >= start);
         let me = Self {
             ptr: ptr as usize,
             cap: cap,
@@ -31,7 +31,7 @@ impl RingSlice {
 
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
-        debug_assert!(offset + len <= self.len());
+        assert!(offset + len <= self.len());
         Self::from(
             self.ptr(),
             self.cap,
@@ -42,14 +42,14 @@ impl RingSlice {
     // 从start开始的所有数据。start不是offset，是绝对值。
     //#[inline]
     //pub fn take(&self, start: usize) -> RingSlice {
-    //    debug_assert!(start >= self.start);
-    //    debug_assert!(start <= self.end);
+    //    assert!(start >= self.start);
+    //    assert!(start <= self.end);
     //    Self::from(self.ptr(), self.cap, start, self.end)
     //}
     // 读取数据. 可能只读取可读数据的一部分。
     #[inline]
     pub fn read(&self, offset: usize) -> &[u8] {
-        debug_assert!(offset < self.len());
+        assert!(offset < self.len());
         let oft = self.mask(self.start + offset);
         let l = (self.cap - oft).min(self.end - self.start - offset);
         //println!("read data offset:{} start offset:{} l:{}", offset, oft, l);
@@ -74,17 +74,17 @@ impl RingSlice {
 
     #[inline]
     pub fn len(&self) -> usize {
-        debug_assert!(self.end >= self.start);
+        assert!(self.end >= self.start);
         self.end - self.start
     }
     #[inline]
     pub fn at(&self, idx: usize) -> u8 {
-        debug_assert!(idx < self.len());
+        assert!(idx < self.len());
         unsafe { *self.oft_ptr(idx) }
     }
     #[inline]
     pub fn update(&mut self, idx: usize, b: u8) {
-        debug_assert!(idx < self.len());
+        assert!(idx < self.len());
         unsafe { *self.oft_ptr(idx) = b }
     }
     #[inline]
@@ -93,7 +93,7 @@ impl RingSlice {
     }
     #[inline]
     unsafe fn oft_ptr(&self, idx: usize) -> *mut u8 {
-        debug_assert!(idx < self.len());
+        assert!(idx < self.len());
         let oft = self.mask(self.start + idx);
         self.ptr().offset(oft as isize)
     }
@@ -176,7 +176,7 @@ macro_rules! define_read_number {
         #[inline]
         pub fn $fn_name(&self, offset: usize) -> $type_name {
             const SIZE: usize = std::mem::size_of::<$type_name>();
-            debug_assert!(self.len() >= offset + SIZE);
+            assert!(self.len() >= offset + SIZE);
             unsafe {
                 let oft_start = (self.start + offset) & (self.cap - 1);
                 let oft_end = self.end & (self.cap - 1);
@@ -239,7 +239,7 @@ impl PartialEq<Self> for RingSlice {
 impl From<&[u8]> for RingSlice {
     #[inline]
     fn from(s: &[u8]) -> Self {
-        debug_assert_ne!(s.len(), 0);
+        assert_ne!(s.len(), 0);
         let len = s.len();
         let cap = len.next_power_of_two();
         Self::from(s.as_ptr() as *mut u8, cap, 0, s.len())

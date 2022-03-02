@@ -16,7 +16,7 @@ struct RequestContext {
 impl RequestContext {
     #[inline]
     fn reset(&mut self) {
-        debug_assert_eq!(std::mem::size_of::<Self>(), 8);
+        assert_eq!(std::mem::size_of::<Self>(), 8);
         *self.u64_mut() = 0;
     }
     #[inline]
@@ -69,7 +69,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             self.check_start()?;
             self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
             self.ctx.first = true;
-            debug_assert_ne!(self.bulk(), 0);
+            assert_ne!(self.bulk(), 0);
         }
         Ok(())
     }
@@ -82,14 +82,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             let start = self.oft - cmd_len - CRLF_LEN;
             let cmd = self.data.sub_slice(start, cmd_len);
             self.ctx.op_code = super::command::get_op_code(&cmd);
-            debug_assert_ne!(self.ctx.op_code, 0);
+            assert_ne!(self.ctx.op_code, 0);
         }
         Ok(())
     }
     #[inline]
     pub(super) fn parse_key(&mut self) -> Result<RingSlice> {
-        debug_assert_ne!(self.ctx.op_code, 0);
-        debug_assert_ne!(self.ctx.bulk, 0);
+        assert_ne!(self.ctx.op_code, 0);
+        assert_ne!(self.ctx.bulk, 0);
         let key_len = self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         let start = self.oft - CRLF_LEN - key_len;
@@ -97,7 +97,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     #[inline]
     pub(super) fn ignore_one_bulk(&mut self) -> Result<()> {
-        debug_assert_ne!(self.ctx.bulk, 0);
+        assert_ne!(self.ctx.bulk, 0);
         self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         Ok(())
@@ -116,14 +116,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             self.stream.ignore(self.oft - self.oft_last);
             self.oft_last = self.oft;
 
-            debug_assert_ne!(self.ctx.op_code, 0);
+            assert_ne!(self.ctx.op_code, 0);
             // 更新
             *self.stream.context() = self.ctx.u64();
         }
     }
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
-        debug_assert!(self.oft_last < self.oft);
+        assert!(self.oft_last < self.oft);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
         // 更新上下文的bulk num。
@@ -131,14 +131,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         *self.stream.context() = self.ctx.u64();
         if self.ctx.bulk == 0 {
             self.ctx.reset();
-            debug_assert_eq!(self.ctx.u64(), 0);
+            assert_eq!(self.ctx.u64(), 0);
             *self.stream.context() = 0;
         }
         self.stream.take(data.len())
     }
     #[inline]
     fn current(&self) -> u8 {
-        debug_assert!(self.available());
+        assert!(self.available());
         self.data.at(self.oft)
     }
     #[inline]
@@ -187,7 +187,7 @@ impl Packet for ds::RingSlice {
     #[inline]
     fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         if *oft + 2 < self.len() {
-            debug_assert!(is_valid_leading_num_char(self.at(*oft)));
+            assert!(is_valid_leading_num_char(self.at(*oft)));
             let start = *oft;
             *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
             let mut val: usize = 0;

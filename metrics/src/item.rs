@@ -36,9 +36,9 @@ impl ItemRc {
     #[inline]
     pub fn try_init(&mut self, id: &Arc<Id>) {
         if let Some(item) = crate::get_metric(id) {
-            debug_assert!(!item.is_null());
+            assert!(!item.is_null());
             self.inner = item;
-            debug_assert!(self.inited());
+            assert!(self.inited());
             self.incr_rc();
         }
     }
@@ -48,7 +48,7 @@ impl Deref for ItemRc {
     type Target = Item;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        debug_assert!(self.inited());
+        assert!(self.inited());
         unsafe { &*self.inner }
     }
 }
@@ -71,7 +71,7 @@ impl Item {
     #[inline]
     pub(crate) fn init(&mut self, id: Arc<Id>) {
         assert_eq!(self.rc(), 0);
-        debug_assert!(!id.t.is_empty());
+        assert!(!id.t.is_empty());
         self.data.init_id(id);
         self.incr_rc();
     }
@@ -81,7 +81,7 @@ impl Item {
     }
     #[inline]
     pub(crate) fn data(&self) -> &ItemData {
-        debug_assert!(self.inited());
+        assert!(self.inited());
         &self.data
     }
 

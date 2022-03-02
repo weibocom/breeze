@@ -59,8 +59,8 @@ impl GuardedBuffer {
     }
     #[inline]
     pub fn take(&mut self, n: usize) -> MemGuard {
-        debug_assert!(n > 0);
-        debug_assert!(self.taken + n <= self.writtened());
+        assert!(n > 0);
+        assert!(self.taken + n <= self.writtened());
         let guard = self.guards.push_back(AtomicU32::new(0));
         let data = self.inner.slice(self.taken, n);
         self.taken += n;
@@ -124,9 +124,9 @@ pub struct MemGuard {
 impl MemGuard {
     #[inline]
     fn new(data: RingSlice, guard: *const AtomicU32) -> Self {
-        debug_assert!(!guard.is_null());
+        assert!(!guard.is_null());
         assert_ne!(data.len(), 0);
-        unsafe { debug_assert_eq!((&*guard).load(Ordering::Acquire), 0) };
+        unsafe { assert_eq!((&*guard).load(Ordering::Acquire), 0) };
         Self {
             mem: data,
             guard: guard,
@@ -136,7 +136,7 @@ impl MemGuard {
     #[inline]
     pub fn from_vec(data: Vec<u8>) -> Self {
         let mem: RingSlice = data.as_slice().into();
-        //debug_assert_eq!(data.capacity(), mem.len());
+        //assert_eq!(data.capacity(), mem.len());
         assert_ne!(data.len(), 0);
         let cap = data.capacity();
         let _ = std::mem::ManuallyDrop::new(data);
@@ -166,10 +166,10 @@ impl Drop for MemGuard {
     fn drop(&mut self) {
         unsafe {
             if self.guard.is_null() {
-                debug_assert!(self.cap >= self.mem.len());
+                assert!(self.cap >= self.mem.len());
                 let _v = Vec::from_raw_parts(self.mem.ptr(), 0, self.cap);
             } else {
-                debug_assert_eq!((&*self.guard).load(Ordering::Acquire), 0);
+                assert_eq!((&*self.guard).load(Ordering::Acquire), 0);
                 (&*self.guard).store(self.mem.len() as u32, Ordering::Release);
             }
         }

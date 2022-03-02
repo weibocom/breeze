@@ -75,7 +75,7 @@ impl<T> CowReadHandle<T> {
     // 先把原有的数据swap出来，存储到dropping中。所有的reader请求都迁移到inner之后，将dropping中的数据删除。
     // 在ReadGuard中处理
     pub(crate) fn update(&self, t: T) {
-        debug_assert!(self.epoch.load(Ordering::Acquire));
+        assert!(self.epoch.load(Ordering::Acquire));
         let w_handle = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(t))) };
         let old = self.inner.inner.swap(w_handle.as_ptr(), Ordering::Release);
         let dropped = self.dropping.swap(old, Ordering::Release);

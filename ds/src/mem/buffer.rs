@@ -32,7 +32,7 @@ impl RingBuffer {
     }
     #[inline]
     pub fn advance_read(&mut self, n: usize) {
-        debug_assert!(n <= self.len());
+        assert!(n <= self.len());
         self.read += n;
     }
     #[inline]
@@ -78,8 +78,8 @@ impl RingBuffer {
     // 从指定位置开始的数据
     #[inline]
     pub fn slice(&self, read: usize, len: usize) -> RingSlice {
-        debug_assert!(read >= self.read);
-        debug_assert!(read + len <= self.write);
+        assert!(read >= self.read);
+        assert!(read + len <= self.write);
         RingSlice::from(self.data.as_ptr(), self.size, read, read + len)
     }
     #[inline]
@@ -88,7 +88,7 @@ impl RingBuffer {
     }
     #[inline]
     pub fn len(&self) -> usize {
-        debug_assert!(self.write >= self.read);
+        assert!(self.write >= self.read);
         self.write - self.read
     }
     #[inline]
@@ -109,7 +109,7 @@ impl RingBuffer {
         let mut w = 0;
         while w < data.len() {
             let src = data.read(w);
-            debug_assert!(src.len() > 0);
+            assert!(src.len() > 0);
             let dst = self.as_mut_bytes();
             if dst.len() == 0 {
                 break;
@@ -155,7 +155,7 @@ impl RingBuffer {
 
     #[inline]
     pub fn update(&mut self, idx: usize, val: u8) {
-        debug_assert!(idx < self.len());
+        assert!(idx < self.len());
         unsafe {
             *self
                 .data
@@ -165,7 +165,7 @@ impl RingBuffer {
     }
     #[inline]
     pub fn at(&self, idx: usize) -> u8 {
-        debug_assert!(idx < self.len());
+        assert!(idx < self.len());
         unsafe {
             *self
                 .data

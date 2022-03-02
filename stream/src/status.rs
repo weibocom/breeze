@@ -64,7 +64,7 @@ impl Status {
     // 上面的假设待验证
     #[inline]
     pub fn place_request(&self, req: &Request) {
-        debug_assert_eq!(self.status.load(Acquire), ItemStatus::Init as u8);
+        assert_eq!(self.status.load(Acquire), ItemStatus::Init as u8);
         self.status_cas(Init as u8, RequestReceived as u8);
         *self.request.borrow_mut() = Some(req.clone());
         self.rid.replace(req.id());
@@ -134,7 +134,7 @@ impl Status {
     }
     #[inline]
     pub fn place_response(&self, response: protocol::Response, seq: usize) {
-        debug_assert_eq!(seq, self.seq());
+        assert_eq!(seq, self.seq());
         log::debug!("place response:{:?} ", response.location());
         self.response.replace(response);
 
@@ -168,8 +168,8 @@ impl Status {
     // 在在sender把Response发送给client后，在Drop中会调用response_done，更新状态。
     #[inline]
     pub fn response_done(&self) {
-        debug_assert_eq!(self.status(), Read as u8);
-        //debug_assert_eq!(self.seq(), seq);
+        assert_eq!(self.status(), Read as u8);
+        //assert_eq!(self.seq(), seq);
         // 把状态调整为Init
         // 如果seq为0，说明有一种情况，之前连接进行过reset，但response已获取。
         if self.try_status_cas(Read as u8, ItemStatus::Init as u8) {

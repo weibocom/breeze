@@ -34,7 +34,7 @@ pub(crate) async fn lookup_hosts(
     for h in hosts {
         match lookup_host(dns_resolver, h).await {
             Ok(ips) => {
-                debug_assert!(ips.len() > 0);
+                assert!(ips.len() > 0);
                 all_ips.insert(h.to_string(), ips);
             }
             Err(e) => {

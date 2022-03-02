@@ -94,7 +94,7 @@ impl CallbackContext {
         }
         if !self.ctx.drop_on_done {
             // 说明有请求在pending
-            debug_assert!(!self.complete());
+            assert!(!self.complete());
             self.ctx.complete.store(true, Ordering::Release);
             self.wake();
             self.ctx.finished.store(true, Ordering::Release);
@@ -136,7 +136,7 @@ impl CallbackContext {
     // 在使用前，先得判断inited
     #[inline]
     pub unsafe fn response(&self) -> &Command {
-        debug_assert!(self.inited());
+        assert!(self.inited());
         self.response.assume_init_ref()
     }
     #[inline]
@@ -158,7 +158,7 @@ impl CallbackContext {
     }
     #[inline]
     fn write(&mut self, resp: Command) {
-        debug_assert!(!self.complete());
+        assert!(!self.complete());
         self.try_drop_response();
         self.response.write(resp);
         self.ctx.inited = true;
@@ -228,7 +228,7 @@ impl CallbackContext {
 impl Drop for CallbackContext {
     #[inline]
     fn drop(&mut self) {
-        debug_assert!(self.complete());
+        assert!(self.complete());
         if self.ctx.inited {
             unsafe {
                 std::ptr::drop_in_place(self.response.as_mut_ptr());
@@ -318,8 +318,8 @@ impl CallbackContextPtr {
     //需要在on_done时主动销毁self对象
     #[inline]
     pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P, exp: u32) {
-        debug_assert!(self.ctx.inited);
-        debug_assert!(self.complete());
+        assert!(self.ctx.inited);
+        assert!(self.complete());
         if !self.is_write_back() || !unsafe { self.response().ok() } {
             return;
         }
@@ -364,7 +364,7 @@ impl Deref for CallbackContextPtr {
     #[inline]
     fn deref(&self) -> &Self::Target {
         unsafe {
-            debug_assert!(!self.inner.as_ref().ctx.drop_on_done);
+            assert!(!self.inner.as_ref().ctx.drop_on_done);
             self.inner.as_ref()
         }
     }
@@ -373,7 +373,7 @@ impl DerefMut for CallbackContextPtr {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
-            debug_assert!(!self.inner.as_ref().ctx.drop_on_done);
+            assert!(!self.inner.as_ref().ctx.drop_on_done);
             self.inner.as_mut()
         }
     }
@@ -390,7 +390,7 @@ impl Deref for CallbackPtr {
     type Target = Callback;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        debug_assert!(!self.ptr.is_null());
+        assert!(!self.ptr.is_null());
         unsafe { &*self.ptr }
     }
 }
@@ -414,12 +414,12 @@ impl crate::Commander for CallbackContextPtr {
     }
     #[inline]
     fn response(&self) -> &Command {
-        debug_assert!(self.ctx.inited);
+        assert!(self.ctx.inited);
         unsafe { self.inner.as_ref().response() }
     }
     #[inline]
     fn response_mut(&mut self) -> &mut Command {
-        debug_assert!(self.inited());
+        assert!(self.inited());
         unsafe { self.response.assume_init_mut() }
     }
 }
