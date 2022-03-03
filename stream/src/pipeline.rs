@@ -143,7 +143,6 @@ where
     fn process_pending(&mut self) -> Result<()> {
         let Self {
             client,
-            cb,
             pending,
             parser,
             start,
@@ -179,7 +178,7 @@ where
 
             if ctx.inited() {
                 parser.write_response(&mut ctx, client)?;
-                ctx.async_start_write_back(parser, cb.exp_sec());
+                ctx.async_start_write_back(parser);
             } else {
                 let req = ctx.request();
                 if !req.noforward() {
