@@ -6,6 +6,7 @@ mod shard_test;
 //mod memcached_text;
 mod mem;
 //mod queue;
+mod protocol;
 mod redis;
 mod ring_slice;
 //mod size;
