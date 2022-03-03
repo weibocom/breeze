@@ -37,7 +37,6 @@ pub struct Context {
     idc_path: String,
 
     #[clap(
-        short,
         long,
         help("interval of updating config (unit second)"),
         default_value("15")
