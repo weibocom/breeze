@@ -341,7 +341,7 @@ lazy_static! {
                 ("getbit", "getbit",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("bitcount", "bitcount",                   -2, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("bitpos", "bitpos",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("bitfield", "bitfield",                   -2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("bitfield", "bitfield",                   -2, Store, 1, 1, 1, 3, false, false, true, false, false),
 
                 ("setrange", "setrange",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
                 ("getrange", "getrange",                    4, Get, 1, 1, 1, 3, false, false, true, false, false),

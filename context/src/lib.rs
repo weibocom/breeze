@@ -37,7 +37,8 @@ pub struct Context {
     idc_path: String,
 
     #[clap(
-        short,
+        // short和thread_num冲突，此处先改为sec的short
+        short('s'),
         long,
         help("interval of updating config (unit second)"),
         default_value("15")

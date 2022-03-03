@@ -75,10 +75,14 @@ impl Redis {
         Ok(())
     }
 
+    // TODO 临时测试设为pub，测试完毕后去掉pub fishermen
     #[inline]
-    fn num_skip_all(&self, data: &RingSlice, mut oft: &mut usize) -> Result<Option<Command>> {
+    pub fn num_skip_all(&self, data: &RingSlice, mut oft: &mut usize) -> Result<Option<Command>> {
         let mut bulk_count = data.num(&mut oft)?;
         while bulk_count > 0 {
+            if *oft >= data.len() {
+                return Err(crate::Error::ProtocolIncomplete);
+            }
             match data.at(*oft) {
                 b'$' => {
                     data.num_and_skip(&mut oft)?;
@@ -87,7 +91,12 @@ impl Redis {
                     self.num_skip_all(data, oft)?;
                 }
                 _ => {
-                    log::info!("not supported type:{:?}, {:?}", data.utf8(), data);
+                    log::info!(
+                        "unsupport rsp:{:?}, pos: {}/{}",
+                        data.utf8(),
+                        oft,
+                        bulk_count
+                    );
                     panic!("not supported in num_skip_all");
                 }
             }
