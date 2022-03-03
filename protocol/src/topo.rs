@@ -5,11 +5,11 @@ use sharding::hash::Hasher;
 pub trait Endpoint: Sized + Send + Sync {
     type Item;
     fn send(&self, req: Self::Item);
-    #[inline]
-    fn static_send(receiver: usize, req: Self::Item) {
-        let e = unsafe { &*(receiver as *const Self) };
-        e.send(req);
-    }
+    //#[inline]
+    //fn static_send(receiver: usize, req: Self::Item) {
+    //    let e = unsafe { &*(receiver as *const Self) };
+    //    e.send(req);
+    //}
 }
 
 impl<T, R> Endpoint for &T
@@ -36,6 +36,10 @@ where
 
 #[enum_dispatch]
 pub trait Topology: Endpoint {
+    #[inline]
+    fn exp_sec(&self) -> u32 {
+        86400
+    }
     fn hasher(&self) -> &Hasher;
 }
 
@@ -43,6 +47,10 @@ impl<T> Topology for std::sync::Arc<T>
 where
     T: Topology,
 {
+    #[inline]
+    fn exp_sec(&self) -> u32 {
+        (**self).exp_sec()
+    }
     #[inline]
     fn hasher(&self) -> &Hasher {
         (**self).hasher()

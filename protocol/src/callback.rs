@@ -8,14 +8,13 @@ use crate::request::Request;
 use crate::{Command, Error, HashedCommand};
 
 pub struct Callback {
-    exp_sec: u32,
+    exp_sec: fn(usize) -> u32,
     receiver: usize,
     cb: fn(usize, Request),
 }
 impl Callback {
     #[inline]
-    pub fn new(receiver: usize, cb: fn(usize, Request)) -> Self {
-        let exp_sec = 86400;
+    pub fn new(receiver: usize, cb: fn(usize, Request), exp_sec: fn(usize) -> u32) -> Self {
         Self {
             receiver,
             cb,
@@ -29,7 +28,7 @@ impl Callback {
     }
     #[inline]
     pub fn exp_sec(&self) -> u32 {
-        self.exp_sec
+        (self.exp_sec)(self.receiver)
     }
 }
 
@@ -316,12 +315,13 @@ impl CallbackContextPtr {
     }
     //需要在on_done时主动销毁self对象
     #[inline]
-    pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P, exp: u32) {
+    pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P) {
         assert!(self.ctx.inited);
         assert!(self.complete());
         if !self.is_write_back() || !unsafe { self.response().ok() } {
             return;
         }
+        let exp = unsafe { self.inner.as_ref().callback.exp_sec() };
         if let Some(new) = parser.build_writeback_request(&mut self, exp) {
             self.with_request(new);
         }

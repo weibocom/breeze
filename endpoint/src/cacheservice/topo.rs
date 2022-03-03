@@ -20,6 +20,7 @@ pub struct CacheService<B, E, Req, P> {
     has_slave: bool,
     hasher: Hasher,
     parser: P,
+    exp_sec: u32,
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -32,6 +33,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             r_num: 0,
             has_l1: false,
             has_slave: false,
+            exp_sec: 0,
             hasher: Default::default(),
             rnd_idx: Default::default(),
             _marker: Default::default(),
@@ -63,6 +65,10 @@ where
     #[inline]
     fn hasher(&self) -> &Hasher {
         &self.hasher
+    }
+    #[inline]
+    fn exp_sec(&self) -> u32 {
+        self.exp_sec
     }
 }
 
@@ -161,6 +167,7 @@ where
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
+            self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
             let dist = &ns.distribution;
 
             let old_streams = self.streams.split_off(0);

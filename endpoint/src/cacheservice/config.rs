@@ -10,7 +10,7 @@ pub struct Namespace {
     #[serde(default)]
     pub hash_tag: String, //eg: user
     //pub timeout: i32,         // unit: mills
-    //pub exptime: i64,
+    pub exptime: i64,
     #[serde(default)]
     pub master: Vec<String>,
     #[serde(default)]

@@ -45,7 +45,8 @@ pub(super) async fn process_one(
     let receiver = top.as_ref() as *const RefreshTopology<Topology> as usize;
     let cb = RefreshTopology::<Topology>::static_send;
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
-    let cb = Callback::new(receiver, cb);
+    let exp = RefreshTopology::<Topology>::exp_sec;
+    let cb = Callback::new(receiver, cb, exp);
     let cb_ptr: CallbackPtr = (&cb).into();
 
     // 服务注册完成，侦听端口直到成功。
