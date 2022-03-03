@@ -106,7 +106,7 @@ where
             let Self { client, rx_buf, .. } = self;
             let mut cx = Context::from_waker(cx.waker());
             let mut rx = Reader::from(client, &mut cx);
-            ready!(rx_buf.buf.write(&mut rx))?;
+            ready!(rx_buf.write(&mut rx))?;
             let num = rx.check_eof_num()?;
             // buffer full
             if num == 0 {}
