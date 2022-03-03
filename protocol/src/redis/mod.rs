@@ -219,6 +219,9 @@ fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
         AUTO.fetch_add(1, Ordering::Relaxed)
     } else {
         let hash = alg.hash(key);
+        if hash == 0 {
+            log::info!("hash zero key:{:?}", key.utf8());
+        }
         assert!(hash != 0);
         hash
     }
