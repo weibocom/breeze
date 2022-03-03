@@ -145,7 +145,6 @@ impl CallbackContext {
     }
     #[inline]
     pub fn finished(&self) -> bool {
-        assert!(self.complete());
         self.ctx.finished.load(Ordering::Acquire)
     }
     #[inline]
