@@ -27,7 +27,7 @@ impl Flag {
     }
     #[inline]
     pub fn set_status_ok(&mut self, ok: bool) {
-        debug_assert_eq!(self.ok(), false);
+        assert_eq!(self.ok(), false);
         self.status_ok = ok;
     }
     #[inline]
@@ -52,7 +52,7 @@ impl Flag {
     }
     #[inline]
     pub fn set_noforward(&mut self, noforward: bool) {
-        debug_assert!(!self.noforward());
+        assert!(!self.noforward());
         self.noforward = noforward;
     }
     #[inline]

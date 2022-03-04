@@ -37,16 +37,25 @@ impl<T: Endpoint + Clone + 'static> Endpoint for RefreshTopology<T> {
 }
 impl<T: Topology + Clone + 'static> Topology for RefreshTopology<T> {
     #[inline]
+    fn exp_sec(&self) -> u32 {
+        self.top().exp_sec()
+    }
+    #[inline]
     fn hasher(&self) -> &Hasher {
         self.top().hasher()
     }
 }
-impl<T: Endpoint + Clone + 'static> RefreshTopology<T> {
+impl<T: Topology + Clone + 'static> RefreshTopology<T> {
     #[inline]
     pub fn static_send<R: Into<T::Item>>(receiver: usize, req: R) {
         let req = req.into();
         let top = receiver as *const Self;
         unsafe { (&*top).send(req) };
+    }
+    #[inline]
+    pub fn exp_sec(receiver: usize) -> u32 {
+        let top = receiver as *const Self;
+        unsafe { (&*top).exp_sec() }
     }
 }
 
@@ -93,7 +102,7 @@ impl<T: Clone + 'static> Refresher<T> {
             for ep in self.dropping.split_off(0) {
                 let _ = unsafe { Box::from_raw(ep as *mut T) };
             }
-            debug_assert_eq!(self.dropping.len(), 0);
+            assert_eq!(self.dropping.len(), 0);
         }
     }
     fn check(&self) -> bool {

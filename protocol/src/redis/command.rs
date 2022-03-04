@@ -68,7 +68,7 @@ impl CommandProperties {
     // 如果last key index为负数，token count加上该负数，即为key的结束idx
     #[inline]
     pub fn last_key_index(&self, token_count: usize) -> usize {
-        debug_assert!(
+        assert!(
             token_count as i64 > self.first_key_index as i64
                 && token_count as i64 > self.last_key_index as i64
         );
@@ -109,7 +109,7 @@ impl CommandProperties {
         data: &RingSlice,
     ) -> HashedCommand {
         use ds::Buffer;
-        debug_assert!(self.name.len() < 10);
+        assert!(self.name.len() < 10);
         let mut cmd = Vec::with_capacity(16 + data.len());
         cmd.push(b'*');
         // 1个cmd, 1个key，1个value。一共3个bulk
@@ -128,7 +128,7 @@ impl CommandProperties {
             flag.set_mkey_first();
             // mset只有一个返回值。
             // 其他的multi请求的key的数量就是bulk_num
-            debug_assert!(self.key_step == 1 || self.key_step == 2);
+            assert!(self.key_step == 1 || self.key_step == 2);
             let mut key_num = bulk_num;
             if self.key_step == 2 {
                 key_num >>= 1;
@@ -159,12 +159,12 @@ impl Commands {
         let uppercase = UppercaseHashKey::new(name);
         let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
         // op_code 0表示未定义。不存在
-        debug_assert_ne!(idx, 0);
+        assert_ne!(idx, 0);
         idx as u16
     }
     #[inline]
     pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
-        debug_assert!((op_code as usize) < self.supported.len());
+        assert!((op_code as usize) < self.supported.len());
         let cmd = unsafe { self.supported.get_unchecked(op_code as usize) };
         if cmd.supported {
             Ok(cmd)
@@ -198,9 +198,9 @@ impl Commands {
     ) {
         let uppercase = name.to_uppercase();
         let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
-        debug_assert!(idx < self.supported.len());
+        assert!(idx < self.supported.len());
         // 之前没有添加过。
-        debug_assert!(!self.supported[idx].supported);
+        assert!(!self.supported[idx].supported);
         self.supported[idx] = CommandProperties {
             name,
             mname,
@@ -341,7 +341,7 @@ lazy_static! {
                 ("getbit", "getbit",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("bitcount", "bitcount",                   -2, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("bitpos", "bitpos",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("bitfield", "bitfield",                   -2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("bitfield", "bitfield",                   -2, Store, 1, 1, 1, 3, false, false, true, false, false),
 
                 ("setrange", "setrange",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
                 ("getrange", "getrange",                    4, Get, 1, 1, 1, 3, false, false, true, false, false),

@@ -121,7 +121,7 @@ mod shard_test {
             }
         }
 
-        debug_assert!(readers.len() == 4);
+        assert!(readers.len() == 4);
         println!("readers: {:?}", readers);
     }
 
@@ -135,8 +135,8 @@ mod shard_test {
         let hash1 = hasher.hash(&key1[0..].as_bytes());
         let hash2 = hasher.hash(&key2[0..].as_bytes());
         println!("key:{}/{}, hash:{}/{}", key1, key2, hash1, hash2);
-        debug_assert_eq!(hash1, val1);
-        debug_assert_eq!(hash2, val1);
+        assert_eq!(hash1, val1);
+        assert_eq!(hash2, val1);
     }
 
     fn bkdr_check(path: &str) {
@@ -156,7 +156,7 @@ mod shard_test {
                     }
 
                     let props = line.split(" ").collect::<Vec<&str>>();
-                    debug_assert!(props.len() == 2);
+                    assert!(props.len() == 2);
                     let key = props[0].trim();
                     let idx_in_java = props[1].trim();
                     // println!(
@@ -205,7 +205,7 @@ mod shard_test {
                     }
 
                     let props = line.split(" ").collect::<Vec<&str>>();
-                    debug_assert!(props.len() == 2);
+                    assert!(props.len() == 2);
                     let key = props[0].trim();
                     let idx_in_java = props[1].trim();
 
@@ -254,7 +254,7 @@ mod shard_test {
                     }
 
                     let props = line.split(" ").collect::<Vec<&str>>();
-                    debug_assert!(props.len() == 3);
+                    assert!(props.len() == 3);
                     let key = props[0].trim();
                     let hash_in_java = props[1].trim();
                     let _server_in_java = props[2].trim();

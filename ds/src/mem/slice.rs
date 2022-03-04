@@ -40,23 +40,23 @@ impl Slice {
     }
     #[inline]
     pub fn backwards(&mut self, n: usize) {
-        debug_assert!(self.len >= n);
+        assert!(self.len >= n);
         self.len -= n;
     }
     #[inline]
     pub fn at(&self, pos: usize) -> u8 {
-        debug_assert!(pos < self.len());
+        assert!(pos < self.len());
         unsafe { *(self.ptr as *const u8).offset(pos as isize) }
     }
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
-        debug_assert!(self.len() > 0);
+        assert!(self.len() > 0);
         use crate::Buffer;
         v.write(self);
     }
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> Self {
-        debug_assert!(offset + len <= self.len);
+        assert!(offset + len <= self.len);
         Self::new(self.ptr + offset, len)
     }
 
@@ -155,7 +155,7 @@ macro_rules! define_read_number {
         #[inline]
         pub fn $fn_name(&self, offset: usize) -> $type_name {
             const SIZE: usize = std::mem::size_of::<$type_name>();
-            debug_assert!(self.len() >= offset + SIZE);
+            assert!(self.len() >= offset + SIZE);
             unsafe {
                 let b = from_raw_parts((self.ptr as *const u8).offset(offset as isize), SIZE);
                 $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())

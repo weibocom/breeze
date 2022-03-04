@@ -63,6 +63,7 @@ async fn run(ctx: Context) -> Result<()> {
     log::info!("====> server inited <==== {:?}", ctx);
 
     let mut listeners = ctx.listeners();
+    listeners.remove_unix_sock().await?;
     loop {
         for quard in listeners.scan().await {
             let discovery = tx.clone();

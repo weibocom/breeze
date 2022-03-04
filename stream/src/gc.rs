@@ -45,7 +45,7 @@ impl<T> From<T> for DelayedDrop<T> {
 impl<T> Drop for DelayedDrop<T> {
     #[inline]
     fn drop(&mut self) {
-        debug_assert!(!self.inner.is_null());
+        assert!(!self.inner.is_null());
         unsafe {
             let _dropped = Box::from_raw(self.inner);
         }
@@ -68,7 +68,7 @@ pub(crate) fn delayed_drop<T: Until + Into<Delayed>>(mut t: T) {
     if !t.droppable() {
         let d = t.into();
         log::debug!("an instance delay dropped");
-        debug_assert!(SENDER.get().is_some());
+        assert!(SENDER.get().is_some());
         unsafe {
             let _ = SENDER.get_unchecked().send(d.into());
         }
@@ -140,7 +140,7 @@ impl Future for DelayedDropHandler {
                     continue;
                 }
             }
-            debug_assert!(self.cache.is_none());
+            assert!(self.cache.is_none());
             while let Poll::Ready(Some(mut d)) = self.rx.poll_recv(cx) {
                 if d.droppable() {
                     drop(d);

@@ -129,7 +129,7 @@ impl<S> Stream<S> {
             let grow = cap - self.buf.len();
             self.buf.reserve(grow);
             self.buf_tx += grow;
-            debug_assert_eq!(cap, self.buf.capacity());
+            assert_eq!(cap, self.buf.capacity());
         }
     }
 }

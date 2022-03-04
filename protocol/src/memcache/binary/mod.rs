@@ -17,7 +17,7 @@ impl Protocol for MemcacheBinary {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        debug_assert!(data.len() > 0);
+        assert!(data.len() > 0);
         if data.at(PacketPos::Magic as usize) != REQUEST_MAGIC {
             return Err(Error::RequestProtocolNotValid);
         }
@@ -45,7 +45,7 @@ impl Protocol for MemcacheBinary {
             let hash = if key.len() > 0 {
                 alg.hash(&key)
             } else {
-                debug_assert!(req.operation().is_meta() || req.noop());
+                assert!(req.operation().is_meta() || req.noop());
                 use std::sync::atomic::{AtomicU64, Ordering};
                 static RND: AtomicU64 = AtomicU64::new(0);
                 RND.fetch_add(1, Ordering::Relaxed) as i64
@@ -53,14 +53,14 @@ impl Protocol for MemcacheBinary {
             let guard = data.take(packet_len);
             let cmd = HashedCommand::new(guard, hash, flag);
             // get请求不能是quiet
-            debug_assert!(!(cmd.operation().is_retrival() && cmd.sentonly()));
+            assert!(!(cmd.operation().is_retrival() && cmd.sentonly()));
             process.process(cmd, last);
         }
         Ok(())
     }
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        debug_assert!(data.len() > 0);
+        assert!(data.len() > 0);
         if data.at(PacketPos::Magic as usize) != RESPONSE_MAGIC {
             return Err(Error::ResponseProtocolNotValid);
         }
@@ -159,7 +159,7 @@ impl MemcacheBinary {
     #[inline]
     fn build_write_back_inplace(&self, req: &mut HashedCommand) {
         let data = req.data_mut();
-        debug_assert!(data.len() >= HEADER_LEN);
+        assert!(data.len() >= HEADER_LEN);
         let op_code = NOREPLY_MAPPING[data.op() as usize];
         // 把cop_code替换成quite command.
         data.update_opcode(op_code);
@@ -170,8 +170,8 @@ impl MemcacheBinary {
         req.reset_flag(op_code as u16, op);
         // 设置只发送标签，发送完成即请求完成。
         req.set_sentonly(true);
-        debug_assert!(req.operation().is_store());
-        debug_assert!(req.sentonly());
+        assert!(req.operation().is_store());
+        assert!(req.sentonly());
     }
     #[inline]
     fn build_write_back_get(
@@ -182,7 +182,7 @@ impl MemcacheBinary {
     ) -> Option<HashedCommand> {
         // 轮询response的cmds，构建回写request
         // 只为status为ok的resp构建回种req
-        debug_assert!(resp.ok());
+        assert!(resp.ok());
         let rsp_cmd = resp.data();
         let r_data = req.data();
         let key_len = r_data.key_len();
@@ -198,7 +198,7 @@ impl MemcacheBinary {
         req_cmd.push(op); // opcode: [1]
         req_cmd.write_u16(key_len); // key len: [2,3]
         let extra_len = rsp_cmd.extra_len() + 4 as u8; // get response中的extra 应该是4字节，作为set的 flag，另外4字节是set的expire
-        debug_assert!(extra_len == 8);
+        assert!(extra_len == 8);
         req_cmd.push(extra_len); // extra len: [4]
         req_cmd.push(0 as u8); // data type，全部为0: [5]
         req_cmd.write_u16(0 as u16); // vbucket id, 回写全部为0,pos [6,7]

@@ -35,10 +35,10 @@ pub(super) trait RedisFlager {
 
 #[inline]
 fn set(v: &mut u64, shift: u8, mask: u64, val: u64) {
-    debug_assert!(val <= mask);
-    debug_assert_eq!(get(v, shift, mask), 0);
+    assert!(val <= mask);
+    assert_eq!(get(v, shift, mask), 0);
     *v |= val << shift;
-    debug_assert_eq!(val, get(v, shift, mask));
+    assert_eq!(val, get(v, shift, mask));
 }
 #[inline]
 fn get(v: &u64, shift: u8, mask: u64) -> u64 {
@@ -56,9 +56,9 @@ impl RedisFlager for u64 {
     }
     #[inline]
     fn set_mkey_first(&mut self) {
-        debug_assert!(!self.mkey_first());
+        assert!(!self.mkey_first());
         *self |= 1 << MKEY_FIRST_SHIFT;
-        debug_assert!(self.mkey_first());
+        assert!(self.mkey_first());
     }
     #[inline]
     fn mkey_first(&self) -> bool {

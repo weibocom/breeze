@@ -9,8 +9,8 @@ pub struct SplitMod {
 
 impl SplitMod {
     pub fn from(name: &str, shards: usize) -> Self {
-        debug_assert!(name.len() > DIST_SPLIT_MOD_WITH_SLOT_PREFIX.len());
-        debug_assert!(name.starts_with(DIST_SPLIT_MOD_WITH_SLOT_PREFIX));
+        assert!(name.len() > DIST_SPLIT_MOD_WITH_SLOT_PREFIX.len());
+        assert!(name.starts_with(DIST_SPLIT_MOD_WITH_SLOT_PREFIX));
 
         // 根据算法，默认采用32
         let mut split = 32;
@@ -21,7 +21,7 @@ impl SplitMod {
             log::warn!("found unknown distribution: {}, will use range", name);
         }
 
-        debug_assert!(shards > 0 && split >= shards as u64);
+        assert!(shards > 0 && split >= shards as u64);
         SplitMod {
             split_count: split,
             shard_count: shards as u64,

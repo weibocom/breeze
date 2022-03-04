@@ -68,13 +68,13 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, mut req: Self::Item) {
-        debug_assert_ne!(self.shards.len(), 0);
+        assert_ne!(self.shards.len(), 0);
         // TODO：这部分逻辑转移到distribution中进行,待验证 fishermen
         // let newhash = req
         //     .hash()
         //     .wrapping_div(DIST_RANGE_SPLIT_DEFAULT)
         //     .wrapping_rem(DIST_RANGE_SPLIT_DEFAULT);
-        // debug_assert!(newhash >= 0);
+        // assert!(newhash >= 0);
         // let interval = DIST_RANGE_SPLIT_DEFAULT as u64 / self.shards.len() as u64;
         // let shard_idx = (newhash as u64 / interval) as usize;
         let shard_idx = self.distribute.index(req.hash());
@@ -220,8 +220,8 @@ where
         }
         // 遍历所有的shards_url
         for (master_addr, slaves) in addrs {
-            debug_assert_ne!(master_addr.len(), 0);
-            debug_assert_ne!(slaves.len(), 0);
+            assert_ne!(master_addr.len(), 0);
+            assert_ne!(slaves.len(), 0);
             let master = self.take_or_build(&mut old, &master_addr, self.timeout_master);
 
             // slave
@@ -233,7 +233,7 @@ where
             let shard = Shard::selector(&self.selector, master_addr, master, replicas);
             self.shards.push(shard);
         }
-        debug_assert_eq!(self.shards.len(), self.shards_url.len());
+        assert_eq!(self.shards.len(), self.shards_url.len());
         log::debug!("{} load complete => {}", self.service, self.shards.len());
     }
 }

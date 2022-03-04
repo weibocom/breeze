@@ -70,6 +70,14 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
             )+
         }
     }
+    #[inline]
+    fn exp_sec(&self) -> u32 {
+        match self {
+            $(
+                Self::$item(p) => p.exp_sec(),
+            )+
+        }
+    }
 }
 
 impl<B, E, R, P> protocol::Endpoint for Topology<B, E, R, P>

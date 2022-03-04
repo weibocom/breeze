@@ -15,7 +15,7 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, req: Req) {
-        debug_assert!(self.backends.len() > 0);
+        assert!(self.backends.len() > 0);
         let idx = if self.backends.len() > 1 {
             self.router.index(req.hash())
         } else {
