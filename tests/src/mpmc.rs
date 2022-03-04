@@ -102,7 +102,7 @@ mod mpmc_test {
             }
             log::debug!("thread {}: drop done", thread_id::get());
             let old = test_mpmc.receiver.replace(Some(receiver));
-            debug_assert!(old.is_none());
+            assert!(old.is_none());
             std::thread::sleep(Duration::from_secs(5));
         });
     }

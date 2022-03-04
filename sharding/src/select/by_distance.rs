@@ -16,7 +16,7 @@ impl<T: Addr> Distance<T> {
     #[inline]
     pub fn from(mut replicas: Vec<T>) -> Self {
         let batch = 1024usize;
-        debug_assert_ne!(replicas.len(), 0);
+        assert_ne!(replicas.len(), 0);
         // 把replica排序、分成3组: local、remote、跨region。
         let distances: HashMap<String, u16> = replicas
             .iter()
@@ -63,7 +63,7 @@ impl<T: Addr> Distance<T> {
     // 只从local获取
     #[inline]
     pub unsafe fn unsafe_select(&self) -> (usize, &T) {
-        debug_assert_ne!(self.len(), 0);
+        assert_ne!(self.len(), 0);
         let idx = if self.len() == 0 {
             0
         } else {
@@ -74,12 +74,12 @@ impl<T: Addr> Distance<T> {
     }
     #[inline]
     pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T) {
-        debug_assert!(runs < self.len());
+        assert!(runs < self.len());
         // 还可以从local中取
         let idx = if runs < self.local_len() {
             (idx + 1) % self.local_len()
         } else {
-            debug_assert_ne!(self.local_len(), self.len());
+            assert_ne!(self.local_len(), self.len());
             if idx == self.local_len() {
                 // 从[idx_local..idx_remote)随机取一个
                 self.seq.fetch_add(1, Ordering::Relaxed) % self.remote_len() + self.local_len()

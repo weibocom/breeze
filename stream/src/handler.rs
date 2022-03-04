@@ -100,7 +100,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         while self.pending.len() > 0 {
             let mut cx = Context::from_waker(cx.waker());
             let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx);
-            let poll_read = self.buf.buf.write(&mut reader)?;
+            let poll_read = self.buf.write(&mut reader)?;
             // num == 0 说明是buffer满了。等待下一次事件，buffer释放后再读取。
             let num = reader.check_eof_num()?;
             if num == 0 {
@@ -113,7 +113,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
                     Some(cmd) => {
-                        debug_assert_ne!(self.pending.len(), 0);
+                        assert_ne!(self.pending.len(), 0);
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。

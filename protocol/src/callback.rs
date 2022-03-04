@@ -8,14 +8,13 @@ use crate::request::Request;
 use crate::{Command, Error, HashedCommand};
 
 pub struct Callback {
-    exp_sec: u32,
+    exp_sec: fn(usize) -> u32,
     receiver: usize,
     cb: fn(usize, Request),
 }
 impl Callback {
     #[inline]
-    pub fn new(receiver: usize, cb: fn(usize, Request)) -> Self {
-        let exp_sec = 86400;
+    pub fn new(receiver: usize, cb: fn(usize, Request), exp_sec: fn(usize) -> u32) -> Self {
         Self {
             receiver,
             cb,
@@ -29,7 +28,7 @@ impl Callback {
     }
     #[inline]
     pub fn exp_sec(&self) -> u32 {
-        self.exp_sec
+        (self.exp_sec)(self.receiver)
     }
 }
 
@@ -94,7 +93,7 @@ impl CallbackContext {
         }
         if !self.ctx.drop_on_done {
             // 说明有请求在pending
-            debug_assert!(!self.complete());
+            assert!(!self.complete());
             self.ctx.complete.store(true, Ordering::Release);
             self.wake();
             self.ctx.finished.store(true, Ordering::Release);
@@ -136,7 +135,7 @@ impl CallbackContext {
     // 在使用前，先得判断inited
     #[inline]
     pub unsafe fn response(&self) -> &Command {
-        debug_assert!(self.inited());
+        assert!(self.inited());
         self.response.assume_init_ref()
     }
     #[inline]
@@ -145,7 +144,6 @@ impl CallbackContext {
     }
     #[inline]
     pub fn finished(&self) -> bool {
-        assert!(self.complete());
         self.ctx.finished.load(Ordering::Acquire)
     }
     #[inline]
@@ -158,7 +156,7 @@ impl CallbackContext {
     }
     #[inline]
     fn write(&mut self, resp: Command) {
-        debug_assert!(!self.complete());
+        assert!(!self.complete());
         self.try_drop_response();
         self.response.write(resp);
         self.ctx.inited = true;
@@ -228,7 +226,7 @@ impl CallbackContext {
 impl Drop for CallbackContext {
     #[inline]
     fn drop(&mut self) {
-        debug_assert!(self.complete());
+        assert!(self.complete());
         if self.ctx.inited {
             unsafe {
                 std::ptr::drop_in_place(self.response.as_mut_ptr());
@@ -317,12 +315,13 @@ impl CallbackContextPtr {
     }
     //需要在on_done时主动销毁self对象
     #[inline]
-    pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P, exp: u32) {
-        debug_assert!(self.ctx.inited);
-        debug_assert!(self.complete());
+    pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P) {
+        assert!(self.ctx.inited);
+        assert!(self.complete());
         if !self.is_write_back() || !unsafe { self.response().ok() } {
             return;
         }
+        let exp = unsafe { self.inner.as_ref().callback.exp_sec() };
         if let Some(new) = parser.build_writeback_request(&mut self, exp) {
             self.with_request(new);
         }
@@ -364,7 +363,7 @@ impl Deref for CallbackContextPtr {
     #[inline]
     fn deref(&self) -> &Self::Target {
         unsafe {
-            debug_assert!(!self.inner.as_ref().ctx.drop_on_done);
+            assert!(!self.inner.as_ref().ctx.drop_on_done);
             self.inner.as_ref()
         }
     }
@@ -373,7 +372,7 @@ impl DerefMut for CallbackContextPtr {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
-            debug_assert!(!self.inner.as_ref().ctx.drop_on_done);
+            assert!(!self.inner.as_ref().ctx.drop_on_done);
             self.inner.as_mut()
         }
     }
@@ -390,7 +389,7 @@ impl Deref for CallbackPtr {
     type Target = Callback;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        debug_assert!(!self.ptr.is_null());
+        assert!(!self.ptr.is_null());
         unsafe { &*self.ptr }
     }
 }
@@ -414,12 +413,12 @@ impl crate::Commander for CallbackContextPtr {
     }
     #[inline]
     fn response(&self) -> &Command {
-        debug_assert!(self.ctx.inited);
+        assert!(self.ctx.inited);
         unsafe { self.inner.as_ref().response() }
     }
     #[inline]
     fn response_mut(&mut self) -> &mut Command {
-        debug_assert!(self.inited());
+        assert!(self.inited());
         unsafe { self.response.assume_init_mut() }
     }
 }

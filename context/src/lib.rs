@@ -37,7 +37,6 @@ pub struct Context {
     idc_path: String,
 
     #[clap(
-        short,
         long,
         help("interval of updating config (unit second)"),
         default_value("15")
@@ -165,34 +164,47 @@ impl ListenerIter {
     // 扫描self.pah，获取该目录下所有不以.sock结尾，符合格式的文件作为服务配置进行解析。
     // 不以.sock结尾，由'@'字符分隔成一个Quard的配置。一个标准的服务配置文件名为
     // 如果对应的文件已经存在 $name.sock。那说明有其他进程侦听了该服务
+    // unix的配置放在前面
     pub async fn scan(&mut self) -> Vec<Quadruple> {
         let mut listeners = vec![];
         match self.read_all().await {
             Ok(names) => {
                 for name in names {
-                    if self.processed.contains_key(&name) {
-                        continue;
-                    }
                     if let Some(one) = Quadruple::parse(&self.path, &name) {
-                        log::debug!("service parsed :{}", one);
-                        listeners.push(one);
-                        self.processed.insert(name.to_string(), ());
+                        if !self.processed.contains_key(one.service()) {
+                            listeners.push(one);
+                        }
                     }
                 }
             }
             Err(e) => log::warn!("failed to scan '{}' err:{:?}", self.path, e),
         }
+        if listeners.len() > 0 {
+            // 排序。同时注册了tcp与unix则优先使用unix
+            listeners.sort();
+            listeners.retain(|item| {
+                let retain = !self.processed.contains_key(item.service());
+                self.processed.insert(item.service().to_string(), ());
+                if !retain {
+                    log::warn!("{} register in multiple family", item.service());
+                }
+                retain
+            });
+        }
         listeners
     }
 
-    pub fn on_fail(&mut self, name: String) {
-        let s = self.path.clone() + "/" + &name;
-        if self.processed.contains_key(&s) {
-            self.processed.remove(&s);
-            log::warn!("listenerIter on_fail exist:{}", s);
-        } else {
-            log::warn!("listenerIter on_fail :{}", s);
+    pub async fn remove_unix_sock(&mut self) -> Result<()> {
+        let mut dir = tokio::fs::read_dir(&self.path).await?;
+        while let Some(child) = dir.next_entry().await? {
+            let path = child.path();
+            let is_unix_sock = path.to_str().map(|s| s.ends_with(".sock")).unwrap_or(false);
+            if is_unix_sock {
+                log::info!("{:?} exists. deleting", path);
+                let _ = tokio::fs::remove_file(path).await;
+            }
         }
+        Ok(())
     }
     async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];

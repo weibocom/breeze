@@ -47,7 +47,7 @@ impl Redis {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
                     let first = packet.first();
-                    debug_assert!(cfg.has_key);
+                    assert!(cfg.has_key);
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
                     if cfg.has_val {
@@ -61,9 +61,8 @@ impl Redis {
                 if cfg.has_key {
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
-                    debug_assert_ne!(hash, 0);
                 } else {
-                    hash = defalut_hash();
+                    hash = default_hash();
                 }
                 packet.ignore_all_bulks()?;
                 let flag = cfg.flag();
@@ -75,10 +74,14 @@ impl Redis {
         Ok(())
     }
 
+    // TODO 临时测试设为pub，测试完毕后去掉pub fishermen
     #[inline]
-    fn num_skip_all(&self, data: &RingSlice, mut oft: &mut usize) -> Result<Option<Command>> {
+    pub fn num_skip_all(&self, data: &RingSlice, mut oft: &mut usize) -> Result<Option<Command>> {
         let mut bulk_count = data.num(&mut oft)?;
         while bulk_count > 0 {
+            if *oft >= data.len() {
+                return Err(crate::Error::ProtocolIncomplete);
+            }
             match data.at(*oft) {
                 b'$' => {
                     data.num_and_skip(&mut oft)?;
@@ -87,7 +90,12 @@ impl Redis {
                     self.num_skip_all(data, oft)?;
                 }
                 _ => {
-                    log::info!("not supported type:{:?}, {:?}", data.utf8(), data);
+                    log::info!(
+                        "unsupport rsp:{:?}, pos: {}/{}",
+                        data.utf8(),
+                        oft,
+                        bulk_count
+                    );
                     panic!("not supported in num_skip_all");
                 }
             }
@@ -122,7 +130,7 @@ impl Redis {
                     panic!("not supported");
                 }
             }
-            debug_assert!(oft <= data.len());
+            assert!(oft <= data.len());
             let mem = s.take(oft);
             let mut flag = Flag::new();
             // redis不需要重试
@@ -165,7 +173,7 @@ impl Protocol for Redis {
         let response = ctx.response();
         if !cfg.multi {
             // 对于hscan，虽然是单个key，也会返回*2 fishermen
-            // debug_assert_ne!(response.data().at(0), b'*');
+            // assert_ne!(response.data().at(0), b'*');
             w.write_slice(response.data(), 0)
         } else {
             let ext = req.ext();
@@ -188,7 +196,7 @@ impl Protocol for Redis {
     #[inline]
     fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
         let rsp_idx = req.ext().padding_rsp() as usize;
-        debug_assert!(rsp_idx < PADDING_RSP_TABLE.len());
+        assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
@@ -198,7 +206,7 @@ impl Protocol for Redis {
             w.write(rsp.as_bytes())
         } else {
             // quit，先发+OK，再返回err
-            debug_assert_eq!(rsp_idx, 0);
+            assert_eq!(rsp_idx, 0);
             let ok_rs = PADDING_RSP_TABLE.get(1).unwrap().as_bytes();
             w.write(ok_rs)?;
             Err(crate::Error::Quit)
@@ -216,15 +224,18 @@ static AUTO: AtomicI64 = AtomicI64::new(0);
 #[inline]
 fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
     if key.len() == 0 {
-        AUTO.fetch_add(1, Ordering::Relaxed)
+        default_hash()
     } else {
         let hash = alg.hash(key);
-        debug_assert!(hash != 0);
+        if hash == 0 {
+            log::info!("hash zero key:{:?}", key.utf8());
+        }
+        debug_assert_ne!(hash, 0);
         hash
     }
 }
 
 #[inline]
-fn defalut_hash() -> i64 {
+fn default_hash() -> i64 {
     AUTO.fetch_add(1, Ordering::Relaxed)
 }

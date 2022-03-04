@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct Quadruple {
     id: usize,
     parsed_at: Instant,
@@ -124,5 +124,26 @@ impl fmt::Display for Quadruple {
             self.endpoint,
             self.parsed_at.elapsed()
         )
+    }
+}
+
+use std::cmp::{Ord, Ordering, PartialEq, PartialOrd};
+impl PartialEq for Quadruple {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+impl Ord for Quadruple {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.family == "unix" && other.family == "tcp" {
+            Ordering::Less
+        } else {
+            self.name.cmp(&other.name)
+        }
+    }
+}
+impl PartialOrd for Quadruple {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }

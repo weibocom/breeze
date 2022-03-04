@@ -20,6 +20,7 @@ pub struct CacheService<B, E, Req, P> {
     has_slave: bool,
     hasher: Hasher,
     parser: P,
+    exp_sec: u32,
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -32,6 +33,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             r_num: 0,
             has_l1: false,
             has_slave: false,
+            exp_sec: 0,
             hasher: Default::default(),
             rnd_idx: Default::default(),
             _marker: Default::default(),
@@ -64,6 +66,10 @@ where
     fn hasher(&self) -> &Hasher {
         &self.hasher
     }
+    #[inline]
+    fn exp_sec(&self) -> u32 {
+        self.exp_sec
+    }
 }
 
 impl<B: Send + Sync, E, Req, P> protocol::Endpoint for CacheService<B, E, Req, P>
@@ -75,7 +81,7 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, mut req: Self::Item) {
-        debug_assert!(self.r_num > 0);
+        assert!(self.r_num > 0);
 
         let mut idx: usize = 0; // master
         if !req.operation().master_only() {
@@ -124,7 +130,7 @@ where
         let (idx, try_next, write_back);
         if !ctx.check_and_inited(false) {
             let readable = self.r_num - self.has_slave as u16;
-            debug_assert!(readable == self.r_num || readable + 1 == self.r_num);
+            assert!(readable == self.r_num || readable + 1 == self.r_num);
             // 每个shard发送1024个请求再换下一个shard
             const SHIFT: u8 = 10;
             idx = (self.rnd_idx.fetch_add(1, Ordering::Relaxed) >> SHIFT) % readable as usize;
@@ -161,6 +167,7 @@ where
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
+            self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
             let dist = &ns.distribution;
 
             let old_streams = self.streams.split_off(0);

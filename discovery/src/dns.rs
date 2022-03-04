@@ -53,7 +53,7 @@ struct Record {
 }
 impl Record {
     fn first_watch(&self) -> Arc<AtomicBool> {
-        debug_assert_ne!(self.subscribers.len(), 0);
+        assert_ne!(self.subscribers.len(), 0);
         self.subscribers[0].clone()
     }
     fn watch(&mut self, s: Arc<AtomicBool>) {

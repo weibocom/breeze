@@ -13,11 +13,11 @@ impl Protocol for MemcacheText {
     // 当前请求必须不是noreply的
     #[inline]
     fn with_noreply(&self, req: &[u8]) -> Vec<u8> {
-        debug_assert_eq!(self._noreply(req), false);
+        assert_eq!(self._noreply(req), false);
         let req_string = String::from_utf8(Vec::from(req)).unwrap();
         let rows = req_string.split("\r\n").collect::<Vec<&str>>();
         //string的split如果以分隔符结尾会有一个空字符串
-        debug_assert_eq!(rows.len(), 3);
+        assert_eq!(rows.len(), 3);
         let mut v = vec![0u8; req.len() + " noreply".len()];
         use std::ptr::copy_nonoverlapping as copy;
         unsafe {
@@ -72,7 +72,7 @@ impl Protocol for MemcacheText {
                 let value_row = &lr_cf_split[1];
 
                 let key_split = key_row.split(" ".as_ref());
-                debug_assert!(key_split.len() >= 5);
+                assert!(key_split.len() >= 5);
                 let key = &key_split[1];
                 let value_bytes_string = String::from_utf8(Vec::from(key_split[4].data())).unwrap();
                 let value_bytes = value_bytes_string.parse::<usize>().unwrap();
@@ -122,14 +122,14 @@ impl Protocol for MemcacheText {
     #[inline]
     fn sharding(&self, req: &Request, shard: &Sharding) -> Vec<(usize, Request)> {
         // 只有multiget才有分片
-        debug_assert_eq!(req.operation(), Operation::MGet);
+        assert_eq!(req.operation(), Operation::MGet);
         unsafe {
             let klen = req.keys().len();
             let mut keys = Vec::with_capacity(klen);
             for key in req.keys() {
                 keys.push(key.clone());
             }
-            debug_assert!(keys.len() > 0);
+            assert!(keys.len() > 0);
 
             let sharded = shard.shardings(keys);
             if sharded.len() == 1 {
@@ -147,7 +147,7 @@ impl Protocol for MemcacheText {
                 cmd.write("gets".as_ref()).unwrap();
                 let mut keys: Vec<Slice> = Vec::with_capacity(indice.len() + 1);
                 for idx in indice.iter() {
-                    debug_assert!(*idx < klen);
+                    assert!(*idx < klen);
                     let single_key = req.keys().get_unchecked(*idx);
                     let key_offset = cmd.len() + 1;
                     cmd.append(&mut Vec::from(" "));
@@ -171,7 +171,7 @@ impl Protocol for MemcacheText {
     }
     #[inline]
     fn key(&self, req: &Request) -> Slice {
-        debug_assert_eq!(req.keys().len(), 1);
+        assert_eq!(req.keys().len(), 1);
         req.keys().get(0).unwrap().clone()
     }
     fn req_gets(&self, request: &Request) -> bool {
@@ -213,8 +213,8 @@ impl Protocol for MemcacheText {
     where
         R: Iterator<Item = &'a Response>,
     {
-        debug_assert!(req.operation() == Operation::Get || req.operation() == Operation::MGet);
-        debug_assert!(req.keys().len() > 0);
+        assert!(req.operation() == Operation::Get || req.operation() == Operation::MGet);
+        assert!(req.keys().len() > 0);
         if self.is_single_get(req) {
             if let Some(response) = resp.next() {
                 if response.as_ref().find_sub(0, "VALUE ".as_ref()).is_some() {
@@ -244,7 +244,7 @@ impl Protocol for MemcacheText {
         }
         if not_found_keys.len() > 0 {
             let new = Request::from_request(cmd, not_found_keys, req);
-            debug_assert_eq!(new.keys().len() + found_keys.len(), req.keys().len());
+            assert_eq!(new.keys().len() + found_keys.len(), req.keys().len());
             Some(new)
         } else {
             None

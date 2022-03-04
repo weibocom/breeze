@@ -10,8 +10,8 @@ pub struct ModRange {
 // ModRange 分布方法，默认总范围是[0,256)，否则指定slot
 impl ModRange {
     pub fn from(name: &str, shards: usize) -> Self {
-        debug_assert!(name.len() > DIST_MOD_RANGE_WITH_SLOT_PREFIX.len());
-        debug_assert!(name.starts_with(DIST_MOD_RANGE_WITH_SLOT_PREFIX));
+        assert!(name.len() > DIST_MOD_RANGE_WITH_SLOT_PREFIX.len());
+        assert!(name.starts_with(DIST_MOD_RANGE_WITH_SLOT_PREFIX));
 
         let mut slot = 256;
         let slot_str = &name[DIST_MOD_RANGE_WITH_SLOT_PREFIX.len()..];
@@ -21,7 +21,7 @@ impl ModRange {
             log::warn!("found unknown distribution: {}, will use range", name);
         }
 
-        debug_assert!(shards > 0 && slot >= shards as u64);
+        assert!(shards > 0 && slot >= shards as u64);
         ModRange {
             slot: slot,
             interval: slot / shards as u64,

@@ -98,7 +98,7 @@ impl From<usize> for LayerRole {
             10 => LayerRole::Noreply,
             _ => {
                 log::error!("Error: unknow layer_idx:{}", layer_idx);
-                debug_assert!(false);
+                assert!(false);
                 LayerRole::Unknow
             }
         }

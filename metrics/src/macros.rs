@@ -15,7 +15,7 @@ pub struct ItemData {
 impl ItemData {
     #[inline]
     pub(crate) fn init_id(&mut self, id: Arc<Id>) {
-        debug_assert!(!self.id.valid());
+        assert!(!self.id.valid());
         self.id = id;
     }
     #[inline]
@@ -27,7 +27,7 @@ impl ItemData {
 
     #[inline]
     unsafe fn incr_num(&self, num: i64) {
-        debug_assert!(self.id.t.is_num());
+        assert!(self.id.t.is_num());
         self.inner.num.incr(num);
     }
 }
@@ -102,19 +102,19 @@ impl MetricType {
     #[inline]
     pub(crate) fn is_num(&self) -> bool {
         static IS_NUMS:[bool; MetricType::var_num()] = [false, $($is_num),+];
-        debug_assert!((*self as usize) < IS_NUMS.len());
+        assert!((*self as usize) < IS_NUMS.len());
         IS_NUMS[*self as usize]
     }
     #[inline]
     pub(crate) fn need_flush(&self) -> bool {
         static NEED_FLUSH:[bool; MetricType::var_num()] = [false, $($need_flush),+];
-        debug_assert!((*self as usize) < NEED_FLUSH.len());
+        assert!((*self as usize) < NEED_FLUSH.len());
         NEED_FLUSH[*self as usize]
     }
     #[inline]
     pub(crate) fn name(&self) -> &'static str{
         static METRICS_NAMES:[&'static str; MetricType::var_num()] = ["none", $(stringify!($name)),+];
-        debug_assert!((*self as usize) < METRICS_NAMES.len());
+        assert!((*self as usize) < METRICS_NAMES.len());
         METRICS_NAMES[*self as usize]
     }
     #[inline]

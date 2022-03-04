@@ -82,7 +82,7 @@ pub(crate) fn crc32_raw<K: super::HashKey>(
     hash_key_typ: &HashKeyType,
 ) -> i64 {
     let mut crc: i64 = CRC_SEED;
-    // debug_assert!(start < key.len());
+    // assert!(start < key.len());
     for i in start..key.len() {
         let c = key.at(i);
 
@@ -163,7 +163,7 @@ impl Crc32Range {
                 // format: crc32-range-id-xxx，如果xxx不是合法数字，则直接使用全部的key来hash
                 // crc32-range-id: 从key的第一个数字开始解析id；
                 // crc32-range-id-2： 掠过2个字节的前缀，然后开始解析数字
-                debug_assert!(alg.len() > (super::CRC32_RANGE_ID_PREFIX.len()));
+                assert!(alg.len() > (super::CRC32_RANGE_ID_PREFIX.len()));
                 let start = &alg[super::CRC32_RANGE_ID_PREFIX.len()..];
                 if let Ok(s) = start.parse::<usize>() {
                     return Self {
