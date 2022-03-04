@@ -61,9 +61,8 @@ impl Redis {
                 if cfg.has_key {
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
-                    assert_ne!(hash, 0);
                 } else {
-                    hash = defalut_hash();
+                    hash = default_hash();
                 }
                 packet.ignore_all_bulks()?;
                 let flag = cfg.flag();
@@ -225,18 +224,18 @@ static AUTO: AtomicI64 = AtomicI64::new(0);
 #[inline]
 fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
     if key.len() == 0 {
-        AUTO.fetch_add(1, Ordering::Relaxed)
+        default_hash()
     } else {
         let hash = alg.hash(key);
         if hash == 0 {
             log::info!("hash zero key:{:?}", key.utf8());
         }
-        assert!(hash != 0);
+        debug_assert_ne!(hash, 0);
         hash
     }
 }
 
 #[inline]
-fn defalut_hash() -> i64 {
+fn default_hash() -> i64 {
     AUTO.fetch_add(1, Ordering::Relaxed)
 }
