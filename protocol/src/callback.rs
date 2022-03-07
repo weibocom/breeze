@@ -91,7 +91,7 @@ impl CallbackContext {
         if self.need_goon() {
             return self.continute();
         }
-        if !self.ctx.drop_on_done {
+        if !self.ctx.drop_on_done() {
             // 说明有请求在pending
             assert!(!self.complete());
             self.ctx.complete.store(true, Ordering::Release);
@@ -159,6 +159,7 @@ impl CallbackContext {
         assert!(!self.complete());
         self.try_drop_response();
         self.response.write(resp);
+        assert!(!self.ctx.inited);
         self.ctx.inited = true;
     }
     #[inline]
@@ -199,7 +200,7 @@ impl CallbackContext {
     }
     #[inline]
     fn is_in_async_write_back(&self) -> bool {
-        self.ctx.drop_on_done
+        self.ctx.drop_on_done()
     }
     #[inline]
     fn try_drop_response(&mut self) {
@@ -227,11 +228,7 @@ impl Drop for CallbackContext {
     #[inline]
     fn drop(&mut self) {
         assert!(self.complete());
-        if self.ctx.inited {
-            unsafe {
-                std::ptr::drop_in_place(self.response.as_mut_ptr());
-            }
-        }
+        self.try_drop_response();
     }
 }
 
@@ -239,14 +236,14 @@ unsafe impl Send for CallbackContext {}
 unsafe impl Sync for CallbackContext {}
 #[derive(Default)]
 pub struct Context {
-    complete: AtomicBool, // 当前请求是否完成
-    finished: AtomicBool, // 在请求完成并且执行了wakeup
-    drop_on_done: bool,   // on_done时，是否手工销毁
-    try_next: bool,       // 请求失败是否需要重试
-    inited: bool,         // response是否已经初始化
-    write_back: bool,     // 请求结束后，是否需要回写。
-    first: bool,          // 当前请求是否是所有子请求的第一个
-    last: bool,           // 当前请求是否是所有子请求的最后一个
+    complete: AtomicBool,     // 当前请求是否完成
+    finished: AtomicBool,     // 在请求完成并且执行了wakeup
+    drop_on_done: AtomicBool, // on_done时，是否手工销毁
+    try_next: bool,           // 请求失败是否需要重试
+    inited: bool,             // response是否已经初始化
+    write_back: bool,         // 请求结束后，是否需要回写。
+    first: bool,              // 当前请求是否是所有子请求的第一个
+    last: bool,               // 当前请求是否是所有子请求的最后一个
     flag: crate::Context,
 }
 
@@ -270,6 +267,10 @@ impl Context {
     #[inline]
     pub fn is_inited(&self) -> bool {
         self.inited
+    }
+    #[inline]
+    fn drop_on_done(&self) -> bool {
+        self.drop_on_done.load(Ordering::Acquire)
     }
 }
 
@@ -295,7 +296,7 @@ impl Display for Context {
             "complete:{} init:{},async :{} try:{} write back:{}  context:{}",
             self.complete.load(Ordering::Relaxed),
             self.inited,
-            self.drop_on_done,
+            self.drop_on_done(),
             self.try_next,
             self.write_back,
             self.flag
@@ -318,7 +319,7 @@ impl CallbackContextPtr {
     pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P) {
         assert!(self.ctx.inited);
         assert!(self.complete());
-        if !self.is_write_back() || !unsafe { self.response().ok() } {
+        if !self.is_write_back() || !self.response_ok() {
             return;
         }
         let exp = unsafe { self.inner.as_ref().callback.exp_sec() };
@@ -326,11 +327,9 @@ impl CallbackContextPtr {
             self.with_request(new);
         }
         // 还会有异步请求，内存释放交给异步操作完成后的on_done来处理
-        self.ctx.drop_on_done = true;
+        self.ctx.drop_on_done.store(true, Ordering::Release);
         unsafe {
             let ctx = self.inner.as_mut();
-            ctx.try_drop_response();
-            // write_back请求是异步的，不需要response
             log::debug!("start write back:{}", self.inner.as_ref());
             ctx.continute();
         }
@@ -351,7 +350,7 @@ impl Drop for CallbackContextPtr {
     fn drop(&mut self) {
         // 如果ignore为true，说明当前内存手工释放
         unsafe {
-            if !self.inner.as_ref().ctx.drop_on_done {
+            if !self.inner.as_ref().ctx.drop_on_done() {
                 self.manual_drop();
             }
         }
@@ -363,7 +362,7 @@ impl Deref for CallbackContextPtr {
     #[inline]
     fn deref(&self) -> &Self::Target {
         unsafe {
-            assert!(!self.inner.as_ref().ctx.drop_on_done);
+            assert!(!self.inner.as_ref().ctx.drop_on_done());
             self.inner.as_ref()
         }
     }
@@ -372,7 +371,7 @@ impl DerefMut for CallbackContextPtr {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
-            assert!(!self.inner.as_ref().ctx.drop_on_done);
+            assert!(!self.inner.as_ref().ctx.drop_on_done());
             self.inner.as_mut()
         }
     }
