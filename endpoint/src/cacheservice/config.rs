@@ -45,10 +45,10 @@ impl Namespace {
         }
     }
     pub(super) fn timeout_master(&self) -> Duration {
-        Duration::from_millis(250.max(self.timeout_ms_master as u64))
+        Duration::from_millis(200.max(self.timeout_ms_master as u64))
     }
     pub(super) fn timeout_slave(&self) -> Duration {
-        Duration::from_millis(100.max(self.timeout_ms_slave as u64))
+        Duration::from_millis(80.max(self.timeout_ms_slave as u64))
     }
 }
 
