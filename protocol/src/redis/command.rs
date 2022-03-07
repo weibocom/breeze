@@ -333,7 +333,7 @@ lazy_static! {
                 ("llen", "llen",                            2, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("lindex", "lindex",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("lrange", "lrange",                        4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("ltrim", "ltrim",                          4, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("ltrim", "ltrim",                          4, Store, 1, 1, 1, 3, false, false, true, false, false),
                 ("lrem", "lrem",                            4, Store, 1, 1, 1, 3, false, false, true, false, false),
 
                 // string 相关指令，包括 bit, str

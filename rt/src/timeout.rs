@@ -90,6 +90,15 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Timeout<F> {
             self.last_rx = now;
         }
         let ret = Pin::new(&mut self.inner).poll(cx);
+        if now.elapsed() >= Duration::from_millis(1) {
+            log::info!(
+                "tx:{} rx:{} => {:?} elapsed => {:?}",
+                tx,
+                rx,
+                self.inner,
+                now.elapsed()
+            );
+        }
         let (tx_post, rx_post) = (self.inner.num_tx(), self.inner.num_rx());
         if tx_post > rx_post {
             self.last = Instant::now();
