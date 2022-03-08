@@ -89,9 +89,9 @@ async fn _process_one(
             let hasher = top.hasher();
             if let Err(e) = copy_bidirectional(cb, metrics, hasher, client, p).await {
                 match e {
-                    //protocol::Error::Quit => {} // client发送quit协议退出
-                    //protocol::Error::ReadEof => {}
-                    e => log::info!("{:?} disconnected. {:?}", path, e),
+                    protocol::Error::Quit => {} // client发送quit协议退出
+                    protocol::Error::ReadEof => {}
+                    e => log::debug!("{:?} disconnected. {:?}", path, e),
                 }
             }
         });
