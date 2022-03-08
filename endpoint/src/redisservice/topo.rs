@@ -40,8 +40,8 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             updated: Default::default(),
             service: Default::default(),
             selector: Default::default(),
-            timeout_master: Duration::from_millis(250),
-            timeout_slave: Duration::from_millis(100),
+            timeout_master: Duration::from_millis(200),
+            timeout_slave: Duration::from_millis(80),
             _mark: Default::default(),
         }
     }
