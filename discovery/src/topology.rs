@@ -101,7 +101,9 @@ where
     fn update(&mut self, name: &str, cfg: &str) {
         self.inner.write(|t| {
             t.update(name, cfg);
-            t.load();
+            if t.need_load() {
+                t.load();
+            }
         });
         self.updates.fetch_add(1, Ordering::AcqRel);
     }
@@ -115,7 +117,11 @@ where
     }
     #[inline]
     fn load(&mut self) {
-        self.inner.write(|t| t.load())
+        self.inner.write(|t| t.load());
+        // 说明load完成
+        if !self.need_load() {
+            self.updates.fetch_add(1, Ordering::AcqRel);
+        }
     }
 }
 
