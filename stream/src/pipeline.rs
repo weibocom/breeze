@@ -178,7 +178,9 @@ where
 
             if ctx.inited() {
                 parser.write_response(&mut ctx, client)?;
-                ctx.async_start_write_back(parser);
+                if ctx.is_write_back() && ctx.response_ok() && ctx.complete() {
+                    ctx.async_start_write_back(parser);
+                }
             } else {
                 let req = ctx.request();
                 if !req.noforward() {

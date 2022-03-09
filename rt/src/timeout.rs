@@ -129,15 +129,8 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
         // close
         while !self.inner.close() {
             ready!(self.tick.poll_tick(cx));
-            log::info!("closing => {:?}", self.inner);
+            log::info!("closing => {:?} {:?}", self.inner, self.out);
         }
-        //log::info!(
-        //    "poll complete:{:?} {:?} {:?} out:{:?}",
-        //    self.inner,
-        //    self.last.elapsed(),
-        //    self.last_rx.elapsed(),
-        //    self.out
-        //);
         Poll::Ready(self.out.take().unwrap())
     }
 }

@@ -54,6 +54,7 @@ impl CallbackContext {
         let mut ctx = Context::default();
         ctx.first = first;
         ctx.last = last;
+        on_new();
         log::debug!("request prepared:{}", req);
         Self {
             ctx,
@@ -114,7 +115,7 @@ impl CallbackContext {
     }
     #[inline]
     pub fn response_ok(&self) -> bool {
-        unsafe { self.ctx.inited && self.response().ok() }
+        unsafe { self.inited() && self.response().ok() }
     }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
@@ -151,10 +152,10 @@ impl CallbackContext {
     }
     #[inline]
     pub fn inited(&self) -> bool {
-        self.ctx.inited
+        self.ctx.is_inited()
     }
     #[inline]
-    fn is_write_back(&self) -> bool {
+    pub fn is_write_back(&self) -> bool {
         self.ctx.write_back
     }
     #[inline]
@@ -162,8 +163,8 @@ impl CallbackContext {
         assert!(!self.complete());
         self.try_drop_response();
         self.response.write(resp);
-        assert!(!self.ctx.inited);
-        self.ctx.inited = true;
+        assert!(!self.ctx.is_inited());
+        self.ctx.inited.store(true, Ordering::Release);
     }
     #[inline]
     fn wake(&self) {
@@ -207,10 +208,13 @@ impl CallbackContext {
     }
     #[inline]
     fn try_drop_response(&mut self) {
-        if self.ctx.inited {
+        if self.ctx.is_inited() {
             log::debug!("drop response:{}", unsafe { self.response() });
+            self.ctx
+                .inited
+                .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
+                .expect("cas failed");
             unsafe { std::ptr::drop_in_place(self.response.as_mut_ptr()) };
-            self.ctx.inited = false;
         }
     }
     #[inline]
@@ -232,6 +236,7 @@ impl Drop for CallbackContext {
     fn drop(&mut self) {
         assert!(self.complete());
         self.try_drop_response();
+        on_drop();
     }
 }
 
@@ -242,8 +247,8 @@ pub struct Context {
     complete: AtomicBool,     // 当前请求是否完成
     finished: AtomicBool,     // 在请求完成并且执行了wakeup
     drop_on_done: AtomicBool, // on_done时，是否手工销毁
+    inited: AtomicBool,       // response是否已经初始化
     try_next: bool,           // 请求失败是否需要重试
-    inited: bool,             // response是否已经初始化
     write_back: bool,         // 请求结束后，是否需要回写。
     first: bool,              // 当前请求是否是所有子请求的第一个
     last: bool,               // 当前请求是否是所有子请求的最后一个
@@ -269,7 +274,7 @@ impl Context {
     }
     #[inline]
     pub fn is_inited(&self) -> bool {
-        self.inited
+        self.inited.load(Ordering::Acquire)
     }
     #[inline]
     fn drop_on_done(&self) -> bool {
@@ -298,7 +303,7 @@ impl Display for Context {
             f,
             "complete:{} init:{},async :{} try:{} write back:{}  context:{}",
             self.complete.load(Ordering::Relaxed),
-            self.inited,
+            self.is_inited(),
             self.drop_on_done(),
             self.try_next,
             self.write_back,
@@ -320,11 +325,8 @@ impl CallbackContextPtr {
     //需要在on_done时主动销毁self对象
     #[inline]
     pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P) {
-        assert!(self.ctx.inited);
+        assert!(self.inited());
         assert!(self.complete());
-        if !self.is_write_back() || !self.response_ok() {
-            return;
-        }
         let exp = unsafe { self.inner.as_ref().callback.exp_sec() };
         if let Some(new) = parser.build_writeback_request(&mut self, exp) {
             self.with_request(new);
@@ -415,7 +417,7 @@ impl crate::Commander for CallbackContextPtr {
     }
     #[inline]
     fn response(&self) -> &Command {
-        assert!(self.ctx.inited);
+        assert!(self.inited());
         unsafe { self.inner.as_ref().response() }
     }
     #[inline]
@@ -423,4 +425,25 @@ impl crate::Commander for CallbackContextPtr {
         assert!(self.inited());
         unsafe { self.response.assume_init_mut() }
     }
+}
+
+//use std::sync::atomic::AtomicUsize;
+//static NEW: AtomicUsize = AtomicUsize::new(0);
+//static DROP: AtomicUsize = AtomicUsize::new(0);
+#[inline]
+fn on_new() {
+    //NEW.fetch_add(1, Ordering::Relaxed);
+}
+#[inline]
+fn on_drop() {
+    //let old = DROP.fetch_add(1, Ordering::Relaxed) + 1;
+    //if old & 1023 == 0 {
+    //    let new = NEW.load(Ordering::Relaxed);
+    //    log::info!(
+    //        "new:{} dropped:{} diff:{}",
+    //        new,
+    //        old,
+    //        new as isize - old as isize
+    //    );
+    //}
 }
