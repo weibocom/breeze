@@ -64,7 +64,7 @@ impl<P, Req> BackendChecker<P, Req> {
             log::debug!("handler started:{}", s_metric);
             let p = self.parser.clone();
             let handler = Handler::from(rx, stream, p, &self.path);
-            let handler = rt::Timeout::from(handler, self.timeout);
+            let handler = rt::Entry::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 match e {
                     Error::Timeout(_) => {
