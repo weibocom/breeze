@@ -101,6 +101,7 @@ impl<T: Clone + 'static> Refresher<T> {
         if self.dropping.len() > 0 && self.last_time.elapsed() >= Duration::from_secs(30) {
             for ep in self.dropping.split_off(0) {
                 let _ = unsafe { Box::from_raw(ep as *mut T) };
+                log::info!("clear old topology:{}", self.last_cycle);
             }
             assert_eq!(self.dropping.len(), 0);
         }

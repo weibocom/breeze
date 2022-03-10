@@ -54,14 +54,17 @@ impl<P, Req> BackendChecker<P, Req> {
         while !self.finish.get() {
             let stream = self.try_connect(&mut s_metric, &mut tries).await;
             if stream.is_none() {
+                self.init.on();
                 continue;
             }
             let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
+            rx.enable();
+            self.init.on();
             log::debug!("handler started:{}", s_metric);
             let p = self.parser.clone();
             let handler = Handler::from(rx, stream, p, &self.path);
-            let handler = rt::Timeout::from(handler, self.timeout);
+            let handler = rt::Entry::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 match e {
                     Error::Timeout(_) => {
@@ -95,13 +98,11 @@ impl<P, Req> BackendChecker<P, Req> {
         log::debug!("try to connect {} tries:{}", self.addr, tries);
         match self.reconnected_once().await {
             Ok(stream) => {
-                self.init.on();
                 self.last_conn = Instant::now();
                 *tries += 1;
                 return Some(stream);
             }
             Err(e) => {
-                self.init.on();
                 log::debug!("{}-th conn to {} err:{}", tries, self.addr, e);
             }
         }
