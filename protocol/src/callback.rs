@@ -115,7 +115,7 @@ impl CallbackContext {
     }
     #[inline]
     pub fn response_ok(&self) -> bool {
-        unsafe { self.inited() && self.response().ok() }
+        unsafe { self.inited() && self.unchecked_response().ok() }
     }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
@@ -138,7 +138,7 @@ impl CallbackContext {
     }
     // 在使用前，先得判断inited
     #[inline]
-    pub unsafe fn response(&self) -> &Command {
+    pub unsafe fn unchecked_response(&self) -> &Command {
         assert!(self.inited());
         self.response.assume_init_ref()
     }
@@ -209,7 +209,7 @@ impl CallbackContext {
     #[inline]
     fn try_drop_response(&mut self) {
         if self.ctx.is_inited() {
-            log::debug!("drop response:{}", unsafe { self.response() });
+            log::debug!("drop response:{}", unsafe { self.unchecked_response() });
             self.ctx
                 .inited
                 .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
@@ -227,6 +227,7 @@ impl CallbackContext {
     }
     #[inline]
     fn manual_drop(&mut self) {
+        assert!(self.complete());
         unsafe { Box::from_raw(self) };
     }
 }
@@ -302,7 +303,7 @@ impl Display for Context {
         write!(
             f,
             "complete:{} init:{},async :{} try:{} write back:{}  context:{}",
-            self.complete.load(Ordering::Relaxed),
+            self.complete.load(Ordering::Acquire),
             self.is_inited(),
             self.drop_on_done(),
             self.try_next,
@@ -312,31 +313,29 @@ impl Display for Context {
     }
 }
 
-use std::ptr::NonNull;
 pub struct CallbackContextPtr {
-    inner: NonNull<CallbackContext>,
+    ptr: *mut CallbackContext,
 }
 
 impl CallbackContextPtr {
     #[inline]
     pub fn build_request(&mut self) -> Request {
-        unsafe { Request::new(self.inner.as_mut()) }
+        Request::new(self.ptr)
     }
     //需要在on_done时主动销毁self对象
     #[inline]
     pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P) {
         assert!(self.inited());
         assert!(self.complete());
-        let exp = unsafe { self.inner.as_ref().callback.exp_sec() };
-        if let Some(new) = parser.build_writeback_request(&mut self, exp) {
-            self.with_request(new);
-        }
-        // 还会有异步请求，内存释放交给异步操作完成后的on_done来处理
-        self.ctx.drop_on_done.store(true, Ordering::Release);
-        unsafe {
-            let ctx = self.inner.as_mut();
-            log::debug!("start write back:{}", self.inner.as_ref());
-            ctx.continute();
+        if self.is_write_back() && self.response_ok() {
+            let exp = self.callback.exp_sec();
+            if let Some(new) = parser.build_writeback_request(&mut self, exp) {
+                self.with_request(new);
+            }
+            // 还会有异步请求，内存释放交给异步操作完成后的on_done来处理
+            self.ctx.drop_on_done.store(true, Ordering::Release);
+            log::debug!("start write back:{}", &*self);
+            self.continute();
         }
     }
 }
@@ -345,8 +344,7 @@ impl From<CallbackContext> for CallbackContextPtr {
     #[inline]
     fn from(ctx: CallbackContext) -> Self {
         let ptr = Box::leak(Box::new(ctx));
-        let inner = unsafe { NonNull::new_unchecked(ptr) };
-        Self { inner }
+        Self { ptr }
     }
 }
 
@@ -354,10 +352,8 @@ impl Drop for CallbackContextPtr {
     #[inline]
     fn drop(&mut self) {
         // 如果ignore为true，说明当前内存手工释放
-        unsafe {
-            if !self.inner.as_ref().ctx.drop_on_done() {
-                self.manual_drop();
-            }
+        if !self.ctx.drop_on_done() {
+            self.manual_drop();
         }
     }
 }
@@ -366,19 +362,15 @@ impl Deref for CallbackContextPtr {
     type Target = CallbackContext;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            assert!(!self.inner.as_ref().ctx.drop_on_done());
-            self.inner.as_ref()
-        }
+        //assert!(!self.inner.as_ref().ctx.drop_on_done());
+        unsafe { &*self.ptr }
     }
 }
 impl DerefMut for CallbackContextPtr {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe {
-            assert!(!self.inner.as_ref().ctx.drop_on_done());
-            self.inner.as_mut()
-        }
+        //assert!(!self.inner.as_ref().ctx.drop_on_done());
+        unsafe { &mut *self.ptr }
     }
 }
 unsafe impl Send for CallbackContextPtr {}
@@ -418,7 +410,7 @@ impl crate::Commander for CallbackContextPtr {
     #[inline]
     fn response(&self) -> &Command {
         assert!(self.inited());
-        unsafe { self.inner.as_ref().response() }
+        unsafe { self.unchecked_response() }
     }
     #[inline]
     fn response_mut(&mut self) -> &mut Command {
