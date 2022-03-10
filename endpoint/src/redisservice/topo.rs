@@ -40,8 +40,8 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             updated: Default::default(),
             service: Default::default(),
             selector: Default::default(),
-            timeout_master: Duration::from_millis(250),
-            timeout_slave: Duration::from_millis(100),
+            timeout_master: Duration::from_millis(200),
+            timeout_slave: Duration::from_millis(80),
             _mark: Default::default(),
         }
     }
@@ -81,13 +81,11 @@ where
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         // TODO 先保留到2022.12，用于快速定位hash分片问题 fishermen
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!(
-                "+++ shard_idx:{}, req: {:?}",
-                shard_idx,
-                from_utf8(&req.data().to_vec())
-            );
-        }
+        log::debug!(
+            "+++ shard_idx:{}, req: {:?}",
+            shard_idx,
+            from_utf8(&req.data().to_vec())
+        );
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
@@ -189,6 +187,9 @@ where
                 log::debug!("{} master not looked up", master_url);
                 return;
             }
+            if masters.len() > 1 {
+                log::info!("multi master ip parsed. {} => {:?}", master_url, masters);
+            }
             let master = String::from(&masters[0]) + ":" + master_url.port();
             let mut slaves = Vec::with_capacity(8);
             for url_port in &shard[1..] {
@@ -207,9 +208,8 @@ where
         }
         // 到这之后，所有的shard都能解析出ip
 
-        let old_streams = self.shards.split_off(0);
-        let mut old = HashMap::with_capacity(old_streams.len());
-        for shard in old_streams {
+        let mut old = HashMap::with_capacity(self.shards.len());
+        for shard in self.shards.split_off(0) {
             old.entry(shard.master.0)
                 .or_insert(Vec::new())
                 .push(shard.master.1);
@@ -234,7 +234,15 @@ where
             self.shards.push(shard);
         }
         assert_eq!(self.shards.len(), self.shards_url.len());
-        log::debug!("{} load complete => {}", self.service, self.shards.len());
+        log::debug!(
+            "{} load complete. {} dropping:{:?}",
+            self.service,
+            self.shards.len(),
+            {
+                old.retain(|_k, v| v.len() > 0);
+                old.keys()
+            }
+        );
     }
 }
 impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>

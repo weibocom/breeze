@@ -6,7 +6,7 @@ pub mod memcache;
 pub mod parser;
 pub mod redis;
 pub mod req;
-pub mod resp;
+//pub mod resp;
 mod topo;
 mod utf8;
 

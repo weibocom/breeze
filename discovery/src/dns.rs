@@ -47,7 +47,7 @@ fn system_resolver() -> Resolver {
 
 #[derive(Default, Clone, Debug)]
 struct Record {
-    stale: bool,
+    stale: Arc<AtomicBool>,
     subscribers: Vec<Arc<AtomicBool>>,
     ips: Vec<IpAddr>,
 }
@@ -59,15 +59,19 @@ impl Record {
     fn watch(&mut self, s: Arc<AtomicBool>) {
         self.subscribers.push(s);
     }
-    fn update(&mut self, addr: &Vec<IpAddr>) {
-        self.ips = addr.clone();
-        self.stale;
+    fn update(&mut self, addr: Vec<IpAddr>) {
+        self.ips = addr;
+        self.stale.store(true, Ordering::Release);
+    }
+    fn stale(&self) -> bool {
+        self.stale.load(Ordering::Acquire)
     }
     fn notify(&self) {
-        if self.stale {
+        if self.stale() {
             for update in self.subscribers.iter() {
                 update.store(true, Ordering::Release);
             }
+            self.stale.store(false, Ordering::Release);
         }
     }
     // 如果有更新，则返回lookup的ip。
@@ -90,27 +94,25 @@ impl Record {
                     return None;
                 }
                 if self.ips.len() == 0 || exists != self.ips.len() {
-                    let mut addrs = Vec::new();
+                    let mut addrs = Vec::with_capacity(cnt);
                     for ip in ips.iter() {
                         addrs.push(ip);
+                    }
+                    if self.ips.len() > 0 {
+                        log::info!("host {} refreshed from {:?} to {:?}", host, self.ips, addrs);
                     }
                     return Some(addrs);
                 }
             }
             Err(e) => {
-                log::debug!("refresh host failed:{}, {:?}", host, e);
+                log::info!("refresh host failed:{}, {:?}", host, e);
             }
         }
         None
     }
     async fn refresh(&mut self, host: &str, resolver: &mut Resolver) {
         if let Some(addrs) = self.check_refresh(host, resolver).await {
-            // 第一次注册不输出日志。变更时再输出
-            if self.ips.len() > 0 {
-                log::info!("host {} updated from {:?} to {:?}", host, self.ips, addrs);
-            }
             self.ips = addrs;
-            self.stale = true;
         }
     }
 }
@@ -155,7 +157,7 @@ async fn start_watch_dns(
     let noop = noop_waker::noop_waker();
     let mut ctx = std::task::Context::from_waker(&noop);
     use std::time::{Duration, Instant};
-    const CYCLE: Duration = Duration::from_secs(57);
+    const CYCLE: Duration = Duration::from_secs(79);
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut last = Instant::now(); // 上一次刷新的时间
     loop {
@@ -169,8 +171,7 @@ async fn start_watch_dns(
                 w_cache.register(reg.0.clone(), reg.1.clone());
                 w_cache.refresh_one(&reg.0, &mut resolver).await;
             }
-            // 更新cache
-            cache.write(move |t| *t = w_cache.clone());
+            cache.update(w_cache);
             cache.get().notify();
             // 再次快速尝试读取新注册的数据
             continue;
@@ -190,11 +191,14 @@ async fn start_watch_dns(
         }
         drop(r_cache);
         if updated.len() > 0 {
-            cache.write(|t| {
-                for (host, addrs) in updated.iter() {
-                    t.hosts.get_mut(host).expect("insert before").update(addrs);
-                }
-            });
+            let mut new = cache.get().clone();
+            for (host, addrs) in updated.into_iter() {
+                new.hosts
+                    .get_mut(&host)
+                    .expect("insert before")
+                    .update(addrs);
+            }
+            cache.update(new);
             cache.get().notify();
         }
         last = Instant::now();
@@ -217,9 +221,9 @@ impl DnsCache {
     }
     fn notify(&self) {
         for (host, record) in &self.hosts {
-            if record.stale {
+            if record.stale() {
                 record.notify();
-                log::debug!("host {} refreshed {:?}", host, record.ips);
+                log::debug!("host {} refreshed and notified {:?}", host, record.ips);
             }
         }
     }
@@ -243,6 +247,7 @@ impl DnsCache {
     fn lookup(&self, host: &str) -> Vec<String> {
         let mut addrs = Vec::new();
         if let Some(record) = self.hosts.get(host) {
+            addrs.reserve(record.ips.len());
             for addr in record.ips.iter() {
                 match addr {
                     IpAddr::V4(ip) => addrs.push(ip.to_string()),
@@ -259,9 +264,4 @@ impl DnsCache {
             .refresh(host, resolver)
             .await;
     }
-    //async fn refresh(&mut self, resolver: &mut Resolver) {
-    //    for (host, record) in self.hosts.iter_mut() {
-    //        record.refresh(host, resolver).await;
-    //    }
-    //}
 }

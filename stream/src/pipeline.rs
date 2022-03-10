@@ -43,7 +43,7 @@ where
         first: true, // 默认当前请求是第一个
     };
     let timeout = std::time::Duration::from_millis(0);
-    rt::Timeout::from(pipeline, timeout).await
+    rt::Entry::from(pipeline, timeout).await
 }
 
 // TODO TODO CopyBidirectional在退出时，需要确保不存在pending中的请求，否则需要会存在内存访问异常。
@@ -178,7 +178,9 @@ where
 
             if ctx.inited() {
                 parser.write_response(&mut ctx, client)?;
-                ctx.async_start_write_back(parser);
+                if ctx.is_write_back() && ctx.response_ok() && ctx.complete() {
+                    ctx.async_start_write_back(parser);
+                }
             } else {
                 let req = ctx.request();
                 if !req.noforward() {

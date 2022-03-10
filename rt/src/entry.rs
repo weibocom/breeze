@@ -47,7 +47,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Cancel for T {
 //  统计
 //  1. 每次poll的执行耗时
 //  2. 重入耗时间隔
-pub struct Timeout<F> {
+pub struct Entry<F> {
     last: Instant,
     last_rx: Instant, // 上一次有接收到请求的时间
     inner: F,
@@ -57,7 +57,7 @@ pub struct Timeout<F> {
     ready: bool,
     out: Option<Result<()>>,
 }
-impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Timeout<F> {
+impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
     #[inline]
     pub fn from(f: F, timeout: Duration) -> Self {
         let tick = interval(timeout.max(Duration::from_millis(50)));
@@ -116,7 +116,7 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Timeout<F> {
 }
 
 use protocol::Result;
-impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeout<F> {
+impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Entry<F> {
     type Output = F::Output;
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -129,19 +129,12 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Timeou
         // close
         while !self.inner.close() {
             ready!(self.tick.poll_tick(cx));
-            log::info!("closing => {:?}", self.inner);
+            log::info!("closing => {:?} {:?}", self.inner, self.out);
         }
-        //log::info!(
-        //    "poll complete:{:?} {:?} {:?} out:{:?}",
-        //    self.inner,
-        //    self.last.elapsed(),
-        //    self.last_rx.elapsed(),
-        //    self.out
-        //);
         Poll::Ready(self.out.take().unwrap())
     }
 }
-impl<F> Drop for Timeout<F> {
+impl<F> Drop for Entry<F> {
     #[inline]
     fn drop(&mut self) {
         metrics::decr_task();
