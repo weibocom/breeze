@@ -227,7 +227,6 @@ impl CallbackContext {
     }
     #[inline]
     fn manual_drop(&mut self) {
-        assert!(self.complete());
         unsafe { Box::from_raw(self) };
     }
 }
@@ -335,7 +334,11 @@ impl CallbackContextPtr {
             // 还会有异步请求，内存释放交给异步操作完成后的on_done来处理
             self.ctx.drop_on_done.store(true, Ordering::Release);
             log::debug!("start write back:{}", &*self);
-            self.continute();
+            let ctx = self.ptr;
+            // 必须要提前drop，否则可能会因为continute在drop(self)之前完成，导致在on_done中释放context，
+            // 此时，此时内存被重置，导致drop_one_done为false，在drop(self)时，再次释放context
+            drop(self);
+            unsafe { (&mut *ctx).continute() };
         }
     }
 }
