@@ -234,9 +234,9 @@ impl CallbackContext {
 impl Drop for CallbackContext {
     #[inline]
     fn drop(&mut self) {
+        on_drop();
         assert!(self.complete());
         self.try_drop_response();
-        on_drop();
     }
 }
 
@@ -422,23 +422,14 @@ impl crate::Commander for CallbackContextPtr {
     }
 }
 
-//use std::sync::atomic::AtomicUsize;
-//static NEW: AtomicUsize = AtomicUsize::new(0);
-//static DROP: AtomicUsize = AtomicUsize::new(0);
+use std::sync::atomic::AtomicUsize;
+static PENDING: AtomicUsize = AtomicUsize::new(0);
 #[inline]
 fn on_new() {
-    //NEW.fetch_add(1, Ordering::Relaxed);
+    PENDING.fetch_add(1, Ordering::AcqRel);
 }
 #[inline]
 fn on_drop() {
-    //let old = DROP.fetch_add(1, Ordering::Relaxed) + 1;
-    //if old & 1023 == 0 {
-    //    let new = NEW.load(Ordering::Relaxed);
-    //    log::info!(
-    //        "new:{} dropped:{} diff:{}",
-    //        new,
-    //        old,
-    //        new as isize - old as isize
-    //    );
-    //}
+    let old = PENDING.fetch_sub(1, Ordering::AcqRel);
+    assert_ne!(old, 0);
 }

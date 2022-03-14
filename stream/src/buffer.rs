@@ -131,10 +131,22 @@ impl StreamGuard {
     //}
 }
 
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 impl Display for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "ctx:{} StreamGuard :{}", self.ctx, self.buf,)
+    }
+}
+impl Debug for StreamGuard {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ctx:{} StreamGuard :{} raw:{:?}",
+            self.ctx,
+            self.buf,
+            self.buf.raw()
+        )
     }
 }

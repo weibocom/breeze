@@ -113,12 +113,19 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
                     Some(cmd) => {
+                        if self.pending.len() == 0 {
+                            use protocol::Utf8;
+                            log::info!(
+                                "no request found, but response found. response:{:?}, buf data:{:?}",
+                                cmd.data().utf8(),
+                                self.buf
+                            );
+                        }
                         assert_ne!(self.pending.len(), 0);
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
-                        //use protocol::Utf8;
                         //log::info!(
                         //    "{:?} => response received: {:?} => {:?}",
                         //    self,
