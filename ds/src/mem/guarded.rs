@@ -74,9 +74,6 @@ impl GuardedBuffer {
             if guard == 0 {
                 break;
             }
-            // 在crate::gc::Until::droppable里面用 pending() == 0来判断是否可以drop
-            // 在drop时，assert了guards.len() == 0
-            // 因此，需要将pop_front放在advance_read之前
             self.guards.pop_front();
             self.inner.advance_read(guard as usize);
         }
@@ -102,6 +99,10 @@ impl GuardedBuffer {
     #[inline]
     fn offset(&self, oft: usize) -> usize {
         self.pending() + oft
+    }
+    #[inline]
+    pub fn raw(&self) -> &[u8] {
+        self.inner.raw()
     }
 }
 use std::fmt::{self, Display, Formatter};

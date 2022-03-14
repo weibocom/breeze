@@ -173,6 +173,10 @@ impl RingBuffer {
                 .offset(self.mask(self.read + idx) as isize)
         }
     }
+    #[inline]
+    pub(crate) fn raw(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.data.as_ptr(), self.size) }
+    }
 }
 
 impl Drop for RingBuffer {
