@@ -25,6 +25,8 @@ pub(crate) struct Handler<'r, Req, P, S> {
     num_tx: usize,
 
     rtt: Metric,
+
+    last_req_buf: Vec<u8>,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
@@ -61,6 +63,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
             rtt: path.rtt("req"),
             num_rx: 0,
             num_tx: 0,
+            last_req_buf: Vec::with_capacity(512),
         }
     }
     // 发送request. 读空所有的request，并且发送。直到pending或者error
@@ -109,6 +112,8 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                 return Poll::Ready(Err(Error::ResponseBufferFull));
             }
             log::debug!("{} bytes received. {:?}", num, self);
+            let pl = self.pending.len();
+            unsafe { self.last_req_buf.set_len(0) };
             while self.buf.len() > 0 {
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
@@ -116,22 +121,20 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                         if self.pending.len() == 0 {
                             use protocol::Utf8;
                             log::info!(
-                                "no request found, but response found. response:{:?}, buf data:{:?}",
+                                "no request reserved for response found => {} req:{:?} response:{:?}, buf data:{:?}",
+                                pl,
+                                self.last_req_buf,
                                 cmd.data().utf8(),
                                 self.buf
                             );
                         }
                         assert_ne!(self.pending.len(), 0);
                         let req = self.pending.pop_front().expect("take response");
+                        use protocol::Writer;
+                        self.last_req_buf.write_slice(req.data(), 0)?;
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
-                        //log::info!(
-                        //    "{:?} => response received: {:?} => {:?}",
-                        //    self,
-                        //    req.data().utf8(),
-                        //    cmd.data().utf8()
-                        //);
                         req.on_complete(cmd);
                     }
                 }
