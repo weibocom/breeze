@@ -134,11 +134,11 @@ impl PartialEq for Quadruple {
 }
 impl Ord for Quadruple {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.family == "unix" && other.family == "tcp" {
-            Ordering::Less
-        } else {
-            self.name.cmp(&other.name)
-        }
+        // unix < tcp
+        other
+            .family
+            .cmp(&self.family)
+            .then_with(|| self.name.cmp(&other.name))
     }
 }
 impl PartialOrd for Quadruple {
