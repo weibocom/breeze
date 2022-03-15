@@ -42,6 +42,10 @@ impl<T> Receiver<T> {
     pub fn disable(&mut self) {
         self.switcher.off();
     }
+    #[inline]
+    pub fn running(&self) -> bool {
+        self.switcher.get()
+    }
 }
 
 impl<T> Sender<T> {

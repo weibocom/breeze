@@ -121,11 +121,12 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                         if self.pending.len() == 0 {
                             use protocol::Utf8;
                             log::info!(
-                                "no request reserved for response found => {} req:{:?} response:{:?}, buf data:{:?}",
+                                "no request reserved for response found => {} req:{:?} response:{:?}, buf data:{:?} running:{}",
                                 pl,
                                 self.last_req_buf,
                                 cmd.data().utf8(),
-                                self.buf
+                                self.buf,
+                                self.data.running()
                             );
                         }
                         assert_ne!(self.pending.len(), 0);
