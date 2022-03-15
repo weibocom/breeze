@@ -53,7 +53,7 @@ impl Protocol for MemcacheBinary {
             let guard = data.take(packet_len);
             let cmd = HashedCommand::new(guard, hash, flag);
             // get请求不能是quiet
-            assert!(!(cmd.operation().is_retrival() && cmd.sentonly()));
+            assert!(!cmd.data().quite_get());
             process.process(cmd, last);
         }
         Ok(())
@@ -68,6 +68,7 @@ impl Protocol for MemcacheBinary {
         if len >= HEADER_LEN {
             let r = data.slice();
             let pl = r.packet_len();
+            assert!(!r.quite_get());
             if len >= pl {
                 let mut flag = Flag::from_op(r.op() as u16, r.operation());
                 flag.set_status_ok(r.status_ok());
