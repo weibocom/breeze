@@ -115,9 +115,8 @@ impl fmt::Display for Quadruple {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "(id:{} name:{}, service:{}, prot:{}, addr:{}, endpoint:{} since parsed:{:?})",
+            "(id:{}  service:{}, prot:{}, addr:{}, endpoint:{} since parsed:{:?})",
             self.id,
-            self.name,
             self.service,
             self.protocol,
             self.addr,
