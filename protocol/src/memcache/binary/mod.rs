@@ -70,9 +70,16 @@ impl Protocol for MemcacheBinary {
             let pl = r.packet_len();
             assert!(!r.quite_get());
             if len >= pl {
-                let mut flag = Flag::from_op(r.op() as u16, r.operation());
-                flag.set_status_ok(r.status_ok());
-                return Ok(Some(Command::new(flag, data.take(pl))));
+                if !r.is_quiet() {
+                    let mut flag = Flag::from_op(r.op() as u16, r.operation());
+                    flag.set_status_ok(r.status_ok());
+                    return Ok(Some(Command::new(flag, data.take(pl))));
+                } else {
+                    // response返回quite请求只有一种情况：出错了。
+                    // quite请求是异步处理，直接忽略即可。
+                    assert!(!r.status_ok());
+                    data.ignore(pl);
+                }
             }
         }
         Ok(None)
@@ -84,6 +91,7 @@ impl Protocol for MemcacheBinary {
         ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
+        assert!(self.check_response(ctx.request(), ctx.response()));
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();
         let resp = ctx.response_mut();
@@ -221,5 +229,17 @@ impl MemcacheBinary {
         let guard = ds::MemGuard::from_vec(req_cmd);
         // TODO: 目前mc不需要用key_count，等又需要再调整
         Some(HashedCommand::new(guard, hash, flag))
+    }
+    #[inline]
+    fn check_response(&self, req: &HashedCommand, resp: &Command) -> bool {
+        // response不能是quiet请求
+        assert!(!resp.data().is_quiet());
+        // request与response的op一定相同
+        assert_eq!(req.data().op(), resp.data().op());
+        // opaque相同
+        assert_eq!(req.data().opaque(), resp.data().opaque());
+        // 如果是getk请求，则request与response的key相同
+        assert!(req.data().op() != OP_CODE_GETK || req.data().key() == resp.data().key());
+        true
     }
 }
