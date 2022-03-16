@@ -118,17 +118,6 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
                     Some(cmd) => {
-                        if self.pending.len() == 0 {
-                            use protocol::Utf8;
-                            log::info!(
-                                "no request reserved for response found => {} req:{:?} response:{:?}, buf data:{:?} running:{}",
-                                pl,
-                                self.last_req_buf,
-                                cmd.data().utf8(),
-                                self.buf,
-                                self.data.running()
-                            );
-                        }
                         assert_ne!(self.pending.len(), 0);
                         let req = self.pending.pop_front().expect("take response");
                         use protocol::Writer;

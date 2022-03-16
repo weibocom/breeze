@@ -87,7 +87,7 @@ pub(super) const REQUEST_MAGIC: u8 = 0x80;
 pub(super) const RESPONSE_MAGIC: u8 = 0x81;
 pub(super) const OP_CODE_GET: u8 = 0x00;
 pub(super) const OP_CODE_NOOP: u8 = 0x0a;
-//pub(super) const OP_CODE_GETK: u8 = 0x0c;
+pub(super) const OP_CODE_GETK: u8 = 0x0c;
 //pub(super) const OP_CODE_GETKQ: u8 = 0x0d;
 pub(super) const OP_CODE_GETQ: u8 = 0x09;
 // 这个专门为gets扩展
@@ -148,6 +148,8 @@ pub(super) trait Binary<T> {
     fn packet_len(&self) -> usize;
     // 是否为quite get请求。
     fn quite_get(&self) -> bool;
+    // 当前请求是否是quite请求
+    fn is_quiet(&self) -> bool;
     // 截取末尾的noop请求
     fn take_noop(&self) -> T;
 
@@ -289,5 +291,10 @@ impl Binary<RingSlice> for RingSlice {
         for i in PacketPos::Cas as usize..PacketPos::Cas as usize + CAS_LEN {
             self.update(i, 0);
         }
+    }
+    #[inline]
+    fn is_quiet(&self) -> bool {
+        let op = self.op();
+        NOREPLY_MAPPING[op as usize] == op
     }
 }
