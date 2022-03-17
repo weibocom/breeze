@@ -117,11 +117,12 @@ where
         if ctx.is_write() {
             idx = ctx.take_write_idx() as usize;
             write_back = idx + 1 < self.streams.len();
-            // force_write_all，如果为true，不管主是否写失败，都同步其他layers
+            // force_write_all 为true，不管master是否写失败，都同步其他layers;
+            // force_write_all 为false，master写失败，则同步其他layers.
             if self.force_write_all {
                 try_next = idx + 1 < self.streams.len();
             } else {
-                try_next = false;
+                try_next = idx + 1 < self.streams.len() && idx > 0;
             }
         } else {
             // 是读触发的回种的写请求
