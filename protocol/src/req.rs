@@ -3,11 +3,12 @@ use std::time::Instant;
 
 use ds::RingSlice;
 
-use crate::{Command, Operation};
+use crate::{Command, HashedCommand, Operation};
 
 pub type Context = u64;
 
 pub trait Request: Debug + Display + Send + Sync + 'static + Unpin {
+    fn cmd(&self) -> &HashedCommand;
     fn start_at(&self) -> Instant;
     fn operation(&self) -> Operation;
     fn len(&self) -> usize;

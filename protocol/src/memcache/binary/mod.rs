@@ -84,6 +84,15 @@ impl Protocol for MemcacheBinary {
         }
         Ok(None)
     }
+    #[inline]
+    fn check(&self, req: &HashedCommand, resp: &Command) -> bool {
+        // response不能是quiet请求
+        // request与response的op一定相同
+        // opaque相同
+        !resp.data().is_quiet()
+            && req.data().op() == resp.data().op()
+            && req.data().opaque() == resp.data().opaque()
+    }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline]
     fn write_response<C: crate::Commander, W: crate::Writer>(
@@ -91,7 +100,6 @@ impl Protocol for MemcacheBinary {
         ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
-        assert!(self.check_response(ctx.request(), ctx.response()));
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();
         let resp = ctx.response_mut();
@@ -229,17 +237,5 @@ impl MemcacheBinary {
         let guard = ds::MemGuard::from_vec(req_cmd);
         // TODO: 目前mc不需要用key_count，等又需要再调整
         Some(HashedCommand::new(guard, hash, flag))
-    }
-    #[inline]
-    fn check_response(&self, req: &HashedCommand, resp: &Command) -> bool {
-        // response不能是quiet请求
-        assert!(!resp.data().is_quiet());
-        // request与response的op一定相同
-        assert_eq!(req.data().op(), resp.data().op());
-        // opaque相同
-        assert_eq!(req.data().opaque(), resp.data().opaque());
-        // 如果是getk请求，则request与response的key相同
-        assert!(req.data().op() != OP_CODE_GETK || req.data().key() == resp.data().key());
-        true
     }
 }
