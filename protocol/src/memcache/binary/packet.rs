@@ -87,7 +87,7 @@ pub(super) const REQUEST_MAGIC: u8 = 0x80;
 pub(super) const RESPONSE_MAGIC: u8 = 0x81;
 pub(super) const OP_CODE_GET: u8 = 0x00;
 pub(super) const OP_CODE_NOOP: u8 = 0x0a;
-pub(super) const OP_CODE_GETK: u8 = 0x0c;
+//pub(super) const OP_CODE_GETK: u8 = 0x0c;
 //pub(super) const OP_CODE_GETKQ: u8 = 0x0d;
 pub(super) const OP_CODE_GETQ: u8 = 0x09;
 // 这个专门为gets扩展

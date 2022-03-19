@@ -80,17 +80,25 @@ impl CallbackContext {
         // 异步请求不关注response。
         if !self.is_in_async_write_back() {
             self.tries += 1;
-            self.write(resp);
+            use crate::Utf8;
+            assert!(
+                !self.complete(),
+                "{} {:?} => {:?}",
+                self,
+                self.request().data().utf8(),
+                resp.data().utf8()
+            );
+            self.try_drop_response();
+            self.response.write(resp);
+            self.ctx.inited.store(true, Ordering::Release);
         }
         self.on_done();
     }
     #[inline]
-    pub fn on_response(&self) {}
-    #[inline]
     fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
         if self.need_goon() {
-            return self.continute();
+            return self.goon();
         }
         if !self.ctx.drop_on_done() {
             // 说明有请求在pending
@@ -119,12 +127,18 @@ impl CallbackContext {
     }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
+        use crate::Utf8;
         match err {
             Error::Closed => {}
             Error::ChanDisabled => {}
             Error::Waiting => {}
             Error::Pending => {}
-            err => log::info!("on-err:{} {}", self, err),
+            err => log::info!(
+                "on-err:{} {:?} request:{:?}",
+                self,
+                self.request().data().utf8(),
+                err
+            ),
         }
         self.on_done();
     }
@@ -159,14 +173,6 @@ impl CallbackContext {
         self.ctx.write_back
     }
     #[inline]
-    fn write(&mut self, resp: Command) {
-        assert!(!self.complete());
-        self.try_drop_response();
-        self.response.write(resp);
-        assert!(!self.ctx.is_inited());
-        self.ctx.inited.store(true, Ordering::Release);
-    }
-    #[inline]
     fn wake(&self) {
         unsafe { (&*self.waker).wake() }
     }
@@ -195,7 +201,7 @@ impl CallbackContext {
     }
 
     #[inline]
-    fn continute(&mut self) {
+    fn goon(&mut self) {
         self.send();
     }
     #[inline]
@@ -286,7 +292,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 impl Display for CallbackContext {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.ctx, self.request())
+        write!(f, "{} {} tries:{}", self.ctx, self.request(), self.tries)
     }
 }
 impl Debug for CallbackContext {
@@ -301,13 +307,14 @@ impl Display for Context {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "complete:{} init:{},async :{} try:{} write back:{}  context:{}",
+            "complete:{} finished:{} init:{},async :{} try:{} write back:{}  context:{}",
             self.complete.load(Ordering::Acquire),
+            self.finished.load(Ordering::Acquire),
             self.is_inited(),
             self.drop_on_done(),
             self.try_next,
             self.write_back,
-            self.flag
+            self.flag,
         )
     }
 }
@@ -338,7 +345,7 @@ impl CallbackContextPtr {
             // 必须要提前drop，否则可能会因为continute在drop(self)之前完成，导致在on_done中释放context，
             // 此时，此时内存被重置，导致drop_one_done为false，在drop(self)时，再次释放context
             drop(self);
-            unsafe { (&mut *ctx).continute() };
+            unsafe { (&mut *ctx).goon() };
         }
     }
 }
@@ -365,14 +372,12 @@ impl Deref for CallbackContextPtr {
     type Target = CallbackContext;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        //assert!(!self.inner.as_ref().ctx.drop_on_done());
         unsafe { &*self.ptr }
     }
 }
 impl DerefMut for CallbackContextPtr {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        //assert!(!self.inner.as_ref().ctx.drop_on_done());
         unsafe { &mut *self.ptr }
     }
 }
@@ -426,10 +431,13 @@ use std::sync::atomic::AtomicUsize;
 static PENDING: AtomicUsize = AtomicUsize::new(0);
 #[inline]
 fn on_new() {
-    PENDING.fetch_add(1, Ordering::AcqRel);
+    assert!({
+        PENDING.fetch_add(1, Ordering::AcqRel);
+        true
+    });
 }
 #[inline]
 fn on_drop() {
-    let old = PENDING.fetch_sub(1, Ordering::AcqRel);
-    assert_ne!(old, 0);
+    // 验证是否有CallbackContext未释放
+    assert_ne!(PENDING.fetch_sub(1, Ordering::AcqRel), 0);
 }

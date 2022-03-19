@@ -113,11 +113,19 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
                     Some(cmd) => {
-                        assert_ne!(self.pending.len(), 0);
+                        assert_ne!(self.pending.len(), 0, "{:?}", self);
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
+                        use protocol::Utf8;
+                        assert!(
+                            self.parser.check(req.cmd(), &cmd),
+                            "{:?} {:?} => {:?}",
+                            self,
+                            req.cmd().data().utf8(),
+                            cmd.data().utf8()
+                        );
                         req.on_complete(cmd);
                     }
                 }

@@ -16,6 +16,10 @@ impl crate::Request for Request {
         self.req().len()
     }
     #[inline]
+    fn cmd(&self) -> &HashedCommand {
+        self.req()
+    }
+    #[inline]
     fn data(&self) -> &ds::RingSlice {
         self.req().data()
     }
