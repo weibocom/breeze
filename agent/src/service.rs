@@ -71,7 +71,7 @@ async fn _process_one(
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
 
-    log::info!("service started. {}", quard);
+    log::info!("started. {}", quard);
     use stream::StreamMetrics;
 
     loop {
