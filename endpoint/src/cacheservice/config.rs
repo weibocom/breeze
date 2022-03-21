@@ -20,6 +20,10 @@ pub struct Namespace {
     #[serde(default)]
     pub slave_l1: Vec<Vec<String>>,
 
+    // set master 失败后，是否更新其他各层
+    #[serde(default)]
+    pub force_write_all: bool,
+
     #[serde(default)]
     pub timeout_ms_master: u32,
     #[serde(default)]
