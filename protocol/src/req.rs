@@ -7,13 +7,13 @@ use crate::{Command, HashedCommand, Operation};
 
 pub type Context = u64;
 
-pub trait Request: Debug + Display + Send + Sync + 'static + Unpin {
+pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     fn cmd(&self) -> &HashedCommand;
     fn start_at(&self) -> Instant;
     fn operation(&self) -> Operation;
     fn len(&self) -> usize;
     fn hash(&self) -> i64;
-    fn on_sent(&mut self);
+    fn on_sent(self) -> Option<Self>;
     fn sentonly(&self) -> bool;
     fn data(&self) -> &RingSlice;
     fn read(&self, oft: usize) -> &[u8];

@@ -82,14 +82,14 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
             while *idx < buf.len() {
                 *idx += ready!(w.as_mut().poll_write(cx, &buf[*idx..]))?;
             }
-            if *idx == buf.len() {
-                *idx = 0;
-                unsafe { buf.set_len(0) };
-            }
-            w.poll_flush(cx)
-        } else {
-            Poll::Ready(Ok(()))
+            assert_eq!(*idx, buf.len());
+            let flush = w.poll_flush(cx)?;
+            assert!(flush.is_ready());
+            ready!(flush);
+            *idx = 0;
+            unsafe { buf.set_len(0) };
         }
+        Poll::Ready(Ok(()))
     }
     #[inline]
     fn poll_shutdown(

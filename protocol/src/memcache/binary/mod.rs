@@ -221,7 +221,7 @@ impl MemcacheBinary {
         req_cmd.write_u16(0 as u16); // vbucket id, 回写全部为0,pos [6,7]
         let total_body_len = extra_len as u32 + key_len as u32 + rsp_cmd.value_len();
         req_cmd.write_u32(total_body_len); // total body len [8-11]
-        req_cmd.write_u32(0 as u32); // opaque: [12, 15]
+        req_cmd.write_u32(u32::MAX); // opaque: [12, 15]
         req_cmd.write_u64(0 as u64); // cas: [16, 23]
 
         /*============= 构建request body =============*/
