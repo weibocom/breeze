@@ -1,5 +1,5 @@
 use std::mem::MaybeUninit;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use ds::AtomicWaker;
@@ -40,6 +40,7 @@ pub struct CallbackContext {
     callback: CallbackPtr,
     start: Instant,
     tries: usize,
+    on_drop: *const AtomicUsize,
 }
 
 impl CallbackContext {
@@ -50,11 +51,11 @@ impl CallbackContext {
         cb: CallbackPtr,
         first: bool,
         last: bool,
+        on_drop: &AtomicUsize,
     ) -> Self {
         let mut ctx = Context::default();
         ctx.first = first;
         ctx.last = last;
-        on_new();
         log::debug!("request prepared:{}", req);
         Self {
             ctx,
@@ -64,14 +65,20 @@ impl CallbackContext {
             callback: cb,
             start: Instant::now(),
             tries: 0,
+            on_drop,
         }
     }
 
+    // 返回true: 表示发送完之后还未结束
+    // false: 表示请求已结束
     #[inline]
-    pub fn on_sent(&mut self) {
+    pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
         if self.request().sentonly() {
             self.on_done();
+            false
+        } else {
+            true
         }
     }
     #[inline]
@@ -105,7 +112,6 @@ impl CallbackContext {
             assert!(!self.complete());
             self.ctx.complete.store(true, Ordering::Release);
             self.wake();
-            self.ctx.finished.store(true, Ordering::Release);
         } else {
             self.manual_drop();
         }
@@ -133,7 +139,7 @@ impl CallbackContext {
             Error::ChanDisabled => {}
             Error::Waiting => {}
             Error::Pending => {}
-            err => log::info!(
+            err => log::debug!(
                 "on-err:{} {:?} request:{:?}",
                 self,
                 self.request().data().utf8(),
@@ -159,10 +165,6 @@ impl CallbackContext {
     #[inline]
     pub fn complete(&self) -> bool {
         self.ctx.complete.load(Ordering::Acquire)
-    }
-    #[inline]
-    pub fn finished(&self) -> bool {
-        self.ctx.finished.load(Ordering::Acquire)
     }
     #[inline]
     pub fn inited(&self) -> bool {
@@ -240,9 +242,11 @@ impl CallbackContext {
 impl Drop for CallbackContext {
     #[inline]
     fn drop(&mut self) {
-        on_drop();
         assert!(self.complete());
         self.try_drop_response();
+        unsafe {
+            (&*self.on_drop).fetch_add(1, Ordering::AcqRel);
+        }
     }
 }
 
@@ -251,7 +255,6 @@ unsafe impl Sync for CallbackContext {}
 #[derive(Default)]
 pub struct Context {
     complete: AtomicBool,     // 当前请求是否完成
-    finished: AtomicBool,     // 在请求完成并且执行了wakeup
     drop_on_done: AtomicBool, // on_done时，是否手工销毁
     inited: AtomicBool,       // response是否已经初始化
     try_next: bool,           // 请求失败是否需要重试
@@ -307,9 +310,8 @@ impl Display for Context {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "complete:{} finished:{} init:{},async :{} try:{} write back:{}  context:{}",
+            "complete:{} init:{},async :{} try:{} write back:{}  context:{}",
             self.complete.load(Ordering::Acquire),
-            self.finished.load(Ordering::Acquire),
             self.is_inited(),
             self.drop_on_done(),
             self.try_next,
@@ -425,19 +427,4 @@ impl crate::Commander for CallbackContextPtr {
         assert!(self.inited());
         unsafe { self.response.assume_init_mut() }
     }
-}
-
-use std::sync::atomic::AtomicUsize;
-static PENDING: AtomicUsize = AtomicUsize::new(0);
-#[inline]
-fn on_new() {
-    assert!({
-        PENDING.fetch_add(1, Ordering::AcqRel);
-        true
-    });
-}
-#[inline]
-fn on_drop() {
-    // 验证是否有CallbackContext未释放
-    assert_ne!(PENDING.fetch_sub(1, Ordering::AcqRel), 0);
 }
