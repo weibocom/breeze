@@ -203,13 +203,6 @@ impl Drop for GuardedBuffer {
     #[inline]
     fn drop(&mut self) {
         // 如果guards不为0，说明MemGuard未释放，当前buffer销毁后，会导致MemGuard指向内存错误。
-        if self.guards.len() != 0 {
-            log::info!("non-zero guarded buffer dropped:{}", self);
-            let len = self.guards.len();
-            while let Some(g) = self.guards.pop_front() {
-                log::info!("guarded:{}", g.load(Ordering::Acquire));
-            }
-            assert_eq!(len, 0);
-        }
+        assert_eq!(self.guards.len(), 0, "guarded buffer dropped:{}", self);
     }
 }
