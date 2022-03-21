@@ -60,6 +60,28 @@ pub struct Crc32Delimiter {
     name: String,
 }
 
+// 对全key做crc32
+impl super::Hash for Crc32 {
+    fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
+        crc32_hash(key)
+    }
+}
+
+// 兼容api-commons中mc crc32 hash算法调整，手动测试各种长度key，hash一致；
+// 核心算法同crc32，但要多做一次做移位及截断
+impl super::Hash for Crc32Short {
+    fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
+        let crc = crc32_hash(key);
+        let mut rs = (crc >> 16) & 0x7fff;
+        if rs <= 0 {
+            log::warn!("found negative/zero crc32 hash for key:{:?}", key);
+            rs = rs.wrapping_mul(-1);
+        }
+
+        rs
+    }
+}
+
 impl Crc32Num {
     pub fn from(alg: &str) -> Self {
         let alg_parts: Vec<&str> = alg.split("-").collect();
@@ -190,6 +212,12 @@ impl super::Hash for Crc32Delimiter {
     }
 }
 
+impl Display for Crc32Delimiter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
 fn crc32_hash<K: super::HashKey>(key: &K) -> i64 {
     let mut crc: i64 = CRC_SEED;
 
@@ -204,27 +232,6 @@ fn crc32_hash<K: super::HashKey>(key: &K) -> i64 {
         log::error!("crc32 - error hash/{} for key/{:?}", crc, key);
     }
     crc
-}
-
-impl super::Hash for Crc32 {
-    fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        crc32_hash(key)
-    }
-}
-
-// 兼容api-commons中mc crc32 hash算法调整，手动测试各种长度key，hash一致；
-// 理论上应该与线上一致，注意跟进线上不一致场景 fishermen
-impl super::Hash for Crc32Short {
-    fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        let crc = crc32_hash(key);
-        let mut rs = (crc >> 16) & 0x7fff;
-        if rs <= 0 {
-            log::warn!("found negative/zero crc32 hash for key:{:?}", key);
-            rs = rs.wrapping_mul(-1);
-        }
-
-        rs
-    }
 }
 
 use std::fmt::Display;
