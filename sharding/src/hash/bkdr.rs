@@ -13,6 +13,10 @@ impl super::Hash for Bkdr {
             h = h.wrapping_mul(-1);
         }
 
+        if h == 0 {
+            log::error!("found zero hash for key: {:?}", b);
+        }
+
         h as i64
     }
 }
