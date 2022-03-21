@@ -18,6 +18,7 @@ pub trait Hash {
 pub enum Hasher {
     Raw(Raw), // redis raw, long型字符串直接用数字作为hash
     Bkdr(Bkdr),
+    Crc32(Crc32),
     Crc32Short(Crc32Short),         // mc short crc32
     Crc32Num(Crc32Num),             // crc32 for a hash key whick is a num,
     Crc32Delimiter(Crc32Delimiter), // crc32 for a hash key which has a delimiter of "." or "_" or "#" etc.
@@ -80,7 +81,7 @@ impl Hasher {
             return match alg_parts[0] {
                 "bkdr" => Self::Bkdr(Default::default()),
                 "raw" => Self::Raw(Raw::from(Default::default())),
-                "crc32" => Self::Crc32Delimiter(Default::default()),
+                "crc32" => Self::Crc32(Default::default()),
                 _ => {
                     // 默认采用mc的crc32-s hash
                     log::debug!("found unknow hash:{}, use crc32-short instead", alg);
