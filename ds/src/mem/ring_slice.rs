@@ -39,20 +39,12 @@ impl RingSlice {
             self.start + offset + len,
         )
     }
-    // 从start开始的所有数据。start不是offset，是绝对值。
-    //#[inline]
-    //pub fn take(&self, start: usize) -> RingSlice {
-    //    assert!(start >= self.start);
-    //    assert!(start <= self.end);
-    //    Self::from(self.ptr(), self.cap, start, self.end)
-    //}
     // 读取数据. 可能只读取可读数据的一部分。
     #[inline]
     pub fn read(&self, offset: usize) -> &[u8] {
         assert!(offset < self.len());
         let oft = self.mask(self.start + offset);
         let l = (self.cap - oft).min(self.end - self.start - offset);
-        //println!("read data offset:{} start offset:{} l:{}", offset, oft, l);
         unsafe { std::slice::from_raw_parts(self.ptr().offset(oft as isize), l) }
     }
     #[inline]

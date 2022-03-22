@@ -60,7 +60,7 @@ async fn run(ctx: Context) -> Result<()> {
     // 启动定期更新资源配置线程
     // 部分资源需要延迟drop。
 
-    log::info!("====> server inited <==== {:?}", ctx);
+    log::info!("server({}) inited {:?}", context::get_short_version(), ctx);
 
     let mut listeners = ctx.listeners();
     listeners.remove_unix_sock().await?;
