@@ -36,33 +36,22 @@ impl Quadruple {
         // 第一个field是应用协议名称(mc, redis)；
         // 第二个元素如果没有，则是unix协议，如果有则是tcp协议，该值必须是端口
         let protocol_fields: Vec<&str> = protocol_item.split(':').collect();
-        let (family, addr) = match protocol_fields.len() {
-            1 => ("unix", path.to_string() + "/" + name + ".sock"),
-            2 => {
-                if let Err(e) = protocol_fields[1].parse::<u16>() {
-                    log::warn!(
-                        "not a valid service name:{} not a valid port:{} error:{:?}",
-                        name,
-                        protocol_fields[1],
-                        e
-                    );
-                    return None;
-                }
-                #[cfg(feature = "listen-all")]
-                let local_ip = "0.0.0.0";
-                #[cfg(not(feature = "listen-all"))]
-                let local_ip = "127.0.0.1";
-                let addr = local_ip.to_string() + ":" + protocol_fields[1];
-                ("tcp", addr)
-            }
-            _ => {
-                log::warn!(
-                    "not a valid service name::{} protocol {} must be splited by ':'",
-                    name,
-                    protocol_item
-                );
-                return None;
-            }
+        let is_tcp = protocol_fields
+            .get(1)
+            .map(|port_str| port_str.parse::<u16>().is_ok())
+            .unwrap_or(false);
+        let (family, addr) = if is_tcp {
+            #[cfg(feature = "listen-all")]
+            let local_ip = "0.0.0.0";
+            #[cfg(not(feature = "listen-all"))]
+            let local_ip = "127.0.0.1";
+            let addr = local_ip.to_string() + ":" + protocol_fields[1];
+            ("tcp", addr)
+        } else {
+            (
+                "unix",
+                path.to_string() + "/" + protocol_fields.get(1).unwrap_or(&service) + ".sock",
+            )
         };
         let protocol = protocol_fields[0];
         let backend = fields[2];
