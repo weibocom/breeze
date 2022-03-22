@@ -7,7 +7,7 @@ mod redis_test {
 
     use redis::{Client, Commands, Connection};
 
-    const BASE_URL: &str = "redis://localhost:10064";
+    const BASE_URL: &str = "redis://localhost:10041";
 
     #[test]
     fn test_get() {
@@ -17,6 +17,7 @@ mod redis_test {
         // let key = "4711424389024351.repost";
         // let key = "100.abc";
         let key = "0.schv";
+        // let key = "4743334465374053.read";
 
         match conn.get::<String, String>(key.to_string()) {
             Ok(v) => println!("get/{}, value: {}", key, v),
@@ -110,7 +111,23 @@ mod redis_test {
             return Err(Error::new(ErrorKind::AddrNotAvailable, "cannot get conn"));
         }
         let client = client_rs.unwrap();
-        let conn = client.get_connection().unwrap();
-        Ok(conn)
+        match client.get_connection() {
+            Ok(conn) => Ok(conn),
+            Err(e) => {
+                println!("found err: {:?}", e);
+                return Err(Error::new(ErrorKind::Interrupted, e.to_string()));
+            }
+        }
+    }
+
+    #[test]
+    fn hash_find() {
+        let key = "测试123.key";
+        let idx = key.find(".").unwrap();
+        println!(". is at: {}", idx);
+        for p in 0..idx {
+            println!("{}:{}", p, key.as_bytes()[p] as char);
+        }
+        println!("\r\nhash find test ok!");
     }
 }

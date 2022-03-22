@@ -217,15 +217,13 @@ impl<T> Display for PinnedQueue<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "len:{} fix:(cap:{} len:{} head:{} tail:{}) ext-len:{} direction:(head:{}, tail:{})",
+            "(len:{}({},{}) fix-cap:{} head:{} tail:{}) ",
             self.len(),
-            self.cap,
             self.fix_len(),
+            self.ext.len(),
+            self.cap,
             self.head,
             self.tail,
-            self.ext.len(),
-            self.fix_head,
-            self.fix_tail,
         )
     }
 }

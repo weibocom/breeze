@@ -1,5 +1,5 @@
 use std::mem::MaybeUninit;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use ds::AtomicWaker;
@@ -40,6 +40,7 @@ pub struct CallbackContext {
     callback: CallbackPtr,
     start: Instant,
     tries: usize,
+    on_drop: *const AtomicUsize,
 }
 
 impl CallbackContext {
@@ -50,11 +51,11 @@ impl CallbackContext {
         cb: CallbackPtr,
         first: bool,
         last: bool,
+        on_drop: &AtomicUsize,
     ) -> Self {
         let mut ctx = Context::default();
         ctx.first = first;
         ctx.last = last;
-        on_new();
         log::debug!("request prepared:{}", req);
         Self {
             ctx,
@@ -64,14 +65,20 @@ impl CallbackContext {
             callback: cb,
             start: Instant::now(),
             tries: 0,
+            on_drop,
         }
     }
 
+    // 返回true: 表示发送完之后还未结束
+    // false: 表示请求已结束
     #[inline]
-    pub fn on_sent(&mut self) {
+    pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
         if self.request().sentonly() {
             self.on_done();
+            false
+        } else {
+            true
         }
     }
     #[inline]
@@ -80,24 +87,31 @@ impl CallbackContext {
         // 异步请求不关注response。
         if !self.is_in_async_write_back() {
             self.tries += 1;
-            self.write(resp);
+            use crate::Utf8;
+            assert!(
+                !self.complete(),
+                "{} {:?} => {:?}",
+                self,
+                self.request().data().utf8(),
+                resp.data().utf8()
+            );
+            self.try_drop_response();
+            self.response.write(resp);
+            self.ctx.inited.store(true, Ordering::Release);
         }
         self.on_done();
     }
     #[inline]
-    pub fn on_response(&self) {}
-    #[inline]
     fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
         if self.need_goon() {
-            return self.continute();
+            return self.goon();
         }
         if !self.ctx.drop_on_done() {
             // 说明有请求在pending
             assert!(!self.complete());
             self.ctx.complete.store(true, Ordering::Release);
             self.wake();
-            self.ctx.finished.store(true, Ordering::Release);
         } else {
             self.manual_drop();
         }
@@ -119,12 +133,18 @@ impl CallbackContext {
     }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
+        use crate::Utf8;
         match err {
             Error::Closed => {}
             Error::ChanDisabled => {}
             Error::Waiting => {}
             Error::Pending => {}
-            err => log::info!("on-err:{} {}", self, err),
+            err => log::debug!(
+                "on-err:{} {:?} request:{:?}",
+                self,
+                self.request().data().utf8(),
+                err
+            ),
         }
         self.on_done();
     }
@@ -147,24 +167,12 @@ impl CallbackContext {
         self.ctx.complete.load(Ordering::Acquire)
     }
     #[inline]
-    pub fn finished(&self) -> bool {
-        self.ctx.finished.load(Ordering::Acquire)
-    }
-    #[inline]
     pub fn inited(&self) -> bool {
         self.ctx.is_inited()
     }
     #[inline]
     pub fn is_write_back(&self) -> bool {
         self.ctx.write_back
-    }
-    #[inline]
-    fn write(&mut self, resp: Command) {
-        assert!(!self.complete());
-        self.try_drop_response();
-        self.response.write(resp);
-        assert!(!self.ctx.is_inited());
-        self.ctx.inited.store(true, Ordering::Release);
     }
     #[inline]
     fn wake(&self) {
@@ -195,7 +203,7 @@ impl CallbackContext {
     }
 
     #[inline]
-    fn continute(&mut self) {
+    fn goon(&mut self) {
         self.send();
     }
     #[inline]
@@ -236,7 +244,9 @@ impl Drop for CallbackContext {
     fn drop(&mut self) {
         assert!(self.complete());
         self.try_drop_response();
-        on_drop();
+        unsafe {
+            (&*self.on_drop).fetch_add(1, Ordering::AcqRel);
+        }
     }
 }
 
@@ -245,7 +255,6 @@ unsafe impl Sync for CallbackContext {}
 #[derive(Default)]
 pub struct Context {
     complete: AtomicBool,     // 当前请求是否完成
-    finished: AtomicBool,     // 在请求完成并且执行了wakeup
     drop_on_done: AtomicBool, // on_done时，是否手工销毁
     inited: AtomicBool,       // response是否已经初始化
     try_next: bool,           // 请求失败是否需要重试
@@ -286,7 +295,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 impl Display for CallbackContext {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.ctx, self.request())
+        write!(f, "{} {} tries:{}", self.ctx, self.request(), self.tries)
     }
 }
 impl Debug for CallbackContext {
@@ -307,7 +316,7 @@ impl Display for Context {
             self.drop_on_done(),
             self.try_next,
             self.write_back,
-            self.flag
+            self.flag,
         )
     }
 }
@@ -338,7 +347,7 @@ impl CallbackContextPtr {
             // 必须要提前drop，否则可能会因为continute在drop(self)之前完成，导致在on_done中释放context，
             // 此时，此时内存被重置，导致drop_one_done为false，在drop(self)时，再次释放context
             drop(self);
-            unsafe { (&mut *ctx).continute() };
+            unsafe { (&mut *ctx).goon() };
         }
     }
 }
@@ -365,14 +374,12 @@ impl Deref for CallbackContextPtr {
     type Target = CallbackContext;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        //assert!(!self.inner.as_ref().ctx.drop_on_done());
         unsafe { &*self.ptr }
     }
 }
 impl DerefMut for CallbackContextPtr {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        //assert!(!self.inner.as_ref().ctx.drop_on_done());
         unsafe { &mut *self.ptr }
     }
 }
@@ -420,25 +427,4 @@ impl crate::Commander for CallbackContextPtr {
         assert!(self.inited());
         unsafe { self.response.assume_init_mut() }
     }
-}
-
-//use std::sync::atomic::AtomicUsize;
-//static NEW: AtomicUsize = AtomicUsize::new(0);
-//static DROP: AtomicUsize = AtomicUsize::new(0);
-#[inline]
-fn on_new() {
-    //NEW.fetch_add(1, Ordering::Relaxed);
-}
-#[inline]
-fn on_drop() {
-    //let old = DROP.fetch_add(1, Ordering::Relaxed) + 1;
-    //if old & 1023 == 0 {
-    //    let new = NEW.load(Ordering::Relaxed);
-    //    log::info!(
-    //        "new:{} dropped:{} diff:{}",
-    //        new,
-    //        old,
-    //        new as isize - old as isize
-    //    );
-    //}
 }

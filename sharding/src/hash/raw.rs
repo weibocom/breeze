@@ -12,6 +12,10 @@ impl super::Hash for Raw {
             hash = hash * 10 + (key.at(i) - '0' as u8) as i64;
         }
 
+        if hash <= 0 {
+            log::error!("found malform hash/{} for key: {:?}", hash, key);
+        }
+
         hash
     }
 }

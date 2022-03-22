@@ -2,7 +2,6 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 #[derive(Debug, Clone, Eq)]
 pub struct Quadruple {
-    id: usize,
     parsed_at: Instant,
     name: String,
     service: String,
@@ -67,10 +66,7 @@ impl Quadruple {
         };
         let protocol = protocol_fields[0];
         let backend = fields[2];
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static ID_SEQ: AtomicUsize = AtomicUsize::new(1);
         Some(Self {
-            id: ID_SEQ.fetch_add(1, Ordering::AcqRel),
             name: name.to_owned(),
             service: service.to_owned(),
             family: family.to_string(),
@@ -115,14 +111,12 @@ impl fmt::Display for Quadruple {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "(id:{} name:{}, service:{}, prot:{}, addr:{}, endpoint:{} since parsed:{:?})",
-            self.id,
-            self.name,
+            "({} => {}-{}://{} {:?})",
             self.service,
             self.protocol,
-            self.addr,
             self.endpoint,
-            self.parsed_at.elapsed()
+            self.addr,
+            self.parsed_at.elapsed(),
         )
     }
 }
@@ -135,11 +129,11 @@ impl PartialEq for Quadruple {
 }
 impl Ord for Quadruple {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.family == "unix" && other.family == "tcp" {
-            Ordering::Less
-        } else {
-            self.name.cmp(&other.name)
-        }
+        // unix < tcp
+        other
+            .family
+            .cmp(&self.family)
+            .then_with(|| self.name.cmp(&other.name))
     }
 }
 impl PartialOrd for Quadruple {

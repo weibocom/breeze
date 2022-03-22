@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-//use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use std::time::Instant;
 
@@ -41,6 +41,8 @@ where
         start: Instant::now(),
         start_init: false,
         first: true, // 默认当前请求是第一个
+        req_new: 0,
+        req_dropped: AtomicUsize::new(0),
     };
     let timeout = std::time::Duration::from_millis(0);
     rt::Entry::from(pipeline, timeout).await
@@ -63,6 +65,9 @@ struct CopyBidirectional<'a, C, P> {
     start: Instant,
     start_init: bool,
     first: bool, // 当前解析的请求是否是第一个。
+
+    req_new: usize,           // 当前连接创建的req数量
+    req_dropped: AtomicUsize, // 销毁的连接的数量
 }
 impl<'a, C, P> Future for CopyBidirectional<'a, C, P>
 where
@@ -73,6 +78,11 @@ where
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        assert!(
+            self.req_new >= self.req_dropped.load(Ordering::Acquire),
+            "{:?}",
+            self
+        );
         self.waker.register(cx.waker());
         loop {
             // 从client接收数据写入到buffer
@@ -127,6 +137,8 @@ where
             rx_buf,
             first,
             cb,
+            req_new,
+            req_dropped,
             ..
         } = self;
         // 解析请求，发送请求，并且注册回调
@@ -135,6 +147,8 @@ where
             waker,
             cb,
             first,
+            req_new,
+            req_dropped,
         };
         parser.parse_request(rx_buf, *hash, &mut processor)
     }
@@ -213,18 +227,21 @@ struct Visitor<'a> {
     waker: &'a AtomicWaker,
     cb: &'a CallbackPtr,
     first: &'a mut bool,
+    req_new: &'a mut usize,
+    req_dropped: &'a AtomicUsize,
 }
 
 impl<'a> protocol::RequestProcessor for Visitor<'a> {
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
+        *self.req_new += 1;
         let first = *self.first;
         // 如果当前是最后一个子请求，那下一个请求就是一个全新的请求。
         // 否则下一个请求是子请求。
         *self.first = last;
         let cb = self.cb.clone();
         let mut ctx: CallbackContextPtr =
-            CallbackContext::new(cmd, &self.waker, cb, first, last).into();
+            CallbackContext::new(cmd, &self.waker, cb, first, last, self.req_dropped).into();
         let req: Request = ctx.build_request();
         self.pending.push_back(ctx);
         req.start();
@@ -243,16 +260,18 @@ impl<'a, C: AsyncRead + AsyncWrite + Unpin, P> rt::ReEnter for CopyBidirectional
     fn close(&mut self) -> bool {
         // take走，close后不需要再wake。避免Future drop后再次被wake，导致UB
         self.waker.take();
+        use rt::Cancel;
+        self.client.cancel();
         // 剔除已完成的请求
         while let Some(ctx) = self.pending.front_mut() {
-            if !ctx.finished() {
+            if !ctx.complete() {
                 break;
             }
             self.pending.pop_front();
         }
-        use rt::Cancel;
-        self.client.cancel();
-        self.rx_buf.try_gc() && self.pending.len() == 0
+        self.rx_buf.try_gc()
+            && self.pending.len() == 0
+            && self.req_new == self.req_dropped.load(Ordering::Acquire)
     }
 }
 impl<'a, C, P> Debug for CopyBidirectional<'a, C, P> {
@@ -260,11 +279,13 @@ impl<'a, C, P> Debug for CopyBidirectional<'a, C, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pending:{} flush:{} rx buf: {}  copy_bidirectional => {}",
+            "{} => pending:{} flush:{} rx buf: {} requests: {} => {}",
+            self.metrics.biz(),
             self.pending.len(),
             self.flush,
             self.rx_buf.len(),
-            self.metrics.biz(),
+            self.req_new,
+            self.req_dropped.load(Ordering::Acquire)
         )
     }
 }
