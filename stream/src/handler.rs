@@ -70,22 +70,15 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         Req: Request,
         S: AsyncWrite + protocol::Writer + Unpin,
     {
-        let mut c = 0;
-        self.s.cache(false);
-        while let Some(mut req) = ready!(self.data.poll_recv(cx)) {
+        self.s.cache(self.data.size_hint() > 1);
+        while let Some(req) = ready!(self.data.poll_recv(cx)) {
             self.num_tx += 1;
-            //use protocol::Utf8;
-            //log::info!("request received {:?} {:?}", self, req.data().utf8());
-            c += 1;
-            if c == 2 {
-                self.s.cache(true);
-            }
             self.s.write_slice(req.data(), 0)?;
-            req.on_sent();
-            if req.sentonly() {
-                self.num_rx += 1;
-            } else {
-                self.pending.push_back(req);
+            match req.on_sent() {
+                Some(r) => self.pending.push_back(r),
+                None => {
+                    self.num_rx += 1;
+                }
             }
         }
         Poll::Ready(Err(Error::QueueClosed))
@@ -113,18 +106,19 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
                     Some(cmd) => {
-                        assert_ne!(self.pending.len(), 0);
+                        assert_ne!(self.pending.len(), 0, "{:?}", self);
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
-                        //use protocol::Utf8;
-                        //log::info!(
-                        //    "{:?} => response received: {:?} => {:?}",
-                        //    self,
-                        //    req.data().utf8(),
-                        //    cmd.data().utf8()
-                        //);
+                        use protocol::Utf8;
+                        assert!(
+                            self.parser.check(req.cmd(), &cmd),
+                            "{:?} {:?} => {:?}",
+                            self,
+                            req.cmd().data().utf8(),
+                            cmd.data().utf8()
+                        );
                         req.on_complete(cmd);
                     }
                 }
@@ -182,12 +176,37 @@ impl<'r, Req, P, S> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler tx_seq:{} rx_seq:{} pending:{} {} buf:{}",
+            "handler tx_seq:{} rx_seq:{} pending:{} {} buf:{:?}",
             self.num_tx,
             self.num_rx,
             self.pending.len(),
             self.rtt,
-            self.buf
+            self.buf,
         )
     }
 }
+
+//const H_SIZE: usize = 16;
+//const H_MASK: usize = H_SIZE - 1;
+//#[derive(Default, Debug)]
+//struct History {
+//    //reqs: [Vec<u8>; H_SIZE],
+////resp: [Vec<u8>; H_SIZE],
+//}
+//impl History {
+//    #[inline]
+//    fn insert_req<Req: Request>(&mut self, seq: usize, req: &Req) {
+//        //let idx = seq & H_MASK;
+//        //self.reqs[idx] = req.data().to_vec();
+//    }
+//    #[inline]
+//    fn insert_resp(&mut self, seq: usize, resp: &protocol::Command) {
+//        //let idx = seq & H_MASK;
+//        //self.resp[idx] = resp.data().to_vec();
+//    }
+//    #[inline]
+//    fn insert_resp_empty(&mut self, seq: usize) {
+//        //let idx = seq & H_MASK;
+//        //self.resp[idx] = Vec::new();
+//    }
+//}

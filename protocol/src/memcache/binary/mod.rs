@@ -53,7 +53,7 @@ impl Protocol for MemcacheBinary {
             let guard = data.take(packet_len);
             let cmd = HashedCommand::new(guard, hash, flag);
             // get请求不能是quiet
-            assert!(!(cmd.operation().is_retrival() && cmd.sentonly()));
+            assert!(!cmd.data().quite_get());
             process.process(cmd, last);
         }
         Ok(())
@@ -68,13 +68,30 @@ impl Protocol for MemcacheBinary {
         if len >= HEADER_LEN {
             let r = data.slice();
             let pl = r.packet_len();
+            assert!(!r.quite_get());
             if len >= pl {
-                let mut flag = Flag::from_op(r.op() as u16, r.operation());
-                flag.set_status_ok(r.status_ok());
-                return Ok(Some(Command::new(flag, data.take(pl))));
+                if !r.is_quiet() {
+                    let mut flag = Flag::from_op(r.op() as u16, r.operation());
+                    flag.set_status_ok(r.status_ok());
+                    return Ok(Some(Command::new(flag, data.take(pl))));
+                } else {
+                    // response返回quite请求只有一种情况：出错了。
+                    // quite请求是异步处理，直接忽略即可。
+                    assert!(!r.status_ok());
+                    data.ignore(pl);
+                }
             }
         }
         Ok(None)
+    }
+    #[inline]
+    fn check(&self, req: &HashedCommand, resp: &Command) -> bool {
+        // response不能是quiet请求
+        // request与response的op一定相同
+        // opaque相同
+        !resp.data().is_quiet()
+            && req.data().op() == resp.data().op()
+            && req.data().opaque() == resp.data().opaque()
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline]
@@ -204,7 +221,7 @@ impl MemcacheBinary {
         req_cmd.write_u16(0 as u16); // vbucket id, 回写全部为0,pos [6,7]
         let total_body_len = extra_len as u32 + key_len as u32 + rsp_cmd.value_len();
         req_cmd.write_u32(total_body_len); // total body len [8-11]
-        req_cmd.write_u32(0 as u32); // opaque: [12, 15]
+        req_cmd.write_u32(u32::MAX); // opaque: [12, 15]
         req_cmd.write_u64(0 as u64); // cas: [16, 23]
 
         /*============= 构建request body =============*/

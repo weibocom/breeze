@@ -21,6 +21,7 @@ pub struct CacheService<B, E, Req, P> {
     hasher: Hasher,
     parser: P,
     exp_sec: u32,
+    force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -34,8 +35,9 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             has_l1: false,
             has_slave: false,
             exp_sec: 0,
+            force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
-            rnd_idx: Default::default(),
+            rnd_idx: Arc::new(AtomicUsize::new(rand::random())),
             _marker: Default::default(),
         }
     }
@@ -115,8 +117,13 @@ where
         if ctx.is_write() {
             idx = ctx.take_write_idx() as usize;
             write_back = idx + 1 < self.streams.len();
-            // idx == 0: 主写失败了不同步其他的从请求
-            try_next = idx + 1 < self.streams.len() && idx > 0;
+            // force_write_all 为true，不管master是否写失败，都同步其他layers;
+            // force_write_all 为false，master写失败，则同步其他layers.
+            if self.force_write_all {
+                try_next = idx + 1 < self.streams.len();
+            } else {
+                try_next = idx + 1 < self.streams.len() && idx > 0;
+            }
         } else {
             // 是读触发的回种的写请求
             idx = ctx.take_read_idx() as usize;
@@ -168,6 +175,7 @@ where
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
+            self.force_write_all = ns.force_write_all;
             let dist = &ns.distribution;
 
             let old_streams = self.streams.split_off(0);

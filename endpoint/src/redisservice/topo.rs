@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::str::from_utf8;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -69,23 +68,12 @@ where
     #[inline]
     fn send(&self, mut req: Self::Item) {
         assert_ne!(self.shards.len(), 0);
-        // TODO：这部分逻辑转移到distribution中进行,待验证 fishermen
-        // let newhash = req
-        //     .hash()
-        //     .wrapping_div(DIST_RANGE_SPLIT_DEFAULT)
-        //     .wrapping_rem(DIST_RANGE_SPLIT_DEFAULT);
-        // assert!(newhash >= 0);
-        // let interval = DIST_RANGE_SPLIT_DEFAULT as u64 / self.shards.len() as u64;
-        // let shard_idx = (newhash as u64 / interval) as usize;
-        let shard_idx = self.distribute.index(req.hash());
 
+        let shard_idx = self.distribute.index(req.hash());
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         // TODO 先保留到2022.12，用于快速定位hash分片问题 fishermen
-        log::debug!(
-            "+++ shard_idx:{}, req: {:?}",
-            shard_idx,
-            from_utf8(&req.data().to_vec())
-        );
+        use protocol::Utf8;
+        log::debug!("+++ shard_idx:{}, req: {:?}", shard_idx, req.data().utf8());
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {

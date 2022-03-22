@@ -8,7 +8,7 @@ use futures::ready;
 use metrics::{Metric, Path, BASE_PATH};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    time::{interval, Interval},
+    time::{interval, Interval, MissedTickBehavior},
 };
 
 pub trait ReEnter {
@@ -60,7 +60,8 @@ pub struct Entry<F> {
 impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
     #[inline]
     pub fn from(f: F, timeout: Duration) -> Self {
-        let tick = interval(timeout.max(Duration::from_millis(50)));
+        let mut tick = interval(timeout.max(Duration::from_millis(50)));
+        tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let m_reenter = Path::new(vec![BASE_PATH]).rtt("reenter10ms");
         metrics::incr_task();
         Self {
@@ -90,15 +91,6 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
             self.last_rx = now;
         }
         let ret = Pin::new(&mut self.inner).poll(cx);
-        //if now.elapsed() >= Duration::from_millis(1) {
-        //    log::info!(
-        //        "tx:{} rx:{} => {:?} elapsed => {:?}",
-        //        tx,
-        //        rx,
-        //        self.inner,
-        //        now.elapsed()
-        //    );
-        //}
         let (tx_post, rx_post) = (self.inner.num_tx(), self.inner.num_rx());
         if tx_post > rx_post {
             self.last = Instant::now();

@@ -30,8 +30,13 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     ) -> Result<()>;
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
     fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()>;
+    #[inline]
     fn write_no_response<W: crate::Writer>(&self, _req: &HashedCommand, _w: &mut W) -> Result<()> {
         Err(Error::NoResponseFound)
+    }
+    #[inline]
+    fn check(&self, _req: &HashedCommand, _resp: &Command) -> bool {
+        true
     }
     // 构建回写请求。
     // 返回None: 说明req复用，build in place
@@ -160,7 +165,7 @@ impl Display for Command {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "flag:{:?} len:{} sentonly:{} {} ok:{} op code:{} op:{:?}",
+            "flag:{:?} len:{} sentonly:{} {} ok:{} op:{}/{:?}",
             self.flag,
             self.len(),
             self.sentonly(),

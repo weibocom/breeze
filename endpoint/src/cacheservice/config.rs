@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sharding::hash;
 use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Hash)]
@@ -20,6 +21,10 @@ pub struct Namespace {
     #[serde(default)]
     pub slave_l1: Vec<Vec<String>>,
 
+    // set master 失败后，是否更新其他各层
+    #[serde(default)]
+    pub force_write_all: bool,
+
     #[serde(default)]
     pub timeout_ms_master: u32,
     #[serde(default)]
@@ -34,11 +39,21 @@ impl Namespace {
                 log::warn!("parse namespace error. {} msg:{:?}", namespace, e);
                 None
             }
-            Ok(ns) => {
+            Ok(mut ns) => {
                 if ns.master.len() == 0 {
                     log::info!("cache service master empty. namespace:{}", namespace);
                     None
                 } else {
+                    // 对于mc，crc32实际是crc32-short，这里需要做一次转换
+                    if ns.hash.eq("crc32") {
+                        ns.hash = format!(
+                            "crc32{}{}",
+                            hash::HASHER_NAME_DELIMITER,
+                            hash::CRC32_EXT_SHORT
+                        );
+                        log::info!("change mc crc32 to {}", ns.hash);
+                    }
+
                     Some(ns)
                 }
             }

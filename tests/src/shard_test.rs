@@ -10,12 +10,16 @@ mod shard_test {
 
     use crypto::digest::Digest;
     use crypto::md5::Md5;
+    use ds::RingSlice;
     use sharding::distribution::Distribute;
     use sharding::hash::{Bkdr, Hash, Hasher};
     use std::ops::Bound::Included;
 
     #[test]
     fn shard_check() {
+        // check raw hash
+        raw_check();
+
         // 将java生成的随机key及hash，每种size都copy的几条过来，用于日常验证
         let path = "./records/";
         let bkdr10 = format!("{}{}", path, "bkdr_10.log");
@@ -185,6 +189,24 @@ mod shard_test {
             }
         }
         println!("check bkdr hash from file: {}", path);
+    }
+
+    fn raw_check() {
+        println!("will check raw hash... ");
+
+        let hasher = Hasher::from("raw");
+        let num = 123456789010i64;
+        let key_str = format!("{}", num);
+        let key = RingSlice::from(
+            key_str.as_ptr(),
+            key_str.capacity().next_power_of_two(),
+            0,
+            key_str.len(),
+        );
+        let hash = hasher.hash(&key);
+        assert!(num == hash);
+
+        println!("check raw hash succeed!");
     }
 
     fn crc32_check(path: &str, hasher: &Hasher, dist: &Distribute) {
@@ -375,14 +397,16 @@ mod shard_test {
     #[test]
     fn test_consis_sharding() {
         let servers = vec![
-            "10.73.63.195:15010",
-            "10.13.192.12:15010",
-            "10.73.63.190:15010",
-            "10.73.63.188:15010",
-            "10.73.63.187:15010",
+            "10.73.63.195:15010".to_string(),
+            "10.13.192.12:15010".to_string(),
+            "10.73.63.190:15010".to_string(),
+            "10.73.63.188:15010".to_string(),
+            "10.73.63.187:15010".to_string(),
         ];
-        let servers = servers.iter().map(|s| s.to_string()).collect();
-        let shard = sharding::Sharding::from("bkdr", "ketama", servers);
+        // let servers = servers.iter().map(|s| s.to_string()).collect();
+        // let shard = sharding::Sharding::from("bkdr", "ketama", servers);
+        let hasher = Hasher::from("bkdr");
+        let dist = Distribute::from("ketama", &servers);
 
         let tuples = vec![
             ("4675657416578300.sdt", 1),
@@ -392,7 +416,8 @@ mod shard_test {
             ("4676725675655615.sdt", 0),
         ];
         for t in tuples {
-            assert_eq!(shard.sharding(t.0.as_bytes()), t.1);
+            let hash = hasher.hash(&t.0.as_bytes());
+            assert_eq!(dist.index(hash), t.1);
         }
     }
 }

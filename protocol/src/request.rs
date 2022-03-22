@@ -16,6 +16,10 @@ impl crate::Request for Request {
         self.req().len()
     }
     #[inline]
+    fn cmd(&self) -> &HashedCommand {
+        self.req()
+    }
+    #[inline]
     fn data(&self) -> &ds::RingSlice {
         self.req().data()
     }
@@ -36,8 +40,12 @@ impl crate::Request for Request {
         self.req().sentonly()
     }
     #[inline]
-    fn on_sent(&mut self) {
-        self.ctx().on_sent();
+    fn on_sent(self) -> Option<Self> {
+        if self.ctx().on_sent() {
+            Some(self)
+        } else {
+            None
+        }
     }
     #[inline]
     fn on_complete(self, resp: Command) {
