@@ -64,7 +64,7 @@ impl<T: Addr> Distance<T> {
     #[inline]
     pub unsafe fn unsafe_select(&self) -> (usize, &T) {
         assert_ne!(self.len(), 0);
-        let idx = if self.len() == 0 {
+        let idx = if self.len() == 1 {
             0
         } else {
             (self.seq.fetch_add(1, Ordering::Relaxed) >> self.batch_shift as usize)
