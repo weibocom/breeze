@@ -38,10 +38,10 @@ pub enum Hasher {
 // const CRC32_CORE: &str = "crc32";
 
 // hash算法名称分隔符，合法的算法如：crc32,crc-short, crc32-num, crc32-point, crc32-pound, crc32-underscore
-const HASHER_NAME_DELIMITER: char = '-';
+pub const HASHER_NAME_DELIMITER: char = '-';
 
 // hash key是全部的key，但最后要做short截断
-const CRC32_EXT_SHORT: &str = "short";
+pub const CRC32_EXT_SHORT: &str = "short";
 // hash key是数字
 const CRC32_EXT_NUM: &str = "num";
 // hash key是点号"."之前的部分
@@ -84,7 +84,7 @@ impl Hasher {
                 "crc32" => Self::Crc32(Default::default()),
                 _ => {
                     // 默认采用mc的crc32-s hash
-                    log::debug!("found unknow hash:{}, use crc32-short instead", alg);
+                    log::error!("found unknown hash:{}, use crc32-short instead", alg);
                     return Self::Crc32Short(Default::default());
                 }
             };

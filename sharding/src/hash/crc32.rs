@@ -74,7 +74,7 @@ impl super::Hash for Crc32Short {
         let crc = crc32_hash(key);
         let mut rs = (crc >> 16) & 0x7fff;
         if rs <= 0 {
-            log::warn!("found negative/zero crc32 hash for key:{:?}", key);
+            log::error!("found negative/zero crc32 hash for key:{:?}", key);
             rs = rs.wrapping_mul(-1);
         }
 
@@ -100,7 +100,7 @@ impl Crc32Num {
                 start_pos: prefix_len,
             };
         } else {
-            log::warn!("use crc32-num for malformed hash: {:?}", alg_parts);
+            log::error!("use crc32-num for unknown hash: {:?}", alg_parts);
             return Self { start_pos: 0 };
         }
     }
@@ -123,7 +123,7 @@ impl super::Hash for Crc32Num {
         crc ^= CRC_SEED;
         crc &= CRC_SEED;
         if crc <= 0 {
-            log::warn!(
+            log::error!(
                 "crc32-num-{} key:{:?}, malform hash:{}",
                 self.start_pos,
                 key,
@@ -157,7 +157,7 @@ impl Crc32Delimiter {
             super::CRC32_EXT_UNDERSCORE => '_',
             super::CRC32_EXT_POUND => '#',
             _ => {
-                log::error!("unknow hash alg: {}, use crc32 instead", alg);
+                log::error!("found unknown hash alg: {}, use crc32 instead", alg);
                 DELIMITER_NONE
             }
         };
