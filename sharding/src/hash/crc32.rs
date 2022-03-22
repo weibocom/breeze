@@ -35,6 +35,9 @@ const CRC32TAB: [i64; 256] = [
 
 const CRC_SEED: i64 = 0xFFFFFFFF;
 
+// 用于表示无分隔符的场景
+const DELIMITER_NONE: char = 0 as char;
+
 // 用于兼容jdk版本crc32算法
 #[derive(Default, Clone, Debug)]
 pub struct Crc32 {}
@@ -43,90 +46,35 @@ pub struct Crc32 {}
 #[derive(Default, Clone, Debug)]
 pub struct Crc32Short {}
 
-// 用于redis的区间crc32变种
+// crc32算法，hash key只支持start_pos之后的所有数字，用于兼容混合"."、"_"分割的hash key
 #[derive(Default, Clone, Debug)]
-pub struct Crc32Range {
-    start: usize,
-    hash_key_type: HashKeyType, // 是否只对digit部分进行hash
+pub struct Crc32Num {
+    start_pos: usize,
 }
 
-#[derive(Clone, Debug)]
-pub enum HashKeyType {
-    All,       // 全字符串做hash
-    OnlyDigit, // hash key只是数字子串
-    PointStop, // 截止"."之前的部分，对应业务的getSqlKey
+// Crc32算法，hash key是开始位置之后、分隔符之前的字符串
+#[derive(Default, Clone, Debug)]
+pub struct Crc32Delimiter {
+    start_pos: usize,
+    delimiter: char,
+    name: String,
 }
 
-impl Default for HashKeyType {
-    fn default() -> Self {
-        return HashKeyType::All;
-    }
-}
-
-impl Display for HashKeyType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name: &str;
-        match self {
-            Self::All => name = "all",
-            Self::OnlyDigit => name = "onlyDigit",
-            Self::PointStop => name = "pointStop",
-        }
-        return write!(f, "{}", name);
-    }
-}
-
-// 在start为0且only_num为false时，兼容crc32的原始实现，与java.util.zip.CRC32的多种长度数据的计算结果相同（jdk的CRC32核心算法是native不可见）
-pub(crate) fn crc32_raw<K: super::HashKey>(
-    key: &K,
-    start: usize,
-    hash_key_typ: &HashKeyType,
-) -> i64 {
-    let mut crc: i64 = CRC_SEED;
-    // assert!(start < key.len());
-    for i in start..key.len() {
-        let c = key.at(i);
-
-        match hash_key_typ {
-            // 对于用数字类型做hash，则遇到非数字结束
-            HashKeyType::OnlyDigit => {
-                if !c.is_ascii_digit() {
-                    break;
-                }
-            }
-            // 对于用“.”做分割的sql key，遇到“.”停止
-            HashKeyType::PointStop => {
-                if c == '.' as u8 {
-                    break;
-                }
-            }
-            // do nothing
-            HashKeyType::All => {}
-        }
-
-        crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
-    }
-    crc ^= CRC_SEED;
-    crc &= CRC_SEED;
-    if crc < 0 {
-        log::warn!("negative hash key:{:?},[{}/{}]", key, start, hash_key_typ);
-    }
-    crc
-}
-
+// 对全key做crc32
 impl super::Hash for Crc32 {
     fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        crc32_raw(key, 0, &HashKeyType::All)
+        crc32_hash(key)
     }
 }
 
 // 兼容api-commons中mc crc32 hash算法调整，手动测试各种长度key，hash一致；
-// 理论上应该与线上一致，注意跟进线上不一致场景 fishermen
+// 核心算法同crc32，但要多做一次做移位及截断
 impl super::Hash for Crc32Short {
     fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        let crc = crc32_raw(key, 0, &HashKeyType::All);
+        let crc = crc32_hash(key);
         let mut rs = (crc >> 16) & 0x7fff;
-        if rs < 0 {
-            log::warn!("found negative crc32 hash for key:{:?}", key);
+        if rs <= 0 {
+            log::warn!("found negative/zero crc32 hash for key:{:?}", key);
             rs = rs.wrapping_mul(-1);
         }
 
@@ -134,80 +82,166 @@ impl super::Hash for Crc32Short {
     }
 }
 
-// 兼容api-commons中redis的crc32 hash算法，同时支持各种场景的hash计算，线上待验证 fishermen
-impl Crc32Range {
+impl Crc32Num {
     pub fn from(alg: &str) -> Self {
-        match alg {
-            super::CRC32_RANGE => {
-                // format: crc32-range
-                Self {
-                    start: 0,
-                    hash_key_type: HashKeyType::All,
-                }
-            }
-            super::CRC32_RANGE_ID => {
-                // format: crc32-range-id
-                Self {
-                    start: 0,
-                    hash_key_type: HashKeyType::OnlyDigit,
-                }
-            }
-            super::CRC32_RANGE_POINT => {
-                // format: crc32-range-point
-                Self {
-                    start: 0,
-                    hash_key_type: HashKeyType::PointStop,
-                }
-            }
-            _ => {
-                // format: crc32-range-id-xxx，如果xxx不是合法数字，则直接使用全部的key来hash
-                // crc32-range-id: 从key的第一个数字开始解析id；
-                // crc32-range-id-2： 掠过2个字节的前缀，然后开始解析数字
-                assert!(alg.len() > (super::CRC32_RANGE_ID_PREFIX.len()));
-                let start = &alg[super::CRC32_RANGE_ID_PREFIX.len()..];
-                if let Ok(s) = start.parse::<usize>() {
-                    return Self {
-                        start: s,
-                        hash_key_type: HashKeyType::OnlyDigit,
-                    };
-                } else {
-                    log::warn!("use crc32-range for fingding malformed hash: {}", alg);
-                    return Self {
-                        start: 0,
-                        hash_key_type: HashKeyType::All,
-                    };
-                }
-            }
+        let alg_parts: Vec<&str> = alg.split("-").collect();
+
+        debug_assert!(alg_parts.len() >= 2);
+        debug_assert_eq!(alg_parts[0], "crc32");
+        debug_assert_eq!(alg_parts[1], "num");
+
+        if alg_parts.len() == 2 {
+            return Self { start_pos: 0 };
+        }
+
+        debug_assert_eq!(alg_parts.len(), 3);
+        if let Ok(prefix_len) = alg_parts[2].parse::<usize>() {
+            return Self {
+                start_pos: prefix_len,
+            };
+        } else {
+            log::warn!("use crc32-num for malformed hash: {:?}", alg_parts);
+            return Self { start_pos: 0 };
         }
     }
 }
 
-impl super::Hash for Crc32Range {
-    fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        let crc = crc32_raw(key, self.start, &self.hash_key_type);
+impl super::Hash for Crc32Num {
+    fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
+        debug_assert!(self.start_pos < key.len());
+
+        let mut crc: i64 = CRC_SEED;
+        for i in self.start_pos..key.len() {
+            let c = key.at(i);
+            // 对于用数字类型做hash，则遇到非数字结束
+            if !c.is_ascii_digit() {
+                break;
+            }
+            crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+        }
+
+        crc ^= CRC_SEED;
+        crc &= CRC_SEED;
+        if crc <= 0 {
+            log::warn!(
+                "crc32-num-{} key:{:?}, malform hash:{}",
+                self.start_pos,
+                key,
+                crc
+            );
+        }
         crc
     }
 }
 
-// impl Crc32 {
-//     // crc-32 标准规范实现，与mc/jdk实现存在差异
-//     fn _hash_spec(&mut self, key: &[u8]) -> u64 {
-//         let mut crc: i64 = !0;
-//         for c in key {
-//             crc = CRC32TAB[((crc ^ *c as i64) & 0xFF) as usize] ^ (crc >> 8);
-//         }
-//         return (crc ^ !0) as u64;
-//     }
-// }
+impl Display for Crc32Num {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.start_pos == 0 {
+            return write!(f, "{}", "crc32-num");
+        }
+
+        write!(f, "crc32-num-{}", self.start_pos)
+    }
+}
+
+impl Crc32Delimiter {
+    pub fn from(alg: &str) -> Self {
+        let alg_parts: Vec<&str> = alg.split(super::HASHER_NAME_DELIMITER).collect();
+
+        debug_assert!(alg_parts.len() >= 2);
+        debug_assert_eq!(alg_parts[0], "crc32");
+
+        // 如果需要扩展新的分隔符，在这里新增一行即可 fishermen
+        let delimiter = match alg_parts[1] {
+            super::CRC32_EXT_POINT => '.',
+            super::CRC32_EXT_UNDERSCORE => '_',
+            super::CRC32_EXT_POUND => '#',
+            _ => {
+                log::error!("unknow hash alg: {}, use crc32 instead", alg);
+                DELIMITER_NONE
+            }
+        };
+
+        if alg_parts.len() == 2 {
+            return Self {
+                start_pos: 0,
+                delimiter: delimiter,
+                name: alg.to_string(),
+            };
+        }
+
+        debug_assert!(alg_parts.len() == 3);
+        if let Ok(prefix_len) = alg_parts[2].parse::<usize>() {
+            return Self {
+                start_pos: prefix_len,
+                delimiter: delimiter,
+                name: alg.to_string(),
+            };
+        } else {
+            log::error!("found unknown hash/{}, ignore prefix instead", alg);
+            return Self {
+                start_pos: 0,
+                delimiter: delimiter,
+                name: alg.to_string(),
+            };
+        }
+    }
+}
+
+impl super::Hash for Crc32Delimiter {
+    fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
+        let mut crc: i64 = CRC_SEED;
+        debug_assert!(self.start_pos < key.len());
+
+        // 对于用“.”、“_”、“#”做分割的hash key，遇到分隔符停止
+        let check_delimiter = self.delimiter != DELIMITER_NONE;
+        for i in self.start_pos..key.len() {
+            let c = key.at(i);
+            if check_delimiter && (c == self.delimiter as u8) {
+                break;
+            }
+            crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+        }
+
+        crc ^= CRC_SEED;
+        crc &= CRC_SEED;
+        if crc <= 0 {
+            log::error!("{} - malform hash/{} for key/{:?}", self.name, crc, key);
+        }
+        crc
+    }
+}
+
+impl Display for Crc32Delimiter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+fn crc32_hash<K: super::HashKey>(key: &K) -> i64 {
+    let mut crc: i64 = CRC_SEED;
+
+    for i in 0..key.len() {
+        let c = key.at(i);
+        crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+    }
+
+    crc ^= CRC_SEED;
+    crc &= CRC_SEED;
+    if crc <= 0 {
+        log::error!("crc32 - error hash/{} for key/{:?}", crc, key);
+    }
+    crc
+}
 
 use std::fmt::Display;
 
 #[cfg(test)]
 mod crc_test {
 
-    use crate::{bkdr::Bkdr, distribution::Distribute, Hash};
+    use crate::{bkdr::Bkdr, distribution::Distribute, hash::Crc32Delimiter, Hash};
 
-    use super::{Crc32Range, Crc32Short};
+    use super::Crc32Short;
 
     #[test]
     fn crc32_mc_test() {
@@ -226,7 +260,7 @@ mod crc_test {
     fn crc32_redis_test() {
         println!("===========crc32-redis test start...");
         let key = "4711424389024351.repost";
-        let crc32 = Crc32Range::from("crc32-range-id-0");
+        let crc32 = Crc32Delimiter::from("crc32-id-0");
         let hash = crc32.hash(&key.as_bytes());
 
         let mut shards = Vec::with_capacity(8);

@@ -173,7 +173,13 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
-            self.hasher = Hasher::from(&ns.hash);
+            // 对于mc，crc32实际是crc32-short，这里需要做一次转换
+            let mut hash_name = ns.hash.clone();
+            if hash_name.eq("crc32") {
+                hash_name = "crc32-short".to_string();
+                log::info!("change mc crc32 to crc32-short");
+            }
+            self.hasher = Hasher::from(hash_name.as_str());
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
             self.force_write_all = ns.force_write_all;
             let dist = &ns.distribution;
