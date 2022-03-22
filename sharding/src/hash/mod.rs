@@ -16,41 +16,89 @@ pub trait Hash {
 #[enum_dispatch(Hash)]
 #[derive(Debug, Clone)]
 pub enum Hasher {
+    Raw(Raw), // redis raw, long型字符串直接用数字作为hash
     Bkdr(Bkdr),
-    Crc32Short(Crc32Short), // mc short crc32
-    Crc32Range(Crc32Range), // redis crc32 range hash
-    Raw(Raw),               // redis raw, long型字符串直接用数字作为hash
+    Crc32(Crc32),
+    Crc32Short(Crc32Short),         // mc short crc32
+    Crc32Num(Crc32Num),             // crc32 for a hash key whick is a num,
+    Crc32Delimiter(Crc32Delimiter), // crc32 for a hash key which has a delimiter of "." or "_" or "#" etc.
 }
 
 // crc32-short和crc32-range长度相同，所以此处选一个
-const CRC32_RANGE_OR_SHORT_LEN: usize = "crc32-range".len();
-// 使用整个key做hash
-const CRC32_RANGE: &str = "crc32-range";
-// 对整个key中的第一串数字做hash
-const CRC32_RANGE_ID: &str = "crc32-range-id";
-// skip掉xxx个字节，然后对剩余key中的第一串数字做hash
-const CRC32_RANGE_ID_PREFIX: &str = "crc32-range-id-";
-// 兼容业务中的getSqlKey方式，即用"."之前内容做hash
-const CRC32_RANGE_POINT: &str = "crc32-range-point";
+// const CRC32_RANGE_OR_SHORT_LEN: usize = "crc32-range".len();
+
+// // 使用整个key做hash
+// const CRC32_RANGE: &str = "crc32-range";
+// // 对整个key中的第一串数字做hash
+// const CRC32_RANGE_ID: &str = "crc32-range-id";
+// // skip掉xxx个字节，然后对剩余key中的第一串数字做hash
+// const CRC32_RANGE_ID_PREFIX: &str = "crc32-range-id-";
+// // 兼容业务中的getSqlKey方式，即用"."之前内容做hash
+// const CRC32_RANGE_POINT: &str = "crc32-range-point";
+// const CRC32_CORE: &str = "crc32";
+
+// hash算法名称分隔符，合法的算法如：crc32,crc-short, crc32-num, crc32-point, crc32-pound, crc32-underscore
+const HASHER_NAME_DELIMITER: char = '-';
+
+// hash key是全部的key，但最后要做short截断
+const CRC32_EXT_SHORT: &str = "short";
+// hash key是数字
+const CRC32_EXT_NUM: &str = "num";
+// hash key是点号"."之前的部分
+const CRC32_EXT_POINT: &str = "point";
+// hash key是“#”之前的部分
+const CRC32_EXT_POUND: &str = "pound";
+// hash key是"_"之前的部分
+const CRC32_EXT_UNDERSCORE: &str = "underscore";
 
 impl Hasher {
-    pub fn from(alg: &str) -> Self {
-        let alg_lower = alg.to_ascii_lowercase();
-        let mut alg_match = alg_lower.as_str();
-        if alg_match.len() > CRC32_RANGE_OR_SHORT_LEN {
-            alg_match = &alg_match[0..CRC32_RANGE_OR_SHORT_LEN];
+    // 主要做3件事：1）将hash alg转为小写；2）兼容xx-range；3）兼容-id为-num
+    fn reconcreate_hash_name(alg: &str) -> String {
+        let mut alg_lower = alg.to_ascii_lowercase();
+
+        // 如果alg带有range的hash名称（即crc32-range-xxx or crc32-range），需要去掉"-range"
+        let range_flag = "-range";
+        if alg_lower.contains(range_flag) {
+            alg_lower = alg_lower.replace(range_flag, "");
+            log::warn!("replace old range hash name/{} with {}", alg, alg_lower);
         }
 
-        match alg_match {
-            "bkdr" => Self::Bkdr(Default::default()),
-            "crc32-short" => Self::Crc32Short(Default::default()),
-            "crc32-range" => Self::Crc32Range(Crc32Range::from(alg_lower.as_str())),
-            "raw" => Self::Raw(Raw::from(Default::default())),
-            _ => {
-                // 默认采用mc的crc32-s hash
-                log::debug!("found unknow hash:{}, use crc32-short instead", alg);
-                Self::Crc32Short(Default::default())
-            } // _ => Self::Crc32(Default::default()),
+        // 如果alg带有"-id"，需要把"-id"换为"-num"，like crc32-id => crc32-num
+        let id_flag = "-id";
+        if alg_lower.contains(id_flag) {
+            alg_lower = alg_lower.replace(id_flag, "-num");
+            log::warn!("replace old id hash name/{} with {}", alg, alg_lower);
+        }
+
+        alg_lower
+    }
+    pub fn from(alg: &str) -> Self {
+        let alg_lower = Hasher::reconcreate_hash_name(alg);
+        let alg_parts: Vec<&str> = alg_lower.split(HASHER_NAME_DELIMITER).collect();
+
+        // 简单hash，即名字中没有"-"的hash，目前只有bkdr、raw、crc32
+        if alg_parts.len() == 1 {
+            return match alg_parts[0] {
+                "bkdr" => Self::Bkdr(Default::default()),
+                "raw" => Self::Raw(Raw::from(Default::default())),
+                "crc32" => Self::Crc32(Default::default()),
+                _ => {
+                    // 默认采用mc的crc32-s hash
+                    log::debug!("found unknow hash:{}, use crc32-short instead", alg);
+                    return Self::Crc32Short(Default::default());
+                }
+            };
+        }
+
+        // crc32 扩展hash，目前包含3类：short、num、delimiter，前两种为：crc32-short, crc-32-num
+        // crc32-delimiter包括各种可扩展的分隔符，like： crc32-point, crc32-pound,crc32-underscore；
+        // 如果业务有固定前缀，也可以支持，在hash name后加-xxx，xxx为前缀长度。
+        debug_assert!(alg_parts.len() == 2 || alg_parts.len() == 3);
+        debug_assert!(alg_parts[0].eq("crc32"));
+        match alg_parts[1] {
+            CRC32_EXT_SHORT => Self::Crc32Short(Default::default()),
+            CRC32_EXT_NUM => Self::Crc32Num(Crc32Num::from(alg_lower.as_str())),
+            _ => Self::Crc32Delimiter(Crc32Delimiter::from(alg_lower.as_str())),
         }
     }
     #[inline]
