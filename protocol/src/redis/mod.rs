@@ -226,12 +226,7 @@ fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
     if key.len() == 0 {
         default_hash()
     } else {
-        let hash = alg.hash(key);
-        if hash == 0 {
-            log::info!("hash zero key:{:?}", key.utf8());
-        }
-        debug_assert_ne!(hash, 0);
-        hash
+        alg.hash(key)
     }
 }
 

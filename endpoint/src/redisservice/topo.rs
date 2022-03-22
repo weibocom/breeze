@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::str::from_utf8;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
