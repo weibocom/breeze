@@ -113,4 +113,15 @@ mod redis_test {
         let conn = client.get_connection().unwrap();
         Ok(conn)
     }
+
+    #[test]
+    fn hash_find() {
+        let key = "测试123.key";
+        let idx = key.find(".").unwrap();
+        println!(". is at: {}", idx);
+        for p in 0..idx {
+            println!("{}:{}", p, key.as_bytes()[p] as char);
+        }
+        println!("\r\nhash find test ok!");
+    }
 }
