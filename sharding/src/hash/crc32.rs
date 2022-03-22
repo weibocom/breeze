@@ -74,7 +74,7 @@ impl super::Hash for Crc32Short {
         let crc = crc32_hash(key);
         let mut rs = (crc >> 16) & 0x7fff;
         if rs <= 0 {
-            log::error!("found negative/zero crc32 hash for key:{:?}", key);
+            log::error!("found negative/zero crc32({}) hash for key:{:?}", rs, key);
             rs = rs.wrapping_mul(-1);
         }
 
