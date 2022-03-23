@@ -70,6 +70,13 @@ where
         assert_ne!(self.shards.len(), 0);
 
         let shard_idx = self.distribute.index(req.hash());
+        assert!(
+            shard_idx < self.shards.len(),
+            "{} >= {}  => {:?}",
+            shard_idx,
+            self.shards.len(),
+            req
+        );
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         // TODO 先保留到2022.12，用于快速定位hash分片问题 fishermen
         use protocol::Utf8;

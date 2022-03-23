@@ -22,6 +22,7 @@ where
             0
         };
         unsafe {
+            assert!(idx < self.backends.len());
             self.backends.get_unchecked(idx).0.send(req);
         }
     }
