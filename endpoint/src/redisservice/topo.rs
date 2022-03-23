@@ -145,7 +145,7 @@ where
                 shards_url.push(shard_url);
             }
             if self.shards_url.len() > 0 {
-                log::info!("top updated from {:?} to {:?}", self.shards_url, shards_url);
+                log::debug!("top updated from {:?} to {:?}", self.shards_url, shards_url);
             }
             self.shards_url = shards_url;
         }

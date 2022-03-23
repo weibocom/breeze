@@ -60,7 +60,7 @@ impl Hasher {
         let range_flag = "-range";
         if alg_lower.contains(range_flag) {
             alg_lower = alg_lower.replace(range_flag, "");
-            log::warn!("replace old range hash name/{} with {}", alg, alg_lower);
+            log::debug!("replace old range hash name/{} with {}", alg, alg_lower);
         }
 
         // 如果alg带有"-id"，需要把"-id"换为"-num"，like crc32-id => crc32-num
