@@ -67,7 +67,7 @@ impl Hasher {
         let id_flag = "-id";
         if alg_lower.contains(id_flag) {
             alg_lower = alg_lower.replace(id_flag, "-num");
-            log::warn!("replace old id hash name/{} with {}", alg, alg_lower);
+            log::debug!("replace old id hash name/{} with {}", alg, alg_lower);
         }
 
         alg_lower
