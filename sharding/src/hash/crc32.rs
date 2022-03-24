@@ -73,8 +73,9 @@ impl super::Hash for Crc32Short {
     fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
         let crc = crc32_hash(key);
         let mut rs = (crc >> 16) & 0x7fff;
-        if rs <= 0 {
-            log::error!("found negative/zero crc32({}) hash for key:{:?}", rs, key);
+        // crc32-short由于存在移位及截断，存在很多hash为0的情况
+        if rs < 0 {
+            log::error!("found negative crc32/{} hash for key:{:?}", rs, key);
             rs = rs.wrapping_mul(-1);
         }
 
@@ -189,20 +190,40 @@ impl Crc32Delimiter {
 }
 
 impl super::Hash for Crc32Delimiter {
+    // 优先按照ascii定位分隔符并hash，遇到非ascii，转为utf8定位分隔符并继续hash
     fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
         let mut crc: i64 = CRC_SEED;
         debug_assert!(self.start_pos < key.len());
 
-        // 对于用“.”、“_”、“#”做分割的hash key，遇到分隔符停止
+        // 先按照非ascii进行直接轮询，对于用“.”、“_”、“#”做分割的hash key，遇到分隔符或非ascii字节停止
         let check_delimiter = self.delimiter != DELIMITER_NONE;
+        let mut has_non_ascii = false;
+        let mut caculate_idx = self.start_pos;
         for i in self.start_pos..key.len() {
+            caculate_idx = i;
+
             let c = key.at(i);
-            if check_delimiter && (c == self.delimiter as u8) {
+            // 如果需要检查分隔符，在遇到分隔符或者非ascii字节停止
+            if check_delimiter && (c == self.delimiter as u8 || !c.is_ascii()) {
+                has_non_ascii = !c.is_ascii();
                 break;
             }
             crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
         }
 
+        // 如果有非ascii，需要转成utf8后并check，然后继续计算crc fishermen
+        if has_non_ascii {
+            let pos = match key.utf8_find(self.delimiter) {
+                Some(v) => v,
+                None => key.len(),
+            };
+            for i in caculate_idx..pos {
+                let c = key.at(i);
+                crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+            }
+        }
+
+        // 做后置处理，并返回
         crc ^= CRC_SEED;
         crc &= CRC_SEED;
         if crc <= 0 {

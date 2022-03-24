@@ -8,6 +8,7 @@ mod mem;
 //mod queue;
 mod proto;
 // mod redis;
+mod hash_test;
 mod ring_slice;
 //mod size;
 //mod slice;
