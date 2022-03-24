@@ -75,7 +75,7 @@ impl super::Hash for Crc32Short {
         let mut rs = (crc >> 16) & 0x7fff;
         // crc32-short由于存在移位及截断，存在很多hash为0的情况
         if rs < 0 {
-            log::error!("found negative crc32/{} hash for key:{:?}", rs, key);
+            log::error!("found negative crc32-short/{} hash for key:{:?}", rs, key);
             rs = rs.wrapping_mul(-1);
         }
 

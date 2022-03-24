@@ -70,6 +70,13 @@ where
         assert_ne!(self.shards.len(), 0);
 
         let shard_idx = self.distribute.index(req.hash());
+        assert!(
+            shard_idx < self.shards.len(),
+            "{} >= {}  => {:?}",
+            shard_idx,
+            self.shards.len(),
+            req
+        );
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
         // 跟踪hash为0的场景，hash设置错误，可能导致hash为0，待2022.12后再考虑清理 fishermen
@@ -147,7 +154,7 @@ where
                 shards_url.push(shard_url);
             }
             if self.shards_url.len() > 0 {
-                log::info!("top updated from {:?} to {:?}", self.shards_url, shards_url);
+                log::debug!("top updated from {:?} to {:?}", self.shards_url, shards_url);
             }
             self.shards_url = shards_url;
         }
