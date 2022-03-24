@@ -70,13 +70,7 @@ where
         assert_ne!(self.shards.len(), 0);
 
         let shard_idx = self.distribute.index(req.hash());
-        assert!(
-            shard_idx < self.shards.len(),
-            "{} >= {}  => {:?}",
-            shard_idx,
-            self.shards.len(),
-            req
-        );
+        assert!(shard_idx < self.shards.len(), "{:?}", req);
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
         // 跟踪hash为0的场景，hash设置错误、潜在bug可能导致hash为0，待2022.12后再考虑清理 fishermen
@@ -201,7 +195,9 @@ where
                 let port = url_port.port();
                 for slave_ip in dns::lookup_ips(url) {
                     let addr = slave_ip + ":" + port;
-                    slaves.push(addr);
+                    if !slaves.contains(&addr) {
+                        slaves.push(addr);
+                    }
                 }
             }
             if slaves.len() == 0 {
