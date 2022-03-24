@@ -285,9 +285,14 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         let cb = self.cb.into();
         let mut ctx: CallbackContextPtr =
             CallbackContext::new(cmd, &self.waker, cb, first, last, self.req_dropped).into();
-        let req: Request = ctx.build_request();
+        let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
-        self.top.send(req);
+        use protocol::req::Request as RequestTrait;
+        if req.cmd().noforward() {
+            req.on_noforward();
+        } else {
+            self.top.send(req);
+        }
     }
 }
 impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
