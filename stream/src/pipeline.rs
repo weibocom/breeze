@@ -48,7 +48,7 @@ where
         req_new_s: 0,
         dropping_at: Instant::now(),
     };
-    let timeout = std::time::Duration::from_millis(0);
+    let timeout = std::time::Duration::from_secs(10);
     rt::Entry::from(pipeline, timeout).await
 }
 
@@ -87,7 +87,6 @@ where
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        self.try_refresh_top();
         self.waker.register(cx.waker());
         loop {
             // 从client接收数据写入到buffer
@@ -227,41 +226,6 @@ where
         }
         Poll::Ready(Ok(()))
     }
-    #[inline]
-    fn try_refresh_top(&mut self) {
-        assert!(
-            self.req_new >= self.req_dropped.load(Ordering::Acquire),
-            "{:?}",
-            self
-        );
-        if let Some(top) = self.top.check() {
-            unsafe {
-                let old = std::ptr::replace(&mut self.top as *mut T, top);
-
-                let cb = callback(&self.top);
-                let old_cb = std::ptr::replace(&mut self.cb as *mut _, cb);
-
-                self.dropping.push((old, old_cb));
-                self.req_new_s = self.req_new;
-                self.dropping_at = Instant::now();
-            }
-        }
-        if self.dropping.len() > 0 {
-            let req_dropped = self.req_dropped.load(Ordering::Acquire);
-            if req_dropped >= self.req_new {
-                self.dropping.clear();
-                return;
-            }
-            // 1024是一个经验值
-            // 如果访问量比较低，则很满足满足req_dropped > req_new
-            if req_dropped > self.req_new_s + 1024
-                && self.dropping_at.elapsed() >= Duration::from_secs(15)
-            {
-                log::warn!("top pending over 15 secs, dropping forcefully. {:?}", self);
-                self.dropping.clear();
-            }
-        }
-    }
 }
 
 struct Visitor<'a, T> {
@@ -303,7 +267,9 @@ impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<C: AsyncRead + AsyncWrite + Unpin, P, T> rt::ReEnter for CopyBidirectional<C, P, T> {
+impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Request>> rt::ReEnter
+    for CopyBidirectional<C, P, T>
+{
     #[inline]
     fn close(&mut self) -> bool {
         // take走，close后不需要再wake。避免Future drop后再次被wake，导致UB
@@ -320,6 +286,45 @@ impl<C: AsyncRead + AsyncWrite + Unpin, P, T> rt::ReEnter for CopyBidirectional<
         self.rx_buf.try_gc()
             && self.pending.len() == 0
             && self.req_new == self.req_dropped.load(Ordering::Acquire)
+    }
+    #[inline]
+    fn need_refresh(&self) -> bool {
+        true
+    }
+    #[inline]
+    fn refresh(&mut self) {
+        assert!(
+            self.req_new >= self.req_dropped.load(Ordering::Acquire),
+            "{:?}",
+            self
+        );
+        if let Some(top) = self.top.check() {
+            unsafe {
+                let old = std::ptr::replace(&mut self.top as *mut T, top);
+
+                let cb = callback(&self.top);
+                let old_cb = std::ptr::replace(&mut self.cb as *mut _, cb);
+
+                self.dropping.push((old, old_cb));
+                self.req_new_s = self.req_new;
+                self.dropping_at = Instant::now();
+            }
+        }
+        if self.dropping.len() > 0 {
+            let req_dropped = self.req_dropped.load(Ordering::Acquire);
+            if req_dropped >= self.req_new {
+                self.dropping.clear();
+                return;
+            }
+            // 1024是一个经验值
+            // 如果访问量比较低，则很满足满足req_dropped > req_new
+            if req_dropped > self.req_new_s + 1024
+                && self.dropping_at.elapsed() >= Duration::from_secs(15)
+            {
+                log::warn!("top pending over 15 secs, dropping forcefully. {:?}", self);
+                self.dropping.clear();
+            }
+        }
     }
 }
 impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
