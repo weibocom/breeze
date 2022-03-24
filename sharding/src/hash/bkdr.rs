@@ -13,8 +13,9 @@ impl super::Hash for Bkdr {
             h = h.wrapping_mul(-1);
         }
 
+        // 跟踪hash为0的场景是否合法 fishermen
         if h == 0 {
-            log::error!("found zero hash for key: {:?}", b);
+            log::error!("bkdr - found zero hash for key: {:?}", b);
         }
 
         h as i64

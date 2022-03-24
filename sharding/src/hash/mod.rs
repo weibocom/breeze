@@ -6,6 +6,8 @@ pub use bkdr::Bkdr;
 pub use crc32::*;
 pub use raw::Raw;
 
+use std::str;
+
 use enum_dispatch::enum_dispatch;
 #[enum_dispatch]
 pub trait Hash {
@@ -117,6 +119,8 @@ impl Default for Hasher {
 pub trait HashKey: std::fmt::Debug {
     fn len(&self) -> usize;
     fn at(&self, idx: usize) -> u8;
+    // 先转为utf8，然后再查找，返回的字节位置;该方法较重，调用前，建议先自行尝试按byte check及查找;
+    fn utf8_find(&self, delimiter: char) -> Option<usize>;
 }
 
 impl HashKey for &[u8] {
@@ -128,6 +132,17 @@ impl HashKey for &[u8] {
     fn at(&self, idx: usize) -> u8 {
         unsafe { *self.as_ptr().offset(idx as isize) }
     }
+    fn utf8_find(&self, delimiter: char) -> Option<usize> {
+        let str = match str::from_utf8(&self) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("found malformed utf8 bytes: {:?}, err: {:?}", self, e);
+                ""
+            }
+        };
+
+        str.find(delimiter as char)
+    }
 }
 
 impl HashKey for ds::RingSlice {
@@ -138,6 +153,28 @@ impl HashKey for ds::RingSlice {
     #[inline]
     fn at(&self, idx: usize) -> u8 {
         (*self).at(idx)
+    }
+    fn utf8_find(&self, delimiter: char) -> Option<usize> {
+        // 优先直接使用ringslice
+        let mut data = self.read(0);
+        let mut copy: Vec<u8>;
+
+        // 如果有拐，那就只能copy了
+        if data.len() != self.len() {
+            copy = Vec::with_capacity(self.len());
+            self.copy_to_vec(&mut copy);
+            data = &copy[0..];
+        }
+
+        let str = match str::from_utf8(&data[0..]) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("found malformed ringslice: {:?}, err:{:?}", self, e);
+                ""
+            }
+        };
+
+        str.find(delimiter)
     }
 }
 
@@ -155,6 +192,9 @@ impl<'a, T: HashKey> super::HashKey for UppercaseHashKey<'a, T> {
     #[inline]
     fn at(&self, idx: usize) -> u8 {
         TO_UPPER_CASE_TABLE[self.inner.at(idx) as usize]
+    }
+    fn utf8_find(&self, delimiter: char) -> Option<usize> {
+        self.inner.utf8_find(delimiter)
     }
 }
 impl<'a, T> UppercaseHashKey<'a, T> {
