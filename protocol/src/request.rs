@@ -40,6 +40,10 @@ impl crate::Request for Request {
         self.req().sentonly()
     }
     #[inline]
+    fn on_noforward(&mut self) {
+        self.ctx().on_noforward();
+    }
+    #[inline]
     fn on_sent(self) -> Option<Self> {
         if self.ctx().on_sent() {
             Some(self)

@@ -60,14 +60,14 @@ impl Hasher {
         let range_flag = "-range";
         if alg_lower.contains(range_flag) {
             alg_lower = alg_lower.replace(range_flag, "");
-            log::warn!("replace old range hash name/{} with {}", alg, alg_lower);
+            log::debug!("replace old range hash name/{} with {}", alg, alg_lower);
         }
 
         // 如果alg带有"-id"，需要把"-id"换为"-num"，like crc32-id => crc32-num
         let id_flag = "-id";
         if alg_lower.contains(id_flag) {
             alg_lower = alg_lower.replace(id_flag, "-num");
-            log::warn!("replace old id hash name/{} with {}", alg, alg_lower);
+            log::debug!("replace old id hash name/{} with {}", alg, alg_lower);
         }
 
         alg_lower
@@ -117,7 +117,6 @@ impl Default for Hasher {
 pub trait HashKey: std::fmt::Debug {
     fn len(&self) -> usize;
     fn at(&self, idx: usize) -> u8;
-    //fn vec_data(&self) -> Vec<u8>;
 }
 
 impl HashKey for &[u8] {
@@ -129,12 +128,6 @@ impl HashKey for &[u8] {
     fn at(&self, idx: usize) -> u8 {
         unsafe { *self.as_ptr().offset(idx as isize) }
     }
-    //#[inline]
-    //fn vec_data(&self) -> Vec<u8> {
-    //    let mut data = Vec::with_capacity(self.len());
-    //    data.extend(*self);
-    //    data
-    //}
 }
 
 impl HashKey for ds::RingSlice {
@@ -146,10 +139,6 @@ impl HashKey for ds::RingSlice {
     fn at(&self, idx: usize) -> u8 {
         (*self).at(idx)
     }
-    //#[inline]
-    //fn vec_data(&self) -> Vec<u8> {
-    //    self.to_vec()
-    //}
 }
 
 // 把所有的小写字母换成大写

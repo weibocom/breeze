@@ -3,61 +3,64 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ds::AtomicWaker;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
-use sharding::hash::Hasher;
+use protocol::{HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer};
 
 use crate::buffer::{Reader, StreamGuard};
-use crate::{CallbackContext, CallbackContextPtr, CallbackPtr, Request, StreamMetrics};
+use crate::{Callback, CallbackContext, CallbackContextPtr, Request, StreamMetrics};
 
-pub async fn copy_bidirectional<'a, C, P>(
-    cb: CallbackPtr,
+pub async fn copy_bidirectional<C, P, T>(
+    top: T,
     mut metrics: StreamMetrics,
-    hash: &'a Hasher,
     client: C,
     parser: P,
 ) -> Result<()>
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
+    let cb = unsafe { callback(&top) };
     let pipeline = CopyBidirectional {
+        cb,
+        top,
         metrics,
-        hash,
         rx_buf: StreamGuard::new(),
         client,
         parser,
         pending: VecDeque::with_capacity(63),
         waker: AtomicWaker::default(),
         flush: false,
-        cb,
         start: Instant::now(),
         start_init: false,
         first: true, // 默认当前请求是第一个
         req_new: 0,
         req_dropped: AtomicUsize::new(0),
+
+        dropping: Vec::new(),
+        req_new_s: 0,
+        dropping_at: Instant::now(),
     };
-    let timeout = std::time::Duration::from_millis(0);
+    let timeout = std::time::Duration::from_secs(10);
     rt::Entry::from(pipeline, timeout).await
 }
 
-// TODO TODO CopyBidirectional在退出时，需要确保不存在pending中的请求，否则需要会存在内存访问异常。
-struct CopyBidirectional<'a, C, P> {
+struct CopyBidirectional<C, P, T> {
+    top: T,
     rx_buf: StreamGuard,
-    hash: &'a Hasher,
     client: C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
     waker: AtomicWaker,
     flush: bool,
-    cb: CallbackPtr,
+    cb: Callback,
 
     metrics: StreamMetrics,
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
@@ -68,21 +71,22 @@ struct CopyBidirectional<'a, C, P> {
 
     req_new: usize,           // 当前连接创建的req数量
     req_dropped: AtomicUsize, // 销毁的连接的数量
+
+    // 等待删除的top
+    dropping: Vec<(T, Callback)>,
+    req_new_s: usize,
+    dropping_at: Instant,
 }
-impl<'a, C, P> Future for CopyBidirectional<'a, C, P>
+impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     type Output = Result<()>;
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        assert!(
-            self.req_new >= self.req_dropped.load(Ordering::Acquire),
-            "{:?}",
-            self
-        );
         self.waker.register(cx.waker());
         loop {
             // 从client接收数据写入到buffer
@@ -104,10 +108,11 @@ where
         }
     }
 }
-impl<'a, C, P> CopyBidirectional<'a, C, P>
+impl<C, P, T> CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     // 从client读取request流的数据到buffer。
     #[inline]
@@ -130,7 +135,7 @@ where
             return Ok(());
         }
         let Self {
-            hash,
+            top,
             parser,
             pending,
             waker,
@@ -145,12 +150,13 @@ where
         let mut processor = Visitor {
             pending,
             waker,
+            top,
             cb,
             first,
             req_new,
             req_dropped,
         };
-        parser.parse_request(rx_buf, *hash, &mut processor)
+        parser.parse_request(rx_buf, top.hasher(), &mut processor)
     }
     // 处理pending中的请求，并且把数据发送到buffer
     #[inline]
@@ -222,16 +228,17 @@ where
     }
 }
 
-struct Visitor<'a> {
+struct Visitor<'a, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
-    cb: &'a CallbackPtr,
+    cb: &'a Callback,
+    top: &'a T,
     first: &'a mut bool,
     req_new: &'a mut usize,
     req_dropped: &'a AtomicUsize,
 }
 
-impl<'a> protocol::RequestProcessor for Visitor<'a> {
+impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
         *self.req_new += 1;
@@ -239,15 +246,20 @@ impl<'a> protocol::RequestProcessor for Visitor<'a> {
         // 如果当前是最后一个子请求，那下一个请求就是一个全新的请求。
         // 否则下一个请求是子请求。
         *self.first = last;
-        let cb = self.cb.clone();
+        let cb = self.cb.into();
         let mut ctx: CallbackContextPtr =
             CallbackContext::new(cmd, &self.waker, cb, first, last, self.req_dropped).into();
-        let req: Request = ctx.build_request();
+        let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
-        req.start();
+        use protocol::req::Request as RequestTrait;
+        if req.cmd().noforward() {
+            req.on_noforward();
+        } else {
+            self.top.send(req);
+        }
     }
 }
-impl<'a, C, P> Drop for CopyBidirectional<'a, C, P> {
+impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
     #[inline]
     fn drop(&mut self) {
         *self.metrics.conn_num() -= 1;
@@ -255,7 +267,9 @@ impl<'a, C, P> Drop for CopyBidirectional<'a, C, P> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<'a, C: AsyncRead + AsyncWrite + Unpin, P> rt::ReEnter for CopyBidirectional<'a, C, P> {
+impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Request>> rt::ReEnter
+    for CopyBidirectional<C, P, T>
+{
     #[inline]
     fn close(&mut self) -> bool {
         // take走，close后不需要再wake。避免Future drop后再次被wake，导致UB
@@ -273,19 +287,73 @@ impl<'a, C: AsyncRead + AsyncWrite + Unpin, P> rt::ReEnter for CopyBidirectional
             && self.pending.len() == 0
             && self.req_new == self.req_dropped.load(Ordering::Acquire)
     }
+    #[inline]
+    fn need_refresh(&self) -> bool {
+        true
+    }
+    #[inline]
+    fn refresh(&mut self) {
+        assert!(
+            self.req_new >= self.req_dropped.load(Ordering::Acquire),
+            "{:?}",
+            self
+        );
+        if let Some(top) = self.top.check() {
+            unsafe {
+                let old = std::ptr::replace(&mut self.top as *mut T, top);
+
+                let cb = callback(&self.top);
+                let old_cb = std::ptr::replace(&mut self.cb as *mut _, cb);
+
+                self.dropping.push((old, old_cb));
+                self.req_new_s = self.req_new;
+                self.dropping_at = Instant::now();
+            }
+        }
+        if self.dropping.len() > 0 {
+            let req_dropped = self.req_dropped.load(Ordering::Acquire);
+            if req_dropped >= self.req_new {
+                self.dropping.clear();
+                return;
+            }
+            // 1024是一个经验值
+            // 如果访问量比较低，则很满足满足req_dropped > req_new
+            if req_dropped > self.req_new_s + 1024
+                && self.dropping_at.elapsed() >= Duration::from_secs(15)
+            {
+                log::warn!("top pending over 15 secs, dropping forcefully. {:?}", self);
+                self.dropping.clear();
+            }
+        }
+    }
 }
-impl<'a, C, P> Debug for CopyBidirectional<'a, C, P> {
+impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:{} flush:{} rx buf: {} requests: {} => {}",
+            "{} => pending:{} flush:{} rx buf: {} dropping:{} requests: {}({}) => {}",
             self.metrics.biz(),
             self.pending.len(),
             self.flush,
             self.rx_buf.len(),
+            self.dropping.len(),
             self.req_new,
+            self.req_new_s,
             self.req_dropped.load(Ordering::Acquire)
         )
     }
+}
+
+unsafe fn callback<T: Topology<Item = Request>>(top: &T) -> Callback {
+    let receiver = top as *const T as usize;
+    let send = Box::new(move |req| {
+        let t = &*(receiver as *const T);
+        t.send(req)
+    });
+    let exp_sec = Box::new(move || {
+        let t = &*(receiver as *const T);
+        t.exp_sec()
+    });
+    Callback::new(send, exp_sec)
 }

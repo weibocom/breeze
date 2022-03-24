@@ -70,10 +70,20 @@ where
         assert_ne!(self.shards.len(), 0);
 
         let shard_idx = self.distribute.index(req.hash());
+        assert!(shard_idx < self.shards.len(), "{:?}", req);
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-        // TODO 先保留到2022.12，用于快速定位hash分片问题 fishermen
+
+        // 跟踪hash为0的场景，hash设置错误、潜在bug可能导致hash为0，待2022.12后再考虑清理 fishermen
         use protocol::Utf8;
-        log::debug!("+++ shard_idx:{}, req: {:?}", shard_idx, req.data().utf8());
+        if req.hash() == 0 {
+            log::warn!(
+                "+++ careful - {} hash/idx:{}/{}, req:{:?}",
+                self.service,
+                req.hash(),
+                shard_idx,
+                req.data().utf8()
+            )
+        }
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
@@ -138,7 +148,7 @@ where
                 shards_url.push(shard_url);
             }
             if self.shards_url.len() > 0 {
-                log::info!("top updated from {:?} to {:?}", self.shards_url, shards_url);
+                log::debug!("top updated from {:?} to {:?}", self.shards_url, shards_url);
             }
             self.shards_url = shards_url;
         }
@@ -185,7 +195,9 @@ where
                 let port = url_port.port();
                 for slave_ip in dns::lookup_ips(url) {
                     let addr = slave_ip + ":" + port;
-                    slaves.push(addr);
+                    if !slaves.contains(&addr) {
+                        slaves.push(addr);
+                    }
                 }
             }
             if slaves.len() == 0 {
