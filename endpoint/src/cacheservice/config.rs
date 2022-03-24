@@ -51,7 +51,7 @@ impl Namespace {
                             hash::HASHER_NAME_DELIMITER,
                             hash::CRC32_EXT_SHORT
                         );
-                        log::info!("change mc crc32 to {}", ns.hash);
+                        log::debug!("change mc crc32 to {}", ns.hash);
                     }
 
                     Some(ns)

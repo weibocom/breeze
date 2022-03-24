@@ -73,8 +73,9 @@ impl super::Hash for Crc32Short {
     fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
         let crc = crc32_hash(key);
         let mut rs = (crc >> 16) & 0x7fff;
-        if rs <= 0 {
-            log::error!("found negative/zero crc32({}) hash for key:{:?}", rs, key);
+        // crc32-short由于存在移位及截断，存在很多hash为0的情况
+        if rs < 0 {
+            log::debug!("found negative crc32-short/{} for key:{:?}", rs, key);
             rs = rs.wrapping_mul(-1);
         }
 
@@ -100,7 +101,7 @@ impl Crc32Num {
                 start_pos: prefix_len,
             };
         } else {
-            log::error!("use crc32-num for unknown hash: {:?}", alg_parts);
+            log::debug!("use crc32-num for unknown hash: {:?}", alg_parts);
             return Self { start_pos: 0 };
         }
     }
@@ -123,7 +124,7 @@ impl super::Hash for Crc32Num {
         crc ^= CRC_SEED;
         crc &= CRC_SEED;
         if crc <= 0 {
-            log::error!(
+            log::debug!(
                 "crc32-num-{} key:{:?}, malform hash:{}",
                 self.start_pos,
                 key,
@@ -157,7 +158,7 @@ impl Crc32Delimiter {
             super::CRC32_EXT_UNDERSCORE => '_',
             super::CRC32_EXT_POUND => '#',
             _ => {
-                log::error!("found unknown hash alg: {}, use crc32 instead", alg);
+                log::debug!("found unknown hash alg: {}, use crc32 instead", alg);
                 DELIMITER_NONE
             }
         };
@@ -178,7 +179,7 @@ impl Crc32Delimiter {
                 name: alg.to_string(),
             };
         } else {
-            log::error!("found unknown hash/{}, ignore prefix instead", alg);
+            log::debug!("found unknown hash/{}, ignore prefix instead", alg);
             return Self {
                 start_pos: 0,
                 delimiter: delimiter,
@@ -206,7 +207,7 @@ impl super::Hash for Crc32Delimiter {
         crc ^= CRC_SEED;
         crc &= CRC_SEED;
         if crc <= 0 {
-            log::error!("{} - malform hash/{} for key/{:?}", self.name, crc, key);
+            log::debug!("{} - malform hash/{} for key/{:?}", self.name, crc, key);
         }
         crc
     }
@@ -229,7 +230,7 @@ fn crc32_hash<K: super::HashKey>(key: &K) -> i64 {
     crc ^= CRC_SEED;
     crc &= CRC_SEED;
     if crc <= 0 {
-        log::error!("crc32 - error hash/{} for key/{:?}", crc, key);
+        log::debug!("crc32 - error hash/{} for key/{:?}", crc, key);
     }
     crc
 }
