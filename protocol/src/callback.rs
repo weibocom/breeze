@@ -63,6 +63,11 @@ impl CallbackContext {
             on_drop,
         }
     }
+    #[inline]
+    pub(crate) fn on_noforward(&mut self) {
+        assert!(self.request().noforward());
+        self.on_done();
+    }
 
     // 返回true: 表示发送完之后还未结束
     // false: 表示请求已结束
