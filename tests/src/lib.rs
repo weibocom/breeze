@@ -2,6 +2,7 @@
 //mod bit_map;
 //mod cow;
 // mod distribute;
+// mod hash_test;
 // mod shard_test;
 //mod memcached_text;
 mod mem;
