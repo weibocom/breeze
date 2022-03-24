@@ -103,6 +103,13 @@ where
             }
         }
         log::debug!("request sent prepared:{} {} {}", idx, req, self);
+        assert!(
+            idx < self.streams.len(),
+            "{} < {} => {:?}",
+            idx,
+            self.streams.len(),
+            req
+        );
         unsafe { self.streams.get_unchecked(idx).send(req) };
     }
 }

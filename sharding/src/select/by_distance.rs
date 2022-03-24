@@ -70,6 +70,7 @@ impl<T: Addr> Distance<T> {
             (self.seq.fetch_add(1, Ordering::Relaxed) >> self.batch_shift as usize)
                 % self.local_len()
         };
+        assert!(idx < self.replicas.len());
         (idx, self.replicas.get_unchecked(idx))
     }
     #[inline]
@@ -91,6 +92,7 @@ impl<T: Addr> Distance<T> {
                 }
             }
         };
+        assert!(idx < self.replicas.len());
         (idx, self.replicas.get_unchecked(idx))
     }
 }

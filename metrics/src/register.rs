@@ -75,6 +75,7 @@ impl Metrics {
         assert!(idx < self.cap());
         let slot = idx / CHUNK_SIZE;
         let offset = idx % CHUNK_SIZE;
+        assert!(slot < self.chunks.len());
         unsafe { &*self.chunks.get_unchecked(slot).offset(offset as isize) }
     }
     #[inline]
