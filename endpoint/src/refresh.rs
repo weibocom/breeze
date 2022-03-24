@@ -1,130 +1,172 @@
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use discovery::{TopologyRead, TopologyReadGuard};
-use ds::Switcher;
-use protocol::{Endpoint, Topology};
+use protocol::{Endpoint, Topology, TopologyCheck};
 use sharding::hash::Hasher;
 
 // 支持刷新
 pub struct RefreshTopology<T> {
-    ep: Arc<AtomicPtr<T>>,
+    reader: TopologyReadGuard<T>,
+    top: AtomicPtr<Arc<DropLog<T>>>,
+    updating: AtomicBool,
+    gets: AtomicUsize,
+    cycle: AtomicUsize,
 }
 impl<T: Clone + 'static> RefreshTopology<T> {
     // reader一定是已经初始化过的，否则会UB
     #[inline]
-    pub fn new(reader: TopologyReadGuard<T>, refresh: Switcher) -> Self {
-        let ep = Default::default();
-        let me = Self { ep };
-        let mut r = Refresher::new(refresh, reader, me.ep.clone());
-        r.refresh();
-        r.start_refresh();
-        me
+    pub fn from(reader: TopologyReadGuard<T>) -> Self {
+        let cycle = AtomicUsize::new(reader.cycle());
+        let top = Arc::new(reader.do_with(|t| t.clone()).into());
+        let top = Box::leak(Box::new(top));
+        let top = AtomicPtr::new(top);
+        let gets = AtomicUsize::new(0);
+        let updating = AtomicBool::new(false);
+        Self {
+            top,
+            reader,
+            gets,
+            updating,
+            cycle,
+        }
+    }
+    pub fn build(self: &Arc<Self>) -> Option<CheckedTopology<T>> {
+        self.get().map(|top| CheckedTopology {
+            cycle: self.cycle(),
+            top,
+            inner: self.clone(),
+        })
     }
     #[inline]
-    fn top(&self) -> &T {
-        // Relaxed是安全的，因为异步更新会确保内存可见性与销毁策略。
-        unsafe { &*self.ep.load(Ordering::Relaxed) }
+    fn get(&self) -> Option<Arc<DropLog<T>>> {
+        let mut top = None;
+        if !self.updating() {
+            self.gets.fetch_add(1, Ordering::AcqRel);
+            // double check
+            if !self.updating() {
+                top = Some(unsafe { &*self.top.load(Ordering::Acquire) }.clone());
+            }
+            self.gets.fetch_sub(1, Ordering::AcqRel);
+        }
+        top
+    }
+    #[inline]
+    fn update(&self) {
+        let cycle = self.cycle();
+        if cycle < self.reader.cycle() {
+            if self.enable_updating() {
+                if self.gets() == 0 {
+                    // 没有get。准备更新
+                    // 先同步cycle
+                    self.set_cycle(self.reader.cycle());
+                    let new = Arc::new(self.reader.do_with(|t| t.clone()).into());
+                    let new = Box::leak(Box::new(new));
+                    let old = self.top.swap(new, Ordering::AcqRel);
+                    assert!(!old.is_null());
+                    // 直接释放是安全的。因为这是个Arc
+                    let _drop = unsafe { Box::from_raw(old) };
+                    log::warn!(
+                        "top updated. cycle:{} => {} top:{} => {}",
+                        cycle,
+                        self.reader.cycle(),
+                        new as *const _ as usize,
+                        old as *const _ as usize
+                    );
+                }
+                self.disable_updating();
+            }
+        }
+    }
+    fn set_cycle(&self, c: usize) {
+        self.cycle.store(c, Ordering::Release);
+    }
+    fn cycle(&self) -> usize {
+        self.cycle.load(Ordering::Acquire)
+    }
+    fn updating(&self) -> bool {
+        self.updating.load(Ordering::Acquire)
+    }
+    fn enable_updating(&self) -> bool {
+        self.updating
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+            .is_ok()
+    }
+    fn disable_updating(&self) -> bool {
+        self.updating
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
+            .expect("lock failed")
+    }
+    fn gets(&self) -> usize {
+        self.gets.load(Ordering::Acquire)
     }
 }
-impl<T: Endpoint + Clone + 'static> Endpoint for RefreshTopology<T> {
+
+pub struct CheckedTopology<T> {
+    cycle: usize,
+    top: Arc<DropLog<T>>,
+    inner: Arc<RefreshTopology<T>>,
+}
+impl<T: Endpoint + Clone + 'static> Endpoint for CheckedTopology<T> {
     type Item = T::Item;
     #[inline]
     fn send(&self, req: T::Item) {
-        self.top().send(req);
+        self.top.send(req);
     }
 }
-impl<T: Topology + Clone + 'static> Topology for RefreshTopology<T> {
+impl<T: Topology + Clone + 'static> Topology for CheckedTopology<T> {
     #[inline]
     fn exp_sec(&self) -> u32 {
-        self.top().exp_sec()
+        self.top.exp_sec()
     }
     #[inline]
     fn hasher(&self) -> &Hasher {
-        self.top().hasher()
+        self.top.hasher()
     }
 }
-impl<T: Topology + Clone + 'static> RefreshTopology<T> {
+impl<T: Topology + Clone + 'static> TopologyCheck for CheckedTopology<T> {
     #[inline]
-    pub fn static_send<R: Into<T::Item>>(receiver: usize, req: R) {
-        let req = req.into();
-        let top = receiver as *const Self;
-        unsafe { (&*top).send(req) };
-    }
-    #[inline]
-    pub fn exp_sec(receiver: usize) -> u32 {
-        let top = receiver as *const Self;
-        unsafe { (&*top).exp_sec() }
+    fn check(&mut self) -> Option<Self> {
+        if self.cycle < self.inner.reader.cycle() {
+            self.inner.update();
+            self.inner.build()
+        } else {
+            None
+        }
     }
 }
 
 unsafe impl<T> Send for RefreshTopology<T> {}
 unsafe impl<T> Sync for RefreshTopology<T> {}
-use tokio::time::{interval, Interval};
+unsafe impl<T> Send for CheckedTopology<T> {}
+unsafe impl<T> Sync for CheckedTopology<T> {}
 
-struct Refresher<T> {
-    switcher: Switcher,
-    reader: TopologyReadGuard<T>,
-    ep: Arc<AtomicPtr<T>>,
-    dropping: Vec<usize>,
-    last_time: Instant,
-    last_cycle: usize,
-    tick: Interval,
+struct DropLog<T> {
+    t: T,
 }
-impl<T: Clone + 'static> Refresher<T> {
-    fn new(switcher: Switcher, reader: TopologyReadGuard<T>, ep: Arc<AtomicPtr<T>>) -> Self {
-        Self {
-            switcher,
-            reader,
-            ep,
-            dropping: Vec::new(),
-            last_time: Instant::now(),
-            last_cycle: 0,
-            tick: interval(Duration::from_secs(7)),
-        }
-    }
-    fn start_refresh(self) {
-        rt::spawn(self);
-    }
-    fn refresh(&mut self) {
-        self.last_cycle = self.reader.cycle();
-        let ep = Box::leak(Box::new(self.reader.do_with(|t| t.clone())));
-        let old = self.ep.swap(ep, Ordering::Relaxed);
-        if !old.is_null() {
-            self.dropping.push(old as usize);
-        }
-        self.last_time = Instant::now();
-    }
-    // 连续超过30秒钟没有refresh，则销毁所有dropping实例。
-    fn try_clear(&mut self) {
-        if self.dropping.len() > 0 && self.last_time.elapsed() >= Duration::from_secs(30) {
-            for ep in self.dropping.split_off(0) {
-                let _ = unsafe { Box::from_raw(ep as *mut T) };
-                log::info!("clear old topology:{} => {}", self.last_cycle, ep);
-            }
-            assert_eq!(self.dropping.len(), 0);
-        }
-    }
-    fn check(&self) -> bool {
-        self.reader.cycle() > self.last_cycle
+impl<T> Drop for DropLog<T> {
+    #[inline]
+    fn drop(&mut self) {
+        log::info!("top dropped {}", self as *const _ as usize);
     }
 }
-use futures::ready;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-impl<T: Clone + 'static> Future for Refresher<T> {
-    type Output = ();
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let me = &mut *self;
-        while me.switcher.get() {
-            ready!(me.tick.poll_tick(cx));
-            if me.check() {
-                me.refresh();
-            }
-            me.try_clear();
-        }
-        Poll::Ready(())
+impl<T> From<T> for DropLog<T> {
+    fn from(t: T) -> Self {
+        Self { t }
+    }
+}
+use std::ops::Deref;
+impl<T> Deref for DropLog<T> {
+    type Target = T;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.t
+    }
+}
+
+impl<T> Drop for RefreshTopology<T> {
+    fn drop(&mut self) {
+        let old = self.top.swap(0 as *mut _, Ordering::AcqRel);
+        unsafe { Box::from_raw(old) };
     }
 }

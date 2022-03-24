@@ -56,6 +56,9 @@ where
         (**self).hasher()
     }
 }
+pub trait TopologyCheck: Sized {
+    fn check(&mut self) -> Option<Self>;
+}
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 

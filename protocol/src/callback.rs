@@ -8,27 +8,22 @@ use crate::request::Request;
 use crate::{Command, Error, HashedCommand};
 
 pub struct Callback {
-    exp_sec: fn(usize) -> u32,
-    receiver: usize,
-    cb: fn(usize, Request),
+    exp_sec: Box<dyn Fn() -> u32>,
+    cb: Box<dyn Fn(Request)>,
 }
 impl Callback {
     #[inline]
-    pub fn new(receiver: usize, cb: fn(usize, Request), exp_sec: fn(usize) -> u32) -> Self {
-        Self {
-            receiver,
-            cb,
-            exp_sec,
-        }
+    pub fn new(cb: Box<dyn Fn(Request)>, exp_sec: Box<dyn Fn() -> u32>) -> Self {
+        Self { cb, exp_sec }
     }
     #[inline]
     pub fn send(&self, req: Request) {
         log::debug!("request sending:{}", req);
-        (self.cb)(self.receiver, req);
+        (self.cb)(req);
     }
     #[inline]
     pub fn exp_sec(&self) -> u32 {
-        (self.exp_sec)(self.receiver)
+        (self.exp_sec)()
     }
 }
 
@@ -387,6 +382,8 @@ unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 unsafe impl Send for CallbackPtr {}
 unsafe impl Sync for CallbackPtr {}
+unsafe impl Send for Callback {}
+unsafe impl Sync for Callback {}
 #[derive(Clone)]
 pub struct CallbackPtr {
     ptr: *const Callback,

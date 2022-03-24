@@ -7,7 +7,6 @@ use context::Quadruple;
 use discovery::TopologyWriteGuard;
 use ds::chan::Sender;
 use metrics::Path;
-use protocol::callback::{Callback, CallbackPtr};
 use protocol::{Parser, Result};
 use stream::pipeline::copy_bidirectional;
 use stream::Builder;
@@ -41,16 +40,11 @@ pub(super) async fn process_one(
     }
     log::debug!("service inited. {} ", quard);
     let switcher = ds::Switcher::from(true);
-    let top = Arc::new(RefreshTopology::new(rx, switcher.clone()));
-    let receiver = top.as_ref() as *const RefreshTopology<Topology> as usize;
-    let cb = RefreshTopology::<Topology>::static_send;
+    let top = Arc::new(RefreshTopology::from(rx));
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
-    let exp = RefreshTopology::<Topology>::exp_sec;
-    let cb = Callback::new(receiver, cb, exp);
-    let cb_ptr: CallbackPtr = (&cb).into();
 
     // 服务注册完成，侦听端口直到成功。
-    while let Err(e) = _process_one(quard, &p, &top, cb_ptr.clone(), &path).await {
+    while let Err(e) = _process_one(quard, &p, &top, &path).await {
         log::warn!("service process failed. {}, err:{:?}", quard, e);
         tokio::time::sleep(Duration::from_secs(6)).await;
     }
@@ -66,7 +60,6 @@ async fn _process_one(
     quard: &Quadruple,
     p: &Parser,
     top: &Arc<RefreshTopology<Topology>>,
-    cb: CallbackPtr,
     path: &Path,
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
@@ -75,19 +68,25 @@ async fn _process_one(
     use stream::StreamMetrics;
 
     loop {
-        let top = top.clone();
         // 等待初始化成功
         let (client, _addr) = l.accept().await?;
         let client = rt::Stream::from(client);
         let p = p.clone();
-        let cb = cb.clone();
         let metrics = StreamMetrics::new(path);
         let path = format!("{:?}", path);
         log::debug!("connection established:{:?}", path);
+        let ctop;
+        loop {
+            if let Some(t) = top.build() {
+                ctop = Some(t);
+                break;
+            }
+            log::info!("build top failed, try later:{}", quard.service());
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let top = ctop.expect("build failed");
         spawn(async move {
-            use protocol::Topology;
-            let hasher = top.hasher();
-            if let Err(e) = copy_bidirectional(cb, metrics, hasher, client, p).await {
+            if let Err(e) = copy_bidirectional(top, metrics, client, p).await {
                 match e {
                     protocol::Error::Quit => {} // client发送quit协议退出
                     protocol::Error::ReadEof => {}
