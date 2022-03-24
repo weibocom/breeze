@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests_ds {
-    use ds::{RingSlice, Slice};
-    use std::collections::HashMap;
+    use ds::RingSlice;
     #[test]
     fn test_ring_slice() {
         let cap = 1024;
