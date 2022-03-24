@@ -14,7 +14,7 @@ impl super::Hash for Bkdr {
         }
 
         if h == 0 {
-            log::error!("found zero hash for key: {:?}", b);
+            log::error!("bkdr - found zero hash for key: {:?}", b);
         }
 
         h as i64
