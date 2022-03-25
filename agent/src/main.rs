@@ -36,29 +36,22 @@ fn main() -> Result<()> {
 async fn run(ctx: Context) -> Result<()> {
     let _l = service::listener_for_supervisor(ctx.port()).await?;
     elog::init(ctx.log_dir(), &ctx.log_level)?;
-
-    // 在专用线程中初始化4个定时任务。
     metrics::init_local_ip(&ctx.metrics_probe);
-    let mut spawner = rt::DedicatedSpawner::new();
-    spawner.spawn(metrics::Sender::new(
+
+    rt::spawn(metrics::Sender::new(
         &ctx.metrics_url(),
         &ctx.service_pool(),
         Duration::from_secs(10),
     ));
-    spawner.spawn(metrics::MetricRegister::default());
-    spawner.spawn(discovery::dns::start_dns_resolver_refresher());
+    rt::spawn(metrics::MetricRegister::default());
+    rt::spawn(discovery::dns::start_dns_resolver_refresher());
     let discovery = discovery::Discovery::from_url(ctx.discovery());
     let (tx, rx) = ds::chan::bounded(128);
     let snapshot = ctx.snapshot().to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
     fix.register(ctx.idc_path(), sharding::build_refresh_idc());
-    spawner.spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
-    //spawner.spawn(stream::start_delay_drop());
-    spawner.start_on_dedicated_thread();
-
-    // 启动定期更新资源配置线程
-    // 部分资源需要延迟drop。
+    rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
 
     log::info!("server({}) inited {:?}", context::get_short_version(), ctx);
 
