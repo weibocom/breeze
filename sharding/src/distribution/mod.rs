@@ -2,6 +2,7 @@ mod consistent;
 mod modrange;
 mod modula;
 mod range;
+mod slotmod;
 mod splitmod;
 
 use consistent::Consistent;
@@ -10,6 +11,8 @@ use modula::Modula;
 use range::Range;
 use splitmod::SplitMod;
 
+use crate::distribution::slotmod::SlotMod;
+
 #[derive(Clone, Debug)]
 pub enum Distribute {
     Consistent(Consistent),
@@ -17,6 +20,7 @@ pub enum Distribute {
     Range(Range),
     ModRange(ModRange),
     SplitMod(SplitMod),
+    SlotMod(SlotMod),
 }
 
 // 默认采用的slot是256，slot等价于client的hash-gen概念，即集群的槽（虚拟节点）的总数，
@@ -32,6 +36,9 @@ const DIST_MOD_RANGE_WITH_SLOT_PREFIX: &str = "modrange-";
 // splitmod
 const DIST_SPLIT_MOD_WITH_SLOT_PREFIX: &str = "splitmod-";
 
+// slotmod
+const DIST_SLOT_MOD_PREFIX: &str = "slotmod-";
+
 impl Distribute {
     pub fn from(distribution: &str, names: &Vec<String>) -> Self {
         let dist = distribution.to_ascii_lowercase();
@@ -46,6 +53,8 @@ impl Distribute {
                     return Self::ModRange(ModRange::from(distribution, names.len()));
                 } else if distribution.starts_with(DIST_SPLIT_MOD_WITH_SLOT_PREFIX) {
                     return Self::SplitMod(SplitMod::from(distribution, names.len()));
+                } else if distribution.starts_with(DIST_SLOT_MOD_PREFIX) {
+                    return Self::SlotMod(SlotMod::from(distribution, names.len()));
                 }
                 log::warn!("'{}' is not valid , use modula instead", distribution);
                 Self::Modula(Modula::from(names.len()))
@@ -60,6 +69,7 @@ impl Distribute {
             Self::Range(r) => r.index(hash),
             Self::ModRange(m) => m.index(hash),
             Self::SplitMod(s) => s.index(hash),
+            Self::SlotMod(s) => s.index(hash),
         }
     }
 }
