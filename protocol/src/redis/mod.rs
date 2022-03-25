@@ -75,6 +75,8 @@ impl Redis {
     }
 
     // TODO 临时测试设为pub，测试完毕后去掉pub fishermen
+    // 需要支持4种协议格式：（除了-代表的错误类型）
+    //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
     #[inline]
     pub fn num_skip_all(&self, data: &RingSlice, mut oft: &mut usize) -> Result<Option<Command>> {
         let mut bulk_count = data.num(&mut oft)?;
@@ -83,12 +85,14 @@ impl Redis {
                 return Err(crate::Error::ProtocolIncomplete);
             }
             match data.at(*oft) {
-                b'$' => {
-                    data.num_and_skip(&mut oft)?;
-                }
                 b'*' => {
                     self.num_skip_all(data, oft)?;
                 }
+                b'$' => {
+                    data.num_and_skip(&mut oft)?;
+                }
+                b'+' => data.line(oft)?,
+                b':' => data.line(oft)?,
                 _ => {
                     log::info!(
                         "unsupport rsp:{:?}, pos: {}/{}",
@@ -118,11 +122,6 @@ impl Redis {
                     let _num = data.num_and_skip(&mut oft)?;
                 }
                 b'*' => {
-                    // let mut bulk_count = data.num(&mut oft)?;
-                    // while bulk_count > 0 {
-                    //     data.num_and_skip(&mut oft)?;
-                    //     bulk_count -= 1;
-                    // }
                     self.num_skip_all(&data, &mut oft)?;
                 }
                 _ => {
