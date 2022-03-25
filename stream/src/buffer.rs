@@ -141,12 +141,6 @@ impl Display for StreamGuard {
 impl Debug for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ctx:{} StreamGuard :{} raw:{:?}",
-            self.ctx,
-            self.buf,
-            self.buf.raw()
-        )
+        write!(f, "ctx:{} StreamGuard :{}", self.ctx, self.buf)
     }
 }

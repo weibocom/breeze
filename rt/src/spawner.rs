@@ -17,13 +17,20 @@ impl DedicatedSpawner {
         self.tasks.push(Box::pin(f));
     }
     pub fn start_on_dedicated_thread(self) {
-        std::thread::spawn(move || {
-            let local = LocalSet::new();
-            for task in self.tasks.into_iter() {
-                local.spawn_local(task);
-            }
-            let rt = Builder::new_current_thread().enable_all().build().unwrap();
-            rt.block_on(local);
-        });
+        std::thread::Builder::new()
+            .name("breeze-dl".to_string())
+            .spawn(move || {
+                let local = LocalSet::new();
+                for task in self.tasks.into_iter() {
+                    local.spawn_local(task);
+                }
+                Builder::new_current_thread()
+                    .thread_name("breeze-d")
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(local);
+            })
+            .expect("dedicated thread");
     }
 }

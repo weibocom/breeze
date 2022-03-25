@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     let threads = ctx.thread_num as usize;
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(threads)
-        .thread_name("breeze")
+        .thread_name("breeze-w")
         .thread_stack_size(2 * 1024 * 1024)
         .enable_all()
         .build()
