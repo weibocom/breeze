@@ -18,39 +18,23 @@ impl Protocol for MemcacheBinary {
         process: &mut P,
     ) -> Result<()> {
         assert!(data.len() > 0);
-        if data.at(PacketPos::Magic as usize) != REQUEST_MAGIC {
-            return Err(Error::RequestProtocolNotValid);
-        }
         while data.len() >= HEADER_LEN {
-            let req = data.slice();
+            let mut req = data.slice();
+            req.check_request()?;
             let packet_len = req.packet_len();
             if req.len() < packet_len {
                 break;
             }
-            let op_code = req.op();
+            // 把quite get请求，转换成单个的get请求
+            let op_code = req.map_op();
             // 非quite get请求就是最后一个请求。
             let last = QUITE_GET_TABLE[op_code as usize] == 0;
-            // 把quite get请求，转换成单个的get请求
-
-            let mapped_op_code = OPS_MAPPING_TABLE[op_code as usize];
-            if mapped_op_code != op_code {
-                let idx = PacketPos::Opcode as usize;
-                data.update(idx, mapped_op_code);
-            }
             // 存储原始的op_code
             let mut flag = Flag::from_op(op_code as u16, COMMAND_IDX[op_code as usize].into());
             flag.set_sentonly(NOREPLY_MAPPING[req.op() as usize] == req.op());
             flag.set_noforward(NO_FORWARD_OPS[op_code as usize] == 1);
-            let key = req.key();
-            let hash = if key.len() > 0 {
-                alg.hash(&key)
-            } else {
-                assert!(req.operation().is_meta() || req.noop());
-                use std::sync::atomic::{AtomicU64, Ordering};
-                static RND: AtomicU64 = AtomicU64::new(0);
-                RND.fetch_add(1, Ordering::Relaxed) as i64
-            };
             let guard = data.take(packet_len);
+            let hash = req.hash(alg);
             let cmd = HashedCommand::new(guard, hash, flag);
             // get请求不能是quiet
             assert!(!cmd.data().quite_get());
@@ -61,12 +45,10 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         assert!(data.len() > 0);
-        if data.at(PacketPos::Magic as usize) != RESPONSE_MAGIC {
-            return Err(Error::ResponseProtocolNotValid);
-        }
         let len = data.len();
         if len >= HEADER_LEN {
             let r = data.slice();
+            r.check_response()?;
             let pl = r.packet_len();
             assert!(!r.quite_get());
             if len >= pl {
@@ -106,18 +88,9 @@ impl Protocol for MemcacheBinary {
         if QUITE_GET_TABLE[old_op_code as usize] == 1 && !resp.ok() {
             return Ok(());
         }
-        if old_op_code != resp.op_code() {
-            // 更新resp opcode
-            resp.data_mut().update_opcode(old_op_code as u8);
-        }
-        let len = resp.len();
-        let mut oft = 0;
-        while oft < len {
-            let data = resp.read(oft);
-            w.write(data)?;
-            oft += data.len();
-        }
-        Ok(())
+        let data = resp.data_mut();
+        data.restore_op(old_op_code as u8);
+        w.write_slice(data, 0)
     }
     // 如果是写请求，把cas请求转换为set请求。
     // 如果是读请求，则通过response重新构建一个新的写请求。

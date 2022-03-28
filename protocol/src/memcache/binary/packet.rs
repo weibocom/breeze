@@ -8,6 +8,7 @@ pub enum Magic {
 }
 
 pub const CAS_LEN: usize = 8;
+use crate::{Error, Result};
 
 // 总共有48个opcode，这里先只部分支持
 #[allow(dead_code)]
@@ -156,8 +157,13 @@ pub(super) trait Binary<T> {
     // // 变更request的opcode
     fn update_opcode(&mut self, opcode: u8);
     fn clear_cas(&mut self);
+    fn map_op(&mut self) -> u8;
+    fn restore_op(&mut self, op: u8);
     // // 变更request的cas
     // fn update_cas(&self, cas: u64);
+    fn hash<H: sharding::hash::Hash>(&self, alg: &H) -> i64;
+    fn check_request(&self) -> Result<()>;
+    fn check_response(&self) -> Result<()>;
 }
 
 use ds::RingSlice;
@@ -296,5 +302,49 @@ impl Binary<RingSlice> for RingSlice {
     fn is_quiet(&self) -> bool {
         let op = self.op();
         NOREPLY_MAPPING[op as usize] == op
+    }
+    #[inline]
+    fn map_op(&mut self) -> u8 {
+        let old = self.op();
+        let mapped_op_code = OPS_MAPPING_TABLE[old as usize];
+        if mapped_op_code != old {
+            self.update(PacketPos::Opcode as usize, mapped_op_code);
+        }
+        old
+    }
+    #[inline]
+    fn restore_op(&mut self, op: u8) {
+        if self.op() != op {
+            self.update(PacketPos::Opcode as usize, op);
+        }
+    }
+    #[inline]
+    fn hash<H: sharding::hash::Hash>(&self, alg: &H) -> i64 {
+        let key = self.key();
+        if key.len() > 0 {
+            alg.hash(&key)
+        } else {
+            // 这些请求都是noforward请求，不会发送到backend
+            assert!(self.operation().is_meta() || self.noop());
+            0
+        }
+    }
+    #[inline]
+    fn check_request(&self) -> Result<()> {
+        assert_ne!(self.len(), 0);
+        if self.at(0) == REQUEST_MAGIC {
+            Ok(())
+        } else {
+            Err(Error::RequestProtocolNotValid)
+        }
+    }
+    #[inline]
+    fn check_response(&self) -> Result<()> {
+        assert_ne!(self.len(), 0);
+        if self.at(0) == RESPONSE_MAGIC {
+            Ok(())
+        } else {
+            Err(Error::ResponseProtocolNotValid)
+        }
     }
 }
