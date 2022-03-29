@@ -86,11 +86,11 @@ pub(super) const NO_FORWARD_OPS: [u8; 128] = [
 
 pub(super) const REQUEST_MAGIC: u8 = 0x80;
 pub(super) const RESPONSE_MAGIC: u8 = 0x81;
-pub(super) const OP_CODE_GET: u8 = 0x00;
+//pub(super) const OP_CODE_GET: u8 = 0x00;
 pub(super) const OP_CODE_NOOP: u8 = 0x0a;
 //pub(super) const OP_CODE_GETK: u8 = 0x0c;
 //pub(super) const OP_CODE_GETKQ: u8 = 0x0d;
-pub(super) const OP_CODE_GETQ: u8 = 0x09;
+//pub(super) const OP_CODE_GETQ: u8 = 0x09;
 // 这个专门为gets扩展
 //pub(super) const OP_CODE_GETS: u8 = 0x48;
 //pub(super) const OP_CODE_GETSQ: u8 = 0x49;
@@ -127,8 +127,6 @@ pub(super) trait Binary<T> {
     fn op(&self) -> u8;
     fn operation(&self) -> Operation;
     fn noop(&self) -> bool;
-    fn request(&self) -> bool;
-    fn response(&self) -> bool;
     fn extra_len(&self) -> u8;
     fn extra_or_flag(&self) -> T;
     fn total_body_len(&self) -> u32;
@@ -140,58 +138,38 @@ pub(super) trait Binary<T> {
     // 仅仅用于获取value长度，注意区分total body len
     fn value_len(&self) -> u32;
     fn value(&self) -> T;
-    // id: 主要用来在多层请求时，用来对比request与response的key
-    // 如果请求包含key，则直接获取key。
-    // 如果不包含key，当前请求是get_q请求，则使用协议中的Opaque，作为key。
-    // 如果是noop请求，则直接忽略.
-    // 其它，panic
-    fn id(&self) -> Option<T>;
     fn packet_len(&self) -> usize;
     // 是否为quite get请求。
-    fn quite_get(&self) -> bool;
+    fn quiet_get(&self) -> bool;
     // 当前请求是否是quite请求
     fn is_quiet(&self) -> bool;
-    // 截取末尾的noop请求
-    fn take_noop(&self) -> T;
-
-    // // 变更request的opcode
-    fn update_opcode(&mut self, opcode: u8);
     fn clear_cas(&mut self);
     fn map_op(&mut self) -> u8;
+    fn map_op_noreply(&mut self) -> u8;
     fn restore_op(&mut self, op: u8);
-    // // 变更request的cas
-    // fn update_cas(&self, cas: u64);
     fn hash<H: sharding::hash::Hash>(&self, alg: &H) -> i64;
     fn check_request(&self) -> Result<()>;
     fn check_response(&self) -> Result<()>;
+    fn sentonly(&self) -> bool;
+    fn noforward(&self) -> bool;
 }
 
 use ds::RingSlice;
 impl Binary<RingSlice> for RingSlice {
-    #[inline]
+    #[inline(always)]
     fn op(&self) -> u8 {
         assert!(self.len() >= HEADER_LEN);
         self.at(PacketPos::Opcode as usize)
     }
-    #[inline]
+    #[inline(always)]
     fn noop(&self) -> bool {
         self.op() == OP_CODE_NOOP
     }
-    #[inline]
+    #[inline(always)]
     fn operation(&self) -> Operation {
         (COMMAND_IDX[self.op() as usize]).into()
     }
-    #[inline]
-    fn request(&self) -> bool {
-        assert!(self.len() > 0);
-        self.at(PacketPos::Magic as usize) == REQUEST_MAGIC
-    }
-    #[inline]
-    fn response(&self) -> bool {
-        assert!(self.len() > 0);
-        self.at(PacketPos::Magic as usize) == RESPONSE_MAGIC
-    }
-    #[inline]
+    #[inline(always)]
     fn extra_len(&self) -> u8 {
         assert!(self.len() >= HEADER_LEN);
         self.at(PacketPos::ExtrasLength as usize)
@@ -202,38 +180,38 @@ impl Binary<RingSlice> for RingSlice {
         let extra_len = self.extra_len() as usize;
         self.sub_slice(HEADER_LEN, extra_len)
     }
-    #[inline]
+    #[inline(always)]
     fn total_body_len(&self) -> u32 {
         assert!(self.len() >= HEADER_LEN);
         self.read_u32(PacketPos::TotalBodyLength as usize)
     }
-    #[inline]
+    #[inline(always)]
     fn opaque(&self) -> u32 {
         assert!(self.len() >= HEADER_LEN);
         self.read_u32(PacketPos::Opaque as usize)
     }
-    #[inline]
+    #[inline(always)]
     fn cas(&self) -> u64 {
         assert!(self.len() >= HEADER_LEN);
         self.read_u64(PacketPos::Cas as usize)
     }
-    #[inline]
+    #[inline(always)]
     fn packet_len(&self) -> usize {
         assert!(self.len() >= HEADER_LEN);
         self.total_body_len() as usize + HEADER_LEN
     }
-    #[inline]
+    #[inline(always)]
     fn status_ok(&self) -> bool {
         assert!(self.len() >= HEADER_LEN);
         assert_eq!(self.at(PacketPos::Magic as usize), RESPONSE_MAGIC);
         self.at(6) == 0 && self.at(7) == 0
     }
-    #[inline]
+    #[inline(always)]
     fn key_len(&self) -> u16 {
         assert!(self.len() >= HEADER_LEN);
         self.read_u16(PacketPos::Key as usize)
     }
-    #[inline]
+    #[inline(always)]
     fn key(&self) -> Self {
         assert!(self.len() >= HEADER_LEN);
         let extra_len = self.extra_len() as usize;
@@ -259,66 +237,45 @@ impl Binary<RingSlice> for RingSlice {
 
         self.sub_slice(offset, value_len)
     }
-    #[inline]
-    fn id(&self) -> Option<Self> {
-        assert!(self.len() >= HEADER_LEN);
-        match self.op() {
-            OP_CODE_NOOP => None,
-            OP_CODE_GET | OP_CODE_GETQ => Some(self.sub_slice(12, 4)),
-            _ => {
-                assert!(self.key_len() > 0);
-                Some(self.key())
-            }
-        }
-    }
     // 需要应对gek个各种姿势： getkq...getkq + noop, getkq...getkq + getk，对于quite cmd，肯定是multiget的非结尾请求
-    #[inline]
-    fn quite_get(&self) -> bool {
+    #[inline(always)]
+    fn quiet_get(&self) -> bool {
         QUITE_GET_TABLE[self.op() as usize] == 1
     }
-
-    // 截取末尾的noop请求
-    #[inline]
-    fn take_noop(&self) -> Self {
-        assert!(self.len() >= HEADER_LEN);
-        let noop = self.sub_slice(self.len() - HEADER_LEN, HEADER_LEN);
-        //assert!(noop.data() == NOOP_REQEUST || noop.data() == NOOP_RESPONSE);
-        noop
-    }
-
-    #[inline]
-    fn update_opcode(&mut self, opcode: u8) {
-        assert!(self.len() >= HEADER_LEN);
-        self.update(PacketPos::Opcode as usize, opcode);
-    }
-    #[inline]
+    #[inline(always)]
     fn clear_cas(&mut self) {
         assert!(self.len() >= HEADER_LEN);
         for i in PacketPos::Cas as usize..PacketPos::Cas as usize + CAS_LEN {
             self.update(i, 0);
         }
     }
-    #[inline]
+    #[inline(always)]
     fn is_quiet(&self) -> bool {
         let op = self.op();
         NOREPLY_MAPPING[op as usize] == op
     }
-    #[inline]
+    #[inline(always)]
     fn map_op(&mut self) -> u8 {
         let old = self.op();
-        let mapped_op_code = OPS_MAPPING_TABLE[old as usize];
-        if mapped_op_code != old {
-            self.update(PacketPos::Opcode as usize, mapped_op_code);
+        let new = OPS_MAPPING_TABLE[old as usize];
+        if new != old {
+            self.update(PacketPos::Opcode as usize, new);
         }
         old
     }
-    #[inline]
+    #[inline(always)]
+    fn map_op_noreply(&mut self) -> u8 {
+        let op = self.op();
+        self.update(PacketPos::Opcode as usize, NOREPLY_MAPPING[op as usize]);
+        op
+    }
+    #[inline(always)]
     fn restore_op(&mut self, op: u8) {
         if self.op() != op {
             self.update(PacketPos::Opcode as usize, op);
         }
     }
-    #[inline]
+    #[inline(always)]
     fn hash<H: sharding::hash::Hash>(&self, alg: &H) -> i64 {
         let key = self.key();
         if key.len() > 0 {
@@ -329,7 +286,7 @@ impl Binary<RingSlice> for RingSlice {
             0
         }
     }
-    #[inline]
+    #[inline(always)]
     fn check_request(&self) -> Result<()> {
         assert_ne!(self.len(), 0);
         if self.at(0) == REQUEST_MAGIC {
@@ -338,7 +295,7 @@ impl Binary<RingSlice> for RingSlice {
             Err(Error::RequestProtocolNotValid)
         }
     }
-    #[inline]
+    #[inline(always)]
     fn check_response(&self) -> Result<()> {
         assert_ne!(self.len(), 0);
         if self.at(0) == RESPONSE_MAGIC {
@@ -346,5 +303,14 @@ impl Binary<RingSlice> for RingSlice {
         } else {
             Err(Error::ResponseProtocolNotValid)
         }
+    }
+    #[inline(always)]
+    fn sentonly(&self) -> bool {
+        let op = self.op();
+        NOREPLY_MAPPING[op as usize] == op
+    }
+    #[inline(always)]
+    fn noforward(&self) -> bool {
+        NO_FORWARD_OPS[self.op() as usize] == 1
     }
 }
