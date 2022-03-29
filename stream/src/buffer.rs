@@ -59,14 +59,14 @@ pub struct StreamGuard {
     buf: GuardedBuffer,
 }
 impl protocol::Stream for StreamGuard {
-    #[inline]
-    fn update(&mut self, idx: usize, val: u8) {
-        self.buf.update(idx, val);
-    }
-    #[inline]
-    fn at(&self, idx: usize) -> u8 {
-        self.buf.at(idx)
-    }
+    //#[inline]
+    //fn update(&mut self, idx: usize, val: u8) {
+    //    self.buf.update(idx, val);
+    //}
+    //#[inline]
+    //fn at(&self, idx: usize) -> u8 {
+    //    self.buf.at(idx)
+    //}
     #[inline]
     fn take(&mut self, n: usize) -> MemGuard {
         self.buf.take(n)
@@ -141,12 +141,6 @@ impl Display for StreamGuard {
 impl Debug for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ctx:{} StreamGuard :{} raw:{:?}",
-            self.ctx,
-            self.buf,
-            self.buf.raw()
-        )
+        write!(f, "ctx:{} StreamGuard :{}", self.ctx, self.buf)
     }
 }

@@ -141,6 +141,7 @@ unsafe impl<T> Sync for RefreshTopology<T> {}
 unsafe impl<T> Send for CheckedTopology<T> {}
 unsafe impl<T> Sync for CheckedTopology<T> {}
 
+#[repr(transparent)]
 struct DropLog<T> {
     t: T,
 }

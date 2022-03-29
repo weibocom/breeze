@@ -57,9 +57,9 @@ pub trait RequestProcessor {
 
 pub trait Stream {
     fn len(&self) -> usize;
-    fn at(&self, idx: usize) -> u8;
+    //fn at(&self, idx: usize) -> u8;
     fn slice(&self) -> ds::RingSlice;
-    fn update(&mut self, idx: usize, val: u8);
+    //fn update(&mut self, idx: usize, val: u8);
     fn take(&mut self, n: usize) -> ds::MemGuard;
     #[inline]
     fn ignore(&mut self, n: usize) {
