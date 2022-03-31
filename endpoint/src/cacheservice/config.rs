@@ -57,6 +57,11 @@ impl Namespace {
                         log::debug!("change mc crc32 to {}", ns.hash);
                     }
 
+                    // 如果update_slave_l1为false，去掉slave_l1
+                    if !ns.update_slave_l1 {
+                        ns.slave_l1 = Vec::with_capacity(0);
+                    }
+
                     Some(ns)
                 }
             }
