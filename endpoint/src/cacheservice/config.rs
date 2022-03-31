@@ -25,6 +25,9 @@ pub struct Namespace {
     #[serde(default)]
     pub force_write_all: bool,
 
+    // set/cas/add/delete等更新操作，是否更新slave L1
+    pub update_slave_l1: bool,
+
     #[serde(default)]
     pub timeout_ms_master: u32,
     #[serde(default)]

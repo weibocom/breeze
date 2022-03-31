@@ -31,6 +31,7 @@ impl Protocol for MemcacheBinary {
             let last = QUITE_GET_TABLE[op_code as usize] == 0;
             // 存储原始的op_code
             let mut flag = Flag::from_op(op_code as u16, COMMAND_IDX[op_code as usize].into());
+            flag.set_try_next_type(req.try_next_type());
             flag.set_sentonly(NOREPLY_MAPPING[req.op() as usize] == req.op());
             flag.set_noforward(NO_FORWARD_OPS[op_code as usize] == 1);
             let guard = data.take(packet_len);

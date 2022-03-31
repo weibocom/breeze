@@ -1,5 +1,5 @@
 use discovery::TopologyWrite;
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
+use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology, TryNextType};
 use sharding::hash::Hasher;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -22,6 +22,7 @@ pub struct CacheService<B, E, Req, P> {
     parser: P,
     exp_sec: u32,
     force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
+    update_slave_l1: bool, // 兼容也有业务逻辑，cas/set/del/add等更新后，是否更新slve l1
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -36,6 +37,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             has_slave: false,
             exp_sec: 0,
             force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
+            update_slave_l1: true,  // 默认为true，保持与线上相同
             hasher: Default::default(),
             rnd_idx: Arc::new(AtomicUsize::new(rand::random())),
             _marker: Default::default(),
@@ -89,7 +91,7 @@ where
         if !req.operation().master_only() {
             let mut ctx = super::Context::from(*req.mut_context());
             let (i, try_next, write_back) = if req.operation().is_store() {
-                self.get_context_store(&mut ctx)
+                self.get_context_store(&mut ctx, req.cmd().try_next_type())
             } else {
                 self.get_context_get(&mut ctx)
             };
@@ -118,19 +120,34 @@ where
     E: Endpoint<Item = Req>,
 {
     #[inline]
-    fn get_context_store(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
+    fn get_context_store(
+        &self,
+        ctx: &mut super::Context,
+        try_next_type: TryNextType,
+    ) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
             idx = ctx.take_write_idx() as usize;
-            write_back = idx + 1 < self.streams.len();
-            // force_write_all 为true，不管master是否写失败，都同步其他layers;
-            // force_write_all 为false，master写失败，则同步其他layers.
-            if self.force_write_all {
-                try_next = idx + 1 < self.streams.len();
+            // 如果update_slave_l1为false，则不更新slave l1
+            if !self.update_slave_l1 && idx + 1 >= self.r_num as usize {
+                write_back = false;
             } else {
-                try_next = idx + 1 < self.streams.len() && idx > 0;
+                write_back = idx + 1 < self.streams.len();
             }
+
+            // try_next逻辑：
+            //  1）如果当前为最后一个layer，设为false;
+            //  2）否则，根据opcode、force_write_all一起确定。
+            try_next = if idx + 1 >= self.streams.len() {
+                false
+            } else {
+                match try_next_type {
+                    TryNextType::NotTryNext => false,
+                    TryNextType::TryNext => true,
+                    TryNextType::Unkown => self.force_write_all,
+                }
+            };
         } else {
             // 是读触发的回种的写请求
             idx = ctx.take_read_idx() as usize;
@@ -183,6 +200,7 @@ where
             self.hasher = Hasher::from(&ns.hash);
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
             self.force_write_all = ns.force_write_all;
+            self.update_slave_l1 = ns.update_slave_l1;
             let dist = &ns.distribution;
 
             let old_streams = self.streams.split_off(0);
