@@ -1,5 +1,5 @@
 use discovery::TopologyWrite;
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
+use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology, TryNextType};
 use sharding::hash::Hasher;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -89,7 +89,7 @@ where
         if !req.operation().master_only() {
             let mut ctx = super::Context::from(*req.mut_context());
             let (i, try_next, write_back) = if req.operation().is_store() {
-                self.get_context_store(&mut ctx)
+                self.get_context_store(&mut ctx, req.cmd().try_next_type())
             } else {
                 self.get_context_get(&mut ctx)
             };
@@ -118,19 +118,29 @@ where
     E: Endpoint<Item = Req>,
 {
     #[inline]
-    fn get_context_store(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
+    fn get_context_store(
+        &self,
+        ctx: &mut super::Context,
+        try_next_type: TryNextType,
+    ) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
             idx = ctx.take_write_idx() as usize;
             write_back = idx + 1 < self.streams.len();
-            // force_write_all 为true，不管master是否写失败，都同步其他layers;
-            // force_write_all 为false，master写失败，则同步其他layers.
-            if self.force_write_all {
-                try_next = idx + 1 < self.streams.len();
+
+            // try_next逻辑：
+            //  1）如果当前为最后一个layer，设为false;
+            //  2）否则，根据opcode、force_write_all一起确定。
+            try_next = if idx + 1 >= self.streams.len() {
+                false
             } else {
-                try_next = idx + 1 < self.streams.len() && idx > 0;
-            }
+                match try_next_type {
+                    TryNextType::NotTryNext => false,
+                    TryNextType::TryNext => true,
+                    TryNextType::Unkown => self.force_write_all,
+                }
+            };
         } else {
             // 是读触发的回种的写请求
             idx = ctx.take_read_idx() as usize;

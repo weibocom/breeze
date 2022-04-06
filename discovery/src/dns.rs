@@ -93,7 +93,7 @@ impl Record {
                     log::info!("no ip resolved: {}", host);
                     return None;
                 }
-                if self.ips.len() == 0 || exists != self.ips.len() {
+                if exists != self.ips.len() || exists != cnt {
                     let mut addrs = Vec::with_capacity(cnt);
                     for ip in ips.iter() {
                         addrs.push(ip);
