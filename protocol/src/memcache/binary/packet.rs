@@ -8,7 +8,7 @@ pub enum Magic {
 }
 
 pub const CAS_LEN: usize = 8;
-use crate::{Error, Result};
+use crate::{Error, Result, TryNextType};
 
 // 总共有48个opcode，这里先只部分支持
 #[allow(dead_code)]
@@ -84,6 +84,15 @@ pub(super) const NO_FORWARD_OPS: [u8; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
+// 请求完毕后，不考虑layer及其他配置，如果cmd失败,是否继续try_next:
+// (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对set生效，注意提前考虑cas)
+const TRY_NEXT_TABLE: [u8; 128] = [
+    1, 2, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 2, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0,
+    1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
 pub(super) const REQUEST_MAGIC: u8 = 0x80;
 pub(super) const RESPONSE_MAGIC: u8 = 0x81;
 //pub(super) const OP_CODE_GET: u8 = 0x00;
@@ -95,8 +104,9 @@ pub(super) const OP_CODE_NOOP: u8 = 0x0a;
 //pub(super) const OP_CODE_GETS: u8 = 0x48;
 //pub(super) const OP_CODE_GETSQ: u8 = 0x49;
 
-//pub(super) const OP_CODE_ADD: u8 = 0x02;
 //pub(super) const OP_CODE_SET: u8 = 0x01;
+//pub(super) const OP_CODE_ADD: u8 = 0x02;
+//pub(super) const OP_CODE_DEL: u8 = 0x04;
 
 // 0x09: getq
 // 0x0d: getkq
@@ -150,6 +160,7 @@ pub(super) trait Binary<T> {
     fn hash<H: sharding::hash::Hash>(&self, alg: &H) -> i64;
     fn check_request(&self) -> Result<()>;
     fn check_response(&self) -> Result<()>;
+    fn try_next_type(&self) -> TryNextType;
     fn sentonly(&self) -> bool;
     fn noforward(&self) -> bool;
 }
@@ -304,6 +315,25 @@ impl Binary<RingSlice> for RingSlice {
             Err(Error::ResponseProtocolNotValid)
         }
     }
+
+    #[inline(always)]
+    fn try_next_type(&self) -> TryNextType {
+        let op = self.op() as usize;
+        assert!(op < TRY_NEXT_TABLE.len());
+
+        let try_next = TRY_NEXT_TABLE[op];
+        if try_next != TryNextType::Unkown as u8 {
+            return TryNextType::from(try_next);
+        }
+
+        // 只有set、setq 才会是unknown，此时只需要对cas再设置为NotTryNext即可
+        if self.cas() > 0 {
+            log::debug!("not try next for cas");
+            return TryNextType::NotTryNext;
+        }
+        return TryNextType::from(try_next);
+    }
+
     #[inline(always)]
     fn sentonly(&self) -> bool {
         let op = self.op();

@@ -25,10 +25,12 @@ impl Protocol for MemcacheBinary {
             if req.len() < packet_len {
                 break;
             }
+
             let last = !req.quiet_get(); // 须在map_op之前获取
             let cmd = req.operation();
             let op_code = req.map_op(); // 把quite get请求，转换成单个的get请求
             let mut flag = Flag::from_op(op_code as u16, cmd);
+            flag.set_try_next_type(req.try_next_type());
             flag.set_sentonly(req.sentonly());
             flag.set_noforward(req.noforward());
             let guard = data.take(packet_len);

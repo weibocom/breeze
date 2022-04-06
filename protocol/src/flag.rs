@@ -3,6 +3,7 @@ use crate::{OpCode, Operation};
 pub struct Flag {
     op_code: OpCode,
     op: Operation,
+    try_next_type: TryNextType,
     sentonly: bool,
     status_ok: bool,
     noforward: bool,
@@ -19,6 +20,16 @@ impl Flag {
             op,
             ..Default::default()
         }
+    }
+
+    #[inline]
+    pub fn set_try_next_type(&mut self, try_type: TryNextType) {
+        self.try_next_type = try_type
+    }
+
+    #[inline]
+    pub fn try_next_type(&self) -> TryNextType {
+        self.try_next_type.clone()
     }
 
     #[inline]
@@ -85,5 +96,30 @@ impl Flag {
     #[inline]
     pub fn ext_mut(&mut self) -> &mut u64 {
         &mut self.v
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum TryNextType {
+    NotTryNext = 0,
+    TryNext = 1,
+    Unkown = 2,
+}
+
+// (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对set生效，注意提前考虑cas)
+impl TryNextType {
+    pub fn from(val: u8) -> Self {
+        match val {
+            0 => TryNextType::NotTryNext,
+            1 => TryNextType::TryNext,
+            2 => TryNextType::Unkown,
+            _ => panic!("unknow try next type"),
+        }
+    }
+}
+
+impl Default for TryNextType {
+    fn default() -> Self {
+        TryNextType::TryNext
     }
 }

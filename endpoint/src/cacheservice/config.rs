@@ -25,6 +25,9 @@ pub struct Namespace {
     #[serde(default)]
     pub force_write_all: bool,
 
+    // set/cas/add/delete等更新操作，是否更新slave L1
+    pub update_slave_l1: bool,
+
     #[serde(default)]
     pub timeout_ms_master: u32,
     #[serde(default)]
@@ -52,6 +55,11 @@ impl Namespace {
                             hash::CRC32_EXT_SHORT
                         );
                         log::debug!("change mc crc32 to {}", ns.hash);
+                    }
+
+                    // 如果update_slave_l1为false，去掉slave_l1
+                    if !ns.update_slave_l1 {
+                        ns.slave_l1 = Vec::with_capacity(0);
                     }
 
                     Some(ns)
