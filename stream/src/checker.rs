@@ -51,6 +51,7 @@ impl<P, Req> BackendChecker<P, Req> {
         let mut m_timeout_biz = self.path.qps("timeout");
         let mut m_timeout = Path::base().qps("timeout");
         let mut tries = 0;
+        metrics::incr_task();
         while !self.finish.get() {
             let stream = self.try_connect(&mut s_metric, &mut tries).await;
             if stream.is_none() {
@@ -76,6 +77,7 @@ impl<P, Req> BackendChecker<P, Req> {
                 }
             }
         }
+        metrics::decr_task();
         log::info!("{} finished {}", s_metric, self.addr);
     }
     async fn try_connect(&mut self, reconn: &mut Metric, tries: &mut usize) -> Option<TcpStream>
