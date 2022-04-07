@@ -25,19 +25,18 @@ impl Protocol for MemcacheBinary {
             if req.len() < packet_len {
                 break;
             }
-            // 把quite get请求，转换成单个的get请求
-            let op_code = req.map_op();
-            // 非quite get请求就是最后一个请求。
-            let last = QUITE_GET_TABLE[op_code as usize] == 0;
-            // 存储原始的op_code
-            let mut flag = Flag::from_op(op_code as u16, COMMAND_IDX[op_code as usize].into());
-            flag.set_sentonly(NOREPLY_MAPPING[req.op() as usize] == req.op());
-            flag.set_noforward(NO_FORWARD_OPS[op_code as usize] == 1);
+
+            let last = !req.quiet_get(); // 须在map_op之前获取
+            let cmd = req.operation();
+            let op_code = req.map_op(); // 把quite get请求，转换成单个的get请求
+            let mut flag = Flag::from_op(op_code as u16, cmd);
+            flag.set_try_next_type(req.try_next_type());
+            flag.set_sentonly(req.sentonly());
+            flag.set_noforward(req.noforward());
             let guard = data.take(packet_len);
             let hash = req.hash(alg);
             let cmd = HashedCommand::new(guard, hash, flag);
-            // get请求不能是quiet
-            assert!(!cmd.data().quite_get());
+            assert!(!cmd.data().quiet_get());
             process.process(cmd, last);
         }
         Ok(())
@@ -50,7 +49,7 @@ impl Protocol for MemcacheBinary {
             let r = data.slice();
             r.check_response()?;
             let pl = r.packet_len();
-            assert!(!r.quite_get());
+            assert!(!r.quiet_get());
             if len >= pl {
                 if !r.is_quiet() {
                     let mut flag = Flag::from_op(r.op() as u16, r.operation());
@@ -68,12 +67,12 @@ impl Protocol for MemcacheBinary {
     }
     #[inline]
     fn check(&self, req: &HashedCommand, resp: &Command) -> bool {
-        // response不能是quiet请求
-        // request与response的op一定相同
-        // opaque相同
-        !resp.data().is_quiet()
-            && req.data().op() == resp.data().op()
-            && req.data().opaque() == resp.data().opaque()
+        assert!(
+            !resp.data().is_quiet()
+                && req.data().op() == resp.data().op()
+                && req.data().opaque() == resp.data().opaque()
+        );
+        true
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline]
@@ -116,19 +115,15 @@ impl Protocol for MemcacheBinary {
         }
         match req.op_code() as u8 {
             OP_CODE_NOOP => {
-                // 第一个字节变更为Response，其他的与Request保持一致
-                w.write_u8(RESPONSE_MAGIC)?;
+                w.write_u8(RESPONSE_MAGIC)?; // 第一个字节变更为Response，其他的与Request保持一致
                 w.write_slice(req.data(), 1)
             }
             0x0b => w.write(&VERSION_RESPONSE),
             0x10 => w.write(&STAT_RESPONSE),
             0x07 | 0x17 => Err(Error::Quit),
-            // quite get 请求。什么都不做
-            0x09 | 0x0d => Ok(()),
-            // set请求。返回 0x05 Item Not Stored
-            0x01 => w.write(&self.build_empty_response(0x5, req.data())),
-            // get 请求。返回0x01 NotFound
-            0x00 => w.write(&self.build_empty_response(0x1, req.data())),
+            0x09 | 0x0d => Ok(()), // quite get 请求。什么都不做
+            0x01 => w.write(&self.build_empty_response(0x5, req.data())), // set: 0x05 Item Not Stored
+            0x00 => w.write(&self.build_empty_response(0x1, req.data())), // get: 0x01 NotFound
             _ => Err(Error::NoResponseFound),
         }
     }
@@ -150,14 +145,12 @@ impl MemcacheBinary {
     fn build_write_back_inplace(&self, req: &mut HashedCommand) {
         let data = req.data_mut();
         assert!(data.len() >= HEADER_LEN);
-        let op_code = NOREPLY_MAPPING[data.op() as usize];
-        // 把cop_code替换成quite command.
-        data.update_opcode(op_code);
         // 把cas请求转换成非cas请求: cas值设置为0
         data.clear_cas();
-        // 更新flag
-        let op = COMMAND_IDX[op_code as usize].into();
-        req.reset_flag(op_code as u16, op);
+        let op = data.map_op_noreply();
+        let cmd = data.operation();
+        assert!(data.is_quiet());
+        req.reset_flag(op as u16, cmd);
         // 设置只发送标签，发送完成即请求完成。
         req.set_sentonly(true);
         assert!(req.operation().is_store());

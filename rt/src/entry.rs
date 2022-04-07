@@ -75,7 +75,6 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
         refresh_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         let m_reenter = Path::new(vec![BASE_PATH]).rtt("reenter10ms");
-        metrics::incr_task();
         Self {
             inner: f,
             last: Instant::now(),
@@ -153,11 +152,5 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Entry<
             log::info!("closing => {:?} {:?}", self.inner, self.out);
         }
         Poll::Ready(self.out.take().unwrap())
-    }
-}
-impl<F> Drop for Entry<F> {
-    #[inline]
-    fn drop(&mut self) {
-        metrics::decr_task();
     }
 }
