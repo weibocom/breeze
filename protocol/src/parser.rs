@@ -3,6 +3,7 @@ use enum_dispatch::enum_dispatch;
 use sharding::hash::Hash;
 
 use crate::memcache::MemcacheBinary;
+use crate::phantom::Phantom;
 use crate::redis::Redis;
 use crate::{Error, Flag, Result};
 #[enum_dispatch(Proto)]
@@ -10,12 +11,14 @@ use crate::{Error, Flag, Result};
 pub enum Parser {
     McBin(MemcacheBinary),
     Redis(Redis),
+    Phantom(Phantom),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
         match name {
             "mc" => Ok(Self::McBin(Default::default())),
             "redis" => Ok(Self::Redis(Default::default())),
+            "phantom" => Ok(Self::Phantom(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }
