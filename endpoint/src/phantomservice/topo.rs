@@ -77,7 +77,7 @@ where
 
         let (idx, try_next) = self.get_context(&mut context, req.operation().is_store());
         if idx >= self.streams.len() {
-            log::info!(
+            log::debug!(
                 "+++ ignore req for idx/{} is bigger than streams.len/{}, req: {:?}",
                 idx,
                 self.streams.len(),
@@ -90,7 +90,7 @@ where
         req.try_next(try_next);
         *req.mut_context() = context.ctx;
 
-        log::info!("++++ send req with server-idx: {}", idx);
+        log::debug!("++++ send req with server-idx: {}", idx);
         unsafe { self.streams.get_unchecked(idx).0.send(req) };
     }
 }
@@ -112,7 +112,7 @@ where
         if idx >= self.streams.len() {
             return (idx, false);
         }
-        log::info!("+++ will check access mod");
+        log::debug!("+++ will check access mod");
         let stream_mod = &self.streams.get(idx).unwrap().1;
         while (ctx.is_write() && !stream_mod.can_write())
             || (!ctx.is_write() && !stream_mod.can_read())
