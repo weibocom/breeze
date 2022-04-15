@@ -67,7 +67,7 @@ impl Phantom {
                     let _ = packet.take();
                     let req = cfg.build_request_with_key(hash, &real_key);
                     // let req = HashedCommand::new(cmd, hash, flag);
-                    log::info!("+++ will send req:{:?}", req.data().utf8());
+                    log::debug!("+++ will send req:{:?}", req.data().utf8());
 
                     process.process(req, true);
                 } else {

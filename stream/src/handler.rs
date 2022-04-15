@@ -74,7 +74,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
             self.num_tx += 1;
             self.s.write_slice(req.data(), 0)?;
-            log::info!("+++++ write req:{:?}", req.data().utf8());
+            log::debug!("+++++ write req:{:?}", req.data().utf8());
             match req.on_sent() {
                 Some(r) => self.pending.push_back(r),
                 None => {
