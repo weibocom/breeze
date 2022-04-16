@@ -137,7 +137,6 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         self.service = namespace.to_string();
-
         if let Some(ns) = PhantomNamespace::try_from(cfg) {
             self.timeout = ns.timeout();
             self.hasher = Hasher::from(&ns.basic.hash);
