@@ -47,7 +47,7 @@ where
             if !dump && !update {
                 return;
             }
-
+            log::info!("+++ service:{}, dump:{}, update:{}", service, dump, update);
             if update {
                 log::info!("updating {:?} => {:?} cfg: {:?}", self, sig, cfg);
                 self.update(&cfg, sig);
