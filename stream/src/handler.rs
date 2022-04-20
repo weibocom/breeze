@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
 use futures::ready;
-use protocol::{Error, Protocol, Request, Result, Stream};
+use protocol::{Error, Protocol, Request, Result, Stream, Utf8};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::buffer::StreamGuard;
@@ -74,6 +74,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
             self.num_tx += 1;
             self.s.write_slice(req.data(), 0)?;
+            log::debug!("+++++ write req:{:?}", req.data().utf8());
             match req.on_sent() {
                 Some(r) => self.pending.push_back(r),
                 None => {
@@ -97,10 +98,12 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
             // num == 0 说明是buffer满了。等待下一次事件，buffer释放后再读取。
             let num = reader.check_eof_num()?;
             if num == 0 {
+                log::debug!("++++++ buffer full:{:?}", self);
                 log::debug!("buffer full:{:?}", self);
                 // TODO: 可能触发多次重试失败。
                 return Poll::Ready(Err(Error::ResponseBufferFull));
             }
+            log::debug!("++++++ {} bytes received. {:?}", num, self);
             log::debug!("{} bytes received. {:?}", num, self);
             while self.buf.len() > 0 {
                 match self.parser.parse_response(&mut self.buf)? {
