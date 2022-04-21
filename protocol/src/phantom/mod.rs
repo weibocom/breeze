@@ -62,13 +62,10 @@ impl Phantom {
                     let full_key = packet.parse_key()?;
                     let (hash, real_key) = split_and_calculate_hash(alg, &full_key);
                     packet.ignore_all_bulks()?;
-                    // let flag = cfg.flag();
+
                     // 需要根据key进行重建
                     let _ = packet.take();
                     let req = cfg.build_request_with_key(hash, &real_key);
-                    // let req = HashedCommand::new(cmd, hash, flag);
-                    log::debug!("+++ will send req:{:?}", req.data().utf8());
-
                     process.process(req, true);
                 } else {
                     let hash = default_hash();
@@ -128,10 +125,23 @@ impl Phantom {
         let data = s.slice();
         log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
 
-        if data.len() >= 2 {
+        // phantom 在rsp为负数（:-1/-2/-3\r\n），说明请求异常，需要重试
+        let mut status_ok = true;
+        if data.len() > 2 {
             let mut oft = 0;
             match data.at(0) {
-                b'-' | b':' | b'+' => data.line(&mut oft)?,
+                b':' => {
+                    // 负数均重试，避免HA配置差异
+                    if data.at(1) == b'-' {
+                        status_ok = false;
+                    }
+                    data.line(&mut oft)?;
+                }
+                b'-' | b'+' => {
+                    // 对于phantom，-/+均需要重试
+                    status_ok = false;
+                    data.line(&mut oft)?;
+                }
                 b'$' => {
                     let _num = data.num_and_skip(&mut oft)?;
                 }
@@ -139,15 +149,15 @@ impl Phantom {
                     self.num_skip_all(&data, &mut oft)?;
                 }
                 _ => {
-                    log::info!("not supported:{:?}, {:?}", data.utf8(), data);
+                    log::info!("phantom not supported:{:?}, {:?}", data.utf8(), data);
                     panic!("not supported");
                 }
             }
             assert!(oft <= data.len());
             let mem = s.take(oft);
             let mut flag = Flag::new();
-            // redis不需要重试
-            flag.set_status_ok(true);
+            flag.set_status_ok(status_ok);
+
             return Ok(Some(Command::new(flag, mem)));
         }
         Ok(None)
@@ -242,11 +252,7 @@ fn split_and_calculate_hash<H: Hash>(alg: &H, full_key: &RingSlice) -> (i64, Rin
         let hash_key = full_key.sub_slice(0, idx);
         let real_key_len = full_key.len() - idx - 1;
         let real_key = full_key.sub_slice(idx + 1, real_key_len);
-        log::debug!(
-            "++++ hashkey:{:?}, realkey:{:?}",
-            hash_key.utf8(),
-            real_key.utf8()
-        );
+
         debug_assert!(real_key.len() > 0);
         let hash = alg.hash(&hash_key);
         return (hash, real_key);
