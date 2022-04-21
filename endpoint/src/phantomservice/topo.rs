@@ -112,7 +112,6 @@ where
         if idx >= self.streams.len() {
             return (idx, false);
         }
-        log::debug!("+++ will check access mod");
         let stream_mod = &self.streams.get(idx).unwrap().1;
         while (ctx.is_write() && !stream_mod.can_write())
             || (!ctx.is_write() && !stream_mod.can_read())
