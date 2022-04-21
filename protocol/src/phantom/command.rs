@@ -278,7 +278,7 @@ lazy_static! {
                 ("bfget" , "bfget",        2, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("bfmget", "bfget",       -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
                 ("bfset", "bfset",         2, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("bfmset", "bfmset",       -2, Store, 1, 1, 1, 3, true, false, true, false, true),
+                ("bfmset", "bfset",       -2, Store, 1, 1, 1, 3, true, false, true, false, true),
 
 
 
