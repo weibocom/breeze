@@ -4,6 +4,7 @@ extern crate lazy_static;
 mod flag;
 pub mod memcache;
 pub mod parser;
+pub mod phantom;
 pub mod redis;
 pub mod req;
 //pub mod resp;
@@ -39,6 +40,7 @@ pub trait Writer {
     fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
         let mut oft = oft;
         let len = data.len();
+        log::debug!("+++ will write to client/server:{:?}", data.utf8());
         while oft < len {
             let data = data.read(oft);
             oft += data.len();
@@ -56,6 +58,7 @@ pub trait Writer {
 pub enum Resource {
     Memcache,
     Redis,
+    Phantom,
 }
 
 impl Resource {
@@ -64,6 +67,7 @@ impl Resource {
         match self {
             Self::Memcache => "mc",
             Self::Redis => "redis",
+            Self::Phantom => "phantom",
         }
     }
 }

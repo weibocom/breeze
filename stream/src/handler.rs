@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
 use futures::ready;
-use protocol::{Error, Protocol, Request, Result, Stream};
+use protocol::{Error, Protocol, Request, Result, Stream, Utf8};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::buffer::StreamGuard;
@@ -101,6 +101,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                 // TODO: 可能触发多次重试失败。
                 return Poll::Ready(Err(Error::ResponseBufferFull));
             }
+
             log::debug!("{} bytes received. {:?}", num, self);
             while self.buf.len() > 0 {
                 match self.parser.parse_response(&mut self.buf)? {
@@ -111,7 +112,6 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
-                        use protocol::Utf8;
                         assert!(
                             self.parser.check(req.cmd(), &cmd),
                             "{:?} {:?} => {:?}",

@@ -19,5 +19,10 @@ mod hash_test {
         let crc32_point = Hasher::from("crc32-point");
         let h_point = crc32_point.hash(&key.as_bytes());
         println!("crc32-point hash: {}", h_point);
+
+        let a = 0b10;
+        let b = 0b110;
+        let c = 0o10;
+        println!("a: {}, b: {}, c: {}", a, b, c);
     }
 }

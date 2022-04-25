@@ -34,7 +34,13 @@ pub(super) async fn process_one(
             Duration::from_secs(1)
         } else {
             log::warn!("waiting inited. {} tries:{}", quard, tries);
-            Duration::from_secs(1 << (tries.min(10)))
+            // Duration::from_secs(1 << (tries.min(10)))
+            // 1 << 10 差不多20分钟，太久了，先改为递增间隔 fishermen
+            let mut t = 2 * (tries - 10) as u64;
+            if t > 1024 {
+                t = 1024;
+            }
+            Duration::from_secs(t)
         };
         tokio::time::sleep(sleep).await;
     }
