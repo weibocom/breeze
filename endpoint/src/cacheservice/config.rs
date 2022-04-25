@@ -25,8 +25,8 @@ pub struct Namespace {
     #[serde(default)]
     pub force_write_all: bool,
 
-    // set/cas/add/delete等更新操作，是否更新slave L1
-    #[serde(default)]
+    // set/cas/add/delete等更新操作，是否更新slave L1，默认需要是true
+    #[serde(default = "Namespace::default_update_slave_l1")]
     pub update_slave_l1: bool,
 
     #[serde(default)]
@@ -61,12 +61,15 @@ impl Namespace {
                     // 如果update_slave_l1为false，去掉slave_l1
                     if !ns.update_slave_l1 {
                         ns.slave_l1 = Vec::with_capacity(0);
+                        log::info!("{} update slave l1: false", namespace);
                     }
-
                     Some(ns)
                 }
             }
         }
+    }
+    fn default_update_slave_l1() -> bool {
+        return true;
     }
     pub(super) fn timeout_master(&self) -> Duration {
         Duration::from_millis(200.max(self.timeout_ms_master as u64))

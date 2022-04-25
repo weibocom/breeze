@@ -10,6 +10,7 @@ mod mem;
 mod proto;
 mod protocol;
 // mod redis;
+mod hash_test;
 mod ring_slice;
 //mod size;
 //mod slice;
