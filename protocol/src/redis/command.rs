@@ -346,6 +346,7 @@ lazy_static! {
                 ("setrange", "setrange",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
                 ("getrange", "getrange",                    4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("getset", "getset",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("strlen", "strlen",                        2, Get, 1, 1, 1, 3, false, false, true, false, false),
 
                 // 测试完毕后规整到incr附近
                 ("incrby", "incrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
@@ -382,7 +383,6 @@ lazy_static! {
 
             // TODO: 暂时不支持的指令，启用时注意加上padding rsp fishermen
             // "psetex" => (4, Operation::Store, 1, 1, 1),
-            // "strlen" => (2, Operation::Get, 1, 1, 1),
             // "substr" => (4, Operation::Get, 1, 1, 1),
             // "rpoplpush" => (3, Operation::Store, 1, 2, 1),
             // "brpop" => (-3, Operation::Store, 1, -2, 1),
