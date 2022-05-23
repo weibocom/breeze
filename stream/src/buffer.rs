@@ -94,7 +94,8 @@ impl StreamGuard {
     #[inline]
     pub fn init(init: usize) -> Self {
         const MIN: usize = 1024;
-        const MAX: usize = 4 << 20;
+        // buffer最大从4M调整到8M，观察CPU、Mem fishermen 2022.5.23
+        const MAX: usize = 8 << 20;
         let init = init.max(MIN).min(MAX);
         Self::with(MIN, MAX, init)
     }
