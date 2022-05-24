@@ -40,12 +40,29 @@ pub struct Basic {
 
 impl RedisNamespace {
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
-        serde_yaml::from_str::<RedisNamespace>(cfg)
+        let nso = serde_yaml::from_str::<RedisNamespace>(cfg)
             .map_err(|e| {
                 log::info!("failed to parse redis config:{}", cfg);
                 e
             })
-            .ok()
+            .ok();
+        if let Some(ns) = nso {
+            // check backend size，对于非modula限制后端数量为2^n
+            if ns
+                .basic
+                .distribution
+                .ne(sharding::distribution::DIST_MODULA)
+            {
+                let len = ns.backends.len();
+                let power_two = len > 0 && ((len & len - 1) == 0);
+                if !power_two {
+                    log::error!("shard num {} is not power of two: {}", len, cfg);
+                    return None;
+                }
+            }
+            return Some(ns);
+        }
+        nso
     }
     pub(super) fn timeout_master(&self) -> Duration {
         Duration::from_millis(200.max(self.basic.timeout_ms_master as u64))
