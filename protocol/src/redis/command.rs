@@ -256,8 +256,8 @@ lazy_static! {
                 // TODO: del 删除多个key时，返回删除的key数量，先不聚合这个数字，反正client也会忽略？ fishermen
                 ("del", "del",            -2, Store, 1, -1, 1, 3, true, false, true, false, false),
 
-                // TODO：exists 虽然原生支持多key，但因为返回聚合数字，意义也不大，故先只支持单key fishermen
-                ("exists", "exists",       -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
+                // TODO：exists 虽然原生支持多key，但业务client支持单key，故此处只支持单key fishermen
+                ("exists", "exists",       2, Get, 1, 1, 1, 3, false, false, true, false, false),
 
                 ("expire",   "expire",     3, Store, 1, 1, 1, 3, false, false, true, false, false),
                 ("expireat", "expireat",   3, Store, 1, 1, 1, 3, false, false, true, false, false),
