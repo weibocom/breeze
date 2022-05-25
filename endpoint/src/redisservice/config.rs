@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use sharding::distribution::{DIST_ABS_MODULA, DIST_MODULA};
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct RedisNamespace {
@@ -47,12 +48,9 @@ impl RedisNamespace {
             })
             .ok();
         if let Some(ns) = nso {
-            // check backend size，对于非modula限制后端数量为2^n
-            if ns
-                .basic
-                .distribution
-                .ne(sharding::distribution::DIST_MODULA)
-            {
+            // check backend size，对于非modula/absmodula限制后端数量为2^n
+            let dist = ns.basic.distribution.clone();
+            if dist.ne(DIST_MODULA) && dist.ne(DIST_ABS_MODULA) {
                 let len = ns.backends.len();
                 let power_two = len > 0 && ((len & len - 1) == 0);
                 if !power_two {

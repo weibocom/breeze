@@ -24,6 +24,7 @@ pub enum Distribute {
 }
 
 pub const DIST_MODULA: &str = "modula";
+pub const DIST_ABS_MODULA: &str = "absmodula";
 pub const DIST_KETAMA: &str = "ketama";
 
 // 默认采用的slot是256，slot等价于client的hash-gen概念，即集群的槽（虚拟节点）的总数，
@@ -47,7 +48,8 @@ impl Distribute {
         let dist = distribution.to_ascii_lowercase();
 
         match dist.as_str() {
-            DIST_MODULA => Self::Modula(Modula::from(names.len())),
+            DIST_MODULA => Self::Modula(Modula::from(names.len(), false)),
+            DIST_ABS_MODULA => Self::Modula(Modula::from(names.len(), true)),
             DIST_KETAMA => Self::Consistent(Consistent::from(names)),
             _ => {
                 if distribution.starts_with(DIST_RANGE) {
@@ -60,7 +62,7 @@ impl Distribute {
                     return Self::SlotMod(SlotMod::from(distribution, names.len()));
                 }
                 log::warn!("'{}' is not valid , use modula instead", distribution);
-                Self::Modula(Modula::from(names.len()))
+                Self::Modula(Modula::from(names.len(), false))
             }
         }
     }
@@ -80,6 +82,6 @@ impl Distribute {
 // 默认不分片
 impl Default for Distribute {
     fn default() -> Self {
-        Self::Modula(Modula::from(1))
+        Self::Modula(Modula::from(1, false))
     }
 }
