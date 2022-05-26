@@ -73,9 +73,9 @@ where
         assert!(shard_idx < self.shards.len(), "{:?}", req);
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
-        // 跟踪hash为0的场景，hash设置错误、潜在bug可能导致hash为0，待2022.12后再考虑清理 fishermen
+        // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
         use protocol::Utf8;
-        if req.hash() == 0 {
+        if req.hash() <= 0 {
             log::warn!(
                 "+++ careful - {} hash/idx:{}/{}, req:{:?}",
                 self.service,
