@@ -75,7 +75,7 @@ where
 
         // 跟踪hash为0的场景，hash设置错误、潜在bug可能导致hash为0，待2022.12后再考虑清理 fishermen
         use protocol::Utf8;
-        if req.hash() <= 0 {
+        if req.hash() == 0 {
             log::warn!(
                 "+++ careful - {} hash/idx:{}/{}, req:{:?}",
                 self.service,
@@ -84,13 +84,6 @@ where
                 req.data().utf8()
             )
         }
-        log::debug!(
-            "+++ will send - {} hash/idx:{}/{}, req:{:?}",
-            self.service,
-            req.hash(),
-            shard_idx,
-            req.data().utf8()
-        );
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
