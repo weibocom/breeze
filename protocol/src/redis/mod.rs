@@ -112,7 +112,7 @@ impl Redis {
     #[inline]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
-        log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
+        log::debug!("+++ will parse rsp:{:?}", data.utf8());
 
         if data.len() >= 2 {
             let mut oft = 0;

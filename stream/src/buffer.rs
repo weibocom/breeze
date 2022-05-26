@@ -94,7 +94,8 @@ impl StreamGuard {
     #[inline]
     pub fn init(init: usize) -> Self {
         const MIN: usize = 1024;
-        const MAX: usize = 4 << 20;
+        // buffer最大从4M调整到64M，观察CPU、Mem fishermen 2022.5.23
+        const MAX: usize = 64 << 20;
         let init = init.max(MIN).min(MAX);
         Self::with(MIN, MAX, init)
     }
@@ -106,6 +107,10 @@ impl StreamGuard {
     fn with(min: usize, max: usize, init: usize) -> Self {
         let mut buf_rx = metrics::Path::base().num("mem_buf_rx");
         Self::from(GuardedBuffer::new(min, max, init, move |_old, delta| {
+            // TODO 对大于2M的场景记录日志观察 fishermen 2022.5.25
+            if _old >= 2 << 20 {
+                log::warn!("mem size {} will add {}", _old, delta);
+            }
             buf_rx += delta;
         }))
     }
