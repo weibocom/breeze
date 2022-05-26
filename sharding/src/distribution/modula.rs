@@ -23,6 +23,7 @@ impl Modula {
     }
 }
 
+// 实际hash计算一般都是int，但对于负数，各个语言、算法处理不同，为考虑兼容，hash用i64，在必需的场景，才转成i32 fishermen 2020.5.26
 #[derive(Clone, Debug, Default)]
 pub struct Pow2 {
     mask: usize,
