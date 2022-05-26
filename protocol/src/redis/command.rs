@@ -256,7 +256,7 @@ lazy_static! {
                 // TODO: del 删除多个key时，返回删除的key数量，先不聚合这个数字，反正client也会忽略？ fishermen
                 ("del", "del",            -2, Store, 1, -1, 1, 3, true, false, true, false, false),
 
-                // TODO：exists 虽然原生支持多key，但因为返回聚合数字，意义也不大，故先只支持单key fishermen
+                // TODO：exists 虽然原生支持多key，但业务client支持单key，故此处只支持单key fishermen
                 ("exists", "exists",       2, Get, 1, 1, 1, 3, false, false, true, false, false),
 
                 ("expire",   "expire",     3, Store, 1, 1, 1, 3, false, false, true, false, false),
@@ -346,6 +346,7 @@ lazy_static! {
                 ("setrange", "setrange",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
                 ("getrange", "getrange",                    4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("getset", "getset",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("strlen", "strlen",                        2, Get, 1, 1, 1, 3, false, false, true, false, false),
 
                 // 测试完毕后规整到incr附近
                 ("incrby", "incrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
@@ -382,7 +383,6 @@ lazy_static! {
 
             // TODO: 暂时不支持的指令，启用时注意加上padding rsp fishermen
             // "psetex" => (4, Operation::Store, 1, 1, 1),
-            // "strlen" => (2, Operation::Get, 1, 1, 1),
             // "substr" => (4, Operation::Get, 1, 1, 1),
             // "rpoplpush" => (3, Operation::Store, 1, 2, 1),
             // "brpop" => (-3, Operation::Store, 1, -2, 1),
