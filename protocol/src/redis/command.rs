@@ -147,7 +147,7 @@ pub(super) struct Commands {
     hash: Crc32,
 }
 impl Commands {
-    const MAPPING_RANGE: usize = 4096;
+    const MAPPING_RANGE: usize = 8192;
     fn new() -> Self {
         Self {
             supported: [CommandProperties::default(); Self::MAPPING_RANGE],
@@ -278,8 +278,8 @@ lazy_static! {
                 ("zrangebyscore", "zrangebyscore",       -4, Get, 1, 1, 1, 3, false, false, true, false, false),
 
                 // TODO: 验证先不支持这两个，避免在 hash冲突 vs 栈溢出 之间摇摆，或者后续把这个放到堆上？ fishermen
-                // ("zrevrank", "zrevrank",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                // ("zrevrangebyscore", "zrevrangebyscore", -4, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("zrevrank", "zrevrank",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("zrevrangebyscore", "zrevrangebyscore", -4, Get, 1, 1, 1, 3, false, false, true, false, false),
 
                 ("zrangebylex", "zrangebylex",           -4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("zrevrangebylex", "zrevrangebylex",     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
