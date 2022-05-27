@@ -15,6 +15,7 @@ use crate::buffer::{Reader, StreamGuard};
 use crate::{Callback, CallbackContext, CallbackContextPtr, Request, StreamMetrics};
 
 pub async fn copy_bidirectional<C, P, T>(
+    name: String,
     top: T,
     mut metrics: StreamMetrics,
     client: C,
@@ -32,7 +33,7 @@ where
         cb,
         top,
         metrics,
-        rx_buf: StreamGuard::new(),
+        rx_buf: StreamGuard::new(name),
         client,
         parser,
         pending: VecDeque::with_capacity(63),

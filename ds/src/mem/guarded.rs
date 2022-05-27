@@ -10,6 +10,7 @@ pub trait BuffRead {
 }
 
 pub struct GuardedBuffer {
+    pub name: String,
     inner: ResizedRingBuffer,
     taken: usize, // 已取走未释放的位置 read <= taken <= write
     guards: PinnedQueue<AtomicU32>,
@@ -17,12 +18,14 @@ pub struct GuardedBuffer {
 
 impl GuardedBuffer {
     pub fn new<F: FnMut(usize, isize) + 'static>(
+        name: String,
         min: usize,
         max: usize,
         init: usize,
         cb: F,
     ) -> Self {
         Self {
+            name,
             inner: ResizedRingBuffer::from(min, max, init, cb),
             guards: PinnedQueue::new(),
             taken: 0,
