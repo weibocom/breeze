@@ -55,6 +55,7 @@ where
 use ds::{GuardedBuffer, MemGuard, RingSlice};
 // 已写入未处理的数据流。
 pub struct StreamGuard {
+    name: String,
     ctx: u64,
     buf: GuardedBuffer,
 }
@@ -87,32 +88,42 @@ impl protocol::Stream for StreamGuard {
 impl From<GuardedBuffer> for StreamGuard {
     #[inline]
     fn from(buf: GuardedBuffer) -> Self {
-        Self { buf, ctx: 0 }
+        Self {
+            name: buf.name.clone(),
+            buf,
+            ctx: 0,
+        }
     }
 }
 impl StreamGuard {
     #[inline]
-    pub fn init(init: usize) -> Self {
+    pub fn init(name: String, init: usize) -> Self {
         const MIN: usize = 1024;
         // buffer最大从4M调整到64M，观察CPU、Mem fishermen 2022.5.23
         const MAX: usize = 64 << 20;
         let init = init.max(MIN).min(MAX);
-        Self::with(MIN, MAX, init)
+        Self::with(name, MIN, MAX, init)
     }
     #[inline]
-    pub fn new() -> Self {
-        Self::init(1024)
+    pub fn new(name: String) -> Self {
+        Self::init(name, 1024)
     }
     #[inline]
-    fn with(min: usize, max: usize, init: usize) -> Self {
+    fn with(name: String, min: usize, max: usize, init: usize) -> Self {
         let mut buf_rx = metrics::Path::base().num("mem_buf_rx");
-        Self::from(GuardedBuffer::new(min, max, init, move |_old, delta| {
-            // TODO 对大于2M的场景记录日志观察 fishermen 2022.5.25
-            if _old >= 2 << 20 {
-                log::warn!("mem size {} will add {}", _old, delta);
-            }
-            buf_rx += delta;
-        }))
+        Self::from(GuardedBuffer::new(
+            name.clone(),
+            min,
+            max,
+            init,
+            move |_old, delta| {
+                // TODO 对大于2M的场景记录日志观察 fishermen 2022.5.25
+                if _old >= 2 << 20 {
+                    log::warn!("{} - mem size {} will add {}", name, _old, delta);
+                }
+                buf_rx += delta;
+            },
+        ))
     }
     #[inline]
     pub fn pending(&self) -> usize {

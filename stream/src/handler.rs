@@ -47,7 +47,13 @@ where
     }
 }
 impl<'r, Req, P, S> Handler<'r, Req, P, S> {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, path: &Path) -> Self
+    pub(crate) fn from(
+        name: String,
+        data: &'r mut Receiver<Req>,
+        s: S,
+        parser: P,
+        path: &Path,
+    ) -> Self
     where
         S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
     {
@@ -57,7 +63,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
             pending: VecDeque::with_capacity(31),
             s,
             parser,
-            buf: StreamGuard::new(),
+            buf: StreamGuard::new(name),
             rtt: path.rtt("req"),
             num_rx: 0,
             num_tx: 0,

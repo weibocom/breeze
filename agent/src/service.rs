@@ -91,8 +91,9 @@ async fn _process_one(
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         let top = ctop.expect("build failed");
+        let name = quard.name();
         spawn(async move {
-            if let Err(e) = copy_bidirectional(top, metrics, client, p).await {
+            if let Err(e) = copy_bidirectional(name, top, metrics, client, p).await {
                 match e {
                     protocol::Error::Quit => {} // client发送quit协议退出
                     protocol::Error::ReadEof => {}
