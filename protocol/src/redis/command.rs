@@ -1,6 +1,6 @@
 use crate::{HashedCommand, OpCode, Operation};
 use ds::{MemGuard, RingSlice};
-use sharding::hash::{Crc32, Hash, UppercaseHashKey};
+use sharding::hash::{Bkdr, Hash, UppercaseHashKey};
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[allow(dead_code)]
@@ -144,14 +144,16 @@ impl CommandProperties {
 // 算法能够完整的将其映射到0~4095这个区间。因为使用这个避免大量的match消耗。
 pub(super) struct Commands {
     supported: [CommandProperties; Self::MAPPING_RANGE],
-    hash: Crc32,
+    // hash: Crc32,
+    hash: Bkdr,
 }
 impl Commands {
-    const MAPPING_RANGE: usize = 8192;
+    const MAPPING_RANGE: usize = 4096;
     fn new() -> Self {
         Self {
             supported: [CommandProperties::default(); Self::MAPPING_RANGE],
-            hash: Crc32::default(),
+            // hash: Crc32::default(),
+            hash: Bkdr::default(),
         }
     }
     #[inline]
@@ -199,6 +201,13 @@ impl Commands {
         let uppercase = name.to_uppercase();
         let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
         assert!(idx < self.supported.len());
+        if self.supported[idx].supported {
+            log::warn!(
+                "cmd/{} hash conflicted with {}",
+                name,
+                self.supported[idx].name
+            );
+        }
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
         self.supported[idx] = CommandProperties {
