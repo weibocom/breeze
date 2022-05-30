@@ -73,9 +73,9 @@ where
         assert!(shard_idx < self.shards.len(), "{:?}", req);
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
-        // 跟踪hash为0的场景，hash设置错误、潜在bug可能导致hash为0，待2022.12后再考虑清理 fishermen
+        // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
         use protocol::Utf8;
-        if req.hash() == 0 {
+        if req.hash() <= 0 {
             log::warn!(
                 "+++ careful - {} hash/idx:{}/{}, req:{:?}",
                 self.service,
@@ -121,12 +121,13 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
-            let len = ns.backends.len();
-            let power_two = len > 0 && ((len & len - 1) == 0);
-            if !power_two {
-                log::error!("{} shard num {} is not power of two", self.service, len);
-                return;
-            }
+            // TODO  放到parse的地方判断
+            // let len = ns.backends.len();
+            // let power_two = len > 0 && ((len & len - 1) == 0);
+            // if !power_two {
+            //     log::error!("{} shard num {} is not power of two", self.service, len);
+            //     return;
+            // }
 
             self.timeout_master = ns.timeout_master();
             self.timeout_slave = ns.timeout_slave();
