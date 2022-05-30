@@ -201,13 +201,6 @@ impl Commands {
         let uppercase = name.to_uppercase();
         let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
         assert!(idx < self.supported.len());
-        if self.supported[idx].supported {
-            log::warn!(
-                "cmd/{} hash conflicted with {}",
-                name,
-                self.supported[idx].name
-            );
-        }
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
         self.supported[idx] = CommandProperties {
