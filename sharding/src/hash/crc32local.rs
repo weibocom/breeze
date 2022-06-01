@@ -74,7 +74,7 @@ impl Crc32localDelimiter {
         let alg_parts: Vec<&str> = alg.split(super::HASHER_NAME_DELIMITER).collect();
 
         debug_assert!(alg_parts.len() >= 2);
-        debug_assert_eq!(alg_parts[0], "crc32loacl");
+        debug_assert_eq!(alg_parts[0], "crc32local");
 
         // 如果需要扩展新的分隔符，在这里新增一行即可 fishermen
         let delimiter = match alg_parts[1] {
