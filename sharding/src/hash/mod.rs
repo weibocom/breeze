@@ -89,6 +89,7 @@ impl Hasher {
                 "bkdr" => Self::Bkdr(Default::default()),
                 "raw" => Self::Raw(Raw::from(Default::default())),
                 "crc32" => Self::Crc32(Default::default()),
+                "crc32local" => Self::Crc32local(Default::default()),
                 "rawcrc32local" => Self::Rawcrc32local(Default::default()),
                 _ => {
                     // 默认采用mc的crc32-s hash
@@ -114,7 +115,7 @@ impl Hasher {
                 Self::Crc32localDelimiter(Crc32localDelimiter::from(alg_lower.as_str()))
             }
             _ => {
-                log::error!("unknow hash: {}", alg);
+                log::error!("found unknow hash: {} use crc32 instead", alg);
                 Self::Crc32(Default::default())
             }
         }
