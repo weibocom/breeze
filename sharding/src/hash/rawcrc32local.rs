@@ -31,6 +31,7 @@ impl Hash for Rawcrc32local {
                     return hash;
                 } else {
                     hash = 0;
+                    break;
                 }
             }
             hash = hash * 10 + (key.at(i) - '0' as u8) as i64;
