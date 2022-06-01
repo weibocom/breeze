@@ -19,6 +19,10 @@ mod shard_test {
     fn crc32_short() {
         // let key = "7516310920..uasvw";
         let key = "123测试中文hash.fri";
+        let key = "1234500_xx";
+        let hasher = Hasher::from("crc32local");
+        let h = hasher.hash(&key.as_bytes());
+        println!("key:{}, crc32local hash:{}", key, h);
 
         let crc32_hasher = Hasher::from("crc32");
         let h = crc32_hasher.hash(&key.as_bytes());
