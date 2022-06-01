@@ -1,10 +1,14 @@
 pub mod bkdr;
 pub mod crc32;
+pub mod crc32local;
 pub mod raw;
+pub mod rawcrc32local;
 
 pub use bkdr::Bkdr;
 pub use crc32::*;
+pub use crc32local::*;
 pub use raw::Raw;
+pub use rawcrc32local::Rawcrc32local;
 
 use enum_dispatch::enum_dispatch;
 #[enum_dispatch]
@@ -22,6 +26,9 @@ pub enum Hasher {
     Crc32Short(Crc32Short),         // mc short crc32
     Crc32Num(Crc32Num),             // crc32 for a hash key whick is a num,
     Crc32Delimiter(Crc32Delimiter), // crc32 for a hash key which has a delimiter of "." or "_" or "#" etc.
+    Crc32local(Crc32local),         // crc32local for a hash key like: xx.x, xx_x, xx#x etc.
+    Crc32localDelimiter(Crc32localDelimiter),
+    Rawcrc32local(Rawcrc32local), // raw or crc32local
 }
 
 // crc32-short和crc32-range长度相同，所以此处选一个
@@ -82,6 +89,8 @@ impl Hasher {
                 "bkdr" => Self::Bkdr(Default::default()),
                 "raw" => Self::Raw(Raw::from(Default::default())),
                 "crc32" => Self::Crc32(Default::default()),
+                "crc32local" => Self::Crc32local(Default::default()),
+                "rawcrc32local" => Self::Rawcrc32local(Default::default()),
                 _ => {
                     // 默认采用mc的crc32-s hash
                     log::error!("found unknown hash:{}, use crc32-short instead", alg);
@@ -90,15 +99,25 @@ impl Hasher {
             };
         }
 
-        // crc32 扩展hash，目前包含3类：short、num、delimiter，前两种为：crc32-short, crc-32-num
-        // crc32-delimiter包括各种可扩展的分隔符，like： crc32-point, crc32-pound,crc32-underscore；
-        // 如果业务有固定前缀，也可以支持，在hash name后加-xxx，xxx为前缀长度。
+        // 扩展hash，包括crc32扩展、crc32local扩展：
+        // 1 crc32 扩展hash，目前包含3类：short、num、delimiter，前两种为：crc32-short, crc-32-num；
+        //   crc32-delimiter包括各种可扩展的分隔符，like： crc32-point, crc32-pound,crc32-underscore；
+        //   如果业务有固定前缀，也可以支持，在hash name后加-xxx，xxx为前缀长度。
+        // 2 crc32local 扩展hash，包括各种可扩展的分隔符，like： crc32-point, crc32-pound,crc32-underscore；
         debug_assert!(alg_parts.len() == 2 || alg_parts.len() == 3);
-        debug_assert!(alg_parts[0].eq("crc32"));
-        match alg_parts[1] {
-            CRC32_EXT_SHORT => Self::Crc32Short(Default::default()),
-            CRC32_EXT_NUM => Self::Crc32Num(Crc32Num::from(alg_lower.as_str())),
-            _ => Self::Crc32Delimiter(Crc32Delimiter::from(alg_lower.as_str())),
+        match alg_parts[0] {
+            "crc32" => match alg_parts[1] {
+                CRC32_EXT_SHORT => Self::Crc32Short(Default::default()),
+                CRC32_EXT_NUM => Self::Crc32Num(Crc32Num::from(alg_lower.as_str())),
+                _ => Self::Crc32Delimiter(Crc32Delimiter::from(alg_lower.as_str())),
+            },
+            "crc32local" => {
+                Self::Crc32localDelimiter(Crc32localDelimiter::from(alg_lower.as_str()))
+            }
+            _ => {
+                log::error!("found unknow hash: {} use crc32 instead", alg);
+                Self::Crc32(Default::default())
+            }
         }
     }
     #[inline]
