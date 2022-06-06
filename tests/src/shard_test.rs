@@ -41,79 +41,90 @@ mod shard_test {
     }
 
     #[test]
-    fn shard_check() {
+    fn shards_check() {
         // check raw hash
         raw_check();
 
-        // 将java生成的随机key及hash，每种size都copy的几条过来，用于日常验证
-        let path = "./records/";
-        let bkdr10 = format!("{}{}", path, "bkdr_10.log");
-        let bkdr15 = format!("{}{}", path, "bkdr_15.log");
-        let bkdr20 = format!("{}{}", path, "bkdr_20.log");
-        let bkdr50 = format!("{}{}", path, "bkdr_50.log");
-        bkdr_check(&bkdr10);
-        bkdr_check(&bkdr15);
-        bkdr_check(&bkdr20);
-        bkdr_check(&bkdr50);
-
+        let root_path = "./records";
         // will check crc32
         let shard_count = 8;
         let mut servers = Vec::with_capacity(shard_count);
         for i in 0..shard_count {
             servers.push(format!("192.168.0.{}", i).to_string());
         }
+
+        // 将java生成的随机key及hash，每种size都copy的几条过来，用于日常验证
+
+        let check_bkdr = false;
+        let check_crc32 = false;
+        let check_crc32local = true;
+        let check_consistant = false;
+
+        // bkdr
+        let hasher = Hasher::from("bkdr");
+        let dist = Distribute::from("modula", &servers);
+        if check_bkdr {
+            let path = format!("{}/bkdr_", root_path);
+            shard_check_with_files(path, &hasher, &dist);
+        }
+
+        // crc32-crc32local
         let dist = Distribute::from("range-256", &servers);
 
-        let hasher = Hasher::from("crc32-short");
-        let crc10 = format!("{}{}", path, "crc32_short_10.log");
-        let crc15 = format!("{}{}", path, "crc32_short_15.log");
-        let crc20 = format!("{}{}", path, "crc32_short_20.log");
-        let crc50 = format!("{}{}", path, "crc32_short_50.log");
-        crc32_check(&crc10, &hasher, &dist);
-        crc32_check(&crc15, &hasher, &dist);
-        crc32_check(&crc20, &hasher, &dist);
-        crc32_check(&crc50, &hasher, &dist);
+        // crc32
+        if check_crc32 {
+            let hasher = Hasher::from("crc32-short");
+            let path = format!("{}/crc32-short{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
 
-        let hasher = Hasher::from("crc32-range");
-        let crc10 = format!("{}{}", path, "crc32_range_10.log");
-        let crc15 = format!("{}{}", path, "crc32_range_15.log");
-        let crc20 = format!("{}{}", path, "crc32_range_20.log");
-        let crc50 = format!("{}{}", path, "crc32_range_50.log");
-        crc32_check(&crc10, &hasher, &dist);
-        crc32_check(&crc15, &hasher, &dist);
-        crc32_check(&crc20, &hasher, &dist);
-        crc32_check(&crc50, &hasher, &dist);
+            let hasher = Hasher::from("crc32-range");
+            let path = format!("{}/crc32-range{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
 
-        let hasher = Hasher::from("crc32-range-id");
-        let crc10 = format!("{}{}", path, "crc32_range_id_10.log");
-        let crc15 = format!("{}{}", path, "crc32_range_id_15.log");
-        let crc20 = format!("{}{}", path, "crc32_range_id_20.log");
-        let crc50 = format!("{}{}", path, "crc32_range_id_50.log");
-        crc32_check(&crc10, &hasher, &dist);
-        crc32_check(&crc15, &hasher, &dist);
-        crc32_check(&crc20, &hasher, &dist);
-        crc32_check(&crc50, &hasher, &dist);
+            let hasher = Hasher::from("crc32-range-id");
+            let path = format!("{}/crc32-range-id{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
 
-        let hasher = Hasher::from("crc32-range-id-5");
-        let crc10 = format!("{}{}", path, "crc32_range_id_5_10.log");
-        let crc15 = format!("{}{}", path, "crc32_range_id_5_15.log");
-        let crc20 = format!("{}{}", path, "crc32_range_id_5_20.log");
-        let crc50 = format!("{}{}", path, "crc32_range_id_5_50.log");
-        crc32_check(&crc10, &hasher, &dist);
-        crc32_check(&crc15, &hasher, &dist);
-        crc32_check(&crc20, &hasher, &dist);
-        crc32_check(&crc50, &hasher, &dist);
+            let hasher = Hasher::from("crc32-range-id-5");
+            let path = format!("{}/crc32-range-id-5{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
 
-        let hasher = Hasher::from("crc32-range-point");
-        let crc10 = format!("{}{}", path, "crc32_range_point_10.log");
-        let crc15 = format!("{}{}", path, "crc32_range_point_15.log");
-        let crc20 = format!("{}{}", path, "crc32_range_point_20.log");
-        let crc50 = format!("{}{}", path, "crc32_range_point_50.log");
-        crc32_check(&crc10, &hasher, &dist);
-        crc32_check(&crc15, &hasher, &dist);
-        crc32_check(&crc20, &hasher, &dist);
-        crc32_check(&crc50, &hasher, &dist);
+            let hasher = Hasher::from("crc32-range-point");
+            let path = format!("{}/crc32-range-point{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
+        }
 
+        // rawcrc32local
+        if check_crc32local {
+            let hasher = Hasher::from("rawcrc32local");
+            let path = format!("{}/rawcrc32local{}", root_path, "_");
+            // 只check长度不大于20的短key
+            shard_check_short_with_files(path, &hasher, &dist);
+
+            // crc32local
+            let hasher = Hasher::from("crc32local");
+            let path = format!("{}/crc32local{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
+
+            let hasher = Hasher::from("crc32local-point");
+            let path = format!("{}/crc32local-point{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
+
+            let hasher = Hasher::from("crc32local-pound");
+            let path = format!("{}/crc32local-pound{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
+
+            let hasher = Hasher::from("crc32local-underscore");
+            let path = format!("{}/crc32local-underscore{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
+        }
+
+        if check_consistant {
+            let hasher = Hasher::from("crc32");
+            let dist = Distribute::from("ketama", &servers);
+            let path = format!("{}/crc32-consistant{}", root_path, "_");
+            shard_check_with_files(path, &hasher, &dist);
+        }
         // let consis10 = format!("{}{}", path, "consistent_10.log");
         // let consis15 = format!("{}{}", path, "consistent_15.log");
         // let consis20 = format!("{}{}", path, "consistent_20.log");
@@ -125,6 +136,23 @@ mod shard_test {
 
         let key = " 653017.hqfy";
         md5(&key);
+    }
+
+    fn shard_check_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
+        shard_check_short_with_files(path.clone(), hasher, dist);
+
+        let crc50 = format!("{}{}", path, "50.log");
+        shard_check(&crc50, &hasher, &dist);
+    }
+
+    // 不check 50长度的key
+    fn shard_check_short_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
+        let crc10 = format!("{}{}", path, "10.log");
+        let crc15 = format!("{}{}", path, "15.log");
+        let crc20 = format!("{}{}", path, "20.log");
+        shard_check(&crc10, &hasher, &dist);
+        shard_check(&crc15, &hasher, &dist);
+        shard_check(&crc20, &hasher, &dist);
     }
 
     #[test]
@@ -234,8 +262,8 @@ mod shard_test {
         println!("check raw hash succeed!");
     }
 
-    fn crc32_check(path: &str, hasher: &Hasher, dist: &Distribute) {
-        println!("will check crc32 file: {}", path);
+    fn shard_check(path: &str, hasher: &Hasher, dist: &Distribute) {
+        println!("will check file: {}", path);
 
         let file = File::open(path).unwrap();
         let mut reader = BufReader::new(file);
@@ -261,8 +289,8 @@ mod shard_test {
                     let idx_in_java_u64 = idx_in_java.parse::<i64>().unwrap();
                     if idx != idx_in_java_u64 {
                         println!(
-                            "crc32 found error - line in java: {}, rust idx: {}",
-                            line, idx
+                            "{:?} found error - line in java: {}, rust idx: {}",
+                            hasher, line, idx
                         );
                         panic!("crc32 check error");
                     }

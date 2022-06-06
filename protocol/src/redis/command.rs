@@ -1,6 +1,6 @@
 use crate::{HashedCommand, OpCode, Operation};
 use ds::{MemGuard, RingSlice};
-use sharding::hash::{Crc32, Hash, UppercaseHashKey};
+use sharding::hash::{Bkdr, Hash, UppercaseHashKey};
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[allow(dead_code)]
@@ -144,14 +144,16 @@ impl CommandProperties {
 // 算法能够完整的将其映射到0~4095这个区间。因为使用这个避免大量的match消耗。
 pub(super) struct Commands {
     supported: [CommandProperties; Self::MAPPING_RANGE],
-    hash: Crc32,
+    // hash: Crc32,
+    hash: Bkdr,
 }
 impl Commands {
     const MAPPING_RANGE: usize = 4096;
     fn new() -> Self {
         Self {
             supported: [CommandProperties::default(); Self::MAPPING_RANGE],
-            hash: Crc32::default(),
+            // hash: Crc32::default(),
+            hash: Bkdr::default(),
         }
     }
     #[inline]
@@ -278,8 +280,8 @@ lazy_static! {
                 ("zrangebyscore", "zrangebyscore",       -4, Get, 1, 1, 1, 3, false, false, true, false, false),
 
                 // TODO: 验证先不支持这两个，避免在 hash冲突 vs 栈溢出 之间摇摆，或者后续把这个放到堆上？ fishermen
-                // ("zrevrank", "zrevrank",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                // ("zrevrangebyscore", "zrevrangebyscore", -4, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("zrevrank", "zrevrank",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("zrevrangebyscore", "zrevrangebyscore", -4, Get, 1, 1, 1, 3, false, false, true, false, false),
 
                 ("zrangebylex", "zrangebylex",           -4, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("zrevrangebylex", "zrevrangebylex",     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
