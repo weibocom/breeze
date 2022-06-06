@@ -18,11 +18,21 @@ mod shard_test {
     #[test]
     fn crc32_short() {
         // let key = "7516310920..uasvw";
-        let key = "123测试中文hash.fri";
-        let key = "1234500_xx";
+        // let key = "123测试中文hash.fri";
+        // let key = "1234500_xx";
+        // let key = "gray_uids_ApplyOrder2";
+        let key = "2689982197_tr40_10001_fq";
         let hasher = Hasher::from("crc32local");
-        let h = hasher.hash(&key.as_bytes());
-        println!("key:{}, crc32local hash:{}", key, h);
+        let hash = hasher.hash(&key.as_bytes());
+
+        let shard_count = 32;
+        let mut servers = Vec::with_capacity(shard_count);
+        for i in 0..shard_count {
+            servers.push(format!("192.168.0.{}", i).to_string());
+        }
+        let dist = Distribute::from("modula", &servers);
+        let idx = dist.index(hash);
+        println!("key:{}, crc32local hash:{}, idx: {}", key, hash, idx);
 
         let crc32_hasher = Hasher::from("crc32");
         let h = crc32_hasher.hash(&key.as_bytes());
