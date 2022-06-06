@@ -1,4 +1,4 @@
-// 用于兼容api-commons中的cn.sina.api.commons.util.Util.crc32()，一般尽量不用使用 fishermen
+// 用于兼容api-commons中的Util.crc32()，一般尽量不用使用 fishermen
 
 use std::fmt::Display;
 
