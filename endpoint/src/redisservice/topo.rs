@@ -75,9 +75,9 @@ where
 
         // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
         use protocol::Utf8;
-        if req.hash() <= 0 {
+        if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(
-                "+++ careful - {} hash/idx:{}/{}, req:{:?}",
+                "+++ send - {} hash/idx:{}/{}, req:{:?}",
                 self.service,
                 req.hash(),
                 shard_idx,
