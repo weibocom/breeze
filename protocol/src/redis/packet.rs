@@ -1,7 +1,8 @@
 use crate::{Error, Result};
-use ds::RingSlice;
+use ds::{CheckResult, RingSlice};
 
 const CRLF_LEN: usize = b"\r\n".len();
+const MASTER_CMD: &str = "*1\r\n$6\r\nmaster\r\n";
 
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
@@ -11,8 +12,17 @@ struct RequestContext {
     bulk: u16,
     op_code: u16,
     first: bool, // 在multi-get请求中是否是第一个请求。
-    _ignore: [u8; 3],
+    layer: u8,   // 请求的层次，目前只支持：master，all
+    _ignore: [u8; 2],
 }
+
+// 请求的layer层次
+pub enum LayerType {
+    NotChecked = 0,
+    All = 1,
+    MasterOnly = 2,
+}
+
 impl RequestContext {
     #[inline]
     fn reset(&mut self) {
@@ -62,6 +72,22 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn available(&self) -> bool {
         self.oft < self.data.len()
+    }
+
+    // 解析访问layer，
+    #[inline]
+    pub(super) fn parse_layer(&mut self) -> Result<()> {
+        if !self.layer_checked() {
+            match self.data.start_with(MASTER_CMD.as_bytes()) {
+                CheckResult::yes => {
+                    self.set_layer(LayerType::MasterOnly);
+                    self.oft += MASTER_CMD.len();
+                }
+                CheckResult::no => self.set_layer(LayerType::All),
+                CheckResult::maybe => return Err(crate::Error::ProtocolIncomplete),
+            }
+        }
+        Ok(())
     }
     #[inline]
     pub(super) fn parse_bulk_num(&mut self) -> Result<()> {
@@ -164,6 +190,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn complete(&self) -> bool {
         self.ctx.bulk == 0
+    }
+    pub fn layer_checked(&self) -> bool {
+        self.ctx.layer != (LayerType::NotChecked as u8)
+    }
+    pub(super) fn set_layer(&mut self, layer: LayerType) {
+        self.ctx.layer = layer as u8
+    }
+    pub(super) fn master_only(&self) -> bool {
+        self.ctx.layer == LayerType::MasterOnly as u8
     }
 }
 

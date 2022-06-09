@@ -9,6 +9,12 @@ pub struct RingSlice {
     end: usize,
 }
 
+pub enum CheckResult {
+    yes,
+    no,
+    maybe,
+}
+
 impl RingSlice {
     #[inline]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
@@ -148,6 +154,27 @@ impl RingSlice {
             }
         }
         None
+    }
+
+    // 查找是否以dest字符串作为最前面的字符串
+    #[inline]
+    pub fn start_with(&self, dest: &[u8]) -> CheckResult {
+        let mut len = dest.len();
+        if self.len() < dest.len() {
+            len = self.len();
+        }
+
+        for i in 0..len {
+            if self.at(i) != dest[i] {
+                return CheckResult::no;
+            }
+            if len == dest.len() {
+                return CheckResult::yes;
+            }
+            return CheckResult::maybe;
+        }
+
+        CheckResult::maybe
     }
 
     // 只用来debug
