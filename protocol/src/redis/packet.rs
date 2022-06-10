@@ -2,7 +2,8 @@ use crate::{Error, Result};
 use ds::{CheckResult, RingSlice};
 
 const CRLF_LEN: usize = b"\r\n".len();
-const MASTER_CMD: &str = "*1\r\n$6\r\nmaster\r\n";
+// TODO: 可能为小写字母? 也需要处理 fishermen
+const MASTER_CMD: &str = "*1\r\n$6\r\nMASTER\r\n";
 
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
@@ -81,7 +82,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             match self.data.start_with(MASTER_CMD.as_bytes()) {
                 CheckResult::yes => {
                     self.set_layer(LayerType::MasterOnly);
+
+                    self.stream.ignore(MASTER_CMD.len());
                     self.oft += MASTER_CMD.len();
+                    self.oft_last = self.oft;
+                    log::debug!("+++ oft_last:{}", self.oft_last);
                 }
                 CheckResult::no => self.set_layer(LayerType::All),
                 CheckResult::maybe => return Err(crate::Error::ProtocolIncomplete),
@@ -147,6 +152,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             *self.stream.context() = self.ctx.u64();
         }
     }
+
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
         assert!(self.oft_last < self.oft);

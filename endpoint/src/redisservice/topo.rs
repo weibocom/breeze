@@ -108,6 +108,7 @@ where
 
             endpoint.1.send(req)
         } else {
+            log::debug!("log only send to master, req:{:?}", req.data().utf8());
             shard.master().send(req)
         }
     }

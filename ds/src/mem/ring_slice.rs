@@ -159,6 +159,7 @@ impl RingSlice {
     // 查找是否以dest字符串作为最前面的字符串
     #[inline]
     pub fn start_with(&self, dest: &[u8]) -> CheckResult {
+        log::debug!("+++ will check master");
         let mut len = dest.len();
         if self.len() < dest.len() {
             len = self.len();
