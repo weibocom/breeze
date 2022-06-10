@@ -1,5 +1,5 @@
 use crate::{Error, Result};
-use ds::{CheckResult, RingSlice};
+use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
 // 防止client发大小写组合的master，需要忽略master的大小写 fishermen
@@ -80,16 +80,20 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(super) fn parse_layer(&mut self) -> Result<()> {
         if !self.layer_checked() {
             match self.data.start_with_ignore_case(0, MASTER_CMD.as_bytes()) {
-                CheckResult::yes => {
-                    self.set_layer(LayerType::MasterOnly);
+                Ok(rs) => {
+                    if rs {
+                        self.set_layer(LayerType::MasterOnly);
 
-                    self.stream.ignore(MASTER_CMD.len());
-                    self.oft += MASTER_CMD.len();
-                    self.oft_last = self.oft;
+                        self.stream.ignore(MASTER_CMD.len());
+                        self.oft += MASTER_CMD.len();
+                        self.oft_last = self.oft;
+                    } else {
+                        self.set_layer(LayerType::All);
+                    }
                 }
-                CheckResult::no => self.set_layer(LayerType::All),
-                CheckResult::maybe => return Err(crate::Error::ProtocolIncomplete),
-            }
+                // 只有长度不够才会返回err
+                Err(_) => return Err(Error::ProtocolIncomplete),
+            };
         }
         Ok(())
     }
