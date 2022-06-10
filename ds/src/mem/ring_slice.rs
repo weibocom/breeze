@@ -158,24 +158,52 @@ impl RingSlice {
 
     // 查找是否以dest字符串作为最前面的字符串
     #[inline]
-    pub fn start_with(&self, dest: &[u8]) -> CheckResult {
-        log::debug!("+++ will check master");
+    pub fn start_with(&self, offset: usize, dest: &[u8]) -> CheckResult {
         let mut len = dest.len();
         if self.len() < dest.len() {
             len = self.len();
         }
 
         for i in 0..len {
-            if self.at(i) != dest[i] {
+            if self.at(offset + i) != dest[i] {
                 return CheckResult::no;
             }
-            if len == dest.len() {
-                return CheckResult::yes;
-            }
-            return CheckResult::maybe;
         }
 
+        if len == dest.len() {
+            return CheckResult::yes;
+        }
         CheckResult::maybe
+    }
+
+    #[inline]
+    pub fn start_with_ignore_case(&self, offset: usize, dest: &[u8]) -> CheckResult {
+        let mut len = dest.len();
+        if self.len() < dest.len() {
+            len = self.len();
+        }
+
+        for i in 0..len {
+            let c = dest[i] as char;
+            // 对于非ascii字母，直接比较，否则忽略大小写比较
+            if !c.is_ascii_alphabetic() {
+                if self.at(offset + i) != dest[i] {
+                    return CheckResult::no;
+                }
+            } else {
+                let c_lower = c.to_ascii_lowercase() as u8;
+                let c_uper = c.to_ascii_uppercase() as u8;
+                let src = self.at(offset + i);
+                if src != c_lower && src != c_uper {
+                    return CheckResult::no;
+                }
+            }
+        }
+
+        if len == dest.len() {
+            return CheckResult::yes;
+        }
+        return CheckResult::maybe;
     }
 
     // 只用来debug
