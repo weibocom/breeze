@@ -77,25 +77,31 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     // 解析访问layer，
     #[inline]
-    pub(super) fn parse_layer(&mut self) -> Result<()> {
+    pub(super) fn parse_layer(&mut self) -> Result<bool> {
         if !self.layer_checked() {
             match self.data.start_with_ignore_case(0, MASTER_CMD.as_bytes()) {
                 Ok(rs) => {
                     if rs {
                         self.set_layer(LayerType::MasterOnly);
 
-                        self.stream.ignore(MASTER_CMD.len());
                         self.oft += MASTER_CMD.len();
                         self.oft_last = self.oft;
+                        self.stream.ignore(MASTER_CMD.len());
+                        *self.stream.context() = self.ctx.u64();
+                        // log::debug!("+++ master only: true");
+                        return Ok(true);
                     } else {
                         self.set_layer(LayerType::All);
+                        // log::debug!("+++ master only: false");
+                        return Ok(false);
                     }
                 }
                 // 只有长度不够才会返回err
                 Err(_) => return Err(Error::ProtocolIncomplete),
             };
         }
-        Ok(())
+        // 之前已经check过，直接取
+        Ok(self.master_only())
     }
     #[inline]
     pub(super) fn parse_bulk_num(&mut self) -> Result<()> {
