@@ -75,7 +75,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.oft < self.data.len()
     }
 
-    // 解析访问layer，
+    // 解析访问layer，由于master非独立指令，如果返回Ok，需要确保还有数据可以继续解析
     #[inline]
     pub(super) fn parse_layer(&mut self) -> Result<bool> {
         if !self.layer_checked() {
@@ -89,7 +89,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         self.stream.ignore(MASTER_CMD.len());
                         *self.stream.context() = self.ctx.u64();
                         // log::debug!("+++ master only: true");
-                        return Ok(true);
+                        // master 不是独立指令，只有还有数据可解析时，才返回Ok，否则协议不完整 fishermen
+                        if self.available() {
+                            return Ok(true);
+                        }
+                        log::debug!("+++ wait more data for master only is true");
+                        return Err(Error::ProtocolIncomplete);
                     } else {
                         self.set_layer(LayerType::All);
                         // log::debug!("+++ master only: false");
