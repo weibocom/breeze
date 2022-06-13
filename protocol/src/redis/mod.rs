@@ -40,7 +40,7 @@ impl Redis {
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
             // 先尝试parse master
-            packet.parse_layer()?;
+            let master_only = packet.parse_layer()?;
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
 
@@ -48,7 +48,6 @@ impl Redis {
             let mut hash;
             if cfg.multi {
                 packet.multi_ready();
-                let master_only = packet.master_only();
                 while packet.has_bulk() {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
@@ -71,7 +70,11 @@ impl Redis {
                     hash = default_hash();
                 }
                 packet.ignore_all_bulks()?;
-                let flag = cfg.flag();
+                let mut flag = cfg.flag();
+                if master_only {
+                    flag.set_master_only();
+                }
+
                 let cmd = packet.take();
                 let req = HashedCommand::new(cmd, hash, flag);
                 process.process(req, true);
