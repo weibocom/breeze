@@ -90,7 +90,6 @@ where
         req.try_next(try_next);
         *req.mut_context() = context.ctx;
 
-        log::debug!("++++ send req with server-idx: {}", idx);
         unsafe { self.streams.get_unchecked(idx).0.send(req) };
     }
 }
