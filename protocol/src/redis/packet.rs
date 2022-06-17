@@ -88,16 +88,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         self.oft_last = self.oft;
                         self.stream.ignore(MASTER_CMD.len());
                         *self.stream.context() = self.ctx.u64();
-                        // log::debug!("+++ master only: true");
                         // master 不是独立指令，只有还有数据可解析时，才返回Ok，否则协议不完整 fishermen
                         if self.available() {
                             return Ok(true);
                         }
-                        log::debug!("+++ wait more data for master only is true");
                         return Err(Error::ProtocolIncomplete);
                     } else {
                         self.set_layer(LayerType::All);
-                        // log::debug!("+++ master only: false");
                         return Ok(false);
                     }
                 }
