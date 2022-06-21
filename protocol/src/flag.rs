@@ -7,6 +7,7 @@ pub struct Flag {
     sentonly: bool,
     status_ok: bool,
     noforward: bool,
+    master_only: bool, // 是否只请求master？
     v: u64,
 }
 
@@ -84,6 +85,14 @@ impl Flag {
     pub fn reset_flag(&mut self, op_code: OpCode, op: Operation) {
         self.op_code = op_code;
         self.op = op;
+    }
+    #[inline]
+    pub fn set_master_only(&mut self) {
+        self.master_only = true;
+    }
+    #[inline]
+    pub fn master_only(&self) -> bool {
+        self.master_only
     }
     #[inline]
     pub fn set_ext(&mut self, ext: u64) {

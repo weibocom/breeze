@@ -30,6 +30,8 @@ impl Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
+        // 一个指令开始处理，可以重复进入
+
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
             log::debug!("+++ rec req:{:?}", from_utf8(&stream.slice().to_vec()));
@@ -37,8 +39,11 @@ impl Redis {
 
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
+            // 先尝试parse master
+            let master_only = packet.parse_layer()?;
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
+
             let cfg = command::get_cfg(packet.op_code())?;
             let mut hash;
             if cfg.multi {
@@ -54,7 +59,7 @@ impl Redis {
                         packet.ignore_one_bulk()?;
                     }
                     let kv = packet.take();
-                    let req = cfg.build_request(hash, bulk, first, kv.data());
+                    let req = cfg.build_request(hash, bulk, first, master_only, kv.data());
                     process.process(req, packet.complete());
                 }
             } else {
@@ -65,11 +70,17 @@ impl Redis {
                     hash = default_hash();
                 }
                 packet.ignore_all_bulks()?;
-                let flag = cfg.flag();
+                let mut flag = cfg.flag();
+                if master_only {
+                    flag.set_master_only();
+                }
+
                 let cmd = packet.take();
                 let req = HashedCommand::new(cmd, hash, flag);
                 process.process(req, true);
             }
+
+            // 至此，一个指令处理完毕
         }
         Ok(())
     }
