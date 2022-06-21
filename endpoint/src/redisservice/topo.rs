@@ -68,7 +68,7 @@ where
     #[inline]
     fn send(&self, mut req: Self::Item) {
         assert_ne!(self.shards.len(), 0);
-
+        
         let shard_idx = self.distribute.index(req.hash());
         assert!(shard_idx < self.shards.len(), "{:?}", req);
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };

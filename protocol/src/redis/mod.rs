@@ -4,7 +4,8 @@ mod packet;
 //mod token;
 
 use crate::{
-    redis::command::PADDING_RSP_TABLE, Command, Commander, Error, Flag, HashedCommand, Protocol,
+    redis::command::CommandProperties, redis::command::PADDING_RSP_TABLE,
+    redis::packet::RequestPacket, Command, Commander, Error, Flag, HashedCommand, Protocol,
     RequestProcessor, Result, Stream,
 };
 use ds::RingSlice;
@@ -19,6 +20,7 @@ use crate::Utf8;
 //// 最大消息支持1M
 //const MAX_MSG_LEN: usize = 1000000;
 
+// 每个协议实例实际被一个stream通过clone后独享，所以可以保存一些环境数据
 #[derive(Clone, Default)]
 pub struct Redis;
 
@@ -58,7 +60,15 @@ impl Redis {
                     process.process(req, packet.complete());
                 }
             } else {
-                if cfg.has_key {
+                // 目前 swallowed 只会针对非multi key的cmd
+                if cfg.swallowed {
+                    self.parse_swallow_cmd(cfg, &mut packet, alg)?;
+                    continue;
+                }
+                if packet.reserved_hash() != 0 {
+                    hash = packet.reserved_hash();
+                    log::debug!("+++ will use reserved hash: {}", hash);
+                } else if cfg.has_key {
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
                 } else {
@@ -71,6 +81,42 @@ impl Redis {
                 process.process(req, true);
             }
         }
+        Ok(())
+    }
+
+    // 解析待吞噬的cmd，目前swallowed cmds只有hashkey这一个，后续还有扩展就在这里加 fishermen
+    fn parse_swallow_cmd<S: Stream, H: Hash>(
+        &self,
+        cfg: &CommandProperties,
+        packet: &mut RequestPacket<S>,
+        alg: &H,
+    ) -> Result<()> {
+        if cfg.name == "hashkey" {
+            let key = packet.parse_key()?;
+            let hash: i64;
+            // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
+            if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
+                log::info!(
+                    "+++ will send next cmd to all nodes: {:?}",
+                    packet.inner_data().utf8()
+                );
+                hash = i64::MAX;
+            } else {
+                hash = calculate_hash(alg, &key);
+            }
+
+            // 记录reserved hash，为下一个指令使用
+            packet.update_reserved_hash(hash);
+            log::debug!("+++ reserved hash: {}", hash);
+        } else {
+            debug_assert!(false);
+            log::warn!("should not come here![hashkey?]");
+        }
+        // 吞噬掉整个cmd，准备处理下一个cmd fishermen
+        packet.ignore_all_bulks()?;
+        // 吞噬/trim掉当前 cmd data，准备解析下一个cmd
+        packet.trim_cmd_data()?;
+
         Ok(())
     }
 

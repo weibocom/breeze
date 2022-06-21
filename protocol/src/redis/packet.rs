@@ -39,6 +39,7 @@ pub(super) struct RequestPacket<'a, S> {
     // 低16位是bulk_num
     // 次低16位是op_code.
     ctx: RequestContext,
+    reserved_hash: i64,
     oft_last: usize,
     oft: usize,
 }
@@ -46,12 +47,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn new(stream: &'a mut S) -> Self {
         let ctx = RequestContext::from(*stream.context());
+        let reserved_hash = *stream.reserved_hash();
         let data = stream.slice();
         Self {
             oft_last: 0,
             oft: 0,
             data,
             ctx,
+            reserved_hash,
             stream,
         }
     }
@@ -121,6 +124,34 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             *self.stream.context() = self.ctx.u64();
         }
     }
+
+    // 重置context，包括stream中的context
+    #[inline]
+    fn reset_context(&mut self) {
+        self.ctx.reset();
+        assert_eq!(self.ctx.u64(), 0);
+
+        // 重置context
+        *self.stream.context() = 0;
+    }
+
+    // 重置reserved hash，包括stream中的对应值
+    #[inline]
+    fn reset_reserved_hash(&mut self) {
+        self.update_reserved_hash(0)
+    }
+    // 更新reserved hash
+    #[inline]
+    pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
+        self.reserved_hash = reserved_hash;
+        *self.stream.reserved_hash() = reserved_hash;
+    }
+
+    #[inline]
+    pub(super) fn reserved_hash(&self) -> i64 {
+        self.reserved_hash
+    }
+
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
         assert!(self.oft_last < self.oft);
@@ -130,12 +161,31 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.ctx.first = false;
         *self.stream.context() = self.ctx.u64();
         if self.ctx.bulk == 0 {
-            self.ctx.reset();
-            assert_eq!(self.ctx.u64(), 0);
-            *self.stream.context() = 0;
+            // 重置context、reserved-hash
+            self.reset_context();
+            self.reset_reserved_hash();
         }
         self.stream.take(data.len())
     }
+
+    // 修建掉已解析的cmd数据，这些cmd数据的信息已经保留在context、reserved_hash等元数据中了
+    #[inline]
+    pub(super) fn trim_cmd_data(&mut self) -> Result<()> {
+        let len = self.oft - self.oft_last;
+        self.oft_last = self.oft;
+        self.stream.ignore(len);
+        log::debug!("+++ trim data len: {}", len);
+
+        debug_assert!(self.ctx.bulk == 0);
+        // 重置context，下一个指令重新解析
+        self.reset_context();
+
+        if self.available() {
+            return Ok(());
+        }
+        return Err(crate::Error::ProtocolIncomplete);
+    }
+
     #[inline]
     fn current(&self) -> u8 {
         assert!(self.available());
@@ -164,6 +214,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn complete(&self) -> bool {
         self.ctx.bulk == 0
+    }
+
+    pub(super) fn inner_data(&self) -> &RingSlice {
+        &self.data
     }
 }
 

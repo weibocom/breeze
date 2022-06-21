@@ -70,6 +70,8 @@ pub trait Stream {
     }
     // 在解析一个流的不同的req/response时，有时候需要共享数据。
     fn context(&mut self) -> &mut u64;
+    // 用于保存hashkey指示下一个cmd需要使用的hash
+    fn reserved_hash(&mut self) -> &mut i64;
 }
 
 pub trait Builder {
