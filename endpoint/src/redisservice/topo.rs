@@ -96,12 +96,13 @@ where
         use protocol::Utf8;
         if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(
-                "+++ send - {} hash/idx:{}/{}, req:{:?}, master_only:{}",
+                "+++ send - {} hash/idx:{}/{}, master_only:{}, ignore_rsp:{}, req:{:?},",
                 self.service,
                 req.hash(),
                 shard_idx,
-                req.data().utf8(),
                 req.master_only(),
+                req.ignore_rsp(),
+                req.data().utf8(),
             )
         }
 
@@ -128,6 +129,11 @@ where
 
             endpoint.1.send(req)
         } else {
+            log::debug!(
+                "+++ will send to master/{}:{:?}",
+                shard_idx,
+                req.data().utf8()
+            );
             shard.master().send(req)
         }
     }

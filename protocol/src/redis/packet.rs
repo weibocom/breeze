@@ -216,7 +216,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         let len = self.oft - self.oft_last;
         self.oft_last = self.oft;
         self.stream.ignore(len);
-        log::debug!("+++ trim data len: {}", len);
 
         debug_assert!(self.ctx.bulk == 0);
         // 重置context，下一个指令重新解析

@@ -163,7 +163,7 @@ impl HashedCommand {
     }
     #[inline]
     pub fn set_ignore_rsp(&mut self, ignore_rsp: bool) {
-        self.set_ignore_rsp(ignore_rsp)
+        self.cmd.set_ignore_rsp(ignore_rsp)
     }
     #[inline]
     pub fn master_only(&self) -> bool {

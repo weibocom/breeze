@@ -78,7 +78,6 @@ impl Redis {
                 if packet.reserved_hash() != 0 {
                     hash = packet.reserved_hash();
                     flag.set_direct_hash(true);
-                    log::debug!("+++ will use reserved hash: {}", hash);
                 } else if cfg.has_key {
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
@@ -120,8 +119,6 @@ impl Redis {
 
             // 记录reserved hash，为下一个指令使用
             packet.update_reserved_hash(hash);
-
-            log::debug!("+++ reserved hash: {}", hash);
         } else {
             debug_assert!(false);
             log::warn!("should not come here![hashkey?]");

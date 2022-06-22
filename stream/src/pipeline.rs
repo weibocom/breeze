@@ -9,7 +9,9 @@ use ds::AtomicWaker;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use protocol::{HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer};
+use protocol::{
+    Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Utf8, Writer,
+};
 
 use crate::buffer::{Reader, StreamGuard};
 use crate::{Callback, CallbackContext, CallbackContextPtr, Request, StreamMetrics};
@@ -199,6 +201,13 @@ where
             if ctx.inited() && !ctx.request().ignore_rsp() {
                 parser.write_response(&mut ctx, client)?;
                 ctx.async_start_write_back(parser);
+            } else if ctx.request().ignore_rsp() {
+                // do nothing!
+                log::debug!(
+                    "ignore req:{:?}, resp:{:?}",
+                    ctx.request().data().utf8(),
+                    ctx.response().data().utf8()
+                )
             } else {
                 let req = ctx.request();
                 if !req.noforward() {
