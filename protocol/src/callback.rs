@@ -74,6 +74,11 @@ impl CallbackContext {
     #[inline]
     pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
+        log::debug!(
+            "+++ on sent request sent: {}/{} ",
+            self,
+            self.request().sentonly()
+        );
         if self.request().sentonly() {
             self.on_done();
             false
