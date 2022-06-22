@@ -28,8 +28,8 @@ pub(super) trait RedisFlager {
     fn mkey_first(&self) -> bool;
     fn set_padding_rsp(&mut self, idx: u8);
     fn padding_rsp(&self) -> u8;
-    fn set_meta_len(&mut self, l: u8);
-    fn meta_len(&self) -> u8;
+    // fn set_meta_len(&mut self, l: u8);
+    // fn meta_len(&self) -> u8;
     // fn set_token_count(&mut self, c: u8);
     // fn token_count(&self) -> u8;
 }
@@ -73,14 +73,14 @@ impl RedisFlager for u64 {
     fn padding_rsp(&self) -> u8 {
         get(self, PADDING_RSP_SHIFT, PADDING_RSP_MASK) as u8
     }
-    #[inline]
-    fn set_meta_len(&mut self, l: u8) {
-        set(self, META_LEN_SHIFT, META_LEN_MASK, l as u64);
-    }
-    #[inline]
-    fn meta_len(&self) -> u8 {
-        get(self, META_LEN_SHIFT, META_LEN_MASK) as u8
-    }
+    // #[inline]
+    // fn set_meta_len(&mut self, l: u8) {
+    //     set(self, META_LEN_SHIFT, META_LEN_MASK, l as u64);
+    // }
+    // #[inline]
+    // fn meta_len(&self) -> u8 {
+    //     get(self, META_LEN_SHIFT, META_LEN_MASK) as u8
+    // }
 
     // #[inline]
     // fn set_token_count(&mut self, c: u8) {
@@ -116,14 +116,14 @@ impl RedisFlager for crate::Flag {
     fn padding_rsp(&self) -> u8 {
         self.ext().padding_rsp()
     }
-    #[inline]
-    fn set_meta_len(&mut self, l: u8) {
-        self.ext_mut().set_meta_len(l);
-    }
-    #[inline]
-    fn meta_len(&self) -> u8 {
-        self.ext().meta_len()
-    }
+    // #[inline]
+    // fn set_meta_len(&mut self, l: u8) {
+    //     self.ext_mut().set_meta_len(l);
+    // }
+    // #[inline]
+    // fn meta_len(&self) -> u8 {
+    //     self.ext().meta_len()
+    // }
 
     // #[inline]
     // fn set_token_count(&mut self, c: u8) {
