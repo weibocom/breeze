@@ -196,7 +196,7 @@ where
                 *metrics.cache() += (hit, 1);
             }
 
-            if ctx.inited() {
+            if ctx.inited() && !ctx.request().ignore_rsp() {
                 parser.write_response(&mut ctx, client)?;
                 ctx.async_start_write_back(parser);
             } else {

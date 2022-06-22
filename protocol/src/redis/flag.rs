@@ -7,18 +7,22 @@ const KEY_COUNT_MASK: u64 = (1 << KEY_COUNT_BITS) - 1;
 // 32: 标识是否是第一个key
 const MKEY_FIRST_SHIFT: u8 = KEY_COUNT_SHIFT + KEY_COUNT_BITS;
 const MKEY_FIRST_BIT: u8 = 1;
-// 33~40: 3bits 是 padding_rsp
+// 33~35: 3bits 是 padding_rsp
 const PADDING_RSP_SHIFT: u8 = MKEY_FIRST_SHIFT + MKEY_FIRST_BIT;
 const PADDING_RSP_BITS: u8 = 3;
 const PADDING_RSP_MASK: u64 = (1 << PADDING_RSP_BITS) - 1;
-// 41~48 8bit
-const META_LEN_SHIFT: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
-const META_LEN_BITS: u8 = 8;
-const META_LEN_MASK: u64 = (1 << META_LEN_BITS) - 1;
+// 36: 1bit 表示是否忽略rsp
+const IGNORE_RSP: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
+const IGNORE_RSP_BITS: u8 = 1;
+// 37: 1bit 表示是否使用direct_hash 来计算分片（用于处理1个cmd发往所有分片的场景）
+const DIRECT_HASH: u8 = IGNORE_RSP + IGNORE_RSP_BITS;
+const DIRECT_HASH_BITS: u8 = 1;
 
-// 44: 表示同意是否只请求master，用于处理xxxFromMaster请求
-// const MASTER_ONLY_SHIFT: u8 = META_LEN_SHIFT + META_LEN_BITS;
-// const MASTER_ONLY_BIT: u8 = 1;
+// 这些目前不再使用，暂时保留到2022.12 之后清理
+// // 36~43 8bit
+// const META_LEN_SHIFT: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
+// const META_LEN_BITS: u8 = 8;
+// const META_LEN_MASK: u64 = (1 << META_LEN_BITS) - 1;
 
 // token len 目前没有用，先注释掉 fishermen
 // const TOKEN_LEN_SHIFT: u8 = META_LEN_BITS + META_LEN_BITS;
@@ -32,10 +36,11 @@ pub(super) trait RedisFlager {
     fn mkey_first(&self) -> bool;
     fn set_padding_rsp(&mut self, idx: u8);
     fn padding_rsp(&self) -> u8;
-    fn set_meta_len(&mut self, l: u8);
-    fn meta_len(&self) -> u8;
-    // fn set_master_only(&mut self);
-    // fn master_only(&self) -> bool;
+    // fn set_ignore_rsp(&mut self, ignore_rsp: bool);
+    // fn ignore_rs(&self) -> bool;
+
+    // fn set_meta_len(&mut self, l: u8);
+    // fn meta_len(&self) -> u8;
     // fn set_token_count(&mut self, c: u8);
     // fn token_count(&self) -> u8;
 }
@@ -79,23 +84,13 @@ impl RedisFlager for u64 {
     fn padding_rsp(&self) -> u8 {
         get(self, PADDING_RSP_SHIFT, PADDING_RSP_MASK) as u8
     }
-    #[inline]
-    fn set_meta_len(&mut self, l: u8) {
-        set(self, META_LEN_SHIFT, META_LEN_MASK, l as u64);
-    }
-    #[inline]
-    fn meta_len(&self) -> u8 {
-        get(self, META_LEN_SHIFT, META_LEN_MASK) as u8
-    }
     // #[inline]
-    // fn set_master_only(&mut self) {
-    //     assert!(!self.master_only());
-    //     *self |= 1 << MASTER_ONLY_SHIFT;
-    //     assert!(self.master_only());
+    // fn set_meta_len(&mut self, l: u8) {
+    //     set(self, META_LEN_SHIFT, META_LEN_MASK, l as u64);
     // }
     // #[inline]
-    // fn master_only(&self) -> bool {
-    //     *self & (1 << MASTER_ONLY_SHIFT) > 0
+    // fn meta_len(&self) -> u8 {
+    //     get(self, META_LEN_SHIFT, META_LEN_MASK) as u8
     // }
     // #[inline]
     // fn set_token_count(&mut self, c: u8) {
@@ -131,21 +126,13 @@ impl RedisFlager for crate::Flag {
     fn padding_rsp(&self) -> u8 {
         self.ext().padding_rsp()
     }
-    #[inline]
-    fn set_meta_len(&mut self, l: u8) {
-        self.ext_mut().set_meta_len(l);
-    }
-    #[inline]
-    fn meta_len(&self) -> u8 {
-        self.ext().meta_len()
-    }
     // #[inline]
-    // fn set_master_only(&mut self) {
-    //     self.ext().set_master_only()
+    // fn set_meta_len(&mut self, l: u8) {
+    //     self.ext_mut().set_meta_len(l);
     // }
     // #[inline]
-    // fn master_only(&self) -> bool {
-    //     self.ext().master_only()
+    // fn meta_len(&self) -> u8 {
+    //     self.ext().meta_len()
     // }
     // #[inline]
     // fn set_token_count(&mut self, c: u8) {

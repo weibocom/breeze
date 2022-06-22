@@ -56,6 +56,7 @@ use ds::{GuardedBuffer, MemGuard, RingSlice};
 // 已写入未处理的数据流。
 pub struct StreamGuard {
     ctx: u64,
+    reserved_hash: i64,
     buf: GuardedBuffer,
 }
 impl protocol::Stream for StreamGuard {
@@ -83,11 +84,19 @@ impl protocol::Stream for StreamGuard {
     fn context(&mut self) -> &mut u64 {
         &mut self.ctx
     }
+    #[inline]
+    fn reserved_hash(&mut self) -> &mut i64 {
+        &mut self.reserved_hash
+    }
 }
 impl From<GuardedBuffer> for StreamGuard {
     #[inline]
     fn from(buf: GuardedBuffer) -> Self {
-        Self { buf, ctx: 0 }
+        Self {
+            buf,
+            ctx: 0,
+            reserved_hash: 0,
+        }
     }
 }
 impl StreamGuard {

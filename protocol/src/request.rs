@@ -74,6 +74,18 @@ impl crate::Request for Request {
     fn try_next(&mut self, goon: bool) {
         self.ctx().ctx.try_next(goon);
     }
+    #[inline]
+    fn ignore_rsp(&self) -> bool {
+        self.req().ignore_rsp()
+    }
+    #[inline]
+    fn direct_hash(&self) -> bool {
+        self.req().direct_hash()
+    }
+    #[inline]
+    fn update_hash(&mut self, idx_hash: i64) {
+        self.req_mut().update_hash(idx_hash)
+    }
 }
 impl Request {
     #[inline]
@@ -88,6 +100,11 @@ impl Request {
     #[inline]
     fn req(&self) -> &HashedCommand {
         self.ctx().request()
+    }
+
+    #[inline]
+    fn req_mut(&self) -> &mut HashedCommand {
+        self.ctx().request_mut()
     }
     #[inline]
     fn ctx(&self) -> &mut CallbackContext {

@@ -13,6 +13,7 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     fn operation(&self) -> Operation;
     fn len(&self) -> usize;
     fn hash(&self) -> i64;
+    fn update_hash(&mut self, idx_hash: i64);
     fn on_noforward(&mut self);
     fn on_sent(self) -> Option<Self>;
     fn sentonly(&self) -> bool;
@@ -26,6 +27,8 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     }
     fn mut_context(&mut self) -> &mut Context;
     fn master_only(&self) -> bool;
+    fn ignore_rsp(&self) -> bool;
+    fn direct_hash(&self) -> bool;
     // 请求成功后，是否需要进行回写或者同步。
     fn write_back(&mut self, wb: bool);
     //fn is_write_back(&self) -> bool;

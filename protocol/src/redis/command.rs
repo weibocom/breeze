@@ -28,16 +28,18 @@ pub(crate) struct CommandProperties {
     pub(super) multi: bool, // 该命令是否可能会包含多个key
     // need bulk number只对multi key请求的有意义
     pub(super) need_bulk_num: bool, // mset所有的请求只返回一个+OK，不需要在首个请求前加*bulk_num。其他的都需要
+    pub(super) swallowed: bool, // 该指令是否需要mesh 吞噬，吞噬后不会响应client、也不会发给后端server，吞噬指令一般用于指示下一个常规指令的额外处理属性
 }
 
 // 默认响应
 // 第0个表示quit
-pub const PADDING_RSP_TABLE: [&str; 5] = [
+pub const PADDING_RSP_TABLE: [&str; 6] = [
     "",
     "+OK\r\n",
     "+PONG\r\n",
     "-ERR redis no available\r\n",
     "-ERR unknown command\r\n",
+    "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
 ];
 
 #[allow(dead_code)]
@@ -201,6 +203,7 @@ impl Commands {
         has_key: bool,
         has_val: bool,
         need_bulk_num: bool,
+        swallowed: bool,
     ) {
         let uppercase = name.to_uppercase();
         let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
@@ -223,6 +226,7 @@ impl Commands {
             has_key,
             has_val,
             need_bulk_num,
+            swallowed,
         };
     }
 }
@@ -239,146 +243,200 @@ lazy_static! {
    pub(super) static ref SUPPORTED: Commands = {
         let mut cmds = Commands::new();
         use Operation::*;
-    for (name, mname, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num)
+    for (name, mname, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num, swallowed)
         in vec![
                 // meta 指令
-                ("command", "command" ,   -1, Meta, 0, 0, 0, 1, false, true, false, false, false),
-                ("ping", "ping" ,         -1, Meta, 0, 0, 0, 2, false, true, false, false, false),
+                ("command", "command" ,   -1, Meta, 0, 0, 0, 1, false, true, false, false, false, false),
+                ("ping", "ping" ,         -1, Meta, 0, 0, 0, 2, false, true, false, false, false, false),
                 // 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
-                ("select", "select" ,      2, Meta, 0, 0, 0, 1, false, true, false, false, false),
-                ("hello", "hello" ,        2, Meta, 0, 0, 0, 4, false, true, false, false, false),
-                ("quit", "quit" ,          2, Meta, 0, 0, 0, 0, false, true, false, false, false),
+                ("select", "select" ,      2, Meta, 0, 0, 0, 1, false, true, false, false, false, false),
+                ("hello", "hello" ,        2, Meta, 0, 0, 0, 4, false, true, false, false, false, false),
+                ("quit", "quit" ,          2, Meta, 0, 0, 0, 0, false, true, false, false, false, false),
 
-                ("get" , "get",            2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("mget", "get",           -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
+                ("get" , "get",            2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("mget", "get",           -2, MGet, 1, -1, 1, 3, true, false, true, false, true, false),
 
-                ("set" ,"set",             3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("incr" ,"incr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("decr" ,"decr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("mincr","mincr",         -2, Store, 1, -1, 1, 3, true, false, true, false, true),
+                ("set" ,"set",             3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("incr" ,"incr",           2, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("decr" ,"decr",           2, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("mincr","mincr",         -2, Store, 1, -1, 1, 3, true, false, true, false, true, false),
                 // mset不需要bulk number
-                ("mset", "set",           -3, Store, 1, -1, 2, 3, true, false, true, true, false),
+                ("mset", "set",           -3, Store, 1, -1, 2, 3, true, false, true, true, false, false),
 
                 // TODO: del 删除多个key时，返回删除的key数量，先不聚合这个数字，反正client也会忽略？ fishermen
-                ("del", "del",            -2, Store, 1, -1, 1, 3, true, false, true, false, false),
+                ("del", "del",            -2, Store, 1, -1, 1, 3, true, false, true, false, false, false),
 
                 // TODO：exists 虽然原生支持多key，但业务client支持单key，故此处只支持单key fishermen
-                ("exists", "exists",       2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("exists", "exists",       2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
-                ("expire",   "expire",     3, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("expireat", "expireat",   3, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("persist", "persist",     2, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("expire",   "expire",     3, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("expireat", "expireat",   3, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("persist", "persist",     2, Store, 1, 1, 1, 3, false, false, true, false, false, false),
 
                 // zset 相关指令
-                ("zadd", "zadd",                         -4, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("zincrby", "zincrby",                    4, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("zrem", "zrem",                         -3, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("zremrangebyrank", "zremrangebyrank",    4, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("zremrangebyscore", "zremrangebyscore",  4, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("zremrangebylex", "zremrangebylex",      4, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("zrevrange", "zrevrange",               -4, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("zadd", "zadd",                         -4, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zincrby", "zincrby",                    4, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zrem", "zrem",                         -3, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zremrangebyrank", "zremrangebyrank",    4, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zremrangebyscore", "zremrangebyscore",  4, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zremrangebylex", "zremrangebylex",      4, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zrevrange", "zrevrange",               -4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
-                ("zcard" , "zcard",                       2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zrange", "zrange",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zrank", "zrank",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zrangebyscore", "zrangebyscore",       -4, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("zcard" , "zcard",                       2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zrange", "zrange",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zrank", "zrank",                        3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zrangebyscore", "zrangebyscore",       -4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
                 // TODO: 验证先不支持这两个，避免在 hash冲突 vs 栈溢出 之间摇摆，或者后续把这个放到堆上？ fishermen
-                ("zrevrank", "zrevrank",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zrevrangebyscore", "zrevrangebyscore", -4, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("zrevrank", "zrevrank",                  3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zrevrangebyscore", "zrevrangebyscore", -4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
-                ("zrangebylex", "zrangebylex",           -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zrevrangebylex", "zrevrangebylex",     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zcount", "zcount",                      4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zlexcount", "zlexcount",                4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zscore", "zscore",                      3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("zscan", "zscan",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("zrangebylex", "zrangebylex",           -4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zrevrangebylex", "zrevrangebylex",     -4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zcount", "zcount",                      4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zlexcount", "zlexcount",                4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zscore", "zscore",                      3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("zscan", "zscan",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
                 // hash 相关 multi, noforward, has_key, has_val, need_bulk_num
-                ("hset", "hset",                          4, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("hsetnx", "hsetnx",                      4, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("hmset","hmset",                        -4, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("hincrby", "hincrby",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("hincrbyfloat", "hincrbyfloat",          4, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("hdel", "hdel",                         -3, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("hget", "hget",                          3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("hgetall", "hgetall",                    2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("hlen", "hlen",                          2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("hkeys", "hkeys",                        2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("hmget", "hmget",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("hvals", "hvals",                        2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("hexists", "hexists",                    3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("hscan", "hscan",                        -3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("hset", "hset",                          4, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("hsetnx", "hsetnx",                      4, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("hmset","hmset",                        -4, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("hincrby", "hincrby",                    4, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("hincrbyfloat", "hincrbyfloat",          4, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("hdel", "hdel",                         -3, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("hget", "hget",                          3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("hgetall", "hgetall",                    2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("hlen", "hlen",                          2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("hkeys", "hkeys",                        2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("hmget", "hmget",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("hvals", "hvals",                        2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("hexists", "hexists",                    3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("hscan", "hscan",                        -3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
                 // TODO 常规结构指令，测试完毕后，调整位置
-                ("ttl", "ttl",                             2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("pttl", "pttl",                           2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("setnx", "setnx",                         3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("setex", "setex",                         4, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("append", "append",                       3, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("ttl", "ttl",                             2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("pttl", "pttl",                           2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("setnx", "setnx",                         3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("setex", "setex",                         4, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("append", "append",                       3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
 
                 // longset 相关指令
-                ("lsset", "lsset",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("lsdset", "lsdset",                       -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("lsput", "lsput",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("lsdel", "lsdel",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("lsmexists", "lsmexists",                 -3, Get, 1, 1, 1, 3, false, false, true, true, false),
-                ("lsgetall", "lsgetall",                   -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("lsdump", "lsdump",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("lslen", "lslen",                         -3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("lsset", "lsset",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("lsdset", "lsdset",                       -3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("lsput", "lsput",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("lsdel", "lsdel",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("lsmexists", "lsmexists",                 -3, Get, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("lsgetall", "lsgetall",                   -3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("lsdump", "lsdump",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("lslen", "lslen",                         -3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
                 // list 相关指令
-                ("rpush", "rpush",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("lpush", "lpush",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("rpushx", "rpushx",                       -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("lpushx", "lpushx",                       -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("linsert", "linsert",                      5, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("lset", "lset",                            4, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("rpop", "rpop",                            2, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("lpop", "lpop",                            2, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("llen", "llen",                            2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("lindex", "lindex",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("lrange", "lrange",                        4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("ltrim", "ltrim",                          4, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("lrem", "lrem",                            4, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("rpush", "rpush",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("lpush", "lpush",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("rpushx", "rpushx",                       -3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("lpushx", "lpushx",                       -3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("linsert", "linsert",                      5, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("lset", "lset",                            4, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("rpop", "rpop",                            2, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("lpop", "lpop",                            2, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("llen", "llen",                            2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("lindex", "lindex",                        3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("lrange", "lrange",                        4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("ltrim", "ltrim",                          4, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("lrem", "lrem",                            4, Store, 1, 1, 1, 3, false, false, true, false, false, false),
 
                 // string 相关指令，包括 bit, str
-                ("setbit", "setbit",                        4, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("getbit", "getbit",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("bitcount", "bitcount",                   -2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("bitpos", "bitpos",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("bitfield", "bitfield",                   -2, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("setbit", "setbit",                        4, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("getbit", "getbit",                        3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("bitcount", "bitcount",                   -2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("bitpos", "bitpos",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("bitfield", "bitfield",                   -2, Store, 1, 1, 1, 3, false, false, true, false, false, false),
 
-                ("setrange", "setrange",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("getrange", "getrange",                    4, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("getset", "getset",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("strlen", "strlen",                        2, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("setrange", "setrange",                    4, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("getrange", "getrange",                    4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("getset", "getset",                        3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("strlen", "strlen",                        2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
                 // 测试完毕后规整到incr附近
-                ("incrby", "incrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("decrby", "decrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("incrbyfloat", "incrbyfloat",              3, Store, 1, 1, 1, 3, false, false, true, true, false),
+                ("incrby", "incrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("decrby", "decrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("incrbyfloat", "incrbyfloat",              3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
 
                 // set 相关指令
-                ("sadd", "sadd",                           -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("srem", "srem",                           -3, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("sismember", "sismember",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("scard", "scard",                          2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("spop", "spop",                           -2, Store, 1, 1, 1, 3, false, false, true, false, false),
-                ("srandmember", "srandmember",             -2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("smembers", "smembers",                    2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("sscan", "sscan",                         -3, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("sadd", "sadd",                           -3, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("srem", "srem",                           -3, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("sismember", "sismember",                  3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("scard", "scard",                          2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("spop", "spop",                           -2, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("srandmember", "srandmember",             -2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("smembers", "smembers",                    2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("sscan", "sscan",                         -3, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
                 // geo 相关指令
-                ("geoadd", "geoadd",                       -5, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("georadius", "georadius",                 -6, Operation::Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("georadiusbymember", "georadiusbymember", -5, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("geohash", "geohash",                     -2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("geopos", "geopos",                       -2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("geodist", "geodist",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("geoadd", "geoadd",                       -5, Store, 1, 1, 1, 3, false, false, true, true, false, false),
+                ("georadius", "georadius",                 -6, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("georadiusbymember", "georadiusbymember", -5, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("geohash", "geohash",                     -2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("geopos", "geopos",                       -2, Get, 1, 1, 1, 3, false, false, true, false, false, false),
+                ("geodist", "geodist",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false, false),
 
                 // pf相关指令
-                ("pfadd", "pfadd",                         -2, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("pfadd", "pfadd",                         -2, Store, 1, 1, 1, 3, false, false, true, false, false, false),
+
+                // 吞噬类cmd，即只用于指示下一个通用cmd的属性，不需要响应 or 发给后端的cmd，目前只有2个（hashkey、master） fishermen
+                ("hashkey", "hashkey",                     2,  Meta,  1, 1, 1, 5, false, true, true, false, false, true),
+
+                // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
+                ("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false, false),
+                ("evalsha", "evalsha",                     -3, Store, 0, 0, 0, 3, false, false, false, false, false, false),
+                ("eval" , "eval",                          -3, Store, 0, 0, 0, 3, false, false, false, false, false, false),
+
+                // 待支持
+                // {"lsmalloc",lsmallocCommand,3,REDIS_CMD_DENYOOM|REDIS_CMD_WRITE,NULL,1,1,1},
+                // {"unlink",unlinkCommand,-2,REDIS_CMD_WRITE,NULL,1,-1,1},
+
+                // {"riskauth",riskAuthCommand,2,0,NULL,0,0,0},
+
+                // 管理类风险指令，暂不考虑支持
+                // {"dbslots",dbslotsCommand,1,0,NULL,0,0,0},
+                // {"save",saveCommand,1,0,NULL,0,0,0},
+                // {"bgsave",bgsaveCommand,1,0,NULL,0,0,0},
+                // {"shutdown",shutdownCommand,-1,0,NULL,0,0,0},
+                // {"flushdb",flushdbCommand,1,REDIS_CMD_WRITE,NULL,0,0,0},
+                // {"flushall",flushallCommand,1,REDIS_CMD_WRITE,NULL,0,0,0},
+                // {"post",securityWarningCommand,-1,0,NULL,0,0,0},
+                // {"host:",securityWarningCommand,-1,0,NULL,0,0,0},
+
+
+                // 复制类指令，不支持
+                // {"sync",syncCommand,1,0,NULL,0,0,0},
+                // {"syncfrom",syncFromCommand,3,0,NULL,0,0,0},
+                // {"replconf",replconfCommand,-1,0,NULL,0,0,0},
+                // {"slaveof",slaveofCommand,3,0,NULL,0,0,0},
+                // {"role",roleCommand,1,0,NULL,0,0,0},
+                // {"rotate_aof",rotateAofCommand,1,0,NULL,0,0,0},
+
+                // 普通管理类指令，暂不支持
+                // {"monitor",monitorCommand,1,0,NULL,0,0,0},
+                // {"lastsave",lastsaveCommand,1,0,NULL,0,0,0},
+                // {"type",typeCommand,2,0,NULL,1,1,1},
+                 // {"tm",tmCommand,3,REDIS_CMD_WRITE,NULL,0,0,0},
+                // {"version",versionCommand,1,0,NULL,0,0,0},
+                // {"debug",debugCommand,-2,0,NULL,0,0,0},
+
+                // 订阅类指令，暂不支持
+                // {"unsubscribe",unsubscribeCommand,-1,0,NULL,0,0,0},
+                // {"psubscribe",psubscribeCommand,-2,0,NULL,0,0,0},
+                // {"punsubscribe",punsubscribeCommand,-1,0,NULL,0,0,0},
+                // {"publish",publishCommand,3,REDIS_CMD_FORCE_REPLICATION|REDIS_CMD_WRITE,NULL,0,0,0},
+                // "subscribe" => (-2, Operation::Get, 0, 0, 0),
+                // {"pubsub", pubsubCommand, -2, REDIS_CMD_READONLY|REDIS_CMD_PUBSUB, NULL, 0, 0, 0},
+
+                // 特殊指令，暂不支持
+                // {"watch",watchCommand,-2,0,NULL,1,-1,1},
+                // {"unwatch",unwatchCommand,1,0,NULL,0,0,0},
+                // {"object",objectCommand,-2,0,NULL,2,2,1},
 
                 // 涉及多个key，先不支持了
                 // ("pfcount", "pfcount", -2, Get, 1, -1, 1, 3, false, false, true, false, false),
@@ -387,60 +445,58 @@ lazy_static! {
                 // "pfdebug" => (-3, Operation::Store, 0, 0, 0),
 
 
-            // TODO: 暂时不支持的指令，启用时注意加上padding rsp fishermen
-            // "psetex" => (4, Operation::Store, 1, 1, 1),
-            // "substr" => (4, Operation::Get, 1, 1, 1),
-            // "rpoplpush" => (3, Operation::Store, 1, 2, 1),
-            // "brpop" => (-3, Operation::Store, 1, -2, 1),
-            // "blpop" => (-3, Operation::Store, 1, -2, 1),
-            // "brpoplpush" => (4, Operation::Store, 1, 2, 1),
+                // TODO: 暂时不支持的指令，启用时注意加上padding rsp fishermen
+                // "psetex" => (4, Operation::Store, 1, 1, 1),
+                // "substr" => (4, Operation::Get, 1, 1, 1),
+                // "rpoplpush" => (3, Operation::Store, 1, 2, 1),
+                // "brpop" => (-3, Operation::Store, 1, -2, 1),
+                // "blpop" => (-3, Operation::Store, 1, -2, 1),
+                // "brpoplpush" => (4, Operation::Store, 1, 2, 1),
 
-            // 涉及多个key的操作，暂不支持
-            // "bitop" => (-4, Operation::Store, 2, -1, 1),
-            // "sinter" => (-2, Operation::Get, 1, -1, 1),
-            // "sinterstore" => (-3, Operation::Store, 1, -1, 1),
-            // "sunion" => (-2, Operation::Get, 1, -1, 1),
-            // "sunionstore" => (-3, Operation::Store, 1, -1, 1),
-            // "sdiff" => (-2, Operation::Get, 1, -1, 1),
-            // "sdiffstore" => (-3, Operation::Store, 1, -1, 1),
-            // "smove" => (4, Operation::Store, 1, 2, 1),
-            // "zunionstore" => (-4, Operation::Store, 0, 0, 0),
-            // "zinterstore" => (-4, Operation::Store, 0, 0, 0),
+                // 涉及多个key的操作，暂不支持
+                // "bitop" => (-4, Operation::Store, 2, -1, 1),
+                // "sinter" => (-2, Operation::Get, 1, -1, 1),
+                // "sinterstore" => (-3, Operation::Store, 1, -1, 1),
+                // "sunion" => (-2, Operation::Get, 1, -1, 1),
+                // "sunionstore" => (-3, Operation::Store, 1, -1, 1),
+                // "sdiff" => (-2, Operation::Get, 1, -1, 1),
+                // "sdiffstore" => (-3, Operation::Store, 1, -1, 1),
+                // "smove" => (4, Operation::Store, 1, 2, 1),
+                // "zunionstore" => (-4, Operation::Store, 0, 0, 0),
+                // "zinterstore" => (-4, Operation::Store, 0, 0, 0),
 
-            // "hstrlen" => (3, Operation::Get, 1, 1, 1),
+                // "hstrlen" => (3, Operation::Get, 1, 1, 1),
 
-            // "msetnx" => (-3, Operation::Store, 1, -1, 2),
-            // "randomkey" => (1, Operation::Get, 0, 0, 0),
-            // "move" => (3, Operation::Store, 1, 1, 1),
-            // "rename" => (3, Operation::Store, 1, 2, 1),
-            // "renamenx" => (3, Operation::Store, 1, 2, 1),
-            // "pexpire" => (3, Operation::Store, 1, 1, 1),
-            // "pexpireat" => (3, Operation::Store, 1, 1, 1),
-            // "keys" => (2, Operation::Get, 0, 0, 0),
-            // "scan" => (-2, Operation::Get, 0, 0, 0),
-            // "dbsize" => (1, Operation::Get, 0, 0, 0),
-            // "auth" => (2, Operation::Meta, 0, 0, 0),
-            // "echo" => (2, Operation::Meta, 0, 0, 0),
-            // info 先不在client支持
-            // "info" => (-1, Operation::Meta, 0, 0, 0),
+                // "msetnx" => (-3, Operation::Store, 1, -1, 2),
+                // "randomkey" => (1, Operation::Get, 0, 0, 0),
+                // "move" => (3, Operation::Store, 1, 1, 1),
+                // "rename" => (3, Operation::Store, 1, 2, 1),
+                // "renamenx" => (3, Operation::Store, 1, 2, 1),
+                // "pexpire" => (3, Operation::Store, 1, 1, 1),
+                // "pexpireat" => (3, Operation::Store, 1, 1, 1),
+                // "keys" => (2, Operation::Get, 0, 0, 0),
+                // "scan" => (-2, Operation::Get, 0, 0, 0),
+                // "dbsize" => (1, Operation::Get, 0, 0, 0),
+                // "auth" => (2, Operation::Meta, 0, 0, 0),
+                // "echo" => (2, Operation::Meta, 0, 0, 0),
+                // info 先不在client支持
+                // "info" => (-1, Operation::Meta, 0, 0, 0),
 
-            // "config" => (-2, Operation::Meta, 0, 0, 0),
-            // "subscribe" => (-2, Operation::Get, 0, 0, 0),
-            // "evalsha" => (-3, Operation::Store, 0, 0, 0),
-            // "script" => (-2, Operation::Get, 0, 0, 0),
-            // "time" => (1, Operation::Get, 0, 0, 0),
+                // "config" => (-2, Operation::Meta, 0, 0, 0),
 
-            // ********** 二期实现
-            // 事务类、脚本类cmd，暂时先不支持，二期再处理 fishermen
-            // "multi" => (1, Operation::Store, 0, 0, 0),
-            // "exec" => (1, Operation::Store, 0, 0, 0),
-            // "discard" => (1, Operation::Get, 0, 0, 0),
-            // "sort" => (-2, Operation::Store, 1, 1, 1),
-            // "client" => (-2, Operation::Meta, 0, 0, 0),
-            // "eval" => (-3, Operation::Store, 0, 0, 0),
-            // "slowlog" => (-2, Operation::Get, 0, 0, 0),
-            // "wait" => (3, Operation::Meta, 0, 0, 0),
-            // "latency" => (-2, Operation::Meta, 0, 0, 0),
+                // "time" => (1, Operation::Get, 0, 0, 0),
+
+                // ********** 二期实现
+                // 事务类、脚本类cmd，暂时先不支持，二期再处理 fishermen
+                // "multi" => (1, Operation::Store, 0, 0, 0),
+                // "exec" => (1, Operation::Store, 0, 0, 0),
+                // "discard" => (1, Operation::Get, 0, 0, 0),
+                // "sort" => (-2, Operation::Store, 1, 1, 1),
+                // "client" => (-2, Operation::Meta, 0, 0, 0),
+
+                // "slowlog" => (-2, Operation::Get, 0, 0, 0),
+                // "wait" => (3, Operation::Meta, 0, 0, 0),
+                // "latency" => (-2, Operation::Meta, 0, 0, 0),
             ] {
     cmds.add_support(
         name,
@@ -455,7 +511,8 @@ lazy_static! {
         noforward,
         has_key,
         has_val,
-        need_bulk_num
+        need_bulk_num,
+        swallowed,
     ) ;
             }
         cmds

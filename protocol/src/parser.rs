@@ -70,6 +70,8 @@ pub trait Stream {
     }
     // 在解析一个流的不同的req/response时，有时候需要共享数据。
     fn context(&mut self) -> &mut u64;
+    // 用于保存hashkey指示下一个cmd需要使用的hash
+    fn reserved_hash(&mut self) -> &mut i64;
 }
 
 pub trait Builder {
@@ -81,6 +83,8 @@ pub struct Command {
     flag: Flag,
     cmd: ds::MemGuard,
 }
+
+pub const MAX_DIRECT_HASH: i64 = i64::MAX;
 
 pub struct HashedCommand {
     hash: i64,
@@ -149,6 +153,19 @@ impl HashedCommand {
     pub fn hash(&self) -> i64 {
         self.hash
     }
+    #[inline]
+    pub fn update_hash(&mut self, idx_hash: i64) {
+        if self.direct_hash() {
+            self.hash = idx_hash;
+        } else {
+            log::warn!("should not update hash for non direct_hash!");
+        }
+    }
+    #[inline]
+    pub fn set_ignore_rsp(&mut self, ignore_rsp: bool) {
+        self.set_ignore_rsp(ignore_rsp)
+    }
+    #[inline]
     pub fn master_only(&self) -> bool {
         self.cmd.master_only()
     }
