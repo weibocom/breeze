@@ -149,6 +149,9 @@ impl HashedCommand {
     pub fn hash(&self) -> i64 {
         self.hash
     }
+    pub fn master_only(&self) -> bool {
+        self.cmd.master_only()
+    }
 }
 impl AsRef<Command> for HashedCommand {
     #[inline]

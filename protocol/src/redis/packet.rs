@@ -2,6 +2,8 @@ use crate::{Error, Result};
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
+// 防止client发大小写组合的master，需要忽略master的大小写 fishermen
+const MASTER_CMD: &str = "*1\r\n$6\r\nMASTER\r\n";
 
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
@@ -11,8 +13,17 @@ struct RequestContext {
     bulk: u16,
     op_code: u16,
     first: bool, // 在multi-get请求中是否是第一个请求。
-    _ignore: [u8; 3],
+    layer: u8,   // 请求的层次，目前只支持：master，all
+    _ignore: [u8; 2],
 }
+
+// 请求的layer层次
+pub enum LayerType {
+    NotChecked = 0,
+    All = 1,
+    MasterOnly = 2,
+}
+
 impl RequestContext {
     #[inline]
     fn reset(&mut self) {
@@ -62,6 +73,37 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn available(&self) -> bool {
         self.oft < self.data.len()
+    }
+
+    // 解析访问layer，由于master非独立指令，如果返回Ok，需要确保还有数据可以继续解析
+    #[inline]
+    pub(super) fn parse_layer(&mut self) -> Result<bool> {
+        if !self.layer_checked() {
+            match self.data.start_with_ignore_case(0, MASTER_CMD.as_bytes()) {
+                Ok(rs) => {
+                    if rs {
+                        self.set_layer(LayerType::MasterOnly);
+
+                        self.oft += MASTER_CMD.len();
+                        self.oft_last = self.oft;
+                        self.stream.ignore(MASTER_CMD.len());
+                        *self.stream.context() = self.ctx.u64();
+                        // master 不是独立指令，只有还有数据可解析时，才返回Ok，否则协议不完整 fishermen
+                        if self.available() {
+                            return Ok(true);
+                        }
+                        return Err(Error::ProtocolIncomplete);
+                    } else {
+                        self.set_layer(LayerType::All);
+                        return Ok(false);
+                    }
+                }
+                // 只有长度不够才会返回err
+                Err(_) => return Err(Error::ProtocolIncomplete),
+            };
+        }
+        // 之前已经check过，直接取
+        Ok(self.master_only())
     }
     #[inline]
     pub(super) fn parse_bulk_num(&mut self) -> Result<()> {
@@ -121,6 +163,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             *self.stream.context() = self.ctx.u64();
         }
     }
+
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
         assert!(self.oft_last < self.oft);
@@ -164,6 +207,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn complete(&self) -> bool {
         self.ctx.bulk == 0
+    }
+    pub fn layer_checked(&self) -> bool {
+        self.ctx.layer != (LayerType::NotChecked as u8)
+    }
+    pub(super) fn set_layer(&mut self, layer: LayerType) {
+        self.ctx.layer = layer as u8
+    }
+    pub(super) fn master_only(&self) -> bool {
+        self.ctx.layer == LayerType::MasterOnly as u8
     }
 }
 

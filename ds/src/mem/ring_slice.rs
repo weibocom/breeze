@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display, Formatter};
+use std::io::{Error, ErrorKind, Result};
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
@@ -150,6 +152,57 @@ impl RingSlice {
         None
     }
 
+    // 查找是否以dest字符串作为最前面的字符串
+    #[inline]
+    pub fn start_with(&self, offset: usize, dest: &[u8]) -> Result<bool> {
+        let mut len = dest.len();
+        if self.len() < dest.len() {
+            len = self.len();
+        }
+
+        for i in 0..len {
+            if self.at(offset + i) != dest[i] {
+                return Ok(false);
+            }
+        }
+
+        if len == dest.len() {
+            return Ok(true);
+        }
+        Err(Error::new(ErrorKind::Other, "no enough bytes"))
+    }
+
+    #[inline]
+    pub fn start_with_ignore_case(&self, offset: usize, dest: &[u8]) -> std::io::Result<bool> {
+        let mut len = dest.len();
+        if self.len() < dest.len() {
+            len = self.len();
+        }
+
+        for i in 0..len {
+            let c = dest[i] as char;
+            // 对于非ascii字母，直接比较，否则忽略大小写比较
+            if !c.is_ascii_alphabetic() {
+                if self.at(offset + i) != dest[i] {
+                    return Ok(false);
+                }
+            } else {
+                let c_lower = c.to_ascii_lowercase() as u8;
+                let c_uper = c.to_ascii_uppercase() as u8;
+                let src = self.at(offset + i);
+                if src != c_lower && src != c_uper {
+                    return Ok(false);
+                }
+            }
+        }
+
+        if len == dest.len() {
+            return Ok(true);
+        }
+
+        Err(Error::new(ErrorKind::Other, "no enough bytes"))
+    }
+
     // 只用来debug
     #[inline]
     pub fn to_vec(&self) -> Vec<u8> {
@@ -237,11 +290,10 @@ impl From<&[u8]> for RingSlice {
         Self::from(s.as_ptr() as *mut u8, cap, 0, s.len())
     }
 }
-use std::fmt;
-use std::fmt::{Debug, Display, Formatter};
+
 impl Display for RingSlice {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "ptr:{} start:{} end:{} cap:{}",
@@ -251,7 +303,7 @@ impl Display for RingSlice {
 }
 impl Debug for RingSlice {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "ptr:{} start:{} end:{} cap:{} => {:?}",
