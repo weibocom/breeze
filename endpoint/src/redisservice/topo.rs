@@ -77,16 +77,17 @@ where
         use protocol::Utf8;
         if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(
-                "+++ send - {} hash/idx:{}/{}, req:{:?}",
+                "+++ send - {} hash/idx:{}/{}, req:{:?}, master_only:{}",
                 self.service,
                 req.hash(),
                 shard_idx,
-                req.data().utf8()
+                req.data().utf8(),
+                req.master_only(),
             )
         }
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
-        if shard.has_slave() && !req.operation().is_store() {
+        if shard.has_slave() && !req.operation().is_store() && !req.master_only() {
             let ctx = super::transmute(req.context_mut());
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
