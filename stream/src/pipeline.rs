@@ -204,7 +204,7 @@ where
             } else if ctx.request().ignore_rsp() {
                 // do nothing!
                 log::debug!(
-                    "ignore req:{:?}, resp:{:?}",
+                    "+++ ignore req:{:?}, resp:{:?}",
                     ctx.request().data().utf8(),
                     ctx.response().data().utf8()
                 )
