@@ -12,6 +12,7 @@ use ds::RingSlice;
 use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
+use tokio::time;
 
 use crate::Utf8;
 
@@ -70,12 +71,18 @@ impl Redis {
                     continue;
                 }
 
-                let mut flag = cfg.flag();
+                let invalid_req = packet.reserved_hash() == 0 && !cfg.has_key && cfg.explicit_hash;
+                let mut flag = match invalid_req {
+                    false => cfg.flag_with_default(),
+                    true => cfg.flag_with_padding_rsp(command::PADDING_RSP_INVALID_REQ),
+                };
+
                 if master_only {
                     flag.set_master_only();
                 }
 
                 if packet.reserved_hash() != 0 {
+                    // 使用hashkey直接指定了hash
                     hash = packet.reserved_hash();
                     flag.set_direct_hash(true);
                 } else if cfg.has_key {
@@ -89,6 +96,11 @@ impl Redis {
                 let cmd = packet.take();
                 let req = HashedCommand::new(cmd, hash, flag);
                 process.process(req, true);
+
+                // 请求有异常，异步发送异常响应后，返回异常/断开连接
+                if invalid_req {
+                    return Err(crate::Error::RequestProtocolNotValid);
+                }
             }
 
             // 至此，一个指令处理完毕
@@ -256,7 +268,11 @@ impl Protocol for Redis {
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
-            log::debug!("+++ will write no rsp. req:{}", req);
+            log::debug!(
+                "+++ will write padding rsp/{} for req:{:?}",
+                rsp,
+                req.data().utf8()
+            );
         }
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
