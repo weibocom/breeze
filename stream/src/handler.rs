@@ -72,7 +72,6 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
     {
         self.s.cache(self.data.size_hint() > 1);
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
-            log::debug!("+++ in handle write req:{:?}", req.data().utf8());
             self.num_tx += 1;
             self.s.write_slice(req.data(), 0)?;
             match req.on_sent() {

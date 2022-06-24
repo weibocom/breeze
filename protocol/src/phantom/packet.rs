@@ -1,4 +1,4 @@
-use crate::{Error, Result};
+use crate::Result;
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
@@ -144,7 +144,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     fn check_start(&self) -> Result<()> {
         if self.current() != b'*' {
-            Err(Error::RequestProtocolNotValidStar)
+            Err(PtError::ReqInvalid.error())
         } else {
             Ok(())
         }
@@ -209,7 +209,7 @@ impl Packet for ds::RingSlice {
                         return Ok(val);
                     }
                     // \r后面没有接\n。错误的协议
-                    return Err(crate::Error::RequestProtocolNotValidNoReturn);
+                    return Err(PtError::ReqInvalidNoReturn.error());
                 }
                 if is_number_digit(b) {
                     val = val * 10 + (b - b'0') as usize;
@@ -224,7 +224,7 @@ impl Packet for ds::RingSlice {
                     self.utf8(),
                     self
                 );
-                return Err(crate::Error::RequestProtocolNotValidNumber);
+                return Err(PtError::ReqInvalidNoReturn.error());
             }
         }
         Err(crate::Error::ProtocolIncomplete)
@@ -273,7 +273,7 @@ fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
                 return Ok(val);
             }
             // \r后面没有接\n。错误的协议
-            return Err(crate::Error::RequestProtocolNotValidNoReturn);
+            return Err(PtError::ReqInvalidNoReturn.error());
         }
         if is_number_digit(b) {
             val = val * 10 + (b - b'0') as usize;
@@ -281,12 +281,14 @@ fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
                 continue;
             }
         }
-        return Err(crate::Error::RequestProtocolNotValidNumber);
+        return Err(PtError::ReqInvalidNum.error());
     }
     Err(crate::Error::ProtocolIncomplete)
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
+
+use super::error::PtError;
 impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

@@ -158,7 +158,13 @@ where
             req_new,
             req_dropped,
         };
-        parser.parse_request(rx_buf, top.hasher(), &mut processor)
+        match parser.parse_request(rx_buf, top.hasher(), &mut processor) {
+            Ok(o) => return Ok(o),
+            Err(e) => {
+                self.client.write(e.to_string().as_bytes())?;
+                Err(e)
+            }
+        }
     }
     // 处理pending中的请求，并且把数据发送到buffer
     #[inline]

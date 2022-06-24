@@ -11,10 +11,11 @@ const MKEY_FIRST_BIT: u8 = 1;
 const PADDING_RSP_SHIFT: u8 = MKEY_FIRST_SHIFT + MKEY_FIRST_BIT;
 const PADDING_RSP_BITS: u8 = 3;
 const PADDING_RSP_MASK: u64 = (1 << PADDING_RSP_BITS) - 1;
-// 36~43 8bit
-const META_LEN_SHIFT: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
-const META_LEN_BITS: u8 = 8;
-const META_LEN_MASK: u64 = (1 << META_LEN_BITS) - 1;
+
+// // 36~43 8bit
+// const META_LEN_SHIFT: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
+// const META_LEN_BITS: u8 = 8;
+// const META_LEN_MASK: u64 = (1 << META_LEN_BITS) - 1;
 
 // token len 目前没有用，先注释掉 fishermen
 // const TOKEN_LEN_SHIFT: u8 = META_LEN_BITS + META_LEN_BITS;

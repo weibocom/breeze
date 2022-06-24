@@ -2,6 +2,7 @@
 // 为了避免对redis的侵入，独立实现
 
 mod command;
+mod error;
 mod flag;
 mod packet;
 //mod token;

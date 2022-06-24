@@ -129,11 +129,6 @@ where
 
             endpoint.1.send(req)
         } else {
-            log::debug!(
-                "+++ will send to master/{}:{:?}",
-                shard_idx,
-                req.data().utf8()
-            );
             shard.master().send(req)
         }
     }
