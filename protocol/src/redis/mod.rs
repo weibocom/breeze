@@ -1,4 +1,5 @@
 mod command;
+mod error;
 mod flag;
 mod packet;
 //mod token;
@@ -9,10 +10,10 @@ use crate::{
     RequestProcessor, Result, Stream,
 };
 use ds::RingSlice;
+use error::*;
 use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
-use tokio::time;
 
 use crate::Utf8;
 
@@ -71,12 +72,7 @@ impl Redis {
                     continue;
                 }
 
-                let invalid_req = packet.reserved_hash() == 0 && !cfg.has_key && cfg.explicit_hash;
-                let mut flag = match invalid_req {
-                    false => cfg.flag_with_default(),
-                    true => cfg.flag_with_padding_rsp(command::PADDING_RSP_INVALID_REQ),
-                };
-
+                let mut flag = cfg.flag();
                 if master_only {
                     flag.set_master_only();
                 }
@@ -88,6 +84,8 @@ impl Redis {
                 } else if cfg.has_key {
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
+                } else if cfg.explicit_hash {
+                    return Err(RedisError::ReqInvalid.error());
                 } else {
                     hash = default_hash();
                 }
@@ -96,11 +94,6 @@ impl Redis {
                 let cmd = packet.take();
                 let req = HashedCommand::new(cmd, hash, flag);
                 process.process(req, true);
-
-                // 请求有异常，异步发送异常响应后，返回异常/断开连接
-                if invalid_req {
-                    return Err(crate::Error::RequestProtocolNotValid);
-                }
             }
 
             // 至此，一个指令处理完毕
@@ -120,10 +113,7 @@ impl Redis {
             let hash: i64;
             // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
             if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
-                log::info!(
-                    "+++ will send next cmd to all nodes: {:?}",
-                    packet.inner_data().utf8()
-                );
+                log::info!("+++ will broadcast: {:?}", packet.inner_data().utf8());
                 hash = crate::MAX_DIRECT_HASH;
             } else {
                 hash = calculate_hash(alg, &key);

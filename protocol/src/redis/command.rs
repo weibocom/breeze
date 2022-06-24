@@ -42,8 +42,8 @@ pub const PADDING_RSP_TABLE: [&str; 6] = [
     "-ERR invalid command\r\n",
     "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
 ];
-// 异常req对应的响应idx，如果PADDING_RSP_TABLE变了，此处也需要变
-pub const PADDING_RSP_INVALID_REQ: u8 = 4;
+
+
 
 #[allow(dead_code)]
 impl CommandProperties {
@@ -96,26 +96,35 @@ impl CommandProperties {
     pub fn noforward(&self) -> bool {
         self.noforward
     }
-    #[inline]
-    pub(super) fn flag_with_default(&self) -> crate::Flag {
-        self.flag_with_padding_rsp(self.padding_rsp)
-    }
 
-    // padding rsp按照指定的值进行设置，其他属性正常逻辑设置
-    #[inline]
-    pub(super) fn flag_with_padding_rsp(&self, padding_rsp_idx: u8) -> crate::Flag {
+    pub(super) fn flag(&self) -> crate::Flag {
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
         use super::flag::RedisFlager;
-        flag.set_padding_rsp(padding_rsp_idx);
-        if padding_rsp_idx != self.padding_rsp {
-            // 设置特殊的padding rsp，说明是遇到了异常，直接返回
-            flag.set_noforward(true);
-        } else {
-            flag.set_noforward(self.noforward);
-        }
-
+        flag.set_padding_rsp(self.padding_rsp);
+        flag.set_noforward(self.noforward);
         flag
     }
+
+    // #[inline]
+    // pub(super) fn flag_with_default(&self) -> crate::Flag {
+    //     self.flag_with_padding_rsp(self.padding_rsp)
+    // }
+
+    // // padding rsp按照指定的值进行设置，其他属性正常逻辑设置
+    // #[inline]
+    // pub(super) fn flag_with_padding_rsp(&self, padding_rsp_idx: u8) -> crate::Flag {
+    //     let mut flag = crate::Flag::from_op(self.op_code, self.op);
+    //     use super::flag::RedisFlager;
+    //     flag.set_padding_rsp(padding_rsp_idx);
+    //     if padding_rsp_idx != self.padding_rsp {
+    //         // 设置特殊的padding rsp，说明是遇到了异常，直接返回
+    //         flag.set_noforward(true);
+    //     } else {
+    //         flag.set_noforward(self.noforward);
+    //     }
+
+    //     flag
+    // }
 
     // bulk_num只有在first=true时才有意义。
     #[inline]
@@ -141,7 +150,7 @@ impl CommandProperties {
         cmd.write("\r\n");
         cmd.write_slice(data);
         //data.copy_to_vec(&mut cmd);
-        let mut flag = self.flag_with_default();
+        let mut flag = self.flag();
         use super::flag::RedisFlager;
         if first {
             flag.set_mkey_first();

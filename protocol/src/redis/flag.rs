@@ -11,12 +11,6 @@ const MKEY_FIRST_BIT: u8 = 1;
 const PADDING_RSP_SHIFT: u8 = MKEY_FIRST_SHIFT + MKEY_FIRST_BIT;
 const PADDING_RSP_BITS: u8 = 3;
 const PADDING_RSP_MASK: u64 = (1 << PADDING_RSP_BITS) - 1;
-// 36: 1bit 表示是否忽略rsp
-const IGNORE_RSP: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
-const IGNORE_RSP_BITS: u8 = 1;
-// 37: 1bit 表示是否使用direct_hash 来计算分片（用于处理1个cmd发往所有分片的场景）
-const DIRECT_HASH: u8 = IGNORE_RSP + IGNORE_RSP_BITS;
-const DIRECT_HASH_BITS: u8 = 1;
 
 // 这些目前不再使用，暂时保留到2022.12 之后清理
 // // 36~43 8bit
