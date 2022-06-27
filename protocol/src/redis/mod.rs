@@ -43,7 +43,7 @@ impl Redis {
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
             // 先尝试parse master
-            let master_only = packet.parse_layer()?;
+            let master_only = packet.parse_cmd_layer()?;
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
 
@@ -71,7 +71,6 @@ impl Redis {
                     self.parse_swallow_cmd(cfg, &mut packet, alg)?;
                     continue;
                 }
-
                 let mut flag = cfg.flag();
                 if master_only {
                     flag.set_master_only();

@@ -1,4 +1,4 @@
-use crate::{Error, Result};
+use crate::{Error, Result, Utf8};
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
@@ -79,10 +79,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     // 解析访问layer，由于master非独立指令，如果返回Ok，需要确保还有数据可以继续解析
+    // master 过于简单，先直接解析处理，后续可以加到swallowed cmd中
     #[inline]
-    pub(super) fn parse_layer(&mut self) -> Result<bool> {
+    pub(super) fn parse_cmd_layer(&mut self) -> Result<bool> {
         if !self.layer_checked() {
-            match self.data.start_with_ignore_case(0, MASTER_CMD.as_bytes()) {
+            match self.data.start_with_ignore_case(self.oft, MASTER_CMD.as_bytes()) {
                 Ok(rs) => {
                     if rs {
                         self.set_layer(LayerType::MasterOnly);
@@ -324,7 +325,6 @@ impl Packet for ds::RingSlice {
                         continue;
                     }
                 }
-                use crate::Utf8;
                 log::info!(
                     "oft:{} not valid number:{:?}, {:?}",
                     *oft,
