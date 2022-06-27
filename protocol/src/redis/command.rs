@@ -43,8 +43,6 @@ pub const PADDING_RSP_TABLE: [&str; 6] = [
     "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
 ];
 
-
-
 #[allow(dead_code)]
 impl CommandProperties {
     #[inline]
@@ -283,6 +281,9 @@ lazy_static! {
 
                 ("expire",   "expire",     3, Store, 1, 1, 1, 3, false, false, true, false, false),
                 ("expireat", "expireat",   3, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("pexpire",  "pexpire",    3, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("pexpireat", "pexpireat", 3, Store, 1, 1, 1, 3, false, false, true, false, false),
+
                 ("persist", "persist",     2, Store, 1, 1, 1, 3, false, false, true, false, false),
 
                 // zset 相关指令
@@ -484,8 +485,6 @@ lazy_static! {
                 // "move" => (3, Operation::Store, 1, 1, 1),
                 // "rename" => (3, Operation::Store, 1, 2, 1),
                 // "renamenx" => (3, Operation::Store, 1, 2, 1),
-                // "pexpire" => (3, Operation::Store, 1, 1, 1),
-                // "pexpireat" => (3, Operation::Store, 1, 1, 1),
                 // "keys" => (2, Operation::Get, 0, 0, 0),
                 // "scan" => (-2, Operation::Get, 0, 0, 0),
                 // "dbsize" => (1, Operation::Get, 0, 0, 0),
