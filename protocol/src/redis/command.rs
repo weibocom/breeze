@@ -105,27 +105,6 @@ impl CommandProperties {
         flag
     }
 
-    // #[inline]
-    // pub(super) fn flag_with_default(&self) -> crate::Flag {
-    //     self.flag_with_padding_rsp(self.padding_rsp)
-    // }
-
-    // // padding rsp按照指定的值进行设置，其他属性正常逻辑设置
-    // #[inline]
-    // pub(super) fn flag_with_padding_rsp(&self, padding_rsp_idx: u8) -> crate::Flag {
-    //     let mut flag = crate::Flag::from_op(self.op_code, self.op);
-    //     use super::flag::RedisFlager;
-    //     flag.set_padding_rsp(padding_rsp_idx);
-    //     if padding_rsp_idx != self.padding_rsp {
-    //         // 设置特殊的padding rsp，说明是遇到了异常，直接返回
-    //         flag.set_noforward(true);
-    //     } else {
-    //         flag.set_noforward(self.noforward);
-    //     }
-
-    //     flag
-    // }
-
     // bulk_num只有在first=true时才有意义。
     #[inline]
     pub(super) fn build_request(

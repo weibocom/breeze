@@ -83,15 +83,17 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn parse_cmd_layer(&mut self) -> Result<bool> {
         if !self.layer_checked() {
-            match self.data.start_with_ignore_case(self.oft, MASTER_CMD.as_bytes()) {
+            match self
+                .data
+                .start_with_ignore_case(self.oft, MASTER_CMD.as_bytes())
+            {
                 Ok(rs) => {
                     if rs {
-                        self.set_layer(LayerType::MasterOnly);
-
                         self.oft += MASTER_CMD.len();
                         self.oft_last = self.oft;
                         self.stream.ignore(MASTER_CMD.len());
-                        *self.stream.context() = self.ctx.u64();
+                        self.set_layer(LayerType::MasterOnly);
+
                         // master 不是独立指令，只有还有数据可解析时，才返回Ok，否则协议不完整 fishermen
                         if self.available() {
                             return Ok(true);
@@ -219,8 +221,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.stream.ignore(len);
 
         debug_assert!(self.ctx.bulk == 0);
-        // 重置context，下一个指令重新解析
+        // 重置context，下一个指令重新解析，注意：master_only要保留
+        let master_only = self.master_only();
         self.reset_context();
+        if master_only {
+            // 保留master only 设置
+            self.set_layer(LayerType::MasterOnly);
+        }
 
         if self.available() {
             return Ok(());
@@ -267,7 +274,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     #[inline]
     pub(super) fn set_layer(&mut self, layer: LayerType) {
-        self.ctx.layer = layer as u8
+        self.ctx.layer = layer as u8;
+        *self.stream.context() = self.ctx.u64();
     }
     #[inline]
     pub(super) fn master_only(&self) -> bool {
