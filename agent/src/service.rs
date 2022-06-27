@@ -10,6 +10,7 @@ use metrics::Path;
 use protocol::{Parser, Result};
 use stream::pipeline::copy_bidirectional;
 use stream::Builder;
+use stream::StreamMetrics;
 
 use stream::Request;
 type Endpoint = Arc<stream::Backend<Request>>;
@@ -26,9 +27,15 @@ pub(super) async fn process_one(
     // 注册，定期更新配置
     discovery.send(tx)?;
 
+    let protocol_path = Path::new(vec![quard.protocol()]);
+    let mut protocol_metrics = StreamMetrics::new(&protocol_path);
+
     // 等待初始化完成
     let mut tries = 0usize;
     while !rx.inited() {
+        // 获取配置初始化失败，则计数监听失败
+        *protocol_metrics.listen_failed() += 1;
+
         tries += 1;
         let sleep = if tries <= 10 {
             Duration::from_secs(1)
@@ -51,6 +58,9 @@ pub(super) async fn process_one(
 
     // 服务注册完成，侦听端口直到成功。
     while let Err(e) = _process_one(quard, &p, &top, &path).await {
+        // 监听失败增加计数
+        *protocol_metrics.listen_failed() += 1;
+
         log::warn!("service process failed. {}, err:{:?}", quard, e);
         tokio::time::sleep(Duration::from_secs(6)).await;
     }
@@ -71,7 +81,6 @@ async fn _process_one(
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
 
     log::info!("started. {}", quard);
-    use stream::StreamMetrics;
 
     loop {
         // 等待初始化成功
