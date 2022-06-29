@@ -30,12 +30,12 @@ pub(super) async fn process_one(
     let protocol_path = Path::new(vec![quard.protocol()]);
     let mut protocol_metrics = StreamMetrics::new(&protocol_path);
 
+    // 在业务初始化及监听完成之前，计数加1，成功后再-1，
+    *protocol_metrics.listen_failed() += 1;
+
     // 等待初始化完成
     let mut tries = 0usize;
     while !rx.inited() {
-        // 获取配置初始化失败，则计数监听失败
-        *protocol_metrics.listen_failed() += 1;
-
         tries += 1;
         let sleep = if tries <= 10 {
             Duration::from_secs(1)
@@ -51,13 +51,14 @@ pub(super) async fn process_one(
         };
         tokio::time::sleep(sleep).await;
     }
+
     log::debug!("service inited. {} ", quard);
     let switcher = ds::Switcher::from(true);
     let top = Arc::new(RefreshTopology::from(rx));
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
 
     // 服务注册完成，侦听端口直到成功。
-    while let Err(e) = _process_one(quard, &p, &top, &path).await {
+    while let Err(e) = _process_one(quard, &p, &top, &path, &mut protocol_metrics).await {
         // 监听失败增加计数
         *protocol_metrics.listen_failed() += 1;
 
@@ -77,8 +78,12 @@ async fn _process_one(
     p: &Parser,
     top: &Arc<RefreshTopology<Topology>>,
     path: &Path,
+    protocol_metrics: &mut StreamMetrics,
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
+
+    // 监听成功协议计数减1，让监听失败数重新置零
+    *protocol_metrics.listen_failed() -= 1;
 
     log::info!("started. {}", quard);
 
