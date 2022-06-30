@@ -1,4 +1,4 @@
-use crate::{Error, Result};
+use crate::{Error, Result, Utf8};
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
@@ -50,6 +50,7 @@ pub(super) struct RequestPacket<'a, S> {
     // 低16位是bulk_num
     // 次低16位是op_code.
     ctx: RequestContext,
+    reserved_hash: i64,
     oft_last: usize,
     oft: usize,
 }
@@ -57,12 +58,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn new(stream: &'a mut S) -> Self {
         let ctx = RequestContext::from(*stream.context());
+        let reserved_hash = *stream.reserved_hash();
         let data = stream.slice();
         Self {
             oft_last: 0,
             oft: 0,
             data,
             ctx,
+            reserved_hash,
             stream,
         }
     }
@@ -76,18 +79,21 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     // 解析访问layer，由于master非独立指令，如果返回Ok，需要确保还有数据可以继续解析
+    // master 过于简单，先直接解析处理，后续可以加到swallowed cmd中
     #[inline]
-    pub(super) fn parse_layer(&mut self) -> Result<bool> {
+    pub(super) fn parse_cmd_layer(&mut self) -> Result<bool> {
         if !self.layer_checked() {
-            match self.data.start_with_ignore_case(0, MASTER_CMD.as_bytes()) {
+            match self
+                .data
+                .start_with_ignore_case(self.oft, MASTER_CMD.as_bytes())
+            {
                 Ok(rs) => {
                     if rs {
-                        self.set_layer(LayerType::MasterOnly);
-
                         self.oft += MASTER_CMD.len();
                         self.oft_last = self.oft;
                         self.stream.ignore(MASTER_CMD.len());
-                        *self.stream.context() = self.ctx.u64();
+                        self.set_layer(LayerType::MasterOnly);
+
                         // master 不是独立指令，只有还有数据可解析时，才返回Ok，否则协议不完整 fishermen
                         if self.available() {
                             return Ok(true);
@@ -164,6 +170,33 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
     }
 
+    // 重置context，包括stream中的context
+    #[inline]
+    fn reset_context(&mut self) {
+        self.ctx.reset();
+        assert_eq!(self.ctx.u64(), 0);
+
+        // 重置context
+        *self.stream.context() = 0;
+    }
+
+    // 重置reserved hash，包括stream中的对应值
+    #[inline]
+    fn reset_reserved_hash(&mut self) {
+        self.update_reserved_hash(0)
+    }
+    // 更新reserved hash
+    #[inline]
+    pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
+        self.reserved_hash = reserved_hash;
+        *self.stream.reserved_hash() = reserved_hash;
+    }
+
+    #[inline]
+    pub(super) fn reserved_hash(&self) -> i64 {
+        self.reserved_hash
+    }
+
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
         assert!(self.oft_last < self.oft);
@@ -173,12 +206,35 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.ctx.first = false;
         *self.stream.context() = self.ctx.u64();
         if self.ctx.bulk == 0 {
-            self.ctx.reset();
-            assert_eq!(self.ctx.u64(), 0);
-            *self.stream.context() = 0;
+            // 重置context、reserved-hash
+            self.reset_context();
+            self.reset_reserved_hash();
         }
         self.stream.take(data.len())
     }
+
+    // 修建掉已解析的cmd数据，这些cmd数据的信息已经保留在context、reserved_hash等元数据中了
+    #[inline]
+    pub(super) fn trim_cmd_data(&mut self) -> Result<()> {
+        let len = self.oft - self.oft_last;
+        self.oft_last = self.oft;
+        self.stream.ignore(len);
+
+        debug_assert!(self.ctx.bulk == 0);
+        // 重置context，下一个指令重新解析，注意：master_only要保留
+        let master_only = self.master_only();
+        self.reset_context();
+        if master_only {
+            // 保留master only 设置
+            self.set_layer(LayerType::MasterOnly);
+        }
+
+        if self.available() {
+            return Ok(());
+        }
+        return Err(crate::Error::ProtocolIncomplete);
+    }
+
     #[inline]
     fn current(&self) -> u8 {
         assert!(self.available());
@@ -187,7 +243,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     fn check_start(&self) -> Result<()> {
         if self.current() != b'*' {
-            Err(Error::RequestProtocolNotValidStar)
+            Err(RedisError::ReqInvalidStar.error())
         } else {
             Ok(())
         }
@@ -208,12 +264,20 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(super) fn complete(&self) -> bool {
         self.ctx.bulk == 0
     }
+    #[inline]
+    pub(super) fn inner_data(&self) -> &RingSlice {
+        &self.data
+    }
+    #[inline]
     pub fn layer_checked(&self) -> bool {
         self.ctx.layer != (LayerType::NotChecked as u8)
     }
+    #[inline]
     pub(super) fn set_layer(&mut self, layer: LayerType) {
-        self.ctx.layer = layer as u8
+        self.ctx.layer = layer as u8;
+        *self.stream.context() = self.ctx.u64();
     }
+    #[inline]
     pub(super) fn master_only(&self) -> bool {
         self.ctx.layer == LayerType::MasterOnly as u8
     }
@@ -261,7 +325,7 @@ impl Packet for ds::RingSlice {
                         return Ok(val);
                     }
                     // \r后面没有接\n。错误的协议
-                    return Err(crate::Error::RequestProtocolNotValidNoReturn);
+                    return Err(RedisError::ReqInvalidNoReturn.error());
                 }
                 if is_number_digit(b) {
                     val = val * 10 + (b - b'0') as usize;
@@ -269,14 +333,13 @@ impl Packet for ds::RingSlice {
                         continue;
                     }
                 }
-                use crate::Utf8;
                 log::info!(
                     "oft:{} not valid number:{:?}, {:?}",
                     *oft,
                     self.utf8(),
                     self
                 );
-                return Err(crate::Error::RequestProtocolNotValidNumber);
+                return Err(RedisError::ReqInvalidNum.error());
             }
         }
         Err(crate::Error::ProtocolIncomplete)
@@ -325,7 +388,7 @@ fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
                 return Ok(val);
             }
             // \r后面没有接\n。错误的协议
-            return Err(crate::Error::RequestProtocolNotValidNoReturn);
+            return Err(RedisError::ReqInvalidNoReturn.error());
         }
         if is_number_digit(b) {
             val = val * 10 + (b - b'0') as usize;
@@ -333,12 +396,14 @@ fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
                 continue;
             }
         }
-        return Err(crate::Error::RequestProtocolNotValidNumber);
+        return Err(RedisError::ReqInvalidNum.error());
     }
     Err(crate::Error::ProtocolIncomplete)
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
+
+use super::error::RedisError;
 impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
