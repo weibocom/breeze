@@ -69,7 +69,26 @@ where
     fn send(&self, mut req: Self::Item) {
         assert_ne!(self.shards.len(), 0);
 
-        let shard_idx = self.distribute.index(req.hash());
+        let shard_idx = match req.direct_hash() {
+            true => {
+                let dhash_boundary = protocol::MAX_DIRECT_HASH - self.shards.len() as i64;
+                if req.hash() > dhash_boundary {
+                    // ignore_rsp 为false，说明req是client的请求，直接发送；
+                    // ignore_rsp 为true，说明req是用于数据同步的内部请求，此时逐次调整hash，来达到切换分片的目的 fishermen
+                    if req.ignore_rsp() {
+                        let nhash = req.hash() - 1;
+                        req.update_hash(nhash);
+                    }
+                    // 到了最后一个分片之前，write back为true
+                    req.write_back(req.hash() > dhash_boundary + 1);
+                    (protocol::MAX_DIRECT_HASH - req.hash()) as usize
+                } else {
+                    self.distribute.index(req.hash())
+                }
+            }
+            false => self.distribute.index(req.hash()),
+        };
+
         assert!(shard_idx < self.shards.len(), "{:?}", req);
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
@@ -77,12 +96,13 @@ where
         use protocol::Utf8;
         if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(
-                "+++ send - {} hash/idx:{}/{}, req:{:?}, master_only:{}",
+                "+++ send - {} hash/idx:{}/{}, master_only:{}, ignore_rsp:{}, req:{:?},",
                 self.service,
                 req.hash(),
                 shard_idx,
-                req.data().utf8(),
                 req.master_only(),
+                req.ignore_rsp(),
+                req.data().utf8(),
             )
         }
 

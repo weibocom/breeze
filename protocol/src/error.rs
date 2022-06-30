@@ -11,13 +11,13 @@ pub enum Error {
     ChanDisabled,
     ChanClosed,
     ProtocolIncomplete,
-    RequestProtocolNotValid,
-    RequestProtocolNotValidNumber,
-    RequestProtocolNotValidStar,
-    RequestProtocolNotValidNumberZero,
-    RequestProtocolNotValidDigit,
-    RequestProtocolNotValidNoReturn,
-    ResponseProtocolNotValid,
+    RequestProtocolInvalid(&'static str),
+    RequestProtocolInvalidNumber(&'static str),
+    RequestProtocolInvalidStar(&'static str),
+    RequestProtocolInvalidNumberZero(&'static str),
+    RequestProtocolInvalidDigit(&'static str),
+    RequestProtocolInvalidNoReturn(&'static str),
+    ResponseProtocolInvalid,
     ProtocolNotSupported,
     IndexOutofBound,
     Inner,
@@ -44,7 +44,15 @@ impl std::error::Error for Error {}
 use std::fmt::{self, Display, Formatter};
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "error: {:?}", self)
+        match self {
+            Error::RequestProtocolInvalid(desc) => write!(f, "{}", desc),
+            Error::RequestProtocolInvalidNumber(desc) => write!(f, "{}", desc),
+            Error::RequestProtocolInvalidStar(desc) => write!(f, "{}", desc),
+            // Error::RequestProtocolInvalidNumberZero(desc) => write!(f, "{}", desc),
+            // Error::RequestProtocolInvalidDigit(desc) => write!(f, "{}", desc),
+            Error::RequestProtocolInvalidNoReturn(desc) => write!(f, "{}", desc),
+            _ => write!(f, "error: {:?}", self),
+        }
     }
 }
 

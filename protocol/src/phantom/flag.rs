@@ -11,10 +11,11 @@ const MKEY_FIRST_BIT: u8 = 1;
 const PADDING_RSP_SHIFT: u8 = MKEY_FIRST_SHIFT + MKEY_FIRST_BIT;
 const PADDING_RSP_BITS: u8 = 3;
 const PADDING_RSP_MASK: u64 = (1 << PADDING_RSP_BITS) - 1;
-// 36~43 8bit
-const META_LEN_SHIFT: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
-const META_LEN_BITS: u8 = 8;
-const META_LEN_MASK: u64 = (1 << META_LEN_BITS) - 1;
+
+// // 36~43 8bit
+// const META_LEN_SHIFT: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
+// const META_LEN_BITS: u8 = 8;
+// const META_LEN_MASK: u64 = (1 << META_LEN_BITS) - 1;
 
 // token len 目前没有用，先注释掉 fishermen
 // const TOKEN_LEN_SHIFT: u8 = META_LEN_BITS + META_LEN_BITS;
@@ -28,8 +29,8 @@ pub(super) trait RedisFlager {
     fn mkey_first(&self) -> bool;
     fn set_padding_rsp(&mut self, idx: u8);
     fn padding_rsp(&self) -> u8;
-    fn set_meta_len(&mut self, l: u8);
-    fn meta_len(&self) -> u8;
+    // fn set_meta_len(&mut self, l: u8);
+    // fn meta_len(&self) -> u8;
     // fn set_token_count(&mut self, c: u8);
     // fn token_count(&self) -> u8;
 }
@@ -73,14 +74,14 @@ impl RedisFlager for u64 {
     fn padding_rsp(&self) -> u8 {
         get(self, PADDING_RSP_SHIFT, PADDING_RSP_MASK) as u8
     }
-    #[inline]
-    fn set_meta_len(&mut self, l: u8) {
-        set(self, META_LEN_SHIFT, META_LEN_MASK, l as u64);
-    }
-    #[inline]
-    fn meta_len(&self) -> u8 {
-        get(self, META_LEN_SHIFT, META_LEN_MASK) as u8
-    }
+    // #[inline]
+    // fn set_meta_len(&mut self, l: u8) {
+    //     set(self, META_LEN_SHIFT, META_LEN_MASK, l as u64);
+    // }
+    // #[inline]
+    // fn meta_len(&self) -> u8 {
+    //     get(self, META_LEN_SHIFT, META_LEN_MASK) as u8
+    // }
 
     // #[inline]
     // fn set_token_count(&mut self, c: u8) {
@@ -116,14 +117,14 @@ impl RedisFlager for crate::Flag {
     fn padding_rsp(&self) -> u8 {
         self.ext().padding_rsp()
     }
-    #[inline]
-    fn set_meta_len(&mut self, l: u8) {
-        self.ext_mut().set_meta_len(l);
-    }
-    #[inline]
-    fn meta_len(&self) -> u8 {
-        self.ext().meta_len()
-    }
+    // #[inline]
+    // fn set_meta_len(&mut self, l: u8) {
+    //     self.ext_mut().set_meta_len(l);
+    // }
+    // #[inline]
+    // fn meta_len(&self) -> u8 {
+    //     self.ext().meta_len()
+    // }
 
     // #[inline]
     // fn set_token_count(&mut self, c: u8) {
