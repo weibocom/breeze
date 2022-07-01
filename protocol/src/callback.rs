@@ -153,6 +153,10 @@ impl CallbackContext {
         &self.request
     }
     #[inline]
+    pub fn request_mut(&mut self) -> &mut HashedCommand {
+        &mut self.request
+    }
+    #[inline]
     pub fn with_request(&mut self, new: HashedCommand) {
         self.request = new;
     }

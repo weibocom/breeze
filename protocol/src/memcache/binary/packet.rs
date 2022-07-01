@@ -8,7 +8,8 @@ pub enum Magic {
 }
 
 pub const CAS_LEN: usize = 8;
-use crate::{Error, Result, TryNextType};
+use crate::memcache::binary::error::MemcacheError;
+use crate::{Result, TryNextType};
 
 // 总共有48个opcode，这里先只部分支持
 #[allow(dead_code)]
@@ -303,7 +304,7 @@ impl Binary<RingSlice> for RingSlice {
         if self.at(0) == REQUEST_MAGIC {
             Ok(())
         } else {
-            Err(Error::RequestProtocolNotValid)
+            Err(MemcacheError::ReqInvalid.error())
         }
     }
     #[inline(always)]
@@ -312,7 +313,7 @@ impl Binary<RingSlice> for RingSlice {
         if self.at(0) == RESPONSE_MAGIC {
             Ok(())
         } else {
-            Err(Error::ResponseProtocolNotValid)
+            Err(MemcacheError::ReqInvalid.error())
         }
     }
 

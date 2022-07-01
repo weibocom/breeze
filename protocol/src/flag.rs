@@ -8,6 +8,8 @@ pub struct Flag {
     status_ok: bool,
     noforward: bool,
     master_only: bool, // 是否只请求master？
+    ignore_rsp: bool,  // 是否忽略响应，即不发送给client
+    direct_hash: bool,
     v: u64,
 }
 
@@ -93,6 +95,22 @@ impl Flag {
     #[inline]
     pub fn master_only(&self) -> bool {
         self.master_only
+    }
+    #[inline]
+    pub fn set_ignore_rsp(&mut self, ignore_rsp: bool) {
+        self.ignore_rsp = ignore_rsp
+    }
+    #[inline]
+    pub fn ignore_rsp(&self) -> bool {
+        self.ignore_rsp
+    }
+    #[inline]
+    pub fn set_direct_hash(&mut self, direct_hash: bool) {
+        self.direct_hash = direct_hash
+    }
+    #[inline]
+    pub fn direct_hash(&self) -> bool {
+        self.direct_hash
     }
     #[inline]
     pub fn set_ext(&mut self, ext: u64) {
