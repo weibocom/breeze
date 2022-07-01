@@ -28,16 +28,19 @@ pub(crate) struct CommandProperties {
     pub(super) multi: bool, // 该命令是否可能会包含多个key
     // need bulk number只对multi key请求的有意义
     pub(super) need_bulk_num: bool, // mset所有的请求只返回一个+OK，不需要在首个请求前加*bulk_num。其他的都需要
+    pub(super) swallowed: bool, // 该指令是否需要mesh 吞噬，吞噬后不会响应client、也不会发给后端server，吞噬指令一般用于指示下一个常规指令的额外处理属性
+    pub(super) explicit_hash: bool, // 是否明确指定hash，如果为true，则必须有key或者通过hashkey指定明确的hash
 }
 
 // 默认响应
 // 第0个表示quit
-pub const PADDING_RSP_TABLE: [&str; 5] = [
+pub const PADDING_RSP_TABLE: [&str; 6] = [
     "",
     "+OK\r\n",
     "+PONG\r\n",
     "-ERR redis no available\r\n",
-    "-ERR unknown command\r\n",
+    "-ERR invalid command\r\n",
+    "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
 ];
 
 #[allow(dead_code)]
@@ -91,14 +94,15 @@ impl CommandProperties {
     pub fn noforward(&self) -> bool {
         self.noforward
     }
-    #[inline]
+
     pub(super) fn flag(&self) -> crate::Flag {
-        use super::flag::RedisFlager;
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
+        use super::flag::RedisFlager;
         flag.set_padding_rsp(self.padding_rsp);
         flag.set_noforward(self.noforward);
         flag
     }
+
     // bulk_num只有在first=true时才有意义。
     #[inline]
     pub(super) fn build_request(
@@ -207,6 +211,14 @@ impl Commands {
         assert!(idx < self.supported.len());
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
+
+        /*===============  特殊属性，关联cmds极少，直接在这里设置  ===============*/
+        // 吞噬cmd目前只有hashkey
+        let swallowed = uppercase.eq("HASHKEY");
+        // 需要明确指定hashkey的目前只有lua下面3个指令
+        let explicit_hash =
+            uppercase.eq("EVAL") || uppercase.eq("EVALSHA") || uppercase.eq("SCRIPT");
+
         self.supported[idx] = CommandProperties {
             name,
             mname,
@@ -223,6 +235,8 @@ impl Commands {
             has_key,
             has_val,
             need_bulk_num,
+            swallowed,
+            explicit_hash,
         };
     }
 }
@@ -267,6 +281,9 @@ lazy_static! {
 
                 ("expire",   "expire",     3, Store, 1, 1, 1, 3, false, false, true, false, false),
                 ("expireat", "expireat",   3, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("pexpire",  "pexpire",    3, Store, 1, 1, 1, 3, false, false, true, false, false),
+                ("pexpireat", "pexpireat", 3, Store, 1, 1, 1, 3, false, false, true, false, false),
+
                 ("persist", "persist",     2, Store, 1, 1, 1, 3, false, false, true, false, false),
 
                 // zset 相关指令
@@ -371,7 +388,7 @@ lazy_static! {
 
                 // geo 相关指令
                 ("geoadd", "geoadd",                       -5, Store, 1, 1, 1, 3, false, false, true, true, false),
-                ("georadius", "georadius",                 -6, Operation::Get, 1, 1, 1, 3, false, false, true, false, false),
+                ("georadius", "georadius",                 -6, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("georadiusbymember", "georadiusbymember", -5, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("geohash", "geohash",                     -2, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("geopos", "geopos",                       -2, Get, 1, 1, 1, 3, false, false, true, false, false),
@@ -380,67 +397,117 @@ lazy_static! {
                 // pf相关指令
                 ("pfadd", "pfadd",                         -2, Store, 1, 1, 1, 3, false, false, true, false, false),
 
+                // 吞噬类cmd
+                ("hashkey", "hashkey",                     2,  Meta,  1, 1, 1, 5, false, true, true, false, false),
+
+                // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
+                ("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false),
+                ("evalsha", "evalsha",                     -3, Store, 0, 0, 0, 3, false, false, false, false, false),
+                ("eval" , "eval",                          -3, Store, 0, 0, 0, 3, false, false, false, false, false),
+
+                // 待支持
+                // {"lsmalloc",lsmallocCommand,3,REDIS_CMD_DENYOOM|REDIS_CMD_WRITE,NULL,1,1,1},
+                // {"unlink",unlinkCommand,-2,REDIS_CMD_WRITE,NULL,1,-1,1},
+
+                // {"riskauth",riskAuthCommand,2,0,NULL,0,0,0},
+
+                // 管理类风险指令，暂不考虑支持
+                // {"dbslots",dbslotsCommand,1,0,NULL,0,0,0},
+                // {"save",saveCommand,1,0,NULL,0,0,0},
+                // {"bgsave",bgsaveCommand,1,0,NULL,0,0,0},
+                // {"shutdown",shutdownCommand,-1,0,NULL,0,0,0},
+                // {"flushdb",flushdbCommand,1,REDIS_CMD_WRITE,NULL,0,0,0},
+                // {"flushall",flushallCommand,1,REDIS_CMD_WRITE,NULL,0,0,0},
+                // {"post",securityWarningCommand,-1,0,NULL,0,0,0},
+                // {"host:",securityWarningCommand,-1,0,NULL,0,0,0},
+
+
+                // 复制类指令，不支持
+                // {"sync",syncCommand,1,0,NULL,0,0,0},
+                // {"syncfrom",syncFromCommand,3,0,NULL,0,0,0},
+                // {"replconf",replconfCommand,-1,0,NULL,0,0,0},
+                // {"slaveof",slaveofCommand,3,0,NULL,0,0,0},
+                // {"role",roleCommand,1,0,NULL,0,0,0},
+                // {"rotate_aof",rotateAofCommand,1,0,NULL,0,0,0},
+
+                // 普通管理类指令，暂不支持
+                // {"monitor",monitorCommand,1,0,NULL,0,0,0},
+                // {"lastsave",lastsaveCommand,1,0,NULL,0,0,0},
+                // {"type",typeCommand,2,0,NULL,1,1,1},
+                 // {"tm",tmCommand,3,REDIS_CMD_WRITE,NULL,0,0,0},
+                // {"version",versionCommand,1,0,NULL,0,0,0},
+                // {"debug",debugCommand,-2,0,NULL,0,0,0},
+
+                // 订阅类指令，暂不支持
+                // {"unsubscribe",unsubscribeCommand,-1,0,NULL,0,0,0},
+                // {"psubscribe",psubscribeCommand,-2,0,NULL,0,0,0},
+                // {"punsubscribe",punsubscribeCommand,-1,0,NULL,0,0,0},
+                // {"publish",publishCommand,3,REDIS_CMD_FORCE_REPLICATION|REDIS_CMD_WRITE,NULL,0,0,0},
+                // "subscribe" => (-2, Operation::Get, 0, 0, 0),
+                // {"pubsub", pubsubCommand, -2, REDIS_CMD_READONLY|REDIS_CMD_PUBSUB, NULL, 0, 0, 0},
+
+                // 特殊指令，暂不支持
+                // {"watch",watchCommand,-2,0,NULL,1,-1,1},
+                // {"unwatch",unwatchCommand,1,0,NULL,0,0,0},
+                // {"object",objectCommand,-2,0,NULL,2,2,1},
+
                 // 涉及多个key，先不支持了
-                // ("pfcount", "pfcount", -2, Get, 1, -1, 1, 3, false, false, true, false, false),
+                // ("pfcount", "pfcount", -2, Get, 1, -1, 1, 3, false, false, true, false),
                 // "pfmerge" => (-2, Operation::Store, 1, -1, 1),
-                // ("pfselftest", "pfselftest", 1, Get, 1, 1, 1, 3, false, false, true, false, false),
+                // ("pfselftest", "pfselftest", 1, Get, 1, 1, 1, 3, false, false, true, false),
                 // "pfdebug" => (-3, Operation::Store, 0, 0, 0),
 
 
-            // TODO: 暂时不支持的指令，启用时注意加上padding rsp fishermen
-            // "psetex" => (4, Operation::Store, 1, 1, 1),
-            // "substr" => (4, Operation::Get, 1, 1, 1),
-            // "rpoplpush" => (3, Operation::Store, 1, 2, 1),
-            // "brpop" => (-3, Operation::Store, 1, -2, 1),
-            // "blpop" => (-3, Operation::Store, 1, -2, 1),
-            // "brpoplpush" => (4, Operation::Store, 1, 2, 1),
+                // TODO: 暂时不支持的指令，启用时注意加上padding rsp fishermen
+                // "psetex" => (4, Operation::Store, 1, 1, 1),
+                // "substr" => (4, Operation::Get, 1, 1, 1),
+                // "rpoplpush" => (3, Operation::Store, 1, 2, 1),
+                // "brpop" => (-3, Operation::Store, 1, -2, 1),
+                // "blpop" => (-3, Operation::Store, 1, -2, 1),
+                // "brpoplpush" => (4, Operation::Store, 1, 2, 1),
 
-            // 涉及多个key的操作，暂不支持
-            // "bitop" => (-4, Operation::Store, 2, -1, 1),
-            // "sinter" => (-2, Operation::Get, 1, -1, 1),
-            // "sinterstore" => (-3, Operation::Store, 1, -1, 1),
-            // "sunion" => (-2, Operation::Get, 1, -1, 1),
-            // "sunionstore" => (-3, Operation::Store, 1, -1, 1),
-            // "sdiff" => (-2, Operation::Get, 1, -1, 1),
-            // "sdiffstore" => (-3, Operation::Store, 1, -1, 1),
-            // "smove" => (4, Operation::Store, 1, 2, 1),
-            // "zunionstore" => (-4, Operation::Store, 0, 0, 0),
-            // "zinterstore" => (-4, Operation::Store, 0, 0, 0),
+                // 涉及多个key的操作，暂不支持
+                // "bitop" => (-4, Operation::Store, 2, -1, 1),
+                // "sinter" => (-2, Operation::Get, 1, -1, 1),
+                // "sinterstore" => (-3, Operation::Store, 1, -1, 1),
+                // "sunion" => (-2, Operation::Get, 1, -1, 1),
+                // "sunionstore" => (-3, Operation::Store, 1, -1, 1),
+                // "sdiff" => (-2, Operation::Get, 1, -1, 1),
+                // "sdiffstore" => (-3, Operation::Store, 1, -1, 1),
+                // "smove" => (4, Operation::Store, 1, 2, 1),
+                // "zunionstore" => (-4, Operation::Store, 0, 0, 0),
+                // "zinterstore" => (-4, Operation::Store, 0, 0, 0),
 
-            // "hstrlen" => (3, Operation::Get, 1, 1, 1),
+                // "hstrlen" => (3, Operation::Get, 1, 1, 1),
 
-            // "msetnx" => (-3, Operation::Store, 1, -1, 2),
-            // "randomkey" => (1, Operation::Get, 0, 0, 0),
-            // "move" => (3, Operation::Store, 1, 1, 1),
-            // "rename" => (3, Operation::Store, 1, 2, 1),
-            // "renamenx" => (3, Operation::Store, 1, 2, 1),
-            // "pexpire" => (3, Operation::Store, 1, 1, 1),
-            // "pexpireat" => (3, Operation::Store, 1, 1, 1),
-            // "keys" => (2, Operation::Get, 0, 0, 0),
-            // "scan" => (-2, Operation::Get, 0, 0, 0),
-            // "dbsize" => (1, Operation::Get, 0, 0, 0),
-            // "auth" => (2, Operation::Meta, 0, 0, 0),
-            // "echo" => (2, Operation::Meta, 0, 0, 0),
-            // info 先不在client支持
-            // "info" => (-1, Operation::Meta, 0, 0, 0),
+                // "msetnx" => (-3, Operation::Store, 1, -1, 2),
+                // "randomkey" => (1, Operation::Get, 0, 0, 0),
+                // "move" => (3, Operation::Store, 1, 1, 1),
+                // "rename" => (3, Operation::Store, 1, 2, 1),
+                // "renamenx" => (3, Operation::Store, 1, 2, 1),
+                // "keys" => (2, Operation::Get, 0, 0, 0),
+                // "scan" => (-2, Operation::Get, 0, 0, 0),
+                // "dbsize" => (1, Operation::Get, 0, 0, 0),
+                // "auth" => (2, Operation::Meta, 0, 0, 0),
+                // "echo" => (2, Operation::Meta, 0, 0, 0),
+                // info 先不在client支持
+                // "info" => (-1, Operation::Meta, 0, 0, 0),
 
-            // "config" => (-2, Operation::Meta, 0, 0, 0),
-            // "subscribe" => (-2, Operation::Get, 0, 0, 0),
-            // "evalsha" => (-3, Operation::Store, 0, 0, 0),
-            // "script" => (-2, Operation::Get, 0, 0, 0),
-            // "time" => (1, Operation::Get, 0, 0, 0),
+                // "config" => (-2, Operation::Meta, 0, 0, 0),
 
-            // ********** 二期实现
-            // 事务类、脚本类cmd，暂时先不支持，二期再处理 fishermen
-            // "multi" => (1, Operation::Store, 0, 0, 0),
-            // "exec" => (1, Operation::Store, 0, 0, 0),
-            // "discard" => (1, Operation::Get, 0, 0, 0),
-            // "sort" => (-2, Operation::Store, 1, 1, 1),
-            // "client" => (-2, Operation::Meta, 0, 0, 0),
-            // "eval" => (-3, Operation::Store, 0, 0, 0),
-            // "slowlog" => (-2, Operation::Get, 0, 0, 0),
-            // "wait" => (3, Operation::Meta, 0, 0, 0),
-            // "latency" => (-2, Operation::Meta, 0, 0, 0),
+                // "time" => (1, Operation::Get, 0, 0, 0),
+
+                // ********** 二期实现
+                // 事务类、脚本类cmd，暂时先不支持，二期再处理 fishermen
+                // "multi" => (1, Operation::Store, 0, 0, 0),
+                // "exec" => (1, Operation::Store, 0, 0, 0),
+                // "discard" => (1, Operation::Get, 0, 0, 0),
+                // "sort" => (-2, Operation::Store, 1, 1, 1),
+                // "client" => (-2, Operation::Meta, 0, 0, 0),
+
+                // "slowlog" => (-2, Operation::Get, 0, 0, 0),
+                // "wait" => (3, Operation::Meta, 0, 0, 0),
+                // "latency" => (-2, Operation::Meta, 0, 0, 0),
             ] {
     cmds.add_support(
         name,
@@ -455,7 +522,7 @@ lazy_static! {
         noforward,
         has_key,
         has_val,
-        need_bulk_num
+        need_bulk_num,
     ) ;
             }
         cmds

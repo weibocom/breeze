@@ -1,4 +1,6 @@
+mod error;
 mod packet;
+
 use packet::*;
 
 use crate::{Error, Flag, Result, Stream};

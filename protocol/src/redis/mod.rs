@@ -1,13 +1,16 @@
 mod command;
+mod error;
 mod flag;
 mod packet;
 //mod token;
 
 use crate::{
-    redis::command::PADDING_RSP_TABLE, Command, Commander, Error, Flag, HashedCommand, Protocol,
+    redis::command::CommandProperties, redis::command::PADDING_RSP_TABLE,
+    redis::packet::RequestPacket, Command, Commander, Error, Flag, HashedCommand, Protocol,
     RequestProcessor, Result, Stream,
 };
 use ds::RingSlice;
+use error::*;
 use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
@@ -40,7 +43,7 @@ impl Redis {
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
             // 先尝试parse master
-            let master_only = packet.parse_layer()?;
+            let master_only = packet.parse_cmd_layer()?;
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
 
@@ -63,17 +66,29 @@ impl Redis {
                     process.process(req, packet.complete());
                 }
             } else {
-                if cfg.has_key {
-                    let key = packet.parse_key()?;
-                    hash = calculate_hash(alg, &key);
-                } else {
-                    hash = default_hash();
+                // 目前 swallowed 只会针对非multi key的cmd
+                if cfg.swallowed {
+                    self.parse_swallow_cmd(cfg, &mut packet, alg)?;
+                    continue;
                 }
-                packet.ignore_all_bulks()?;
                 let mut flag = cfg.flag();
                 if master_only {
                     flag.set_master_only();
                 }
+
+                if packet.reserved_hash() != 0 {
+                    // 使用hashkey直接指定了hash
+                    hash = packet.reserved_hash();
+                    flag.set_direct_hash(true);
+                } else if cfg.has_key {
+                    let key = packet.parse_key()?;
+                    hash = calculate_hash(alg, &key);
+                } else if cfg.explicit_hash {
+                    return Err(RedisError::ReqInvalid.error());
+                } else {
+                    hash = default_hash();
+                }
+                packet.ignore_all_bulks()?;
 
                 let cmd = packet.take();
                 let req = HashedCommand::new(cmd, hash, flag);
@@ -82,6 +97,38 @@ impl Redis {
 
             // 至此，一个指令处理完毕
         }
+        Ok(())
+    }
+
+    // 解析待吞噬的cmd，目前swallowed cmds只有hashkey这一个，后续还有扩展就在这里加 fishermen
+    fn parse_swallow_cmd<S: Stream, H: Hash>(
+        &self,
+        cfg: &CommandProperties,
+        packet: &mut RequestPacket<S>,
+        alg: &H,
+    ) -> Result<()> {
+        if cfg.name == "hashkey" {
+            let key = packet.parse_key()?;
+            let hash: i64;
+            // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
+            if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
+                log::info!("+++ will broadcast: {:?}", packet.inner_data().utf8());
+                hash = crate::MAX_DIRECT_HASH;
+            } else {
+                hash = calculate_hash(alg, &key);
+            }
+
+            // 记录reserved hash，为下一个指令使用
+            packet.update_reserved_hash(hash);
+        } else {
+            debug_assert!(false);
+            log::warn!("should not come here![hashkey?]");
+        }
+        // 吞噬掉整个cmd，准备处理下一个cmd fishermen
+        packet.ignore_all_bulks()?;
+        // 吞噬/trim掉当前 cmd data，准备解析下一个cmd
+        packet.trim_cmd_data()?;
+
         Ok(())
     }
 
@@ -210,7 +257,11 @@ impl Protocol for Redis {
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
-            log::debug!("+++ will write no rsp. req:{}", req);
+            log::debug!(
+                "+++ will write padding rsp/{} for req:{:?}",
+                rsp,
+                req.data().utf8()
+            );
         }
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
@@ -221,6 +272,17 @@ impl Protocol for Redis {
             w.write(ok_rs)?;
             Err(crate::Error::Quit)
         }
+    }
+    #[inline]
+    fn build_writeback_request<C: Commander>(&self, ctx: &mut C, _: u32) -> Option<HashedCommand> {
+        let hash_cmd = ctx.request_mut();
+        debug_assert!(hash_cmd.direct_hash());
+
+        // hash idx 放到topo.send 中处理
+        // let idx_hash = hash_cmd.hash() - 1;
+        // hash_cmd.update_hash(idx_hash);
+        hash_cmd.set_ignore_rsp(true);
+        None
     }
 }
 
