@@ -1,4 +1,3 @@
-use backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::{Error, ErrorKind, Result};
 use std::ptr::copy_nonoverlapping;
