@@ -1,3 +1,4 @@
+use backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::{Error, ErrorKind, Result};
 use std::ptr::copy_nonoverlapping;
@@ -73,6 +74,14 @@ impl RingSlice {
     }
     #[inline]
     pub fn at(&self, idx: usize) -> u8 {
+        if idx >= self.len() {
+            log::error!(
+                "idx >= self.len, idx = {}, self.len = {}, backtrace : {:?}",
+                idx,
+                self.len(),
+                Backtrace::new()
+            )
+        }
         assert!(idx < self.len());
         unsafe { *self.oft_ptr(idx) }
     }
