@@ -78,14 +78,10 @@ impl RingSlice {
             let mut print_data: &mut Vec<u8> = &mut Vec::new();
             self.copy_to_vec(print_data);
             log::error!(
-                "idx >= self.len, idx = {}, self.len = {}, data = {}, backtrace : {:?}",
+                "idx >= self.len, idx = {}, self.len = {}, data = {:?}",
                 idx,
                 self.len(),
-                String::from_utf8(print_data.to_vec())
-                    .unwrap()
-                    .replace("\r", "\\r")
-                    .replace("\n", "\\n"),
-                Backtrace::new()
+                print_data
             )
         }
         assert!(idx < self.len());
@@ -194,6 +190,7 @@ impl RingSlice {
             len = self.len();
         }
 
+        log::info!("start_with_ignore_case, offset = {}, len = {}", offset, len);
         for i in 0..len {
             let c = dest[i] as char;
             // 对于非ascii字母，直接比较，否则忽略大小写比较
