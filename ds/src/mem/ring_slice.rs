@@ -74,16 +74,6 @@ impl RingSlice {
     }
     #[inline]
     pub fn at(&self, idx: usize) -> u8 {
-        if idx >= self.len() {
-            let mut print_data: &mut Vec<u8> = &mut Vec::new();
-            self.copy_to_vec(print_data);
-            log::error!(
-                "idx >= self.len, idx = {}, self.len = {}, data = {:?}",
-                idx,
-                self.len(),
-                print_data
-            )
-        }
         assert!(idx < self.len());
         unsafe { *self.oft_ptr(idx) }
     }
@@ -186,11 +176,10 @@ impl RingSlice {
     #[inline]
     pub fn start_with_ignore_case(&self, offset: usize, dest: &[u8]) -> std::io::Result<bool> {
         let mut len = dest.len();
-        if self.len() < dest.len() {
-            len = self.len();
+        if self.len() - offset < dest.len() {
+            len = self.len() - offset;
         }
 
-        log::info!("start_with_ignore_case, offset = {}, len = {}", offset, len);
         for i in 0..len {
             let c = dest[i] as char;
             // 对于非ascii字母，直接比较，否则忽略大小写比较
