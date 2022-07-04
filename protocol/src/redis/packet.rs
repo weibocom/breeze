@@ -243,6 +243,16 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     fn check_start(&self) -> Result<()> {
         if self.current() != b'*' {
+            let mut print_data: &mut Vec<u8> = &mut Vec::new();
+            self.data.copy_to_vec(print_data);
+            log::error!(
+                "check start error, self.oft = {}, data = {}",
+                self.oft,
+                String::from_utf8(print_data.to_vec())
+                    .unwrap()
+                    .replace("\r", "\\r")
+                    .replace("\n", "\\n")
+            );
             Err(RedisError::ReqInvalidStar.error())
         } else {
             Ok(())
