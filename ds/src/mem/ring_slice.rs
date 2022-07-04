@@ -75,10 +75,16 @@ impl RingSlice {
     #[inline]
     pub fn at(&self, idx: usize) -> u8 {
         if idx >= self.len() {
+            let mut print_data: &mut Vec<u8> = &mut Vec::new();
+            self.copy_to_vec(print_data);
             log::error!(
-                "idx >= self.len, idx = {}, self.len = {}, backtrace : {:?}",
+                "idx >= self.len, idx = {}, self.len = {}, data = {}, backtrace : {:?}",
                 idx,
                 self.len(),
+                String::from_utf8(print_data.to_vec())
+                    .unwrap()
+                    .replace("\r", "\\r")
+                    .replace("\n", "\\n"),
                 Backtrace::new()
             )
         }
