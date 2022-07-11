@@ -1,13 +1,14 @@
 use psutil::process::Process;
 
+use crate::BASE_PATH;
 use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 use std::time::Instant;
-use crate::BASE_PATH;
 
 static CPU_PERCENT: AtomicUsize = AtomicUsize::new(0);
 static MEMORY: AtomicUsize = AtomicUsize::new(0);
 
 static TASK_NUM: AtomicIsize = AtomicIsize::new(0);
+static SOCKFILE_FAILED: AtomicIsize = AtomicIsize::new(0);
 
 pub struct Host {
     start: Instant,
@@ -29,7 +30,12 @@ impl Host {
         self.refresh();
         let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
         w.write(BASE_PATH, "host", "cpu", percent as f64);
-        w.write(BASE_PATH, "host", "mem", MEMORY.load(Ordering::Relaxed) as f64);
+        w.write(
+            BASE_PATH,
+            "host",
+            "mem",
+            MEMORY.load(Ordering::Relaxed) as f64,
+        );
 
         let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
         w.write(BASE_PATH, "task", "num", tasks);
@@ -40,6 +46,9 @@ impl Host {
             "uptime_sec",
             self.start.elapsed().as_secs() as f64,
         );
+
+        let sockfile_failed = SOCKFILE_FAILED.load(Ordering::Relaxed) as f64;
+        w.write(BASE_PATH, "sockfile", "failed", sockfile_failed);
     }
     pub(crate) fn refresh(&mut self) {
         if let Ok(percent) = self.process.cpu_percent() {
@@ -58,4 +67,8 @@ pub fn incr_task() {
 #[inline]
 pub fn decr_task() {
     TASK_NUM.fetch_sub(1, Ordering::Relaxed);
+}
+#[inline]
+pub fn set_sockfile_failed(failed_count: usize) {
+    SOCKFILE_FAILED.store(failed_count as isize, Ordering::Relaxed);
 }

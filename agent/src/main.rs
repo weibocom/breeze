@@ -58,7 +58,11 @@ async fn run(ctx: Context) -> Result<()> {
     let mut listeners = ctx.listeners();
     listeners.remove_unix_sock().await?;
     loop {
-        for quard in listeners.scan().await {
+        let (quards, failed) = listeners.scan().await;
+        if failed > 0 {
+            metrics::set_sockfile_failed(failed);
+        }
+        for quard in quards {
             let discovery = tx.clone();
             spawn(async move {
                 match service::process_one(&quard, discovery).await {
