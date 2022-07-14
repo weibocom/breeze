@@ -1,0 +1,20 @@
+[package]
+name = "api"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+context = { path = "../context" }
+log = "0.4.14"
+
+tokio = {version = "1.17.0", features = ["fs"]}
+
+# rocket for restful api
+rocket = { version = "0.5.0-rc.2", features = ["json"] }
+
+# for serde json
+serde = { version = "1.0.126", features = ["derive"] }
+serde_derive = "1.0.126"
+serde_json = "1.0.65"
