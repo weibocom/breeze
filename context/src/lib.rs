@@ -120,6 +120,7 @@ impl Context {
         }
         Ok(())
     }
+
     pub fn tick(&self) -> std::time::Duration {
         assert!(self.tick_sec >= 1 && self.tick_sec <= 60);
         std::time::Duration::from_secs(self.tick_sec as u64)
@@ -161,6 +162,13 @@ pub struct ListenerIter {
 }
 
 impl ListenerIter {
+    pub fn from(path: String) -> Self {
+        Self {
+            processed: Default::default(),
+            path,
+        }
+    }
+
     // 扫描self.pah，获取该目录下所有不以.sock结尾，符合格式的文件作为服务配置进行解析。
     // 不以.sock结尾，由'@'字符分隔成一个Quard的配置。一个标准的服务配置文件名为
     // 如果对应的文件已经存在 $name.sock。那说明有其他进程侦听了该服务
@@ -206,12 +214,27 @@ impl ListenerIter {
         }
         Ok(())
     }
-    async fn read_all(&self) -> Result<Vec<String>> {
+    pub async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];
         let mut dir = tokio::fs::read_dir(&self.path).await?;
         while let Some(child) = dir.next_entry().await? {
             if child.metadata().await?.is_file() {
                 match child.path().into_os_string().into_string() {
+                    Ok(name) => {
+                        found.push(name);
+                    }
+                    Err(os_str) => log::warn!("{:?} is not a valid file name", os_str),
+                }
+            }
+        }
+        Ok(found)
+    }
+    pub async fn files(&self) -> Result<Vec<String>> {
+        let mut found = vec![];
+        let mut dir = tokio::fs::read_dir(&self.path).await?;
+        while let Some(child) = dir.next_entry().await? {
+            if child.metadata().await?.is_file() {
+                match child.file_name().into_string() {
                     Ok(name) => {
                         found.push(name);
                     }

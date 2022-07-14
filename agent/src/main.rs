@@ -13,29 +13,70 @@ use protocol::Result;
 
 use std::ops::Deref;
 use std::panic;
+use std::path::Path;
 
 use backtrace::Backtrace;
 
-fn main() -> Result<()> {
+#[macro_use]
+extern crate rocket;
+
+use api;
+use api::props;
+use rocket::{Build, Rocket};
+
+#[launch]
+async fn main_launch() -> Rocket<Build> {
     let ctx = Context::from_os_args();
-    ctx.check()?;
+    if let Err(e) = ctx.check() {
+        panic!("context check args failed, err: {:?}", e);
+    }
+
     set_rlimit(ctx.no_file);
     set_panic_hook();
 
-    let threads = ctx.thread_num as usize;
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(threads)
-        .thread_name("breeze-w")
-        .thread_stack_size(2 * 1024 * 1024)
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async { run(ctx).await })
+    if let Err(e) = elog::init(ctx.log_dir(), &ctx.log_level) {
+        panic!("log init failed: {:?}", e);
+    }
+
+    // set env props for api
+    set_env_props(&ctx);
+
+    rt::spawn(async {
+        if let Err(e) = run(ctx).await {
+            panic!("start breeze core failed: {:?}", e);
+        }
+    });
+
+    log::debug!("will launch rocket!");
+
+    let rocket = rocket::build();
+    rocket.mount(
+        "/breeze",
+        routes![
+            api::hello,
+            api::meta_list,
+            api::sockfile_content,
+            api::snapshot_content
+        ],
+    )
+    // ctx.check()?;
+    // set_rlimit(ctx.no_file);
+    // set_panic_hook();
+
+    // let threads = ctx.thread_num as usize;
+    // let run_rs = tokio::runtime::Builder::new_multi_thread()
+    //     .worker_threads(threads)
+    //     .thread_name("breeze-w")
+    //     .thread_stack_size(2 * 1024 * 1024)
+    //     .enable_all()
+    //     .build()
+    //     .unwrap()
+    //     .block_on(async { run(ctx).await });
 }
 
 async fn run(ctx: Context) -> Result<()> {
     let _l = service::listener_for_supervisor(ctx.port()).await?;
-    elog::init(ctx.log_dir(), &ctx.log_level)?;
+    // elog::init(ctx.log_dir(), &ctx.log_level)?;
     metrics::init_local_ip(&ctx.metrics_probe);
 
     rt::spawn(metrics::Sender::new(
@@ -100,4 +141,17 @@ fn set_panic_hook() {
         log::error!("A panic occurred at {}:{}: {}", filename, line, cause);
         log::error!("panic backtrace: {:?}", Backtrace::new())
     }));
+}
+
+// 设置需要的变量到evns中
+pub fn set_env_props(ctx: &Context) {
+    let sp_name = ctx.service_path();
+    let path = Path::new(&sp_name);
+    let base_path = path.parent().unwrap();
+    props::set_evn(
+        "base_path".to_string(),
+        base_path.to_str().unwrap().to_string(),
+    );
+
+    log::info!("+++ base path: {}", base_path.to_str().unwrap().to_string());
 }

@@ -12,6 +12,7 @@ members = [
   "metrics",
   "ds",
   "rt",
+  "api",
   "tests",
 ]
 
