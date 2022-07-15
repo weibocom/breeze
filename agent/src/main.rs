@@ -56,7 +56,8 @@ async fn main_launch() -> Rocket<Build> {
             api::hello,
             api::meta_list,
             api::sockfile_content,
-            api::snapshot_content
+            api::snapshot_content,
+            api::listener,
         ],
     )
     // ctx.check()?;
@@ -148,10 +149,8 @@ pub fn set_env_props(ctx: &Context) {
     let sp_name = ctx.service_path();
     let path = Path::new(&sp_name);
     let base_path = path.parent().unwrap();
-    props::set_evn(
-        "base_path".to_string(),
-        base_path.to_str().unwrap().to_string(),
-    );
+    props::set_prop("base_path", base_path.to_str().unwrap());
 
-    log::info!("+++ base path: {}", base_path.to_str().unwrap().to_string());
+    // 设置version
+    props::set_prop("version", context::get_short_version());
 }
