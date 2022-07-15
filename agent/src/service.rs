@@ -1,3 +1,4 @@
+use discovery::dns::IPPort;
 use net::Listener;
 use rt::spawn;
 use std::sync::Arc;
@@ -84,6 +85,9 @@ async fn _process_one(
 
     // 监听成功协议计数减1，让监听失败数重新置零
     *protocol_metrics.listen_failed() -= 1;
+
+    // 记录监听的端口，方便api查询
+    api::props::add_listener(quard.service().to_string(), quard.address());
 
     log::info!("started. {}", quard);
 

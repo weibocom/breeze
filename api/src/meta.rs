@@ -1,4 +1,5 @@
-use rocket::serde::{json::Json, Serialize};
+use rocket::serde::Serialize;
+use serde::Deserialize;
 use std::io::{Error, ErrorKind};
 use std::{io::Result, path::PathBuf};
 use tokio::fs::File;
@@ -7,12 +8,15 @@ use tokio::io::AsyncReadExt;
 use crate::props;
 use context::ListenerIter;
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct Meta {
     base_path: String,
     sock_path: String,
     snapshot_path: String,
+
+    version: String,
+    sockfiles: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -24,9 +28,11 @@ pub struct FileContent {
 
 impl Meta {
     pub fn from_evn() -> Self {
-        let base_path = props::from_evn("base_path".to_string(), "/data1/breeze/".to_string());
+        let base_path = props::get_prop("base_path", "/data1/breeze/");
         let sock_path = format!("{}/{}", base_path, "socks");
         let snapshot_path = format!("{}/{}", base_path, "snapshot");
+
+        let version = props::get_prop("version", "unknown");
         log::info!(
             "+++ base path: {}, sock:{}, snapshot: {}",
             base_path,
@@ -37,11 +43,14 @@ impl Meta {
             base_path: base_path.to_string(),
             sock_path,
             snapshot_path,
+
+            version: version.to_string(),
+            sockfiles: Default::default(),
         }
     }
 
     // 获取sock file的列表
-    pub async fn sockfile_list(&mut self) -> Result<Vec<String>> {
+    pub async fn load_sockfile_list(&mut self) -> Result<()> {
         let mut file_listener = ListenerIter::from(self.sock_path.clone());
         file_listener.remove_unix_sock().await?;
 
@@ -49,8 +58,9 @@ impl Meta {
         for quad in file_listener.scan().await {
             socks.push(quad.name());
         }
+        self.sockfiles = socks;
 
-        return Ok(socks);
+        return Ok(());
     }
 
     pub async fn sockfile(&self, service: &str) -> Result<FileContent> {
