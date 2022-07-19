@@ -16,6 +16,7 @@ use packet::Packet;
 use sharding::hash::Hash;
 
 use crate::Utf8;
+use rand;
 
 // redis 协议最多支持10w个token
 //const MAX_TOKEN_COUNT: usize = 100000;
@@ -49,15 +50,31 @@ impl Redis {
 
             let cfg = command::get_cfg(packet.op_code())?;
             let mut hash;
-            if cfg.multi {
+            if cfg.swallowed {
+                // 优先处理swallow吞噬指令
+                self.parse_swallow_cmd(cfg, &mut packet, alg)?;
+                continue;
+            } else if cfg.multi {
                 packet.multi_ready();
                 while packet.has_bulk() {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
                     let first = packet.first();
                     assert!(cfg.has_key);
-                    let key = packet.parse_key()?;
-                    hash = calculate_hash(alg, &key);
+
+                    // mutli cmd 也支持swallow指令
+                    if packet.reserved_hash() != 0 {
+                        // 使用hashkey直接指定了hash
+                        hash = packet.reserved_hash();
+                        log::info!(
+                            "use direct hash for multi cmd: {:?}",
+                            packet.inner_data().utf8()
+                        )
+                    } else {
+                        let key = packet.parse_key()?;
+                        hash = calculate_hash(alg, &key);
+                    }
+
                     if cfg.has_val {
                         packet.ignore_one_bulk()?;
                     }
@@ -66,11 +83,6 @@ impl Redis {
                     process.process(req, packet.complete());
                 }
             } else {
-                // 目前 swallowed 只会针对非multi key的cmd
-                if cfg.swallowed {
-                    self.parse_swallow_cmd(cfg, &mut packet, alg)?;
-                    continue;
-                }
                 let mut flag = cfg.flag();
                 if master_only {
                     flag.set_master_only();
@@ -100,30 +112,41 @@ impl Redis {
         Ok(())
     }
 
-    // 解析待吞噬的cmd，目前swallowed cmds只有hashkey这一个，后续还有扩展就在这里加 fishermen
+    // 解析待吞噬的cmd，目前swallowed cmds有hashkey、hashrandomq这2个，后续还有扩展就在这里加 fishermen
     fn parse_swallow_cmd<S: Stream, H: Hash>(
         &self,
         cfg: &CommandProperties,
         packet: &mut RequestPacket<S>,
         alg: &H,
     ) -> Result<()> {
-        if cfg.name == "hashkey" {
-            let key = packet.parse_key()?;
-            let hash: i64;
-            // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
-            if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
-                log::info!("+++ will broadcast: {:?}", packet.inner_data().utf8());
-                hash = crate::MAX_DIRECT_HASH;
-            } else {
-                hash = calculate_hash(alg, &key);
-            }
+        debug_assert!(cfg.swallowed);
+        match cfg.name {
+            "hashkey" => {
+                let key = packet.parse_key()?;
+                let hash: i64;
+                // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
+                if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
+                    log::info!("+++ will broadcast: {:?}", packet.inner_data().utf8());
+                    hash = crate::MAX_DIRECT_HASH;
+                } else {
+                    hash = calculate_hash(alg, &key);
+                }
 
-            // 记录reserved hash，为下一个指令使用
-            packet.update_reserved_hash(hash);
-        } else {
-            debug_assert!(false);
-            log::warn!("should not come here![hashkey?]");
+                // 记录reserved hash，为下一个指令使用
+                packet.update_reserved_hash(hash);
+            }
+            "hashrandomq" => {
+                // 虽然hash名义为i64，但实际当前均为u32
+                let hash = rand::random::<u32>();
+                // 记录reserved hash，为下一个指令使用
+                packet.update_reserved_hash(hash as i64);
+            }
+            _ => {
+                debug_assert!(false);
+                log::warn!("should not come here![hashkey?]");
+            }
         }
+
         // 吞噬掉整个cmd，准备处理下一个cmd fishermen
         packet.ignore_all_bulks()?;
         // 吞噬/trim掉当前 cmd data，准备解析下一个cmd

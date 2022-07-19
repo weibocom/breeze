@@ -396,9 +396,10 @@ lazy_static! {
 
                 // pf相关指令
                 ("pfadd", "pfadd",                         -2, Store, 1, 1, 1, 3, false, false, true, false, false),
-
-                // 吞噬类cmd
+                
+                // 吞噬类cmd，吞噬指令，统一用q结尾？待与client协调
                 ("hashkey", "hashkey",                     2,  Meta,  1, 1, 1, 5, false, true, true, false, false),
+                ("hashrandomq", "hashrandomq",             1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
 
                 // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
                 ("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false),
