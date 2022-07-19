@@ -214,7 +214,7 @@ impl Commands {
 
         /*===============  特殊属性，关联cmds极少，直接在这里设置  ===============*/
         // 吞噬cmd目前只有hashkey
-        let swallowed = uppercase.eq("HASHKEY");
+        let swallowed = uppercase.eq("HASHKEY") || uppercase.eq("HASHRANDOMQ");
         // 需要明确指定hashkey的目前只有lua下面3个指令
         let explicit_hash =
             uppercase.eq("EVAL") || uppercase.eq("EVALSHA") || uppercase.eq("SCRIPT");
@@ -397,7 +397,8 @@ lazy_static! {
                 // pf相关指令
                 ("pfadd", "pfadd",                         -2, Store, 1, 1, 1, 3, false, false, true, false, false),
                 
-                // 吞噬类cmd，吞噬指令，统一用q结尾？待与client协调
+                // TODO: 吞噬类cmd，吞噬指令，统一用q结尾？待与client协调
+                // 注意: swallowed属性在add_support中增加 fishermen
                 ("hashkey", "hashkey",                     2,  Meta,  1, 1, 1, 5, false, true, true, false, false),
                 ("hashrandomq", "hashrandomq",             1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
 
