@@ -52,7 +52,7 @@ pub(super) async fn process_one(
         tokio::time::sleep(sleep).await;
     }
 
-    log::debug!("service inited. {} ", quard);
+    log::info!("service inited. {} ", quard);
     let switcher = ds::Switcher::from(true);
     let top = Arc::new(RefreshTopology::from(rx));
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
