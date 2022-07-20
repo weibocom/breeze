@@ -1,8 +1,11 @@
 extern crate lazy_static;
 use clap::{FromArgMatches, IntoApp, Parser};
 use lazy_static::lazy_static;
-use std::io::{Error, ErrorKind, Result};
 use std::path::Path;
+use std::{
+    io::{Error, ErrorKind, Result},
+    vec,
+};
 use url::Url;
 
 mod quadruple;
@@ -156,16 +159,18 @@ impl Context {
 
 use std::collections::HashMap;
 pub struct ListenerIter {
-    processed: HashMap<String, ()>,
+    processed: HashMap<String, String>,
     path: String,
 }
 
 impl ListenerIter {
     // 扫描self.pah，获取该目录下所有不以.sock结尾，符合格式的文件作为服务配置进行解析。
     // 不以.sock结尾，由'@'字符分隔成一个Quard的配置。一个标准的服务配置文件名为
-    // 如果对应的文件已经存在 $name.sock。那说明有其他进程侦听了该服务
+    // 如果对应的文件已经存在 $name.sock。那说明有其他进程侦听了该服务，如果协议或端口不同则说明冲突；
     // unix的配置放在前面
-    pub async fn scan(&mut self) -> Vec<Quadruple> {
+    // 返回解析成功的Quadruple和解析失败的数量
+    pub async fn scan(&mut self) -> (Vec<Quadruple>, usize) {
+        let mut failed = 0;
         let mut listeners = vec![];
         match self.read_all().await {
             Ok(names) => {
@@ -173,25 +178,41 @@ impl ListenerIter {
                     if let Some(one) = Quadruple::parse(&self.path, &name) {
                         if !self.processed.contains_key(one.service()) {
                             listeners.push(one);
+                        } else {
+                            // 包含了service，但端口、协议等任何其他发生变化，则立即汇报
+                            let empty = "default-empty".to_string();
+                            let old = self.processed.get(one.service()).unwrap_or(&empty);
+                            if old.ne(&one.name()) {
+                                log::warn!(
+                                    "sock scan found conflict, old:{}, new:{}",
+                                    old,
+                                    one.name()
+                                );
+                                failed += 1;
+                            }
                         }
                     }
                 }
             }
-            Err(e) => log::warn!("failed to scan '{}' err:{:?}", self.path, e),
+            Err(e) => {
+                log::warn!("failed to scan '{}' err:{:?}", self.path, e);
+                failed += 1;
+            }
         }
         if listeners.len() > 0 {
             // 排序。同时注册了tcp与unix则优先使用unix
             listeners.sort();
             listeners.retain(|item| {
                 let retain = !self.processed.contains_key(item.service());
-                self.processed.insert(item.service().to_string(), ());
+                self.processed
+                    .insert(item.service().to_string(), item.name());
                 if !retain {
                     log::warn!("{} register in multiple family", item.service());
                 }
                 retain
             });
         }
-        listeners
+        (listeners, failed)
     }
 
     pub async fn remove_unix_sock(&mut self) -> Result<()> {
