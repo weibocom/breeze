@@ -1,5 +1,8 @@
+use rocket::serde::json::Json;
 use rocket::serde::Serialize;
+use rocket::{Build, Rocket};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::{io::Result, path::PathBuf};
 use tokio::fs::File;
@@ -26,8 +29,75 @@ pub struct FileContent {
     content: String,
 }
 
+pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
+    rocket.mount(
+        "/breeze",
+        routes![meta_list, sockfile_content, snapshot_content, listener,],
+    )
+}
+
+// 只支持：Content-Type: application/json
+// 获得sockfile列表
+#[get("/meta", format = "json")]
+pub async fn meta_list() -> Json<Meta> {
+    let mut meta = Meta::from_evn();
+    if let Err(e) = meta.load_sockfile_list().await {
+        log::warn!("load sockfile list failed: {:?}", e);
+    }
+    Json(meta)
+}
+
+// 获取sockfile 或者 snapshot,
+#[get("/meta/sockfile?<service>", format = "json")]
+pub async fn sockfile_content(service: &str) -> Json<Vec<FileContent>> {
+    let services: Vec<&str> = service.split(",").collect();
+    let mut files = Vec::with_capacity(services.len());
+    let meta = Meta::from_evn();
+    for f in services {
+        if let Ok(fc) = meta.sockfile(f).await {
+            files.push(fc);
+        } else {
+            log::info!("not found sockfile for {}", f);
+        }
+    }
+
+    Json(files)
+}
+
+//  snapshot,
+#[get("/meta/snapshot?<service>", format = "json")]
+pub async fn snapshot_content(service: &str) -> Json<Vec<FileContent>> {
+    let services: Vec<&str> = service.split(",").collect();
+    let mut files = Vec::with_capacity(services.len());
+    let meta = Meta::from_evn();
+    for f in services {
+        if let Ok(fc) = meta.snapshot(f).await {
+            files.push(fc);
+        } else {
+            log::info!("not found snapshot for {}", f);
+        }
+    }
+
+    Json(files)
+}
+
+#[get("/meta/listener?<service>")]
+pub async fn listener(service: &str) -> Json<HashMap<String, String>> {
+    let sparams: Vec<&str> = service.split(",").collect();
+    let mut services = Vec::with_capacity(sparams.len());
+    for p in sparams {
+        let ptrim = p.trim();
+        if ptrim.len() > 0 {
+            services.push(ptrim.to_string());
+        }
+    }
+    let listeners = props::get_listeners(services);
+    log::info!("+++ get listeners:{:?}", listeners);
+    Json(listeners)
+}
+
 impl Meta {
-    pub fn from_evn() -> Self {
+    fn from_evn() -> Self {
         let base_path = props::get_prop("base_path", "/data1/breeze/");
         let sock_path = format!("{}/{}", base_path, "socks");
         let snapshot_path = format!("{}/{}", base_path, "snapshot");
@@ -50,7 +120,7 @@ impl Meta {
     }
 
     // 获取sock file的列表
-    pub async fn load_sockfile_list(&mut self) -> Result<()> {
+    async fn load_sockfile_list(&mut self) -> Result<()> {
         let mut file_listener = ListenerIter::from(self.sock_path.clone());
         file_listener.remove_unix_sock().await?;
 
@@ -88,7 +158,7 @@ impl Meta {
         Err(Error::new(ErrorKind::InvalidInput, "not found file"))
     }
 
-    pub async fn snapshot(&self, service: &str) -> Result<FileContent> {
+    async fn snapshot(&self, service: &str) -> Result<FileContent> {
         log::info!("+++ snapthshot path:{}", self.snapshot_path);
         let mut file_listener = ListenerIter::from(self.snapshot_path.clone());
         file_listener.remove_unix_sock().await?;

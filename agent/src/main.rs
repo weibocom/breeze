@@ -49,17 +49,18 @@ async fn main_launch() -> Rocket<Build> {
 
     log::debug!("will launch rocket!");
 
-    let rocket = rocket::build();
-    rocket.mount(
-        "/breeze",
-        routes![
-            api::hello,
-            api::meta_list,
-            api::sockfile_content,
-            api::snapshot_content,
-            api::listener,
-        ],
-    )
+    api::routes()
+
+    // rocket.mount(
+    //     "/breeze",
+    //     routes![
+    //         api::hello,
+    //         api::meta_list,
+    //         api::sockfile_content,
+    //         api::snapshot_content,
+    //         api::listener,
+    //     ],
+    // )
     // ctx.check()?;
     // set_rlimit(ctx.no_file);
     // set_panic_hook();
