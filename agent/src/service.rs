@@ -1,4 +1,3 @@
-use discovery::dns::IPPort;
 use net::Listener;
 use rt::spawn;
 use std::sync::Arc;

@@ -49,3 +49,11 @@ pub fn get_listeners(services: Vec<String>) -> HashMap<String, String> {
     }
     addrs
 }
+
+pub fn get_listener(service: &str) -> Option<String> {
+    let listeners_r = LISTENERS.read().unwrap();
+    if let Some(addr) = (*listeners_r).get(service) {
+        return Some(addr.clone());
+    }
+    None
+}
