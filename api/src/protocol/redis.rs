@@ -22,7 +22,6 @@ pub fn get(service: &str, key: &str) -> Json<Response> {
     }
 }
 
-// #[get("/cmd/redis/set/<key>?<service>&<value>", format = "json")]
 #[post("/cmd/redis/set/<key>?<service>", data = "<value>", format = "json")]
 pub fn set(service: &str, key: &str, value: &str) -> Json<Response> {
     match set_inner(service, key, value) {
@@ -54,7 +53,7 @@ fn set_inner(service: &str, key: &str, value: &str) -> Result<bool> {
         Ok(rs) => return Ok(rs),
         Err(e) => Err(Error::new(
             ErrorKind::Interrupted,
-            format!("api redis set failed:{:?}", e),
+            format!("api redis set/{} failed:{:?}", key, e),
         )),
     }
 }
