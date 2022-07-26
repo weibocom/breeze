@@ -156,8 +156,8 @@ impl RingSlice {
     #[inline]
     pub fn start_with(&self, offset: usize, dest: &[u8]) -> Result<bool> {
         let mut len = dest.len();
-        if self.len() < dest.len() {
-            len = self.len();
+        if (self.len() - offset) < dest.len() {
+            len = self.len() - offset;
         }
 
         for i in 0..len {
