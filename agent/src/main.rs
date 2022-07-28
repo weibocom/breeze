@@ -17,23 +17,53 @@ use std::path::Path;
 
 use backtrace::Backtrace;
 
+#[cfg(feature = "restful_api_enable")]
 #[macro_use]
 extern crate rocket;
 
-use api;
-use api::props;
+#[cfg(feature = "restful_api_enable")]
 use rocket::{Build, Rocket};
 
+use api;
+use api::props;
+
+// 默认支持
+#[cfg(not(feature = "restful_api_enable"))]
+fn main() -> Result<()> {
+    let ctx = Context::from_os_args();
+    ctx.check()?;
+    set_rlimit(ctx.no_file);
+    set_panic_hook();
+
+    // 提前初始化log，避免延迟导致的异常
+    if let Err(e) = elog::init(ctx.log_dir(), &ctx.log_level) {
+        panic!("log init failed: {:?}", e);
+    }
+
+    log::info!("launch without rocket!");
+
+    let threads = ctx.thread_num as usize;
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(threads)
+        .thread_name("breeze-w")
+        .thread_stack_size(2 * 1024 * 1024)
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async { run(ctx).await })
+}
+
+#[cfg(feature = "restful_api_enable")]
 #[launch]
 async fn main_launch() -> Rocket<Build> {
     let ctx = Context::from_os_args();
     if let Err(e) = ctx.check() {
         panic!("context check args failed, err: {:?}", e);
     }
-
     set_rlimit(ctx.no_file);
     set_panic_hook();
 
+    // 提前初始化log，避免延迟导致的异常
     if let Err(e) = elog::init(ctx.log_dir(), &ctx.log_level) {
         panic!("log init failed: {:?}", e);
     }
@@ -47,33 +77,9 @@ async fn main_launch() -> Rocket<Build> {
         }
     });
 
-    log::debug!("will launch rocket!");
+    log::info!("launch with rocket!");
 
     api::routes()
-
-    // rocket.mount(
-    //     "/breeze",
-    //     routes![
-    //         api::hello,
-    //         api::meta_list,
-    //         api::sockfile_content,
-    //         api::snapshot_content,
-    //         api::listener,
-    //     ],
-    // )
-    // ctx.check()?;
-    // set_rlimit(ctx.no_file);
-    // set_panic_hook();
-
-    // let threads = ctx.thread_num as usize;
-    // let run_rs = tokio::runtime::Builder::new_multi_thread()
-    //     .worker_threads(threads)
-    //     .thread_name("breeze-w")
-    //     .thread_stack_size(2 * 1024 * 1024)
-    //     .enable_all()
-    //     .build()
-    //     .unwrap()
-    //     .block_on(async { run(ctx).await });
 }
 
 async fn run(ctx: Context) -> Result<()> {
