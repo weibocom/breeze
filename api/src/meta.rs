@@ -1,7 +1,6 @@
 use rocket::serde::json::Json;
 use rocket::serde::Serialize;
 use rocket::{Build, Rocket};
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::{io::Result, path::PathBuf};
@@ -11,7 +10,9 @@ use tokio::io::AsyncReadExt;
 use crate::props;
 use context::ListenerIter;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+const PATH_META: &str = "meta";
+
+#[derive(Debug, Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct Meta {
     base_path: String,
@@ -103,6 +104,7 @@ impl Meta {
         let snapshot_path = format!("{}/{}", base_path, "snapshot");
 
         let version = props::get_prop("version", "unknown");
+
         log::info!(
             "+++ base path: {}, sock:{}, snapshot: {}",
             base_path,
@@ -121,6 +123,9 @@ impl Meta {
 
     // 获取sock file的列表
     async fn load_sockfile_list(&mut self) -> Result<()> {
+        // 统计qps
+        super::qps_incr(PATH_META);
+
         let mut file_listener = ListenerIter::from(self.sock_path.clone());
         file_listener.remove_unix_sock().await?;
 
@@ -134,6 +139,9 @@ impl Meta {
     }
 
     pub async fn sockfile(&self, service: &str) -> Result<FileContent> {
+        // 统计qps
+        super::qps_incr(PATH_META);
+
         let mut file_listener = ListenerIter::from(self.sock_path.clone());
         file_listener.remove_unix_sock().await?;
         for quad in file_listener.scan().await {
@@ -160,6 +168,9 @@ impl Meta {
 
     async fn snapshot(&self, service: &str) -> Result<FileContent> {
         log::info!("+++ snapthshot path:{}", self.snapshot_path);
+        // 统计qps
+        super::qps_incr(PATH_META);
+
         let mut file_listener = ListenerIter::from(self.snapshot_path.clone());
         file_listener.remove_unix_sock().await?;
         for fp in file_listener.files().await? {

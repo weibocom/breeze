@@ -8,6 +8,8 @@ use rocket::{serde::json::Json, Build, Rocket};
 use super::resp::Response;
 use crate::props;
 
+const PATH_MC: &str = "memcache";
+
 // memcache 增加路由
 pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
     rocket.mount(super::API_BASE, routes![get, set])
@@ -15,6 +17,9 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 
 #[get("/cmd/memcache/get/<key>?<service>", format = "json")]
 pub fn get(service: &str, key: &str) -> Json<Response> {
+    // 统计qps
+    crate::qps_incr(PATH_MC);
+
     match get_inner(service, key) {
         Ok(val) => Json(Response::from_result(val)),
         Err(err) => Json(Response::from_error(&err)),
@@ -27,6 +32,9 @@ pub fn get(service: &str, key: &str) -> Json<Response> {
     format = "json"
 )]
 pub fn set(service: &str, key: &str, value: &str, expiration: u32) -> Json<Response> {
+    // 统计qps
+    crate::qps_incr(PATH_MC);
+
     match set_inner(service, key, value, expiration) {
         Ok(rs) => Json(Response::from_result(format!("{}", rs))),
         Err(err) => Json(Response::from_error(&err)),
