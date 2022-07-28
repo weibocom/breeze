@@ -8,6 +8,8 @@ use rocket::{serde::json::Json, Build, Rocket};
 use super::{resp::Response, API_BASE};
 use crate::props;
 
+const PATH_REDIS: &str = "redis";
+
 // redis 增加api路由接口
 pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
     rocket.mount(API_BASE, routes![get, set])
@@ -16,6 +18,9 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 // 根据service获取监听端口，连接端口，进行get请求
 #[get("/cmd/redis/get/<key>?<service>", format = "json")]
 pub fn get(service: &str, key: &str) -> Json<Response> {
+    // 统计qps
+    crate::qps_incr(PATH_REDIS);
+
     match get_inner(service, key) {
         Ok(val) => Json(Response::from_result(val)),
         Err(e) => Json(Response::from_error(&e)),
@@ -24,6 +29,9 @@ pub fn get(service: &str, key: &str) -> Json<Response> {
 
 #[post("/cmd/redis/set/<key>?<service>", data = "<value>", format = "json")]
 pub fn set(service: &str, key: &str, value: &str) -> Json<Response> {
+    // 统计qps
+    crate::qps_incr(PATH_REDIS);
+
     match set_inner(service, key, value) {
         Ok(rs) => Json(Response::from_result(rs.to_string())),
         Err(err) => Json(Response::from_error(&err)),

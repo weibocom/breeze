@@ -7,6 +7,8 @@ use std::io::{Error, ErrorKind};
 use super::resp::Response;
 use crate::props;
 
+const PATH_PHANTOM: &str = "phantom";
+
 // phantom 增加路由
 pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
     rocket.mount(super::API_BASE, routes![bfget, bfset])
@@ -14,6 +16,9 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 
 #[get("/cmd/phantom/bfget/<key>?<service>", format = "json")]
 pub fn bfget(service: &str, key: &str) -> Json<Response> {
+    // 统计qps
+    crate::qps_incr(PATH_PHANTOM);
+
     match bfget_inner(service, key) {
         Ok(rs) => Json(Response::from_result(rs)),
         Err(err) => Json(Response::from_error(&err)),
@@ -22,6 +27,9 @@ pub fn bfget(service: &str, key: &str) -> Json<Response> {
 
 #[post("/cmd/phantom/bfset/<key>?<service>", format = "json")]
 pub fn bfset(service: &str, key: &str) -> Json<Response> {
+    // 统计qps
+    crate::qps_incr(PATH_PHANTOM);
+
     match bfset_inner(service, key) {
         Ok(rs) => Json(Response::from_result(rs)),
         Err(err) => Json(Response::from_error(&err)),

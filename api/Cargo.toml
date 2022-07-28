@@ -7,8 +7,9 @@ edition = "2021"
 
 [dependencies]
 context = { path = "../context" }
-log = "0.4.14"
+metrics = { path = "../metrics" }
 
+log = "0.4.14"
 tokio = {version = "1.17.0", features = ["fs"]}
 
 # rocket for restful api
