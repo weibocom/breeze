@@ -79,6 +79,7 @@ pub struct Context {
     #[clap(long, help("service pool"), default_value("default_pool"))]
     service_pool: String,
 
+    // api参数，目前只有这一个差异参数，先放这里
     #[clap(long, help("api whitelist host"), default_value("localhost"))]
     pub whitelist_host: String,
 }
