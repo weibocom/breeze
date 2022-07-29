@@ -1,12 +1,15 @@
 // memcache api访问接口，目前支持binary client
 
-use std::io::{Error, ErrorKind, Result};
+use std::{
+    io::{Error, ErrorKind, Result},
+    net::IpAddr,
+};
 
 use memcache::Client;
 use rocket::{serde::json::Json, Build, Rocket};
 
 use super::resp::Response;
-use crate::props;
+use crate::{props, verify_client};
 
 const PATH_MC: &str = "memcache";
 
@@ -16,7 +19,12 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 }
 
 #[get("/cmd/memcache/get/<key>?<service>", format = "json")]
-pub fn get(service: &str, key: &str) -> Json<Response> {
+pub fn get(service: &str, key: &str, cip: IpAddr) -> Json<Response> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(Response::from_illegal_user());
+    }
+
     // 统计qps
     crate::qps_incr(PATH_MC);
 
@@ -31,7 +39,12 @@ pub fn get(service: &str, key: &str) -> Json<Response> {
     data = "<value>",
     format = "json"
 )]
-pub fn set(service: &str, key: &str, value: &str, expiration: u32) -> Json<Response> {
+pub fn set(service: &str, key: &str, value: &str, expiration: u32, cip: IpAddr) -> Json<Response> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(Response::from_illegal_user());
+    }
+
     // 统计qps
     crate::qps_incr(PATH_MC);
 

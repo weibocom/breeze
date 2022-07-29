@@ -1,11 +1,14 @@
 // 使用env来存储kv属性变量
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::sync::RwLock;
 
 lazy_static! {
+    // 监听的socks
     static ref LISTENERS: RwLock<HashMap<String, String>> = RwLock::new(HashMap::with_capacity(32));
+    // 可访问api的白名单
+    static ref WHITELIST: RwLock<HashSet<String>> = RwLock::new(HashSet::with_capacity(2));
 }
 
 // 设置kv变量
@@ -56,4 +59,19 @@ pub fn get_listener(service: &str) -> Option<String> {
         return Some(addr.clone());
     }
     None
+}
+
+// 更新访问白名单
+pub fn update_whitelist(whitelist: HashSet<String>) {
+    let mut whitelist_w = WHITELIST.write().unwrap();
+    log::info!("api whitelist {:?} => {:?}", whitelist_w, whitelist);
+
+    whitelist_w.clear();
+    whitelist_w.extend(whitelist);
+}
+
+// 是否是api访问的白名单
+pub fn is_in_whitelist(ip: &String) -> bool {
+    let whiltelist_r = WHITELIST.read().unwrap();
+    whiltelist_r.contains(ip)
 }

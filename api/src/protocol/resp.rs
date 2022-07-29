@@ -32,4 +32,12 @@ impl Response {
             error: err.to_string(),
         }
     }
+
+    pub fn from_illegal_user() -> Self {
+        Self {
+            status: STATUS_SERVER_FAILED,
+            result: Default::default(),
+            error: "illegal user".to_string(),
+        }
+    }
 }

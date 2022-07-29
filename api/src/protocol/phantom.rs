@@ -1,11 +1,11 @@
-use std::io::Result;
+use std::{io::Result, net::IpAddr};
 
 use redis::{cmd, Client, Connection};
 use rocket::{serde::json::Json, Build, Rocket};
 use std::io::{Error, ErrorKind};
 
 use super::resp::Response;
-use crate::props;
+use crate::{props, verify_client};
 
 const PATH_PHANTOM: &str = "phantom";
 
@@ -15,7 +15,12 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 }
 
 #[get("/cmd/phantom/bfget/<key>?<service>", format = "json")]
-pub fn bfget(service: &str, key: &str) -> Json<Response> {
+pub fn bfget(service: &str, key: &str, cip: IpAddr) -> Json<Response> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(Response::from_illegal_user());
+    }
+
     // 统计qps
     crate::qps_incr(PATH_PHANTOM);
 
@@ -26,7 +31,12 @@ pub fn bfget(service: &str, key: &str) -> Json<Response> {
 }
 
 #[post("/cmd/phantom/bfset/<key>?<service>", format = "json")]
-pub fn bfset(service: &str, key: &str) -> Json<Response> {
+pub fn bfset(service: &str, key: &str, cip: IpAddr) -> Json<Response> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(Response::from_illegal_user());
+    }
+
     // 统计qps
     crate::qps_incr(PATH_PHANTOM);
 

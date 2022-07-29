@@ -1,12 +1,15 @@
 // 通过api转换为redis协议访问
 
-use std::io::{Error, ErrorKind, Result};
+use std::{
+    io::{Error, ErrorKind, Result},
+    net::IpAddr,
+};
 
 use redis::{Client, Commands, Connection};
 use rocket::{serde::json::Json, Build, Rocket};
 
 use super::{resp::Response, API_BASE};
-use crate::props;
+use crate::{props, verify_client};
 
 const PATH_REDIS: &str = "redis";
 
@@ -17,7 +20,12 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 
 // 根据service获取监听端口，连接端口，进行get请求
 #[get("/cmd/redis/get/<key>?<service>", format = "json")]
-pub fn get(service: &str, key: &str) -> Json<Response> {
+pub fn get(service: &str, key: &str, cip: IpAddr) -> Json<Response> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(Response::from_illegal_user());
+    }
+
     // 统计qps
     crate::qps_incr(PATH_REDIS);
 
@@ -28,7 +36,12 @@ pub fn get(service: &str, key: &str) -> Json<Response> {
 }
 
 #[post("/cmd/redis/set/<key>?<service>", data = "<value>", format = "json")]
-pub fn set(service: &str, key: &str, value: &str) -> Json<Response> {
+pub fn set(service: &str, key: &str, value: &str, cip: IpAddr) -> Json<Response> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(Response::from_illegal_user());
+    }
+
     // 统计qps
     crate::qps_incr(PATH_REDIS);
 

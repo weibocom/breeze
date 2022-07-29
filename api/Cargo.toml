@@ -12,6 +12,8 @@ metrics = { path = "../metrics" }
 log = "0.4.14"
 tokio = {version = "1.17.0", features = ["fs"]}
 
+trust-dns-resolver = "0.20.0"
+
 # rocket for restful api
 rocket = { version = "0.5.0-rc.2", features = ["json"] }
 lazy_static = "1.4.0"
