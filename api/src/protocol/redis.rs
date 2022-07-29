@@ -22,12 +22,9 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 #[get("/cmd/redis/get/<key>?<service>", format = "json")]
 pub fn get(service: &str, key: &str, cip: IpAddr) -> Json<Response> {
     // 校验client
-    if !verify_client(&cip.to_string()) {
+    if !verify_client(&cip.to_string(), PATH_REDIS) {
         return Json(Response::from_illegal_user());
     }
-
-    // 统计qps
-    crate::qps_incr(PATH_REDIS);
 
     match get_inner(service, key) {
         Ok(val) => Json(Response::from_result(val)),
@@ -38,12 +35,9 @@ pub fn get(service: &str, key: &str, cip: IpAddr) -> Json<Response> {
 #[post("/cmd/redis/set/<key>?<service>", data = "<value>", format = "json")]
 pub fn set(service: &str, key: &str, value: &str, cip: IpAddr) -> Json<Response> {
     // 校验client
-    if !verify_client(&cip.to_string()) {
+    if !verify_client(&cip.to_string(), PATH_REDIS) {
         return Json(Response::from_illegal_user());
     }
-
-    // 统计qps
-    crate::qps_incr(PATH_REDIS);
 
     match set_inner(service, key, value) {
         Ok(rs) => Json(Response::from_result(rs.to_string())),

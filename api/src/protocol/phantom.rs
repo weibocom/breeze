@@ -17,12 +17,9 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 #[get("/cmd/phantom/bfget/<key>?<service>", format = "json")]
 pub fn bfget(service: &str, key: &str, cip: IpAddr) -> Json<Response> {
     // 校验client
-    if !verify_client(&cip.to_string()) {
+    if !verify_client(&cip.to_string(), PATH_PHANTOM) {
         return Json(Response::from_illegal_user());
     }
-
-    // 统计qps
-    crate::qps_incr(PATH_PHANTOM);
 
     match bfget_inner(service, key) {
         Ok(rs) => Json(Response::from_result(rs)),
@@ -33,12 +30,9 @@ pub fn bfget(service: &str, key: &str, cip: IpAddr) -> Json<Response> {
 #[post("/cmd/phantom/bfset/<key>?<service>", format = "json")]
 pub fn bfset(service: &str, key: &str, cip: IpAddr) -> Json<Response> {
     // 校验client
-    if !verify_client(&cip.to_string()) {
+    if !verify_client(&cip.to_string(), PATH_PHANTOM) {
         return Json(Response::from_illegal_user());
     }
-
-    // 统计qps
-    crate::qps_incr(PATH_PHANTOM);
 
     match bfset_inner(service, key) {
         Ok(rs) => Json(Response::from_result(rs)),
