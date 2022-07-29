@@ -78,6 +78,9 @@ pub struct Context {
 
     #[clap(long, help("service pool"), default_value("default_pool"))]
     service_pool: String,
+
+    #[clap(long, help("api whitelist host"), default_value("localhost"))]
+    pub whitelist_host: String,
 }
 
 const VERSION: &'static str = git_version::git_version!();

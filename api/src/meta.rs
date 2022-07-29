@@ -3,16 +3,17 @@ use rocket::serde::Serialize;
 use rocket::{Build, Rocket};
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
+use std::net::IpAddr;
 use std::{io::Result, path::PathBuf};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
-use crate::props;
+use crate::{props, verify_client};
 use context::ListenerIter;
 
 const PATH_META: &str = "meta";
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct Meta {
     base_path: String,
@@ -40,7 +41,12 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 // 只支持：Content-Type: application/json
 // 获得sockfile列表
 #[get("/meta", format = "json")]
-pub async fn meta_list() -> Json<Meta> {
+pub async fn meta_list(cip: IpAddr) -> Json<Meta> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(Default::default());
+    }
+
     let mut meta = Meta::from_evn();
     if let Err(e) = meta.load_sockfile_list().await {
         log::warn!("load sockfile list failed: {:?}", e);
@@ -50,9 +56,15 @@ pub async fn meta_list() -> Json<Meta> {
 
 // 获取sockfile 或者 snapshot,
 #[get("/meta/sockfile?<service>", format = "json")]
-pub async fn sockfile_content(service: &str) -> Json<Vec<FileContent>> {
+pub async fn sockfile_content(service: &str, cip: IpAddr) -> Json<Vec<FileContent>> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(Vec::with_capacity(0));
+    }
+
     let services: Vec<&str> = service.split(",").collect();
     let mut files = Vec::with_capacity(services.len());
+
     let meta = Meta::from_evn();
     for f in services {
         if let Ok(fc) = meta.sockfile(f).await {
@@ -67,9 +79,15 @@ pub async fn sockfile_content(service: &str) -> Json<Vec<FileContent>> {
 
 //  snapshot,
 #[get("/meta/snapshot?<service>", format = "json")]
-pub async fn snapshot_content(service: &str) -> Json<Vec<FileContent>> {
+pub async fn snapshot_content(service: &str, cip: IpAddr) -> Json<Vec<FileContent>> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(Vec::with_capacity(0));
+    }
+
     let services: Vec<&str> = service.split(",").collect();
     let mut files = Vec::with_capacity(services.len());
+
     let meta = Meta::from_evn();
     for f in services {
         if let Ok(fc) = meta.snapshot(f).await {
@@ -83,9 +101,15 @@ pub async fn snapshot_content(service: &str) -> Json<Vec<FileContent>> {
 }
 
 #[get("/meta/listener?<service>")]
-pub async fn listener(service: &str) -> Json<HashMap<String, String>> {
+pub async fn listener(service: &str, cip: IpAddr) -> Json<HashMap<String, String>> {
+    // 校验client
+    if !verify_client(&cip.to_string()) {
+        return Json(HashMap::with_capacity(0));
+    }
+
     let sparams: Vec<&str> = service.split(",").collect();
     let mut services = Vec::with_capacity(sparams.len());
+
     for p in sparams {
         let ptrim = p.trim();
         if ptrim.len() > 0 {

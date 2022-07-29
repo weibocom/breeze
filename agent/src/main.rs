@@ -41,7 +41,6 @@ fn main() -> Result<()> {
     }
 
     log::info!("launch without rocket!");
-
     let threads = ctx.thread_num as usize;
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(threads)
@@ -53,6 +52,8 @@ fn main() -> Result<()> {
         .block_on(async { run(ctx).await })
 }
 
+// 支持 restful api 的启动入口
+// 注意：api所有逻辑只在api module中进行实现，不要扩散到其他mod fishermen
 #[cfg(feature = "restful_api_enable")]
 #[launch]
 async fn main_launch() -> Rocket<Build> {
@@ -71,6 +72,10 @@ async fn main_launch() -> Rocket<Build> {
     // set env props for api
     set_env_props(&ctx);
 
+    // 启动api的白名单探测
+    rt::spawn(api::start_whitelist_refresh(ctx.whitelist_host.clone()));
+
+    // 启动核心任务
     rt::spawn(async {
         if let Err(e) = run(ctx).await {
             panic!("start breeze core failed: {:?}", e);
