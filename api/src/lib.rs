@@ -65,8 +65,12 @@ fn qps_incr(name: &'static str) {
     opts += 1;
 }
 
-// 校验client，当前只检查ip白名单
-fn verify_client(client_ip: &String) -> bool {
+// 校验client，并统计接口qps， 当前只检查ip白名单
+fn verify_client(client_ip: &String, api_name: &'static str) -> bool {
+    // 统计qps
+    qps_incr(api_name);
+
+    // 检查白名单
     if props::is_in_whitelist(client_ip) {
         return true;
     }

@@ -43,7 +43,7 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 #[get("/meta", format = "json")]
 pub async fn meta_list(cip: IpAddr) -> Json<Meta> {
     // 校验client
-    if !verify_client(&cip.to_string()) {
+    if !verify_client(&cip.to_string(), PATH_META) {
         return Json(Default::default());
     }
 
@@ -58,7 +58,7 @@ pub async fn meta_list(cip: IpAddr) -> Json<Meta> {
 #[get("/meta/sockfile?<service>", format = "json")]
 pub async fn sockfile_content(service: &str, cip: IpAddr) -> Json<Vec<FileContent>> {
     // 校验client
-    if !verify_client(&cip.to_string()) {
+    if !verify_client(&cip.to_string(), PATH_META) {
         return Json(Vec::with_capacity(0));
     }
 
@@ -81,7 +81,7 @@ pub async fn sockfile_content(service: &str, cip: IpAddr) -> Json<Vec<FileConten
 #[get("/meta/snapshot?<service>", format = "json")]
 pub async fn snapshot_content(service: &str, cip: IpAddr) -> Json<Vec<FileContent>> {
     // 校验client
-    if !verify_client(&cip.to_string()) {
+    if !verify_client(&cip.to_string(), PATH_META) {
         return Json(Vec::with_capacity(0));
     }
 
@@ -103,7 +103,7 @@ pub async fn snapshot_content(service: &str, cip: IpAddr) -> Json<Vec<FileConten
 #[get("/meta/listener?<service>")]
 pub async fn listener(service: &str, cip: IpAddr) -> Json<HashMap<String, String>> {
     // 校验client
-    if !verify_client(&cip.to_string()) {
+    if !verify_client(&cip.to_string(), PATH_META) {
         return Json(HashMap::with_capacity(0));
     }
 
@@ -147,9 +147,6 @@ impl Meta {
 
     // 获取sock file的列表
     async fn load_sockfile_list(&mut self) -> Result<()> {
-        // 统计qps
-        super::qps_incr(PATH_META);
-
         let mut file_listener = ListenerIter::from(self.sock_path.clone());
         file_listener.remove_unix_sock().await?;
 
@@ -163,9 +160,6 @@ impl Meta {
     }
 
     pub async fn sockfile(&self, service: &str) -> Result<FileContent> {
-        // 统计qps
-        super::qps_incr(PATH_META);
-
         let mut file_listener = ListenerIter::from(self.sock_path.clone());
         file_listener.remove_unix_sock().await?;
         for quad in file_listener.scan().await {
@@ -192,8 +186,6 @@ impl Meta {
 
     async fn snapshot(&self, service: &str) -> Result<FileContent> {
         log::info!("+++ snapthshot path:{}", self.snapshot_path);
-        // 统计qps
-        super::qps_incr(PATH_META);
 
         let mut file_listener = ListenerIter::from(self.snapshot_path.clone());
         file_listener.remove_unix_sock().await?;
