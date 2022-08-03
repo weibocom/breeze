@@ -55,8 +55,6 @@ where
                 self.sig = sig;
             }
             self.dump(snapshot, &cfg).await;
-        } else {
-            log::info!("+++ service/{} get cfg from vintage failed", service);
         }
     }
     pub(crate) fn try_load(&mut self) {
