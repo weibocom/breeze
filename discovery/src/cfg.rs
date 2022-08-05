@@ -80,7 +80,7 @@ where
         pb.push(base);
         pb
     }
-    pub async fn load_from_snapshot(&self, name: &str) -> Result<(String, Sig)> {
+    async fn load_from_snapshot(&self, name: &str) -> Result<(String, Sig)> {
         let mut contents = Vec::with_capacity(8 * 1024);
         File::open(self.encoded_path(name))
             .await?

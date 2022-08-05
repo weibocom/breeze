@@ -93,7 +93,7 @@ impl<T> Drop for BorrowPtr<T> {
     #[inline]
     fn drop(&mut self) {
         let borrowd = self.guard.fetch_sub(1, Ordering::Relaxed);
-        // println!("borrowed return:{}", borrowd);
+        println!("borrowed return:{}", borrowd);
     }
 }
 

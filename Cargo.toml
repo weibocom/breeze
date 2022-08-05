@@ -12,7 +12,6 @@ members = [
   "metrics",
   "ds",
   "rt",
-  "api",
   "tests",
 ]
 
@@ -24,4 +23,3 @@ members = [
 #codegen-units = 1
 #lto = "fat"
 #opt-level = 3
-
