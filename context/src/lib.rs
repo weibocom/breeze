@@ -218,7 +218,7 @@ impl ListenerIter {
         }
         Ok(())
     }
-    pub async fn read_all(&self) -> Result<Vec<String>> {
+    async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];
         let mut dir = tokio::fs::read_dir(&self.path).await?;
         while let Some(child) = dir.next_entry().await? {

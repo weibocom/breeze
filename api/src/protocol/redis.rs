@@ -90,7 +90,6 @@ fn get_conn(service: String) -> Result<Connection> {
         Ok(client) => match client.get_connection() {
             Ok(conn) => Ok(conn),
             Err(e) => {
-                println!("found err: {:?}", e);
                 return Err(Error::new(
                     ErrorKind::AddrNotAvailable,
                     format!("get conn/{} failed: {:?}", addr, e),
