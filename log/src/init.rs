@@ -30,16 +30,12 @@ pub fn init(path: &str, l: &str) -> Result<()> {
                 .base(0)
                 .build(
                     gzfile.to_str().ok_or_else(|| {
-                        println!("======== will print err-chain");
                         Error::new(ErrorKind::InvalidData, format!("init log failed"))
                     })?,
                     MAX_NUM_LOGS,
                 )
                 .map_err(|e| {
-                    println!("++++====+++ will print err-chain: {:?}", e);
-                    for er in e.chain() {
-                        println!("+++++++ err-chain: {:?}", er);
-                    }
+                    for er in e.chain() {}
                     Error::new(ErrorKind::InvalidData, format!("init log failed:{:?}", e))
                 })?,
         ),
