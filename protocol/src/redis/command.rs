@@ -1,6 +1,6 @@
 use crate::{HashedCommand, OpCode, Operation, Utf8};
 use ds::{MemGuard, RingSlice};
-use sharding::hash::{Bkdr, Hash, UppercaseHashKey, HashKey};
+use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
 
 pub const SWALLOWED_CMD_HASHKEYQ: &str = "hashkeyq";
 pub const SWALLOWED_CMD_HASHRANDOMQ: &str = "hashrandomq";
@@ -177,7 +177,7 @@ impl Commands {
         let uppercase = UppercaseHashKey::new(name);
         // let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
         let idx = self.inner_hash(&uppercase);
-        // op_code 0表示未定义。不存在 
+        // op_code 0表示未定义,不存在
         assert_ne!(idx, 0);
         idx as u16
     }
@@ -205,7 +205,7 @@ impl Commands {
     #[inline]
     fn inner_hash<K: HashKey>(&self, key: &K) -> usize {
         let idx = self.hash.hash(key) as usize & (Self::MAPPING_RANGE - 1);
-        // op_code 0表示未定义,不存在,对于0需要进行转换
+        // 由于op_code 0表示未定义,不存在,故对于0需要进行转换为1
         if idx == 0 {
             return 1;
         }
@@ -282,6 +282,7 @@ pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
 pub(super) fn get_cfg<'a>(op_code: u16) -> crate::Result<&'a CommandProperties> {
     SUPPORTED.get_by_op(op_code)
 }
+
 lazy_static! {
     pub(super) static ref SUPPORTED: Commands = {
         let mut cmds = Commands::new();
