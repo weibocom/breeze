@@ -12,7 +12,10 @@ pub trait Endpoint: Sized + Send + Sync {
     //}
     //
     // 返回hash应该发送的分片idx
-    fn shard_idx(&self, hash: i64) -> usize;
+    fn shard_idx(&self, _hash: i64) -> usize {
+        log::warn!("+++ should not use defatult shard idx");
+        panic!("should not use defatult shard idx");
+    }
 }
 
 impl<T, R> Endpoint for &T
