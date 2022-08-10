@@ -151,7 +151,11 @@ impl Meta {
         file_listener.remove_unix_sock().await?;
 
         let mut socks = Vec::with_capacity(20);
-        for quad in file_listener.scan().await {
+        let (quards, failed) = file_listener.scan().await;
+        if failed > 0 {
+            log::info!("api - found {} error sockfiles", failed);
+        }
+        for quad in quards {
             socks.push(quad.name());
         }
         self.sockfiles = socks;
@@ -162,7 +166,11 @@ impl Meta {
     pub async fn sockfile(&self, service: &str) -> Result<FileContent> {
         let mut file_listener = ListenerIter::from(self.sock_path.clone());
         file_listener.remove_unix_sock().await?;
-        for quad in file_listener.scan().await {
+        let (quards, failed) = file_listener.scan().await;
+        if failed > 0 {
+            log::info!("api - found {} error sockfiles", failed);
+        }
+        for quad in quards {
             if quad.service().eq(service) {
                 let file_name = format!("{}/{}", self.sock_path, quad.name());
                 let path_buf = PathBuf::from(file_name);

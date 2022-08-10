@@ -5,9 +5,10 @@ mod packet;
 //mod token;
 
 use crate::{
-    redis::command::CommandProperties, redis::command::PADDING_RSP_TABLE,
-    redis::packet::RequestPacket, Command, Commander, Error, Flag, HashedCommand, Protocol,
-    RequestProcessor, Result, Stream,
+    redis::command::{CommandProperties, SWALLOWED_CMD_HASHKEYQ},
+    redis::command::{PADDING_RSP_TABLE, SWALLOWED_CMD_HASHRANDOMQ},
+    redis::packet::RequestPacket,
+    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
 };
 use ds::RingSlice;
 use error::*;
@@ -35,7 +36,7 @@ impl Redis {
         process: &mut P,
     ) -> Result<()> {
         // 一个指令开始处理，可以重复进入
-
+        
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
             log::debug!("+++ rec req:{:?}", from_utf8(&stream.slice().to_vec()));
@@ -47,11 +48,10 @@ impl Redis {
             let master_only = packet.parse_cmd_layer()?;
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
-
             let cfg = command::get_cfg(packet.op_code())?;
             let mut hash;
             if cfg.swallowed {
-                // 优先处理swallow吞噬指令
+                // 优先处理swallow吞噬指令: hashkeyq/hashrandomq
                 self.parse_swallow_cmd(cfg, &mut packet, alg)?;
                 continue;
             } else if cfg.multi {
@@ -62,16 +62,18 @@ impl Redis {
                     let first = packet.first();
                     assert!(cfg.has_key);
 
+                    // 不管是否使用当前cmd的key来计算hash，都需要解析出一个key
+                    let key = packet.parse_key()?;
+
                     // mutli cmd 也支持swallow指令
                     if packet.reserved_hash() != 0 {
                         // 使用hashkey直接指定了hash
                         hash = packet.reserved_hash();
                         log::info!(
-                            "use direct hash for multi cmd: {:?}",
+                            "+++ use direct hash for multi cmd: {:?}",
                             packet.inner_data().utf8()
                         )
                     } else {
-                        let key = packet.parse_key()?;
                         hash = calculate_hash(alg, &key);
                     }
 
@@ -92,11 +94,11 @@ impl Redis {
                     // 使用hashkey直接指定了hash
                     hash = packet.reserved_hash();
                     flag.set_direct_hash(true);
+                } else if cfg.need_reserved_hash {
+                    return Err(RedisError::ReqInvalid.error());
                 } else if cfg.has_key {
                     let key = packet.parse_key()?;
                     hash = calculate_hash(alg, &key);
-                } else if cfg.explicit_hash {
-                    return Err(RedisError::ReqInvalid.error());
                 } else {
                     hash = default_hash();
                 }
@@ -105,6 +107,14 @@ impl Redis {
                 let cmd = packet.take();
                 let req = HashedCommand::new(cmd, hash, flag);
                 process.process(req, true);
+
+                // 如果是指示下一个cmd hash的特殊指令，需要保留hash
+                if cfg.reserve_hash {
+                    debug_assert!(cfg.has_key);
+                    // 执行到这里，需要保留指示key的，目前只有hashkey
+                    debug_assert_eq!(cfg.name, command::DIST_CMD_HASHKEY);
+                    packet.update_reserved_hash(hash);
+                }
             }
 
             // 至此，一个指令处理完毕
@@ -121,7 +131,8 @@ impl Redis {
     ) -> Result<()> {
         debug_assert!(cfg.swallowed);
         match cfg.name {
-            "hashkey" => {
+            // hashkeyq
+            SWALLOWED_CMD_HASHKEYQ => {
                 let key = packet.parse_key()?;
                 let hash: i64;
                 // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
@@ -135,7 +146,8 @@ impl Redis {
                 // 记录reserved hash，为下一个指令使用
                 packet.update_reserved_hash(hash);
             }
-            "hashrandomq" => {
+            // "hashrandomq"
+            SWALLOWED_CMD_HASHRANDOMQ => {
                 // 虽然hash名义为i64，但实际当前均为u32
                 let hash = rand::random::<u32>();
                 // 记录reserved hash，为下一个指令使用
@@ -150,7 +162,7 @@ impl Redis {
         // 吞噬掉整个cmd，准备处理下一个cmd fishermen
         packet.ignore_all_bulks()?;
         // 吞噬/trim掉当前 cmd data，准备解析下一个cmd
-        packet.trim_cmd_data()?;
+        packet.trim_swallowed_cmd()?;
 
         Ok(())
     }
@@ -273,15 +285,44 @@ impl Protocol for Redis {
             }
         }
     }
+
+    // dist_fn 用于类似hashkey、keyshard等指令，计算指令对应的分片索引
     #[inline]
-    fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
+    fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
+        &self,
+        req: &HashedCommand,
+        w: &mut W,
+        dist_fn: F,
+    ) -> Result<()> {
         let rsp_idx = req.ext().padding_rsp() as usize;
         assert!(rsp_idx < PADDING_RSP_TABLE.len());
-        let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
+
+        // check cmd需要额外构建rsp，目前只有hashkey、keyshard两种dist指令需要构建
+        let cfg = command::get_cfg(req.op_code())?;
+        let rsp =
+            if command::DIST_CMD_HASHKEY.eq(cfg.name) || command::DIST_CMD_KEYSHARD.eq(cfg.name) {
+                let mut bulk_str: String = String::from("");
+                if cfg.multi && cfg.need_bulk_num {
+                    let ext = req.ext();
+                    let first = ext.mkey_first();
+                    if first {
+                        if first && cfg.need_bulk_num {
+                            bulk_str = format!("*{}\r\n", ext.key_count());
+                        }
+                    }
+                }
+
+                let shard_str = dist_fn(req.hash()).to_string();
+                format!("{}${}\r\n{}\r\n", bulk_str, shard_str.len(), shard_str)
+            } else {
+                let padding_rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
+                padding_rsp.to_string()
+            };
+
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
             log::debug!(
-                "+++ will write padding rsp/{} for req:{:?}",
+                "+++ will write noforward rsp/{:?} for req:{:?}",
                 rsp,
                 req.data().utf8()
             );
@@ -296,6 +337,7 @@ impl Protocol for Redis {
             Err(crate::Error::Quit)
         }
     }
+
     #[inline]
     fn build_writeback_request<C: Commander>(&self, ctx: &mut C, _: u32) -> Option<HashedCommand> {
         let hash_cmd = ctx.request_mut();

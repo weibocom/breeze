@@ -112,6 +112,13 @@ where
         );
         unsafe { self.streams.get_unchecked(idx).send(req) };
     }
+
+    // 暂时不支持，等有需要再支持
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        log::warn!("unsupport mc shard_idx with hash: {}", hash);
+        0
+    }
 }
 impl<B: Send + Sync, E, Req: Request, P: Protocol> CacheService<B, E, Req, P>
 where

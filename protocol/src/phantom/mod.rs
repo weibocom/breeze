@@ -218,7 +218,12 @@ impl Protocol for Phantom {
         }
     }
     #[inline]
-    fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
+    fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
+        &self,
+        req: &HashedCommand,
+        w: &mut W,
+        _dist_fn: F,
+    ) -> Result<()> {
         let rsp_idx = req.ext().padding_rsp() as usize;
         assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();

@@ -68,4 +68,13 @@ impl<R: Request> Endpoint for Backend<R> {
             }
         }
     }
+
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        log::warn!(
+            "+++ should not come to Backend::shard_idx with hash: {}",
+            hash
+        );
+        0
+    }
 }

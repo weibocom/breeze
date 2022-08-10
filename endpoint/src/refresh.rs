@@ -113,6 +113,11 @@ impl<T: Endpoint + Clone + 'static> Endpoint for CheckedTopology<T> {
     fn send(&self, req: T::Item) {
         self.top.send(req);
     }
+
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        self.top.shard_idx(hash)
+    }
 }
 impl<T: Topology + Clone + 'static> Topology for CheckedTopology<T> {
     #[inline]
