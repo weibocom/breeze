@@ -92,6 +92,15 @@ where
 
         unsafe { self.streams.get_unchecked(idx).0.send(req) };
     }
+
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        log::warn!(
+            "should not come to phantom::topo::shard_idx for req: {}",
+            hash
+        );
+        0
+    }
 }
 
 impl<B, E, Req, P> PhantomService<B, E, Req, P>

@@ -96,6 +96,14 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
         }
     }
 
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        match self {
+            $(
+                Self::$item(p) => p.shard_idx(hash),
+            )+
+        }
+    }
 }
 
 

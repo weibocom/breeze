@@ -1,6 +1,13 @@
-use crate::{HashedCommand, OpCode, Operation};
+use crate::{HashedCommand, OpCode, Operation, Utf8};
 use ds::{MemGuard, RingSlice};
-use sharding::hash::{Bkdr, Hash, UppercaseHashKey};
+use sharding::hash::{Bkdr, Hash, UppercaseHashKey, HashKey};
+
+pub const SWALLOWED_CMD_HASHKEYQ: &str = "hashkeyq";
+pub const SWALLOWED_CMD_HASHRANDOMQ: &str = "hashrandomq";
+
+// 指示下一个cmd
+pub const DIST_CMD_HASHKEY: &str = "hashkey";
+pub const DIST_CMD_KEYSHARD: &str = "keyshard";
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[allow(dead_code)]
@@ -29,7 +36,8 @@ pub(crate) struct CommandProperties {
     // need bulk number只对multi key请求的有意义
     pub(super) need_bulk_num: bool, // mset所有的请求只返回一个+OK，不需要在首个请求前加*bulk_num。其他的都需要
     pub(super) swallowed: bool, // 该指令是否需要mesh 吞噬，吞噬后不会响应client、也不会发给后端server，吞噬指令一般用于指示下一个常规指令的额外处理属性
-    pub(super) explicit_hash: bool, // 是否明确指定hash，如果为true，则必须有key或者通过hashkey指定明确的hash
+    pub(super) reserve_hash: bool, // 是否为下一个cmd指定hash，如果为true，将当前hash存储下来，供下一个cmd使用
+    pub(super) need_reserved_hash: bool, // 是否需要前一个指令明确指定的hash，如果为true，则必须有key或者通过hashkey指定明确的hash
 }
 
 // 默认响应
@@ -156,7 +164,7 @@ pub(super) struct Commands {
     hash: Bkdr,
 }
 impl Commands {
-    const MAPPING_RANGE: usize = 4096;
+    const MAPPING_RANGE: usize = 2048;
     fn new() -> Self {
         Self {
             supported: [CommandProperties::default(); Self::MAPPING_RANGE],
@@ -167,11 +175,13 @@ impl Commands {
     #[inline]
     pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
         let uppercase = UppercaseHashKey::new(name);
-        let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
-        // op_code 0表示未定义。不存在
+        // let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
+        let idx = self.inner_hash(&uppercase);
+        // op_code 0表示未定义。不存在 
         assert_ne!(idx, 0);
         idx as u16
     }
+
     #[inline]
     pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
         assert!((op_code as usize) < self.supported.len());
@@ -187,9 +197,22 @@ impl Commands {
     #[inline]
     pub(crate) fn get_by_name(&self, cmd: &ds::RingSlice) -> crate::Result<&CommandProperties> {
         let uppercase = UppercaseHashKey::new(cmd);
-        let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
+        // let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
+        let idx = self.inner_hash(&uppercase);
         self.get_by_op(idx as u16)
     }
+
+    #[inline]
+    fn inner_hash<K: HashKey>(&self, key: &K) -> usize {
+        let idx = self.hash.hash(key) as usize & (Self::MAPPING_RANGE - 1);
+        // op_code 0表示未定义,不存在,对于0需要进行转换
+        if idx == 0 {
+            return 1;
+        }
+        idx
+    }
+
+    #[inline]
     fn add_support(
         &mut self,
         name: &'static str,
@@ -207,16 +230,25 @@ impl Commands {
         need_bulk_num: bool,
     ) {
         let uppercase = name.to_uppercase();
-        let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
+        // let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
+        let idx = self.inner_hash(&uppercase.as_bytes());
         assert!(idx < self.supported.len());
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
 
         /*===============  特殊属性，关联cmds极少，直接在这里设置  ===============*/
-        // 吞噬cmd目前只有hashkey
-        let swallowed = uppercase.eq("HASHKEY") || uppercase.eq("HASHRANDOMQ");
-        // 需要明确指定hashkey的目前只有lua下面3个指令
-        let explicit_hash =
+        // 吞噬cmd目前只有hashkeyq、hashrandomq
+        let swallowed = uppercase.eq(&SWALLOWED_CMD_HASHKEYQ.to_uppercase())
+            || uppercase.eq(&SWALLOWED_CMD_HASHRANDOMQ.to_uppercase());
+
+        // 是否需要为下一个cmd 保留（指定）hash
+        let reserve_hash = uppercase.eq(&DIST_CMD_HASHKEY.to_uppercase())
+            || uppercase.eq(&DIST_CMD_KEYSHARD.to_uppercase())
+            || uppercase.eq(&SWALLOWED_CMD_HASHKEYQ.to_uppercase())
+            || uppercase.eq(&SWALLOWED_CMD_HASHRANDOMQ.to_uppercase());
+
+        // 需要前一个指令明确指定hash的目前只有lua下面3个指令
+        let need_reserved_hash =
             uppercase.eq("EVAL") || uppercase.eq("EVALSHA") || uppercase.eq("SCRIPT");
 
         self.supported[idx] = CommandProperties {
@@ -236,7 +268,8 @@ impl Commands {
             has_val,
             need_bulk_num,
             swallowed,
-            explicit_hash,
+            reserve_hash,
+            need_reserved_hash,
         };
     }
 }
@@ -250,7 +283,7 @@ pub(super) fn get_cfg<'a>(op_code: u16) -> crate::Result<&'a CommandProperties> 
     SUPPORTED.get_by_op(op_code)
 }
 lazy_static! {
-   pub(super) static ref SUPPORTED: Commands = {
+    pub(super) static ref SUPPORTED: Commands = {
         let mut cmds = Commands::new();
         use Operation::*;
     for (name, mname, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num)
@@ -396,11 +429,16 @@ lazy_static! {
 
                 // pf相关指令
                 ("pfadd", "pfadd",                         -2, Store, 1, 1, 1, 3, false, false, true, false, false),
-                
-                // TODO: 吞噬类cmd，吞噬指令，统一用q结尾？待与client协调
-                // 注意: swallowed属性在add_support中增加 fishermen
-                ("hashkey", "hashkey",                     2,  Meta,  1, 1, 1, 5, false, true, true, false, false),
+
+                // swallowed扩展指令，属性在add_support方法中增加 fishermen
+                ("hashkeyq", "hashkeyq",                   2,  Meta,  1, 1, 1, 5, false, true, true, false, false),
                 ("hashrandomq", "hashrandomq",             1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
+
+                // swallowed扩展指令对应的有返回值的指令，去掉q即可
+                ("hashkey", "hashkey",                     2,  Get,  1, 1, 1, 5, false, true, true, false, false),
+                ("keyshard", "keyshard",                  -2,  Get, 1, -1, 1, 5, true,  true, true, false, true),
+                // 这个指令暂无需求，先不支持
+                // ("hashrandom", "hashrandom",               1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
 
                 // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
                 ("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false),
