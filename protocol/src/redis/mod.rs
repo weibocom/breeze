@@ -36,7 +36,7 @@ impl Redis {
         process: &mut P,
     ) -> Result<()> {
         // 一个指令开始处理，可以重复进入
-        
+
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
             log::debug!("+++ rec req:{:?}", from_utf8(&stream.slice().to_vec()));
