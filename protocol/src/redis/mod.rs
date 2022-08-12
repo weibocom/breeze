@@ -299,8 +299,12 @@ impl Protocol for Redis {
 
         // check cmd需要额外构建rsp，目前只有hashkey、keyshard两种dist指令需要构建
         let cfg = command::get_cfg(req.op_code())?;
-        let rsp =
-            if command::DIST_CMD_HASHKEY.eq(cfg.name) || command::DIST_CMD_KEYSHARD.eq(cfg.name) {
+        let rsp = match cfg.name {
+            command::DIST_CMD_HASHKEY => {
+                let shard = dist_fn(req.hash());
+                format!(":{}\r\n", shard)
+            }
+            command::DIST_CMD_KEYSHARD => {
                 let mut bulk_str: String = String::from("");
                 if cfg.multi && cfg.need_bulk_num {
                     let ext = req.ext();
@@ -314,10 +318,12 @@ impl Protocol for Redis {
 
                 let shard_str = dist_fn(req.hash()).to_string();
                 format!("{}${}\r\n{}\r\n", bulk_str, shard_str.len(), shard_str)
-            } else {
+            }
+            _ => {
                 let padding_rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
                 padding_rsp.to_string()
-            };
+            }
+        };
 
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
