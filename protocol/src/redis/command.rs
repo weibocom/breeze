@@ -1,4 +1,4 @@
-use crate::{HashedCommand, OpCode, Operation, Utf8};
+use crate::{HashedCommand, OpCode, Operation};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
 
