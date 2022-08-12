@@ -19,14 +19,29 @@ static DNSCACHE: OnceCell<CowReadHandle<DnsCache>> = OnceCell::new();
 type RegisterItem = (String, Arc<AtomicBool>);
 type Resolver = AsyncResolver<TokioConnection, TokioConnectionProvider>;
 
-pub async fn start_dns_resolver_refresher() {
-    let resolver = system_resolver();
-    let (reg_tx, reg_rx) = unbounded_channel();
-    let cache = DnsCache::from(reg_tx);
-    let (tx, rx) = ds::cow(cache);
-    let _ = DNSCACHE.set(rx);
+pub struct DnsResolver {
+    tx: CowWriteHandle<DnsCache>,
+    reg_rx: Receiver<RegisterItem>,
+    resolver: Resolver,
+}
 
-    start_watch_dns(tx, reg_rx, resolver).await
+impl DnsResolver {
+    pub fn new() -> DnsResolver {
+        let resolver = system_resolver();
+        let (reg_tx, reg_rx) = unbounded_channel();
+        let cache = DnsCache::from(reg_tx);
+        let (tx, rx) = ds::cow(cache);
+        let _ = DNSCACHE.set(rx);
+        Self {
+            tx,
+            reg_rx,
+            resolver,
+        }
+    }
+}
+
+pub async fn start_dns_resolver_refresher(dns_resolver: DnsResolver) {
+    start_watch_dns(dns_resolver.tx, dns_resolver.reg_rx, dns_resolver.resolver).await
 }
 
 pub fn register(host: &str) -> Arc<AtomicBool> {

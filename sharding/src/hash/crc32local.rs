@@ -40,8 +40,6 @@ const CRCLOCALTAB: [i64; 256] = [
 ];
 
 const CRCLOCAL_SEED: i64 = 0xffffffff;
-// 用于表示无分隔符的场景
-const DELIMITER_NONE: char = 0 as char;
 
 #[derive(Default, Clone, Debug)]
 pub struct Crc32local {}
@@ -65,7 +63,7 @@ impl Hash for Crc32local {
 #[derive(Default, Clone, Debug)]
 pub struct Crc32localDelimiter {
     start_pos: usize,
-    delimiter: char,
+    delimiter: u8,
     name: String,
 }
 
@@ -76,16 +74,7 @@ impl Crc32localDelimiter {
         debug_assert!(alg_parts.len() >= 2);
         debug_assert_eq!(alg_parts[0], "crc32local");
 
-        // 如果需要扩展新的分隔符，在这里新增一行即可 fishermen
-        let delimiter = match alg_parts[1] {
-            super::CRC32_EXT_POINT => '.',
-            super::CRC32_EXT_UNDERSCORE => '_',
-            super::CRC32_EXT_POUND => '#',
-            _ => {
-                log::debug!("found unknown hash alg: {}, use crc32 instead", alg);
-                DELIMITER_NONE
-            }
-        };
+        let delimiter = super::key_delimiter_name_2u8(alg, alg_parts[1]);
 
         if alg_parts.len() == 2 {
             return Self {
@@ -119,10 +108,10 @@ impl super::Hash for Crc32localDelimiter {
         debug_assert!(self.start_pos < key.len());
 
         // 对于用“.”、“_”、“#”做分割的hash key，遇到分隔符停止
-        let check_delimiter = self.delimiter != DELIMITER_NONE;
+        let check_delimiter = self.delimiter != super::KEY_DELIMITER_NONE;
         for i in self.start_pos..key.len() {
             let c = key.at(i);
-            if check_delimiter && (c == self.delimiter as u8) {
+            if check_delimiter && (c == self.delimiter) {
                 break;
             }
             crc = crc >> 8 ^ CRCLOCALTAB[((crc ^ (c as i64)) & 0xff) as usize];

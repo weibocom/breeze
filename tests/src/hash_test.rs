@@ -24,5 +24,19 @@ mod hash_test {
         let b = 0b110;
         let c = 0o10;
         println!("a: {}, b: {}, c: {}", a, b, c);
+
+        let rand_hasher = Hasher::from("random");
+        let h1 = rand_hasher.hash(&key.as_bytes());
+        let h2 = rand_hasher.hash(&key.as_bytes());
+        let h3 = rand_hasher.hash(&key.as_bytes());
+        let h4 = rand_hasher.hash(&key.as_bytes());
+        println!("key:{}, random-h1:{}, h2:{}, h3:{}, h4:{}", key, h1, h2, h3, h4);
+
+        let rawsuffix_hahser = Hasher::from("rawsuffix-underscore");
+        let key_suffix = 123456789;
+        let key = format!("abc_{}", key_suffix);
+        let hash = rawsuffix_hahser.hash(&key.as_bytes());
+        debug_assert_eq!(key_suffix, hash);
+        println!("key:{} rawsuffix-underscore hash:{}", key, hash);
     }
 }
