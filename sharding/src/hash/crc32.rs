@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 const CRC32TAB: [i64; 256] = [
     0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3,
     0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91,
@@ -35,9 +37,6 @@ const CRC32TAB: [i64; 256] = [
 
 const CRC_SEED: i64 = 0xFFFFFFFF;
 
-// 用于表示无分隔符的场景
-const DELIMITER_NONE: char = 0 as char;
-
 // 用于兼容jdk版本crc32算法
 #[derive(Default, Clone, Debug)]
 pub struct Crc32 {}
@@ -56,7 +55,7 @@ pub struct Crc32Num {
 #[derive(Default, Clone, Debug)]
 pub struct Crc32Delimiter {
     start_pos: usize,
-    delimiter: char,
+    delimiter: u8,
     name: String,
 }
 
@@ -152,16 +151,7 @@ impl Crc32Delimiter {
         debug_assert!(alg_parts.len() >= 2);
         debug_assert_eq!(alg_parts[0], "crc32");
 
-        // 如果需要扩展新的分隔符，在这里新增一行即可 fishermen
-        let delimiter = match alg_parts[1] {
-            super::CRC32_EXT_POINT => '.',
-            super::CRC32_EXT_UNDERSCORE => '_',
-            super::CRC32_EXT_POUND => '#',
-            _ => {
-                log::debug!("found unknown hash alg: {}, use crc32 instead", alg);
-                DELIMITER_NONE
-            }
-        };
+        let delimiter = super::key_delimiter_name_2u8(alg, alg_parts[1]);
 
         if alg_parts.len() == 2 {
             return Self {
@@ -195,10 +185,10 @@ impl super::Hash for Crc32Delimiter {
         debug_assert!(self.start_pos < key.len());
 
         // 对于用“.”、“_”、“#”做分割的hash key，遇到分隔符停止
-        let check_delimiter = self.delimiter != DELIMITER_NONE;
+        let check_delimiter = self.delimiter != super::KEY_DELIMITER_NONE;
         for i in self.start_pos..key.len() {
             let c = key.at(i);
-            if check_delimiter && (c == self.delimiter as u8) {
+            if check_delimiter && (c == self.delimiter) {
                 break;
             }
             crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
@@ -233,44 +223,4 @@ fn crc32_hash<K: super::HashKey>(key: &K) -> i64 {
         log::debug!("crc32 - error hash/{} for key/{:?}", crc, key);
     }
     crc
-}
-
-use std::fmt::Display;
-
-#[cfg(test)]
-mod crc_test {
-
-    use crate::{bkdr::Bkdr, distribution::Distribute, hash::Crc32Delimiter, Hash};
-
-    use super::Crc32Short;
-
-    #[test]
-    fn crc32_mc_test() {
-        // let key = "123";
-        let key = "12345678901234567890123456789.fri";
-        let crc = Crc32Short {};
-        let _hash = crc.hash(&key.as_bytes());
-        println!("crc32 - key: {}, hash: {}", key, _hash);
-
-        let bkdr = Bkdr {};
-        let bkdr_hash = bkdr.hash(&key.as_bytes());
-        println!("bkdr - key: {}, hash: {}", key, bkdr_hash);
-    }
-
-    #[test]
-    fn crc32_redis_test() {
-        println!("===========crc32-redis test start...");
-        let key = "4711424389024351.repost";
-        let crc32 = Crc32Delimiter::from("crc32-id-0");
-        let hash = crc32.hash(&key.as_bytes());
-
-        let mut shards = Vec::with_capacity(8);
-        for _i in 0..8 {
-            shards.push("1".to_string());
-        }
-        let dist = Distribute::from("range", &shards);
-        let idx = dist.index(hash);
-
-        println!("crc32-redis - key:{}, hash:{}, dist:{}", key, hash, idx);
-    }
 }

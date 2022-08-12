@@ -1,16 +1,21 @@
 pub mod bkdr;
 pub mod crc32;
 pub mod crc32local;
+pub mod random;
 pub mod raw;
 pub mod rawcrc32local;
+pub mod rawsuffix;
 
 pub use bkdr::Bkdr;
 pub use crc32::*;
 pub use crc32local::*;
+pub use random::RandomHash;
 pub use raw::Raw;
 pub use rawcrc32local::Rawcrc32local;
+pub use rawsuffix::RawSuffix;
 
 use enum_dispatch::enum_dispatch;
+
 #[enum_dispatch]
 pub trait Hash {
     // hash 可能返回负数
@@ -29,6 +34,8 @@ pub enum Hasher {
     Crc32local(Crc32local),         // crc32local for a hash key like: xx.x, xx_x, xx#x etc.
     Crc32localDelimiter(Crc32localDelimiter),
     Rawcrc32local(Rawcrc32local), // raw or crc32local
+    Random(RandomHash),              // random hash
+    RawSuffix(RawSuffix),
 }
 
 // crc32-short和crc32-range长度相同，所以此处选一个
@@ -51,12 +58,16 @@ pub const HASHER_NAME_DELIMITER: char = '-';
 pub const CRC32_EXT_SHORT: &str = "short";
 // hash key是数字
 const CRC32_EXT_NUM: &str = "num";
-// hash key是点号"."之前的部分
-const CRC32_EXT_POINT: &str = "point";
-// hash key是“#”之前的部分
-const CRC32_EXT_POUND: &str = "pound";
-// hash key是"_"之前的部分
-const CRC32_EXT_UNDERSCORE: &str = "underscore";
+// hash key是点号"."分割的之前/后的部分
+const KEY_DELIMITER_POINT: &str = "point";
+// hash key是“#”之前/后的部分
+const KEY_DELIMITER_POUND: &str = "pound";
+// hash key是"_"之前/后的部分
+const KEY_DELIMITER_UNDERSCORE: &str = "underscore";
+// 用于表示无分隔符的场景
+const KEY_DELIMITER_NONE: u8 = 0;
+
+const NAME_RAWSUFFIX: &str = "rawsuffix";
 
 impl Hasher {
     // 主要做3件事：1）将hash alg转为小写；2）兼容xx-range；3）兼容-id为-num
@@ -91,6 +102,7 @@ impl Hasher {
                 "crc32" => Self::Crc32(Default::default()),
                 "crc32local" => Self::Crc32local(Default::default()),
                 "rawcrc32local" => Self::Rawcrc32local(Default::default()),
+                "random" => Self::Random(Default::default()),
                 _ => {
                     // 默认采用mc的crc32-s hash
                     log::error!("found unknown hash:{}, use crc32-short instead", alg);
@@ -114,6 +126,7 @@ impl Hasher {
             "crc32local" => {
                 Self::Crc32localDelimiter(Crc32localDelimiter::from(alg_lower.as_str()))
             }
+            "rawsuffix" => Self::RawSuffix(RawSuffix::from(alg_lower.as_str())),
             _ => {
                 log::error!("found unknow hash: {} use crc32 instead", alg);
                 Self::Crc32(Default::default())
@@ -124,6 +137,20 @@ impl Hasher {
     pub fn crc32_short() -> Self {
         Self::Crc32Short(Default::default())
     }
+}
+
+// 如果有新增的key分隔符，在这里增加即可
+fn key_delimiter_name_2u8(alg: &str, delimiter_name: &str) -> u8 {
+    let c = match delimiter_name {
+        KEY_DELIMITER_POINT => '.',
+        KEY_DELIMITER_UNDERSCORE => '_',
+        KEY_DELIMITER_POUND => '#',
+        _ => {
+            log::debug!("found unknown hash alg: {}, use crc32 instead", alg);
+            KEY_DELIMITER_NONE as char
+        }
+    };
+    c as u8
 }
 
 impl Default for Hasher {
