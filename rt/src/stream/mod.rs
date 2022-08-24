@@ -126,10 +126,21 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     }
 }
 impl<S> Stream<S> {
+    // send buff扩容策略:
+    // 1. 如果buf.len() < buf.capacity(), 则不扩容
+    // 2. 新的cap如果小于32k，则按2的指数倍扩容
+    // 3. 新的cap如果大于32k，则按4k对齐
+    // 4. 最小1k
     #[inline]
     fn reserve(&mut self, size: usize) {
         if self.buf.capacity() - self.buf.len() < size {
-            let cap = (size + self.buf.len()).max(512).next_power_of_two();
+            let cap = (size + self.buf.len()).max(1024);
+            let cap = if cap < 32 * 1024 {
+                cap.next_power_of_two()
+            } else {
+                // 按4k对齐
+                (cap + 4095) & !4095
+            };
             let grow = cap - self.buf.len();
             self.buf.reserve(grow);
             self.buf_tx += grow;
