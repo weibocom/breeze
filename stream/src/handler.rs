@@ -40,6 +40,10 @@ where
         let request = me.poll_request(cx)?;
         let flush = me.poll_flush(cx)?;
         let response = me.poll_response(cx)?;
+        if me.s.pending() > 0 {
+            log::info!("pending after poll_request: {}", me.s.pending());
+            ready!(Pin::new(&mut me.s).poll_flush(cx)?);
+        }
         ready!(response);
         ready!(flush);
         ready!(request);
