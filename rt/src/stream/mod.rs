@@ -103,6 +103,10 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
 
 impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     #[inline]
+    fn pending(&self) -> usize {
+        self.buf.len()
+    }
+    #[inline]
     fn write(&mut self, data: &[u8]) -> protocol::Result<()> {
         if data.len() <= 4 {
             self.buf.write(data)

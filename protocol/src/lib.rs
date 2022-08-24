@@ -25,6 +25,7 @@ pub mod request;
 pub use utf8::*;
 
 pub trait Writer {
+    fn pending(&self) -> usize;
     // 写数据，一次写完
     fn write(&mut self, data: &[u8]) -> Result<()>;
     #[inline]
@@ -83,6 +84,10 @@ pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Writer for Vec<u8> {
+    #[inline]
+    fn pending(&self) -> usize {
+        self.len()
+    }
     #[inline]
     fn write(&mut self, data: &[u8]) -> Result<()> {
         ds::vec::Buffer::write(self, data);
