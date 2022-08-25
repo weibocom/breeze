@@ -111,12 +111,12 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
                     Some(cmd) => {
-                        assert_ne!(self.pending.len(), 0, "{:?}", self);
+                        debug_assert_ne!(self.pending.len(), 0, "{:?}", self);
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
-                        assert!(
+                        debug_assert!(
                             self.parser.check(req.cmd(), &cmd),
                             "{:?} {:?} => {:?}",
                             self,
