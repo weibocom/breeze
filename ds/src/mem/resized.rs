@@ -1,5 +1,4 @@
-use super::{RingBuffer, RingSlice};
-use std::time::{Duration, Instant};
+use super::{RingBuffer, RingSlice, ShrinkPolicy};
 
 type Callback = Box<dyn FnMut(usize, isize)>;
 // 支持自动扩缩容的ring buffer。
@@ -14,9 +13,8 @@ pub struct ResizedRingBuffer {
     // 下面的用来做扩缩容判断
     min: u32,
     max: u32,
-    scale_in_tick_num: u32,
     on_change: Callback,
-    last: Instant,
+    shrink: ShrinkPolicy,
 }
 
 use std::ops::{Deref, DerefMut};
@@ -51,9 +49,8 @@ impl ResizedRingBuffer {
             inner: RingBuffer::with_capacity(init),
             min: min as u32,
             max: max as u32,
-            scale_in_tick_num: 0,
             on_change: Box::new(cb),
-            last: Instant::now(),
+            shrink: ShrinkPolicy::new(),
         }
     }
     // 需要写入数据时，判断是否需要扩容
@@ -73,24 +70,12 @@ impl ResizedRingBuffer {
         // 判断是否需要缩容
         // 使用率超过25%， 或者当前cap为最小值。
         if self.len() * 4 >= self.cap() || self.cap() <= self.min as usize {
-            self.scale_in_tick_num = 0;
+            self.shrink.reset();
             return;
         }
         // 当前使用的buffer小于1/4.
-        self.scale_in_tick_num += 1;
-        // 每连续1024次请求判断一次。
-        if self.scale_in_tick_num & 511 == 0 {
-            // 避免过多的调用Instant::now()
-            if self.scale_in_tick_num == 1024 {
-                self.last = Instant::now();
-            }
-            // 使用率低于25%， 超过1小时， 超过1024+512次。
-            if self.last.elapsed() >= Duration::from_secs(3600) {
-                let new = self.cap() / 2;
-                self.resize(new);
-                self.scale_in_tick_num = 0;
-                self.last = Instant::now();
-            }
+        if self.shrink.tick() {
+            self.resize(self.cap() / 2);
         }
     }
     #[inline]
