@@ -163,6 +163,7 @@ impl<S> Stream<S> {
                 let old = self.buf.capacity();
                 let new = (self.buf.capacity() / 2).next_power_of_two();
                 self.buf.shrink_to(new);
+                assert_eq!(new, self.buf.capacity());
                 self.buf_tx -= (old - new) as isize;
                 log::info!(
                     "tx buf: {},{} => ({}=={}) id:{}",
