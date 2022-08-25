@@ -1,22 +1,24 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
 pub struct ShrinkPolicy {
     ticks: usize,
-    ticks_interval: u16, // 每隔多少次判断一次
-    last: Instant,       // 上一次tick返回true的时间
-    secs: u16,           // 每两次tick返回true的最小间隔时间
+    last: Instant, // 上一次tick返回true的时间
+    secs: u32,     // 每两次tick返回true的最小间隔时间
     id: usize,
 }
 
 impl ShrinkPolicy {
     pub fn new() -> Self {
+        Self::from(Duration::from_secs(600))
+    }
+    pub fn from(delay: Duration) -> Self {
         static ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
         let id = ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let secs = delay.as_secs().max(1).min(86400) as u32;
         Self {
             ticks: 0,
-            secs: 1800,
-            ticks_interval: 1024,
+            secs,
             last: Instant::now(),
             id,
         }
@@ -24,19 +26,21 @@ impl ShrinkPolicy {
     #[inline]
     pub fn tick(&mut self) -> bool {
         self.ticks += 1;
-        if self.ticks < self.ticks_interval as usize {
-            return false;
+        // 定期检查。
+        const TICKS: usize = 31;
+        if self.ticks & TICKS == 0 {
+            if self.ticks == TICKS + 1 {
+                self.last = Instant::now();
+                return false;
+            }
+            if self.last.elapsed().as_secs() <= self.secs as u64 {
+                return false;
+            }
+            self.ticks = 0;
+            true
+        } else {
+            false
         }
-        if self.ticks == self.ticks_interval as usize {
-            self.last = Instant::now();
-            return false;
-        }
-        let elapsed = self.last.elapsed().as_secs();
-        if elapsed <= self.secs as u64 {
-            return false;
-        }
-        self.ticks = 0;
-        true
     }
     #[inline]
     pub fn reset(&mut self) {

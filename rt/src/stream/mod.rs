@@ -138,6 +138,7 @@ impl<S> Stream<S> {
     #[inline]
     fn grow(&mut self, size: usize) {
         if self.buf.capacity() - self.buf.len() < size {
+            let old = self.buf.capacity();
             let cap = (size + self.buf.len()).max(1024);
             let cap = if cap < 32 * 1024 {
                 cap.next_power_of_two()
@@ -147,8 +148,7 @@ impl<S> Stream<S> {
             };
             let grow = cap - self.buf.len();
             self.buf.reserve(grow);
-            self.buf_tx += grow;
-            assert_eq!(cap, self.buf.capacity());
+            self.buf_tx += self.buf.capacity() - old;
         }
     }
     // flush的时候尝试缩容。满足以下所有条件
@@ -158,16 +158,16 @@ impl<S> Stream<S> {
     // 每次缩容一半
     #[inline]
     fn clear(&mut self) {
-        if self.buf.capacity() >= 2048 && self.buf.len() * 4 <= self.buf.capacity() {
+        if self.buf.capacity() >= 2048 && self.buf.len() * 4 < self.buf.capacity() {
             if self.shrink.tick() {
+                let len = self.buf.len();
                 let old = self.buf.capacity();
-                let new = (self.buf.capacity() / 2).next_power_of_two();
+                let new = (old / 2).max(len).next_power_of_two();
                 self.buf.shrink_to(new);
-                assert_eq!(new, self.buf.capacity());
-                self.buf_tx -= (old - new) as isize;
+                self.buf_tx -= (old - self.buf.capacity()) as isize;
                 log::info!(
-                    "tx buf: {},{} => ({}=={}) id:{}",
-                    self.buf.len(),
+                    "tx buf shrink {},{} => ({}=={}) id:{}",
+                    len,
                     old,
                     new,
                     self.buf.capacity(),

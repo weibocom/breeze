@@ -75,6 +75,12 @@ impl ResizedRingBuffer {
         }
         // 当前使用的buffer小于1/4.
         if self.shrink.tick() {
+            log::info!(
+                "rx buf shrink from {} => {} id:{}",
+                self.cap(),
+                self.cap() / 2,
+                self.shrink.id()
+            );
             self.resize(self.cap() / 2);
         }
     }
