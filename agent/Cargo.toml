@@ -23,7 +23,7 @@ api = { path = "../api" }
 log = "0.4.14"
 backtrace = "0.3.63"
 
-tokio = {version = "1.17.0", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
+tokio = { version = "1.20.1", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
 mimalloc = { version = "*", default-features = false }
 
 rlimit = "0.3.0"
