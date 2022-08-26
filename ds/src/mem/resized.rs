@@ -56,11 +56,7 @@ impl ResizedRingBuffer {
     // 需要写入数据时，判断是否需要扩容
     #[inline]
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
-        if !self.inner.available() {
-            if self.cap() * 2 <= self.max as usize {
-                self.resize(self.cap() * 2);
-            }
-        }
+        self.grow(512);
         self.inner.as_mut_bytes()
     }
     // 有数写入时，判断是否需要缩容
@@ -104,11 +100,15 @@ impl ResizedRingBuffer {
     // 当buffer无法再扩容以容纳data时，写入失败，其他写入成功
     #[inline]
     pub fn write(&mut self, data: &RingSlice) -> usize {
-        if self.policy.need_grow(self.len(), self.cap(), data.len()) {
-            let new = self.policy.grow(self.len(), self.cap(), data.len());
+        self.grow(data.len());
+        self.inner.write(data)
+    }
+    #[inline(always)]
+    fn grow(&mut self, reserve: usize) {
+        if self.policy.need_grow(self.len(), self.cap(), reserve) {
+            let new = self.policy.grow(self.len(), self.cap(), reserve);
             self.resize(new);
         }
-        self.inner.write(data)
     }
 }
 
