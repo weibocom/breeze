@@ -1,7 +1,8 @@
 mod metric;
+use ds::ShrinkPolicy;
 use metric::MetricStream;
 
-use std::io::{self};
+use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -18,18 +19,22 @@ pub struct Stream<S> {
     write_to_buf: bool,
     cache: metrics::Metric,
     buf_tx: metrics::Metric,
+    shrink: ShrinkPolicy,
 }
 impl<S> From<S> for Stream<S> {
     #[inline]
     fn from(s: S) -> Self {
-        Self {
+        let mut me = Self {
             s: s.into(),
             idx: 0,
             buf: Vec::new(),
             write_to_buf: false,
             cache: metrics::Path::base().qps("poll_write_cache"),
             buf_tx: metrics::Path::base().num("mem_buf_tx"),
-        }
+            shrink: ShrinkPolicy::new(),
+        };
+        me.grow(1);
+        me
     }
 }
 impl<S: AsyncRead + Unpin + std::fmt::Debug> AsyncRead for Stream<S> {
@@ -67,7 +72,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         }
         // 未写完的数据写入到buf。
         if oft < data.len() {
-            self.reserve(data.len() - oft);
+            self.grow(data.len() - oft);
             self.cache += 1;
             use ds::Buffer;
             self.buf.write(&data[oft..])
@@ -86,8 +91,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
             let flush = w.poll_flush(cx)?;
             assert!(flush.is_ready());
             ready!(flush);
-            *idx = 0;
-            unsafe { buf.set_len(0) };
+            self.clear();
         }
         Poll::Ready(Ok(()))
     }
@@ -102,6 +106,10 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
 }
 
 impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
+    #[inline]
+    fn pending(&self) -> usize {
+        self.buf.len()
+    }
     #[inline]
     fn write(&mut self, data: &[u8]) -> protocol::Result<()> {
         if data.len() <= 4 {
@@ -122,15 +130,55 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     }
 }
 impl<S> Stream<S> {
+    // send buff扩容策略:
+    // 1. 如果buf.len() < buf.capacity(), 则不扩容
+    // 2. 新的cap如果小于32k，则按2的指数倍扩容
+    // 3. 新的cap如果大于32k，则按4k对齐
+    // 4. 最小1k
     #[inline]
-    fn reserve(&mut self, size: usize) {
+    fn grow(&mut self, size: usize) {
         if self.buf.capacity() - self.buf.len() < size {
-            let cap = (size + self.buf.len()).max(512).next_power_of_two();
+            let old = self.buf.capacity();
+            let cap = (size + self.buf.len()).max(1024);
+            let cap = if cap < 32 * 1024 {
+                cap.next_power_of_two()
+            } else {
+                // 按4k对齐
+                (cap + 4095) & !4095
+            };
             let grow = cap - self.buf.len();
             self.buf.reserve(grow);
-            self.buf_tx += grow;
-            assert_eq!(cap, self.buf.capacity());
+            self.buf_tx += self.buf.capacity() - old;
         }
+    }
+    // flush的时候尝试缩容。满足以下所有条件
+    // 1. buf.len() * 4 <= buf.capacity()
+    // 2. 条件1连续满足1024次
+    // 3. buf.capacity() >= 4k
+    // 每次缩容一半
+    #[inline]
+    fn clear(&mut self) {
+        if self.buf.capacity() >= 2048 && self.buf.len() * 4 < self.buf.capacity() {
+            if self.shrink.tick() {
+                let len = self.buf.len();
+                let old = self.buf.capacity();
+                let new = (old / 2).max(len).next_power_of_two();
+                self.buf.shrink_to(new);
+                self.buf_tx -= (old - self.buf.capacity()) as isize;
+                log::info!(
+                    "tx buf shrink {},{} => ({}=={}) id:{}",
+                    len,
+                    old,
+                    new,
+                    self.buf.capacity(),
+                    self.shrink.id()
+                );
+            }
+        } else {
+            self.shrink.reset();
+        }
+        self.idx = 0;
+        unsafe { self.buf.set_len(0) };
     }
 }
 impl<S> Drop for Stream<S> {
