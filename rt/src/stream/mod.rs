@@ -1,5 +1,5 @@
 mod metric;
-use ds::ShrinkPolicy;
+use ds::MemPolicy;
 use metric::MetricStream;
 
 use std::io;
@@ -19,22 +19,20 @@ pub struct Stream<S> {
     write_to_buf: bool,
     cache: metrics::Metric,
     buf_tx: metrics::Metric,
-    shrink: ShrinkPolicy,
+    policy: MemPolicy,
 }
 impl<S> From<S> for Stream<S> {
     #[inline]
     fn from(s: S) -> Self {
-        let mut me = Self {
+        Self {
             s: s.into(),
             idx: 0,
             buf: Vec::new(),
             write_to_buf: false,
             cache: metrics::Path::base().qps("poll_write_cache"),
             buf_tx: metrics::Path::base().num("mem_buf_tx"),
-            shrink: ShrinkPolicy::new(),
-        };
-        me.grow(1);
-        me
+            policy: MemPolicy::tx(),
+        }
     }
 }
 impl<S: AsyncRead + Unpin + std::fmt::Debug> AsyncRead for Stream<S> {
@@ -72,10 +70,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         }
         // 未写完的数据写入到buf。
         if oft < data.len() {
-            self.grow(data.len() - oft);
-            self.cache += 1;
-            use ds::Buffer;
-            self.buf.write(&data[oft..])
+            self.write_to_buf(&data[oft..])
         }
         Poll::Ready(Ok(data.len()))
     }
@@ -113,7 +108,8 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     #[inline]
     fn write(&mut self, data: &[u8]) -> protocol::Result<()> {
         if data.len() <= 4 {
-            self.buf.write(data)
+            self.write_to_buf(data);
+            Ok(())
         } else {
             let noop = noop_waker::noop_waker();
             let mut ctx = Context::from_waker(&noop);
@@ -130,52 +126,29 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     }
 }
 impl<S> Stream<S> {
-    // send buff扩容策略:
-    // 1. 如果buf.len() < buf.capacity(), 则不扩容
-    // 2. 新的cap如果小于32k，则按2的指数倍扩容
-    // 3. 新的cap如果大于32k，则按4k对齐
-    // 4. 最小1k
-    #[inline]
-    fn grow(&mut self, size: usize) {
-        if self.buf.capacity() - self.buf.len() < size {
-            let old = self.buf.capacity();
-            let cap = (size + self.buf.len()).max(1024);
-            let cap = if cap < 32 * 1024 {
-                cap.next_power_of_two()
-            } else {
-                // 按4k对齐
-                (cap + 4095) & !4095
-            };
-            let grow = cap - self.buf.len();
-            self.buf.reserve(grow);
-            self.buf_tx += self.buf.capacity() - old;
+    #[inline(always)]
+    fn write_to_buf(&mut self, data: &[u8]) {
+        let (len, cap) = (self.buf.len(), self.buf.capacity());
+        if self.policy.need_grow(len, cap, data.len()) {
+            let new = self.policy.grow(len, cap, data.len());
+            let grow = new - self.buf.len();
+            self.buf.reserve_exact(grow);
+            assert_eq!(self.buf.capacity(), new);
+            self.buf_tx += new - cap;
         }
+        self.cache += 1;
+        use ds::Buffer;
+        self.buf.write(data);
     }
-    // flush的时候尝试缩容。满足以下所有条件
-    // 1. buf.len() * 4 <= buf.capacity()
-    // 2. 条件1连续满足1024次
-    // 3. buf.capacity() >= 4k
-    // 每次缩容一半
+    // 所有数据flush完了之后，尝试进行缩容
     #[inline]
     fn clear(&mut self) {
-        if self.buf.capacity() >= 2048 && self.buf.len() * 4 < self.buf.capacity() {
-            if self.shrink.tick() {
-                let len = self.buf.len();
-                let old = self.buf.capacity();
-                let new = (old / 2).max(len).next_power_of_two();
-                self.buf.shrink_to(new);
-                self.buf_tx -= (old - self.buf.capacity()) as isize;
-                log::info!(
-                    "tx buf shrink {},{} => ({}=={}) id:{}",
-                    len,
-                    old,
-                    new,
-                    self.buf.capacity(),
-                    self.shrink.id()
-                );
-            }
-        } else {
-            self.shrink.reset();
+        if self.policy.need_shrink(self.buf.len(), self.buf.capacity()) {
+            let old = self.buf.capacity();
+            let new = self.policy.shrink(self.buf.len(), old);
+            self.buf.shrink_to(new);
+            assert_eq!(new, self.buf.capacity());
+            self.buf_tx -= (old - new) as isize;
         }
         self.idx = 0;
         unsafe { self.buf.set_len(0) };
