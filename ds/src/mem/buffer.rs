@@ -95,10 +95,10 @@ impl RingBuffer {
     pub(crate) fn available(&self) -> bool {
         self.read() + self.cap() > self.writtened()
     }
-    #[inline]
-    pub(crate) fn avail(&self) -> usize {
-        self.cap() - self.len()
-    }
+    //#[inline]
+    //pub(crate) fn avail(&self) -> usize {
+    //    self.cap() - self.len()
+    //}
     #[inline]
     pub fn ratio(&self) -> (usize, usize) {
         assert!(self.write >= self.read);
