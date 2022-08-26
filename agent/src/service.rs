@@ -31,7 +31,6 @@ pub(super) async fn process_one(
     let mut protocol_metrics = StreamMetrics::new(&protocol_path);
 
     // 在业务初始化及监听完成之前，计数加1，成功后再-1，
-    *protocol_metrics.listen_failed() += 1;
 
     // 等待初始化完成
     let mut tries = 0usize;
@@ -40,6 +39,7 @@ pub(super) async fn process_one(
         let sleep = if tries <= 10 {
             Duration::from_secs(1)
         } else {
+            *protocol_metrics.listen_failed() += 1;
             log::warn!("waiting inited. {} tries:{}", quard, tries);
             // Duration::from_secs(1 << (tries.min(10)))
             // 1 << 10 差不多20分钟，太久了，先改为递增间隔 fishermen
@@ -47,6 +47,8 @@ pub(super) async fn process_one(
             if t > 1024 {
                 t = 1024;
             }
+            // 监听失败增加计数
+            *protocol_metrics.listen_failed() += 1;
             Duration::from_secs(t)
         };
         tokio::time::sleep(sleep).await;
@@ -58,10 +60,7 @@ pub(super) async fn process_one(
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
 
     // 服务注册完成，侦听端口直到成功。
-    while let Err(e) = _process_one(quard, &p, &top, &path, &mut protocol_metrics).await {
-        // 监听失败增加计数
-        *protocol_metrics.listen_failed() += 1;
-
+    while let Err(e) = _process_one(quard, &p, &top, &path).await {
         log::warn!("service process failed. {}, err:{:?}", quard, e);
         tokio::time::sleep(Duration::from_secs(6)).await;
     }
@@ -78,12 +77,8 @@ async fn _process_one(
     p: &Parser,
     top: &Arc<RefreshTopology<Topology>>,
     path: &Path,
-    protocol_metrics: &mut StreamMetrics,
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
-
-    // 监听成功协议计数减1，让监听失败数重新置零
-    *protocol_metrics.listen_failed() -= 1;
 
     // 记录监听的端口，方便api查询
     api::props::add_listener(quard.service().to_string(), quard.address());
