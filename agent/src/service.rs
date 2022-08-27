@@ -79,10 +79,6 @@ async fn _process_one(
     path: &Path,
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
-
-    // 记录监听的端口，方便api查询
-    api::props::add_listener(quard.service().to_string(), quard.address());
-
     log::info!("started. {}", quard);
 
     loop {
