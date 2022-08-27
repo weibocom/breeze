@@ -21,7 +21,7 @@ impl MemPolicy {
         Self::with_direction("rx")
     }
     pub fn with_direction(direction: &'static str) -> Self {
-        Self::from(Duration::from_secs(6), direction)
+        Self::from(Duration::from_secs(1800), direction)
     }
     fn from(delay: Duration, direction: &'static str) -> Self {
         static ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
@@ -44,7 +44,7 @@ impl MemPolicy {
     // 连续self.secs秒check返回true，则需要缩容
     #[inline]
     pub fn need_shrink(&mut self, len: usize, cap: usize) -> bool {
-        if len * 4 < cap || len <= BUF_MIN {
+        if len * 4 < cap || cap <= BUF_MIN {
             self.reset();
             return false;
         }
@@ -96,13 +96,13 @@ impl MemPolicy {
     // 2. 最小值为MIN_BUF
     // 3. 最小值为len
     // 4. 取2的指数倍
-    // 注意：返回值可能比输入的cap大
+    // 注意：返回值可能比输入的cap大. 但在判断need_shrink时，会判断len * 4 < cap, 所以不会出现len * 4 < cap, 但是cap / 2 < len的情况
     #[inline]
     pub fn shrink(&mut self, len: usize, cap: usize) -> usize {
-        let new = (cap / 2).max(BUF_MIN).max(len).max(cap).next_power_of_two();
+        let new = (cap / 2).max(BUF_MIN).max(len).next_power_of_two();
         self.ticks = 0;
         log::info!(
-            "{} buf shrink: {} {} => {} ticks:{} elapse:{} id:{}",
+            "{} buf shrink: {} {} => {} ticks:{} elapse:{} secs id:{}",
             self.direction,
             len,
             cap,
