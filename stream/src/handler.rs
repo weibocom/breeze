@@ -40,12 +40,9 @@ where
         let request = me.poll_request(cx)?;
         let flush = me.poll_flush(cx)?;
         let response = me.poll_response(cx)?;
-        if me.s.pending() > 0 {
-            log::info!("pending after poll_request: {}", me.s.pending());
-            ready!(Pin::new(&mut me.s).poll_flush(cx)?);
-        }
-        ready!(response);
+        // 必须要先flush，否则可能有请求未发送导致超时。
         ready!(flush);
+        ready!(response);
         ready!(request);
         Poll::Ready(Ok(()))
     }
@@ -131,7 +128,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         }
         Poll::Ready(Ok(()))
     }
-    #[inline]
+    #[inline(always)]
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<()>>
     where
         S: AsyncWrite + Unpin,
