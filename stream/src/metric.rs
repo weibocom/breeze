@@ -49,6 +49,5 @@ define_metrics!(
     qps:    tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn,noresponse-noresponse, key-key, hit-hit;
     num:    conn_num-conn, unsupport_cmd-unsupport_cmd;
     rtt:    avg-avg;
-    ratio:  cache-hit;
-    status: listen_failed-listen_failed
+    ratio:  cache-hit
 );
