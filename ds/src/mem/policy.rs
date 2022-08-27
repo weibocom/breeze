@@ -21,7 +21,7 @@ impl MemPolicy {
         Self::with_direction("rx")
     }
     pub fn with_direction(direction: &'static str) -> Self {
-        Self::from(Duration::from_secs(1800), direction)
+        Self::from(Duration::from_secs(600), direction)
     }
     fn from(delay: Duration, direction: &'static str) -> Self {
         static ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
