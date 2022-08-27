@@ -18,6 +18,7 @@ use stream::Shards;
 
 use super::config::{Backend, PhantomNamespace};
 use super::config::{ACCESS_NONE, ACCESS_READ, ACCESS_WRITE};
+use crate::TimeoutAdjust;
 
 #[derive(Clone)]
 pub struct PhantomService<B, E, Req, P> {
@@ -42,7 +43,7 @@ impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
             updated: Default::default(),
             hasher: Default::default(),
             service: Default::default(),
-            timeout: Duration::from_millis(200),
+            timeout: Duration::from_millis(500),
             _mark: Default::default(),
         }
     }
@@ -136,7 +137,7 @@ where
     fn update(&mut self, namespace: &str, cfg: &str) {
         self.service = namespace.to_string();
         if let Some(ns) = PhantomNamespace::try_from(cfg) {
-            self.timeout = ns.timeout();
+            self.timeout.adjust(ns.basic.timeout);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.service = namespace.to_string();
 
