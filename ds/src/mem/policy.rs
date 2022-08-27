@@ -44,7 +44,8 @@ impl MemPolicy {
     // 连续self.secs秒check返回true，则需要缩容
     #[inline]
     pub fn need_shrink(&mut self, len: usize, cap: usize) -> bool {
-        if len * 4 < cap || cap <= BUF_MIN {
+        // 长度 * 4 >= cap，说明利用率大于25%
+        if len >= (cap >> 2) || cap <= BUF_MIN {
             self.reset();
             return false;
         }
@@ -100,7 +101,6 @@ impl MemPolicy {
     #[inline]
     pub fn shrink(&mut self, len: usize, cap: usize) -> usize {
         let new = (cap / 2).max(BUF_MIN).max(len).next_power_of_two();
-        self.ticks = 0;
         log::info!(
             "{} buf shrink: {} {} => {} ticks:{} elapse:{} secs id:{}",
             self.direction,
@@ -111,6 +111,7 @@ impl MemPolicy {
             self.last.elapsed().as_secs(),
             self.id
         );
+        self.ticks = 0;
         new
     }
 }
