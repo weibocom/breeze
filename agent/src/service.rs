@@ -27,8 +27,7 @@ pub(super) async fn process_one(
     // 注册，定期更新配置
     discovery.send(tx)?;
 
-    let protocol_path = Path::new(vec![quard.protocol()]);
-    let mut protocol_metrics = StreamMetrics::new(&protocol_path);
+    let mut listen_failed = Path::new(vec![quard.protocol()]).status("listen_failed");
 
     // 在业务初始化及监听完成之前，计数加1，成功后再-1，
 
@@ -39,7 +38,8 @@ pub(super) async fn process_one(
         let sleep = if tries <= 10 {
             Duration::from_secs(1)
         } else {
-            *protocol_metrics.listen_failed() += 1;
+            // 监听失败增加计数
+            listen_failed += 1;
             log::warn!("waiting inited. {} tries:{}", quard, tries);
             // Duration::from_secs(1 << (tries.min(10)))
             // 1 << 10 差不多20分钟，太久了，先改为递增间隔 fishermen
@@ -47,8 +47,6 @@ pub(super) async fn process_one(
             if t > 1024 {
                 t = 1024;
             }
-            // 监听失败增加计数
-            *protocol_metrics.listen_failed() += 1;
             Duration::from_secs(t)
         };
         tokio::time::sleep(sleep).await;
