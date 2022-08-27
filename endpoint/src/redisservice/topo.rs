@@ -10,6 +10,7 @@ use sharding::hash::Hasher;
 use sharding::ReplicaSelect;
 
 use super::config::RedisNamespace;
+use crate::TimeoutAdjust;
 use discovery::dns::{self, IPPort};
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
@@ -39,8 +40,8 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             updated: Default::default(),
             service: Default::default(),
             selector: Default::default(),
-            timeout_master: Duration::from_millis(200),
-            timeout_slave: Duration::from_millis(80),
+            timeout_master: Duration::from_millis(500),
+            timeout_slave: Duration::from_millis(100),
             _mark: Default::default(),
         }
     }
@@ -150,8 +151,8 @@ where
             //     return;
             // }
 
-            self.timeout_master = ns.timeout_master();
-            self.timeout_slave = ns.timeout_slave();
+            self.timeout_master.adjust(ns.basic.timeout_ms_master);
+            self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
             self.selector = ns.basic.selector;

@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
+//use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use sharding::distribution::{DIST_ABS_MODULA, DIST_MODULA};
@@ -62,10 +62,14 @@ impl RedisNamespace {
         }
         nso
     }
-    pub(super) fn timeout_master(&self) -> Duration {
-        Duration::from_millis(200.max(self.basic.timeout_ms_master as u64))
-    }
-    pub(super) fn timeout_slave(&self) -> Duration {
-        Duration::from_millis(80.max(self.basic.timeout_ms_slave as u64))
-    }
+    //pub(super) fn timeout_master(&self) -> Duration {
+    //    if self.basic.timeout_ms_master > 0 {
+    //        Duration::from_millis(100.max(self.basic.timeout_ms_master as u64))
+    //    } else {
+    //        Duration::from_millis(500)
+    //    }
+    //}
+    //pub(super) fn timeout_slave(&self) -> Duration {
+    //    Duration::from_millis(80.max(self.basic.timeout_ms_slave as u64))
+    //}
 }

@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::TimeoutAdjust;
 use stream::Shards;
 
 #[derive(Clone)]
@@ -207,8 +208,8 @@ where
                     old.insert(e.1, e.0);
                 }
             }
-            let mto = ns.timeout_master();
-            let rto = ns.timeout_slave();
+            let mto = Duration::from_millis(500).to(ns.timeout_ms_master);
+            let rto = Duration::from_millis(100).to(ns.timeout_ms_slave);
 
             // 准备master
             let master = self.build(old, ns.master, dist, namespace, mto);
