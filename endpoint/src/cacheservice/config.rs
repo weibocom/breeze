@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sharding::hash;
-use std::time::Duration;
+//use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Hash)]
 pub struct Namespace {
@@ -71,12 +71,12 @@ impl Namespace {
     fn default_update_slave_l1() -> bool {
         return true;
     }
-    pub(super) fn timeout_master(&self) -> Duration {
-        Duration::from_millis(200.max(self.timeout_ms_master as u64))
-    }
-    pub(super) fn timeout_slave(&self) -> Duration {
-        Duration::from_millis(80.max(self.timeout_ms_slave as u64))
-    }
+    //pub(super) fn timeout_master(&self) -> Duration {
+    //    Duration::from_millis(200.max(self.timeout_ms_master as u64))
+    //}
+    //pub(super) fn timeout_slave(&self) -> Duration {
+    //    Duration::from_millis(80.max(self.timeout_ms_slave as u64))
+    //}
 }
 
 impl Namespace {}
