@@ -1,4 +1,4 @@
-use super::{RingBuffer, RingSlice, ShrinkPolicy};
+use super::{MemPolicy, RingBuffer, RingSlice};
 
 type Callback = Box<dyn FnMut(usize, isize)>;
 // 支持自动扩缩容的ring buffer。
@@ -14,7 +14,7 @@ pub struct ResizedRingBuffer {
     min: u32,
     max: u32,
     on_change: Callback,
-    shrink: ShrinkPolicy,
+    policy: MemPolicy,
 }
 
 use std::ops::{Deref, DerefMut};
@@ -50,17 +50,13 @@ impl ResizedRingBuffer {
             min: min as u32,
             max: max as u32,
             on_change: Box::new(cb),
-            shrink: ShrinkPolicy::new(),
+            policy: MemPolicy::rx(),
         }
     }
     // 需要写入数据时，判断是否需要扩容
     #[inline]
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
-        if !self.inner.available() {
-            if self.cap() * 2 <= self.max as usize {
-                self.resize(self.cap() * 2);
-            }
-        }
+        self.grow(512);
         self.inner.as_mut_bytes()
     }
     // 有数写入时，判断是否需要缩容
@@ -68,20 +64,9 @@ impl ResizedRingBuffer {
     pub fn advance_write(&mut self, n: usize) {
         self.inner.advance_write(n);
         // 判断是否需要缩容
-        // 使用率超过25%， 或者当前cap为最小值。
-        if self.len() * 4 >= self.cap() || self.cap() <= self.min as usize {
-            self.shrink.reset();
-            return;
-        }
-        // 当前使用的buffer小于1/4.
-        if self.shrink.tick() {
-            log::info!(
-                "rx buf shrink from {} => {} id:{}",
-                self.cap(),
-                self.cap() / 2,
-                self.shrink.id()
-            );
-            self.resize(self.cap() / 2);
+        if self.policy.need_shrink(self.len(), self.cap()) {
+            let new = self.policy.shrink(self.len(), self.cap());
+            self.resize(new);
         }
     }
     #[inline]
@@ -115,10 +100,15 @@ impl ResizedRingBuffer {
     // 当buffer无法再扩容以容纳data时，写入失败，其他写入成功
     #[inline]
     pub fn write(&mut self, data: &RingSlice) -> usize {
-        if self.avail() < data.len() {
-            self.resize(self.cap() + data.len());
-        }
+        self.grow(data.len());
         self.inner.write(data)
+    }
+    #[inline(always)]
+    fn grow(&mut self, reserve: usize) {
+        if self.policy.need_grow(self.len(), self.cap(), reserve) {
+            let new = self.policy.grow(self.len(), self.cap(), reserve);
+            self.resize(new);
+        }
     }
 }
 
