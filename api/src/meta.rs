@@ -166,9 +166,13 @@ impl Meta {
     pub async fn sockfile(&self, service: &str) -> Result<FileContent> {
         let mut file_listener = ListenerIter::from(self.sock_path.clone());
         file_listener.remove_unix_sock().await?;
+
         let (quards, failed) = file_listener.scan().await;
         if failed > 0 {
-            log::info!("api - found {} error sockfiles", failed);
+            log::info!(
+                "api - found {} error sockfiles when read file content",
+                failed
+            );
         }
         for quad in quards {
             if quad.service().eq(service) {
