@@ -1,4 +1,4 @@
-use std::time::Duration;
+//use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -61,7 +61,7 @@ impl PhantomNamespace {
         }
     }
 
-    pub(super) fn timeout(&self) -> Duration {
-        Duration::from_millis(200.max(self.basic.timeout as u64))
-    }
+    //pub(super) fn timeout(&self) -> Duration {
+    //    Duration::from_millis(200.max(self.basic.timeout as u64))
+    //}
 }

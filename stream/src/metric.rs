@@ -45,8 +45,9 @@ macro_rules! define_metrics {
     };
 }
 
-define_metrics!(qps: tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn,noresponse-noresponse, key-key, hit-hit;
-num:conn_num-conn, unsupport_cmd-unsupport_cmd, listen_failed-listen_failed;
-rtt:avg-avg;
-ratio:cache-hit
+define_metrics!(
+    qps:    tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn,noresponse-noresponse, key-key, hit-hit;
+    num:    conn_num-conn, unsupport_cmd-unsupport_cmd;
+    rtt:    avg-avg;
+    ratio:  cache-hit
 );
