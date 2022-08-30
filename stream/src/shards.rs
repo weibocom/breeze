@@ -63,3 +63,11 @@ impl<E, Req> Shards<E, Req> {
         }
     }
 }
+
+use discovery::distance::Addr;
+impl<E, Req> Addr for Shards<E, Req> {
+    #[inline]
+    fn addr(&self) -> &str {
+        self.backends.get(0).map(|b| b.1.as_str()).unwrap_or("")
+    }
+}
