@@ -61,8 +61,7 @@ impl<T: Addr> Distance<T> {
         let idx = if self.len() == 1 {
             0
         } else {
-            (self.seq.fetch_add(1, Ordering::Relaxed) >> self.batch_shift as usize)
-                % self.local_len()
+            (self.seq.fetch_add(1, Relaxed) >> self.batch_shift as usize) % self.local_len()
         };
         assert!(idx < self.replicas.len());
         idx
@@ -84,7 +83,7 @@ impl<T: Addr> Distance<T> {
             assert_ne!(self.local_len(), self.len());
             if idx == self.local_len() {
                 // 从[idx_local..idx_remote)随机取一个
-                self.seq.fetch_add(1, Ordering::Relaxed) % self.remote_len() + self.local_len()
+                self.seq.fetch_add(1, Relaxed) % self.remote_len() + self.local_len()
             } else {
                 if idx + 1 == self.len() {
                     self.local_len()
