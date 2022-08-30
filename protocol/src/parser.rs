@@ -34,7 +34,12 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
     fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()>;
     #[inline]
-    fn write_no_response<W: crate::Writer>(&self, _req: &HashedCommand, _w: &mut W) -> Result<()> {
+    fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
+        &self,
+        _req: &HashedCommand,
+        _w: &mut W,
+        _dist_fn: F,
+    ) -> Result<()> {
         Err(Error::NoResponseFound)
     }
     #[inline]
@@ -70,7 +75,7 @@ pub trait Stream {
     }
     // 在解析一个流的不同的req/response时，有时候需要共享数据。
     fn context(&mut self) -> &mut u64;
-    // 用于保存hashkey指示下一个cmd需要使用的hash
+    // 用于保存下一个cmd需要使用的hash
     fn reserved_hash(&mut self) -> &mut i64;
 }
 
