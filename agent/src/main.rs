@@ -65,7 +65,7 @@ async fn run(ctx: Context) -> Result<()> {
     let snapshot = ctx.snapshot().to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
-    fix.register(ctx.idc_path(), sharding::build_refresh_idc());
+    fix.register(ctx.idc_path(), discovery::distance::build_refresh_idc());
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
 
     log::info!("server({}) inited {:?}", context::get_short_version(), ctx);
