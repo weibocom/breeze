@@ -81,4 +81,7 @@ impl<E, Req> Addr for Shards<E, Req> {
     fn addr(&self) -> &str {
         self.backends.get(0).map(|b| b.1.as_str()).unwrap_or("")
     }
+    fn visit(&self, f: &mut dyn FnMut(&str)) {
+        self.backends.iter().for_each(|b| f(b.1.as_str()))
+    }
 }
