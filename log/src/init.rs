@@ -35,7 +35,6 @@ pub fn init(path: &str, l: &str) -> Result<()> {
                     MAX_NUM_LOGS,
                 )
                 .map_err(|e| {
-                    //for er in e.chain() {}
                     Error::new(ErrorKind::InvalidData, format!("init log failed:{:?}", e))
                 })?,
         ),

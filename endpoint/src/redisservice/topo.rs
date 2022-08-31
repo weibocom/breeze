@@ -133,6 +133,11 @@ where
             shard.master().send(req)
         }
     }
+
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        self.distribute.index(hash)
+    }
 }
 impl<B, E, Req, P> TopologyWrite for RedisService<B, E, Req, P>
 where

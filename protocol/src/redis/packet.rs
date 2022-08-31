@@ -213,9 +213,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.stream.take(data.len())
     }
 
-    // 修建掉已解析的cmd数据，这些cmd数据的信息已经保留在context、reserved_hash等元数据中了
+    // trim掉已解析的cmd相关元数据，只保留在master_only、reserved_hash这两个元数据
     #[inline]
-    pub(super) fn trim_cmd_data(&mut self) -> Result<()> {
+    pub(super) fn trim_swallowed_cmd(&mut self) -> Result<()> {
         let len = self.oft - self.oft_last;
         self.oft_last = self.oft;
         self.stream.ignore(len);
