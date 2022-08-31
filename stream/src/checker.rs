@@ -67,10 +67,10 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = rt::Entry::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 match e {
-                    Error::Timeout(_) => {
+                    Error::Timeout(t) => {
                         m_timeout += 1;
                         m_timeout_biz += 1;
-                        log::debug!("{:?} error: {:?}", self.path, e);
+                        log::info!("{:?} timeout: {:?}", self.path, t);
                     }
                     _ => log::info!("{:?} error: {:?}", self.path, e),
                 }
