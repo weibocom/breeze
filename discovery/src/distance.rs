@@ -147,6 +147,9 @@ impl DistanceCalculator {
 
 pub trait Addr {
     fn addr(&self) -> &str;
+    fn visit(&self, f: &mut dyn FnMut(&str)) {
+        f(self.addr())
+    }
 }
 
 impl<T> Addr for (String, T) {
@@ -168,7 +171,21 @@ where
         let cal = unsafe { DISTANCE_CALCULATOR.get_unchecked().get() };
         let distances: HashMap<String, u16> = self
             .iter()
-            .map(|a| (a.addr().to_string(), cal.distance(a.addr())))
+            .map(|a| {
+                let (mut min, mut max) = (u16::MAX, 0);
+                let mut addrs = Vec::new();
+                a.visit(&mut |addr| {
+                    let distance = cal.distance(addr);
+                    min = min.min(distance);
+                    max = max.max(distance);
+                    addrs.push(addr.to_string());
+                });
+                // min 与 max差异过大，说明有问题
+                if max - min >= 2 {
+                    log::warn!("addr:{:?} distance is too large, {} {}", addrs, min, max);
+                }
+                (a.addr().to_string(), cal.distance(a.addr()))
+            })
             .collect();
         let freeze = self.len().min(freeze);
         let (_pre, vals) = (&mut *self).split_at_mut(freeze);
