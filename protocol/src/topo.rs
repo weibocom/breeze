@@ -127,3 +127,27 @@ where
         (**self).borrow()
     }
 }
+
+pub trait Single {
+    fn single(&self) -> bool;
+    fn disable_single(&self);
+    fn enable_single(&self);
+}
+
+impl<T> Single for std::sync::Arc<T>
+where
+    T: Single,
+{
+    #[inline]
+    fn single(&self) -> bool {
+        (**self).single()
+    }
+    #[inline]
+    fn disable_single(&self) {
+        (**self).disable_single()
+    }
+    #[inline]
+    fn enable_single(&self) {
+        (**self).enable_single()
+    }
+}
