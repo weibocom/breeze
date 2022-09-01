@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use discovery::TopologyWrite;
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
+use protocol::{Builder, Endpoint, Protocol, Request, Resource, Single, Topology};
 use sharding::distribution::Distribute;
 use sharding::hash::Hasher;
 use sharding::ReplicaSelect;
@@ -40,8 +40,8 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             updated: Default::default(),
             service: Default::default(),
             selector: Default::default(),
-            timeout_master: Duration::from_millis(500),
-            timeout_slave: Duration::from_millis(100),
+            timeout_master: crate::TO_REDIS_M,
+            timeout_slave: crate::TO_REDIS_S,
             _mark: Default::default(),
         }
     }
@@ -143,7 +143,7 @@ impl<B, E, Req, P> TopologyWrite for RedisService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint<Item = Req> + Single,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -251,11 +251,13 @@ where
             assert_ne!(master_addr.len(), 0);
             assert_ne!(slaves.len(), 0);
             let master = self.take_or_build(&mut old, &master_addr, self.timeout_master);
+            master.enable_single();
 
             // slave
             let mut replicas = Vec::with_capacity(8);
             for addr in slaves {
                 let slave = self.take_or_build(&mut old, &addr, self.timeout_slave);
+                slave.disable_single();
                 replicas.push((addr, slave));
             }
             let shard = Shard::selector(&self.selector, master_addr, master, replicas);

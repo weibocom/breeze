@@ -1,3 +1,4 @@
+use std::sync::{atomic::AtomicBool, Arc};
 use std::time::Duration;
 
 use tokio::net::TcpStream;
@@ -40,23 +41,22 @@ impl<P, Req> BackendChecker<P, Req> {
             path,
         }
     }
-    pub(crate) async fn start_check(&mut self)
+    pub(crate) async fn start_check(&mut self, single: Arc<AtomicBool>)
     where
         P: Protocol,
         Req: Request,
     {
         let mut m_timeout_biz = self.path.qps("timeout");
         let mut m_timeout = Path::base().qps("timeout");
-        let mut reconn = crate::reconn::ReconnPolicy::new(&self.path);
+        let mut reconn = crate::reconn::ReconnPolicy::new(&self.path, single);
         metrics::incr_task();
         while !self.finish.get() {
+            reconn.check().await;
             let stream = self.try_connect().await;
             if stream.is_none() {
                 self.init.on();
-                reconn.on_failed().await;
                 continue;
             }
-            reconn.on_success();
             let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
             rx.enable();

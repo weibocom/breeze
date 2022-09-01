@@ -43,7 +43,7 @@ impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
             updated: Default::default(),
             hasher: Default::default(),
             service: Default::default(),
-            timeout: Duration::from_millis(500),
+            timeout: crate::TO_PHANTOM_M,
             _mark: Default::default(),
         }
     }
