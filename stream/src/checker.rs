@@ -57,6 +57,7 @@ impl<P, Req> BackendChecker<P, Req> {
                 self.init.on();
                 continue;
             }
+            reconn.success();
             let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
             rx.enable();

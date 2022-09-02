@@ -71,6 +71,15 @@ impl Namespace {
     fn default_update_slave_l1() -> bool {
         return true;
     }
+    // 确保master在第0个位置
+    pub(super) fn take_backends(self) -> Vec<Vec<String>> {
+        let mut backends = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
+        backends.push(self.master);
+        backends.extend(self.master_l1);
+        backends.push(self.slave);
+        backends.extend(self.slave_l1);
+        backends
+    }
     //pub(super) fn timeout_master(&self) -> Duration {
     //    Duration::from_millis(200.max(self.timeout_ms_master as u64))
     //}
