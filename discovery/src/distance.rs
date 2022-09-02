@@ -238,3 +238,76 @@ impl Flatten for HashMap<String, Vec<String>> {
             .collect()
     }
 }
+
+pub trait Balance {
+    fn balance(self, freeze: usize) -> Self;
+}
+
+// 每一个分组，中的不同的shard，他们之间的距离可以差异比较大。
+// 如果 [
+//        ["10.75.1.1", "10.133.2.2"],
+//        ["10.133.2.3", "10.75.1.2"]
+//      ]
+// 第一组中的 10.75.1.1与10.133.2.2的距离比较大，但与10.75.1.2的距离比较小。
+// 因此可以进行一次balance，之后变成
+//     [
+//        ["10.75.1.1", "10.75.1.2"],
+//        ["10.133.2.3","10.133.2.2"]
+//      ]
+//  满足以下要求：
+//  1.  只有相同的shard量的分组才能进行balance
+//  2.  balance前后，节点在原有分组中的位置不能变化
+//  3.  不同分组的顺序不保证变化
+//  4.  前freeze个分组不参与balance
+impl Balance for Vec<Vec<String>> {
+    fn balance(mut self, breeze: usize) -> Self {
+        let distances: HashMap<String, u16> = self
+            .iter()
+            .flatten()
+            .map(|a| {
+                (
+                    a.clone(),
+                    DISTANCE_CALCULATOR.get().unwrap().get().distance(a),
+                )
+            })
+            .collect();
+
+        let mut left = self.split_off(breeze.min(self.len()));
+        self.reserve(left.len());
+        left.sort_by(|a, b| a.len().cmp(&b.len()));
+        let mut by_len = std::collections::HashMap::new();
+        for group in left {
+            let one = by_len
+                .entry(group.len())
+                .or_insert_with(|| vec![Vec::new(); group.len()]);
+            for (i, shard) in group.into_iter().enumerate() {
+                one[i].push(shard);
+            }
+        }
+        // 分别按不同的分组shard数量，对相同位置的shard进行排序。
+        for (_, shards) in by_len.iter_mut() {
+            for shard in shards {
+                shard.sort_by(|a, b| {
+                    // 按距离排序，距离相同按字母序
+                    let da = distances[a];
+                    let db = distances[b];
+                    da.cmp(&db).then_with(|| a.cmp(b))
+                });
+            }
+        }
+        for (len, mut shards) in by_len {
+            assert_ne!(len, 0);
+            assert_eq!(shards.len(), len);
+            let group_len = shards[0].len();
+            // 一共有group_len个分组，每个分组有len个shard
+            for _ in 0..group_len {
+                let mut group = Vec::with_capacity(len);
+                for j in 0..len {
+                    group.push(shards[j].pop().expect("shard is empty"));
+                }
+                self.push(group);
+            }
+        }
+        self
+    }
+}

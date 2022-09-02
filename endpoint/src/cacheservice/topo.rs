@@ -182,7 +182,7 @@ where
             self.hasher = Hasher::from(&ns.hash);
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
             self.force_write_all = ns.force_write_all;
-            let dist = &ns.distribution;
+            let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();
             self.streams.reserve(old_streams.len());
@@ -199,24 +199,21 @@ where
             let mto = crate::TO_MC_M.to(ns.timeout_ms_master);
             let rto = crate::TO_MC_S.to(ns.timeout_ms_slave);
 
+            use discovery::distance::Balance;
+            let static_hash = ns.distribution == "modula";
+            let backends = ns.take_backends();
+            let backends = if static_hash {
+                backends.balance(1)
+            } else {
+                backends
+            };
+
             // 准备master
-            let master = self.build(old, ns.master, dist, namespace, mto);
-            self.streams.push(master);
-
-            // master_l1
-            for l1 in ns.master_l1 {
-                let g = self.build(old, l1, dist, namespace, rto);
-                self.streams.push(g);
-            }
-
-            // slave
-            if ns.slave.len() > 0 {
-                let s = self.build(old, ns.slave, dist, namespace, rto);
-                self.streams.push(s);
-            }
-            for sl1 in ns.slave_l1 {
-                let g = self.build(old, sl1, dist, namespace, rto);
-                self.streams.push(g);
+            for (i, group) in backends.into_iter().enumerate() {
+                // 第一组是master
+                let to = if i == 0 { mto } else { rto };
+                let e = self.build(old, group, dist, namespace, to);
+                self.streams.push(e);
             }
 
             // 确保master一定在第0个元素，不参与排序
