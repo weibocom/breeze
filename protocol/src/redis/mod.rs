@@ -325,13 +325,11 @@ impl Protocol for Redis {
         };
 
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!(
-                "+++ will write noforward rsp/{:?} for req:{:?}",
-                rsp,
-                req.data().utf8()
-            );
-        }
+        log::debug!(
+            "+++ will write noforward rsp/{:?} for req:{:?}",
+            rsp,
+            req.data().utf8()
+        );
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
         } else {
