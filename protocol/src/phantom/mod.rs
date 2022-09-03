@@ -31,9 +31,7 @@ impl Phantom {
         process: &mut P,
     ) -> Result<()> {
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("+++ rec req:{:?}", stream.slice().utf8());
-        }
+        log::debug!("+++ rec req:{:?}", stream.slice().utf8());
 
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
@@ -229,9 +227,7 @@ impl Protocol for Phantom {
         assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("+++ will write no rsp. req:{}", req);
-        }
+        log::debug!("+++ will write no rsp. req:{}", req);
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
         } else {
