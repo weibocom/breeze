@@ -12,6 +12,8 @@ use sharding::ReplicaSelect;
 use super::config::RedisNamespace;
 use crate::TimeoutAdjust;
 use discovery::dns::{self, IPPort};
+#[allow(unused_imports)]
+use protocol::Utf8;
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -94,7 +96,6 @@ where
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
         // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
-        use protocol::Utf8;
         if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(
                 "+++ send - {} hash/idx:{}/{}, master_only:{}, ignore_rsp:{}, req:{:?},",

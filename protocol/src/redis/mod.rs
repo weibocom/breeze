@@ -16,6 +16,7 @@ use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
 
+#[allow(unused_imports)]
 use crate::Utf8;
 use rand;
 
@@ -38,9 +39,7 @@ impl Redis {
         // 一个指令开始处理，可以重复进入
 
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("+++ rec req:{:?}", from_utf8(&stream.slice().to_vec()));
-        }
+        log::debug!("+++ rec req:{:?}", stream.slice().utf8());
 
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
@@ -357,10 +356,7 @@ impl Protocol for Redis {
     }
 }
 
-use std::{
-    str::from_utf8,
-    sync::atomic::{AtomicI64, Ordering},
-};
+use std::sync::atomic::{AtomicI64, Ordering};
 static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0?

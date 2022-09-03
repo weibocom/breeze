@@ -37,8 +37,8 @@ impl Metrics {
     #[inline]
     pub(crate) fn cache(&self, id: &Arc<Id>, cache: i64) {
         if id.t.need_flush() {
-            if let Err(e) = self.register.send((id.clone(), cache)) {
-                log::info!("cache error. id:{:?} cache:{} {:?}", id, cache, e);
+            if let Err(_e) = self.register.send((id.clone(), cache)) {
+                log::info!("cache error. id:{:?} cache:{} {:?}", id, cache, _e);
             }
         }
     }
@@ -46,8 +46,8 @@ impl Metrics {
         if self.id_idx.get_idx(&id).is_none() {
             // 需要注册。可能会多次重复注册，在接收的时候去重处理。
             log::debug!("metric registering {:?}", id);
-            if let Err(e) = self.register.send((id.clone(), 0)) {
-                log::info!("send register metric failed. {:?} id:{:?}", e, id)
+            if let Err(_e) = self.register.send((id.clone(), 0)) {
+                log::info!("send register metric failed. {:?} id:{:?}", _e, id)
             };
         }
     }

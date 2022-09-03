@@ -116,7 +116,7 @@ impl DistanceCalculator {
     }
     fn refresh(&mut self, cfg: &str) {
         match serde_yaml::from_str::<IdcRegionCfg>(cfg) {
-            Err(e) => log::info!("failed to parse distance calulator cfg:{:?}", e),
+            Err(_e) => log::info!("failed to parse distance calulator cfg:{:?}", _e),
             Ok(cfg) => {
                 if cfg.idc.len() == 0 {
                     log::info!("no idc in distance calulator cfg");

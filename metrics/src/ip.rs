@@ -31,12 +31,12 @@ fn _init_local_ip(addr: &str) -> Result<()> {
     Ok(())
 }
 pub fn init_local_ip(addr: &str) {
-    if let Err(e) = _init_local_ip(addr) {
+    if let Err(_e) = _init_local_ip(addr) {
         log::info!(
             "local ip init failed by connecting to {}, use {:?} as local ip. err:{:?}",
             addr,
             LOCAL_IP_STATIC.to_owned(),
-            e
+            _e
         );
     }
 }

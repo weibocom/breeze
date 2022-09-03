@@ -13,8 +13,7 @@ discovery = { path = "../discovery" }
 protocol = { path = "../protocol" }
 sharding = { path = "../sharding" }
 stream = { path = "../stream" }
-#log = { path = "../log" }
-log = "0.4.14"
+log = { path = "../log" }
 rt = { path = "../rt" }
 
 tokio = { version = "1.20.1" }

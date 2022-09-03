@@ -13,14 +13,13 @@ net = { path = "../net"}
 protocol = { path = "../protocol" }
 endpoint = { path = "../endpoint" }
 discovery = { path = "../discovery" }
-elog = { path = "../log", package = "log" }
+log = { path = "../log" }
 stream = { path = "../stream" }
 metrics = { path = "../metrics" }
 rt = { path = "../rt" }
 ds = { path = "../ds" }
 api = { path = "../api" }
 
-log = "0.4.14"
 backtrace = "0.3.63"
 
 tokio = { version = "1.20.1", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}

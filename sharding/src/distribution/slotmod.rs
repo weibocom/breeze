@@ -12,8 +12,8 @@ impl SlotMod {
 
         let slot = match name[super::DIST_SLOT_MOD_PREFIX.len()..].parse::<u64>() {
             Ok(s) => s,
-            Err(e) => {
-                log::error!("slotmod - found malformed dist: {}, e: {:?}", name, e);
+            Err(_e) => {
+                log::error!("slotmod - found malformed dist: {}, e: {:?}", name, _e);
                 1024 // 默认1024个slot，保持与业务相同
             }
         };

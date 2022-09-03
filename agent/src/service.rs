@@ -58,8 +58,8 @@ pub(super) async fn process_one(
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
 
     // 服务注册完成，侦听端口直到成功。
-    while let Err(e) = _process_one(quard, &p, &top, &path).await {
-        log::warn!("service process failed. {}, err:{:?}", quard, e);
+    while let Err(_e) = _process_one(quard, &p, &top, &path).await {
+        log::warn!("service process failed. {}, err:{:?}", quard, _e);
         tokio::time::sleep(Duration::from_secs(6)).await;
     }
     switcher.off();
@@ -85,8 +85,8 @@ async fn _process_one(
         let client = rt::Stream::from(client);
         let p = p.clone();
         let metrics = StreamMetrics::new(path);
-        let path = format!("{:?}", path);
-        log::debug!("connection established:{:?}", path);
+        let _path = format!("{:?}", path);
+        log::debug!("connection established:{:?}", _path);
         let ctop;
         loop {
             if let Some(t) = top.build() {
@@ -102,7 +102,7 @@ async fn _process_one(
                 match e {
                     protocol::Error::Quit => {} // client发送quit协议退出
                     protocol::Error::ReadEof => {}
-                    e => log::debug!("{:?} disconnected. {:?}", path, e),
+                    _e => log::debug!("{:?} disconnected. {:?}", _path, _e),
                 }
             }
         });

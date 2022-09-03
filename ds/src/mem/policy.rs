@@ -2,6 +2,7 @@ const BUF_MIN: usize = 1024;
 use std::time::{Duration, Instant};
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
+#[allow(dead_code)]
 pub struct MemPolicy {
     ticks: usize,
     last: Instant, // 上一次tick返回true的时间

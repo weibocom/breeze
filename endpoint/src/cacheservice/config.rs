@@ -36,16 +36,16 @@ pub struct Namespace {
 }
 
 impl Namespace {
-    pub(crate) fn try_from(cfg: &str, namespace: &str) -> Option<Self> {
-        log::debug!("namespace:{} cfg:{} updating", namespace, cfg);
+    pub(crate) fn try_from(cfg: &str, _namespace: &str) -> Option<Self> {
+        log::debug!("namespace:{} cfg:{} updating", _namespace, cfg);
         match serde_yaml::from_str::<Namespace>(cfg) {
-            Err(e) => {
-                log::warn!("parse namespace error. {} msg:{:?}", namespace, e);
+            Err(_e) => {
+                log::warn!("parse namespace error. {} msg:{:?}", _namespace, _e);
                 None
             }
             Ok(mut ns) => {
                 if ns.master.len() == 0 {
-                    log::info!("cache service master empty. namespace:{}", namespace);
+                    log::info!("cache service master empty. namespace:{}", _namespace);
                     None
                 } else {
                     // 对于mc，crc32实际是crc32-short，这里需要做一次转换
@@ -61,7 +61,7 @@ impl Namespace {
                     // 如果update_slave_l1为false，去掉slave_l1
                     if !ns.update_slave_l1 {
                         ns.slave_l1 = Vec::with_capacity(0);
-                        log::info!("{} update slave l1: false", namespace);
+                        log::info!("{} update slave l1: false", _namespace);
                     }
                     Some(ns)
                 }

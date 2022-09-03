@@ -107,8 +107,8 @@ impl<T> BorrowPtr<T> {
 impl<T> Drop for BorrowPtr<T> {
     #[inline]
     fn drop(&mut self) {
-        let borrowd = self.guard.fetch_sub(1, Ordering::Relaxed);
-        log::debug!("borrowed return:{}", borrowd);
+        let _borrowd = self.guard.fetch_sub(1, Ordering::Relaxed);
+        log::debug!("borrowed return:{}", _borrowd);
     }
 }
 

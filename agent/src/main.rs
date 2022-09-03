@@ -16,8 +16,6 @@ use protocol::Result;
 use std::ops::Deref;
 use std::panic;
 
-use backtrace::Backtrace;
-
 // 默认支持
 fn main() -> Result<()> {
     let ctx = Context::from_os_args();
@@ -26,7 +24,7 @@ fn main() -> Result<()> {
     set_panic_hook();
 
     // 提前初始化log，避免延迟导致的异常
-    if let Err(e) = elog::init(ctx.log_dir(), &ctx.log_level) {
+    if let Err(e) = log::init(ctx.log_dir(), &ctx.log_level) {
         panic!("log init failed: {:?}", e);
     }
 
@@ -82,7 +80,7 @@ async fn run(ctx: Context) -> Result<()> {
             spawn(async move {
                 match service::process_one(&quard, discovery).await {
                     Ok(_) => log::info!("service complete:{}", quard),
-                    Err(e) => log::warn!("service failed. {} err:{:?}", quard, e),
+                    Err(_e) => log::warn!("service failed. {} err:{:?}", quard, _e),
                 }
             });
         }
@@ -92,23 +90,23 @@ async fn run(ctx: Context) -> Result<()> {
 
 fn set_rlimit(no: u64) {
     // set number of file
-    if let Err(e) = rlimit::setrlimit(rlimit::Resource::NOFILE, no, no) {
-        log::info!("set rlimit to {} failed:{:?}", no, e);
+    if let Err(_e) = rlimit::setrlimit(rlimit::Resource::NOFILE, no, no) {
+        log::info!("set rlimit to {} failed:{:?}", no, _e);
     }
 }
 fn set_panic_hook() {
     panic::set_hook(Box::new(|panic_info| {
-        let (filename, line) = panic_info
+        let (_filename, _line) = panic_info
             .location()
             .map(|loc| (loc.file(), loc.line()))
             .unwrap_or(("<unknown>", 0));
 
-        let cause = panic_info
+        let _cause = panic_info
             .payload()
             .downcast_ref::<String>()
             .map(String::deref);
 
-        let cause = cause.unwrap_or_else(|| {
+        let _cause = _cause.unwrap_or_else(|| {
             panic_info
                 .payload()
                 .downcast_ref::<&str>()
@@ -116,7 +114,7 @@ fn set_panic_hook() {
                 .unwrap_or("<cause unknown>")
         });
 
-        log::error!("A panic occurred at {}:{}: {}", filename, line, cause);
-        log::error!("panic backtrace: {:?}", Backtrace::new())
+        log::error!("A panic occurred at {}:{}: {}", _filename, _line, _cause);
+        log::error!("panic backtrace: {:?}", backtrace::Backtrace::new())
     }));
 }

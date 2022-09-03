@@ -47,8 +47,8 @@ pub async fn start_whitelist_refresh(host: String) {
                     whitelist.insert(ip.to_string());
                 }
             }
-            Err(err) => {
-                log::warn!("api - parse whitelist host {} failed: {:?}", host, err);
+            Err(_err) => {
+                log::warn!("api - parse whitelist host {} failed: {:?}", host, _err);
             }
         }
         if whitelist.len() > 0 {
