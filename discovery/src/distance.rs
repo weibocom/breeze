@@ -150,6 +150,14 @@ pub trait Addr {
     fn visit(&self, f: &mut dyn FnMut(&str)) {
         f(self.addr())
     }
+    fn string(&self) -> String {
+        let mut s = String::new();
+        self.visit(&mut |addr| {
+            s.push_str(addr);
+            s.push_str(",");
+        });
+        s
+    }
 }
 
 impl<T> Addr for (String, T) {
@@ -184,7 +192,7 @@ where
                 if max - min >= 2 {
                     log::warn!("addr:{:?} distance is too large, {} {}", addrs, min, max);
                 }
-                (a.addr().to_string(), cal.distance(a.addr()))
+                (a.addr().to_string(), max)
             })
             .collect();
         let freeze = self.len().min(freeze);
@@ -213,7 +221,7 @@ where
             len_local,
             self.len(),
             self.iter()
-                .map(|a| (a.addr().to_string(), distances[a.addr()]))
+                .map(|a| (a.string(), distances[a.addr()]))
                 .collect::<Vec<_>>()
         );
         len_local
@@ -291,7 +299,8 @@ impl Balance for Vec<Vec<String>> {
                     // 按距离排序，距离相同按字母序
                     let da = distances[a];
                     let db = distances[b];
-                    da.cmp(&db).then_with(|| a.cmp(b))
+                    // 距离相同，则按b网段排序
+                    da.cmp(&db).then_with(|| a.bclass().cmp(&b.bclass()))
                 });
             }
         }
@@ -309,5 +318,26 @@ impl Balance for Vec<Vec<String>> {
             }
         }
         self
+    }
+}
+
+trait BClass {
+    fn bclass(&self) -> u16;
+}
+// 获取ip地址的b段。用于排序
+impl BClass for &String {
+    fn bclass(&self) -> u16 {
+        let mut ip = self.split('.');
+        let mut b = 0u16;
+        let mut idx = 0;
+        while let Some(s) = ip.next() {
+            idx += 1;
+            b |= s.parse::<u8>().unwrap_or(u8::MAX) as u16;
+            if idx == 2 {
+                break;
+            }
+            b <<= 8;
+        }
+        b
     }
 }
