@@ -39,11 +39,11 @@ const CRC_SEED: i64 = 0xFFFFFFFF;
 
 // 用于兼容jdk版本crc32算法
 #[derive(Default, Clone, Debug)]
-pub struct Crc32 {}
+pub struct Crc32;
 
 // 用于mc crc32 short hash变种
 #[derive(Default, Clone, Debug)]
-pub struct Crc32Short {}
+pub struct Crc32Short;
 
 // crc32算法，hash key只支持start_pos之后的所有数字，用于兼容混合"."、"_"分割的hash key
 #[derive(Default, Clone, Debug)]
@@ -61,16 +61,30 @@ pub struct Crc32Delimiter {
 
 // 对全key做crc32
 impl super::Hash for Crc32 {
+    #[inline]
     fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        crc32_hash(key)
+        let mut crc: i64 = CRC_SEED;
+
+        for i in 0..key.len() {
+            let c = key.at(i);
+            crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+        }
+
+        crc ^= CRC_SEED;
+        crc &= CRC_SEED;
+        if crc <= 0 {
+            log::debug!("crc32 - error hash/{} for key/{:?}", crc, key);
+        }
+        crc
     }
 }
 
 // 兼容api-commons中mc crc32 hash算法调整，手动测试各种长度key，hash一致；
 // 核心算法同crc32，但要多做一次做移位及截断
 impl super::Hash for Crc32Short {
+    #[inline]
     fn hash<K: super::HashKey>(&self, key: &K) -> i64 {
-        let crc = crc32_hash(key);
+        let crc = Crc32.hash(key);
         let mut rs = (crc >> 16) & 0x7fff;
         // crc32-short由于存在移位及截断，存在很多hash为0的情况
         if rs < 0 {
@@ -209,18 +223,18 @@ impl Display for Crc32Delimiter {
     }
 }
 
-fn crc32_hash<K: super::HashKey>(key: &K) -> i64 {
-    let mut crc: i64 = CRC_SEED;
-
-    for i in 0..key.len() {
-        let c = key.at(i);
-        crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
-    }
-
-    crc ^= CRC_SEED;
-    crc &= CRC_SEED;
-    if crc <= 0 {
-        log::debug!("crc32 - error hash/{} for key/{:?}", crc, key);
-    }
-    crc
-}
+//fn crc32_hash<K: super::HashKey>(key: &K) -> i64 {
+//    let mut crc: i64 = CRC_SEED;
+//
+//    for i in 0..key.len() {
+//        let c = key.at(i);
+//        crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+//    }
+//
+//    crc ^= CRC_SEED;
+//    crc &= CRC_SEED;
+//    if crc <= 0 {
+//        log::debug!("crc32 - error hash/{} for key/{:?}", crc, key);
+//    }
+//    crc
+//}
