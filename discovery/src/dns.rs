@@ -119,8 +119,8 @@ impl Record {
                     return Some(addrs);
                 }
             }
-            Err(e) => {
-                log::info!("refresh host failed:{}, {:?}", host, e);
+            Err(_e) => {
+                log::info!("refresh host failed:{}, {:?}", host, _e);
             }
         }
         None
@@ -196,7 +196,7 @@ async fn start_watch_dns(
         if last.elapsed() < CYCLE {
             continue;
         }
-        let start = Instant::now();
+        let _start = Instant::now();
         let mut updated = HashMap::new();
         let r_cache = cache.get();
         for (host, record) in &r_cache.hosts {
@@ -218,7 +218,7 @@ async fn start_watch_dns(
         }
         last = Instant::now();
 
-        log::debug!("refresh dns elapsed:{:?}", start.elapsed());
+        log::debug!("refresh dns elapsed:{:?}", _start.elapsed());
     }
 }
 
@@ -235,10 +235,10 @@ impl DnsCache {
         }
     }
     fn notify(&self) {
-        for (host, record) in &self.hosts {
+        for (_host, record) in &self.hosts {
             if record.stale() {
                 record.notify();
-                log::debug!("host {} refreshed and notified {:?}", host, record.ips);
+                log::debug!("host {} refreshed and notified {:?}", _host, record.ips);
             }
         }
     }
@@ -248,8 +248,8 @@ impl DnsCache {
             None => {
                 log::debug!("{} watching", addr);
                 let watcher = Arc::new(AtomicBool::new(false));
-                if let Err(e) = self.tx.send((addr.to_string(), watcher.clone())) {
-                    log::info!("watcher failed to {} => {:?}", addr, e);
+                if let Err(_e) = self.tx.send((addr.to_string(), watcher.clone())) {
+                    log::info!("watcher failed to {} => {:?}", addr, _e);
                 }
                 watcher
             }

@@ -13,8 +13,8 @@ ds = { path = "../ds" }
 metrics = { path = "../metrics" }
 discovery = { path = "../discovery" }
 rt = { path = "../rt" }
+log = { path = "../log" }
 
-log = "0.4.14"
 futures = "0.3.17"
 enum_dispatch = "0.3.7"
 noop-waker = "0.1.0"

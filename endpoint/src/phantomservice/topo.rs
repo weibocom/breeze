@@ -12,7 +12,9 @@ use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
 };
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology, Utf8};
+#[allow(unused_imports)]
+use protocol::Utf8;
+use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
 use sharding::hash::Hasher;
 use stream::Shards;
 

@@ -54,8 +54,8 @@ impl PhantomNamespace {
 
                 return Some(ns);
             }
-            Err(err) => {
-                log::warn!("parse phantome cfg failed:{:?}, cfg:{}", err, cfg);
+            Err(_err) => {
+                log::warn!("parse phantome cfg failed:{:?}, cfg:{}", _err, cfg);
                 return None;
             }
         }

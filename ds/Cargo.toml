@@ -6,14 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#log = { path = "../log" }
+log = { path = "../log" }
 tokio = {version = "1.20.1", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
 mimalloc = { version = "*", default-features = false }
 
 byteorder = "1.4.3"
 rand = "0.8.4"
 cache_line_size = "1.0.0"
-log = "0.4.14"
 crossbeam-queue = "0.3.2"
 crossbeam-channel = "0.5.1"
 cfg-if = "1"

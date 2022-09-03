@@ -10,8 +10,8 @@ edition = "2021"
 ds = { path = "../ds" }
 metrics = { path = "../metrics" }
 sharding = { path = "../sharding" }
+log = { path = "../log" }
 
-log = "0.4.14"
 enum_dispatch = "0.3.7"
 lazy_static = "1.4.0"
 rand = "0.8.4"

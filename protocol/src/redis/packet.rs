@@ -1,4 +1,6 @@
-use crate::{Error, Result, Utf8};
+#[allow(unused_imports)]
+use crate::Utf8;
+use crate::{Error, Result};
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
@@ -264,6 +266,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(super) fn complete(&self) -> bool {
         self.ctx.bulk == 0
     }
+    #[allow(dead_code)]
     #[inline]
     pub(super) fn inner_data(&self) -> &RingSlice {
         &self.data

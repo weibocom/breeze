@@ -8,8 +8,8 @@ edition = "2021"
 [dependencies]
 context = { path = "../context" }
 metrics = { path = "../metrics" }
-
-log = "0.4.14"
+log = { path = "../log"  }
+#log = "0.4.14"
 tokio = { version = "1.20.1", features = ["fs"] }
 
 trust-dns-resolver = "0.20.0"

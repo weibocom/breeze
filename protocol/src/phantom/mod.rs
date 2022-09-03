@@ -16,6 +16,7 @@ use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
 
+#[allow(unused_imports)]
 use crate::Utf8;
 
 #[derive(Clone, Default)]
@@ -31,7 +32,7 @@ impl Phantom {
     ) -> Result<()> {
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         if log::log_enabled!(log::Level::Debug) {
-            log::debug!("+++ rec req:{:?}", from_utf8(&stream.slice().to_vec()));
+            log::debug!("+++ rec req:{:?}", stream.slice().utf8());
         }
 
         let mut packet = packet::RequestPacket::new(stream);
@@ -124,7 +125,7 @@ impl Phantom {
     #[inline]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
-        log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
+        log::debug!("+++ will parse rsp:{:?}", data.utf8());
 
         // phantom 在rsp为负数（:-1/-2/-3\r\n），说明请求异常，需要重试
         let mut status_ok = true;
@@ -243,10 +244,7 @@ impl Protocol for Phantom {
     }
 }
 
-use std::{
-    str::from_utf8,
-    sync::atomic::{AtomicI64, Ordering},
-};
+use std::sync::atomic::{AtomicI64, Ordering};
 static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0

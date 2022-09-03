@@ -68,10 +68,10 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = rt::Entry::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 match e {
-                    Error::Timeout(t) => {
+                    Error::Timeout(_t) => {
                         m_timeout += 1;
                         m_timeout_biz += 1;
-                        log::info!("{:?} timeout: {:?}", self.path, t);
+                        log::info!("{:?} timeout: {:?}", self.path, _t);
                     }
                     _ => log::info!("{:?} error: {:?}", self.path, e),
                 }
@@ -89,8 +89,8 @@ impl<P, Req> BackendChecker<P, Req> {
             Ok(stream) => {
                 return Some(stream);
             }
-            Err(e) => {
-                log::debug!("conn to {} err:{}", self.addr, e);
+            Err(_e) => {
+                log::debug!("conn to {} err:{}", self.addr, _e);
             }
         }
         None

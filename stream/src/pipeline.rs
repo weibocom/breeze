@@ -9,8 +9,10 @@ use ds::AtomicWaker;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+#[allow(unused_imports)]
+use protocol::Utf8;
 use protocol::{
-    Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Utf8, Writer,
+    Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
 };
 
 use crate::buffer::{Reader, StreamGuard};
