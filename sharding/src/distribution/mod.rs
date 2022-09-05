@@ -1,6 +1,7 @@
 mod consistent;
 mod modrange;
 mod modula;
+mod padding;
 mod range;
 mod slotmod;
 mod splitmod;
@@ -8,6 +9,7 @@ mod splitmod;
 use consistent::Consistent;
 use modrange::ModRange;
 use modula::Modula;
+use padding::Padding;
 use range::Range;
 use splitmod::SplitMod;
 
@@ -15,6 +17,7 @@ use crate::distribution::slotmod::SlotMod;
 
 #[derive(Clone, Debug)]
 pub enum Distribute {
+    Padding(Padding),
     Consistent(Consistent),
     Modula(Modula),
     Range(Range),
@@ -23,6 +26,7 @@ pub enum Distribute {
     SlotMod(SlotMod),
 }
 
+pub const DIST_PADDING: &str = "padding";
 pub const DIST_MODULA: &str = "modula";
 pub const DIST_ABS_MODULA: &str = "absmodula";
 pub const DIST_KETAMA: &str = "ketama";
@@ -48,6 +52,7 @@ impl Distribute {
         let dist = distribution.to_ascii_lowercase();
 
         match dist.as_str() {
+            DIST_PADDING => Self::Padding(Default::default()),
             DIST_MODULA => Self::Modula(Modula::from(names.len(), false)),
             DIST_ABS_MODULA => Self::Modula(Modula::from(names.len(), true)),
             DIST_KETAMA => Self::Consistent(Consistent::from(names)),
@@ -69,6 +74,7 @@ impl Distribute {
     #[inline]
     pub fn index(&self, hash: i64) -> usize {
         match self {
+            Self::Padding(pd) => pd.index(hash),
             Self::Consistent(d) => d.index(hash),
             Self::Modula(d) => d.index(hash),
             Self::Range(r) => r.index(hash),

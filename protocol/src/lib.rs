@@ -8,6 +8,7 @@ pub mod phantom;
 pub mod redis;
 pub mod req;
 //pub mod resp;
+pub mod msgque;
 mod topo;
 mod utf8;
 
@@ -59,6 +60,7 @@ pub enum Resource {
     Memcache,
     Redis,
     Phantom,
+    MsgQue,
 }
 
 impl Resource {
@@ -68,6 +70,7 @@ impl Resource {
             Self::Memcache => "mc",
             Self::Redis => "redis",
             Self::Phantom => "phantom",
+            Self::MsgQue => "msgque",
         }
     }
 }

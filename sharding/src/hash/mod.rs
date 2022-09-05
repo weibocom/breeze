@@ -1,6 +1,7 @@
 pub mod bkdr;
 pub mod crc32;
 pub mod crc32local;
+pub mod padding;
 pub mod random;
 pub mod raw;
 pub mod rawcrc32local;
@@ -9,6 +10,7 @@ pub mod rawsuffix;
 pub use bkdr::Bkdr;
 pub use crc32::*;
 pub use crc32local::*;
+pub use padding::Padding;
 pub use random::RandomHash;
 pub use raw::Raw;
 pub use rawcrc32local::Rawcrc32local;
@@ -25,6 +27,7 @@ pub trait Hash {
 #[enum_dispatch(Hash)]
 #[derive(Debug, Clone)]
 pub enum Hasher {
+    Padding(Padding),
     Raw(Raw), // redis raw, long型字符串直接用数字作为hash
     Bkdr(Bkdr),
     Crc32(Crc32),
@@ -34,22 +37,12 @@ pub enum Hasher {
     Crc32local(Crc32local),         // crc32local for a hash key like: xx.x, xx_x, xx#x etc.
     Crc32localDelimiter(Crc32localDelimiter),
     Rawcrc32local(Rawcrc32local), // raw or crc32local
-    Random(RandomHash),              // random hash
+    Random(RandomHash),           // random hash
     RawSuffix(RawSuffix),
 }
 
-// crc32-short和crc32-range长度相同，所以此处选一个
-// const CRC32_RANGE_OR_SHORT_LEN: usize = "crc32-range".len();
-
-// // 使用整个key做hash
-// const CRC32_RANGE: &str = "crc32-range";
-// // 对整个key中的第一串数字做hash
-// const CRC32_RANGE_ID: &str = "crc32-range-id";
-// // skip掉xxx个字节，然后对剩余key中的第一串数字做hash
-// const CRC32_RANGE_ID_PREFIX: &str = "crc32-range-id-";
-// // 兼容业务中的getSqlKey方式，即用"."之前内容做hash
-// const CRC32_RANGE_POINT: &str = "crc32-range-point";
-// const CRC32_CORE: &str = "crc32";
+// 占位hash，主要用于兼容服务框架，供mq等业务使用
+pub const HASH_PADDING: &str = "padding";
 
 // hash算法名称分隔符，合法的算法如：crc32,crc-short, crc32-num, crc32-point, crc32-pound, crc32-underscore
 pub const HASHER_NAME_DELIMITER: char = '-';
@@ -97,6 +90,7 @@ impl Hasher {
         // 简单hash，即名字中没有"-"的hash，目前只有bkdr、raw、crc32
         if alg_parts.len() == 1 {
             return match alg_parts[0] {
+                HASH_PADDING => Self::Padding(Default::default()),
                 "bkdr" => Self::Bkdr(Default::default()),
                 "raw" => Self::Raw(Raw::from(Default::default())),
                 "crc32" => Self::Crc32(Default::default()),
