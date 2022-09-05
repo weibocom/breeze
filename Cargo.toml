@@ -17,16 +17,10 @@ members = [
 ]
 
 
-[profile.release]
-#panic = "abort"
-#overflow-checks = false
-#debug = false
-#codegen-units = 1
-#lto = "fat"
-#opt-level = 3
-
-[profile.release-online]
+[profile.release-test]
 inherits = "release"
+
+[profile.release]
 panic = "abort"
 overflow-checks = false
 debug = false
@@ -34,3 +28,6 @@ codegen-units = 1
 lto = "fat"
 opt-level = 3
 strip = "symbols"
+
+[profile.release-perf]
+inherits = "release"
