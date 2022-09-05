@@ -15,15 +15,14 @@ impl RingSlice {
     #[inline]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
         assert!(cap > 0);
-        assert_eq!(cap, cap.next_power_of_two());
+        assert_eq!(cap & cap - 1, 0);
         assert!(end >= start);
-        let me = Self {
+        Self {
             ptr: ptr as usize,
-            cap: cap,
-            start: start,
-            end: end,
-        };
-        me
+            cap,
+            start,
+            end,
+        }
     }
 
     #[inline]
@@ -111,6 +110,15 @@ impl RingSlice {
                 pos = pos + new_pos + splitter.len();
             }
         }
+    }
+    #[inline]
+    pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
+        for i in offset..self.len() {
+            if self.at(i) == b {
+                return Some(i);
+            }
+        }
+        None
     }
     // 从offset开始，查找s是否存在
     // 最坏时间复杂度 O(self.len() * s.len())

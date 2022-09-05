@@ -246,8 +246,7 @@ static AUTO: AtomicI64 = AtomicI64::new(0);
 // hash正常情况下可能为0
 #[inline]
 fn split_and_calculate_hash<H: Hash>(alg: &H, full_key: &RingSlice) -> (i64, RingSlice) {
-    let delimiter = ['.' as u8; 1];
-    if let Some(idx) = full_key.find_sub(0, &delimiter) {
+    if let Some(idx) = full_key.find(0, b'.') {
         debug_assert!(idx > 0);
         let hash_key = full_key.sub_slice(0, idx);
         let real_key_len = full_key.len() - idx - 1;
