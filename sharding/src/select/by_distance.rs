@@ -26,18 +26,22 @@ impl<T: Addr> Distance<T> {
         assert_ne!(replicas.len(), 0);
         let mut me = Self::new();
         me.replicas = replicas;
-        me.refresh(0);
+        me.local(0);
         me
     }
-    // 前freeze个是local的，不参与排序
-    pub fn refresh(&mut self, freeze: usize) {
-        let local = self.replicas.sort_and_take(freeze);
-        self.len_local = local as u16;
+    // 只取前n个进行批量随机访问
+    pub fn topn(&mut self, n: usize) {
+        self.len_local = n as u16;
         let batch = 1024usize;
         // 最小是1，最大是65536
         let batch_shift = batch.max(1).next_power_of_two().min(65536).trailing_zeros() as u8;
         self.seq.store(rand::random::<u16>() as usize, Relaxed);
         self.batch_shift = batch_shift;
+    }
+    // 前freeze个是local的，不参与排序
+    pub fn local(&mut self, freeze: usize) {
+        let local = self.replicas.sort_and_take(freeze);
+        self.topn(local);
     }
     #[inline]
     pub fn take(&mut self) -> Vec<T> {

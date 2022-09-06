@@ -200,12 +200,12 @@ where
             let rto = crate::TO_MC_S.to(ns.timeout_ms_slave);
 
             use discovery::distance::Balance;
-            let static_hash = ns.distribution == "modula";
-            let backends = ns.take_backends();
-            let backends = if static_hash {
-                backends.balance(1)
+            let local_len = 1 + ns.master_l1.len();
+            let local_affinity = ns.local_affinity;
+            let backends = if ns.is_static_hash() {
+                ns.take_backends().balance(1)
             } else {
-                backends
+                ns.take_backends()
             };
 
             // 准备master
@@ -217,7 +217,11 @@ where
             }
 
             // 确保master一定在第0个元素，不参与排序
-            self.streams.refresh(1);
+            if local_affinity {
+                self.streams.topn(local_len);
+            } else {
+                self.streams.local(1);
+            }
         }
         // old 会被dopped
     }
