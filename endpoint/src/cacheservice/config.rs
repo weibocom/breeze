@@ -33,9 +33,14 @@ pub struct Namespace {
     pub timeout_ms_master: u32,
     #[serde(default)]
     pub timeout_ms_slave: u32,
+    #[serde(default)]
+    pub local_affinity: bool,
 }
 
 impl Namespace {
+    pub(crate) fn is_static_hash(&self) -> bool {
+        self.distribution == "modula"
+    }
     pub(crate) fn try_from(cfg: &str, _namespace: &str) -> Option<Self> {
         log::debug!("namespace:{} cfg:{} updating", _namespace, cfg);
         match serde_yaml::from_str::<Namespace>(cfg) {
