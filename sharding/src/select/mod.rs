@@ -6,6 +6,8 @@ pub use random::*;
 mod by_distance;
 pub use by_distance::*;
 
+use discovery::distance::*;
+
 #[derive(Clone)]
 pub enum ReplicaSelect<T> {
     // 随机选择

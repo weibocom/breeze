@@ -12,7 +12,9 @@ use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
 };
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology, Utf8};
+#[allow(unused_imports)]
+use protocol::Utf8;
+use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
 use sharding::hash::Hasher;
 use stream::Shards;
 
@@ -43,7 +45,7 @@ impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
             updated: Default::default(),
             hasher: Default::default(),
             service: Default::default(),
-            timeout: Duration::from_millis(500),
+            timeout: crate::TO_PHANTOM_M,
             _mark: Default::default(),
         }
     }

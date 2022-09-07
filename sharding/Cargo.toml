@@ -8,10 +8,10 @@ edition = "2021"
 [dependencies]
 enum_dispatch = "*"
 rust-crypto = "0.2.36"
-log = "0.4.14"
 ds = { path = "../ds" }
 discovery = { path = "../discovery" }
 metrics = { path = "../metrics" }
+log = { path = "../log" }
 
 
 rand = "0.8.4"

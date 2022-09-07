@@ -7,5 +7,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-elog = { package = "log", version = "0.4.14" }
+elog = { package = "log", version = "0.4.17" }
 log4rs = { version = "1.0.0", features = ["gzip"] }
+cfg-if = "*"
+
+[features]
+enable-log = []

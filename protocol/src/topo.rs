@@ -10,6 +10,12 @@ pub trait Endpoint: Sized + Send + Sync {
     //    let e = unsafe { &*(receiver as *const Self) };
     //    e.send(req);
     //}
+    //
+    // 返回hash应该发送的分片idx
+    fn shard_idx(&self, _hash: i64) -> usize {
+        log::warn!("+++ should not use defatult shard idx");
+        panic!("should not use defatult shard idx");
+    }
 }
 
 impl<T, R> Endpoint for &T
@@ -21,6 +27,11 @@ where
     fn send(&self, req: R) {
         (*self).send(req)
     }
+
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        (*self).shard_idx(hash)
+    }
 }
 
 impl<T, R> Endpoint for std::sync::Arc<T>
@@ -31,6 +42,10 @@ where
     #[inline]
     fn send(&self, req: R) {
         (**self).send(req)
+    }
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        (**self).shard_idx(hash)
     }
 }
 
@@ -93,7 +108,7 @@ impl<T> Drop for BorrowPtr<T> {
     #[inline]
     fn drop(&mut self) {
         let _borrowd = self.guard.fetch_sub(1, Ordering::Relaxed);
-        // println!("borrowed return:{}", borrowd);
+        log::debug!("borrowed return:{}", _borrowd);
     }
 }
 
@@ -110,5 +125,29 @@ where
     #[inline]
     unsafe fn borrow(&self) -> (*const Self::Item, BorrowPtrGuard) {
         (**self).borrow()
+    }
+}
+
+pub trait Single {
+    fn single(&self) -> bool;
+    fn disable_single(&self);
+    fn enable_single(&self);
+}
+
+impl<T> Single for std::sync::Arc<T>
+where
+    T: Single,
+{
+    #[inline]
+    fn single(&self) -> bool {
+        (**self).single()
+    }
+    #[inline]
+    fn disable_single(&self) {
+        (**self).disable_single()
+    }
+    #[inline]
+    fn enable_single(&self) {
+        (**self).enable_single()
     }
 }

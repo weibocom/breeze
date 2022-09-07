@@ -34,7 +34,7 @@ pub enum Hasher {
     Crc32local(Crc32local),         // crc32local for a hash key like: xx.x, xx_x, xx#x etc.
     Crc32localDelimiter(Crc32localDelimiter),
     Rawcrc32local(Rawcrc32local), // raw or crc32local
-    Random(RandomHash),              // random hash
+    Random(RandomHash),           // random hash
     RawSuffix(RawSuffix),
 }
 
@@ -140,13 +140,13 @@ impl Hasher {
 }
 
 // 如果有新增的key分隔符，在这里增加即可
-fn key_delimiter_name_2u8(alg: &str, delimiter_name: &str) -> u8 {
+fn key_delimiter_name_2u8(_alg: &str, delimiter_name: &str) -> u8 {
     let c = match delimiter_name {
         KEY_DELIMITER_POINT => '.',
         KEY_DELIMITER_UNDERSCORE => '_',
         KEY_DELIMITER_POUND => '#',
         _ => {
-            log::debug!("found unknown hash alg: {}, use crc32 instead", alg);
+            log::debug!("found unknown hash alg: {}, use crc32 instead", _alg);
             KEY_DELIMITER_NONE as char
         }
     };

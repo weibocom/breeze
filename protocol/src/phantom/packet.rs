@@ -217,6 +217,7 @@ impl Packet for ds::RingSlice {
                         continue;
                     }
                 }
+                #[allow(unused_imports)]
                 use crate::Utf8;
                 log::info!(
                     "oft:{} not valid number:{:?}, {:?}",

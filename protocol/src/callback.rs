@@ -5,6 +5,8 @@ use std::time::Instant;
 use ds::AtomicWaker;
 
 use crate::request::Request;
+#[allow(unused_imports)]
+use crate::Utf8;
 use crate::{Command, Error, HashedCommand};
 
 pub struct Callback {
@@ -87,7 +89,6 @@ impl CallbackContext {
         // 异步请求不关注response。
         if !self.is_in_async_write_back() {
             self.tries += 1;
-            use crate::Utf8;
             assert!(
                 !self.complete(),
                 "{} {:?} => {:?}",
@@ -133,17 +134,16 @@ impl CallbackContext {
     }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
-        use crate::Utf8;
         match err {
             Error::Closed => {}
             Error::ChanDisabled => {}
             Error::Waiting => {}
             Error::Pending => {}
-            err => log::debug!(
+            _err => log::debug!(
                 "on-err:{} {:?} request:{:?}",
                 self,
                 self.request().data().utf8(),
-                err
+                _err
             ),
         }
         self.on_done();

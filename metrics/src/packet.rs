@@ -23,8 +23,8 @@ impl PacketBuffer {
     #[inline]
     pub fn poll_flush(&mut self, cx: &mut Context) -> Poll<()> {
         if self.idx < self.buff.len() {
-            if let Err(e) = ready!(self._poll_flush(cx)) {
-                log::warn!("failed to flush metrics:{} ", e);
+            if let Err(_e) = ready!(self._poll_flush(cx)) {
+                log::warn!("failed to flush metrics:{} ", _e);
                 self.socket.take();
             }
             if self.buff.len() >= 4 * 1024 * 1024 {
