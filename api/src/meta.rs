@@ -48,8 +48,8 @@ pub async fn meta_list(cip: IpAddr) -> Json<Meta> {
     }
 
     let mut meta = Meta::from_evn();
-    if let Err(e) = meta.load_sockfile_list().await {
-        log::warn!("load sockfile list failed: {:?}", e);
+    if let Err(_e) = meta.load_sockfile_list().await {
+        log::warn!("load sockfile list failed: {:?}", _e);
     }
     Json(meta)
 }

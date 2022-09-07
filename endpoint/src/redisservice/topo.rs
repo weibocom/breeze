@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use discovery::TopologyWrite;
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
+use protocol::{Builder, Endpoint, Protocol, Request, Resource, Single, Topology};
 use sharding::distribution::Distribute;
 use sharding::hash::Hasher;
 use sharding::ReplicaSelect;
@@ -12,6 +12,8 @@ use sharding::ReplicaSelect;
 use super::config::RedisNamespace;
 use crate::TimeoutAdjust;
 use discovery::dns::{self, IPPort};
+#[allow(unused_imports)]
+use protocol::Utf8;
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -40,8 +42,8 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             updated: Default::default(),
             service: Default::default(),
             selector: Default::default(),
-            timeout_master: Duration::from_millis(500),
-            timeout_slave: Duration::from_millis(100),
+            timeout_master: crate::TO_REDIS_M,
+            timeout_slave: crate::TO_REDIS_S,
             _mark: Default::default(),
         }
     }
@@ -94,7 +96,6 @@ where
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
         // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
-        use protocol::Utf8;
         if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(
                 "+++ send - {} hash/idx:{}/{}, master_only:{}, ignore_rsp:{}, req:{:?},",
@@ -133,12 +134,17 @@ where
             shard.master().send(req)
         }
     }
+
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        self.distribute.index(hash)
+    }
 }
 impl<B, E, Req, P> TopologyWrite for RedisService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint<Item = Req> + Single,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -246,11 +252,13 @@ where
             assert_ne!(master_addr.len(), 0);
             assert_ne!(slaves.len(), 0);
             let master = self.take_or_build(&mut old, &master_addr, self.timeout_master);
+            master.enable_single();
 
             // slave
             let mut replicas = Vec::with_capacity(8);
             for addr in slaves {
                 let slave = self.take_or_build(&mut old, &addr, self.timeout_slave);
+                slave.disable_single();
                 replicas.push((addr, slave));
             }
             let shard = Shard::selector(&self.selector, master_addr, master, replicas);

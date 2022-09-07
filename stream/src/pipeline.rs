@@ -9,8 +9,10 @@ use ds::AtomicWaker;
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+#[allow(unused_imports)]
+use protocol::Utf8;
 use protocol::{
-    Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Utf8, Writer,
+    Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
 };
 
 use crate::buffer::{Reader, StreamGuard};
@@ -176,6 +178,7 @@ where
     #[inline]
     fn process_pending(&mut self) -> Result<()> {
         let Self {
+            top,
             client,
             pending,
             parser,
@@ -225,7 +228,9 @@ where
                 if !req.noforward() {
                     *metrics.noresponse() += 1;
                 }
-                parser.write_no_response(req, client)?;
+
+                // 传入top，某些指令需要
+                parser.write_no_response(req, client, |hash| top.shard_idx(hash))?;
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，

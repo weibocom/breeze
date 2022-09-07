@@ -15,15 +15,26 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, req: Req) {
-        assert!(self.backends.len() > 0);
-        let idx = if self.backends.len() > 1 {
-            self.router.index(req.hash())
-        } else {
-            0
-        };
+        // assert!(self.backends.len() > 0);
+        // let idx = if self.backends.len() > 1 {
+        //     self.router.index(req.hash())
+        // } else {
+        //     0
+        // };
+        let idx = self.shard_idx(req.hash());
         unsafe {
             assert!(idx < self.backends.len());
             self.backends.get_unchecked(idx).0.send(req);
+        }
+    }
+
+    #[inline]
+    fn shard_idx(&self, hash: i64) -> usize {
+        assert!(self.backends.len() > 0);
+        if self.backends.len() > 1 {
+            self.router.index(hash)
+        } else {
+            0
         }
     }
 }
@@ -61,5 +72,16 @@ impl<E, Req> Shards<E, Req> {
             backends,
             _mark: Default::default(),
         }
+    }
+}
+
+use discovery::distance::Addr;
+impl<E, Req> Addr for Shards<E, Req> {
+    #[inline]
+    fn addr(&self) -> &str {
+        self.backends.get(0).map(|b| b.1.as_str()).unwrap_or("")
+    }
+    fn visit(&self, f: &mut dyn FnMut(&str)) {
+        self.backends.iter().for_each(|b| f(b.1.as_str()))
     }
 }

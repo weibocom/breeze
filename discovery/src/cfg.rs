@@ -97,8 +97,8 @@ where
         Ok((cfg, sig))
     }
     async fn dump(&self, snapshot: &str, cfg: &str) {
-        if let Err(e) = self.try_dump(snapshot, cfg).await {
-            log::warn!("failed to dump {:?} len:{} err:{:?}", self, cfg.len(), e)
+        if let Err(_e) = self.try_dump(snapshot, cfg).await {
+            log::warn!("failed to dump {:?} len:{} err:{:?}", self, cfg.len(), _e)
         }
     }
     async fn try_dump(&self, snapshot: &str, cfg: &str) -> Result<()> {

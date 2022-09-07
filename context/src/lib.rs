@@ -206,8 +206,8 @@ impl ListenerIter {
                     }
                 }
             }
-            Err(e) => {
-                log::warn!("failed to scan '{}' err:{:?}", self.path, e);
+            Err(_e) => {
+                log::warn!("failed to scan '{}' err:{:?}", self.path, _e);
                 failed += 1;
             }
         }
@@ -248,7 +248,7 @@ impl ListenerIter {
                     Ok(name) => {
                         found.push(name);
                     }
-                    Err(os_str) => log::warn!("{:?} is not a valid file name", os_str),
+                    Err(_os_str) => log::warn!("{:?} is not a valid file name", _os_str),
                 }
             }
         }
@@ -263,7 +263,7 @@ impl ListenerIter {
                     Ok(name) => {
                         found.push(name);
                     }
-                    Err(os_str) => log::warn!("{:?} is not a valid file name", os_str),
+                    Err(_os_str) => log::warn!("{:?} is not a valid file name", _os_str),
                 }
             }
         }

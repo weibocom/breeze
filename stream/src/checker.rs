@@ -1,3 +1,4 @@
+use std::sync::{atomic::AtomicBool, Arc};
 use std::time::Duration;
 
 use tokio::net::TcpStream;
@@ -40,23 +41,23 @@ impl<P, Req> BackendChecker<P, Req> {
             path,
         }
     }
-    pub(crate) async fn start_check(&mut self)
+    pub(crate) async fn start_check(&mut self, single: Arc<AtomicBool>)
     where
         P: Protocol,
         Req: Request,
     {
         let mut m_timeout_biz = self.path.qps("timeout");
         let mut m_timeout = Path::base().qps("timeout");
-        let mut reconn = crate::reconn::ReconnPolicy::new(&self.path);
+        let mut reconn = crate::reconn::ReconnPolicy::new(&self.path, single);
         metrics::incr_task();
         while !self.finish.get() {
+            reconn.check().await;
             let stream = self.try_connect().await;
             if stream.is_none() {
                 self.init.on();
-                reconn.on_failed().await;
                 continue;
             }
-            reconn.on_success();
+            reconn.success();
             let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
             rx.enable();
@@ -67,10 +68,10 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = rt::Entry::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 match e {
-                    Error::Timeout(_) => {
+                    Error::Timeout(_t) => {
                         m_timeout += 1;
                         m_timeout_biz += 1;
-                        log::debug!("{:?} error: {:?}", self.path, e);
+                        log::info!("{:?} timeout: {:?}", self.path, _t);
                     }
                     _ => log::info!("{:?} error: {:?}", self.path, e),
                 }
@@ -88,8 +89,8 @@ impl<P, Req> BackendChecker<P, Req> {
             Ok(stream) => {
                 return Some(stream);
             }
-            Err(e) => {
-                log::debug!("conn to {} err:{}", self.addr, e);
+            Err(_e) => {
+                log::debug!("conn to {} err:{}", self.addr, _e);
             }
         }
         None

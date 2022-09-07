@@ -7,10 +7,10 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.20.1", features = ["full"] }
-log = "0.4.14"
 futures = "0.3.17"
 protocol = { path = "../protocol" }
 metrics = { path = "../metrics" }
 ds = { path = "../ds" }
+log = { path = "../log" }
 
 noop-waker = "0.1.0"

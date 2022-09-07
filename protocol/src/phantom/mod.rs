@@ -16,6 +16,7 @@ use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
 
+#[allow(unused_imports)]
 use crate::Utf8;
 
 #[derive(Clone, Default)]
@@ -30,9 +31,7 @@ impl Phantom {
         process: &mut P,
     ) -> Result<()> {
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("+++ rec req:{:?}", from_utf8(&stream.slice().to_vec()));
-        }
+        log::debug!("+++ rec req:{:?}", stream.slice().utf8());
 
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
@@ -124,7 +123,7 @@ impl Phantom {
     #[inline]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
-        log::debug!("+++ will parse rsp:{:?}", from_utf8(&data.to_vec()));
+        log::debug!("+++ will parse rsp:{:?}", data.utf8());
 
         // phantom 在rsp为负数（:-1/-2/-3\r\n），说明请求异常，需要重试
         let mut status_ok = true;
@@ -218,14 +217,17 @@ impl Protocol for Phantom {
         }
     }
     #[inline]
-    fn write_no_response<W: crate::Writer>(&self, req: &HashedCommand, w: &mut W) -> Result<()> {
+    fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
+        &self,
+        req: &HashedCommand,
+        w: &mut W,
+        _dist_fn: F,
+    ) -> Result<()> {
         let rsp_idx = req.ext().padding_rsp() as usize;
         assert!(rsp_idx < PADDING_RSP_TABLE.len());
         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("+++ will write no rsp. req:{}", req);
-        }
+        log::debug!("+++ will write no rsp. req:{}", req);
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
         } else {
@@ -238,17 +240,13 @@ impl Protocol for Phantom {
     }
 }
 
-use std::{
-    str::from_utf8,
-    sync::atomic::{AtomicI64, Ordering},
-};
+use std::sync::atomic::{AtomicI64, Ordering};
 static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0
 #[inline]
 fn split_and_calculate_hash<H: Hash>(alg: &H, full_key: &RingSlice) -> (i64, RingSlice) {
-    let delimiter = ['.' as u8; 1];
-    if let Some(idx) = full_key.find_sub(0, &delimiter) {
+    if let Some(idx) = full_key.find(0, b'.') {
         debug_assert!(idx > 0);
         let hash_key = full_key.sub_slice(0, idx);
         let real_key_len = full_key.len() - idx - 1;

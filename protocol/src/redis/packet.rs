@@ -1,4 +1,6 @@
-use crate::{Error, Result, Utf8};
+#[allow(unused_imports)]
+use crate::Utf8;
+use crate::{Error, Result};
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
@@ -213,9 +215,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.stream.take(data.len())
     }
 
-    // 修建掉已解析的cmd数据，这些cmd数据的信息已经保留在context、reserved_hash等元数据中了
+    // trim掉已解析的cmd相关元数据，只保留在master_only、reserved_hash这两个元数据
     #[inline]
-    pub(super) fn trim_cmd_data(&mut self) -> Result<()> {
+    pub(super) fn trim_swallowed_cmd(&mut self) -> Result<()> {
         let len = self.oft - self.oft_last;
         self.oft_last = self.oft;
         self.stream.ignore(len);
@@ -264,6 +266,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(super) fn complete(&self) -> bool {
         self.ctx.bulk == 0
     }
+    #[allow(dead_code)]
     #[inline]
     pub(super) fn inner_data(&self) -> &RingSlice {
         &self.data

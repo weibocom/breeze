@@ -1,4 +1,8 @@
-use std::sync::Arc;
+use std::sync::{
+    atomic::AtomicBool,
+    atomic::Ordering::{Acquire, Release},
+    Arc,
+};
 
 use ds::chan::mpsc::{channel, Sender, TrySendError};
 
@@ -6,7 +10,7 @@ use ds::Switcher;
 
 use crate::checker::BackendChecker;
 use metrics::Path;
-use protocol::{Endpoint, Error, Protocol, Request, Resource};
+use protocol::{Endpoint, Error, Protocol, Request, Resource, Single};
 
 #[derive(Clone)]
 pub struct BackendBuilder<P, R> {
@@ -28,13 +32,23 @@ impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for Backe
         let f = finish.clone();
         let path_prefix = rsrc.name().to_string() + "_backend";
         let path = Path::new(vec![path_prefix.as_str(), service, addr]);
+        let single = Arc::new(AtomicBool::new(false));
         let mut checker = BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout);
-        rt::spawn(async move { checker.start_check().await });
-        Backend { finish, init, tx }.into()
+        let s = single.clone();
+        rt::spawn(async move { checker.start_check(s).await });
+
+        Backend {
+            finish,
+            init,
+            tx,
+            single,
+        }
+        .into()
     }
 }
 
 pub struct Backend<R> {
+    single: Arc<AtomicBool>,
     tx: Sender<R>,
     // 实例销毁时，设置该值，通知checker，会议上check.
     finish: Switcher,
@@ -67,5 +81,16 @@ impl<R: Request> Endpoint for Backend<R> {
                 TrySendError::Disabled(r) => r.on_err(Error::ChanDisabled),
             }
         }
+    }
+}
+impl<R> Single for Backend<R> {
+    fn single(&self) -> bool {
+        self.single.load(Acquire)
+    }
+    fn enable_single(&self) {
+        self.single.store(true, Release);
+    }
+    fn disable_single(&self) {
+        self.single.store(false, Release);
     }
 }

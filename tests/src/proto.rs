@@ -52,7 +52,7 @@ mod proto_test {
         const CAP: usize = 2048;
         let start = 4636157;
         let end = 4637617;
-        let mut buf = stream::buffer::StreamGuard::init(2048);
+        let mut buf = stream::buffer::StreamGuard::raw_init(2048);
         let mut w = 0;
         while w < start {
             let batch = (start - w).min(511);
