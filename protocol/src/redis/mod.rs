@@ -47,7 +47,15 @@ impl Redis {
             let master_only = packet.parse_cmd_layer()?;
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
-            let cfg = command::get_cfg(packet.op_code())?;
+            // 对于不支持的cmd，记录协议
+            let cfg = match command::get_cfg(packet.op_code()) {
+                Ok(cfg) => cfg,
+                Err(super::Error::ProtocolNotSupported) => {
+                    log::warn!("+++ found unsupported req:{:?}", stream.slice().utf8());
+                    return Err(super::Error::ProtocolNotSupported);
+                }
+                Err(e) => return Err(e),
+            };
             let mut hash;
             if cfg.swallowed {
                 // 优先处理swallow吞噬指令: hashkeyq/hashrandomq
@@ -275,7 +283,26 @@ impl Protocol for Redis {
                     w.write(ext.key_count().to_string().as_bytes())?;
                     w.write(b"\r\n")?;
                 }
-                w.write_slice(response.data(), 0)
+
+                // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
+                if ext.key_count() > 0
+                    && cfg.need_bulk_num
+                    && response.data().at(0) == b'-'
+                    && cfg.nil_rsp > 0
+                {
+                    let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
+                    log::debug!(
+                        "+++ use {} to replace err rsp: {:?}",
+                        nil,
+                        response.data().utf8()
+                    );
+                    return w.write(nil.as_bytes());
+                }
+
+                return w.write_slice(response.data(), 0);
+
+                log::debug!("+++ ignore non-first rsp for cmd: {:?}", cfg.name);
+                Ok(())
             } else {
                 // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
                 // mset always return +OK

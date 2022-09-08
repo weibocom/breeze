@@ -1,6 +1,8 @@
 pub(crate) mod cache;
 pub(crate) mod cfg;
 pub mod distance;
+pub mod socks;
+
 mod topology;
 mod update;
 mod vintage;
