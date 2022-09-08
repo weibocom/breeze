@@ -64,6 +64,11 @@ async fn run(ctx: Context) -> Result<()> {
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
     fix.register(ctx.idc_path(), discovery::distance::build_refresh_idc());
+    // 从vintage获取socks
+    fix.register(
+        ctx.service_pool_path(),
+        discovery::socks::build_refresh_socks(ctx.service_path()),
+    );
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
 
     log::info!("server({}) inited {:?}", context::get_short_version(), ctx);
@@ -72,6 +77,7 @@ async fn run(ctx: Context) -> Result<()> {
     listeners.remove_unix_sock().await?;
     loop {
         let (quards, failed) = listeners.scan().await;
+
         if failed > 0 {
             metrics::set_sockfile_failed(failed);
         }

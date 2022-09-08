@@ -160,6 +160,10 @@ impl Context {
     pub fn service_pool(&self) -> String {
         self.service_pool.clone()
     }
+    // 从vintage获取service pool的访问path
+    pub fn service_pool_path(&self) -> String {
+        format!("3/config/datamesh/config/{}", self.service_pool)
+    }
 }
 
 use std::collections::HashMap;

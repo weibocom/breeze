@@ -24,7 +24,7 @@ pub enum Error {
     TopChanged,
     WriteResponseErr,
     NoResponseFound,
-    CommandNotSupported,
+    // CommandNotSupported,
     ResponseBufferFull,
     Quit,
     Timeout(Duration),
