@@ -300,9 +300,6 @@ impl Protocol for Redis {
                 }
 
                 return w.write_slice(response.data(), 0);
-
-                log::debug!("+++ ignore non-first rsp for cmd: {:?}", cfg.name);
-                Ok(())
             } else {
                 // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
                 // mset always return +OK
