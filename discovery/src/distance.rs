@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 pub trait ByDistance {
-    // 按距离，取前 1 / div 个元素
-    // 前freeze个不参与排序
-    fn sort_and_take(&mut self, freeze: usize) -> usize;
+    // 距离相同时，包含addrs的排序靠前
+    fn sort(&mut self, first: Vec<String>) -> usize;
 }
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct IdcRegionCfg {
@@ -166,6 +165,21 @@ impl<T> Addr for (String, T) {
     }
 }
 
+impl Addr for Vec<String> {
+    fn addr(&self) -> &str {
+        if self.len() == 0 {
+            ""
+        } else {
+            &self[0]
+        }
+    }
+    fn visit(&self, f: &mut dyn FnMut(&str)) {
+        for addr in self {
+            f(addr);
+        }
+    }
+}
+
 impl<T, E> ByDistance for T
 where
     T: std::ops::DerefMut<Target = [E]>,
@@ -175,7 +189,8 @@ where
     // 1. 距离最近的排前面
     // 2. 距离相同的，随机排序。避免可能的热点
     // 3. 排完充后，取前1/4个元素，以及与前1/4个元素最后一个距离相同的所有元素。
-    fn sort_and_take(&mut self, freeze: usize) -> usize {
+    fn sort(&mut self, first: Vec<String>) -> usize {
+        let top: HashMap<&str, ()> = first.iter().map(|a| (a.as_str(), ())).collect();
         let cal = unsafe { DISTANCE_CALCULATOR.get_unchecked().get() };
         let distances: HashMap<String, u16> = self
             .iter()
@@ -195,17 +210,29 @@ where
                 (a.addr().to_string(), max)
             })
             .collect();
-        let freeze = self.len().min(freeze);
-        let (_pre, vals) = (&mut *self).split_at_mut(freeze);
-        vals.sort_by(|a, b| {
+        self.sort_by(|a, b| {
             let da = distances[a.addr()];
             let db = distances[b.addr()];
-            if da != db {
-                da.cmp(&db)
-            } else {
+            da.cmp(&db)
+                .then_with(|| {
+                    // 距离相同时地址包含在first中的数量越多，越优先。
+                    let count = |addrs: &E| {
+                        let mut n = 0;
+                        addrs.visit(&mut |a| {
+                            if top.contains_key(a) {
+                                n += 1;
+                            }
+                        });
+                        n
+                    };
+                    let ca = count(&a);
+                    let cb = count(&b);
+                    // 包含数量的降序排列
+                    cb.cmp(&ca)
+                })
+                .then_with(||
                 // 随机排序
-                (rand::random::<u32>() & 15).cmp(&8)
-            }
+                (rand::random::<u32>() & 15).cmp(&8))
         });
         let mut len_local = (self.len() / 4).max(1);
         let farest = distances[self[len_local - 1].addr()];
@@ -216,8 +243,23 @@ where
             len_local += 1;
         }
         log::info!(
-            "freeze:{}, len_local:{} total:{}, {:?}",
-            freeze,
+            "sort-by-distance.{} len_local:{} total:{}, {:?}",
+            if first.len() > 0 {
+                let new = self.get(0).map(|addr| {
+                    let mut v = Vec::with_capacity(8);
+                    addr.visit(&mut |a| {
+                        v.push(a.to_string());
+                    });
+                    v
+                });
+                if Some(&first) != new.as_ref() {
+                    format!("master changed. original:{}", first.join(","))
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            },
             len_local,
             self.len(),
             self.iter()
@@ -248,27 +290,28 @@ impl Flatten for HashMap<String, Vec<String>> {
 }
 
 pub trait Balance {
-    fn balance(self, freeze: usize) -> Self;
+    fn balance(&mut self, first: &Vec<String>);
 }
 
 // 每一个分组，中的不同的shard，他们之间的距离可以差异比较大。
 // 如果 [
-//        ["10.75.1.1", "10.133.2.2"],
-//        ["10.133.2.3", "10.75.1.2"]
+//        ["4.44.1.1", "4.45.2.2"],
+//        ["4.45.2.3", "4.44.1.2"]
 //      ]
-// 第一组中的 10.75.1.1与10.133.2.2的距离比较大，但与10.75.1.2的距离比较小。
+// 第一组中的 4.44.1.1与4.45.2.2的距离比较大，但与4.44.1.2的距离比较小。
 // 因此可以进行一次balance，之后变成
 //     [
-//        ["10.75.1.1", "10.75.1.2"],
-//        ["10.133.2.3","10.133.2.2"]
+//        ["4.44.1.1", "4.44.1.2"],
+//        ["4.45.2.3","4.45.2.2"]
 //      ]
 //  满足以下要求：
 //  1.  只有相同的shard量的分组才能进行balance
 //  2.  balance前后，节点在原有分组中的位置不能变化
 //  3.  不同分组的顺序不保证变化
-//  4.  前freeze个分组不参与balance
+//  4. first中包含的元素排序靠前
 impl Balance for Vec<Vec<String>> {
-    fn balance(mut self, breeze: usize) -> Self {
+    fn balance(&mut self, first: &Vec<String>) {
+        let top: HashMap<&str, ()> = first.iter().map(|a| (a.as_str(), ())).collect();
         let distances: HashMap<String, u16> = self
             .iter()
             .flatten()
@@ -280,7 +323,7 @@ impl Balance for Vec<Vec<String>> {
             })
             .collect();
 
-        let mut left = self.split_off(breeze.min(self.len()));
+        let mut left = self.split_off(0);
         self.reserve(left.len());
         left.sort_by(|a, b| a.len().cmp(&b.len()));
         let mut by_len = std::collections::HashMap::new();
@@ -299,11 +342,21 @@ impl Balance for Vec<Vec<String>> {
                     // 按距离排序，距离相同按字母序
                     let da = distances[a];
                     let db = distances[b];
-                    // 距离相同，则按b网段排序
-                    da.cmp(&db).then_with(|| a.bclass().cmp(&b.bclass()))
+                    // 距离相同
+                    // first包含
+                    // 按b网络
+                    da.cmp(&db)
+                        .then_with(|| {
+                            let ca = top.contains_key(a.as_str());
+                            let cb = top.contains_key(b.as_str());
+                            // 包括的排前面
+                            cb.cmp(&ca)
+                        })
+                        .then_with(|| a.bclass().cmp(&b.bclass()))
                 });
             }
         }
+        log::info!("by_len:{:?}", by_len);
         for (len, mut shards) in by_len {
             assert_ne!(len, 0);
             assert_eq!(shards.len(), len);
@@ -317,7 +370,6 @@ impl Balance for Vec<Vec<String>> {
                 self.push(group);
             }
         }
-        self
     }
 }
 
