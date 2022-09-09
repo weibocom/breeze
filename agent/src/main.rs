@@ -63,12 +63,17 @@ async fn run(ctx: Context) -> Result<()> {
     let snapshot = ctx.snapshot().to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
-    fix.register(ctx.idc_path(), discovery::distance::build_refresh_idc());
+    fix.register(ctx.idc_path_url(), discovery::distance::build_refresh_idc());
     // 从vintage获取socks
-    fix.register(
-        ctx.service_pool_path(),
-        discovery::socks::build_refresh_socks(ctx.service_path()),
-    );
+    if ctx.service_pool_socks_url().len() > 1 {
+        fix.register(
+            ctx.service_pool_socks_url(),
+            discovery::socks::build_refresh_socks(ctx.service_path()),
+        );
+    } else {
+        log::info!("only use socks from local path: {}", ctx.service_path());
+    }
+    
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
 
     log::info!("server({}) inited {:?}", context::get_short_version(), ctx);
@@ -77,7 +82,6 @@ async fn run(ctx: Context) -> Result<()> {
     listeners.remove_unix_sock().await?;
     loop {
         let (quards, failed) = listeners.scan().await;
-
         if failed > 0 {
             metrics::set_sockfile_failed(failed);
         }

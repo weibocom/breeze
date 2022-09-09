@@ -32,6 +32,13 @@ pub struct Context {
     discovery: Url,
 
     #[clap(
+        long,
+        help("registry url prefix. e.g. static.config.xxx.xxx"),
+        default_value("")
+    )]
+    url_prefix: String,
+
+    #[clap(
         short,
         long,
         help("idc config path"),
@@ -154,15 +161,24 @@ impl Context {
     pub fn snapshot(&self) -> &str {
         &self.snapshot
     }
-    pub fn idc_path(&self) -> String {
+    pub fn idc_path_url(&self) -> String {
+        // idc-path参数
+        if self.url_prefix.len() > 0 && !self.idc_path.contains(&self.url_prefix.to_string()) {
+            return format!("{}/{}", self.url_prefix, self.idc_path);
+        }
         self.idc_path.clone()
     }
+    // 服务池名
     pub fn service_pool(&self) -> String {
         self.service_pool.clone()
     }
-    // 从vintage获取service pool的访问path
-    pub fn service_pool_path(&self) -> String {
-        self.service_pool.clone()
+    // 服务池socks url
+    pub fn service_pool_socks_url(&self) -> String {
+        if self.url_prefix.len() > 0 {
+            let socks_path = "3/config/datamesh/config";
+            return format!("{}/{}/{}", self.url_prefix, socks_path, self.service_pool);
+        }
+        Default::default()
     }
 }
 
