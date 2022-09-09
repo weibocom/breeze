@@ -26,7 +26,7 @@ impl<T: Addr> Distance<T> {
         assert_ne!(replicas.len(), 0);
         let mut me = Self::new();
         me.replicas = replicas;
-        me.local(0);
+        me.local();
         me
     }
     // 只取前n个进行批量随机访问
@@ -39,8 +39,8 @@ impl<T: Addr> Distance<T> {
         self.batch_shift = batch_shift;
     }
     // 前freeze个是local的，不参与排序
-    pub fn local(&mut self, freeze: usize) {
-        let local = self.replicas.sort_and_take(freeze);
+    fn local(&mut self) {
+        let local = self.replicas.sort(Vec::new());
         self.topn(local);
     }
     #[inline]

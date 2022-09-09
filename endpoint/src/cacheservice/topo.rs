@@ -199,14 +199,17 @@ where
             let mto = crate::TO_MC_M.to(ns.timeout_ms_master);
             let rto = crate::TO_MC_S.to(ns.timeout_ms_slave);
 
-            use discovery::distance::Balance;
-            let local_len = 1 + ns.master_l1.len();
-            let local_affinity = ns.local_affinity;
-            let backends = if ns.is_static_hash() {
-                ns.take_backends().balance(1)
-            } else {
-                ns.take_backends()
+            use discovery::distance::{Balance, ByDistance};
+            let master = ns.master.clone();
+            let mut local_len = ns.local_len();
+            let (local, balance) = (ns.local_affinity, ns.is_static_hash());
+            let mut backends = ns.take_backends();
+            if balance {
+                backends.balance(&master);
             };
+            if local {
+                local_len = backends.sort(master);
+            }
 
             // 准备master
             for (i, group) in backends.into_iter().enumerate() {
@@ -215,13 +218,7 @@ where
                 let e = self.build(old, group, dist, namespace, to);
                 self.streams.push(e);
             }
-
-            // 确保master一定在第0个元素，不参与排序
-            if local_affinity {
-                self.streams.topn(local_len);
-            } else {
-                self.streams.local(1);
-            }
+            self.streams.topn(local_len);
         }
         // old 会被dopped
     }
