@@ -38,8 +38,14 @@ pub struct Namespace {
 }
 
 impl Namespace {
+    pub(crate) fn local_len(&self) -> usize {
+        1 + self.master_l1.len()
+    }
     pub(crate) fn is_static_hash(&self) -> bool {
-        self.distribution == "modula"
+        match self.distribution.as_str() {
+            "modula" => true,
+            _ => false,
+        }
     }
     pub(crate) fn try_from(cfg: &str, _namespace: &str) -> Option<Self> {
         log::debug!("namespace:{} cfg:{} updating", _namespace, cfg);
