@@ -1,5 +1,49 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+trait Distance {
+    fn distance(&self) -> u16;
+}
+trait MinMax {
+    fn min_max(&self) -> (u16, u16);
+}
+impl<T> Distance for T
+where
+    T: AsRef<str>,
+{
+    fn distance(&self) -> u16 {
+        let cal = unsafe { DISTANCE_CALCULATOR.get_unchecked().get() };
+        cal.distance(self.as_ref())
+    }
+}
+impl<T> MinMax for T
+where
+    T: Addr,
+{
+    fn min_max(&self) -> (u16, u16) {
+        let mut min = u16::MAX;
+        let mut max = 0;
+        self.visit(&mut |addr| {
+            let d = addr.distance();
+            if d < min {
+                min = d;
+            }
+            if d > max {
+                max = d;
+            }
+        });
+        if max - min >= 2 {
+            log::warn!(
+                "{}-{} >= 2: distance too large => {}",
+                min,
+                max,
+                self.string()
+            );
+        }
+        (min, max)
+    }
+}
+
 pub trait ByDistance {
     // 距离相同时，包含addrs的排序靠前
     fn sort(&mut self, first: Vec<String>) -> usize;
@@ -56,7 +100,7 @@ pub struct DistanceCalculator {
 }
 
 impl DistanceCalculator {
-    fn equal(&self, a: &Option<&String>, o: &Option<String>) -> bool {
+    fn equal(&self, a: &Option<&str>, o: &Option<String>) -> bool {
         if let (Some(a), Some(o)) = (a, o) {
             a == &o
         } else {
@@ -84,23 +128,16 @@ impl DistanceCalculator {
         }
         u16::MAX
     }
-    fn location(
-        &self,
-        addr: &str,
-    ) -> (
-        Option<&String>,
-        Option<&String>,
-        Option<&String>,
-        Option<&String>,
-    ) {
+    fn location(&self, addr: &str) -> (Option<&str>, Option<&str>, Option<&str>, Option<&str>) {
         let idc = self.idc(addr);
-        let neighbor = idc.map(|idc| self.neighbors.get(idc)).flatten();
-        let region = idc.map(|idc| self.regions.get(idc)).flatten();
-        let city = region.map(|r| self.cities.get(r)).flatten();
+        let as_str = String::as_str;
+        let neighbor = idc.map(|idc| self.neighbors.get(idc)).flatten().map(as_str);
+        let region = idc.map(|idc| self.regions.get(idc)).flatten().map(as_str);
+        let city = region.map(|r| self.cities.get(r)).flatten().map(as_str);
         (idc, neighbor, region, city)
     }
     // 获取B网段
-    fn idc(&self, addr: &str) -> Option<&String> {
+    fn idc(&self, addr: &str) -> Option<&str> {
         let mut addr = addr;
         while let Some(idx) = addr.rfind('.') {
             if idx == 0 {
@@ -108,7 +145,7 @@ impl DistanceCalculator {
             }
             addr = &addr[..idx];
             if let Some(idc) = self.idcs.get(addr) {
-                return self.twins.get(idc).or(Some(idc));
+                return self.twins.get(idc).or(Some(idc)).map(|s| s.as_str());
             }
         }
         None
@@ -148,6 +185,16 @@ pub trait Addr {
     fn addr(&self) -> &str;
     fn visit(&self, f: &mut dyn FnMut(&str)) {
         f(self.addr())
+    }
+    // m包含了地址的数量
+    fn count(&self, m: &HashMap<&str, ()>) -> usize {
+        let mut n = 0;
+        self.visit(&mut |addr| {
+            if m.contains_key(addr) {
+                n += 1;
+            }
+        });
+        n
     }
     fn string(&self) -> String {
         let mut s = String::new();
@@ -191,22 +238,10 @@ where
     // 3. 排完充后，取前1/4个元素，以及与前1/4个元素最后一个距离相同的所有元素。
     fn sort(&mut self, first: Vec<String>) -> usize {
         let top: HashMap<&str, ()> = first.iter().map(|a| (a.as_str(), ())).collect();
-        let cal = unsafe { DISTANCE_CALCULATOR.get_unchecked().get() };
         let distances: HashMap<String, u16> = self
             .iter()
             .map(|a| {
-                let (mut min, mut max) = (u16::MAX, 0);
-                let mut addrs = Vec::new();
-                a.visit(&mut |addr| {
-                    let distance = cal.distance(addr);
-                    min = min.min(distance);
-                    max = max.max(distance);
-                    addrs.push(addr.to_string());
-                });
-                // min 与 max差异过大，说明有问题
-                if max - min >= 2 {
-                    log::warn!("addr:{:?} distance is too large, {} {}", addrs, min, max);
-                }
+                let (_min, max) = a.min_max();
                 (a.addr().to_string(), max)
             })
             .collect();
@@ -216,23 +251,12 @@ where
             da.cmp(&db)
                 .then_with(|| {
                     // 距离相同时地址包含在first中的数量越多，越优先。
-                    let count = |addrs: &E| {
-                        let mut n = 0;
-                        addrs.visit(&mut |a| {
-                            if top.contains_key(a) {
-                                n += 1;
-                            }
-                        });
-                        n
-                    };
-                    let ca = count(&a);
-                    let cb = count(&b);
-                    // 包含数量的降序排列
+                    let ca = a.count(&top);
+                    let cb = b.count(&top);
                     cb.cmp(&ca)
                 })
-                .then_with(||
-                // 随机排序
-                (rand::random::<u32>() & 15).cmp(&8))
+                // 距离相同时，随机排序。避免可能的热点
+                .then_with(|| rand::random::<u16>().cmp(&(u16::MAX / 2)))
         });
         let mut len_local = (self.len() / 4).max(1);
         let farest = distances[self[len_local - 1].addr()];
@@ -305,6 +329,7 @@ pub trait Balance {
 //        ["4.45.2.3","4.45.2.2"]
 //      ]
 //  满足以下要求：
+//  0.  距离相同的不参与balance.
 //  1.  只有相同的shard量的分组才能进行balance
 //  2.  balance前后，节点在原有分组中的位置不能变化
 //  3.  不同分组的顺序不保证变化
@@ -315,19 +340,25 @@ impl Balance for Vec<Vec<String>> {
         let distances: HashMap<String, u16> = self
             .iter()
             .flatten()
-            .map(|a| {
-                (
-                    a.clone(),
-                    DISTANCE_CALCULATOR.get().unwrap().get().distance(a),
-                )
-            })
+            .map(|a| (a.clone(), a.distance()))
             .collect();
 
-        let mut left = self.split_off(0);
-        self.reserve(left.len());
-        left.sort_by(|a, b| a.len().cmp(&b.len()));
+        let offs = self.split_off(0);
+        let mut balancing = Vec::with_capacity(offs.len());
+        self.reserve(offs.len());
+        for e in offs {
+            let (min, max) = e.min_max();
+            if min == max {
+                // 距离相同的，不需要balance
+                self.push(e);
+            } else {
+                balancing.push(e);
+            }
+        }
+
+        balancing.sort_by(|a, b| a.len().cmp(&b.len()));
         let mut by_len = std::collections::HashMap::new();
-        for group in left {
+        for group in balancing {
             let one = by_len
                 .entry(group.len())
                 .or_insert_with(|| vec![Vec::new(); group.len()]);
@@ -356,7 +387,7 @@ impl Balance for Vec<Vec<String>> {
                 });
             }
         }
-        log::info!("by_len:{:?}", by_len);
+        let mut balanced = Vec::with_capacity(by_len.len());
         for (len, mut shards) in by_len {
             assert_ne!(len, 0);
             assert_eq!(shards.len(), len);
@@ -367,8 +398,15 @@ impl Balance for Vec<Vec<String>> {
                 for j in 0..len {
                     group.push(shards[j].pop().expect("shard is empty"));
                 }
+                let (min, max) = group.min_max();
+                if min == max {
+                    balanced.push(group.clone());
+                }
                 self.push(group);
             }
+        }
+        if balanced.len() > 0 {
+            log::info!("sort-by-distance: balanced: {:?}", balanced);
         }
     }
 }
