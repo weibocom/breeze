@@ -202,16 +202,14 @@ where
             use discovery::distance::{Balance, ByDistance};
             let master = ns.master.clone();
             let mut local_len = ns.local_len();
-            let (local, balance) = (ns.local_affinity, ns.is_static_hash());
+            let local = ns.local_affinity;
             let mut backends = ns.take_backends();
-            if balance {
-                backends.balance(&master);
-            };
+            backends.balance(&master);
+            //let local = true;
             if local {
                 local_len = backends.sort(master);
             }
 
-            // 准备master
             for (i, group) in backends.into_iter().enumerate() {
                 // 第一组是master
                 let to = if i == 0 { mto } else { rto };

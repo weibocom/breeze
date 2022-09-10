@@ -41,12 +41,12 @@ impl Namespace {
     pub(crate) fn local_len(&self) -> usize {
         1 + self.master_l1.len()
     }
-    pub(crate) fn is_static_hash(&self) -> bool {
-        match self.distribution.as_str() {
-            "modula" => true,
-            _ => false,
-        }
-    }
+    //pub(crate) fn is_static_hash(&self) -> bool {
+    //    match self.distribution.as_str() {
+    //        "modula" => true,
+    //        _ => false,
+    //    }
+    //}
     pub(crate) fn try_from(cfg: &str, _namespace: &str) -> Option<Self> {
         log::debug!("namespace:{} cfg:{} updating", _namespace, cfg);
         match serde_yaml::from_str::<Namespace>(cfg) {
@@ -84,10 +84,13 @@ impl Namespace {
     }
     // 确保master在第0个位置
     pub(super) fn take_backends(self) -> Vec<Vec<String>> {
+        assert!(self.master.len() > 0);
         let mut backends = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
         backends.push(self.master);
         backends.extend(self.master_l1);
-        backends.push(self.slave);
+        if self.slave.len() > 0 {
+            backends.push(self.slave);
+        }
         backends.extend(self.slave_l1);
         backends
     }
