@@ -285,14 +285,10 @@ impl Protocol for Redis {
                 }
 
                 // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
-                if ext.key_count() > 0
-                    && cfg.need_bulk_num
-                    && response.data().at(0) == b'-'
-                    && cfg.nil_rsp > 0
-                {
+                if cfg.need_bulk_num && response.data().at(0) == b'-' && cfg.nil_rsp > 0 {
                     let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
                     log::debug!(
-                        "+++ use {} to replace err rsp: {:?}",
+                        "+++ write to client nil: {:?}, ignore:{:?}",
                         nil,
                         response.data().utf8()
                     );
@@ -343,8 +339,32 @@ impl Protocol for Redis {
                 format!("{}${}\r\n{}\r\n", bulk_str, shard_str.len(), shard_str)
             }
             _ => {
-                let padding_rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
-                padding_rsp.to_string()
+                // 对于multi且需要返回rsp数量的请求，按标准协议返回，并返回nil值
+                let mut nil_rsp = false;
+                if cfg.multi {
+                    let ext = req.ext();
+                    let first = ext.mkey_first();
+                    if first || cfg.need_bulk_num {
+                        if first && cfg.need_bulk_num {
+                            w.write_u8(b'*')?;
+                            w.write(ext.key_count().to_string().as_bytes())?;
+                            w.write(b"\r\n")?;
+                        }
+
+                        // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
+                        if cfg.need_bulk_num && cfg.nil_rsp > 0 {
+                            nil_rsp = true;
+                        }
+                    }
+                }
+                if nil_rsp {
+                    let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
+                    log::debug!("+++ write client nil/{} for:{:?}", nil, req.data().utf8());
+                    nil.to_string()
+                } else {
+                    let padding_rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
+                    padding_rsp.to_string()
+                }
             }
         };
 

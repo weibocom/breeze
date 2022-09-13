@@ -50,7 +50,7 @@ pub const PADDING_RSP_TABLE: [&str; 7] = [
     "-ERR redis no available\r\n",
     "-ERR invalid command\r\n",
     "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
-    "$-1",                               // mget 等指令对应的nil
+    "$-1\r\n",                           // mget 等指令对应的nil
 ];
 
 #[allow(dead_code)]
