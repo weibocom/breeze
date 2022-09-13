@@ -209,11 +209,7 @@ impl Protocol for Phantom {
                 }
 
                 // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
-                if ext.key_count() > 0
-                    && cfg.need_bulk_num
-                    && response.data().at(0) == b'-'
-                    && cfg.nil_rsp > 0
-                {
+                if cfg.need_bulk_num && response.data().at(0) == b'-' && cfg.nil_rsp > 0 {
                     let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
                     log::debug!(
                         "+++ use {} to replace phantom err rsp: {:?}",
@@ -239,16 +235,46 @@ impl Protocol for Phantom {
         w: &mut W,
         _dist_fn: F,
     ) -> Result<()> {
-        let rsp_idx = req.ext().padding_rsp() as usize;
-        assert!(rsp_idx < PADDING_RSP_TABLE.len());
-        let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
+        let cfg = command::get_cfg(req.op_code())?;
+        let mut nil_rsp = false;
+        if cfg.multi {
+            let ext = req.ext();
+            let first = ext.mkey_first();
+            if first || cfg.need_bulk_num {
+                if first && cfg.need_bulk_num {
+                    w.write_u8(b'*')?;
+                    w.write(ext.key_count().to_string().as_bytes())?;
+                    w.write(b"\r\n")?;
+                }
+
+                // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
+                if cfg.need_bulk_num && cfg.nil_rsp > 0 {
+                    nil_rsp = true;
+                }
+            }
+        }
+        let rsp = if nil_rsp {
+            let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
+            log::debug!(
+                "+++ write pt client nil/{} noforward:{:?}",
+                nil,
+                req.data().utf8()
+            );
+            nil.to_string()
+        } else {
+            let rsp_idx = req.ext().padding_rsp() as usize;
+            assert!(rsp_idx < PADDING_RSP_TABLE.len());
+            let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
+            rsp.to_string()
+        };
+
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         log::debug!("+++ will write no rsp. req:{}", req);
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())
         } else {
             // quit，先发+OK，再返回err
-            assert_eq!(rsp_idx, 0);
+            // assert_eq!(rsp_idx, 0);
             let ok_rs = PADDING_RSP_TABLE.get(1).unwrap().as_bytes();
             w.write(ok_rs)?;
             Err(crate::Error::Quit)

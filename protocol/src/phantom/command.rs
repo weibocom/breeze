@@ -39,7 +39,7 @@ pub const PADDING_RSP_TABLE: [&str; 6] = [
     "+PONG\r\n",
     "-ERR phantom no available\r\n",
     "-ERR unknown command\r\n",
-    "-10",
+    ":-10\r\n",
 ];
 
 #[allow(dead_code)]
