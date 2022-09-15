@@ -204,9 +204,9 @@ where
             let mut local_len = ns.local_len();
             let local = ns.local_affinity;
             let mut backends = ns.take_backends();
-            backends.balance(&master);
             //let local = true;
             if local {
+                backends.balance(&master);
                 local_len = backends.sort(master);
             }
 
