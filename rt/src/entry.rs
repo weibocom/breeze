@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use futures::ready;
+use ds::ready;
 use metrics::{Metric, Path, BASE_PATH};
 use tokio::{
     io::{AsyncRead, AsyncWrite},

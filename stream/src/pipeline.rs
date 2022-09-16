@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use ds::AtomicWaker;
-use futures::ready;
+use ds::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 #[allow(unused_imports)]
