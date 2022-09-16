@@ -202,9 +202,10 @@ where
             use discovery::distance::{Balance, ByDistance};
             let master = ns.master.clone();
             let mut local_len = ns.local_len();
-            let local = ns.local_affinity;
+            //let local = ns.local_affinity;
             let mut backends = ns.take_backends();
-            //let local = true;
+            let local = true;
+            
             if local {
                 backends.balance(&master);
                 local_len = backends.sort(master);
