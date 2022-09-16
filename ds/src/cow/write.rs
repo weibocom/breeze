@@ -5,7 +5,7 @@ pub struct CowWriteHandle<T> {
 }
 impl<T> CowWriteHandle<T> {
     pub(crate) fn from(r_handle: CowReadHandle<T>) -> Self {
-        Self { r_handle: r_handle }
+        Self { r_handle }
     }
     // 如果上一次write请求还未结束，则进入spin状态.
     pub fn write<F: FnMut(&mut T)>(&mut self, mut f: F)

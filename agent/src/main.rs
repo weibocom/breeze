@@ -104,15 +104,14 @@ fn set_panic_hook() {
         let _cause = panic_info
             .payload()
             .downcast_ref::<String>()
-            .map(String::deref);
-
-        let _cause = _cause.unwrap_or_else(|| {
-            panic_info
-                .payload()
-                .downcast_ref::<&str>()
-                .map(|s| *s)
-                .unwrap_or("<cause unknown>")
-        });
+            .map(String::deref)
+            .unwrap_or_else(|| {
+                panic_info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .map(|s| *s)
+                    .unwrap_or("<cause unknown>")
+            });
 
         log::error!("A panic occurred at {}:{}: {}", _filename, _line, _cause);
         log::error!("panic backtrace: {:?}", backtrace::Backtrace::new())
