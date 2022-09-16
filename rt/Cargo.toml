@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.21.1", features = ["full"] }
-futures = "0.3.17"
 protocol = { path = "../protocol" }
 metrics = { path = "../metrics" }
 ds = { path = "../ds" }
