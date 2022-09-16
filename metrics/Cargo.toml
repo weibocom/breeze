@@ -18,3 +18,7 @@ lazy_static = "1.4.0"
 futures = "0.3.16"
 array-init = "2"
 psutil = { version = "3.2.1", default-features = false, features = ["cpu", "process"] }
+
+
+[features]
+mock-local-ip = []
