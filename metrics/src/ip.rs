@@ -25,8 +25,11 @@ use std::net::TcpStream;
 fn _init_local_ip(addr: &str) -> Result<()> {
     let local = encode_addr(&(TcpStream::connect(addr)?.local_addr()?.ip().to_string()));
 
-    log::info!("local ip inited:{}", local);
-    let _ = RAW_LOCAL_IP_BY_CONNECT.set(local.replace("_", "."));
+    let raw = local.clone();
+    #[cfg(feature = "mock-local-ip")]
+    let raw = std::env::var("MOCK_LOCAL_IP").unwrap_or(raw);
+    log::info!("local ip inited: {} => {}", raw, local);
+    let _ = RAW_LOCAL_IP_BY_CONNECT.set(raw.replace("_", "."));
     let _ = LOCAL_IP_BY_CONNECT.set(local);
     Ok(())
 }
