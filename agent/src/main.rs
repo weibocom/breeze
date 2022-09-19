@@ -52,12 +52,12 @@ async fn run() -> Result<()> {
     let mut fix = discovery::Fixed::default();
     fix.register(ctx.idc_path(), discovery::distance::build_refresh_idc());
 
-    init::start_metrics_sender_task(&ctx);
-    init::start_metrics_register_task(&ctx);
+    init::start_metrics_sender_task(ctx);
+    init::start_metrics_register_task(ctx);
     rt::spawn(discovery::dns::start_dns_resolver_refresher(dns_resolver));
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
 
-    log::info!("server({}) inited {:?}", context::get_short_version(), ctx);
+    log::info!("server inited {:?}", ctx);
 
     let mut listeners = ctx.listeners();
     listeners.remove_unix_sock().await?;
