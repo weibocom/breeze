@@ -115,8 +115,11 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         self.put_slice(name.as_bytes());
         self.put_slice(key.as_bytes());
         self.put_slice(sub_key.as_bytes());
+        self.put_slice(context::get().service_pool().clone().as_bytes());
+        self.put_slice(super::ip::local_ip().as_bytes());
         self.put_slice(val.to_string().as_bytes());
         self.put_slice(b"\r\n");
+      
     }
 }
 use crate::Host;
