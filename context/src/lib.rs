@@ -270,6 +270,7 @@ impl ListenerIter {
     }
 }
 
+#[derive(Debug)]
 pub struct Context {
     option: ContextOption,
     pub short_version: &'static str,
