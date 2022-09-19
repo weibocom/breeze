@@ -10,7 +10,6 @@ mod console;
 mod http;
 mod prometheus;
 mod service;
-use context::Context;
 use discovery::*;
 mod init;
 
@@ -21,8 +20,7 @@ use protocol::Result;
 
 // 默认支持
 fn main() -> Result<()> {
-    let ctx = Context::from_os_args();
-    ctx.check()?;
+    let ctx = context::get();
     init::init_panic_hook();
     init::init_limit(&ctx);
     init::init_log(&ctx);
@@ -38,17 +36,18 @@ fn main() -> Result<()> {
         .unwrap();
     log::info!("runtime inited: {:?}", runtime);
     http::start_http_server(&ctx, &runtime);
-    runtime.block_on(async { run(ctx).await })
+    runtime.block_on(async { run().await })
 }
 
-async fn run(ctx: Context) -> Result<()> {
+async fn run() -> Result<()> {
+    let ctx = context::get();
     let _l = service::listener_for_supervisor(ctx.port()).await?;
 
     // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
     let dns_resolver = DnsResolver::new();
     let discovery = discovery::Discovery::from_url(ctx.discovery());
     let (tx, rx) = ds::chan::bounded(128);
-    let snapshot = ctx.snapshot().to_string();
+    let snapshot = ctx.snapshot_path.to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
     fix.register(ctx.idc_path(), discovery::distance::build_refresh_idc());

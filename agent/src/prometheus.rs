@@ -10,8 +10,6 @@ use rocket::{
 };
 
 pub(crate) fn init_routes(rocket: Rocket<Build>) -> Rocket<Build> {
-    let _ = LAST.try_lock().expect("init prometheus routes");
-    metrics::prometheus::init();
     rocket.mount("/metrics", routes![prometheus_metrics])
 }
 
@@ -22,10 +20,14 @@ fn prometheus_metrics() -> PrometheusMetricsResponse {
 
 pub struct PrometheusMetricsResponse {}
 
-use once_cell::sync::Lazy;
 use std::time::{Instant};
 use ds::lock::Lock;
-static LAST:Lazy<Lock<Instant>> = Lazy::new(||Instant::now().into());
+use lazy_static::lazy_static;
+
+lazy_static! {
+static ref LAST:Lock<Instant> = Instant::now().into();
+}
+
 impl<'r> Responder<'r, 'r> for PrometheusMetricsResponse {
     fn respond_to(self, _: &Request) -> rocket::response::Result<'r> {
         let mut response = Response::build();

@@ -121,8 +121,7 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
 }
 use crate::Host;
 use ds::lock::Lock;
-use once_cell::sync::Lazy;
-static HOST: Lazy<Lock<Host>> = Lazy::new(|| Host::new().into());
-pub fn init() {
-    let _ = HOST.try_lock().expect("host lock");
+use lazy_static::lazy_static;
+lazy_static! {
+    static ref HOST: Lock<Host> = Host::new().into();
 }
