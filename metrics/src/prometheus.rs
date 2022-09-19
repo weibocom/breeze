@@ -113,10 +113,23 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
 impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
     fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64) {
         self.put_slice(name.as_bytes());
+        self.put_slice("_".as_bytes());
         self.put_slice(key.as_bytes());
-        self.put_slice(sub_key.as_bytes());
+        if sub_key.len() > 0 {
+            self.put_slice("_".as_bytes());
+            self.put_slice(sub_key.as_bytes());
+        }
+        self.put_slice("{".as_bytes());
+        self.put_slice("pool=".as_bytes());
         self.put_slice(context::get().service_pool().clone().as_bytes());
+        self.put_slice(" ".as_bytes());
+        self.put_slice("ip=".as_bytes());
         self.put_slice(super::ip::local_ip().as_bytes());
+        self.put_slice(" ".as_bytes());
+        self.put_slice("}".as_bytes());
+        self.put_slice(b"\r\n");
+        self.put_slice(val.to_string().as_bytes());
+        self.put_slice(" ".as_bytes());
         self.put_slice(val.to_string().as_bytes());
         self.put_slice(b"\r\n");
       
