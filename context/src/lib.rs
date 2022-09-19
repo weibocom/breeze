@@ -13,7 +13,7 @@ pub use quadruple::Quadruple;
 
 #[derive(Parser, Debug)]
 #[clap(name = "breeze", version = "0.0.1", author = "IF")]
-pub struct Context {
+pub struct ContextOption {
     #[clap(long, help("port for suvervisor"), default_value("9984"))]
     port: u16,
 
@@ -52,14 +52,15 @@ pub struct Context {
         help("path for saving snapshot of service topology."),
         default_value("/tmp/breeze/snapshot")
     )]
-    snapshot: String,
+    pub snapshot_path: String,
     #[clap(
         short('p'),
         long,
         help("path for unix domain socket to listen."),
         default_value("/tmp/breeze/socks")
     )]
-    service_path: String,
+    pub service_path: String,
+
     #[clap(short, long, help("starting in upgrade mode"))]
     upgrade: bool,
 
@@ -99,16 +100,17 @@ lazy_static! {
         }
         &VERSION[idx..]
     };
+    static ref CONTEXT: Context = {
+        let ctx = ContextOption::parse();
+        ctx.check().expect("context check failed");
+        let ctx = Context::from(ctx);
+        ctx
+    };
 }
-#[inline]
-pub fn get_short_version() -> &'static str {
-    &SHORT_VERSION
-}
-
-impl Context {
+impl ContextOption {
     #[inline]
     pub fn from_os_args() -> Self {
-        let app = <Self as IntoApp>::command().version(get_short_version());
+        let app = <Self as IntoApp>::command().version(&SHORT_VERSION[..]);
         let matches = app.get_matches();
         <Self as FromArgMatches>::from_arg_matches(&matches).expect("parse args failed")
     }
@@ -150,9 +152,6 @@ impl Context {
     }
     pub fn metrics_url(&self) -> String {
         self.metrics_url.clone().unwrap_or_default()
-    }
-    pub fn snapshot(&self) -> &str {
-        &self.snapshot
     }
     pub fn idc_path(&self) -> String {
         self.idc_path.clone()
@@ -269,4 +268,28 @@ impl ListenerIter {
         }
         Ok(found)
     }
+}
+
+pub struct Context {
+    option: ContextOption,
+    pub short_version: &'static str,
+}
+
+impl std::ops::Deref for Context {
+    type Target = ContextOption;
+    fn deref(&self) -> &Self::Target {
+        &self.option
+    }
+}
+impl From<ContextOption> for Context {
+    fn from(option: ContextOption) -> Self {
+        Self {
+            option,
+            short_version: &SHORT_VERSION,
+        }
+    }
+}
+#[inline(always)]
+pub fn get() -> &'static Context {
+    &CONTEXT
 }

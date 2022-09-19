@@ -21,6 +21,7 @@ ds = { path = "../ds" }
 api = { path = "../api" }
 
 backtrace = "0.3.63"
+lazy_static = "1.4.0"
 
 tokio = { version = "1.21.1", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
 mimalloc = { version = "*", default-features = false }
