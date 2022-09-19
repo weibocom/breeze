@@ -48,7 +48,7 @@ pub struct ContextOption {
 
     #[clap(
         short,
-        long,
+        long("snapshot"),
         help("path for saving snapshot of service topology."),
         default_value("/tmp/breeze/snapshot")
     )]
