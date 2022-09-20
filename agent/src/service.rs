@@ -1,9 +1,9 @@
+use context::Quadruple;
 use net::Listener;
 use rt::spawn;
 use std::sync::Arc;
 use std::time::Duration;
 
-use context::Quadruple;
 use discovery::TopologyWriteGuard;
 use ds::chan::Sender;
 use metrics::Path;
@@ -29,8 +29,6 @@ pub(super) async fn process_one(
 
     let mut listen_failed = Path::new(vec![quard.service().to_string()]).status("listen_failed");
 
-    // 在业务初始化及监听完成之前，计数加1，成功后再-1，
-
     // 等待初始化完成
     let mut tries = 0usize;
     while !rx.inited() {
@@ -38,7 +36,7 @@ pub(super) async fn process_one(
         let sleep = if tries <= 10 {
             Duration::from_secs(1)
         } else {
-            // 监听失败增加计数
+            // 拉取配置失败，业务监听失败数+1
             listen_failed += 1;
             log::warn!("waiting inited. {} tries:{}", quard, tries);
             // Duration::from_secs(1 << (tries.min(10)))
@@ -59,6 +57,8 @@ pub(super) async fn process_one(
 
     // 服务注册完成，侦听端口直到成功。
     while let Err(_e) = _process_one(quard, &p, &top, &path).await {
+        // 监听失败或accept连接失败，对监听失败数+1
+        listen_failed += 1;
         log::warn!("service process failed. {}, err:{:?}", quard, _e);
         tokio::time::sleep(Duration::from_secs(6)).await;
     }
@@ -100,8 +100,8 @@ async fn _process_one(
         spawn(async move {
             if let Err(e) = copy_bidirectional(top, metrics, client, p).await {
                 match e {
-                    protocol::Error::Quit => {} // client发送quit协议退出
-                    protocol::Error::ReadEof => {}
+                    //protocol::Error::Quit => {} // client发送quit协议退出
+                    //protocol::Error::ReadEof => {}
                     _e => log::debug!("{:?} disconnected. {:?}", _path, _e),
                 }
             }
