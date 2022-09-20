@@ -82,16 +82,17 @@ impl Protocol for MemcacheBinary {
         &self,
         ctx: &mut C,
         w: &mut W,
-    ) -> Result<()> {
+    ) -> Result<usize> {
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();
         let resp = ctx.response_mut();
         if QUITE_GET_TABLE[old_op_code as usize] == 1 && !resp.ok() {
-            return Ok(());
+            return Ok(0);
         }
         let data = resp.data_mut();
         data.restore_op(old_op_code as u8);
-        w.write_slice(data, 0)
+        w.write_slice(data, 0)?;
+        Ok(0)
     }
     // 如果是写请求，把cas请求转换为set请求。
     // 如果是读请求，则通过response重新构建一个新的写请求。
@@ -116,21 +117,37 @@ impl Protocol for MemcacheBinary {
         req: &HashedCommand,
         w: &mut W,
         _dist_fn: F,
-    ) -> Result<()> {
+    ) -> Result<usize> {
         if req.sentonly() {
-            return Ok(());
+            return Ok(0);
         }
         match req.op_code() as u8 {
             OP_CODE_NOOP => {
                 w.write_u8(RESPONSE_MAGIC)?; // 第一个字节变更为Response，其他的与Request保持一致
-                w.write_slice(req.data(), 1)
+                w.write_slice(req.data(), 1)?;
+                Ok(0)
             }
-            0x0b => w.write(&VERSION_RESPONSE),
-            0x10 => w.write(&STAT_RESPONSE),
+            0x0b => {
+                w.write(&VERSION_RESPONSE)?;
+                Ok(0)
+            }
+            0x10 => {
+                w.write(&STAT_RESPONSE)?;
+                Ok(0)
+            }
             0x07 | 0x17 => Err(Error::Quit),
-            0x09 | 0x0d => Ok(()), // quite get 请求。什么都不做
-            0x01 => w.write(&self.build_empty_response(0x5, req.data())), // set: 0x05 Item Not Stored
-            0x00 => w.write(&self.build_empty_response(0x1, req.data())), // get: 0x01 NotFound
+            0x09 | 0x0d => Ok(0),
+            // quite get 请求。什么都不做
+            0x01 => {
+                w.write(&self.build_empty_response(0x5, req.data()))?;
+                Ok(0)
+            }
+            // set: 0x05 Item Not Stored
+            0x00 => {
+                w.write(&self.build_empty_response(0x1, req.data()))?;
+                Ok(0)
+            }
+            // get: 0x01 NotFound
             _ => Err(Error::NoResponseFound),
         }
     }

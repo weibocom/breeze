@@ -189,7 +189,11 @@ impl Protocol for Phantom {
         }
     }
     #[inline]
-    fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
+    fn write_response<C: Commander, W: crate::Writer>(
+        &self,
+        ctx: &mut C,
+        w: &mut W,
+    ) -> Result<usize> {
         let req = ctx.request();
         let op_code = req.op_code();
         let cfg = command::get_cfg(op_code)?;
@@ -197,7 +201,8 @@ impl Protocol for Phantom {
         if !cfg.multi {
             // 对于hscan，虽然是单个key，也会返回*2 fishermen
             // assert_ne!(response.data().at(0), b'*');
-            w.write_slice(response.data(), 0)
+            w.write_slice(response.data(), 0)?;
+            Ok(0)
         } else {
             let ext = req.ext();
             let first = ext.mkey_first();
@@ -211,20 +216,27 @@ impl Protocol for Phantom {
                 // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
                 if cfg.need_bulk_num && response.data().at(0) == b'-' && cfg.nil_rsp > 0 {
                     let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
-                    log::debug!(
-                        "+++ use {} to replace phantom err rsp: {:?}",
-                        nil,
-                        response.data().utf8()
-                    );
-                    return w.write(nil.as_bytes());
+                    // 百分之一的概率打印nil 转换
+                    let rd = rand::random::<usize>() % 100;
+                    if log::log_enabled!(log::Level::Debug) || rd == 0 {
+                        log::info!(
+                            "+++ use {} to replace phantom err rsp: {:?}",
+                            nil,
+                            response.data().utf8()
+                        );
+                    }
+
+                    w.write(nil.as_bytes())?;
+                    return Ok(1);
                 }
 
-                w.write_slice(response.data(), 0)
+                w.write_slice(response.data(), 0)?;
+                Ok(0)
             } else {
                 // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
                 // mset always return +OK
                 // https://redis.io/commands/mset
-                Ok(())
+                Ok(0)
             }
         }
     }
@@ -234,7 +246,7 @@ impl Protocol for Phantom {
         req: &HashedCommand,
         w: &mut W,
         _dist_fn: F,
-    ) -> Result<()> {
+    ) -> Result<usize> {
         let cfg = command::get_cfg(req.op_code())?;
         let mut nil_rsp = false;
         if cfg.multi {
@@ -253,13 +265,20 @@ impl Protocol for Phantom {
                 }
             }
         }
+
+        let mut nil_convert = 0;
         let rsp = if nil_rsp {
             let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
-            log::debug!(
-                "+++ write pt client nil/{} noforward:{:?}",
-                nil,
-                req.data().utf8()
-            );
+            // 百分之一的概率打印nil 转换
+            let rd = rand::random::<usize>() % 100;
+            if log::log_enabled!(log::Level::Debug) || rd == 0 {
+                log::info!(
+                    "+++ write pt client nil/{} noforward:{:?}",
+                    nil,
+                    req.data().utf8()
+                );
+            }
+            nil_convert = 1;
             nil.to_string()
         } else {
             let rsp_idx = req.ext().padding_rsp() as usize;
@@ -271,7 +290,8 @@ impl Protocol for Phantom {
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         log::debug!("+++ will write no rsp. req:{}", req);
         if rsp.len() > 0 {
-            w.write(rsp.as_bytes())
+            w.write(rsp.as_bytes())?;
+            Ok(nil_convert)
         } else {
             // quit，先发+OK，再返回err
             // assert_eq!(rsp_idx, 0);
