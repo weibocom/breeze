@@ -1,6 +1,6 @@
 use std::task::{Context, Poll};
 
-use futures::ready;
+use ds::ready;
 use tokio::net::UdpSocket;
 
 #[derive(Default)]

@@ -32,6 +32,13 @@ pub struct Context {
     discovery: Url,
 
     #[clap(
+        long,
+        help("registry url prefix. e.g. static.config.xxx.xxx"),
+        default_value("")
+    )]
+    url_prefix: String,
+
+    #[clap(
         short,
         long,
         help("idc config path"),
@@ -87,17 +94,17 @@ pub struct Context {
     pub whitelist_host: String,
 }
 
-const VERSION: &'static str = git_version::git_version!();
 lazy_static! {
     static ref SHORT_VERSION: &'static str = {
-        let mut idx = VERSION.rfind('-').unwrap_or(0);
-        if &VERSION[idx..] == "-modified" && idx > 0 {
-            idx = VERSION[0..idx].rfind('-').unwrap_or(0);
+        let version: &'static str = git_version::git_version!();
+        let mut idx = version.rfind('-').unwrap_or(0);
+        if &version[idx..] == "-modified" && idx > 0 {
+            idx = version[0..idx].rfind('-').unwrap_or(0);
         }
-        if idx < VERSION.len() && VERSION.as_bytes()[idx] == b'-' {
+        if idx < version.len() && version.as_bytes()[idx] == b'-' {
             idx += 1
         }
-        &VERSION[idx..]
+        &version[idx..]
     };
 }
 #[inline]
@@ -154,11 +161,24 @@ impl Context {
     pub fn snapshot(&self) -> &str {
         &self.snapshot
     }
-    pub fn idc_path(&self) -> String {
+    pub fn idc_path_url(&self) -> String {
+        // idc-path参数
+        if self.url_prefix.len() > 0 && !self.idc_path.contains(&self.url_prefix.to_string()) {
+            return format!("{}/{}", self.url_prefix, self.idc_path);
+        }
         self.idc_path.clone()
     }
+    // 服务池名
     pub fn service_pool(&self) -> String {
         self.service_pool.clone()
+    }
+    // 服务池socks url
+    pub fn service_pool_socks_url(&self) -> String {
+        if self.url_prefix.len() > 0 {
+            let socks_path = "3/config/datamesh/config";
+            return format!("{}/{}/{}", self.url_prefix, socks_path, self.service_pool);
+        }
+        Default::default()
     }
 }
 

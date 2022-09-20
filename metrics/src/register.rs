@@ -204,7 +204,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures::ready;
+use ds::ready;
 use tokio::time::{interval, Interval, MissedTickBehavior};
 
 impl Future for MetricRegister {

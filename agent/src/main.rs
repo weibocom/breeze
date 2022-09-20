@@ -63,7 +63,17 @@ async fn run(ctx: Context) -> Result<()> {
     let snapshot = ctx.snapshot().to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
-    fix.register(ctx.idc_path(), discovery::distance::build_refresh_idc());
+    fix.register(ctx.idc_path_url(), discovery::distance::build_refresh_idc());
+    // 从vintage获取socks
+    if ctx.service_pool_socks_url().len() > 1 {
+        fix.register(
+            ctx.service_pool_socks_url(),
+            discovery::socks::build_refresh_socks(ctx.service_path()),
+        );
+    } else {
+        log::info!("only use socks from local path: {}", ctx.service_path());
+    }
+    
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
 
     log::info!("server({}) inited {:?}", context::get_short_version(), ctx);
@@ -104,15 +114,14 @@ fn set_panic_hook() {
         let _cause = panic_info
             .payload()
             .downcast_ref::<String>()
-            .map(String::deref);
-
-        let _cause = _cause.unwrap_or_else(|| {
-            panic_info
-                .payload()
-                .downcast_ref::<&str>()
-                .map(|s| *s)
-                .unwrap_or("<cause unknown>")
-        });
+            .map(String::deref)
+            .unwrap_or_else(|| {
+                panic_info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .map(|s| *s)
+                    .unwrap_or("<cause unknown>")
+            });
 
         log::error!("A panic occurred at {}:{}: {}", _filename, _line, _cause);
         log::error!("panic backtrace: {:?}", backtrace::Backtrace::new())

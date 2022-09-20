@@ -4,10 +4,7 @@ pub use read::*;
 mod write;
 pub use write::*;
 
-pub fn cow<T>(t: T) -> (CowWriteHandle<T>, CowReadHandle<T>)
-where
-    T: Clone,
-{
+pub fn cow<T: Clone>(t: T) -> (CowWriteHandle<T>, CowReadHandle<T>) {
     let rx: CowReadHandle<T> = t.into();
     let tx = CowWriteHandle::from(rx.clone());
     (tx, rx)
