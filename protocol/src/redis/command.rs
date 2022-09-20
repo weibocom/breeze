@@ -28,6 +28,7 @@ pub(crate) struct CommandProperties {
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
     pub(super) padding_rsp: u8,
+    pub(super) nil_rsp: u8,
     pub(super) has_val: bool,
     pub(super) has_key: bool,
     pub(super) noforward: bool,
@@ -42,13 +43,14 @@ pub(crate) struct CommandProperties {
 
 // 默认响应
 // 第0个表示quit
-pub const PADDING_RSP_TABLE: [&str; 6] = [
+pub const PADDING_RSP_TABLE: [&str; 7] = [
     "",
     "+OK\r\n",
     "+PONG\r\n",
     "-ERR redis no available\r\n",
     "-ERR invalid command\r\n",
     "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
+    "$-1\r\n",                           // mget 等指令对应的nil
 ];
 
 #[allow(dead_code)]
@@ -189,7 +191,7 @@ impl Commands {
         if cmd.supported {
             Ok(cmd)
         } else {
-            Err(crate::Error::CommandNotSupported)
+            Err(crate::Error::ProtocolNotSupported)
         }
     }
     // 不支持会返回协议错误
@@ -250,6 +252,11 @@ impl Commands {
         // 需要前一个指令明确指定hash的目前只有lua下面3个指令
         let need_reserved_hash =
             uppercase.eq("EVAL") || uppercase.eq("EVALSHA") || uppercase.eq("SCRIPT");
+        // 目前只有mget指令是MGet/MINCR类型，才需要nil
+        let mut nil_rsp = 0;
+        if uppercase.eq("MGET") || uppercase.eq("MINCR") {
+            nil_rsp = 6;
+        }
 
         self.supported[idx] = CommandProperties {
             name,
@@ -261,6 +268,7 @@ impl Commands {
             last_key_index,
             key_step,
             padding_rsp,
+            nil_rsp,
             noforward,
             supported: true,
             multi,
@@ -287,6 +295,7 @@ lazy_static! {
     pub(super) static ref SUPPORTED: Commands = {
         let mut cmds = Commands::new();
         use Operation::*;
+    // TODO：后续增加新指令时，当multi/need_bulk_num 均为true时，需要在add_support中进行nil转换，避免将err返回到client fishermen
     for (name, mname, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num)
         in vec![
                 // meta 指令
@@ -298,15 +307,20 @@ lazy_static! {
                 ("quit", "quit" ,          2, Meta, 0, 0, 0, 0, false, true, false, false, false),
 
                 ("get" , "get",            2, Get, 1, 1, 1, 3, false, false, true, false, false),
+
+                // multi请求：异常响应需要改为$-1
                 ("mget", "get",           -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
 
                 ("set" ,"set",             3, Store, 1, 1, 1, 3, false, false, true, true, false),
                 ("incr" ,"incr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
                 ("decr" ,"decr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
+
+                // multi请求：异常响应需要改为$-1
                 ("mincr","mincr",         -2, Store, 1, -1, 1, 3, true, false, true, false, true),
+
+                //mset、del 是mlti指令，但只返回一个result，即need_bulk_num为false，那就只返回第一个key的响应 fishermen
                 // mset不需要bulk number
                 ("mset", "set",           -3, Store, 1, -1, 2, 3, true, false, true, true, false),
-
                 // TODO: del 删除多个key时，返回删除的key数量，先不聚合这个数字，反正client也会忽略？ fishermen
                 ("del", "del",            -2, Store, 1, -1, 1, 3, true, false, true, false, false),
 

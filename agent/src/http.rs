@@ -7,8 +7,8 @@ pub(super) fn start_http_server(ctx: &context::Context, rt: &tokio::runtime::Run
     rt.spawn(api::start_whitelist_refresh(ctx.whitelist_host.clone()));
     log::info!("launch with rocket!");
     rt.spawn(async {
-        if let Err(e) = api::routes().launch().await {
-            log::error!("launch rocket failed: {:?}", e);
+        if let Err(_e) = api::routes().launch().await {
+            log::error!("launch rocket failed: {:?}", _e);
         };
     });
 }
