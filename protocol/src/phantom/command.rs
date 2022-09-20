@@ -21,6 +21,7 @@ pub(crate) struct CommandProperties {
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
     pub(super) padding_rsp: u8,
+    pub(super) nil_rsp: u8,
     pub(super) has_val: bool,
     pub(super) has_key: bool,
     pub(super) noforward: bool,
@@ -30,14 +31,15 @@ pub(crate) struct CommandProperties {
     pub(super) need_bulk_num: bool, // mset所有的请求只返回一个+OK，不需要在首个请求前加*bulk_num。其他的都需要
 }
 
-// 默认响应
-// 第0个表示quit
-pub const PADDING_RSP_TABLE: [&str; 5] = [
+// 默认响应,第0个表示qui;
+// bfmget、bfmset在key异常响应时，返回-10作为nil
+pub const PADDING_RSP_TABLE: [&str; 6] = [
     "",
     "+OK\r\n",
     "+PONG\r\n",
     "-ERR phantom no available\r\n",
     "-ERR unknown command\r\n",
+    ":-10\r\n",
 ];
 
 #[allow(dead_code)]
@@ -201,7 +203,7 @@ impl Commands {
         if cmd.supported {
             Ok(cmd)
         } else {
-            Err(crate::Error::CommandNotSupported)
+            Err(crate::Error::ProtocolNotSupported)
         }
     }
     // 不支持会返回协议错误
@@ -233,6 +235,13 @@ impl Commands {
         assert!(idx < self.supported.len());
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
+
+        // bfmget、bfmset，在部分key 返回异常响应时，需要将异常信息转换为nil返回 fishermen
+        let mut nil_rsp = 0;
+        if uppercase.eq("BFMGET") || uppercase.eq("BFMSET") {
+            nil_rsp = 5;
+        }
+
         self.supported[idx] = CommandProperties {
             name,
             mname,
@@ -243,6 +252,7 @@ impl Commands {
             last_key_index,
             key_step,
             padding_rsp,
+            nil_rsp,
             noforward,
             supported: true,
             multi,
@@ -276,8 +286,10 @@ lazy_static! {
                 ("quit", "quit" ,          2, Meta, 0, 0, 0, 0, false, true, false, false, false),
 
                 ("bfget" , "bfget",        2, Get, 1, 1, 1, 3, false, false, true, false, false),
-                ("bfmget", "bfget",       -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
                 ("bfset", "bfset",         2, Store, 1, 1, 1, 3, false, false, true, false, false),
+
+                // bfmget、bfmset，在部分key 返回异常响应时，需要将异常信息转换为nil返回 fishermen
+                ("bfmget", "bfget",       -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
                 ("bfmset", "bfset",       -2, Store, 1, 1, 1, 3, true, false, true, false, true),
 
 
