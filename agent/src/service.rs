@@ -100,8 +100,8 @@ async fn _process_one(
         spawn(async move {
             if let Err(e) = copy_bidirectional(top, metrics, client, p).await {
                 match e {
-                    protocol::Error::Quit => {} // client发送quit协议退出
-                    protocol::Error::ReadEof => {}
+                    //protocol::Error::Quit => {} // client发送quit协议退出
+                    //protocol::Error::ReadEof => {}
                     _e => log::debug!("{:?} disconnected. {:?}", _path, _e),
                 }
             }
