@@ -222,7 +222,10 @@ where
             }
 
             if ctx.inited() && !ctx.request().ignore_rsp() {
-                parser.write_response(&mut ctx, client)?;
+                let nil_convert = parser.write_response(&mut ctx, client)?;
+                if nil_convert > 0 {
+                    *metrics.nilconvert() += nil_convert;
+                }
                 ctx.async_start_write_back(parser);
             } else if ctx.request().ignore_rsp() {
                 // do nothing!
@@ -238,7 +241,11 @@ where
                 }
 
                 // 传入top，某些指令需要
-                parser.write_no_response(req, client, |hash| top.shard_idx(hash))?;
+                let nil_convert =
+                    parser.write_no_response(req, client, |hash| top.shard_idx(hash))?;
+                if nil_convert > 0 {
+                    *metrics.nilconvert() += nil_convert;
+                }
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，
