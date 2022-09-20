@@ -42,10 +42,7 @@ where
             service: service.to_string(),
             updates: updates.clone(),
         },
-        TopologyReadGuard {
-            inner: rx,
-            updates: updates,
-        },
+        TopologyReadGuard { inner: rx, updates },
     )
 }
 
