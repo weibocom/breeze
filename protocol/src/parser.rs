@@ -32,14 +32,20 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         process: &mut P,
     ) -> Result<()>;
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
-    fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()>;
+    // 返回nil convert的数量
+    fn write_response<C: Commander, W: crate::Writer>(
+        &self,
+        ctx: &mut C,
+        w: &mut W,
+    ) -> Result<usize>;
+    // 返回nil convert的数量
     #[inline]
     fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
         &self,
         _req: &HashedCommand,
         _w: &mut W,
         _dist_fn: F,
-    ) -> Result<()> {
+    ) -> Result<usize> {
         Err(Error::NoResponseFound)
     }
     #[inline]
