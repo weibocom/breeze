@@ -20,7 +20,7 @@ impl Prometheus {
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, ReadBuf};
-
+use std::time::{SystemTime, UNIX_EPOCH};
 impl futures::Stream for Prometheus {
     type Item = PrometheusItem;
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -112,27 +112,79 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
 }
 impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
     fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64) {
-        self.put_slice(name.as_bytes());
-        self.put_slice("_".as_bytes());
-        self.put_slice(key.as_bytes());
-        if sub_key.len() > 0 {
-            self.put_slice("_".as_bytes());
-            self.put_slice(sub_key.as_bytes());
+        //以毫秒为单位的时间戳
+        let time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+        let help_msg = "# HELP \r\n".to_string();
+        let type_msg = "# TYPE \r\n".to_string();
+
+        if name == "base" {
+            //添加 HELP && TYPE
+            let base_metrics: String;
+            if sub_key.len() > 0 {
+                base_metrics = format!("{}{}{}_{}_{}{{pool=\"{}\",ip=\"{}\"}}\r\n{} {}\r\n\r\n", help_msg,type_msg,name,key,sub_key,context::get().service_pool().clone(),super::ip::local_ip(),val,time);
+            } else {
+                base_metrics = format!("{}{}{}_{}{{pool=\"{}\",ip=\"{}\"}}\r\n{} {}\r\n\r\n", help_msg,type_msg,name,key,context::get().service_pool().clone(),super::ip::local_ip(),val,time);
+            }
+
+            self.put_slice(base_metrics.as_bytes());
+
+        } else if name.contains("mc_backend") || name.contains("redis_backend") {
+            //从 name 中截取 namespace、source、instance
+            let source: String;
+            let namespace: String;
+            let instance: String;
+            let backend: String;
+            let backend_metrics: String;
+
+            if name.contains("mc_backend") {
+                source = "mc".to_string();
+                backend = "mc_backend".to_string();
+            } else {
+                source = "redis".to_string();
+                backend = "redis_backend".to_string();
+            }
+
+            let nsandins = &name[backend.len()+1..];
+            let index = nsandins.find(".").unwrap();
+
+            namespace = nsandins[0..index].to_string();
+            instance = nsandins[index+1..].to_string();
+
+            if sub_key.len() > 0 {
+                backend_metrics = format!("{}{}backend_{}_{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",instance=\"{}\"}}\r\n{} {}\r\n\r\n",
+                help_msg,type_msg,key,sub_key,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,instance,val,time);
+            } else {
+                backend_metrics = format!("{}{}backend_{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",instance=\"{}\"}}\r\n{} {}\r\n\r\n",
+                help_msg,type_msg,key,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,instance,val,time);
+            }
+
+            self.put_slice(backend_metrics.as_bytes());
+
+        } else {
+
+            let source: String;
+            let namespace: String;
+            let source_metrics: String;
+
+            if name.contains("mc") {
+                source = "mc".to_string();
+            } else {
+                source = "redis".to_string();
+            }
+            namespace = name[source.len()+1..].to_string();
+            if sub_key.len() > 0 {
+                source_metrics = format!("{}{}source_{}_{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\"}}\r\n{} {}\r\n\r\n",
+                help_msg,type_msg,key,sub_key,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,val,time);
+            } else {
+                source_metrics = format!("{}{}source_{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",}}\r\n{} {}\r\n\r\n",
+                help_msg,type_msg,key,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,val,time);
+            }
+            self.put_slice(source_metrics.as_bytes());
         }
-        self.put_slice("{".as_bytes());
-        self.put_slice("pool=".as_bytes());
-        self.put_slice(context::get().service_pool().clone().as_bytes());
-        self.put_slice(" ".as_bytes());
-        self.put_slice("ip=".as_bytes());
-        self.put_slice(super::ip::local_ip().as_bytes());
-        self.put_slice(" ".as_bytes());
-        self.put_slice("}".as_bytes());
-        self.put_slice(b"\r\n");
-        self.put_slice(val.to_string().as_bytes());
-        self.put_slice(" ".as_bytes());
-        self.put_slice(val.to_string().as_bytes());
-        self.put_slice(b"\r\n");
-      
     }
 }
 use crate::Host;
