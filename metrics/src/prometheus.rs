@@ -118,17 +118,31 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         .unwrap()
         .as_millis();
 
-        let help_msg = "# HELP \r\n".to_string();
-        let type_msg = "# TYPE \r\n".to_string();
+        let metrics_name: String;
+        let help_msg = "# HELP ".to_string();
+        let type_msg = "# TYPE ".to_string();
+        let gauge = "gauge".to_string();
 
         //主要3种结构(base/mc_backend/mc)
         if name == "base" {
             //添加 HELP && TYPE
             let base_metrics: String;
             if sub_key.len() > 0 {
-                base_metrics = format!("{}{}{}_{}_{}{{pool=\"{}\",ip=\"{}\"}}\r\n{} {}\r\n\r\n", help_msg,type_msg,name,key,sub_key,context::get().service_pool().clone(),super::ip::local_ip(),val,time);
+                /*if sub_key.contains("-") {
+                    let new_sub_key = &sub_key.replace("-", "_");
+                    metrics_name = format!("{}_{}_{}",name,key,new_sub_key);
+                } else {
+                    metrics_name = format!("{}_{}_{}",name,key,sub_key);
+                }*/
+                metrics_name = format!("{}_{}_{}",name,key,sub_key);
+                let base_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
+                let base_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
+                base_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\"}} {} {}\n\n", base_help,base_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),val,time);
             } else {
-                base_metrics = format!("{}{}{}_{}{{pool=\"{}\",ip=\"{}\"}}\r\n{} {}\r\n\r\n", help_msg,type_msg,name,key,context::get().service_pool().clone(),super::ip::local_ip(),val,time);
+                metrics_name = format!("{}_{}",name,key);
+                let base_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
+                let base_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
+                base_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\"}} {} {}\n\n", base_help,base_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),val,time);
             }
 
             self.put_slice(base_metrics.as_bytes());
@@ -156,11 +170,17 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
             instance = nsandins[index+1..].to_string();
 
             if sub_key.len() > 0 {
-                backend_metrics = format!("{}{}backend_{}_{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",instance=\"{}\"}}\r\n{} {}\r\n\r\n",
-                help_msg,type_msg,key,sub_key,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,instance,val,time);
+                metrics_name = format!("backend_{}_{}",key,sub_key);
+                let backend_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
+                let backend_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
+                backend_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",instance=\"{}\"}} {} {}\n\n",
+                backend_help,backend_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,instance,val,time);
             } else {
-                backend_metrics = format!("{}{}backend_{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",instance=\"{}\"}}\r\n{} {}\r\n\r\n",
-                help_msg,type_msg,key,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,instance,val,time);
+                metrics_name = format!("backend_{}",key);
+                let backend_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
+                let backend_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
+                backend_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",instance=\"{}\"}} {} {}\n\n",
+                backend_help,backend_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,instance,val,time);
             }
 
             self.put_slice(backend_metrics.as_bytes());
@@ -178,11 +198,17 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
             }
             namespace = name[source.len()+1..].to_string();
             if sub_key.len() > 0 {
-                source_metrics = format!("{}{}source_{}_{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\"}}\r\n{} {}\r\n\r\n",
-                help_msg,type_msg,key,sub_key,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,val,time);
+                metrics_name = format!("source_{}_{}",key,sub_key);
+                let source_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
+                let source_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
+                source_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\"}} {} {}\n\n",
+                source_help,source_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,val,time);
             } else {
-                source_metrics = format!("{}{}source_{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",}}\r\n{} {}\r\n\r\n",
-                help_msg,type_msg,key,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,val,time);
+                metrics_name = format!("source_{}",key);
+                let source_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
+                let source_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
+                source_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",}} {} {}\n\n",
+                source_help,source_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,val,time);
             }
             self.put_slice(source_metrics.as_bytes());
         }
