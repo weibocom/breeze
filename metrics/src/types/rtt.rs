@@ -1,8 +1,9 @@
 use std::time::Duration;
 
 use crate::{Id, ItemWriter, NumberInner};
-const SLOW: i64 = Duration::from_millis(100).as_micros() as i64;
-const MAX: i64 = Duration::from_millis(30).as_micros() as i64;
+pub const MAX: Duration = Duration::from_millis(30);
+const SLOW_US: i64 = Duration::from_millis(100).as_micros() as i64;
+const MAX_US: i64 = MAX.as_micros() as i64;
 pub struct Rtt {
     count: NumberInner,
     avg_us: NumberInner,
@@ -40,10 +41,10 @@ impl Rtt {
         self.count.incr(1);
         let us = d.as_micros() as i64;
         self.avg_us.incr(us);
-        if us >= SLOW {
+        if us >= SLOW_US {
             self.slow.incr(1);
         }
-        if us >= MAX {
+        if us >= MAX_US {
             self.max.max(us);
         }
     }
