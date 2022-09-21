@@ -121,6 +121,7 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         let help_msg = "# HELP \r\n".to_string();
         let type_msg = "# TYPE \r\n".to_string();
 
+        //主要3种结构(base/mc_backend/mc)
         if name == "base" {
             //添加 HELP && TYPE
             let base_metrics: String;
