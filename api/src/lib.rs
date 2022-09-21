@@ -20,11 +20,9 @@ use metrics::Path;
 const API_PATH: &str = "api";
 
 // 整合所有routers
-pub fn routes() -> Rocket<Build> {
-    let mut rocket = rocket::build();
-
+pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
     // 元数据相关routes
-    rocket = meta::routes(rocket);
+    let rocket = meta::routes(rocket);
 
     // 各种协议 cmd相关routes
     protocol::routes(rocket)
