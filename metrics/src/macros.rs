@@ -57,7 +57,7 @@ impl<T: ToNumber> MetricData for (T, T) {
 }
 
 use crate::Metric;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Path {
     path: Vec<String>,
 }
@@ -82,6 +82,10 @@ impl Path {
         s.shrink_to_fit();
         let id = Id { path: s, key, t };
         crate::register_metric(id)
+    }
+    pub fn push(mut self, name: &str) -> Self {
+        self.path.push(name.to_string());
+        self
     }
 }
 
