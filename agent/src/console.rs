@@ -1,8 +1,9 @@
+use context::Context;
+use rocket::{Build, Rocket};
+
 cfg_if::cfg_if! {
 if #[cfg(feature = "http")] {
 
-use context::Context;
-use rocket::{Build, Rocket};
 
 pub(crate) fn init_routes(
     rocket: Rocket<Build>,
