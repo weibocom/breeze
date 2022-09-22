@@ -76,7 +76,7 @@ impl Path {
         let mut s: String = String::with_capacity(256);
         for name in self.path.iter() {
             s += &crate::encode_addr(name.as_ref());
-            s.push('.');
+            s.push(crate::TARGET_SPLIT as char);
         }
         s.pop();
         s.shrink_to_fit();
