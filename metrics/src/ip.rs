@@ -1,7 +1,19 @@
 use once_cell::sync::OnceCell;
 
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "encode-addr")] {
+pub(crate) const TARGET_SPLIT: u8 = b'.';
+    } else {
+pub(crate) const TARGET_SPLIT: u8 = b'/';
+    }
+}
 pub fn encode_addr(addr: &str) -> String {
-    addr.replace(".", "_").replace(":", "_")
+    cfg_if::cfg_if! {
+    if #[cfg(feature = "encode-addr")] {
+        addr.replace(".", "_").replace(":", "_")
+    } else {
+        addr.to_string()
+    }}
 }
 
 // 通过建立一次连接获取本地通讯的IP

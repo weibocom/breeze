@@ -13,7 +13,7 @@ pub use quadruple::Quadruple;
 
 #[derive(Parser, Debug)]
 #[clap(name = "breeze", version = "0.0.1", author = "IF")]
-pub struct Context {
+pub struct ContextOption {
     #[clap(long, help("port for suvervisor"), default_value("9984"))]
     port: u16,
 
@@ -32,13 +32,6 @@ pub struct Context {
     discovery: Url,
 
     #[clap(
-        long,
-        help("registry url prefix. e.g. static.config.xxx.xxx"),
-        default_value("")
-    )]
-    url_prefix: String,
-
-    #[clap(
         short,
         long,
         help("idc config path"),
@@ -55,18 +48,19 @@ pub struct Context {
 
     #[clap(
         short,
-        long,
+        long("snapshot"),
         help("path for saving snapshot of service topology."),
         default_value("/tmp/breeze/snapshot")
     )]
-    snapshot: String,
+    pub snapshot_path: String,
     #[clap(
         short('p'),
         long,
         help("path for unix domain socket to listen."),
         default_value("/tmp/breeze/socks")
     )]
-    service_path: String,
+    pub service_path: String,
+
     #[clap(short, long, help("starting in upgrade mode"))]
     upgrade: bool,
 
@@ -94,28 +88,29 @@ pub struct Context {
     pub whitelist_host: String,
 }
 
+const VERSION: &'static str = git_version::git_version!();
 lazy_static! {
     static ref SHORT_VERSION: &'static str = {
-        let version: &'static str = git_version::git_version!();
-        let mut idx = version.rfind('-').unwrap_or(0);
-        if &version[idx..] == "-modified" && idx > 0 {
-            idx = version[0..idx].rfind('-').unwrap_or(0);
+        let mut idx = VERSION.rfind('-').unwrap_or(0);
+        if &VERSION[idx..] == "-modified" && idx > 0 {
+            idx = VERSION[0..idx].rfind('-').unwrap_or(0);
         }
-        if idx < version.len() && version.as_bytes()[idx] == b'-' {
+        if idx < VERSION.len() && VERSION.as_bytes()[idx] == b'-' {
             idx += 1
         }
-        &version[idx..]
+        &VERSION[idx..]
+    };
+    static ref CONTEXT: Context = {
+        let ctx = ContextOption::parse();
+        ctx.check().expect("context check failed");
+        let ctx = Context::from(ctx);
+        ctx
     };
 }
-#[inline]
-pub fn get_short_version() -> &'static str {
-    &SHORT_VERSION
-}
-
-impl Context {
+impl ContextOption {
     #[inline]
     pub fn from_os_args() -> Self {
-        let app = <Self as IntoApp>::command().version(get_short_version());
+        let app = <Self as IntoApp>::command().version(&SHORT_VERSION[..]);
         let matches = app.get_matches();
         <Self as FromArgMatches>::from_arg_matches(&matches).expect("parse args failed")
     }
@@ -158,27 +153,11 @@ impl Context {
     pub fn metrics_url(&self) -> String {
         self.metrics_url.clone().unwrap_or_default()
     }
-    pub fn snapshot(&self) -> &str {
-        &self.snapshot
-    }
-    pub fn idc_path_url(&self) -> String {
-        // idc-path参数
-        if self.url_prefix.len() > 0 && !self.idc_path.contains(&self.url_prefix.to_string()) {
-            return format!("{}/{}", self.url_prefix, self.idc_path);
-        }
+    pub fn idc_path(&self) -> String {
         self.idc_path.clone()
     }
-    // 服务池名
     pub fn service_pool(&self) -> String {
         self.service_pool.clone()
-    }
-    // 服务池socks url
-    pub fn service_pool_socks_url(&self) -> String {
-        if self.url_prefix.len() > 0 {
-            let socks_path = "3/config/datamesh/config";
-            return format!("{}/{}/{}", self.url_prefix, socks_path, self.service_pool);
-        }
-        Default::default()
     }
 }
 
@@ -289,4 +268,29 @@ impl ListenerIter {
         }
         Ok(found)
     }
+}
+
+#[derive(Debug)]
+pub struct Context {
+    option: ContextOption,
+    pub short_version: &'static str,
+}
+
+impl std::ops::Deref for Context {
+    type Target = ContextOption;
+    fn deref(&self) -> &Self::Target {
+        &self.option
+    }
+}
+impl From<ContextOption> for Context {
+    fn from(option: ContextOption) -> Self {
+        Self {
+            option,
+            short_version: &SHORT_VERSION,
+        }
+    }
+}
+#[inline(always)]
+pub fn get() -> &'static Context {
+    &CONTEXT
 }
