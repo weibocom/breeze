@@ -19,8 +19,8 @@ impl Prometheus {
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, ReadBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncRead, ReadBuf};
 impl futures::Stream for Prometheus {
     type Item = PrometheusItem;
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -112,106 +112,74 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
 }
 impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
     fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64) {
-        //以毫秒为单位的时间戳
+        /*
+        三种类型
+              name                                              key         sub_key         result
+        <1>   base                                              host        mem             host_mem{source="base",pool="default_pool",ip="10.222.32.6"} 31375360 1663846614711
+        <2>   mc_backend/status.content1/10.185.25.194:2020     timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",instance="10.185.25.194:2020",pool="default_pool",ip="10.222.32.6"} 0 1663846614713
+        <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool",ip="10.222.32.6"} 0 1663846614713
+         */
+
+        //获取以毫秒为单位的时间戳
         let time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
 
-        let metrics_name: String;
-        let help_msg = "# HELP ".to_string();
-        let type_msg = "# TYPE ".to_string();
-        let gauge = "gauge".to_string();
+        //从 name 中截取 source、namespace、instance
+        let all_name: Vec<&str> = name.split("/").collect();
+        let source = *all_name.get(0).unwrap_or(&"");
+        let namespace = *all_name.get(1).unwrap_or(&"");
+        let instance = *all_name.get(2).unwrap_or(&"");
 
-        //主要3种结构(base/mc_backend/mc)
-        if name == "base" {
-            //添加 HELP && TYPE
-            let base_metrics: String;
-            if sub_key.len() > 0 {
-                /*if sub_key.contains("-") {
-                    let new_sub_key = &sub_key.replace("-", "_");
-                    metrics_name = format!("{}_{}_{}",name,key,new_sub_key);
-                } else {
-                    metrics_name = format!("{}_{}_{}",name,key,sub_key);
-                }*/
-                metrics_name = format!("{}_{}_{}",name,key,sub_key);
-                let base_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
-                let base_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
-                base_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\"}} {} {}\n\n", base_help,base_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),val,time);
-            } else {
-                metrics_name = format!("{}_{}",name,key);
-                let base_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
-                let base_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
-                base_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\"}} {} {}\n\n", base_help,base_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),val,time);
-            }
-
-            self.put_slice(base_metrics.as_bytes());
-
-        } else if name.contains("mc_backend") || name.contains("redis_backend") {
-            //从 name 中截取 namespace、source、instance
-            let source: String;
-            let namespace: String;
-            let instance: String;
-            let backend: String;
-            let backend_metrics: String;
-
-            if name.contains("mc_backend") {
-                source = "mc".to_string();
-                backend = "mc_backend".to_string();
-            } else {
-                source = "redis".to_string();
-                backend = "redis_backend".to_string();
-            }
-
-            let nsandins = &name[backend.len()+1..];
-            let index = nsandins.find(".").unwrap();
-
-            namespace = nsandins[0..index].to_string();
-            instance = nsandins[index+1..].to_string();
-
-            if sub_key.len() > 0 {
-                metrics_name = format!("backend_{}_{}",key,sub_key);
-                let backend_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
-                let backend_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
-                backend_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",instance=\"{}\"}} {} {}\n\n",
-                backend_help,backend_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,instance,val,time);
-            } else {
-                metrics_name = format!("backend_{}",key);
-                let backend_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
-                let backend_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
-                backend_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",instance=\"{}\"}} {} {}\n\n",
-                backend_help,backend_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,instance,val,time);
-            }
-
-            self.put_slice(backend_metrics.as_bytes());
-
+        let mut metrics_name = String::with_capacity(32);
+        if sub_key.len() > 0 {
+            metrics_name += key;
+            metrics_name += "_";
+            metrics_name += sub_key;
         } else {
-
-            let source: String;
-            let namespace: String;
-            let source_metrics: String;
-
-            if name.contains("mc") {
-                source = "mc".to_string();
-            } else {
-                source = "redis".to_string();
-            }
-            namespace = name[source.len()+1..].to_string();
-            if sub_key.len() > 0 {
-                metrics_name = format!("source_{}_{}",key,sub_key);
-                let source_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
-                let source_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
-                source_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\"}} {} {}\n\n",
-                source_help,source_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,val,time);
-            } else {
-                metrics_name = format!("source_{}",key);
-                let source_help = format!("{}{} 平均耗时\n",help_msg,metrics_name);
-                let source_type = format!("{}{} {}\n",type_msg,metrics_name,gauge);
-                source_metrics = format!("{}{}{}{{pool=\"{}\",ip=\"{}\",namespace=\"{}\",source=\"{}\",}} {} {}\n\n",
-                source_help,source_type,metrics_name,context::get().service_pool().clone(),super::ip::local_ip(),namespace,source,val,time);
-            }
-            self.put_slice(source_metrics.as_bytes());
+            metrics_name += key;
         }
+
+        //promethues # HELP
+        self.put_slice(b"# HELP ");
+        self.put_slice(metrics_name.as_bytes());
+        self.put_slice(b"\n");
+
+        //promethues # TYPE
+        self.put_slice(b"# TYPE ");
+        self.put_slice(metrics_name.as_bytes());
+        self.put_slice(b" gauge\n");
+
+        //promethues metrics
+        self.put_slice(metrics_name.as_bytes());
+        self.put_slice("{".as_bytes());
+        self.put_slice(b"source=\"");
+        self.put_slice(source.as_bytes());
+        self.put_slice(b"\",");
+        if namespace.len() > 0 {
+            self.put_slice(b"namespace=\"");
+            self.put_slice(namespace.as_bytes());
+            self.put_slice(b"\",");
+        }
+        if instance.len() > 0 {
+            self.put_slice(b"instance=\"");
+            self.put_slice(instance.as_bytes());
+            self.put_slice(b"\",");
+        }
+        self.put_slice(b"pool=\"");
+        self.put_slice(context::get().service_pool().as_bytes());
+        self.put_slice(b"\",");
+        self.put_slice(b"ip=\"");
+        self.put_slice(super::ip::local_ip().as_bytes());
+        self.put_slice(b"\"}");
+
+        //value && timestamp
+        self.put_slice(b" ");
+        self.put_slice(val.to_string().as_bytes());
+        self.put_slice(b" ");
+        self.put_slice(time.to_string().as_bytes());
+        self.put_slice(b"\n");
     }
 }
 use crate::Host;
