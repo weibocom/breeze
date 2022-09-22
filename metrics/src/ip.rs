@@ -1,5 +1,12 @@
 use once_cell::sync::OnceCell;
 
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "encode-addr")] {
+pub(crate) const TARGET_SPLIT: u8 = b'.';
+    } else {
+pub(crate) const TARGET_SPLIT: u8 = b'/';
+    }
+}
 pub fn encode_addr(addr: &str) -> String {
     cfg_if::cfg_if! {
     if #[cfg(feature = "encode-addr")] {
