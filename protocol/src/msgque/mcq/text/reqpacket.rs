@@ -1,20 +1,30 @@
 use ds::RingSlice;
+use lazy_static::__Deref;
+use sharding::hash::{Bkdr, Hash};
 
-use crate::{Operation, Result, Utf8};
+use crate::{msgque::mcq::text::reqpacket, OpCode, Result, Utf8};
 
-use super::error::McqError;
+use super::{
+    command::{self, CommandProperties, RequestType},
+    error::McqError,
+};
 
 const CR: u8 = 13;
 const LF: u8 = 10;
 const MAX_KEY_LEN: usize = 250;
 
 pub(super) struct RequestPacket<'a, S> {
+    // 生命周期为解析多个req
     stream: &'a mut S,
     data: RingSlice,
-    state: ReqPacketState,
     oft_last: usize,
     oft: usize,
 
+    // 生命周期为开始解析当前req，到下一个req解析开始
+    op_code: OpCode, // u16 commdProps的idx
+    cmd_cfg: Option<&'a CommandProperties>,
+    // TODO 这些字段暂时保留，确认不需要后，清理 fishermen
+    state: ReqPacketState,
     key_start: usize,
     key_len: usize,
     token: usize,
@@ -26,8 +36,6 @@ pub(super) struct RequestPacket<'a, S> {
     unique_id_len: usize,
     val_start: usize,
     noreply: bool,
-
-    msg_type: MsgType,
 }
 
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
@@ -37,9 +45,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Self {
             stream,
             data,
-            state: ReqPacketState::Start,
             oft_last: 0,
             oft: 0,
+            op_code: 0, // 即Commands中cmd props的idx
+            cmd_cfg: None,
+            // 有需要再打开，验证完毕后再清理
+            state: ReqPacketState::Start,
             key_start: 0,
             key_len: 0,
             token: 0,
@@ -51,7 +62,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             unique_id_len: 0,
             val_start: 0,
             noreply: false,
-            msg_type: MsgType::Unknown,
+            // msg_type: MsgType::Unknown,
         }
     }
 
@@ -61,16 +72,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    pub(super) fn operation(&self) -> Operation {
-        match self.msg_type {
-            MsgType::Get | MsgType::Stats => Operation::Get,
-            MsgType::Set | MsgType::Delete => Operation::Store,
-            MsgType::Quit | MsgType::Version => Operation::Meta,
-            _ => {
-                log::error!("+++ found unknow mcq msg: {:?}", self.data.utf8());
-                Operation::Meta
-            }
-        }
+    pub(super) fn op_code(&self) -> OpCode {
+        self.op_code
     }
 
     #[inline]
@@ -91,10 +94,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Err(McqError::ReqInvalid.error())
     }
 
-    #[inline]
-    pub(super) fn state(&self) -> &ReqPacketState {
-        &self.state
-    }
+    // #[inline]
+    // pub(super) fn state(&self) -> &ReqPacketState {
+    //     &self.op_code
+    // }
 
     #[inline]
     fn current(&self) -> u8 {
@@ -102,11 +105,30 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.data.at(self.oft)
     }
 
-    // TODO：memcache 状态机，后续考虑优化状态机流程 fishermen
+    #[inline]
+    pub fn cmd_cfg(&self) -> &CommandProperties {
+        if let None = self.cmd_cfg {
+            log::error!("mcq cmd cfg should not be None here!");
+            panic!("mcq cmd cfg should not be None here!");
+        }
+        self.cmd_cfg.unwrap()
+    }
+
+    // TODO:
+    #[inline]
+    pub fn prepare_for_parse(&mut self) {
+        if self.available() {}
+    }
+
+    // TODO：简化 memcache 状态机，去掉对非mcq指令的字段解析
     pub(super) fn parse_req(&mut self) -> Result<()> {
-        let mut state = self.state;
+        let mut state = ReqPacketState::Start;
         let mut first_loop = true;
         let mut m;
+        let mut token = self.oft;; // 记录某个token，like key、flag等
+        let mut vlen = self.oft;;  // value len
+        // let mut unique_id;
+
         while self.available() {
             if first_loop {
                 first_loop = false;
@@ -123,57 +145,34 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         return Err(McqError::ReqInvalid.error());
                     }
 
-                    self.token = self.oft;
+                    token = self.oft;
                     state = ReqPacketState::ReqType;
                 }
                 ReqPacketState::ReqType => {
                     if self.current() == b' ' || self.current() == CR {
-                        let token = self.token;
-                        self.token = 0;
-                        self.msg_type = MsgType::Unknown;
+                        // token = self.token;
+                        // self.token = 0;
 
                         let cmd_len = self.oft - token;
-                        match cmd_len {
-                            3 => {
-                                if self.data.start_with(token, &"get ".as_bytes())? {
-                                    self.msg_type = MsgType::Get;
-                                } else if self.data.start_with(token, &"set ".as_bytes())? {
-                                    self.msg_type = MsgType::Set;
-                                }
-                            }
-                            4 => {
-                                if self.data.start_with(token, &"quit".as_bytes())? {
-                                    self.msg_type = MsgType::Quit;
-                                }
-                            }
-                            5 => {
-                                if self.data.start_with(token, &"stats".as_bytes())? {
-                                    self.msg_type = MsgType::Stats;
-                                }
-                            }
-                            6 => {
-                                if self.data.start_with(token, &"delete".as_bytes())? {
-                                    self.msg_type = MsgType::Delete;
-                                }
-                            }
-                            7 => {
-                                if self.data.start_with(token, &"version".as_bytes())? {
-                                    self.msg_type = MsgType::Version;
-                                }
-                            }
-                        }
-                        match self.msg_type {
-                            MsgType::Get | MsgType::Set | MsgType::Delete => {
+                        let cmd_name = self.data.sub_slice(token, cmd_len);
+                        let cfg = command::get_cfg(command::get_op_code(&cmd_name))?;
+                        self.op_code = cfg.op_code();
+                        let req_type = cfg.req_type();
+                        self.cmd_cfg = Some(cfg);
+
+                        // 对非单行指令过滤
+                        match req_type {
+                            RequestType::Get | RequestType::Set | RequestType::Delete => {
                                 if self.current() == CR {
                                     return Err(McqError::ReqInvalid.error());
                                 }
                                 state = ReqPacketState::SpacesBeforeKey;
                             }
-                            MsgType::Quit => {
+                            RequestType::Quit => {
                                 self.skip_back(1)?;
                                 state = ReqPacketState::CRLF;
                             }
-                            MsgType::Stats => {
+                            RequestType::Stats => {
                                 if self.current() == CR {
                                     self.skip_back(1)?;
                                     state = ReqPacketState::CRLF;
@@ -191,32 +190,34 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::SpacesBeforeKey => {
                     if self.current() != b' ' {
-                        self.token = self.oft;
-                        self.key_start = self.oft;
+                        token = self.oft;
+                        // key_start = self.oft;
                         state = ReqPacketState::Key;
                     }
                 }
                 ReqPacketState::Key => {
                     if self.current() == b' ' || self.current() == CR {
-                        let len = self.oft - self.token;
+                        let len = self.oft - token;
                         if len > MAX_KEY_LEN {
                             return Err(McqError::ReqInvalid.error());
                         }
-                        self.key_len = len;
-                        self.token = 0;
+                        // self.key_len = len;
+                        // self.token = 0;
+                        token = 0;
 
-                        if self.is_storage() {
+                        let req_type = self.cmd_cfg().req_type();
+                        if req_type.is_storage() {
                             state = ReqPacketState::SpacesBeforeFlags;
-                        } else if self.is_delete() {
+                        } else if req_type.is_delete() {
                             state = ReqPacketState::RunToCRLF;
-                        } else if self.is_retrieval() {
+                        } else if req_type.is_retrieval() {
                             state = ReqPacketState::SpacesBeforeKeys;
                         } else {
                             state = ReqPacketState::RunToCRLF;
                         }
 
                         if self.current() == CR {
-                            if self.is_storage() {
+                            if req_type.is_storage() {
                                 return Err(McqError::ReqInvalid.error());
                             }
                             // 回退1byte，方便后面解析CRLF
@@ -239,8 +240,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         if !self.current().is_ascii_digit() {
                             return Err(McqError::ReqInvalid.error());
                         }
-                        self.token = self.oft;
-                        self.flags = self.oft;
+                        token = self.oft;
+                        // self.flags = self.oft;
                         state = ReqPacketState::Flags;
                     }
                 }
@@ -248,8 +249,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if self.current().is_ascii_digit() {
                         break;
                     } else if self.current() == b' ' {
-                        self.flen = self.oft - self.flags;
-                        self.token = 0;
+                        // self.flen = self.oft - self.flags;
+                        // self.token = 0;
+                        token = 0;
                         state = ReqPacketState::SpacesBeforeExpire;
                     } else {
                         return Err(McqError::ReqInvalid.error());
@@ -260,7 +262,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         if !self.current().is_ascii_digit() {
                             return Err(McqError::ReqInvalid.error());
                         }
-                        self.token = self.oft;
+                        token = self.oft;
                         state = ReqPacketState::Expire;
                     }
                 }
@@ -268,7 +270,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if self.current().is_ascii_digit() {
                         break;
                     } else if self.current() == b' ' {
-                        self.token = 0;
+                        token = 0;
                         state = ReqPacketState::SpacesBeforeVlen;
                     } else {
                         return Err(McqError::ReqInvalid.error());
@@ -279,18 +281,18 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         if !self.current().is_ascii_digit() {
                             return Err(McqError::ReqInvalid.error());
                         }
-                        self.token = self.oft;
-                        self.vlen = (self.current() - b'0') as usize;
+                        token = self.oft;
+                        vlen = (self.current() - b'0') as usize;
                         state = ReqPacketState::Vlen;
                     }
                 }
                 ReqPacketState::Vlen => {
                     if self.current().is_ascii_digit() {
-                        self.vlen = self.vlen * 10 + (self.current() - b'0') as usize;
+                        vlen = vlen * 10 + (self.current() - b'0') as usize;
                     } else if self.current() == b' ' || self.current() == CR {
-                        self.real_vlen = self.vlen;
+                        // self.real_vlen = self.vlen;
                         self.skip_back(1)?;
-                        self.token = 0;
+                        token = 0;
                         state = ReqPacketState::RunToCRLF;
                     } else {
                         return Err(McqError::ReqInvalid.error());
@@ -358,27 +360,30 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         return Err(McqError::ReqInvalid.error());
                     }
                 }
-                ReqPacketState::RunToCRLF => match self.current() {
-                    b' ' => break,
-                    b'n' => {
-                        if self.is_storage() || self.is_delete() {
-                            self.token = 0;
-                            state = ReqPacketState::Noreply;
-                        } else {
+                ReqPacketState::RunToCRLF => {
+                    let req_type = self.cmd_cfg().req_type();
+                    match self.current() {
+                        b' ' => break,
+                        b'n' => {
+                            if req_type.is_storage() || req_type.is_delete() {
+                                self.token = 0;
+                                state = ReqPacketState::Noreply;
+                            } else {
+                                return Err(McqError::ReqInvalid.error());
+                            }
+                        }
+                        CR => {
+                            if req_type.is_storage() {
+                                state = ReqPacketState::RunToVal;
+                            } else {
+                                state = ReqPacketState::AlmostDone;
+                            }
+                        }
+                        _ => {
                             return Err(McqError::ReqInvalid.error());
                         }
                     }
-                    CR => {
-                        if self.is_storage() {
-                            state = ReqPacketState::RunToVal;
-                        } else {
-                            state = ReqPacketState::AlmostDone;
-                        }
-                    }
-                    _ => {
-                        return Err(McqError::ReqInvalid.error());
-                    }
-                },
+                }
                 ReqPacketState::Noreply => {
                     if self.current() == b' ' || self.current() == CR {
                         m = self.token;
@@ -389,7 +394,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                                 .sub_slice(m, nrlen)
                                 .start_with(m, &"noreply".as_bytes())?
                         {
-                            assert!(self.is_storage() || self.is_delete());
+                            let req_type = self.cmd_cfg().req_type();
+                            assert!(req_type.is_storage() || req_type.is_delete());
+
                             self.token = 0;
                             self.noreply = true;
                             state = ReqPacketState::AfterNoreply;
@@ -402,7 +409,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 ReqPacketState::AfterNoreply => match self.current() {
                     b' ' => break,
                     CR => {
-                        if self.is_storage() {
+                        let req_type = self.cmd_cfg().req_type();
+                        if req_type.is_storage() {
                             state = ReqPacketState::RunToVal;
                         } else {
                             state = ReqPacketState::AlmostDone;
@@ -434,42 +442,24 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
         self.stream.take(data.len())
     }
+}
 
-    // 后续可能会有更多指令支持
-    #[inline]
-    fn is_storage(&self) -> bool {
-        match self.msg_type {
-            MsgType::Set => true,
-            _ => false,
-        }
-    }
+pub trait Packet {
+    fn line(&self, oft: &mut usize) -> crate::Result<()>;
+}
 
-    #[inline]
-    fn is_delete(&self) -> bool {
-        match self.msg_type {
-            MsgType::Delete => true,
-            _ => false,
-        }
-    }
-
-    // 后续可能会有更多指令支持
-    #[inline]
-    fn is_retrieval(&self) -> bool {
-        match self.msg_type {
-            MsgType::Get => true,
-            _ => false,
-        }
-    }
-
-    fn noforward(&self) -> bool {
-        match self.msg_type {
-            MsgType::Quit | MsgType::Version => true,
-            _ => false,
+impl Packet for RingSlice {
+    fn line(&self, oft: &mut usize) -> crate::Result<()> {
+        if let Some(idx) = self.find_lf_cr(*oft) {
+            *oft = idx +2;
+            Ok(())
+        } else {
+            Err(crate::Error::ProtocolIncomplete)
         }
     }
 }
-
 // mcq 解析时状态
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum ReqPacketState {
     Start = 1,
     ReqType,
@@ -493,15 +483,4 @@ pub(crate) enum ReqPacketState {
     Noreply,
     AfterNoreply,
     AlmostDone,
-}
-
-// mcq2 目前只支持如下指令
-pub(crate) enum MsgType {
-    Unknown,
-    Get,
-    Set,
-    Delete,
-    Stats,
-    Version,
-    Quit,
 }
