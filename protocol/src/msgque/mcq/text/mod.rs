@@ -32,7 +32,6 @@ impl McqText {
         while packet.available() {
             packet.parse_req()?;
             let cfg = packet.cmd_cfg();
-
             let mut flag = Flag::from_op(cfg.op_code(), cfg.operation().clone());
 
             // mcq 总是需要重试，确保所有消息写成功
