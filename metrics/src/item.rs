@@ -8,6 +8,16 @@ use crate::{Id, ItemData};
 
 pub(crate) trait ItemWriter {
     fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64);
+    fn write_opts(
+        &mut self,
+        name: &str,
+        key: &str,
+        sub_key: &str,
+        val: f64,
+        _opts: Vec<(&str, &str)>,
+    ) {
+        self.write(name, key, sub_key, val);
+    }
 }
 
 use lazy_static::lazy_static;
