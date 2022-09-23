@@ -88,17 +88,20 @@ pub struct ContextOption {
     pub whitelist_host: String,
 }
 
-const VERSION: &'static str = git_version::git_version!();
 lazy_static! {
-    static ref SHORT_VERSION: &'static str = {
-        let mut idx = VERSION.rfind('-').unwrap_or(0);
-        if &VERSION[idx..] == "-modified" && idx > 0 {
-            idx = VERSION[0..idx].rfind('-').unwrap_or(0);
+    // rmlog-760-g3a7a12b-modified
+    // 取 g3a7a12b-modified
+    static ref SHORT_VERSION: String = {
+        let full = git_version::git_version!();
+        let fields:Vec<&str> = full.split('-').collect();
+        let len = fields.len();
+        let last = *fields.get(len-1).unwrap_or(&"");
+        if last == "modified" {
+            let second_last = fields.get(len-2).unwrap_or(&"");
+            format!("{}_{}", second_last, last)
+        } else {
+            last.to_string()
         }
-        if idx < VERSION.len() && VERSION.as_bytes()[idx] == b'-' {
-            idx += 1
-        }
-        &VERSION[idx..]
     };
     static ref CONTEXT: Context = {
         let ctx = ContextOption::from_os_args();
