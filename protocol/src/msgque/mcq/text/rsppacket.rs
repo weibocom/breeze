@@ -1,6 +1,6 @@
 use ds::RingSlice;
 
-use crate::Result;
+use crate::{Result, Utf8};
 
 use super::error::McqError;
 const CR: u8 = 13;
@@ -144,6 +144,10 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                                 } else if self.data.start_with(m, &"SERVER_ERROR".as_bytes())? {
                                     self.rsp_type = RspType::ServerError;
                                 }
+                            }
+                            _ => {
+                                log::warn!("found malformed rsp: {:?}", self.data.utf8());
+                                return Err(super::Error::ResponseProtocolInvalid);
                             }
                         }
                         match self.rsp_type {
@@ -357,6 +361,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 enum RspPacketState {
     Start,
     RspNum,
