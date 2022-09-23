@@ -81,7 +81,7 @@ pub struct ContextOption {
     pub log_level: String,
 
     #[clap(long, help("service pool"), default_value("default_pool"))]
-    service_pool: String,
+    pub service_pool: String,
 
     // api参数，目前只有这一个差异参数，先放这里
     #[clap(long, help("api whitelist host"), default_value("localhost"))]
@@ -149,9 +149,6 @@ impl ContextOption {
     }
     pub fn discovery(&self) -> Url {
         self.discovery.clone()
-    }
-    pub fn service_path(&self) -> String {
-        self.service_path.clone()
     }
     pub fn metrics_url(&self) -> String {
         self.metrics_url.clone().unwrap_or_default()
