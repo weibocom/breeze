@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::buffer::StreamGuard;
 
-use metrics::{Metric, Path};
+use metrics::Metric;
 
 pub(crate) struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
@@ -25,6 +25,7 @@ pub(crate) struct Handler<'r, Req, P, S> {
     num_tx: usize,
 
     rtt: Metric,
+    slow: Metric,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
@@ -48,7 +49,13 @@ where
     }
 }
 impl<'r, Req, P, S> Handler<'r, Req, P, S> {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, path: &Path) -> Self
+    pub(crate) fn from(
+        data: &'r mut Receiver<Req>,
+        s: S,
+        parser: P,
+        rtt: Metric,
+        slow: Metric,
+    ) -> Self
     where
         S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
     {
@@ -59,7 +66,8 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
             s,
             parser,
             buf: StreamGuard::new(),
-            rtt: path.rtt("req"),
+            rtt,
+            slow,
             num_rx: 0,
             num_tx: 0,
         }
@@ -112,7 +120,11 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
-                        self.rtt += req.start_at().elapsed();
+                        let rtt = req.start_at().elapsed();
+                        self.rtt += rtt;
+                        if rtt >= metrics::MAX {
+                            self.slow += rtt;
+                        }
                         debug_assert!(
                             self.parser.check(req.cmd(), &cmd),
                             "{:?} {:?} => {:?}",

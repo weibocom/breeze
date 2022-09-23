@@ -27,7 +27,7 @@ pub(super) async fn process_one(
     // 注册，定期更新配置
     discovery.send(tx)?;
 
-    let mut listen_failed = Path::new(vec![quard.service().to_string()]).status("listen_failed");
+    let mut listen_failed = Path::new(vec![quard.protocol(),&quard.biz()]).status("listen_failed");
 
     // 等待初始化完成
     let mut tries = 0usize;

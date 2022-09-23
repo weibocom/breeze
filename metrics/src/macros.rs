@@ -57,7 +57,7 @@ impl<T: ToNumber> MetricData for (T, T) {
 }
 
 use crate::Metric;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Path {
     path: Vec<String>,
 }
@@ -76,12 +76,16 @@ impl Path {
         let mut s: String = String::with_capacity(256);
         for name in self.path.iter() {
             s += &crate::encode_addr(name.as_ref());
-            s.push('.');
+            s.push(crate::TARGET_SPLIT as char);
         }
         s.pop();
         s.shrink_to_fit();
         let id = Id { path: s, key, t };
         crate::register_metric(id)
+    }
+    pub fn push(mut self, name: &str) -> Self {
+        self.path.push(name.to_string());
+        self
     }
 }
 
