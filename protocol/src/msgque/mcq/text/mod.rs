@@ -107,8 +107,9 @@ impl Protocol for McqText {
 
         if rsp.len() > 0 {
             log::debug!(
-                "+++ will write padding rsp/{} for req:{:?}",
+                "+++ will write padding rsp/{} for req/{}:{:?}",
                 rsp,
+                cfg.name(),
                 req.data().utf8(),
             );
             w.write(rsp.as_bytes())
