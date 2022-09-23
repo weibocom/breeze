@@ -32,6 +32,7 @@ rlimit = "0.3.0"
 
 # rocket for restful api
 rocket = { version = "0.5.0-rc.2", features = ["json"] }
+rocket_async_compression = "0.1.0"
 
 [features]
 default = ["prometheus"]
