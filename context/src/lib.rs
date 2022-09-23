@@ -101,7 +101,7 @@ lazy_static! {
         &VERSION[idx..]
     };
     static ref CONTEXT: Context = {
-        let ctx = ContextOption::parse();
+        let ctx = ContextOption::from_os_args();
         ctx.check().expect("context check failed");
         let ctx = Context::from(ctx);
         ctx

@@ -39,7 +39,7 @@ impl<'r> Responder<'r, 'r> for PrometheusMetricsResponse {
                 let stream: ReaderStream<Prometheus> = metrics.into();
                 return response.streamed_body(stream).ok()
             }
-            response.header(Header::new("too-frequently", secs.to_string()));
+            return response.header(Header::new("too-frequently", secs.to_string())).ok()
         }
         response.header(Header::new("lock", "failed")).ok()
     }
