@@ -30,10 +30,14 @@ impl CommandProperties {
     pub fn req_type(&self) -> &RequestType {
         &self.req_type
     }
-
+    #[inline]
     pub fn padding_rsp(&self) -> &str {
         assert!((self.padding_rsp as usize) < PADDING_RSP_TABLE.len());
         PADDING_RSP_TABLE.get(self.padding_rsp as usize).unwrap()
+    }
+    #[inline]
+    pub fn name(&self) -> &str {
+        self.name
     }
 }
 
@@ -66,14 +70,14 @@ impl Commands {
             hash: Bkdr::default(),
         }
     }
-    #[inline]
-    pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
-        let uppercase = UppercaseHashKey::new(name);
-        let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
-        // op_code 0表示未定义。不存在
-        assert_ne!(idx, 0);
-        idx as u16
-    }
+    // #[inline]
+    // pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
+    //     let uppercase = UppercaseHashKey::new(name);
+    //     let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
+    //     // op_code 0表示未定义。不存在
+    //     assert_ne!(idx, 0);
+    //     idx as u16
+    // }
     #[inline]
     pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
         assert!((op_code as usize) < self.supported.len());
@@ -89,6 +93,8 @@ impl Commands {
     pub(crate) fn get_by_name(&self, cmd: &ds::RingSlice) -> crate::Result<&CommandProperties> {
         let uppercase = UppercaseHashKey::new(cmd);
         let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
+        // op_code 0表示未定义。不存在
+        assert_ne!(idx, 0);
         self.get_by_op(idx as u16)
     }
 
@@ -119,8 +125,8 @@ impl Commands {
 }
 
 #[inline]
-pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
-    SUPPORTED.get_op_code(cmd)
+pub(super) fn get_cfg_by_name<'a>(cmd: &ds::RingSlice) -> crate::Result<&'a CommandProperties> {
+    SUPPORTED.get_by_name(cmd)
 }
 #[inline]
 pub(super) fn get_cfg<'a>(op_code: u16) -> crate::Result<&'a CommandProperties> {

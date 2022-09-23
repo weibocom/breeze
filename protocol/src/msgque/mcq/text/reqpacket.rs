@@ -1,8 +1,6 @@
 use ds::RingSlice;
-use lazy_static::__Deref;
-use sharding::hash::{Bkdr, Hash};
 
-use crate::{msgque::mcq::text::reqpacket, OpCode, Result, Utf8};
+use crate::Result;
 
 use super::{
     command::{self, CommandProperties, RequestType},
@@ -147,7 +145,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     self.data.token(&mut self.oft, 0)?;
                     // 解析cmd
                     let cmd_name = self.data.sub_slice(token, (self.oft - token));
-                    let cfg = command::get_cfg(command::get_op_code(&cmd_name))?;
+                    let cfg = command::get_cfg_by_name(&cmd_name)?;
                     let req_type = cfg.req_type();
                     self.cmd_cfg = Some(cfg);
 
@@ -299,7 +297,8 @@ impl Packet for RingSlice {
             let c = self.at(i);
             if c == b' ' || c == CR {
                 // token的长度不能为0
-                if i == *oft {
+                let len = i - *oft;
+                if len == 0 || len >= max_len {
                     return Err(error::McqError::ReqInvalid.error());
                 }
 
