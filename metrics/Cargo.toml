@@ -17,7 +17,10 @@ tokio = { version = "1.21.1", features = ["full"] }
 lazy_static = "1.4.0"
 array-init = "2"
 psutil = { version = "3.2.1", default-features = false, features = ["cpu", "process"] }
+futures = "*"
+cfg-if = "*"
 
 
 [features]
 mock-local-ip = []
+encode-addr = []

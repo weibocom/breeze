@@ -70,7 +70,11 @@ impl Metrics {
     fn cap(&self) -> usize {
         self.chunks.len() * CHUNK_SIZE
     }
-    fn get_item(&self, idx: usize) -> &Item {
+    #[inline]
+    pub(crate) fn len(&self) -> usize {
+        self.len
+    }
+    pub(crate) fn get_item(&self, idx: usize) -> &Item {
         assert!(idx < self.len);
         assert!(idx < self.cap());
         let slot = idx / CHUNK_SIZE;

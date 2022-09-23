@@ -16,7 +16,6 @@ const PATH_META: &str = "meta";
 #[derive(Debug, Default, Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct Meta {
-    base_path: String,
     sock_path: String,
     snapshot_path: String,
 
@@ -123,24 +122,12 @@ pub async fn listener(service: &str, cip: IpAddr) -> Json<HashMap<String, String
 
 impl Meta {
     fn from_evn() -> Self {
-        let base_path = props::get_prop("base_path", "/data1/breeze/");
-        let sock_path = format!("{}/{}", base_path, "socks");
-        let snapshot_path = format!("{}/{}", base_path, "snapshot");
-
-        let version = props::get_prop("version", "unknown");
-
-        log::info!(
-            "+++ base path: {}, sock:{}, snapshot: {}",
-            base_path,
-            sock_path,
-            snapshot_path
-        );
+        let ctx = &context::get();
         Self {
-            base_path: base_path.to_string(),
-            sock_path,
-            snapshot_path,
+            sock_path: ctx.service_path.clone(),
+            snapshot_path: ctx.snapshot_path.clone(),
 
-            version: version.to_string(),
+            version: ctx.short_version.to_string(),
             sockfiles: Default::default(),
         }
     }

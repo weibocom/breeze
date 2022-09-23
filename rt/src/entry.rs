@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use ds::ready;
-use metrics::{Metric, Path, BASE_PATH};
+use metrics::{Metric, Path};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     time::{interval, Interval, MissedTickBehavior},
@@ -74,7 +74,7 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
         let mut refresh_tick = interval(Duration::from_secs(3));
         refresh_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-        let m_reenter = Path::new(vec![BASE_PATH]).rtt("reenter10ms");
+        let m_reenter = Path::base().rtt("reenter10ms");
         Self {
             inner: f,
             last: Instant::now(),

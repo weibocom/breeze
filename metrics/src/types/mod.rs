@@ -10,5 +10,6 @@ pub use host::{decr_task, incr_task, set_sockfile_failed};
 pub(crate) use number::*;
 pub(crate) use qps::*;
 pub(crate) use ratio::*;
+pub use rtt::MAX;
 pub(crate) use rtt::*;
 pub(crate) use status::*;

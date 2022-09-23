@@ -6,6 +6,7 @@ mod ip;
 mod item;
 mod macros;
 mod packet;
+pub mod prometheus;
 mod register;
 mod sender;
 mod types;

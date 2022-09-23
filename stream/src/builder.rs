@@ -31,7 +31,7 @@ impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for Backe
         let init: Switcher = false.into();
         let f = finish.clone();
         let path_prefix = rsrc.name().to_string() + "_backend";
-        let path = Path::new(vec![path_prefix.as_str(), service, addr]);
+        let path = Path::new(vec![path_prefix.as_str(), service]);
         let single = Arc::new(AtomicBool::new(false));
         let mut checker = BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout);
         let s = single.clone();

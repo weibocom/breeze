@@ -21,15 +21,22 @@ ds = { path = "../ds" }
 api = { path = "../api" }
 
 backtrace = "0.3.63"
+lazy_static = "1.4.0"
 
 tokio = { version = "1.21.1", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
 mimalloc = { version = "*", default-features = false }
 cfg-if = "*"
+once_cell = "*"
 
 rlimit = "0.3.0"
 
 # rocket for restful api
 rocket = { version = "0.5.0-rc.2", features = ["json"] }
+rocket_async_compression = "0.1.0"
 
 [features]
-restful_api_enable = []
+default = ["prometheus"]
+http = []
+console-api = ["http"]
+graphite = []
+prometheus = ["http"]

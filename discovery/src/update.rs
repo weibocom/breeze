@@ -20,10 +20,10 @@ pub async fn watch_discovery<D, T>(
 {
     let cache = DiscoveryCache::new(discovery);
     let mut refresher = Refresher {
-        snapshot: snapshot,
+        snapshot,
         discovery: cache,
-        rx: rx,
-        tick: tick,
+        rx,
+        tick,
         cb,
     };
     refresher.watch().await
