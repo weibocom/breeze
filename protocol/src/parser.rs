@@ -3,6 +3,7 @@ use enum_dispatch::enum_dispatch;
 use sharding::hash::Hash;
 
 use crate::memcache::MemcacheBinary;
+use crate::msgque::MsgQue;
 use crate::phantom::Phantom;
 use crate::redis::Redis;
 use crate::{Error, Flag, Result};
@@ -12,6 +13,7 @@ pub enum Parser {
     McBin(MemcacheBinary),
     Redis(Redis),
     Phantom(Phantom),
+    MsgQue(MsgQue),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
@@ -19,6 +21,7 @@ impl Parser {
             "mc" => Ok(Self::McBin(Default::default())),
             "redis" => Ok(Self::Redis(Default::default())),
             "phantom" => Ok(Self::Phantom(Default::default())),
+            "msgque" => Ok(Self::MsgQue(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }
