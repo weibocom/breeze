@@ -6,7 +6,7 @@ use crate::{OpCode, Operation};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CommandProperties {
-    name: &'static str,
+    pub(crate) name: &'static str,
     req_type: RequestType,
     op_code: OpCode,
     op: Operation,

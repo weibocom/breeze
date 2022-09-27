@@ -1,5 +1,6 @@
 use ds::RingSlice;
 
+use crate::utf8::Utf8;
 use crate::Result;
 
 use super::{error::McqError, reqpacket::Packet};
@@ -240,6 +241,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                 },
                 RspPacketState::AlmostDone => {
                     if self.current() == LF {
+                        self.skip(1)?;
                         return Ok(());
                     }
                     return Err(McqError::RspInvalid.error());

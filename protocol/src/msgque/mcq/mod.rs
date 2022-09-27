@@ -1,2 +1,2 @@
-pub mod binary;
+// pub mod binary;
 pub mod text;

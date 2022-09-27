@@ -5,15 +5,15 @@ mod rsppacket;
 
 use crate::msgque::mcq::text::rsppacket::RspPacket;
 use crate::{
-    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
-    Writer,
+    utf8::Utf8, Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result,
+    Stream, Writer,
 };
 
 use sharding::hash::Hash;
 
 use self::reqpacket::RequestPacket;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct McqText;
 
 impl McqText {
@@ -115,7 +115,7 @@ impl Protocol for McqText {
             log::debug!(
                 "+++ will write padding rsp/{} for req/{}:{:?}",
                 rsp,
-                cfg.name(),
+                cfg.name,
                 req.data().utf8(),
             );
             w.write(rsp.as_bytes())?;

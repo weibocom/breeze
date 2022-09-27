@@ -49,7 +49,7 @@ impl Namespace {
         log::debug!("mq/{} parsing - cfg: {}", _namespace, cfg);
         match serde_yaml::from_str::<Namespace>(cfg) {
             Err(_e) => {
-                log::warn!("parse ns/{} failed: {:?}, cfg: {}", namespace, _e, cfg);
+                log::warn!("parse ns/{} failed: {:?}, cfg: {}", _namespace, _e, cfg);
                 return None;
             }
             Ok(mut ns) => {
@@ -62,7 +62,7 @@ impl Namespace {
                 ns.collect_queue(32768, ns.que_32768.clone());
 
                 if ns.sized_queue.len() == 0 {
-                    log::warn!("no queue for {}: {}", namespace, cfg);
+                    log::warn!("no queue for {}: {}", _namespace, cfg);
                     return None;
                 }
 
