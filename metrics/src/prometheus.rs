@@ -111,7 +111,18 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
     }
 }
 impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
+    #[inline]
     fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64) {
+        self.write_opts(name, key, sub_key, val, Vec::new());
+    }
+    fn write_opts(
+        &mut self,
+        name: &str,
+        key: &str,
+        sub_key: &str,
+        val: f64,
+        opts: Vec<(&str, &str)>,
+    ) {
         /*
         三种类型
               name                                              key         sub_key         result
@@ -168,10 +179,18 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
             self.put_slice(b"\",");
         }
         self.put_slice(b"pool=\"");
-        self.put_slice(context::get().service_pool().as_bytes());
+        self.put_slice(context::get().service_pool.as_bytes());
         self.put_slice(b"\",");
         self.put_slice(b"ip=\"");
         self.put_slice(super::ip::local_ip().as_bytes());
+
+        for (k, v) in opts {
+            self.put_slice(b"\",");
+            self.put_slice(k.as_bytes());
+            self.put_slice(b"=\"");
+            self.put_slice(v.as_bytes());
+        }
+
         self.put_slice(b"\"}");
 
         //value && timestamp

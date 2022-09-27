@@ -39,7 +39,7 @@ impl Host {
 
         let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
         w.write(BASE_PATH, "task", "num", tasks);
-        w.write(BASE_PATH, "version", self.version, 1.0);
+        w.write_opts(BASE_PATH, "version", "", 1.0, vec![("git", self.version)]);
         w.write(
             BASE_PATH,
             "host",
