@@ -7,14 +7,16 @@ use tokio::net::UdpSocket;
 pub struct PacketBuffer {
     idx: usize,
     buff: Vec<u8>, // 没有在请求的关键路径上。是异步发送metrics
+    service_pool: String,
     pub(crate) addr: String,
     socket: Option<UdpSocket>,
 }
 
 impl PacketBuffer {
-    pub fn new(addr: String) -> Self {
+    pub fn new(addr: String, service_pool: String) -> Self {
         Self {
             addr,
+            service_pool,
             ..Default::default()
         }
     }
