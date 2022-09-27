@@ -6,7 +6,6 @@ use super::{
     command::{self, CommandProperties, RequestType},
     error::{self, McqError},
 };
-use crate::utf8::Utf8;
 
 const CR: u8 = 13;
 const LF: u8 = 10;

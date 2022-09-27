@@ -191,7 +191,8 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     if token >= self.data.len() {
                         return Err(super::Error::ProtocolIncomplete);
                     }
-                    match self.data.at(token) {
+                    self.skip(vlen)?;
+                    match self.current() {
                         CR => {
                             state = RspPacketState::ValLF;
                         }
@@ -207,12 +208,15 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     }
                 }
                 RspPacketState::End => {
-                    if token == 0 {
-                        if self.current() != b'E' {
-                            return Err(McqError::RspInvalid.error());
-                        }
-                        token = self.oft;
-                    } else if self.current() == CR {
+                    assert!(token == 0);
+                    if self.current() != b'E' {
+                        return Err(McqError::RspInvalid.error());
+                    }
+                    // 当前只有VAL后的END这种场景，此时oft肯定大于0
+                    token = self.oft;
+
+                    self.data.token(&mut self.oft, 0)?;
+                    if self.current() == CR {
                         let tlen = self.oft - token;
                         if tlen == 3 {
                             if self.data.start_with(token, &"END\r".as_bytes())? {
