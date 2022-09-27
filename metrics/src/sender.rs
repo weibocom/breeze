@@ -22,7 +22,7 @@ impl Sender {
         log::info!("task started ==> metric sender");
 
         Self {
-            packet: PacketBuffer::new(addr.to_string()),
+            packet: PacketBuffer::new(addr.to_string(), context::get().service_pool.to_string()),
             last: Instant::now(),
             tick: interval(cycle),
             host: super::Host::new(),
