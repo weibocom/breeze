@@ -13,6 +13,7 @@ mod service;
 use discovery::*;
 mod init;
 
+use rocket::serde::json::serde_json::to_string;
 use rt::spawn;
 use std::time::Duration;
 
@@ -41,18 +42,18 @@ fn main() -> Result<()> {
 
 async fn run() -> Result<()> {
     let ctx = context::get();
-    let _l = service::listener_for_supervisor(ctx.port()).await?;
+    let _l = service::listener_for_supervisor(ctx.port).await?;
 
     // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
     let dns_resolver = DnsResolver::new();
-    let discovery = discovery::Discovery::from_url(ctx.discovery());
+    let discovery = discovery::Discovery::from_url(&ctx.discovery);
     let (tx, rx) = ds::chan::bounded(128);
     let snapshot = ctx.snapshot_path.to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
-    fix.register(ctx.idc_path(), discovery::distance::build_refresh_idc());
+    fix.register(&ctx.idc_path, discovery::distance::build_refresh_idc());
 
-    init::start_metrics_sender_task();
+    init::start_metrics_sender_task(ctx);
     init::start_metrics_register_task(ctx);
     rt::spawn(discovery::dns::start_dns_resolver_refresher(dns_resolver));
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));

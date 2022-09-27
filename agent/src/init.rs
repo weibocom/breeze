@@ -34,7 +34,7 @@ pub(crate) fn init_panic_hook() {
 }
 pub(crate) fn init_log(ctx: &Context) {
     // 提前初始化log，避免延迟导致的异常
-    if let Err(e) = log::init(ctx.log_dir(), &ctx.log_level) {
+    if let Err(e) = log::init(&ctx.log_dir, &ctx.log_level) {
         panic!("log init failed: {:?}", e);
     }
 }
@@ -42,11 +42,11 @@ pub(crate) fn init_local_ip(ctx: &Context) {
     metrics::init_local_ip(&ctx.metrics_probe);
 }
 
-pub(crate) fn start_metrics_sender_task() {
+pub(crate) fn start_metrics_sender_task(_ctx: &Context) {
     #[cfg(feature = "graphite")]
     rt::spawn(metrics::Sender::new(
-        context::get().metrics_url,
-        context::get().service_pool,
+        _ctx.metrics_url,
+        _ctx.service_pool,
         std::time::Duration::from_secs(10),
     ));
 }
