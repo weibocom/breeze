@@ -157,7 +157,12 @@ where
             // 计算重试次数，如果还有未读完的继续，否则停止try
             req.try_next(rw_count < READ_RETRY_COUNT);
             *req.mut_context() = ctx.ctx;
-
+            log::debug!(
+                "+++ mcq {} get from idx/{} req: {:?}",
+                rw_count,
+                idx,
+                req.data().utf8()
+            );
             self.streams_read.get(idx).unwrap().1.send(req);
             return;
         }
