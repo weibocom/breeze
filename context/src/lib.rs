@@ -68,7 +68,7 @@ pub struct ContextOption {
     log_dir: String,
 
     #[clap(short, long, help("metrics url"))]
-    metrics_url: Option<String>,
+    pub metrics_url: Option<String>,
 
     #[clap(
         long,
@@ -150,14 +150,9 @@ impl ContextOption {
     pub fn discovery(&self) -> Url {
         self.discovery.clone()
     }
-    pub fn metrics_url(&self) -> String {
-        self.metrics_url.clone().unwrap_or_default()
-    }
+
     pub fn idc_path(&self) -> String {
         self.idc_path.clone()
-    }
-    pub fn service_pool(&self) -> String {
-        self.service_pool.clone()
     }
 }
 

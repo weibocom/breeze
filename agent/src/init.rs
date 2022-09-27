@@ -42,11 +42,11 @@ pub(crate) fn init_local_ip(ctx: &Context) {
     metrics::init_local_ip(&ctx.metrics_probe);
 }
 
-pub(crate) fn start_metrics_sender_task(_ctx: &Context) {
+pub(crate) fn start_metrics_sender_task() {
     #[cfg(feature = "graphite")]
     rt::spawn(metrics::Sender::new(
-        &_ctx.metrics_url(),
-        &_ctx.service_pool(),
+        context::get().metrics_url,
+        context::get().service_pool,
         std::time::Duration::from_secs(10),
     ));
 }
