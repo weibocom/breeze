@@ -44,7 +44,7 @@ pub enum Discovery {
     Vintage(Vintage),
 }
 impl Discovery {
-    pub fn from_url(url: Url) -> Self {
+    pub fn from_url(url: &Url) -> Self {
         let schem = url.scheme();
         let http = Self::copy_url_to_http(&url);
         match schem {
