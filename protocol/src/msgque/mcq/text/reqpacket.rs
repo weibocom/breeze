@@ -6,6 +6,7 @@ use super::{
     command::{self, CommandProperties, RequestType},
     error::{self, McqError},
 };
+use crate::utf8::Utf8;
 
 const CR: u8 = 13;
 const LF: u8 = 10;
@@ -136,7 +137,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if !self.current().is_ascii_lowercase() {
                         return Err(McqError::ReqInvalid.error());
                     }
-
                     token = self.oft;
                     state = ReqPacketState::ReqType;
                 }
@@ -244,6 +244,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::AlmostDone => {
                     if self.current() == LF {
+                        // skip掉LF，进入新的req位置
+                        self.skip(1)?;
                         return Ok(());
                     }
                     return Err(McqError::ReqInvalid.error());
@@ -298,7 +300,7 @@ impl Packet for RingSlice {
             if c == b' ' || c == CR {
                 // token的长度不能为0
                 let len = i - *oft;
-                if len == 0 || len >= max_len {
+                if len == 0 || (max_len > 0 && len >= max_len) {
                     return Err(error::McqError::ReqInvalid.error());
                 }
 

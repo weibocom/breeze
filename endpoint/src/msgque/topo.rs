@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 
-use protocol::{Endpoint, Topology};
+use protocol::{Endpoint, Topology, Utf8};
 use sharding::hash::{Hasher, HASH_PADDING};
 
 // 读miss后的重试次数
@@ -143,8 +143,8 @@ where
         // 注意优先读取offline
         if req.operation().is_retrival() {
             // 避免处理req时，topo变更了
-            let idx = self.read_idx_next.fetch_add(1, Ordering::Relaxed);
-            if idx >= 1000000 {
+            let mut idx = self.read_idx_next.fetch_add(1, Ordering::Relaxed);
+            if idx >= 10000000 {
                 let _ = self.read_idx_next.compare_exchange(
                     idx,
                     0,
@@ -152,6 +152,7 @@ where
                     Ordering::Relaxed,
                 );
             }
+            idx = idx % self.streams_read.len();
 
             // 计算重试次数，如果还有未读完的继续，否则停止try
             req.try_next(rw_count < READ_RETRY_COUNT);
