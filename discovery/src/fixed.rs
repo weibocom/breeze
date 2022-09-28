@@ -18,9 +18,8 @@ impl Fixed {
             }
         }
     }
-    pub fn register(&mut self, path: &str, cb: impl Fn(&str) + 'static + Send + Sync) {
-        self.cbs
-            .push((path.to_string(), "".to_string(), Box::new(cb)));
+    pub fn register(&mut self, path: String, cb: impl Fn(&str) + 'static + Send + Sync) {
+        self.cbs.push((path, "".to_string(), Box::new(cb)));
     }
 }
 
