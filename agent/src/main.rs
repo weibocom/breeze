@@ -51,7 +51,10 @@ async fn run() -> Result<()> {
     let snapshot = ctx.snapshot_path.to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
-    fix.register(&ctx.idc_path, discovery::distance::build_refresh_idc());
+    fix.register(
+        ctx.idc_path.to_string(),
+        discovery::distance::build_refresh_idc(),
+    );
 
     init::start_metrics_sender_task(ctx);
     init::start_metrics_register_task(ctx);
