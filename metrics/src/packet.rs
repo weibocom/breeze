@@ -7,16 +7,12 @@ use tokio::net::UdpSocket;
 pub struct PacketBuffer {
     idx: usize,
     buff: Vec<u8>, // 没有在请求的关键路径上。是异步发送metrics
-    pub(crate) addr: String,
-    service_pool: String,
     socket: Option<UdpSocket>,
 }
 
 impl PacketBuffer {
-    pub fn new(addr: String, service_pool: String) -> Self {
+    pub fn new() -> Self {
         Self {
-            addr,
-            service_pool,
             ..Default::default()
         }
     }
@@ -40,7 +36,7 @@ impl PacketBuffer {
     fn _poll_flush(&mut self, cx: &mut Context) -> Poll<std::io::Result<()>> {
         if self.socket.is_none() {
             let sock = std::net::UdpSocket::bind("0.0.0.0:34254")?;
-            sock.connect(&self.addr)?;
+            sock.connect(context::get().metrics_url.as_ref().unwrap())?;
             self.socket = Some(UdpSocket::from_std(sock)?);
         }
         if let Some(ref mut sock) = self.socket.as_mut() {
@@ -69,7 +65,7 @@ impl crate::item::ItemWriter for PacketBuffer {
         use ds::Buffer;
         let buff = &mut self.buff;
         buff.write("breeze.");
-        buff.write(self.service_pool.as_str());
+        buff.write(&context::get().service_pool);
         buff.write(".");
         buff.write(super::ip::local_ip());
         buff.write(".");
