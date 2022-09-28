@@ -20,20 +20,6 @@ pub(super) struct RequestPacket<'a, S> {
 
     // 生命周期为开始解析当前req，到下一个req解析开始
     cmd_cfg: Option<&'a CommandProperties>,
-    // op_code: OpCode, // u16 commdProps的idx
-    // TODO 这些字段暂时保留，确认不需要后，清理 fishermen
-    // state: ReqPacketState,
-    // key_start: usize,
-    // key_len: usize,
-    // token: usize,
-    // flags: usize,
-    // flen: usize,
-    // vlen: usize,
-    // real_vlen: usize,
-    // unique_id: usize,
-    // unique_id_len: usize,
-    // val_start: usize,
-    // noreply: bool,
 }
 
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
@@ -45,22 +31,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             data,
             oft_last: 0,
             oft: 0,
-            // op_code: 0, // 即Commands中cmd props的idx
             cmd_cfg: None,
-            // 有需要再打开，验证完毕后再清理
-            // state: ReqPacketState::Start,
-            // key_start: 0,
-            // key_len: 0,
-            // token: 0,
-            // flags: 0,
-            // flen: 0,
-            // vlen: 0,
-            // real_vlen: 0,
-            // unique_id: 0,
-            // unique_id_len: 0,
-            // val_start: 0,
-            // noreply: false,
-            // msg_type: MsgType::Unknown,
         }
     }
 
@@ -68,11 +39,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(super) fn available(&self) -> bool {
         self.oft < self.data.len()
     }
-
-    // #[inline]
-    // pub(super) fn op_code(&self) -> OpCode {
-    //     self.op_code
-    // }
 
     #[inline]
     fn skip(&mut self, count: usize) -> Result<()> {
