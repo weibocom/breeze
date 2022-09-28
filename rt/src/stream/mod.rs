@@ -6,7 +6,7 @@ use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use ds::ready;
+use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 // 1. read/write统计
