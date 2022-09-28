@@ -109,7 +109,7 @@ impl Metrics {
         for i in 0..self.len {
             let item = self.get_item(i);
             if item.inited() {
-                item.snapshot(w, secs, &time);
+                item.snapshot(w, secs, time);
             }
         }
     }

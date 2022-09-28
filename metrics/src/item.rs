@@ -17,7 +17,7 @@ pub(crate) trait ItemWriter {
         time: &[u8],
         _opts: Vec<(&str, &str)>,
     ) {
-        self.write(name, key, sub_key, val, &time);
+        self.write(name, key, sub_key, val, time);
     }
 }
 

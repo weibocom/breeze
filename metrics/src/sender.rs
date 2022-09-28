@@ -50,8 +50,8 @@ impl Future for Sender {
                     .unwrap()
                     .as_millis()
                     .to_string();
-                metrics.write(&mut me.packet, elapsed, &time.as_bytes());
-                me.host.snapshot(&mut me.packet, elapsed, &time.as_bytes());
+                metrics.write(&mut me.packet, elapsed, time.as_bytes());
+                me.host.snapshot(&mut me.packet, elapsed, time.as_bytes());
                 me.last = Instant::now();
             }
             ready!(me.packet.poll_flush(cx));

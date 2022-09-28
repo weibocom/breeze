@@ -78,11 +78,11 @@ impl AsyncRead for PrometheusItem {
 
             if idx == 0 {
                 let mut host = HOST.try_lock().expect("host lock");
-                host.snapshot(&mut w, self.secs, &time.as_bytes());
+                host.snapshot(&mut w, self.secs, time.as_bytes());
             }
             let item = metrics.get_item(idx);
             if item.inited() {
-                item.snapshot(&mut w, self.secs, &time.as_bytes());
+                item.snapshot(&mut w, self.secs, time.as_bytes());
                 self.left = w.left();
             }
         }

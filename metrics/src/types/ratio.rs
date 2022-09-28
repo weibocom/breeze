@@ -14,7 +14,7 @@ impl Ratio {
             let ratio = hit as f64 / total as f64;
             // 保留2位小数精度
             let ratio = ((ratio * PREC as f64) as i64 as f64) / PREC as f64;
-            w.write(&id.path, id.key, id.t.name(), ratio, &time);
+            w.write(&id.path, id.key, id.t.name(), ratio, time);
         }
     }
     #[inline]
