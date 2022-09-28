@@ -34,8 +34,7 @@ impl McqText {
             let cfg = packet.cmd_cfg();
             let mut flag = Flag::from_op(cfg.op_code(), cfg.operation().clone());
 
-            // mcq 总是需要重试，确保所有消息写成功
-            // flag.set_try_next_type(req.try_next_type());
+            // mcq 总是需要重试，确保所有消息读写成功
             flag.set_try_next_type(crate::TryNextType::TryNext);
             // mcq 只需要写一次成功即可，不存在noreply(即只sent) req
             flag.set_sentonly(false);
