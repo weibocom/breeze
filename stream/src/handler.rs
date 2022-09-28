@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
-use ds::ready;
+use std::task::ready;
 use protocol::{Error, Protocol, Request, Result, Stream, Utf8};
 use tokio::io::{AsyncRead, AsyncWrite};
 

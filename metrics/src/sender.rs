@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use ds::ready;
+use std::task::ready;
 use tokio::time::{interval, Interval, MissedTickBehavior};
 
 pub struct Sender {

@@ -1,6 +1,6 @@
 use std::task::{Context, Poll};
 
-use ds::ready;
+use std::task::ready;
 use tokio::net::UdpSocket;
 
 #[derive(Default)]
