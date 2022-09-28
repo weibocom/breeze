@@ -6,10 +6,10 @@ pub struct Qps {
 impl Qps {
     // 只计数。
     #[inline]
-    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
+    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, secs: f64, time: &[u8]) {
         let num = self.inner.take();
         if num > 0 {
-            w.write(&id.path, id.key, id.t.name(), num as f64 / secs);
+            w.write(&id.path, id.key, id.t.name(), num as f64 / secs, &time);
         }
     }
 }

@@ -63,19 +63,26 @@ impl AsyncRead for PrometheusItem {
             buf.put_slice(&self.left);
             self.left = left;
         }
+        //获取以毫秒为单位的时间戳
+        let time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+            .to_string();
         while buf.remaining() > 0 {
             let idx = self.idx.fetch_add(1, AcqRel);
             if idx >= len {
                 break;
             }
             let mut w = PrometheusItemWriter::new(buf);
+
             if idx == 0 {
                 let mut host = HOST.try_lock().expect("host lock");
-                host.snapshot(&mut w, self.secs);
+                host.snapshot(&mut w, self.secs, &time.as_bytes());
             }
             let item = metrics.get_item(idx);
             if item.inited() {
-                item.snapshot(&mut w, self.secs);
+                item.snapshot(&mut w, self.secs, &time.as_bytes());
                 self.left = w.left();
             }
         }
@@ -112,8 +119,8 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
 }
 impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
     #[inline]
-    fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64) {
-        self.write_opts(name, key, sub_key, val, Vec::new());
+    fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64, time: &[u8]) {
+        self.write_opts(name, key, sub_key, val, time, Vec::new());
     }
     fn write_opts(
         &mut self,
@@ -121,30 +128,26 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         key: &str,
         sub_key: &str,
         val: f64,
+        time: &[u8],
         opts: Vec<(&str, &str)>,
     ) {
         /*
         三种类型
               name                                              key         sub_key         result
-        <1>   base                                              host        mem             host_mem{source="base",pool="default_pool",ip="10.222.32.6"} 31375360 1663846614711
-        <2>   mc_backend/status.content1/10.185.25.194:2020     timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",instance="10.185.25.194:2020",pool="default_pool",ip="10.222.32.6"} 0 1663846614713
-        <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool",ip="10.222.32.6"} 0 1663846614713
+        <1>   base                                              host        mem             host_mem{source="base",pool="default_pool",ip="0.0.0.0"} 31375360 1663846614711
+        <2>   mc_backend/status.content1/10.185.25.194:2020     timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",instance="0.0.0.0:2022",pool="default_pool",ip="0.0.0.0"} 0 1663846614713
+        <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool",ip="0.0.0.0"} 0 1663846614713
          */
-
-        //获取以毫秒为单位的时间戳
-        let time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
 
         //从 name 中截取 source、namespace、instance
         let all_name: Vec<&str> = name.split("/").collect();
-        let source = *all_name.get(0).unwrap_or(&"");
-        let namespace = *all_name.get(1).unwrap_or(&"");
-        let instance = *all_name.get(2).unwrap_or(&"");
+        let source = all_name.get(0).unwrap_or(&"").as_bytes();
+        let namespace = all_name.get(1).unwrap_or(&"").as_bytes();
+        let instance = all_name.get(2).unwrap_or(&"").as_bytes();
 
-        let mut metrics_name = String::with_capacity(32);
+        let mut metrics_name = String::new();
         if sub_key.len() > 0 {
+            metrics_name.reserve(key.len() + sub_key.len() + 1);
             metrics_name += key;
             metrics_name += "_";
             metrics_name += sub_key;
@@ -166,16 +169,16 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         self.put_slice(metrics_name.as_bytes());
         self.put_slice("{".as_bytes());
         self.put_slice(b"source=\"");
-        self.put_slice(source.as_bytes());
+        self.put_slice(source);
         self.put_slice(b"\",");
         if namespace.len() > 0 {
             self.put_slice(b"namespace=\"");
-            self.put_slice(namespace.as_bytes());
+            self.put_slice(namespace);
             self.put_slice(b"\",");
         }
         if instance.len() > 0 {
-            self.put_slice(b"instance=\"");
-            self.put_slice(instance.as_bytes());
+            self.put_slice(b"bip=\"");
+            self.put_slice(instance);
             self.put_slice(b"\",");
         }
         self.put_slice(b"pool=\"");
@@ -197,7 +200,7 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         self.put_slice(b" ");
         self.put_slice(val.to_string().as_bytes());
         self.put_slice(b" ");
-        self.put_slice(time.to_string().as_bytes());
+        self.put_slice(time);
         self.put_slice(b"\n");
     }
 }

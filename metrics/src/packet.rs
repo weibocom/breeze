@@ -65,7 +65,7 @@ impl PacketBuffer {
 
 impl crate::item::ItemWriter for PacketBuffer {
     #[inline]
-    fn write(&mut self, name: &str, key: &str, sub_key: &str, v: f64) {
+    fn write(&mut self, name: &str, key: &str, sub_key: &str, v: f64, time: &[u8]) {
         use ds::Buffer;
         let buff = &mut self.buff;
         buff.write("breeze.");

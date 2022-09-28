@@ -1,3 +1,5 @@
+use core::time;
+
 use crate::{Id, ItemWriter, NumberInner};
 
 pub(crate) struct StatusData {
@@ -6,10 +8,10 @@ pub(crate) struct StatusData {
 impl StatusData {
     // 只计数。
     #[inline]
-    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
+    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64, time: &[u8]) {
         let down = self.inner.take() > 0;
         if down {
-            w.write(&id.path, id.key, "down", 1f64);
+            w.write(&id.path, id.key, "down", 1f64, &time);
         }
     }
 }

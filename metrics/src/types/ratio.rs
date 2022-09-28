@@ -6,7 +6,7 @@ pub struct Ratio {
 }
 impl Ratio {
     #[inline]
-    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
+    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64, time: &[u8]) {
         let hit = self.hit.take();
         let total = self.total.take();
         if total > 0 {
@@ -14,7 +14,7 @@ impl Ratio {
             let ratio = hit as f64 / total as f64;
             // 保留2位小数精度
             let ratio = ((ratio * PREC as f64) as i64 as f64) / PREC as f64;
-            w.write(&id.path, id.key, id.t.name(), ratio);
+            w.write(&id.path, id.key, id.t.name(), ratio, &time);
         }
     }
     #[inline]

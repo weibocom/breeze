@@ -7,16 +7,17 @@ use std::sync::Arc;
 use crate::{Id, ItemData};
 
 pub(crate) trait ItemWriter {
-    fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64);
+    fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64, time: &[u8]);
     fn write_opts(
         &mut self,
         name: &str,
         key: &str,
         sub_key: &str,
         val: f64,
+        time: &[u8],
         _opts: Vec<(&str, &str)>,
     ) {
-        self.write(name, key, sub_key, val);
+        self.write(name, key, sub_key, val, &time);
     }
 }
 
@@ -96,8 +97,8 @@ impl Item {
     }
 
     #[inline]
-    pub(crate) fn snapshot<W: crate::ItemWriter>(&self, w: &mut W, secs: f64) {
-        self.data().snapshot(w, secs);
+    pub(crate) fn snapshot<W: crate::ItemWriter>(&self, w: &mut W, secs: f64, time: &[u8]) {
+        self.data().snapshot(w, secs, time);
     }
     #[inline]
     pub(crate) fn rc(&self) -> usize {

@@ -26,29 +26,38 @@ impl Host {
         }
     }
     #[inline]
-    pub(crate) fn snapshot<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
+    pub(crate) fn snapshot<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64, time: &[u8]) {
         self.refresh();
         let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
-        w.write(BASE_PATH, "host", "cpu", percent as f64);
+        w.write(BASE_PATH, "host", "cpu", percent as f64, &time);
         w.write(
             BASE_PATH,
             "host",
             "mem",
             MEMORY.load(Ordering::Relaxed) as f64,
+            &time,
         );
 
         let tasks = TASK_NUM.load(Ordering::Relaxed) as f64;
-        w.write(BASE_PATH, "task", "num", tasks);
-        w.write_opts(BASE_PATH, "version", "", 1.0, vec![("git", self.version)]);
+        w.write(BASE_PATH, "task", "num", tasks, &time);
+        w.write_opts(
+            BASE_PATH,
+            "version",
+            "",
+            1.0,
+            &time,
+            vec![("git", self.version)],
+        );
         w.write(
             BASE_PATH,
             "host",
             "uptime_sec",
             self.start.elapsed().as_secs() as f64,
+            &time,
         );
 
         let sockfile_failed = SOCKFILE_FAILED.load(Ordering::Relaxed) as f64;
-        w.write(BASE_PATH, "sockfile", "failed", sockfile_failed);
+        w.write(BASE_PATH, "sockfile", "failed", sockfile_failed, &time);
     }
     pub(crate) fn refresh(&mut self) {
         if let Ok(percent) = self.process.cpu_percent() {
