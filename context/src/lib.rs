@@ -15,7 +15,7 @@ pub use quadruple::Quadruple;
 #[clap(name = "breeze", version = "0.0.1", author = "IF")]
 pub struct ContextOption {
     #[clap(long, help("port for suvervisor"), default_value("9984"))]
-    port: u16,
+    pub port: u16,
 
     #[clap(short, long, help("number of threads"), default_value("4"))]
     pub thread_num: u8,
@@ -29,7 +29,7 @@ pub struct ContextOption {
         help("service registry url. e.g. vintage://127.0.0.1:8080"),
         default_value("vintage://127.0.0.1:8080")
     )]
-    discovery: Url,
+    pub discovery: Url,
 
     #[clap(
         short,
@@ -37,7 +37,7 @@ pub struct ContextOption {
         help("idc config path"),
         default_value("/3/config/breeze/idc_region")
     )]
-    idc_path: String,
+    pub idc_path: String,
 
     #[clap(
         long,
@@ -65,10 +65,10 @@ pub struct ContextOption {
     upgrade: bool,
 
     #[clap(short, long, help("log path"), default_value("/tmp/breeze/logs"))]
-    log_dir: String,
+    pub log_dir: String,
 
     #[clap(short, long, help("metrics url"))]
-    metrics_url: Option<String>,
+    pub metrics_url: Option<String>,
 
     #[clap(
         long,
@@ -117,9 +117,6 @@ impl ContextOption {
         let matches = app.get_matches();
         <Self as FromArgMatches>::from_arg_matches(&matches).expect("parse args failed")
     }
-    pub fn port(&self) -> u16 {
-        self.port
-    }
     // service_path目录要存在
     pub fn check(&self) -> Result<()> {
         let path = Path::new(&self.service_path);
@@ -137,27 +134,12 @@ impl ContextOption {
         assert!(self.tick_sec >= 1 && self.tick_sec <= 60);
         std::time::Duration::from_secs(self.tick_sec as u64)
     }
-    pub fn log_dir(&self) -> &str {
-        &self.log_dir
-    }
     // 如果是以升级模式启动，则会将原有的端口先关闭。
     pub fn listeners(&self) -> ListenerIter {
         ListenerIter {
             path: self.service_path.to_string(),
             processed: Default::default(),
         }
-    }
-    pub fn discovery(&self) -> Url {
-        self.discovery.clone()
-    }
-    pub fn metrics_url(&self) -> String {
-        self.metrics_url.clone().unwrap_or_default()
-    }
-    pub fn idc_path(&self) -> String {
-        self.idc_path.clone()
-    }
-    pub fn service_pool(&self) -> String {
-        self.service_pool.clone()
     }
 }
 
