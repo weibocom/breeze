@@ -15,3 +15,6 @@ Dockerfile
 **/*.swo
 
 .DS_Store
+.idea/*
+
+./breeze.log
