@@ -44,11 +44,7 @@ pub(crate) fn init_local_ip(ctx: &Context) {
 
 pub(crate) fn start_metrics_sender_task(_ctx: &Context) {
     #[cfg(feature = "graphite")]
-    rt::spawn(metrics::Sender::new(
-        _ctx.metrics_url,
-        _ctx.service_pool,
-        std::time::Duration::from_secs(10),
-    ));
+    rt::spawn(metrics::Sender::new(std::time::Duration::from_secs(10)));
 }
 pub(crate) fn start_metrics_register_task(_ctx: &Context) {
     rt::spawn(metrics::MetricRegister::default());
