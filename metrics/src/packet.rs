@@ -7,8 +7,8 @@ use tokio::net::UdpSocket;
 pub struct PacketBuffer {
     idx: usize,
     buff: Vec<u8>, // 没有在请求的关键路径上。是异步发送metrics
-    pub(crate) addr: String,
     service_pool: String,
+    pub(crate) addr: String,
     socket: Option<UdpSocket>,
 }
 
@@ -69,7 +69,7 @@ impl crate::item::ItemWriter for PacketBuffer {
         use ds::Buffer;
         let buff = &mut self.buff;
         buff.write("breeze.");
-        buff.write(self.service_pool.as_str());
+        buff.write(&self.service_pool);
         buff.write(".");
         buff.write(super::ip::local_ip());
         buff.write(".");
