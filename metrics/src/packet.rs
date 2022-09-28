@@ -69,7 +69,7 @@ impl crate::item::ItemWriter for PacketBuffer {
         use ds::Buffer;
         let buff = &mut self.buff;
         buff.write("breeze.");
-        buff.write(context::get().service_pool.as_str());
+        buff.write(&self.service_pool);
         buff.write(".");
         buff.write(super::ip::local_ip());
         buff.write(".");
