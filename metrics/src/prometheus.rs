@@ -19,7 +19,6 @@ impl Prometheus {
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, ReadBuf};
 impl futures::Stream for Prometheus {
     type Item = PrometheusItem;
@@ -63,12 +62,6 @@ impl AsyncRead for PrometheusItem {
             buf.put_slice(&self.left);
             self.left = left;
         }
-        //获取以毫秒为单位的时间戳
-        let time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis()
-            .to_string();
         while buf.remaining() > 0 {
             let idx = self.idx.fetch_add(1, AcqRel);
             if idx >= len {
@@ -78,11 +71,11 @@ impl AsyncRead for PrometheusItem {
 
             if idx == 0 {
                 let mut host = HOST.try_lock().expect("host lock");
-                host.snapshot(&mut w, self.secs, time.as_bytes());
+                host.snapshot(&mut w, self.secs);
             }
             let item = metrics.get_item(idx);
             if item.inited() {
-                item.snapshot(&mut w, self.secs, time.as_bytes());
+                item.snapshot(&mut w, self.secs);
                 self.left = w.left();
             }
         }
@@ -116,19 +109,31 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
             self.left.extend_from_slice(&s);
         }
     }
+    #[inline]
+    fn put_label(&mut self, name: &str, val: &[u8]) {
+        if val.len() > 0 {
+            if name != "source" {
+                self.put_slice(b",");
+            }
+            self.put_slice(name.as_bytes());
+            self.put_slice(b"=\"");
+            self.put_slice(val);
+            self.put_slice(b"\"");
+        }
+    }
 }
 impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
     #[inline]
-    fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64, time: &[u8]) {
-        self.write_opts(name, key, sub_key, val, time, Vec::new());
+    fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64) {
+        self.write_opts(name, key, sub_key, val, Vec::new());
     }
+
     fn write_opts(
         &mut self,
         name: &str,
         key: &str,
         sub_key: &str,
         val: f64,
-        time: &[u8],
         opts: Vec<(&str, &str)>,
     ) {
         /*
@@ -168,39 +173,24 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         //promethues metrics
         self.put_slice(metrics_name.as_bytes());
         self.put_slice("{".as_bytes());
-        self.put_slice(b"source=\"");
-        self.put_slice(source);
-        self.put_slice(b"\",");
-        if namespace.len() > 0 {
-            self.put_slice(b"namespace=\"");
-            self.put_slice(namespace);
-            self.put_slice(b"\",");
-        }
-        if instance.len() > 0 {
-            self.put_slice(b"bip=\"");
-            self.put_slice(instance);
-            self.put_slice(b"\",");
-        }
-        self.put_slice(b"pool=\"");
-        self.put_slice(context::get().service_pool.as_bytes());
-        self.put_slice(b"\",");
-        self.put_slice(b"ip=\"");
-        self.put_slice(super::ip::local_ip().as_bytes());
+        self.put_label("source", source);
+        self.put_label("namespace", namespace);
+        self.put_label("bip", instance);
+        self.put_label("pool", context::get().service_pool.as_bytes());
 
         for (k, v) in opts {
-            self.put_slice(b"\",");
+            self.put_slice(b",");
             self.put_slice(k.as_bytes());
             self.put_slice(b"=\"");
             self.put_slice(v.as_bytes());
+            self.put_slice(b"\"");
         }
 
-        self.put_slice(b"\"}");
+        self.put_slice(b"}");
 
-        //value && timestamp
+        //value
         self.put_slice(b" ");
         self.put_slice(val.to_string().as_bytes());
-        self.put_slice(b" ");
-        self.put_slice(time);
         self.put_slice(b"\n");
     }
 }

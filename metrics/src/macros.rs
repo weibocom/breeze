@@ -160,13 +160,13 @@ impl std::fmt::Debug for InnerData {
 
 impl ItemData {
     #[inline]
-    pub(crate) fn snapshot<W: ItemWriter>(&self, w: &mut W, secs: f64, time: &[u8]) {
+    pub(crate) fn snapshot<W: ItemWriter>(&self, w: &mut W, secs: f64) {
         use MetricType::*;
         unsafe {
             match self.id.t {
                 Empty => panic!("metric type empty, not inited"),
                 $(
-                    $var => self.inner.$name.snapshot(&*self.id, w, secs,time),
+                    $var => self.inner.$name.snapshot(&*self.id, w, secs),
                 )+
             }
         }

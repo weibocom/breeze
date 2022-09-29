@@ -5,7 +5,6 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use ds::ready;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{interval, Interval, MissedTickBehavior};
 
 pub struct Sender {
@@ -44,14 +43,8 @@ impl Future for Sender {
             if elapsed as usize > 0 {
                 // 这是一个block 操作，
                 let metrics = crate::get_metrics();
-                //获取以毫秒为单位的时间戳
-                let time = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis()
-                    .to_string();
-                metrics.write(&mut me.packet, elapsed, time.as_bytes());
-                me.host.snapshot(&mut me.packet, elapsed, time.as_bytes());
+                metrics.write(&mut me.packet, elapsed);
+                me.host.snapshot(&mut me.packet, elapsed);
                 me.last = Instant::now();
             }
             ready!(me.packet.poll_flush(cx));

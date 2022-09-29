@@ -45,9 +45,9 @@ pub struct Number {
 impl Number {
     // 只计数。
     #[inline]
-    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64, time: &[u8]) {
+    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
         let cur = self.inner.cur.load(Ordering::Relaxed);
-        w.write(&id.path, id.key, id.t.name(), cur as f64, time);
+        w.write(&id.path, id.key, id.t.name(), cur as f64);
     }
     #[inline]
     pub(crate) fn incr(&self, v: i64) {
