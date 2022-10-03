@@ -42,3 +42,11 @@ macro_rules! log_enabled {
     };
 }
 pub use {_warn as warn, debug, error, fatal, info, trace};
+
+use std::io::Write;
+pub fn init(path: &str, _l: &str) -> std::io::Result<()> {
+    std::fs::create_dir_all(path)?;
+    let mut log = std::fs::File::create(format!("{}/breeze.log", path))?;
+    log.write(b"===> log disabled <===")?;
+    Ok(())
+}
