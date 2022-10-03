@@ -1,4 +1,3 @@
-use discovery::dns::DnsResolver;
 use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -13,7 +12,6 @@ mod service;
 use discovery::*;
 mod init;
 
-use rocket::serde::json::serde_json::to_string;
 use rt::spawn;
 use std::time::Duration;
 
@@ -45,7 +43,6 @@ async fn run() -> Result<()> {
     let _l = service::listener_for_supervisor(ctx.port).await?;
 
     // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
-    let dns_resolver = DnsResolver::new();
     let discovery = discovery::Discovery::from_url(&ctx.discovery);
     let (tx, rx) = ds::chan::bounded(128);
     let snapshot = ctx.snapshot_path.to_string();
@@ -58,7 +55,7 @@ async fn run() -> Result<()> {
 
     init::start_metrics_sender_task(ctx);
     init::start_metrics_register_task(ctx);
-    rt::spawn(discovery::dns::start_dns_resolver_refresher(dns_resolver));
+    rt::spawn(discovery::dns::start_dns_resolver_refresher());
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
 
     log::info!("server inited {:?}", ctx);
