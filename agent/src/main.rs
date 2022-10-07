@@ -40,7 +40,6 @@ fn main() -> Result<()> {
 
 async fn run() -> Result<()> {
     let ctx = context::get();
-    let _l = service::listener_for_supervisor(ctx.port).await?;
 
     // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
     let discovery = discovery::Discovery::from_url(&ctx.discovery);
