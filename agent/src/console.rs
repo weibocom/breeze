@@ -8,5 +8,7 @@ pub(crate) fn init_routes(
 ) -> Rocket<Build> {
     #[cfg(feature = "http")]
     rt.spawn(api::start_whitelist_refresh(ctx.whitelist_host.clone()));
+    #[cfg(feature = "console-api")]
+    let rocket = api::routes(rocket);
     rocket
 }
