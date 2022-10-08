@@ -39,7 +39,7 @@ impl GuardedBuffer {
             let cap = b.len();
             let (n, out) = r.read(b);
             self.inner.advance_write(n);
-            if cap > n {
+            if cap > n || n == 0 {
                 return out;
             }
         }
