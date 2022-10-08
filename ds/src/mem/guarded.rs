@@ -38,7 +38,6 @@ impl GuardedBuffer {
             let b = self.inner.as_mut_bytes();
             let cap = b.len();
             let (n, out) = r.read(b);
-            println!("{:?},{:?}", cap, n);
             self.inner.advance_write(n);
             if cap > n {
                 return out;
