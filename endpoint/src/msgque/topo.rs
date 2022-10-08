@@ -10,7 +10,6 @@ use std::{
 };
 use tokio::time::Instant;
 
-
 use std::{
     collections::{BTreeMap, HashMap},
     time::Duration,
@@ -174,7 +173,7 @@ where
             // 该条msg第一次写队列
             for (i, streams) in self.streams_write.range((Included(len), Unbounded)) {
                 // let widx = *self.write_cursors.get(i).unwrap_or(&0);
-                let widx = 0;
+                let widx = rand::random::<usize>() % streams.len();
                 // 修改mq topo下一次用的写索引，每次都用当前size que的下一个位置
                 assert!(streams.len() > 0);
                 // self.update_next_write_idx(*i, widx + 1);
@@ -184,6 +183,9 @@ where
                 req.try_next(WRITE_RETRY_COUNT > 1);
 
                 *req.mut_context() = ctx.ctx;
+
+                log::debug!("+++ mcq set idx/{} req: {:?}", widx, req.data().utf8());
+
                 // 发送写请求
                 streams.get(widx).unwrap().1.send(req);
                 return;
