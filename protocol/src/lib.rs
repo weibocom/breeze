@@ -43,7 +43,7 @@ pub trait Writer {
     fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
         let mut oft = oft;
         let len = data.len();
-        log::debug!("+++ will write to client/server/{}:{:?}", oft, data.utf8());
+        log::debug!("+++ will write to client/server:{:?}", data.utf8());
         while oft < len {
             let data = data.read(oft);
             oft += data.len();
