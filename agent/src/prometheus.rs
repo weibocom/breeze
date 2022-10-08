@@ -47,10 +47,3 @@ mod inner {
         }
     }
 }
-#[cfg(not(feature = "http"))]
-mod inner {
-    use rocket::{Build, Rocket};
-    pub(crate) fn init_routes(rocket: Rocket<Build>) -> Rocket<Build> {
-        rocket
-    }
-}
