@@ -1,4 +1,3 @@
-use discovery::dns::DnsResolver;
 use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -27,36 +26,35 @@ fn main() -> Result<()> {
     init::init_local_ip(&ctx);
 
     let threads = ctx.thread_num as usize;
-    let runtime = tokio::runtime::Builder::new_multi_thread()
+    tokio::runtime::Builder::new_multi_thread()
         .worker_threads(threads)
         .thread_name("breeze-w")
         .thread_stack_size(2 * 1024 * 1024)
         .enable_all()
         .build()
-        .unwrap();
-    log::info!("runtime inited: {:?}", runtime);
-    http::start_http_server(&ctx, &runtime);
-    runtime.block_on(async { run().await })
+        .unwrap()
+        .block_on(async { run().await })
 }
 
 async fn run() -> Result<()> {
     let ctx = context::get();
-    let _l = service::listener_for_supervisor(ctx.port()).await?;
 
     // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
-    let dns_resolver = DnsResolver::new();
-    let discovery = discovery::Discovery::from_url(ctx.discovery());
+    let discovery = discovery::Discovery::from_url(&ctx.discovery);
     let (tx, rx) = ds::chan::bounded(128);
     let snapshot = ctx.snapshot_path.to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
-    fix.register(ctx.idc_path(), discovery::distance::build_refresh_idc());
+    fix.register(
+        ctx.idc_path.to_string(),
+        discovery::distance::build_refresh_idc(),
+    );
 
     init::start_metrics_sender_task(ctx);
     init::start_metrics_register_task(ctx);
-    rt::spawn(discovery::dns::start_dns_resolver_refresher(dns_resolver));
+    http::start_http_server(&ctx);
+    rt::spawn(discovery::dns::start_dns_resolver_refresher());
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
-
     log::info!("server inited {:?}", ctx);
 
     let mut listeners = ctx.listeners();

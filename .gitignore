@@ -15,3 +15,4 @@ Dockerfile
 **/*.swo
 
 .DS_Store
+.idea/*
