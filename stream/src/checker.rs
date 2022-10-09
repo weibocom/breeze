@@ -61,13 +61,15 @@ impl<P, Req> BackendChecker<P, Req> {
             reconn.success();
             let rtt = self.path.rtt("req");
             let slow = path_addr.rtt("slow");
+            //不太清楚两个path的区别，是否应该用qps
+            let miss = path_addr.qps("miss");
             let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
             rx.enable();
             self.init.on();
             log::debug!("handler started:{:?}", self.path);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, stream, p, rtt, slow);
+            let handler = Handler::from(rx, stream, p, rtt, slow, miss);
             let handler = rt::Entry::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 match e {

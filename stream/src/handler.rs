@@ -4,8 +4,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
-use std::task::ready;
 use protocol::{Error, Protocol, Request, Result, Stream, Utf8};
+use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::buffer::StreamGuard;
@@ -26,6 +26,8 @@ pub(crate) struct Handler<'r, Req, P, S> {
 
     rtt: Metric,
     slow: Metric,
+    //mcq 空读
+    miss: Metric,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
@@ -55,6 +57,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
         parser: P,
         rtt: Metric,
         slow: Metric,
+        miss: Metric,
     ) -> Self
     where
         S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
@@ -68,6 +71,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
             buf: StreamGuard::new(),
             rtt,
             slow,
+            miss,
             num_rx: 0,
             num_tx: 0,
         }
@@ -124,6 +128,9 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                         self.rtt += rtt;
                         if rtt >= metrics::MAX {
                             self.slow += rtt;
+                        }
+                        if cmd.empty_response() {
+                            self.miss += 1;
                         }
                         debug_assert!(
                             self.parser.check(req.cmd(), &cmd),

@@ -10,6 +10,7 @@ pub struct Flag {
     master_only: bool, // 是否只请求master？
     ignore_rsp: bool,  // 是否忽略响应，即不发送给client
     direct_hash: bool,
+    empty_response: bool,
     v: u64,
 }
 
@@ -115,6 +116,14 @@ impl Flag {
     #[inline]
     pub fn set_ext(&mut self, ext: u64) {
         self.v = ext;
+    }
+    #[inline]
+    pub fn set_empty_response(&mut self) {
+        self.empty_response = true;
+    }
+    #[inline]
+    pub fn empty_response(&self) -> bool {
+        self.empty_response
     }
     #[inline]
     pub fn ext(&self) -> u64 {

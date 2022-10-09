@@ -61,6 +61,9 @@ impl McqText {
 
         let mut flag = Flag::new();
         flag.set_status_ok(true);
+        if packet.empty_response() {
+            flag.set_empty_response();
+        }
         let mem = packet.take();
         return Ok(Some(Command::new(flag, mem)));
     }
