@@ -20,12 +20,6 @@ pub(crate) trait ItemWriter {
     }
 }
 
-use lazy_static::lazy_static;
-
-lazy_static! {
-    pub(crate) static ref EMPTY_ITEM: Arc<Item> = Default::default();
-}
-
 unsafe impl Send for Item {}
 unsafe impl Sync for Item {}
 
