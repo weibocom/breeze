@@ -34,23 +34,15 @@ impl GuardedBuffer {
         R: BuffRead<Out = O>,
     {
         self.gc();
-        let (c, mut out) = self.fill(r, 0);
-        if c {
-            let (_, o) = self.fill(r, 1);
-            out = o
+        loop {
+            let b = self.inner.as_mut_bytes();
+            let cap = b.len();
+            let (n, out) = r.read(b);
+            self.inner.advance_write(n);
+            if cap > n || n == 0 {
+                return out;
+            }
         }
-        out
-    }
-    #[inline]
-    fn fill<R, O>(&mut self, r: &mut R, _i: usize) -> (bool, O)
-    where
-        R: BuffRead<Out = O>,
-    {
-        let b = self.inner.as_mut_bytes();
-        let size = b.len();
-        let (n, out) = r.read(b);
-        self.inner.advance_write(n);
-        (size == n, out)
     }
     #[inline]
     pub fn read(&self) -> RingSlice {
