@@ -25,7 +25,7 @@ pub(super) async fn process_one(
     let top = endpoint::Topology::try_from(p.clone(), quard.endpoint())?;
     let (tx, rx) = discovery::topology(top, &quard.service());
     // 注册，定期更新配置
-    discovery.send(tx)?;
+    discovery.send(tx).await.map_err(|e| e.to_string())?;
 
     let mut listen_failed = Path::new(vec![quard.protocol(), &quard.biz()]).status("listen_failed");
 

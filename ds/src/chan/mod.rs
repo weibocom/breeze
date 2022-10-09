@@ -1,5 +1,5 @@
-pub type Sender<T> = crossbeam_channel::Sender<T>;
-pub type Receiver<T> = crossbeam_channel::Receiver<T>;
-pub use crossbeam_channel::bounded;
+pub type Sender<T> = tokio::sync::mpsc::Sender<T>;
+pub type Receiver<T> = tokio::sync::mpsc::Receiver<T>;
+pub use tokio::sync::mpsc::channel as bounded;
 
 pub mod mpsc;
