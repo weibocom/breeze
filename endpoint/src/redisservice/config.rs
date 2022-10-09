@@ -48,9 +48,11 @@ impl RedisNamespace {
             })
             .ok();
         if let Some(ns) = nso {
-            // check backend size，对于非modula/absmodula限制后端数量为2^n
-            let dist = ns.basic.distribution.clone();
-            if dist.ne(DIST_MODULA) && dist.ne(DIST_ABS_MODULA) {
+            // check backend size，对于range/modrange类型的dist需要限制后端数量为2^n
+            let dist = &ns.basic.distribution;
+            if dist.starts_with(sharding::distribution::DIST_RANGE)
+                || dist.starts_with(sharding::distribution::DIST_MOD_RANGE)
+            {
                 let len = ns.backends.len();
                 let power_two = len > 0 && ((len & len - 1) == 0);
                 if !power_two {
