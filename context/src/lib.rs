@@ -86,6 +86,18 @@ pub struct ContextOption {
     // api参数，目前只有这一个差异参数，先放这里
     #[clap(long, help("api whitelist host"), default_value("localhost"))]
     pub whitelist_host: String,
+
+    #[clap(long, help("Rocket address"), default_value("0.0.0.0"))]
+    pub metrics_address: String,
+
+    #[clap(long, help("port for metrics"), default_value("9989"))]
+    pub metrics_port: u16,
+
+    #[clap(long, help("Rocket log level"), default_value("critical"))]
+    pub metrics_log_level: String,
+
+    #[clap(long, help("Rocket workers"), default_value("4"))]
+    pub metrics_workers: usize,
 }
 
 lazy_static! {
