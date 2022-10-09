@@ -271,10 +271,14 @@ pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
 pub(super) fn get_cfg<'a>(op_code: u16) -> crate::Result<&'a CommandProperties> {
     SUPPORTED.get_by_op(op_code)
 }
-lazy_static! {
-   pub(super) static ref SUPPORTED: Commands = {
+use cmd::SUPPORTED;
+pub(super) mod cmd {
+    use super::Commands;
+    use super::Operation::*;
+    #[ctor::ctor]
+    #[rustfmt::skip]
+   pub(super) static SUPPORTED: Commands = {
         let mut cmds = Commands::new();
-        use Operation::*;
     for (name, mname, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num)
         in vec![
                 // meta 指令
