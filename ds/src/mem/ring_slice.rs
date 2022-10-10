@@ -213,7 +213,7 @@ impl RingSlice {
 
     // 只用来debug
     #[inline]
-    pub fn to_vec(&self) -> Vec<u8> {
+    fn to_vec(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(self.len());
         self.copy_to_vec(&mut v);
         v
@@ -312,6 +312,7 @@ impl Display for RingSlice {
 impl Debug for RingSlice {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use crate::Utf8;
         write!(
             f,
             "ptr:{} start:{} end:{} cap:{} => {:?}",
@@ -319,7 +320,7 @@ impl Debug for RingSlice {
             self.start,
             self.end,
             self.cap,
-            self.to_vec()
+            self.to_vec().utf8()
         )
     }
 }

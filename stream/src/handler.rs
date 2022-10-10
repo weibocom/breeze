@@ -4,8 +4,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
+use protocol::{Error, Protocol, Request, Result, Stream};
 use std::task::ready;
-use protocol::{Error, Protocol, Request, Result, Stream, Utf8};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::buffer::StreamGuard;
@@ -129,8 +129,8 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                             self.parser.check(req.cmd(), &cmd),
                             "{:?} {:?} => {:?}",
                             self,
-                            req.cmd().data().utf8(),
-                            cmd.data().utf8()
+                            req.cmd().data(),
+                            cmd.data()
                         );
                         req.on_complete(cmd);
                     }

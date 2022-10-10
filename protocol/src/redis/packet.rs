@@ -1,5 +1,3 @@
-#[allow(unused_imports)]
-use crate::Utf8;
 use crate::{Error, Result};
 use ds::RingSlice;
 
@@ -336,12 +334,7 @@ impl Packet for ds::RingSlice {
                         continue;
                     }
                 }
-                log::info!(
-                    "oft:{} not valid number:{:?}, {:?}",
-                    *oft,
-                    self.utf8(),
-                    self
-                );
+                log::info!("oft:{} not valid number:{:?}, {:?}", *oft, self, self);
                 return Err(RedisError::ReqInvalidNum.error());
             }
         }

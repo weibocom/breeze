@@ -69,7 +69,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             MsgType::Set | MsgType::Delete => Operation::Store,
             MsgType::Quit | MsgType::Version | MsgType::Stats => Operation::Meta,
             _ => {
-                log::warn!("+++ found unknow mcq msg: {:?}", self.data.utf8());
+                log::warn!("+++ found unknow mcq msg: {:?}", self.data);
                 Operation::Meta
             }
         }
