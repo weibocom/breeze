@@ -1,6 +1,5 @@
 use ds::RingSlice;
 
-use crate::utf8::Utf8;
 use crate::Result;
 
 use super::{error::McqError, reqpacket::Packet};
@@ -108,7 +107,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                             }
                         }
                         _ => {
-                            log::warn!("found malformed rsp: {:?}", self.data.utf8());
+                            log::warn!("found malformed rsp: {:?}", self.data);
                             return Err(super::Error::ResponseProtocolInvalid);
                         }
                     }

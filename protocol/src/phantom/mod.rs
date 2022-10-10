@@ -16,9 +16,6 @@ use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
 
-#[allow(unused_imports)]
-use crate::Utf8;
-
 #[derive(Clone, Default)]
 pub struct Phantom;
 
@@ -31,7 +28,7 @@ impl Phantom {
         process: &mut P,
     ) -> Result<()> {
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        log::debug!("+++ rec req:{:?}", stream.slice().utf8());
+        log::debug!("+++ rec req:{:?}", stream.slice());
 
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
@@ -105,12 +102,7 @@ impl Phantom {
                 b'+' => data.line(oft)?,
                 b':' => data.line(oft)?,
                 _ => {
-                    log::info!(
-                        "unsupport rsp:{:?}, pos: {}/{}",
-                        data.utf8(),
-                        oft,
-                        bulk_count
-                    );
+                    log::info!("unsupport rsp:{:?}, pos: {}/{}", data, oft, bulk_count);
                     panic!("not supported in num_skip_all");
                 }
             }
@@ -123,7 +115,7 @@ impl Phantom {
     #[inline]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
-        log::debug!("+++ will parse rsp:{:?}", data.utf8());
+        log::debug!("+++ will parse rsp:{:?}", data);
 
         // phantom 在rsp为负数（:-1/-2/-3\r\n），说明请求异常，需要重试
         let mut status_ok = true;
@@ -149,7 +141,7 @@ impl Phantom {
                     self.num_skip_all(&data, &mut oft)?;
                 }
                 _ => {
-                    log::info!("phantom not supported:{:?}, {:?}", data.utf8(), data);
+                    log::info!("phantom not supported:{:?}", data);
                     panic!("not supported");
                 }
             }
@@ -222,7 +214,7 @@ impl Protocol for Phantom {
                         log::info!(
                             "+++ use {} to replace phantom err rsp: {:?}",
                             nil,
-                            response.data().utf8()
+                            response.data()
                         );
                     }
 
@@ -272,11 +264,7 @@ impl Protocol for Phantom {
             // 百分之一的概率打印nil 转换
             let rd = rand::random::<usize>() % 100;
             if log::log_enabled!(log::Level::Debug) || rd == 0 {
-                log::info!(
-                    "+++ write pt client nil/{} noforward:{:?}",
-                    nil,
-                    req.data().utf8()
-                );
+                log::info!("+++ write pt client nil/{} noforward:{:?}", nil, req.data());
             }
             nil_convert = 1;
             nil.to_string()
@@ -319,7 +307,7 @@ fn split_and_calculate_hash<H: Hash>(alg: &H, full_key: &RingSlice) -> (i64, Rin
         return (hash, real_key);
     }
 
-    log::warn!("phantom - malform key: {:?}", full_key.utf8());
+    log::warn!("phantom - malform key: {:?}", full_key);
     (0, full_key.sub_slice(0, full_key.len()))
 }
 

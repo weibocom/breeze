@@ -52,7 +52,7 @@ async fn run() -> Result<()> {
 
     init::start_metrics_sender_task(ctx);
     init::start_metrics_register_task(ctx);
-    http::start_http_server(&ctx);
+    http::start_http_server(ctx);
     rt::spawn(discovery::dns::start_dns_resolver_refresher());
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
     log::info!("server inited {:?}", ctx);

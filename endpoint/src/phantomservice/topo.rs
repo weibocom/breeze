@@ -12,8 +12,6 @@ use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
 };
-#[allow(unused_imports)]
-use protocol::Utf8;
 use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
 use sharding::hash::Hasher;
 use stream::Shards;
@@ -84,7 +82,7 @@ where
                 "+++ ignore req for idx/{} is bigger than streams.len/{}, req: {:?}",
                 idx,
                 self.streams.len(),
-                req.data().utf8(),
+                req.data(),
             );
             return;
         }
