@@ -138,9 +138,9 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         /*
         三种类型
               name                                              key         sub_key         result
-        <1>   base                                              host        mem             host_mem{source="base",pool="default_pool"} 31375360 
-        <2>   mc_backend/status.content1/1.1.1.1:2020           timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",instance="10.1.1.1:2020",pool="default_pool"} 0 
-        <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool"} 0 
+        <1>   base                                              host        mem             host_mem{source="base",pool="default_pool"} 31375360
+        <2>   mc_backend/status.content1/1.1.1.1:2020           timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",instance="10.1.1.1:2020",pool="default_pool"} 0
+        <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool"} 0
          */
 
         //从 name 中截取 source、namespace、instance
@@ -151,6 +151,7 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
 
         let mut name = String::new();
         let metrics_name = if sub_key.len() > 0 {
+            name.reserve(key.len() + sub_key.len() + 1);
             name += key;
             name += "_";
             name += sub_key;
@@ -172,18 +173,19 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         //promethues metrics
         self.put_slice(metrics_name.as_bytes());
         self.put_slice("{".as_bytes());
-        self.put_label("source", source,false);
-        self.put_label("namespace", namespace,true);
-        self.put_label("bip", instance,true);
-        self.put_label("pool", context::get().service_pool.as_bytes(),true);
+        //第一个label前不加“,”
+        self.put_label("source", source, false);
+        self.put_label("namespace", namespace, true);
+        self.put_label("bip", instance, true);
+        self.put_label("pool", context::get().service_pool.as_bytes(), true);
 
         for (k, v) in opts {
-            self.put_label(k, v.as_bytes(),true);
+            self.put_label(k, v.as_bytes(), true);
         }
 
         self.put_slice(b"\"}");
 
-        //value && timestamp
+        //value
         self.put_slice(b" ");
         self.put_slice(val.to_string().as_bytes());
         self.put_slice(b"\n");
