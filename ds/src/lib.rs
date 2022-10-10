@@ -1,7 +1,5 @@
 pub mod chan;
 mod cow;
-#[macro_use]
-pub mod futures;
 pub mod lock;
 mod mem;
 pub mod queue;
