@@ -18,17 +18,10 @@ impl Quadruple {
     // protocol: 处理client连接的协议。memcache、redis等支持的协议.  格式为 mc:port.
     // backend_type: 后端资源的类型。是cacheservice、redis_dns等等
     pub(super) fn parse(path: &str, name: &str) -> Option<Self> {
-        let name = Path::new(name)
-            .file_name()
-            .map(|s| s.to_str())
-            .unwrap_or(None)
-            .unwrap_or("");
+        let name = Path::new(name).file_name().map(std::ffi::OsStr::to_str)??;
         let fields: Vec<&str> = name.split('@').collect();
         if fields.len() != 3 {
-            log::warn!(
-                "not a valid service name:{}. must contains 4 fields seperated by '@'",
-                name
-            );
+            log::warn!("not a valid service:{}. 4 fields seperated by '@'", name);
             return None;
         }
         let service = fields[0];
