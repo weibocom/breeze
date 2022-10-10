@@ -1,7 +1,7 @@
 use std::sync::{
     atomic::{
-        AtomicUsize,
-        Ordering::{AcqRel, Acquire},
+        AtomicBool, AtomicUsize,
+        Ordering::{self, AcqRel, Acquire},
     },
     Arc,
 };
@@ -32,6 +32,7 @@ impl futures::Stream for Prometheus {
         }
     }
 }
+static PUT_FLAG: AtomicBool = AtomicBool::new(false);
 
 pub struct PrometheusItem {
     idx: Arc<AtomicUsize>,
@@ -109,16 +110,16 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
         }
     }
     #[inline]
-    fn put_label(&mut self, name: &str, val: &[u8], flag: bool) {
+    fn put_label(&mut self, name: &str, val: &[u8]) {
         if val.len() > 0 {
-            if flag {
-                //put 顺序： "," -> "name" -> "val";第一个name前不需要 ","
+            if PUT_FLAG.load(Ordering::Relaxed) {
                 self.put_slice(b",");
             }
             self.put_slice(name.as_bytes());
             self.put_slice(b"=\"");
             self.put_slice(val);
             self.put_slice(b"\"");
+            PUT_FLAG.fetch_or(true, Ordering::SeqCst);
         }
     }
 }
@@ -139,7 +140,7 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         三种类型
               name                                              key         sub_key         result
         <1>   base                                              host        mem             host_mem{source="base",pool="default_pool"} 31375360
-        <2>   mc_backend/status.content1/1.1.1.1:2020           timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",instance="10.1.1.1:2020",pool="default_pool"} 0
+        <2>   mc_backend/status.content1/127.0.0.1:8080         timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",bip="127.0.0.1:8080",pool="default_pool"} 0
         <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool"} 0
          */
 
@@ -173,17 +174,17 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         //promethues metrics
         self.put_slice(metrics_name.as_bytes());
         self.put_slice("{".as_bytes());
-        //第一个label前不加“,”
-        self.put_label("source", source, false);
-        self.put_label("namespace", namespace, true);
-        self.put_label("bip", instance, true);
-        self.put_label("pool", context::get().service_pool.as_bytes(), true);
+        PUT_FLAG.fetch_and(false, Ordering::SeqCst);
+        self.put_label("source", source);
+        self.put_label("namespace", namespace);
+        self.put_label("bip", instance);
+        self.put_label("pool", context::get().service_pool.as_bytes());
 
         for (k, v) in opts {
-            self.put_label(k, v.as_bytes(), true);
+            self.put_label(k, v.as_bytes());
         }
 
-        self.put_slice(b"\"}");
+        self.put_slice(b"}");
 
         //value
         self.put_slice(b" ");
