@@ -139,10 +139,10 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         四种类型:
               name                                              key         sub_key         result
         <1>   base                                              host        mem             host_mem{source="base",pool="default_pool"} 31375360
-        <2>   mc_backend/status.content1/127.0.0.1:8080         timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",bip="127.0.0.1:8080",pool="default_pool"} 0
+        <2>   mc_backend/ns1/127.0.0.1:8080                     timeout     qps             timeout_qps{source="mc_backend",namespace="ns",bip="127.0.0.1:8080",pool="default_pool"} 0
         <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool"} 0
         后端为mcq时，namespace 中包含 ‘#’分割字符, ‘#’ 前为namespace的值，‘#’ 后为topic的值，需要增加一个 topic lable，
-        <4>   msgque_backend/msgque                             timeout     qps             timeout_qps{source="msgque_backend",pool="default_pool",namespace="mcq_common_feed2",topic="common_feed",bip="10.75.11.200:13791"} 0
+        <4>   msgque_backend/msgque                             timeout     qps             timeout_qps{source="msgque_backend",pool="default_pool",namespace="ns",topic="top",bip="127.0.0.1:8080"} 0
          */
 
         //从 name 中截取 source、namespace和topic、instance
