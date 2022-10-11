@@ -104,6 +104,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     }
                     token = self.oft;
                     state = ReqPacketState::ReqType;
+                    continue;
                 }
                 ReqPacketState::ReqType => {
                     // 直接加速skip掉cmd token
@@ -121,6 +122,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                                 return Err(McqError::ReqInvalid.error());
                             }
                             state = ReqPacketState::SpacesBeforeKey;
+                            continue;
                         }
                         RequestType::Get
                         | RequestType::Delete
@@ -139,6 +141,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if self.current() != b' ' {
                         token = self.oft;
                         state = ReqPacketState::Key;
+                        continue;
                     }
                 }
                 ReqPacketState::Key => {
@@ -147,6 +150,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if self.current() == CR {
                         return Err(McqError::ReqInvalid.error());
                     }
+                    continue;
                 }
                 ReqPacketState::SpacesBeforeFlags => {
                     if self.current() != b' ' {
@@ -154,13 +158,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                             return Err(McqError::ReqInvalid.error());
                         }
                         state = ReqPacketState::Flags;
+                        continue;
                     }
                 }
                 ReqPacketState::Flags => {
                     if self.current().is_ascii_digit() {
-                        break;
+                        //break;
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeExpire;
+                        continue;
                     } else {
                         return Err(McqError::ReqInvalid.error());
                     }
@@ -168,13 +174,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 ReqPacketState::SpacesBeforeExpire => {
                     if self.current() != b' ' {
                         state = ReqPacketState::Expire;
+                        continue;
                     }
                 }
                 ReqPacketState::Expire => {
                     if self.current().is_ascii_digit() {
-                        break;
+                        // break;
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeVlen;
+                        continue;
                     } else {
                         return Err(McqError::ReqInvalid.error());
                     }
@@ -185,8 +193,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                             return Err(McqError::ReqInvalid.error());
                         }
                         token = self.oft;
-                        vlen = (self.current() - b'0') as usize;
+                        vlen = 0;
                         state = ReqPacketState::Vlen;
+                        continue;
                     }
                 }
                 ReqPacketState::Vlen => {
