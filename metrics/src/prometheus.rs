@@ -109,9 +109,10 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
         }
     }
     #[inline]
-    fn put_label(&mut self, name: &str, val: &[u8], flag: bool) {
+    fn put_label(&mut self, name: &str, val: &[u8], isfirst: bool) {
         if val.len() > 0 {
-            if flag {
+            //isfirst 保证第一个label前没有 ","
+            if isfirst {
                 self.put_slice(b",");
             }
             self.put_slice(name.as_bytes());
@@ -135,18 +136,23 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         opts: Vec<(&str, &str)>,
     ) {
         /*
-        三种类型
+        三种类型: name 为 msgque_backend 且 namespace 中包含 ‘#’ 时增加一个 topic lable，‘#’ 前为namespace的值，‘#’ 后为topic的值
               name                                              key         sub_key         result
         <1>   base                                              host        mem             host_mem{source="base",pool="default_pool"} 31375360
         <2>   mc_backend/status.content1/127.0.0.1:8080         timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",bip="127.0.0.1:8080",pool="default_pool"} 0
         <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool"} 0
+        <4>   msgque_backend                                    timeout     qps             timeout_qps{source="msgque_backend",pool="default_pool",namespace="mcq_common_feed2",topic="common_feed",bip="10.75.11.200:13791"} 0
          */
 
-        //从 name 中截取 source、namespace、instance
+        //从 name 中截取 source、namespace和topic、instance
         let all_name: Vec<&str> = name.split("/").collect();
-        let source = *all_name.get(0).unwrap_or(&"");
-        let namespace = *all_name.get(1).unwrap_or(&"");
-        let instance = all_name.get(2).unwrap_or(&"").as_bytes();
+        let source = all_name.get(0).unwrap_or(&"").as_bytes();
+        let charname = *all_name.get(1).unwrap_or(&"");
+        let nameandtopic: Vec<&str> = charname.split("#").collect();
+        let namespace = nameandtopic.get(0).unwrap_or(&"").as_bytes();
+        let topic = nameandtopic.get(1).unwrap_or(&"").as_bytes();
+
+        let bip = all_name.get(2).unwrap_or(&"").as_bytes();
 
         let mut name = String::new();
         let metrics_name = if sub_key.len() > 0 {
@@ -172,17 +178,12 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         //promethues metrics
         self.put_slice(metrics_name.as_bytes());
         self.put_slice("{".as_bytes());
-        //确保第一个put的label一定不为空且flag值为false，后续只需flag传true即可  后续优化
-        self.put_label("source", source.as_bytes(), false);
+        //确保第一个put的label一定不为空且isfirst值为false，后续只需isfirst传true即可; 后续优化
+        self.put_label("source", source, false);
         self.put_label("pool", context::get().service_pool.as_bytes(), true);
-        if source == "msgque_backend" && namespace.contains("#") {
-            let ns: Vec<&str> = namespace.split("#").collect();
-            self.put_label("namespace", ns[0].as_bytes(), true);
-            self.put_label("topic", ns[1].as_bytes(), true);
-        } else {
-            self.put_label("namespace", namespace.as_bytes(), true);
-        }
-        self.put_label("bip", instance, true);
+        self.put_label("namespace", namespace, true);
+        self.put_label("topic", topic, true);
+        self.put_label("bip", bip, true);
 
         for (k, v) in opts {
             self.put_label(k, v.as_bytes(), true);
