@@ -1,7 +1,7 @@
 use std::sync::{
     atomic::{
-        AtomicBool, AtomicUsize,
-        Ordering::{self, AcqRel, Acquire},
+        AtomicUsize,
+        Ordering::{AcqRel, Acquire},
     },
     Arc,
 };
@@ -32,7 +32,6 @@ impl futures::Stream for Prometheus {
         }
     }
 }
-static PUT_FLAG: AtomicBool = AtomicBool::new(false);
 
 pub struct PrometheusItem {
     idx: Arc<AtomicUsize>,
@@ -110,16 +109,15 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
         }
     }
     #[inline]
-    fn put_label(&mut self, name: &str, val: &[u8]) {
+    fn put_label(&mut self, name: &str, val: &[u8], flag: bool) {
         if val.len() > 0 {
-            if PUT_FLAG.load(Ordering::Relaxed) {
+            if flag {
                 self.put_slice(b",");
             }
             self.put_slice(name.as_bytes());
             self.put_slice(b"=\"");
             self.put_slice(val);
             self.put_slice(b"\"");
-            PUT_FLAG.fetch_or(true, Ordering::SeqCst);
         }
     }
 }
@@ -146,8 +144,8 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
 
         //从 name 中截取 source、namespace、instance
         let all_name: Vec<&str> = name.split("/").collect();
-        let source = all_name.get(0).unwrap_or(&"").as_bytes();
-        let namespace = all_name.get(1).unwrap_or(&"").as_bytes();
+        let source = *all_name.get(0).unwrap_or(&"");
+        let namespace = *all_name.get(1).unwrap_or(&"");
         let instance = all_name.get(2).unwrap_or(&"").as_bytes();
 
         let mut name = String::new();
@@ -174,14 +172,19 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         //promethues metrics
         self.put_slice(metrics_name.as_bytes());
         self.put_slice("{".as_bytes());
-        PUT_FLAG.fetch_and(false, Ordering::SeqCst);
-        self.put_label("source", source);
-        self.put_label("namespace", namespace);
-        self.put_label("bip", instance);
-        self.put_label("pool", context::get().service_pool.as_bytes());
+        self.put_label("source", source.as_bytes(), false);
+        self.put_label("pool", context::get().service_pool.as_bytes(), true);
+        if source == "msgque_backend" && namespace.contains("#") {
+            let ns: Vec<&str> = namespace.split("#").collect();
+            self.put_label("namespace", ns[0].as_bytes(), true);
+            self.put_label("topic", ns[1].as_bytes(), true);
+        } else {
+            self.put_label("namespace", namespace.as_bytes(), true);
+        }
+        self.put_label("bip", instance, true);
 
         for (k, v) in opts {
-            self.put_label(k, v.as_bytes());
+            self.put_label(k, v.as_bytes(), true);
         }
 
         self.put_slice(b"}");
