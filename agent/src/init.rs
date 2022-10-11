@@ -1,4 +1,14 @@
 use context::Context;
+pub(super) fn init(ctx: &Context) {
+    init_panic_hook();
+    init_limit(&ctx);
+    init_log(&ctx);
+    init_local_ip(&ctx);
+    start_metrics_sender_task(ctx);
+    start_metrics_register_task(ctx);
+    crate::http::start_http_server(ctx);
+    rt::spawn(discovery::dns::start_dns_resolver_refresher());
+}
 pub(crate) fn init_limit(ctx: &Context) {
     set_rlimit(ctx.no_file);
 }
