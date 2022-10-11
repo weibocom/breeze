@@ -19,15 +19,8 @@ use protocol::Result;
 
 // 默认支持
 fn main() -> Result<()> {
-    let ctx = context::get();
-    init::init_panic_hook();
-    init::init_limit(&ctx);
-    init::init_log(&ctx);
-    init::init_local_ip(&ctx);
-
-    let threads = ctx.thread_num as usize;
     tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(threads)
+        .worker_threads(context::get().thread_num as usize)
         .thread_name("breeze-w")
         .thread_stack_size(2 * 1024 * 1024)
         .enable_all()
@@ -38,6 +31,7 @@ fn main() -> Result<()> {
 
 async fn run() -> Result<()> {
     let ctx = context::get();
+    init::init(ctx);
 
     // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
     let discovery = discovery::Discovery::from_url(&ctx.discovery);
@@ -50,10 +44,6 @@ async fn run() -> Result<()> {
         discovery::distance::build_refresh_idc(),
     );
 
-    init::start_metrics_sender_task(ctx);
-    init::start_metrics_register_task(ctx);
-    http::start_http_server(ctx);
-    rt::spawn(discovery::dns::start_dns_resolver_refresher());
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
     log::info!("server inited {:?}", ctx);
 
