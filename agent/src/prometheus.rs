@@ -1,6 +1,6 @@
 use metrics::prometheus::Prometheus;
 use rocket::{
-    http::Header,
+    http::Status,
     request::Request,
     response::{stream::ReaderStream, Responder, Response},
     Build, Rocket,
@@ -36,10 +36,8 @@ impl<'r> Responder<'r, 'r> for PrometheusMetricsResponse {
                 let stream: ReaderStream<Prometheus> = metrics.into();
                 return response.streamed_body(stream).ok();
             }
-            return response
-                .header(Header::new("too-frequently", secs.to_string()))
-                .ok();
+            return response.status(Status::NotModified).ok();
         }
-        response.header(Header::new("lock", "failed")).ok()
+        response.status(Status::Processing).ok()
     }
 }

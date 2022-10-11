@@ -12,8 +12,6 @@ use sharding::ReplicaSelect;
 use super::config::RedisNamespace;
 use crate::TimeoutAdjust;
 use discovery::dns::{self, IPPort};
-#[allow(unused_imports)]
-use protocol::Utf8;
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -104,7 +102,7 @@ where
                 shard_idx,
                 req.master_only(),
                 req.ignore_rsp(),
-                req.data().utf8(),
+                req.data(),
             )
         }
 

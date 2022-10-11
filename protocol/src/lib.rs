@@ -11,7 +11,6 @@ pub mod req;
 pub mod msgque;
 
 mod topo;
-mod utf8;
 
 pub use flag::*;
 pub use parser::Proto as Protocol;
@@ -24,7 +23,6 @@ pub use operation::*;
 
 pub mod callback;
 pub mod request;
-pub use utf8::*;
 
 pub trait Writer {
     fn pending(&self) -> usize;
@@ -43,7 +41,7 @@ pub trait Writer {
     fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
         let mut oft = oft;
         let len = data.len();
-        log::debug!("+++ will write to client/server:{:?}", data.utf8());
+        log::debug!("+++ will write to client/server:{:?}", data);
         while oft < len {
             let data = data.read(oft);
             oft += data.len();
