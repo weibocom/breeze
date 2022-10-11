@@ -1,4 +1,8 @@
-use rocket::config::{Config, Sig};
+use rocket::{
+    config::{Config, Sig},
+    log::LogLevel,
+};
+use std::net::{IpAddr, Ipv4Addr};
 // 必须运行在tokio的runtime环境中
 pub(super) fn start_http_server(ctx: &context::Context) {
     if cfg!(feature = "http") {
@@ -6,13 +10,11 @@ pub(super) fn start_http_server(ctx: &context::Context) {
         let mut c = Config::default();
         c.shutdown.ctrlc = false;
         c.shutdown.signals.insert(Sig::Hup);
-        let config = Config::figment()
-            .merge(("address", "0.0.0.0"))
-            .merge(("port", &ctx.port))
-            .merge(("log_level", "critical"))
-            .merge(("workers", 4))
-            .merge(("shutdown", c.shutdown));
-        let mut rocket = rocket::custom(config);
+        c.address = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
+        c.port = ctx.port;
+        c.log_level = LogLevel::Critical;
+        c.workers = 4;
+        let mut rocket = rocket::custom(c);
         if cfg!(feature = "console-api") {
             rocket = crate::console::init_routes(rocket, ctx);
         }
