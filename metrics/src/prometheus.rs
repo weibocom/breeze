@@ -172,6 +172,7 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         //promethues metrics
         self.put_slice(metrics_name.as_bytes());
         self.put_slice("{".as_bytes());
+        //确保第一个put的label一定不为空且flag值为false，后续只需flag传true即可  后续优化
         self.put_label("source", source.as_bytes(), false);
         self.put_label("pool", context::get().service_pool.as_bytes(), true);
         if source == "msgque_backend" && namespace.contains("#") {
