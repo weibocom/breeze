@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 
-use protocol::{Endpoint, Topology, Utf8};
+use protocol::{Endpoint, Topology};
 use sharding::hash::{Hasher, HASH_PADDING};
 
 // 读miss后的重试次数
@@ -161,7 +161,7 @@ where
                 "+++ mcq {} get from idx/{} req: {:?}",
                 rw_count,
                 idx,
-                req.data().utf8()
+                req.data()
             );
             self.streams_read.get(idx).unwrap().1.send(req);
             return;
@@ -184,7 +184,7 @@ where
 
                 *req.mut_context() = ctx.ctx;
 
-                log::debug!("+++ mcq set idx/{} req: {:?}", widx, req.data().utf8());
+                log::debug!("+++ mcq set idx/{} req: {:?}", widx, req.data());
 
                 // 发送写请求
                 streams.get(widx).unwrap().1.send(req);
@@ -197,7 +197,7 @@ where
                 "msgque {} - too big msg/{}: {:?}",
                 self.service,
                 len,
-                req.data().utf8()
+                req.data()
             );
 
             *req.mut_context() = ctx.ctx;
@@ -230,7 +230,7 @@ where
                 log::warn!(
                     "+++ msg too big so try the biggest stream:{}/{:?}",
                     req.len(),
-                    req.data().utf8()
+                    req.data()
                 );
                 self.streams_write
                     .get(&self.max_size)
