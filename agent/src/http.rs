@@ -2,7 +2,7 @@ use rocket::{
     config::{Config, Sig},
     log::LogLevel,
 };
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::Ipv4Addr;
 // 必须运行在tokio的runtime环境中
 pub(super) fn start_http_server(ctx: &context::Context) {
     if cfg!(feature = "http") {
@@ -10,7 +10,7 @@ pub(super) fn start_http_server(ctx: &context::Context) {
         let mut c = Config::default();
         c.shutdown.ctrlc = false;
         c.shutdown.signals.insert(Sig::Hup);
-        c.address = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
+        c.address = Ipv4Addr::new(0, 0, 0, 0).into();
         c.port = ctx.port;
         c.log_level = LogLevel::Critical;
         c.workers = 4;
