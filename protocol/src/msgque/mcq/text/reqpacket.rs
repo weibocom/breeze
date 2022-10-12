@@ -1,6 +1,6 @@
 use ds::RingSlice;
 
-use crate::{req, Result};
+use crate::Result;
 
 use super::{
     command::{self, CommandProperties, RequestType},
