@@ -3,7 +3,10 @@ use ds::RingSlice;
 use crate::utf8::Utf8;
 use crate::Result;
 
-use super::{error::McqError, reqpacket::Packet};
+use super::{
+    error::McqError,
+    reqpacket::{space_counter, vec_participle, Packet},
+};
 const CR: u8 = 13;
 const LF: u8 = 10;
 const MAX_KEY_LEN: usize = 250;
@@ -330,4 +333,79 @@ enum RspType {
     ServerError,
     // Num,
     // Exists,  // cas rsp，mcq目前不需要
+}
+
+pub(crate) fn override_rsp_segv(rsp_vec: &mut Vec<u8>) -> Result<bool> {
+    let mut stage = RspPacketState::RspStr;
+    // 分词解析游标
+    let mut i: usize = 0;
+    while i < rsp_vec.len() {
+        match stage {
+            // rsp type
+            RspPacketState::RspStr => {
+                let rs = RingSlice::from(rsp_vec.as_ptr(), 1024, 0, rsp_vec.len());
+                if rs.start_with(i, &"VALUE".as_bytes())? {
+                    let rsp_type_v = vec_participle(i, rsp_vec);
+                    let tlen = rsp_type_v.len();
+                    if rsp_type_v.len() == 0 {
+                        return Err(McqError::RspInvalid.error());
+                    }
+                    i += tlen;
+                    let space_count = space_counter(i, rsp_vec);
+                    i += space_count;
+                    println!("i :{}", i);
+                    stage = RspPacketState::Key;
+                } else {
+                    break;
+                }
+            }
+            // keyname
+            RspPacketState::Key => {
+                let key_n = vec_participle(i, rsp_vec);
+                i += key_n.len();
+                let space_count = space_counter(i, rsp_vec);
+                i += space_count;
+                stage = RspPacketState::Flags;
+            }
+
+            // flags
+            RspPacketState::Flags => {
+                let mut flags_v = vec_participle(i, rsp_vec);
+
+                // TODO 迭代调整为高位 byte 为1
+                // flags segment value
+                let mut flags_value = 0;
+                for flag in flags_v.iter() {
+                    flags_value = flags_value * 10 + (flag - b'0') as usize;
+                }
+
+                // 暂定 flags 为时间戳长度 则暂认为mesh回写
+                let mut rewrite = false;
+                if flags_v.len() >= 10 {
+                    // TODO 通过当前时间戳计算消费时间延时
+
+                    // 以flag段为界 分割两段
+                    let mut right = rsp_vec.split_off(i);
+                    // 删除时间戳
+                    right.drain(0..=0 + flags_v.len() - 1);
+                    let mut origin_flags = "0".as_bytes().to_vec();
+                    rsp_vec.append(&mut origin_flags);
+                    rsp_vec.append(&mut right);
+
+                    flags_v = "0".as_bytes().to_vec();
+                    rewrite = true;
+                }
+                i += flags_v.len();
+                let space_count = space_counter(i, rsp_vec);
+                i += space_count;
+                stage = RspPacketState::Vlen;
+                // 只有true 表示存在 rsp 重写
+                return Ok(rewrite);
+            }
+            _ => {
+                break;
+            }
+        }
+    }
+    Ok(false)
 }

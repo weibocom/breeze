@@ -1,11 +1,12 @@
 use ds::RingSlice;
 
-use crate::Result;
+use crate::{req, Result};
 
 use super::{
     command::{self, CommandProperties, RequestType},
     error::{self, McqError},
 };
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CR: u8 = 13;
 const LF: u8 = 10;
@@ -321,4 +322,126 @@ pub(crate) enum ReqPacketState {
     // CRLF,
     // Noreply,
     // AfterNoreply,
+}
+
+// 对已完成正常解析的文本进行分词,获取各 segment 信息,eg:set key flag exp vlen
+pub(crate) fn vec_participle(idx: usize, req_vec: &mut Vec<u8>) -> Vec<u8> {
+    let mut seg_val: Vec<u8> = vec![];
+    let end = req_vec.len();
+
+    // 防止越界
+    if idx > end {
+        return seg_val;
+    }
+
+    for i in idx..end {
+        if req_vec[i] != b' ' {
+            continue;
+        }
+        seg_val = req_vec[idx..i].to_vec();
+        break;
+    }
+    seg_val
+}
+
+// 从当前索引到下一个分段开始总的空格数
+pub(crate) fn space_counter(idx: usize, req_vec: &mut Vec<u8>) -> usize {
+    let mut spacing_c = 0;
+    let end = req_vec.len();
+
+    for i in idx..end {
+        if req_vec[i] == b' ' {
+            spacing_c += 1;
+        }
+        break;
+    }
+    spacing_c
+}
+
+pub fn override_req_segv(req_vec: &mut Vec<u8>) -> Result<bool> {
+    // ReqType start first..
+    let mut stage = ReqPacketState::ReqType;
+    // 分词解析游标
+    let mut i: usize = 0;
+    while i < req_vec.len() {
+        match stage {
+            // op type
+            ReqPacketState::ReqType => {
+                let req_type_v = vec_participle(i, req_vec);
+                if req_type_v.len() == 0 {
+                    return Err(McqError::ReqInvalid.error());
+                }
+
+                let rs = RingSlice::from(req_type_v.as_ptr(), 1024, 0, req_type_v.len());
+                let cfg = command::get_cfg_by_name(&rs)?;
+                let req_type = cfg.req_type();
+
+                // 移动游标
+                i += cfg.name.len();
+
+                match req_type {
+                    RequestType::Set => {
+                        let space_count = space_counter(i, req_vec);
+                        // 移动游标
+                        i += space_count;
+                        stage = ReqPacketState::Key;
+                    }
+
+                    // TODO GET
+                    _ => {
+                        break;
+                    }
+                }
+            }
+            // keyname
+            ReqPacketState::Key => {
+                let key_n = vec_participle(i, req_vec);
+                i += key_n.len();
+
+                let space_count = space_counter(i, req_vec);
+                i += space_count;
+                stage = ReqPacketState::Flags;
+            }
+
+            // flags
+            ReqPacketState::Flags => {
+                let mut flags_v = vec_participle(i, req_vec);
+
+                // flags segment real value
+                let mut flags_value = 0;
+                for flag in flags_v.iter() {
+                    flags_value = flags_value * 10 + (flag - b'0') as usize;
+                }
+
+                // flags段为’0‘
+                let mut rewrite = false;
+                if flags_v.len() == 1 && flags_value == 0 {
+                    // 以flag段为界 分割两段
+                    let mut right = req_vec.split_off(i + 1);
+                    // 去掉0字符
+                    req_vec.pop();
+                    let time_sec = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs()
+                        .to_string();
+
+                    let mut time_sec_vec = time_sec.as_bytes().to_vec();
+                    req_vec.append(&mut time_sec_vec);
+                    req_vec.append(&mut right);
+
+                    flags_v = time_sec_vec;
+                    rewrite = true;
+                }
+                i += flags_v.len();
+                let space_count = space_counter(i, req_vec);
+                i += space_count;
+                return Ok(rewrite);
+            }
+            _ => {
+                break;
+            }
+        }
+    }
+    Ok(false)
 }
