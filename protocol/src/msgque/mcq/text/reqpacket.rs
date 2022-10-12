@@ -157,8 +157,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     }
                 }
                 ReqPacketState::Flags => {
-                    self.data.token(&mut self.oft, 0)?;
-                    state = ReqPacketState::SpacesBeforeExpire;
+                    if self.current().is_ascii_digit() {
+                        break;
+                    } else if self.current() == b' ' {
+                        state = ReqPacketState::SpacesBeforeExpire;
+                    } else {
+                        return Err(McqError::ReqInvalid.error());
+                    }
                 }
                 ReqPacketState::SpacesBeforeExpire => {
                     if self.current() != b' ' {
@@ -166,8 +171,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     }
                 }
                 ReqPacketState::Expire => {
-                    self.data.token(&mut self.oft, 0)?;
-                    state = ReqPacketState::SpacesBeforeVlen;
+                    if self.current().is_ascii_digit() {
+                        break;
+                    } else if self.current() == b' ' {
+                        state = ReqPacketState::SpacesBeforeVlen;
+                    } else {
+                        return Err(McqError::ReqInvalid.error());
+                    }
                 }
                 ReqPacketState::SpacesBeforeVlen => {
                     if self.current() != b' ' {
@@ -254,13 +264,13 @@ impl Packet for RingSlice {
     // skip 一个token，必须非空格、CR开始，到空格、CR结束，长度必须大于0
     #[inline]
     fn token(&self, oft: &mut usize, max_len: usize) -> Result<()> {
-        let len = if max_len == 0 {
+        let end = if max_len == 0 {
             self.len()
         } else {
-            max_len.min(self.len())
+            max_len.min(self.len() - *oft) + *oft
         };
 
-        for i in *oft..len {
+        for i in *oft..end {
             let c = self.at(i);
             if c == b' ' || c == CR {
                 // token的长度不能为0

@@ -5,8 +5,6 @@ use std::time::Instant;
 use ds::AtomicWaker;
 
 use crate::request::Request;
-#[allow(unused_imports)]
-use crate::Utf8;
 use crate::{Command, Error, HashedCommand};
 
 pub struct Callback {
@@ -93,8 +91,8 @@ impl CallbackContext {
                 !self.complete(),
                 "{} {:?} => {:?}",
                 self,
-                self.request().data().utf8(),
-                resp.data().utf8()
+                self.request().data(),
+                resp.data()
             );
             self.try_drop_response();
             self.response.write(resp);
@@ -142,7 +140,7 @@ impl CallbackContext {
             _err => log::debug!(
                 "on-err:{} {:?} request:{:?}",
                 self,
-                self.request().data().utf8(),
+                self.request().data(),
                 _err
             ),
         }

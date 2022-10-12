@@ -16,8 +16,6 @@ use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
 
-#[allow(unused_imports)]
-use crate::Utf8;
 use rand;
 
 // redis 协议最多支持10w个token
@@ -39,7 +37,7 @@ impl Redis {
         // 一个指令开始处理，可以重复进入
 
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        log::debug!("+++ rec req:{:?}", stream.slice().utf8());
+        log::debug!("+++ rec req:{:?}", stream.slice());
 
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
@@ -51,7 +49,7 @@ impl Redis {
             let cfg = match command::get_cfg(packet.op_code()) {
                 Ok(cfg) => cfg,
                 Err(super::Error::ProtocolNotSupported) => {
-                    log::warn!("+++ found unsupported req:{:?}", stream.slice().utf8());
+                    log::warn!("+++ found unsupported req:{:?}", stream.slice());
                     return Err(super::Error::ProtocolNotSupported);
                 }
                 Err(e) => return Err(e),
@@ -78,7 +76,7 @@ impl Redis {
                         hash = packet.reserved_hash();
                         log::info!(
                             "+++ use direct hash for multi cmd: {:?}",
-                            packet.inner_data().utf8()
+                            packet.inner_data()
                         )
                     } else {
                         hash = calculate_hash(alg, &key);
@@ -144,7 +142,7 @@ impl Redis {
                 let hash: i64;
                 // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
                 if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
-                    log::info!("+++ will broadcast: {:?}", packet.inner_data().utf8());
+                    log::info!("+++ will broadcast: {:?}", packet.inner_data());
                     hash = crate::MAX_DIRECT_HASH;
                 } else {
                     hash = calculate_hash(alg, &key);
@@ -194,12 +192,7 @@ impl Redis {
                 b'+' => data.line(oft)?,
                 b':' => data.line(oft)?,
                 _ => {
-                    log::info!(
-                        "unsupport rsp:{:?}, pos: {}/{}",
-                        data.utf8(),
-                        oft,
-                        bulk_count
-                    );
+                    log::info!("unsupport rsp:{:?}, pos: {}/{}", data, oft, bulk_count);
                     panic!("not supported in num_skip_all");
                 }
             }
@@ -212,7 +205,7 @@ impl Redis {
     #[inline]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
-        log::debug!("+++ will parse rsp:{:?}", data.utf8());
+        log::debug!("+++ will parse rsp:{:?}", data);
 
         if data.len() >= 2 {
             let mut oft = 0;
@@ -225,7 +218,7 @@ impl Redis {
                     self.num_skip_all(&data, &mut oft)?;
                 }
                 _ => {
-                    log::info!("not supported:{:?}, {:?}", data.utf8(), data);
+                    log::info!("not supported:{:?}", data);
                     panic!("not supported");
                 }
             }
@@ -298,7 +291,7 @@ impl Protocol for Redis {
                         log::info!(
                             "+++ write to client nil: {:?}, ignore:{:?}",
                             nil,
-                            response.data().utf8()
+                            response.data()
                         );
                     }
 
@@ -375,7 +368,7 @@ impl Protocol for Redis {
                     // 百分之一的概率打印nil 转换
                     let rd = rand::random::<usize>() % 100;
                     if log::log_enabled!(log::Level::Debug) || rd == 0 {
-                        log::info!("+++ write client nil/{} for:{:?}", nil, req.data().utf8());
+                        log::info!("+++ write client nil/{} for:{:?}", nil, req.data());
                     }
                     nil_convert = 1;
                     nil.to_string()
@@ -390,7 +383,7 @@ impl Protocol for Redis {
         log::debug!(
             "+++ will write noforward rsp/{:?} for req:{:?}",
             rsp,
-            req.data().utf8()
+            req.data()
         );
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())?;

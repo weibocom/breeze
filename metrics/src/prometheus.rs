@@ -19,7 +19,6 @@ impl Prometheus {
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, ReadBuf};
 impl futures::Stream for Prometheus {
     type Item = PrometheusItem;
@@ -109,6 +108,19 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
             self.left.extend_from_slice(&s);
         }
     }
+    #[inline]
+    fn put_label(&mut self, name: &str, val: &[u8], first: bool) {
+        if val.len() > 0 {
+            //first 保证第一个label前没有 ","
+            if !first {
+                self.put_slice(b",");
+            }
+            self.put_slice(name.as_bytes());
+            self.put_slice(b"=\"");
+            self.put_slice(val);
+            self.put_slice(b"\"");
+        }
+    }
 }
 impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
     #[inline]
@@ -124,33 +136,35 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         opts: Vec<(&str, &str)>,
     ) {
         /*
-        三种类型
+        四种类型:
               name                                              key         sub_key         result
-        <1>   base                                              host        mem             host_mem{source="base",pool="default_pool",ip="10.222.32.6"} 31375360 1663846614711
-        <2>   mc_backend/status.content1/10.185.25.194:2020     timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",instance="10.185.25.194:2020",pool="default_pool",ip="10.222.32.6"} 0 1663846614713
-        <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool",ip="10.222.32.6"} 0 1663846614713
+        <1>   base                                              host        mem             host_mem{source="base",pool="default_pool"} 31375360
+        <2>   mc_backend/ns1/127.0.0.1:8080                     timeout     qps             timeout_qps{source="mc_backend",namespace="ns",bip="127.0.0.1:8080",pool="default_pool"} 0
+        <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool"} 0
+        后端为mcq时，namespace 中包含 ‘#’分割字符, ‘#’ 前为namespace的值，‘#’ 后为topic的值，需要增加一个 topic lable，
+        <4>   msgque_backend/msgque                             timeout     qps             timeout_qps{source="msgque_backend",pool="default_pool",namespace="ns",topic="top",bip="127.0.0.1:8080"} 0
          */
 
-        //获取以毫秒为单位的时间戳
-        let time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-
-        //从 name 中截取 source、namespace、instance
+        //从 name 中截取 source、namespace和topic、instance
         let all_name: Vec<&str> = name.split("/").collect();
-        let source = *all_name.get(0).unwrap_or(&"");
-        let namespace = *all_name.get(1).unwrap_or(&"");
-        let instance = *all_name.get(2).unwrap_or(&"");
+        let source = all_name.get(0).unwrap_or(&"").as_bytes();
+        let charname = *all_name.get(1).unwrap_or(&"");
+        //针对mcq,namespace中可能包含topic,先根据 ‘#’分割;
+        let nameandtopic: Vec<&str> = charname.split("#").collect();
+        let namespace = nameandtopic.get(0).unwrap_or(&"").as_bytes();
+        let topic = nameandtopic.get(1).unwrap_or(&"").as_bytes();
+        let bip = all_name.get(2).unwrap_or(&"").as_bytes();
 
-        let mut metrics_name = String::with_capacity(32);
-        if sub_key.len() > 0 {
-            metrics_name += key;
-            metrics_name += "_";
-            metrics_name += sub_key;
+        let mut name = String::new();
+        let metrics_name = if sub_key.len() > 0 {
+            name.reserve(key.len() + sub_key.len() + 1);
+            name += key;
+            name += "_";
+            name += sub_key;
+            &name
         } else {
-            metrics_name += key;
-        }
+            key
+        };
 
         //promethues # HELP
         self.put_slice(b"# HELP ");
@@ -165,39 +179,22 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         //promethues metrics
         self.put_slice(metrics_name.as_bytes());
         self.put_slice("{".as_bytes());
-        self.put_slice(b"source=\"");
-        self.put_slice(source.as_bytes());
-        self.put_slice(b"\",");
-        if namespace.len() > 0 {
-            self.put_slice(b"namespace=\"");
-            self.put_slice(namespace.as_bytes());
-            self.put_slice(b"\",");
-        }
-        if instance.len() > 0 {
-            self.put_slice(b"instance=\"");
-            self.put_slice(instance.as_bytes());
-            self.put_slice(b"\",");
-        }
-        self.put_slice(b"pool=\"");
-        self.put_slice(context::get().service_pool.as_bytes());
-        self.put_slice(b"\",");
-        self.put_slice(b"ip=\"");
-        self.put_slice(super::ip::local_ip().as_bytes());
+        //确保第一个put的label一定不为空; 后续优化
+        self.put_label("source", source, true);
+        self.put_label("pool", context::get().service_pool.as_bytes(), false);
+        self.put_label("namespace", namespace, false);
+        self.put_label("topic", topic, false);
+        self.put_label("bip", bip, false);
 
         for (k, v) in opts {
-            self.put_slice(b"\",");
-            self.put_slice(k.as_bytes());
-            self.put_slice(b"=\"");
-            self.put_slice(v.as_bytes());
+            self.put_label(k, v.as_bytes(), false);
         }
 
-        self.put_slice(b"\"}");
+        self.put_slice(b"}");
 
-        //value && timestamp
+        //value
         self.put_slice(b" ");
         self.put_slice(val.to_string().as_bytes());
-        self.put_slice(b" ");
-        self.put_slice(time.to_string().as_bytes());
         self.put_slice(b"\n");
     }
 }
