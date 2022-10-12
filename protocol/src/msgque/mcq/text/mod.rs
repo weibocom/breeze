@@ -5,8 +5,8 @@ mod rsppacket;
 
 use crate::msgque::mcq::text::rsppacket::RspPacket;
 use crate::{
-    utf8::Utf8, Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result,
-    Stream, Writer,
+    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
+    Writer,
 };
 
 use sharding::hash::Hash;
@@ -24,9 +24,7 @@ impl McqText {
         _alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("+++ rec mcq req:{:?}", stream.slice().utf8());
-        }
+        log::debug!("+++ rec mcq req:{:?}", stream.slice());
 
         let mut packet = RequestPacket::new(stream);
         while packet.available() {
@@ -54,13 +52,15 @@ impl McqText {
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         // let data = s.slice();
         // assert!(data.len() > 0);
-        log::debug!("+++ will parse mcq rsp: {:?}", s.slice().utf8());
+        log::debug!("+++ will parse mcq rsp: {:?}", s.slice());
 
         let mut packet = RspPacket::new(s);
         packet.parse()?;
 
         let mut flag = Flag::new();
-        flag.set_status_ok(true);
+        if !packet.is_empty() {
+            flag.set_status_ok(true);
+        }
         let mem = packet.take();
         return Ok(Some(Command::new(flag, mem)));
     }
@@ -115,7 +115,7 @@ impl Protocol for McqText {
                 "+++ will write padding rsp/{} for req/{}:{:?}",
                 rsp,
                 cfg.name,
-                req.data().utf8(),
+                req.data(),
             );
             w.write(rsp.as_bytes())?;
             Ok(0)

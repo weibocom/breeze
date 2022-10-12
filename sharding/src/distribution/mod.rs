@@ -31,11 +31,15 @@ pub const DIST_MODULA: &str = "modula";
 pub const DIST_ABS_MODULA: &str = "absmodula";
 pub const DIST_KETAMA: &str = "ketama";
 
+// 默认的range分布策略是range，对应的slot是256，如果slot数是xxx(非256)，则需要设置为：range-xxx，shard 需要是2的n次方
+pub const DIST_RANGE: &str = "range";
+// modrange，用于mod后再分区间, shard 需要是2的n次方
+pub const DIST_MOD_RANGE: &str = "modrange";
+
 // 默认采用的slot是256，slot等价于client的hash-gen概念，即集群的槽（虚拟节点）的总数，
 // 每个redis分片会保存某个范围的slot槽点，多个redis 分片(shard)就组合成一个cluster
 const DIST_RANGE_SLOT_COUNT_DEFAULT: u64 = 256;
-// 默认的range分布策略是range，对应的slot是256，如果slot数是xxx(非256)，则需要设置为：range-xxx
-const DIST_RANGE: &str = "range";
+
 const DIST_RANGE_WITH_SLOT_PREFIX: &str = "range-";
 
 // modrange，用于mod后再分区间

@@ -9,8 +9,6 @@ use ds::AtomicWaker;
 use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-#[allow(unused_imports)]
-use protocol::Utf8;
 use protocol::{
     Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
 };
@@ -231,8 +229,8 @@ where
                 // do nothing!
                 log::debug!(
                     "+++ ignore req:{:?}, resp:{:?}",
-                    ctx.request().data().utf8(),
-                    ctx.response().data().utf8()
+                    ctx.request().data(),
+                    ctx.response().data()
                 )
             } else {
                 let req = ctx.request();
