@@ -100,7 +100,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     fn current(&self) -> u8 {
-        assert!(self.available());
+        assert!(self.available(), "req:{:?}", self.data);
         self.data.at(self.oft)
     }
 
@@ -391,7 +391,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                                 .sub_slice(m, nrlen)
                                 .start_with(m, &"noreply".as_bytes())?
                         {
-                            assert!(self.is_storage() || self.is_delete());
+                            assert!(
+                                self.is_storage() || self.is_delete(),
+                                "req: {:?}",
+                                self.data
+                            );
                             self.token = 0;
                             self.noreply = true;
                             state = ReqPacketState::AfterNoreply;
