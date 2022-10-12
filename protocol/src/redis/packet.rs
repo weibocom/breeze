@@ -149,11 +149,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     #[inline]
     pub(super) fn ignore_one_bulk(&mut self) -> Result<()> {
-        assert_ne!(
-            self.ctx.bulk, 0,
-            "bulk:{}, data:{:?}",
-            self.ctx.bulk, self.data
-        );
+        assert_ne!(self.ctx.bulk, 0, "meta:{:?}, data:{:?}", self, self.data);
         self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         Ok(())
@@ -429,13 +425,14 @@ impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(packet => len:{} bulk num: {} op_code:{} oft:({} => {})) first:{}",
+            "(packet => len:{} bulk num: {} op_code:{} oft:({} => {})) first:{} data:{:?}",
             self.data.len(),
             self.bulk(),
             self.op_code(),
             self.oft_last,
             self.oft,
-            self.first()
+            self.first(),
+            self.data
         )
     }
 }
