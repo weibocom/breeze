@@ -279,7 +279,7 @@ impl AccessMod {
                 write: false,
             };
         }
-        assert!(access.len() <= 2);
+        assert!(access.len() <= 2, "access: {}/{}", access_mod, access.len());
         let rmod = access.contains(ACCESS_READ);
         let wmod = access.contains(ACCESS_WRITE);
         Self {

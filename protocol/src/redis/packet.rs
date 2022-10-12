@@ -117,7 +117,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             self.check_start()?;
             self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
             self.ctx.first = true;
-            assert_ne!(self.bulk(), 0);
+            assert_ne!(self.bulk(), 0, "data:{:?}", self.data);
         }
         Ok(())
     }
@@ -130,14 +130,18 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             let start = self.oft - cmd_len - CRLF_LEN;
             let cmd = self.data.sub_slice(start, cmd_len);
             self.ctx.op_code = super::command::get_op_code(&cmd);
-            assert_ne!(self.ctx.op_code, 0);
+            assert_ne!(
+                self.ctx.op_code, 0,
+                "{}/data:{}",
+                self.ctx.op_code, self.data
+            );
         }
         Ok(())
     }
     #[inline]
     pub(super) fn parse_key(&mut self) -> Result<RingSlice> {
-        assert_ne!(self.ctx.op_code, 0);
-        assert_ne!(self.ctx.bulk, 0);
+        assert_ne!(self.ctx.op_code, 0, "data:{:?}", self.data);
+        assert_ne!(self.ctx.bulk, 0, "data:{:?}", self.data);
         let key_len = self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         let start = self.oft - CRLF_LEN - key_len;
@@ -145,7 +149,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     #[inline]
     pub(super) fn ignore_one_bulk(&mut self) -> Result<()> {
-        assert_ne!(self.ctx.bulk, 0);
+        assert_ne!(
+            self.ctx.bulk, 0,
+            "bulk:{}, data:{:?}",
+            self.ctx.bulk, self.data
+        );
         self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         Ok(())
@@ -164,7 +172,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             self.stream.ignore(self.oft - self.oft_last);
             self.oft_last = self.oft;
 
-            assert_ne!(self.ctx.op_code, 0);
+            assert_ne!(self.ctx.op_code, 0, "data:{:?}", self.data);
             // 更新
             *self.stream.context() = self.ctx.u64();
         }
@@ -174,7 +182,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     fn reset_context(&mut self) {
         self.ctx.reset();
-        assert_eq!(self.ctx.u64(), 0);
+        assert_eq!(self.ctx.u64(), 0, "data:{:?}", self.data);
 
         // 重置context
         *self.stream.context() = 0;
@@ -199,7 +207,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
-        assert!(self.oft_last < self.oft);
+        assert!(
+            self.oft_last < self.oft,
+            "{}/{}, data:{:?}",
+            self.oft_last,
+            self.oft,
+            self.data
+        );
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
         // 更新上下文的bulk num。
@@ -220,7 +234,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.oft_last = self.oft;
         self.stream.ignore(len);
 
-        debug_assert!(self.ctx.bulk == 0);
+        debug_assert!(
+            self.ctx.bulk == 0,
+            "bulk:{}, data:{:?}",
+            self.ctx.bulk,
+            self.data
+        );
         // 重置context，下一个指令重新解析，注意：master_only要保留
         let master_only = self.master_only();
         self.reset_context();
@@ -237,7 +256,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     fn current(&self) -> u8 {
-        assert!(self.available());
+        assert!(self.available(), "{}/data:{:?}", self.oft, self.data);
         self.data.at(self.oft)
     }
     #[inline]
@@ -304,7 +323,12 @@ impl Packet for ds::RingSlice {
     #[inline]
     fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         if *oft + 2 < self.len() {
-            assert!(is_valid_leading_num_char(self.at(*oft)));
+            assert!(
+                is_valid_leading_num_char(self.at(*oft)),
+                "oft:{}, data:{:?}",
+                *oft,
+                self
+            );
             let start = *oft;
             *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
             let mut val: usize = 0;

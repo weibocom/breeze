@@ -65,7 +65,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     fn current(&self) -> u8 {
-        assert!(self.available());
+        assert!(self.available(), "oft:{}, rq:{:?}", self.oft, self.data);
         self.data.at(self.oft)
     }
 
@@ -235,7 +235,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
-        assert!(self.oft_last < self.oft);
+        assert!(self.oft_last < self.oft, "oft: {}/{}, req:{:?}", self.oft_last, self.oft, self.data);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
 
