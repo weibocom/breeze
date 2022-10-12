@@ -3,7 +3,8 @@ mod error;
 mod reqpacket;
 mod rsppacket;
 
-use crate::msgque::mcq::text::rsppacket::RspPacket;
+use crate::msgque::mcq::text::reqpacket::override_req_segv;
+use crate::msgque::mcq::text::rsppacket::{override_rsp_segv, RspPacket};
 use crate::{
     utf8::Utf8, Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result,
     Stream, Writer,
@@ -40,7 +41,17 @@ impl McqText {
             flag.set_sentonly(false);
             // 是否内部请求,不发往后端，如quit
             flag.set_noforward(cfg.noforward());
-            let cmd = packet.take();
+            let mut cmd = packet.take();
+
+            let mut cmd_data_v: Vec<u8> = Vec::with_capacity(cmd.data().len());
+            cmd.data().copy_to_vec(&mut cmd_data_v);
+
+            if let Ok(override_if) = override_req_segv(&mut cmd_data_v) {
+                if override_if {
+                    cmd = ds::MemGuard::from_vec(cmd_data_v);
+                }
+            }
+
             let req = HashedCommand::new(cmd, 0, flag);
             process.process(req, true);
 
@@ -61,7 +72,17 @@ impl McqText {
 
         let mut flag = Flag::new();
         flag.set_status_ok(true);
-        let mem = packet.take();
+        let mut mem = packet.take();
+
+        let mut mem_data_v: Vec<u8> = Vec::with_capacity(mem.data().len());
+        mem.data().copy_to_vec(&mut mem_data_v);
+
+        if let Ok(override_if) = override_rsp_segv(&mut mem_data_v) {
+            if override_if {
+                mem = ds::MemGuard::from_vec(mem_data_v);
+            }
+        }
+
         return Ok(Some(Command::new(flag, mem)));
     }
 }
