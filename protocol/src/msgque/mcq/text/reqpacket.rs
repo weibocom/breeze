@@ -157,8 +157,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     }
                 }
                 ReqPacketState::Flags => {
-                    self.data.token(&mut self.oft, 0)?;
-                    state = ReqPacketState::SpacesBeforeExpire;
+                    if self.current().is_ascii_digit() {
+                        break;
+                    } else if self.current() == b' ' {
+                        state = ReqPacketState::SpacesBeforeExpire;
+                    } else {
+                        return Err(McqError::ReqInvalid.error());
+                    }
                 }
                 ReqPacketState::SpacesBeforeExpire => {
                     if self.current() != b' ' {
@@ -166,8 +171,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     }
                 }
                 ReqPacketState::Expire => {
-                    self.data.token(&mut self.oft, 0)?;
-                    state = ReqPacketState::SpacesBeforeVlen;
+                    if self.current().is_ascii_digit() {
+                        break;
+                    } else if self.current() == b' ' {
+                        state = ReqPacketState::SpacesBeforeVlen;
+                    } else {
+                        return Err(McqError::ReqInvalid.error());
+                    }
                 }
                 ReqPacketState::SpacesBeforeVlen => {
                     if self.current() != b' ' {

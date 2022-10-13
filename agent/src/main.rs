@@ -13,7 +13,6 @@ mod service;
 use discovery::*;
 mod init;
 
-use rocket::serde::json::serde_json::to_string;
 use rt::spawn;
 use std::time::Duration;
 
