@@ -83,6 +83,10 @@ impl Redis {
                     }
 
                     if cfg.has_val {
+                        // 如果client请求异常，此处没有bulk，可能触发异常
+                        if !packet.has_bulk() {
+                            return Err(super::Error::ResponseProtocolInvalid);
+                        }
                         packet.ignore_one_bulk()?;
                     }
                     let kv = packet.take();

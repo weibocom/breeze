@@ -117,7 +117,16 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             self.check_start()?;
             self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
             self.ctx.first = true;
-            assert_ne!(self.bulk(), 0);
+            // TODO client 异常协议，直接断连接 (需要统一梳理类似case？)fishermen
+            // assert_ne!(self.bulk(), 0);
+            if self.bulk() == 0 {
+                return Err(super::Error::ResponseProtocolInvalid);
+            }
+
+            // 增加保护，此时op_code必须为0，否则说明之前协议处理没有正常退出
+            if self.ctx.op_code != 0 {
+                return Err(super::Error::ResponseProtocolInvalid);
+            }
         }
         Ok(())
     }
