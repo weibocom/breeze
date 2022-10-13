@@ -30,7 +30,10 @@ mod hash_test {
         let h2 = rand_hasher.hash(&key.as_bytes());
         let h3 = rand_hasher.hash(&key.as_bytes());
         let h4 = rand_hasher.hash(&key.as_bytes());
-        println!("key:{}, random-h1:{}, h2:{}, h3:{}, h4:{}", key, h1, h2, h3, h4);
+        println!(
+            "key:{}, random-h1:{}, h2:{}, h3:{}, h4:{}",
+            key, h1, h2, h3, h4
+        );
 
         let rawsuffix_hahser = Hasher::from("rawsuffix-underscore");
         let key_suffix = 123456789;
