@@ -60,7 +60,10 @@ impl McqText {
         packet.parse()?;
 
         let mut flag = Flag::new();
-        flag.set_status_ok(true);
+        if packet.is_succeed() {
+            flag.set_status_ok(true);
+        }
+
         let mem = packet.take();
         return Ok(Some(Command::new(flag, mem)));
     }
