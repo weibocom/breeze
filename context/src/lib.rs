@@ -257,8 +257,8 @@ impl ListenerIter {
 
 #[derive(Debug)]
 pub struct Context {
+    pub short_version: String,
     option: ContextOption,
-    pub short_version: &'static str,
 }
 
 impl std::ops::Deref for Context {
@@ -269,10 +269,9 @@ impl std::ops::Deref for Context {
 }
 impl From<ContextOption> for Context {
     fn from(option: ContextOption) -> Self {
-        let v = SHORT_VERSION.to_string() + "_" +  option.cpu.as_str();
         Self {
+            short_version: SHORT_VERSION.to_string() + "_" +  option.cpu.as_str(),
             option,
-            short_version: Box::leak(v.into_boxed_str()),
         }
     }
 }
