@@ -238,7 +238,9 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     }
                 }
                 RspPacketState::CRLF => match self.current() {
-                    b' ' => break,
+                    b' ' => {
+                        // do nothing, just skip
+                    }
                     CR => state = RspPacketState::AlmostDone,
                     _ => return Err(McqError::RspInvalid.error()),
                 },
