@@ -111,13 +111,7 @@ pub fn init(path: &str, l: &str) -> Result<()> {
         .build(file, policy)
         .unwrap();
 
-    let level = match l {
-        "trace" | "debug" => LevelFilter::Debug,
-        "info" => LevelFilter::Info,
-        "warn" => LevelFilter::Warn,
-        "error" | "fatal" => LevelFilter::Error,
-        _ => LevelFilter::Info,
-    };
+    let level = l.parse().unwrap_or(LevelFilter::Info);
     let config = Config::builder()
         .appender(Appender::builder().build("logfile", Box::new(logfile)))
         .build(Root::builder().appender("logfile").build(level))

@@ -1,5 +1,5 @@
-#[cfg_attr(feature = "enable-log", path = "enable.rs")]
-#[cfg_attr(not(feature = "enable-log"), path = "disable.rs")]
+#[cfg_attr(any(feature = "enable-log", debug_assertions), path = "enable.rs")]
+#[cfg_attr(not(any(feature = "enable-log", debug_assertions)), path = "enable.rs")]
 mod init;
 
 pub use init::*;
