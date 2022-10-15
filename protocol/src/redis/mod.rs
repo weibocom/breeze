@@ -353,7 +353,7 @@ impl Protocol for Redis {
                     if first || cfg.need_bulk_num {
                         if first && cfg.need_bulk_num {
                             w.write_u8(b'*')?;
-                            w.write(ext.key_count().to_string().as_bytes())?;
+                            w.write_s_u16(ext.key_count())?;
                             w.write(b"\r\n")?;
                         }
 
