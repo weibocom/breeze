@@ -85,12 +85,14 @@ impl AsyncRead for PrometheusItem {
 struct PrometheusItemWriter<'a, 'r> {
     left: Vec<u8>,
     buf: &'a mut ReadBuf<'r>,
+    first: bool,
 }
 impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
     fn new(buf: &'a mut ReadBuf<'r>) -> Self {
         Self {
             left: Vec::new(),
             buf,
+            first: true,
         }
     }
     #[inline]
@@ -109,16 +111,17 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
         }
     }
     #[inline]
-    fn put_label(&mut self, name: &str, val: &[u8], first: bool) {
+    fn put_label(&mut self, name: &str, val: &[u8]) {
         if val.len() > 0 {
             //first 保证第一个label前没有 ","
-            if !first {
+            if !self.first {
                 self.put_slice(b",");
             }
             self.put_slice(name.as_bytes());
             self.put_slice(b"=\"");
             self.put_slice(val);
             self.put_slice(b"\"");
+            self.first = false;
         }
     }
 }
@@ -180,14 +183,15 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         self.put_slice(metrics_name.as_bytes());
         self.put_slice("{".as_bytes());
         //确保第一个put的label一定不为空; 后续优化
-        self.put_label("source", source, true);
-        self.put_label("pool", context::get().service_pool.as_bytes(), false);
-        self.put_label("namespace", namespace, false);
-        self.put_label("topic", topic, false);
-        self.put_label("bip", bip, false);
+        self.first = true;
+        self.put_label("source", source);
+        self.put_label("pool", context::get().service_pool.as_bytes());
+        self.put_label("namespace", namespace);
+        self.put_label("topic", topic);
+        self.put_label("bip", bip);
 
         for (k, v) in opts {
-            self.put_label(k, v.as_bytes(), false);
+            self.put_label(k, v.as_bytes());
         }
 
         self.put_slice(b"}");
