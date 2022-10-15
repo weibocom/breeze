@@ -257,7 +257,7 @@ impl ListenerIter {
 
 #[derive(Debug)]
 pub struct Context {
-    pub short_version: String,
+    pub version: String,
     option: ContextOption,
 }
 
@@ -270,7 +270,7 @@ impl std::ops::Deref for Context {
 impl From<ContextOption> for Context {
     fn from(option: ContextOption) -> Self {
         Self {
-            short_version: SHORT_VERSION.to_string() + "_" +  option.cpu.as_str(),
+            version: SHORT_VERSION.to_string() + "_" + option.cpu.as_str(),
             option,
         }
     }
