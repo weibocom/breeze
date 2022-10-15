@@ -8,7 +8,7 @@ pub struct MetricStream<S> {
     s: S,
 }
 
-use std::io::{self};
+use std::io::Result;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -40,7 +40,7 @@ impl<S: AsyncRead + Unpin + std::fmt::Debug> AsyncRead for MetricStream<S> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
+    ) -> Poll<Result<()>> {
         let pre = buf.remaining();
         let ret = Pin::new(&mut self.s).poll_read(cx, buf);
         self.read += 1;
@@ -63,7 +63,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for MetricStream<S> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
+    ) -> Poll<Result<usize>> {
         self.write += 1;
         let r = Pin::new(&mut self.s).poll_write(cx, buf);
         if r.is_pending() {
@@ -74,14 +74,11 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for MetricStream<S> {
         r
     }
     #[inline]
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
         Pin::new(&mut self.s).poll_flush(cx)
     }
     #[inline]
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), io::Error>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
         Pin::new(&mut self.s).poll_shutdown(cx)
     }
 }
