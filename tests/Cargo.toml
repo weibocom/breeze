@@ -16,4 +16,4 @@ byteorder = "1.4.3"
 
 crossbeam-channel = "*"
 
-redis = { version = "0.17.0", features = ["tokio-comp"] }
+redis = { version = "0.22.0", features = ["tokio-comp"] }
