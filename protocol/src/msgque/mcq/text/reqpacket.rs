@@ -289,9 +289,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     for (idx, num) in time_string.as_bytes().iter().enumerate() {
                         req_data[flags_start + idx] = num.to_owned();
                     }
-                    for (i, v) in req_data.clone().into_iter().enumerate() {
-                        println!("i :{},v :{}", i, v as char);
-                    }
                     let marked_cmd = ds::MemGuard::from_vec(req_data);
                     return marked_cmd;
                 }

@@ -3,10 +3,7 @@ use ds::RingSlice;
 use crate::Result;
 use metrics::Path;
 
-use super::{
-    error::McqError,
-    reqpacket::{next_token, Packet},
-};
+use super::{error::McqError, reqpacket::Packet};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 const CR: u8 = 13;
@@ -26,8 +23,9 @@ pub(super) struct RspPacket<'a, S> {
     // vlen: usize,
     // key_start: usize,
     // key_len: usize,
-    // flags: usize,
-    // flags_len: usize,
+    flags: usize,
+    flags_len: usize,
+    flags_start: usize,
     // end: usize,
 }
 
@@ -48,8 +46,9 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
             // vlen: 0,
             // key_start: 0,
             // key_len: 0,
-            // flags: 0,
-            // flags_len: 0,
+            flags: 0,
+            flags_len: 0,
+            flags_start: 0,
             // end: 0,
         }
     }
@@ -161,9 +160,17 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     }
                 }
                 RspPacketState::Flags => {
-                    // flags 当前不需要
-                    self.data.token(&mut self.oft, 0)?;
-                    state = RspPacketState::SpacesBeforeVlen;
+                    if self.current() != b' ' {
+                        if self.flags_start == 0 {
+                            self.flags_start = self.oft;
+                        }
+                        self.flags = self.flags * 10 + (self.current() - b'0') as usize;
+                        self.flags_len += 1;
+                    } else {
+                        self.skip_back(1)?;
+                        self.data.token(&mut self.oft, 0)?;
+                        state = RspPacketState::SpacesBeforeVlen;
+                    }
                 }
                 RspPacketState::SpacesBeforeVlen => {
                     if self.current() != b' ' {
@@ -262,48 +269,71 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         Err(super::Error::ProtocolIncomplete)
     }
 
-    pub(super) fn delay_metric(&mut self, rsp_mem: &mut ds::MemGuard) -> Result<()> {
+    pub(super) fn delay_metric(&mut self) -> Result<()> {
         if !self.data.start_with(0, &"VALUE".as_bytes())? {
             return Ok(());
         };
-        let mut mem_data: Vec<u8> = Vec::with_capacity(rsp_mem.data().len());
-        rsp_mem.data().copy_to_vec(&mut mem_data);
-
-        if let Ok((key_start, _)) = next_token(&mem_data, 0) {
-            if let Ok((flags_start, _key_len)) = next_token(&mem_data, key_start) {
-                if let Ok((_vlen_start, flags_len)) = next_token(&mem_data, flags_start) {
-                    let flags_data = mem_data[flags_start..(flags_start + flags_len)].to_vec();
-
-                    let mut flags_value = 0;
-                    for flag in flags_data.iter() {
-                        flags_value = flags_value * 10 + (flag - b'0') as usize;
-                    }
-                    // 认为是mesh set 时设置,
-                    if flags_len >= 10 {
-                        let time_sec = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs();
-
-                        //let topic = mem_data[key_start..(key_start + key_len)].to_vec();
-                        let mut delay_metric = Path::base().rtt("mcq_delay");
-                        delay_metric += Duration::from_secs(time_sec - flags_value as u64);
-
-                        let mut i = 0;
-                        for idx in flags_start..(flags_start + flags_len) {
-                            if i == 0 {
-                                self.data.update(idx, b'0');
-                            } else {
-                                self.data.update(idx, b' ');
-                            }
-                            i += 1;
-                        }
-                    }
-                }
-            }
+        //todo 要严谨处理的话  还可以加高bit为1的判断
+        if self.flags_len != 10 {
+            return Ok(());
         }
+        let time_sec = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
-        Ok(())
+        let mut delay_metric = Path::base().rtt("mcq_delay");
+        delay_metric += Duration::from_secs(time_sec - self.flags as u64);
+
+        let mut i = 0;
+        for idx in self.flags_start..(self.flags_start + self.flags_len) {
+            if i == 0 {
+                self.data.update(idx, b'0');
+            } else {
+                self.data.update(idx, b' ');
+            }
+            i += 1;
+        }
+        return Ok(());
+
+        // let mut mem_data: Vec<u8> = Vec::with_capacity(rsp_mem.data().len());
+        // rsp_mem.data().copy_to_vec(&mut mem_data);
+
+        // if let Ok((key_start, _)) = next_token(&mem_data, 0) {
+        //     if let Ok((flags_start, _key_len)) = next_token(&mem_data, key_start) {
+        //         if let Ok((_vlen_start, flags_len)) = next_token(&mem_data, flags_start) {
+        //             let flags_data = mem_data[flags_start..(flags_start + flags_len)].to_vec();
+
+        //             let mut flags_value = 0;
+        //             for flag in flags_data.iter() {
+        //                 flags_value = flags_value * 10 + (flag - b'0') as usize;
+        //             }
+        //             // 认为是mesh set 时设置,
+        //             if flags_len >= 10 {
+        //                 let time_sec = SystemTime::now()
+        //                     .duration_since(UNIX_EPOCH)
+        //                     .unwrap()
+        //                     .as_secs();
+
+        //                 //let topic = mem_data[key_start..(key_start + key_len)].to_vec();
+        //                 let mut delay_metric = Path::base().rtt("mcq_delay");
+        //                 delay_metric += Duration::from_secs(time_sec - flags_value as u64);
+
+        //                 let mut i = 0;
+        //                 for idx in flags_start..(flags_start + flags_len) {
+        //                     if i == 0 {
+        //                         self.data.update(idx, b'0');
+        //                     } else {
+        //                         self.data.update(idx, b' ');
+        //                     }
+        //                     i += 1;
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
+
+        // Ok(())
     }
 
     pub(super) fn is_empty(&self) -> bool {

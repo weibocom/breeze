@@ -63,8 +63,8 @@ impl McqText {
         if !packet.is_empty() {
             flag.set_status_ok(true);
         }
-        let mut mem = packet.take();
-        let _ = packet.delay_metric(&mut mem);
+        let mem = packet.take();
+        let _ = packet.delay_metric();
         return Ok(Some(Command::new(flag, mem)));
     }
 }
