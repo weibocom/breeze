@@ -17,7 +17,7 @@ jobs:
     steps:
     - name: Prepare backend resource
       run: docker run  --rm -d --name breeze-be --network host redis:alpine3.16
-    - uses: actions/checkout@dev
+    - uses: actions/checkout@v3
     - name: Build
       run: cargo build --verbose
     - name: Run tests
