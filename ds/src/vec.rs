@@ -44,3 +44,19 @@ define_read_number!(
     write_u32, u32;
     write_u64, u64
 );
+
+pub trait Add<T> {
+    fn add(&mut self, t: T);
+}
+
+impl<T> Add<T> for Vec<T>
+where
+    T: std::cmp::PartialEq,
+{
+    #[inline]
+    fn add(&mut self, e: T) {
+        if !self.contains(&e) {
+            self.push(e);
+        }
+    }
+}
