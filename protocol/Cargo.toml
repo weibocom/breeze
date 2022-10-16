@@ -16,5 +16,5 @@ enum_dispatch = "0.3.7"
 lazy_static = "1.4.0"
 rand = "0.8.4"
 
-tokio = {version = "1.21.1", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
+tokio = {version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
 ctor = "0.1.23"
