@@ -6,6 +6,7 @@ use super::{
     command::{self, CommandProperties, RequestType},
     error::{self, McqError},
 };
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CR: u8 = 13;
 const LF: u8 = 10;
@@ -104,6 +105,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     }
                     token = self.oft;
                     state = ReqPacketState::ReqType;
+                    continue;
                 }
                 ReqPacketState::ReqType => {
                     // 直接加速skip掉cmd token
@@ -121,6 +123,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                                 return Err(McqError::ReqInvalid.error());
                             }
                             state = ReqPacketState::SpacesBeforeKey;
+                            continue;
                         }
                         RequestType::Get
                         | RequestType::Delete
@@ -139,6 +142,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if self.current() != b' ' {
                         token = self.oft;
                         state = ReqPacketState::Key;
+                        continue;
                     }
                 }
                 ReqPacketState::Key => {
@@ -147,6 +151,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if self.current() == CR {
                         return Err(McqError::ReqInvalid.error());
                     }
+                    continue;
                 }
                 ReqPacketState::SpacesBeforeFlags => {
                     if self.current() != b' ' {
@@ -154,13 +159,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                             return Err(McqError::ReqInvalid.error());
                         }
                         state = ReqPacketState::Flags;
+                        continue;
                     }
                 }
                 ReqPacketState::Flags => {
                     if self.current().is_ascii_digit() {
-                        break;
+                        //break;
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeExpire;
+                        continue;
                     } else {
                         return Err(McqError::ReqInvalid.error());
                     }
@@ -168,13 +175,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 ReqPacketState::SpacesBeforeExpire => {
                     if self.current() != b' ' {
                         state = ReqPacketState::Expire;
+                        continue;
                     }
                 }
                 ReqPacketState::Expire => {
                     if self.current().is_ascii_digit() {
-                        break;
+                        // break;
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeVlen;
+                        continue;
                     } else {
                         return Err(McqError::ReqInvalid.error());
                     }
@@ -185,8 +194,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                             return Err(McqError::ReqInvalid.error());
                         }
                         token = self.oft;
-                        vlen = (self.current() - b'0') as usize;
+                        vlen = 0;
                         state = ReqPacketState::Vlen;
+                        continue;
                     }
                 }
                 ReqPacketState::Vlen => {
@@ -240,6 +250,54 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.oft_last = self.oft;
 
         self.stream.take(data.len())
+    }
+
+    // 将mcq req 文本协议（set key flags exp vlen）中 flags 段用timestamp 填充 ，消费时用作topic延时指标
+    pub(super) fn mark_flags(
+        &mut self,
+        req_cmd: ds::MemGuard,
+        req_type: RequestType,
+    ) -> ds::MemGuard {
+        if RequestType::Get == req_type {
+            return req_cmd;
+        }
+        let mut req_data: Vec<u8> = Vec::with_capacity(req_cmd.data().len() + 10);
+        req_cmd.data().copy_to_vec(&mut req_data);
+        if let Ok((key_start, _op_len)) = next_token(&req_data, 0) {
+            if let Ok((flags_start, _ken_len)) = next_token(&req_data, key_start) {
+                if let Ok((_expire_start, flags_len)) = next_token(&req_data, flags_start) {
+                    // 业务特殊需要，则不做标记 直接返回
+                    if flags_len > 1 || req_data[flags_start] != b'0' {
+                        return req_cmd;
+                    }
+                    let time_string = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs()
+                        .to_string();
+                    // 为避免重新开辟一块vec空间，先通过空格填充占位，再通过移动覆盖
+                    for _i in 0..time_string.len() - 1 {
+                        req_data.push(b' ');
+                    }
+                    let mut i = req_data.len() - 1;
+                    let mut j = i - (time_string.len() - 1);
+                    while j > flags_start {
+                        req_data[i] = req_data[j];
+                        j -= 1;
+                        i -= 1;
+                    }
+                    for (idx, num) in time_string.as_bytes().iter().enumerate() {
+                        req_data[flags_start + idx] = num.to_owned();
+                    }
+                    for (i, v) in req_data.clone().into_iter().enumerate() {
+                        println!("i :{},v :{}", i, v as char);
+                    }
+                    let marked_cmd = ds::MemGuard::from_vec(req_data);
+                    return marked_cmd;
+                }
+            }
+        }
+        return req_cmd;
     }
 }
 
@@ -312,4 +370,33 @@ pub(crate) enum ReqPacketState {
     // CRLF,
     // Noreply,
     // AfterNoreply,
+}
+
+// eg: oft = 0   set xx O 0 123\r\n  返回 (0,3,1) ,表示文本分段开始,token 长度
+pub(super) fn next_token(data_body: &Vec<u8>, cur_start: usize) -> Result<(usize, usize)> {
+    let end = data_body.len();
+    let mut words_len: usize = 0;
+    let mut space_len: usize = 0;
+    if cur_start >= data_body.len() {
+        return Err(error::McqError::ReqInvalid.error());
+    }
+
+    // word 计数
+    for i in cur_start..end {
+        if data_body[i] != b' ' {
+            words_len += 1;
+            continue;
+        }
+        break;
+    }
+
+    // 空格数
+    for i in (cur_start + words_len)..end {
+        if data_body[i] == b' ' {
+            space_len += 1;
+            continue;
+        }
+        break;
+    }
+    Ok((cur_start + space_len + words_len, words_len))
 }

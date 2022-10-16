@@ -38,7 +38,9 @@ impl McqText {
             flag.set_sentonly(false);
             // 是否内部请求,不发往后端，如quit
             flag.set_noforward(cfg.noforward());
+            let req_type = cfg.req_type().to_owned();
             let cmd = packet.take();
+            let cmd = packet.mark_flags(cmd, req_type);
             let req = HashedCommand::new(cmd, 0, flag);
             process.process(req, true);
 
@@ -61,7 +63,8 @@ impl McqText {
         if !packet.is_empty() {
             flag.set_status_ok(true);
         }
-        let mem = packet.take();
+        let mut mem = packet.take();
+        let _ = packet.delay_metric(&mut mem);
         return Ok(Some(Command::new(flag, mem)));
     }
 }

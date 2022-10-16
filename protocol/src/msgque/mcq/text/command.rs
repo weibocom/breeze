@@ -165,7 +165,7 @@ impl Display for CommandProperties {
 
 // mcq2 目前只支持如下指令
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum RequestType {
     Unknown,
     Get,
