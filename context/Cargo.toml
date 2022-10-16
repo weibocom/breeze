@@ -11,7 +11,7 @@ log = { path = "../log" }
 
 clap = {version = "3.1.1", features = ["derive"] }
 url = "2.2.2"
-tokio = { version = "1.21.1", features = ["fs"] }
+tokio = { version = "1.21.2", features = ["fs"] }
 git-version = "0.3.5"
 lazy_static = "1.4.0"
 

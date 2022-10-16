@@ -10,7 +10,7 @@ context = { path = "../context" }
 metrics = { path = "../metrics" }
 log = { path = "../log"  }
 #log = "0.4.14"
-tokio = { version = "1.21.1", features = ["fs"] }
+tokio = { version = "1.21.2", features = ["fs"] }
 
 trust-dns-resolver = "0.21.2"
 
