@@ -29,6 +29,9 @@ jobs:
           mkdir -p /home/runner/work/breeze/snapshot
           mkdir -p /home/runner/work/breeze/socks
           touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
+          ls -all /home/runner/work/breeze/snapshot
+          ls -all /home/runner/work/breeze/socks
+          ls -all /home/runner/work/breeze/logs
       - name: Run
         run: nohup cargo run --features enable-log -- --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --upgrade --port 9984 --metrics-probe 10.10.10.10:53 --log-level info &
       - name: Build Again
@@ -36,9 +39,9 @@ jobs:
       - name: Check Port
         run: |
           netstat -nat|grep LISTEN
-          ll -a /home/runner/work/breeze/snapshot
-          ll -a /home/runner/work/breeze/socks
-          ll -a /home/runner/work/breeze/logs
+          ls -all /home/runner/work/breeze/snapshot
+          ls -all /home/runner/work/breeze/socks
+          ls -all /home/runner/work/breeze/logs
           cat /home/runner/work/breeze/logs/breeze.log
       - name: Run tests
         run: cargo test --verbose
