@@ -26,6 +26,6 @@ jobs:
           mkdir -p /home/runner/work/breeze/socks
           touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
       - name: Run
-        run: cargo run --features enable-log -- --discovery vintage://10.182.27.228:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --metrics-url logtailer.monitor.weibo.com:8333 --upgrade --port 9984 --metrics-probe 10.10.10.10:53 --log-level info
+        run: nohup cargo run --features enable-log -- --discovery vintage://10.182.27.228:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --metrics-url logtailer.monitor.weibo.com:8333 --upgrade --port 9984 --metrics-probe 10.10.10.10:53 --log-level info &
       - name: Run tests
         run: cargo test --verbose
