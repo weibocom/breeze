@@ -19,7 +19,7 @@ pub(super) fn start_http_server(ctx: &context::Context) {
             rocket = crate::console::init_routes(rocket, ctx);
         }
         rocket = crate::prometheus::init_routes(rocket);
-        rocket = rocket.attach(rocket_async_compression::Compression::fairing());
+        //rocket = rocket.attach(rocket_async_compression::Compression::fairing());
         rt::spawn(async {
             if let Err(_e) = rocket.launch().await {
                 log::error!("launch rocket failed: {:?}", _e);
