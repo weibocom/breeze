@@ -82,7 +82,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
             while *idx < buf.len() {
                 *idx += ready!(w.as_mut().poll_write(cx, &buf[*idx..]))?;
             }
-            assert_eq!(*idx, buf.len());
+            assert_eq!(*idx, buf.len(), "{}/{}", *idx, buf.len());
             let flush = w.poll_flush(cx)?;
             assert!(flush.is_ready());
             ready!(flush);
@@ -133,7 +133,7 @@ impl<S> Stream<S> {
             let new = self.policy.grow(len, cap, data.len());
             let grow = new - self.buf.len();
             self.buf.reserve_exact(grow);
-            assert_eq!(self.buf.capacity(), new);
+            assert_eq!(self.buf.capacity(), new, "{}/{}", self.buf.capacity(), new);
             self.buf_tx += new - cap;
         }
         self.cache += 1;
@@ -147,7 +147,7 @@ impl<S> Stream<S> {
             let old = self.buf.capacity();
             let new = self.policy.shrink(self.buf.len(), old);
             self.buf.shrink_to(new);
-            assert_eq!(new, self.buf.capacity());
+            assert_eq!(new, self.buf.capacity(), "{}/{}", new, self.buf.capacity());
             self.buf_tx -= (old - new) as isize;
         }
         self.idx = 0;
