@@ -12,9 +12,10 @@ members = [
   "metrics",
   "ds",
   "rt",
-  "api",
   "tests",
 ]
+
+exclude = ["api", "tests"]
 
 
 [profile.release-test]

@@ -6,6 +6,7 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+
 [dependencies]
 context = { path = "../context" }
 sharding = { path = "../sharding" }
@@ -23,15 +24,15 @@ api = { path = "../api" }
 backtrace = "0.3.63"
 lazy_static = "1.4.0"
 
-tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
+tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time"], default-features = false }
 mimalloc = { version = "*", default-features = false }
 once_cell = "*"
 
-rlimit = "0.3.0"
+rlimit = "0.8.3"
 
 # rocket for restful api
-rocket = { version = "0.5.0-rc.2", features = ["json"] }
-rocket_async_compression = "0.1.0"
+rocket = { version = "0.5.0-rc.2", features = ["json"], default-features = false }
+#rocket_async_compression = "0.1.2"
 
 [features]
 default = ["prometheus"]
