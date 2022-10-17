@@ -36,5 +36,9 @@ jobs:
       - name: Check Port
         run: |
           netstat -nat|grep LISTEN
+          ll -a /home/runner/work/breeze/snapshot
+          ll -a /home/runner/work/breeze/socks
+          ll -a /home/runner/work/breeze/logs
+          cat /home/runner/work/breeze/logs/breeze.log
       - name: Run tests
         run: cargo test --verbose
