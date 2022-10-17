@@ -31,5 +31,10 @@ jobs:
           touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
       - name: Run
         run: nohup cargo run --features enable-log -- --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --upgrade --port 9984 --metrics-probe 10.10.10.10:53 --log-level info &
+      - name: Build Again
+        run: cargo build --verbose
+      - name: Check Port
+        run: |
+          netstat -nat|grep LISTEN
       - name: Run tests
         run: cargo test --verbose
