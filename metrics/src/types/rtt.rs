@@ -33,7 +33,7 @@ impl Rtt {
             }
             let max = self.max.zero();
             if max > 0 {
-                w.write(&id.path, id.key, "max_us", max as f64);
+                w.write(&id.path, id.key, "max_us", max);
             }
         }
     }
