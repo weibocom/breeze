@@ -22,7 +22,7 @@ impl Host {
         Self {
             start: Instant::now(),
             process: Process::current().expect("cannot get current process"),
-            version: context::get().short_version,
+            version: &context::get().version,
         }
     }
     #[inline]

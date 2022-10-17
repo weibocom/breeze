@@ -66,7 +66,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     fn current(&self) -> u8 {
-        assert!(self.available());
+        assert!(self.available(), "oft:{}, rq:{:?}", self.oft, self.data);
         self.data.at(self.oft)
     }
 
@@ -97,15 +97,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         while self.available() {
             match state {
                 ReqPacketState::Start => {
-                    if self.current() == b' ' {
-                        break;
-                    }
+                    // mc 协议中cmd字符需要是小写
                     if !self.current().is_ascii_lowercase() {
                         return Err(McqError::ReqInvalid.error());
                     }
-                    token = self.oft;
-                    state = ReqPacketState::ReqType;
-                    continue;
+                    if self.current() != b' ' {
+                        token = self.oft;
+                        state = ReqPacketState::ReqType;
+                    }
                 }
                 ReqPacketState::ReqType => {
                     // 直接加速skip掉cmd token
@@ -123,7 +122,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                                 return Err(McqError::ReqInvalid.error());
                             }
                             state = ReqPacketState::SpacesBeforeKey;
-                            continue;
                         }
                         RequestType::Get
                         | RequestType::Delete
@@ -134,7 +132,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                             return Ok(());
                         }
                         RequestType::Unknown => {
-                            panic!("mcq unknown type should not come here");
+                            panic!("mcq unknown type msg:{:?}", self.data);
                         }
                     }
                 }
@@ -142,7 +140,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if self.current() != b' ' {
                         token = self.oft;
                         state = ReqPacketState::Key;
-                        continue;
                     }
                 }
                 ReqPacketState::Key => {
@@ -151,7 +148,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if self.current() == CR {
                         return Err(McqError::ReqInvalid.error());
                     }
-                    continue;
                 }
                 ReqPacketState::SpacesBeforeFlags => {
                     if self.current() != b' ' {
@@ -159,15 +155,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                             return Err(McqError::ReqInvalid.error());
                         }
                         state = ReqPacketState::Flags;
-                        continue;
                     }
                 }
                 ReqPacketState::Flags => {
                     if self.current().is_ascii_digit() {
-                        //break;
+                        // do nothing, just skip it
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeExpire;
-                        continue;
                     } else {
                         return Err(McqError::ReqInvalid.error());
                     }
@@ -175,15 +169,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 ReqPacketState::SpacesBeforeExpire => {
                     if self.current() != b' ' {
                         state = ReqPacketState::Expire;
-                        continue;
                     }
                 }
                 ReqPacketState::Expire => {
                     if self.current().is_ascii_digit() {
-                        // break;
+                        // do nothing, just skip it
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeVlen;
-                        continue;
                     } else {
                         return Err(McqError::ReqInvalid.error());
                     }
@@ -194,9 +186,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                             return Err(McqError::ReqInvalid.error());
                         }
                         token = self.oft;
-                        vlen = 0;
+                        vlen = (self.current() - b'0') as usize;
                         state = ReqPacketState::Vlen;
-                        continue;
                     }
                 }
                 ReqPacketState::Vlen => {
@@ -245,7 +236,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
-        assert!(self.oft_last < self.oft);
+        assert!(
+            self.oft_last < self.oft,
+            "oft: {}/{}, req:{:?}",
+            self.oft_last,
+            self.oft,
+            self.data
+        );
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
 

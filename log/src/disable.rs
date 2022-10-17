@@ -47,6 +47,11 @@ use std::io::Write;
 pub fn init(path: &str, _l: &str) -> std::io::Result<()> {
     std::fs::create_dir_all(path)?;
     let mut log = std::fs::File::create(format!("{}/breeze.log", path))?;
-    log.write(b"===> log disabled <===")?;
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let hint = format!("===> log disabled: {} secs <===", secs);
+    log.write(hint.as_bytes())?;
     Ok(())
 }

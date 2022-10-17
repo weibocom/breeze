@@ -127,7 +127,7 @@ impl Meta {
             sock_path: ctx.service_path.clone(),
             snapshot_path: ctx.snapshot_path.clone(),
 
-            version: ctx.short_version.to_string(),
+            version: ctx.version.to_string(),
             sockfiles: Default::default(),
         }
     }

@@ -85,13 +85,14 @@ impl Namespace {
     // 确保master在第0个位置
     pub(super) fn take_backends(self) -> Vec<Vec<String>> {
         assert!(self.master.len() > 0);
+        use ds::vec::Add;
         let mut backends = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
-        backends.push(self.master);
-        backends.extend(self.master_l1);
+        backends.add(self.master);
+        self.master_l1.into_iter().for_each(|v| backends.add(v));
         if self.slave.len() > 0 {
-            backends.push(self.slave);
+            backends.add(self.slave);
         }
-        backends.extend(self.slave_l1);
+        self.slave_l1.into_iter().for_each(|v| backends.add(v));
         backends
     }
     //pub(super) fn timeout_master(&self) -> Duration {

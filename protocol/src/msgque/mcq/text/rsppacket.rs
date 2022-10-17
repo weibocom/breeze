@@ -220,7 +220,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     }
                 }
                 RspPacketState::End => {
-                    assert!(token == 0);
+                    assert!(token == 0, "token:{}, rsp:{:?}", token, self.data);
                     if self.current() != b'E' {
                         return Err(McqError::RspInvalid.error());
                     }
@@ -251,7 +251,9 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     }
                 }
                 RspPacketState::CRLF => match self.current() {
-                    b' ' => break,
+                    b' ' => {
+                        // do nothing, just skip
+                    }
                     CR => state = RspPacketState::AlmostDone,
                     _ => return Err(McqError::RspInvalid.error()),
                 },
@@ -342,7 +344,13 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
 
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
-        assert!(self.oft_last < self.oft);
+        assert!(
+            self.oft_last < self.oft,
+            "oft: {}/{}, rsp:{:?}",
+            self.oft_last,
+            self.oft,
+            self.data
+        );
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
 
@@ -374,7 +382,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
 
     #[inline]
     fn current(&self) -> u8 {
-        assert!(self.available());
+        assert!(self.available(), "oft:{}, rsp:{:?}", self.oft, self.data);
         self.data.at(self.oft)
     }
 }

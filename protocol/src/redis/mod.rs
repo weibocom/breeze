@@ -65,7 +65,7 @@ impl Redis {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
                     let first = packet.first();
-                    assert!(cfg.has_key);
+                    assert!(cfg.has_key, "cfg:{}", cfg.name);
 
                     // 不管是否使用当前cmd的key来计算hash，都需要解析出一个key
                     let key = packet.parse_key()?;
@@ -115,7 +115,7 @@ impl Redis {
 
                 // 如果是指示下一个cmd hash的特殊指令，需要保留hash
                 if cfg.reserve_hash {
-                    debug_assert!(cfg.has_key);
+                    debug_assert!(cfg.has_key, "cfg:{}", cfg.name);
                     // 执行到这里，需要保留指示key的，目前只有hashkey
                     debug_assert_eq!(cfg.name, command::DIST_CMD_HASHKEY);
                     packet.update_reserved_hash(hash);
@@ -134,7 +134,7 @@ impl Redis {
         packet: &mut RequestPacket<S>,
         alg: &H,
     ) -> Result<()> {
-        debug_assert!(cfg.swallowed);
+        debug_assert!(cfg.swallowed, "cfg:{}", cfg.name);
         match cfg.name {
             // hashkeyq
             SWALLOWED_CMD_HASHKEYQ => {
@@ -159,7 +159,7 @@ impl Redis {
                 packet.update_reserved_hash(hash as i64);
             }
             _ => {
-                debug_assert!(false);
+                debug_assert!(false, "cfg:{}", cfg.name);
                 log::warn!("should not come here![hashkey?]");
             }
         }
@@ -222,7 +222,7 @@ impl Redis {
                     panic!("not supported");
                 }
             }
-            assert!(oft <= data.len());
+            assert!(oft <= data.len(), "{} data:{:?}", oft, data);
             let mem = s.take(oft);
             let mut flag = Flag::new();
             // redis不需要重试
@@ -319,7 +319,7 @@ impl Protocol for Redis {
         dist_fn: F,
     ) -> Result<usize> {
         let rsp_idx = req.ext().padding_rsp() as usize;
-        assert!(rsp_idx < PADDING_RSP_TABLE.len());
+        assert!(rsp_idx < PADDING_RSP_TABLE.len(), "rsp_idx:{}", rsp_idx);
 
         let mut nil_convert = 0;
         // check cmd需要额外构建rsp，目前只有hashkey、keyshard两种dist指令需要构建
@@ -353,7 +353,7 @@ impl Protocol for Redis {
                     if first || cfg.need_bulk_num {
                         if first && cfg.need_bulk_num {
                             w.write_u8(b'*')?;
-                            w.write(ext.key_count().to_string().as_bytes())?;
+                            w.write_s_u16(ext.key_count())?;
                             w.write(b"\r\n")?;
                         }
 
@@ -390,7 +390,7 @@ impl Protocol for Redis {
             Ok(nil_convert)
         } else {
             // quit，先发+OK，再返回err
-            assert_eq!(rsp_idx, 0);
+            assert_eq!(rsp_idx, 0, "rsp_idx:{}", rsp_idx);
             let ok_rs = PADDING_RSP_TABLE.get(1).unwrap().as_bytes();
             w.write(ok_rs)?;
             Err(crate::Error::Quit)
@@ -400,7 +400,7 @@ impl Protocol for Redis {
     #[inline]
     fn build_writeback_request<C: Commander>(&self, ctx: &mut C, _: u32) -> Option<HashedCommand> {
         let hash_cmd = ctx.request_mut();
-        debug_assert!(hash_cmd.direct_hash());
+        debug_assert!(hash_cmd.direct_hash(), "data: {:?}", hash_cmd.data());
 
         // hash idx 放到topo.send 中处理
         // let idx_hash = hash_cmd.hash() - 1;
