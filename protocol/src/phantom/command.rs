@@ -105,7 +105,7 @@ impl CommandProperties {
     #[inline]
     pub(super) fn build_request_with_key(&self, hash: i64, real_key: &RingSlice) -> HashedCommand {
         use ds::Buffer;
-        assert!(self.name.len() < 10);
+        assert!(self.name.len() < 10, "name:{}", self.name);
         let mut cmd = Vec::with_capacity(24 + real_key.len());
         cmd.push(b'*');
         // 1个cmd, 1个key，1个value。一共3个bulk
@@ -138,7 +138,7 @@ impl CommandProperties {
         real_key: &RingSlice,
     ) -> HashedCommand {
         use ds::Buffer;
-        assert!(self.name.len() < 10);
+        assert!(self.name.len() < 10, "name:{}", self.name);
         let mut cmd = Vec::with_capacity(24 + real_key.len());
         cmd.push(b'*');
         // 1个cmd, 1个key，1个value。一共3个bulk
@@ -162,7 +162,11 @@ impl CommandProperties {
             flag.set_mkey_first();
             // mset只有一个返回值。
             // 其他的multi请求的key的数量就是bulk_num
-            assert!(self.key_step == 1 || self.key_step == 2);
+            assert!(
+                self.key_step == 1 || self.key_step == 2,
+                "step:{}",
+                self.key_step
+            );
             let mut key_num = bulk_num;
             if self.key_step == 2 {
                 key_num >>= 1;
@@ -198,7 +202,7 @@ impl Commands {
     }
     #[inline]
     pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
-        assert!((op_code as usize) < self.supported.len());
+        assert!((op_code as usize) < self.supported.len(), "op:{}", op_code);
         let cmd = unsafe { self.supported.get_unchecked(op_code as usize) };
         if cmd.supported {
             Ok(cmd)
@@ -232,7 +236,7 @@ impl Commands {
     ) {
         let uppercase = name.to_uppercase();
         let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
-        assert!(idx < self.supported.len());
+        assert!(idx < self.supported.len(), "idx:{}", idx);
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
 

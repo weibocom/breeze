@@ -41,11 +41,11 @@ impl Phantom {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
                     let first = packet.first();
-                    assert!(cfg.has_key);
+                    assert!(cfg.has_key, "cmd: {:?}", cfg.name);
                     // 注意，fullkey格式: $hash_key.$realkey
                     let full_key = packet.parse_key()?;
                     let (hash, real_key) = split_and_calculate_hash(alg, &full_key);
-                    debug_assert!(!cfg.has_val);
+                    debug_assert!(!cfg.has_val, "cmd:{}", cfg.name);
                     // if cfg.has_val {
                     //     packet.ignore_one_bulk()?;
                     // }
@@ -145,7 +145,7 @@ impl Phantom {
                     panic!("not supported");
                 }
             }
-            assert!(oft <= data.len());
+            assert!(oft <= data.len(), "oft:{}/{:?}", oft, data);
             let mem = s.take(oft);
             let mut flag = Flag::new();
             flag.set_status_ok(status_ok);
@@ -270,7 +270,7 @@ impl Protocol for Phantom {
             nil.to_string()
         } else {
             let rsp_idx = req.ext().padding_rsp() as usize;
-            assert!(rsp_idx < PADDING_RSP_TABLE.len());
+            assert!(rsp_idx < PADDING_RSP_TABLE.len(), "rsp_idx:{}", rsp_idx);
             let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
             rsp.to_string()
         };
