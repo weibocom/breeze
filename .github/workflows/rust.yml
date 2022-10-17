@@ -16,6 +16,9 @@ jobs:
     steps:
       - name: Prepare vintage_mc_redis
         run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci003
+      - name: check vintage
+        run: |
+          curl http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
       - uses: actions/checkout@v3
       - name: Build
         run: cargo build --verbose
