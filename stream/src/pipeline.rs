@@ -10,7 +10,7 @@ use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use protocol::{
-    Commander, HashedCommand, Operation, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
+    Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
 };
 
 use crate::buffer::{Reader, StreamGuard};
@@ -211,22 +211,17 @@ where
                 client.cache(true);
             }
             let op = ctx.request().operation();
-            //parser 只有mcq计算丢失率
-            if op == Operation::Store {
-                *metrics.inconsnum() += 1;
-            } else if op == Operation::Get {
-                *metrics.inconsnum() -= 1;
-            }
-
-            //println!("{:?},{:?}", op, metrics.inconsnum());
             *metrics.key() += 1;
-
+            // println!("{:?}", ctx.response());
+            //parser todo： 只有mcq计算丢失率
             if op.is_query() {
                 let hit = ctx.response_ok() as usize;
                 *metrics.hit() += hit;
                 *metrics.cache() += (hit, 1);
+            } else if op.is_store() {
+                let inconsum = ctx.response_ok() as usize;
+                *metrics.inconsnum() += inconsum;
             }
-
             if ctx.inited() && !ctx.request().ignore_rsp() {
                 let nil_convert = parser.write_response(&mut ctx, client)?;
                 if nil_convert > 0 {
