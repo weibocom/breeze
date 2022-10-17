@@ -83,6 +83,9 @@ pub struct ContextOption {
     #[clap(long, help("service pool"), default_value("default_pool"))]
     pub service_pool: String,
 
+    #[clap(long, help("cpu level"), default_value("vx"))]
+    pub cpu: String,
+
     // api参数，目前只有这一个差异参数，先放这里
     #[clap(long, help("api whitelist host"), default_value("localhost"))]
     pub whitelist_host: String,
@@ -254,8 +257,8 @@ impl ListenerIter {
 
 #[derive(Debug)]
 pub struct Context {
+    pub version: String,
     option: ContextOption,
-    pub short_version: &'static str,
 }
 
 impl std::ops::Deref for Context {
@@ -267,8 +270,8 @@ impl std::ops::Deref for Context {
 impl From<ContextOption> for Context {
     fn from(option: ContextOption) -> Self {
         Self {
+            version: SHORT_VERSION.to_string() + "_" + option.cpu.as_str(),
             option,
-            short_version: &SHORT_VERSION,
         }
     }
 }

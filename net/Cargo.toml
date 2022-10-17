@@ -8,4 +8,4 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1.51"
-tokio = { version = "1.20.1" }
+tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time"], default-features = false }
