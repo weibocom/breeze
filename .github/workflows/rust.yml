@@ -46,6 +46,14 @@ jobs:
           ls -all /home/runner/work/breeze/logs
           cat /home/runner/work/breeze/logs/breeze.log
           cat /home/runner/work/breeze/logs/log.file
-
       - name: Run tests
         run: cargo test --verbose
+      - name: Check Port
+        run: |
+          netstat -nat|grep LISTEN
+          ps -aux|grep breeze
+          ls -all /home/runner/work/breeze/snapshot
+          ls -all /home/runner/work/breeze/socks
+          ls -all /home/runner/work/breeze/logs
+          cat /home/runner/work/breeze/logs/breeze.log
+          cat /home/runner/work/breeze/logs/log.file
