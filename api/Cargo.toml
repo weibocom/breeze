@@ -10,12 +10,12 @@ context = { path = "../context" }
 metrics = { path = "../metrics" }
 log = { path = "../log"  }
 #log = "0.4.14"
-tokio = { version = "1.21.2", features = ["fs"] }
+tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time"], default-features = false }
 
-trust-dns-resolver = "0.21.2"
+trust-dns-resolver = "0.22.0"
 
 # rocket for restful api
-rocket = { version = "0.5.0-rc.2", features = ["json"] }
+rocket = { version = "0.5.0-rc.2", features = ["json"], default-features = false }
 lazy_static = "1.4.0"
 
 # for serde json
@@ -23,5 +23,5 @@ serde = { version = "1.0.126", features = ["derive"] }
 serde_derive = "1.0.126"
 serde_json = "1.0.65"
 
-redis = { version = "0.22.0", features = ["tokio-comp"] }
-memcache = "*"
+redis = { version = "0.22.0", features = [], default-features = false }
+memcache = { version = "*", features = [], default-features = false }
