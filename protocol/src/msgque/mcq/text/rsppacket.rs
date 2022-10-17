@@ -287,14 +287,8 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         let mut delay_metric = Path::base().rtt("mcq_delay");
         delay_metric += Duration::from_secs(time_sec - self.flags as u64);
 
-        let mut i = 0;
         for idx in self.flags_start..(self.flags_start + self.flags_len) {
-            if i == 0 {
-                self.data.update(idx, b'0');
-            } else {
-                self.data.update(idx, b' ');
-            }
-            i += 1;
+            self.data.update(idx, b'0');
         }
         return Ok(());
 
