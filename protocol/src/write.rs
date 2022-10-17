@@ -1,8 +1,4 @@
 use super::Result;
-const NUM_STR_TBL: [&'static str; 32] = [
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
-    "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31",
-];
 pub trait Writer {
     fn pending(&self) -> usize;
     // 写数据，一次写完
@@ -15,8 +11,8 @@ pub trait Writer {
     // write(v.to_string().as_bytes())
     #[inline]
     fn write_s_u16(&mut self, v: u16) -> Result<()> {
-        if v < NUM_STR_TBL.len() as u16 {
-            self.write(NUM_STR_TBL[v as usize].as_bytes())
+        if v < ds::NUM_STR_TBL.len() as u16 {
+            self.write(ds::NUM_STR_TBL[v as usize].as_bytes())
         } else {
             self.write(v.to_string().as_bytes())
         }
