@@ -73,7 +73,7 @@ mod redis_intergration_test {
             redis::cmd("GET").arg("bar").query(&mut con),
             Ok(b"foo".to_vec())
         );
-        let v_sizes = [4, 40, 400, 4000, 8000, 20000, 3000000];
+        let mut v_sizes = [4, 40, 400, 4000, 8000, 20000, 3000000];
         for v_size in v_sizes {
             let val = vec![1u8; v_size];
             redis::cmd("SET").arg("bar").arg(&val).execute(&mut con);
@@ -82,7 +82,8 @@ mod redis_intergration_test {
         //todo random iter
         use rand::seq::SliceRandom;
         let mut rng = rand::thread_rng();
-        for v_size in v_sizes.shuffle(&mut rng) {
+        v_sizes.shuffle(&mut rng);
+        for v_size in v_sizes {
             let val = vec![1u8; v_size];
             redis::cmd("SET").arg("bar").arg(&val).execute(&mut con);
             assert_eq!(redis::cmd("GET").arg("bar").query(&mut con), Ok(val));
