@@ -5,7 +5,7 @@ mod mc_test {
     #[test]
     fn mc_test_set() {
         let client =
-            memcache::connect("memcache://10.182.1.51:20304?timeout=10&tcp_nodelay=true").unwrap();
+            memcache::connect("memcache://localhost:9301?timeout=10&tcp_nodelay=true").unwrap();
         let key = "fooset";
         let value = "bar";
         client.add(key, "baz", 2).unwrap();
@@ -36,7 +36,7 @@ mod mc_test {
     #[test]
     fn mc_test_add() {
         let client =
-            memcache::connect("memcache://10.182.1.51:20304?timeout=10&tcp_nodelay=true").unwrap();
+            memcache::connect("memcache://localhost:9301?timeout=10&tcp_nodelay=true").unwrap();
         let key = "fooadd";
         let value = "bar";
         client.add(key, value, 2).unwrap();
@@ -48,7 +48,7 @@ mod mc_test {
     #[test]
     fn mc_test_replace() {
         let client =
-            memcache::connect("memcache://10.182.1.51:20304?timeout=10&tcp_nodelay=true").unwrap();
+            memcache::connect("memcache://localhost:9301?timeout=10&tcp_nodelay=true").unwrap();
         let key = "fooreplace";
         let value = "bar";
         client.set(key, value, 3).unwrap();
@@ -61,7 +61,7 @@ mod mc_test {
     #[test]
     fn mc_test_append() {
         let client =
-            memcache::connect("memcache://10.182.1.51:20304?timeout=10&tcp_nodelay=true").unwrap();
+            memcache::connect("memcache://localhost:9301?timeout=10&tcp_nodelay=true").unwrap();
         let key = "append";
         let value = "bar";
         let append_value = "baz";
@@ -75,7 +75,7 @@ mod mc_test {
     #[test]
     fn mc_test_prepend() {
         let client =
-            memcache::connect("memcache://10.182.1.51:20304?timeout=10&tcp_nodelay=true").unwrap();
+            memcache::connect("memcache://localhost:9301?timeout=10&tcp_nodelay=true").unwrap();
         let key = "prepend";
         let value = "bar";
         let append_value = "foo";
@@ -89,7 +89,7 @@ mod mc_test {
     #[test]
     fn mc_test_cas() {
         let client =
-            memcache::connect("memcache://10.182.1.51:20304?timeout=10&tcp_nodelay=true").unwrap();
+            memcache::connect("memcache://localhost:9301?timeout=10&tcp_nodelay=true").unwrap();
         client.set("foocas", "bar", 10).unwrap();
         let result: HashMap<String, (Vec<u8>, u32, Option<u64>)> =
             client.gets(&["foocas"]).unwrap();
@@ -101,7 +101,7 @@ mod mc_test {
     #[test]
     fn mc_test_gets() {
         let client =
-            memcache::connect("memcache://10.182.1.51:20304?timeout=10&tcp_nodelay=true").unwrap();
+            memcache::connect("memcache://localhost:9301?timeout=10&tcp_nodelay=true").unwrap();
         let key = "getsfoo";
         let value = "getsbar";
         client.set(key, value, 2).unwrap();
@@ -116,7 +116,7 @@ mod mc_test {
     #[test]
     fn mc_test_delete() {
         let client =
-            memcache::connect("memcache://10.182.1.51:20304?timeout=10&tcp_nodelay=true").unwrap();
+            memcache::connect("memcache://localhost:9301?timeout=10&tcp_nodelay=true").unwrap();
         let key = "foo";
         let value = "bar";
         client.add(key, value, 2).unwrap();
@@ -130,7 +130,7 @@ mod mc_test {
     #[test]
     fn mc_test_incr_decr() {
         let client =
-            memcache::connect("memcache://10.182.1.51:20304?timeout=10&tcp_nodelay=true").unwrap();
+            memcache::connect("memcache://localhost:9301?timeout=10&tcp_nodelay=true").unwrap();
         let key = "barr";
         client.delete(key).unwrap();
 
