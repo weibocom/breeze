@@ -7,10 +7,12 @@ mod counterservice_test {
         io::{Error, ErrorKind, Result},
     };
 
-    const BASE_URL: &str = "redis://localhost:56810";
+    const BASE_URL: &str = "redis://localhost:6379";
     fn rand_num() -> u64 {
-        let mut rng = rand::thread_rng();
-        rng.gen::<u64>()
+        //let mut rng = rand::thread_rng();
+        //rng.gen::<u64>()
+        //rng.gen_range(0..18446744073709551615)
+        18446744073709551
     }
     #[test]
 
@@ -90,12 +92,14 @@ mod counterservice_test {
         println!("in redis decr test....");
         let mut conn = get_conn().unwrap();
         let key = "xinxindecr";
-        let value = rand_num();
+        let value = rand_num() + 3;
+        println!("decr val{:?}", value);
 
         let _: () = conn
             .set(key, value)
             .map_err(|e| panic!("set error:{:?}", e))
             .expect("set err");
+
         let before_val: u128 = redis::cmd("GET")
             .arg(key)
             .query(&mut conn)
@@ -104,9 +108,11 @@ mod counterservice_test {
 
         //INCR and GET using high-level commands
         let decr: u64 = 2;
+
         let _: () = conn
             .decr(key, decr)
-            .expect("failed to execute DECR for 'xinxin'");
+            .map_err(|e| panic!(" decr error:{:?}", e))
+            .expect("decr err");
 
         let after_val: u128 = conn
             .get(key)
