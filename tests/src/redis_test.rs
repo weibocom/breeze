@@ -42,29 +42,15 @@ mod redis_test {
 mod redis_intergration_test {
     use std::io::{Error, ErrorKind, Result};
 
+    use crate::common::*;
+    use rand::seq::SliceRandom;
     use redis::{Client, Connection};
 
     const BASE_URL: &str = "redis://localhost:56810";
 
-    fn get_conn() -> Result<Connection> {
-        let client_rs = Client::open(BASE_URL);
-        if let Err(e) = client_rs {
-            println!("ignore test for connecting mesh failed!!!!!:{:?}", e);
-            return Err(Error::new(ErrorKind::AddrNotAvailable, "cannot get conn"));
-        }
-        let client = client_rs.unwrap();
-        match client.get_connection() {
-            Ok(conn) => Ok(conn),
-            Err(e) => {
-                println!("found err: {:?}", e);
-                return Err(Error::new(ErrorKind::Interrupted, e.to_string()));
-            }
-        }
-    }
-
     #[test]
     fn test_args() {
-        let mut con = get_conn().unwrap();
+        let mut con = get_conn(BASE_URL).unwrap();
 
         redis::cmd("SET").arg("key1").arg(b"foo").execute(&mut con);
         redis::cmd("SET").arg(&["key2", "bar"]).execute(&mut con);
@@ -77,7 +63,7 @@ mod redis_intergration_test {
 
     #[test]
     fn test_getset() {
-        let mut con = get_conn().unwrap();
+        let mut con = get_conn(BASE_URL).unwrap();
 
         redis::cmd("SET").arg("foo").arg(42).execute(&mut con);
         assert_eq!(redis::cmd("GET").arg("foo").query(&mut con), Ok(42));
@@ -87,9 +73,16 @@ mod redis_intergration_test {
             redis::cmd("GET").arg("bar").query(&mut con),
             Ok(b"foo".to_vec())
         );
-
-        let v_sizes = [5, 50, 500, 5000];
+        let v_sizes = [4, 40, 400, 4000, 8000, 20000, 3000000];
         for v_size in v_sizes {
+            let val = vec![1u8; v_size];
+            redis::cmd("SET").arg("bar").arg(&val).execute(&mut con);
+            assert_eq!(redis::cmd("GET").arg("bar").query(&mut con), Ok(val));
+        }
+        //todo random iter
+        use rand::seq::SliceRandom;
+        let mut rng = rand::thread_rng();
+        for v_size in v_sizes.shuffle(&mut rng) {
             let val = vec![1u8; v_size];
             redis::cmd("SET").arg("bar").arg(&val).execute(&mut con);
             assert_eq!(redis::cmd("GET").arg("bar").query(&mut con), Ok(val));
