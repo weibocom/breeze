@@ -7,7 +7,7 @@ mod counterservice_test {
 
     use redis::{Client, Commands, Connection};
 
-    const BASE_URL: &str = "redis://localhost:56810";
+    const BASE_URL: &str = "redis://localhost:10052";
 
     #[test]
 
@@ -33,8 +33,8 @@ mod counterservice_test {
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
-        let key = "4711424389024351.repost";
-        let value = "v3";
+        let key = "xinxin";
+        let value = 6;
 
         let _: () = conn
             .set(key, value)
