@@ -1,14 +1,17 @@
 #[cfg(test)]
 mod counterservice_test {
+    use rand::Rng;
+    use redis::{Client, Commands, Connection};
     use std::{
         collections::{HashMap, HashSet},
         io::{Error, ErrorKind, Result},
     };
 
-    use redis::{Client, Commands, Connection};
-
-    const BASE_URL: &str = "redis://localhost:56810";
-
+    const BASE_URL: &str = "redis://localhost:6379";
+    fn rand_num() -> u64 {
+        let mut rng = rand::thread_rng();
+        rng.gen::<u64>()
+    }
     #[test]
 
     fn test_get() {
@@ -34,7 +37,7 @@ mod counterservice_test {
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
         let key = "xinxin";
-        let value = 6;
+        let value = rand_num();
 
         let _: () = conn
             .set(key, value)
@@ -57,59 +60,59 @@ mod counterservice_test {
         println!("in redis incr test....");
         let mut conn = get_conn().unwrap();
         let key = "xinxinincr";
-        let value = 6;
+        let value = rand_num();
 
         let _: () = conn
-            .set(key, value)
+            .set(key, &value)
             .map_err(|e| panic!("set error:{:?}", e))
             .expect("set err");
 
-        let before_val: i32 = redis::cmd("GET")
+        let before_val: u128 = redis::cmd("GET")
             .arg(key)
             .query(&mut conn)
             .expect("failed to before incr execute GET for 'xinxin'");
-        println!("value for 'xinxin' = {}", before_val);
+        println!("value for 'xinxin' = {:?}", before_val);
 
         //INCR and GET using high-level commands
-        let incr = 2;
+        let incr: u64 = 2;
         let _: () = conn
             .incr(key, incr)
             .expect("failed to execute INCR for 'xinxin'");
 
-        let after_val: i32 = conn
+        let after_val: u128 = conn
             .get(key)
             .expect("failed to after incr GET for 'xinxin'");
         println!("after incr val = {}", after_val);
-        assert_eq!((before_val + incr), after_val);
+        assert_eq!((before_val + incr as u128), after_val);
     }
     #[test]
     fn test_decr() {
         println!("in redis decr test....");
         let mut conn = get_conn().unwrap();
         let key = "xinxindecr";
-        let value = 6;
+        let value = rand_num();
 
         let _: () = conn
             .set(key, value)
             .map_err(|e| panic!("set error:{:?}", e))
             .expect("set err");
-        let before_val: i32 = redis::cmd("GET")
+        let before_val: u128 = redis::cmd("GET")
             .arg(key)
             .query(&mut conn)
             .expect("failed to before decr execute GET for 'xinxin'");
         println!("value for 'xinxin' = {}", before_val);
 
         //INCR and GET using high-level commands
-        let decr = 2;
+        let decr: u64 = 2;
         let _: () = conn
             .decr(key, decr)
             .expect("failed to execute DECR for 'xinxin'");
 
-        let after_val: i32 = conn
+        let after_val: u128 = conn
             .get(key)
             .expect("failed to after decr GET for 'xinxin'");
         println!("after decr val = {}", after_val);
-        assert_eq!((before_val - decr), after_val);
+        assert_eq!((before_val - decr as u128), after_val);
     }
 
     #[test]
