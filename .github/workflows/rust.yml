@@ -2,23 +2,49 @@ name: CI
 
 on:
   push:
-    branches: [ "dev" ]
+    branches: ["dev", "dev_ci"]
   pull_request:
-    branches: [ "dev" ]
+    branches: ["dev", "dev_ci"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - name: Prepare backend resource
-      run: docker run  --rm -d --name breeze-be --network host redis:alpine3.16
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - name: Prepare Vintage_MC_Redis
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci003
+      - uses: actions/checkout@v3
+      - name: Build
+        run: cargo build --verbose
+      - name: Check Vintage
+        run: |
+          docker ps -a
+          curl http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
+      - name: Create Socks
+        run: |
+          ps -aux|grep breeze
+          mkdir -p /home/runner/work/breeze/logs
+          mkdir -p /home/runner/work/breeze/snapshot
+          mkdir -p /home/runner/work/breeze/socks
+          touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
+          ls -all /home/runner/work/breeze/snapshot
+          ls -all /home/runner/work/breeze/socks
+          ls -all /home/runner/work/breeze/logs
+      - name: Run
+        run: nohup cargo run --features enable-log --features listen-all -- --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
+      - name: Check Port
+        run: |
+          sleep 1m
+          netstat -nat|grep LISTEN
+          ps -aux|grep breeze
+          ls -all /home/runner/work/breeze/snapshot
+          ls -all /home/runner/work/breeze/socks
+          ls -all /home/runner/work/breeze/logs
+          cat /home/runner/work/breeze/logs/log.file
+          cat /home/runner/work/breeze/logs/breeze.log
+      - name: Run tests
+        run: cargo test --verbose
+  

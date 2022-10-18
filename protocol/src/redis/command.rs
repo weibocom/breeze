@@ -225,6 +225,7 @@ impl Commands {
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
         c.supported = true;
+        c.op_code = idx as u16;
         self.supported[idx] = c;
     }
 }
