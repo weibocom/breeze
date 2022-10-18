@@ -121,8 +121,9 @@ impl CallbackContext {
     fn need_goon(&self) -> bool {
         if !self.is_in_async_write_back() {
             // 正常访问请求。
-            // 除非出现了error，否则最多只尝试一次
-            self.ctx.try_next && !self.response_ok() && self.tries < 2
+            // old: 除非出现了error，否则最多只尝试一次;
+            // 为了提升mcq的读写效率，tries改为3次
+            self.ctx.try_next && !self.response_ok() && self.tries < 3
         } else {
             // write back请求
             self.ctx.write_back
@@ -134,6 +135,8 @@ impl CallbackContext {
     }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
+        // 正常err场景，仅仅在debug时check
+        log::debug!("++++  hanle found err: {:?}", err);
         match err {
             Error::Closed => {}
             Error::ChanDisabled => {}

@@ -96,14 +96,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         while self.available() {
             match state {
                 ReqPacketState::Start => {
-                    if self.current() == b' ' {
-                        break;
-                    }
                     if !self.current().is_ascii_lowercase() {
                         return Err(McqError::ReqInvalid.error());
                     }
-                    token = self.oft;
-                    state = ReqPacketState::ReqType;
+                    if self.current() != b' ' {
+                        token = self.oft;
+                        state = ReqPacketState::ReqType;
+                    }
                 }
                 ReqPacketState::ReqType => {
                     // 直接加速skip掉cmd token
@@ -158,7 +157,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::Flags => {
                     if self.current().is_ascii_digit() {
-                        break;
+                        // do nothing, just skip it
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeExpire;
                     } else {
@@ -172,7 +171,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::Expire => {
                     if self.current().is_ascii_digit() {
-                        break;
+                        // do nothing, just skip it
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeVlen;
                     } else {
