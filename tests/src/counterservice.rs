@@ -7,7 +7,7 @@ mod counterservice_test {
 
     use redis::{Client, Commands, Connection};
 
-    const BASE_URL: &str = "redis://localhost:10052";
+    const BASE_URL: &str = "redis://localhost:56810";
 
     #[test]
 
