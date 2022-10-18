@@ -81,7 +81,7 @@ mod counterservice_test {
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
-        let key = "xinxindel";
+        let key = "xinxinexist";
         let value = 456;
 
         let _: () = conn
