@@ -34,7 +34,7 @@ jobs:
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
       - name: Run
-        run: nohup cargo run --features enable-log --features listen-all -- --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
+        run: nohup cargo run --features enable-log --features listen-all -- --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 cargo run -- --discovery vintage://vintage.api.weibo.com --snapshot /Users/yunpeng7/RustWorkSpace/breeze/target/snapshot --service-path /Users/yunpeng7/RustWorkSpace/breeze/target/socks --log-dir /Users/yunpeng7/RustWorkSpace/breeze/target/log --log-level info --metrics-probe 8.8.8.8:53 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
       - name: Check Port
         run: |
           sleep 1m
