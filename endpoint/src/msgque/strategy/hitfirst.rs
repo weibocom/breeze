@@ -1,6 +1,7 @@
 use rand::{seq::SliceRandom, thread_rng};
 use std::{
     collections::{BTreeMap, HashMap},
+    fmt::{Debug, Display},
     sync::{
         atomic::{AtomicU32, AtomicUsize, Ordering},
         Arc,
@@ -30,6 +31,7 @@ pub(crate) struct HitFirstReader {
     cursors: Vec<CursorHits>,
     cursor_current: Arc<AtomicUsize>,
 
+    // TODO: 触发方式待定？ fishermen
     // TODO: BTreeMap 可以换成更高效的Vec，跑通后优化 fishermen
     // size queue pools
     sized_pools: BTreeMap<usize, Vec<QID>>,
@@ -102,11 +104,12 @@ impl HitFirstReader {
 
         // pools 初始化访问的 cursor
         let priority_pool_cursor = PoolCursor {
-            pool_size: queues.get(0).unwrap().size,
+            // pool_size: queues.get(0).unwrap().size,
+            pool_size: 0,
             node_idx: Arc::new(AtomicUsize::new(0)),
         };
 
-        Self {
+        let instance = Self {
             qnodes,
             qid_idxes,
             cursors,
@@ -114,7 +117,9 @@ impl HitFirstReader {
             sized_pools,
             sized_pools_hits,
             priority_pool_cursor,
-        }
+        };
+        log::debug!("+++  Inited strategy:{:?}", instance);
+        instance
     }
 
     // 获取队列的下一个读取位置
@@ -124,8 +129,8 @@ impl HitFirstReader {
 
         // 获取下一个读取node id
         let next = self.cursor_current.fetch_add(1, Ordering::Relaxed);
-        let nidx = next % self.cursors.len();
-        let chits = self.cursors.get(nidx).unwrap();
+        let cursor_idx = next % self.cursors.len();
+        let chits = self.cursors.get(cursor_idx).unwrap();
         let mut idx = chits.node_idx.load(Ordering::Relaxed);
         let hits = chits.hits.fetch_add(1, Ordering::Relaxed);
 
@@ -141,11 +146,19 @@ impl HitFirstReader {
             // cursor已偏移到新位置
             idx += 1;
         }
+
+        assert!(
+            idx < self.qnodes.len(),
+            "idx:{}, qunodes:{:?}",
+            idx,
+            self.qnodes
+        );
         let node = self.qnodes.get(idx).unwrap();
         if self.sized_pools_hits.contains_key(&node.size) {
             let hits = self.sized_pools_hits.get(&node.size).unwrap();
             hits.fetch_add(1, Ordering::Relaxed);
         }
+        log::debug!("+++ use common cursor:{}, {:?}", cursor_idx, self);
         node.id
     }
 
@@ -172,11 +185,12 @@ impl HitFirstReader {
         if let Some(nodes) = self.sized_pools.get(&qsize) {
             let idx = pool_idx % nodes.len();
             if let Some(qid) = nodes.get(idx) {
+                log::debug!("++ use priority queue, qid:{}, {:?}", *qid, self);
                 return *qid;
             }
         }
 
-        log::warn!("+++priority que is malfored");
+        log::warn!("+++ priority que is malfored, use common que");
         return self.next_queue_read(last_read);
     }
 
@@ -195,11 +209,11 @@ impl HitFirstReader {
         // 此处说明已经读过
         let last_read_idx = *lread_op.unwrap();
         let mut found = 0;
-        for ch in self.cursors.iter() {
+        for (i, ch) in self.cursors.iter().enumerate() {
             let node_idx = ch.node_idx.load(Ordering::Relaxed);
             if node_idx == last_read_idx {
                 let new_node_idx = if found == 0 {
-                    node_idx + 1
+                    (node_idx + 1) % self.qnodes.len()
                 } else {
                     // 一般情况下，cursor重叠的概率不大，所以放在此处计算step
                     let step = self.qnodes.len() / self.cursors.len();
@@ -208,6 +222,7 @@ impl HitFirstReader {
                 };
                 found += 1;
 
+                log::debug!("+++ shift cursor:{}, {} => {}", i, node_idx, new_node_idx);
                 // last 读空，需要偏移位置
                 if let Ok(_c) = ch.node_idx.compare_exchange(
                     node_idx,
@@ -223,11 +238,13 @@ impl HitFirstReader {
     }
 }
 
-// 并行查询的cursor 数量
+// 并行查询的cursor 数量，注意并发数不能等于ties 或者 读写阀值
 fn parallel(node_count: usize) -> usize {
-    if node_count <= PARALLEL_COUNT {
+    assert!(PARALLEL_COUNT > 0 && PARALLEL_COUNT <= 10);
+
+    if node_count < 3 {
         1
-    } else if node_count < 2 * PARALLEL_COUNT {
+    } else if node_count < PARALLEL_COUNT {
         2
     } else {
         PARALLEL_COUNT
@@ -240,5 +257,15 @@ impl Node {
             id: qid,
             size: que_size,
         }
+    }
+}
+
+impl Display for HitFirstReader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[cursor_current={:?}, cursors={:?}, qnodes:{:?}, priority_pool_cursor:{:?}], sized_pools:{:?}, sized_pools_hits: {:?}",
+            self.cursor_current, self.cursors, self.qnodes, self.priority_pool_cursor, self.sized_pools, self.sized_pools_hits
+        )
     }
 }

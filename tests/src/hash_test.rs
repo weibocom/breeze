@@ -30,7 +30,10 @@ mod hash_test {
         let h2 = rand_hasher.hash(&key.as_bytes());
         let h3 = rand_hasher.hash(&key.as_bytes());
         let h4 = rand_hasher.hash(&key.as_bytes());
-        println!("key:{}, random-h1:{}, h2:{}, h3:{}, h4:{}", key, h1, h2, h3, h4);
+        println!(
+            "key:{}, random-h1:{}, h2:{}, h3:{}, h4:{}",
+            key, h1, h2, h3, h4
+        );
 
         let rawsuffix_hahser = Hasher::from("rawsuffix-underscore");
         let key_suffix = 123456789;
@@ -38,5 +41,21 @@ mod hash_test {
         let hash = rawsuffix_hahser.hash(&key.as_bytes());
         debug_assert_eq!(key_suffix, hash);
         println!("key:{} rawsuffix-underscore hash:{}", key, hash);
+    }
+
+    #[test]
+    fn context() {
+        let mut i = 1024;
+        i += 1;
+        i += 1;
+        println!("u8:{:b}", i);
+
+        // 先将之前的idx位置零，再设置新的idx
+        let qid = 0;
+        let mask = !(((!0u16) as u64) << 8);
+        i &= mask;
+        i |= (qid << 8) as u64;
+
+        println!("u8:{:b}", i);
     }
 }

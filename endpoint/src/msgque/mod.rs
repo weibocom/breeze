@@ -67,15 +67,16 @@ impl Context {
 
     #[inline]
     fn update_qid(&mut self, qid: u16) {
-        // 先将之前的idx位置零，再设置新的idx
-        let mask = !(((!0u16) as u64) << QID_SHIFT);
-        self.ctx &= mask;
-        self.ctx |= (qid << QID_SHIFT) as u64;
+        let lower = self.ctx as u8;
+        // 不直接使用qid后面字段的shit，因为context的字段可能会变
+        let high_shift = QID_SHIFT + QID_BITS;
+        let high = self.ctx >> high_shift << high_shift;
+        self.ctx = lower as u64 | (qid << QID_SHIFT) as u64 | high;
     }
 
     #[inline]
     fn update_write_size(&mut self, wsize: usize) {
-        let lower = self.ctx & (1 << WRITE_SIZE_BLOCK_SHIFT - 1);
+        let lower = self.ctx & ((1 << WRITE_SIZE_BLOCK_SHIFT) - 1);
         let high = self.ctx >> DATA_RESERVE_SHIFT << DATA_RESERVE_SHIFT;
         let block = wsize / BLOCK_SIZE;
         self.ctx = lower | (block << WRITE_SIZE_BLOCK_SHIFT) as u64 | high;
