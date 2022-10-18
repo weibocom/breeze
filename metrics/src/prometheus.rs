@@ -151,7 +151,7 @@ impl<'a, 'r> ItemWriter for PrometheusItemWriter<'a, 'r> {
          */
 
         //从 name 中截取 source、namespace和topic、instance
-        let all_name: Vec<&str> = name.split("/").collect();
+        let all_name: Vec<&str> = name.split(crate::TARGET_SPLIT as char).collect();
         let source = all_name.get(0).unwrap_or(&"").as_bytes();
         let charname = *all_name.get(1).unwrap_or(&"");
         //针对mcq,namespace中可能包含topic,先根据 ‘#’分割;

@@ -4,7 +4,7 @@ pub(super) fn init(ctx: &Context) {
     init_limit(&ctx);
     init_log(&ctx);
     init_local_ip(&ctx);
-    start_metrics_sender_task(ctx);
+    //start_metrics_sender_task(ctx);
     start_metrics_register_task(ctx);
     crate::http::start_http_server(ctx);
     rt::spawn(discovery::dns::start_dns_resolver_refresher());
@@ -52,14 +52,14 @@ pub(crate) fn init_local_ip(ctx: &Context) {
     metrics::init_local_ip(&ctx.metrics_probe);
 }
 
-pub(crate) fn start_metrics_sender_task(_ctx: &Context) {
-    #[cfg(feature = "graphite")]
-    rt::spawn(metrics::Sender::new(
-        _ctx.metrics_url,
-        _ctx.service_pool,
-        std::time::Duration::from_secs(10),
-    ));
-}
+//pub(crate) fn start_metrics_sender_task(_ctx: &Context) {
+//    #[cfg(feature = "graphite")]
+//    rt::spawn(metrics::Sender::new(
+//        _ctx.metrics_url,
+//        _ctx.service_pool,
+//        std::time::Duration::from_secs(10),
+//    ));
+//}
 pub(crate) fn start_metrics_register_task(_ctx: &Context) {
     rt::spawn(metrics::MetricRegister::default());
 }
