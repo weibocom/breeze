@@ -7,7 +7,7 @@ mod counterservice_test {
 
     use redis::{Client, Commands, Connection};
 
-    const BASE_URL: &str = "redis://localhost:10052";
+    const BASE_URL: &str = "redis://localhost:6379";
 
     #[test]
 
@@ -56,7 +56,13 @@ mod counterservice_test {
     fn test_incr() {
         println!("in redis incr test....");
         let mut conn = get_conn().unwrap();
-        let key = "xinxin";
+        let key = "xinxinincr";
+        let value = 6;
+
+        let _: () = conn
+            .set(key, value)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err");
 
         let before_val: i32 = redis::cmd("GET")
             .arg(key)
@@ -74,14 +80,19 @@ mod counterservice_test {
             .get(key)
             .expect("failed to after incr GET for 'xinxin'");
         println!("after incr val = {}", after_val);
-        assert_eq!(before_val + incr, after_val);
+        assert_eq!((before_val + incr), after_val);
     }
     #[test]
     fn test_decr() {
         println!("in redis decr test....");
         let mut conn = get_conn().unwrap();
-        let key = "xinxin";
+        let key = "xinxindecr";
+        let value = 6;
 
+        let _: () = conn
+            .set(key, value)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err");
         let before_val: i32 = redis::cmd("GET")
             .arg(key)
             .query(&mut conn)
@@ -98,7 +109,7 @@ mod counterservice_test {
             .get(key)
             .expect("failed to after decr GET for 'xinxin'");
         println!("after decr val = {}", after_val);
-        assert_eq!(before_val - decr, after_val);
+        assert_eq!((before_val - decr), after_val);
     }
 
     #[test]
