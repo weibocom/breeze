@@ -61,13 +61,3 @@ pub enum ProtocolType {
     Request,
     Response,
 }
-
-impl Error {
-    #[inline]
-    pub fn proto_not_support(&self) -> bool {
-        match self {
-            Self::ProtocolNotSupported => true,
-            _ => false,
-        }
-    }
-}
