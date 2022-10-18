@@ -17,7 +17,7 @@ mod counterservice_test {
     #[test]
 
     fn test_get() {
-        println!("in redis test....");
+        println!("in counterservice get test....");
         let mut conn = get_conn().unwrap();
 
         // let key = "4711424389024351.repost";
@@ -34,7 +34,7 @@ mod counterservice_test {
 
     #[test]
     fn test_set() {
-        println!("in redis test....");
+        println!("in counterservice set test....");
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
@@ -59,7 +59,7 @@ mod counterservice_test {
 
     #[test]
     fn test_del() {
-        println!("in redis test....");
+        println!("in counterservice del test....");
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
@@ -77,11 +77,11 @@ mod counterservice_test {
     }
     #[test]
     fn test_exist() {
-        println!("in redis test....");
+        println!("in counterservice exist test....");
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
-        let key = "xinxindel";
+        let key = "xinxinexist";
         let value = 456;
 
         let _: () = conn
@@ -125,7 +125,7 @@ mod counterservice_test {
     }
     #[test]
     fn test_decr() {
-        println!("in redis decr test....");
+        println!("in counterservice decr test....");
         let mut conn = get_conn().unwrap();
         let key = "xinxindecr";
         let value = rand_num() + 3;
@@ -158,27 +158,55 @@ mod counterservice_test {
 
     #[test]
     fn test_mset() {
-        println!("in redis test....");
+        println!("in counterservice mset test....");
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
-        let key = "xinxin";
-        let value = rand_num();
 
         let _: () = conn
-            .set(key, value)
-            .map_err(|e| panic!("set error:{:?}", e))
-            .expect("set err");
+            .set_multiple(&[
+                ("xinxinmset1", 18446744073709551 as u64),
+                ("xinxinmset2", 1844674407370955 as u64),
+                ("xinxinmset3", 184467440737051 as u64),
+            ])
+            .map_err(|e| panic!("mset error:{:?}", e))
+            .expect("mset err");
 
-        // if let Err(e) == Rsult {
-        //     assert
-        // }
-        println!("redis set succeed!");
-        match conn.get::<String, String>(key.to_string()) {
-            Ok(v) => println!("get/{} succeed, value: {}", key, v),
-            Err(e) => println!("get failed, err: {:?}", e),
-        }
-        println!("completed redis test!");
+        assert_eq!(
+            redis::cmd("GET").arg("xinxinmset1").query(&mut conn),
+            Ok(18446744073709551 as u64)
+        );
+        assert_eq!(
+            redis::cmd("GET").arg("xinxinmset2").query(&mut conn),
+            Ok(1844674407370955 as u64)
+        );
+        assert_eq!(
+            redis::cmd("GET").arg("xinxinmset3").query(&mut conn),
+            Ok(184467440737051 as u64)
+        );
+        println!("completed counterservice mset test!");
+    }
+
+    #[test]
+    fn test_countergetset() {
+        println!("in counterservice mset test....");
+        let mut conn = get_conn()
+            .map_err(|e| panic!("conn error:{:?}", e))
+            .expect("conn err");
+
+        let _: () = conn
+            .getset("getsetempty", 0)
+            .map_err(|e| panic!("mset error:{:?}", e))
+            .expect("mset err");
+        assert_eq!(redis::cmd("GET").arg("getsetempty").query(&mut conn), Ok(0));
+        assert_eq!(
+            redis::cmd("GETSET")
+                .arg("getsetempty")
+                .arg(8)
+                .query(&mut conn),
+            Ok(0)
+        );
+        assert_eq!(redis::cmd("GET").arg("getsetempty").query(&mut conn), Ok(8));
     }
 
     #[test]
