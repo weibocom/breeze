@@ -42,51 +42,115 @@ mod redis_test {
 mod redis_intergration_test {
     use std::io::{Error, ErrorKind, Result};
 
-    use crate::common::*;
+    use crate::redis_helper::*;
     use rand::seq::SliceRandom;
-    use redis::{Client, Connection};
+    use redis::{Client, Commands, Connection};
 
     const BASE_URL: &str = "redis://localhost:56810";
 
+    //基本场景
     #[test]
     fn test_args() {
-        let mut con = get_conn(BASE_URL).unwrap();
+        let mut con = get_conn(BASE_URL);
 
-        redis::cmd("SET").arg("key1").arg(b"foo").execute(&mut con);
-        redis::cmd("SET").arg(&["key2", "bar"]).execute(&mut con);
+        redis::cmd("SET")
+            .arg("key1args")
+            .arg(b"foo")
+            .execute(&mut con);
+        redis::cmd("SET")
+            .arg(&["key2args", "bar"])
+            .execute(&mut con);
 
         assert_eq!(
-            redis::cmd("MGET").arg(&["key1", "key2"]).query(&mut con),
+            redis::cmd("MGET")
+                .arg(&["key1args", "key2args"])
+                .query(&mut con),
             Ok(("foo".to_string(), b"bar".to_vec()))
         );
     }
 
+    //基本set场景，key固定为foo或bar
+    //1. set, value 纯数字
+    //2. set, value 纯字母
     #[test]
-    fn test_getset() {
-        let mut con = get_conn(BASE_URL).unwrap();
+    fn test_set() {
+        let mut con = get_conn(BASE_URL);
 
-        redis::cmd("SET").arg("foo").arg(42).execute(&mut con);
-        assert_eq!(redis::cmd("GET").arg("foo").query(&mut con), Ok(42));
+        redis::cmd("SET").arg("fooset").arg(42).execute(&mut con);
+        assert_eq!(redis::cmd("GET").arg("fooset").query(&mut con), Ok(42));
 
-        redis::cmd("SET").arg("bar").arg("foo").execute(&mut con);
+        redis::cmd("SET").arg("barset").arg("foo").execute(&mut con);
         assert_eq!(
-            redis::cmd("GET").arg("bar").query(&mut con),
+            redis::cmd("GET").arg("barset").query(&mut con),
             Ok(b"foo".to_vec())
         );
+    }
+
+    //依次set不同大小的value，验证buffer扩容, buffer初始容量4K,扩容每次扩容两倍，以及
+    //验证set不同区间size的value是否正常
+    //1. set, key value size 4k以下，4次
+    //3. buffer由4k扩容到8k，set key value size 4k~8k，一次
+    //4. buffer在一次请求中扩容两次，由8k扩容到16k，16k扩容到32k，set key value size 8k~16k，一次，
+    //5. set, key value size 2M以上，1次
+    //6. 以上set请求乱序set一遍
+    #[test]
+    fn test_set_value_size() {
+        let mut con = get_conn(BASE_URL);
+
         let mut v_sizes = [4, 40, 400, 4000, 8000, 20000, 3000000];
         for v_size in v_sizes {
             let val = vec![1u8; v_size];
-            redis::cmd("SET").arg("bar").arg(&val).execute(&mut con);
-            assert_eq!(redis::cmd("GET").arg("bar").query(&mut con), Ok(val));
+            redis::cmd("SET")
+                .arg("bar_set_value_size")
+                .arg(&val)
+                .execute(&mut con);
+            assert_eq!(
+                redis::cmd("GET").arg("bar_set_value_size").query(&mut con),
+                Ok(val)
+            );
         }
+
         //todo random iter
         use rand::seq::SliceRandom;
         let mut rng = rand::thread_rng();
         v_sizes.shuffle(&mut rng);
         for v_size in v_sizes {
             let val = vec![1u8; v_size];
-            redis::cmd("SET").arg("bar").arg(&val).execute(&mut con);
-            assert_eq!(redis::cmd("GET").arg("bar").query(&mut con), Ok(val));
+            redis::cmd("SET")
+                .arg("bar_set_value_size")
+                .arg(&val)
+                .execute(&mut con);
+            assert_eq!(
+                redis::cmd("GET").arg("bar_set_value_size").query(&mut con),
+                Ok(val)
+            );
         }
+    }
+
+    #[test]
+    fn test_del() {
+        let mut con = get_conn(BASE_URL);
+
+        redis::cmd("SET").arg("foodel").arg(42).execute(&mut con);
+
+        assert_eq!(redis::cmd("GET").arg("foodel").query(&mut con), Ok(42));
+
+        redis::cmd("DEL").arg("foodel").execute(&mut con);
+
+        assert_eq!(
+            redis::cmd("GET").arg("foodel").query(&mut con),
+            Ok(None::<usize>)
+        );
+    }
+
+    #[test]
+    fn test_incr() {
+        let mut con = get_conn(BASE_URL);
+
+        redis::cmd("SET").arg("fooincr").arg(42).execute(&mut con);
+        assert_eq!(
+            redis::cmd("INCR").arg("fooincr").query(&mut con),
+            Ok(43usize)
+        );
     }
 }
