@@ -29,7 +29,7 @@ impl WriteTo for i64 {
 impl WriteTo for f64 {
     #[inline]
     fn write_to<W: ItemWriter>(&self, w: &mut W) {
-        let s = format!("{:3}", *self);
+        let s = format!("{:.3}", *self);
         w.put_slice(s);
     }
 }

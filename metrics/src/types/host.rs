@@ -28,19 +28,19 @@ impl Host {
     #[inline]
     pub(crate) fn snapshot<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
         self.refresh();
-        let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
-        w.write(BASE_PATH, "host", "cpu", percent);
-        w.write(BASE_PATH, "host", "mem", MEMORY.load(Ordering::Relaxed));
-
-        let tasks = TASK_NUM.load(Ordering::Relaxed);
-        w.write(BASE_PATH, "task", "num", tasks);
-        w.write_opts(BASE_PATH, "version", "", 1.0, vec![("git", self.version)]);
         w.write(
             BASE_PATH,
             "host",
             "uptime_sec",
             self.start.elapsed().as_secs() as i64,
         );
+        let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
+        w.write(BASE_PATH, "host", "cpu", percent);
+        w.write(BASE_PATH, "host", "mem", MEMORY.load(Ordering::Relaxed));
+
+        let tasks = TASK_NUM.load(Ordering::Relaxed);
+        w.write(BASE_PATH, "task", "num", tasks);
+        w.write_opts(BASE_PATH, "version", "", 1, vec![("git", self.version)]);
 
         let sockfile_failed = SOCKFILE_FAILED.load(Ordering::Relaxed);
         w.write(BASE_PATH, "sockfile", "failed", sockfile_failed);
