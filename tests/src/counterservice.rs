@@ -2,13 +2,13 @@
 mod counterservice_test {
     use rand::distributions::Alphanumeric;
     use rand::{thread_rng, Rng};
-    use redis::{Client, Commands, Connection};
+    use redis::{Client, Commands, Connection, Value};
     use std::{
         collections::{HashMap, HashSet},
         io::{Error, ErrorKind, Result},
     };
-
-    const BASE_URL: &str = "redis://localhost:56810";
+    // 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
+    const BASE_URL: &str = "redis://127.0.0.1:9302";
     fn rand_num() -> u32 {
         let mut rng = rand::thread_rng();
         rng.gen::<u32>()
@@ -25,49 +25,57 @@ mod counterservice_test {
         s.push_str(tail);
         s
     }
-    //已经完成 set get getset del incr decr mset exist命令的测试
-    //eg 21596端口配置 value-size 4字节 key-size 8字节
-    //set key 和value不能为空 空会异常
-    //set 的key有 随机字母数字组合+{.,_,_*_}dsg
-    //eg:0FIkJm2PkzOidMU9wdJINYRTATJSO8.dsg
-    // .  0FIkJm2PkzOidMU9wdJINYRTATJSO8_dsg
-    // .  0FIkJm2PkzOidMU9wdJINYRTATJSO8_dsg_dsg
-    //纯数字  eg:2222222。dsg
-    //纯字母 eg:rtyuioiuy.dsg
-    //VALUE最大为32bit 因为是计数器所以value一定是数字 如果value为非数字异常
-    //过程：set 上述覆盖的key 用随机32b作为val
+
+    // 测试场景1 key为long类型并且带配置列
+    // 特征：key为纯数字long类型 key指定为44
+    // 测试端口配置了三列 repost comment like
+    // set 44.repost 20 , set 44.comment 20   , set 44.like 20
+
+    //过程：建立连接
+    //轮询向指定列里发送 value为20 的key
     //再get 做断言 判断get到的val和set进去的val是否相等
-    //结束
+
     #[test]
-    fn test_counterserviceset() {
+    fn test_keycolumn_set() {
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
 
-        let mut key_onlynum = rand_num().to_string();
-        key_onlynum.push_str(".msg");
-        let mut key_onlyletter: String = thread_rng()
-            .sample_iter(Alphanumeric)
-            .take(7)
-            .map(char::from)
-            .collect();
-        key_onlyletter.push_str("_dsg");
-        let keys = vec![
-            rand_key(".dsg"),
-            rand_key("_dsg"),
-            rand_key("_dsg_abc"),
-            key_onlyletter,
-            key_onlynum,
-        ];
-        for key in keys.iter() {
-            let value = rand_num();
+        let column_cfg = vec![".repost", ".comment", ".like"];
+        for column in column_cfg.iter() {
+            let value = 20;
+            let mut key = 44.to_string();
+            key.push_str(column);
             let _: () = conn
-                .set(key, value)
+                .set(&key, value)
                 .map_err(|e| panic!("set error:{:?}", e))
                 .expect("set err");
+
             assert_eq!(redis::cmd("GET").arg(key).query(&mut conn), Ok(value));
         }
     }
+
+    //测试场景2 key的异常case
+    // key为 long类型并且不带配置列 key为long类型并且配置列错误 非long导致的异常 为异常case
+    // 异常case eg: , set 44 20 , set 44.unlike 30  set string 40
+    #[test]
+    fn test_stringkey_set() {
+        let mut conn = get_conn()
+            .map_err(|e| panic!("conn error:{:?}", e))
+            .expect("conn err");
+
+        let value = 20;
+        let key = 44.to_string();
+        let _: () = conn
+            .set(&key, value)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err");
+        assert_eq!(redis::cmd("GET").arg(key).query(&mut conn), Err(e));
+    }
+    // 如果value大于配置的value 为异常case
+    // eg: set 4821769284223285.like  20 （一定要指定列！）
+    // get 4821769284223285 =>"repost:0,comment:0,like:20"
+    // get 4821769284223285.like => "20"
     #[test]
     fn test_get() {
         let mut conn = get_conn()
