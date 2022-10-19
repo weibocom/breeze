@@ -62,11 +62,13 @@ pub(crate) fn register_target(ctx: &context::Context) {
 {{
   "labels": {{
     "pool": "{}",
-    "job": "datamesh-agent",
+    "job": "datamesh-agent"
   }},
-  "port": {}
+  "target": "{}:{}"
 }}"#,
-            pool, port
+            pool,
+            metrics::local_ip(),
+            port
         );
         let client = reqwest::Client::new();
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
