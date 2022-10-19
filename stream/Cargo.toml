@@ -19,3 +19,4 @@ enum_dispatch = "0.3.8"
 noop-waker = "0.1.0"
 array-init = "2"
 tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time"], default-features = false }
+minstant = "*"

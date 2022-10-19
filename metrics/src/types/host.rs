@@ -2,7 +2,7 @@ use psutil::process::Process;
 
 use crate::BASE_PATH;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
-use std::time::Instant;
+use minstant::Instant;
 
 static CPU_PERCENT: AtomicUsize = AtomicUsize::new(0);
 static MEMORY: AtomicI64 = AtomicI64::new(0);

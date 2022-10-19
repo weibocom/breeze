@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod mem {
     use ds::{RingBuffer, RingSlice};
-    use std::time::{Duration, Instant};
+    use std::time::{Duration};
+    use minstant::Instant;
 
     fn rnd_bytes(size: usize) -> Vec<u8> {
         let data: Vec<u8> = (0..size).map(|_| rand::random::<u8>()).collect();

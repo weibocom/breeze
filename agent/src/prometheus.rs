@@ -19,7 +19,7 @@ pub struct PrometheusMetricsResponse {}
 
 use ds::lock::Lock;
 use lazy_static::lazy_static;
-use std::time::Instant;
+use minstant::Instant;
 
 lazy_static! {
     static ref LAST: Lock<Instant> = Instant::now().into();

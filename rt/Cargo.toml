@@ -13,3 +13,4 @@ ds = { path = "../ds" }
 log = { path = "../log" }
 
 noop-waker = "0.1.0"
+minstant = "*"
