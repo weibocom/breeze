@@ -8,7 +8,7 @@ mod counterservice_test {
         io::{Error, ErrorKind, Result},
     };
 
-    const BASE_URL: &str = "redis://localhost:9302";
+    const BASE_URL: &str = "redis://localhost:56810";
     fn rand_num() -> u32 {
         let mut rng = rand::thread_rng();
         rng.gen::<u32>()
