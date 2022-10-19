@@ -13,7 +13,7 @@ mod protocol;
 mod counterservice;
 mod hash_test;
 mod mc;
-mod redis_test;
+mod redis;
 mod ring_slice;
 //mod size;
 //mod slice;

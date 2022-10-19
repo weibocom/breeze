@@ -1,3 +1,9 @@
+/// # 已测试场景
+/// - basic set
+/// - value大小数组[4, 40, 400, 4000, 8000, 20000, 3000000],依次set后随机set,验证buffer扩容
+/// - basic del
+/// - basic incr
+
 #[cfg(test)]
 mod redis_test {
     use std::collections::{HashMap, HashSet};
@@ -43,8 +49,6 @@ mod redis_intergration_test {
     use std::io::{Error, ErrorKind, Result};
 
     use crate::redis_helper::*;
-    use rand::seq::SliceRandom;
-    use redis::{Client, Commands, Connection};
 
     const BASE_URL: &str = "redis://localhost:56810";
 
@@ -69,11 +73,9 @@ mod redis_intergration_test {
         );
     }
 
-    //基本set场景，key固定为foo或bar
-    //1. set, value 纯数字
-    //2. set, value 纯字母
+    //基本set场景，key固定为foo或bar，value为简单数字或字符串
     #[test]
-    fn test_set() {
+    fn test_basic_set() {
         let mut con = get_conn(BASE_URL);
 
         redis::cmd("SET").arg("fooset").arg(42).execute(&mut con);
@@ -86,15 +88,17 @@ mod redis_intergration_test {
         );
     }
 
-    //依次set不同大小的value，验证buffer扩容, buffer初始容量4K,扩容每次扩容两倍，以及
-    //验证set不同区间size的value是否正常
-    //1. set, key value size 4k以下，4次
-    //3. buffer由4k扩容到8k，set key value size 4k~8k，一次
-    //4. buffer在一次请求中扩容两次，由8k扩容到16k，16k扩容到32k，set key value size 8k~16k，一次，
-    //5. set, key value size 2M以上，1次
-    //6. 以上set请求乱序set一遍
+    ///依次set [4, 40, 400, 4000, 8000, 20000, 3000000]大小的value
+    ///验证buffer扩容,buffer初始容量4K,扩容每次扩容两倍
+    ///后将[4, 40, 400, 4000, 8000, 20000, 3000000] shuffle后再依次set
+    ///测试步骤:
+    ///  1. set, key value size 4k以下，4次
+    ///  3. set key value size 4k~8k，一次, buffer由4k扩容到8k
+    ///  4. set key value size 8k~16k，一次，buffer在一次请求中扩容两次，由8k扩容到16k，16k扩容到32k，
+    ///  5. set, key value size 2M以上，1次
+    ///  6. 以上set请求乱序set一遍
     #[test]
-    fn test_set_value_size() {
+    fn test_set_value_fix_size() {
         let mut con = get_conn(BASE_URL);
 
         let mut v_sizes = [4, 40, 400, 4000, 8000, 20000, 3000000];
@@ -128,7 +132,7 @@ mod redis_intergration_test {
     }
 
     #[test]
-    fn test_del() {
+    fn test_basic_del() {
         let mut con = get_conn(BASE_URL);
 
         redis::cmd("SET").arg("foodel").arg(42).execute(&mut con);
@@ -144,7 +148,7 @@ mod redis_intergration_test {
     }
 
     #[test]
-    fn test_incr() {
+    fn test_basic_incr() {
         let mut con = get_conn(BASE_URL);
 
         redis::cmd("SET").arg("fooincr").arg(42).execute(&mut con);
