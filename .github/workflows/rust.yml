@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci003
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci006
       - uses: actions/checkout@v3
       - name: Build
         run: cargo build --verbose
@@ -23,6 +23,8 @@ jobs:
         run: |
           docker ps -a
           curl http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
+          curl http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all
+          curl http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest
       - name: Create Socks
         run: |
           ps -aux|grep breeze
@@ -30,6 +32,8 @@ jobs:
           mkdir -p /home/runner/work/breeze/snapshot
           mkdir -p /home/runner/work/breeze/socks
           touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
+          touch /home/runner/work/breeze/socks/config+v1+cache.service.testbreeze.pool.yf+all:meshtest@mc:9301@cs 
+          touch /home/runner/work/breeze/socks/config+cloud+counterservice+testbreeze+meshtest@redis:9302@rs
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
