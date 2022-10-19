@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::time::Instant;
+use minstant::Instant;
 
 use ds::AtomicWaker;
 

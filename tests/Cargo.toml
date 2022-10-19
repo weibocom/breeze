@@ -16,3 +16,4 @@ byteorder = "1.4.3"
 
 tokio = { version = "1.21.2", features = ["fs"] }
 redis = { version = "0.22.0", default-features = false, features = [] }
+minstant = "*"

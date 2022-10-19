@@ -2,7 +2,8 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::{Duration};
+use minstant::Instant;
 
 use std::task::ready;
 use metrics::{Metric, Path};
