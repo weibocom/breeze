@@ -67,8 +67,8 @@ pub struct ContextOption {
     #[clap(short, long, help("log path"), default_value("/tmp/breeze/logs"))]
     pub log_dir: String,
 
-    #[clap(short, long, help("metrics url"))]
-    pub metrics_url: Option<String>,
+    #[clap(short, long, help("metrics url"), default_value(""))]
+    pub metrics_url: String,
 
     #[clap(
         long,

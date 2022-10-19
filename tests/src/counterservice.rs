@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod counterservice_test {
-    use rand::Rng;
+    use rand::distributions::Alphanumeric;
+    use rand::{thread_rng, Rng};
     use redis::{Client, Commands, Connection};
     use std::{
         collections::{HashMap, HashSet},
@@ -8,58 +9,81 @@ mod counterservice_test {
     };
 
     const BASE_URL: &str = "redis://localhost:56810";
-    fn rand_num() -> u64 {
-        //let mut rng = rand::thread_rng();
-        //rng.gen::<u64>()
+    fn rand_num() -> u32 {
+        let mut rng = rand::thread_rng();
+        rng.gen::<u32>()
         //rng.gen_range(0..18446744073709551615)
-        18446744073709551
+        //18446744073709551
+    }
+    fn rand_key(tail: &str) -> String {
+        let mut rng = thread_rng();
+        let mut s: String = (&mut rng)
+            .sample_iter(Alphanumeric)
+            .take(5)
+            .map(char::from)
+            .collect();
+        s.push_str(tail);
+        s
+    }
+    //已经完成 set get getset del incr decr mset exist命令的测试
+    //eg 21596端口配置 value-size 4字节 key-size 8字节
+    //set key 和value不能为空 空会异常
+    //set 的key有 随机字母数字组合+{.,_,_*_}dsg
+    //eg:0FIkJm2PkzOidMU9wdJINYRTATJSO8.dsg
+    // .  0FIkJm2PkzOidMU9wdJINYRTATJSO8_dsg
+    // .  0FIkJm2PkzOidMU9wdJINYRTATJSO8_dsg_dsg
+    //纯数字  eg:2222222。dsg
+    //纯字母 eg:rtyuioiuy.dsg
+    //VALUE最大为32bit 因为是计数器所以value一定是数字 如果value为非数字异常
+    //过程：set 上述覆盖的key 用随机32b作为val
+    //再get 做断言 判断get到的val和set进去的val是否相等
+    //结束
+    #[test]
+    fn test_counterserviceset() {
+        let mut conn = get_conn()
+            .map_err(|e| panic!("conn error:{:?}", e))
+            .expect("conn err");
+
+        let mut key_onlynum = rand_num().to_string();
+        key_onlynum.push_str(".msg");
+        let mut key_onlyletter: String = thread_rng()
+            .sample_iter(Alphanumeric)
+            .take(7)
+            .map(char::from)
+            .collect();
+        key_onlyletter.push_str("_dsg");
+        let keys = vec![
+            rand_key(".dsg"),
+            rand_key("_dsg"),
+            rand_key("_dsg_abc"),
+            key_onlyletter,
+            key_onlynum,
+        ];
+        for key in keys.iter() {
+            let value = rand_num();
+            let _: () = conn
+                .set(key, value)
+                .map_err(|e| panic!("set error:{:?}", e))
+                .expect("set err");
+            assert_eq!(redis::cmd("GET").arg(key).query(&mut conn), Ok(value));
+        }
     }
     #[test]
-
     fn test_get() {
-        println!("in counterservice get test....");
-        let mut conn = get_conn().unwrap();
+        let mut conn = get_conn()
+            .map_err(|e| panic!("conn error:{:?}", e))
+            .expect("conn err");
 
-        // let key = "4711424389024351.repost";
-        // let key = "100.abc";
         let key = "0.schv";
-        // let key = "4743334465374053.read";
 
         match conn.get::<String, String>(key.to_string()) {
             Ok(v) => println!("get/{}, value: {}", key, v),
             Err(e) => println!("get failed, err: {:?}", e),
         }
-        println!("completed redis test!");
-    }
-
-    #[test]
-    fn test_set() {
-        println!("in counterservice set test....");
-        let mut conn = get_conn()
-            .map_err(|e| panic!("conn error:{:?}", e))
-            .expect("conn err");
-        let key = "xinxin";
-        let value = rand_num();
-
-        let _: () = conn
-            .set(key, value)
-            .map_err(|e| panic!("set error:{:?}", e))
-            .expect("set err");
-
-        // if let Err(e) == Rsult {
-        //     assert
-        // }
-        println!("redis set succeed!");
-        match conn.get::<String, String>(key.to_string()) {
-            Ok(v) => println!("get/{} succeed, value: {}", key, v),
-            Err(e) => println!("get failed, err: {:?}", e),
-        }
-        println!("completed redis test!");
     }
 
     #[test]
     fn test_del() {
-        println!("in counterservice del test....");
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
@@ -72,12 +96,9 @@ mod counterservice_test {
             .expect("set err");
 
         assert_eq!(redis::cmd("DEL").arg(key).query(&mut conn), Ok(1));
-
-        println!("completed DEL test!");
     }
     #[test]
     fn test_exist() {
-        println!("in counterservice exist test....");
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
@@ -90,13 +111,12 @@ mod counterservice_test {
             .expect("set err");
 
         assert_eq!(redis::cmd("EXISTS").arg(key).query(&mut conn), Ok(1));
-
-        println!("completed exist!");
     }
     #[test]
     fn test_incr() {
-        println!("in redis incr test....");
-        let mut conn = get_conn().unwrap();
+        let mut conn = get_conn()
+            .map_err(|e| panic!("conn error:{:?}", e))
+            .expect("conn err");
         let key = "xinxinincr";
         let value = rand_num();
 
@@ -109,10 +129,8 @@ mod counterservice_test {
             .arg(key)
             .query(&mut conn)
             .expect("failed to before incr execute GET for 'xinxin'");
-        println!("value for 'xinxin' = {:?}", before_val);
 
-        //INCR and GET using high-level commands
-        let incr: u64 = 2;
+        let incr: u32 = 2;
         let _: () = conn
             .incr(key, incr)
             .expect("failed to execute INCR for 'xinxin'");
@@ -120,13 +138,14 @@ mod counterservice_test {
         let after_val: u128 = conn
             .get(key)
             .expect("failed to after incr GET for 'xinxin'");
-        println!("after incr val = {}", after_val);
+
         assert_eq!((before_val + incr as u128), after_val);
     }
     #[test]
     fn test_decr() {
-        println!("in counterservice decr test....");
-        let mut conn = get_conn().unwrap();
+        let mut conn = get_conn()
+            .map_err(|e| panic!("conn error:{:?}", e))
+            .expect("conn err");
         let key = "xinxindecr";
         let value = rand_num() + 3;
         println!("decr val{:?}", value);
@@ -142,7 +161,7 @@ mod counterservice_test {
             .expect("failed to before decr execute GET for 'xinxin'");
         println!("value for 'xinxin' = {}", before_val);
 
-        let decr: u64 = 2;
+        let decr: u32 = 2;
 
         let _: () = conn
             .decr(key, decr)
@@ -158,7 +177,6 @@ mod counterservice_test {
 
     #[test]
     fn test_mset() {
-        println!("in counterservice mset test....");
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
@@ -184,12 +202,10 @@ mod counterservice_test {
             redis::cmd("GET").arg("xinxinmset3").query(&mut conn),
             Ok(184467440737051 as u64)
         );
-        println!("completed counterservice mset test!");
     }
 
     #[test]
     fn test_countergetset() {
-        println!("in counterservice mset test....");
         let mut conn = get_conn()
             .map_err(|e| panic!("conn error:{:?}", e))
             .expect("conn err");
@@ -240,7 +256,9 @@ mod counterservice_test {
             println!("ignore test for connecting mesh failed!!!!!:{:?}", e);
             return Err(Error::new(ErrorKind::AddrNotAvailable, "cannot get conn"));
         }
-        let client = client_rs.unwrap();
+        let client = client_rs
+            .map_err(|e| panic!("client error:{:?}", e))
+            .expect("client err");
         match client.get_connection() {
             Ok(conn) => Ok(conn),
             Err(e) => {
@@ -248,16 +266,5 @@ mod counterservice_test {
                 return Err(Error::new(ErrorKind::Interrupted, e.to_string()));
             }
         }
-    }
-
-    #[test]
-    fn hash_find() {
-        let key = "测试123.key";
-        let idx = key.find(".").unwrap();
-        println!(". is at: {}", idx);
-        for p in 0..idx {
-            println!("{}:{}", p, key.as_bytes()[p] as char);
-        }
-        println!("\r\nhash find test ok!");
     }
 }
