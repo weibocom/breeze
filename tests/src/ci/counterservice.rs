@@ -1,12 +1,14 @@
 #[cfg(test)]
 mod counterservice_test {
+    use crate::ci::env::Mesh;
     use assert_panic::assert_panic;
     use rand::distributions::Alphanumeric;
     use rand::{thread_rng, Rng};
     use redis::{Client, Commands, Connection};
     use std::collections::{HashMap, HashSet};
+
     // 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
-    const BASE_URL: &str = "redis://127.0.0.1:9302";
+    //const BASE_URL: &str = "redis://127.0.0.1:9302";
     fn rand_num() -> u32 {
         let mut rng = rand::thread_rng();
         rng.gen::<u32>()
@@ -80,9 +82,9 @@ mod counterservice_test {
     }
 
     // 测试场景3 key的异常case
-    // key为 long类型但是不带配置列  提示
-    // key为long类型并且配置列错误  提示
-    // key为string类型非long导致的异常  提示
+    // key为 long类型但是不带配置列  提示Invalid key
+    // key为long类型并且配置列错误  提示No schema
+    // key为string类型非long导致的异常  提示nvalid key
     // 异常case eg:  set 44 20 , set 44.unlike 30  set like 40
     #[test]
     fn test_diffkey_set() {
@@ -97,9 +99,10 @@ mod counterservice_test {
         let key_string = "like";
         assert_panic!(panic!( "{:?}", get_conn().set::<String, u8, String>(key_string.to_string(), value)), String, contains "Invalid key");
     }
-    // 如果value大于配置的value 为异常case
-    // eg: set 4821769284223285.like  20 （一定要指定列！）
-    // get 4821769284223285 =>"repost:0,comment:0,like:20"
+
+    // get key=> 得到所有列的值
+    // get 70 =>"repost:0,comment:0,like:20"
+    // get key的指定列=>获取一个value
     // get 4821769284223285.like => "20"
     // #[test]
     // fn test_get() {
@@ -110,6 +113,8 @@ mod counterservice_test {
     //         Err(e) => println!("get failed, err: {:?}", e),
     //     }
     // }
+    // 如果value大于配置的value 为异常case
+    // eg: set 4821769284223285.like  20 （一定要指定列！）
 
     // #[test]
     // fn test_del() {
@@ -266,7 +271,8 @@ mod counterservice_test {
     }
 
     fn get_conn() -> Connection {
-        let client_rs = Client::open(BASE_URL);
+        let host = file!().get_host();
+        let client_rs = Client::open(host);
         assert!(!client_rs.is_err(), "get client err:{:?}", client_rs.err());
 
         let client = client_rs
