@@ -7,13 +7,14 @@
 ///     数据由 java SDK 预先写入：key: 0...9999  value: 0...9999
 /// - 模拟mc add命令: get -> add -> get
 ///     
-use crate::ci::env::Mesh;
+use crate::ci::env::*;
+use crate::redis_helper::*;
 #[cfg(test)]
 mod mc_test {
 
     use bmemcached::MemcachedClient;
 
-    use crate::ci::env::Mesh;
+    use crate::ci::env::{Mesh, exists_key_iter};
 
     /// 测试场景：buffer扩容验证: 同一个连接，同一个key, set不同大小的value
     /// 特征:    key；固定为"fooset"  value: 不同长度的String,内容固定: 每个字符内容为 ‘A’
@@ -59,9 +60,9 @@ mod mc_test {
     fn only_get_value() {
         let client = mc_get_conn();
         let mut key: String;
-        for value in 0..=9999 {
+        for value in exists_key_iter() {
             key = value.to_string();
-            let result:Result<u32,bmemcached::errors::Error> = client.get(&key);
+            let result:Result<u64,bmemcached::errors::Error> = client.get(&key);
             assert_eq!(true,result.is_ok());
             assert_eq!(value,result.unwrap());
         }
@@ -81,9 +82,9 @@ mod mc_test {
         let key = "fooadd";
         let value = "bar";
         client.add(key, value, 2).unwrap();
-        let result: String = client.get(key).unwrap();
-        assert_eq!(result, value);
-        println!("completed mc add test!");
+        let result:Result<String,bmemcached::errors::Error> = client.get(key);
+        assert_eq!(true,result.is_ok());
+        assert_eq!(result.unwrap(), value);
     }
 
     #[test]
@@ -98,7 +99,8 @@ mod mc_test {
         println!("completed mc replace test!");
     }
 
-    /*#[test]
+    /*
+    #[test]
     fn only_set_value() {
         let client = mc_get_conn();
         let mut key: String;
