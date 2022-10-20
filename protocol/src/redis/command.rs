@@ -43,7 +43,7 @@ pub(crate) struct CommandProperties {
 
 // 默认响应
 // 第0个表示quit
-pub const PADDING_RSP_TABLE: [&str; 7] = [
+const PADDING_RSP_TABLE: [&str; 7] = [
     "",
     "+OK\r\n",
     "+PONG\r\n",
@@ -53,7 +53,23 @@ pub const PADDING_RSP_TABLE: [&str; 7] = [
     "$-1\r\n",                           // mget 等指令对应的nil
 ];
 
+// 调用式确保idx < PADDING_RSP_TABLE.len()
+// 这个idx通常来自于CommandProperties.padding_rsp
+
 impl CommandProperties {
+    #[inline(always)]
+    pub(super) fn get_pad_rsp(&self) -> &'static str {
+        unsafe { PADDING_RSP_TABLE.get_unchecked(self.padding_rsp as usize) }
+    }
+    #[inline(always)]
+    pub(super) fn get_pad_ok_rsp(&self) -> &'static str {
+        unsafe { PADDING_RSP_TABLE.get_unchecked(1) }
+    }
+    #[inline(always)]
+    pub(super) fn get_pad_rsp_by(&self, idx: u8) -> &'static str {
+        assert!(idx < PADDING_RSP_TABLE.len() as u8);
+        unsafe { PADDING_RSP_TABLE.get_unchecked(idx as usize) }
+    }
     //#[inline]
     //pub fn operation(&self) -> &Operation {
     //    &self.op
@@ -702,6 +718,7 @@ impl CommandProperties {
         self
     }
     fn nil_rsp(mut self, idx: u8) -> Self {
+        assert!(idx < PADDING_RSP_TABLE.len() as u8);
         self.nil_rsp = idx;
         self
     }
