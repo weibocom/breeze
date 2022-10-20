@@ -1,4 +1,6 @@
 mod mesh;
+#[cfg(test)]
+mod redis;
 
 #[cfg(test)]
 mod env {
