@@ -1,8 +1,7 @@
-use std::io::{Error, ErrorKind, Result};
-
-use redis::{Client, Connection};
-
-pub fn get_conn(host: &str) -> Connection {
+#[cfg(test)]
+pub fn get_conn(host: &str) -> redis::Connection {
+    use redis::{Client, Connection};
+    use std::io::{Error, ErrorKind, Result};
     let host = String::from("redis://") + host;
     let client = Client::open(host);
     assert!(!client.is_err(), "get client err:{:?}", client.err());
