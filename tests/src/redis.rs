@@ -1,4 +1,6 @@
 /// # 已测试场景
+/// - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
+/// 从mesh读取, 验证业务写入与mesh读取之间的一致性
 /// - basic set
 /// - value大小数组[4, 40, 400, 4000, 8000, 20000, 3000000],依次set后随机set,验证buffer扩容
 /// - basic del
@@ -50,7 +52,7 @@ mod redis_intergration_test {
 
     use crate::redis_helper::*;
 
-    const BASE_URL: &str = "redis://localhost:56810";
+    const BASE_URL: &str = "redis://10.185.9.78:56378";
 
     //基本场景
     #[test]
@@ -71,6 +73,16 @@ mod redis_intergration_test {
                 .query(&mut con),
             Ok(("foo".to_string(), b"bar".to_vec()))
         );
+    }
+
+    /// set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
+    /// 从mesh读取, 验证业务写入与mesh读取之间的一致性
+    #[test]
+    fn test_get_write_by_sdk() {
+        let mut con = get_conn(BASE_URL);
+        for i in 1..=5 {
+            assert_eq!(redis::cmd("GET").arg(i).query(&mut con), Ok(i));
+        }
     }
 
     //基本set场景，key固定为foo或bar，value为简单数字或字符串
