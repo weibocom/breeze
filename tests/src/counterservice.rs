@@ -76,22 +76,27 @@ mod counterservice_test {
             Ok(value)
         );
 
-        assert_panic!(panic!( "set big key  err{:?}", get_conn().set::<String, u8, String>(key2.to_string(), value)), String, contains "key too big");
+        assert_panic!(panic!( "{:?}", get_conn().set::<String, u8, String>(key2.to_string(), value)), String, contains "key too big");
     }
 
-    //测试场景2 key的异常case
-    // key为 long类型并且不带配置列 key为long类型并且配置列错误 非long导致的异常 为异常case
-    // 异常case eg: , set 44 20 , set 44.unlike 30  set string 40
-    //#[test]
-    // fn test_stringkey_set() {
-    //     let value = 20;
-    //     let key = 44.to_string();
-    //     let _: () = get_conn()
-    //         .set(&key, value)
-    //         .map_err(|e| panic!("set error:{:?}", e))
-    //         .expect("set err");
-    //     assert_eq!(redis::cmd("GET").arg(key).query(&mut get_conn()), Err(e));
-    // }
+    // 测试场景3 key的异常case
+    // key为 long类型但是不带配置列  提示
+    // key为long类型并且配置列错误  提示
+    // key为string类型非long导致的异常  提示
+    // 异常case eg:  set 44 20 , set 44.unlike 30  set like 40
+    #[test]
+    fn test_diffkey_set() {
+        let value = 20;
+
+        let key_nocolumn = 44;
+        assert_panic!(panic!( "{:?}", get_conn().set::<u8, u8, String>(key_nocolumn, value)), String, contains "Invalid key");
+
+        let key_errcolumn = "44.unlike";
+        assert_panic!(panic!( "{:?}", get_conn().set::<String, u8, String>(key_errcolumn.to_string(), value)), String, contains "No schema");
+
+        let key_string = "like";
+        assert_panic!(panic!( "{:?}", get_conn().set::<String, u8, String>(key_string.to_string(), value)), String, contains "Invalid key");
+    }
     // 如果value大于配置的value 为异常case
     // eg: set 4821769284223285.like  20 （一定要指定列！）
     // get 4821769284223285 =>"repost:0,comment:0,like:20"
