@@ -5,7 +5,7 @@ mod packet;
 //mod token;
 
 use crate::{
-    redis::command::{PADDING_RSP_TABLE, SWALLOWED_CMD_HASHRANDOMQ},
+    redis::command::SWALLOWED_CMD_HASHRANDOMQ,
     redis::packet::RequestPacket,
     redis::{
         command::{CommandProperties, SWALLOWED_CMD_HASHKEYQ},
@@ -76,10 +76,7 @@ impl Redis {
                     if packet.reserved_hash() != 0 {
                         // 使用hashkey直接指定了hash
                         hash = packet.reserved_hash();
-                        log::info!(
-                            "+++ use direct hash for multi cmd: {:?}",
-                            packet.inner_data()
-                        )
+                        log::info!("+++ use direct hash for multi cmd: {:?}", packet)
                     } else {
                         hash = calculate_hash(alg, &key);
                     }
@@ -287,22 +284,15 @@ impl Protocol for Redis {
             if first || cfg.need_bulk_num {
                 if first && cfg.need_bulk_num {
                     w.write_u8(b'*')?;
-                    w.write(ext.key_count().to_string().as_bytes())?;
+                    w.write_s_u16(ext.key_count())?;
                     w.write(b"\r\n")?;
                 }
 
                 // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
                 if cfg.need_bulk_num && response.data().at(0) == b'-' && cfg.nil_rsp > 0 {
-                    let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
-                    // 百分之一的概率打印nil 转换
-                    let rd = rand::random::<usize>() % 100;
-                    if log::log_enabled!(log::Level::Debug) || rd == 0 {
-                        log::info!(
-                            "+++ write to client nil: {:?}, ignore:{:?}",
-                            nil,
-                            response.data()
-                        );
-                    }
+                    // 在Command中已经断言了nil_rsp < PADDING_RSP_TABLE.len()
+                    let nil = cfg.get_pad_rsp();
+                    log::info!("+++ write to client nil: {:?}=>{:?}", nil, response);
 
                     w.write(nil.as_bytes())?;
                     return Ok(1);
@@ -327,8 +317,7 @@ impl Protocol for Redis {
         w: &mut W,
         dist_fn: F,
     ) -> Result<usize> {
-        let rsp_idx = req.ext().padding_rsp() as usize;
-        assert!(rsp_idx < PADDING_RSP_TABLE.len(), "rsp_idx:{}", rsp_idx);
+        let rsp_idx = req.ext().padding_rsp();
 
         let mut nil_convert = 0;
         // check cmd需要额外构建rsp，目前只有hashkey、keyshard两种dist指令需要构建
@@ -342,11 +331,8 @@ impl Protocol for Redis {
                 let mut bulk_str: String = String::from("");
                 if cfg.multi && cfg.need_bulk_num {
                     let ext = req.ext();
-                    let first = ext.mkey_first();
-                    if first {
-                        if first && cfg.need_bulk_num {
-                            bulk_str = format!("*{}\r\n", ext.key_count());
-                        }
+                    if ext.mkey_first() && cfg.need_bulk_num {
+                        bulk_str = format!("*{}\r\n", ext.key_count());
                     }
                 }
 
@@ -373,34 +359,26 @@ impl Protocol for Redis {
                     }
                 }
                 if nil_rsp {
-                    let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
+                    let nil = cfg.get_pad_rsp();
                     // 百分之一的概率打印nil 转换
-                    let rd = rand::random::<usize>() % 100;
-                    if log::log_enabled!(log::Level::Debug) || rd == 0 {
-                        log::info!("+++ write client nil/{} for:{:?}", nil, req.data());
-                    }
+                    log::info!("+++ write client nil/{} for:{:?}", nil, req);
                     nil_convert = 1;
                     nil.to_string()
                 } else {
-                    let padding_rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
-                    padding_rsp.to_string()
+                    cfg.get_pad_rsp_by(rsp_idx).to_string()
                 }
             }
         };
 
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        log::debug!(
-            "+++ will write noforward rsp/{:?} for req:{:?}",
-            rsp,
-            req.data()
-        );
+        log::debug!("+++ will write noforward rsp/{:?} for req:{:?}", rsp, req);
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())?;
             Ok(nil_convert)
         } else {
             // quit，先发+OK，再返回err
             assert_eq!(rsp_idx, 0, "rsp_idx:{}", rsp_idx);
-            let ok_rs = PADDING_RSP_TABLE.get(1).unwrap().as_bytes();
+            let ok_rs = cfg.get_pad_ok_rsp().as_bytes();
             w.write(ok_rs)?;
             Err(crate::Error::Quit)
         }
