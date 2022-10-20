@@ -6,6 +6,8 @@ use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection};
 use std::collections::{HashMap, HashSet};
 
+use super::env::exists_key_iter;
+
 // 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
 //const BASE_URL: &str = "redis://127.0.0.1:9302";
 fn rand_num() -> u32 {
@@ -27,6 +29,20 @@ fn rand_key(tail: &str) -> String {
 
 fn record_max_key() {}
 
+// set 1 2, ..., set 10000 10000等一万个key已由java sdk预先写入,
+// set 1.repost 1 set 1.comment 1 . set 1.like.1
+// 从mesh读取, 验证业务写入与mesh读取之间的一致性
+#[test]
+fn test_consum_diff_write() {
+    let column_cfg = vec![".repost", ".comment", ".like"];
+    for column in column_cfg.iter() {
+        for i in exists_key_iter() {
+            let mut key = i.to_string();
+            key.push_str(column);
+            assert_eq!(redis::cmd("GET").arg(key).query(&mut get_conn()), Ok(i));
+        }
+    }
+}
 // 测试场景1 key为long类型并且带配置列
 // 特征：key为纯数字long类型 key指定为44
 // 测试端口配置了三列 repost comment like
