@@ -1,13 +1,5 @@
-#[cfg(test)]
-mod counterservice;
-mod mesh;
-#[cfg(test)]
-mod mc;
-#[cfg(test)]
-mod redis;
-#[cfg(test)]
-mod env {
-    pub(super) trait Mesh {
+pub(crate) mod env {
+    pub(crate) trait Mesh {
         fn get_host(&self) -> String;
     }
     impl Mesh for &str {
@@ -31,7 +23,7 @@ mod env {
             host.expect("resource is not set").to_string()
         }
     }
-    pub(super) fn exists_key_iter() -> std::ops::Range<u64> {
+    pub(crate) fn exists_key_iter() -> std::ops::Range<u64> {
         let min = std::env::var("min_key")
             .unwrap_or_default()
             .parse()
