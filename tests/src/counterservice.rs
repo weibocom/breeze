@@ -74,6 +74,16 @@ mod counterservice_test {
     //         redis::cmd("GET").arg(key1).query(&mut get_conn()),
     //         Ok(value)
     //     );
+    //     let a = get_conn()
+    //         .set::<String, u8, bool>(key2.to_string(), value)
+    //         .expect("key too big");
+    //     println!("{:?}", a);
+    //     // assert_eq!(
+    //     //     get_conn()
+    //     //         .set::<String, u8, bool>(key2.to_string(), value)
+    //     //         .expect("key too big"),
+    //     //     false
+    //     // );
     // }
 
     //测试场景2 key的异常case
