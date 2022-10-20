@@ -1,4 +1,3 @@
-#[cfg(test)]
 use crate::ci::env::Mesh;
 use assert_panic::assert_panic;
 use rand::distributions::Alphanumeric;
@@ -6,7 +5,7 @@ use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection};
 use std::collections::{HashMap, HashSet};
 
-use super::env::exists_key_iter;
+use crate::ci::env::exists_key_iter;
 
 fn rand_num() -> u32 {
     let mut rng = rand::thread_rng();

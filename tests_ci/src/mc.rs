@@ -9,12 +9,11 @@
 ///     
 use crate::ci::env::*;
 use crate::redis_helper::*;
-#[cfg(test)]
 mod mc_test {
 
     use bmemcached::MemcachedClient;
 
-    use crate::ci::env::{Mesh, exists_key_iter};
+    use crate::ci::env::{exists_key_iter, Mesh};
 
     /// 测试场景：buffer扩容验证: 同一个连接，同一个key, set不同大小的value
     /// 特征:    key；固定为"fooset"  value: 不同长度的String,内容固定: 每个字符内容为 ‘A’
@@ -62,9 +61,9 @@ mod mc_test {
         let mut key: String;
         for value in exists_key_iter() {
             key = value.to_string();
-            let result:Result<u64,bmemcached::errors::Error> = client.get(key);
-            assert_eq!(true,result.is_ok());
-            assert_eq!(value,result.unwrap());
+            let result: Result<u64, bmemcached::errors::Error> = client.get(key);
+            assert_eq!(true, result.is_ok());
+            assert_eq!(value, result.unwrap());
         }
     }
 
@@ -81,19 +80,18 @@ mod mc_test {
         let key = "fooadd";
         let value = "bar";
         client.add(key, value, 2).unwrap();
-        let result:Result<String,bmemcached::errors::Error> = client.get(key);
-        assert_eq!(true,result.is_ok());
+        let result: Result<String, bmemcached::errors::Error> = client.get(key);
+        assert_eq!(true, result.is_ok());
         assert_eq!(result.unwrap(), value);
     }
 
     #[test]
     fn mc_simple_get() {
         let client = mc_get_conn();
-        let result:Result<u64,bmemcached::errors::Error> = client.get("0");
-        assert_eq!(true,result.is_ok());
+        let result: Result<u64, bmemcached::errors::Error> = client.get("0");
+        assert_eq!(true, result.is_ok());
         assert_eq!(result.unwrap(), 0);
     }
-
 
     #[test]
     fn mc_simple_replace() {
@@ -118,7 +116,7 @@ mod mc_test {
             let result = client.set(key, number, 500);
             assert_eq!(true,result.is_ok());
             number += 1;
-        } 
+        }
     }
 
     #[test]
