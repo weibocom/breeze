@@ -28,6 +28,17 @@ mod env {
             host.expect("resource is not set").to_string()
         }
     }
+    pub(super) fn exists_key_iter() -> std::ops::Range<u64> {
+        let min = std::env::var("min_key")
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or(0u64);
+        let max = std::env::var("max_key")
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or(10_000u64);
+        min..max
+    }
     #[test]
     fn test_mesh() {
         // this will panic if the env var is not set
