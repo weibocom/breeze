@@ -1,3 +1,4 @@
+#[cfg(test)]
 mod counterservice;
 mod mesh;
 #[cfg(test)]

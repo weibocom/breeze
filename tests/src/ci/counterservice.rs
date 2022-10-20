@@ -271,7 +271,9 @@ fn create_hosts() -> HashMap<String, HashSet<String>> {
 
 fn get_conn() -> Connection {
     let host = file!().get_host();
-    let client_rs = Client::open(host);
+    let host_clinet = String::from("redis://") + &host;
+
+    let client_rs = Client::open(host_clinet);
     assert!(!client_rs.is_err(), "get client err:{:?}", client_rs.err());
 
     let client = client_rs
