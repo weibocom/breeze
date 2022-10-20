@@ -129,7 +129,7 @@ impl Redis {
         Ok(())
     }
 
-    // 解析待吞噬的cmd，解析后会trim掉吞噬指令，消除吞噬指令的影响，目前swallowed cmds有master、hashkey、hashrandomq这2个，后续还有扩展就在这里加 fishermen
+    // 解析待吞噬的cmd，解析后会trim掉吞噬指令，消除吞噬指令的影响，目前swallowed cmds有master、hashkeyq、hashrandomq这几个，后续还有扩展就在这里加 fishermen
     fn parse_swallow_cmd<S: Stream, H: Hash>(
         &self,
         cfg: &CommandProperties,
