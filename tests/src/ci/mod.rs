@@ -1,7 +1,8 @@
+#[cfg(test)]
+mod counterservice;
 mod mesh;
 #[cfg(test)]
 mod redis;
-
 #[cfg(test)]
 mod env {
     pub(super) trait Mesh {
