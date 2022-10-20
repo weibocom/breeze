@@ -11,6 +11,8 @@ env:
   redis: localhost:56810
   counterservice: localhost:9302
   mc: localhost:9301
+  min_key: 1
+  max_key: 10000
 
 jobs:
   build:
