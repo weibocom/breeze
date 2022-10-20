@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod counterservice_test {
+    use assert_panic::assert_panic;
     use rand::distributions::Alphanumeric;
     use rand::{thread_rng, Rng};
     use redis::{Client, Commands, Connection};
@@ -58,33 +59,25 @@ mod counterservice_test {
 
     //流程
     // 分别向like列 发送value为20的key1和key2
-    // 在get key1是否为20
+    // 在get key1是否为20  如果key2返回key too big 测试通过
 
-    // #[test]
-    // fn test_key_maxdiff_set() {
-    //     let value = 20;
-    //     let key1 = "4821769284223305.like";
-    //     let key2 = "4821779284223285.like";
+    #[test]
+    fn test_key_maxdiff_set() {
+        let value = 20;
+        let key1 = "4821769284223305.like";
+        let key2 = "4821779284223285.like";
 
-    //     let _: () = get_conn()
-    //         .set(key1, value)
-    //         .map_err(|e| panic!("set error:{:?}", e))
-    //         .expect("set err");
-    //     assert_eq!(
-    //         redis::cmd("GET").arg(key1).query(&mut get_conn()),
-    //         Ok(value)
-    //     );
-    //     let a = get_conn()
-    //         .set::<String, u8, bool>(key2.to_string(), value)
-    //         .expect("key too big");
-    //     println!("{:?}", a);
-    //     // assert_eq!(
-    //     //     get_conn()
-    //     //         .set::<String, u8, bool>(key2.to_string(), value)
-    //     //         .expect("key too big"),
-    //     //     false
-    //     // );
-    // }
+        let _: () = get_conn()
+            .set(key1, value)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err");
+        assert_eq!(
+            redis::cmd("GET").arg(key1).query(&mut get_conn()),
+            Ok(value)
+        );
+
+        assert_panic!(panic!( "set big key  err{:?}", get_conn().set::<String, u8, String>(key2.to_string(), value)), String, contains "key too big");
+    }
 
     //测试场景2 key的异常case
     // key为 long类型并且不带配置列 key为long类型并且配置列错误 非long导致的异常 为异常case

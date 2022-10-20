@@ -1,0 +1,30 @@
+   Compiling context v0.1.0 (/Users/xinxin22/breeze2/context)
+   Compiling metrics v0.1.0 (/Users/xinxin22/breeze2/metrics)
+   Compiling discovery v0.1.0 (/Users/xinxin22/breeze2/discovery)
+   Compiling api v0.1.0 (/Users/xinxin22/breeze2/api)
+   Compiling sharding v0.1.0 (/Users/xinxin22/breeze2/sharding)
+   Compiling protocol v0.1.0 (/Users/xinxin22/breeze2/protocol)
+   Compiling rt v0.1.0 (/Users/xinxin22/breeze2/rt)
+   Compiling stream v0.1.0 (/Users/xinxin22/breeze2/stream)
+   Compiling endpoint v0.1.0 (/Users/xinxin22/breeze2/endpoint)
+   Compiling tests v0.1.0 (/Users/xinxin22/breeze2/tests)
+warning: unused imports: `ErrorKind`, `Error`, `Result`
+ --> tests/src/redis_helper/mod.rs:1:15
+  |
+1 | use std::io::{Error, ErrorKind, Result};
+  |               ^^^^^  ^^^^^^^^^  ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: function `get_conn` is never used
+ --> tests/src/redis_helper/mod.rs:5:8
+  |
+5 | pub fn get_conn(host: &str) -> Connection {
+  |        ^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` on by default
+
+warning: `tests` (lib) generated 2 warnings
+   Compiling agent v0.0.1 (/Users/xinxin22/breeze2/agent)
+    Finished dev [unoptimized + debuginfo] target(s) in 6.83s
+     Running `target/debug/agent --discovery 'vintage://10.182.27.228:8080' --snapshot /Users/xinxin22/Sites/breeze/snapshot --service-path /Users/xinxin22/Sites/breeze/socks --log-dir /Users/xinxin22/Sites/breeze/logs --upgrade --port 9984 --log-level info`
