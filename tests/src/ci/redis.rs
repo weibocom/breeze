@@ -1,13 +1,12 @@
 /// # 已测试场景
+/// - basic set
 /// - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
 /// 从mesh读取, 验证业务写入与mesh读取之间的一致性
-/// - basic set
+/// - set 过期时间后, ttl > 0
 /// - value大小数组[4, 40, 400, 4000, 8000, 20000, 3000000],依次set后随机set,验证buffer扩容
 /// - basic del
 /// - basic incr
-use std::io::{Error, ErrorKind, Result};
-
-use crate::ci::env::Mesh;
+use crate::ci::env::*;
 use crate::redis_helper::*;
 
 //基本场景
@@ -36,7 +35,7 @@ fn test_args() {
 #[test]
 fn test_get_write_by_sdk() {
     let mut con = get_conn(&file!().get_host());
-    for i in 1..=5 {
+    for i in exists_key_iter() {
         assert_eq!(redis::cmd("GET").arg(i).query(&mut con), Ok(i));
     }
 }
@@ -54,6 +53,24 @@ fn test_basic_set() {
         redis::cmd("GET").arg("barset").query(&mut con),
         Ok(b"foo".to_vec())
     );
+}
+
+// set 过期时间后, ttl > 0
+#[test]
+fn test_set_expire() {
+    let mut con = get_conn(&file!().get_host());
+
+    redis::cmd("SET")
+        .arg("fooexpire")
+        .arg(42usize)
+        .arg("EX")
+        .arg(3)
+        .execute(&mut con);
+    let ttl: usize = redis::cmd("TTL")
+        .arg("fooexpire")
+        .query(&mut con)
+        .expect("ttl err");
+    assert!(ttl > 0);
 }
 
 ///依次set [4, 40, 400, 4000, 8000, 20000, 3000000]大小的value
