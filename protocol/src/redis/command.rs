@@ -248,18 +248,20 @@ pub(super) static SUPPORTED: Commands = {
     // TODO：后续增加新指令时，当multi/need_bulk_num 均为true时，需要在add_support中进行nil转换，避免将err返回到client fishermen
     for c in vec![
         //// meta 指令
+        // name, mname, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num
         //("command", "command" ,   -1, Meta, 0, 0, 0, 1, false, true, false, false, false),
         //("ping", "ping" ,         -1, Meta, 0, 0, 0, 2, false, true, false, false, false),
         //// 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
         //("select", "select" ,      2, Meta, 0, 0, 0, 1, false, true, false, false, false),
         //("hello", "hello" ,        2, Meta, 0, 0, 0, 4, false, true, false, false, false),
-        //("quit", "quit" ,          2, Meta, 0, 0, 0, 0, false, true, false, false, false),
+        //("quit", "quit" ,          1, Meta, 0, 0, 0, 0, false, true, false, false, false),
         Cmd::new("command").arity(-1).op(Meta).padding(1).nofwd(),
         Cmd::new("ping").arity(-1).op(Meta).padding(2).nofwd(),
         Cmd::new("select").arity(2).op(Meta).padding(1).nofwd(),
         Cmd::new("hello").arity(2).op(Meta).padding(4).nofwd(),
-        Cmd::new("quit").arity(2).op(Meta).nofwd(),
-        Cmd::new("master").arity(2).op(Meta).nofwd().master(),
+        // quit、master的指令token数/arity应该都是1
+        Cmd::new("quit").arity(1).op(Meta).nofwd(),
+        Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow(),
 
         //("get" , "get",            2, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("get").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
