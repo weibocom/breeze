@@ -1,3 +1,4 @@
+mod counterservice;
 #[cfg(test)]
 mod context {
     pub(super) struct Context {
