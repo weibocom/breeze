@@ -1,20 +1,32 @@
+/// # 已测试场景：
+/// - 验证 mesh buffer 扩容，同一个连接，同一个key，set 8次不同大小的String value
+///     key: "fooset"  value: 每个字符内容为 ‘A’
+///     乱序set: [1048507, 4, 4000, 40, 8000, 20000, 0, 400]
+///     顺序set: [0, 4, 40, 400, 4000, 8000, 20000, 1048507]
+/// - 模拟mc已有10000条数据，通过 mesh 读取，验证数据一致性
+///     数据由 java SDK 预先写入：key: 0...9999  value: 0...9999
+/// - 模拟mc add命令: get -> add -> get
+///     
+use crate::ci::env::Mesh;
 #[cfg(test)]
 mod mc_test {
 
     use bmemcached::MemcachedClient;
 
-    /// 测试场景：buffer扩容验证，同一个连接，同一个key, set不同大小的value
-    /// 特征:    key；固定为"fooset"  value: 不同长度的String,每个字符内容为 ‘A’
+    use crate::ci::env::Mesh;
+
+    /// 测试场景：buffer扩容验证: 同一个连接，同一个key, set不同大小的value
+    /// 特征:    key；固定为"fooset"  value: 不同长度的String,内容固定: 每个字符内容为 ‘A’
     ///
     /// 测试步骤：
-    ///     <1> 建立连接，
-    ///     <2> 乱序set，先set 1M的value,再乱序set其他大小的value
+    ///     <1> 建立连接
+    ///     <2> 乱序set，先set 1M的value,再乱序set其他大小的value [1048507, 4, 4000, 40, 8000, 20000, 0, 400]
     ///     <3> 将set进去的value get出来，对比set进去的值与get出来的值；
     ///     <4> 由小到大分别set不同大小的value，从0开始递增，覆盖从4k->8k, 8k->32k，以及 1M(1048511 byte) 的场景，
     ///     <5> 重复步骤 <3>
     ///
     #[test]
-    fn mc_test_set() {
+    fn buffer_capacity_A() {
         let client = mc_get_conn();
         let key = "fooset";
         let mut v_sizes = [1048507, 4, 4000, 40, 8000, 20000, 0, 400];
@@ -43,14 +55,28 @@ mod mc_test {
         println!("completed mc set test!");
     }
 
+    #[test]
+    fn only_get_value() {
+        let client = mc_get_conn();
+        let mut key: String;
+        for value in 0..=9999 {
+            key = value.to_string();
+            let result:Result<u32,bmemcached::errors::Error> = client.get(&key);
+            assert_eq!(true,result.is_ok());
+            assert_eq!(value,result.unwrap());
+        }
+    }
+
     fn mc_get_conn() -> MemcachedClient {
-        let client_rs = MemcachedClient::new(vec!["127.0.0.1:9301"], 5);
+        let host = file!().get_host();
+
+        let client_rs = MemcachedClient::new(vec![host], 5);
         assert_eq!(true, client_rs.is_ok());
         return client_rs.unwrap();
     }
 
     #[test]
-    fn mc_test_add() {
+    fn mc_simple_add() {
         let client = mc_get_conn();
         let key = "fooadd";
         let value = "bar";
@@ -61,7 +87,7 @@ mod mc_test {
     }
 
     #[test]
-    fn mc_test_replace() {
+    fn mc_simple_replace() {
         let client = mc_get_conn();
         let key = "fooreplace";
         let value = "bar";
@@ -73,6 +99,19 @@ mod mc_test {
     }
 
     /*#[test]
+    fn only_set_value() {
+        let client = mc_get_conn();
+        let mut key: String;
+        let mut number: u32 = 0;
+        while number < 10000 {
+            key = number.to_string();
+            let result = client.set(key, number, 500);
+            assert_eq!(true,result.is_ok());
+            number += 1;
+        } 
+    }
+
+    #[test]
     fn mc_test_append() {
         let client = mc_get_conn();
         let key = "append";
