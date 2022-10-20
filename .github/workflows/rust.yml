@@ -8,6 +8,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  redis: localhost:56810
+  counterservice: localhost:9302
+  mc: localhost:9301
 
 jobs:
   build:
@@ -51,4 +54,3 @@ jobs:
           cat /home/runner/work/breeze/logs/breeze.log
       - name: Run tests
         run: cargo test --verbose
-  

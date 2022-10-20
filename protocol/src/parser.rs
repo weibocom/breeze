@@ -198,6 +198,12 @@ impl Display for HashedCommand {
         write!(f, "hash:{} {}", self.hash, self.cmd)
     }
 }
+impl Debug for HashedCommand {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "hash:{} data:{:?}", self.hash, self.cmd)
+    }
+}
 impl Display for Command {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -217,7 +223,18 @@ impl Display for Command {
 impl Debug for Command {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(self, f)
+        write!(
+            f,
+            "flag:{:?} len:{} sentonly:{} {} ok:{} op:{}/{:?} data:{:?}",
+            self.flag,
+            self.len(),
+            self.sentonly(),
+            self.cmd,
+            self.ok(),
+            self.op_code(),
+            self.operation(),
+            self.data()
+        )
     }
 }
 
