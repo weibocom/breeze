@@ -62,7 +62,7 @@ mod mc_test {
         let mut key: String;
         for value in exists_key_iter() {
             key = value.to_string();
-            let result:Result<u64,bmemcached::errors::Error> = client.get(&key);
+            let result:Result<u64,bmemcached::errors::Error> = client.get(key);
             assert_eq!(true,result.is_ok());
             assert_eq!(value,result.unwrap());
         }
@@ -70,7 +70,6 @@ mod mc_test {
 
     fn mc_get_conn() -> MemcachedClient {
         let host = file!().get_host();
-
         let client_rs = MemcachedClient::new(vec![host], 5);
         assert_eq!(true, client_rs.is_ok());
         return client_rs.unwrap();
@@ -86,6 +85,15 @@ mod mc_test {
         assert_eq!(true,result.is_ok());
         assert_eq!(result.unwrap(), value);
     }
+
+    #[test]
+    fn mc_simple_get() {
+        let client = mc_get_conn();
+        let result:Result<u64,bmemcached::errors::Error> = client.get("0");
+        assert_eq!(true,result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
 
     #[test]
     fn mc_simple_replace() {
