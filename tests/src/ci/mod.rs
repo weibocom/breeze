@@ -1,5 +1,7 @@
 mod mesh;
 #[cfg(test)]
+mod mc;
+#[cfg(test)]
 mod redis;
 
 #[cfg(test)]
