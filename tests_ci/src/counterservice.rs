@@ -26,6 +26,25 @@ fn rand_key(tail: &str) -> String {
 
 fn record_max_key() {}
 
+fn test_set_key_value(key: i32, value: i32) {
+    let column_cfg = vec![".repost", ".comment", ".like"];
+
+    for column in column_cfg.iter() {
+        let mut key_column = key.to_string();
+        key_column.push_str(column);
+
+        let _: () = get_conn()
+            .set(&key_column, value)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err");
+
+        assert_eq!(
+            redis::cmd("GET").arg(key_column).query(&mut get_conn()),
+            Ok(value)
+        );
+    }
+}
+
 // set 1 2, ..., set 10000 10000等一万个key已由java sdk预先写入,
 // set 1.repost 1 set 1.comment 1 . set 1.like.1
 // 从mesh读取, 验证业务写入与mesh读取之间的一致性
@@ -50,19 +69,7 @@ fn test_consum_diff_write() {
 //再get 做断言 判断get到的val和set进去的val是否相等
 #[test]
 fn test_sample_set() {
-    let column_cfg = vec![".repost", ".comment", ".like"];
-    for column in column_cfg.iter() {
-        let value = 20;
-        let mut key = 44.to_string();
-        key.push_str(column);
-
-        let _: () = get_conn()
-            .set(&key, value)
-            .map_err(|e| panic!("set error:{:?}", e))
-            .expect("set err");
-
-        assert_eq!(redis::cmd("GET").arg(key).query(&mut get_conn()), Ok(value));
-    }
+    test_set_key_value(44, 20);
 }
 
 // 测试场景2：在测试1的基础上 让下一个key的大小比当前已知最大key大20 和大10000000000（1e10）
@@ -112,20 +119,49 @@ fn test_diffkey_set() {
     assert_panic!(panic!( "{:?}", get_conn().set::<String, u8, String>(key_string.to_string(), value)), String, contains "Invalid key");
 }
 
-// get key=> 得到所有列的值
-// get 64 =>"repost:30,comment:30,like:30"
-// get key的指定列=>获取一个value
-// get 64.like => "30"
-
 //流程
 //先对每一列set value为20 key为64
 //再get key.column
+// get key的指定列=>获取一个value
+// get 64.like => "30"
+
 //再get key
+// get key=> 得到所有列的值
+// get 64 =>"repost:30,comment:30,like:30"
 #[test]
 fn test_sample_get() {
+    test_set_key_value(30, 64);
+
+    assert_eq!(
+        redis::cmd("GET").arg(30).query(&mut get_conn()),
+        Ok(String::from("repost:30,like:30,comment:30"))
+    );
+}
+// todo:如果value大于配置的value 为异常case
+// 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
+
+// 测试场景 单独删除某一列 get到的value为0
+//如果删除整个key get的结果是"“ 。get某一列结果是nil 相当于把key+列删除
+//单独删除某一列的key del 1234567.like
+//删除整个key del 1234567
+
+//流程 1. 先检查get key是否存在
+// 2. set 每一列
+// 3. get 每一列验证是否set成功
+// 4. del 每一列后再get是否删除成功 del 1234567.like
+// 6. del整个key  验证结果是否为"repost:0,like:0,comment:0"
+// del 1234567 验证结果是否为“”
+// 7. get key。repost 验证结果是否为nil
+#[test]
+fn test_del() {
+    let key = 123456789;
+    let value = 456;
+    assert_eq!(
+        redis::cmd("GET").arg(key).query(&mut get_conn()),
+        Ok("".to_string())
+    );
+
     let column_cfg = vec![".repost", ".comment", ".like"];
-    let value = 30;
-    let key = 64;
     for column in column_cfg.iter() {
         let mut key_column = key.to_string();
         key_column.push_str(column);
@@ -136,31 +172,36 @@ fn test_sample_get() {
             .expect("set err");
 
         assert_eq!(
-            redis::cmd("GET").arg(key_column).query(&mut get_conn()),
+            redis::cmd("GET").arg(&key_column).query(&mut get_conn()),
             Ok(value)
+        );
+
+        assert_eq!(
+            redis::cmd("DEL").arg(&key_column).query(&mut get_conn()),
+            Ok(1)
+        );
+        assert_eq!(
+            redis::cmd("GET").arg(&key_column).query(&mut get_conn()),
+            Ok(0)
         );
     }
 
     assert_eq!(
         redis::cmd("GET").arg(key).query(&mut get_conn()),
-        Ok(String::from("repost:30,like:30,comment:30"))
+        Ok(String::from("repost:0,like:0,comment:0"))
+    );
+
+    assert_eq!(redis::cmd("DEL").arg(&key).query(&mut get_conn()), Ok(1));
+    assert_eq!(
+        redis::cmd("GET").arg(key).query(&mut get_conn()),
+        Ok("".to_string())
+    );
+    key.to_string().push_str(".repost");
+    assert_eq!(
+        redis::cmd("GET").arg(key).query(&mut get_conn()),
+        Ok(None::<usize>)
     );
 }
-// todo:如果value大于配置的value 为异常case
-// 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
-
-// #[test]
-// fn test_del() {
-//     let key = "xinxindel";
-//     let value = 456;
-
-//     let _: () = get_conn()
-//         .set(key, value)
-//         .map_err(|e| panic!("set error:{:?}", e))
-//         .expect("set err");
-
-//     assert_eq!(redis::cmd("DEL").arg(key).query(&mut get_conn()), Ok(1));
-// }
 // #[test]
 // fn test_exist() {
 //     let key = "xinxinexist";
