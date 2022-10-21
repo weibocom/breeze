@@ -23,7 +23,7 @@ jobs:
         run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci007
       - uses: actions/checkout@v3
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --features enable-log --features listen-all
       - name: Check Vintage
         run: |
           docker ps -a
@@ -46,7 +46,7 @@ jobs:
         run: nohup cargo run --features enable-log --features listen-all -- --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
       - name: Check Port
         run: |
-          sleep 1m
+          sleep 15s
           netstat -nat|grep LISTEN
           ps -aux|grep breeze
           ls -all /home/runner/work/breeze/snapshot
