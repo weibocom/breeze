@@ -22,8 +22,6 @@ jobs:
       - name: Prepare Vintage_MC_Redis
         run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci0011
       - uses: actions/checkout@v3
-      - name: Build
-        run: cargo build --verbose
       - name: Check Vintage
         run: |
           docker ps -a
