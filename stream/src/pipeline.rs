@@ -325,12 +325,12 @@ impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Re
             && self.pending.len() == 0
             && self.req_new == self.req_dropped.load(Acquire)
     }
+    //#[inline]
+    //fn need_refresh(&self) -> bool {
+    //    true
+    //}
     #[inline]
-    fn need_refresh(&self) -> bool {
-        true
-    }
-    #[inline]
-    fn refresh(&mut self) {
+    fn refresh(&mut self) -> bool {
         if let Some(top) = self.top.check() {
             unsafe {
                 let old = std::ptr::replace(&mut self.top as *mut T, top);
@@ -359,6 +359,7 @@ impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Re
             //    self.dropping.clear();
             //}
         }
+        true
     }
 }
 impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
