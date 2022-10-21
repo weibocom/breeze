@@ -3,7 +3,7 @@ use assert_panic::assert_panic;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::vec;
 
 use crate::ci::env::exists_key_iter;
@@ -62,14 +62,14 @@ fn test_consum_diff_write() {
 //再get 做断言 判断get到的val和set进去的val是否相等
 #[test]
 fn test_sample_set() {
-    test_set_key_value(44, 20);
+    test_set_key_value(44, 44);
 }
 
-// 测试场景2：在测试1的基础上 让下一个key的大小比当前已知最大key大20 和大10000000000（1e10）
+// 测试场景2：在测试1的基础上 让下一个key的大小比当前已知最大key大90000 和大10000000000（1e10）
 // 已知配置中max-diff为1000000000 （1e9）
 // 对该key的数据类型范围进行限制之外，还需要检测该key减去所要存储的table中的当前现有最大key的差值，这个差值不应超过max-diff
-// 特征:已知当前max-key为4821769284223285 现在set  key1=max-key+20    key2=max-key+1e10 value为20
-// key1:set 4821769284223305.like 20    key2:set 4821779284223285.like 20
+// 特征:已知当前max-key为10000 现在set  key1=max-key+90000    key2=max-key+1e10 value为20
+// key1:set 100000.like 20    key2:set 4821779284223285.like 20
 
 //流程
 // 分别向like列 发送value为20的key1和key2
@@ -78,7 +78,7 @@ fn test_sample_set() {
 #[test]
 fn test_key_maxdiff_set() {
     let value = 20;
-    let key1 = "4821769284223305.like";
+    let key1 = "100000.like";
     let key2 = "4821779284223285.like";
 
     let _: () = get_conn()
