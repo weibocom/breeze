@@ -1,0 +1,16 @@
+   Compiling context v0.1.0 (/Users/xinxin22/breeze2/context)
+   Compiling metrics v0.1.0 (/Users/xinxin22/breeze2/metrics)
+   Compiling discovery v0.1.0 (/Users/xinxin22/breeze2/discovery)
+   Compiling api v0.1.0 (/Users/xinxin22/breeze2/api)
+   Compiling sharding v0.1.0 (/Users/xinxin22/breeze2/sharding)
+   Compiling protocol v0.1.0 (/Users/xinxin22/breeze2/protocol)
+   Compiling rt v0.1.0 (/Users/xinxin22/breeze2/rt)
+   Compiling stream v0.1.0 (/Users/xinxin22/breeze2/stream)
+   Compiling endpoint v0.1.0 (/Users/xinxin22/breeze2/endpoint)
+   Compiling agent v0.0.1 (/Users/xinxin22/breeze2/agent)
+    Finished dev [unoptimized + debuginfo] target(s) in 6.97s
+     Running `target/debug/agent --discovery 'vintage://10.182.27.228:8080' --snapshot /Users/xinxin22/Sites/breeze/snapshot --service-path /Users/xinxin22/Sites/breeze/socks --log-dir /Users/xinxin22/Sites/breeze/logs --upgrade --port 9984 --log-level info`
+    Finished dev [unoptimized + debuginfo] target(s) in 0.36s
+     Running `target/debug/agent --discovery 'vintage://10.182.27.228:8080' --snapshot /Users/xinxin22/Sites/breeze/snapshot --service-path /Users/xinxin22/Sites/breeze/socks --log-dir /Users/xinxin22/Sites/breeze/logs --upgrade --port 9984 --log-level info`
+    Finished dev [unoptimized + debuginfo] target(s) in 0.39s
+     Running `target/debug/agent --discovery 'vintage://10.182.27.228:8080' --snapshot /Users/xinxin22/Sites/breeze/snapshot --service-path /Users/xinxin22/Sites/breeze/socks --log-dir /Users/xinxin22/Sites/breeze/logs --upgrade --port 9984 --log-level info`

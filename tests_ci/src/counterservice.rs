@@ -4,6 +4,7 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection};
 use std::collections::{HashMap, HashSet};
+use std::vec;
 
 use crate::ci::env::exists_key_iter;
 
@@ -25,25 +26,6 @@ fn rand_key(tail: &str) -> String {
 }
 
 fn record_max_key() {}
-
-fn test_set_key_value(key: i32, value: i32) {
-    let column_cfg = vec![".repost", ".comment", ".like"];
-
-    for column in column_cfg.iter() {
-        let mut key_column = key.to_string();
-        key_column.push_str(column);
-
-        let _: () = get_conn()
-            .set(&key_column, value)
-            .map_err(|e| panic!("set error:{:?}", e))
-            .expect("set err");
-
-        assert_eq!(
-            redis::cmd("GET").arg(key_column).query(&mut get_conn()),
-            Ok(value)
-        );
-    }
-}
 
 // set 1 2, ..., set 10000 10000等一万个key已由java sdk预先写入,
 // set 1.repost 1 set 1.comment 1 . set 1.like.1
@@ -148,8 +130,6 @@ fn test_sample_get() {
         Ok(String::from("repost:64,like:64,comment:64"))
     );
 }
-// todo:如果value大于配置的value 为异常case
-// 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
 
 // 测试场景 单独删除某一列 get到的value为0
 //如果删除整个key get的结果是"“ 。get某一列结果是nil 相当于把key+列删除
@@ -160,11 +140,11 @@ fn test_sample_get() {
 // 2. set 每一列
 // 3. get 每一列验证是否set成功
 // 4. del 每一列后再get是否删除成功 del 1234567.like
-// 6. del整个key  验证结果是否为"repost:0,like:0,comment:0"
-// del 1234567 验证结果是否为“”
+// 5. del整个key  验证结果是否为"repost:0,like:0,comment:0"
+// 6.del 1234567 验证结果是否为“”
 // 7. get key。repost 验证结果是否为nil
 #[test]
-fn test_del() {
+fn test_sample_del() {
     let key = 123456789;
     let value = 456;
     assert_eq!(
@@ -217,147 +197,135 @@ fn test_del() {
     );
 }
 
-// #[test]
-// fn test_exist() {
-//     let key = "xinxinexist";
-//     let value = 456;
+//测试场景：incr只能incr 指定key的指定列
+//单独incr某一列 get到的value为value+incr_num  incr 223456789.repost 2
 
-//     let _: () = get_conn()
-//         .set(key, value)
-//         .map_err(|e| panic!("set error:{:?}", e))
-//         .expect("set err");
-
-//     assert_eq!(redis::cmd("EXISTS").arg(key).query(&mut get_conn()), Ok(1));
-// }
-// #[test]
-// fn test_incr() {
-//     let key = "xinxinincr";
-//     let value = rand_num();
-
-//     let _: () = get_conn()
-//         .set(key, &value)
-//         .map_err(|e| panic!("set error:{:?}", e))
-//         .expect("set err");
-
-//     let before_val: u128 = redis::cmd("GET")
-//         .arg(key)
-//         .query(&mut get_conn())
-//         .expect("failed to before incr execute GET for 'xinxin'");
-
-//     let incr: u32 = 2;
-//     let _: () = get_conn()
-//         .incr(key, incr)
-//         .expect("failed to execute INCR for 'xinxin'");
-
-//     let after_val: u128 = get_conn()
-//         .get(key)
-//         .expect("failed to after incr GET for 'xinxin'");
-
-//     assert_eq!((before_val + incr as u128), after_val);
-// }
-// #[test]
-// fn test_decr() {
-//     let key = "xinxindecr";
-//     let value = rand_num() + 3;
-//     println!("decr val{:?}", value);
-
-//     let _: () = get_conn()
-//         .set(key, value)
-//         .map_err(|e| panic!("set error:{:?}", e))
-//         .expect("set err");
-
-//     let before_val: u128 = redis::cmd("GET")
-//         .arg(key)
-//         .query(&mut get_conn())
-//         .expect("failed to before decr execute GET for 'xinxin'");
-//     println!("value for 'xinxin' = {}", before_val);
-
-//     let decr: u32 = 2;
-
-//     let _: () = get_conn()
-//         .decr(key, decr)
-//         .map_err(|e| panic!(" decr error:{:?}", e))
-//         .expect("decr err");
-
-//     let after_val: u128 = get_conn()
-//         .get(key)
-//         .expect("failed to after decr GET for 'xinxin'");
-//     println!("after decr val = {}", after_val);
-//     assert_eq!((before_val - decr as u128), after_val);
-// }
-
-// #[test]
-// fn test_mset() {
-//     let _: () = get_conn()
-//         .set_multiple(&[
-//             ("xinxinmset1", 18446744073709551 as u64),
-//             ("xinxinmset2", 1844674407370955 as u64),
-//             ("xinxinmset3", 184467440737051 as u64),
-//         ])
-//         .map_err(|e| panic!("mset error:{:?}", e))
-//         .expect("mset err");
-
-//     assert_eq!(
-//         redis::cmd("GET").arg("xinxinmset1").query(&mut get_conn()),
-//         Ok(18446744073709551 as u64)
-//     );
-//     assert_eq!(
-//         redis::cmd("GET").arg("xinxinmset2").query(&mut get_conn()),
-//         Ok(1844674407370955 as u64)
-//     );
-//     assert_eq!(
-//         redis::cmd("GET").arg("xinxinmset3").query(&mut get_conn()),
-//         Ok(184467440737051 as u64)
-//     );
-// }
-
-// #[test]
-// fn test_countergetset() {
-//     let _: () = get_conn()
-//         .getset("getsetempty", 0)
-//         .map_err(|e| panic!("mset error:{:?}", e))
-//         .expect("mset err");
-//     assert_eq!(
-//         redis::cmd("GET").arg("getsetempty").query(&mut get_conn()),
-//         Ok(0)
-//     );
-//     assert_eq!(
-//         redis::cmd("GETSET")
-//             .arg("getsetempty")
-//             .arg(8)
-//             .query(&mut get_conn()),
-//         Ok(0)
-//     );
-//     assert_eq!(
-//         redis::cmd("GET").arg("getsetempty").query(&mut get_conn()),
-//         Ok(8)
-//     );
-// }
+//流程
+// 1. set 每一列
+// 2. get 每一列验证是否set成功
+// 3. incr 每一列后再get是否incr 成功 incr 223456789.repost 2
+//  incr后的值为value+incr_num
+//4. incr整个key incr 223456789 报 Invalid key
 
 #[test]
-fn test_hosts_eq() {
-    let hosts1 = create_hosts();
-    let hosts2 = create_hosts();
-    if hosts1.eq(&hosts2) {
-        println!("hosts are equal!");
-    } else {
-        assert!(false);
+fn test_sample_incr() {
+    let key: u32 = 223456789;
+    let value = 456;
+    let incr_num = 2;
+
+    let column_cfg = vec![".repost", ".comment", ".like"];
+    for column in column_cfg.iter() {
+        let mut key_column = key.to_string();
+        key_column.push_str(column);
+
+        let _: () = get_conn()
+            .set(&key_column, value)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err");
+        assert_eq!(
+            redis::cmd("GET").arg(&key_column).query(&mut get_conn()),
+            Ok(value)
+        );
+
+        assert_eq!(
+            redis::cmd("INCRBY")
+                .arg(&key_column)
+                .arg(incr_num)
+                .query(&mut get_conn()),
+            Ok(value + incr_num)
+        );
+        assert_eq!(
+            redis::cmd("GET").arg(&key_column).query(&mut get_conn()),
+            Ok(value + incr_num)
+        );
     }
+
+    assert_panic!(panic!( "{:?}", get_conn().incr::<u32, u32, String>(key, 2)), String, contains "Invalid key");
 }
 
-fn create_hosts() -> HashMap<String, HashSet<String>> {
-    let mut hosts = HashMap::with_capacity(3);
-    for i in 1..10 {
-        let h = format!("{}-{}", "host", i);
-        let mut ips = HashSet::with_capacity(5);
-        for j in 1..20 {
-            let ip = format!("ip-{}", j);
-            ips.insert(ip);
-        }
-        hosts.insert(h.clone(), ips);
+//测试场景：decr只能decr 指定key的指定列 并且只能-1 decr 323456789.repost
+//单独decr某一列 get到的value为value-1
+
+//流程
+// 1. set 每一列
+// 2. get 每一列验证是否set成功
+// 3. decr 每一列后再get是否decr 成功decr 323456789.repost
+//4. decr整个key decr 323456789 报 Invalid key
+//todo
+//4. decr -3  decr 323456789 3 报 Invalid key
+
+#[test]
+fn test_sample_decr() {
+    let key: u32 = 323456789;
+    let value = 456;
+    let decr_num = 4;
+
+    let column_cfg = vec![".repost", ".comment", ".like"];
+    for column in column_cfg.iter() {
+        let mut key_column = key.to_string();
+        key_column.push_str(column);
+
+        let _: () = get_conn()
+            .set(&key_column, value)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err");
+        assert_eq!(
+            redis::cmd("GET").arg(&key_column).query(&mut get_conn()),
+            Ok(value)
+        );
+
+        assert_eq!(
+            get_conn().decr::<&str, u32, u32>(&key_column, decr_num),
+            Ok(value - decr_num)
+        );
+
+        assert_eq!(
+            redis::cmd("GET").arg(&key_column).query(&mut get_conn()),
+            Ok(value - decr_num)
+        );
+
+        // assert_panic!(
+        //     panic!( "{:#?}", redis::cmd("DECRBY").arg(&key_column).arg(1).query(&mut get_conn()).map_err(|e| panic!("set error:{:?}", e))
+        //     .expect("")), String, contains "Invalid key");
     }
-    hosts
+
+    assert_panic!(panic!( "{:?}", get_conn().decr::<u32, u32, String>(key, 1)), String, contains "Invalid key");
 }
+
+//获取多个key
+#[test]
+fn test_mget() {
+    let mut key_value = HashMap::new();
+    key_value.insert(423456789, 444);
+    key_value.insert(523456789, 544);
+    key_value.insert(623456789, 644);
+
+    for (k, v) in key_value.iter() {
+        test_set_key_value(*k, *v);
+        let all_value = format!("repost:{},like:{},comment:{}", v, v, v);
+
+        assert_eq!(
+            redis::cmd("GET").arg(k).query(&mut get_conn()),
+            Ok(all_value)
+        );
+    }
+
+    assert_eq!(
+        redis::cmd("MGET")
+            .arg(423456789)
+            .arg(523456789)
+            .arg(623456789)
+            .query(&mut get_conn()),
+        Ok((
+            "repost:444,like:444,comment:444".to_string(),
+            "repost:544,like:544,comment:544".to_string(),
+            "repost:644,like:644,comment:644".to_string()
+        ))
+    );
+}
+
+// todo:如果value大于配置的value 为异常case
+// 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
 
 fn get_conn() -> Connection {
     let host = file!().get_host();
@@ -374,4 +342,23 @@ fn get_conn() -> Connection {
         .map_err(|e| panic!("get_conn() error:{:?}", e))
         .expect("get_conn() err");
     conn
+}
+
+fn test_set_key_value(key: i32, value: i32) {
+    let column_cfg = vec![".repost", ".comment", ".like"];
+
+    for column in column_cfg.iter() {
+        let mut key_column = key.to_string();
+        key_column.push_str(column);
+
+        let _: () = get_conn()
+            .set(&key_column, value)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err");
+
+        assert_eq!(
+            redis::cmd("GET").arg(key_column).query(&mut get_conn()),
+            Ok(value)
+        );
+    }
 }
