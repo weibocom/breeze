@@ -13,9 +13,10 @@ use super::QID;
 // 命中优先策略
 // 需求：1 滞留时间尽可能短；（即写入量大的ip，写入量大的size queue 列表，对应queue也要读取频率要高）；2 请求负载均衡；
 // 方案：
-//     1 某个ip，如果命中，则继续读取，持续读取N次，如果遇到读空，则跳到下一个ip；
-//     2 某1-2个size的ip列表，如果占比明显较高，则增加读取概率；
-//     3 提前构建一个ip随机列表，同时构建多个cursor，每次请求轮询选择cursor，避免请求集中到某个ip；
+//     1 对所有队列ip随机，然后构建N个cursor 以及一个二级cursor；
+//     2 每次请求，通过二级curosr在多个cursor间轮询；
+//     3 如果某个ip命中，cursor会持续读取，直到读完 or 读到1024条msg；
+//     4 如果某个ip miss，则对应cursor向后移动一个位置；
 
 // 随机cursor数量，用于分拆并发访问
 const PARALLEL_COUNT: usize = 5;
