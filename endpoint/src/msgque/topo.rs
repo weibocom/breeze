@@ -28,9 +28,9 @@ use super::{
 const READ_RETRY_COUNT: usize = 3;
 // 写失败后的重试次数
 const WRITE_RETRY_COUNT: usize = 3;
-// ip vintage下线后，10分钟后停止读
-const OFFLINE_STOP_READ_SECONDS: u64 = 60 * 10;
-// ip vintage下线后，12分钟从内存清理
+// ip vintage下线后，N分钟后停止读
+const OFFLINE_STOP_READ_SECONDS: u64 = 60 * 20;
+// ip vintage下线后，N分钟从内存清理
 const OFFLINE_CLEAN_SECONDS: u64 = OFFLINE_STOP_READ_SECONDS + 60 * 2;
 
 #[derive(Clone)]
