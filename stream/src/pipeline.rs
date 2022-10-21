@@ -2,13 +2,12 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
-use ds::AtomicWaker;
-use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use ds::AtomicWaker;
 use protocol::{
     Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
 };
