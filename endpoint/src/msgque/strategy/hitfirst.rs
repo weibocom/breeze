@@ -22,7 +22,7 @@ const PARALLEL_COUNT: usize = 5;
 // 单个ip，如果连续命中，最多一次读取1024条
 const MAX_HITS: u32 = 1024;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
 pub(crate) struct HitFirstReader {
     // 对ip随机排序后的组合
     qnodes: Vec<Node>,
@@ -30,15 +30,6 @@ pub(crate) struct HitFirstReader {
     // ip随机组合的访问cursor，每个queue开启多个cursor，方便快速找到有数据的que
     cursors: Vec<CursorHits>,
     cursor_current: Arc<AtomicUsize>,
-
-    // TODO: 触发方式待定？ fishermen
-    // TODO: BTreeMap 可以换成更高效的Vec，跑通后优化 fishermen
-    // size queue pools
-    sized_pools: BTreeMap<usize, Vec<QID>>,
-    // size queue pool的hits
-    sized_pools_hits: BTreeMap<usize, Arc<AtomicU32>>,
-    // 优先 queue pool的访问cursor
-    priority_pool_cursor: PoolCursor,
 }
 
 // 读取的cursor，包括
@@ -46,12 +37,6 @@ pub(crate) struct HitFirstReader {
 struct CursorHits {
     node_idx: Arc<AtomicUsize>,
     hits: Arc<AtomicU32>,
-}
-
-#[derive(Debug, Default, Clone)]
-struct PoolCursor {
-    pool_size: usize,
-    node_idx: Arc<AtomicUsize>,
 }
 
 // 每个节点的id和支持最大写入size
@@ -102,21 +87,11 @@ impl HitFirstReader {
             pool.push(node.id);
         }
 
-        // pools 初始化访问的 cursor
-        let priority_pool_cursor = PoolCursor {
-            // pool_size: queues.get(0).unwrap().size,
-            pool_size: 0,
-            node_idx: Arc::new(AtomicUsize::new(0)),
-        };
-
         let instance = Self {
             qnodes,
             qid_idxes,
             cursors,
             cursor_current: Arc::new(AtomicUsize::new(0)),
-            sized_pools,
-            sized_pools_hits,
-            priority_pool_cursor,
         };
         log::debug!("+++  Inited strategy:{:?}", instance);
         instance
@@ -154,44 +129,8 @@ impl HitFirstReader {
             self.qnodes
         );
         let node = self.qnodes.get(idx).unwrap();
-        if self.sized_pools_hits.contains_key(&node.size) {
-            let hits = self.sized_pools_hits.get(&node.size).unwrap();
-            hits.fetch_add(1, Ordering::Relaxed);
-        }
         log::debug!("+++ use common cursor:{}, {:?}", cursor_idx, self);
         node.id
-    }
-
-    // 获取队列的下一个高优先级队列pool的读取位置
-    pub(crate) fn next_priority_queue_read(&self, last_read: Option<QID>) -> QID {
-        // 如果高优先级队列还没排出来，降级到获取普通队列读取位置
-        if !self
-            .sized_pools
-            .contains_key(&self.priority_pool_cursor.pool_size)
-        {
-            log::info!("+++ no priority queue, use common que");
-            return self.next_queue_read(last_read);
-        }
-
-        // 先移动前一次读取的cursor
-        self.try_shift_cursor(last_read);
-
-        // 获取priority queue中的mcq
-        let qsize = self.priority_pool_cursor.pool_size;
-        let pool_idx = self
-            .priority_pool_cursor
-            .node_idx
-            .fetch_add(1, Ordering::Relaxed);
-        if let Some(nodes) = self.sized_pools.get(&qsize) {
-            let idx = pool_idx % nodes.len();
-            if let Some(qid) = nodes.get(idx) {
-                log::debug!("++ use priority queue, qid:{}, {:?}", *qid, self);
-                return *qid;
-            }
-        }
-
-        log::warn!("+++ priority que is malfored, use common que");
-        return self.next_queue_read(last_read);
     }
 
     // 重试读取的请求，对之前的空读位置cursor进行移位
@@ -264,8 +203,14 @@ impl Display for HitFirstReader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "[cursor_current={:?}, cursors={:?}, qnodes:{:?}, priority_pool_cursor:{:?}], sized_pools:{:?}, sized_pools_hits: {:?}",
-            self.cursor_current, self.cursors, self.qnodes, self.priority_pool_cursor, self.sized_pools, self.sized_pools_hits
+            "[cursor_current={:?}, cursors={:?}, qnodes:{:?}",
+            self.cursor_current, self.cursors, self.qnodes,
         )
+    }
+}
+
+impl Debug for HitFirstReader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self, f)
     }
 }

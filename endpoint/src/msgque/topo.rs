@@ -236,8 +236,8 @@ where
                 }
             }
 
-            // offline stream 窗口期已过，改从优先级队列读取
-            let qid = self.read_strategy.next_priority_queue_read(last_qid);
+            // offline stream 窗口期已过，仍然从在线队列读取
+            let qid = self.read_strategy.next_queue_read(last_qid);
             (false, qid as usize)
         }
     }
