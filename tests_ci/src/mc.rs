@@ -29,7 +29,7 @@ mod mc_test {
     fn buffer_capacity_a() {
         let client = mc_get_conn();
         let key = "fooset";
-        let mut v_sizes = [100000, 4, 4000, 40, 8000, 20000, 0, 400];
+        let mut v_sizes = [1048507, 4, 4000, 40, 8000, 20000, 0, 400];
         for v_size in v_sizes {
             let val = vec![0x41; v_size];
             assert_eq!(client
@@ -42,7 +42,7 @@ mod mc_test {
                 String::from_utf8_lossy(&val).to_string()
             );
         }
-        v_sizes = [0, 4, 40, 400, 4000, 8000, 20000, 10000];
+        v_sizes = [0, 4, 40, 400, 4000, 8000, 20000, 1048507];
         for v_size in v_sizes {
             let val = vec![0x41; v_size];
             assert!(client
