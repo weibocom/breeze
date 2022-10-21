@@ -197,18 +197,18 @@ fn test_sample_del() {
     );
 }
 
-//测试场景：incr只能incr 指定key的指定列
-//单独incr某一列 get到的value为value+incr_num  incr 223456789.repost 2
+//测试场景：incrBY只能incrby 指定key的指定列
+//单独incrby某一列 get到的value为value+incr_num  incr 223456789.repost 2
 
 //流程
 // 1. set 每一列
 // 2. get 每一列验证是否set成功
-// 3. incr 每一列后再get是否incr 成功 incr 223456789.repost 2
+// 3. incrby 每一列后再get是否incr 成功 incrby 223456789.repost 2
 //  incr后的值为value+incr_num
 //4. incr整个key incr 223456789 报 Invalid key
 
 #[test]
-fn test_sample_incr() {
+fn test_sample_incrby() {
     let key: u32 = 223456789;
     let value = 456;
     let incr_num = 2;
@@ -243,16 +243,14 @@ fn test_sample_incr() {
     assert_panic!(panic!( "{:?}", get_conn().incr::<u32, u32, String>(key, 2)), String, contains "Invalid key");
 }
 
-//测试场景：decr只能decr 指定key的指定列 并且只能-1 decr 323456789.repost
-//单独decr某一列 get到的value为value-1
+//测试场景：decrby只能decby 指定key的指定列 decr 323456789.repost 3
+//单独decrby某一列 get到的value为value-1
 
 //流程
 // 1. set 每一列
 // 2. get 每一列验证是否set成功
-// 3. decr 每一列后再get是否decr 成功decr 323456789.repost
+// 3. decrby 每一列后再get是否decr 成功decr 323456789.repost
 //4. decr整个key decr 323456789 报 Invalid key
-//todo
-//4. decr -3  decr 323456789 3 报 Invalid key
 
 #[test]
 fn test_sample_decr() {
@@ -283,10 +281,6 @@ fn test_sample_decr() {
             redis::cmd("GET").arg(&key_column).query(&mut get_conn()),
             Ok(value - decr_num)
         );
-
-        // assert_panic!(
-        //     panic!( "{:#?}", redis::cmd("DECRBY").arg(&key_column).arg(1).query(&mut get_conn()).map_err(|e| panic!("set error:{:?}", e))
-        //     .expect("")), String, contains "Invalid key");
     }
 
     assert_panic!(panic!( "{:?}", get_conn().decr::<u32, u32, String>(key, 1)), String, contains "Invalid key");
