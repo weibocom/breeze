@@ -23,7 +23,7 @@ jobs:
         run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci0011
       - uses: actions/checkout@v3
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --features enable-log --features listen-all
       - name: Check Vintage
         run: |
           docker ps -a
@@ -42,17 +42,20 @@ jobs:
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
+          ls -all ./target/debug/agent
       - name: Run
-        run: nohup cargo run --features enable-log --features listen-all -- --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
+        run: nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
       - name: Check Port
         run: |
-          sleep 1m
-          netstat -nat|grep LISTEN
-          ps -aux|grep breeze
+          sleep 6s
+          #netstat -nat|grep LISTEN
+          #ps -aux|grep breeze
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
-          cat /home/runner/work/breeze/logs/log.file
-          cat /home/runner/work/breeze/logs/breeze.log
+          tail -10 /home/runner/work/breeze/logs/log.file
+          tail -10 /home/runner/work/breeze/logs/breeze.log
+          #cat /home/runner/work/breeze/logs/log.file
+          #cat /home/runner/work/breeze/logs/breeze.log
       - name: Run tests
         run: cargo test --verbose
