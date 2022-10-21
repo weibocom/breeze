@@ -47,12 +47,14 @@ jobs:
       - name: Check Port
         run: |
           sleep 15s
-          netstat -nat|grep LISTEN
-          ps -aux|grep breeze
+          #netstat -nat|grep LISTEN
+          #ps -aux|grep breeze
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
-          cat /home/runner/work/breeze/logs/log.file
-          cat /home/runner/work/breeze/logs/breeze.log
+          tail -10 /home/runner/work/breeze/logs/log.file
+          tail -10 /home/runner/work/breeze/logs/breeze.log
+          #cat /home/runner/work/breeze/logs/log.file
+          #cat /home/runner/work/breeze/logs/breeze.log
       - name: Run tests
         run: cargo test --verbose
