@@ -1,4 +1,3 @@
-#[cfg(test)]
 use crate::ci::env::Mesh;
 use assert_panic::assert_panic;
 use rand::distributions::Alphanumeric;
@@ -6,10 +5,8 @@ use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection};
 use std::collections::{HashMap, HashSet};
 
-use super::env::exists_key_iter;
+use crate::ci::env::exists_key_iter;
 
-// 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
-//const BASE_URL: &str = "redis://127.0.0.1:9302";
 fn rand_num() -> u32 {
     let mut rng = rand::thread_rng();
     rng.gen::<u32>()
@@ -116,20 +113,41 @@ fn test_diffkey_set() {
 }
 
 // get key=> 得到所有列的值
-// get 70 =>"repost:0,comment:0,like:20"
+// get 64 =>"repost:30,comment:30,like:30"
 // get key的指定列=>获取一个value
-// get 4821769284223285.like => "20"
-// #[test]
-// fn test_get() {
-//     let key = "0.schv";
+// get 64.like => "30"
 
-//     match get_conn().get::<String, String>(key.to_string()) {
-//         Ok(v) => println!("get/{}, value: {}", key, v),
-//         Err(e) => println!("get failed, err: {:?}", e),
-//     }
-// }
-// 如果value大于配置的value 为异常case
-// eg: set 4821769284223285.like  20 （一定要指定列！）
+//流程
+//先对每一列set value为20 key为64
+//再get key.column
+//再get key
+#[test]
+fn test_sample_get() {
+    let column_cfg = vec![".repost", ".comment", ".like"];
+    let value = 30;
+    let key = 64;
+    for column in column_cfg.iter() {
+        let mut key_column = key.to_string();
+        key_column.push_str(column);
+
+        let _: () = get_conn()
+            .set(&key_column, value)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err");
+
+        assert_eq!(
+            redis::cmd("GET").arg(key_column).query(&mut get_conn()),
+            Ok(value)
+        );
+    }
+
+    assert_eq!(
+        redis::cmd("GET").arg(key).query(&mut get_conn()),
+        Ok(String::from("repost:30,like:30,comment:30"))
+    );
+}
+// todo:如果value大于配置的value 为异常case
+// 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
 
 // #[test]
 // fn test_del() {
