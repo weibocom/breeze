@@ -197,10 +197,12 @@ fn test_del() {
         Ok("".to_string())
     );
 
-    key.to_string().push_str(".repost");
+    let mut stringkey = key.to_string();
+    stringkey.push_str(".repost");
+
     assert_eq!(
-        redis::cmd("GET").arg(key).query(&mut get_conn()),
-        Ok("".to_string())
+        redis::cmd("GET").arg(stringkey).query(&mut get_conn()),
+        Ok(None::<usize>)
     );
 }
 
