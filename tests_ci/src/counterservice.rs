@@ -130,11 +130,11 @@ fn test_diffkey_set() {
 // get 64 =>"repost:30,comment:30,like:30"
 #[test]
 fn test_sample_get() {
-    test_set_key_value(30, 64);
+    test_set_key_value(6666666, 64);
 
     assert_eq!(
-        redis::cmd("GET").arg(30).query(&mut get_conn()),
-        Ok(String::from("repost:30,like:30,comment:30"))
+        redis::cmd("GET").arg(6666666).query(&mut get_conn()),
+        Ok(String::from("repost:64,like:64,comment:64"))
     );
 }
 // todo:如果value大于配置的value 为异常case
@@ -196,12 +196,14 @@ fn test_del() {
         redis::cmd("GET").arg(key).query(&mut get_conn()),
         Ok("".to_string())
     );
+
     key.to_string().push_str(".repost");
     assert_eq!(
         redis::cmd("GET").arg(key).query(&mut get_conn()),
-        Ok(None::<usize>)
+        Ok("".to_string())
     );
 }
+
 // #[test]
 // fn test_exist() {
 //     let key = "xinxinexist";
