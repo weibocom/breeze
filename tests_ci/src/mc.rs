@@ -29,12 +29,14 @@ mod mc_test {
     fn buffer_capacity_a() {
         let client = mc_get_conn();
         let key = "fooset";
-        let mut v_sizes = [1048507, 4, 4000, 40, 8000, 20000, 0, 400];
+        let mut v_sizes = [1048400, 4, 4000, 40, 8000, 20000, 0, 400];
         for v_size in v_sizes {
             let val = vec![0x41; v_size];
-            assert!(client
+            let s = client.set("footestset", &String::from_utf8_lossy(&val).to_string(), 10);
+            println!("s error: {:?}",s.err());
+            assert_eq!(client
                 .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
-                .is_ok());
+                .is_ok(),true);
             let result: Result<String, bmemcached::errors::Error> = client.get(key);
             assert!(result.is_ok());
             assert_eq!(
@@ -68,7 +70,7 @@ mod mc_test {
         for value in exists_key_iter() {
             key = value.to_string();
             let result: Result<Vec<u8>, bmemcached::errors::Error> = client.get(key);
-            assert!(result.is_ok());
+            assert!(result.is_ok(),"result : {:?}",result);
             assert_eq!(result.expect("ok"), value.to_string().into_bytes());
         }
     }
