@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -47,11 +47,10 @@ where
         req_dropped: AtomicUsize::new(0),
 
         dropping: Vec::new(),
-        req_new_s: 0,
-        dropping_at: Instant::now(),
+        //req_new_s: 0,
+        //dropping_at: Instant::now(),
     };
-    let timeout = std::time::Duration::from_secs(10);
-    rt::Entry::from(pipeline, timeout).await
+    rt::Entry::from(pipeline, Duration::from_secs(10)).await
 }
 
 struct CopyBidirectional<C, P, T> {
@@ -74,10 +73,10 @@ struct CopyBidirectional<C, P, T> {
     req_new: usize,           // 当前连接创建的req数量
     req_dropped: AtomicUsize, // 销毁的连接的数量
 
-    // 等待删除的top
-    dropping: Vec<(T, Callback)>,
-    req_new_s: usize,
-    dropping_at: Instant,
+    // 等待删除的top. 第三个元素是dropping时的req_new的值。
+    dropping: Vec<(T, Callback, usize)>,
+    //req_new_s: usize,
+    //dropping_at: Instant,
 }
 impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
@@ -324,7 +323,7 @@ impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Re
         }
         self.rx_buf.try_gc()
             && self.pending.len() == 0
-            && self.req_new == self.req_dropped.load(Ordering::Acquire)
+            && self.req_new == self.req_dropped.load(Acquire)
     }
     #[inline]
     fn need_refresh(&self) -> bool {
@@ -332,11 +331,6 @@ impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Re
     }
     #[inline]
     fn refresh(&mut self) {
-        assert!(
-            self.req_new >= self.req_dropped.load(Ordering::Acquire),
-            "{:?}",
-            self
-        );
         if let Some(top) = self.top.check() {
             unsafe {
                 let old = std::ptr::replace(&mut self.top as *mut T, top);
@@ -344,25 +338,26 @@ impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Re
                 let cb = callback(&self.top);
                 let old_cb = std::ptr::replace(&mut self.cb as *mut _, cb);
 
-                self.dropping.push((old, old_cb));
-                self.req_new_s = self.req_new;
-                self.dropping_at = Instant::now();
+                self.dropping.push((old, old_cb, self.req_new));
+                //self.req_new_s = self.req_new;
+                //self.dropping_at = Instant::now();
             }
         }
         if self.dropping.len() > 0 {
-            let req_dropped = self.req_dropped.load(Ordering::Acquire);
-            if req_dropped >= self.req_new {
+            assert!(self.req_new >= self.req_dropped.load(Acquire), "{:?}", self);
+            let req_dropped = self.req_dropped.load(Acquire);
+            let max = self.dropping.last().expect("dropping").2;
+            if req_dropped >= max {
                 self.dropping.clear();
-                return;
             }
             // 1024是一个经验值
             // 如果访问量比较低，则很满足满足req_dropped > req_new
-            if req_dropped > self.req_new_s + 1024
-                && self.dropping_at.elapsed() >= Duration::from_secs(15)
-            {
-                log::warn!("top pending over 15 secs, dropping forcefully. {:?}", self);
-                self.dropping.clear();
-            }
+            //if req_dropped > self.req_new_s + 1024
+            //    && self.dropping_at.elapsed() >= Duration::from_secs(15)
+            //{
+            //    log::warn!("top pending over 15 secs, dropping forcefully. {:?}", self);
+            //    self.dropping.clear();
+            //}
         }
     }
 }
@@ -371,15 +366,14 @@ impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:{} flush:{} rx buf: {} dropping:{} requests: {}({}) => {}",
+            "{} => pending:{} flush:{} rx buf: {} dropping:{} requests: {} => {}",
             self.metrics.biz(),
             self.pending.len(),
             self.flush,
             self.rx_buf.len(),
             self.dropping.len(),
             self.req_new,
-            self.req_new_s,
-            self.req_dropped.load(Ordering::Acquire)
+            self.req_dropped.load(Acquire)
         )
     }
 }
