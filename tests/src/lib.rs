@@ -15,5 +15,3 @@ mod redis;
 mod ring_slice;
 //mod size;
 //mod slice;
-mod ci;
-mod redis_helper;

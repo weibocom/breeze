@@ -17,4 +17,4 @@ redis = { version = "0.22.0", default-features = false, features = [] }
 
 [[test]]
 name = "test_all"
-path = "src/tests.rs"
+path = "src/all.rs"
