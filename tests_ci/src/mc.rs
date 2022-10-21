@@ -95,8 +95,8 @@ mod mc_test {
         assert_eq!(result.expect("ok"), value);
     }
 
-    /// 测试场景：基本的mc get 命令验证
-    /// 测试步骤：get(key) key 已存在
+    /// 测试场景：基本的mc get 命令验证 
+    /// 测试步骤：get(key) key 为预先写入的key
     #[test]
     fn mc_simple_get() {
         let client = mc_get_conn();
