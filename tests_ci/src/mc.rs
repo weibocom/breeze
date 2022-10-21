@@ -5,10 +5,10 @@
 ///     顺序set: [0, 4, 40, 400, 4000, 8000, 20000, 1048507]
 /// - 模拟mc已有10000条数据，通过 mesh 读取，验证数据一致性
 ///     数据由 java SDK 预先写入：key: 0...9999  value: 0...9999
-/// - 模拟mc add命令: get -> add -> get
+/// - 模拟简单mc add命令: get -> add -> get
 ///     
 use crate::ci::env::*;
-use crate::redis_helper::*;
+
 mod mc_test {
 
     use bmemcached::MemcachedClient;
@@ -22,48 +22,54 @@ mod mc_test {
     ///     <1> 建立连接
     ///     <2> 乱序set，先set 1M的value,再乱序set其他大小的value [1048507, 4, 4000, 40, 8000, 20000, 0, 400]
     ///     <3> 将set进去的value get出来，对比set进去的值与get出来的值；
-    ///     <4> 由小到大分别set不同大小的value，从0开始递增，覆盖从4k->8k, 8k->32k，以及 1M(1048511 byte) 的场景，
+    ///     <4> 由小到大分别set不同大小的value，从0开始递增，覆盖从4k->8k, 8k->32k，以及 1M 的场景，
     ///     <5> 重复步骤 <3>
     ///
     #[test]
-    fn buffer_capacity_A() {
+    fn buffer_capacity_a() {
         let client = mc_get_conn();
         let key = "fooset";
         let mut v_sizes = [1048507, 4, 4000, 40, 8000, 20000, 0, 400];
-        let mut result: String;
         for v_size in v_sizes {
             let val = vec![0x41; v_size];
-            client
+            assert!(client
                 .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
-                .unwrap();
-            result = client.get(key).unwrap();
-            println!(
-                "len is {}",
-                String::from_utf8_lossy(&val).to_string().capacity()
+                .is_ok());
+            let result: Result<String, bmemcached::errors::Error> = client.get(key);
+            assert!(result.is_ok());
+            assert_eq!(
+                result.expect("ok"),
+                String::from_utf8_lossy(&val).to_string()
             );
-            assert_eq!(result, String::from_utf8_lossy(&val).to_string());
         }
         v_sizes = [0, 4, 40, 400, 4000, 8000, 20000, 1048507];
         for v_size in v_sizes {
             let val = vec![0x41; v_size];
-            client
+            assert!(client
                 .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
-                .unwrap();
-            result = client.get(key).unwrap();
-            assert_eq!(result, String::from_utf8_lossy(&val).to_string());
+                .is_ok());
+            let result: Result<String, bmemcached::errors::Error> = client.get(key);
+            assert!(result.is_ok());
+            assert_eq!(
+                result.expect("ok"),
+                String::from_utf8_lossy(&val).to_string()
+            );
         }
-        println!("completed mc set test!");
     }
 
+    /// 测试场景：针对目前线上存在的业务方写，mesh 读数据的场景进行模拟，验证数据一致性；
+    /// 特征:    预先通过java SDK 直接向后端资源写入10000条数据
+    ///          key: “1”.."10000" value: 1..10000
+    /// 测试步骤：根据已知的 key&value,通过 mesh 获取并对比结果
     #[test]
     fn only_get_value() {
         let client = mc_get_conn();
         let mut key: String;
         for value in exists_key_iter() {
             key = value.to_string();
-            let result: Result<u64, bmemcached::errors::Error> = client.get(key);
-            assert_eq!(true, result.is_ok());
-            assert_eq!(value, result.unwrap());
+            let result: Result<Vec<u8>, bmemcached::errors::Error> = client.get(key);
+            assert!(result.is_ok());
+            assert_eq!(result.expect("ok"), value.to_string().into_bytes());
         }
     }
 
@@ -71,38 +77,56 @@ mod mc_test {
         let host = file!().get_host();
         let client_rs = MemcachedClient::new(vec![host], 5);
         assert_eq!(true, client_rs.is_ok());
-        return client_rs.unwrap();
+        return client_rs.expect("ok");
     }
 
+    /// 测试场景：基本的mc add 命令验证
+    /// 测试步骤：get(key) -> add(key) -> get(key)
     #[test]
     fn mc_simple_add() {
         let client = mc_get_conn();
         let key = "fooadd";
         let value = "bar";
-        client.add(key, value, 2).unwrap();
+        let result: Result<String, bmemcached::errors::Error> = client.get(key);
+        assert_eq!(true, result.is_err());
+        client.add(key, value, 10).unwrap();
         let result: Result<String, bmemcached::errors::Error> = client.get(key);
         assert_eq!(true, result.is_ok());
-        assert_eq!(result.unwrap(), value);
+        assert_eq!(result.expect("ok"), value);
     }
 
+    /// 测试场景：基本的mc get 命令验证
+    /// 测试步骤：get(key) key 已存在
     #[test]
     fn mc_simple_get() {
         let client = mc_get_conn();
-        let result: Result<u64, bmemcached::errors::Error> = client.get("0");
-        assert_eq!(true, result.is_ok());
-        assert_eq!(result.unwrap(), 0);
+        let result: Result<Vec<u8>, bmemcached::errors::Error> = client.get("4357");
+        assert!(result.is_ok());
+        assert_eq!(result.expect("ok"), 4357.to_string().into_bytes());
     }
 
+    /// 测试场景：基本的mc replace 命令验证
     #[test]
     fn mc_simple_replace() {
         let client = mc_get_conn();
         let key = "fooreplace";
         let value = "bar";
-        client.set(key, value, 3).unwrap();
-        client.replace(key, "baz", 3).unwrap();
-        let result: String = client.get(key).unwrap();
-        assert_eq!(result, "baz");
-        println!("completed mc replace test!");
+        assert!(client.set(key, value, 3).is_ok());
+        assert_eq!(true, client.replace(key, "baz", 3).is_ok());
+        let result: Result<String, bmemcached::errors::Error> = client.get(key);
+        assert_eq!(result.is_ok(), true);
+        assert_eq!(result.expect("ok"), "baz");
+    }
+
+    #[test]
+    fn mc_simple_delete() {
+        let client = mc_get_conn();
+        let key = "foodel";
+        let value = "bar";
+        assert!(client.add(key, value, 2).is_ok());
+        assert!(client.delete(key).is_ok());
+        let result: Result<String, bmemcached::errors::Error> = client.get(key);
+        assert!(result.is_err());
     }
 
     /*
