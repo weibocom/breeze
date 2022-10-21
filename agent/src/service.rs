@@ -97,11 +97,14 @@ async fn _process_one(
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         let top = ctop.expect("build failed");
+        let mut unsupport_cmd = path.num("unsupport_cmd");
         spawn(async move {
             if let Err(e) = copy_bidirectional(top, metrics, client, p).await {
                 match e {
                     //protocol::Error::Quit => {} // client发送quit协议退出
                     //protocol::Error::ReadEof => {}
+                    protocol::Error::ProtocolNotSupported => unsupport_cmd += 1,
+                    // 发送异常信息给client
                     _e => log::debug!("{:?} disconnected. {:?}", _path, _e),
                 }
             }

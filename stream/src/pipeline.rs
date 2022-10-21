@@ -143,7 +143,6 @@ where
             rx_buf,
             first,
             cb,
-            metrics,
             req_new,
             req_dropped,
             ..
@@ -159,25 +158,7 @@ where
             req_dropped,
         };
 
-        use protocol::Error::ProtocolNotSupported;
-        match parser.parse_request(rx_buf, top.hasher(), &mut processor) {
-            Ok(o) => return Ok(o),
-            Err(ProtocolNotSupported) => {
-                // 统计异常
-                *metrics.unsupport_cmd() += 1;
-                // 发送异常信息给client
-                log::warn!("found a unsupported request");
-                self.client
-                    .write(ProtocolNotSupported.to_string().as_bytes())?;
-                Err(ProtocolNotSupported)
-            }
-            Err(e) => {
-                // 发送异常信息给client
-                log::warn!("parse request err:{:?}", e);
-                self.client.write(e.to_string().as_bytes())?;
-                Err(e)
-            }
-        }
+        parser.parse_request(rx_buf, top.hasher(), &mut processor)
     }
     // 处理pending中的请求，并且把数据发送到buffer
     #[inline]
