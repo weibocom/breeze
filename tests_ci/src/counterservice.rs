@@ -50,13 +50,24 @@ fn test_set_key_value(key: i32, value: i32) {
 // 从mesh读取, 验证业务写入与mesh读取之间的一致性
 #[test]
 fn test_consum_diff_write() {
-    let column_cfg = vec![".repost", ".comment", ".like"];
-    for column in column_cfg.iter() {
-        for i in exists_key_iter() {
-            let mut key = i.to_string();
-            key.push_str(column);
-            assert_eq!(redis::cmd("GET").arg(key).query(&mut get_conn()), Ok(i));
-        }
+    // 单独get 耗时长 验证通过
+    // let column_cfg = vec![".repost", ".comment", ".like"];
+    // for column in column_cfg.iter() {
+    //     for i in exists_key_iter() {
+    //         let mut key = i.to_string();
+    //         key.push_str(column);
+    //         println!("{:?}", key);
+    //         assert_eq!(redis::cmd("GET").arg(key).query(&mut get_conn()), Ok(i));
+    //     }
+    // }
+    //get 整个key
+    for i in exists_key_iter() {
+        let value = i.to_string();
+        let all_value = format!("repost:{},like:{},comment:{}", value, value, value);
+        assert_eq!(
+            redis::cmd("GET").arg(i).query(&mut get_conn()),
+            Ok(all_value)
+        );
     }
 }
 // 测试场景1 key为long类型并且带配置列
