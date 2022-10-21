@@ -22,6 +22,8 @@ jobs:
       - name: Prepare Vintage_MC_Redis
         run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci0011
       - uses: actions/checkout@v3
+      - name: Build
+        run: cargo build --verbose
       - name: Check Vintage
         run: |
           sleep 30
@@ -29,9 +31,6 @@ jobs:
           curl http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
           curl http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all
           curl http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest
-          printf 'exists 1\r\n' | nc 127.0.0.1  56379
-          printf 'get 1\r\n'    | nc 127.0.0.1 56386
-          printf 'get 5.repost\r\n' | nc 127.0.0.1  8010
       - name: Create Socks
         run: |
           ps -aux|grep breeze
