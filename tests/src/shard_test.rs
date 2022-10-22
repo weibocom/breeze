@@ -20,29 +20,56 @@ fn crc32_short() {
 
     let crc32_hasher = Hasher::from("crc32");
     let h = crc32_hasher.hash(&key.as_bytes());
-    println!("=== crc32 hash: {}", h);
+    assert_eq!(h, 2968198350, "crc32 hash error");
 
     let crc32_short_hasher = Hasher::from("crc32-short");
     let h_short = crc32_short_hasher.hash(&key.as_bytes());
-    println!("crc32-short hash:{}", h_short);
+    assert_eq!(h_short, 12523, "crc32-short hash");
 
     let crc32_point = Hasher::from("crc32-point");
     let h_point = crc32_point.hash(&key.as_bytes());
-    println!("crc32-point hash: {}", h_point);
-
-    // let i = key.find(".").unwrap();
-    // let i2 = key.as_bytes().utf8_find('.').unwrap();
-    // use ds::*;
-    // let slice = RingSlice::from(key.as_ptr(), key.len().next_power_of_two(), 0, key.len());
-    // let i3 = slice.utf8_find('.').unwrap();
-    // println!("{}'s delimiter pos:{}/{}/{}", key, i, i2, i3);
+    assert_eq!(h_point, 2642712869, "crc32-point hash");
 }
+
+fn build_servers() -> Vec<String> {
+    let shard_count = 8;
+    let mut servers = Vec::with_capacity(shard_count);
+    for i in 0..shard_count {
+        servers.push(format!("192.168.0.{}", i).to_string());
+    }
+    servers
+}
+fn root_path() -> &'static str {
+    "./records"
+}
+
+//#[test]
+//fn test_crc32_from_file() {
+//    let root_path = root_path();
+//    let dist = Distribute::from("modula", &build_servers());
+//    let hasher = Hasher::from("crc32-short");
+//    let path = format!("{}/crc32-short{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//
+//    let hasher = Hasher::from("crc32-range");
+//    let path = format!("{}/crc32-range{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//
+//    let hasher = Hasher::from("crc32-range-id");
+//    let path = format!("{}/crc32-range-id{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//
+//    let hasher = Hasher::from("crc32-range-id-5");
+//    let path = format!("{}/crc32-range-id-5{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//
+//    let hasher = Hasher::from("crc32-range-point");
+//    let path = format!("{}/crc32-range-point{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//}
 
 #[test]
 fn shards_check() {
-    // check raw hash
-    raw_check();
-
     let root_path = "./records";
     // will check crc32
     let shard_count = 8;
@@ -242,9 +269,8 @@ fn bkdr_check(path: &str) {
     println!("check bkdr hash from file: {}", path);
 }
 
+#[test]
 fn raw_check() {
-    println!("will check raw hash... ");
-
     let hasher = Hasher::from("raw");
     let num = 123456789010i64;
     let key_str = format!("{}", num);
@@ -256,8 +282,6 @@ fn raw_check() {
     );
     let hash = hasher.hash(&key);
     assert!(num == hash);
-
-    println!("check raw hash succeed!");
 }
 
 fn shard_check(path: &str, hasher: &Hasher, dist: &Distribute) {
