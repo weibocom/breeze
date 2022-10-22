@@ -23,7 +23,7 @@ jobs:
         run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci0011
       - uses: actions/checkout@v3
       - name: Build
-        run: cargo build --features enable-log --features listen-all
+        run: cargo build 
       - name: Check Vintage
         run: |
           docker ps -a
@@ -32,7 +32,7 @@ jobs:
           curl http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest
       - name: Create Socks
         run: |
-          ps -aux|grep breeze
+          #ps -aux|grep breeze
           mkdir -p /home/runner/work/breeze/logs
           mkdir -p /home/runner/work/breeze/snapshot
           mkdir -p /home/runner/work/breeze/socks
@@ -58,4 +58,4 @@ jobs:
           #cat /home/runner/work/breeze/logs/log.file
           #cat /home/runner/work/breeze/logs/breeze.log
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test 
