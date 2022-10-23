@@ -49,7 +49,7 @@ impl MetricData for Duration {
         unsafe { data.inner.rtt.incr(self) };
     }
 }
-impl<T: ToNumber> MetricData for (T, T) {
+impl MetricData for bool {
     #[inline]
     fn incr_to(self, data: &ItemData) {
         unsafe { data.inner.ratio.incr(self) };

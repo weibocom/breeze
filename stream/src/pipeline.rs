@@ -185,17 +185,13 @@ where
             }
             let mut ctx = pending.pop_front().expect("front");
             let last = ctx.last();
-            if !last {
-                // 当前不是最后一个值。也优先写入cache
-                client.cache(true);
-            }
+            // 当前不是最后一个值。也优先写入cache
+            client.cache(!last);
             let op = ctx.request().operation();
             *metrics.key() += 1;
 
-            if op.is_query() {
-                let hit = ctx.response_ok() as usize;
-                *metrics.hit() += hit;
-                *metrics.cache() += (hit, 1);
+            if parser.cache() && op.is_query() {
+                *metrics.cache() += ctx.response_ok();
             }
 
             if ctx.inited() && !ctx.request().ignore_rsp() {
