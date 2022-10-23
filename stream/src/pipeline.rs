@@ -206,11 +206,7 @@ where
                 ctx.async_start_write_back(parser);
             } else if ctx.request().ignore_rsp() {
                 // do nothing!
-                log::debug!(
-                    "+++ ignore req:{:?}, resp:{:?}",
-                    ctx.request().data(),
-                    ctx.response().data()
-                )
+                log::debug!("+++ ignore resp:{:?}=>{:?}", ctx.request(), ctx.response())
             } else {
                 let req = ctx.request();
                 if !req.noforward() {
