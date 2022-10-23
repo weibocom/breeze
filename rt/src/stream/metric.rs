@@ -44,8 +44,7 @@ impl<S: AsyncRead + Unpin + std::fmt::Debug> AsyncRead for MetricStream<S> {
         let pre = buf.remaining();
         let ret = Pin::new(&mut self.s).poll_read(cx, buf);
         self.read += 1;
-        let hit = (buf.remaining() != pre) as i64;
-        self.read_hit += (hit, 1);
+        self.read_hit += buf.remaining() != pre;
         if ret.is_pending() {
             self.r_pending += 1;
         }
