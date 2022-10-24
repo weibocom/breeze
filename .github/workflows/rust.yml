@@ -26,6 +26,7 @@ jobs:
 #        run: cargo build
       - name: Check Vintage
         run: |
+          sleep 30s
           docker ps -a
           curl http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
           curl http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all
