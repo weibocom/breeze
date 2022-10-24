@@ -67,6 +67,5 @@ jobs:
         with:
           version: '0.15.0'
           args: '-v'
-          out-type: 'Stdout'
       - name: Run tests
         run: cargo test 
