@@ -170,7 +170,7 @@ where
                 self.service,
                 qid,
                 get_offline,
-                req.data().utf8()
+                req.data()
             );
             if !get_offline {
                 self.streams_read.get(qid).unwrap().1.send(req);
