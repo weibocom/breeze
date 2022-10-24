@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["dev", "dev_ci"]
+    branches: ["dev", "dev_ci","dev_ci_check_warning"]
   pull_request:
-    branches: ["dev", "dev_ci"]
+    branches: ["dev", "dev_ci","dev_ci_check_warning"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,10 +20,12 @@ jobs:
 
     steps:
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci0011
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci 12323312323223/breeze:githubci0011
       - uses: actions/checkout@v3
-      - name: Build
-        run: cargo build 
+#      - name: Build
+#        run: cargo build
+      - name: Clippy
+        run: RUSTFLAGS="-Dwarnings" cargo clippy -- -D warnings
       - name: Check Vintage
         run: |
           docker ps -a
