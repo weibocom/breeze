@@ -1,6 +1,5 @@
 use ds::RingSlice;
 
-use crate::utf8::Utf8;
 use crate::Result;
 
 use super::{error::McqError, reqpacket::Packet};
@@ -108,7 +107,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                             }
                         }
                         _ => {
-                            log::warn!("found malformed rsp: {:?}", self.data.utf8());
+                            log::warn!("found malformed rsp: {:?}", self.data);
                             return Err(super::Error::ResponseProtocolInvalid);
                         }
                     }
@@ -212,7 +211,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     }
                 }
                 RspPacketState::End => {
-                    assert!(token == 0);
+                    assert!(token == 0, "token:{}, rsp:{:?}", token, self.data);
                     if self.current() != b'E' {
                         return Err(McqError::RspInvalid.error());
                     }
@@ -263,9 +262,19 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         Err(super::Error::ProtocolIncomplete)
     }
 
+    pub(super) fn is_empty(&self) -> bool {
+        self.rsp_type == RspType::End
+    }
+
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
-        assert!(self.oft_last < self.oft);
+        assert!(
+            self.oft_last < self.oft,
+            "oft: {}/{}, rsp:{:?}",
+            self.oft_last,
+            self.oft,
+            self.data
+        );
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
 
@@ -297,7 +306,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
 
     #[inline]
     fn current(&self) -> u8 {
-        assert!(self.available());
+        assert!(self.available(), "oft:{}, rsp:{:?}", self.oft, self.data);
         self.data.at(self.oft)
     }
 
@@ -332,6 +341,7 @@ enum RspPacketState {
     AlmostDone,
 }
 
+#[derive(PartialEq, Eq)]
 enum RspType {
     Unknown,
     Stored,

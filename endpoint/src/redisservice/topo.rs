@@ -12,8 +12,6 @@ use sharding::ReplicaSelect;
 use super::config::RedisNamespace;
 use crate::TimeoutAdjust;
 use discovery::dns::{self, IPPort};
-#[allow(unused_imports)]
-use protocol::Utf8;
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -92,7 +90,13 @@ where
             false => self.distribute.index(req.hash()),
         };
 
-        assert!(shard_idx < self.shards.len(), "{:?}", req);
+        assert!(
+            shard_idx < self.shards.len(),
+            "redis: {}/{} req:{:?}",
+            shard_idx,
+            self.shards.len(),
+            req
+        );
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
         // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
@@ -104,7 +108,7 @@ where
                 shard_idx,
                 req.master_only(),
                 req.ignore_rsp(),
-                req.data().utf8(),
+                req.data(),
             )
         }
 
@@ -264,7 +268,13 @@ where
             let shard = Shard::selector(&self.selector, master_addr, master, replicas);
             self.shards.push(shard);
         }
-        assert_eq!(self.shards.len(), self.shards_url.len());
+        assert_eq!(
+            self.shards.len(),
+            self.shards_url.len(),
+            "shards/urs: {}/{}",
+            self.shards.len(),
+            self.shards_url.len()
+        );
         log::debug!(
             "{} load complete. {} dropping:{:?}",
             self.service,

@@ -13,8 +13,22 @@ use tokio::sync::mpsc::{
 use trust_dns_resolver::{AsyncResolver, TokioConnection, TokioConnectionProvider, TokioHandle};
 
 use ds::{CowReadHandle, CowWriteHandle};
-use once_cell::sync::OnceCell;
-static DNSCACHE: OnceCell<CowReadHandle<DnsCache>> = OnceCell::new();
+#[ctor::ctor]
+static DNSCACHE: CowReadHandle<DnsCache> = {
+    let resolver = system_resolver();
+    let (reg_tx, reg_rx) = unbounded_channel();
+    let cache = DnsCache::from(reg_tx);
+    let (tx, rx) = ds::cow(cache);
+    let resolver = DnsResolver {
+        tx,
+        reg_rx,
+        resolver,
+    };
+    *DNS_RESOLVER.try_lock().expect("lock failed") = Some(resolver);
+    rx
+};
+use std::sync::Mutex;
+static DNS_RESOLVER: Mutex<Option<DnsResolver>> = Mutex::new(None);
 
 type RegisterItem = (String, Arc<AtomicBool>);
 type Resolver = AsyncResolver<TokioConnection, TokioConnectionProvider>;
@@ -25,35 +39,12 @@ pub struct DnsResolver {
     resolver: Resolver,
 }
 
-impl DnsResolver {
-    pub fn new() -> DnsResolver {
-        let resolver = system_resolver();
-        let (reg_tx, reg_rx) = unbounded_channel();
-        let cache = DnsCache::from(reg_tx);
-        let (tx, rx) = ds::cow(cache);
-        let _ = DNSCACHE.set(rx);
-        Self {
-            tx,
-            reg_rx,
-            resolver,
-        }
-    }
-}
-
-pub async fn start_dns_resolver_refresher(dns_resolver: DnsResolver) {
-    start_watch_dns(dns_resolver.tx, dns_resolver.reg_rx, dns_resolver.resolver).await
-}
-
 pub fn register(host: &str) -> Arc<AtomicBool> {
-    DNSCACHE.get().expect("not inited").get().watch(host)
+    DNSCACHE.get().watch(host)
 }
 
 pub fn lookup_ips(host: &str) -> Vec<String> {
-    DNSCACHE
-        .get()
-        .expect("not inited dnscache")
-        .get()
-        .lookup(host)
+    DNSCACHE.get().lookup(host)
 }
 
 fn system_resolver() -> Resolver {
@@ -162,12 +153,16 @@ impl IPPort for String {
     }
 }
 
-async fn start_watch_dns(
-    mut cache: CowWriteHandle<DnsCache>,
-    mut rx: Receiver<RegisterItem>,
-    mut resolver: Resolver,
-) {
+pub async fn start_dns_resolver_refresher() {
     log::info!("task started ==> dns cache refresher");
+    let dns_resolver = DNS_RESOLVER
+        .try_lock()
+        .expect("lock failed")
+        .take()
+        .expect("not inited");
+    let mut cache = dns_resolver.tx;
+    let mut rx = dns_resolver.reg_rx;
+    let mut resolver = dns_resolver.resolver;
     use std::task::Poll;
     let noop = noop_waker::noop_waker();
     let mut ctx = std::task::Context::from_waker(&noop);

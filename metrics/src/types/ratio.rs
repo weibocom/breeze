@@ -18,8 +18,8 @@ impl Ratio {
         }
     }
     #[inline]
-    pub(crate) fn incr<T: crate::ToNumber>(&self, ratio: (T, T)) {
-        self.hit.incr(ratio.0.int());
-        self.total.incr(ratio.1.int());
+    pub(crate) fn incr(&self, hit: bool) {
+        self.hit.incr(hit as i64);
+        self.total.incr(1);
     }
 }

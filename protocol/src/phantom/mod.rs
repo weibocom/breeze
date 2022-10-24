@@ -16,9 +16,6 @@ use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
 
-#[allow(unused_imports)]
-use crate::Utf8;
-
 #[derive(Clone, Default)]
 pub struct Phantom;
 
@@ -31,7 +28,7 @@ impl Phantom {
         process: &mut P,
     ) -> Result<()> {
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        log::debug!("+++ rec req:{:?}", stream.slice().utf8());
+        log::debug!("+++ rec req:{:?}", stream.slice());
 
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
@@ -44,11 +41,11 @@ impl Phantom {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
                     let first = packet.first();
-                    assert!(cfg.has_key);
+                    assert!(cfg.has_key, "cmd: {:?}", cfg.name);
                     // 注意，fullkey格式: $hash_key.$realkey
                     let full_key = packet.parse_key()?;
                     let (hash, real_key) = split_and_calculate_hash(alg, &full_key);
-                    debug_assert!(!cfg.has_val);
+                    debug_assert!(!cfg.has_val, "cmd:{}", cfg.name);
                     // if cfg.has_val {
                     //     packet.ignore_one_bulk()?;
                     // }
@@ -105,12 +102,7 @@ impl Phantom {
                 b'+' => data.line(oft)?,
                 b':' => data.line(oft)?,
                 _ => {
-                    log::info!(
-                        "unsupport rsp:{:?}, pos: {}/{}",
-                        data.utf8(),
-                        oft,
-                        bulk_count
-                    );
+                    log::info!("unsupport rsp:{:?}, pos: {}/{}", data, oft, bulk_count);
                     panic!("not supported in num_skip_all");
                 }
             }
@@ -123,7 +115,7 @@ impl Phantom {
     #[inline]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
-        log::debug!("+++ will parse rsp:{:?}", data.utf8());
+        log::debug!("+++ will parse rsp:{:?}", data);
 
         // phantom 在rsp为负数（:-1/-2/-3\r\n），说明请求异常，需要重试
         let mut status_ok = true;
@@ -149,11 +141,11 @@ impl Phantom {
                     self.num_skip_all(&data, &mut oft)?;
                 }
                 _ => {
-                    log::info!("phantom not supported:{:?}, {:?}", data.utf8(), data);
+                    log::info!("phantom not supported:{:?}", data);
                     panic!("not supported");
                 }
             }
-            assert!(oft <= data.len());
+            assert!(oft <= data.len(), "oft:{}/{:?}", oft, data);
             let mem = s.take(oft);
             let mut flag = Flag::new();
             flag.set_status_ok(status_ok);
@@ -222,7 +214,7 @@ impl Protocol for Phantom {
                         log::info!(
                             "+++ use {} to replace phantom err rsp: {:?}",
                             nil,
-                            response.data().utf8()
+                            response.data()
                         );
                     }
 
@@ -272,17 +264,13 @@ impl Protocol for Phantom {
             // 百分之一的概率打印nil 转换
             let rd = rand::random::<usize>() % 100;
             if log::log_enabled!(log::Level::Debug) || rd == 0 {
-                log::info!(
-                    "+++ write pt client nil/{} noforward:{:?}",
-                    nil,
-                    req.data().utf8()
-                );
+                log::info!("+++ write pt client nil/{} noforward:{:?}", nil, req.data());
             }
             nil_convert = 1;
             nil.to_string()
         } else {
             let rsp_idx = req.ext().padding_rsp() as usize;
-            assert!(rsp_idx < PADDING_RSP_TABLE.len());
+            assert!(rsp_idx < PADDING_RSP_TABLE.len(), "rsp_idx:{}", rsp_idx);
             let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
             rsp.to_string()
         };
@@ -319,7 +307,7 @@ fn split_and_calculate_hash<H: Hash>(alg: &H, full_key: &RingSlice) -> (i64, Rin
         return (hash, real_key);
     }
 
-    log::warn!("phantom - malform key: {:?}", full_key.utf8());
+    log::warn!("phantom - malform key: {:?}", full_key);
     (0, full_key.sub_slice(0, full_key.len()))
 }
 

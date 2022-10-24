@@ -36,8 +36,7 @@ macro_rules! log {
             log::private_api_log(
                 format_args!($($arg)+),
                 lvl,
-                &(module_path!(), module_path!(), file!(), line!()),
-                None,
+                &(module_path!(), module_path!(), file!(), line!())
                 );
         }
     };)
@@ -48,9 +47,8 @@ pub fn private_api_log(
     args: std::fmt::Arguments,
     level: Level,
     &(target, module_path, file, line): &(&str, &'static str, &'static str, u32),
-    kvs: Option<&[(&str, &dyn log::kv::ToValue)]>,
 ) {
-    log::__private_api_log(args, level, &(target, module_path, file, line), kvs);
+    log::__private_api_log(args, level, &(target, module_path, file, line), None);
 }
 #[macro_export]
 macro_rules! log_enabled {
@@ -61,4 +59,64 @@ macro_rules! log_enabled {
 #[inline]
 pub fn private_api_enabled(level: Level, target: &str) -> bool {
     log::__private_api_enabled(level, target)
+}
+
+use elog::LevelFilter;
+use log4rs::{
+    append::rolling_file::{
+        policy::compound::{
+            roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
+        },
+        RollingFileAppender,
+    },
+    config::{Appender, Config, Root},
+    encode::pattern::PatternEncoder,
+};
+
+use std::io::{Error, ErrorKind, Result};
+use std::path::PathBuf;
+pub fn init(path: &str, l: &str) -> Result<()> {
+    let mut file = PathBuf::new();
+    file.push(path);
+    file.push("breeze.log");
+
+    let mut gzfile = PathBuf::new();
+    gzfile.push(path);
+    gzfile.push("breeze.log{}.gz");
+
+    const MAX_LOG_SIZE: u64 = 1 * 1024 * 1024 * 1024; // 1GB
+    const MAX_NUM_LOGS: u32 = 5;
+    let policy = Box::new(CompoundPolicy::new(
+        Box::new(SizeTrigger::new(MAX_LOG_SIZE)),
+        Box::new(
+            FixedWindowRoller::builder()
+                .base(0)
+                .build(
+                    gzfile.to_str().ok_or_else(|| {
+                        Error::new(ErrorKind::InvalidData, format!("init log failed"))
+                    })?,
+                    MAX_NUM_LOGS,
+                )
+                .map_err(|e| {
+                    Error::new(ErrorKind::InvalidData, format!("init log failed:{:?}", e))
+                })?,
+        ),
+    ));
+    let logfile = RollingFileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new(
+            "[breeze.{P}] {d} - {l} - {t} - {m}{n}",
+        )))
+        .build(file, policy)
+        .unwrap();
+
+    let level = l.parse().unwrap_or(LevelFilter::Info);
+    let config = Config::builder()
+        .appender(Appender::builder().build("logfile", Box::new(logfile)))
+        .build(Root::builder().appender("logfile").build(level))
+        .unwrap();
+
+    let _handle = log4rs::init_config(config)
+        .map_err(|e| Error::new(ErrorKind::InvalidData, format!("init log failed:{:?}", e)))?;
+
+    Ok(())
 }
