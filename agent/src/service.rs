@@ -25,7 +25,7 @@ pub(super) async fn process_one(
     let top = endpoint::Topology::try_from(p.clone(), quard.endpoint())?;
     let (tx, rx) = discovery::topology(top, &quard.service());
     // 注册，定期更新配置
-    discovery.send(tx)?;
+    discovery.send(tx).await.map_err(|e| e.to_string())?;
 
     let mut listen_failed = Path::new(vec![quard.protocol(), &quard.biz()]).status("listen_failed");
 
@@ -97,22 +97,17 @@ async fn _process_one(
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         let top = ctop.expect("build failed");
+        let mut unsupport_cmd = path.num("unsupport_cmd");
         spawn(async move {
             if let Err(e) = copy_bidirectional(top, metrics, client, p).await {
                 match e {
                     //protocol::Error::Quit => {} // client发送quit协议退出
                     //protocol::Error::ReadEof => {}
+                    protocol::Error::ProtocolNotSupported => unsupport_cmd += 1,
+                    // 发送异常信息给client
                     _e => log::debug!("{:?} disconnected. {:?}", _path, _e),
                 }
             }
         });
     }
-}
-
-use tokio::net::TcpListener;
-// 监控一个端口，主要用于进程监控
-pub(super) async fn listener_for_supervisor(port: u16) -> Result<TcpListener> {
-    let addr = format!("127.0.0.1:{}", port);
-    let l = TcpListener::bind(&addr).await?;
-    Ok(l)
 }

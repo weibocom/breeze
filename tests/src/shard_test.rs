@@ -1,476 +1,497 @@
-#[cfg(test)]
-mod shard_test {
-    //#![feature(map_first_last)]
-    use std::collections::BTreeMap;
+//#![feature(map_first_last)]
+use std::collections::BTreeMap;
 
-    use std::{
-        fs::File,
-        io::{BufRead, BufReader},
-    };
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+};
 
-    use crypto::digest::Digest;
-    use crypto::md5::Md5;
-    use ds::RingSlice;
-    use sharding::distribution::Distribute;
-    use sharding::hash::{Bkdr, Hash, Hasher};
-    use std::ops::Bound::Included;
+use crypto::digest::Digest;
+use crypto::md5::Md5;
+use ds::RingSlice;
+use sharding::distribution::Distribute;
+use sharding::hash::{Bkdr, Hash, Hasher};
+use std::ops::Bound::Included;
 
-    #[test]
-    fn crc32_short() {
-        // let key = "7516310920..uasvw";
-        let key = "123测试中文hash.fri";
+#[test]
+fn crc32_short() {
+    // let key = "7516310920..uasvw";
+    let key = "123测试中文hash.fri";
 
-        let crc32_hasher = Hasher::from("crc32");
-        let h = crc32_hasher.hash(&key.as_bytes());
-        println!("=== crc32 hash: {}", h);
+    let crc32_hasher = Hasher::from("crc32");
+    let h = crc32_hasher.hash(&key.as_bytes());
+    assert_eq!(h, 2968198350, "crc32 hash error");
 
-        let crc32_short_hasher = Hasher::from("crc32-short");
-        let h_short = crc32_short_hasher.hash(&key.as_bytes());
-        println!("crc32-short hash:{}", h_short);
+    let crc32_short_hasher = Hasher::from("crc32-short");
+    let h_short = crc32_short_hasher.hash(&key.as_bytes());
+    assert_eq!(h_short, 12523, "crc32-short hash");
 
-        let crc32_point = Hasher::from("crc32-point");
-        let h_point = crc32_point.hash(&key.as_bytes());
-        println!("crc32-point hash: {}", h_point);
+    let crc32_point = Hasher::from("crc32-point");
+    let h_point = crc32_point.hash(&key.as_bytes());
+    assert_eq!(h_point, 2642712869, "crc32-point hash");
+}
 
-        // let i = key.find(".").unwrap();
-        // let i2 = key.as_bytes().utf8_find('.').unwrap();
-        // use ds::*;
-        // let slice = RingSlice::from(key.as_ptr(), key.len().next_power_of_two(), 0, key.len());
-        // let i3 = slice.utf8_find('.').unwrap();
-        // println!("{}'s delimiter pos:{}/{}/{}", key, i, i2, i3);
+fn build_servers() -> Vec<String> {
+    let shard_count = 8;
+    let mut servers = Vec::with_capacity(shard_count);
+    for i in 0..shard_count {
+        servers.push(format!("192.168.0.{}", i).to_string());
+    }
+    servers
+}
+fn root_path() -> &'static str {
+    "./records"
+}
+
+//#[test]
+//fn test_crc32_from_file() {
+//    let root_path = root_path();
+//    let dist = Distribute::from("modula", &build_servers());
+//    let hasher = Hasher::from("crc32-short");
+//    let path = format!("{}/crc32-short{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//
+//    let hasher = Hasher::from("crc32-range");
+//    let path = format!("{}/crc32-range{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//
+//    let hasher = Hasher::from("crc32-range-id");
+//    let path = format!("{}/crc32-range-id{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//
+//    let hasher = Hasher::from("crc32-range-id-5");
+//    let path = format!("{}/crc32-range-id-5{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//
+//    let hasher = Hasher::from("crc32-range-point");
+//    let path = format!("{}/crc32-range-point{}", root_path, "_");
+//    shard_check_with_files(path, &hasher, &dist);
+//}
+
+#[test]
+fn shards_check() {
+    let root_path = "./records";
+    // will check crc32
+    let shard_count = 8;
+    let mut servers = Vec::with_capacity(shard_count);
+    for i in 0..shard_count {
+        servers.push(format!("192.168.0.{}", i).to_string());
     }
 
-    #[test]
-    fn shards_check() {
-        // check raw hash
-        raw_check();
+    // 将java生成的随机key及hash，每种size都copy的几条过来，用于日常验证
 
-        let root_path = "./records";
-        // will check crc32
-        let shard_count = 8;
-        let mut servers = Vec::with_capacity(shard_count);
-        for i in 0..shard_count {
-            servers.push(format!("192.168.0.{}", i).to_string());
-        }
+    let check_bkdr = false;
+    let check_crc32 = false;
+    let check_crc32local = true;
+    let check_consistant = false;
 
-        // 将java生成的随机key及hash，每种size都copy的几条过来，用于日常验证
-
-        let check_bkdr = false;
-        let check_crc32 = false;
-        let check_crc32local = true;
-        let check_consistant = false;
-
-        // bkdr
-        let hasher = Hasher::from("bkdr");
-        let dist = Distribute::from("modula", &servers);
-        if check_bkdr {
-            let path = format!("{}/bkdr_", root_path);
-            shard_check_with_files(path, &hasher, &dist);
-        }
-
-        // crc32-crc32local
-        let dist = Distribute::from("range-256", &servers);
-
-        // crc32
-        if check_crc32 {
-            let hasher = Hasher::from("crc32-short");
-            let path = format!("{}/crc32-short{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-
-            let hasher = Hasher::from("crc32-range");
-            let path = format!("{}/crc32-range{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-
-            let hasher = Hasher::from("crc32-range-id");
-            let path = format!("{}/crc32-range-id{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-
-            let hasher = Hasher::from("crc32-range-id-5");
-            let path = format!("{}/crc32-range-id-5{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-
-            let hasher = Hasher::from("crc32-range-point");
-            let path = format!("{}/crc32-range-point{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-        }
-
-        // rawcrc32local
-        if check_crc32local {
-            let hasher = Hasher::from("rawcrc32local");
-            let path = format!("{}/rawcrc32local{}", root_path, "_");
-            // 只check长度不大于20的短key
-            shard_check_short_with_files(path, &hasher, &dist);
-
-            // crc32local
-            let hasher = Hasher::from("crc32local");
-            let path = format!("{}/crc32local{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-
-            let hasher = Hasher::from("crc32local-point");
-            let path = format!("{}/crc32local-point{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-
-            let hasher = Hasher::from("crc32local-pound");
-            let path = format!("{}/crc32local-pound{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-
-            let hasher = Hasher::from("crc32local-underscore");
-            let path = format!("{}/crc32local-underscore{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-        }
-
-        if check_consistant {
-            let hasher = Hasher::from("crc32");
-            let dist = Distribute::from("ketama", &servers);
-            let path = format!("{}/crc32-consistant{}", root_path, "_");
-            shard_check_with_files(path, &hasher, &dist);
-        }
-        // let consis10 = format!("{}{}", path, "consistent_10.log");
-        // let consis15 = format!("{}{}", path, "consistent_15.log");
-        // let consis20 = format!("{}{}", path, "consistent_20.log");
-        // let consis50 = format!("{}{}", path, "consistent_50.log");
-        // consistent_check(&consis10);
-        // consistent_check(&consis15);
-        // consistent_check(&consis20);
-        // consistent_check(&consis50);
-
-        let key = " 653017.hqfy";
-        md5(&key);
+    // bkdr
+    let hasher = Hasher::from("bkdr");
+    let dist = Distribute::from("modula", &servers);
+    if check_bkdr {
+        let path = format!("{}/bkdr_", root_path);
+        shard_check_with_files(path, &hasher, &dist);
     }
 
-    fn shard_check_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
-        shard_check_short_with_files(path.clone(), hasher, dist);
+    // crc32-crc32local
+    let dist = Distribute::from("range-256", &servers);
 
-        let crc50 = format!("{}{}", path, "50.log");
-        shard_check(&crc50, &hasher, &dist);
+    // crc32
+    if check_crc32 {
+        let hasher = Hasher::from("crc32-short");
+        let path = format!("{}/crc32-short{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32-range");
+        let path = format!("{}/crc32-range{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32-range-id");
+        let path = format!("{}/crc32-range-id{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32-range-id-5");
+        let path = format!("{}/crc32-range-id-5{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32-range-point");
+        let path = format!("{}/crc32-range-point{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
     }
 
-    // 不check 50长度的key
-    fn shard_check_short_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
-        let crc10 = format!("{}{}", path, "10.log");
-        let crc15 = format!("{}{}", path, "15.log");
-        let crc20 = format!("{}{}", path, "20.log");
-        shard_check(&crc10, &hasher, &dist);
-        shard_check(&crc15, &hasher, &dist);
-        shard_check(&crc20, &hasher, &dist);
+    // rawcrc32local
+    if check_crc32local {
+        let hasher = Hasher::from("rawcrc32local");
+        let path = format!("{}/rawcrc32local{}", root_path, "_");
+        // 只check长度不大于20的短key
+        shard_check_short_with_files(path, &hasher, &dist);
+
+        // crc32local
+        let hasher = Hasher::from("crc32local");
+        let path = format!("{}/crc32local{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32local-point");
+        let path = format!("{}/crc32local-point{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32local-pound");
+        let path = format!("{}/crc32local-pound{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
+
+        let hasher = Hasher::from("crc32local-underscore");
+        let path = format!("{}/crc32local-underscore{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
     }
 
-    #[test]
-    fn layer_test() {
-        let mut layer_readers = Vec::new();
-        layer_readers.push(vec![vec!["1", "2", "3"], vec!["4", "5"], vec!["6", "7"]]);
-        layer_readers.push(vec![vec!["1", "2", "3"], vec!["6", "7"]]);
-        layer_readers.push(vec![vec!["7", "8"], vec!["4", "5"]]);
+    if check_consistant {
+        let hasher = Hasher::from("crc32");
+        let dist = Distribute::from("ketama", &servers);
+        let path = format!("{}/crc32-consistant{}", root_path, "_");
+        shard_check_with_files(path, &hasher, &dist);
+    }
+    // let consis10 = format!("{}{}", path, "consistent_10.log");
+    // let consis15 = format!("{}{}", path, "consistent_15.log");
+    // let consis20 = format!("{}{}", path, "consistent_20.log");
+    // let consis50 = format!("{}{}", path, "consistent_50.log");
+    // consistent_check(&consis10);
+    // consistent_check(&consis15);
+    // consistent_check(&consis20);
+    // consistent_check(&consis50);
 
-        let mut readers = Vec::new();
-        for layer in &layer_readers {
-            if layer.len() == 1 {
-                let r = &layer[0];
+    let key = " 653017.hqfy";
+    md5(&key);
+}
+
+fn shard_check_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
+    shard_check_short_with_files(path.clone(), hasher, dist);
+
+    let crc50 = format!("{}{}", path, "50.log");
+    shard_check(&crc50, &hasher, &dist);
+}
+
+// 不check 50长度的key
+fn shard_check_short_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
+    let crc10 = format!("{}{}", path, "10.log");
+    let crc15 = format!("{}{}", path, "15.log");
+    let crc20 = format!("{}{}", path, "20.log");
+    shard_check(&crc10, &hasher, &dist);
+    shard_check(&crc15, &hasher, &dist);
+    shard_check(&crc20, &hasher, &dist);
+}
+
+#[test]
+fn layer_test() {
+    let mut layer_readers = Vec::new();
+    layer_readers.push(vec![vec!["1", "2", "3"], vec!["4", "5"], vec!["6", "7"]]);
+    layer_readers.push(vec![vec!["1", "2", "3"], vec!["6", "7"]]);
+    layer_readers.push(vec![vec!["7", "8"], vec!["4", "5"]]);
+
+    let mut readers = Vec::new();
+    for layer in &layer_readers {
+        if layer.len() == 1 {
+            let r = &layer[0];
+            if !readers.contains(r) {
+                readers.push(r.clone());
+            }
+        } else if layer.len() > 1 {
+            for r in layer {
                 if !readers.contains(r) {
-                    readers.push(r.clone());
-                }
-            } else if layer.len() > 1 {
-                for r in layer {
-                    if !readers.contains(r) {
-                        readers.push(r.clone())
-                    }
+                    readers.push(r.clone())
                 }
             }
         }
-
-        assert!(readers.len() == 4);
-        println!("readers: {:?}", readers);
     }
 
-    #[test]
-    fn raw_hash() {
-        let val1 = 123456789012;
-        let key1 = format!("{}", val1);
-        let key2 = format!("{}abc", val1);
+    assert!(readers.len() == 4);
+    println!("readers: {:?}", readers);
+}
 
-        let hasher = Hasher::from("raw");
-        let hash1 = hasher.hash(&key1[0..].as_bytes());
-        let hash2 = hasher.hash(&key2[0..].as_bytes());
-        println!("key:{}/{}, hash:{}/{}", key1, key2, hash1, hash2);
-        assert_eq!(hash1, val1);
-        assert_eq!(hash2, val1);
-    }
+#[test]
+fn raw_hash() {
+    let val1 = 123456789012;
+    let key1 = format!("{}", val1);
+    let key2 = format!("{}abc", val1);
 
-    fn bkdr_check(path: &str) {
-        let file = File::open(path).unwrap();
-        let mut reader = BufReader::new(file);
+    let hasher = Hasher::from("raw");
+    let hash1 = hasher.hash(&key1[0..].as_bytes());
+    let hash2 = hasher.hash(&key2[0..].as_bytes());
+    println!("key:{}/{}, hash:{}/{}", key1, key2, hash1, hash2);
+    assert_eq!(hash1, val1);
+    assert_eq!(hash2, val1);
+}
 
-        let mut num = 0;
-        let shard_count = 8;
-        loop {
-            let mut line = String::new();
-            match reader.read_line(&mut line) {
-                Ok(len) => {
-                    num += 1;
-                    if len == 0 {
-                        println!("file processed copleted! all lines: {}", num);
-                        break;
-                    }
+fn bkdr_check(path: &str) {
+    let file = File::open(path).unwrap();
+    let mut reader = BufReader::new(file);
 
-                    let props = line.split(" ").collect::<Vec<&str>>();
-                    assert!(props.len() == 2);
-                    let key = props[0].trim();
-                    let idx_in_java = props[1].trim();
-                    // println!(
-                    //     "{} line: key: {}, hash: {}, hash-len:{}",
-                    //     num,
-                    //     key,
-                    //     hash_in_java,
-                    //     hash_in_java.len(),
-                    // );
-
-                    let idx = Bkdr {}.hash(&key.as_bytes()) % shard_count;
-                    let idx_in_java_u64 = idx_in_java.parse::<i64>().unwrap();
-                    if idx != idx_in_java_u64 {
-                        println!(
-                            "bkdr found error - line in java: {}, rust idx: {}",
-                            line, idx
-                        );
-                        panic!("bkdr found error in bkdr");
-                    }
-                    // println!("hash in rust: {}, in java:{}", hash, hash_in_java);
-                }
-                Err(e) => {
-                    println!("Stop read for err: {}", e);
+    let mut num = 0;
+    let shard_count = 8;
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(len) => {
+                num += 1;
+                if len == 0 {
+                    println!("file processed copleted! all lines: {}", num);
                     break;
                 }
-            }
-        }
-        println!("check bkdr hash from file: {}", path);
-    }
 
-    fn raw_check() {
-        println!("will check raw hash... ");
+                let props = line.split(" ").collect::<Vec<&str>>();
+                assert!(props.len() == 2);
+                let key = props[0].trim();
+                let idx_in_java = props[1].trim();
+                // println!(
+                //     "{} line: key: {}, hash: {}, hash-len:{}",
+                //     num,
+                //     key,
+                //     hash_in_java,
+                //     hash_in_java.len(),
+                // );
 
-        let hasher = Hasher::from("raw");
-        let num = 123456789010i64;
-        let key_str = format!("{}", num);
-        let key = RingSlice::from(
-            key_str.as_ptr(),
-            key_str.capacity().next_power_of_two(),
-            0,
-            key_str.len(),
-        );
-        let hash = hasher.hash(&key);
-        assert!(num == hash);
-
-        println!("check raw hash succeed!");
-    }
-
-    fn shard_check(path: &str, hasher: &Hasher, dist: &Distribute) {
-        println!("will check file: {}", path);
-
-        let file = File::open(path).unwrap();
-        let mut reader = BufReader::new(file);
-
-        let mut num = 0;
-        loop {
-            let mut line = String::new();
-            match reader.read_line(&mut line) {
-                Ok(len) => {
-                    num += 1;
-                    if len == 0 {
-                        println!("file processed copleted! all lines: {}", num);
-                        break;
-                    }
-
-                    let props = line.split(" ").collect::<Vec<&str>>();
-                    assert!(props.len() == 2);
-                    let key = props[0].trim();
-                    let idx_in_java = props[1].trim();
-
-                    let h = hasher.hash(&key.as_bytes());
-                    let idx = dist.index(h) as i64;
-                    let idx_in_java_u64 = idx_in_java.parse::<i64>().unwrap();
-                    if idx != idx_in_java_u64 {
-                        println!(
-                            "{:?} found error - line in java: {}, rust idx: {}",
-                            hasher, line, idx
-                        );
-                        panic!("crc32 check error");
-                    }
-                    // println!(
-                    //     "crc32 succeed - key: {}, rust: {}, java: {}",
-                    //     key, hash_in_java, hash
-                    // );
+                let idx = Bkdr {}.hash(&key.as_bytes()) % shard_count;
+                let idx_in_java_u64 = idx_in_java.parse::<i64>().unwrap();
+                if idx != idx_in_java_u64 {
+                    println!(
+                        "bkdr found error - line in java: {}, rust idx: {}",
+                        line, idx
+                    );
+                    panic!("bkdr found error in bkdr");
                 }
-                Err(e) => println!("Stop read for err: {}", e),
+                // println!("hash in rust: {}, in java:{}", hash, hash_in_java);
+            }
+            Err(e) => {
+                println!("Stop read for err: {}", e);
+                break;
             }
         }
-        println!("check crc32 from file: {} completed!", path);
     }
+    println!("check bkdr hash from file: {}", path);
+}
 
-    fn consistent_check(path: &str) {
-        let file = File::open(path).unwrap();
-        let mut reader = BufReader::new(file);
+#[test]
+fn raw_check() {
+    let hasher = Hasher::from("raw");
+    let num = 123456789010i64;
+    let key_str = format!("{}", num);
+    let key = RingSlice::from(
+        key_str.as_ptr(),
+        key_str.capacity().next_power_of_two(),
+        0,
+        key_str.len(),
+    );
+    let hash = hasher.hash(&key);
+    assert!(num == hash);
+}
 
-        let mut num = 0;
-        let shards = vec![
-            "127.0.0.1",
-            "127.0.0.2",
-            "127.0.0.3",
-            "127.0.0.4",
-            "127.0.0.5",
-        ];
-        let mut _instance = ConsistentHashInstance::from(shards);
-        loop {
-            let mut line = String::new();
-            match reader.read_line(&mut line) {
-                Ok(len) => {
-                    num += 1;
-                    if len == 0 {
-                        println!("file processed copleted! all lines: {}", num);
-                        break;
-                    }
+fn shard_check(path: &str, hasher: &Hasher, dist: &Distribute) {
+    println!("will check file: {}", path);
 
-                    let props = line.split(" ").collect::<Vec<&str>>();
-                    assert!(props.len() == 3);
-                    let key = props[0].trim();
-                    let hash_in_java = props[1].trim();
-                    let _server_in_java = props[2].trim();
-                    let hash_in_java_u64 = hash_in_java.parse::<i64>().unwrap();
+    let file = File::open(path).unwrap();
+    let mut reader = BufReader::new(file);
 
-                    let (hash, _server) = _instance.get_hash_server(key);
-
-                    if hash != hash_in_java_u64 {
-                        println!(
-                            "consistent found error - line in java: {}, rust hash: {}",
-                            line, hash
-                        );
-                        panic!("bkdr found error in crc32");
-                    }
-                    // println!(
-                    //     "crc32 succeed - key: {}, rust: {}, java: {}",
-                    //     key, hash_in_java, hash
-                    // );
+    let mut num = 0;
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(len) => {
+                num += 1;
+                if len == 0 {
+                    println!("file processed copleted! all lines: {}", num);
+                    break;
                 }
-                Err(e) => println!("Stop read for err: {}", e),
+
+                let props = line.split(" ").collect::<Vec<&str>>();
+                assert!(props.len() == 2);
+                let key = props[0].trim();
+                let idx_in_java = props[1].trim();
+
+                let h = hasher.hash(&key.as_bytes());
+                let idx = dist.index(h) as i64;
+                let idx_in_java_u64 = idx_in_java.parse::<i64>().unwrap();
+                if idx != idx_in_java_u64 {
+                    println!(
+                        "{:?} found error - line in java: {}, rust idx: {}",
+                        hasher, line, idx
+                    );
+                    panic!("crc32 check error");
+                }
+                // println!(
+                //     "crc32 succeed - key: {}, rust: {}, java: {}",
+                //     key, hash_in_java, hash
+                // );
             }
+            Err(e) => println!("Stop read for err: {}", e),
         }
-        println!("check consistent hash from file: {}", path);
     }
+    println!("check crc32 from file: {} completed!", path);
+}
 
-    struct ConsistentHashInstance {
-        consistent_map: BTreeMap<i64, usize>,
-        shards: Vec<&'static str>,
+fn consistent_check(path: &str) {
+    let file = File::open(path).unwrap();
+    let mut reader = BufReader::new(file);
+
+    let mut num = 0;
+    let shards = vec![
+        "127.0.0.1",
+        "127.0.0.2",
+        "127.0.0.3",
+        "127.0.0.4",
+        "127.0.0.5",
+    ];
+    let mut _instance = ConsistentHashInstance::from(shards);
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(len) => {
+                num += 1;
+                if len == 0 {
+                    println!("file processed copleted! all lines: {}", num);
+                    break;
+                }
+
+                let props = line.split(" ").collect::<Vec<&str>>();
+                assert!(props.len() == 3);
+                let key = props[0].trim();
+                let hash_in_java = props[1].trim();
+                let _server_in_java = props[2].trim();
+                let hash_in_java_u64 = hash_in_java.parse::<i64>().unwrap();
+
+                let (hash, _server) = _instance.get_hash_server(key);
+
+                if hash != hash_in_java_u64 {
+                    println!(
+                        "consistent found error - line in java: {}, rust hash: {}",
+                        line, hash
+                    );
+                    panic!("bkdr found error in crc32");
+                }
+                // println!(
+                //     "crc32 succeed - key: {}, rust: {}, java: {}",
+                //     key, hash_in_java, hash
+                // );
+            }
+            Err(e) => println!("Stop read for err: {}", e),
+        }
     }
+    println!("check consistent hash from file: {}", path);
+}
 
-    impl ConsistentHashInstance {
-        fn from(shards: Vec<&'static str>) -> Self {
-            let mut consistent_map = BTreeMap::new();
-            for idx in 0..shards.len() {
-                let factor = 40;
-                for i in 0..factor {
-                    let mut md5 = Md5::new();
-                    let data: String = shards[idx].to_string() + "-" + &i.to_string();
-                    let data_str = data.as_str();
-                    md5.input_str(data_str);
-                    let mut digest_bytes = [0u8; 16];
-                    md5.result(&mut digest_bytes);
-                    for j in 0..4 {
-                        let hash = (((digest_bytes[3 + j * 4] & 0xFF) as i64) << 24)
-                            | (((digest_bytes[2 + j * 4] & 0xFF) as i64) << 16)
-                            | (((digest_bytes[1 + j * 4] & 0xFF) as i64) << 8)
-                            | ((digest_bytes[0 + j * 4] & 0xFF) as i64);
+struct ConsistentHashInstance {
+    consistent_map: BTreeMap<i64, usize>,
+    shards: Vec<&'static str>,
+}
 
-                        let mut hash = hash.wrapping_rem(i32::MAX as i64);
-                        if hash < 0 {
-                            hash = hash.wrapping_mul(-1);
-                        }
+impl ConsistentHashInstance {
+    fn from(shards: Vec<&'static str>) -> Self {
+        let mut consistent_map = BTreeMap::new();
+        for idx in 0..shards.len() {
+            let factor = 40;
+            for i in 0..factor {
+                let mut md5 = Md5::new();
+                let data: String = shards[idx].to_string() + "-" + &i.to_string();
+                let data_str = data.as_str();
+                md5.input_str(data_str);
+                let mut digest_bytes = [0u8; 16];
+                md5.result(&mut digest_bytes);
+                for j in 0..4 {
+                    let hash = (((digest_bytes[3 + j * 4] & 0xFF) as i64) << 24)
+                        | (((digest_bytes[2 + j * 4] & 0xFF) as i64) << 16)
+                        | (((digest_bytes[1 + j * 4] & 0xFF) as i64) << 8)
+                        | ((digest_bytes[0 + j * 4] & 0xFF) as i64);
 
-                        consistent_map.insert(hash, idx);
-                        //println!("+++++++ {} - {}", hash, shards[idx]);
+                    let mut hash = hash.wrapping_rem(i32::MAX as i64);
+                    if hash < 0 {
+                        hash = hash.wrapping_mul(-1);
                     }
+
+                    consistent_map.insert(hash, idx);
+                    //println!("+++++++ {} - {}", hash, shards[idx]);
                 }
             }
-            //println!("map: {:?}", consistent_map);
-
-            Self {
-                shards,
-                consistent_map,
-            }
         }
+        //println!("map: {:?}", consistent_map);
 
-        fn get_hash_server(&self, key: &str) -> (i64, String) {
-            // 一致性hash，选择hash环的第一个节点，不支持漂移，避免脏数据 fishermen
-            let bk = Bkdr {};
-            let h = bk.hash(&key.as_bytes()) as usize;
-            let idxs = self
-                .consistent_map
-                .range((Included(h as i64), Included(i64::MAX)));
-
-            for (hash, idx) in idxs {
-                //println!("chose idx/{} with hash/{} for key/{}", idx, hash, key);
-                let s = self.shards[*idx].to_string();
-                return (*hash, s);
-            }
-
-            //if let Some(mut entry) = self.consistent_map.first_entry() {
-            for (h, i) in &self.consistent_map {
-                let s = self.shards[*i];
-                return (*h, s.to_string());
-            }
-
-            return (0, "unavailable".to_string());
+        Self {
+            shards,
+            consistent_map,
         }
     }
 
-    fn md5(key: &str) {
-        let mut md5 = Md5::new();
-        md5.input_str(key);
-        // let digest_str = md5.result_str();
-        let mut out = [0u8; 16];
-        md5.result(&mut out);
-        // println!("key={}, md5={:?}", key, &out);
+    fn get_hash_server(&self, key: &str) -> (i64, String) {
+        // 一致性hash，选择hash环的第一个节点，不支持漂移，避免脏数据 fishermen
+        let bk = Bkdr {};
+        let h = bk.hash(&key.as_bytes()) as usize;
+        let idxs = self
+            .consistent_map
+            .range((Included(h as i64), Included(i64::MAX)));
 
-        // let digest_bytes = digest_str.as_bytes();
-        for j in 0..4 {
-            let hash = (((out[3 + j * 4] & 0xFF) as i64) << 24)
-                | (((out[2 + j * 4] & 0xFF) as i64) << 16)
-                | (((out[1 + j * 4] & 0xFF) as i64) << 8)
-                | ((out[0 + j * 4] & 0xFF) as i64);
-
-            let mut _hash = hash.wrapping_rem(i32::MAX as i64);
-            if _hash < 0 {
-                _hash = hash.wrapping_mul(-1);
-            }
-            // let hash_little = LittleEndian::read_i32(&out[j * 4..]) as i64;
-            // let hash_big = BigEndian::read_i32(&out[j * 4..]) as i64;
-            // println!("raw: {}  {}  {}", hash, hash_little, hash_big);
-            // let hash = hash.wrapping_abs() as u64;
-
-            //println!("+++++++ {} - {}", hash, j);
+        for (hash, idx) in idxs {
+            //println!("chose idx/{} with hash/{} for key/{}", idx, hash, key);
+            let s = self.shards[*idx].to_string();
+            return (*hash, s);
         }
+
+        //if let Some(mut entry) = self.consistent_map.first_entry() {
+        for (h, i) in &self.consistent_map {
+            let s = self.shards[*i];
+            return (*h, s.to_string());
+        }
+
+        return (0, "unavailable".to_string());
     }
-    #[test]
-    fn test_consis_sharding() {
-        let servers = vec![
-            "10.73.63.195:15010".to_string(),
-            "10.13.192.12:15010".to_string(),
-            "10.73.63.190:15010".to_string(),
-            "10.73.63.188:15010".to_string(),
-            "10.73.63.187:15010".to_string(),
-        ];
-        // let servers = servers.iter().map(|s| s.to_string()).collect();
-        // let shard = sharding::Sharding::from("bkdr", "ketama", servers);
-        let hasher = Hasher::from("bkdr");
-        let dist = Distribute::from("ketama", &servers);
+}
 
-        let tuples = vec![
-            ("4675657416578300.sdt", 1),
-            ("4675358995775696.sdt", 3),
-            ("4675216938370991.sdt", 3),
-            ("4675342185268044.sdt", 2),
-            ("4676725675655615.sdt", 0),
-        ];
-        for t in tuples {
-            let hash = hasher.hash(&t.0.as_bytes());
-            assert_eq!(dist.index(hash), t.1);
+fn md5(key: &str) {
+    let mut md5 = Md5::new();
+    md5.input_str(key);
+    // let digest_str = md5.result_str();
+    let mut out = [0u8; 16];
+    md5.result(&mut out);
+    // println!("key={}, md5={:?}", key, &out);
+
+    // let digest_bytes = digest_str.as_bytes();
+    for j in 0..4 {
+        let hash = (((out[3 + j * 4] & 0xFF) as i64) << 24)
+            | (((out[2 + j * 4] & 0xFF) as i64) << 16)
+            | (((out[1 + j * 4] & 0xFF) as i64) << 8)
+            | ((out[0 + j * 4] & 0xFF) as i64);
+
+        let mut _hash = hash.wrapping_rem(i32::MAX as i64);
+        if _hash < 0 {
+            _hash = hash.wrapping_mul(-1);
         }
+        // let hash_little = LittleEndian::read_i32(&out[j * 4..]) as i64;
+        // let hash_big = BigEndian::read_i32(&out[j * 4..]) as i64;
+        // println!("raw: {}  {}  {}", hash, hash_little, hash_big);
+        // let hash = hash.wrapping_abs() as u64;
+
+        //println!("+++++++ {} - {}", hash, j);
+    }
+}
+#[test]
+fn test_consis_sharding() {
+    let servers = vec![
+        "10.73.63.195:15010".to_string(),
+        "10.13.192.12:15010".to_string(),
+        "10.73.63.190:15010".to_string(),
+        "10.73.63.188:15010".to_string(),
+        "10.73.63.187:15010".to_string(),
+    ];
+    // let servers = servers.iter().map(|s| s.to_string()).collect();
+    // let shard = sharding::Sharding::from("bkdr", "ketama", servers);
+    let hasher = Hasher::from("bkdr");
+    let dist = Distribute::from("ketama", &servers);
+
+    let tuples = vec![
+        ("4675657416578300.sdt", 1),
+        ("4675358995775696.sdt", 3),
+        ("4675216938370991.sdt", 3),
+        ("4675342185268044.sdt", 2),
+        ("4676725675655615.sdt", 0),
+    ];
+    for t in tuples {
+        let hash = hasher.hash(&t.0.as_bytes());
+        assert_eq!(dist.index(hash), t.1);
     }
 }

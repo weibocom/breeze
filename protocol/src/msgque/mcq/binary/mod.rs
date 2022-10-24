@@ -24,7 +24,7 @@ impl Protocol for McqBinary {
         _alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        assert!(data.len() > 0);
+        assert!(data.len() > 0, "req: {:?}", data.slice());
 
         log::debug!("+++ rec req: {:?}", data.slice());
         while data.len() >= HEADER_LEN {
@@ -60,7 +60,7 @@ impl Protocol for McqBinary {
     }
 
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        assert!(data.len() > 0);
+        assert!(data.len() > 0, "rsp: {:?}", data.slice());
         let len = data.len();
         if len >= HEADER_LEN {
             let r = data.slice();
@@ -98,7 +98,7 @@ impl Protocol for McqBinary {
         _dist_fn: F,
     ) -> Result<usize> {
         // mcq 没有sentonly指令
-        assert!(!req.sentonly());
+        assert!(!req.sentonly(), "req: {:?}", req);
         match req.op_code() as u8 {
             // cmd: version
             0x0b => {

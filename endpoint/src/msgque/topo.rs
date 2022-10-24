@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use protocol::{Endpoint, Topology, Utf8};
+use protocol::{Endpoint, Topology};
 use sharding::hash::{Hasher, HASH_PADDING};
 
 use crate::msgque::strategy::hitfirst::Node;
@@ -126,7 +126,7 @@ where
     #[inline]
     fn exp_sec(&self) -> u32 {
         log::error!("msg queue does't support expire");
-        assert!(false);
+        assert!(false, "msg queue does't support expire");
         0
     }
 }
@@ -389,7 +389,7 @@ where
     fn update(&mut self, name: &str, cfg: &str) {
         if let Some(ns) = super::config::Namespace::try_from(cfg, name) {
             log::debug!("+++ updating msgque for {}", name);
-            assert!(ns.sized_queue.len() > 0);
+            assert!(ns.sized_queue.len() > 0, "msgque: {}, cfg:{}", name, cfg);
 
             self.service = name.to_string();
 

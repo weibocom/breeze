@@ -42,7 +42,7 @@ impl Context {
         let count = self.ctx as u8;
 
         const MAX_COUNT: u8 = ((1 << COUNT_BITS as u16) - 1) as u8;
-        assert!(count < MAX_COUNT);
+        assert!(count < MAX_COUNT, "ctx count:{}", count);
 
         self.ctx += 1;
 

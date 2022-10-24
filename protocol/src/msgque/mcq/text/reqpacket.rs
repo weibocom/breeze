@@ -65,7 +65,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     fn current(&self) -> u8 {
-        assert!(self.available());
+        assert!(self.available(), "oft:{}, rq:{:?}", self.oft, self.data);
         self.data.at(self.oft)
     }
 
@@ -96,6 +96,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         while self.available() {
             match state {
                 ReqPacketState::Start => {
+                    // mc 协议中cmd字符需要是小写
                     if !self.current().is_ascii_lowercase() {
                         return Err(McqError::ReqInvalid.error());
                     }
@@ -130,7 +131,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                             return Ok(());
                         }
                         RequestType::Unknown => {
-                            panic!("mcq unknown type should not come here");
+                            panic!("mcq unknown type msg:{:?}", self.data);
                         }
                     }
                 }
@@ -234,7 +235,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
-        assert!(self.oft_last < self.oft);
+        assert!(
+            self.oft_last < self.oft,
+            "oft: {}/{}, req:{:?}",
+            self.oft_last,
+            self.oft,
+            self.data
+        );
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
 
@@ -263,13 +270,13 @@ impl Packet for RingSlice {
     // skip 一个token，必须非空格、CR开始，到空格、CR结束，长度必须大于0
     #[inline]
     fn token(&self, oft: &mut usize, max_len: usize) -> Result<()> {
-        let len = if max_len == 0 {
+        let end = if max_len == 0 {
             self.len()
         } else {
-            max_len.min(self.len())
+            max_len.min(self.len() - *oft) + *oft
         };
 
-        for i in *oft..len {
+        for i in *oft..end {
             let c = self.at(i);
             if c == b' ' || c == CR {
                 // token的长度不能为0

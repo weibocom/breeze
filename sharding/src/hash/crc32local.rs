@@ -79,7 +79,7 @@ impl Crc32localDelimiter {
         if alg_parts.len() == 2 {
             return Self {
                 start_pos: 0,
-                delimiter: delimiter,
+                delimiter,
                 name: alg.to_string(),
             };
         }
@@ -88,14 +88,14 @@ impl Crc32localDelimiter {
         if let Ok(prefix_len) = alg_parts[2].parse::<usize>() {
             return Self {
                 start_pos: prefix_len,
-                delimiter: delimiter,
+                delimiter,
                 name: alg.to_string(),
             };
         } else {
             log::debug!("unknown crc32local hash/{}, ignore prefix instead", alg);
             return Self {
                 start_pos: 0,
-                delimiter: delimiter,
+                delimiter,
                 name: alg.to_string(),
             };
         }

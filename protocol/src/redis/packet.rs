@@ -1,11 +1,7 @@
-#[allow(unused_imports)]
-use crate::Utf8;
-use crate::{Error, Result};
+use crate::Result;
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
-// 防止client发大小写组合的master，需要忽略master的大小写 fishermen
-const MASTER_CMD: &str = "*1\r\n$6\r\nMASTER\r\n";
 
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
@@ -19,11 +15,9 @@ struct RequestContext {
     _ignore: [u8; 2],
 }
 
-// 请求的layer层次
+// 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
 pub enum LayerType {
-    NotChecked = 0,
-    All = 1,
-    MasterOnly = 2,
+    MasterOnly = 1,
 }
 
 impl RequestContext {
@@ -80,46 +74,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.oft < self.data.len()
     }
 
-    // 解析访问layer，由于master非独立指令，如果返回Ok，需要确保还有数据可以继续解析
-    // master 过于简单，先直接解析处理，后续可以加到swallowed cmd中
-    #[inline]
-    pub(super) fn parse_cmd_layer(&mut self) -> Result<bool> {
-        if !self.layer_checked() {
-            match self
-                .data
-                .start_with_ignore_case(self.oft, MASTER_CMD.as_bytes())
-            {
-                Ok(rs) => {
-                    if rs {
-                        self.oft += MASTER_CMD.len();
-                        self.oft_last = self.oft;
-                        self.stream.ignore(MASTER_CMD.len());
-                        self.set_layer(LayerType::MasterOnly);
-
-                        // master 不是独立指令，只有还有数据可解析时，才返回Ok，否则协议不完整 fishermen
-                        if self.available() {
-                            return Ok(true);
-                        }
-                        return Err(Error::ProtocolIncomplete);
-                    } else {
-                        self.set_layer(LayerType::All);
-                        return Ok(false);
-                    }
-                }
-                // 只有长度不够才会返回err
-                Err(_) => return Err(Error::ProtocolIncomplete),
-            };
-        }
-        // 之前已经check过，直接取
-        Ok(self.master_only())
-    }
     #[inline]
     pub(super) fn parse_bulk_num(&mut self) -> Result<()> {
         if self.bulk() == 0 {
             self.check_start()?;
             self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
             self.ctx.first = true;
-            assert_ne!(self.bulk(), 0);
+            assert_ne!(self.bulk(), 0, "packet:{}", self);
         }
         Ok(())
     }
@@ -132,14 +93,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             let start = self.oft - cmd_len - CRLF_LEN;
             let cmd = self.data.sub_slice(start, cmd_len);
             self.ctx.op_code = super::command::get_op_code(&cmd);
-            assert_ne!(self.ctx.op_code, 0);
+            assert_ne!(self.ctx.op_code, 0, "packet:{}", self);
         }
         Ok(())
     }
     #[inline]
     pub(super) fn parse_key(&mut self) -> Result<RingSlice> {
-        assert_ne!(self.ctx.op_code, 0);
-        assert_ne!(self.ctx.bulk, 0);
+        assert_ne!(self.ctx.op_code, 0, "packet:{:?}", self);
+        assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
         let key_len = self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         let start = self.oft - CRLF_LEN - key_len;
@@ -147,7 +108,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     #[inline]
     pub(super) fn ignore_one_bulk(&mut self) -> Result<()> {
-        assert_ne!(self.ctx.bulk, 0);
+        assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
         self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         Ok(())
@@ -166,7 +127,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             self.stream.ignore(self.oft - self.oft_last);
             self.oft_last = self.oft;
 
-            assert_ne!(self.ctx.op_code, 0);
+            assert_ne!(self.ctx.op_code, 0, "packet:{}", self);
             // 更新
             *self.stream.context() = self.ctx.u64();
         }
@@ -175,11 +136,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     // 重置context，包括stream中的context
     #[inline]
     fn reset_context(&mut self) {
+        // 重置packet的ctx
         self.ctx.reset();
-        assert_eq!(self.ctx.u64(), 0);
 
-        // 重置context
+        // 重置stream的ctx
         *self.stream.context() = 0;
+
+        assert_eq!(self.ctx.u64(), 0, "packet:{}", self);
     }
 
     // 重置reserved hash，包括stream中的对应值
@@ -201,7 +164,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
-        assert!(self.oft_last < self.oft);
+        assert!(self.oft_last < self.oft, "packet:{}", self);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
         // 更新上下文的bulk num。
@@ -218,18 +181,28 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     // trim掉已解析的cmd相关元数据，只保留在master_only、reserved_hash这两个元数据
     #[inline]
     pub(super) fn trim_swallowed_cmd(&mut self) -> Result<()> {
+        // trim 吞噬指令时，整个吞噬指令必须已经被解析完毕
+        debug_assert!(self.ctx.bulk == 0, "packet:{}", self);
+
+        // 移动oft到吞噬指令之后
         let len = self.oft - self.oft_last;
         self.oft_last = self.oft;
         self.stream.ignore(len);
 
-        debug_assert!(self.ctx.bulk == 0);
-        // 重置context，下一个指令重新解析，注意：master_only要保留
+        // 记录需保留的状态：目前只有master only状态【direct hash保存在stream的非ctx字段中】
         let master_only = self.master_only();
+
+        // 重置context，去掉packet/stream的ctx信息
         self.reset_context();
+
+        // 保留后续cmd执行需要的状态：当前只有master
         if master_only {
             // 保留master only 设置
             self.set_layer(LayerType::MasterOnly);
         }
+
+        // 设置packet的ctx到stream的ctx中，供下一个指令使用
+        *self.stream.context() = self.ctx.u64();
 
         if self.available() {
             return Ok(());
@@ -239,7 +212,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     fn current(&self) -> u8 {
-        assert!(self.available());
+        assert!(self.available(), "packet:{}", self);
         self.data.at(self.oft)
     }
     #[inline]
@@ -272,13 +245,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         &self.data
     }
     #[inline]
-    pub fn layer_checked(&self) -> bool {
-        self.ctx.layer != (LayerType::NotChecked as u8)
-    }
-    #[inline]
     pub(super) fn set_layer(&mut self, layer: LayerType) {
         self.ctx.layer = layer as u8;
-        *self.stream.context() = self.ctx.u64();
     }
     #[inline]
     pub(super) fn master_only(&self) -> bool {
@@ -306,7 +274,7 @@ impl Packet for ds::RingSlice {
     #[inline]
     fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         if *oft + 2 < self.len() {
-            assert!(is_valid_leading_num_char(self.at(*oft)));
+            assert!(is_valid_leading_num_char(self.at(*oft)), "packet:{}", self);
             let start = *oft;
             *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
             let mut val: usize = 0;
@@ -336,12 +304,7 @@ impl Packet for ds::RingSlice {
                         continue;
                     }
                 }
-                log::info!(
-                    "oft:{} not valid number:{:?}, {:?}",
-                    *oft,
-                    self.utf8(),
-                    self
-                );
+                log::info!("oft:{} not valid number:{:?}, {:?}", *oft, self, self);
                 return Err(RedisError::ReqInvalidNum.error());
             }
         }
@@ -412,13 +375,14 @@ impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(packet => len:{} bulk num: {} op_code:{} oft:({} => {})) first:{}",
+            "(packet => len:{} bulk num: {} op_code:{} oft:({} => {})) first:{} data:{:?}",
             self.data.len(),
             self.bulk(),
             self.op_code(),
             self.oft_last,
             self.oft,
-            self.first()
+            self.first(),
+            self.data
         )
     }
 }

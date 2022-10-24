@@ -5,8 +5,6 @@ use std::time::Instant;
 use ds::AtomicWaker;
 
 use crate::request::Request;
-#[allow(unused_imports)]
-use crate::Utf8;
 use crate::{Command, Error, HashedCommand};
 
 pub struct Callback {
@@ -67,7 +65,11 @@ impl CallbackContext {
     }
     #[inline]
     pub(crate) fn on_noforward(&mut self) {
-        assert!(self.request().noforward());
+        assert!(
+            self.request().noforward(),
+            "req: {:?}",
+            self.request().data()
+        );
         self.on_done();
     }
 
@@ -93,8 +95,8 @@ impl CallbackContext {
                 !self.complete(),
                 "{} {:?} => {:?}",
                 self,
-                self.request().data().utf8(),
-                resp.data().utf8()
+                self.request().data(),
+                resp.data()
             );
             self.try_drop_response();
             self.response.write(resp);
@@ -110,7 +112,7 @@ impl CallbackContext {
         }
         if !self.ctx.drop_on_done() {
             // 说明有请求在pending
-            assert!(!self.complete());
+            assert!(!self.complete(), "req:{:?}", self.request().data());
             self.ctx.complete.store(true, Ordering::Release);
             self.wake();
         } else {
@@ -145,7 +147,7 @@ impl CallbackContext {
             _err => log::debug!(
                 "on-err:{} {:?} request:{:?}",
                 self,
-                self.request().data().utf8(),
+                self.request().data(),
                 _err
             ),
         }
@@ -340,8 +342,8 @@ impl CallbackContextPtr {
     //需要在on_done时主动销毁self对象
     #[inline]
     pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P) {
-        assert!(self.inited());
-        assert!(self.complete());
+        assert!(self.inited(), "cbptr:{:?}", &*self);
+        assert!(self.complete(), "cbptr:{:?}", &*self);
         if self.is_write_back() && self.response_ok() {
             let exp = self.callback.exp_sec();
             if let Some(new) = parser.build_writeback_request(&mut self, exp) {

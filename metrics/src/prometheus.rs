@@ -1,3 +1,4 @@
+use crate::{ItemWriter, WriteTo};
 use std::sync::{
     atomic::{
         AtomicUsize,
@@ -19,7 +20,6 @@ impl Prometheus {
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, ReadBuf};
 impl futures::Stream for Prometheus {
     type Item = PrometheusItem;
@@ -86,12 +86,14 @@ impl AsyncRead for PrometheusItem {
 struct PrometheusItemWriter<'a, 'r> {
     left: Vec<u8>,
     buf: &'a mut ReadBuf<'r>,
+    first: bool, // 在lable中，第一个k/v前面不输出 ','
 }
 impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
     fn new(buf: &'a mut ReadBuf<'r>) -> Self {
         Self {
             left: Vec::new(),
             buf,
+            first: true,
         }
     }
     #[inline]
@@ -99,7 +101,24 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
         self.left
     }
     #[inline]
-    fn put_slice(&mut self, data: &[u8]) {
+    fn put_label(&mut self, name: &str, val: &[u8]) {
+        if val.len() > 0 {
+            //first 保证第一个label前没有 ","
+            if !self.first {
+                self.put_slice(b",");
+            }
+            self.put_slice(name.as_bytes());
+            self.put_slice(b"=\"");
+            self.put_slice(val);
+            self.put_slice(b"\"");
+            self.first = false;
+        }
+    }
+}
+impl<'a, 'r> ItemWriter for PrometheusItemWriter<'a, 'r> {
+    #[inline]
+    fn put_slice<S: AsRef<[u8]>>(&mut self, data: S) {
+        let data = data.as_ref();
         if self.buf.remaining() >= data.len() {
             self.buf.put_slice(data);
         } else {
@@ -109,96 +128,69 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
             self.left.extend_from_slice(&s);
         }
     }
-}
-impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
     #[inline]
-    fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64) {
+    fn write<V: WriteTo>(&mut self, name: &str, key: &str, sub_key: &str, val: V) {
         self.write_opts(name, key, sub_key, val, Vec::new());
     }
-    fn write_opts(
+    fn write_opts<V: WriteTo>(
         &mut self,
         name: &str,
         key: &str,
         sub_key: &str,
-        val: f64,
+        val: V,
         opts: Vec<(&str, &str)>,
     ) {
         /*
-        三种类型
+        四种类型:
               name                                              key         sub_key         result
-        <1>   base                                              host        mem             host_mem{source="base",pool="default_pool",ip="10.222.32.6"} 31375360 1663846614711
-        <2>   mc_backend/status.content1/10.185.25.194:2020     timeout     qps             timeout_qps{source="mc_backend",namespace="status.content1",instance="10.185.25.194:2020",pool="default_pool",ip="10.222.32.6"} 0 1663846614713
-        <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool",ip="10.222.32.6"} 0 1663846614713
+        <1>   base                                              host        mem             host_mem{source="base",pool="default_pool"} 31375360
+        <2>   mc_backend/ns1/127.0.0.1:8080                     timeout     qps             timeout_qps{source="mc_backend",namespace="ns",bip="127.0.0.1:8080",pool="default_pool"} 0
+        <3>   mc.$namespace                                     $key        $sub_key        $key_$sub_key{source="mc",namespace="$namespace",pool="default_pool"} 0
+        后端为mcq时，namespace 中包含 ‘#’分割字符, ‘#’ 前为namespace的值，‘#’ 后为topic的值，需要增加一个 topic lable，
+        <4>   msgque_backend/msgque                             timeout     qps             timeout_qps{source="msgque_backend",pool="default_pool",namespace="ns",topic="top",bip="127.0.0.1:8080"} 0
          */
 
-        //获取以毫秒为单位的时间戳
-        let time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
+        //从 name 中截取 source、namespace和topic、instance
+        let all_name: Vec<&str> = name.split(crate::TARGET_SPLIT as char).collect();
+        let source = all_name.get(0).unwrap_or(&"").as_bytes();
+        let charname = *all_name.get(1).unwrap_or(&"");
+        //针对mcq,namespace中可能包含topic,先根据 ‘#’分割;
+        let nameandtopic: Vec<&str> = charname.split("#").collect();
+        let namespace = nameandtopic.get(0).unwrap_or(&"").as_bytes();
+        let topic = nameandtopic.get(1).unwrap_or(&"").as_bytes();
+        let bip = all_name.get(2).unwrap_or(&"").as_bytes();
 
-        //从 name 中截取 source、namespace、instance
-        let all_name: Vec<&str> = name.split("/").collect();
-        let source = *all_name.get(0).unwrap_or(&"");
-        let namespace = *all_name.get(1).unwrap_or(&"");
-        let instance = *all_name.get(2).unwrap_or(&"");
-
-        let mut metrics_name = String::with_capacity(32);
-        if sub_key.len() > 0 {
-            metrics_name += key;
-            metrics_name += "_";
-            metrics_name += sub_key;
-        } else {
-            metrics_name += key;
-        }
-
+        let metric_name = MetricName(key, sub_key);
         //promethues # HELP
-        self.put_slice(b"# HELP ");
-        self.put_slice(metrics_name.as_bytes());
-        self.put_slice(b"\n");
+        self.put_slice("# HELP ");
+        metric_name.write_to(self);
+        self.put_slice("\n");
 
         //promethues # TYPE
-        self.put_slice(b"# TYPE ");
-        self.put_slice(metrics_name.as_bytes());
-        self.put_slice(b" gauge\n");
+        self.put_slice("# TYPE ");
+        metric_name.write_to(self);
+        self.put_slice(" gauge\n");
 
         //promethues metrics
-        self.put_slice(metrics_name.as_bytes());
-        self.put_slice("{".as_bytes());
-        self.put_slice(b"source=\"");
-        self.put_slice(source.as_bytes());
-        self.put_slice(b"\",");
-        if namespace.len() > 0 {
-            self.put_slice(b"namespace=\"");
-            self.put_slice(namespace.as_bytes());
-            self.put_slice(b"\",");
-        }
-        if instance.len() > 0 {
-            self.put_slice(b"instance=\"");
-            self.put_slice(instance.as_bytes());
-            self.put_slice(b"\",");
-        }
-        self.put_slice(b"pool=\"");
-        self.put_slice(context::get().service_pool.as_bytes());
-        self.put_slice(b"\",");
-        self.put_slice(b"ip=\"");
-        self.put_slice(super::ip::local_ip().as_bytes());
+        metric_name.write_to(self);
+        self.put_slice("{");
+        self.first = true;
+        //确保第一个put的label一定不为空; 后续优化
+        self.put_label("source", source);
+        self.put_label("pool", context::get().service_pool.as_bytes());
+        self.put_label("namespace", namespace);
+        self.put_label("topic", topic);
+        self.put_label("bip", bip);
 
         for (k, v) in opts {
-            self.put_slice(b"\",");
-            self.put_slice(k.as_bytes());
-            self.put_slice(b"=\"");
-            self.put_slice(v.as_bytes());
+            self.put_label(k, v.as_bytes());
         }
 
-        self.put_slice(b"\"}");
+        self.put_slice("} ");
 
-        //value && timestamp
-        self.put_slice(b" ");
-        self.put_slice(val.to_string().as_bytes());
-        self.put_slice(b" ");
-        self.put_slice(time.to_string().as_bytes());
-        self.put_slice(b"\n");
+        //value
+        val.write_to(self);
+        self.put_slice("\n");
     }
 }
 use crate::Host;
@@ -206,4 +198,17 @@ use ds::lock::Lock;
 use lazy_static::lazy_static;
 lazy_static! {
     static ref HOST: Lock<Host> = Host::new().into();
+}
+
+struct MetricName<'a>(&'a str, &'a str);
+
+impl<'a> WriteTo for MetricName<'a> {
+    #[inline]
+    fn write_to<W: ItemWriter>(&self, w: &mut W) {
+        w.put_slice(self.0);
+        if self.1.len() > 0 {
+            w.put_slice("_");
+            w.put_slice(self.1);
+        }
+    }
 }

@@ -69,7 +69,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             MsgType::Set | MsgType::Delete => Operation::Store,
             MsgType::Quit | MsgType::Version | MsgType::Stats => Operation::Meta,
             _ => {
-                log::warn!("+++ found unknow mcq msg: {:?}", self.data.utf8());
+                log::warn!("+++ found unknow mcq msg: {:?}", self.data);
                 Operation::Meta
             }
         }
@@ -100,7 +100,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     fn current(&self) -> u8 {
-        assert!(self.available());
+        assert!(self.available(), "req:{:?}", self.data);
         self.data.at(self.oft)
     }
 
@@ -118,15 +118,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
             match state {
                 ReqPacketState::Start => {
-                    if self.current() == b' ' {
-                        break;
-                    }
                     if !self.current().is_ascii_lowercase() {
                         return Err(McqError::ReqInvalid.error());
                     }
-
-                    self.token = self.oft;
-                    state = ReqPacketState::ReqType;
+                    if self.current() != b' ' {
+                        self.token = self.oft;
+                        state = ReqPacketState::ReqType;
+                    }
                 }
                 ReqPacketState::ReqType => {
                     if self.current() == b' ' || self.current() == CR {
@@ -228,7 +226,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::SpacesBeforeKeys => {
                     match self.current() {
-                        b' ' => break,
+                        b' ' => {
+                            // do nothing just skip it
+                        }
                         CR => state = ReqPacketState::AlmostDone,
                         _ => {
                             // mcq 目前不支持多key
@@ -248,7 +248,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::Flags => {
                     if self.current().is_ascii_digit() {
-                        break;
+                        // do nothing just skip it
                     } else if self.current() == b' ' {
                         self.flen = self.oft - self.flags;
                         self.token = 0;
@@ -268,7 +268,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::Expire => {
                     if self.current().is_ascii_digit() {
-                        break;
+                        // do nothing just skip it
                     } else if self.current() == b' ' {
                         self.token = 0;
                         state = ReqPacketState::SpacesBeforeVlen;
@@ -310,7 +310,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::Cas => {
                     if self.current().is_ascii_digit() {
-                        break;
+                        // do nothing just skip it
                     } else if self.current() == b' ' || self.current() == CR {
                         self.unique_id_len = self.oft - self.unique_id;
                         self.skip_back(1)?;
@@ -361,7 +361,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     }
                 }
                 ReqPacketState::RunToCRLF => match self.current() {
-                    b' ' => break,
+                    b' ' => {
+                        // do nothing, just skip it
+                    }
                     b'n' => {
                         if self.is_storage() || self.is_delete() {
                             self.token = 0;
@@ -391,7 +393,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                                 .sub_slice(m, nrlen)
                                 .start_with(m, &"noreply".as_bytes())?
                         {
-                            assert!(self.is_storage() || self.is_delete());
+                            assert!(
+                                self.is_storage() || self.is_delete(),
+                                "req: {:?}",
+                                self.data
+                            );
                             self.token = 0;
                             self.noreply = true;
                             state = ReqPacketState::AfterNoreply;
@@ -402,7 +408,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     }
                 }
                 ReqPacketState::AfterNoreply => match self.current() {
-                    b' ' => break,
+                    b' ' => {
+                        // do nothing, just skip
+                    }
                     CR => {
                         if self.is_storage() {
                             state = ReqPacketState::RunToVal;
@@ -413,7 +421,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     _ => return Err(McqError::ReqInvalid.error()),
                 },
                 ReqPacketState::CRLF => match self.current() {
-                    b' ' => break,
+                    b' ' => {
+                        // do nothing just skip it
+                    }
                     CR => state = ReqPacketState::AlmostDone,
                     _ => return Err(McqError::ReqInvalid.error()),
                 },

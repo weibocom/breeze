@@ -47,8 +47,7 @@ impl<P, Req> BackendChecker<P, Req> {
         Req: Request,
     {
         let path_addr = self.path.clone().push(&self.addr);
-        let mut m_timeout_biz = path_addr.qps("timeout");
-        let mut m_timeout = Path::base().qps("timeout");
+        let mut m_timeout = path_addr.qps("timeout");
         let mut reconn = crate::reconn::ReconnPolicy::new(&self.path, single);
         metrics::incr_task();
         while !self.finish.get() {
@@ -59,21 +58,19 @@ impl<P, Req> BackendChecker<P, Req> {
                 continue;
             }
             reconn.success();
-            let rtt = self.path.rtt("req");
-            let slow = path_addr.rtt("slow");
+            let rtt = path_addr.rtt("req");
             let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
             rx.enable();
             self.init.on();
             log::debug!("handler started:{:?}", self.path);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, stream, p, rtt, slow);
+            let handler = Handler::from(rx, stream, p, rtt);
             let handler = rt::Entry::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 match e {
                     Error::Timeout(_t) => {
                         m_timeout += 1;
-                        m_timeout_biz += 1;
                         log::info!("{:?} timeout: {:?}", path_addr, _t);
                     }
                     _ => log::info!("{:?} error: {:?}", path_addr, e),

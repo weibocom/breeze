@@ -11,6 +11,10 @@ pub struct MemcacheBinary;
 use crate::{Command, HashedCommand, Protocol, RequestProcessor};
 use sharding::hash::Hash;
 impl Protocol for MemcacheBinary {
+    #[inline]
+    fn cache(&self) -> bool {
+        true
+    }
     // 解析请求。把所有的multi-get请求转换成单一的n个get请求。
     #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
@@ -19,7 +23,7 @@ impl Protocol for MemcacheBinary {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        assert!(data.len() > 0);
+        assert!(data.len() > 0, "mc req: {:?}", data.slice());
         while data.len() >= HEADER_LEN {
             let mut req = data.slice();
             req.check_request()?;
@@ -45,13 +49,13 @@ impl Protocol for MemcacheBinary {
     }
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        assert!(data.len() > 0);
+        assert!(data.len() > 0, "rsp: {:?}", data.slice());
         let len = data.len();
         if len >= HEADER_LEN {
             let r = data.slice();
             r.check_response()?;
             let pl = r.packet_len();
-            assert!(!r.quiet_get());
+            assert!(!r.quiet_get(), "rsp: {:?}", r);
             if len >= pl {
                 if !r.is_quiet() {
                     let mut flag = Flag::from_op(r.op() as u16, r.operation());
@@ -60,7 +64,7 @@ impl Protocol for MemcacheBinary {
                 } else {
                     // response返回quite请求只有一种情况：出错了。
                     // quite请求是异步处理，直接忽略即可。
-                    assert!(!r.status_ok());
+                    assert!(!r.status_ok(), "rsp: {:?}", r);
                     data.ignore(pl);
                 }
             }
@@ -72,7 +76,10 @@ impl Protocol for MemcacheBinary {
         assert!(
             !resp.data().is_quiet()
                 && req.data().op() == resp.data().op()
-                && req.data().opaque() == resp.data().opaque()
+                && req.data().opaque() == resp.data().opaque(),
+            "req: {:?}, rsp: {:?}",
+            req.data(),
+            resp.data(),
         );
         true
     }
@@ -168,17 +175,17 @@ impl MemcacheBinary {
     #[inline]
     fn build_write_back_inplace(&self, req: &mut HashedCommand) {
         let data = req.data_mut();
-        assert!(data.len() >= HEADER_LEN);
+        assert!(data.len() >= HEADER_LEN, "req: {:?}", data);
         // 把cas请求转换成非cas请求: cas值设置为0
         data.clear_cas();
         let op = data.map_op_noreply();
         let cmd = data.operation();
-        assert!(data.is_quiet());
+        assert!(data.is_quiet(), "rqe:{:?}", data);
         req.reset_flag(op as u16, cmd);
         // 设置只发送标签，发送完成即请求完成。
         req.set_sentonly(true);
-        assert!(req.operation().is_store());
-        assert!(req.sentonly());
+        assert!(req.operation().is_store(), "req: {:?}", req.data());
+        assert!(req.sentonly(), "req: {:?}", req.data());
     }
     #[inline]
     fn build_write_back_get(
@@ -189,7 +196,7 @@ impl MemcacheBinary {
     ) -> Option<HashedCommand> {
         // 轮询response的cmds，构建回写request
         // 只为status为ok的resp构建回种req
-        assert!(resp.ok());
+        assert!(resp.ok(), "resp: {:?}", resp.data());
         let rsp_cmd = resp.data();
         let r_data = req.data();
         let key_len = r_data.key_len();
@@ -205,7 +212,7 @@ impl MemcacheBinary {
         req_cmd.push(op); // opcode: [1]
         req_cmd.write_u16(key_len); // key len: [2,3]
         let extra_len = rsp_cmd.extra_len() + 4 as u8; // get response中的extra 应该是4字节，作为set的 flag，另外4字节是set的expire
-        assert!(extra_len == 8);
+        assert!(extra_len == 8, "extra_len: {}", extra_len);
         req_cmd.push(extra_len); // extra len: [4]
         req_cmd.push(0 as u8); // data type，全部为0: [5]
         req_cmd.write_u16(0 as u16); // vbucket id, 回写全部为0,pos [6,7]

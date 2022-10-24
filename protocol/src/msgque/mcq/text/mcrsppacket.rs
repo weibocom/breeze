@@ -140,7 +140,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                                 }
                             }
                             _ => {
-                                log::warn!("found malformed rsp: {:?}", self.data.utf8());
+                                log::warn!("found malformed rsp: {:?}", self.data);
                                 return Err(super::Error::ResponseProtocolInvalid);
                             }
                         }
@@ -301,7 +301,9 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     }
                 }
                 RspPacketState::CRLF => match self.current() {
-                    b' ' => break,
+                    b' ' => {
+                        // do nothing just skip it
+                    }
                     CR => state = RspPacketState::AlmostDone,
                     _ => return Err(McqError::RspInvalid.error()),
                 },

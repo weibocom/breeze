@@ -1,30 +1,13 @@
 use context::Context;
 use rocket::{Build, Rocket};
 
-cfg_if::cfg_if! {
-if #[cfg(feature = "http")] {
-
-
-pub(crate) fn init_routes(
-    rocket: Rocket<Build>,
-    ctx: &Context,
-    rt: &tokio::runtime::Runtime,
-) -> Rocket<Build> {
-    rt.spawn(api::start_whitelist_refresh(ctx.whitelist_host.clone()));
+#[cfg(feature = "console-api")]
+pub(crate) fn init_routes(rocket: Rocket<Build>, ctx: &Context) -> Rocket<Build> {
+    rt::spawn(api::start_whitelist_refresh(ctx.whitelist_host.clone()));
+    let rocket = api::routes(rocket);
     rocket
 }
-
-} else {
-
-pub(crate) fn init_routes(
-    rocket: Rocket<Build>,
-    _ctx: &Context,
-    _rt: &tokio::runtime::Runtime,
-) -> Rocket<Build> {
+#[cfg(not(feature = "console-api"))]
+pub(crate) fn init_routes(rocket: Rocket<Build>, _ctx: &Context) -> Rocket<Build> {
     rocket
-}
-
-
-}
-
 }
