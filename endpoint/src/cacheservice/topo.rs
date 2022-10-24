@@ -94,7 +94,7 @@ where
                 return;
             }
         }
-        log::debug!("request sent prepared:{} {} {}", idx, req, self);
+        log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
         assert!(
             idx < self.streams.len(),
             "{} < {} => {:?}",
