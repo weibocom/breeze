@@ -58,7 +58,7 @@ impl McqText {
         packet.parse()?;
 
         let mut flag = Flag::new();
-        if !packet.is_empty() {
+        if packet.is_succeed() {
             flag.set_status_ok(true);
         }
         let mem = packet.take();

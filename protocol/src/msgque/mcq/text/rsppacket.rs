@@ -155,9 +155,13 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     }
                 }
                 RspPacketState::Flags => {
-                    // flags 当前不需要
-                    self.data.token(&mut self.oft, 0)?;
-                    state = RspPacketState::SpacesBeforeVlen;
+                    if self.current().is_ascii_digit() {
+                        // do nothing
+                    } else if self.current() == b' ' {
+                        state = RspPacketState::SpacesBeforeVlen;
+                    } else {
+                        return Err(McqError::RspInvalid.error());
+                    }
                 }
                 RspPacketState::SpacesBeforeVlen => {
                     if self.current() != b' ' {
@@ -304,6 +308,15 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
     fn current(&self) -> u8 {
         assert!(self.available(), "oft:{}, rsp:{:?}", self.oft, self.data);
         self.data.at(self.oft)
+    }
+
+    // succeed 标准： get 返回val；set 返回 stored；
+    #[inline]
+    pub(crate) fn is_succeed(&self) -> bool {
+        match self.rsp_type {
+            RspType::Value | RspType::Stored => true,
+            _ => false,
+        }
     }
 }
 

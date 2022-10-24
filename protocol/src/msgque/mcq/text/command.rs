@@ -153,8 +153,9 @@ lazy_static! {
         for (name, req_type, op, padding_rsp, noforward) in vec![
             ("get", RequestType::Get, Get, 1, false),
             ("set", RequestType::Set, Store, 1, false),
-            // TODO 对于业务，当前不允许删除队列
+            // TODO 对于业务，当前不允许删除队列，暂时禁止路由
             // ("delete", RequestType::Delete, Store, 1, false),
+            ("delete", RequestType::Delete, Store, 3, true),
             ("stats", RequestType::Stats, Meta, 3, true),
             ("version", RequestType::Version, Meta, 2, true),
             ("quit", RequestType::Quit, Meta, 0, true),
