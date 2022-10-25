@@ -34,7 +34,11 @@ impl CommandProperties {
     }
     #[inline]
     pub fn padding_rsp(&self) -> &str {
-        assert!((self.padding_rsp as usize) < PADDING_RSP_TABLE.len());
+        assert!(
+            (self.padding_rsp as usize) < PADDING_RSP_TABLE.len(),
+            "padding rsp: {}",
+            self.padding_rsp
+        );
         PADDING_RSP_TABLE.get(self.padding_rsp as usize).unwrap()
     }
 }
@@ -78,7 +82,11 @@ impl Commands {
     // }
     #[inline]
     pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
-        assert!((op_code as usize) < self.supported.len());
+        assert!(
+            (op_code as usize) < self.supported.len(),
+            "op_code:{}",
+            op_code
+        );
         let cmd = unsafe { self.supported.get_unchecked(op_code as usize) };
         if cmd.supported {
             Ok(cmd)
@@ -106,7 +114,7 @@ impl Commands {
     ) {
         let uppercase = name.to_uppercase();
         let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (Self::MAPPING_RANGE - 1);
-        assert!(idx < self.supported.len());
+        assert!(idx < self.supported.len(), "idx: {}", idx);
         // cmd 不能重复初始化
         assert!(!self.supported[idx].supported);
 
@@ -145,8 +153,9 @@ lazy_static! {
         for (name, req_type, op, padding_rsp, noforward) in vec![
             ("get", RequestType::Get, Get, 1, false),
             ("set", RequestType::Set, Store, 1, false),
-            // TODO 对于业务，当前不允许删除队列
+            // TODO 对于业务，当前不允许删除队列，暂时禁止路由
             // ("delete", RequestType::Delete, Store, 1, false),
+            ("delete", RequestType::Delete, Store, 3, true),
             ("stats", RequestType::Stats, Meta, 3, true),
             ("version", RequestType::Version, Meta, 2, true),
             ("quit", RequestType::Quit, Meta, 0, true),

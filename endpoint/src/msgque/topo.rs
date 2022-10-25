@@ -2,7 +2,6 @@ use discovery::TopologyWrite;
 use protocol::{Builder, Protocol, Request, Resource};
 use std::{
     collections::HashSet,
-    ops::Bound::{Included, Unbounded},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -18,27 +17,37 @@ use std::{
 use protocol::{Endpoint, Topology};
 use sharding::hash::{Hasher, HASH_PADDING};
 
+use crate::msgque::strategy::hitfirst::Node;
+
+use super::{
+    strategy::{hitfirst::HitFirstReader, robbin::RobbinWriter, QID},
+    Context,
+};
+
 // 读miss后的重试次数
-const READ_RETRY_COUNT: usize = 5;
+const READ_RETRY_COUNT: usize = 3;
 // 写失败后的重试次数
-const WRITE_RETRY_COUNT: usize = 10;
+const WRITE_RETRY_COUNT: usize = 3;
+// ip vintage下线后，N分钟后停止读
+const OFFLINE_STOP_READ_SECONDS: u64 = 60 * 20;
+// ip vintage下线后，N分钟从内存清理
+const OFFLINE_CLEAN_SECONDS: u64 = OFFLINE_STOP_READ_SECONDS + 60 * 2;
 
 #[derive(Clone)]
 pub struct MsgQue<B, E, Req, P> {
     service: String,
 
     // 读写stream需要分开，读会有大量的空读
-    streams_read: Vec<(String, E)>,
+    streams_read: Vec<(String, E, usize)>,
     streams_write: BTreeMap<usize, Vec<(String, E)>>,
-    offline: Vec<(String, E, Instant)>,
 
-    // 队列下一次应该要读取的位置索引(可能是当前的索引，也可能是下一个)
-    read_idx_next: Arc<AtomicUsize>,
-    // 在当前位置索引上读取消息的命中数量
-    // read_idx_hits: Arc<usize>,
+    // 轮询访问，N分钟后下线
+    streams_offline: Vec<(String, E)>,
+    offline_hits: Arc<AtomicUsize>,
+    offline_time: Instant,
 
-    // 在每个size的queue中，写的位置
-    // write_cursors: HashMap<usize, usize>,
+    read_strategy: HitFirstReader,
+    write_strategy: RobbinWriter,
     parser: P,
     // 占位hasher，暂时不需要真实计算
     hash_padding: Hasher,
@@ -56,10 +65,11 @@ impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
             service: Default::default(),
             streams_read: Default::default(),
             streams_write: Default::default(),
-            offline: Default::default(),
-            read_idx_next: Arc::new(AtomicUsize::new(0)),
-            // read_idx_hits: Arc::new(0),
-            // write_cursors: Default::default(),
+            streams_offline: Default::default(),
+            offline_hits: Default::default(),
+            offline_time: Instant::now(),
+            read_strategy: Default::default(),
+            write_strategy: Default::default(),
             parser: parser,
             max_size: super::BLOCK_SIZE,
             hash_padding: Hasher::from(HASH_PADDING),
@@ -116,7 +126,7 @@ where
     #[inline]
     fn exp_sec(&self) -> u32 {
         log::error!("msg queue does't support expire");
-        assert!(false);
+        assert!(false, "msg queue does't support expire");
         0
     }
 }
@@ -133,113 +143,102 @@ where
     #[inline]
     fn send(&self, mut req: Self::Item) {
         let mut ctx = super::Context::from(*req.mut_context());
+
         let inited = ctx.check_inited();
         let rw_count = ctx.get_and_incr_count();
 
-        // 队列始终不需要write bakc
+        // 队列始终不需要write back，即写成功后不需要继续写
         req.write_back(false);
 
         // 对于读请求：顺序读取队列，如果队列都去了到数据，就连续读N个，如果没读到，则尝试下一个ip，直到轮询完所有的ip
-        // 注意优先读取offline
+        // 注意空读后的最后一次请求，会概率尝试访问offline
         if req.operation().is_retrival() {
-            // 避免处理req时，topo变更了
-            let mut idx = self.read_idx_next.fetch_add(1, Ordering::Relaxed);
-            if idx >= 10000000 {
-                let _ = self.read_idx_next.compare_exchange(
-                    idx,
-                    0,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                );
-            }
-            idx = idx % self.streams_read.len();
+            let (get_offline, qid) = self.get_read_idx(&ctx, inited, rw_count);
+            assert!(
+                (get_offline && qid < self.streams_offline.len())
+                    || (!get_offline && qid < self.streams_read.len())
+            );
 
-            // 计算重试次数，如果还有未读完的继续，否则停止try
-            req.try_next(rw_count < READ_RETRY_COUNT);
+            if !get_offline {
+                ctx.update_qid(qid as u16);
+            }
+            // 是否重试：之前重试次数小于阀值-1，且不是从offline streams获取(offline是最后一次获取)
+            req.try_next(rw_count < (READ_RETRY_COUNT - 1) && !get_offline);
             *req.mut_context() = ctx.ctx;
             log::debug!(
-                "+++ mcq {} get from idx/{} req: {:?}",
-                rw_count,
-                idx,
+                "+++ mcq get {} from qid/{}, from_offline/{} req: {:?}",
+                self.service,
+                qid,
+                get_offline,
                 req.data()
             );
-            self.streams_read.get(idx).unwrap().1.send(req);
+            if !get_offline {
+                self.streams_read.get(qid).unwrap().1.send(req);
+            } else {
+                self.streams_offline.get(qid).unwrap().1.send(req);
+            }
             return;
         }
 
         // 写请求，需要根据消息的长度进行分组轮询写入
-        let len = req.data().len();
-        if !inited {
-            // 该条msg第一次写队列
-            for (i, streams) in self.streams_write.range((Included(len), Unbounded)) {
-                // let widx = *self.write_cursors.get(i).unwrap_or(&0);
-                let widx = rand::random::<usize>() % streams.len();
-                // 修改mq topo下一次用的写索引，每次都用当前size que的下一个位置
-                assert!(streams.len() > 0);
-                // self.update_next_write_idx(*i, widx + 1);
-                // req ctx 设置写的size、idx
-                ctx.update_write_size(*i);
-                ctx.update_idx(widx as u16);
-                req.try_next(WRITE_RETRY_COUNT > 1);
+        let mut wsize = ctx.get_write_size();
+        if wsize == 0 {
+            wsize = req.len();
+        }
+        let (qid, wsize) = self.write_strategy.next_queue_write(wsize);
+        ctx.update_write_size(wsize);
+        ctx.update_qid(qid);
+        req.try_next(rw_count < WRITE_RETRY_COUNT);
+        *req.mut_context() = ctx.ctx;
 
-                *req.mut_context() = ctx.ctx;
+        log::debug!(
+            "+++ will send mcq to {}/{}/{}, req:{:?}",
+            wsize,
+            qid,
+            rw_count,
+            req.data()
+        );
 
-                log::debug!("+++ mcq set idx/{} req: {:?}", widx, req.data());
+        let streams = self.streams_write.get(&wsize).unwrap();
+        let s = streams.get(qid as usize).unwrap();
+        s.1.send(req)
+    }
+}
 
-                // 发送写请求
-                streams.get(widx).unwrap().1.send(req);
-                return;
-            }
-
-            // 如果没有适合的queue，尝试用最大的
-            req.try_next(false);
-            log::warn!(
-                "msgque {} - too big msg/{}: {:?}",
-                self.service,
-                len,
-                req.data()
-            );
-
-            *req.mut_context() = ctx.ctx;
-            self.streams_write
-                .get(&self.max_size)
-                .unwrap()
-                .get(0)
-                .unwrap()
-                .1
-                .send(req);
-            return;
+//获得待读取的streams和qid，返回的bool指示是否从offline streams中读取，true为都offline stream
+impl<B, E, Req, P> MsgQue<B, E, Req, P>
+where
+    B: Send + Sync,
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+{
+    fn get_read_idx(&self, ctx: &Context, inited: bool, rw_count: usize) -> (bool, usize) {
+        // 本request前一次访问的idx
+        let last_qid = if !inited {
+            None
         } else {
-            // 如果已经尝试写入，但失败，首先尝试本size的queue，如果本size的queue重试完毕，则继续重试更大size的queue
-            let writed_size = ctx.get_write_size();
-            let start_idx = ctx.get_idx();
-            // 找到前一次写的streams
-            if let Some(writed_streams) = self.streams_write.get(&writed_size) {
-                if rw_count >= writed_streams.len() {
-                    // TODO：如果某个queuesize全部写失败，先简化处理，后续改为继续写下一个size的queue？fishermen
-                    req.try_next(false);
-                } else {
-                    req.try_next(rw_count < WRITE_RETRY_COUNT);
+            Some(ctx.get_last_qid())
+        };
+
+        if rw_count < (READ_RETRY_COUNT - 1) {
+            let qid = self.read_strategy.next_queue_read(last_qid);
+            return (false, qid as usize);
+        } else {
+            // 请求空后，最后一次访问，10%的概率尝试访问offline队列
+            if self.streams_offline.len() > 0 {
+                if self.offline_time.elapsed().as_secs() < OFFLINE_STOP_READ_SECONDS {
+                    if rand::random::<u32>() % 10 == 0 {
+                        let oqid = self.offline_hits.fetch_add(1, Ordering::Relaxed)
+                            % self.streams_offline.len();
+                        return (true, oqid);
+                    }
                 }
-                let i = (start_idx + rw_count) % writed_streams.len();
-
-                *req.mut_context() = ctx.ctx;
-
-                writed_streams.get(i).unwrap().1.send(req);
-            } else {
-                log::warn!(
-                    "+++ msg too big so try the biggest stream:{}/{:?}",
-                    req.len(),
-                    req.data()
-                );
-                self.streams_write
-                    .get(&self.max_size)
-                    .unwrap()
-                    .get(0)
-                    .unwrap()
-                    .1
-                    .send(req);
             }
+
+            // offline stream 窗口期已过，仍然从在线队列读取
+            let qid = self.read_strategy.next_queue_read(last_qid);
+            (false, qid as usize)
         }
     }
 }
@@ -251,17 +250,14 @@ where
     P: Protocol,
 {
     // 构建下线的队列
-    fn build_offline(
-        &mut self,
-        sized_queue: &BTreeMap<usize, Vec<String>>,
-    ) -> Vec<(String, E, Instant)> {
+    fn build_offline(&mut self, sized_queue: &BTreeMap<usize, Vec<String>>) -> Vec<(String, E)> {
         let mut new_addrs = HashSet::with_capacity(self.streams_read.len());
         let _ = sized_queue
             .iter()
             .map(|(_, ss)| new_addrs.extend(ss.clone()));
-        for (name, _) in self.streams_read.iter() {
+        for (name, _, _) in self.streams_read.iter() {
             if !new_addrs.contains(name) {
-                self.offline.push((
+                self.streams_offline.push((
                     name.clone(),
                     B::build(
                         name,
@@ -270,17 +266,16 @@ where
                         name,
                         self.timeout_read,
                     ),
-                    Instant::now(),
                 ));
             }
         }
 
         // TODO: 如果offline中有ip重新上线，清理掉
-        let mut offline = Vec::with_capacity(self.offline.len());
-        let old = self.offline.split_off(0);
-        for (name, s, instance) in old.into_iter() {
+        let mut offline = Vec::with_capacity(self.streams_offline.len());
+        let old = self.streams_offline.split_off(0);
+        for (name, s) in old.into_iter() {
             if !new_addrs.contains(&name) {
-                offline.push((name, s, instance));
+                offline.push((name, s));
             }
         }
 
@@ -293,23 +288,26 @@ where
         addrs: &BTreeMap<usize, Vec<String>>,
         name: &str,
         timeout: Duration,
-    ) -> Vec<(String, E)> {
+    ) -> Vec<(String, E, usize)> {
         let mut streams = Vec::with_capacity(addrs.len());
-        for ss in addrs.values() {
-            streams.extend(ss);
+        for (size, servs) in addrs.iter() {
+            for s in servs.iter() {
+                streams.push((s, size));
+            }
         }
         streams
             .into_iter()
-            .map(|s| {
+            .map(|(srv, size)| {
                 (
-                    s.clone(),
-                    old.remove(s).unwrap_or(B::build(
-                        s,
+                    srv.clone(),
+                    old.remove(srv).unwrap_or(B::build(
+                        srv,
                         self.parser.clone(),
                         Resource::MsgQue,
                         name,
                         timeout,
                     )),
+                    *size,
                 )
             })
             .collect()
@@ -367,6 +365,18 @@ where
         self.max_size = max_size;
         streams
     }
+
+    // TODO: 下线ips在清理时间下线，如何触发？
+    // fn clean_offline_streams(&mut self) {
+    //     log::info!(
+    //         "msgque {} will clean offline streams/{}",
+    //         self.streams_offline.len()
+    //     );
+    //     if self.offline_time.elapsed().as_secs() > OFFLINE_CLEAN_SECONDS {
+    //         self.streams_offline.clear();
+    //         self.offline_hits.store(0, Ordering::Relaxed);
+    //     }
+    // }
 }
 
 impl<B, E, Req, P> TopologyWrite for MsgQue<B, E, Req, P>
@@ -379,7 +389,7 @@ where
     fn update(&mut self, name: &str, cfg: &str) {
         if let Some(ns) = super::config::Namespace::try_from(cfg, name) {
             log::debug!("+++ updating msgque for {}", name);
-            assert!(ns.sized_queue.len() > 0);
+            assert!(ns.sized_queue.len() > 0, "msgque: {}, cfg:{}", name, cfg);
 
             self.service = name.to_string();
 
@@ -388,10 +398,22 @@ where
 
             let old_r = self.streams_read.split_off(0);
             let mut old_streams_read: HashMap<String, E> =
-                old_r.into_iter().map(|(addr, e)| (addr, e)).collect();
+                old_r.into_iter().map(|(addr, e, _)| (addr, e)).collect();
 
-            // 首先构建offline stream
-            self.offline = self.build_offline(&ns.sized_queue);
+            // 首先构建offline stream，如果前一次下线ips已经超时，先清理
+            if self.offline_time.elapsed().as_secs() > OFFLINE_CLEAN_SECONDS
+                && self.streams_offline.len() > 0
+            {
+                self.streams_offline.clear();
+                log::info!(
+                    "clear mcq last offline ips:{}/{}",
+                    name,
+                    self.streams_offline.len()
+                );
+            }
+            self.streams_offline = self.build_offline(&ns.sized_queue);
+            self.offline_time = Instant::now();
+            self.offline_hits.store(0, Ordering::Relaxed);
 
             // 构建读stream
             self.streams_read = self.build_read_streams(
@@ -400,16 +422,39 @@ where
                 name,
                 self.timeout_read,
             );
+            let readers_assit = self
+                .streams_read
+                .iter()
+                .enumerate()
+                .map(|(i, (_, _, size))| Node::from(i as QID, *size))
+                .collect();
+            self.read_strategy = HitFirstReader::from(readers_assit);
 
             // 构建写stream
             self.streams_write = self.build_write_stream(&ns.sized_queue, name, self.timeout_write);
-
+            let writers_assist = self
+                .streams_write
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        *k,
+                        v.iter().enumerate().map(|(i, (_, _))| i as QID).collect(),
+                    )
+                })
+                .collect();
+            self.write_strategy = RobbinWriter::from(writers_assist);
             log::debug!(
                 "+++ updated msgque for offline/{}, reads/{}, writes/{}",
-                self.offline.len(),
+                self.streams_offline.len(),
                 self.streams_read.len(),
                 self.streams_write.len()
             );
+
+            // TODO: 10分钟后，清理offline streams
+            // rt::spawn(async move {
+            //     tokio::time::sleep(Duration::from_secs(OFFLINE_CLEAN_SECONDS)).await;
+            //     self.clean_offline_streams();
+            // });
         }
     }
 }

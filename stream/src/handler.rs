@@ -25,7 +25,6 @@ pub(crate) struct Handler<'r, Req, P, S> {
     num_tx: usize,
 
     rtt: Metric,
-    slow: Metric,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
@@ -49,13 +48,7 @@ where
     }
 }
 impl<'r, Req, P, S> Handler<'r, Req, P, S> {
-    pub(crate) fn from(
-        data: &'r mut Receiver<Req>,
-        s: S,
-        parser: P,
-        rtt: Metric,
-        slow: Metric,
-    ) -> Self
+    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, rtt: Metric) -> Self
     where
         S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
     {
@@ -67,7 +60,6 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
             parser,
             buf: StreamGuard::new(),
             rtt,
-            slow,
             num_rx: 0,
             num_tx: 0,
         }
@@ -120,11 +112,7 @@ impl<'r, Req, P, S> Handler<'r, Req, P, S> {
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
-                        let rtt = req.start_at().elapsed();
-                        self.rtt += rtt;
-                        if rtt >= metrics::MAX {
-                            self.slow += rtt;
-                        }
+                        self.rtt += req.start_at().elapsed();
                         debug_assert!(
                             self.parser.check(req.cmd(), &cmd),
                             "{:?} {:?} => {:?}",
@@ -198,28 +186,3 @@ impl<'r, Req, P, S> Debug for Handler<'r, Req, P, S> {
         )
     }
 }
-
-//const H_SIZE: usize = 16;
-//const H_MASK: usize = H_SIZE - 1;
-//#[derive(Default, Debug)]
-//struct History {
-//    //reqs: [Vec<u8>; H_SIZE],
-////resp: [Vec<u8>; H_SIZE],
-//}
-//impl History {
-//    #[inline]
-//    fn insert_req<Req: Request>(&mut self, seq: usize, req: &Req) {
-//        //let idx = seq & H_MASK;
-//        //self.reqs[idx] = req.data().to_vec();
-//    }
-//    #[inline]
-//    fn insert_resp(&mut self, seq: usize, resp: &protocol::Command) {
-//        //let idx = seq & H_MASK;
-//        //self.resp[idx] = resp.data().to_vec();
-//    }
-//    #[inline]
-//    fn insert_resp_empty(&mut self, seq: usize) {
-//        //let idx = seq & H_MASK;
-//        //self.resp[idx] = Vec::new();
-//    }
-//}

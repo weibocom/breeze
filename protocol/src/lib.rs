@@ -17,43 +17,15 @@ pub use parser::Proto as Protocol;
 pub use parser::*;
 pub use topo::*;
 
+mod write;
+pub use write::*;
+
 pub use req::*;
 mod operation;
 pub use operation::*;
 
 pub mod callback;
 pub mod request;
-
-pub trait Writer {
-    fn pending(&self) -> usize;
-    // 写数据，一次写完
-    fn write(&mut self, data: &[u8]) -> Result<()>;
-    #[inline]
-    fn write_u8(&mut self, v: u8) -> Result<()> {
-        self.write(&[v])
-    }
-
-    // hint: 提示可能优先写入到cache
-    #[inline]
-    fn cache(&mut self, _hint: bool) {}
-
-    #[inline]
-    fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
-        let mut oft = oft;
-        let len = data.len();
-        log::debug!("+++ will write to client/server:{:?}", data);
-        while oft < len {
-            let data = data.read(oft);
-            oft += data.len();
-            if oft < len {
-                // 说明有多次写入，将其cache下来
-                self.cache(true);
-            }
-            self.write(data)?;
-        }
-        Ok(())
-    }
-}
 
 #[derive(Copy, Clone)]
 pub enum Resource {
@@ -84,20 +56,3 @@ pub trait Builder<P, R, E> {
 mod error;
 pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl Writer for Vec<u8> {
-    #[inline]
-    fn pending(&self) -> usize {
-        self.len()
-    }
-    #[inline]
-    fn write(&mut self, data: &[u8]) -> Result<()> {
-        ds::vec::Buffer::write(self, data);
-        Ok(())
-    }
-    #[inline]
-    fn write_u8(&mut self, v: u8) -> Result<()> {
-        self.push(v);
-        Ok(())
-    }
-}

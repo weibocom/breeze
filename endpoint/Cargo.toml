@@ -16,13 +16,14 @@ stream = { path = "../stream" }
 log = { path = "../log" }
 rt = { path = "../rt" }
 
-tokio = { version = "1.20.1" }
+tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time", "fs"], default-features = false }
 byteorder = "1.4.3"
 bytes = "1.0.1"
 
-enum_dispatch = "0.3.7"
+enum_dispatch = "0.3.8"
 serde = { version = "1.0.126", features = ["derive"] }
 serde_derive = "1.0.126"
 serde_yaml = "0.8.17"
 serde_json = "1.0.65"
 rand = "0.8.4"
+

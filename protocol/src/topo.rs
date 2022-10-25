@@ -74,59 +74,6 @@ where
 pub trait TopologyCheck: Sized {
     fn check(&mut self) -> Option<Self>;
 }
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-
-pub type BorrowRawPtr = usize;
-pub type BorrowPtrGuard = Arc<AtomicUsize>;
-// 支持callback时，避免循环依赖，使用BorrowPtr。
-#[derive(Clone)]
-pub struct BorrowPtr<T> {
-    ptr: *const T,
-    guard: BorrowPtrGuard,
-}
-impl<T> BorrowPtr<T> {
-    #[inline]
-    pub fn new(ptr: T) -> Self {
-        let ptr = Box::leak(Box::new(ptr)) as *const T;
-        Self {
-            ptr,
-            guard: Arc::new(AtomicUsize::new(1)),
-        }
-    }
-    #[inline]
-    pub unsafe fn as_ref(&self) -> &T {
-        &*self.ptr
-    }
-    #[inline]
-    pub fn borrow(&self) -> (BorrowRawPtr, BorrowPtrGuard) {
-        self.guard.fetch_add(1, Ordering::AcqRel);
-        (self.ptr as usize, self.guard.clone())
-    }
-}
-impl<T> Drop for BorrowPtr<T> {
-    #[inline]
-    fn drop(&mut self) {
-        let _borrowd = self.guard.fetch_sub(1, Ordering::Relaxed);
-        log::debug!("borrowed return:{}", _borrowd);
-    }
-}
-
-pub trait Borrow {
-    type Item;
-    unsafe fn borrow(&self) -> (*const Self::Item, BorrowPtrGuard);
-}
-
-impl<T> Borrow for std::sync::Arc<T>
-where
-    T: Borrow,
-{
-    type Item = T::Item;
-    #[inline]
-    unsafe fn borrow(&self) -> (*const Self::Item, BorrowPtrGuard) {
-        (**self).borrow()
-    }
-}
 
 pub trait Single {
     fn single(&self) -> bool;

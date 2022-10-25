@@ -1,14 +1,13 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::task::{Context, Poll};
+use std::sync::atomic::{AtomicUsize, Ordering::*};
+use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
-use ds::AtomicWaker;
-use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use ds::AtomicWaker;
 use protocol::{
     Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
 };
@@ -47,11 +46,10 @@ where
         req_dropped: AtomicUsize::new(0),
 
         dropping: Vec::new(),
-        req_new_s: 0,
-        dropping_at: Instant::now(),
+        //req_new_s: 0,
+        //dropping_at: Instant::now(),
     };
-    let timeout = std::time::Duration::from_secs(10);
-    rt::Entry::from(pipeline, timeout).await
+    rt::Entry::from(pipeline, Duration::from_secs(10)).await
 }
 
 struct CopyBidirectional<C, P, T> {
@@ -74,10 +72,10 @@ struct CopyBidirectional<C, P, T> {
     req_new: usize,           // 当前连接创建的req数量
     req_dropped: AtomicUsize, // 销毁的连接的数量
 
-    // 等待删除的top
-    dropping: Vec<(T, Callback)>,
-    req_new_s: usize,
-    dropping_at: Instant,
+    // 等待删除的top. 第三个元素是dropping时的req_new的值。
+    dropping: Vec<(T, Callback, usize)>,
+    //req_new_s: usize,
+    //dropping_at: Instant,
 }
 impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
@@ -144,7 +142,6 @@ where
             rx_buf,
             first,
             cb,
-            metrics,
             req_new,
             req_dropped,
             ..
@@ -160,25 +157,7 @@ where
             req_dropped,
         };
 
-        use protocol::Error::ProtocolNotSupported;
-        match parser.parse_request(rx_buf, top.hasher(), &mut processor) {
-            Ok(o) => return Ok(o),
-            Err(ProtocolNotSupported) => {
-                // 统计异常
-                *metrics.unsupport_cmd() += 1;
-                // 发送异常信息给client
-                log::warn!("found a unsupported request");
-                self.client
-                    .write(ProtocolNotSupported.to_string().as_bytes())?;
-                Err(ProtocolNotSupported)
-            }
-            Err(e) => {
-                // 发送异常信息给client
-                log::warn!("parse request err:{:?}", e);
-                self.client.write(e.to_string().as_bytes())?;
-                Err(e)
-            }
-        }
+        parser.parse_request(rx_buf, top.hasher(), &mut processor)
     }
     // 处理pending中的请求，并且把数据发送到buffer
     #[inline]
@@ -206,17 +185,13 @@ where
             }
             let mut ctx = pending.pop_front().expect("front");
             let last = ctx.last();
-            if !last {
-                // 当前不是最后一个值。也优先写入cache
-                client.cache(true);
-            }
+            // 当前不是最后一个值。也优先写入cache
+            client.cache(!last);
             let op = ctx.request().operation();
             *metrics.key() += 1;
 
-            if op.is_query() {
-                let hit = ctx.response_ok() as usize;
-                *metrics.hit() += hit;
-                *metrics.cache() += (hit, 1);
+            if parser.cache() && op.is_query() {
+                *metrics.cache() += ctx.response_ok();
             }
 
             if ctx.inited() && !ctx.request().ignore_rsp() {
@@ -227,11 +202,7 @@ where
                 ctx.async_start_write_back(parser);
             } else if ctx.request().ignore_rsp() {
                 // do nothing!
-                log::debug!(
-                    "+++ ignore req:{:?}, resp:{:?}",
-                    ctx.request().data(),
-                    ctx.response().data()
-                )
+                log::debug!("+++ ignore resp:{:?}=>{:?}", ctx.request(), ctx.response())
             } else {
                 let req = ctx.request();
                 if !req.noforward() {
@@ -324,19 +295,14 @@ impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Re
         }
         self.rx_buf.try_gc()
             && self.pending.len() == 0
-            && self.req_new == self.req_dropped.load(Ordering::Acquire)
+            && self.req_new == self.req_dropped.load(Acquire)
     }
+    //#[inline]
+    //fn need_refresh(&self) -> bool {
+    //    true
+    //}
     #[inline]
-    fn need_refresh(&self) -> bool {
-        true
-    }
-    #[inline]
-    fn refresh(&mut self) {
-        assert!(
-            self.req_new >= self.req_dropped.load(Ordering::Acquire),
-            "{:?}",
-            self
-        );
+    fn refresh(&mut self) -> bool {
         if let Some(top) = self.top.check() {
             unsafe {
                 let old = std::ptr::replace(&mut self.top as *mut T, top);
@@ -344,26 +310,28 @@ impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Re
                 let cb = callback(&self.top);
                 let old_cb = std::ptr::replace(&mut self.cb as *mut _, cb);
 
-                self.dropping.push((old, old_cb));
-                self.req_new_s = self.req_new;
-                self.dropping_at = Instant::now();
+                self.dropping.push((old, old_cb, self.req_new));
+                //self.req_new_s = self.req_new;
+                //self.dropping_at = Instant::now();
             }
         }
         if self.dropping.len() > 0 {
-            let req_dropped = self.req_dropped.load(Ordering::Acquire);
-            if req_dropped >= self.req_new {
+            assert!(self.req_new >= self.req_dropped.load(Acquire), "{:?}", self);
+            let req_dropped = self.req_dropped.load(Acquire);
+            let max = self.dropping.last().expect("dropping").2;
+            if req_dropped >= max {
                 self.dropping.clear();
-                return;
             }
             // 1024是一个经验值
             // 如果访问量比较低，则很满足满足req_dropped > req_new
-            if req_dropped > self.req_new_s + 1024
-                && self.dropping_at.elapsed() >= Duration::from_secs(15)
-            {
-                log::warn!("top pending over 15 secs, dropping forcefully. {:?}", self);
-                self.dropping.clear();
-            }
+            //if req_dropped > self.req_new_s + 1024
+            //    && self.dropping_at.elapsed() >= Duration::from_secs(15)
+            //{
+            //    log::warn!("top pending over 15 secs, dropping forcefully. {:?}", self);
+            //    self.dropping.clear();
+            //}
         }
+        true
     }
 }
 impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
@@ -371,15 +339,14 @@ impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:{} flush:{} rx buf: {} dropping:{} requests: {}({}) => {}",
+            "{} => pending:{} flush:{} rx buf: {} dropping:{} requests: {} => {}",
             self.metrics.biz(),
             self.pending.len(),
             self.flush,
             self.rx_buf.len(),
             self.dropping.len(),
             self.req_new,
-            self.req_new_s,
-            self.req_dropped.load(Ordering::Acquire)
+            self.req_dropped.load(Acquire)
         )
     }
 }

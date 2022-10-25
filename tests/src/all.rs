@@ -11,6 +11,7 @@ mod proto;
 mod protocol;
 // mod redis;
 mod hash_test;
+mod redis;
 mod ring_slice;
 //mod size;
 //mod slice;

@@ -41,3 +41,50 @@ impl<'r> Responder<'r, 'r> for PrometheusMetricsResponse {
         response.status(Status::Processing).ok()
     }
 }
+
+// 定期发心跳
+pub(crate) fn register_target(ctx: &context::Context) {
+    if ctx.metrics_url.is_empty() {
+        return;
+    }
+    let url = ctx.metrics_url.to_string();
+    let path = "/api/v1/prom/service-discovery/register";
+    let url = if url.starts_with("http") {
+        format!("{}{}", url, path)
+    } else {
+        format!("http://{}{}", url, path)
+    };
+    let port = ctx.port;
+    let pool = ctx.service_pool.to_string();
+    rt::spawn(async move {
+        let body = format!(
+            r#"
+{{
+  "labels": {{
+    "pool": "{}",
+    "job": "datamesh-agent"
+  }},
+  "target": "{}:{}"
+}}"#,
+            pool,
+            metrics::local_ip(),
+            port
+        );
+        let client = reqwest::Client::new();
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        let mut q = vec![("refresh", true)];
+        loop {
+            let body = body.clone();
+            match client.put(&url).query(&q).body(body).send().await {
+                Err(_e) => log::error!("register metrics target failed: {:?} {}", _e, url),
+                Ok(r) => {
+                    if r.status() != 200 {
+                        log::debug!("register metrics target failed: {} {}", url, r.status());
+                    }
+                    q[0].1 = false
+                }
+            }
+            interval.tick().await;
+        }
+    });
+}

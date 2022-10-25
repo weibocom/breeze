@@ -58,7 +58,7 @@ impl McqText {
         packet.parse()?;
 
         let mut flag = Flag::new();
-        if !packet.is_empty() {
+        if packet.is_succeed() {
             flag.set_status_ok(true);
         }
         let mem = packet.take();
@@ -106,7 +106,7 @@ impl Protocol for McqText {
         _dist_fn: F,
     ) -> Result<usize> {
         // mcq 没有sentonly指令
-        assert!(!req.sentonly());
+        assert!(!req.sentonly(), "req: {:?}", req.data());
         let cfg = command::get_cfg(req.op_code())?;
         let rsp = cfg.padding_rsp();
 
