@@ -81,9 +81,9 @@ where
         if !req.operation().master_only() {
             let mut ctx = super::Context::from(*req.mut_context());
             let (i, try_next, write_back) = if req.operation().is_store() {
-                self.get_context_store(&mut ctx, req.cmd().try_next_type())
+                self.context_store(&mut ctx, req.cmd().try_next_type())
             } else {
-                self.get_context_get(&mut ctx)
+                self.context_get(&mut ctx)
             };
             req.try_next(try_next);
             req.write_back(write_back);
@@ -94,7 +94,7 @@ where
                 return;
             }
         }
-        log::debug!("request sent prepared:{} {} {}", idx, req, self);
+        log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
         assert!(
             idx < self.streams.len(),
             "{} < {} => {:?}",
@@ -110,7 +110,7 @@ where
     E: Endpoint<Item = Req>,
 {
     #[inline]
-    fn get_context_store(
+    fn context_store(
         &self,
         ctx: &mut super::Context,
         try_next_type: TryNextType,
@@ -145,7 +145,7 @@ where
     // 第一次访问到主，下一次访问从
     // 最多访问两次
     #[inline]
-    fn get_context_get(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
+    fn context_get(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         if !ctx.check_and_inited(false) {
             idx = self.streams.select_idx();

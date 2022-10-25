@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 log = { path = "../log" }
-tokio = {version = "1.21.1", features = ["rt", "net", "rt-multi-thread", "time", "macros"]}
+tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time"], default-features = false }
 
 byteorder = "1.4.3"
 rand = "0.8.4"

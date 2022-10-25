@@ -105,14 +105,14 @@ impl Metrics {
         }
         log::info!("chunks scaled:{}", self);
     }
-    pub(crate) fn write<W: crate::ItemWriter>(&self, w: &mut W, secs: f64) {
-        for i in 0..self.len {
-            let item = self.get_item(i);
-            if item.inited() {
-                item.snapshot(w, secs);
-            }
-        }
-    }
+    //pub(crate) fn write<W: crate::ItemWriter>(&self, w: &mut W, secs: f64) {
+    //    for i in 0..self.len {
+    //        let item = self.get_item(i);
+    //        if item.inited() {
+    //            item.snapshot(w, secs);
+    //        }
+    //    }
+    //}
 }
 
 #[inline]

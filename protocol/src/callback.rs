@@ -65,7 +65,11 @@ impl CallbackContext {
     }
     #[inline]
     pub(crate) fn on_noforward(&mut self) {
-        assert!(self.request().noforward());
+        assert!(
+            self.request().noforward(),
+            "req: {:?}",
+            self.request().data()
+        );
         self.on_done();
     }
 
@@ -108,7 +112,7 @@ impl CallbackContext {
         }
         if !self.ctx.drop_on_done() {
             // 说明有请求在pending
-            assert!(!self.complete());
+            assert!(!self.complete(), "req:{:?}", self.request().data());
             self.ctx.complete.store(true, Ordering::Release);
             self.wake();
         } else {
@@ -119,8 +123,9 @@ impl CallbackContext {
     fn need_goon(&self) -> bool {
         if !self.is_in_async_write_back() {
             // 正常访问请求。
-            // 除非出现了error，否则最多只尝试一次
-            self.ctx.try_next && !self.response_ok() && self.tries < 2
+            // old: 除非出现了error，否则最多只尝试一次;
+            // 为了提升mcq的读写效率，tries改为3次
+            self.ctx.try_next && !self.response_ok() && self.tries < 3
         } else {
             // write back请求
             self.ctx.write_back
@@ -132,6 +137,8 @@ impl CallbackContext {
     }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
+        // 正常err场景，仅仅在debug时check
+        log::debug!("++++  hanle found err: {:?}", err);
         match err {
             Error::Closed => {}
             Error::ChanDisabled => {}
@@ -335,8 +342,8 @@ impl CallbackContextPtr {
     //需要在on_done时主动销毁self对象
     #[inline]
     pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P) {
-        assert!(self.inited());
-        assert!(self.complete());
+        assert!(self.inited(), "cbptr:{:?}", &*self);
+        assert!(self.complete(), "cbptr:{:?}", &*self);
         if self.is_write_back() && self.response_ok() {
             let exp = self.callback.exp_sec();
             if let Some(new) = parser.build_writeback_request(&mut self, exp) {

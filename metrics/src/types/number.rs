@@ -47,7 +47,9 @@ impl Number {
     #[inline]
     pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
         let cur = self.inner.cur.load(Ordering::Relaxed);
-        w.write(&id.path, id.key, id.t.name(), cur as f64);
+        if cur > 0 {
+            w.write(&id.path, id.key, id.t.name(), cur);
+        }
     }
     #[inline]
     pub(crate) fn incr(&self, v: i64) {

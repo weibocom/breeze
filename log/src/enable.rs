@@ -36,8 +36,7 @@ macro_rules! log {
             log::private_api_log(
                 format_args!($($arg)+),
                 lvl,
-                &(module_path!(), module_path!(), file!(), line!()),
-                None,
+                &(module_path!(), module_path!(), file!(), line!())
                 );
         }
     };)
@@ -48,9 +47,8 @@ pub fn private_api_log(
     args: std::fmt::Arguments,
     level: Level,
     &(target, module_path, file, line): &(&str, &'static str, &'static str, u32),
-    kvs: Option<&[(&str, &dyn log::kv::ToValue)]>,
 ) {
-    log::__private_api_log(args, level, &(target, module_path, file, line), kvs);
+    log::__private_api_log(args, level, &(target, module_path, file, line), None);
 }
 #[macro_export]
 macro_rules! log_enabled {
@@ -111,13 +109,7 @@ pub fn init(path: &str, l: &str) -> Result<()> {
         .build(file, policy)
         .unwrap();
 
-    let level = match l {
-        "trace" | "debug" => LevelFilter::Debug,
-        "info" => LevelFilter::Info,
-        "warn" => LevelFilter::Warn,
-        "error" | "fatal" => LevelFilter::Error,
-        _ => LevelFilter::Info,
-    };
+    let level = l.parse().unwrap_or(LevelFilter::Info);
     let config = Config::builder()
         .appender(Appender::builder().build("logfile", Box::new(logfile)))
         .build(Root::builder().appender("logfile").build(level))

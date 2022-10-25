@@ -4,8 +4,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use std::task::ready;
 use metrics::{Metric, Path};
+use std::task::ready;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     time::{interval, Interval, MissedTickBehavior},
@@ -27,12 +27,14 @@ pub trait ReEnter {
     // true: 成功关闭，释放相关资源
     // false: 还有资源未释放
     fn close(&mut self) -> bool;
+    //#[inline]
+    //fn need_refresh(&self) -> bool {
+    //    false
+    //}
     #[inline]
-    fn need_refresh(&self) -> bool {
+    fn refresh(&mut self) -> bool {
         false
     }
-    #[inline]
-    fn refresh(&mut self) {}
 }
 pub trait Cancel {
     fn cancel(&mut self);
@@ -63,7 +65,7 @@ pub struct Entry<F> {
     ready: bool,
     refresh_tick: Interval,
     out: Option<Result<()>>,
-    runs: usize,
+    //runs: usize,
 }
 impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
     #[inline]
@@ -71,7 +73,7 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
         let mut tick = interval(timeout.max(Duration::from_millis(50)));
         tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-        let mut refresh_tick = interval(Duration::from_secs(3));
+        let mut refresh_tick = interval(Duration::from_secs(30));
         refresh_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         let m_reenter = Path::base().rtt("reenter10ms");
@@ -85,18 +87,18 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
             ready: false,
             out: None,
             refresh_tick,
-            runs: 0,
+            //runs: 0,
         }
     }
     #[inline]
     fn poll_run(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let now = Instant::now();
-        if self.inner.need_refresh() {
-            self.runs += 1;
-            if self.runs & 15 == 0 {
-                self.inner.refresh();
-            }
-        }
+        //if self.inner.need_refresh() {
+        //    self.runs += 1;
+        //    if self.runs & 15 == 0 {
+        //        self.inner.refresh();
+        //    }
+        //}
 
         let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
         if tx > rx {
@@ -122,14 +124,14 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
                 ready!(self.tick.poll_tick(cx));
             }
         } else {
-            if self.inner.need_refresh() {
-                // 如果需要刷新，则不阻塞在原有的pending上
-                if ret.is_pending() {
-                    loop {
-                        ready!(self.refresh_tick.poll_tick(cx));
-                    }
+            //if self.inner.need_refresh() {
+            // 如果需要刷新，则不阻塞在原有的pending上
+            if self.inner.refresh() && ret.is_pending() {
+                loop {
+                    ready!(self.refresh_tick.poll_tick(cx));
                 }
             }
+            //}
             ret
         }
     }
