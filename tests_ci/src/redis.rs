@@ -2,6 +2,7 @@
 //! ## 基本操作验证
 //! - basic set
 //! - set 过期时间后, ttl > 0
+//! - mget 两个key
 //! - mget 两个key, 其中只有一个set了, 预期应有一个none结果
 //! - basic del
 //! - basic incr
@@ -14,7 +15,8 @@
 //!  - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
 //! 从mesh读取, 验证业务写入与mesh读取之间的一致性
 //! - value大小数组[4, 40, 400, 4000, 8000, 20000, 3000000],依次set后随机set,验证buffer扩容
-//! - pipiline方式,set 两个key后,mget读取
+//! - key大小数组[4, 40, 400, 4000], 依次set后get
+//! - pipiline方式,set 两个key后,mget读取(注释了,暂未验证)
 
 use crate::ci::env::*;
 use crate::redis_helper::*;
@@ -313,4 +315,33 @@ fn test_set_value_fix_size() {
         redis::cmd("SET").arg(arykey).arg(&val).execute(&mut con);
         assert_eq!(redis::cmd("GET").arg(arykey).query(&mut con), Ok(val));
     }
+}
+
+///依次set key长度为[4, 40, 400, 4000]
+#[test]
+fn test_set_key_fix_size() {
+    let mut con = get_conn(&file!().get_host());
+
+    let key_sizes = [4, 40, 400, 4000];
+    for key_size in key_sizes {
+        let key = vec![1u8; key_size];
+        redis::cmd("SET").arg(&key).arg("foo").execute(&mut con);
+        assert_eq!(
+            redis::cmd("GET").arg(&key).query(&mut con),
+            Ok("foo".to_string())
+        );
+    }
+}
+
+//mget 获取10000个key
+#[test]
+fn test_mget_10000() {
+    let mut con = get_conn(&file!().get_host());
+
+    let maxkey = 10000;
+    let mut keys = Vec::with_capacity(maxkey);
+    for i in 1..=maxkey {
+        keys.push(i);
+    }
+    assert_eq!(redis::cmd("MGET").arg(&keys).query(&mut con), Ok(keys));
 }
