@@ -1,9 +1,5 @@
 #[cfg(test)]
 mod proto_test {
-    use std::{
-        collections::{HashMap, HashSet},
-        io::{Error, ErrorKind, Result},
-    };
 
     use protocol::parser::Stream;
     use std::ptr::copy_nonoverlapping as copy;
@@ -49,9 +45,9 @@ mod proto_test {
 
     #[test]
     fn test_redis_panic() {
-        const CAP: usize = 2048;
+        const _CAP: usize = 2048;
         let start = 4636157;
-        let end = 4637617;
+        let _end = 4637617;
         let mut buf = stream::buffer::StreamGuard::raw_init(2048);
         let mut w = 0;
         while w < start {
@@ -74,7 +70,7 @@ mod proto_test {
 
         use protocol::Protocol;
         let redis = protocol::redis::Redis {};
-        redis.parse_response(&mut buf);
+        let _resp = redis.parse_response(&mut buf);
     }
     const DATA: [u8; 0] = [];
 }

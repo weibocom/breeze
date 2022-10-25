@@ -7,13 +7,14 @@ use std::collections::HashMap;
 use std::vec;
 
 use crate::ci::env::exists_key_iter;
-
+#[allow(dead_code)]
 fn rand_num() -> u32 {
     let mut rng = rand::thread_rng();
     rng.gen::<u32>()
     //rng.gen_range(0..18446744073709551615)
     //18446744073709551
 }
+#[allow(dead_code)]
 fn rand_key(tail: &str) -> String {
     let mut rng = thread_rng();
     let mut s: String = (&mut rng)
@@ -24,7 +25,7 @@ fn rand_key(tail: &str) -> String {
     s.push_str(tail);
     s
 }
-
+#[allow(dead_code)]
 fn record_max_key() {}
 
 // set 1 2, ..., set 10000 10000等一万个key已由java sdk预先写入,
