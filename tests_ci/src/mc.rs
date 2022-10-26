@@ -7,7 +7,6 @@
 ///     数据由 java SDK 预先写入：key: 0...9999  value: 0...9999
 /// - 模拟简单mc add命令: get -> add -> get
 ///     
-use crate::ci::env::*;
 
 mod mc_test {
 
@@ -32,9 +31,12 @@ mod mc_test {
         let mut v_sizes = [1048507, 4, 4000, 40, 8000, 20000, 0, 400];
         for v_size in v_sizes {
             let val = vec![0x41; v_size];
-            assert_eq!(client
-                .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
-                .is_ok(),true);
+            assert_eq!(
+                client
+                    .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
+                    .is_ok(),
+                true
+            );
             let result: Result<String, bmemcached::errors::Error> = client.get(key);
             assert!(result.is_ok());
             assert_eq!(
@@ -68,7 +70,7 @@ mod mc_test {
         for value in exists_key_iter() {
             key = value.to_string();
             let result: Result<Vec<u8>, bmemcached::errors::Error> = client.get(key);
-            assert!(result.is_ok(),"result : {:?}",result);
+            assert!(result.is_ok(), "result : {:?}", result);
             assert_eq!(result.expect("ok"), value.to_string().into_bytes());
         }
     }
@@ -95,7 +97,7 @@ mod mc_test {
         assert_eq!(result.expect("ok"), value);
     }
 
-    /// 测试场景：基本的mc get 命令验证 
+    /// 测试场景：基本的mc get 命令验证
     /// 测试步骤：get(key) key 为预先写入的key
     #[test]
     fn mc_simple_get() {
