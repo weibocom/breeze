@@ -3,14 +3,22 @@
 ///     key: "fooset"  value: 每个字符内容为 ‘A’
 ///     乱序set: [1048507, 4, 4000, 40, 8000, 20000, 0, 400]
 ///     顺序set: [0, 4, 40, 400, 4000, 8000, 20000, 1048507]
+///
 /// - 模拟mc已有10000条数据，通过 mesh 读取，验证数据一致性
 ///     数据由 java SDK 预先写入：key: 0...9999  value: 0...9999
-/// - 模拟简单mc add命令: get -> add -> get
-///     
+///  
+/// - 模拟简单mc 基本命令:
+///     包括: add、get、replace、delete、append、prepend、gets、cas、incr、decr
+///     set命令未单独测试；
+///
+/// -
+use crate::ci::env::*;
 
 mod mc_test {
 
-    use bmemcached::MemcachedClient;
+    use std::collections::HashMap;
+
+    use memcache::{Client, MemcacheError};
 
     use crate::ci::env::{exists_key_iter, Mesh};
 
@@ -31,16 +39,18 @@ mod mc_test {
         let mut v_sizes = [1048507, 4, 4000, 40, 8000, 20000, 0, 400];
         for v_size in v_sizes {
             let val = vec![0x41; v_size];
+            let res = client.set(key, &String::from_utf8_lossy(&val).to_string(), 2);
+            println!("res :{:?}",res);
             assert_eq!(
                 client
                     .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
                     .is_ok(),
                 true
             );
-            let result: Result<String, bmemcached::errors::Error> = client.get(key);
+            let result: Result<Option<String>, MemcacheError> = client.get(key);
             assert!(result.is_ok());
             assert_eq!(
-                result.expect("ok"),
+                result.expect("ok").expect("ok"),
                 String::from_utf8_lossy(&val).to_string()
             );
         }
@@ -50,10 +60,10 @@ mod mc_test {
             assert!(client
                 .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
                 .is_ok());
-            let result: Result<String, bmemcached::errors::Error> = client.get(key);
+            let result: Result<Option<String>, MemcacheError> = client.get(key);
             assert!(result.is_ok());
             assert_eq!(
-                result.expect("ok"),
+                result.expect("ok").expect("ok"),
                 String::from_utf8_lossy(&val).to_string()
             );
         }
@@ -69,32 +79,42 @@ mod mc_test {
         let mut key: String;
         for value in exists_key_iter() {
             key = value.to_string();
-            let result: Result<Vec<u8>, bmemcached::errors::Error> = client.get(key);
-            assert!(result.is_ok(), "result : {:?}", result);
-            assert_eq!(result.expect("ok"), value.to_string().into_bytes());
+            let result: Result<Option<u64>, MemcacheError> = client.get(&key);
+            assert!(result.is_ok());
+            assert_eq!(result.expect("ok").expect("ok"), value);
         }
     }
 
-    fn mc_get_conn() -> MemcachedClient {
-        let host = file!().get_host();
-        let client_rs = MemcachedClient::new(vec![host], 5);
-        assert_eq!(true, client_rs.is_ok());
-        return client_rs.expect("ok");
-    }
+    /// 测试场景: 测试mc 单次最多gets 多少个key
+    /*#[test]
+    fn mc_gets_keys() {
+        let client = mc_get_conn();
+        for keycount in 1..=256 {
+            let key = keycount
+        }
+        let client = mc_get_conn();
+        let key = "getsfoo";
+        let value = "getsbar";
+        assert!(client.set(key, value, 2).is_ok());
+        assert!(client.set(value, key, 2).is_ok());
+        let result: Result<HashMap<String, String>, MemcacheError> =
+            client.gets(&["getsfoo", "getsbar"]);
+        assert!(result.is_ok());
+        assert_eq!(result.expect("ok").len(), 2);
+    }*/
 
     /// 测试场景：基本的mc add 命令验证
-    /// 测试步骤：get(key) -> add(key) -> get(key)
     #[test]
     fn mc_simple_add() {
         let client = mc_get_conn();
         let key = "fooadd";
         let value = "bar";
-        let result: Result<String, bmemcached::errors::Error> = client.get(key);
-        assert_eq!(true, result.is_err());
-        client.add(key, value, 10).unwrap();
-        let result: Result<String, bmemcached::errors::Error> = client.get(key);
+        let result: Result<Option<String>, MemcacheError> = client.get(key);
+        assert_eq!(true, result.expect("ok").is_none());
+        assert!(client.add(key, value, 10).is_ok());
+        let result: Result<Option<String>, MemcacheError> = client.get(key);
         assert_eq!(true, result.is_ok());
-        assert_eq!(result.expect("ok"), value);
+        assert_eq!(result.expect("ok").expect("ok"), value);
     }
 
     /// 测试场景：基本的mc get 命令验证
@@ -102,9 +122,9 @@ mod mc_test {
     #[test]
     fn mc_simple_get() {
         let client = mc_get_conn();
-        let result: Result<Vec<u8>, bmemcached::errors::Error> = client.get("4357");
+        let result: Result<Option<String>, MemcacheError> = client.get("307");
         assert!(result.is_ok());
-        assert_eq!(result.expect("ok"), 4357.to_string().into_bytes());
+        assert_eq!(result.expect("ok").expect("ok"), "307");
     }
 
     /// 测试场景：基本的mc replace 命令验证
@@ -115,20 +135,23 @@ mod mc_test {
         let value = "bar";
         assert!(client.set(key, value, 3).is_ok());
         assert_eq!(true, client.replace(key, "baz", 3).is_ok());
-        let result: Result<String, bmemcached::errors::Error> = client.get(key);
+        let result: Result<Option<String>, MemcacheError> = client.get(key);
         assert_eq!(result.is_ok(), true);
-        assert_eq!(result.expect("ok"), "baz");
+        assert_eq!(result.expect("ok").expect("ok"), "baz");
     }
 
+    ///测试场景：基本的mc delete 命令验证
     #[test]
     fn mc_simple_delete() {
         let client = mc_get_conn();
         let key = "foodel";
         let value = "bar";
+        let result: Result<Option<String>, MemcacheError> = client.get(key);
+        assert_eq!(true, result.expect("ok").is_none());
         assert!(client.add(key, value, 2).is_ok());
         assert!(client.delete(key).is_ok());
-        let result: Result<String, bmemcached::errors::Error> = client.get(key);
-        assert!(result.is_err());
+        let result: Result<Option<String>, MemcacheError> = client.get(key);
+        assert_eq!(true, result.expect("ok").is_none());
     }
 
     /*
@@ -143,84 +166,84 @@ mod mc_test {
             assert_eq!(true,result.is_ok());
             number += 1;
         }
-    }
+    }*/
 
+    ///测试场景：基本的mc append 命令验证
     #[test]
-    fn mc_test_append() {
+    fn mc_simple_append() {
         let client = mc_get_conn();
         let key = "append";
         let value = "bar";
         let append_value = "baz";
-        client.set(key, value, 2).unwrap();
-        client.append(key, append_value);
-        let result: String = client.get(key).unwrap().unwrap();
-        assert_eq!(result, "barbaz");
-        println!("completed mc append test!");
+        assert!(client.set(key, value, 3).is_ok());
+        assert!(client.append(key, append_value).is_ok());
+        let result: Result<Option<String>, MemcacheError> = client.get(key);
+        assert_eq!(result.is_ok(), true);
+        assert_eq!(result.expect("ok").expect("ok"), "barbaz");
     }
 
+    ///测试场景：基本的mc prepend 命令验证
     #[test]
-    fn mc_test_prepend() {
+    fn mc_simple_prepend() {
         let client = mc_get_conn();
         let key = "prepend";
         let value = "bar";
-        let append_value = "foo";
-        client.set(key, value, 2).unwrap();
-
-        client.prepend(key, append_value).unwrap();
-        let result: String = client.get(key).unwrap().unwrap();
-        assert_eq!(result, "foobar");
-        println!("completed mc prepend test!");
+        let prepend_value = "foo";
+        assert!(client.set(key, value, 3).is_ok());
+        assert!(client.prepend(key, prepend_value).is_ok());
+        let result: Result<Option<String>, MemcacheError> = client.get(key);
+        assert_eq!(result.is_ok(), true);
+        assert_eq!(result.expect("ok").expect("ok"), "foobar");
     }
 
+    ///测试场景：基本的mc cas 命令验证
     #[test]
-    fn mc_test_cas() {
+    fn mc_simple_cas() {
         let client = mc_get_conn();
-        client.set("foocas", "bar", 10).unwrap();
-        let result: HashMap<String, (Vec<u8>, u32, Option<u64>)> =
-            client.gets(&["foocas"]).unwrap();
-        let (_, _, cas) = result.get("foocas").unwrap();
-        let cas = cas.unwrap();
-        assert_eq!(true, client.cas("foocas", "bar2", 10, cas).unwrap());
+        assert!(client.set("foocas", "bar", 10).is_ok());
+        let getsres: Result<HashMap<String, (Vec<u8>, u32, Option<u64>)>, MemcacheError> =
+            client.gets(&["foocas"]);
+        assert!(getsres.is_ok());
+        let result: HashMap<String, (Vec<u8>, u32, Option<u64>)> = getsres.expect("ok");
+        let (_, _, cas) = result.get("foocas").expect("ok");
+        let cas = cas.expect("ok");
+        assert_eq!(true, client.cas("foocas", "bar2", 10, cas).expect("ok"));
     }
 
+    ///测试场景：基本的mc gets 命令验证
     #[test]
-    fn mc_test_gets() {
+    fn mc_simple_gets() {
+        //多个key
         let client = mc_get_conn();
         let key = "getsfoo";
         let value = "getsbar";
-        client.set(key, value, 2).unwrap();
-        client.set(value, key, 2).unwrap();
-        let result: HashMap<String, String> = client.gets(&["getsfoo", "getsbar"]).unwrap();
-        assert_eq!(result.len(), 2);
-        assert_eq!(result["getsfoo"], "getsbar");
-        assert_eq!(result["getsbar"], "getsfoo");
-        println!("completed mc gets test!");
+        assert!(client.set(key, value, 2).is_ok());
+        assert!(client.set(value, key, 2).is_ok());
+        let result: Result<HashMap<String, String>, MemcacheError> =
+            client.gets(&["getsfoo", "getsbar"]);
+        assert!(result.is_ok());
+        assert_eq!(result.expect("ok").len(), 2);
     }
 
+    ///测试场景：基本的mc incr和decr 命令验证
     #[test]
-    fn mc_test_delete() {
+    fn mc_simple_incr_decr() {
         let client = mc_get_conn();
-        let key = "foo";
-        let value = "bar";
-        client.add(key, value, 2).unwrap();
-        client.delete(key).unwrap();
-        client.add(key, "foobar", 2).unwrap();
-        let result: String = client.get(key).unwrap();
-        assert_eq!(result, "foobar");
-        println!("completed mc delete test!");
+        let key = "fooinde";
+        assert!(client.set(key, 10, 3).is_ok());
+        let res = client.increment(key, 5);
+        assert!(res.is_ok());
+        assert_eq!(res.expect("ok"), 15);
+        let res = client.decrement(key, 5);
+        assert!(res.is_ok());
+        assert_eq!(res.expect("ok"), 10);
     }
 
-    #[test]
-    fn mc_test_incr_decr() {
-        let client = mc_get_conn();
-        let key = "barr";
-        client.delete(key).unwrap();
-
-        client.set(key, 10, 3).unwrap();
-        let res = client.increment(key, 5).unwrap();
-        assert_eq!(res, 15);
-        let res = client.decrement(key, 5).unwrap();
-        assert_eq!(res, 10);
-        println!("completed mc prepend test!");
-    }*/
+    fn mc_get_conn() -> Client {
+        let host_ip = file!().get_host();
+        let host = String::from("memcache://") + &host_ip;
+        let client = memcache::connect(host);
+        assert_eq!(true, client.is_ok());
+        return client.expect("ok");
+    }
 }
