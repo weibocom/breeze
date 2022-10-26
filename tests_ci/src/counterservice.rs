@@ -336,6 +336,11 @@ fn test_thousand_mget() {
 }
 // todo:如果value大于配置的value 为异常case
 // 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
+// 大于value位数仍然可以存储，有扩展存储
+#[test]
+fn test_big_value() {
+    test_set_key_value(666666, 10000000000000000);
+}
 
 fn get_conn() -> Connection {
     let host = file!().get_host();
@@ -354,7 +359,7 @@ fn get_conn() -> Connection {
     conn
 }
 
-fn test_set_key_value(key: i32, value: i32) {
+fn test_set_key_value(key: i32, value: i64) {
     let column_cfg = vec![".repost", ".comment", ".like"];
 
     for column in column_cfg.iter() {
