@@ -102,12 +102,6 @@ mod mc_test {
             println!("keys is :{:?}", mkey);
             println!("result is: {:?}", result);
             assert!(result.is_ok());
-            /*if result.expect("ok").len() != count+1 {
-                for get_k in &mkey {
-                    let result: Result<Option<String>, MemcacheError> = client.get(get_k);
-                    assert!(result.is_ok());
-                }
-            }*/
             assert_eq!(result.expect("ok").len(), count + 1);
         }
     }
@@ -116,19 +110,26 @@ mod mc_test {
     #[test]
     fn mc_key_length() {
         let client = mc_get_conn();
-        for k_len in 11000..12000usize {
-            let key = vec![0x41; k_len];
-            assert!(client
-                .set(
-                    &String::from_utf8_lossy(&key).to_string(),
-                    k_len.to_string(),
-                    2
-                )
-                .is_ok());
+        for k_len in 1..=251usize {
+            let key = vec![0x42; k_len];
+            let set_res = client.set(
+                &String::from_utf8_lossy(&key).to_string(),
+                k_len.to_string(),
+                2,
+            );
+            if k_len < 251 {
+                assert!(set_res.is_ok());
+            } else {
+                assert!(set_res.is_err())
+            }
             let result: Result<Option<String>, MemcacheError> =
                 client.get(&String::from_utf8_lossy(&key).to_string());
-            assert!(result.is_ok());
-            assert_eq!(result.expect("ok").expect("ok"), k_len.to_string());
+            if k_len < 251 {
+                assert!(result.is_ok());
+                assert_eq!(result.expect("ok").expect("ok"), k_len.to_string());
+            } else {
+                assert!(result.is_err())
+            }
         }
     }
 
@@ -136,7 +137,7 @@ mod mc_test {
     #[test]
     fn mc_max_key() {
         let client = mc_get_conn();
-        let key = "fooadd";
+        let key = "simplefooadd";
         let value = "bar";
         let result: Result<Option<String>, MemcacheError> = client.get(key);
         assert_eq!(true, result.expect("ok").is_none());
