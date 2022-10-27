@@ -39,8 +39,6 @@ mod mc_test {
         let mut v_sizes = [1048507, 4, 4000, 40, 8000, 20000, 0, 400];
         for v_size in v_sizes {
             let val = vec![0x41; v_size];
-            let res = client.set(key, &String::from_utf8_lossy(&val).to_string(), 2);
-            println!("res :{:?}",res);
             assert_eq!(
                 client
                     .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
@@ -86,22 +84,69 @@ mod mc_test {
     }
 
     /// 测试场景: 测试mc 单次最多gets 多少个key
-    /*#[test]
+    #[test]
     fn mc_gets_keys() {
         let client = mc_get_conn();
-        for keycount in 1..=256 {
-            let key = keycount
+        let mut key: Vec<String> = Vec::new();
+        for keycount in 10001..=11000u64 {
+            let k = keycount.to_string();
+            let s = client.set(&k, keycount, 1000);
+            assert!(s.is_ok(), "panic res:{:?}", s);
+            key.push(k);
         }
+
+        let mut mkey: Vec<&str> = Vec::new();
+        for (count, k) in key.iter().enumerate() {
+            mkey.push(k.as_str());
+            let result: Result<HashMap<String, String>, MemcacheError> =
+                client.gets(mkey.as_slice());
+            println!("count is :{}", count + 1);
+            println!("keys is :{:?}", mkey);
+            println!("result is: {:?}", result);
+            assert!(result.is_ok());
+            /*if result.expect("ok").len() != count+1 {
+                for get_k in &mkey {
+                    let result: Result<Option<String>, MemcacheError> = client.get(get_k);
+                    assert!(result.is_ok());
+                }
+            }*/
+            assert_eq!(result.expect("ok").len(), count + 1);
+        }
+    }
+
+    /// 测试场景: 测试key的长度
+    #[test]
+    fn mc_key_length() {
         let client = mc_get_conn();
-        let key = "getsfoo";
-        let value = "getsbar";
-        assert!(client.set(key, value, 2).is_ok());
-        assert!(client.set(value, key, 2).is_ok());
-        let result: Result<HashMap<String, String>, MemcacheError> =
-            client.gets(&["getsfoo", "getsbar"]);
-        assert!(result.is_ok());
-        assert_eq!(result.expect("ok").len(), 2);
-    }*/
+        for k_len in 11000..12000usize {
+            let key = vec![0x41; k_len];
+            assert!(client
+                .set(
+                    &String::from_utf8_lossy(&key).to_string(),
+                    k_len.to_string(),
+                    2
+                )
+                .is_ok());
+            let result: Result<Option<String>, MemcacheError> =
+                client.get(&String::from_utf8_lossy(&key).to_string());
+            assert!(result.is_ok());
+            assert_eq!(result.expect("ok").expect("ok"), k_len.to_string());
+        }
+    }
+
+    /// 测试场景：基本的mc add 命令验证
+    #[test]
+    fn mc_max_key() {
+        let client = mc_get_conn();
+        let key = "fooadd";
+        let value = "bar";
+        let result: Result<Option<String>, MemcacheError> = client.get(key);
+        assert_eq!(true, result.expect("ok").is_none());
+        assert!(client.add(key, value, 10).is_ok());
+        let result: Result<Option<String>, MemcacheError> = client.get(key);
+        assert_eq!(true, result.is_ok());
+        assert_eq!(result.expect("ok").expect("ok"), value);
+    }
 
     /// 测试场景：基本的mc add 命令验证
     #[test]
