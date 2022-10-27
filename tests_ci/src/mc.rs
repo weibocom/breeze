@@ -12,8 +12,6 @@
 ///     set命令未单独测试；
 ///
 /// -
-use crate::ci::env::*;
-
 mod mc_test {
 
     use std::collections::HashMap;
