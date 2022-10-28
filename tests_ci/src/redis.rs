@@ -23,6 +23,27 @@ use crate::redis_helper::*;
 use ::function_name::named;
 use redis::Commands;
 use std::collections::HashMap;
+use std::ffi::c_long;
+use std::vec;
+
+//获取质数
+fn find_primes(n: usize) -> Vec<c_long> {
+    let mut result = Vec::new();
+    let mut is_prime = vec![true; n + 1];
+
+    for i in 2..=n {
+        if is_prime[i] {
+            result.push(i as c_long);
+        }
+
+        ((i * 2)..=n).into_iter().step_by(i).for_each(|x| {
+            is_prime[x] = false;
+        });
+    }
+    //println!("{:?}", is_prime);
+    result
+}
+
 //基本场景
 #[test]
 fn test_args() {
@@ -198,11 +219,25 @@ fn test_set_ops() {
 }
 
 ///list基本操作:
-/// - rpush 8个value
-/// - llen
-/// - lpop
+/// - lpush 插入四个 rpush插入4个
+/// - lrange 0 -1 获取所有值
+/// - lpop 弹出第一个
+/// - rpop 弹出最后一个
+/// - llen 长度
 /// - lrange
-/// - lset
+/// - lset 将指定位置替换
+/// - lindex 获取指定位置值
+/// - linsert_before 在指定值之前插入
+/// - linsert-after 之后插入
+/// - lrange
+/// - lrem 移除>0 从head起一个4
+/// - lrem 移除<0 从tail 两个7
+/// - lrem 移除=0  删除所有2
+/// - lrange
+/// - ltrim 保留指定区间
+/// - lpushx 头插入一个
+/// - rpushx 尾插入一个
+/// - lrange
 #[named]
 #[test]
 fn test_list_ops() {
@@ -210,19 +245,139 @@ fn test_list_ops() {
     let mut con = get_conn(&file!().get_host());
     redis::cmd("DEL").arg(arykey).execute(&mut con);
 
-    assert_eq!(con.rpush(arykey, &[1, 2, 3, 4]), Ok(4));
-    assert_eq!(con.rpush(arykey, &[5, 6, 7, 8]), Ok(8));
-    assert_eq!(con.llen(arykey), Ok(8));
+    assert_eq!(con.lpush(arykey, &[1, 2]), Ok(2));
+    assert_eq!(con.lpush(arykey, &[3, 4]), Ok(4));
+    assert_eq!(con.rpush(arykey, &[5, 6]), Ok(6));
+    assert_eq!(con.rpush(arykey, &[7, 8]), Ok(8));
 
-    assert_eq!(con.lpop(arykey, Default::default()), Ok(1));
-    assert_eq!(con.llen(arykey), Ok(7));
+    assert_eq!(con.lrange(arykey, 0, -1), Ok((4, 3, 2, 1, 5, 6, 7, 8)));
 
-    assert_eq!(con.lrange(arykey, 0, 2), Ok((2, 3, 4)));
+    assert_eq!(con.lpop(arykey, Default::default()), Ok(4));
+    assert_eq!(con.rpop(arykey, Default::default()), Ok(8));
+    assert_eq!(con.llen(arykey), Ok(6));
+    assert_eq!(con.lrange(arykey, 0, -1), Ok((3, 2, 1, 5, 6, 7)));
 
     assert_eq!(con.lset(arykey, 0, 4), Ok(true));
-    assert_eq!(con.lrange(arykey, 0, 2), Ok((4, 3, 4)));
+    assert_eq!(con.lindex(arykey, 0), Ok(4));
 
-    assert_eq!(con.lrange(arykey, 0, 10), Ok(vec![4, 3, 4, 5, 6, 7, 8]));
+    assert_eq!(con.linsert_before(arykey, 4, 4), Ok(7));
+    assert_eq!(con.linsert_after(arykey, 7, 7), Ok(8));
+    assert_eq!(con.lrange(arykey, 0, -1), Ok((4, 4, 2, 1, 5, 6, 7, 7)));
+
+    assert_eq!(con.lrem(arykey, 1, 4), Ok(1));
+    assert_eq!(con.lrem(arykey, -2, 7), Ok(2));
+    assert_eq!(con.lrem(arykey, 0, 2), Ok(1));
+    assert_eq!(con.lrange(arykey, 0, -1), Ok((4, 1, 5, 6)));
+
+    assert_eq!(con.ltrim(arykey, 1, 2), Ok(true));
+    assert_eq!(con.lpush_exists(arykey, 1), Ok(3));
+    assert_eq!(con.rpush_exists(arykey, 5), Ok(4));
+    assert_eq!(con.lrange(arykey, 0, -1), Ok((1, 1, 5, 5)));
+}
+
+#[named]
+#[test]
+fn test_list_longset_ops() {
+    // let arykey = function_name!();
+    let arykey = "xinxin";
+    let mut con = get_conn(&file!().get_host());
+    // let mut con_ori = get_conn("10.182.27.228:8080");
+    // redis::cmd("LSMALLOC").arg(arykey).execute(&mut con_ori);
+    // redis::cmd("DEL").arg(arykey).execute(&mut con);
+    // redis::cmd("LSDSET")
+    //     .arg(arykey)
+    //     .arg(2)
+    //     .arg(16549573)
+    //     .execute(&mut con);
+    // redis::cmd("LSPUT").arg(arykey).arg(2).execute(&mut con);
+    // redis::cmd("LSGETALL").arg(arykey).execute(&mut con);
+    // redis::cmd("LSDUMP").arg(arykey).arg(2).execute(&mut con);
+    // redis::cmd("LSLEN").arg(arykey).execute(&mut con);
+
+    //assert_eq!(con.lsset(arykey, 5), Ok(4));
+}
+
+#[named]
+#[test]
+fn test_geo_ops() {
+    let arykey = function_name!();
+    let mut con = get_conn(&file!().get_host());
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+
+    assert_eq!(
+        redis::cmd("GEOADD")
+            .arg(arykey)
+            .arg(30)
+            .arg(50)
+            .arg("Beijing")
+            .arg(27)
+            .arg(54)
+            .arg("Tianjin")
+            .arg(12)
+            .arg(15)
+            .arg("Hebei")
+            .query(&mut con),
+        Ok(3)
+    );
+
+    assert_eq!(
+        redis::cmd("GEODIST")
+            .arg(arykey)
+            .arg("Beijing")
+            .arg("Tianjin")
+            .arg("km")
+            .query(&mut con),
+        Ok(489.9349)
+    );
+
+    assert_eq!(
+        redis::cmd("GEOPOS")
+            .arg(arykey)
+            .arg("Beijing")
+            .arg("Tianjin")
+            .query(&mut con),
+        Ok((
+            (
+                "30.00000089406967163".to_string(),
+                "49.99999957172130394".to_string()
+            ),
+            (
+                "26.99999839067459106".to_string(),
+                "53.99999994301438733".to_string()
+            ),
+        ))
+    );
+
+    assert_eq!(
+        redis::cmd("GEOHASH")
+            .arg(arykey)
+            .arg("Beijing")
+            .arg("Tianjin")
+            .query(&mut con),
+        Ok(("u8vk6wjr4e0".to_string(), "u9e5nqkuc90".to_string()))
+    );
+    // operation not permitted on a read only server
+    // assert_eq!(
+    //     redis::cmd("GEORADIUS")
+    //         .arg(arykey)
+    //         .arg(28)
+    //         .arg(30)
+    //         .arg(100)
+    //         .arg("km")
+    //         .arg("WITHDIST")
+    //         .arg("WITHCOORD")
+    //         .query(&mut con),
+    //     Ok(0)
+    // );
+    // assert_eq!(
+    //     redis::cmd("GEORADIUSBYMEMBER")
+    //         .arg(arykey)
+    //         .arg("Tianjin")
+    //         .arg(100)
+    //         .arg("km")
+    //         .query(&mut con),
+    //     Ok(0)
+    // );
 }
 
 /// 单个zset基本操作, zadd, zrangebyscore withscore
