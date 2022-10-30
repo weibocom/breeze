@@ -12,3 +12,6 @@ pub use guarded::*;
 
 mod policy;
 pub use policy::*;
+
+mod allocator;
+pub use allocator::*;

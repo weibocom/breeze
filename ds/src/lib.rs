@@ -1,7 +1,7 @@
 pub mod chan;
 mod cow;
 pub mod lock;
-mod mem;
+pub mod mem;
 pub mod queue;
 pub mod rand;
 pub mod utf8;

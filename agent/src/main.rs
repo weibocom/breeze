@@ -1,6 +1,6 @@
-use mimalloc::MiMalloc;
+use ds::BrzMalloc;
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: BrzMalloc = BrzMalloc;
 
 #[macro_use]
 extern crate rocket;
