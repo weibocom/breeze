@@ -15,6 +15,7 @@ rust-crypto = "0.2.36"
 byteorder = "1.4.3"
 bmemcached = "0.5.0"
 assert-panic = "1.0.1"
+metrics = { path = "../metrics" }
 
 tokio = { version = "1.21.2", features = ["fs"] }
 redis = { version = "0.22.0", default-features = false, features = [] }

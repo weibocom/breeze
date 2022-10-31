@@ -15,3 +15,4 @@ mod redis;
 mod ring_slice;
 //mod size;
 //mod slice;
+mod layout;
