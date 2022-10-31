@@ -70,7 +70,7 @@ impl ResizedRingBuffer {
         }
     }
     #[inline]
-    pub fn resize(&mut self, cap: usize) {
+    fn resize(&mut self, cap: usize) {
         assert!(cap <= self.max as usize);
         assert!(cap >= self.min as usize);
         let new = self.inner.resize(cap);
