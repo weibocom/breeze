@@ -2,7 +2,6 @@ const BUF_MIN: usize = 1024;
 use std::time::{Duration, Instant};
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
-#[allow(dead_code)]
 pub struct MemPolicy {
     ticks: usize,
     last: Instant, // 上一次tick返回true的时间
@@ -82,15 +81,7 @@ impl MemPolicy {
             .max(cap)
             .max(BUF_MIN)
             .next_power_of_two();
-        log::info!(
-            "{} buf grow: {} {} + {} => {} id:{}",
-            self.direction,
-            len,
-            cap,
-            reserve,
-            new,
-            self.id
-        );
+        log::info!("grow: {} {} > {} => {} {}", len, reserve, cap, new, self);
         new
     }
     // 确认缩容的size:
@@ -102,16 +93,7 @@ impl MemPolicy {
     #[inline]
     pub fn shrink(&mut self, len: usize, cap: usize) -> usize {
         let new = (cap / 2).max(BUF_MIN).max(len).next_power_of_two();
-        log::info!(
-            "{} buf shrink: {} {} => {} ticks:{} elapse:{} secs id:{}",
-            self.direction,
-            len,
-            cap,
-            new,
-            self.ticks,
-            self.last.elapsed().as_secs(),
-            self.id
-        );
+        log::info!("shrink: {}  < {} => {} {}", len, cap, new, self);
         self.ticks = 0;
         new
     }
@@ -119,11 +101,21 @@ impl MemPolicy {
 
 impl Drop for MemPolicy {
     fn drop(&mut self) {
-        log::info!(
-            "{} buf policy drop. lifetime:{:?} id:{}",
+        log::info!("buf policy drop => {}", self);
+    }
+}
+use std::fmt::{self, Display, Formatter};
+impl Display for MemPolicy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "buf policy: {} id: {} ticks: {} last: {:?} secs: {}, lifetime:{:?}",
             self.direction,
-            self.start.elapsed(),
-            self.id
-        );
+            self.id,
+            self.ticks,
+            self.last.elapsed(),
+            self.secs,
+            self.start.elapsed()
+        )
     }
 }

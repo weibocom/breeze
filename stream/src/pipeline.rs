@@ -122,9 +122,7 @@ where
             let mut cx = Context::from_waker(cx.waker());
             let mut rx = Reader::from(client, &mut cx);
             ready!(rx_buf.write(&mut rx))?;
-            let num = rx.check_eof_num()?;
-            // buffer full
-            if num == 0 {}
+            rx.check()?;
         }
         Poll::Ready(Ok(()))
     }
