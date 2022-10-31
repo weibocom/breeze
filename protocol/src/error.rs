@@ -70,4 +70,12 @@ impl Error {
             _ => false,
         }
     }
+
+    // 对于网络IO异常，一般需要立即关闭连接
+    pub fn io_err(&self) -> bool {
+        match self {
+            Self::IO(_) => true,
+            _ => false,
+        }
+    }
 }

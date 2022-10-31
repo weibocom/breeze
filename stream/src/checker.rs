@@ -71,9 +71,9 @@ impl<P, Req> BackendChecker<P, Req> {
                 match e {
                     Error::Timeout(_t) => {
                         m_timeout += 1;
-                        log::info!("{:?} timeout: {:?}", path_addr, _t);
+                        log::info!("backend/{:?} timeout: {:?}", path_addr, _t);
                     }
-                    _ => log::info!("{:?} error: {:?}", path_addr, e),
+                    _ => log::info!("backend/{:?} error: {:?}", path_addr, e),
                 }
             }
         }

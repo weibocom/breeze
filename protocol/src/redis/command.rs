@@ -502,14 +502,14 @@ pub(super) static SUPPORTED: Commands = {
 
         // geo 相关指令
         //("geoadd", "geoadd",                       -5, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("georadius", "georadius",                 -6, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("georadiusbymember", "georadiusbymember", -5, Get, 1, 1, 1, 3, false, false, true, false, false),
+        //("georadius", "georadius",                 -6, Store, 1, 1, 1, 3, false, false, true, false, false),
+        //("georadiusbymember", "georadiusbymember", -5, Store, 1, 1, 1, 3, false, false, true, false, false),
         //("geohash", "geohash",                     -2, Get, 1, 1, 1, 3, false, false, true, false, false),
         //("geopos", "geopos",                       -2, Get, 1, 1, 1, 3, false, false, true, false, false),
         //("geodist", "geodist",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("geoadd").arity(-5).op(Store).first(1).last(1).step(1).padding(3).key().val(),
-        Cmd::new("georadius").arity(-6).op(Get).first(1).last(1).step(1).padding(3).key(),
-        Cmd::new("georadiusbymember").arity(-5).op(Get).first(1).last(1).step(1).padding(3).key(),
+        Cmd::new("georadius").arity(-6).op(Store).first(1).last(1).step(1).padding(3).key(),
+        Cmd::new("georadiusbymember").arity(-5).op(Store).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("geohash").arity(-2).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("geopos").arity(-2).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("geodist").arity(-4).op(Get).first(1).last(1).step(1).padding(3).key(),
