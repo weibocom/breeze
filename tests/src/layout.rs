@@ -11,7 +11,8 @@ fn check_layout() {
     );
     assert_eq!(24, size_of::<protocol::Flag>());
     assert_eq!(1, size_of::<protocol::Resource>());
-    assert_eq!(240, size_of::<stream::buffer::StreamGuard>());
+    let guard_size = if cfg!(debug_assertions) { 240 } else { 200 };
+    assert_eq!(guard_size, size_of::<stream::buffer::StreamGuard>());
     assert_eq!(56, size_of::<ds::queue::PinnedQueue<AtomicU32>>());
     assert_eq!(16, size_of::<metrics::Metric>());
     assert_eq!(64, size_of::<metrics::Item>());
