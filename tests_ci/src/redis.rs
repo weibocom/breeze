@@ -388,6 +388,93 @@ fn test_geo_ops() {
     // );
 }
 
+/// - hash基本操作
+/// - hmset test_hash_ops ("filed1", 1),("filed2", 2),("filed3", 3),("filed4", 4),("filed6", 6),
+/// - hgetall test_hash_ops 获取该key下所有字段-值映射表
+/// - hdel 删除字段filed1
+/// - hlen 获取test_hash_ops表中字段数量 5
+/// - hkeys 获取test_hash_ops表中所有字段
+/// - hset 设置一个新字段 "filed5", 5 =》1
+/// - hset 设置一个旧字段 "filed2", 22 =》0
+/// - hmget获取字段filed2 filed5的值
+/// - hincrby filed2 4 =>26
+/// - hincrbyfloat filed5 4.4 =>8.4
+/// - hsetnx不存在的 filed6 =》1
+/// - hsetnx已经存在的 filed6 =》0
+/// - hvals 获取所有test_hash_ops表filed字段的vals
+/// - hsetnx不存在的 hash表hashkey =》1
+/// - hget hash表hashkey filed6字段=》6
+#[named]
+#[test]
+fn test_hash_ops() {
+    let arykey = function_name!();
+    let mut con = get_conn(&file!().get_host());
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg("hashkey").execute(&mut con);
+
+    assert_eq!(
+        con.hset_multiple(
+            arykey,
+            &[("filed1", 1), ("filed2", 2), ("filed3", 3), ("filed4", 4),]
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        con.hgetall(arykey),
+        Ok((
+            "filed1".to_string(),
+            1.to_string(),
+            "filed2".to_string(),
+            2.to_string(),
+            "filed3".to_string(),
+            3.to_string(),
+            "filed4".to_string(),
+            4.to_string(),
+        ))
+    );
+
+    assert_eq!(con.hdel(arykey, "filed1"), Ok(1));
+    assert_eq!(con.hlen(arykey), Ok(3));
+    assert_eq!(
+        con.hkeys(arykey),
+        Ok((
+            "filed2".to_string(),
+            "filed3".to_string(),
+            "filed4".to_string(),
+        ))
+    );
+
+    assert_eq!(con.hset(arykey, "filed5", 5), Ok(1));
+    assert_eq!(con.hset(arykey, "filed2", 22), Ok(0));
+    assert_eq!(
+        con.hget(arykey, &["filed2", "filed5"]),
+        Ok((22.to_string(), 5.to_string()))
+    );
+
+    assert_eq!(con.hincr(arykey, "filed2", 4), Ok(26));
+    assert_eq!(con.hincr(arykey, "filed5", 3.4), Ok(8.4));
+
+    assert_eq!(con.hset_nx(arykey, "filed6", 6), Ok(1));
+    assert_eq!(con.hset_nx(arykey, "filed6", 6), Ok(0));
+    assert_eq!(
+        con.hvals(arykey),
+        Ok((
+            26.to_string(),
+            3.to_string(),
+            4.to_string(),
+            8.4.to_string(),
+            6.to_string()
+        ))
+    );
+
+    assert_eq!(con.hset_nx("hashkey", "hashfiled6", 6), Ok(1));
+    //assert_eq!(con.hget("hashkey", "filed6"), Ok(6.to_string()));
+
+    //let _a:  = con.hscan_match(arykey, "filed");
+
+    // assert_eq!(con.hscan(arykey, "filed"), Ok((0.to_string())));
+}
+
 /// 单个zset基本操作, zadd, zrangebyscore withscore
 #[named]
 #[test]
