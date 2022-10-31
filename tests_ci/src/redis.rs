@@ -23,17 +23,16 @@ use crate::redis_helper::*;
 use ::function_name::named;
 use redis::Commands;
 use std::collections::HashMap;
-use std::ffi::c_long;
 use std::vec;
 
-//获取质数
-fn find_primes(n: usize) -> Vec<c_long> {
+//获i64
+fn find_primes(n: usize) -> Vec<i64> {
     let mut result = Vec::new();
     let mut is_prime = vec![true; n + 1];
 
     for i in 2..=n {
         if is_prime[i] {
-            result.push(i as c_long);
+            result.push(i as i64);
         }
 
         ((i * 2)..=n).into_iter().step_by(i).for_each(|x| {
@@ -284,10 +283,11 @@ fn test_list_longset_ops() {
     // let mut con_ori = get_conn("10.182.27.228:8080");
     // redis::cmd("LSMALLOC").arg(arykey).execute(&mut con_ori);
     // redis::cmd("DEL").arg(arykey).execute(&mut con);
+    // println!("{:?}", find_primes(10).capacity());
     // redis::cmd("LSDSET")
     //     .arg(arykey)
     //     .arg(2)
-    //     .arg(16549573)
+    //     .arg(find_primes(10))
     //     .execute(&mut con);
     // redis::cmd("LSPUT").arg(arykey).arg(2).execute(&mut con);
     // redis::cmd("LSGETALL").arg(arykey).execute(&mut con);
@@ -297,6 +297,14 @@ fn test_list_longset_ops() {
     //assert_eq!(con.lsset(arykey, 5), Ok(4));
 }
 
+/// - geoadd 添加地理位置经纬度
+/// - geodist 获取km级别两个位置距离
+/// - geopos 获取地理位置的坐标
+/// - geohash：返回一个或多个位置对象的 geohash 值
+/// - georadius 根据用户给定的经纬度坐标来获取100km内的地理位置集合,
+///   WITHDIST: 在返回位置元素的同时， 将位置元素与中心之间的距离也一并返回,
+//    WITHCOORD: 将位置元素的经度和纬度也一并返回。
+/// - georadiusbymember 根据储存在位置集合里面的地点获取范围100km的地理位置集合
 #[named]
 #[test]
 fn test_geo_ops() {
