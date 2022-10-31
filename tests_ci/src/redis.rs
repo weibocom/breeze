@@ -486,18 +486,82 @@ fn test_zset_basic() {
     let values = &[
         (1, "one".to_string()),
         (2, "two".to_string()),
+        (3, "three".to_string()),
         (4, "four".to_string()),
     ];
-    let _: () = con.zadd_multiple(arykey, values).unwrap();
 
+    assert_eq!(con.zadd_multiple(arykey, values),Ok(4));
     assert_eq!(
         con.zrange_withscores(arykey, 0, -1),
         Ok(vec![
             ("one".to_string(), 1),
             ("two".to_string(), 2),
+            ("three".to_string(), 3),
             ("four".to_string(), 4),
         ])
     );
+
+    assert_eq!(
+        con.zrevrange_withscores(arykey, 0, -1),
+        Ok(vec![
+            ("four".to_string(), 4),
+            ("three".to_string(), 3),
+            ("two".to_string(), 2),
+            ("one".to_string(), 1),
+        ])
+    );
+
+    assert_eq!(con.zincr(arykey, "one", 4),Ok("5".to_string()));
+    assert_eq!(con.zrem(arykey, "four"),Ok(1));
+    assert_eq!(con.zremrangebyrank(arykey, 0, 0),Ok(1));
+    assert_eq!(con.zrembyscore(arykey, 1, 3),Ok(1));
+
+    let samescore = &[
+        (0, "aaaa".to_string()),
+        (0, "b".to_string()),
+        (0, "c".to_string()),
+        (0, "d".to_string()),
+        (0, "e".to_string()),
+    ];
+
+    assert_eq!(con.zadd_multiple(arykey, samescore),Ok(5));
+    assert_eq!(con.zrembylex(arykey, "[b", "(c"),Ok(1));
+    assert_eq!(con.zrangebylex(arykey, "-", "(c"),Ok(vec![
+        "aaaa".to_string(),
+    ]));
+    assert_eq!(con.zrevrangebylex(arykey, "(c", "-"),Ok(vec![
+        "aaaa".to_string(),
+    ]));
+    assert_eq!(con.zcount(arykey, 0, 2),Ok(4));
+    assert_eq!(con.zlexcount(arykey, "-", "+"),Ok(5));
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    assert_eq!(con.zadd_multiple(arykey, values),Ok(4));
+
+
+    assert_eq!(
+        con.zrangebyscore(arykey, 0, 5),
+        Ok(vec![
+            "one".to_string(),
+            "two".to_string(),
+            "three".to_string(),
+            "four".to_string(),
+        ])
+    );
+
+    assert_eq!(
+        con.zrevrangebyscore(arykey, 5, 0),
+        Ok(vec![
+            "four".to_string(),
+            "three".to_string(),
+            "two".to_string(),
+            "one".to_string(),
+        ])
+    );
+
+    assert_eq!(con.zcard(arykey),Ok(4));
+    assert_eq!(con.zrank(arykey, "one"),Ok(0));
+    assert_eq!(con.zscore(arykey, "one"),Ok(1));
+
 }
 
 //github ci 过不了,本地可以过,不清楚原因
