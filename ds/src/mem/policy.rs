@@ -8,9 +8,7 @@ pub struct MemPolicy {
     secs: u16,     // 每两次tick返回true的最小间隔时间
 
     // 下面两个变量为了输出日志
-    direction: &'static str, // 方向: true为tx, false为rx. 打日志用
-    id: usize,
-    start: Instant,
+    trace: trace::Trace,
 }
 
 impl MemPolicy {
@@ -24,16 +22,12 @@ impl MemPolicy {
         Self::from(Duration::from_secs(600), direction)
     }
     fn from(delay: Duration, direction: &'static str) -> Self {
-        static ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
-        let id = ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let secs = delay.as_secs().max(1).min(u16::MAX as u64) as u16;
         Self {
             ticks: 0,
             secs,
             last: Instant::now(),
-            id,
-            direction,
-            start: Instant::now(),
+            trace: direction.into(),
         }
     }
     #[inline(always)]
@@ -109,13 +103,55 @@ impl Display for MemPolicy {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "buf policy: {} id: {} ticks: {} last: {:?} secs: {}, lifetime:{:?}",
-            self.direction,
-            self.id,
+            "buf policy: ticks: {} last: {:?} secs: {}{:?}",
             self.ticks,
             self.last.elapsed(),
             self.secs,
-            self.start.elapsed()
+            self.trace
         )
+    }
+}
+
+#[cfg(debug_assertions)]
+mod trace {
+    use std::fmt::{self, Debug, Formatter};
+    use std::time::Instant;
+    pub(super) struct Trace {
+        direction: &'static str, // 方向: true为tx, false为rx. 打日志用
+        id: usize,
+        start: Instant,
+    }
+
+    impl From<&'static str> for Trace {
+        fn from(direction: &'static str) -> Self {
+            static ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+            let id = ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Self {
+                direction,
+                id,
+                start: Instant::now(),
+            }
+        }
+    }
+    impl Debug for Trace {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                " id: {} lifetime:{:?} => {}",
+                self.id,
+                self.start.elapsed(),
+                self.direction
+            )
+        }
+    }
+}
+#[cfg(not(debug_assertions))]
+mod trace {
+    #[derive(Debug)]
+    pub(super) struct Trace;
+    impl From<&'static str> for Trace {
+        fn from(_direction: &'static str) -> Self {
+            Self
+        }
     }
 }
