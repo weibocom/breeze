@@ -21,9 +21,12 @@
 use crate::ci::env::*;
 use crate::redis_helper::*;
 use ::function_name::named;
+use chrono::prelude::*;
 use redis::Commands;
 use std::collections::HashMap;
+use std::time::Instant;
 use std::vec;
+use std::{thread, time};
 
 //获i64
 fn find_primes(n: usize) -> Vec<i64> {
@@ -399,11 +402,13 @@ fn test_geo_ops() {
 /// - hmget获取字段filed2 filed5的值
 /// - hincrby filed2 4 =>26
 /// - hincrbyfloat filed5 4.4 =>8.4
+/// - hexists 不存在的filed6=>0
 /// - hsetnx不存在的 filed6 =》1
 /// - hsetnx已经存在的 filed6 =》0
 /// - hvals 获取所有test_hash_ops表filed字段的vals
 /// - hsetnx不存在的 hash表hashkey =》1
-/// - hget hash表hashkey filed6字段=》6
+/// - hget hash表hashkey hashfiled6=》6  
+///
 #[named]
 #[test]
 fn test_hash_ops() {
@@ -454,8 +459,10 @@ fn test_hash_ops() {
     assert_eq!(con.hincr(arykey, "filed2", 4), Ok(26));
     assert_eq!(con.hincr(arykey, "filed5", 3.4), Ok(8.4));
 
+    assert_eq!(con.hexists(arykey, "filed6"), Ok(0));
     assert_eq!(con.hset_nx(arykey, "filed6", 6), Ok(1));
     assert_eq!(con.hset_nx(arykey, "filed6", 6), Ok(0));
+
     assert_eq!(
         con.hvals(arykey),
         Ok((
@@ -468,11 +475,144 @@ fn test_hash_ops() {
     );
 
     assert_eq!(con.hset_nx("hashkey", "hashfiled6", 6), Ok(1));
-    //assert_eq!(con.hget("hashkey", "filed6"), Ok(6.to_string()));
+    assert_eq!(con.hget("hashkey", "hashfiled6"), Ok(6.to_string()));
 
     //let _a:  = con.hscan_match(arykey, "filed");
-
+    // assert_eq!(
+    //     con.hscan_match(arykey, "filed"),
+    //     // redis::cmd("HSCAN")
+    //     //     .arg(arykey)
+    //     //     .arg(0)
+    //     //     .arg("match")
+    //     //     .arg("filed")
+    //     //     .arg("count")
+    //     //     .arg(5)
+    //     //     .execute(&mut con),
+    // );
     // assert_eq!(con.hscan(arykey, "filed"), Ok((0.to_string())));
+}
+
+//getset key不存在时 返回nil 并set key
+//get key =2
+//getset key 1 返回旧值2
+//get key =1
+#[named]
+#[test]
+fn getset_sample() {
+    let arykey = function_name!();
+    let mut con = get_conn(&file!().get_host());
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+
+    assert_eq!(con.getset(arykey, 2), Ok(()));
+    assert_eq!(con.get(arykey), Ok(2));
+    assert_eq!(con.getset(arykey, 1), Ok(2));
+    assert_eq!(con.get(arykey), Ok(1));
+}
+
+/// - mset ("xinxinkey1", 1), ("xinxinkey2", 2), ("xinxinkey3", 3),(arykey, 4)
+/// - expire_at 设置xinxinkey1的过期时间为当前秒级别时间戳+2s
+/// -  setex key2 4 22 将key2 value 改成22并设置过期时间4s
+/// - ttl/pttl key3存在 但是没有设置过期时间=》-1
+/// - ttl key1没过期
+/// - sleep 2s
+/// - pttl key2 没过期
+/// - get value为22
+/// - exists 检查key1不存在 因为已经过期 =》0
+/// - ttl/pttl key1不存在时=》-2
+/// - setnx key1 2 =>1 key1不存在（因为已经过期被删掉）才能setnx成功
+/// - get key1 =>11
+/// - setnx 已经存在的key3 =>0
+/// - expire key3过期时间为1s
+/// - incrby 4 =>8
+/// - decrby 2 =>6
+/// - decr =>5
+/// - incrbyfloat 4.4 =>9.4
+/// - pexpireat 设置arykey的过期时间为当前时间戳+2000ms p都是ms级别
+/// - sleep 1s
+/// - pexpire 设置arykey过期时间为5000ms
+/// - ttl arykey过期时间》2000 由于pexpire把key3过期时间覆盖
+/// - exists key3 0 已经过期
+/// - persist arykey 移除过期时间
+/// - ttl arykey -1 已经移除
+
+#[named]
+#[test]
+fn string_sample() {
+    let arykey = function_name!();
+    let mut con = get_conn(&file!().get_host());
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg("xinxinkey1").execute(&mut con);
+    redis::cmd("DEL").arg("xinxinkey2").execute(&mut con);
+    redis::cmd("DEL").arg("xinxinkey3").execute(&mut con);
+    assert_eq!(
+        con.set_multiple(&[
+            ("xinxinkey1", 1),
+            ("xinxinkey2", 2),
+            ("xinxinkey3", 3),
+            (arykey, 4)
+        ]),
+        Ok(true)
+    );
+
+    let now = Local::now().timestamp();
+    let pttl_now = Instant::now();
+    assert_eq!(con.expire_at("xinxinkey1", (now + 2) as usize), Ok(1));
+    assert_eq!(con.set_ex("xinxinkey2", 22, 4), Ok(()));
+
+    assert_eq!(con.ttl("xinxinkey3"), Ok(-1));
+    assert_eq!(con.pttl("xinxinkey3"), Ok(-1));
+
+    assert_eq!(
+        con.ttl("xinxinkey1"),
+        Ok(4 - pttl_now.elapsed().as_secs() > 0)
+    );
+
+    thread::sleep(time::Duration::from_secs(2));
+
+    assert_eq!(
+        con.pttl("xinxinkey2"),
+        Ok(4000 - pttl_now.elapsed().as_millis() > 0)
+    );
+    assert_eq!(con.get("xinxinkey2"), Ok(22));
+
+    assert_eq!(con.exists("xinxinkey1"), Ok(0));
+    assert_eq!(con.ttl("xinxinkey1"), Ok(-2));
+    assert_eq!(con.pttl("xinxinkey1"), Ok(-2));
+
+    assert_eq!(con.set_nx("xinxinkey1", 11), Ok(1));
+    assert_eq!(con.get("xinxinkey1"), Ok(11));
+    assert_eq!(con.set_nx("xinxinkey3", 2), Ok(0));
+
+    assert_eq!(con.expire("xinxinkey3", 1), Ok(1));
+
+    assert_eq!(con.incr(arykey, 4), Ok(8));
+    assert_eq!(con.decr(arykey, 2), Ok(6));
+    assert_eq!(redis::cmd("DECR").arg(arykey).query(&mut con), Ok(5));
+    assert_eq!(con.incr(arykey, 4.4), Ok(9.4));
+
+    assert_eq!(
+        con.pexpire_at(arykey, (Local::now().timestamp_millis() + 2000) as usize),
+        Ok(1)
+    );
+    thread::sleep(time::Duration::from_secs(1));
+    assert_eq!(con.pexpire(arykey, 5000 as usize), Ok(1));
+    assert_eq!(
+        con.ttl(arykey),
+        Ok(5000 - Instant::now().elapsed().as_millis() > 2000)
+    );
+    assert_eq!(con.exists("xinxinkey3"), Ok(0));
+
+    assert_eq!(con.persist(arykey), Ok(1));
+    assert_eq!(con.ttl(arykey), Ok(-1));
+
+    // assert_eq!(
+    //     redis::cmd("MINCR")
+    //         .arg(arykey)
+    //         .arg(2)
+    //         .arg(3)
+    //         .query(&mut con),
+    //     Ok(14.4)
+    // );
 }
 
 /// 单个zset基本操作, zadd, zrangebyscore withscore
@@ -490,7 +630,7 @@ fn test_zset_basic() {
         (4, "four".to_string()),
     ];
 
-    assert_eq!(con.zadd_multiple(arykey, values),Ok(4));
+    assert_eq!(con.zadd_multiple(arykey, values), Ok(4));
     assert_eq!(
         con.zrange_withscores(arykey, 0, -1),
         Ok(vec![
@@ -511,10 +651,10 @@ fn test_zset_basic() {
         ])
     );
 
-    assert_eq!(con.zincr(arykey, "one", 4),Ok("5".to_string()));
-    assert_eq!(con.zrem(arykey, "four"),Ok(1));
-    assert_eq!(con.zremrangebyrank(arykey, 0, 0),Ok(1));
-    assert_eq!(con.zrembyscore(arykey, 1, 3),Ok(1));
+    assert_eq!(con.zincr(arykey, "one", 4), Ok("5".to_string()));
+    assert_eq!(con.zrem(arykey, "four"), Ok(1));
+    assert_eq!(con.zremrangebyrank(arykey, 0, 0), Ok(1));
+    assert_eq!(con.zrembyscore(arykey, 1, 3), Ok(1));
 
     let samescore = &[
         (0, "aaaa".to_string()),
@@ -524,19 +664,20 @@ fn test_zset_basic() {
         (0, "e".to_string()),
     ];
 
-    assert_eq!(con.zadd_multiple(arykey, samescore),Ok(5));
-    assert_eq!(con.zrembylex(arykey, "[b", "(c"),Ok(1));
-    assert_eq!(con.zrangebylex(arykey, "-", "(c"),Ok(vec![
-        "aaaa".to_string(),
-    ]));
-    assert_eq!(con.zrevrangebylex(arykey, "(c", "-"),Ok(vec![
-        "aaaa".to_string(),
-    ]));
-    assert_eq!(con.zcount(arykey, 0, 2),Ok(4));
-    assert_eq!(con.zlexcount(arykey, "-", "+"),Ok(5));
+    assert_eq!(con.zadd_multiple(arykey, samescore), Ok(5));
+    assert_eq!(con.zrembylex(arykey, "[b", "(c"), Ok(1));
+    assert_eq!(
+        con.zrangebylex(arykey, "-", "(c"),
+        Ok(vec!["aaaa".to_string(),])
+    );
+    assert_eq!(
+        con.zrevrangebylex(arykey, "(c", "-"),
+        Ok(vec!["aaaa".to_string(),])
+    );
+    assert_eq!(con.zcount(arykey, 0, 2), Ok(4));
+    assert_eq!(con.zlexcount(arykey, "-", "+"), Ok(5));
     redis::cmd("DEL").arg(arykey).execute(&mut con);
-    assert_eq!(con.zadd_multiple(arykey, values),Ok(4));
-
+    assert_eq!(con.zadd_multiple(arykey, values), Ok(4));
 
     assert_eq!(
         con.zrangebyscore(arykey, 0, 5),
@@ -558,10 +699,9 @@ fn test_zset_basic() {
         ])
     );
 
-    assert_eq!(con.zcard(arykey),Ok(4));
-    assert_eq!(con.zrank(arykey, "one"),Ok(0));
-    assert_eq!(con.zscore(arykey, "one"),Ok(1));
-
+    assert_eq!(con.zcard(arykey), Ok(4));
+    assert_eq!(con.zrank(arykey, "one"), Ok(0));
+    assert_eq!(con.zscore(arykey, "one"), Ok(1));
 }
 
 //github ci 过不了,本地可以过,不清楚原因
