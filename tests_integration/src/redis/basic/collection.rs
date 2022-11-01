@@ -467,10 +467,9 @@ fn set_basic() {
     assert_eq!(con.sadd(arykey, "one"), Ok(1));
     assert_eq!(con.sadd(arykey, "two"), Ok(1));
 
-    assert_eq!(
-        con.smembers(arykey),
-        Ok(vec!["one".to_string(), "two".to_string(),])
-    );
+    let res: Result<Vec<String>, RedisError> = con.smembers(arykey);
+    assert!(res.is_ok());
+    assert_eq!(res.expect("ok").len(), 2);
 
     assert_eq!(con.srem(arykey, "one"), Ok(1));
     assert_eq!(con.sismember(arykey, "one"), Ok(0));
