@@ -88,14 +88,12 @@ where
             let mut cx = Context::from_waker(cx.waker());
             let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx);
             let poll_read = self.buf.write(&mut reader)?;
-            reader.check()?;
 
             while self.buf.len() > 0 {
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
                     Some(cmd) => {
                         let req = self.pending.pop_front().expect("take response");
-                        self.check(&req, &cmd);
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
@@ -104,6 +102,7 @@ where
                 }
             }
             ready!(poll_read);
+            reader.check()?;
         }
         Poll::Ready(Ok(()))
     }
@@ -112,16 +111,16 @@ where
         ready!(Pin::new(&mut self.s).poll_flush(cx))?;
         Poll::Ready(Ok(()))
     }
-    #[inline(always)]
-    fn check(&self, req: &Req, cmd: &protocol::Command) {
-        debug_assert!(
-            self.parser.check(req.cmd(), &cmd),
-            "{:?} {:?} => {:?}",
-            self,
-            req.cmd().data(),
-            cmd.data()
-        );
-    }
+    //#[inline(always)]
+    //fn check(&self, req: &Req, cmd: &protocol::Command) {
+    //    debug_assert!(
+    //        self.parser.check(req.cmd(), &cmd),
+    //        "{:?} {:?} => {:?}",
+    //        self,
+    //        req.cmd().data(),
+    //        cmd.data()
+    //    );
+    //}
 }
 unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
 unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
