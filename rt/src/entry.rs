@@ -113,16 +113,8 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
             self.last_rx = now;
         }
 
-        // TODO: 对网络异常改为立即处理，其他异常暂时保持原有处理逻辑，跟进影响 fishermen
-        let mut ret = Pin::new(&mut self.inner).poll(cx);
-        if let Poll::Ready(Err(e)) = ret {
-            if e.io_err() {
-                log::info!("+++ will close conn/{:?} for io err:{:?}", self.inner, e);
-                return Poll::Ready(Err(e));
-            }
-            // 对于非io异常，可以继续等待处理
-            ret = Poll::Ready(Err(e));
-        }
+        // TODO: 对异常改为立即处理，其他异常暂时保持原有处理逻辑，跟进影响 fishermen
+        let ret = Pin::new(&mut self.inner).poll(cx)?;
         let (tx_post, rx_post) = (self.inner.num_tx(), self.inner.num_rx());
         if tx_post > rx_post {
             self.last = Instant::now();
@@ -142,7 +134,7 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
                 }
             }
             //}
-            ret
+            ret.map(|rs| Ok(rs))
         }
     }
 }
