@@ -677,7 +677,7 @@ fn test_lsset_basic() {
 /// zcount、zlexcount、zscore、zscan
 #[named]
 #[test]
-fn test_zset_basic() {
+fn zset_basic() {
     let arykey = function_name!();
     let mut con = get_conn(&file!().get_host());
     redis::cmd("DEL").arg(arykey).execute(&mut con);
@@ -799,7 +799,7 @@ fn set_basic() {
 
     assert_eq!(
         con.smembers(arykey),
-        Ok(vec!["two".to_string(), "one".to_string(),])
+        Ok(vec!["one".to_string(), "two".to_string(),])
     );
 
     assert_eq!(con.srem(arykey, "one"), Ok(1));
