@@ -113,7 +113,7 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
             self.last_rx = now;
         }
 
-        // TODO: 对异常改为立即处理，其他异常暂时保持原有处理逻辑，跟进影响 fishermen
+        // 发现异常立即返回处理
         let ret = Pin::new(&mut self.inner).poll(cx)?;
         let (tx_post, rx_post) = (self.inner.num_tx(), self.inner.num_rx());
         if tx_post > rx_post {
