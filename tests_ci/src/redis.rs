@@ -502,7 +502,7 @@ fn test_hash_ops() {
 //get key =1
 #[named]
 #[test]
-fn getset_sample() {
+fn getset_basic() {
     let arykey = function_name!();
     let mut con = get_conn(&file!().get_host());
     redis::cmd("DEL").arg(arykey).execute(&mut con);
@@ -546,7 +546,7 @@ fn getset_sample() {
 
 #[named]
 #[test]
-fn string_sample() {
+fn string_basic() {
     let arykey = function_name!();
     let mut con = get_conn(&file!().get_host());
     redis::cmd("DEL").arg(arykey).execute(&mut con);
