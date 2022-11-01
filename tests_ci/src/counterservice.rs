@@ -62,7 +62,7 @@ fn test_consum_diff_write() {
 //轮询向指定列里发送 value为20 的key
 //再get 做断言 判断get到的val和set进去的val是否相等
 #[test]
-fn test_sample_set() {
+fn test_basic_set() {
     test_set_key_value(44, 44);
 }
 
@@ -123,7 +123,7 @@ fn test_diffkey_set() {
 // get key=> 得到所有列的值
 // get 64 =>"repost:30,comment:30,like:30"
 #[test]
-fn test_sample_get() {
+fn test_basic_get() {
     test_set_key_value(6666666, 64);
 
     assert_eq!(
@@ -145,7 +145,7 @@ fn test_sample_get() {
 // 6.del 1234567 验证结果是否为“”
 // 7. get key。repost 验证结果是否为nil
 #[test]
-fn test_sample_del() {
+fn test_basic_del() {
     let key = 123456789;
     let value = 456;
     assert_eq!(
@@ -209,7 +209,7 @@ fn test_sample_del() {
 //4. incr整个key incr 223456789 报 Invalid key
 
 #[test]
-fn test_sample_incrby() {
+fn test_basic_incrby() {
     let key: u32 = 223456789;
     let value = 456;
     let incr_num = 2;
@@ -248,7 +248,7 @@ fn test_sample_incrby() {
 //mincr key1 key2
 // mget key1 key2
 #[test]
-fn test_sample_mincr() {
+fn test_basic_mincr() {
     let v1 = 1111111;
     let v2 = 2222222;
     redis::cmd("DEL").arg(v1).arg(v2).execute(&mut get_conn());
@@ -291,7 +291,7 @@ fn test_sample_mincr() {
 //4. decr整个key decr 323456789 报 Invalid key
 
 #[test]
-fn test_sample_decr() {
+fn test_basic_decr() {
     let key: u32 = 323456789;
     let value = 456;
     let decr_num = 4;
