@@ -244,6 +244,43 @@ fn test_sample_incrby() {
     assert_panic!(panic!( "{:?}", get_conn().incr::<u32, u32, String>(key, 2)), String, contains "Invalid key");
 }
 
+//set 111111 222222
+//mincr key1 key2
+// mget key1 key2
+#[test]
+fn test_sample_mincr() {
+    let v1 = 1111111;
+    let v2 = 2222222;
+    redis::cmd("DEL").arg(v1).arg(v2).execute(&mut get_conn());
+
+    test_set_key_value(v1, v1 as i64);
+    test_set_key_value(v2, v2 as i64);
+
+    let column_cfg = vec![".repost", ".comment", ".like"];
+    let mut mincr_keys = vec![];
+    for column in column_cfg.iter() {
+        let mut key1 = v1.to_string();
+        let mut key2 = v2.to_string();
+        key1.push_str(column);
+        key2.push_str(column);
+        mincr_keys.push(key1);
+        mincr_keys.push(key2);
+    }
+    let value1 = format!("repost:{},like:{},comment:{}", v1 + 1, v1 + 1, v1 + 1);
+    let value2 = format!("repost:{},like:{},comment:{}", v2 + 1, v2 + 1, v2 + 1);
+
+    let _: () = redis::cmd("MINCR")
+        .arg(mincr_keys)
+        .query(&mut get_conn())
+        .map_err(|e| panic!("set error:{:?}", e))
+        .expect("mincr err");
+
+    assert_eq!(
+        redis::cmd("MGET").arg(v1).arg(v2).query(&mut get_conn()),
+        Ok((value1, value2))
+    );
+}
+
 //测试场景：decrby只能decby 指定key的指定列 decr 323456789.repost 3
 //单独decrby某一列 get到的value为value-1
 

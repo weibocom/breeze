@@ -23,7 +23,7 @@ use crate::redis_helper::*;
 use ::function_name::named;
 use chrono::prelude::*;
 use redis::Commands;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use std::vec;
 use std::{thread, time};
@@ -42,7 +42,6 @@ fn find_primes(n: usize) -> Vec<i64> {
             is_prime[x] = false;
         });
     }
-    //println!("{:?}", is_prime);
     result
 }
 
@@ -406,9 +405,12 @@ fn test_geo_ops() {
 /// - hsetnx不存在的 filed6 =》1
 /// - hsetnx已经存在的 filed6 =》0
 /// - hvals 获取所有test_hash_ops表filed字段的vals
+///   当前filed2 22 filed3 3 filed4 4 filed 5 8.4 filede 6 6
+///
 /// - hsetnx不存在的 hash表hashkey =》1
 /// - hget hash表hashkey hashfiled6=》6  
-///
+/// - hscan 获取hash表hashkey 所有的字段和value 的元组
+/// - hscan_match 获取hash表test_hash_ops 和filed6相关的元组
 #[named]
 #[test]
 fn test_hash_ops() {
@@ -477,27 +479,21 @@ fn test_hash_ops() {
     assert_eq!(con.hset_nx("hashkey", "hashfiled6", 6), Ok(1));
     assert_eq!(con.hget("hashkey", "hashfiled6"), Ok(6.to_string()));
 
-    // let _a = redis::cmd("HSCAN")
-    //     .arg(arykey)
-    //     .arg(0)
-    //     .arg("match")
-    //     .arg("filed")
-    //     .arg("count")
-    //     .arg(5)
-    //     .query(&mut con);
+    let iter: redis::Iter<'_, (String, i64)> = con.hscan("hashkey").expect("hscan error");
+    let mut found = HashSet::new();
+    for item in iter {
+        found.insert(item);
+    }
+    assert!(found.contains(&("hashfiled6".to_string(), 6)));
 
-    // assert_eq!(
-    //     con.hscan_match(arykey, "filed"),
-    //     // redis::cmd("HSCAN")
-    //     //     .arg(arykey)
-    //     //     .arg(0)
-    //     //     .arg("match")
-    //     //     .arg("filed")
-    //     //     .arg("count")
-    //     //     .arg(5)
-    //     //     .execute(&mut con),
-    // );
-    // assert_eq!(con.hscan(arykey, "filed"), Ok((0.to_string())));
+    let iter = con
+        .hscan_match::<&str, &str, (String, i64)>(arykey, "filed6")
+        .expect("hscan match error");
+    let mut hscan_match_found = HashSet::new();
+    for item in iter {
+        hscan_match_found.insert(item);
+    }
+    assert!(hscan_match_found.contains(&("filed6".to_string(), 6)));
 }
 
 //getset key不存在时 返回nil 并set key
@@ -617,15 +613,6 @@ fn string_sample() {
 
     assert_eq!(con.persist(arykey), Ok(1));
     assert_eq!(con.ttl(arykey), Ok(-1));
-
-    // assert_eq!(
-    //     redis::cmd("MINCR")
-    //         .arg(arykey)
-    //         .arg(2)
-    //         .arg(3)
-    //         .query(&mut con),
-    //     Ok(14.4)
-    // );
 }
 
 /// 单个zset基本操作, zadd, zrangebyscore withscore
