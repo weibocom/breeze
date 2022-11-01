@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci0011
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci 12323312323223/breeze:githubci105
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
