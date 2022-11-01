@@ -477,7 +477,15 @@ fn test_hash_ops() {
     assert_eq!(con.hset_nx("hashkey", "hashfiled6", 6), Ok(1));
     assert_eq!(con.hget("hashkey", "hashfiled6"), Ok(6.to_string()));
 
-    //let _a:  = con.hscan_match(arykey, "filed");
+    // let _a = redis::cmd("HSCAN")
+    //     .arg(arykey)
+    //     .arg(0)
+    //     .arg("match")
+    //     .arg("filed")
+    //     .arg("count")
+    //     .arg(5)
+    //     .query(&mut con);
+
     // assert_eq!(
     //     con.hscan_match(arykey, "filed"),
     //     // redis::cmd("HSCAN")
@@ -503,7 +511,12 @@ fn getset_sample() {
     let mut con = get_conn(&file!().get_host());
     redis::cmd("DEL").arg(arykey).execute(&mut con);
 
-    assert_eq!(con.getset(arykey, 2), Ok(()));
+    assert_eq!(
+        con.getset::<&str, i32, Option<i32>>(arykey, 2)
+            .map_err(|e| panic!("set error:{:?}", e))
+            .expect("set err"),
+        None
+    );
     assert_eq!(con.get(arykey), Ok(2));
     assert_eq!(con.getset(arykey, 1), Ok(2));
     assert_eq!(con.get(arykey), Ok(1));
@@ -557,7 +570,7 @@ fn string_sample() {
     let now = Local::now().timestamp();
     let pttl_now = Instant::now();
     assert_eq!(con.expire_at("xinxinkey1", (now + 2) as usize), Ok(1));
-    assert_eq!(con.set_ex("xinxinkey2", 22, 4), Ok(()));
+    assert_eq!(con.set_ex("xinxinkey2", 22, 4), Ok(true));
 
     assert_eq!(con.ttl("xinxinkey3"), Ok(-1));
     assert_eq!(con.pttl("xinxinkey3"), Ok(-1));
