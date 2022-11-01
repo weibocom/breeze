@@ -269,12 +269,13 @@ pub(super) static SUPPORTED: Commands = {
         //("ping", "ping" ,         -1, Meta, 0, 0, 0, 2, false, true, false, false, false),
         //// 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
         //("select", "select" ,      2, Meta, 0, 0, 0, 1, false, true, false, false, false),
-        //("hello", "hello" ,        2, Meta, 0, 0, 0, 4, false, true, false, false, false),
+        //("hello", "hello" ,        -1, Meta, 0, 0, 0, 4, false, true, false, false, false),
         //("quit", "quit" ,          1, Meta, 0, 0, 0, 0, false, true, false, false, false),
+        // hello 参数应该是-1，可以不带或者带多个
         Cmd::new("command").arity(-1).op(Meta).padding(1).nofwd(),
         Cmd::new("ping").arity(-1).op(Meta).padding(2).nofwd(),
         Cmd::new("select").arity(2).op(Meta).padding(1).nofwd(),
-        Cmd::new("hello").arity(2).op(Meta).padding(4).nofwd(),
+        Cmd::new("hello").arity(-1).op(Meta).padding(4).nofwd(),
         // quit、master的指令token数/arity应该都是1
         Cmd::new("quit").arity(1).op(Meta).nofwd(),
         Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow(),
