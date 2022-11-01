@@ -51,13 +51,18 @@ impl<P, Req> BackendChecker<P, Req> {
         let mut reconn = crate::reconn::ReconnPolicy::new(&self.path, single);
         metrics::incr_task();
         while !self.finish.get() {
-            reconn.check().await;
+            // reconn.check().await;
             let stream = self.try_connect().await;
             if stream.is_none() {
+                // 连接失败，按策略sleep
+                reconn.conn_failed().await;
                 self.init.on();
                 continue;
             }
-            reconn.success();
+            // 连接成功
+            // reconn.success();
+            reconn.connected();
+
             let rtt = path_addr.rtt("req");
             let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
