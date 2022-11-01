@@ -6,10 +6,14 @@
 //! - mget 两个key, 其中只有一个set了, 预期应有一个none结果
 //! - basic del
 //! - basic incr
+//! - 基础操作 decr, incrby, mset, exists, ttl, pttl, setnx, setex, expire, pexpire, expreat, pexpireat, persist
 //! - hash基本操作, set 两个field后,hgetall
 //! - hash基本操作, hmset 两个field后,hget
+//! - hash基本操作hset, hsetnx, hmset, hincrby, hincrbyfloat, hdel, hget, hgetall, hlen, hkeys, hmget, hvals, hexists, hcan
+//! - 地理位置相关 geoadd  geohash geopos geodist  
+//!    georadius georadiusbymember存在问题
 //! - set基本操作, sadd 1, 2, 3后, smembers
-//! - list基本操作, rpush, llen, lpop, lrange, lset
+//! - list基本操作, lpush，rpush, rpushx, lpushx, linsert, lset, rpop, lpop, llen, lindex, lrange, ltrim, lrem
 //! - 单个zset基本操作, zadd, zrangebyscore withscore
 //!## 复杂场景
 //!  - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
