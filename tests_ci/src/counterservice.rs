@@ -1,3 +1,14 @@
+//! # 已测试场景
+//! ## 基本操作验证
+//! - get set incr incrby del mincr decr
+//! - mget 1w个key 少量key
+//! # 异常场景
+//! - max-diff 当下一个setkey 超过当前最大key 提示too big
+//! - key 类型错误（非long/没加配置列） 提示invaild key
+//!    配置列错误 提示配置列错误
+//! ## 复杂场景
+//!  - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
+//! 从mesh读取, 验证业务写入与mesh读取之间的一致性
 use crate::ci::env::Mesh;
 use assert_panic::assert_panic;
 use rand::distributions::Alphanumeric;
@@ -7,6 +18,7 @@ use std::collections::HashMap;
 use std::vec;
 
 use crate::ci::env::exists_key_iter;
+
 #[allow(dead_code)]
 fn rand_num() -> u32 {
     let mut rng = rand::thread_rng();
