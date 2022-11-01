@@ -14,7 +14,19 @@
 //!    georadius georadiusbymember存在问题
 //! - set基本操作, sadd 1, 2, 3后, smembers
 //! - list基本操作, lpush，rpush, rpushx, lpushx, linsert, lset, rpop, lpop, llen, lindex, lrange, ltrim, lrem
-//! - 单个zset基本操作, zadd, zrangebyscore withscore
+//! - 单个zset基本操作:
+//!     zadd、zincrby、zrem、zremrangebyrank、zremrangebyscore、
+//!     zremrangebylex、zrevrange、zcard、zrange、zrangebyscore、
+//!     zrevrank、zrevrangebyscore、zrangebylex、zrevrangebylex、
+//!     zcount、zlexcount、zscore、zscan
+//! - set基本操作:
+//!     sadd、smembers、srem、sismember、scard、spop、sscan
+//! - Bitmap基本操作:
+//!     setbit、getbit、bitcount、bitpos、bitfield
+//! - conn基本操作:
+//!     ping、command、select、quit
+//! - string基本操作:
+//!     set、append、setrange、getrange、getset、strlen
 //!## 复杂场景
 //!  - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
 //! 从mesh读取, 验证业务写入与mesh读取之间的一致性
@@ -24,9 +36,9 @@
 
 use crate::ci::env::*;
 use crate::redis_helper::*;
-use ::function_name::named;
 use chrono::prelude::*;
-use redis::Commands;
+use function_name::named;
+use redis::{Commands, RedisError};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use std::vec;
@@ -619,7 +631,11 @@ fn string_basic() {
     assert_eq!(con.ttl(arykey), Ok(-1));
 }
 
-/// 单个zset基本操作, zadd, zrangebyscore withscore
+/// 单个zset基本操作:
+/// zadd、zincrby、zrem、zremrangebyrank、zremrangebyscore、
+/// zremrangebylex、zrevrange、zcard、zrange、zrangebyscore、
+/// zrevrank、zrevrangebyscore、zrangebylex、zrevrangebylex、
+/// zcount、zlexcount、zscore、zscan
 #[named]
 #[test]
 fn test_zset_basic() {
@@ -706,6 +722,143 @@ fn test_zset_basic() {
     assert_eq!(con.zcard(arykey), Ok(4));
     assert_eq!(con.zrank(arykey, "one"), Ok(0));
     assert_eq!(con.zscore(arykey, "one"), Ok(1));
+
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    let values = &[(1, "one".to_string()), (2, "two".to_string())];
+    assert_eq!(con.zadd_multiple(arykey, values), Ok(2));
+
+    let res: Result<(i32, Vec<String>), RedisError> =
+        redis::cmd("ZSCAN").arg(arykey).arg(0).query(&mut con);
+    assert!(res.is_ok());
+    let (cur, mut s): (i32, Vec<String>) = res.expect("ok");
+
+    s.sort_unstable();
+    assert_eq!(cur, 0i32);
+    assert_eq!(s.len(), 4);
+    assert_eq!(
+        &s,
+        &[
+            "1".to_string(),
+            "2".to_string(),
+            "one".to_string(),
+            "two".to_string()
+        ]
+    );
+}
+
+/// set基本操作:
+/// sadd、smembers、srem、sismember、scard、spop、sscan
+#[named]
+#[test]
+fn set_basic() {
+    let arykey = function_name!();
+    let mut con = get_conn(&file!().get_host());
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+
+    assert_eq!(con.sadd(arykey, "one"), Ok(1));
+    assert_eq!(con.sadd(arykey, "two"), Ok(1));
+
+    assert_eq!(
+        con.smembers(arykey),
+        Ok(vec!["two".to_string(), "one".to_string(),])
+    );
+
+    assert_eq!(con.srem(arykey, "one"), Ok(1));
+    assert_eq!(con.sismember(arykey, "one"), Ok(0));
+
+    assert_eq!(con.scard(arykey), Ok(1));
+
+    assert_eq!(con.srandmember(arykey), Ok("two".to_string()));
+    assert_eq!(con.spop(arykey), Ok("two".to_string()));
+
+    assert_eq!(con.sadd(arykey, "hello"), Ok(1));
+    assert_eq!(con.sadd(arykey, "hi"), Ok(1));
+
+    redis::cmd("DEL").arg("foo").execute(&mut con);
+    assert_eq!(con.sadd("foo", &[1, 2, 3]), Ok(3));
+    let res: Result<(i32, Vec<i32>), RedisError> =
+        redis::cmd("SSCAN").arg("foo").arg(0).query(&mut con);
+    assert!(res.is_ok());
+    let (cur, mut s): (i32, Vec<i32>) = res.expect("ok");
+
+    s.sort_unstable();
+    assert_eq!(cur, 0i32);
+    assert_eq!(s.len(), 3);
+    assert_eq!(&s, &[1, 2, 3]);
+}
+
+/// Bitmap基本操作:
+/// setbit、getbit、bitcount、bitpos、bitfield
+#[named]
+#[test]
+fn bit_basic() {
+    let arykey = function_name!();
+    let mut con = get_conn(&file!().get_host());
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+
+    assert_eq!(con.setbit(arykey, 10086, true), Ok(0));
+    assert_eq!(con.getbit(arykey, 10086), Ok(1));
+    assert_eq!(con.bitcount(arykey), Ok(1));
+
+    let res: Result<u64, RedisError> = redis::cmd("BITPOS")
+        .arg(arykey)
+        .arg(1)
+        .arg(0)
+        .query(&mut con);
+    assert!(res.is_ok());
+    assert_eq!(res.expect("ok"), 10086);
+
+    let res: Result<Vec<u8>, RedisError> = redis::cmd("BITFIELD")
+        .arg(arykey)
+        .arg("GET")
+        .arg("u4")
+        .arg("0")
+        .query(&mut con);
+    assert!(res.is_ok());
+    assert_eq!(res.expect("ok"), &[0u8]);
+}
+
+/// conn基本操作:
+/// ping、command、select、quit
+#[named]
+#[test]
+fn sys_basic() {
+    // hello、master 未实现
+    let arykey = function_name!();
+    let mut con = get_conn(&file!().get_host());
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+
+    let res: Result<String, RedisError> = redis::cmd("COMMAND").query(&mut con);
+    assert_eq!(res.expect("ok"), "OK".to_string());
+    let res: Result<String, RedisError> = redis::cmd("PING").query(&mut con);
+    assert!(res.is_ok());
+    assert_eq!(res.expect("ok"), "PONG".to_string());
+
+    let res: Result<String, RedisError> = redis::cmd("SELECT").arg(0).query(&mut con);
+    assert!(res.is_ok());
+    assert_eq!(res.expect("ok"), "OK".to_string());
+
+    assert_eq!(redis::cmd("quit").query(&mut con), Ok("OK".to_string()));
+}
+
+/// string基本操作:
+/// set、append、setrange、getrange、getset、strlen
+#[named]
+#[test]
+fn str_basic() {
+    let arykey = function_name!();
+    let mut con = get_conn(&file!().get_host());
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+
+    assert_eq!(con.set(arykey, "Hello World"), Ok("OK".to_string()));
+    assert_eq!(con.setrange(arykey, 6, "Redis"), Ok(11));
+    assert_eq!(con.getrange(arykey, 6, 10), Ok("Redis".to_string()));
+    assert_eq!(
+        con.getset(arykey, "Hello World"),
+        Ok("Hello Redis".to_string())
+    );
+    assert_eq!(con.append(arykey, "!"), Ok(12));
+    assert_eq!(con.strlen(arykey), Ok(12));
 }
 
 //github ci 过不了,本地可以过,不清楚原因
