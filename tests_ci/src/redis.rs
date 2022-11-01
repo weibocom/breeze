@@ -21,6 +21,9 @@
 //!     zcount、zlexcount、zscore、zscan
 //! - set基本操作:
 //!     sadd、smembers、srem、sismember、scard、spop、sscan
+//! - list基本操作, rpush, llen, lpop, lrange, lset
+//! - 单个zset基本操作, zadd, zrangebyscore withscore
+//! - 单个long set基本操作, lsset, lsdump, lsput, lsgetall, lsdel, lslen, lsmexists, lsdset
 //! - Bitmap基本操作:
 //!     setbit、getbit、bitcount、bitpos、bitfield
 //! - conn基本操作:
@@ -290,29 +293,6 @@ fn test_list_ops() {
     assert_eq!(con.lpush_exists(arykey, 1), Ok(3));
     assert_eq!(con.rpush_exists(arykey, 5), Ok(4));
     assert_eq!(con.lrange(arykey, 0, -1), Ok((1, 1, 5, 5)));
-}
-
-#[named]
-#[test]
-fn test_list_longset_ops() {
-    // let arykey = function_name!();
-    let arykey = "xinxin";
-    let mut con = get_conn(&file!().get_host());
-    // let mut con_ori = get_conn("10.182.27.228:8080");
-    // redis::cmd("LSMALLOC").arg(arykey).execute(&mut con_ori);
-    // redis::cmd("DEL").arg(arykey).execute(&mut con);
-    // println!("{:?}", find_primes(10).capacity());
-    // redis::cmd("LSDSET")
-    //     .arg(arykey)
-    //     .arg(2)
-    //     .arg(find_primes(10))
-    //     .execute(&mut con);
-    // redis::cmd("LSPUT").arg(arykey).arg(2).execute(&mut con);
-    // redis::cmd("LSGETALL").arg(arykey).execute(&mut con);
-    // redis::cmd("LSDUMP").arg(arykey).arg(2).execute(&mut con);
-    // redis::cmd("LSLEN").arg(arykey).execute(&mut con);
-
-    //assert_eq!(con.lsset(arykey, 5), Ok(4));
 }
 
 /// - geoadd 添加地理位置经纬度
@@ -629,6 +609,65 @@ fn string_basic() {
 
     assert_eq!(con.persist(arykey), Ok(1));
     assert_eq!(con.ttl(arykey), Ok(-1));
+}
+
+/// 单个long set基本操作, lsset, lsdump, lsput, lsgetall, lsdel, lslen, lsmexists, lsdset
+#[named]
+#[test]
+fn test_lsset_basic() {
+    let arykey = function_name!();
+    let mut con = get_conn(&file!().get_host());
+    redis::cmd("DEL").arg(arykey).execute(&mut con);
+
+    // lsmalloc arykey 8, lsput argkey 1后的实际内存表现
+    let lsset = vec![
+        1u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    redis::cmd("lsset")
+        .arg(arykey)
+        .arg(1)
+        .arg(&lsset)
+        .execute(&mut con);
+    assert_eq!(
+        redis::cmd("lsdump").arg(arykey).query(&mut con),
+        Ok(lsset.clone())
+    );
+
+    assert_eq!(
+        redis::cmd("lsput").arg(arykey).arg(2).query(&mut con),
+        Ok(1)
+    );
+    assert_eq!(
+        redis::cmd("lsgetall").arg(arykey).query(&mut con),
+        Ok((1, 2))
+    );
+
+    assert_eq!(
+        redis::cmd("lsdel").arg(arykey).arg(2).query(&mut con),
+        Ok(1)
+    );
+    assert_eq!(redis::cmd("lslen").arg(arykey).query(&mut con), Ok(1));
+    assert_eq!(
+        redis::cmd("lsmexists")
+            .arg(arykey)
+            .arg(1)
+            .arg(2)
+            .query(&mut con),
+        Ok("10".to_string())
+    );
+
+    let arykey = arykey.to_string() + "dset";
+    redis::cmd("lsdset")
+        .arg(&arykey)
+        .arg(1)
+        .arg(&lsset)
+        .execute(&mut con);
+    assert_eq!(
+        redis::cmd("lsgetall").arg(&arykey).query(&mut con),
+        Ok((1,))
+    );
 }
 
 /// 单个zset基本操作:
