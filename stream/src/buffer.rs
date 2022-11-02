@@ -21,13 +21,16 @@ impl<'a, C> Reader<'a, C> {
         Self { n, client, cx, b }
     }
     // 如果eof了，则返回错误，否则返回读取的num数量
-    #[inline]
-    pub(crate) fn check_eof_num(&self) -> Result<usize> {
-        // buffer不够，有读取的数据，则认定为流未结束。
-        if self.n > 0 || self.b == 0 {
-            Ok(self.n)
+    #[inline(always)]
+    pub(crate) fn check(&self) -> Result<()> {
+        if self.n > 0 {
+            Ok(())
         } else {
-            Err(Error::ReadEof)
+            if self.b == 0 {
+                Err(Error::BufferFull)
+            } else {
+                Err(Error::Eof)
+            }
         }
     }
 }
@@ -45,7 +48,8 @@ where
         let out = Pin::new(&mut **client).poll_read(cx, &mut rb);
         let r = rb.capacity() - rb.remaining();
         if r > 0 {
-            log::debug!("{} bytes received ==> {:?}", r, &buf[0..r]);
+            // log::debug!("{} bytes received ==> {:?}", r, &buf[0..r]);
+            log::debug!("{} bytes received", r);
         }
         *n += r;
 
