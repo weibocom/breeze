@@ -112,7 +112,9 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
         } else {
             self.last_rx = now;
         }
-        let ret = Pin::new(&mut self.inner).poll(cx);
+
+        // 发现异常立即返回处理
+        let ret = Pin::new(&mut self.inner).poll(cx)?;
         let (tx_post, rx_post) = (self.inner.num_tx(), self.inner.num_rx());
         if tx_post > rx_post {
             self.last = Instant::now();
@@ -132,7 +134,7 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
                 }
             }
             //}
-            ret
+            ret.map(|rs| Ok(rs))
         }
     }
 }
