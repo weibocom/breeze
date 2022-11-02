@@ -190,6 +190,7 @@ where
 
             if parser.cache() && op.is_query() {
                 *metrics.cache() += ctx.response_ok();
+            } else if op.is_store() {
             }
 
             if ctx.inited() && !ctx.request().ignore_rsp() {
