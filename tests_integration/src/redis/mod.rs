@@ -36,6 +36,7 @@
 //! - pipiline方式,set 两个key后,mget读取(注释了,暂未验证)
 
 mod basic;
+mod hash;
 
 const RESTYPE: &str = "redis";
 
