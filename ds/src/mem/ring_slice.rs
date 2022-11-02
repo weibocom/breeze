@@ -313,14 +313,16 @@ impl Debug for RingSlice {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         use crate::Utf8;
+        let data = if self.len() > 1024 {
+            format!("[hidden for too long len:{}]", self.len())
+        } else {
+            self.to_vec().utf8()
+        };
+
         write!(
             f,
             "ptr:{} start:{} end:{} cap:{} => {:?}",
-            self.ptr,
-            self.start,
-            self.end,
-            self.cap,
-            self.to_vec().utf8()
+            self.ptr, self.start, self.end, self.cap, data
         )
     }
 }

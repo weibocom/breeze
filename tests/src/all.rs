@@ -1,5 +1,3 @@
-// mod offset;
-//mod bit_map;
 //mod cow;
 // mod distribute;
 // mod hash_test;
@@ -13,5 +11,6 @@ mod protocol;
 mod hash_test;
 mod redis;
 mod ring_slice;
-//mod size;
+mod size;
 //mod slice;
+mod layout;

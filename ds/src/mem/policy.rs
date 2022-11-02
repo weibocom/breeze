@@ -2,16 +2,13 @@ const BUF_MIN: usize = 1024;
 use std::time::{Duration, Instant};
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
-#[allow(dead_code)]
 pub struct MemPolicy {
     ticks: usize,
     last: Instant, // 上一次tick返回true的时间
     secs: u16,     // 每两次tick返回true的最小间隔时间
 
     // 下面两个变量为了输出日志
-    direction: &'static str, // 方向: true为tx, false为rx. 打日志用
-    id: usize,
-    start: Instant,
+    trace: trace::Trace,
 }
 
 impl MemPolicy {
@@ -25,16 +22,12 @@ impl MemPolicy {
         Self::from(Duration::from_secs(600), direction)
     }
     fn from(delay: Duration, direction: &'static str) -> Self {
-        static ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
-        let id = ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let secs = delay.as_secs().max(1).min(u16::MAX as u64) as u16;
         Self {
             ticks: 0,
             secs,
             last: Instant::now(),
-            id,
-            direction,
-            start: Instant::now(),
+            trace: direction.into(),
         }
     }
     #[inline(always)]
@@ -82,15 +75,7 @@ impl MemPolicy {
             .max(cap)
             .max(BUF_MIN)
             .next_power_of_two();
-        log::info!(
-            "{} buf grow: {} {} + {} => {} id:{}",
-            self.direction,
-            len,
-            cap,
-            reserve,
-            new,
-            self.id
-        );
+        log::info!("grow: {} {} > {} => {} {}", len, reserve, cap, new, self);
         new
     }
     // 确认缩容的size:
@@ -102,16 +87,7 @@ impl MemPolicy {
     #[inline]
     pub fn shrink(&mut self, len: usize, cap: usize) -> usize {
         let new = (cap / 2).max(BUF_MIN).max(len).next_power_of_two();
-        log::info!(
-            "{} buf shrink: {} {} => {} ticks:{} elapse:{} secs id:{}",
-            self.direction,
-            len,
-            cap,
-            new,
-            self.ticks,
-            self.last.elapsed().as_secs(),
-            self.id
-        );
+        log::info!("shrink: {}  < {} => {} {}", len, cap, new, self);
         self.ticks = 0;
         new
     }
@@ -119,11 +95,63 @@ impl MemPolicy {
 
 impl Drop for MemPolicy {
     fn drop(&mut self) {
-        log::info!(
-            "{} buf policy drop. lifetime:{:?} id:{}",
-            self.direction,
-            self.start.elapsed(),
-            self.id
-        );
+        log::info!("buf policy drop => {}", self);
+    }
+}
+use std::fmt::{self, Display, Formatter};
+impl Display for MemPolicy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "buf policy: ticks: {} last: {:?} secs: {}{:?}",
+            self.ticks,
+            self.last.elapsed(),
+            self.secs,
+            self.trace
+        )
+    }
+}
+
+#[cfg(debug_assertions)]
+mod trace {
+    use std::fmt::{self, Debug, Formatter};
+    use std::time::Instant;
+    pub(super) struct Trace {
+        direction: &'static str, // 方向: true为tx, false为rx. 打日志用
+        id: usize,
+        start: Instant,
+    }
+
+    impl From<&'static str> for Trace {
+        fn from(direction: &'static str) -> Self {
+            static ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+            let id = ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Self {
+                direction,
+                id,
+                start: Instant::now(),
+            }
+        }
+    }
+    impl Debug for Trace {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                " id: {} lifetime:{:?} => {}",
+                self.id,
+                self.start.elapsed(),
+                self.direction
+            )
+        }
+    }
+}
+#[cfg(not(debug_assertions))]
+mod trace {
+    #[derive(Debug)]
+    pub(super) struct Trace;
+    impl From<&'static str> for Trace {
+        fn from(_direction: &'static str) -> Self {
+            Self
+        }
     }
 }
