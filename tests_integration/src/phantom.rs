@@ -1,5 +1,3 @@
-use std::alloc::System;
-
 use crate::ci::env::*;
 use crate::redis_helper::*;
 use redis::cmd;
@@ -13,7 +11,7 @@ use std::time::SystemTime;
 /// # 单元测试已覆盖场景：
 ///  
 /// - 基本命令:
-///     包括: PING 、bfset 、bfget 、bfmget、bfmset
+///     PING 、bfset 、bfget 、bfmget、bfmset
 ///     
 /// - key 合法性
 ///     
@@ -41,8 +39,6 @@ fn test_bad_key_bfset() {
     let rs = cmd("bfset").arg("9").query::<i64>(&mut con);
     assert_eq!(rs, Ok(-1)); // 最小越界
 
-    let rs = cmd("bfset").arg("9999999999999999").query::<i64>(&mut con);
-    assert_eq!(rs, Ok(-3)); // 最大越界
 }
 
 // 正常key bfset 测试
@@ -63,7 +59,6 @@ fn test_bfset() {
 fn test_bfget() {
     let mut con = get_conn(&file!().get_host());
     let pref_key = rand::random::<u32>();
-    println!("test_bfget:test_bfget{}", pref_key);
     let orgin_rs = cmd("bfget").arg(pref_key).query::<i64>(&mut con);
     let _rs = cmd("bfset").arg(pref_key).query::<i64>(&mut con);
 
