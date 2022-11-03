@@ -10,28 +10,19 @@ const DISTS: [&str; 1] = [
     //"modrange",
     //"consistent",
     //"modrange",
-    //"modula",
+    "modula",
     //"padding",
-    "range",
+    //"range",
     //"slotmod",
     //"splitmo",
 ];
 
-const HASHES: [&str; 8] = [
-    "crc32-short",
-    "crc32-range",
-    "crc32-range-id",
-    "crc32-range-point",
-    "crc32local",
-    "crc32local-point",
-    "crc32local-pound",
-    "crc32local-underscore",
-];
+const HASHES: [&str; 1] = ["bkdr"];
 
-const ROOT_PATH: &str = "./src/redis/hash/records";
+const ROOT_PATH: &str = "./src/hash/records";
 
 #[test]
-fn crc32_short_test() {
+fn bkdr_test() {
     let shard_count = 8;
     let mut servers = Vec::with_capacity(shard_count);
     for i in 0..shard_count {
