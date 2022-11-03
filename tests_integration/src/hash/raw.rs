@@ -1,4 +1,4 @@
-use crate::hash::shard_check;
+use crate::hash::{init_pods, shard_check_with_files};
 use sharding::distribution::Distribute;
 use sharding::hash::Hasher;
 
@@ -21,10 +21,7 @@ const ROOT_PATH: &str = "./src/hash/records";
 #[test]
 fn raw_test() {
     let shard_count = 8;
-    let mut servers = Vec::with_capacity(shard_count);
-    for i in 0..shard_count {
-        servers.push(format!("192.168.0.{}", i).to_string());
-    }
+    let servers = init_pods(shard_count);
     for hash in HASHES {
         for dis in DISTS {
             let hasher = Hasher::from(hash);
@@ -37,20 +34,4 @@ fn raw_test() {
             shard_check_with_files(path, &hasher, &dist);
         }
     }
-}
-
-fn shard_check_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
-    //shard_check_short_with_files(path.clone(), hasher, dist);
-
-    let crc50 = format!("{}{}", path, "10.log");
-    shard_check(&crc50, &hasher, &dist);
-}
-
-fn shard_check_short_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
-    let crc10 = format!("{}{}", path, "10.log");
-    let crc15 = format!("{}{}", path, "15.log");
-    let crc20 = format!("{}{}", path, "20.log");
-    shard_check(&crc10, &hasher, &dist);
-    shard_check(&crc15, &hasher, &dist);
-    shard_check(&crc20, &hasher, &dist);
 }

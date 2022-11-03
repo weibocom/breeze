@@ -64,3 +64,19 @@ fn init_pods(shard_count: usize) -> Vec<String> {
     }
     servers
 }
+
+fn shard_check_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
+    //shard_check_short_with_files(path.clone(), hasher, dist);
+
+    let crc50 = format!("{}{}", path, "10.log");
+    shard_check(&crc50, &hasher, &dist);
+}
+
+fn shard_check_short_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
+    let crc10 = format!("{}{}", path, "10.log");
+    let crc15 = format!("{}{}", path, "15.log");
+    let crc20 = format!("{}{}", path, "20.log");
+    shard_check(&crc10, &hasher, &dist);
+    shard_check(&crc15, &hasher, &dist);
+    shard_check(&crc20, &hasher, &dist);
+}
