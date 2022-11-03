@@ -1,43 +1,61 @@
 use sharding::distribution::Distribute;
-use sharding::hash::{Bkdr, Hash, Hasher};
+use sharding::hash::{Hash, Hasher};
 use std::{
     fs::File,
     io::{BufRead, BufReader},
 };
 
+const DISTS: [&str; 1] = [
+    //"consistent",
+    //"modrange",
+    //"consistent",
+    //"modrange",
+    //"modula",
+    //"padding",
+    "range",
+    //"slotmod",
+    //"splitmo",
+];
+
+const HASHES: [&str; 8] = [
+    "crc32-short",
+    "crc32-range",
+    "crc32-range-id",
+    "crc32-range-point",
+    "crc32local",
+    "crc32local-point",
+    "crc32local-pound",
+    "crc32local-underscore",
+];
+
+const ROOT_PATH: &str = "./src/redis/hash/records";
+
 #[test]
-fn crc32_test_() {
+fn crc32_short_test() {
     let shard_count = 8;
     let mut servers = Vec::with_capacity(shard_count);
     for i in 0..shard_count {
         servers.push(format!("192.168.0.{}", i).to_string());
     }
-    let dists = [
-        "consistent",
-        "modrange",
-        "consistent",
-        "modrange",
-        "modula",
-        "padding",
-        "range",
-        "slotmod",
-        "splitmo",
-    ];
-    let root_path = "./records";
-    for dis in dists {
-        let hasher = Hasher::from("crc32-short");
-        let dist = Distribute::from(dis, &servers);
-        //let h = hasher.hash(&"1234.sda".as_bytes());
-        //let idx = dist.index(h) as i64;
-        let path = format!("{}/crc32-short{}", root_path, "_");
-        shard_check_with_files(path, &hasher, &dist);
+    for hash in HASHES {
+        for dis in DISTS {
+            let hasher = Hasher::from(hash);
+            let dist = Distribute::from(dis, &servers);
+            //let h = hasher.hash(&"937529.WiC".as_bytes());
+            //let idx = dist.index(h) as i64;
+            //println!("index is :{}",idx);
+            let file_name = hash.replace("-", "_");
+            let path = format!("{}/{}{}", ROOT_PATH, file_name, "_");
+            println!("path is :{}", path);
+            shard_check_with_files(path, &hasher, &dist);
+        }
     }
 }
 
 fn shard_check_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
-    shard_check_short_with_files(path.clone(), hasher, dist);
+    //shard_check_short_with_files(path.clone(), hasher, dist);
 
-    let crc50 = format!("{}{}", path, "50.log");
+    let crc50 = format!("{}{}", path, "10.log");
     shard_check(&crc50, &hasher, &dist);
 }
 
