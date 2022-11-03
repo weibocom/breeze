@@ -1,4 +1,4 @@
-use crate::hash::{init_pods, shard_check};
+use crate::hash::{init_pods, shard_check_with_files};
 use sharding::distribution::Distribute;
 use sharding::hash::Hasher;
 
