@@ -152,7 +152,7 @@ impl HitFirstReader {
         // 此处说明已经读过
         let last_read_idx = *lread_op.unwrap();
         let mut found = 0;
-        for (i, ch) in self.cursors.iter().enumerate() {
+        for (_i, ch) in self.cursors.iter().enumerate() {
             let node_idx = ch.node_idx.load(Ordering::Relaxed);
             if node_idx == last_read_idx {
                 let new_node_idx = if found == 0 {
@@ -165,7 +165,7 @@ impl HitFirstReader {
                 };
                 found += 1;
 
-                log::debug!("+++ shift cursor:{}, {} => {}", i, node_idx, new_node_idx);
+                log::debug!("+++ shift cursor:{}, {} => {}", _i, node_idx, new_node_idx);
                 // last 读空，需要偏移位置
                 if let Ok(_c) = ch.node_idx.compare_exchange(
                     node_idx,
