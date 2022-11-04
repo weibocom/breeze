@@ -31,7 +31,7 @@ fn check_layout() {
     );
     assert_eq!(24, size_of::<protocol::Flag>());
     assert_eq!(1, size_of::<protocol::Resource>());
-    let guard_size = if cfg!(debug_assertions) { 232 } else { 192 };
+    let guard_size = if cfg!(debug_assertions) { 224 } else { 184 };
     assert_eq!(guard_size, size_of::<stream::buffer::StreamGuard>());
     assert_eq!(56, size_of::<ds::queue::PinnedQueue<AtomicU32>>());
     assert_eq!(16, size_of::<metrics::Metric>());
@@ -40,7 +40,8 @@ fn check_layout() {
     assert_eq!(48, size_of::<Backend<Request>>());
     let stream_size = if cfg!(debug_assertions) { 248 } else { 200 };
     assert_eq!(stream_size, size_of::<Stream>());
-    assert_eq!(560, size_of::<Handler<'static>>());
+    let handler_size = if cfg!(debug_assertions) { 552 } else { 464 };
+    assert_eq!(handler_size, size_of::<Handler<'static>>());
     assert_eq!(0, size_of::<Builder>());
 
     assert_eq!(400, size_of::<Topology>());

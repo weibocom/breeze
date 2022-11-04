@@ -1,4 +1,4 @@
-const BUF_MIN: usize = 1024;
+const BUF_MIN: usize = 2 * 1024;
 use std::time::Instant;
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
@@ -14,7 +14,7 @@ impl MemPolicy {
     pub fn tx() -> Self {
         Self::with_direction("tx")
     }
-    pub fn rx() -> Self {
+    pub fn rx(_min: usize, _max: usize) -> Self {
         Self::with_direction("rx")
     }
     pub fn with_direction(direction: &'static str) -> Self {
@@ -29,6 +29,7 @@ impl MemPolicy {
     }
     #[inline(always)]
     pub fn need_grow(&self, len: usize, cap: usize, reserve: usize) -> bool {
+        log::debug!("need_grow: len={}, cap={}, reserve={}", len, cap, reserve);
         len + reserve > cap
     }
     #[inline]

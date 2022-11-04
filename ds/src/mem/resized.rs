@@ -11,8 +11,6 @@ pub struct ResizedRingBuffer {
     old: Vec<RingBuffer>,
     inner: RingBuffer,
     // 下面的用来做扩缩容判断
-    min: u32,
-    max: u32,
     on_change: Callback,
     policy: MemPolicy,
 }
@@ -41,16 +39,14 @@ impl ResizedRingBuffer {
         init: usize,
         mut cb: F,
     ) -> Self {
-        assert!(min <= init && init <= max);
+        assert!(min <= max && init <= max);
         cb(0, init as isize);
         Self {
             max_processed: std::usize::MAX,
             old: Vec::new(),
             inner: RingBuffer::with_capacity(init),
-            min: min as u32,
-            max: max as u32,
             on_change: Box::new(cb),
-            policy: MemPolicy::rx(),
+            policy: MemPolicy::rx(min, max),
         }
     }
     // 需要写入数据时，判断是否需要扩容
@@ -70,8 +66,6 @@ impl ResizedRingBuffer {
     }
     #[inline]
     fn resize(&mut self, cap: usize) {
-        assert!(cap <= self.max as usize, "{} > {}", cap, self.max);
-        assert!(cap >= self.min as usize, "{} < {}", cap, self.min);
         let new = self.inner.resize(cap);
         let old = std::mem::replace(&mut self.inner, new);
         self.max_processed = old.writtened();
@@ -102,8 +96,8 @@ impl ResizedRingBuffer {
         self.grow(data.len());
         self.inner.write(data)
     }
-    #[inline(always)]
-    fn grow(&mut self, reserve: usize) {
+    #[inline]
+    pub fn grow(&mut self, reserve: usize) {
         if self.policy.need_grow(self.len(), self.cap(), reserve) {
             let new = self.policy.grow(self.len(), self.cap(), reserve);
             self.resize(new);
