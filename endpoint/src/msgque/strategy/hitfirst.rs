@@ -106,32 +106,30 @@ impl HitFirstReader {
         // 获取下一个读取node id
         let next = self.cursor_current.fetch_add(1, Ordering::Relaxed);
         let cursor_idx = next % self.cursors.len();
-        let cursor = self.cursors.get(cursor_idx).unwrap();
-        let mut node_idx = cursor.node_idx.load(Ordering::Relaxed);
-        let node_hits = cursor.hits.fetch_add(1, Ordering::Relaxed);
+        let chits = self.cursors.get(cursor_idx).unwrap();
+        let mut idx = chits.node_idx.load(Ordering::Relaxed);
+        let hits = chits.hits.fetch_add(1, Ordering::Relaxed);
 
         // 如果当前位置hits数太大，也偏移一个位置
-        if node_hits > MAX_HITS {
-            let next_idx = (node_idx + 1) % self.qnodes.len();
-            if let Ok(_c) = cursor.node_idx.compare_exchange(
-                node_idx,
-                next_idx,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ) {
-                cursor.hits.store(0, Ordering::Relaxed);
+        if hits > MAX_HITS {
+            if let Ok(_c) =
+                chits
+                    .node_idx
+                    .compare_exchange(idx, idx + 1, Ordering::Relaxed, Ordering::Relaxed)
+            {
+                chits.hits.store(0, Ordering::Relaxed);
             }
-            // cursor已偏移到新位置，性能
-            node_idx = next_idx;
+            // cursor已偏移到新位置
+            idx += 1;
         }
 
         assert!(
-            node_idx < self.qnodes.len(),
+            idx < self.qnodes.len(),
             "idx:{}, qunodes:{:?}",
-            node_idx,
+            idx,
             self.qnodes
         );
-        let node = self.qnodes.get(node_idx).unwrap();
+        let node = self.qnodes.get(idx).unwrap();
         log::debug!("+++ use common cursor:{}, {:?}", cursor_idx, self);
         node.id
     }
