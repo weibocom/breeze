@@ -99,11 +99,12 @@ lazy_static! {
         let fields:Vec<&str> = full.split('-').collect();
         let len = fields.len();
         let last = *fields.get(len-1).unwrap_or(&"");
+        let build = if cfg!(debug_assertions) { "_debug" } else { "" };
         if last == "modified" {
             let second_last = fields.get(len-2).unwrap_or(&"");
-            format!("{}_{}", second_last, last)
+            format!("{}_{}{}", second_last, last, build)
         } else {
-            last.to_string()
+            last.to_string() + build
         }
     };
     static ref CONTEXT: Context = {
