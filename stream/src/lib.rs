@@ -1,5 +1,5 @@
 pub mod buffer;
-pub(crate) mod handler;
+pub mod handler;
 pub mod pipeline;
 mod shards;
 pub use protocol::callback::*;
@@ -23,3 +23,6 @@ pub(crate) mod checker;
 
 mod metric;
 pub use metric::CbMetrics as StreamMetrics;
+
+pub(crate) const MIN_BUFFER_SIZE: usize = 1024;
+pub(crate) const MAX_BUFFER_SIZE: usize = 64 << 20;
