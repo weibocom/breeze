@@ -7,7 +7,7 @@ use std::{
 use protocol::Parser;
 use stream::{Backend, Request};
 type Endpoint = Arc<Backend<Request>>;
-type Topology = endpoint::Topology<Builder, Endpoint, Request, Parser>;
+//type Topology = endpoint::Topology<Builder, Endpoint, Request, Parser>;
 
 type Stream = rt::Stream<tokio::net::TcpStream>;
 

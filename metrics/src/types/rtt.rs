@@ -19,12 +19,12 @@ impl Rtt {
         if count > 0 {
             w.write(&id.path, id.key, "qps", count as f64 / secs);
             // avg_us
-            let total_us = self.total_us.take() as f64;
+            let total_us = self.total_us.take();
             // 按微秒取整
-            let avg = (total_us / count as f64) as isize as f64;
+            let avg = (total_us as f64 / count as f64) as i64;
             w.write(&id.path, id.key, "avg_us", avg);
 
-            w.write(&id.path, id.key, "total_num", count as f64);
+            w.write(&id.path, id.key, "total_num", count);
             w.write(&id.path, id.key, "total_us", total_us);
             // slow qps
             let slow = self.slow.take();
