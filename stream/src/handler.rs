@@ -71,7 +71,6 @@ where
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         self.s.cache(self.data.size_hint() > 1);
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
-            log::info!("request:{:?}", req);
             self.num_tx += 1;
             self.s.write_slice(req.data(), 0)?;
             match req.on_sent() {
@@ -98,7 +97,6 @@ where
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
-                        log::info!("response: {:?}", cmd);
                         req.on_complete(cmd);
                     }
                 }
