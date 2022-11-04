@@ -1,6 +1,7 @@
 //#![feature(map_first_last)]
 use std::collections::BTreeMap;
 
+use std::fmt::format;
 use std::{
     fs::File,
     io::{BufRead, BufReader},
@@ -164,6 +165,26 @@ fn shards_check() {
     let key = " 653017.hqfy";
     md5(&key);
 }
+
+// #[test]
+// fn print_shards_check() {
+//     let shard_count = 4;
+//     let mut servers = Vec::with_capacity(shard_count);
+//     for i in 0..shard_count {
+//         servers.push(format!("192.168.0.{}", i).to_string());
+//     }
+//     let hasher = Hasher::from("crc32local");
+//     let dist = Distribute::from("modula", &servers);
+
+//     for i in 1..=20 {
+//         let key = format!("test_shards_{}", i);
+//         println!(
+//             "{}: shards {}",
+//             key,
+//             dist.index(hasher.hash(&key.as_bytes()))
+//         );
+//     }
+// }
 
 fn shard_check_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
     shard_check_short_with_files(path.clone(), hasher, dist);
