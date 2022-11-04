@@ -31,6 +31,7 @@ impl<T: Addr> Distance<T> {
     }
     // 只取前n个进行批量随机访问
     pub fn topn(&mut self, n: usize) {
+        assert!(n > 0 && n <= self.len(), "n: {}, len:{}", n, self.len());
         self.len_local = n as u16;
         let batch = 1024usize;
         // 最小是1，最大是65536
