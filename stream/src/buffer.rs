@@ -63,14 +63,6 @@ pub struct StreamGuard {
     buf: GuardedBuffer,
 }
 impl protocol::Stream for StreamGuard {
-    //#[inline]
-    //fn update(&mut self, idx: usize, val: u8) {
-    //    self.buf.update(idx, val);
-    //}
-    //#[inline]
-    //fn at(&self, idx: usize) -> u8 {
-    //    self.buf.at(idx)
-    //}
     #[inline]
     fn take(&mut self, n: usize) -> MemGuard {
         self.buf.take(n)
@@ -91,6 +83,10 @@ impl protocol::Stream for StreamGuard {
     fn reserved_hash(&mut self) -> &mut i64 {
         &mut self.reserved_hash
     }
+    #[inline]
+    fn reserve(&mut self, r: usize) {
+        self.buf.grow(r);
+    }
 }
 impl From<GuardedBuffer> for StreamGuard {
     #[inline]
@@ -108,12 +104,12 @@ impl StreamGuard {
         // buffer最大从4M调整到64M，观察CPU、Mem fishermen 2022.5.23
         let min = crate::MIN_BUFFER_SIZE;
         let max = crate::MAX_BUFFER_SIZE;
-        let init = init.max(min).min(max);
-        Self::with(min, max, init)
+        Self::with(min, max, init.min(max))
     }
     #[inline]
     pub fn new() -> Self {
-        Self::init(1024)
+        // 初始化为0，延迟分配内存
+        Self::init(0)
     }
     #[inline]
     fn with(min: usize, max: usize, init: usize) -> Self {
