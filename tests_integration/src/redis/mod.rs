@@ -129,10 +129,10 @@ fn test_set_key_fix_size() {
 
 //mget 获取10000个key
 #[test]
-fn test_mget_10000() {
+fn test_mget_1000() {
     let mut con = get_conn(&RESTYPE.get_host());
 
-    let maxkey = 10000;
+    let maxkey = 1000;
     let mut keys = Vec::with_capacity(maxkey);
     for i in 1..=maxkey {
         keys.push(i);
