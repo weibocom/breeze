@@ -162,9 +162,9 @@ impl<'a, 'r> ItemWriter for PrometheusItemWriter<'a, 'r> {
 
         let metric_name = MetricName(key, sub_key);
         //promethues # HELP
-        self.put_slice("# HELP ");
-        metric_name.write_to(self);
-        self.put_slice("\n");
+        //self.put_slice("# HELP ");
+        //metric_name.write_to(self);
+        //self.put_slice("\n");
 
         //promethues # TYPE
         self.put_slice("# TYPE ");
