@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
-use protocol::{Error, Protocol, Request, Result, Stream};
+use protocol::{Error, Protocol, Request, Result, Stream, Writer};
 use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -12,7 +12,7 @@ use crate::buffer::StreamGuard;
 
 use metrics::Metric;
 
-pub(crate) struct Handler<'r, Req, P, S> {
+pub struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
     pending: VecDeque<Req>,
 
@@ -29,7 +29,7 @@ pub(crate) struct Handler<'r, Req, P, S> {
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
     Req: Request + Unpin,
-    S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
+    S: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
 {
     type Output = Result<()>;
@@ -71,6 +71,7 @@ where
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         self.s.cache(self.data.size_hint() > 1);
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
+            log::info!("request:{:?}", req);
             self.num_tx += 1;
             self.s.write_slice(req.data(), 0)?;
             match req.on_sent() {
@@ -97,6 +98,7 @@ where
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
+                        log::info!("response: {:?}", cmd);
                         req.on_complete(cmd);
                     }
                 }
@@ -124,7 +126,7 @@ where
 }
 unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
 unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
-impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin> rt::ReEnter
+impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnter
     for Handler<'r, Req, P, S>
 {
     #[inline]
@@ -154,6 +156,14 @@ impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin> rt::ReEnter
 
         self.buf.try_gc()
     }
+    #[inline]
+    fn refresh(&mut self) -> bool {
+        log::debug!("handler:{:?}", self);
+        self.buf.try_gc();
+        self.buf.shrink();
+        self.s.shrink();
+        self.buf.cap() + self.s.cap() > 4096
+    }
 }
 
 use std::fmt::{self, Debug, Formatter};
@@ -162,7 +172,7 @@ impl<'r, Req, P, S> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler tx_seq:{} rx_seq:{} pending:{} {} buf:{:?}",
+            "handler tx_seq:{} rx_seq:{} p_req:{} {} buf:{:?}",
             self.num_tx,
             self.num_rx,
             self.pending.len(),

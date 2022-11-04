@@ -62,17 +62,16 @@ impl ResizedRingBuffer {
     // 有数写入时，判断是否需要缩容
     #[inline]
     pub fn advance_write(&mut self, n: usize) {
-        self.inner.advance_write(n);
-        // 判断是否需要缩容
-        if self.policy.need_shrink(self.len(), self.cap()) {
-            let new = self.policy.shrink(self.len(), self.cap());
-            self.resize(new);
+        if n > 0 {
+            self.inner.advance_write(n);
+            self.policy.check_shrink(self.len(), self.cap());
         }
+        // 判断是否需要缩容
     }
     #[inline]
     fn resize(&mut self, cap: usize) {
-        assert!(cap <= self.max as usize);
-        assert!(cap >= self.min as usize);
+        assert!(cap <= self.max as usize, "{} > {}", cap, self.max);
+        assert!(cap >= self.min as usize, "{} < {}", cap, self.min);
         let new = self.inner.resize(cap);
         let old = std::mem::replace(&mut self.inner, new);
         self.max_processed = old.writtened();
@@ -110,12 +109,23 @@ impl ResizedRingBuffer {
             self.resize(new);
         }
     }
+    #[inline]
+    pub fn shrink(&mut self) {
+        if self.policy.need_shrink(self.len(), self.cap()) {
+            let new = self.policy.shrink(self.len(), self.cap());
+            self.resize(new);
+        }
+    }
 }
 
 use std::fmt::{self, Display, Formatter};
 impl Display for ResizedRingBuffer {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "rrb:(inner:{}, old:{:?})", self.inner, self.old)
+        write!(
+            f,
+            "rrb:(inner:{}, old:{:?}) policy:{}",
+            self.inner, self.old, self.policy
+        )
     }
 }
 

@@ -68,7 +68,7 @@ impl<T: Addr> Distance<T> {
         } else {
             (self.seq.fetch_add(1, Relaxed) >> self.batch_shift as usize) % self.local_len()
         };
-        assert!(idx < self.replicas.len());
+        assert!(idx < self.len(), "{} >= {}", idx, self.len());
         idx
     }
     // 只从local获取

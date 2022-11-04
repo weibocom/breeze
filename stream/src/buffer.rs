@@ -48,7 +48,6 @@ where
         let out = Pin::new(&mut **client).poll_read(cx, &mut rb);
         let r = rb.capacity() - rb.remaining();
         if r > 0 {
-            // log::debug!("{} bytes received ==> {:?}", r, &buf[0..r]);
             log::debug!("{} bytes received", r);
         }
         *n += r;
@@ -106,11 +105,11 @@ impl From<GuardedBuffer> for StreamGuard {
 impl StreamGuard {
     #[inline]
     pub fn init(init: usize) -> Self {
-        const MIN: usize = 1024;
         // buffer最大从4M调整到64M，观察CPU、Mem fishermen 2022.5.23
-        const MAX: usize = 64 << 20;
-        let init = init.max(MIN).min(MAX);
-        Self::with(MIN, MAX, init)
+        let min = crate::MIN_BUFFER_SIZE;
+        let max = crate::MAX_BUFFER_SIZE;
+        let init = init.max(min).min(max);
+        Self::with(min, max, init)
     }
     #[inline]
     pub fn new() -> Self {
@@ -145,17 +144,21 @@ impl StreamGuard {
     {
         self.buf.write(r)
     }
-    //#[inline]
-    //pub fn cap(&self) -> usize {
-    //    self.buf.cap()
-    //}
+    #[inline]
+    pub fn shrink(&mut self) {
+        self.buf.shrink();
+    }
+    #[inline]
+    pub fn cap(&self) -> usize {
+        self.buf.cap()
+    }
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
 impl Display for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "ctx:{} StreamGuard :{}", self.ctx, self.buf,)
+        write!(f, "ctx:{} {}", self.ctx, self.buf)
     }
 }
 impl Debug for StreamGuard {
