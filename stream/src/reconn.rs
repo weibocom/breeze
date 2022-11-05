@@ -21,6 +21,7 @@ impl ReconnPolicy {
 
     // 连接失败，为下一次连接做准备：sleep一段时间，避免无意义的重连
     pub async fn conn_failed(&mut self) {
+        self.conns += 1;
         self.metric += 1;
         self.continue_fails += 1;
 
