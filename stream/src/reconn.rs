@@ -1,7 +1,7 @@
 use metrics::{Metric, Path};
 use std::sync::atomic::{AtomicBool, Ordering::Acquire};
 use std::sync::Arc;
-use std::time::Duration;
+use ds::time::Duration;
 pub(crate) struct ReconnPolicy {
     single: Arc<AtomicBool>,
     conns: usize,

@@ -1,7 +1,7 @@
 // 定期更新discovery.
 use super::{Discover, ServiceId, TopologyWrite};
 use ds::chan::Receiver;
-use std::time::{Duration, Instant};
+use ds::time::{Duration, Instant};
 use tokio::time::interval;
 
 use crate::cache::DiscoveryCache;

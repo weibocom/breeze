@@ -1,4 +1,4 @@
-use std::time::Duration;
+use ds::time::Duration;
 
 use crate::{Id, ItemWriter, NumberInner};
 pub const MAX: Duration = Duration::from_millis(30);

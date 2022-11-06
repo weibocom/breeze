@@ -19,7 +19,7 @@ pub struct PrometheusMetricsResponse {}
 
 use ds::lock::Lock;
 use lazy_static::lazy_static;
-use std::time::Instant;
+use ds::time::Instant;
 
 lazy_static! {
     static ref LAST: Lock<Instant> = Instant::now().into();
@@ -71,7 +71,7 @@ pub(crate) fn register_target(ctx: &context::Context) {
             port
         );
         let client = reqwest::Client::new();
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        let mut interval = tokio::time::interval(ds::time::Duration::from_secs(60));
         let mut q = vec![("refresh", true)];
         loop {
             let body = body.clone();

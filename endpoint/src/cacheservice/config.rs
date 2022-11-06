@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sharding::hash;
-//use std::time::Duration;
+//use ds::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Hash)]
 pub struct Namespace {

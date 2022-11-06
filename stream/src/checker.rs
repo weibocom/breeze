@@ -1,5 +1,5 @@
 use std::sync::{atomic::AtomicBool, Arc};
-use std::time::Duration;
+use ds::time::Duration;
 
 use tokio::net::TcpStream;
 use tokio::time::timeout;

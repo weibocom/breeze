@@ -134,9 +134,9 @@ impl ContextOption {
         Ok(())
     }
 
-    pub fn tick(&self) -> std::time::Duration {
+    pub fn tick(&self) -> ds::time::Duration {
         assert!(self.tick_sec >= 1 && self.tick_sec <= 60);
-        std::time::Duration::from_secs(self.tick_sec as u64)
+        ds::time::Duration::from_secs(self.tick_sec as u64)
     }
     // 如果是以升级模式启动，则会将原有的端口先关闭。
     pub fn listeners(&self) -> ListenerIter {

@@ -13,7 +13,7 @@ use discovery::*;
 mod init;
 
 use rt::spawn;
-use std::time::Duration;
+use ds::time::Duration;
 
 use protocol::Result;
 
