@@ -1,5 +1,5 @@
 const BUF_MIN: usize = 2 * 1024;
-use std::time::Instant;
+use crate::time::Instant;
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
 pub struct MemPolicy {
@@ -108,8 +108,8 @@ impl Display for MemPolicy {
 
 #[cfg(debug_assertions)]
 mod trace {
+    use crate::time::Instant;
     use std::fmt::{self, Debug, Formatter};
-    use std::time::Instant;
     pub(super) struct Trace {
         direction: &'static str, // 方向: true为tx, false为rx. 打日志用
         id: usize,

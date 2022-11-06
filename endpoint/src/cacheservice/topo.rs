@@ -3,7 +3,7 @@ use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology, TryNext
 use sharding::hash::Hasher;
 use sharding::Distance;
 use std::collections::HashMap;
-use std::time::Duration;
+use ds::time::Duration;
 
 use crate::TimeoutAdjust;
 use stream::Shards;

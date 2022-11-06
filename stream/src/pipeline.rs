@@ -3,7 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::task::{ready, Context, Poll};
-use std::time::{Duration, Instant};
+use ds::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 

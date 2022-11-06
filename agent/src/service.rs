@@ -2,7 +2,7 @@ use context::Quadruple;
 use net::Listener;
 use rt::spawn;
 use std::sync::Arc;
-use std::time::Duration;
+use ds::time::Duration;
 
 use discovery::TopologyWriteGuard;
 use ds::chan::Sender;
