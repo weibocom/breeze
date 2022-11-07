@@ -1,9 +1,9 @@
+use ds::time::{Duration, Instant};
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::task::{ready, Context, Poll};
-use ds::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -192,7 +192,7 @@ where
                 *metrics.hit() += ctx.response_ok() as usize;
                 *metrics.cache() += ctx.response_ok();
             } else if op.is_store() {
-                *metrics.downmiss() += ctx.response_ok() as usize;
+                *metrics.downhit() += ctx.response_ok() as usize;
             }
 
             if ctx.inited() && !ctx.request().ignore_rsp() {
