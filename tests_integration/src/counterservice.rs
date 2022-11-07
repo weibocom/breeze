@@ -370,26 +370,31 @@ fn test_mget() {
 }
 
 //获取10000个key
-#[test]
-fn test_thousand_mget() {
-    let mut keys = Vec::new();
-    let mut value = Vec::new();
+// #[test]
+// fn test_thousand_mget() {
+//     let mut keys = Vec::new();
+//     let mut value = Vec::new();
 
-    for i in 1..=10000 {
-        keys.push(i);
-        let all_value = format!("repost:{},like:{},comment:{}", i, i, i);
-        value.push(all_value);
-    }
-    let now = Instant::now();
-    let mgetr = redis::cmd("MGET").arg(keys).execute(&mut get_conn());
-    //let anow = Instant::now();
-    println!("{:?}", now.elapsed());
-    //println!("{:?}", (anow - now.elapsed()).elapsed());
-    // assert_eq!(
-    //     redis::cmd("MGET").arg(keys).query(&mut get_conn()),
-    //     Ok(value)
-    // );
-}
+//     for i in 1..=10 {
+//         keys.push(i);
+//         let all_value = format!("repost:{},like:{},comment:{}", i, i, i);
+//         value.push(all_value);
+//     }
+
+//     // //let _a: () = get_conn().get(keys).unwrap();
+//     // let _mgetr: () = redis::cmd("MGET")
+//     //     .arg(keys)
+//     //     .query(&mut get_conn())
+//     //     .map_err(|e| panic!("mget thou() error:{:?}", e))
+//     //     .expect("mget thousand() err");
+//     // //let anow = Instant::now();
+
+//     // //println!("{:?}", (anow - now.elapsed()).elapsed());
+//     assert_eq!(
+//         redis::cmd("MGET").arg(keys).query(&mut get_conn()),
+//         Ok(value)
+//     );
+// }
 // todo:如果value大于配置的value 为异常case
 // 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
 // 大于value位数仍然可以存储，有扩展存储
