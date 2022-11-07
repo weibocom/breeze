@@ -92,10 +92,10 @@ impl GuardedBuffer {
     fn offset(&self, oft: usize) -> usize {
         self.pending() + oft
     }
-    #[inline]
-    pub fn raw(&self) -> &[u8] {
-        self.inner.raw()
-    }
+    //#[inline]
+    //pub fn raw(&self) -> &[u8] {
+    //    self.inner.raw()
+    //}
 }
 use std::fmt::{self, Display, Formatter};
 impl Display for GuardedBuffer {
@@ -122,7 +122,7 @@ impl MemGuard {
         unsafe { assert_eq!((&*guard).load(Ordering::Acquire), 0) };
         Self {
             mem: data,
-            guard: guard,
+            guard,
             cap: 0,
         }
     }

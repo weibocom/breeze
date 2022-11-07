@@ -6,18 +6,45 @@ use std::sync::Arc;
 
 use crate::{Id, ItemData};
 
+pub(crate) trait WriteTo {
+    fn write_to<W: ItemWriter>(&self, w: &mut W);
+}
+
+impl WriteTo for i64 {
+    #[inline]
+    fn write_to<W: ItemWriter>(&self, w: &mut W) {
+        let v = if *self < 0 {
+            w.put_slice(b"-");
+            (*self * -1) as usize
+        } else {
+            *self as usize
+        };
+        if v < ds::NUM_STR_TBL.len() {
+            w.put_slice(ds::NUM_STR_TBL[v]);
+        } else {
+            w.put_slice(self.to_string());
+        }
+    }
+}
+impl WriteTo for f64 {
+    #[inline]
+    fn write_to<W: ItemWriter>(&self, w: &mut W) {
+        let s = format!("{:.3}", *self);
+        w.put_slice(s);
+    }
+}
+
 pub(crate) trait ItemWriter {
-    fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64);
-    fn write_opts(
+    fn put_slice<S: AsRef<[u8]>>(&mut self, data: S);
+    fn write<V: WriteTo>(&mut self, name: &str, key: &str, sub_key: &str, val: V);
+    fn write_opts<V: WriteTo>(
         &mut self,
         name: &str,
         key: &str,
         sub_key: &str,
-        val: f64,
-        _opts: Vec<(&str, &str)>,
-    ) {
-        self.write(name, key, sub_key, val);
-    }
+        val: V,
+        opts: Vec<(&str, &str)>,
+    );
 }
 
 unsafe impl Send for Item {}

@@ -3,7 +3,7 @@ use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology, TryNext
 use sharding::hash::Hasher;
 use sharding::Distance;
 use std::collections::HashMap;
-use std::time::Duration;
+use ds::time::Duration;
 
 use crate::TimeoutAdjust;
 use stream::Shards;
@@ -94,7 +94,7 @@ where
                 return;
             }
         }
-        log::debug!("request sent prepared:{} {} {}", idx, req, self);
+        log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
         assert!(
             idx < self.streams.len(),
             "{} < {} => {:?}",
@@ -201,9 +201,8 @@ where
 
             use discovery::distance::{Balance, ByDistance};
             let master = ns.master.clone();
-            let mut local_len = ns.local_len();
             let local = ns.local_affinity;
-            let mut backends = ns.take_backends();
+            let (mut local_len, mut backends) = ns.take_backends();
             //let local = true;
             if local {
                 backends.balance(&master);

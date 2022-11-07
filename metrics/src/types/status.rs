@@ -9,7 +9,7 @@ impl StatusData {
     pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
         let down = self.inner.take() > 0;
         if down {
-            w.write(&id.path, id.key, "down", 1f64);
+            w.write(&id.path, id.key, "down", 1i64);
         }
     }
 }

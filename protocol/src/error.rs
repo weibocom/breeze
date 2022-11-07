@@ -1,8 +1,8 @@
-use std::time::Duration;
+use ds::time::Duration;
 
 #[derive(Debug)]
 pub enum Error {
-    ReadEof,
+    Eof,
     QueueClosed,
     NotInit,
     Closed,
@@ -19,13 +19,13 @@ pub enum Error {
     RequestProtocolInvalidNoReturn(&'static str),
     ResponseProtocolInvalid,
     ProtocolNotSupported,
-    IndexOutofBound,
-    Inner,
+    //IndexOutofBound,
+    //Inner,
     TopChanged,
     WriteResponseErr,
     NoResponseFound,
     // CommandNotSupported,
-    ResponseBufferFull,
+    BufferFull,
     Quit,
     Timeout(Duration),
     Pending, // 在连接退出时，仍然有请求在队列中没有发送。

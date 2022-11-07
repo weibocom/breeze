@@ -1,3 +1,4 @@
+use crate::{ItemWriter, WriteTo};
 use std::sync::{
     atomic::{
         AtomicUsize,
@@ -85,7 +86,7 @@ impl AsyncRead for PrometheusItem {
 struct PrometheusItemWriter<'a, 'r> {
     left: Vec<u8>,
     buf: &'a mut ReadBuf<'r>,
-    first: bool,
+    first: bool, // 在lable中，第一个k/v前面不输出 ','
 }
 impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
     fn new(buf: &'a mut ReadBuf<'r>) -> Self {
@@ -98,17 +99,6 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
     #[inline]
     fn left(self) -> Vec<u8> {
         self.left
-    }
-    #[inline]
-    fn put_slice(&mut self, data: &[u8]) {
-        if self.buf.remaining() >= data.len() {
-            self.buf.put_slice(data);
-        } else {
-            let n = std::cmp::min(data.len(), self.buf.remaining());
-            let (f, s) = data.split_at(n);
-            self.buf.put_slice(&f);
-            self.left.extend_from_slice(&s);
-        }
     }
     #[inline]
     fn put_label(&mut self, name: &str, val: &[u8]) {
@@ -125,17 +115,29 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
         }
     }
 }
-impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
+impl<'a, 'r> ItemWriter for PrometheusItemWriter<'a, 'r> {
     #[inline]
-    fn write(&mut self, name: &str, key: &str, sub_key: &str, val: f64) {
+    fn put_slice<S: AsRef<[u8]>>(&mut self, data: S) {
+        let data = data.as_ref();
+        if self.buf.remaining() >= data.len() {
+            self.buf.put_slice(data);
+        } else {
+            let n = std::cmp::min(data.len(), self.buf.remaining());
+            let (f, s) = data.split_at(n);
+            self.buf.put_slice(&f);
+            self.left.extend_from_slice(&s);
+        }
+    }
+    #[inline]
+    fn write<V: WriteTo>(&mut self, name: &str, key: &str, sub_key: &str, val: V) {
         self.write_opts(name, key, sub_key, val, Vec::new());
     }
-    fn write_opts(
+    fn write_opts<V: WriteTo>(
         &mut self,
         name: &str,
         key: &str,
         sub_key: &str,
-        val: f64,
+        val: V,
         opts: Vec<(&str, &str)>,
     ) {
         /*
@@ -149,7 +151,7 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
          */
 
         //从 name 中截取 source、namespace和topic、instance
-        let all_name: Vec<&str> = name.split("/").collect();
+        let all_name: Vec<&str> = name.split(crate::TARGET_SPLIT as char).collect();
         let source = all_name.get(0).unwrap_or(&"").as_bytes();
         let charname = *all_name.get(1).unwrap_or(&"");
         //针对mcq,namespace中可能包含topic,先根据 ‘#’分割;
@@ -158,34 +160,24 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
         let topic = nameandtopic.get(1).unwrap_or(&"").as_bytes();
         let bip = all_name.get(2).unwrap_or(&"").as_bytes();
 
-        let mut name = String::new();
-        let metrics_name = if sub_key.len() > 0 {
-            name.reserve(key.len() + sub_key.len() + 1);
-            name += key;
-            name += "_";
-            name += sub_key;
-            &name
-        } else {
-            key
-        };
-
+        let metric_name = MetricName(key, sub_key);
         //promethues # HELP
-        self.put_slice(b"# HELP ");
-        self.put_slice(metrics_name.as_bytes());
-        self.put_slice(b"\n");
+        //self.put_slice("# HELP ");
+        //metric_name.write_to(self);
+        //self.put_slice("\n");
 
         //promethues # TYPE
-        self.put_slice(b"# TYPE ");
-        self.put_slice(metrics_name.as_bytes());
-        self.put_slice(b" gauge\n");
+        self.put_slice("# TYPE ");
+        metric_name.write_to(self);
+        self.put_slice(" gauge\n");
 
         //promethues metrics
-        self.put_slice(metrics_name.as_bytes());
-        self.put_slice("{".as_bytes());
-        //确保第一个put的label一定不为空; 后续优化
+        metric_name.write_to(self);
+        self.put_slice("{");
         self.first = true;
+        //确保第一个put的label一定不为空; 后续优化
         self.put_label("source", source);
-        self.put_label("pool", context::get().service_pool.as_bytes());
+        //self.put_label("pool", context::get().service_pool.as_bytes());
         self.put_label("namespace", namespace);
         self.put_label("topic", topic);
         self.put_label("bip", bip);
@@ -194,12 +186,11 @@ impl<'a, 'r> crate::ItemWriter for PrometheusItemWriter<'a, 'r> {
             self.put_label(k, v.as_bytes());
         }
 
-        self.put_slice(b"}");
+        self.put_slice("} ");
 
         //value
-        self.put_slice(b" ");
-        self.put_slice(val.to_string().as_bytes());
-        self.put_slice(b"\n");
+        val.write_to(self);
+        self.put_slice("\n");
     }
 }
 use crate::Host;
@@ -207,4 +198,17 @@ use ds::lock::Lock;
 use lazy_static::lazy_static;
 lazy_static! {
     static ref HOST: Lock<Host> = Host::new().into();
+}
+
+struct MetricName<'a>(&'a str, &'a str);
+
+impl<'a> WriteTo for MetricName<'a> {
+    #[inline]
+    fn write_to<W: ItemWriter>(&self, w: &mut W) {
+        w.put_slice(self.0);
+        if self.1.len() > 0 {
+            w.put_slice("_");
+            w.put_slice(self.1);
+        }
+    }
 }

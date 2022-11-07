@@ -5,9 +5,12 @@ mod packet;
 //mod token;
 
 use crate::{
-    redis::command::{CommandProperties, SWALLOWED_CMD_HASHKEYQ},
-    redis::command::{PADDING_RSP_TABLE, SWALLOWED_CMD_HASHRANDOMQ},
+    redis::command::SWALLOWED_CMD_HASHRANDOMQ,
     redis::packet::RequestPacket,
+    redis::{
+        command::{CommandProperties, SWALLOWED_CMD_HASHKEYQ},
+        packet::LayerType,
+    },
     Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
 };
 use ds::RingSlice;
@@ -41,8 +44,6 @@ impl Redis {
 
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
-            // 先尝试parse master
-            let master_only = packet.parse_cmd_layer()?;
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
             // 对于不支持的cmd，记录协议
@@ -56,11 +57,12 @@ impl Redis {
             };
             let mut hash;
             if cfg.swallowed {
-                // 优先处理swallow吞噬指令: hashkeyq/hashrandomq
+                // 优先处理swallow吞噬指令: master/hashkeyq/hashrandomq
                 self.parse_swallow_cmd(cfg, &mut packet, alg)?;
                 continue;
             } else if cfg.multi {
                 packet.multi_ready();
+                let master_only = packet.master_only();
                 while packet.has_bulk() {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
@@ -74,10 +76,7 @@ impl Redis {
                     if packet.reserved_hash() != 0 {
                         // 使用hashkey直接指定了hash
                         hash = packet.reserved_hash();
-                        log::info!(
-                            "+++ use direct hash for multi cmd: {:?}",
-                            packet.inner_data()
-                        )
+                        log::info!("+++ use direct hash for multi cmd: {:?}", packet)
                     } else {
                         hash = calculate_hash(alg, &key);
                     }
@@ -91,7 +90,7 @@ impl Redis {
                 }
             } else {
                 let mut flag = cfg.flag();
-                if master_only {
+                if packet.master_only() {
                     flag.set_master_only();
                 }
 
@@ -127,7 +126,7 @@ impl Redis {
         Ok(())
     }
 
-    // 解析待吞噬的cmd，目前swallowed cmds有hashkey、hashrandomq这2个，后续还有扩展就在这里加 fishermen
+    // 解析待吞噬的cmd，解析后会trim掉吞噬指令，消除吞噬指令的影响，目前swallowed cmds有master、hashkeyq、hashrandomq这几个，后续还有扩展就在这里加 fishermen
     fn parse_swallow_cmd<S: Stream, H: Hash>(
         &self,
         cfg: &CommandProperties,
@@ -135,32 +134,39 @@ impl Redis {
         alg: &H,
     ) -> Result<()> {
         debug_assert!(cfg.swallowed, "cfg:{}", cfg.name);
-        match cfg.name {
-            // hashkeyq
-            SWALLOWED_CMD_HASHKEYQ => {
-                let key = packet.parse_key()?;
-                let hash: i64;
-                // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
-                if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
-                    log::info!("+++ will broadcast: {:?}", packet.inner_data());
-                    hash = crate::MAX_DIRECT_HASH;
-                } else {
-                    hash = calculate_hash(alg, &key);
-                }
+        // 目前master_next 为true的只有master指令，所以不用比对cfg name
+        if cfg.master_next {
+            // cmd: master
+            packet.set_layer(LayerType::MasterOnly);
+        } else {
+            // 非master指令check后处理
+            match cfg.name {
+                // cmd: hashkeyq $key
+                SWALLOWED_CMD_HASHKEYQ => {
+                    let key = packet.parse_key()?;
+                    let hash: i64;
+                    // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
+                    if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
+                        log::info!("+++ will broadcast: {:?}", packet.inner_data());
+                        hash = crate::MAX_DIRECT_HASH;
+                    } else {
+                        hash = calculate_hash(alg, &key);
+                    }
 
-                // 记录reserved hash，为下一个指令使用
-                packet.update_reserved_hash(hash);
-            }
-            // "hashrandomq"
-            SWALLOWED_CMD_HASHRANDOMQ => {
-                // 虽然hash名义为i64，但实际当前均为u32
-                let hash = rand::random::<u32>();
-                // 记录reserved hash，为下一个指令使用
-                packet.update_reserved_hash(hash as i64);
-            }
-            _ => {
-                debug_assert!(false, "cfg:{}", cfg.name);
-                log::warn!("should not come here![hashkey?]");
+                    // 记录reserved hash，为下一个指令使用
+                    packet.update_reserved_hash(hash);
+                }
+                // cmd: hashrandomq
+                SWALLOWED_CMD_HASHRANDOMQ => {
+                    // 虽然hash名义为i64，但实际当前均为u32
+                    let hash = rand::random::<u32>();
+                    // 记录reserved hash，为下一个指令使用
+                    packet.update_reserved_hash(hash as i64);
+                }
+                _ => {
+                    debug_assert!(false, "unknown swallowed cmd:{}", cfg.name);
+                    log::warn!("should not come here![hashkey?]");
+                }
             }
         }
 
@@ -278,22 +284,15 @@ impl Protocol for Redis {
             if first || cfg.need_bulk_num {
                 if first && cfg.need_bulk_num {
                     w.write_u8(b'*')?;
-                    w.write(ext.key_count().to_string().as_bytes())?;
+                    w.write_s_u16(ext.key_count())?;
                     w.write(b"\r\n")?;
                 }
 
                 // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
                 if cfg.need_bulk_num && response.data().at(0) == b'-' && cfg.nil_rsp > 0 {
-                    let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
-                    // 百分之一的概率打印nil 转换
-                    let rd = rand::random::<usize>() % 100;
-                    if log::log_enabled!(log::Level::Debug) || rd == 0 {
-                        log::info!(
-                            "+++ write to client nil: {:?}, ignore:{:?}",
-                            nil,
-                            response.data()
-                        );
-                    }
+                    // 在Command中已经断言了nil_rsp < PADDING_RSP_TABLE.len()
+                    let nil = cfg.get_pad_rsp();
+                    log::info!("+++ write to client nil: {:?}=>{:?}", nil, response);
 
                     w.write(nil.as_bytes())?;
                     return Ok(1);
@@ -318,8 +317,7 @@ impl Protocol for Redis {
         w: &mut W,
         dist_fn: F,
     ) -> Result<usize> {
-        let rsp_idx = req.ext().padding_rsp() as usize;
-        assert!(rsp_idx < PADDING_RSP_TABLE.len(), "rsp_idx:{}", rsp_idx);
+        let rsp_idx = req.ext().padding_rsp();
 
         let mut nil_convert = 0;
         // check cmd需要额外构建rsp，目前只有hashkey、keyshard两种dist指令需要构建
@@ -333,11 +331,8 @@ impl Protocol for Redis {
                 let mut bulk_str: String = String::from("");
                 if cfg.multi && cfg.need_bulk_num {
                     let ext = req.ext();
-                    let first = ext.mkey_first();
-                    if first {
-                        if first && cfg.need_bulk_num {
-                            bulk_str = format!("*{}\r\n", ext.key_count());
-                        }
+                    if ext.mkey_first() && cfg.need_bulk_num {
+                        bulk_str = format!("*{}\r\n", ext.key_count());
                     }
                 }
 
@@ -364,34 +359,26 @@ impl Protocol for Redis {
                     }
                 }
                 if nil_rsp {
-                    let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
+                    let nil = cfg.get_pad_rsp();
                     // 百分之一的概率打印nil 转换
-                    let rd = rand::random::<usize>() % 100;
-                    if log::log_enabled!(log::Level::Debug) || rd == 0 {
-                        log::info!("+++ write client nil/{} for:{:?}", nil, req.data());
-                    }
+                    log::info!("+++ write client nil/{} for:{:?}", nil, req);
                     nil_convert = 1;
                     nil.to_string()
                 } else {
-                    let padding_rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
-                    padding_rsp.to_string()
+                    cfg.get_pad_rsp_by(rsp_idx).to_string()
                 }
             }
         };
 
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        log::debug!(
-            "+++ will write noforward rsp/{:?} for req:{:?}",
-            rsp,
-            req.data()
-        );
+        log::debug!("+++ will write noforward rsp/{:?} for req:{:?}", rsp, req);
         if rsp.len() > 0 {
             w.write(rsp.as_bytes())?;
             Ok(nil_convert)
         } else {
             // quit，先发+OK，再返回err
             assert_eq!(rsp_idx, 0, "rsp_idx:{}", rsp_idx);
-            let ok_rs = PADDING_RSP_TABLE.get(1).unwrap().as_bytes();
+            let ok_rs = cfg.get_pad_ok_rsp().as_bytes();
             w.write(ok_rs)?;
             Err(crate::Error::Quit)
         }
@@ -427,3 +414,6 @@ fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
 fn default_hash() -> i64 {
     AUTO.fetch_add(1, Ordering::Relaxed)
 }
+
+// tests only
+pub use packet::RequestContext;

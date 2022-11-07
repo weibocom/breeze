@@ -43,7 +43,7 @@ pub(crate) struct CommandProperties {
 
 // 默认响应
 // 第0个表示quit
-pub const PADDING_RSP_TABLE: [&str; 7] = [
+const PADDING_RSP_TABLE: [&str; 7] = [
     "",
     "+OK\r\n",
     "+PONG\r\n",
@@ -53,7 +53,23 @@ pub const PADDING_RSP_TABLE: [&str; 7] = [
     "$-1\r\n",                           // mget 等指令对应的nil
 ];
 
+// 调用式确保idx < PADDING_RSP_TABLE.len()
+// 这个idx通常来自于CommandProperties.padding_rsp
+
 impl CommandProperties {
+    #[inline(always)]
+    pub(super) fn get_pad_rsp(&self) -> &'static str {
+        unsafe { PADDING_RSP_TABLE.get_unchecked(self.padding_rsp as usize) }
+    }
+    #[inline(always)]
+    pub(super) fn get_pad_ok_rsp(&self) -> &'static str {
+        unsafe { PADDING_RSP_TABLE.get_unchecked(1) }
+    }
+    #[inline(always)]
+    pub(super) fn get_pad_rsp_by(&self, idx: u8) -> &'static str {
+        assert!(idx < PADDING_RSP_TABLE.len() as u8);
+        unsafe { PADDING_RSP_TABLE.get_unchecked(idx as usize) }
+    }
     //#[inline]
     //pub fn operation(&self) -> &Operation {
     //    &self.op
@@ -225,6 +241,7 @@ impl Commands {
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
         c.supported = true;
+        c.op_code = idx as u16;
         self.supported[idx] = c;
     }
 }
@@ -247,18 +264,21 @@ pub(super) static SUPPORTED: Commands = {
     // TODO：后续增加新指令时，当multi/need_bulk_num 均为true时，需要在add_support中进行nil转换，避免将err返回到client fishermen
     for c in vec![
         //// meta 指令
+        // name, mname, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num
         //("command", "command" ,   -1, Meta, 0, 0, 0, 1, false, true, false, false, false),
         //("ping", "ping" ,         -1, Meta, 0, 0, 0, 2, false, true, false, false, false),
         //// 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
         //("select", "select" ,      2, Meta, 0, 0, 0, 1, false, true, false, false, false),
-        //("hello", "hello" ,        2, Meta, 0, 0, 0, 4, false, true, false, false, false),
-        //("quit", "quit" ,          2, Meta, 0, 0, 0, 0, false, true, false, false, false),
+        //("hello", "hello" ,        -1, Meta, 0, 0, 0, 4, false, true, false, false, false),
+        //("quit", "quit" ,          1, Meta, 0, 0, 0, 0, false, true, false, false, false),
+        // hello 参数应该是-1，可以不带或者带多个
         Cmd::new("command").arity(-1).op(Meta).padding(1).nofwd(),
         Cmd::new("ping").arity(-1).op(Meta).padding(2).nofwd(),
         Cmd::new("select").arity(2).op(Meta).padding(1).nofwd(),
-        Cmd::new("hello").arity(2).op(Meta).padding(4).nofwd(),
-        Cmd::new("quit").arity(2).op(Meta).nofwd(),
-        Cmd::new("master").arity(2).op(Meta).nofwd().master(),
+        Cmd::new("hello").arity(-1).op(Meta).padding(4).nofwd(),
+        // quit、master的指令token数/arity应该都是1
+        Cmd::new("quit").arity(1).op(Meta).nofwd(),
+        Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow(),
 
         //("get" , "get",            2, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("get").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
@@ -483,14 +503,14 @@ pub(super) static SUPPORTED: Commands = {
 
         // geo 相关指令
         //("geoadd", "geoadd",                       -5, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("georadius", "georadius",                 -6, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("georadiusbymember", "georadiusbymember", -5, Get, 1, 1, 1, 3, false, false, true, false, false),
+        //("georadius", "georadius",                 -6, Store, 1, 1, 1, 3, false, false, true, false, false),
+        //("georadiusbymember", "georadiusbymember", -5, Store, 1, 1, 1, 3, false, false, true, false, false),
         //("geohash", "geohash",                     -2, Get, 1, 1, 1, 3, false, false, true, false, false),
         //("geopos", "geopos",                       -2, Get, 1, 1, 1, 3, false, false, true, false, false),
         //("geodist", "geodist",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("geoadd").arity(-5).op(Store).first(1).last(1).step(1).padding(3).key().val(),
-        Cmd::new("georadius").arity(-6).op(Get).first(1).last(1).step(1).padding(3).key(),
-        Cmd::new("georadiusbymember").arity(-5).op(Get).first(1).last(1).step(1).padding(3).key(),
+        Cmd::new("georadius").arity(-6).op(Store).first(1).last(1).step(1).padding(3).key(),
+        Cmd::new("georadiusbymember").arity(-5).op(Store).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("geohash").arity(-2).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("geopos").arity(-2).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("geodist").arity(-4).op(Get).first(1).last(1).step(1).padding(3).key(),
@@ -699,6 +719,7 @@ impl CommandProperties {
         self
     }
     fn nil_rsp(mut self, idx: u8) -> Self {
+        assert!(idx < PADDING_RSP_TABLE.len() as u8);
         self.nil_rsp = idx;
         self
     }
