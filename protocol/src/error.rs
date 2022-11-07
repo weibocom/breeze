@@ -1,4 +1,4 @@
-use std::time::Duration;
+use ds::time::Duration;
 
 #[derive(Debug)]
 pub enum Error {

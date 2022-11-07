@@ -47,7 +47,7 @@ impl Resource {
     }
 }
 
-use std::time::Duration;
+use ds::time::Duration;
 pub trait Builder<P, R, E> {
     fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Duration) -> E
     where

@@ -48,7 +48,6 @@ where
         let out = Pin::new(&mut **client).poll_read(cx, &mut rb);
         let r = rb.capacity() - rb.remaining();
         if r > 0 {
-            // log::debug!("{} bytes received ==> {:?}", r, &buf[0..r]);
             log::debug!("{} bytes received", r);
         }
         *n += r;
@@ -64,14 +63,6 @@ pub struct StreamGuard {
     buf: GuardedBuffer,
 }
 impl protocol::Stream for StreamGuard {
-    //#[inline]
-    //fn update(&mut self, idx: usize, val: u8) {
-    //    self.buf.update(idx, val);
-    //}
-    //#[inline]
-    //fn at(&self, idx: usize) -> u8 {
-    //    self.buf.at(idx)
-    //}
     #[inline]
     fn take(&mut self, n: usize) -> MemGuard {
         self.buf.take(n)
@@ -92,6 +83,10 @@ impl protocol::Stream for StreamGuard {
     fn reserved_hash(&mut self) -> &mut i64 {
         &mut self.reserved_hash
     }
+    #[inline]
+    fn reserve(&mut self, r: usize) {
+        self.buf.grow(r);
+    }
 }
 impl From<GuardedBuffer> for StreamGuard {
     #[inline]
@@ -106,15 +101,15 @@ impl From<GuardedBuffer> for StreamGuard {
 impl StreamGuard {
     #[inline]
     pub fn init(init: usize) -> Self {
-        const MIN: usize = 1024;
         // buffer最大从4M调整到64M，观察CPU、Mem fishermen 2022.5.23
-        const MAX: usize = 64 << 20;
-        let init = init.max(MIN).min(MAX);
-        Self::with(MIN, MAX, init)
+        let min = crate::MIN_BUFFER_SIZE;
+        let max = crate::MAX_BUFFER_SIZE;
+        Self::with(min, max, init.min(max))
     }
     #[inline]
     pub fn new() -> Self {
-        Self::init(1024)
+        // 初始化为0，延迟分配内存
+        Self::init(0)
     }
     #[inline]
     fn with(min: usize, max: usize, init: usize) -> Self {
@@ -145,17 +140,21 @@ impl StreamGuard {
     {
         self.buf.write(r)
     }
-    //#[inline]
-    //pub fn cap(&self) -> usize {
-    //    self.buf.cap()
-    //}
+    #[inline]
+    pub fn shrink(&mut self) {
+        self.buf.shrink();
+    }
+    #[inline]
+    pub fn cap(&self) -> usize {
+        self.buf.cap()
+    }
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
 impl Display for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "ctx:{} StreamGuard :{}", self.ctx, self.buf,)
+        write!(f, "ctx:{} {}", self.ctx, self.buf)
     }
 }
 impl Debug for StreamGuard {

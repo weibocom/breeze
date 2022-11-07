@@ -7,7 +7,7 @@ pub struct Request {
 
 impl crate::Request for Request {
     #[inline]
-    fn start_at(&self) -> std::time::Instant {
+    fn start_at(&self) -> ds::time::Instant {
         self.ctx().start_at()
     }
 
