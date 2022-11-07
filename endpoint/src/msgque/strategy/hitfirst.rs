@@ -106,30 +106,33 @@ impl HitFirstReader {
         // 获取下一个读取node id
         let next = self.cursor_current.fetch_add(1, Ordering::Relaxed);
         let cursor_idx = next % self.cursors.len();
-        let chits = self.cursors.get(cursor_idx).unwrap();
-        let mut idx = chits.node_idx.load(Ordering::Relaxed);
-        let hits = chits.hits.fetch_add(1, Ordering::Relaxed);
+        let cursor = self.cursors.get(cursor_idx).unwrap();
+        let mut node_idx = cursor.node_idx.load(Ordering::Relaxed);
+        let node_hits = cursor.hits.fetch_add(1, Ordering::Relaxed);
 
         // 如果当前位置hits数太大，也偏移一个位置
-        if hits > MAX_HITS {
-            if let Ok(_c) =
-                chits
-                    .node_idx
-                    .compare_exchange(idx, idx + 1, Ordering::Relaxed, Ordering::Relaxed)
-            {
-                chits.hits.store(0, Ordering::Relaxed);
+        if node_hits > MAX_HITS {
+            let next_idx = (node_idx + 1) % self.qnodes.len();
+            if let Ok(_c) = cursor.node_idx.compare_exchange(
+                node_idx,
+                next_idx,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                cursor.hits.store(0, Ordering::Relaxed);
             }
-            // cursor已偏移到新位置
-            idx += 1;
+
+            // cursor已偏移到新位置，性能
+            node_idx = next_idx;
         }
 
         assert!(
-            idx < self.qnodes.len(),
+            node_idx < self.qnodes.len(),
             "idx:{}, qunodes:{:?}",
-            idx,
+            node_idx,
             self.qnodes
         );
-        let node = self.qnodes.get(idx).unwrap();
+        let node = self.qnodes.get(node_idx).unwrap();
         log::debug!("+++ use common cursor:{}, {:?}", cursor_idx, self);
         node.id
     }
@@ -149,7 +152,7 @@ impl HitFirstReader {
         // 此处说明已经读过
         let last_read_idx = *lread_op.unwrap();
         let mut found = 0;
-        for (i, ch) in self.cursors.iter().enumerate() {
+        for (_i, ch) in self.cursors.iter().enumerate() {
             let node_idx = ch.node_idx.load(Ordering::Relaxed);
             if node_idx == last_read_idx {
                 let new_node_idx = if found == 0 {
@@ -162,7 +165,7 @@ impl HitFirstReader {
                 };
                 found += 1;
 
-                log::debug!("+++ shift cursor:{}, {} => {}", i, node_idx, new_node_idx);
+                log::debug!("+++ shift cursor:{}, {} => {}", _i, node_idx, new_node_idx);
                 // last 读空，需要偏移位置
                 if let Ok(_c) = ch.node_idx.compare_exchange(
                     node_idx,

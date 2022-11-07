@@ -2,18 +2,16 @@ use context::Quadruple;
 use net::Listener;
 use rt::spawn;
 use std::sync::Arc;
-use std::time::Duration;
+use ds::time::Duration;
 
 use discovery::TopologyWriteGuard;
 use ds::chan::Sender;
 use metrics::Path;
 use protocol::{Parser, Result};
 use stream::pipeline::copy_bidirectional;
-use stream::Builder;
-use stream::StreamMetrics;
+use stream::{Backend, Builder, Request, StreamMetrics};
 
-use stream::Request;
-type Endpoint = Arc<stream::Backend<Request>>;
+type Endpoint = Arc<Backend<Request>>;
 type Topology = endpoint::Topology<Builder<Parser, Request>, Endpoint, Request, Parser>;
 // 一直侦听，直到成功侦听或者取消侦听（当前尚未支持取消侦听）
 // 1. 尝试侦听之前，先确保服务配置信息已经更新完成

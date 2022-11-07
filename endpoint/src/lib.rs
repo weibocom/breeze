@@ -24,7 +24,7 @@ trait TimeoutAdjust: Sized {
     }
 }
 
-use std::time::Duration;
+use ds::time::Duration;
 impl TimeoutAdjust for Duration {
     fn adjust(&mut self, ms: u32) {
         if ms > 0 {

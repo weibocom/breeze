@@ -54,7 +54,7 @@ jobs:
           ls -all ./target/debug/agent
       - name: Run
         run: nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
-      - name: Check Port
+      - name: Check Status
         run: |
           sleep 6s
           #netstat -nat|grep LISTEN
@@ -71,5 +71,5 @@ jobs:
         with:
           version: '0.15.0'
           args: '-v'
-      - name: Run tests
-        run: cargo test 
+            #- name: Run tests
+            #  run: cargo test 

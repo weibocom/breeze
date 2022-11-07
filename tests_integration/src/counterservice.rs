@@ -374,7 +374,7 @@ fn test_thousand_mget() {
     let mut keys = Vec::new();
     let mut value = Vec::new();
 
-    for i in 1..=10000 {
+    for i in 1..=1000 {
         keys.push(i);
         let all_value = format!("repost:{},like:{},comment:{}", i, i, i);
         value.push(all_value);

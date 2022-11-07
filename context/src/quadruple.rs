@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::time::{Duration, Instant};
+use ds::time::{Duration, Instant};
 #[derive(Debug, Clone, Eq)]
 pub struct Quadruple {
     parsed_at: Instant,
