@@ -1,7 +1,10 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering::*};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering::*},
+    Arc,
+};
 use std::task::{ready, Context, Poll};
 use ds::time::{Duration, Instant};
 
@@ -17,7 +20,7 @@ use crate::{Callback, CallbackContext, CallbackContextPtr, Request, StreamMetric
 
 pub async fn copy_bidirectional<C, P, T>(
     top: T,
-    mut metrics: StreamMetrics,
+    metrics: Arc<StreamMetrics>,
     client: C,
     parser: P,
 ) -> Result<()>
@@ -52,7 +55,7 @@ where
     rt::Entry::from(pipeline, Duration::from_secs(10)).await
 }
 
-struct CopyBidirectional<C, P, T> {
+pub struct CopyBidirectional<C, P, T> {
     top: T,
     rx_buf: StreamGuard,
     client: C,
@@ -62,7 +65,7 @@ struct CopyBidirectional<C, P, T> {
     flush: bool,
     cb: Callback,
 
-    metrics: StreamMetrics,
+    metrics: Arc<StreamMetrics>,
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
     // 如果一个multiget被拆分成多个请求，则start存储的是第一个请求的时间。
     start: Instant,
