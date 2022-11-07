@@ -73,8 +73,8 @@ fn test_hashrandomq1() {
 /// 56379 set某key,因主没有56379端口,
 /// 通过hashrandomq get 100次, 应部分有值
 /// 通过master + hashrandomq get 100次, 应全部没值, 因master中没有56379
+// #[test]
 #[named]
-#[test]
 fn test_hashrandomq_with_master() {
     let arykey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
