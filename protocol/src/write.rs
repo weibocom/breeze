@@ -1,9 +1,6 @@
 use super::Result;
-const NUM_STR_TBL: [&'static str; 32] = [
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
-    "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31",
-];
 pub trait Writer {
+    fn cap(&self) -> usize;
     fn pending(&self) -> usize;
     // 写数据，一次写完
     fn write(&mut self, data: &[u8]) -> Result<()>;
@@ -15,8 +12,8 @@ pub trait Writer {
     // write(v.to_string().as_bytes())
     #[inline]
     fn write_s_u16(&mut self, v: u16) -> Result<()> {
-        if v < NUM_STR_TBL.len() as u16 {
-            self.write(NUM_STR_TBL[v as usize].as_bytes())
+        if v < ds::NUM_STR_TBL.len() as u16 {
+            self.write(ds::NUM_STR_TBL[v as usize].as_bytes())
         } else {
             self.write(v.to_string().as_bytes())
         }
@@ -42,8 +39,13 @@ pub trait Writer {
         }
         Ok(())
     }
+    fn shrink(&mut self);
 }
 impl Writer for Vec<u8> {
+    #[inline]
+    fn cap(&self) -> usize {
+        self.capacity()
+    }
     #[inline]
     fn pending(&self) -> usize {
         self.len()
@@ -57,5 +59,9 @@ impl Writer for Vec<u8> {
     fn write_u8(&mut self, v: u8) -> Result<()> {
         self.push(v);
         Ok(())
+    }
+    #[inline]
+    fn shrink(&mut self) {
+        todo!("should not call shrink");
     }
 }

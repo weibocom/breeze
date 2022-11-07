@@ -340,6 +340,15 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         assert!(self.available(), "oft:{}, rsp:{:?}", self.oft, self.data);
         self.data.at(self.oft)
     }
+
+    // succeed 标准： get 返回val；set 返回 stored；
+    #[inline]
+    pub(crate) fn is_succeed(&self) -> bool {
+        match self.rsp_type {
+            RspType::Value | RspType::Stored => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

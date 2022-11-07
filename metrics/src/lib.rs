@@ -24,6 +24,9 @@ use std::fmt::Debug;
 use std::ops::AddAssign;
 use std::sync::Arc;
 
+// tests only
+pub use item::Item;
+
 pub struct Metric {
     id: Arc<Id>,
     item: ItemRc,

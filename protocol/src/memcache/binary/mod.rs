@@ -11,6 +11,10 @@ pub struct MemcacheBinary;
 use crate::{Command, HashedCommand, Protocol, RequestProcessor};
 use sharding::hash::Hash;
 impl Protocol for MemcacheBinary {
+    #[inline]
+    fn cache(&self) -> bool {
+        true
+    }
     // 解析请求。把所有的multi-get请求转换成单一的n个get请求。
     #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
@@ -25,6 +29,7 @@ impl Protocol for MemcacheBinary {
             req.check_request()?;
             let packet_len = req.packet_len();
             if req.len() < packet_len {
+                data.reserve(packet_len - req.len());
                 break;
             }
 
@@ -63,6 +68,8 @@ impl Protocol for MemcacheBinary {
                     assert!(!r.status_ok(), "rsp: {:?}", r);
                     data.ignore(pl);
                 }
+            } else {
+                data.reserve(pl - len);
             }
         }
         Ok(None)

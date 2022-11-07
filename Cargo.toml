@@ -13,6 +13,7 @@ members = [
   "ds",
   "rt",
   "tests",
+  "tests_integration",
 ]
 
 exclude = ["api", "tests"]

@@ -67,8 +67,8 @@ pub struct ContextOption {
     #[clap(short, long, help("log path"), default_value("/tmp/breeze/logs"))]
     pub log_dir: String,
 
-    #[clap(short, long, help("metrics url"))]
-    pub metrics_url: Option<String>,
+    #[clap(short, long, help("metrics url"), default_value(""))]
+    pub metrics_url: String,
 
     #[clap(
         long,
@@ -99,11 +99,12 @@ lazy_static! {
         let fields:Vec<&str> = full.split('-').collect();
         let len = fields.len();
         let last = *fields.get(len-1).unwrap_or(&"");
+        let build = if cfg!(debug_assertions) { "_debug" } else { "" };
         if last == "modified" {
             let second_last = fields.get(len-2).unwrap_or(&"");
-            format!("{}_{}", second_last, last)
+            format!("{}_{}{}", second_last, last, build)
         } else {
-            last.to_string()
+            last.to_string() + build
         }
     };
     static ref CONTEXT: Context = {
@@ -133,9 +134,9 @@ impl ContextOption {
         Ok(())
     }
 
-    pub fn tick(&self) -> std::time::Duration {
+    pub fn tick(&self) -> ds::time::Duration {
         assert!(self.tick_sec >= 1 && self.tick_sec <= 60);
-        std::time::Duration::from_secs(self.tick_sec as u64)
+        ds::time::Duration::from_secs(self.tick_sec as u64)
     }
     // 如果是以升级模式启动，则会将原有的端口先关闭。
     pub fn listeners(&self) -> ListenerIter {
