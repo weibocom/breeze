@@ -189,8 +189,10 @@ where
             *metrics.key() += 1;
 
             if parser.cache() && op.is_query() {
+                *metrics.hit() += ctx.response_ok() as usize;
                 *metrics.cache() += ctx.response_ok();
             } else if op.is_store() {
+                *metrics.downmiss() += ctx.response_ok() as usize;
             }
 
             if ctx.inited() && !ctx.request().ignore_rsp() {
