@@ -192,7 +192,7 @@ where
                 *metrics.hit() += ctx.response_ok() as usize;
                 *metrics.cache() += ctx.response_ok();
             } else if op.is_store() {
-                *metrics.downhit() += ctx.response_ok() as usize;
+                *metrics.uphit() += ctx.response_ok() as usize;
             }
 
             if ctx.inited() && !ctx.request().ignore_rsp() {
