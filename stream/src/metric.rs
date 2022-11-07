@@ -46,8 +46,8 @@ macro_rules! define_metrics {
 }
 
 define_metrics!(
-    qps:    tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn,noresponse-noresponse, key-key, nilconvert-nilconvert,uphit-uphit,hit-hit;
-    num:    conn_num-conn;
+    qps:    tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn,noresponse-noresponse, key-key, nilconvert-nilconvert;
+    num:    conn_num-conn,upnum-upnum,downnum-downnum;
     rtt:    avg-avg;
     ratio:  cache-hit
 );
