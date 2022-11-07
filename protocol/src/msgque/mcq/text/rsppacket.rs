@@ -291,45 +291,6 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
             self.data.update(idx, b'0');
         }
         return Ok(());
-
-        // let mut mem_data: Vec<u8> = Vec::with_capacity(rsp_mem.data().len());
-        // rsp_mem.data().copy_to_vec(&mut mem_data);
-
-        // if let Ok((key_start, _)) = next_token(&mem_data, 0) {
-        //     if let Ok((flags_start, _key_len)) = next_token(&mem_data, key_start) {
-        //         if let Ok((_vlen_start, flags_len)) = next_token(&mem_data, flags_start) {
-        //             let flags_data = mem_data[flags_start..(flags_start + flags_len)].to_vec();
-
-        //             let mut flags_value = 0;
-        //             for flag in flags_data.iter() {
-        //                 flags_value = flags_value * 10 + (flag - b'0') as usize;
-        //             }
-        //             // 认为是mesh set 时设置,
-        //             if flags_len >= 10 {
-        //                 let time_sec = SystemTime::now()
-        //                     .duration_since(UNIX_EPOCH)
-        //                     .unwrap()
-        //                     .as_secs();
-
-        //                 //let topic = mem_data[key_start..(key_start + key_len)].to_vec();
-        //                 let mut delay_metric = Path::base().rtt("mcq_delay");
-        //                 delay_metric += Duration::from_secs(time_sec - flags_value as u64);
-
-        //                 let mut i = 0;
-        //                 for idx in flags_start..(flags_start + flags_len) {
-        //                     if i == 0 {
-        //                         self.data.update(idx, b'0');
-        //                     } else {
-        //                         self.data.update(idx, b' ');
-        //                     }
-        //                     i += 1;
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-
-        // Ok(())
     }
 
     pub(super) fn is_empty(&self) -> bool {
