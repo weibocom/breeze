@@ -1,3 +1,14 @@
+//! # 已测试场景
+//! ## 基本操作验证
+//! - get set incr incrby del mincr decr
+//! - mget 1w个key 少量key
+//! # 异常场景
+//! - max-diff 当下一个setkey 超过当前最大key 提示too big
+//! - key 类型错误（非long/没加配置列） 提示invaild key
+//!    配置列错误 提示配置列错误
+//! ## 复杂场景
+//!  - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
+//! 从mesh读取, 验证业务写入与mesh读取之间的一致性
 use crate::ci::env::Mesh;
 use assert_panic::assert_panic;
 use rand::distributions::Alphanumeric;
@@ -8,12 +19,14 @@ use std::vec;
 
 use crate::ci::env::exists_key_iter;
 
+#[allow(dead_code)]
 fn rand_num() -> u32 {
     let mut rng = rand::thread_rng();
     rng.gen::<u32>()
     //rng.gen_range(0..18446744073709551615)
     //18446744073709551
 }
+#[allow(dead_code)]
 fn rand_key(tail: &str) -> String {
     let mut rng = thread_rng();
     let mut s: String = (&mut rng)
@@ -24,7 +37,7 @@ fn rand_key(tail: &str) -> String {
     s.push_str(tail);
     s
 }
-
+#[allow(dead_code)]
 fn record_max_key() {}
 
 // set 1 2, ..., set 10000 10000等一万个key已由java sdk预先写入,
@@ -61,7 +74,7 @@ fn test_consum_diff_write() {
 //轮询向指定列里发送 value为20 的key
 //再get 做断言 判断get到的val和set进去的val是否相等
 #[test]
-fn test_sample_set() {
+fn test_basic_set() {
     test_set_key_value(44, 44);
 }
 
@@ -122,7 +135,7 @@ fn test_diffkey_set() {
 // get key=> 得到所有列的值
 // get 64 =>"repost:30,comment:30,like:30"
 #[test]
-fn test_sample_get() {
+fn test_basic_get() {
     test_set_key_value(6666666, 64);
 
     assert_eq!(
@@ -144,7 +157,7 @@ fn test_sample_get() {
 // 6.del 1234567 验证结果是否为“”
 // 7. get key。repost 验证结果是否为nil
 #[test]
-fn test_sample_del() {
+fn test_basic_del() {
     let key = 123456789;
     let value = 456;
     assert_eq!(
@@ -208,7 +221,7 @@ fn test_sample_del() {
 //4. incr整个key incr 223456789 报 Invalid key
 
 #[test]
-fn test_sample_incrby() {
+fn test_basic_incrby() {
     let key: u32 = 223456789;
     let value = 456;
     let incr_num = 2;
@@ -243,6 +256,43 @@ fn test_sample_incrby() {
     assert_panic!(panic!( "{:?}", get_conn().incr::<u32, u32, String>(key, 2)), String, contains "Invalid key");
 }
 
+//set 111111 222222
+//mincr key1 key2
+// mget key1 key2
+#[test]
+fn test_basic_mincr() {
+    let v1 = 1111111;
+    let v2 = 2222222;
+    redis::cmd("DEL").arg(v1).arg(v2).execute(&mut get_conn());
+
+    test_set_key_value(v1, v1 as i64);
+    test_set_key_value(v2, v2 as i64);
+
+    let column_cfg = vec![".repost", ".comment", ".like"];
+    let mut mincr_keys = vec![];
+    for column in column_cfg.iter() {
+        let mut key1 = v1.to_string();
+        let mut key2 = v2.to_string();
+        key1.push_str(column);
+        key2.push_str(column);
+        mincr_keys.push(key1);
+        mincr_keys.push(key2);
+    }
+    let value1 = format!("repost:{},like:{},comment:{}", v1 + 1, v1 + 1, v1 + 1);
+    let value2 = format!("repost:{},like:{},comment:{}", v2 + 1, v2 + 1, v2 + 1);
+
+    let _: () = redis::cmd("MINCR")
+        .arg(mincr_keys)
+        .query(&mut get_conn())
+        .map_err(|e| panic!("set error:{:?}", e))
+        .expect("mincr err");
+
+    assert_eq!(
+        redis::cmd("MGET").arg(v1).arg(v2).query(&mut get_conn()),
+        Ok((value1, value2))
+    );
+}
+
 //测试场景：decrby只能decby 指定key的指定列 decr 323456789.repost 3
 //单独decrby某一列 get到的value为value-1
 
@@ -253,7 +303,7 @@ fn test_sample_incrby() {
 //4. decr整个key decr 323456789 报 Invalid key
 
 #[test]
-fn test_sample_decr() {
+fn test_basic_decr() {
     let key: u32 = 323456789;
     let value = 456;
     let decr_num = 4;
@@ -318,8 +368,29 @@ fn test_mget() {
     );
 }
 
+//获取10000个key
+#[test]
+fn test_thousand_mget() {
+    let mut keys = Vec::new();
+    let mut value = Vec::new();
+
+    for i in 1..=1000 {
+        keys.push(i);
+        let all_value = format!("repost:{},like:{},comment:{}", i, i, i);
+        value.push(all_value);
+    }
+    assert_eq!(
+        redis::cmd("MGET").arg(keys).query(&mut get_conn()),
+        Ok(value)
+    );
+}
 // todo:如果value大于配置的value 为异常case
 // 测试端口配置了三列 repost:value为12b comment:value为10b like:value为10b
+// 大于value位数仍然可以存储，有扩展存储
+#[test]
+fn test_big_value() {
+    test_set_key_value(666666, 10000000000000000);
+}
 
 fn get_conn() -> Connection {
     let host = file!().get_host();
@@ -338,7 +409,7 @@ fn get_conn() -> Connection {
     conn
 }
 
-fn test_set_key_value(key: i32, value: i32) {
+fn test_set_key_value(key: i32, value: i64) {
     let column_cfg = vec![".repost", ".comment", ".like"];
 
     for column in column_cfg.iter() {

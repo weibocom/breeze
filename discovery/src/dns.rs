@@ -166,7 +166,7 @@ pub async fn start_dns_resolver_refresher() {
     use std::task::Poll;
     let noop = noop_waker::noop_waker();
     let mut ctx = std::task::Context::from_waker(&noop);
-    use std::time::{Duration, Instant};
+    use ds::time::{Duration, Instant};
     const CYCLE: Duration = Duration::from_secs(79);
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut last = Instant::now(); // 上一次刷新的时间

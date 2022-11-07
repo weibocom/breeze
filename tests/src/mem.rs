@@ -63,7 +63,7 @@ fn ring_buffer() {
     rrb.advance_write(1024);
 
     // 等待10ms。（默认是4ms）
-    std::thread::sleep(std::time::Duration::from_millis(10));
+    std::thread::sleep(ds::time::Duration::from_millis(10));
     let buf = rrb.as_mut_bytes();
     assert_eq!(buf.len(), 1024);
     rrb.advance_write(1024);

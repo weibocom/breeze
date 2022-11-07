@@ -3,7 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::task::{ready, Context, Poll};
-use std::time::{Duration, Instant};
+use ds::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -278,8 +278,10 @@ impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Request>> rt::ReEnter
-    for CopyBidirectional<C, P, T>
+impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
+where
+    C: AsyncRead + AsyncWrite + Writer + Unpin,
+    T: TopologyCheck + Topology<Item = Request>,
 {
     #[inline]
     fn close(&mut self) -> bool {
@@ -332,7 +334,10 @@ impl<C: AsyncRead + AsyncWrite + Unpin, P, T: TopologyCheck + Topology<Item = Re
             //    self.dropping.clear();
             //}
         }
-        true
+        self.rx_buf.try_gc();
+        self.rx_buf.shrink();
+        self.client.shrink();
+        self.rx_buf.cap() + self.client.cap() > 4096
     }
 }
 impl<C, P, T> Debug for CopyBidirectional<C, P, T> {

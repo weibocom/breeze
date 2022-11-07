@@ -1,6 +1,6 @@
-use mimalloc::MiMalloc;
+use ds::BrzMalloc;
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: BrzMalloc = BrzMalloc {};
 
 #[macro_use]
 extern crate rocket;
@@ -13,7 +13,7 @@ use discovery::*;
 mod init;
 
 use rt::spawn;
-use std::time::Duration;
+use ds::time::Duration;
 
 use protocol::Result;
 

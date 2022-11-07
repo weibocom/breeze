@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sharding::hash;
-//use std::time::Duration;
+//use ds::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Hash)]
 pub struct Namespace {
@@ -38,9 +38,9 @@ pub struct Namespace {
 }
 
 impl Namespace {
-    pub(crate) fn local_len(&self) -> usize {
-        1 + self.master_l1.len()
-    }
+    //pub(crate) fn local_len(&self) -> usize {
+    //    1 + self.master_l1.len()
+    //}
     //pub(crate) fn is_static_hash(&self) -> bool {
     //    match self.distribution.as_str() {
     //        "modula" => true,
@@ -83,17 +83,19 @@ impl Namespace {
         return true;
     }
     // 确保master在第0个位置
-    pub(super) fn take_backends(self) -> Vec<Vec<String>> {
+    // 返回master + master_l1的数量作为local
+    pub(super) fn take_backends(self) -> (usize, Vec<Vec<String>>) {
         assert!(self.master.len() > 0);
         use ds::vec::Add;
         let mut backends = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
         backends.add(self.master);
         self.master_l1.into_iter().for_each(|v| backends.add(v));
+        let local = backends.len();
         if self.slave.len() > 0 {
             backends.add(self.slave);
         }
         self.slave_l1.into_iter().for_each(|v| backends.add(v));
-        backends
+        (local, backends)
     }
     //pub(super) fn timeout_master(&self) -> Duration {
     //    Duration::from_millis(200.max(self.timeout_ms_master as u64))
