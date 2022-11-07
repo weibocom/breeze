@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   redis: localhost:56810
+  redis_with_slave: localhost:56812
   counterservice: localhost:9302
   mc: localhost:9301
   phantom: localhost:9303
@@ -29,7 +30,7 @@ jobs:
           toolchain: stable
           override: true
       - name: Build
-        run: cargo build 
+        run: cargo build
       - name: Check Vintage
         run: |
           docker ps -a
@@ -45,6 +46,7 @@ jobs:
           mkdir -p /home/runner/work/breeze/snapshot
           mkdir -p /home/runner/work/breeze/socks
           touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
+          touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtestm@redis:56812@rs
           touch /home/runner/work/breeze/socks/config+v1+cache.service.testbreeze.pool.yf+all:meshtest@mc:9301@cs 
           touch /home/runner/work/breeze/socks/config+cloud+counterservice+testbreeze+meshtest@redis:9302@rs
           touch /home/runner/work/breeze/socks/config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
@@ -69,7 +71,7 @@ jobs:
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
-          version: '0.15.0'
-          args: '-v'
-            #- name: Run tests
-            #  run: cargo test 
+          version: "0.15.0"
+          args: "-v"
+      #- name: Run tests
+      #  run: cargo test
