@@ -1,24 +1,22 @@
 //! 需要先指定分片，多条命令配合的测试
 
 use crate::ci::env::*;
-use crate::redis::RESTYPE;
+use crate::redis::{RESTYPE, RESTYPEWITHSLAVE};
 use crate::redis_helper::*;
 use function_name::named;
-use redis::{Commands, RedisError};
-use std::collections::HashSet;
-use std::vec;
+use redis::Commands;
 
-// const SERVERS: [[&str; 2]; 4] = [
-//     ["127.0.0.1:56378", "127.0.0.1:56378"],
-//     ["127.0.0.1:56379", "127.0.0.1:56379"],
-//     ["127.0.0.1:56380", "127.0.0.1:56380"],
-//     ["127.0.0.1:56381", "127.0.0.1:56381"],
-// ];
 const SERVERS: [[&str; 2]; 4] = [
-    ["10.182.27.228:56378", "10.182.27.228:56378"],
-    ["10.182.27.228:56379", "10.182.27.228:56379"],
-    ["10.182.27.228:56380", "10.182.27.228:56380"],
-    ["10.182.27.228:56381", "10.182.27.228:56381"],
+    ["127.0.0.1:56378", "127.0.0.1:56378"],
+    ["127.0.0.1:56379", "127.0.0.1:56379"],
+    ["127.0.0.1:56380", "127.0.0.1:56380"],
+    ["127.0.0.1:56381", "127.0.0.1:56381"],
+];
+const SERVERSWITHSLAVE: [[&str; 2]; 4] = [
+    ["127.0.0.1:56378", "127.0.0.1:56381"],
+    ["127.0.0.1:56378", "127.0.0.1:56380"],
+    ["127.0.0.1:56380", "127.0.0.1:56379"],
+    ["127.0.0.1:56381", "127.0.0.1:56378"],
 ];
 
 // crc32local % 4 的分片
@@ -44,12 +42,80 @@ const SERVERS: [[&str; 2]; 4] = [
 // test_shards_20: shards 2
 
 /// hashrandomq, master + hashkeyq
-/// hashrandomq 通过mesh set，然后直接连接后端读取，其分片应该是随机的
-/// 读取100次，每个分片>5, 则测试通过
+/// hashrandomqh后通过mesh set，然后直接连接后端读取，其分片应该是随机的
+/// 读取100次，每个分片都有set的key, 则测试通过
+#[named]
 #[test]
-fn test_hashrandomq() {
+fn test_hashrandomq1() {
+    let arykey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    con.send_packed_command(&redis::cmd("master").get_packed_command())
-        .expect("send master err");
-    assert_eq!(con.set("a", 1), Ok(true));
+
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        redis::cmd("DEL").arg(arykey).execute(&mut con);
+    }
+    for _ in 1..=100 {
+        con.send_packed_command(&redis::cmd("hashrandomq").get_packed_command())
+            .expect("send err");
+        assert_eq!(con.set(arykey, 1), Ok(true));
+    }
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        assert_eq!(con.get(arykey), Ok(true));
+    }
+}
+
+/// hashrandomq 和 master联合测试, 使用后端配置如下
+/// - 127.0.0.1:56378,127.0.0.1:56381
+/// - 127.0.0.1:56378,127.0.0.1:56380
+/// - 127.0.0.1:56380,127.0.0.1:56379
+/// - 127.0.0.1:56381,127.0.0.1:56378
+/// 56379 set某key,因主没有56379端口,
+/// 通过hashrandomq get 100次, 应部分有值
+/// 通过master + hashrandomq get 100次, 应全部没值, 因master中没有56379
+// #[test]
+#[named]
+fn test_hashrandomq_with_master() {
+    let arykey = function_name!();
+    let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
+
+    for server in SERVERSWITHSLAVE {
+        let mut con = get_conn(server[1]);
+        if server[1].ends_with("56379") {
+            assert_eq!(con.set(arykey, 1), Ok(true));
+        } else {
+            redis::cmd("DEL").arg(arykey).execute(&mut con);
+        }
+    }
+
+    // 通过hashrandomq get 100次, 应部分有值
+    let mut failed = false;
+    let mut successed = false;
+    for _ in 1..=100 {
+        con.send_packed_command(&redis::cmd("hashrandomq").get_packed_command())
+            .expect("send err");
+        match con.get(arykey) {
+            Ok(true) => successed = true,
+            Ok(false) => failed = true,
+            Err(err) => panic!("get err {:?}", err),
+        }
+    }
+    assert!(failed);
+    assert!(successed);
+
+    failed = false;
+    successed = false;
+    for _ in 1..=100 {
+        con.send_packed_command(&redis::cmd("master").get_packed_command())
+            .expect("send err");
+        con.send_packed_command(&redis::cmd("hashrandomq").get_packed_command())
+            .expect("send err");
+        match con.get(arykey) {
+            Ok(true) => successed = true,
+            Ok(false) => failed = true,
+            Err(err) => panic!("get err {:?}", err),
+        }
+    }
+    assert!(failed);
+    assert!(!successed);
 }
