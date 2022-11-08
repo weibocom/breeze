@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   redis: localhost:56810
+  redis_with_slave: localhost:56812
   counterservice: localhost:9302
   mc: localhost:9301
   phantom: localhost:9303
@@ -29,20 +30,15 @@ jobs:
           toolchain: stable
           override: true
       - name: Build
-        run: cargo build 
+        run: cargo build
       - name: Check Vintage
         run: |
           docker ps -a
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest`
-          echo `curl -s http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest`
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all`
-          echo `curl -s http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all`
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest`
-          echo `curl -s http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest`
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest`
-          echo `curl -s http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest`
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest`
-          echo `curl -s http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest`
+          curl http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
+          curl http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all
+          curl http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest
+          curl http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest
+          curl http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest
       - name: Create Socks
         run: |
           #ps -aux|grep breeze
@@ -50,6 +46,7 @@ jobs:
           mkdir -p /home/runner/work/breeze/snapshot
           mkdir -p /home/runner/work/breeze/socks
           touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
+          touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtestm@redis:56812@rs
           touch /home/runner/work/breeze/socks/config+v1+cache.service.testbreeze.pool.yf+all:meshtest@mc:9301@cs 
           touch /home/runner/work/breeze/socks/config+cloud+counterservice+testbreeze+meshtest@redis:9302@rs
           touch /home/runner/work/breeze/socks/config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
@@ -75,6 +72,6 @@ jobs:
         uses: actions-rs/tarpaulin@v0.1
         with:
           version: '0.15.0'
-          args: '-v'
-            #- name: Run tests
-            #  run: cargo test 
+          args: '-- --test-threads 1'
+      #- name: Run tests
+      #  run: cargo test
