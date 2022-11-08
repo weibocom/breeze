@@ -167,7 +167,8 @@ pub async fn start_dns_resolver_refresher() {
     let noop = noop_waker::noop_waker();
     let mut ctx = std::task::Context::from_waker(&noop);
     use ds::time::{Duration, Instant};
-    const CYCLE: Duration = Duration::from_secs(79);
+    const CYCLE: Duration = Duration::from_secs(128);
+    const BATCH_CNT: usize = 128;
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut last = Instant::now(); // 上一次刷新的时间
     loop {
@@ -186,18 +187,36 @@ pub async fn start_dns_resolver_refresher() {
             // 再次快速尝试读取新注册的数据
             continue;
         }
-        // 每一秒种tick一次，检查是否
-        tick.tick().await;
+
         if last.elapsed() < CYCLE {
             continue;
         }
         let _start = Instant::now();
         let mut updated = HashMap::new();
         let r_cache = cache.get();
+        let len = r_cache.hosts.len();
+        let mut count = 0;
+        let mut idx = 0;
+        let mut hosts_list: Vec<(String, Record)> = Vec::new();
         for (host, record) in &r_cache.hosts {
-            if let Some(addrs) = record.check_refresh(host, &mut resolver).await {
-                updated.insert(host.to_string(), addrs);
+            hosts_list.push((host.to_owned(), record.to_owned()));
+        }
+        let cnt = (len as f64 / BATCH_CNT as f64).ceil() as usize;
+        while count < cnt {
+            // 每一秒种tick一次，检查是否
+            tick.tick().await;
+            while idx < (count + 1) * BATCH_CNT {
+                if idx >= len {
+                    break;
+                }
+                let (host, record) = &hosts_list[idx];
+                if let Some(addrs) = record.check_refresh(host, &mut resolver).await {
+                    updated.insert(host.to_string(), addrs);
+                }
+                idx += 1;
             }
+
+            count += 1;
         }
         drop(r_cache);
         if updated.len() > 0 {
