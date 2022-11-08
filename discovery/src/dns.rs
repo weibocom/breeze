@@ -186,19 +186,31 @@ pub async fn start_dns_resolver_refresher() {
             // 再次快速尝试读取新注册的数据
             continue;
         }
-        // 每一秒种tick一次，检查是否
-        tick.tick().await;
+
         if last.elapsed() < CYCLE {
             continue;
         }
         let _start = Instant::now();
         let mut updated = HashMap::new();
         let r_cache = cache.get();
+        let mut idx = 0;
+        let mut step_cnt = 0;
+        let host_cnt = r_cache.hosts.len();
         for (host, record) in &r_cache.hosts {
+            if idx >= host_cnt {
+                break;
+            }
             if let Some(addrs) = record.check_refresh(host, &mut resolver).await {
                 updated.insert(host.to_string(), addrs);
             }
+            idx += 1;
+            if idx == (step_cnt + 1) * 128 {
+                step_cnt += 1;
+                // 每一秒种tick一次，检查是否
+                tick.tick().await;
+            }
         }
+
         drop(r_cache);
         if updated.len() > 0 {
             let mut new = cache.get().clone();
