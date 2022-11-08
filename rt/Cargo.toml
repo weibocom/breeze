@@ -15,4 +15,5 @@ log = { path = "../log" }
 noop-waker = "0.1.0"
 
 [features]
+default = ["poll-io-metrics"]
 poll-io-metrics = []
