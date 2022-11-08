@@ -33,15 +33,15 @@ jobs:
       - name: Check Vintage
         run: |
           docker ps -a
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
+          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest`
           echo `curl -s http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest`
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all
+          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all`
           echo `curl -s http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all`
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest
+          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest`
           echo `curl -s http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest`
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest
+          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest`
           echo `curl -s http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest`
-          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest
+          test 200 -eq `curl -sIL -w "%{http_code}" -o /dev/null http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest`
           echo `curl -s http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest`
       - name: Create Socks
         run: |
