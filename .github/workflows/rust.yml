@@ -71,7 +71,12 @@ jobs:
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
-          version: "0.15.0"
-          args: "-v"
+          version: '0.16.0'
+          args: '--run-types AllTargets --output-dir coverage --out Lcov -- --test-threads 1'
+          command: tarpaulin
+      - name: Publish to Coveralls
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       #- name: Run tests
       #  run: cargo test
