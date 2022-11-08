@@ -68,6 +68,10 @@ impl McqText {
 
 impl Protocol for McqText {
     #[inline]
+    fn cache(&self) -> bool {
+        true
+    }
+    #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,

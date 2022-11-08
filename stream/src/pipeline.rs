@@ -191,7 +191,7 @@ where
             if parser.cache() && op.is_query() {
                 *metrics.downnum() += ctx.response_ok() as usize;
                 *metrics.cache() += ctx.response_ok();
-            } else if op.is_store() {
+            } else if op.is_store() && parser.cache() {
                 *metrics.upnum() += ctx.response_ok() as usize;
             }
 
