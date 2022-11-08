@@ -171,9 +171,8 @@ pub async fn start_dns_resolver_refresher() {
     const BATCH_CNT: usize = 128;
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     //let mut last = Instant::now(); // 上一次刷新的时间
+    let mut idx = 0;
     loop {
-        // 每一秒种tick一次，检查是否
-        tick.tick().await;
         let mut regs = Vec::new();
         while let Poll::Ready(Some(reg)) = rx.poll_recv(&mut ctx) {
             regs.push(reg);
@@ -190,19 +189,22 @@ pub async fn start_dns_resolver_refresher() {
             continue;
         }
 
+        // 每一秒种tick一次，检查是否
+        tick.tick().await;
+
         let _start = Instant::now();
         let mut updated = HashMap::new();
         let r_cache = cache.get();
-        let mut idx = 0;
 
         for (host, record) in &r_cache.hosts {
-            if idx <= record.id % BATCH_CNT {
+            if idx == record.id % BATCH_CNT {
                 if let Some(addrs) = record.check_refresh(host, &mut resolver).await {
                     updated.insert(host.to_string(), addrs);
                 }
             }
-            idx += 1;
         }
+
+        idx = (idx + 1) % BATCH_CNT;
         drop(r_cache);
         if updated.len() > 0 {
             let mut new = cache.get().clone();
