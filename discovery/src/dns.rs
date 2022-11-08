@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     net::IpAddr,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -56,6 +56,7 @@ struct Record {
     stale: Arc<AtomicBool>,
     subscribers: Vec<Arc<AtomicBool>>,
     ips: Vec<IpAddr>,
+    id: usize,
 }
 impl Record {
     fn first_watch(&self) -> Arc<AtomicBool> {
@@ -167,11 +168,12 @@ pub async fn start_dns_resolver_refresher() {
     let noop = noop_waker::noop_waker();
     let mut ctx = std::task::Context::from_waker(&noop);
     use ds::time::{Duration, Instant};
-    const CYCLE: Duration = Duration::from_secs(128);
     const BATCH_CNT: usize = 128;
     let mut tick = tokio::time::interval(Duration::from_secs(1));
-    let mut last = Instant::now(); // 上一次刷新的时间
+    //let mut last = Instant::now(); // 上一次刷新的时间
     loop {
+        // 每一秒种tick一次，检查是否
+        tick.tick().await;
         let mut regs = Vec::new();
         while let Poll::Ready(Some(reg)) = rx.poll_recv(&mut ctx) {
             regs.push(reg);
@@ -188,35 +190,18 @@ pub async fn start_dns_resolver_refresher() {
             continue;
         }
 
-        if last.elapsed() < CYCLE {
-            continue;
-        }
         let _start = Instant::now();
         let mut updated = HashMap::new();
         let r_cache = cache.get();
-        let len = r_cache.hosts.len();
-        let mut count = 0;
         let mut idx = 0;
-        let mut hosts_list: Vec<(String, Record)> = Vec::new();
+
         for (host, record) in &r_cache.hosts {
-            hosts_list.push((host.to_owned(), record.to_owned()));
-        }
-        let cnt = (len as f64 / BATCH_CNT as f64).ceil() as usize;
-        while count < cnt {
-            // 每一秒种tick一次，检查是否
-            tick.tick().await;
-            while idx < (count + 1) * BATCH_CNT {
-                if idx >= len {
-                    break;
-                }
-                let (host, record) = &hosts_list[idx];
+            if idx <= record.id % BATCH_CNT {
                 if let Some(addrs) = record.check_refresh(host, &mut resolver).await {
                     updated.insert(host.to_string(), addrs);
                 }
-                idx += 1;
             }
-
-            count += 1;
+            idx += 1;
         }
         drop(r_cache);
         if updated.len() > 0 {
@@ -230,7 +215,7 @@ pub async fn start_dns_resolver_refresher() {
             cache.update(new);
             cache.get().notify();
         }
-        last = Instant::now();
+        //last = Instant::now();
 
         log::debug!("refresh dns elapsed:{:?}", _start.elapsed());
     }
@@ -271,7 +256,11 @@ impl DnsCache {
     }
     fn register(&mut self, host: String, notify: Arc<AtomicBool>) {
         log::debug!("host {} registered to cache", host);
-        self.hosts.entry(host).or_default().watch(notify);
+        static SEQ: AtomicUsize = AtomicUsize::new(0);
+        let id = SEQ.fetch_add(1, Ordering::Relaxed);
+        let r = self.hosts.entry(host).or_default();
+        r.id = id;
+        r.watch(notify);
     }
     fn lookup(&self, host: &str) -> Vec<String> {
         let mut addrs = Vec::new();
