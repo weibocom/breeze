@@ -7,16 +7,16 @@ use function_name::named;
 use redis::Commands;
 
 const SERVERS: [[&str; 2]; 4] = [
-    ["127.0.0.1:56378", "127.0.0.1:56378"],
-    ["127.0.0.1:56379", "127.0.0.1:56379"],
-    ["127.0.0.1:56380", "127.0.0.1:56380"],
-    ["127.0.0.1:56381", "127.0.0.1:56381"],
+    ["10.182.27.228:56378", "10.182.27.228:56378"],
+    ["10.182.27.228:56379", "10.182.27.228:56379"],
+    ["10.182.27.228:56380", "10.182.27.228:56380"],
+    ["10.182.27.228:56381", "10.182.27.228:56381"],
 ];
 const SERVERSWITHSLAVE: [[&str; 2]; 4] = [
-    ["127.0.0.1:56378", "127.0.0.1:56381"],
-    ["127.0.0.1:56378", "127.0.0.1:56380"],
-    ["127.0.0.1:56380", "127.0.0.1:56379"],
-    ["127.0.0.1:56381", "127.0.0.1:56378"],
+    ["10.182.27.228:56378", "10.182.27.228:56381"],
+    ["10.182.27.228:56378", "10.182.27.228:56380"],
+    ["10.182.27.228:56380", "10.182.27.228:56379"],
+    ["10.182.27.228:56381", "10.182.27.228:56378"],
 ];
 
 // crc32local % 4 的分片
@@ -66,10 +66,10 @@ fn test_hashrandomq1() {
 }
 
 /// hashrandomq 和 master联合测试, 使用后端配置如下
-/// - 127.0.0.1:56378,127.0.0.1:56381
-/// - 127.0.0.1:56378,127.0.0.1:56380
-/// - 127.0.0.1:56380,127.0.0.1:56379
-/// - 127.0.0.1:56381,127.0.0.1:56378
+/// - 10.182.27.228:56378,10.182.27.228:56381
+/// - 10.182.27.228:56378,10.182.27.228:56380
+/// - 10.182.27.228:56380,10.182.27.228:56379
+/// - 10.182.27.228:56381,10.182.27.228:56378
 /// 56379 set某key,因主没有56379端口,
 /// 通过hashrandomq get 100次, 应部分有值
 /// 通过master + hashrandomq get 100次, 应全部没值, 因master中没有56379
@@ -118,4 +118,111 @@ fn test_hashrandomq_with_master() {
     }
     assert!(failed);
     assert!(!successed);
+}
+
+/// 先set arykey 1到指定56378端口 set arykey 2 到56381
+/// master后从库56381是2 56378是1
+/// 56378端口从库是56381正常get是1 但是加完master后是从主库读所以是2
+
+#[named]
+#[test]
+fn test_master() {
+    let arykey = function_name!();
+    let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
+    for server in SERVERSWITHSLAVE {
+        let mut con = get_conn(server[0]);
+        if server[0].ends_with("56378") {
+            assert_eq!(con.set(arykey, 1), Ok(true));
+        } else if server[0].ends_with("56381") {
+            assert_eq!(con.set(arykey, 2), Ok(true));
+        } else {
+            redis::cmd("DEL").arg(arykey).execute(&mut con);
+        }
+    }
+    con.send_packed_command(&redis::cmd("master").get_packed_command())
+        .expect("send err");
+    for server in SERVERSWITHSLAVE {
+        let mut con1 = get_conn(server[1]);
+        if server[1].ends_with("56378") {
+            assert_eq!(con1.get(arykey), Ok(1));
+        } else if server[1].ends_with("56381") {
+            assert_eq!(con1.get(arykey), Ok(2));
+        } else {
+            assert_eq!(con1.get(arykey), Ok(false));
+        }
+    }
+}
+
+/// hashkeyq + test_sharsd_4+ set arykey 1在第三片"10.182.27.228:56381,10.182.27.228:56381上
+///
+///
+#[named]
+#[test]
+fn test_hashkeyq() {
+    let arykey = function_name!();
+    let mut con = get_conn(&RESTYPE.get_host());
+
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        redis::cmd("DEL").arg(arykey).execute(&mut con);
+    }
+
+    con.send_packed_command(
+        &redis::cmd("hashkeyq")
+            .arg("test_shards_4")
+            .get_packed_command(),
+    )
+    .expect("send err");
+    assert_eq!(con.set(arykey, 1), Ok(true));
+
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        if server[0].ends_with("56381") {
+            assert_eq!(con.get(arykey), Ok(1));
+        } else {
+            assert_eq!(con.get(arykey), Ok(false));
+        }
+    }
+}
+
+// const SERVERSWITHSLAVE: [[&str; 2]; 4] = [
+//     ["10.182.27.228:56378", "10.182.27.228:56381"],
+//     ["10.182.27.228:56378", "10.182.27.228:56380"],
+//     ["10.182.27.228:56380", "10.182.27.228:56379"],
+//     ["10.182.27.228:56381", "10.182.27.228:56378"],
+// ];
+/// master+hashkeyq + test_sharsd_5+ set arykey 1在第1片"10.182.27.228:56378"上
+#[named]
+#[test]
+fn master_hashkeyq() {
+    let arykey = function_name!();
+    let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
+
+    // for server in SERVERSWITHSLAVE {
+    //     let mut con = get_conn(server[0]);
+    //     if server[0].ends_with("56378") {
+    //         assert_eq!(con.set(arykey, 1), Ok(true));
+    //     } else {
+    //         redis::cmd("DEL").arg(arykey).execute(&mut con);
+    //     }
+    // }
+    con.send_packed_command(&redis::cmd("master").get_packed_command())
+        .expect("send err");
+    con.send_packed_command(
+        &redis::cmd("hashkeyq")
+            .arg("test_shards_5")
+            .get_packed_command(),
+    )
+    .expect("send err");
+
+    for server in SERVERSWITHSLAVE {
+        let mut con1 = get_conn(server[1]);
+        if server[1].ends_with("56378") {
+            assert_eq!(con1.get(arykey), Ok(1));
+        } else if server[1].ends_with("56381") {
+            assert_eq!(con1.get(arykey), Ok(2));
+        } else {
+            assert_eq!(con1.get(arykey), Ok(false));
+        }
+    }
 }
