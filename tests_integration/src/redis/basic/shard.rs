@@ -154,7 +154,7 @@ fn test_master() {
 }
 
 /// hashkeyq + test_sharsd_4+ set arykey 1在第三片"10.182.27.228:56381,10.182.27.228:56381上
-///
+/// todo:直接get会在第一片和第0片get到
 ///
 #[named]
 #[test]
@@ -183,6 +183,8 @@ fn test_hashkeyq() {
             assert_eq!(con.get(arykey), Ok(false));
         }
     }
+
+    //assert_eq!(con.get(key),Ok((1)));
 }
 
 // const SERVERSWITHSLAVE: [[&str; 2]; 4] = [
@@ -191,21 +193,37 @@ fn test_hashkeyq() {
 //     ["10.182.27.228:56380", "10.182.27.228:56379"],
 //     ["10.182.27.228:56381", "10.182.27.228:56378"],
 // ];
-/// master+hashkeyq + test_sharsd_5+ set arykey 1在第1片"10.182.27.228:56378"上
+///  set arykey 1
+/// master
+
+/// master+hashkeyq + test_sharsd_5+get arykey
+/// master不分片会在第2/4片get
+/// 在第1片"10.182.27.228:56378"上
 #[named]
 #[test]
 fn master_hashkeyq() {
     let arykey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
 
-    // for server in SERVERSWITHSLAVE {
-    //     let mut con = get_conn(server[0]);
-    //     if server[0].ends_with("56378") {
-    //         assert_eq!(con.set(arykey, 1), Ok(true));
-    //     } else {
-    //         redis::cmd("DEL").arg(arykey).execute(&mut con);
-    //     }
-    // }
+    for server in SERVERSWITHSLAVE {
+        let mut con = get_conn(server[0]);
+        if server[0].ends_with("56378") || server[0].ends_with("56380") {
+            assert_eq!(con.set(arykey, 1), Ok(true));
+        } else {
+            redis::cmd("DEL").arg(arykey).execute(&mut con);
+        }
+    }
+    con.send_packed_command(&redis::cmd("master").get_packed_command())
+        .expect("send err");
+    for server in SERVERSWITHSLAVE {
+        let mut con1 = get_conn(server[1]);
+        if server[1].ends_with("56378") || server[1].ends_with("56380") {
+            assert_eq!(con1.get(arykey), Ok(1));
+        } else {
+            assert_eq!(con1.get(arykey), Ok(false));
+        }
+    }
+
     con.send_packed_command(&redis::cmd("master").get_packed_command())
         .expect("send err");
     con.send_packed_command(
@@ -219,8 +237,8 @@ fn master_hashkeyq() {
         let mut con1 = get_conn(server[1]);
         if server[1].ends_with("56378") {
             assert_eq!(con1.get(arykey), Ok(1));
-        } else if server[1].ends_with("56381") {
-            assert_eq!(con1.get(arykey), Ok(2));
+        } else if server[1].ends_with("56380") {
+            assert_eq!(con1.get(arykey), Ok(1));
         } else {
             assert_eq!(con1.get(arykey), Ok(false));
         }
