@@ -6,11 +6,13 @@ use std::sync::{
     Arc,
 };
 use std::task::{ready, Context, Poll};
-use ds::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use ds::AtomicWaker;
+use ds::{
+    time::{Duration, Instant},
+    AtomicWaker,
+};
 use protocol::{
     Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
 };
@@ -93,7 +95,7 @@ where
         self.waker.register(cx.waker());
         loop {
             // 从client接收数据写入到buffer
-            let request = self.poll_request(cx)?;
+            let request = self.poll_recv(cx)?;
             // 解析buffer中的请求，并且发送请求。
             self.parse_request()?;
 
@@ -119,7 +121,7 @@ where
 {
     // 从client读取request流的数据到buffer。
     #[inline]
-    fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         if self.pending.len() == 0 {
             let Self { client, rx_buf, .. } = self;
             let mut cx = Context::from_waker(cx.waker());
