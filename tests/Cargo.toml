@@ -6,7 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ds = { path = "../ds" }
+ds = { path = "../ds", default-features = false, features = [] }
+rt = { path = "../rt", default-features = false, features = [] }
+
 sharding = { path = "../sharding" }
 stream = { path = "../stream" }
 protocol = { path = "../protocol" }
@@ -17,7 +19,6 @@ bmemcached = "0.5.0"
 assert-panic = "1.0.1"
 metrics = { path = "../metrics" }
 endpoint = { path = "../endpoint" }
-rt = { path = "../rt" }
 
 tokio = { version = "1.21.2", features = ["fs"] }
 redis = { version = "0.22.0", default-features = false, features = [] }
@@ -25,3 +26,9 @@ redis = { version = "0.22.0", default-features = false, features = [] }
 [[test]]
 name = "test_all"
 path = "src/all.rs"
+
+
+[features]
+default = ["layout-max"]
+layout-min = ["ds/tsc"]
+layout-max = ["rt/poll-io-metrics"]

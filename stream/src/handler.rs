@@ -160,7 +160,7 @@ impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnte
         self.buf.try_gc();
         self.buf.shrink();
         self.s.shrink();
-        self.buf.cap() + self.s.cap() > 4096
+        self.buf.cap() + self.s.cap() >= crate::REFRESH_THREASHOLD
     }
 }
 
