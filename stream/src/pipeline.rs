@@ -1,3 +1,4 @@
+use ds::time::{Duration, Instant};
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
@@ -6,7 +7,6 @@ use std::sync::{
     Arc,
 };
 use std::task::{ready, Context, Poll};
-use ds::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
