@@ -88,7 +88,7 @@ pub struct ContextOption {
     )]
     pub metrics_probe: String,
 
-    #[clap(long, help("log level. debug|info|warn|error"), default_value("info"))]
+    #[clap(long, help("log level. debug|info|warn|error"), default_value("error"))]
     pub log_level: String,
 
     #[clap(long, help("service pool"), default_value("default_pool"))]
