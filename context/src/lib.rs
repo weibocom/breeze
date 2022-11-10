@@ -31,13 +31,24 @@ pub struct ContextOption {
     )]
     pub discovery: Url,
 
+    // 用于设置url的统一前缀，从而减少配置参数的长度，用途：
+    //    1 和service_pool整合，可构建基于vintage拉取sock file的url；
+    //    2 和idc_path整合，可以作为完整的idc path url
+    #[clap(
+        long,
+        help("registry url prefix. e.g. static.config.xxx.xxx"),
+        default_value("")
+    )]
+    url_prefix: String,
+
+    // 需要兼容url_prefix不设置的场景，故去掉pub属性
     #[clap(
         short,
         long,
         help("idc config path"),
         default_value("/3/config/breeze/idc_region")
     )]
-    pub idc_path: String,
+    idc_path: String,
 
     #[clap(
         long,
@@ -144,6 +155,24 @@ impl ContextOption {
             path: self.service_path.to_string(),
             processed: Default::default(),
         }
+    }
+
+    // 兼容策略：如果idc不包含url_prefix加上该前缀；否则直接返回;
+    pub fn idc_path_url(&self) -> String {
+        // idc-path参数
+        if self.url_prefix.len() > 0 && !self.idc_path.contains(&self.url_prefix.to_string()) {
+            return format!("{}/{}", self.url_prefix, self.idc_path);
+        }
+        self.idc_path.clone()
+    }
+
+    // 根据url_prefix和service_pool 构建 服务池socks url
+    pub fn service_pool_socks_url(&self) -> String {
+        if self.url_prefix.len() > 0 {
+            let socks_path = "3/config/datamesh/config";
+            return format!("{}/{}/{}", self.url_prefix, socks_path, self.service_pool);
+        }
+        Default::default()
     }
 }
 
