@@ -42,8 +42,6 @@ pub struct CallbackContext {
     start: Instant, // 请求的开始时间
     tries: u8,
     atomic: WakerDrop,
-    //waker: *const AtomicWaker,
-    //on_drop: *const AtomicUsize,
 }
 
 impl CallbackContext {
@@ -231,6 +229,22 @@ impl CallbackContext {
     fn manual_drop(&mut self) {
         unsafe { Box::from_raw(self) };
     }
+    //需要在on_done时主动销毁self对象
+    #[inline]
+    pub fn async_write_back<P: crate::Protocol>(mut self, parser: &P, async_pending: &AtomicUsize) {
+        assert!(self.inited() && self.complete(), "cbptr:{:?}", self);
+        self.ctx.async_mode = true;
+        self.atomic.async_pending = async_pending;
+        let exp = self.callback.exp_sec();
+        if let Some(new) = parser.build_writeback_request(&mut self, exp) {
+            self.request = new;
+        }
+        log::debug!("start write back:{}", self);
+        self.try_drop_response();
+
+        let ptr: CallbackContextPtr = self.into();
+        unsafe { (&mut *ptr.ptr).goon() };
+    }
 }
 
 impl Drop for CallbackContext {
@@ -321,24 +335,12 @@ impl CallbackContextPtr {
     pub fn build_request(&mut self) -> Request {
         Request::new(self.ptr)
     }
-    //需要在on_done时主动销毁self对象
-    #[inline]
-    pub fn async_write_back<P: crate::Protocol>(mut self, parser: &P, async_pending: &AtomicUsize) {
-        assert!(self.inited() && self.complete(), "cbptr:{:?}", &*self);
-        let mut ctx = unsafe { Box::from_raw(self.ptr) };
-        ctx.ctx.async_mode = true;
-        ctx.atomic.async_pending = async_pending;
-        let exp = ctx.callback.exp_sec();
-        if let Some(new) = parser.build_writeback_request(&mut self, exp) {
-            self.request = new;
-        }
-        log::debug!("start write back:{}", ctx);
-        let mut async_ctx: MaybeUninit<CallbackContext> = MaybeUninit::uninit();
-        let async_ctx = unsafe { Box::leak(Box::from_raw(async_ctx.write(*ctx))) };
-        // response已经释放
-        *async_ctx.ctx.inited.get_mut() = true;
+}
 
-        async_ctx.goon();
+impl Into<CallbackContext> for CallbackContextPtr {
+    #[inline]
+    fn into(self) -> CallbackContext {
+        unsafe { *Box::from_raw(self.ptr) }
     }
 }
 
@@ -350,16 +352,7 @@ impl From<CallbackContext> for CallbackContextPtr {
     }
 }
 
-impl Drop for CallbackContextPtr {
-    #[inline]
-    fn drop(&mut self) {
-        // 如果ignore为true，说明当前内存手工释放
-        if !self.ctx.async_mode {
-            self.manual_drop();
-        }
-    }
-}
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 impl Deref for CallbackContextPtr {
     type Target = CallbackContext;
     #[inline]
@@ -367,12 +360,12 @@ impl Deref for CallbackContextPtr {
         unsafe { &*self.ptr }
     }
 }
-impl DerefMut for CallbackContextPtr {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.ptr }
-    }
-}
+//impl DerefMut for CallbackContextPtr {
+//    #[inline]
+//    fn deref_mut(&mut self) -> &mut Self::Target {
+//        unsafe { &mut *self.ptr }
+//    }
+//}
 unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 unsafe impl Send for CallbackPtr {}
@@ -400,7 +393,7 @@ impl From<&Callback> for CallbackPtr {
     }
 }
 
-impl crate::Commander for CallbackContextPtr {
+impl crate::Commander for CallbackContext {
     #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
         &mut self.request

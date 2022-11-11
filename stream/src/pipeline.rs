@@ -176,7 +176,7 @@ where
             if !ctx.complete() {
                 break;
             }
-            let mut ctx = pending.pop_front().expect("front");
+            let mut ctx: CallbackContext = pending.pop_front().expect("front").into();
             let last = ctx.last();
             // 当前不是最后一个值。也优先写入cache
             client.cache(!last);
