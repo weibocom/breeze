@@ -28,6 +28,8 @@
 //! ### conn
 //!  - conn基本操作:
 //!     ping、command、select、quit
+//! ### 吞噬指令
+//! - hashrandomq, master + hashrandomq
 //!## 复杂场景
 //!  - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
 //! 从mesh读取, 验证业务写入与mesh读取之间的一致性
@@ -38,6 +40,7 @@
 mod basic;
 
 const RESTYPE: &str = "redis";
+const RESTYPEWITHSLAVE: &str = "redis_with_slave";
 
 use crate::ci::env::*;
 use crate::redis_helper::*;

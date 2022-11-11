@@ -7,7 +7,7 @@ pub mod phantomservice;
 pub mod redisservice;
 
 mod refresh;
-pub use refresh::RefreshTopology;
+pub use refresh::{CheckedTopology, RefreshTopology};
 
 // 不同资源默认的超时时间
 const TO_PHANTOM_M: Duration = Duration::from_millis(500);
