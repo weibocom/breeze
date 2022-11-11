@@ -14,14 +14,14 @@ pub struct PinnedQueue<T> {
 }
 
 impl<T> PinnedQueue<T> {
-    pub fn with_capacity(cap: usize) -> Self {
-        let mut fix = Vec::with_capacity(cap);
+    pub fn with_fix(cap: u32) -> Self {
+        let mut fix = Vec::with_capacity(cap as usize);
         let ptr = fix.as_mut_ptr();
         let _ = std::mem::ManuallyDrop::new(fix);
         Self {
             head: 0,
             tail: 0,
-            cap: cap as u32,
+            cap,
             fix: ptr,
             ext: LinkedList::new(),
             fix_head: true,
@@ -30,7 +30,7 @@ impl<T> PinnedQueue<T> {
     }
     #[inline]
     pub fn new() -> Self {
-        Self::with_capacity(32)
+        Self::with_fix(32)
     }
     // 把数据推入back，并且返回原有的引用
     #[inline]
@@ -175,6 +175,53 @@ impl<T> PinnedQueue<T> {
             self.head = 0;
             self.tail = 0;
             //log::info!("grown {}", self);
+        }
+    }
+}
+
+impl<T: Default> PinnedQueue<T> {
+    // 往back push一个t，并且返回这个t
+    // 这个t可能是未初始化的
+    #[inline]
+    pub unsafe fn push_back_mut(&mut self) -> &mut T {
+        if self.fix_tail {
+            let ptr = self.tailer();
+            self.tail += 1;
+            if self.is_full() {
+                // 后续的push_back往ext里面写
+                self.fix_tail = false;
+            }
+            &mut *ptr
+        } else {
+            self.ext.push_back(T::default());
+            self.ext.back_mut().expect("ext back mut")
+        }
+    }
+    // 相当于pop_front，但如果数据存在于fix块中，则不会释放内存。内存会复用。
+    // 如果T持有了其他内存，则会导致memory leak
+    #[inline]
+    pub unsafe fn forget_front(&mut self) {
+        assert_ne!(self.len(), 0);
+        if self.fix_head {
+            assert_ne!(self.fix_len(), 0);
+            self.head += 1;
+            if self.fix_empty() {
+                // 头到了ext
+                if self.ext.len() > 0 {
+                    self.fix_head = false;
+                    //self.grow();
+                } else {
+                    self.fix_tail = true;
+                }
+            }
+        } else {
+            assert_ne!(self.ext.len(), 0);
+            let _t = self.ext.pop_front().expect("take front");
+            if self.ext.len() == 0 {
+                assert_eq!(self.fix_len(), 0);
+                self.fix_head = true;
+                self.fix_tail = true;
+            }
         }
     }
 }

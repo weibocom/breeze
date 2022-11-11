@@ -4,13 +4,17 @@ use std::{
     sync::{atomic::AtomicU32, Arc},
 };
 
-use protocol::Parser;
-use stream::{Backend, Request};
+use protocol::{callback::CallbackContext, Parser};
+use stream::{buffer::StreamGuard, Backend, Request};
 type Endpoint = Arc<Backend<Request>>;
-//type Topology = endpoint::Topology<Builder, Endpoint, Request, Parser>;
+type Topology = endpoint::Topology<Builder, Endpoint, Request, Parser>;
+//type RefreshTopology = endpoint::RefreshTopology<Topology>;
+
+type CheckedTopology = endpoint::CheckedTopology<Topology>;
+
+type CopyBidirectional = stream::pipeline::CopyBidirectional<Stream, Parser, CheckedTopology>;
 
 type Stream = rt::Stream<tokio::net::TcpStream>;
-
 type Handler<'r> = stream::handler::Handler<'r, Request, Parser, Stream>;
 
 type Builder = stream::Builder<Parser, Request>;
@@ -20,33 +24,66 @@ type PhantomService =
     endpoint::phantomservice::topo::PhantomService<Builder, Endpoint, Request, Parser>;
 type MsgQue = endpoint::msgque::topo::MsgQue<Builder, Endpoint, Request, Parser>;
 
+use rt::Entry;
+
 #[test]
-fn check_layout() {
+fn checkout_basic() {
     assert_eq!(32, size_of::<ds::RingSlice>());
     assert_eq!(8, size_of::<protocol::Context>());
-    assert_eq!(216, size_of::<protocol::callback::CallbackContext>());
     assert_eq!(
         size_of::<protocol::Context>(),
         size_of::<protocol::redis::RequestContext>()
     );
     assert_eq!(24, size_of::<protocol::Flag>());
     assert_eq!(1, size_of::<protocol::Resource>());
-    let guard_size = if cfg!(debug_assertions) { 224 } else { 184 };
-    assert_eq!(guard_size, size_of::<stream::buffer::StreamGuard>());
     assert_eq!(56, size_of::<ds::queue::PinnedQueue<AtomicU32>>());
     assert_eq!(16, size_of::<metrics::Metric>());
     assert_eq!(64, size_of::<metrics::Item>());
     assert_eq!(1, size_of::<Parser>());
     assert_eq!(48, size_of::<Backend<Request>>());
-    let stream_size = if cfg!(debug_assertions) { 248 } else { 200 };
-    assert_eq!(stream_size, size_of::<Stream>());
-    let handler_size = if cfg!(debug_assertions) { 552 } else { 464 };
-    assert_eq!(handler_size, size_of::<Handler<'static>>());
     assert_eq!(0, size_of::<Builder>());
+    assert_eq!(24, size_of::<CheckedTopology>());
+}
+
+// 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
+#[test]
+fn check_layout() {
+    assert_eq!((200, 208).select(), size_of::<CallbackContext>());
+    assert_eq!((176, 224).select(), size_of::<StreamGuard>());
+    assert_eq!((112, 248).select(), size_of::<Stream>());
+    assert_eq!((368, 552).select(), size_of::<Handler<'static>>());
+    assert_eq!((520, 728).select(), size_of::<Entry<Handler<'static>>>());
 
     //assert_eq!(400, size_of::<Topology>());
     assert_eq!(96, size_of::<CacheService>());
     assert_eq!(264, size_of::<RedisService>());
     assert_eq!(192, size_of::<PhantomService>());
     assert_eq!(392, size_of::<MsgQue>());
+
+    assert_eq!(288, size_of::<stream::StreamMetrics>());
+
+    assert_eq!((456, 648).select(), size_of::<CopyBidirectional>());
+    assert_eq!((608, 824).select(), size_of::<Entry<CopyBidirectional>>());
+}
+
+trait Select {
+    fn select(&self) -> usize;
+}
+
+impl Select for (usize, usize) {
+    fn select(&self) -> usize {
+        if cfg!(feature = "layout-min") {
+            assert!(
+                !cfg!(debug_assertions) && !cfg!(feature = "layout-max"),
+                "layout-min must be used with release mode"
+            );
+            self.0
+        } else {
+            assert!(
+                cfg!(debug_assertions) && !cfg!(feature = "layout-min"),
+                "layout-max must be used with debug mode"
+            );
+            self.1
+        }
+    }
 }

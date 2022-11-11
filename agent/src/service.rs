@@ -76,13 +76,13 @@ async fn _process_one(
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("started. {}", quard);
+    let metrics = Arc::new(StreamMetrics::new(path));
 
     loop {
         // 等待初始化成功
         let (client, _addr) = l.accept().await?;
         let client = rt::Stream::from(client);
         let p = p.clone();
-        let metrics = StreamMetrics::new(path);
         let _path = format!("{:?}", path);
         log::debug!("connection established:{:?}", _path);
         let ctop;
@@ -96,6 +96,7 @@ async fn _process_one(
         }
         let top = ctop.expect("build failed");
         let mut unsupport_cmd = path.num("unsupport_cmd");
+        let metrics = metrics.clone();
         spawn(async move {
             if let Err(e) = copy_bidirectional(top, metrics, client, p).await {
                 match e {
