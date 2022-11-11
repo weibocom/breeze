@@ -1,6 +1,6 @@
+use ds::time::Instant;
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use ds::time::Instant;
 
 use ds::AtomicWaker;
 
@@ -344,20 +344,18 @@ impl CallbackContextPtr {
     pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P) {
         assert!(self.inited(), "cbptr:{:?}", &*self);
         assert!(self.complete(), "cbptr:{:?}", &*self);
-        if self.is_write_back() && self.response_ok() {
-            let exp = self.callback.exp_sec();
-            if let Some(new) = parser.build_writeback_request(&mut self, exp) {
-                self.with_request(new);
-            }
-            // 还会有异步请求，内存释放交给异步操作完成后的on_done来处理
-            self.ctx.drop_on_done.store(true, Ordering::Release);
-            log::debug!("start write back:{}", &*self);
-            let ctx = self.ptr;
-            // 必须要提前drop，否则可能会因为continute在drop(self)之前完成，导致在on_done中释放context，
-            // 此时，此时内存被重置，导致drop_one_done为false，在drop(self)时，再次释放context
-            drop(self);
-            unsafe { (&mut *ctx).goon() };
+        let exp = self.callback.exp_sec();
+        if let Some(new) = parser.build_writeback_request(&mut self, exp) {
+            self.with_request(new);
         }
+        // 还会有异步请求，内存释放交给异步操作完成后的on_done来处理
+        self.ctx.drop_on_done.store(true, Ordering::Release);
+        log::debug!("start write back:{}", &*self);
+        let ctx = self.ptr;
+        // 必须要提前drop，否则可能会因为continute在drop(self)之前完成，导致在on_done中释放context，
+        // 此时，此时内存被重置，导致drop_one_done为false，在drop(self)时，再次释放context
+        drop(self);
+        unsafe { (&mut *ctx).goon() };
     }
 }
 
