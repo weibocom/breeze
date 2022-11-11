@@ -1,7 +1,7 @@
 mod basic;
-use std::collections::HashMap;
-use memcache::{Client, MemcacheError};
 use crate::ci::env::{exists_key_iter, Mesh};
+use memcache::{Client, MemcacheError};
+use std::collections::HashMap;
 
 /// 测试场景：buffer扩容验证: 同一个连接，同一个key, set不同大小的value
 /// 特征:    key；固定为"fooset"  value: 不同长度的String,内容固定: 每个字符内容为 ‘A’
@@ -76,16 +76,12 @@ fn mc_gets_keys() {
     }
 
     let mut mkey: Vec<&str> = Vec::new();
-    for (count, k) in key.iter().enumerate() {
+    for (_count, k) in key.iter().enumerate() {
         mkey.push(k.as_str());
-        let result: Result<HashMap<String, String>, MemcacheError> =
-            client.gets(mkey.as_slice());
-        println!("count is :{}", count + 1);
-        println!("keys is :{:?}", mkey);
-        println!("result is: {:?}", result);
-        assert!(result.is_ok());
-        assert_eq!(result.expect("ok").len(), count + 1);
     }
+    let result: Result<HashMap<String, String>, MemcacheError> = client.gets(mkey.as_slice());
+    assert!(result.is_ok());
+    assert_eq!(result.expect("ok").len(), 1000);
 }
 
 /// 测试场景: 测试key的长度
