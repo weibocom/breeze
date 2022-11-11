@@ -48,7 +48,7 @@ fn checkout_basic() {
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
 #[test]
 fn check_layout() {
-    assert_eq!((208, 216).select(), size_of::<CallbackContext>());
+    assert_eq!((200, 208).select(), size_of::<CallbackContext>());
     assert_eq!((176, 224).select(), size_of::<StreamGuard>());
     assert_eq!((112, 248).select(), size_of::<Stream>());
     assert_eq!((368, 552).select(), size_of::<Handler<'static>>());
