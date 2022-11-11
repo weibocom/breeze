@@ -1,4 +1,4 @@
-use crate::{HashedCommand, OpCode, Operation};
+use crate::{Command, HashedCommand, OpCode, Operation};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 
@@ -29,6 +29,7 @@ pub(crate) struct CommandProperties {
     pub(super) multi: bool, // 该命令是否可能会包含多个key
     // need bulk number只对multi key请求的有意义
     pub(super) need_bulk_num: bool, // mset所有的请求只返回一个+OK，不需要在首个请求前加*bulk_num。其他的都需要
+    pub(super) quit: bool,          // 是否需要quit掉连接
 }
 
 // 默认响应,第0个表示qui;
@@ -176,6 +177,36 @@ impl CommandProperties {
         let cmd: MemGuard = MemGuard::from_vec(cmd);
         HashedCommand::new(cmd, hash, flag)
     }
+
+    // 构建一个nil rsp，返回格式类似： :-10\r\n
+    #[inline(always)]
+    pub(super) fn build_nil_rsp(&self) -> Command {
+        let nil_idx = self.nil_rsp as usize;
+        assert!(nil_idx > 0, "cmd:{}", self.name);
+
+        let nil_str = *PADDING_RSP_TABLE
+            .get(nil_idx)
+            .expect(format!("cmd:{}/{}", self.name, nil_idx).as_str());
+        let mut rsp = Command::from_vec(Vec::from(nil_str));
+        rsp.set_status_ok(false).set_nil_convert();
+        rsp
+    }
+
+    // 构建一个padding rsp，用于返回默认响应或server不可用响应
+    // 格式类似：1 pong； 2 -Err redis no available
+    #[inline(always)]
+    pub(super) fn build_padding_rsp(&self) -> Command {
+        let padding_idx = self.padding_rsp as usize;
+        assert!(padding_idx < PADDING_RSP_TABLE.len(), "cmd:{}", self.name);
+
+        let padding_str = *PADDING_RSP_TABLE
+            .get(padding_idx)
+            .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str());
+        let mut rsp = Command::from_vec(Vec::from(padding_str));
+        // 只有meta的padding rsp才可以设status为true，其他都是异端
+        rsp.set_status_ok(self.op.is_meta());
+        rsp
+    }
 }
 
 // https://redis.io/commands 一共145大类命令。使用 crate::sharding::Hash::Crc32
@@ -246,6 +277,14 @@ impl Commands {
             nil_rsp = 5;
         }
 
+        // 所有cmd的padding-rsp都必须是合理值，此处统一判断
+        assert!(
+            padding_rsp > 0 && (padding_rsp as usize) < PADDING_RSP_TABLE.len(),
+            "cmd:{}",
+            name
+        );
+
+        let quit = uppercase.eq("QUIT");
         self.supported[idx] = CommandProperties {
             name,
             mname,
@@ -263,6 +302,7 @@ impl Commands {
             has_key,
             has_val,
             need_bulk_num,
+            quit,
         };
     }
 }
@@ -291,7 +331,8 @@ pub(super) mod cmd {
                 // 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
                 ("select", "select" ,      2, Meta, 0, 0, 0, 1, false, true, false, false, false),
                 ("hello", "hello" ,        2, Meta, 0, 0, 0, 4, false, true, false, false, false),
-                ("quit", "quit" ,          2, Meta, 0, 0, 0, 0, false, true, false, false, false),
+                // quit 的padding应该为1，返回+OK，并断连接
+                ("quit", "quit" ,          2, Meta, 0, 0, 0, 1, false, true, false, false, false),
 
                 ("bfget" , "bfget",        2, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("bfset", "bfset",         2, Store, 1, 1, 1, 3, false, false, true, false, false),

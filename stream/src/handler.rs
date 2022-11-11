@@ -97,7 +97,9 @@ where
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
-                        req.on_complete(cmd);
+                        // 这里有req、rsp信息，可以决策nil convert等了
+                        let real_rsp = self.parser.reshape_response(req.cmd(), cmd)?;
+                        req.on_complete(real_rsp);
                     }
                 }
             }

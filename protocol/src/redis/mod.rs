@@ -214,9 +214,14 @@ impl Redis {
         log::debug!("+++ will parse rsp:{:?}", data);
 
         if data.len() >= 2 {
+            let mut rsp_ok = true;
             let mut oft = 0;
             match data.at(0) {
-                b'-' | b':' | b'+' => data.line(&mut oft)?,
+                b'-' => {
+                    rsp_ok = false;
+                    data.line(&mut oft)?;
+                }
+                b':' | b'+' => data.line(&mut oft)?,
                 b'$' => {
                     let _num = data.num_and_skip(&mut oft)?;
                 }
@@ -231,8 +236,8 @@ impl Redis {
             assert!(oft <= data.len(), "{} data:{:?}", oft, data);
             let mem = s.take(oft);
             let mut flag = Flag::new();
-            // redis不需要重试
-            flag.set_status_ok(true);
+            // TODO 这次需要测试err场景 fishermen
+            flag.set_status_ok(rsp_ok);
             return Ok(Some(Command::new(flag, mem)));
         }
         Ok(None)
@@ -263,22 +268,75 @@ impl Protocol for Redis {
             e => e,
         }
     }
-    #[inline]
-    fn write_response<C: Commander, W: crate::Writer>(
-        &self,
-        ctx: &mut C,
-        w: &mut W,
-    ) -> Result<usize> {
-        let req = ctx.request();
-        let op_code = req.op_code();
-        let cfg = command::get_cfg(op_code)?;
-        let response = ctx.response();
-        if !cfg.multi {
-            // 对于hscan，虽然是单个key，也会返回*2 fishermen
-            // assert_ne!(response.data().at(0), b'*');
-            w.write_slice(response.data(), 0)?;
-            Ok(0)
+
+    // 对resp做重塑:
+    //    1. 如果resp是multi+多bulk req的异常响应，需要将err转为nil rsp；
+    //    2. 否则仍然使用原resp；
+    fn reshape_response(&self, req: &HashedCommand, resp: Command) -> Result<Command> {
+        let cfg = command::get_cfg(req.op_code())?;
+
+        // 对multi+多bulk请求的异常响应，构建nil rsp
+        if cfg.multi && cfg.need_bulk_num && !resp.ok() {
+            Ok(cfg.build_nil_rsp())
         } else {
+            Ok(resp)
+        }
+    }
+
+    // 构建本地响应resp策略：
+    //  1 对于hashkey、keyshard直接构建resp；
+    //  2 对于除keyshard外的multi+多bulk req，构建nil rsp；(注意keyshard是mulit+多bulk)
+    //  2 对其他固定响应的请求，构建padding rsp；
+    fn build_local_response<F: Fn(i64) -> usize>(
+        &self,
+        req: &HashedCommand,
+        dist_fn: F,
+    ) -> Command {
+        let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
+
+        // 对hashkey、keyshard构建协议格式的resp，对其他请求构建nil or padding rsp
+        let rsp = match cfg.name {
+            command::DIST_CMD_HASHKEY => {
+                let shard = dist_fn(req.hash());
+                cfg.build_rsp_hashkey(shard)
+            }
+            command::DIST_CMD_KEYSHARD => {
+                assert!(cfg.multi && cfg.need_bulk_num, "{} cfg malformed", cfg.name);
+                let shard = dist_fn(req.hash());
+                cfg.build_rsp_keyshard(shard)
+            }
+            _ => {
+                if cfg.multi && cfg.need_bulk_num {
+                    cfg.build_nil_rsp()
+                } else {
+                    cfg.build_padding_rsp()
+                }
+            }
+        };
+        rsp
+    }
+
+    // 发送响应给client：
+    //  1 multi + need-bulk-num，对first先发bulk num，非first正常发送；
+    //  2 其他 multi，只发first响应，其他忽略；
+    //  3 quit 发送完毕后，返回Err 断开连接
+    //  4 其他普通响应直接发送；
+    #[inline]
+    fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
+        let req = ctx.request();
+        let cfg = command::get_cfg(req.op_code())?;
+        let response = ctx.response();
+
+        if !cfg.multi {
+            // 非multi请求的响应，直接返回client
+            w.write_slice(response.data(), 0)?;
+            // quit指令发送完毕后，返回异常断连接
+            if cfg.quit {
+                return Err(crate::Error::Quit);
+            }
+        } else {
+            // multi请求，如果需要bulk num，对第一个key先返回bulk head；
+            // 对第一个key的响应都要返回，但对不需要bulk num的其他key响应，不需要返回，直接吞噬
             let ext = req.ext();
             let first = ext.mkey_first();
             if first || cfg.need_bulk_num {
@@ -288,102 +346,92 @@ impl Protocol for Redis {
                     w.write(b"\r\n")?;
                 }
 
-                // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
-                if cfg.need_bulk_num && response.data().at(0) == b'-' && cfg.nil_rsp > 0 {
-                    // 在Command中已经断言了nil_rsp < PADDING_RSP_TABLE.len()
-                    let nil = cfg.get_pad_rsp();
-                    log::info!("+++ write to client nil: {:?}=>{:?}", nil, response);
-
-                    w.write(nil.as_bytes())?;
-                    return Ok(1);
-                }
-
                 w.write_slice(response.data(), 0)?;
-                return Ok(0);
-            } else {
-                // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
-                // mset always return +OK
-                // https://redis.io/commands/mset
-                Ok(0)
             }
+            // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
+            // mset always return +OK
+            // https://redis.io/commands/mset
         }
+        Ok(())
     }
 
+    // TODO 测试完毕后，删除 fishermen
     // dist_fn 用于类似hashkey、keyshard等指令，计算指令对应的分片索引
-    #[inline]
-    fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
-        &self,
-        req: &HashedCommand,
-        w: &mut W,
-        dist_fn: F,
-    ) -> Result<usize> {
-        let rsp_idx = req.ext().padding_rsp();
+    // #[inline]
+    // fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     w: &mut W,
+    //     dist_fn: F,
+    // ) -> Result<usize> {
+    //     let rsp_idx = req.ext().padding_rsp();
 
-        let mut nil_convert = 0;
-        // check cmd需要额外构建rsp，目前只有hashkey、keyshard两种dist指令需要构建
-        let cfg = command::get_cfg(req.op_code())?;
-        let rsp = match cfg.name {
-            command::DIST_CMD_HASHKEY => {
-                let shard = dist_fn(req.hash());
-                format!(":{}\r\n", shard)
-            }
-            command::DIST_CMD_KEYSHARD => {
-                let mut bulk_str: String = String::from("");
-                if cfg.multi && cfg.need_bulk_num {
-                    let ext = req.ext();
-                    if ext.mkey_first() && cfg.need_bulk_num {
-                        bulk_str = format!("*{}\r\n", ext.key_count());
-                    }
-                }
+    //     let mut nil_convert = 0;
+    //     // check cmd需要额外构建rsp，目前只有hashkey、keyshard两种dist指令需要构建
+    //     let cfg = command::get_cfg(req.op_code())?;
+    //     let rsp = match cfg.name {
+    //         command::DIST_CMD_HASHKEY => {
+    //             let shard = dist_fn(req.hash());
+    //             format!(":{}\r\n", shard)
+    //         }
+    //         command::DIST_CMD_KEYSHARD => {
+    //             let mut bulk_str: String = String::from("");
+    //             if cfg.multi && cfg.need_bulk_num {
+    //                 let ext = req.ext();
+    //                 if ext.mkey_first() && cfg.need_bulk_num {
+    //                     bulk_str = format!("*{}\r\n", ext.key_count());
+    //                 }
+    //             }
 
-                let shard_str = dist_fn(req.hash()).to_string();
-                format!("{}${}\r\n{}\r\n", bulk_str, shard_str.len(), shard_str)
-            }
-            _ => {
-                // 对于multi且需要返回rsp数量的请求，按标准协议返回，并返回nil值
-                let mut nil_rsp = false;
-                if cfg.multi {
-                    let ext = req.ext();
-                    let first = ext.mkey_first();
-                    if first || cfg.need_bulk_num {
-                        if first && cfg.need_bulk_num {
-                            w.write_u8(b'*')?;
-                            w.write_s_u16(ext.key_count())?;
-                            w.write(b"\r\n")?;
-                        }
+    //             let shard_str = dist_fn(req.hash()).to_string();
+    //             format!("{}${}\r\n{}\r\n", bulk_str, shard_str.len(), shard_str)
+    //         }
+    //         _ => {
+    //             // 对于multi且需要返回rsp数量的请求，按标准协议返回，并返回nil值
+    //             let mut nil_rsp = false;
+    //             if cfg.multi {
+    //                 let ext = req.ext();
+    //                 let first = ext.mkey_first();
+    //                 if first || cfg.need_bulk_num {
+    //                     if first && cfg.need_bulk_num {
+    //                         w.write_u8(b'*')?;
+    //                         w.write_s_u16(ext.key_count())?;
+    //                         w.write(b"\r\n")?;
+    //                     }
 
-                        // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
-                        if cfg.need_bulk_num && cfg.nil_rsp > 0 {
-                            nil_rsp = true;
-                        }
-                    }
-                }
-                if nil_rsp {
-                    let nil = cfg.get_pad_rsp();
-                    // 百分之一的概率打印nil 转换
-                    log::info!("+++ write client nil/{} for:{:?}", nil, req);
-                    nil_convert = 1;
-                    nil.to_string()
-                } else {
-                    cfg.get_pad_rsp_by(rsp_idx).to_string()
-                }
-            }
-        };
+    //                     // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
+    //                     if cfg.need_bulk_num && cfg.nil_rsp > 0 {
+    //                         nil_rsp = true;
+    //                     }
+    //                 }
+    //             }
+    //             if nil_rsp {
+    //                 let nil = cfg.get_pad_rsp();
+    //                 // 百分之一的概率打印nil 转换
+    //                 log::info!("+++ write client nil/{} for:{:?}", nil, req);
+    //                 nil_convert = 1;
+    //                 nil.to_string()
+    //             } else {
+    //                 cfg.get_pad_rsp_by(rsp_idx).to_string()
+    //             }
+    //         }
+    //     };
 
-        // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        log::debug!("+++ will write noforward rsp/{:?} for req:{:?}", rsp, req);
-        if rsp.len() > 0 {
-            w.write(rsp.as_bytes())?;
-            Ok(nil_convert)
-        } else {
-            // quit，先发+OK，再返回err
-            assert_eq!(rsp_idx, 0, "rsp_idx:{}", rsp_idx);
-            let ok_rs = cfg.get_pad_ok_rsp().as_bytes();
-            w.write(ok_rs)?;
-            Err(crate::Error::Quit)
-        }
-    }
+    //     // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
+    //     log::debug!("+++ will write noforward rsp/{:?} for req:{:?}", rsp, req);
+    //     if rsp.len() > 0 {
+    //         w.write(rsp.as_bytes())?;
+    //         Ok(nil_convert)
+    //     } else {
+    //         // quit，先发+OK，再返回err
+    //         assert_eq!(rsp_idx, 0, "rsp_idx:{}", rsp_idx);
+    //         let ok_rs = cfg.get_pad_ok_rsp().as_bytes();
+    //         w.write(ok_rs)?;
+    //         Err(crate::Error::Quit)
+    //     }
+    // }
 
+    // redis writeback场景：hashkey -1 时，需要对所有节点进行数据（一般为script）分发
     #[inline]
     fn build_writeback_request<C: Commander>(&self, ctx: &mut C, _: u32) -> Option<HashedCommand> {
         let hash_cmd = ctx.request_mut();
@@ -392,7 +440,8 @@ impl Protocol for Redis {
         // hash idx 放到topo.send 中处理
         // let idx_hash = hash_cmd.hash() - 1;
         // hash_cmd.update_hash(idx_hash);
-        hash_cmd.set_ignore_rsp(true);
+        // 去掉ignore rsp，改由drop_on_done来处理
+        // hash_cmd.set_ignore_rsp(true);
         None
     }
 }

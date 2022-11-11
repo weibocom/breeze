@@ -1,5 +1,5 @@
-use std::fmt::{Debug, Display};
 use ds::time::Instant;
+use std::fmt::{Debug, Display};
 
 use ds::RingSlice;
 
@@ -14,7 +14,8 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     fn len(&self) -> usize;
     fn hash(&self) -> i64;
     fn update_hash(&mut self, idx_hash: i64);
-    fn on_noforward(&mut self);
+    // TODO 测试完毕后，统一清理on_noforward
+    // fn on_noforward(&mut self);
     fn on_sent(self) -> Option<Self>;
     fn sentonly(&self) -> bool;
     fn data(&self) -> &RingSlice;
@@ -27,7 +28,7 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     }
     fn mut_context(&mut self) -> &mut Context;
     fn master_only(&self) -> bool;
-    fn ignore_rsp(&self) -> bool;
+    // fn ignore_rsp(&self) -> bool;
     fn direct_hash(&self) -> bool;
     // 请求成功后，是否需要进行回写或者同步。
     fn write_back(&mut self, wb: bool);

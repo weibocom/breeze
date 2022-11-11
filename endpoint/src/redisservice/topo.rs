@@ -1,7 +1,7 @@
+use ds::time::Duration;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use ds::time::Duration;
 
 use discovery::TopologyWrite;
 use protocol::{Builder, Endpoint, Protocol, Request, Resource, Single, Topology};
@@ -73,16 +73,15 @@ where
         let shard_idx = match req.direct_hash() {
             true => {
                 let dhash_boundary = protocol::MAX_DIRECT_HASH - self.shards.len() as i64;
+                // 大于direct hash边界，说明是全节点分发请求，发送请求前，需要调整hash
                 if req.hash() > dhash_boundary {
-                    // ignore_rsp 为false，说明req是client的请求，直接发送；
-                    // ignore_rsp 为true，说明req是用于数据同步的内部请求，此时逐次调整hash，来达到切换分片的目的 fishermen
-                    if req.ignore_rsp() {
-                        let nhash = req.hash() - 1;
-                        req.update_hash(nhash);
-                    }
-                    // 到了最后一个分片之前，write back为true
-                    req.write_back(req.hash() > dhash_boundary + 1);
-                    (protocol::MAX_DIRECT_HASH - req.hash()) as usize
+                    // 直接计算得到hash
+                    let idx = (protocol::MAX_DIRECT_HASH - req.hash()) as usize;
+
+                    // 调整req的hash，设置write back，为下一次write back分发做准备
+                    req.update_hash(req.hash() - 1);
+                    req.write_back(req.hash() > dhash_boundary);
+                    idx
                 } else {
                     self.distribute.index(req.hash())
                 }
@@ -102,12 +101,11 @@ where
         // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
         if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(
-                "+++ send - {} hash/idx:{}/{}, master_only:{}, ignore_rsp:{}, req:{:?},",
+                "+++ send - {} hash/idx:{}/{}, master_only:{}, req:{:?},",
                 self.service,
                 req.hash(),
                 shard_idx,
                 req.master_only(),
-                req.ignore_rsp(),
                 req.data(),
             )
         }

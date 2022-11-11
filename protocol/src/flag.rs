@@ -8,8 +8,9 @@ pub struct Flag {
     status_ok: bool,
     noforward: bool,
     master_only: bool, // 是否只请求master？
-    ignore_rsp: bool,  // 是否忽略响应，即不发送给client
+    // ignore_rsp: bool,  // 是否忽略响应，即不发送给client
     direct_hash: bool,
+    nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
     v: u64,
 }
 
@@ -40,17 +41,19 @@ impl Flag {
         Self::default()
     }
     #[inline]
-    pub fn set_status_ok(&mut self, ok: bool) {
+    pub fn set_status_ok(&mut self, ok: bool) -> &mut Self {
         assert_eq!(self.ok(), false);
         self.status_ok = ok;
+        self
     }
     #[inline]
     pub fn ok(&self) -> bool {
         self.status_ok
     }
     #[inline]
-    pub fn set_sentonly(&mut self, sentonly: bool) {
+    pub fn set_sentonly(&mut self, sentonly: bool) -> &mut Self {
         self.sentonly = sentonly;
+        self
     }
     #[inline]
     pub fn sentonly(&self) -> bool {
@@ -65,9 +68,10 @@ impl Flag {
         self.op_code
     }
     #[inline]
-    pub fn set_noforward(&mut self, noforward: bool) {
+    pub fn set_noforward(&mut self, noforward: bool) -> &mut Self {
         assert!(!self.noforward());
         self.noforward = noforward;
+        self
     }
     #[inline]
     pub fn noforward(&self) -> bool {
@@ -96,14 +100,14 @@ impl Flag {
     pub fn master_only(&self) -> bool {
         self.master_only
     }
-    #[inline]
-    pub fn set_ignore_rsp(&mut self, ignore_rsp: bool) {
-        self.ignore_rsp = ignore_rsp
-    }
-    #[inline]
-    pub fn ignore_rsp(&self) -> bool {
-        self.ignore_rsp
-    }
+    // #[inline]
+    // pub fn set_ignore_rsp(&mut self, ignore_rsp: bool) {
+    //     self.ignore_rsp = ignore_rsp
+    // }
+    // #[inline]
+    // pub fn ignore_rsp(&self) -> bool {
+    //     self.ignore_rsp
+    // }
     #[inline]
     pub fn set_direct_hash(&mut self, direct_hash: bool) {
         self.direct_hash = direct_hash
@@ -123,6 +127,15 @@ impl Flag {
     #[inline]
     pub fn ext_mut(&mut self) -> &mut u64 {
         &mut self.v
+    }
+    #[inline]
+    pub fn set_nil_convert(&mut self) -> &mut Self {
+        self.nil_converted = true;
+        self
+    }
+    #[inline]
+    pub fn nil_converted(&self) -> bool {
+        self.nil_converted
     }
 }
 

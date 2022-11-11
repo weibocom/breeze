@@ -90,38 +90,62 @@ impl Protocol for McqText {
         }
     }
 
-    #[inline]
-    fn write_response<C: Commander, W: Writer>(&self, ctx: &mut C, w: &mut W) -> Result<usize> {
-        let rsp = ctx.response();
-        let data = rsp.data();
-        w.write_slice(data, 0)?;
-        Ok(0)
+    // msgque不存在multi指令，不需要对response重塑，直接返回即可
+    fn reshape_response(&self, _req: &HashedCommand, resp: Command) -> Result<Command> {
+        Ok(resp)
     }
 
-    #[inline]
-    fn write_no_response<W: Writer, F: Fn(i64) -> usize>(
+    // msgque没有multi请求，直接构建padding rsp即可
+    fn build_local_response<F: Fn(i64) -> usize>(
         &self,
         req: &HashedCommand,
-        w: &mut W,
         _dist_fn: F,
-    ) -> Result<usize> {
-        // mcq 没有sentonly指令
-        assert!(!req.sentonly(), "req: {:?}", req.data());
-        let cfg = command::get_cfg(req.op_code())?;
-        let rsp = cfg.padding_rsp();
-
-        if rsp.len() > 0 {
-            log::debug!(
-                "+++ will write padding rsp/{} for req/{}:{:?}",
-                rsp,
-                cfg.name,
-                req.data(),
-            );
-            w.write(rsp.as_bytes())?;
-            Ok(0)
-        } else {
-            // 说明请求是quit，直接返回Err断开连接即可
-            Err(crate::Error::Quit)
-        }
+    ) -> Command {
+        let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
+        cfg.build_padding_rsp()
     }
+
+    // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
+    #[inline]
+    fn write_response<C: Commander, W: Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
+        // 对于quit指令，直接返回Err断连
+        let cfg = command::get_cfg(ctx.request().op_code())?;
+        if cfg.quit {
+            return Err(crate::Error::Quit);
+        }
+
+        let rsp = ctx.response().data();
+        // 虽然quit的响应长度为0，但不排除有其他响应长度为0的场景，还是用quit属性来断连更安全
+        if rsp.len() > 0 {
+            w.write_slice(rsp, 0)?;
+        }
+        Ok(())
+    }
+
+    // #[inline]
+    // fn write_no_response<W: Writer, F: Fn(i64) -> usize>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     w: &mut W,
+    //     _dist_fn: F,
+    // ) -> Result<usize> {
+    //     // mcq 没有sentonly指令
+    //     assert!(!req.sentonly(), "req: {:?}", req.data());
+    //     let cfg = command::get_cfg(req.op_code())?;
+    //     let rsp = cfg.padding_rsp();
+
+    //     if rsp.len() > 0 {
+    //         log::debug!(
+    //             "+++ will write padding rsp/{} for req/{}:{:?}",
+    //             rsp,
+    //             cfg.name,
+    //             req.data(),
+    //         );
+    //         w.write(rsp.as_bytes())?;
+    //         Ok(0)
+    //     } else {
+    //         // 说明请求是quit，直接返回Err断开连接即可
+    //         Err(crate::Error::Quit)
+    //     }
+    // }
 }

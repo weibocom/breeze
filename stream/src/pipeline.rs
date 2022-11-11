@@ -1,9 +1,9 @@
+use ds::time::{Duration, Instant};
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::task::{ready, Context, Poll};
-use ds::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -149,6 +149,7 @@ where
             pending,
             waker,
             top,
+            parser,
             cb,
             first,
             req_new,
@@ -161,7 +162,8 @@ where
     #[inline]
     fn process_pending(&mut self) -> Result<()> {
         let Self {
-            top,
+            // 修改处理流程后，不再用pedding
+            // top,
             client,
             pending,
             parser,
@@ -192,27 +194,22 @@ where
                 *metrics.cache() += ctx.response_ok();
             }
 
-            if ctx.inited() && !ctx.request().ignore_rsp() {
-                let nil_convert = parser.write_response(&mut ctx, client)?;
-                if nil_convert > 0 {
-                    *metrics.nilconvert() += nil_convert;
-                }
-                ctx.async_start_write_back(parser);
-            } else if ctx.request().ignore_rsp() {
-                // do nothing!
-                log::debug!("+++ ignore resp:{:?}=>{:?}", ctx.request(), ctx.response())
-            } else {
-                let req = ctx.request();
-                if !req.noforward() {
-                    *metrics.noresponse() += 1;
-                }
+            // 流程调整后，所有request都必须有response
+            assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
+            parser.write_response(&mut ctx, client)?;
 
-                // 传入top，某些指令需要
-                let nil_convert =
-                    parser.write_no_response(req, client, |hash| top.shard_idx(hash))?;
-                if nil_convert > 0 {
-                    *metrics.nilconvert() += nil_convert;
-                }
+            // TODO 这个统计有问题，noforward才对noresponse加1？
+            // if !ctx.request().noforward() {
+            if ctx.request().noforward() {
+                *metrics.noresponse() += 1;
+            }
+            if ctx.response_nil_conver() {
+                *metrics.nilconvert() += 1;
+            }
+
+            // 如果需要回写，且response正确，则进行回写
+            if ctx.is_write_back() && ctx.response_ok() {
+                ctx.async_start_write_back(parser);
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，
@@ -236,17 +233,21 @@ where
     }
 }
 
-struct Visitor<'a, T> {
+struct Visitor<'a, P, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
     cb: &'a Callback,
     top: &'a T,
+    parser: &'a P,
     first: &'a mut bool,
     req_new: &'a mut usize,
     req_dropped: &'a AtomicUsize,
 }
 
-impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
+impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
+where
+    P: Protocol + Unpin,
+{
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
         *self.req_new += 1;
@@ -257,11 +258,18 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         let cb = self.cb.into();
         let mut ctx: CallbackContextPtr =
             CallbackContext::new(cmd, &self.waker, cb, first, last, self.req_dropped).into();
-        let mut req: Request = ctx.build_request();
+
+        // pendding 会move走ctx，所以提前把req给封装好
+        let req: Request = ctx.build_request();
         self.pending.push_back(ctx);
         use protocol::req::Request as RequestTrait;
         if req.cmd().noforward() {
-            req.on_noforward();
+            // req.on_noforward();
+            // 对于noforward，直接构建response
+            let resp = self
+                .parser
+                .build_local_response(req.cmd(), |hash| self.top.shard_idx(hash));
+            req.on_complete(resp);
         } else {
             self.top.send(req);
         }
