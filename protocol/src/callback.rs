@@ -1,6 +1,6 @@
+use ds::time::Instant;
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use ds::time::Instant;
 
 use ds::AtomicWaker;
 
@@ -63,15 +63,17 @@ impl CallbackContext {
             on_drop,
         }
     }
-    #[inline]
-    pub(crate) fn on_noforward(&mut self) {
-        assert!(
-            self.request().noforward(),
-            "req: {:?}",
-            self.request().data()
-        );
-        self.on_done();
-    }
+
+    // TODO 测试完毕后，统一清理on_noforward fishermen
+    // #[inline]
+    // pub(crate) fn on_noforward(&mut self) {
+    //     assert!(
+    //         self.request().noforward(),
+    //         "req: {:?}",
+    //         self.request().data()
+    //     );
+    //     self.on_done();
+    // }
 
     // 返回true: 表示发送完之后还未结束
     // false: 表示请求已结束
@@ -134,6 +136,10 @@ impl CallbackContext {
     #[inline]
     pub fn response_ok(&self) -> bool {
         unsafe { self.inited() && self.unchecked_response().ok() }
+    }
+    #[inline]
+    pub fn response_nil_conver(&self) -> bool {
+        unsafe { self.inited() && self.unchecked_response().nil_converted() }
     }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
@@ -270,6 +276,7 @@ pub struct Context {
     write_back: bool,         // 请求结束后，是否需要回写。
     first: bool,              // 当前请求是否是所有子请求的第一个
     last: bool,               // 当前请求是否是所有子请求的最后一个
+    // nil_converted: bool,      // 当前rsp是否进行了nil转换【对multi的异常请求需要】
     flag: crate::Context,
 }
 
@@ -298,6 +305,14 @@ impl Context {
     fn drop_on_done(&self) -> bool {
         self.drop_on_done.load(Ordering::Acquire)
     }
+    // #[inline]
+    // fn convert_rsp_nil(&mut self) {
+    //     self.nil_converted = true;
+    // }
+    // #[inline]
+    // pub fn nil_converted(&self) -> bool {
+    //     self.nil_converted
+    // }
 }
 
 use std::fmt::{self, Debug, Display, Formatter};

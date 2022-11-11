@@ -1,12 +1,13 @@
-use crate::{HashedCommand, OpCode, Operation};
+use crate::{Command, HashedCommand, OpCode, Operation};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
 
 pub const SWALLOWED_CMD_HASHKEYQ: &str = "hashkeyq";
 pub const SWALLOWED_CMD_HASHRANDOMQ: &str = "hashrandomq";
 
-// 指示下一个cmd
+// 指示下一个cmd的用于计算分片hash的key
 pub const DIST_CMD_HASHKEY: &str = "hashkey";
+// 计算批量key的分片索引
 pub const DIST_CMD_KEYSHARD: &str = "keyshard";
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
@@ -27,6 +28,7 @@ pub(crate) struct CommandProperties {
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
     pub(super) padding_rsp: u8,
+    // multi类指令，如果返回多个bulk，err bulk需要转为nil
     pub(super) nil_rsp: u8,
     pub(super) has_val: bool,
     pub(super) has_key: bool,
@@ -39,6 +41,7 @@ pub(crate) struct CommandProperties {
     pub(super) reserve_hash: bool, // 是否为下一个cmd指定hash，如果为true，将当前hash存储下来，供下一个cmd使用
     pub(super) need_reserved_hash: bool, // 是否需要前一个指令明确指定的hash，如果为true，则必须有key或者通过hashkey指定明确的hash
     pub(super) master_next: bool,        // 是否需要将下一个cmd发送到master
+    pub(super) quit: bool,               // 是否需要quit掉连接
 }
 
 // 默认响应
@@ -57,19 +60,59 @@ const PADDING_RSP_TABLE: [&str; 7] = [
 // 这个idx通常来自于CommandProperties.padding_rsp
 
 impl CommandProperties {
+    // 构建一个nil rsp，返回格式类似： $-1\r\n
     #[inline(always)]
-    pub(super) fn get_pad_rsp(&self) -> &'static str {
-        unsafe { PADDING_RSP_TABLE.get_unchecked(self.padding_rsp as usize) }
+    pub(super) fn build_nil_rsp(&self) -> Command {
+        let nil_idx = self.nil_rsp as usize;
+        assert!(nil_idx > 0, "cmd:{}", self.name);
+
+        let nil_str = *PADDING_RSP_TABLE
+            .get(nil_idx)
+            .expect(format!("cmd:{}, nil_rsp:{}", self.name, nil_idx).as_str());
+        let mut rsp = Command::from_vec(Vec::from(nil_str));
+        rsp.set_status_ok(false).set_nil_convert();
+        rsp
     }
+
+    // 构建一个padding rsp，用于返回默认响应或server不可用响应，只有meta cfg才设置status为true；
+    // 响应格式类似：1 pong； 2 -Err redis no available
     #[inline(always)]
-    pub(super) fn get_pad_ok_rsp(&self) -> &'static str {
-        unsafe { PADDING_RSP_TABLE.get_unchecked(1) }
+    pub(super) fn build_padding_rsp(&self) -> Command {
+        // quit的padding rsp为1，所有的rsp padding都应该大于0
+        let padding_idx = self.padding_rsp as usize;
+        assert!(padding_idx > 0, "cmd:{}", self.name);
+
+        let padding_str = *PADDING_RSP_TABLE
+            .get(padding_idx)
+            .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str());
+        let mut rsp = Command::from_vec(Vec::from(padding_str));
+        rsp.set_status_ok(self.op.is_meta());
+        rsp
     }
-    #[inline(always)]
-    pub(super) fn get_pad_rsp_by(&self, idx: u8) -> &'static str {
-        assert!(idx < PADDING_RSP_TABLE.len() as u8);
-        unsafe { PADDING_RSP_TABLE.get_unchecked(idx as usize) }
+
+    // 构建hashkey的resp
+    pub(super) fn build_rsp_hashkey(&self, shard: usize) -> Command {
+        let rsp_str = format!(":{}\r\n", shard);
+        let mut rsp = Command::from_vec(Vec::from(rsp_str));
+        rsp.set_status_ok(true);
+        rsp
     }
+
+    // 构建keyshard的resp，注意返回的bulk
+    pub(super) fn build_rsp_keyshard(&self, shard: usize) -> Command {
+        let shard_str = shard.to_string();
+        let rsp_str = format!("${}\r\n{}\r\n", shard_str.len(), shard_str);
+        let mut rsp = Command::from_vec(Vec::from(rsp_str));
+        rsp.set_status_ok(true);
+        rsp
+    }
+
+    // TODO: quit测试完毕后删除该方法 fishermen
+    // #[inline(always)]
+    // pub(super) fn get_pad_ok_rsp(&self) -> &'static str {
+    //     unsafe { PADDING_RSP_TABLE.get_unchecked(1) }
+    // }
+
     //#[inline]
     //pub fn operation(&self) -> &Operation {
     //    &self.op
@@ -243,6 +286,15 @@ impl Commands {
         c.supported = true;
         c.op_code = idx as u16;
         self.supported[idx] = c;
+
+        // 所有非swallowed cmd的padding-rsp都必须是合理值，此处统一判断
+        if !c.swallowed {
+            assert!(
+                c.padding_rsp > 0 && (c.padding_rsp as usize) < PADDING_RSP_TABLE.len(),
+                "cmd:{}",
+                c.name
+            );
+        }
     }
 }
 
@@ -270,14 +322,15 @@ pub(super) static SUPPORTED: Commands = {
         //// 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
         //("select", "select" ,      2, Meta, 0, 0, 0, 1, false, true, false, false, false),
         //("hello", "hello" ,        -1, Meta, 0, 0, 0, 4, false, true, false, false, false),
-        //("quit", "quit" ,          1, Meta, 0, 0, 0, 0, false, true, false, false, false),
+        //("quit", "quit" ,          1, Meta, 0, 0, 0, 1, false, true, false, false, false),
         // hello 参数应该是-1，可以不带或者带多个
         Cmd::new("command").arity(-1).op(Meta).padding(1).nofwd(),
         Cmd::new("ping").arity(-1).op(Meta).padding(2).nofwd(),
         Cmd::new("select").arity(2).op(Meta).padding(1).nofwd(),
         Cmd::new("hello").arity(-1).op(Meta).padding(4).nofwd(),
-        // quit、master的指令token数/arity应该都是1
-        Cmd::new("quit").arity(1).op(Meta).nofwd(),
+        // quit、master的指令token数/arity应该都是1,quit 的padding设为1 
+        // TODO quit 的padding设为1，需要验证后删除本注释 fishermen
+        Cmd::new("quit").arity(1).op(Meta).padding(1).nofwd().quit(),
         Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow(),
 
         //("get" , "get",            2, Get, 1, 1, 1, 3, false, false, true, false, false),
@@ -289,7 +342,7 @@ pub(super) static SUPPORTED: Commands = {
         //("set" ,"set",             3, Store, 1, 1, 1, 3, false, false, true, true, false),
         //("incr" ,"incr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
         //("decr" ,"decr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
-        Cmd::new("mget").m("get").arity(-2).op(MGet).first(1).last(-1).step(1).padding(3).multi().key().bulk(),
+        Cmd::new("mget").m("get").arity(-2).op(MGet).first(1).last(-1).step(1).padding(3).multi().key().bulk().nil_rsp(6),
         Cmd::new("set").arity(3).op(Store).first(1).last(1).step(1).padding(3).key().val(),
         Cmd::new("incr").arity(2).op(Store).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("decr").arity(2).op(Store).first(1).last(1).step(1).padding(3).key(),
@@ -391,7 +444,7 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("hgetall").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("hlen").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("hkeys").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
-        Cmd::new("hmget").arity(-3).op(Get).first(1).last(1).step(1).padding(3).key().nil_rsp(6),
+        Cmd::new("hmget").arity(-3).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("hvals").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("hexists").arity(3).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("hscan").arity(-3).op(Get).first(1).last(1).step(1).padding(3).key(),
@@ -530,8 +583,9 @@ pub(super) static SUPPORTED: Commands = {
         //("keyshard", "keyshard",                  -2,  Get, 1, -1, 1, 5, true,  true, true, false, true),
         // 这个指令暂无需求，先不支持
         // ("hashrandom", "hashrandom",               1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
-        Cmd::new("hashkey").arity(2).op(Get).first(1).last(1).step(1).padding(5).nofwd().key().resv_hash(),
-        Cmd::new("keyshard").arity(-2).op(Get).first(1).last(-1).step(1).padding(5).multi().nofwd().key().bulk().resv_hash(),
+        // hashkey、keyshard 改为meta，确保构建rsp时的status管理
+        Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(5).nofwd().key().resv_hash(),
+        Cmd::new("keyshard").arity(-2).op(Meta).first(1).last(-1).step(1).padding(5).multi().nofwd().key().bulk().resv_hash(),
 
         // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
         //("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false),
@@ -725,6 +779,10 @@ impl CommandProperties {
     }
     fn master(mut self) -> Self {
         self.master_next = true;
+        self
+    }
+    fn quit(mut self) -> Self {
+        self.quit = true;
         self
     }
 }

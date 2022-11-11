@@ -92,17 +92,22 @@ impl Protocol for MemcacheBinary {
         &self,
         ctx: &mut C,
         w: &mut W,
-    ) -> Result<usize> {
+    ) -> Result<()> {
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();
         let resp = ctx.response_mut();
         if QUITE_GET_TABLE[old_op_code as usize] == 1 && !resp.ok() {
-            return Ok(0);
+            return Ok(());
         }
         let data = resp.data_mut();
         data.restore_op(old_op_code as u8);
         w.write_slice(data, 0)?;
-        Ok(0)
+
+        // 对于quit，直接返回error断连，其他正常返回
+        match old_op_code {
+            0x07 | 0x17 => Err(Error::Quit),
+            _ => Ok(()),
+        }
     }
     // 如果是写请求，把cas请求转换为set请求。
     // 如果是读请求，则通过response重新构建一个新的写请求。
@@ -121,59 +126,141 @@ impl Protocol for MemcacheBinary {
             None
         }
     }
-    #[inline]
-    fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
+
+    // TODO 当前mc不支持nil转换，先继续保持，后续有需要再支持 fishermen
+    fn reshape_response(&self, _req: &HashedCommand, resp: Command) -> Result<Command> {
+        Ok(resp)
+    }
+
+    // 构建本地响应resp策略：
+    //  1 对于hashkey、keyshard直接构建resp；
+    //  2 对于除keyshard外的multi+多bulk req，构建nil rsp；(注意keyshard是mulit+多bulk)
+    //  2 对其他固定响应的请求，构建padding rsp；
+    fn build_local_response<F: Fn(i64) -> usize>(
         &self,
         req: &HashedCommand,
-        w: &mut W,
         _dist_fn: F,
-    ) -> Result<usize> {
+    ) -> Command {
         if req.sentonly() {
-            return Ok(0);
+            let mut rsp = Command::from_vec(Vec::with_capacity(0));
+            rsp.set_status_ok(true);
+            return rsp;
         }
-        match req.op_code() as u8 {
+
+        let mut resp_ok = true;
+        let resp_data = match req.op_code() as u8 {
+            // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_CODE_NOOP => {
-                w.write_u8(RESPONSE_MAGIC)?; // 第一个字节变更为Response，其他的与Request保持一致
-                w.write_slice(req.data(), 1)?;
-                Ok(0)
+                let mut rsp_noop = Vec::with_capacity(req.data().len());
+                req.data().copy_to_vec(&mut rsp_noop);
+                rsp_noop[0] = RESPONSE_MAGIC;
+                rsp_noop
+                // w.write_u8(RESPONSE_MAGIC)?;
+                // w.write_slice(req.data(), 1)?;
+                // Ok(0)
             }
-            0x0b => {
-                w.write(&VERSION_RESPONSE)?;
-                Ok(0)
+
+            //version: 返回固定rsp
+            0x0b => Vec::from(VERSION_RESPONSE),
+            // w.write(&VERSION_RESPONSE)?;
+            // Ok(0)
+
+            // stat：返回固定rsp
+            0x10 => Vec::from(STAT_RESPONSE),
+            // w.write(&STAT_RESPONSE)?;
+            // Ok(0)
+
+            // quit/quitq 无需返回rsp
+            0x07 | 0x17 => Vec::with_capacity(0),
+
+            // quite get 请求，无需返回任何rsp，但没实际发送，rsp_ok设为false
+            0x09 | 0x0d => {
+                resp_ok = false;
+                Vec::with_capacity(0) // Ok(0),
             }
-            0x10 => {
-                w.write(&STAT_RESPONSE)?;
-                Ok(0)
-            }
-            0x07 | 0x17 => Err(Error::Quit),
-            0x09 | 0x0d => Ok(0),
-            // quite get 请求。什么都不做
+            // set: mc status设为 Item Not Stored,status设为false
             0x01 => {
-                w.write(&self.build_empty_response(0x5, req.data()))?;
-                Ok(0)
+                resp_ok = false;
+                self.build_empty_response(RespStatus::NotStored, req)
+                // w.write(&self.build_empty_response(0x5, req.data()))?;
+                // Ok(0)
             }
-            // set: 0x05 Item Not Stored
+
+            // get，返回key not found 对应的0x1
             0x00 => {
-                w.write(&self.build_empty_response(0x1, req.data()))?;
-                Ok(0)
+                resp_ok = false;
+                self.build_empty_response(RespStatus::NotFound, req)
+                // w.write(&self.build_empty_response(0x1, req.data()))?;
+                // Ok(0)
             }
-            // get: 0x01 NotFound
-            _ => Err(Error::NoResponseFound),
-        }
+
+            // 其他未知消息
+            _ => {
+                resp_ok = false;
+                log::warn!("+++ found invalid mc req:{:?}", req);
+                self.build_empty_response(RespStatus::InvalidArg, req)
+            }
+        };
+        let mut req = Command::from_vec(resp_data);
+        req.set_status_ok(resp_ok);
+        req
     }
+
+    // #[inline]
+    // fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     w: &mut W,
+    //     _dist_fn: F,
+    // ) -> Result<usize> {
+    //     if req.sentonly() {
+    //         return Ok(0);
+    //     }
+    //     match req.op_code() as u8 {
+    //         OP_CODE_NOOP => {
+    //             w.write_u8(RESPONSE_MAGIC)?; // 第一个字节变更为Response，其他的与Request保持一致
+    //             w.write_slice(req.data(), 1)?;
+    //             Ok(0)
+    //         }
+    //         0x0b => {
+    //             w.write(&VERSION_RESPONSE)?;
+    //             Ok(0)
+    //         }
+    //         0x10 => {
+    //             w.write(&STAT_RESPONSE)?;
+    //             Ok(0)
+    //         }
+    //         0x07 | 0x17 => Err(Error::Quit),
+    //         0x09 | 0x0d => Ok(0),
+    //         // quite get 请求。什么都不做
+    //         0x01 => {
+    //             w.write(&self.build_empty_response(0x5, req.data()))?;
+    //             Ok(0)
+    //         }
+    //         // set: 0x05 Item Not Stored
+    //         0x00 => {
+    //             w.write(&self.build_empty_response(0x1, req.data()))?;
+    //             Ok(0)
+    //         }
+    //         // get: 0x01 NotFound
+    //         _ => Err(Error::NoResponseFound),
+    //     }
+    // }
 }
 impl MemcacheBinary {
+    // 根据req构建response，status为mc协议status，共11种
     #[inline]
-    fn build_empty_response(&self, status: u8, req: &ds::RingSlice) -> [u8; HEADER_LEN] {
+    fn build_empty_response(&self, status: RespStatus, req: &HashedCommand) -> Vec<u8> {
+        let req_slice = req.data();
         let mut response = [0; HEADER_LEN];
         response[PacketPos::Magic as usize] = RESPONSE_MAGIC;
-        response[PacketPos::Opcode as usize] = req.op();
-        response[PacketPos::Status as usize + 1] = status;
+        response[PacketPos::Opcode as usize] = req_slice.op();
+        response[PacketPos::Status as usize + 1] = status as u8;
         //复制 Opaque
         for i in PacketPos::Opaque as usize..PacketPos::Opaque as usize + 4 {
-            response[i] = req.at(i);
+            response[i] = req_slice.at(i);
         }
-        response
+        Vec::from(response)
     }
     #[inline]
     fn build_write_back_inplace(&self, req: &mut HashedCommand) {

@@ -31,6 +31,16 @@ pub enum Opcode {
     StartAuth = 0x21,
     GETS = 0x48,
 }
+
+// response status 共11种，协议中占2个字节，当前只有1字节，如果超范围需要在协议处理位置对应修改
+#[allow(dead_code)]
+pub enum RespStatus {
+    NoError = 0x0000,
+    NotFound = 0x0001,
+    InvalidArg = 0x0004,
+    NotStored = 0x0005,
+}
+
 use crate::Operation;
 #[allow(dead_code)]
 pub(super) enum PacketPos {

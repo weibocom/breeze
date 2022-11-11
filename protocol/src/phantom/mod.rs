@@ -8,8 +8,7 @@ mod packet;
 //mod token;
 
 use crate::{
-    phantom::command::PADDING_RSP_TABLE, Command, Commander, Error, Flag, HashedCommand, Protocol,
-    RequestProcessor, Result, Stream,
+    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
 };
 use ds::RingSlice;
 use flag::RedisFlager;
@@ -180,21 +179,56 @@ impl Protocol for Phantom {
             e => e,
         }
     }
-    #[inline]
-    fn write_response<C: Commander, W: crate::Writer>(
+
+    // 对resp做重塑:
+    //    1. 如果resp是multi+多bulk req的异常响应，需要将err转为nil rsp；
+    //    2. 否则仍然使用原resp；
+    fn reshape_response(&self, req: &HashedCommand, resp: Command) -> Result<Command> {
+        let cfg = command::get_cfg(req.op_code())?;
+
+        // 对multi+多bulk请求的异常响应，构建nil rsp
+        if cfg.multi && cfg.need_bulk_num && !resp.ok() {
+            Ok(cfg.build_nil_rsp())
+        } else {
+            Ok(resp)
+        }
+    }
+
+    // 构建本地响应resp策略：
+    //  1 对于multi+多bulk req，构建nil rsp；
+    //  2 对其他固定响应的请求，构建padding rsp；
+    fn build_local_response<F: Fn(i64) -> usize>(
         &self,
-        ctx: &mut C,
-        w: &mut W,
-    ) -> Result<usize> {
+        req: &HashedCommand,
+        _dist_fn: F,
+    ) -> Command {
+        let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
+
+        // 对hashkey、keyshard构建协议格式的resp，对其他请求构建nil or padding rsp
+        if cfg.multi && cfg.need_bulk_num {
+            cfg.build_nil_rsp()
+        } else {
+            cfg.build_padding_rsp()
+        }
+    }
+
+    // 发送响应给client：
+    //  1 multi + need-bulk-num，对first先发bulk num，非first正常发送；
+    //  2 其他 multi，只发first响应，其他忽略；
+    //  3 quit 发送完毕后，返回Err 断开连接
+    //  4 其他普通响应直接发送；
+    #[inline]
+    fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
         let req = ctx.request();
         let op_code = req.op_code();
         let cfg = command::get_cfg(op_code)?;
         let response = ctx.response();
         if !cfg.multi {
-            // 对于hscan，虽然是单个key，也会返回*2 fishermen
-            // assert_ne!(response.data().at(0), b'*');
             w.write_slice(response.data(), 0)?;
-            Ok(0)
+            // quit 指令发送响应后，返回Err关闭连接
+            if cfg.quit {
+                return Err(crate::Error::Quit);
+            }
         } else {
             let ext = req.ext();
             let first = ext.mkey_first();
@@ -204,90 +238,72 @@ impl Protocol for Phantom {
                     w.write(ext.key_count().to_string().as_bytes())?;
                     w.write(b"\r\n")?;
                 }
-
-                // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
-                if cfg.need_bulk_num && response.data().at(0) == b'-' && cfg.nil_rsp > 0 {
-                    let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
-                    // 百分之一的概率打印nil 转换
-                    let rd = rand::random::<usize>() % 100;
-                    if log::log_enabled!(log::Level::Debug) || rd == 0 {
-                        log::info!(
-                            "+++ use {} to replace phantom err rsp: {:?}",
-                            nil,
-                            response.data()
-                        );
-                    }
-
-                    w.write(nil.as_bytes())?;
-                    return Ok(1);
-                }
-
                 w.write_slice(response.data(), 0)?;
-                Ok(0)
-            } else {
-                // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
-                // mset always return +OK
-                // https://redis.io/commands/mset
-                Ok(0)
             }
+            // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
+            // mset always return +OK
+            // https://redis.io/commands/mset
         }
+        Ok(())
     }
-    #[inline]
-    fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
-        &self,
-        req: &HashedCommand,
-        w: &mut W,
-        _dist_fn: F,
-    ) -> Result<usize> {
-        let cfg = command::get_cfg(req.op_code())?;
-        let mut nil_rsp = false;
-        if cfg.multi {
-            let ext = req.ext();
-            let first = ext.mkey_first();
-            if first || cfg.need_bulk_num {
-                if first && cfg.need_bulk_num {
-                    w.write_u8(b'*')?;
-                    w.write(ext.key_count().to_string().as_bytes())?;
-                    w.write(b"\r\n")?;
-                }
 
-                // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
-                if cfg.need_bulk_num && cfg.nil_rsp > 0 {
-                    nil_rsp = true;
-                }
-            }
-        }
+    // TODO 测试完毕清理 fishermen
+    // #[inline]
+    // fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     w: &mut W,
+    //     _dist_fn: F,
+    // ) -> Result<usize> {
+    //     let cfg = command::get_cfg(req.op_code())?;
+    //     let mut nil_rsp = false;
+    //     if cfg.multi {
+    //         let ext = req.ext();
+    //         let first = ext.mkey_first();
+    //         if first || cfg.need_bulk_num {
+    //             if first && cfg.need_bulk_num {
+    //                 w.write_u8(b'*')?;
+    //                 w.write(ext.key_count().to_string().as_bytes())?;
+    //                 w.write(b"\r\n")?;
+    //             }
 
-        let mut nil_convert = 0;
-        let rsp = if nil_rsp {
-            let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
-            // 百分之一的概率打印nil 转换
-            let rd = rand::random::<usize>() % 100;
-            if log::log_enabled!(log::Level::Debug) || rd == 0 {
-                log::info!("+++ write pt client nil/{} noforward:{:?}", nil, req.data());
-            }
-            nil_convert = 1;
-            nil.to_string()
-        } else {
-            let rsp_idx = req.ext().padding_rsp() as usize;
-            assert!(rsp_idx < PADDING_RSP_TABLE.len(), "rsp_idx:{}", rsp_idx);
-            let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
-            rsp.to_string()
-        };
+    //             // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
+    //             if cfg.need_bulk_num && cfg.nil_rsp > 0 {
+    //                 nil_rsp = true;
+    //             }
+    //         }
+    //     }
 
-        // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        log::debug!("+++ will write no rsp. req:{}", req);
-        if rsp.len() > 0 {
-            w.write(rsp.as_bytes())?;
-            Ok(nil_convert)
-        } else {
-            // quit，先发+OK，再返回err
-            // assert_eq!(rsp_idx, 0);
-            let ok_rs = PADDING_RSP_TABLE.get(1).unwrap().as_bytes();
-            w.write(ok_rs)?;
-            Err(crate::Error::Quit)
-        }
-    }
+    //     let mut nil_convert = 0;
+    //     let rsp = if nil_rsp {
+    //         let nil = *PADDING_RSP_TABLE.get(cfg.nil_rsp as usize).unwrap();
+    //         // 百分之一的概率打印nil 转换
+    //         let rd = rand::random::<usize>() % 100;
+    //         if log::log_enabled!(log::Level::Debug) || rd == 0 {
+    //             log::info!("+++ write pt client nil/{} noforward:{:?}", nil, req.data());
+    //         }
+    //         nil_convert = 1;
+    //         nil.to_string()
+    //     } else {
+    //         let rsp_idx = req.ext().padding_rsp() as usize;
+    //         assert!(rsp_idx < PADDING_RSP_TABLE.len(), "rsp_idx:{}", rsp_idx);
+    //         let rsp = *PADDING_RSP_TABLE.get(rsp_idx).unwrap();
+    //         rsp.to_string()
+    //     };
+
+    //     // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
+    //     log::debug!("+++ will write no rsp. req:{}", req);
+    //     if rsp.len() > 0 {
+    //         w.write(rsp.as_bytes())?;
+    //         Ok(nil_convert)
+    //     } else {
+    //         // quit，先发+OK，再返回err
+    //         // assert_eq!(rsp_idx, 0);
+    //         let ok_rs = PADDING_RSP_TABLE.get(1).unwrap().as_bytes();
+    //         w.write(ok_rs)?;
+    //         Err(crate::Error::Quit)
+    //     }
+    // }
 }
 
 use std::sync::atomic::{AtomicI64, Ordering};
