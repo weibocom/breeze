@@ -73,7 +73,9 @@ impl MemPolicy {
             .max(cap)
             .max(BUF_MIN)
             .next_power_of_two();
-        log::info!("grow: {} {} > {} => {} {}", len, reserve, cap, new, self);
+        if cap > BUF_MIN {
+            log::info!("grow: {} {} > {} => {} {}", len, reserve, cap, new, self);
+        }
         self.continues.reset();
         new
     }
