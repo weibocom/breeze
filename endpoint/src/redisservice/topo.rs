@@ -165,7 +165,7 @@ where
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
-            // selector更新与域名实例更新保持一致
+            // selector属性更新与域名实例更新保持一致
             if self.selector != ns.basic.selector {
                 self.selector = ns.basic.selector;
                 self.updated
