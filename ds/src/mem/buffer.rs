@@ -14,13 +14,15 @@ pub struct RingBuffer {
 }
 
 impl RingBuffer {
+    // 如果size是0，则调用者需要确保数据先写入，再读取。
+    // 否则可能导致读取时，size - 1越界
     pub fn with_capacity(size: usize) -> Self {
-        let buff_size = size.next_power_of_two();
-        let mut data = Vec::with_capacity(buff_size);
+        assert!(size == 0 || size.is_power_of_two());
+        let mut data = Vec::with_capacity(size);
         let ptr = unsafe { NonNull::new_unchecked(data.as_mut_ptr()) };
         std::mem::forget(data);
         Self {
-            size: buff_size,
+            size,
             data: ptr,
             read: 0,
             write: 0,
@@ -50,19 +52,19 @@ impl RingBuffer {
     // 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
     #[inline]
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
-        let offset = self.mask(self.write);
-        let n = if self.read + self.size == self.write {
+        if self.read + self.size == self.write {
             // 已满
-            0
+            unsafe { from_raw_parts_mut(self.data.as_ptr(), 0) }
         } else {
+            let offset = self.mask(self.write);
             let read = self.mask(self.read);
-            if offset < read {
+            let n = if offset < read {
                 read - offset
             } else {
                 self.size - offset
-            }
-        };
-        unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
+            };
+            unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
+        }
     }
     #[inline]
     pub fn data(&self) -> RingSlice {
@@ -107,10 +109,13 @@ impl RingBuffer {
     #[inline]
     pub(crate) fn resize(&self, cap: usize) -> Self {
         assert!(cap >= self.write - self.read);
+        assert!(cap.is_power_of_two());
         let mut new = Self::with_capacity(cap);
         new.read = self.read;
         new.write = self.read;
-        new.write(&self.data());
+        if self.len() > 0 {
+            new.write(&self.data());
+        }
         assert_eq!(self.write, new.write);
         assert_eq!(self.read, new.read);
         new

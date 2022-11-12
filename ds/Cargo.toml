@@ -21,3 +21,4 @@ ctor = "*"
 default = ["heap-stats"]
 heap-stats = []
 tsc = []
+trace = []
