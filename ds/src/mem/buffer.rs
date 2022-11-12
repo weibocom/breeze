@@ -44,7 +44,7 @@ impl RingBuffer {
         self.write += n;
     }
     #[inline]
-    pub fn mask(&self, offset: usize) -> usize {
+    fn mask(&self, offset: usize) -> usize {
         offset & (self.size - 1)
     }
     // 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
@@ -62,13 +62,6 @@ impl RingBuffer {
                 self.size - offset
             }
         };
-        unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
-    }
-    // 返回可读取的数据。可能只返回部分数据。如果要返回所有的可读数据，使用 data 方法。
-    #[inline]
-    pub fn as_bytes(&self) -> &[u8] {
-        let offset = self.mask(self.read);
-        let n = (self.cap() - offset).min(self.len());
         unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
     }
     #[inline]
@@ -90,19 +83,6 @@ impl RingBuffer {
     pub fn len(&self) -> usize {
         assert!(self.write >= self.read);
         self.write - self.read
-    }
-    //#[inline]
-    //pub(crate) fn available(&self) -> bool {
-    //    self.read() + self.cap() > self.writtened()
-    //}
-    //#[inline]
-    //pub(crate) fn avail(&self) -> usize {
-    //    self.cap() - self.len()
-    //}
-    #[inline]
-    pub fn ratio(&self) -> (usize, usize) {
-        assert!(self.write >= self.read);
-        (self.write - self.read, self.cap())
     }
     #[inline]
     pub fn write(&mut self, data: &RingSlice) -> usize {
@@ -135,23 +115,6 @@ impl RingBuffer {
         assert_eq!(self.read, new.read);
         new
     }
-    #[inline]
-    pub fn reset(&mut self) {
-        self.read = 0;
-        self.write = 0;
-    }
-    #[inline]
-    pub fn reset_read(&mut self) {
-        let l = self.len();
-        if l > 0 {
-            let mut data = Vec::with_capacity(l);
-            self.data().copy_to_vec(&mut data);
-            use std::ptr::copy_nonoverlapping as copy;
-            unsafe { copy(data.as_ptr(), self.data.as_ptr(), l) };
-        }
-        self.read = 0;
-        self.write = l;
-    }
 
     #[inline]
     pub fn update(&mut self, idx: usize, val: u8) {
@@ -173,10 +136,6 @@ impl RingBuffer {
                 .offset(self.mask(self.read + idx) as isize)
         }
     }
-    //#[inline]
-    //pub(crate) fn raw(&self) -> &[u8] {
-    //    unsafe { std::slice::from_raw_parts(self.data.as_ptr(), self.size) }
-    //}
 }
 
 impl Drop for RingBuffer {
