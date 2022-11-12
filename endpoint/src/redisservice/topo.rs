@@ -1,7 +1,7 @@
+use ds::time::Duration;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use ds::time::Duration;
 
 use discovery::TopologyWrite;
 use protocol::{Builder, Endpoint, Protocol, Request, Resource, Single, Topology};
@@ -165,7 +165,12 @@ where
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
-            self.selector = ns.basic.selector;
+            // selector更新与域名实例更新保持一致
+            if self.selector != ns.basic.selector {
+                self.selector = ns.basic.selector;
+                self.updated
+                    .insert("selector".to_string(), Arc::new(AtomicBool::new(true)));
+            }
             let mut shards_url = Vec::new();
             for shard in ns.backends.iter() {
                 let mut shard_url = Vec::new();
