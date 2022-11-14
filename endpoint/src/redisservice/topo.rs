@@ -13,7 +13,7 @@ use super::config::RedisNamespace;
 use crate::TimeoutAdjust;
 use discovery::dns::{self, IPPort};
 
-const CONFIG_UPDATED_KEY: &str = "config";
+const CONFIG_UPDATED_KEY: &str = "__config__";
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -170,10 +170,10 @@ where
             // selector属性更新与域名实例更新保持一致
             if self.selector != ns.basic.selector {
                 self.selector = ns.basic.selector;
-                self.updated.insert(
-                    CONFIG_UPDATED_KEY.to_string(),
-                    Arc::new(AtomicBool::new(true)),
-                );
+                self.updated
+                    .entry(CONFIG_UPDATED_KEY.to_string())
+                    .or_insert(Arc::new(AtomicBool::new(true)))
+                    .store(true, Ordering::Release);
             }
             let mut shards_url = Vec::new();
             for shard in ns.backends.iter() {
