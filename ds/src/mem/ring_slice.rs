@@ -67,7 +67,7 @@ impl RingSlice {
 
     #[inline]
     pub fn len(&self) -> usize {
-        assert!(self.end >= self.start);
+        assert!(self.end >= self.start, "{}", self);
         self.end - self.start
     }
     #[inline]

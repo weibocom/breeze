@@ -1,4 +1,3 @@
-use ds::time::{Duration, Instant};
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
@@ -140,7 +139,6 @@ where
             rx_buf,
             first,
             cb,
-            async_pending,
             ..
         } = self;
         // 解析请求，发送请求，并且注册回调
@@ -150,7 +148,6 @@ where
             top,
             cb,
             first,
-            async_pending,
         };
 
         parser.parse_request(rx_buf, top.hasher(), &mut processor)
@@ -179,7 +176,7 @@ where
             if !ctx.complete() {
                 break;
             }
-            let mut ctx = pending.pop_front().expect("front");
+            let mut ctx: CallbackContext = pending.pop_front().expect("front").into();
             let last = ctx.last();
             // 当前不是最后一个值。也优先写入cache
             client.cache(!last);
@@ -200,7 +197,7 @@ where
                 }
                 if ctx.is_write_back() && ctx.response_ok() {
                     self.async_pending.fetch_add(1, AcqRel);
-                    ctx.async_start_write_back(parser);
+                    ctx.async_write_back(parser, &self.async_pending);
                 }
             } else if ctx.request().ignore_rsp() {
                 // do nothing!
@@ -246,7 +243,6 @@ struct Visitor<'a, T> {
     cb: &'a Callback,
     top: &'a T,
     first: &'a mut bool,
-    async_pending: &'a AtomicUsize,
 }
 
 impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
@@ -258,7 +254,7 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         *self.first = last;
         let cb = self.cb.into();
         let mut ctx: CallbackContextPtr =
-            CallbackContext::new(cmd, &self.waker, cb, first, last, self.async_pending).into();
+            CallbackContext::new(cmd, &self.waker, cb, first, last).into();
         let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
         use protocol::req::Request as RequestTrait;

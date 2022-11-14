@@ -48,11 +48,11 @@ fn checkout_basic() {
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
 #[test]
 fn check_layout() {
-    assert_eq!((208, 216).select(), size_of::<CallbackContext>());
-    assert_eq!((176, 224).select(), size_of::<StreamGuard>());
-    assert_eq!((112, 248).select(), size_of::<Stream>());
-    assert_eq!((368, 552).select(), size_of::<Handler<'static>>());
-    assert_eq!((520, 728).select(), size_of::<Entry<Handler<'static>>>());
+    assert_eq!((200, 208).select(), size_of::<CallbackContext>());
+    assert_eq!((176, 256).select(), size_of::<StreamGuard>());
+    assert_eq!((112, 280).select(), size_of::<Stream>());
+    assert_eq!((368, 616).select(), size_of::<Handler<'static>>());
+    assert_eq!((520, 792).select(), size_of::<Entry<Handler<'static>>>());
 
     //assert_eq!(400, size_of::<Topology>());
     assert_eq!(96, size_of::<CacheService>());
@@ -62,8 +62,8 @@ fn check_layout() {
 
     assert_eq!(288, size_of::<stream::StreamMetrics>());
 
-    assert_eq!((456, 648).select(), size_of::<CopyBidirectional>());
-    assert_eq!((608, 824).select(), size_of::<Entry<CopyBidirectional>>());
+    assert_eq!((456, 712).select(), size_of::<CopyBidirectional>());
+    assert_eq!((608, 888).select(), size_of::<Entry<CopyBidirectional>>());
 }
 
 trait Select {
