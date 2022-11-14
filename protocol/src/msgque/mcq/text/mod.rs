@@ -2,7 +2,6 @@ mod command;
 mod error;
 mod reqpacket;
 mod rsppacket;
-
 use crate::msgque::mcq::text::rsppacket::RspPacket;
 use crate::{
     Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
@@ -68,10 +67,6 @@ impl McqText {
 
 impl Protocol for McqText {
     #[inline]
-    fn cache(&self) -> bool {
-        true
-    }
-    #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
@@ -98,7 +93,16 @@ impl Protocol for McqText {
     fn write_response<C: Commander, W: Writer>(&self, ctx: &mut C, w: &mut W) -> Result<usize> {
         let rsp = ctx.response();
         let data = rsp.data();
+        if ctx.request().operation().is_query() && ctx.response().ok() {
+            let mut num_down = metrics::Path::base().num("num_down");
+            num_down += 1;
+        }
+        if ctx.request().operation().is_meta() && ctx.response().ok() {
+            let mut num_up = metrics::Path::base().num("num_up");
+            num_up += 1;
+        }
         w.write_slice(data, 0)?;
+
         Ok(0)
     }
 

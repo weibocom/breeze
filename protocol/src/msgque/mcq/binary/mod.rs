@@ -17,10 +17,6 @@ use self::packet::{PacketPos, RESPONSE_MAGIC};
 pub struct McqBinary;
 
 impl Protocol for McqBinary {
-    #[inline]
-    fn cache(&self) -> bool {
-        true
-    }
     // 解析mcq2/mcq3 指令
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
