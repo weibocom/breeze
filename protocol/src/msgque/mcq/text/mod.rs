@@ -2,10 +2,11 @@ mod command;
 mod error;
 mod reqpacket;
 mod rsppacket;
+
 use crate::msgque::mcq::text::rsppacket::RspPacket;
 use crate::{
-    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
-    Writer,
+    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Resource, Result,
+    Stream, Writer,
 };
 
 use sharding::hash::Hash;
@@ -94,10 +95,11 @@ impl Protocol for McqText {
         let rsp = ctx.response();
         let data = rsp.data();
         if ctx.request().operation().is_query() && ctx.response().ok() {
+            // let a = metrics::Path::new(vec![Resource::MsgQue.name(), "'"]).num("");
             let mut num_down = metrics::Path::base().num("num_down");
             num_down += 1;
         }
-        if ctx.request().operation().is_meta() && ctx.response().ok() {
+        if ctx.request().operation().is_store() && ctx.response().ok() {
             let mut num_up = metrics::Path::base().num("num_up");
             num_up += 1;
         }
