@@ -1,10 +1,11 @@
+use ds::time::Duration;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use ds::time::Duration;
 
+use crate::{Builder, Endpoint, Single, Topology};
 use discovery::TopologyWrite;
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Single, Topology};
+use protocol::{Protocol, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::Hasher;
 use sharding::ReplicaSelect;
@@ -59,7 +60,7 @@ where
     }
 }
 
-impl<B: Send + Sync, E, Req, P> protocol::Endpoint for RedisService<B, E, Req, P>
+impl<B: Send + Sync, E, Req, P> Endpoint for RedisService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,

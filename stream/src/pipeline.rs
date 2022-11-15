@@ -13,9 +13,8 @@ use ds::{
     time::{Duration, Instant},
     AtomicWaker,
 };
-use protocol::{
-    Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
-};
+use endpoint::{Topology, TopologyCheck};
+use protocol::{Commander, HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::buffer::{Reader, StreamGuard};
 use crate::{Callback, CallbackContext, CallbackContextPtr, Request, StreamMetrics};
