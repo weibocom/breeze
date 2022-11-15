@@ -39,6 +39,11 @@ pub enum RespStatus {
     NotFound = 0x0001,
     InvalidArg = 0x0004,
     NotStored = 0x0005,
+    NonNumeric = 0x0006,
+    // 扩展一个quit，用于支持关闭连接
+    Quit = 0x0007,
+    UnkownCmd = 0x0081,
+    OutOfMemory = 0x0082,
 }
 
 use crate::Operation;
