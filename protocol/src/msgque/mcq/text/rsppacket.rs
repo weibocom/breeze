@@ -275,7 +275,6 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         if !self.data.start_with(0, &"VALUE".as_bytes())? {
             return Ok(());
         };
-        //todo 要严谨处理的话  还可以加高bit为1的判断
         if self.flags_len != 10 {
             return Ok(());
         }
