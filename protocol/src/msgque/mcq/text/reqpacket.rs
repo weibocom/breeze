@@ -21,6 +21,9 @@ pub(super) struct RequestPacket<'a, S> {
 
     // 生命周期为开始解析当前req，到下一个req解析开始
     cmd_cfg: Option<&'a CommandProperties>,
+    flags: usize,
+    flags_len: usize,
+    flags_start: usize,
 }
 
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
@@ -33,6 +36,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             oft_last: 0,
             oft: 0,
             cmd_cfg: None,
+            flags: 0,
+            flags_len: 0,
+            flags_start: 0,
         }
     }
 
@@ -50,14 +56,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         return Err(super::Error::ProtocolIncomplete);
     }
 
-    // #[inline]
-    // fn skip_back(&mut self, count: usize) -> Result<()> {
-    //     self.oft -= count;
-    //     if self.oft >= self.oft_last {
-    //         return Ok(());
-    //     }
-    //     Err(McqError::ReqInvalid.error())
-    // }
+    #[inline]
+    fn skip_back(&mut self, count: usize) -> Result<()> {
+        self.oft -= count;
+        if self.oft >= self.oft_last {
+            return Ok(());
+        }
+        Err(McqError::ReqInvalid.error())
+    }
 
     // #[inline]
     // pub(super) fn state(&self) -> &ReqPacketState {
@@ -154,12 +160,18 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         if !self.current().is_ascii_digit() {
                             return Err(McqError::ReqInvalid.error());
                         }
+                        self.skip_back(1)?;
                         state = ReqPacketState::Flags;
                     }
                 }
                 ReqPacketState::Flags => {
                     if self.current().is_ascii_digit() {
-                        // do nothing, just skip it
+                        // 解析flags段
+                        if self.flags_start == 0 {
+                            self.flags_start = self.oft;
+                        }
+                        self.flags = self.flags * 10 + (self.current() - b'0') as usize;
+                        self.flags_len += 1;
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeExpire;
                     } else {
@@ -250,48 +262,37 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     // 将mcq req 文本协议（set key flags exp vlen）中 flags 段用timestamp 填充 ，消费时用作topic延时指标
-    pub(super) fn mark_flags(
-        &mut self,
-        req_cmd: ds::MemGuard,
-        req_type: RequestType,
-    ) -> ds::MemGuard {
-        if RequestType::Get == req_type {
+    pub(super) fn mark_flags(&mut self, req_cmd: ds::MemGuard) -> ds::MemGuard {
+        if self.flags_start == 0 {
             return req_cmd;
         }
         let mut req_data: Vec<u8> = Vec::with_capacity(req_cmd.data().len() + 10);
         req_cmd.data().copy_to_vec(&mut req_data);
-        if let Ok((key_start, _op_len)) = next_token(&req_data, 0) {
-            if let Ok((flags_start, _ken_len)) = next_token(&req_data, key_start) {
-                if let Ok((_expire_start, flags_len)) = next_token(&req_data, flags_start) {
-                    // 业务特殊需要，则不做标记 直接返回
-                    if flags_len > 1 || req_data[flags_start] != b'0' {
-                        return req_cmd;
-                    }
-                    let time_string = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs()
-                        .to_string();
-                    // 为避免重新开辟一块vec空间，先通过空格填充占位，再通过移动覆盖
-                    for _i in 0..time_string.len() - 1 {
-                        req_data.push(b' ');
-                    }
-                    let mut i = req_data.len() - 1;
-                    let mut j = i - (time_string.len() - 1);
-                    while j > flags_start {
-                        req_data[i] = req_data[j];
-                        j -= 1;
-                        i -= 1;
-                    }
-                    for (idx, num) in time_string.as_bytes().iter().enumerate() {
-                        req_data[flags_start + idx] = num.to_owned();
-                    }
-                    let marked_cmd = ds::MemGuard::from_vec(req_data);
-                    return marked_cmd;
-                }
-            }
+        // 业务特殊设置，则不做打标 直接返回
+        if self.flags_len > 1 || req_data[self.flags_start] != b'0' {
+            return req_cmd;
         }
-        return req_cmd;
+        let time_string = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .to_string();
+        // 为避免重新开辟一块vec空间，先通过空格填充占位，再通过移动覆盖
+        for _i in 0..time_string.len() - 1 {
+            req_data.push(b' ');
+        }
+        let mut i = req_data.len() - 1;
+        let mut j = i - (time_string.len() - 1);
+        while j > self.flags_start {
+            req_data[i] = req_data[j];
+            j -= 1;
+            i -= 1;
+        }
+        for (idx, num) in time_string.as_bytes().iter().enumerate() {
+            req_data[self.flags_start + idx] = num.to_owned();
+        }
+        let marked_cmd = ds::MemGuard::from_vec(req_data);
+        return marked_cmd;
     }
 }
 
@@ -364,33 +365,4 @@ pub(crate) enum ReqPacketState {
     // CRLF,
     // Noreply,
     // AfterNoreply,
-}
-
-// eg: oft = 0   set xx O 0 123\r\n  返回 (0,3,1) ,表示文本分段开始,token 长度
-pub(super) fn next_token(data_body: &Vec<u8>, cur_start: usize) -> Result<(usize, usize)> {
-    let end = data_body.len();
-    let mut words_len: usize = 0;
-    let mut space_len: usize = 0;
-    if cur_start >= data_body.len() {
-        return Err(error::McqError::ReqInvalid.error());
-    }
-
-    // word 计数
-    for i in cur_start..end {
-        if data_body[i] != b' ' {
-            words_len += 1;
-            continue;
-        }
-        break;
-    }
-
-    // 空格数
-    for i in (cur_start + words_len)..end {
-        if data_body[i] == b' ' {
-            space_len += 1;
-            continue;
-        }
-        break;
-    }
-    Ok((cur_start + space_len + words_len, words_len))
 }
