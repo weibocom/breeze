@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use ds::AtomicWaker;
 
 use crate::request::Request;
-use crate::{Command, Error, HashedCommand};
+use crate::{Command, Error, HashedCommand, TryNextType};
 
 pub struct Callback {
     exp_sec: Box<dyn Fn() -> u32>,
@@ -64,16 +64,18 @@ impl CallbackContext {
         }
     }
 
-    // TODO 测试完毕后，统一清理on_noforward fishermen
-    // #[inline]
-    // pub(crate) fn on_noforward(&mut self) {
-    //     assert!(
-    //         self.request().noforward(),
-    //         "req: {:?}",
-    //         self.request().data()
-    //     );
-    //     self.on_done();
-    // }
+    // 对noforward请求，只进行wake
+    #[inline]
+    pub(crate) fn on_noforward(&mut self) {
+        assert!(
+            self.request().noforward(),
+            "req: {:?}",
+            self.request().data()
+        );
+
+        // wake 通知pipeline继续执行
+        self.wake();
+    }
 
     // 返回true: 表示发送完之后还未结束
     // false: 表示请求已结束
@@ -81,7 +83,7 @@ impl CallbackContext {
     pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
         if self.request().sentonly() {
-            self.on_done();
+            self.on_done(true);
             false
         } else {
             true
@@ -104,23 +106,52 @@ impl CallbackContext {
             self.response.write(resp);
             self.ctx.inited.store(true, Ordering::Release);
         }
-        self.on_done();
+        self.on_done(true);
     }
+
+    // 本地构建response，进行响应回复
     #[inline]
-    fn on_done(&mut self) {
+    pub fn on_local_complete(&mut self, local_resp: Command) {
+        // 该入口 不应该 接受到 async 回写的 req
+        assert!(
+            !self.is_in_async_write_back(),
+            "+++ should sync, req:{:?}, rsp:{:?}",
+            self.request(),
+            local_resp
+        );
+        // 首先尝试清理之前的老response
+        self.try_drop_response();
+        self.response.write(local_resp);
+        self.ctx.inited.store(true, Ordering::Release);
+
+        // 重置request的try next 及 write-back标志
+        self.request.set_try_next_type(TryNextType::NotTryNext);
+        self.ctx.try_next(false);
+        self.ctx.write_back(false);
+
+        self.on_done(true);
+    }
+
+    // 只有在构建了response，该request才可以设置completed为true
+    #[inline]
+    fn on_done(&mut self, completed: bool) {
         log::debug!("on-done:{}", self);
         if self.need_goon() {
             return self.goon();
         }
         if !self.ctx.drop_on_done() {
             // 说明有请求在pending
-            assert!(!self.complete(), "req:{:?}", self.request().data());
-            self.ctx.complete.store(true, Ordering::Release);
+            if completed {
+                assert!(!self.complete(), "req:{:?}", self.request().data());
+                self.ctx.complete.store(true, Ordering::Release);
+            }
+
             self.wake();
         } else {
             self.manual_drop();
         }
     }
+
     #[inline]
     fn need_goon(&self) -> bool {
         if !self.is_in_async_write_back() {
@@ -157,7 +188,7 @@ impl CallbackContext {
                 _err
             ),
         }
-        self.on_done();
+        self.on_done(false);
     }
     #[inline]
     pub fn request(&self) -> &HashedCommand {
@@ -202,7 +233,7 @@ impl CallbackContext {
         log::debug!("request started:{}", self);
         if self.request().noforward() {
             // 不需要转发，直接结束。response没有初始化，在write_response里面处理。
-            self.on_done();
+            self.on_done(false);
         } else {
             self.send();
         }

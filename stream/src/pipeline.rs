@@ -149,7 +149,7 @@ where
             pending,
             waker,
             top,
-            parser,
+            // parser,
             cb,
             first,
             req_new,
@@ -194,7 +194,14 @@ where
                 *metrics.cache() += ctx.response_ok();
             }
 
-            // 流程调整后，所有request都必须有response
+            // 流程调整后，所有request都必须有response，异常请求、noforward请求，放在这里统一构建rsp fishermen
+            if !ctx.inited() {
+                let local_resp =
+                    parser.build_local_response(ctx.request(), |hash| self.top.shard_idx(hash));
+                ctx.on_local_complete(local_resp);
+            }
+
+            // 至此，所有req都有response，统一处理
             assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(&mut ctx, client)?;
 
@@ -233,21 +240,22 @@ where
     }
 }
 
-struct Visitor<'a, P, T> {
+// struct Visitor<'a, P, T> {
+struct Visitor<'a, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
     cb: &'a Callback,
     top: &'a T,
-    parser: &'a P,
+    // parser: &'a P,
     first: &'a mut bool,
     req_new: &'a mut usize,
     req_dropped: &'a AtomicUsize,
 }
 
-impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
-where
-    P: Protocol + Unpin,
-{
+// impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
+// where
+//     P: Protocol + Unpin,
+impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
         *self.req_new += 1;
@@ -260,16 +268,11 @@ where
             CallbackContext::new(cmd, &self.waker, cb, first, last, self.req_dropped).into();
 
         // pendding 会move走ctx，所以提前把req给封装好
-        let req: Request = ctx.build_request();
+        let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
         use protocol::req::Request as RequestTrait;
         if req.cmd().noforward() {
-            // req.on_noforward();
-            // 对于noforward，直接构建response
-            let resp = self
-                .parser
-                .build_local_response(req.cmd(), |hash| self.top.shard_idx(hash));
-            req.on_complete(resp);
+            req.on_noforward();
         } else {
             self.top.send(req);
         }

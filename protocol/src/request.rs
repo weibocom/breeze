@@ -39,11 +39,10 @@ impl crate::Request for Request {
     fn sentonly(&self) -> bool {
         self.req().sentonly()
     }
-    // TODO 测试完毕后，统一清理on_noforward
-    // #[inline]
-    // fn on_noforward(&mut self) {
-    //     self.ctx().on_noforward();
-    // }
+    #[inline]
+    fn on_noforward(&mut self) {
+        self.ctx().on_noforward();
+    }
     #[inline]
     fn on_sent(self) -> Option<Self> {
         if self.ctx().on_sent() {
@@ -55,6 +54,10 @@ impl crate::Request for Request {
     #[inline]
     fn on_complete(self, resp: Command) {
         self.ctx().on_complete(resp);
+    }
+    #[inline]
+    fn on_local_complete(self, local_resp: Command) {
+        self.ctx().on_local_complete(local_resp);
     }
     #[inline]
     fn on_err(self, err: Error) {

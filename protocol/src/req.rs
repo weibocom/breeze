@@ -14,13 +14,13 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     fn len(&self) -> usize;
     fn hash(&self) -> i64;
     fn update_hash(&mut self, idx_hash: i64);
-    // TODO 测试完毕后，统一清理on_noforward
-    // fn on_noforward(&mut self);
+    fn on_noforward(&mut self);
     fn on_sent(self) -> Option<Self>;
     fn sentonly(&self) -> bool;
     fn data(&self) -> &RingSlice;
     fn read(&self, oft: usize) -> &[u8];
     fn on_complete(self, resp: Command);
+    fn on_local_complete(self, local_resp: Command);
     fn on_err(self, err: crate::Error);
     #[inline]
     fn context_mut(&mut self) -> &mut Context {

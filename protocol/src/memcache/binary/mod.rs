@@ -194,10 +194,10 @@ impl Protocol for MemcacheBinary {
                 // Ok(0)
             }
 
-            // 其他未知消息
+            // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
             _ => {
                 resp_ok = false;
-                log::warn!("+++ found invalid mc req:{:?}", req);
+                log::warn!("+++ found unsupported local rsp for mc req:{:?}", req);
                 self.build_empty_response(RespStatus::InvalidArg, req)
             }
         };

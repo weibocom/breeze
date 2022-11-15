@@ -38,7 +38,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
     // 根据req对resp进行重塑，对multi + 多bulk req + err-resp 做 nil conver
     fn reshape_response(&self, req: &HashedCommand, resp: Command) -> Result<Command>;
-    // 根据req，构建本地response响应
+    // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
     fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
         -> Command;
     // 返回nil convert的数量
