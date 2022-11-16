@@ -306,7 +306,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             req_data.push(*num);
         }
 
-        // 后：expire 处读取flags 后半部分
+        // 后：flags 后半部分
         let mut oft = self.flags_start + self.flags_len;
         while oft < req_cmd.data().len() {
             let data = req_cmd.read(oft);
