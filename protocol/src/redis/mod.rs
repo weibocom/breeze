@@ -269,7 +269,7 @@ impl Protocol for Redis {
         &self,
         ctx: &mut C,
         w: &mut W,
-        metrics: &mut CbMetrics,
+        metrics: &mut Arc<CbMetrics>,
     ) -> Result<usize> {
         let req = ctx.request();
         let op_code = req.op_code();

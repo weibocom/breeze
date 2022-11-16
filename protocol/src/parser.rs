@@ -41,7 +41,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         &self,
         ctx: &mut C,
         w: &mut W,
-        metrics: &mut CbMetrics,
+        metrics: &mut Arc<CbMetrics>,
     ) -> Result<usize>;
     // 返回nil convert的数量
     #[inline]

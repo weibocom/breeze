@@ -100,7 +100,7 @@ impl Protocol for McqText {
         &self,
         ctx: &mut C,
         w: &mut W,
-        metrics: &mut CbMetrics,
+        metrics: &mut Arc<CbMetrics>,
     ) -> Result<usize> {
         let rsp = ctx.response();
         let data = rsp.data();

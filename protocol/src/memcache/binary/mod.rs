@@ -94,7 +94,7 @@ impl Protocol for MemcacheBinary {
         &self,
         ctx: &mut C,
         w: &mut W,
-        metrics: &mut CbMetrics,
+        metrics: &mut Arc<CbMetrics>,
     ) -> Result<usize> {
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();
