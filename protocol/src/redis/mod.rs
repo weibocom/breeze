@@ -11,7 +11,8 @@ use crate::{
         command::{CommandProperties, SWALLOWED_CMD_HASHKEYQ},
         packet::LayerType,
     },
-    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
+    CbMetrics, Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result,
+    Stream,
 };
 use ds::RingSlice;
 use error::*;
@@ -268,6 +269,7 @@ impl Protocol for Redis {
         &self,
         ctx: &mut C,
         w: &mut W,
+        metrics: &mut CbMetrics,
     ) -> Result<usize> {
         let req = ctx.request();
         let op_code = req.op_code();
@@ -397,7 +399,10 @@ impl Protocol for Redis {
     }
 }
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{
+    atomic::{AtomicI64, Ordering},
+    Arc,
+};
 static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0?

@@ -6,15 +6,15 @@ mod error;
 mod flag;
 mod packet;
 //mod token;
-
 use crate::{
-    phantom::command::PADDING_RSP_TABLE, Command, Commander, Error, Flag, HashedCommand, Protocol,
-    RequestProcessor, Result, Stream,
+    phantom::command::PADDING_RSP_TABLE, CbMetrics, Command, Commander, Error, Flag, HashedCommand,
+    Protocol, RequestProcessor, Result, Stream,
 };
 use ds::RingSlice;
 use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
+use std::sync::Arc;
 
 #[derive(Clone, Default)]
 pub struct Phantom;
@@ -185,6 +185,7 @@ impl Protocol for Phantom {
         &self,
         ctx: &mut C,
         w: &mut W,
+        metrics: &mut CbMetrics,
     ) -> Result<usize> {
         let req = ctx.request();
         let op_code = req.op_code();

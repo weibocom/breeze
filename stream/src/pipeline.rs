@@ -22,7 +22,7 @@ use crate::{Callback, CallbackContext, CallbackContextPtr, Request, StreamMetric
 
 pub async fn copy_bidirectional<C, P, T>(
     top: T,
-    metrics: Arc<StreamMetrics>,
+    metrics: StreamMetrics,
     client: C,
     parser: P,
 ) -> Result<()>
@@ -64,7 +64,7 @@ pub struct CopyBidirectional<C, P, T> {
     flush: bool,
     cb: Callback,
 
-    metrics: Arc<StreamMetrics>,
+    metrics: StreamMetrics,
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
     // 如果一个multiget被拆分成多个请求，则start存储的是第一个请求的时间。
     start: Instant,
@@ -188,7 +188,7 @@ where
             }
 
             if ctx.inited() && !ctx.request().ignore_rsp() {
-                let nil_convert = parser.write_response(&mut ctx, client)?;
+                let nil_convert = parser.write_response(&mut ctx, client, &mut *metrics)?;
                 if nil_convert > 0 {
                     *metrics.nilconvert() += nil_convert;
                 }

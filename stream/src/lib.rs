@@ -4,6 +4,7 @@ pub mod pipeline;
 mod shards;
 pub use protocol::callback::*;
 pub use protocol::request::*;
+pub use protocol::CbMetrics as StreamMetrics;
 pub use shards::*;
 mod reconn;
 
@@ -20,9 +21,6 @@ pub(crate) mod checker;
 
 //pub(crate) mod gc;
 //pub use gc::start_delay_drop;
-
-mod metric;
-pub use metric::CbMetrics as StreamMetrics;
 
 // 最小2K，至少容纳一个MTU
 pub(crate) const MIN_BUFFER_SIZE: usize = 1024 * 2;
