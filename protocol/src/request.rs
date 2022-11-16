@@ -52,7 +52,7 @@ impl crate::Request for Request {
         }
     }
     #[inline]
-    fn on_complete(&mut self, resp: Command) {
+    fn on_complete(self, resp: Command) {
         self.ctx().on_complete(resp);
     }
     #[inline]
@@ -73,10 +73,6 @@ impl crate::Request for Request {
     #[inline]
     fn try_next(&mut self, goon: bool) {
         self.ctx().ctx.try_next(goon);
-    }
-    #[inline]
-    fn tries(&self) -> u8 {
-        self.ctx().tries()
     }
     #[inline]
     fn ignore_rsp(&self) -> bool {

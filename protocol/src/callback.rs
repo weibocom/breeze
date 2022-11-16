@@ -226,10 +226,6 @@ impl CallbackContext {
         self.ctx.last
     }
     #[inline]
-    pub fn tries(&self) -> u8 {
-        self.tries
-    }
-    #[inline]
     fn manual_drop(&mut self) {
         unsafe { Box::from_raw(self) };
     }

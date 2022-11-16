@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::buffer::StreamGuard;
 
-use metrics::{Metric, Path};
+use metrics::Metric;
 
 pub struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
@@ -25,7 +25,6 @@ pub struct Handler<'r, Req, P, S> {
     num_tx: usize,
 
     rtt: Metric,
-    storeerr: Metric,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
@@ -54,7 +53,7 @@ where
     S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
     P: Protocol + Unpin,
 {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, path: &'r Path) -> Self {
+    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, rtt: Metric) -> Self {
         data.enable();
         Self {
             data,
@@ -62,8 +61,7 @@ where
             s,
             parser,
             buf: StreamGuard::new(),
-            rtt: path.rtt("req"),
-            storeerr: path.qps("insstoreerr"),
+            rtt,
             num_rx: 0,
             num_tx: 0,
         }
@@ -95,14 +93,11 @@ where
                 match self.parser.parse_response(&mut self.buf)? {
                     None => break,
                     Some(cmd) => {
-                        let mut req = self.pending.pop_front().expect("take response");
+                        let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
                         req.on_complete(cmd);
-                        if req.tries() > 1 {
-                            self.storeerr += 1;
-                        }
                     }
                 }
             }
