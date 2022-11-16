@@ -319,16 +319,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         while oft < req_cmd.data().len() {
             let data = req_cmd.read(oft);
             oft += data.len();
-            // for s in data {
-            //     req_data.push(*s);
-            // }
             while i < data.len() {
                 req_data.push(data[i]);
                 println!("after:{} ", data[i] as char);
                 i += 1;
             }
         }
-
+        for v in req_data.iter() {
+            println!("req char {}", *v as char);
+        }
         // 为避免重新开辟一块vec空间，先通过空格填充占位，再通过移动覆盖
         let marked_cmd = ds::MemGuard::from_vec(req_data);
         return marked_cmd;
