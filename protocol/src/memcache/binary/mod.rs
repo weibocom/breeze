@@ -164,17 +164,17 @@ impl Protocol for MemcacheBinary {
             }
 
             //version: 返回固定rsp
-            0x0b => Vec::from(VERSION_RESPONSE),
+            OP_CODE_VERSION => Vec::from(VERSION_RESPONSE),
             // w.write(&VERSION_RESPONSE)?;
             // Ok(0)
 
             // stat：返回固定rsp
-            0x10 => Vec::from(STAT_RESPONSE),
+            OP_CODE_STAT => Vec::from(STAT_RESPONSE),
             // w.write(&STAT_RESPONSE)?;
             // Ok(0)
 
             // quit/quitq 无需返回rsp
-            0x07 | 0x17 => Vec::with_capacity(0),
+            OP_CODE_QUIT | OP_CODE_QUITQ => Vec::with_capacity(0),
 
             // quite get 请求，无需返回任何rsp，但没实际发送，rsp_ok设为false
             0x09 | 0x0d => {
