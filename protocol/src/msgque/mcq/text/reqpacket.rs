@@ -21,7 +21,6 @@ pub(super) struct RequestPacket<'a, S> {
 
     // 生命周期为开始解析当前req，到下一个req解析开始
     cmd_cfg: Option<&'a CommandProperties>,
-    expire_start: usize,
     flags: usize,
     flags_len: usize,
     flags_start: usize,
@@ -37,7 +36,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             oft_last: 0,
             oft: 0,
             cmd_cfg: None,
-            expire_start: 0,
             flags: 0,
             flags_len: 0,
             flags_start: 0,
@@ -190,7 +188,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::SpacesBeforeExpire => {
                     if self.current() != b' ' {
-                        self.expire_start = 0;
                         state = ReqPacketState::Expire;
                     }
                 }
