@@ -3,8 +3,9 @@ use crate::time::Instant;
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
 pub struct MemPolicy {
-    last: Instant, // 上一次tick返回true的时间
-    max: usize,    // 最近一个周期内，最大的内存使用量。
+    last: Instant,       // 上一次tick返回true的时间
+    check_max: u32,      // 最近一个周期内，最大的内存使用量
+    continues: Continue, // 连续多少次tick返回true
 
     // 下面两个变量为了输出日志
     trace: trace::Trace,
@@ -22,45 +23,49 @@ impl MemPolicy {
     }
     fn from(direction: &'static str) -> Self {
         Self {
-            max: 0,
+            check_max: 0,
+            continues: Continue(0),
             last: Instant::now(),
             trace: direction.into(),
         }
     }
     #[inline(always)]
-    pub fn need_grow(&self, len: usize, cap: usize, reserve: usize) -> bool {
+    pub fn need_grow(&mut self, len: usize, cap: usize, reserve: usize) -> bool {
+        #[cfg(any(feature = "trace", feature = "debug"))]
+        self.trace.trace_check(len, cap);
         log::debug!("need_grow: len={}, cap={}, reserve={}", len, cap, reserve);
         len + reserve > cap
     }
     #[inline]
     pub fn check_shrink(&mut self, len: usize, _cap: usize) {
-        if self.max < len {
-            self.reset(len);
+        if self.check_max < len as u32 {
+            self.check_max = len as u32;
         }
+        #[cfg(any(feature = "trace", feature = "debug"))]
+        self.trace.trace_check(len, _cap);
     }
-    fn reset(&mut self, len: usize) {
-        self.max = len;
-        self.last = Instant::now();
-    }
-    // 在一个周期内，max * 4 <= cap. 则需要缩容
+    // 每个周期（60秒）检查一次，是否满足max * 4 <= cap.
+    // 连续10个周期满足条件，则需要缩容
     #[inline]
     pub fn need_shrink(&mut self, len: usize, cap: usize) -> bool {
         log::debug!("need_shrink: len: {}, cap: {} => {}", len, cap, self);
         if cap > BUF_MIN {
-            self.check_shrink(len, cap);
-            // 600秒对于大部分在线业务，足够得出稳定的max值。
-            if self.last.elapsed().as_secs() >= 600 {
-                if self.max < (cap >> 2) {
-                    // 只有当前buff size是0时才触发缩容。
-                    return true;
+            // 每个周期60秒，连续10个周期都满足条件，则需要缩容
+            if self.last.elapsed().as_secs() >= 60 {
+                if self.check_max < (cap >> 2) as u32 {
+                    self.continues.on_tick(self.check_max);
+                } else {
+                    self.continues.reset();
+                    #[cfg(any(feature = "trace", feature = "debug"))]
+                    self.trace.trace_reset();
                 }
                 // 重新开始一个周期
-                self.reset(len);
+                self.last = Instant::now();
+                self.check_max = len as u32;
             }
-        } else {
-            self.reset(len);
         }
-        false
+        // 10分钟是个经验值，通常足够让一个在线服务的内存稳定下来
+        self.continues.cycles() >= 10
     }
     // 确认缩容的size
     // 1. 最小值为 len + reserve的1.25倍
@@ -73,17 +78,25 @@ impl MemPolicy {
             .max(cap)
             .max(BUF_MIN)
             .next_power_of_two();
-        log::info!("grow: {} {} > {} => {} {}", len, reserve, cap, new, self);
-        self.max = 0;
+        if cap > BUF_MIN {
+            log::info!("grow: {} {} > {} => {} {}", len, reserve, cap, new, self);
+        }
+        self.continues.reset();
+        #[cfg(feature = "trace")]
+        self.trace.trace_reset();
         new
     }
     #[inline]
     pub fn shrink(&mut self, len: usize, cap: usize) -> usize {
-        assert!(self.max < cap, "{}", self);
-        let new = (self.max * 2).max(BUF_MIN).max(len).next_power_of_two();
+        let max = self.continues.max() as usize;
+        assert!(max < cap, "{}", self);
+        let new = (max * 2).max(BUF_MIN).max(len).next_power_of_two();
         log::info!("shrink: {}  < {} => {} {}", len, cap, new, self);
         assert!(new >= len);
-        self.max = 0;
+        self.continues.reset();
+
+        #[cfg(feature = "trace")]
+        self.trace.trace_reset();
         new
     }
 }
@@ -98,15 +111,17 @@ impl Display for MemPolicy {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "buf policy: max: {} last: {:?} {:?}",
-            self.max,
+            "buf policy: last_max:{} max:{} continues:{:?} last: {:?} {:?}",
+            self.check_max,
+            self.continues.max(),
+            self.continues.cycles(),
             self.last.elapsed(),
             self.trace
         )
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(feature = "trace", debug_assertions))]
 mod trace {
     use crate::time::Instant;
     use std::fmt::{self, Debug, Formatter};
@@ -114,6 +129,10 @@ mod trace {
         direction: &'static str, // 方向: true为tx, false为rx. 打日志用
         id: usize,
         start: Instant,
+        max: usize, // 上一个周期内，最大的len
+        checks: usize,
+        last_checks: usize,
+        cap: usize,
     }
 
     impl From<&'static str> for Trace {
@@ -124,6 +143,10 @@ mod trace {
                 direction,
                 id,
                 start: Instant::now(),
+                max: 0,
+                checks: 0,
+                cap: 0,
+                last_checks: 0,
             }
         }
     }
@@ -131,15 +154,35 @@ mod trace {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             write!(
                 f,
-                " id: {} lifetime:{:?} => {}",
+                " id: {} trace max:{} total checks:{} last checks:{} cap:{}, lifetime:{:?} => {}",
                 self.id,
+                self.max,
+                self.checks,
+                self.last_checks,
+                self.cap,
                 self.start.elapsed(),
                 self.direction
             )
         }
     }
+    impl Trace {
+        #[inline]
+        pub(super) fn trace_check(&mut self, len: usize, cap: usize) {
+            self.checks += 1;
+            self.last_checks += 1;
+            if self.cap != cap {
+                self.cap = cap;
+            }
+            self.max = self.max.max(len);
+        }
+        #[inline]
+        pub(super) fn trace_reset(&mut self) {
+            self.max = 0;
+            self.last_checks = 0;
+        }
+    }
 }
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(feature = "trace", debug_assertions)))]
 mod trace {
     #[derive(Debug)]
     pub(super) struct Trace;
@@ -147,5 +190,32 @@ mod trace {
         fn from(_direction: &'static str) -> Self {
             Self
         }
+    }
+}
+
+// 1. 高4位表示连续满足shrink条件的次数
+// 2. 次28位，表示过去n个满足shrink条件的len的最大值
+#[derive(Copy, Clone)]
+struct Continue(u32);
+const MAX: u32 = 0x0FFF_FFFF;
+const MAX_CONTINUES: u32 = 0xF;
+impl Continue {
+    #[inline]
+    fn on_tick(&mut self, last: u32) {
+        let cycles = (self.cycles() + 1).min(MAX_CONTINUES);
+        let max = self.max().max(last).min(MAX);
+        self.0 = (cycles << 28) | max;
+    }
+    #[inline]
+    fn max(&self) -> u32 {
+        self.0 & MAX
+    }
+    #[inline]
+    fn cycles(&self) -> u32 {
+        self.0 >> 28
+    }
+    #[inline]
+    fn reset(&mut self) {
+        self.0 = 0;
     }
 }
