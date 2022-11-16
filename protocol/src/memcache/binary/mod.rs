@@ -1,6 +1,8 @@
 mod error;
 mod packet;
 
+use std::sync::Arc;
+
 use packet::*;
 
 use crate::{Error, Flag, Result, Stream};
@@ -8,7 +10,7 @@ use crate::{Error, Flag, Result, Stream};
 #[derive(Clone, Default)]
 pub struct MemcacheBinary;
 
-use crate::{Command, HashedCommand, Protocol, RequestProcessor};
+use crate::{CbMetrics, Command, HashedCommand, Protocol, RequestProcessor};
 use sharding::hash::Hash;
 impl Protocol for MemcacheBinary {
     #[inline]
@@ -92,6 +94,7 @@ impl Protocol for MemcacheBinary {
         &self,
         ctx: &mut C,
         w: &mut W,
+        metrics: &mut Arc<CbMetrics>,
     ) -> Result<usize> {
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();

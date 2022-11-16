@@ -1,5 +1,5 @@
+use crate::{Operation, OPS};
 use metrics::{Metric, Path};
-use protocol::{Operation, OPS};
 macro_rules! define_metrics {
     ($($t:ident:$($name:ident-$key:expr),+);+) => {
         pub struct CbMetrics {
@@ -48,7 +48,7 @@ macro_rules! define_metrics {
 }
 
 define_metrics!(
-    qps:    tx-tx, rx-rx, storeerr-storeerr, cps-cps, kps-kps, conn-conn,noresponse-noresponse, key-key, nilconvert-nilconvert;
+    qps:    tx-tx, rx-rx, storeerr-storeerr, cps-cps, kps-kps, conn-conn,noresponse-noresponse, key-key, nilconvert-nilconvert,uphit-uphit,downhit-downhit;
     num:    conn_num-conn;
     rtt:    avg-avg;
     ratio:  cache-hit

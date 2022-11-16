@@ -192,7 +192,7 @@ where
             }
 
             if ctx.inited() && !ctx.request().ignore_rsp() {
-                let nil_convert = parser.write_response(&mut ctx, client)?;
+                let nil_convert = parser.write_response(&mut ctx, client, &mut *metrics)?;
                 if nil_convert > 0 {
                     *metrics.nilconvert() += nil_convert;
                 }
