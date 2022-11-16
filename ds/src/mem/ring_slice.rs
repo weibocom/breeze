@@ -292,7 +292,8 @@ impl PartialEq<Self> for RingSlice {
 impl From<&[u8]> for RingSlice {
     #[inline]
     fn from(s: &[u8]) -> Self {
-        assert_ne!(s.len(), 0);
+        // TODO 诸如quite/quit指令的响应无需内容，可能会存在0长度的data，关注是否有副作用 fishermen
+        // assert_ne!(s.len(), 0);
         let len = s.len();
         let cap = len.next_power_of_two();
         Self::from(s.as_ptr() as *mut u8, cap, 0, s.len())

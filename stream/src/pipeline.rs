@@ -198,7 +198,7 @@ where
             if !ctx.inited() {
                 let local_resp =
                     parser.build_local_response(ctx.request(), |hash| self.top.shard_idx(hash));
-                ctx.on_local_complete(local_resp);
+                ctx.adapt_local_response(local_resp);
             }
 
             // 至此，所有req都有response，统一处理

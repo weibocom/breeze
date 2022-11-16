@@ -73,8 +73,7 @@ impl CallbackContext {
             self.request().data()
         );
 
-        // wake 通知pipeline继续执行
-        self.wake();
+        self.on_done();
     }
 
     // 返回true: 表示发送完之后还未结束
@@ -83,7 +82,7 @@ impl CallbackContext {
     pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
         if self.request().sentonly() {
-            self.on_done(true);
+            self.on_done();
             false
         } else {
             true
@@ -106,45 +105,43 @@ impl CallbackContext {
             self.response.write(resp);
             self.ctx.inited.store(true, Ordering::Release);
         }
-        self.on_done(true);
+        self.on_done();
     }
 
-    // 本地构建response，进行响应回复
+    // 对请求适配本地构建response，方便后续进行统一响应
     #[inline]
-    pub fn on_local_complete(&mut self, local_resp: Command) {
-        // 该入口 不应该 接受到 async 回写的 req
+    pub fn adapt_local_response(&mut self, local_resp: Command) {
+        // 构建本地response，说明请求肯定不是异步回写，即drop on done/async_write_back肯定为false
         assert!(
-            !self.is_in_async_write_back(),
-            "+++ should sync, req:{:?}, rsp:{:?}",
+            !self.ctx.drop_on_done(),
+            "should sync, req:{:?}, rsp:{:?}",
             self.request(),
             local_resp
         );
+        log::debug!("+++ on-local-complete:{}", self);
+
         // 首先尝试清理之前的老response
         self.try_drop_response();
         self.response.write(local_resp);
         self.ctx.inited.store(true, Ordering::Release);
 
-        // 重置request的try next 及 write-back标志
+        // 重置request的try next 及 write-back标志，统统不需要回写和重试
         self.request.set_try_next_type(TryNextType::NotTryNext);
         self.ctx.try_next(false);
         self.ctx.write_back(false);
-
-        self.on_done(true);
     }
 
     // 只有在构建了response，该request才可以设置completed为true
     #[inline]
-    fn on_done(&mut self, completed: bool) {
-        log::debug!("on-done:{}", self);
+    fn on_done(&mut self) {
+        log::debug!("on-done:{}, drop:{}", self, self.ctx.drop_on_done());
         if self.need_goon() {
             return self.goon();
         }
         if !self.ctx.drop_on_done() {
             // 说明有请求在pending
-            if completed {
-                assert!(!self.complete(), "req:{:?}", self.request().data());
-                self.ctx.complete.store(true, Ordering::Release);
-            }
+            assert!(!self.complete(), "req:{:?}", self.request().data());
+            self.ctx.complete.store(true, Ordering::Release);
 
             self.wake();
         } else {
@@ -188,7 +185,7 @@ impl CallbackContext {
                 _err
             ),
         }
-        self.on_done(false);
+        self.on_done();
     }
     #[inline]
     pub fn request(&self) -> &HashedCommand {
@@ -233,7 +230,7 @@ impl CallbackContext {
         log::debug!("request started:{}", self);
         if self.request().noforward() {
             // 不需要转发，直接结束。response没有初始化，在write_response里面处理。
-            self.on_done(false);
+            self.on_done();
         } else {
             self.send();
         }

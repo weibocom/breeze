@@ -20,7 +20,7 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     fn data(&self) -> &RingSlice;
     fn read(&self, oft: usize) -> &[u8];
     fn on_complete(self, resp: Command);
-    fn on_local_complete(self, local_resp: Command);
+    // fn on_local_complete(self, local_resp: Command);
     fn on_err(self, err: crate::Error);
     #[inline]
     fn context_mut(&mut self) -> &mut Context {

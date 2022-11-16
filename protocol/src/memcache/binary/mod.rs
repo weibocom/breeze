@@ -23,6 +23,7 @@ impl Protocol for MemcacheBinary {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
+        log::debug!("+++ recv mc:{:?}", data.slice());
         assert!(data.len() > 0, "mc req: {:?}", data.slice());
         while data.len() >= HEADER_LEN {
             let mut req = data.slice();
@@ -50,6 +51,7 @@ impl Protocol for MemcacheBinary {
     }
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+        log::debug!("+++ mc parse rsp: {:?}", data.slice());
         assert!(data.len() > 0, "rsp: {:?}", data.slice());
         let len = data.len();
         if len >= HEADER_LEN {
@@ -61,6 +63,7 @@ impl Protocol for MemcacheBinary {
                 if !r.is_quiet() {
                     let mut flag = Flag::from_op(r.op() as u16, r.operation());
                     flag.set_status_ok(r.status_ok());
+                    log::debug!("+++ 111 mc parse rsp: {}", r.status_ok());
                     return Ok(Some(Command::new(flag, data.take(pl))));
                 } else {
                     // response返回quite请求只有一种情况：出错了。
@@ -99,6 +102,7 @@ impl Protocol for MemcacheBinary {
         if QUITE_GET_TABLE[old_op_code as usize] == 1 && !resp.ok() {
             return Ok(());
         }
+        log::debug!("+++ will write mc rsp:{:?}", resp.data());
         let data = resp.data_mut();
         data.restore_op(old_op_code as u8);
         w.write_slice(data, 0)?;
