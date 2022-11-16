@@ -294,27 +294,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
         //前: flags前半部分
         let pref_slice = req_cmd.data().sub_slice(0, self.flags_start - 0);
-        let data = pref_slice.read(0);
-        let mut i = 0;
-        while i < data.len() {
-            req_data.push(data[i]);
-            i += 1;
-        }
+        pref_slice.copy_to_vec(&mut req_data);
 
         //中: 时间戳
-        for num in time_sec.as_bytes().iter() {
-            req_data.push(*num);
-        }
+        req_data.append(&mut time_sec.into_bytes());
 
         // 后：flags 后半部分
-        let mut oft = self.flags_start + self.flags_len;
-        while oft < req_cmd.data().len() {
-            let data = req_cmd.read(oft);
-            for v in data.iter() {
-                req_data.push(*v);
-            }
-            oft += data.len();
-        }
+        let oft = self.flags_start + self.flags_len;
+
+        req_cmd.data().parts_copy_to_vec(oft, &mut req_data);
 
         let marked_cmd = ds::MemGuard::from_vec(req_data);
         return marked_cmd;
