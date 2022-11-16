@@ -40,11 +40,12 @@ impl ResizedRingBuffer {
         mut cb: F,
     ) -> Self {
         assert!(min <= max && init <= max);
-        cb(0, init as isize);
+        let buf = RingBuffer::with_capacity(init);
+        cb(0, buf.cap() as isize);
         Self {
             max_processed: std::usize::MAX,
             old: Vec::new(),
-            inner: RingBuffer::with_capacity(init),
+            inner: buf,
             on_change: Box::new(cb),
             policy: MemPolicy::rx(min, max),
         }
