@@ -51,7 +51,7 @@ impl Protocol for MemcacheBinary {
     }
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        log::debug!("+++ mc parse rsp: {:?}", data.slice());
+        log::debug!("+++ mc will parse rsp: {:?}", data.slice());
         assert!(data.len() > 0, "rsp: {:?}", data.slice());
         let len = data.len();
         if len >= HEADER_LEN {
@@ -137,7 +137,7 @@ impl Protocol for MemcacheBinary {
 
     // 构建本地响应resp策略：
     //  1 对于hashkey、keyshard直接构建resp；
-    //  2 对于除keyshard外的multi+多bulk req，构建nil rsp；(注意keyshard是mulit+多bulk)
+    //  2 对于除keyshard外的multi+ need bulk num 的 req，构建nil rsp；(注意keyshard是mulit+多bulk)
     //  2 对其他固定响应的请求，构建padding rsp；
     fn build_local_response<F: Fn(i64) -> usize>(
         &self,

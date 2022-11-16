@@ -73,12 +73,13 @@ where
         let shard_idx = match req.direct_hash() {
             true => {
                 let dhash_boundary = protocol::MAX_DIRECT_HASH - self.shards.len() as i64;
-                // 大于direct hash边界，说明是全节点分发请求，发送请求前，需要调整hash
+                // 大于direct hash边界，说明是全节点分发请求，发送请求前，需要调整hash为下次发送做准备
+                // 备注：正常计算的hash范围是u32；
                 if req.hash() > dhash_boundary {
-                    // 直接计算得到hash
+                    // 边界之上的hash，其idx为max减去对应hash值，从而轮询所有分片
                     let idx = (protocol::MAX_DIRECT_HASH - req.hash()) as usize;
 
-                    // 调整req的hash，设置write back，为下一次write back分发做准备
+                    // req的hash自减1，同时设置write back，为下一次write back分发做准备
                     req.update_hash(req.hash() - 1);
                     req.write_back(req.hash() > dhash_boundary);
                     idx
