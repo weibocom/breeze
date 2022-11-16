@@ -37,7 +37,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             oft_last: 0,
             oft: 0,
             cmd_cfg: None,
-            //expire_start: 0,
+            expire_start: 0,
             flags: 0,
             flags_len: 0,
             flags_start: 0,
@@ -194,6 +194,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::SpacesBeforeExpire => {
                     if self.current() != b' ' {
+                        self.expire_start = 0;
                         state = ReqPacketState::Expire;
                     }
                 }
@@ -301,9 +302,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         //前部分: flags前半部分
         let pref_slice = req_cmd.data().sub_slice(0, self.flags_start - 0);
         let data = pref_slice.read(0);
-        let i = 0;
+        let mut i = 0;
         while i < data.len() {
             req_data.push(data[i]);
+            println!("pref:{} ", data[i] as char);
+            i += 1;
         }
 
         //中间: 时间戳
@@ -316,9 +319,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         while oft < req_cmd.data().len() {
             let data = req_cmd.read(oft);
             oft += data.len();
-            let i = 0;
+            // for s in data {
+            //     req_data.push(*s);
+            // }
             while i < data.len() {
                 req_data.push(data[i]);
+                println!("after:{} ", data[i] as char);
+                i += 1;
             }
         }
 
