@@ -118,7 +118,7 @@ impl CallbackContext {
             self.request(),
             local_resp
         );
-        log::debug!("+++ on-local-complete:{}", self);
+        log::debug!("+++ on-local-complete:{}, rsp:{:?}", self, local_resp);
 
         // 首先尝试清理之前的老response
         self.try_drop_response();
