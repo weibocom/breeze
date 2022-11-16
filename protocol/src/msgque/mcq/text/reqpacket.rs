@@ -65,6 +65,18 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Err(McqError::ReqInvalid.error())
     }
 
+    // 进入flags 解析阶段且current byte 满足协议要求，才更新flags 相关信息
+    fn try_trace_flags(&mut self, state: ReqPacketState) {
+        if state != ReqPacketState::Flags || !self.current().is_ascii_digit() {
+            return;
+        }
+        if self.flags_start == 0 {
+            self.flags_start = self.oft;
+        }
+        self.flags = self.flags * 10 + (self.current() - b'0') as usize;
+        self.flags_len += 1;
+    }
+
     // #[inline]
     // pub(super) fn state(&self) -> &ReqPacketState {
     //     &self.op_code
@@ -166,12 +178,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
                 ReqPacketState::Flags => {
                     if self.current().is_ascii_digit() {
-                        // 解析flags段
-                        if self.flags_start == 0 {
-                            self.flags_start = self.oft;
-                        }
-                        self.flags = self.flags * 10 + (self.current() - b'0') as usize;
-                        self.flags_len += 1;
+                        // 追踪flags段相关信息
+                        self.try_trace_flags(state);
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeExpire;
                     } else {
@@ -262,35 +270,40 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     // 将mcq req 文本协议（set key flags exp vlen）中 flags 段用timestamp 填充 ，消费时用作topic延时指标
-    pub(super) fn mark_flags(&mut self, req_cmd: ds::MemGuard) -> ds::MemGuard {
-        if self.flags_start == 0 {
+    pub(super) fn mark_flags(
+        &mut self,
+        req_cmd: ds::MemGuard,
+        req_type: RequestType,
+    ) -> ds::MemGuard {
+        // 只有set 指令 需要重置flags ，用作消费时间戳的填充
+        if RequestType::Set != req_type {
             return req_cmd;
         }
-        let mut req_data: Vec<u8> = Vec::with_capacity(req_cmd.data().len() + 10);
-        req_cmd.data().copy_to_vec(&mut req_data);
-        // 业务特殊设置，则不做打标 直接返回
-        if self.flags_len > 1 || req_data[self.flags_start] != b'0' {
+
+        // flags 如果业务已特殊设置，则不做打标 直接返回
+        if self.flags != 0 {
             return req_cmd;
         }
-        let time_string = SystemTime::now()
+
+        let time_sec = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs()
             .to_string();
-        // 为避免重新开辟一块vec空间，先通过空格填充占位，再通过移动覆盖
-        for _i in 0..time_string.len() - 1 {
-            req_data.push(b' ');
-        }
-        let mut i = req_data.len() - 1;
-        let mut j = i - (time_string.len() - 1);
-        while j > self.flags_start {
-            req_data[i] = req_data[j];
-            j -= 1;
-            i -= 1;
-        }
-        for (idx, num) in time_string.as_bytes().iter().enumerate() {
-            req_data[self.flags_start + idx] = num.to_owned();
-        }
+        let mut req_data: Vec<u8> = Vec::with_capacity(req_cmd.data().len() + time_sec.len());
+
+        //前: flags前半部分
+        let pref_slice = req_cmd.data().sub_slice(0, self.flags_start - 0);
+        pref_slice.copy_to_vec(&mut req_data);
+
+        //中: 时间戳
+        req_data.append(&mut time_sec.into_bytes());
+
+        // 后：flags 后半部分
+        let oft = self.flags_start + self.flags_len;
+
+        req_cmd.data().parts_copy_to_vec(oft, &mut req_data);
+
         let marked_cmd = ds::MemGuard::from_vec(req_data);
         return marked_cmd;
     }
@@ -341,7 +354,7 @@ impl Packet for RingSlice {
     }
 }
 // mcq 解析时状态
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ReqPacketState {
     Start = 1,
     ReqType,

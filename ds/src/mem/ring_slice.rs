@@ -60,6 +60,20 @@ impl RingSlice {
             v.write(data);
         }
     }
+
+    // parts_copy_to_vec & copy_to_vec 可以合成一个?
+    #[inline]
+    pub fn parts_copy_to_vec(&self, oft: usize, v: &mut Vec<u8>) {
+        let len = self.len();
+        v.reserve(len - oft);
+        let mut oft = oft;
+        use crate::Buffer;
+        while oft < len {
+            let data = self.read(oft);
+            oft += data.len();
+            v.write(data);
+        }
+    }
     #[inline]
     fn mask(&self, oft: usize) -> usize {
         (self.cap - 1) & oft
