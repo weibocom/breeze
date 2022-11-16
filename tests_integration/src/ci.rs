@@ -31,7 +31,7 @@ pub(crate) mod env {
         let max = std::env::var("max_key")
             .unwrap_or_default()
             .parse()
-            .unwrap_or(10_000u64);
+            .unwrap_or(10u64);
         min..max
     }
     #[test]

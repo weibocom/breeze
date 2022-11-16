@@ -55,10 +55,10 @@ impl crate::Request for Request {
     fn on_complete(self, resp: Command) {
         self.ctx().on_complete(resp);
     }
-    #[inline]
-    fn on_local_complete(self, local_resp: Command) {
-        self.ctx().on_local_complete(local_resp);
-    }
+    // #[inline]
+    // fn on_local_complete(self, local_resp: Command) {
+    //     self.ctx().on_local_complete(local_resp);
+    // }
     #[inline]
     fn on_err(self, err: Error) {
         self.ctx().on_err(err);
