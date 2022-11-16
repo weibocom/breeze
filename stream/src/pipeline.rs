@@ -187,6 +187,10 @@ where
                 *metrics.cache() += ctx.response_ok();
             }
 
+            if !ctx.response_ok() && op.is_store() {
+                *metrics.storeerr() += 1;
+            }
+
             if ctx.inited() && !ctx.request().ignore_rsp() {
                 let nil_convert = parser.write_response(&mut ctx, client)?;
                 if nil_convert > 0 {

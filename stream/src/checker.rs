@@ -1,5 +1,5 @@
-use std::sync::{atomic::AtomicBool, Arc};
 use ds::time::Duration;
+use std::sync::{atomic::AtomicBool, Arc};
 
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -63,14 +63,13 @@ impl<P, Req> BackendChecker<P, Req> {
             // reconn.success();
             reconn.connected();
 
-            let rtt = path_addr.rtt("req");
             let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
             rx.enable();
             self.init.on();
             log::debug!("handler started:{:?}", self.path);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, stream, p, rtt);
+            let handler = Handler::from(rx, stream, p, &path_addr);
             let handler = rt::Entry::from(handler, self.timeout);
             if let Err(e) = handler.await {
                 match e {
