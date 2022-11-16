@@ -275,16 +275,23 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         if !self.data.start_with(0, &"VALUE".as_bytes())? {
             return Ok(());
         };
-        if self.flags_len != 10 {
-            return Ok(());
-        }
+
+        // 业务层只有接少数场景会用到flags 字段，也就是绝大多数场景下为0
+        // 即使使用也为u8类型，实际场景下不会存在置为时间戳的场景, 万一使用，则存在被覆盖的bug
+        //
+        // 超过一个小时(3600s) ,延时指标统计也无实际意义
         let time_sec = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
+        const HOUR_SECS: u64 = 3600;
+        let sub = time_sec - self.flags as u64;
+        if sub > HOUR_SECS {
+            return Ok(());
+        }
 
         let mut delay_metric = Path::base().rtt("mcq_delay");
-        delay_metric += Duration::from_secs(time_sec - self.flags as u64);
+        delay_metric += Duration::from_secs(sub);
 
         for idx in self.flags_start..(self.flags_start + self.flags_len) {
             self.data.update(idx, b'0');

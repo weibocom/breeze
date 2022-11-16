@@ -68,16 +68,16 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     // 进入flags 解析阶段且current byte 满足协议要求，才更新flags 相关信息
-    // fn try_trace_flags(&mut self, state: ReqPacketState) {
-    //     if state != ReqPacketState::Flags || !self.current().is_ascii_digit() {
-    //         return;
-    //     }
-    //     if self.flags_start == 0 {
-    //         self.flags_start = self.oft;
-    //     }
-    //     self.flags = self.flags * 10 + (self.current() - b'0') as usize;
-    //     self.flags_len += 1;
-    // }
+    fn try_trace_flags(&mut self, state: ReqPacketState) {
+        if state != ReqPacketState::Flags || !self.current().is_ascii_digit() {
+            return;
+        }
+        if self.flags_start == 0 {
+            self.flags_start = self.oft;
+        }
+        self.flags = self.flags * 10 + (self.current() - b'0') as usize;
+        self.flags_len += 1;
+    }
 
     // #[inline]
     // pub(super) fn state(&self) -> &ReqPacketState {
@@ -181,11 +181,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 ReqPacketState::Flags => {
                     if self.current().is_ascii_digit() {
                         // 追踪flags段相关信息
-                        if self.flags_start == 0 {
-                            self.flags_start = self.oft;
-                        }
-                        self.flags = self.flags * 10 + (self.current() - b'0') as usize;
-                        self.flags_len += 1;
+                        self.try_trace_flags(state);
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeExpire;
                     } else {
@@ -299,36 +295,30 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             .to_string();
         let mut req_data: Vec<u8> = Vec::with_capacity(req_cmd.data().len() + time_sec.len());
 
-        //前部分: flags前半部分
+        //前: flags前半部分
         let pref_slice = req_cmd.data().sub_slice(0, self.flags_start - 0);
         let data = pref_slice.read(0);
         let mut i = 0;
         while i < data.len() {
             req_data.push(data[i]);
-            println!("pref:{} ", data[i] as char);
             i += 1;
         }
 
-        //中间: 时间戳
+        //中: 时间戳
         for num in time_sec.as_bytes().iter() {
             req_data.push(*num);
         }
 
-        // 后半部分：expire 处读取flags 后半部分
-        let mut oft = self.expire_start;
+        // 后：expire 处读取flags 后半部分
+        let mut oft = self.flags_start + self.flags_len;
         while oft < req_cmd.data().len() {
             let data = req_cmd.read(oft);
-            oft += data.len();
-            while i < data.len() {
-                req_data.push(data[i]);
-                println!("after:{} ", data[i] as char);
-                i += 1;
+            for v in data.iter() {
+                req_data.push(*v);
             }
+            oft += data.len();
         }
-        for v in req_data.iter() {
-            println!("req char {}", *v as char);
-        }
-        // 为避免重新开辟一块vec空间，先通过空格填充占位，再通过移动覆盖
+
         let marked_cmd = ds::MemGuard::from_vec(req_data);
         return marked_cmd;
     }
