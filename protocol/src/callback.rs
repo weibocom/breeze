@@ -64,7 +64,6 @@ impl CallbackContext {
         }
     }
 
-    // 对noforward请求，只进行wake
     #[inline]
     pub(crate) fn on_noforward(&mut self) {
         assert!(
@@ -108,7 +107,7 @@ impl CallbackContext {
         self.on_done();
     }
 
-    // 对请求适配本地构建response，方便后续进行统一响应
+    // 对无响应请求，适配一个本地构建response，方便后续进行统一的响应处理
     #[inline]
     pub fn adapt_local_response(&mut self, local_resp: Command) {
         // 构建本地response，说明请求肯定不是异步回写，即drop on done/async_write_back肯定为false
@@ -142,7 +141,6 @@ impl CallbackContext {
             // 说明有请求在pending
             assert!(!self.complete(), "req:{:?}", self.request().data());
             self.ctx.complete.store(true, Ordering::Release);
-
             self.wake();
         } else {
             self.manual_drop();
@@ -172,7 +170,7 @@ impl CallbackContext {
     #[inline]
     pub fn on_err(&mut self, err: Error) {
         // 正常err场景，仅仅在debug时check
-        log::debug!("++++  hanle found err: {:?}", err);
+        log::debug!("+++ found err: {:?}", err);
         match err {
             Error::Closed => {}
             Error::ChanDisabled => {}
@@ -304,7 +302,6 @@ pub struct Context {
     write_back: bool,         // 请求结束后，是否需要回写。
     first: bool,              // 当前请求是否是所有子请求的第一个
     last: bool,               // 当前请求是否是所有子请求的最后一个
-    // nil_converted: bool,      // 当前rsp是否进行了nil转换【对multi的异常请求需要】
     flag: crate::Context,
 }
 
@@ -333,14 +330,6 @@ impl Context {
     fn drop_on_done(&self) -> bool {
         self.drop_on_done.load(Ordering::Acquire)
     }
-    // #[inline]
-    // fn convert_rsp_nil(&mut self) {
-    //     self.nil_converted = true;
-    // }
-    // #[inline]
-    // pub fn nil_converted(&self) -> bool {
-    //     self.nil_converted
-    // }
 }
 
 use std::fmt::{self, Debug, Display, Formatter};

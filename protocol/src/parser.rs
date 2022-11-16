@@ -190,10 +190,6 @@ impl HashedCommand {
             log::warn!("should not update hash for non direct_hash!");
         }
     }
-    // #[inline]
-    // pub fn set_ignore_rsp(&mut self, ignore_rsp: bool) {
-    //     self.cmd.set_ignore_rsp(ignore_rsp)
-    // }
     #[inline]
     pub fn master_only(&self) -> bool {
         self.cmd.master_only()
