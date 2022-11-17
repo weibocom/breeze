@@ -7,7 +7,7 @@ use ds::AtomicWaker;
 use crate::request::Request;
 use crate::{Command, Error, HashedCommand, TryNextType};
 
-const REQ_TRY_MAX_COUNT: usize = 3;
+const REQ_TRY_MAX_COUNT: u8 = 3;
 
 pub struct Callback {
     exp_sec: Box<dyn Fn() -> u32>,
@@ -119,9 +119,9 @@ impl CallbackContext {
     // 对无响应请求，适配一个本地构建response，方便后续进行统一的响应处理
     #[inline]
     pub fn adapt_local_response(&mut self, local_resp: Command) {
-        // 构建本地response，说明请求肯定不是异步回写，即drop on done/async_write_back肯定为false
+        // 构建本地response，说明请求肯定不是异步回写，即async_mode肯定为false
         assert!(
-            !self.ctx.drop_on_done(),
+            !self.ctx.async_mode,
             "should sync, req:{:?}, rsp:{:?}",
             self.request(),
             local_resp
@@ -142,7 +142,7 @@ impl CallbackContext {
     // 只有在构建了response，该request才可以设置completed为true
     #[inline]
     fn on_done(&mut self) {
-        log::debug!("on-done:{}, drop:{}", self, self.ctx.drop_on_done());
+        log::debug!("on-done:{}", self);
         if self.need_goon() {
             return self.goon();
         }
