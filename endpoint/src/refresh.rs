@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use crate::{Endpoint, Topology, TopologyCheck};
 use discovery::{TopologyRead, TopologyReadGuard};
-use protocol::{Endpoint, Topology, TopologyCheck};
 use sharding::hash::Hasher;
 
 // 支持刷新
