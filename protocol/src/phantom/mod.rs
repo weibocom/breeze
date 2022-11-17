@@ -112,25 +112,30 @@ impl Phantom {
     }
 
     #[inline]
-    fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
+    fn parse_response_inner<S: Stream>(
+        &self,
+        req: &HashedCommand,
+        s: &mut S,
+        req_can_retry: bool,
+    ) -> Result<Option<Command>> {
         let data = s.slice();
         log::debug!("+++ will parse rsp:{:?}", data);
 
         // phantom 在rsp为负数（:-1/-2/-3\r\n），说明请求异常，需要重试
-        let mut status_ok = true;
+        let mut resp_ok = true;
         if data.len() > 2 {
             let mut oft = 0;
             match data.at(0) {
                 b':' => {
                     // 负数均重试，避免HA配置差异
                     if data.at(1) == b'-' {
-                        status_ok = false;
+                        resp_ok = false;
                     }
                     data.line(&mut oft)?;
                 }
                 b'-' | b'+' => {
                     // 对于phantom，-/+均需要重试
-                    status_ok = false;
+                    resp_ok = false;
                     data.line(&mut oft)?;
                 }
                 b'$' => {
@@ -144,11 +149,19 @@ impl Phantom {
                     panic!("not supported");
                 }
             }
+
+            // response解析完毕，首先take出来
             assert!(oft <= data.len(), "oft:{}/{:?}", oft, data);
             let mem = s.take(oft);
-            let mut flag = Flag::new();
-            flag.set_status_ok(status_ok);
 
+            // 若请求异常，且不能再重新请求，对multi+多bulk请求的需要构建nil rsp; 否则直接使用解析出来的resp
+            let cfg = command::get_cfg(req.op_code())?;
+            if !resp_ok && !req_can_retry && cfg.multi && cfg.need_bulk_num {
+                return Ok(Some(cfg.build_nil_rsp()));
+            }
+
+            let mut flag = Flag::new();
+            flag.set_status_ok(resp_ok);
             return Ok(Some(Command::new(flag, mem)));
         }
         Ok(None)
@@ -172,25 +185,16 @@ impl Protocol for Phantom {
 
     // 为每一个req解析一个response
     #[inline]
-    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        match self.parse_response_inner(data) {
+    fn parse_response<S: Stream>(
+        &self,
+        req: &HashedCommand,
+        data: &mut S,
+        req_can_retry: bool,
+    ) -> Result<Option<Command>> {
+        match self.parse_response_inner(req, data, req_can_retry) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => Ok(None),
             e => e,
-        }
-    }
-
-    // 对resp做重塑:
-    //    1. 如果resp是multi+多bulk req的异常响应，需要将err转为nil rsp；
-    //    2. 否则仍然使用原resp；
-    fn reshape_response(&self, req: &HashedCommand, resp: Command) -> Result<Command> {
-        let cfg = command::get_cfg(req.op_code())?;
-
-        // 对multi+多bulk请求的异常响应，构建nil rsp
-        if cfg.multi && cfg.need_bulk_num && !resp.ok() {
-            Ok(cfg.build_nil_rsp())
-        } else {
-            Ok(resp)
         }
     }
 

@@ -205,11 +205,6 @@ where
             assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(&mut ctx, client)?;
 
-            // TODO 这个统计有问题，noforward才对noresponse加1？
-            // if !ctx.request().noforward() {
-            if ctx.request().noforward() {
-                *metrics.noresponse() += 1;
-            }
             if ctx.response_nil_conver() {
                 *metrics.nilconvert() += 1;
             }
@@ -271,6 +266,7 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
         use protocol::req::Request as RequestTrait;
+
         if req.cmd().noforward() {
             req.on_noforward();
         } else {
