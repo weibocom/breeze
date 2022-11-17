@@ -2,12 +2,11 @@
 use crate::ci::env::*;
 use crate::redis::RESTYPE;
 use crate::redis_helper::*;
-use chrono::prelude::*;
+use chrono::{prelude::*, Duration};
 use function_name::named;
 use redis::Commands;
-use std::time::Instant;
+use std::thread::sleep;
 use std::{thread, time};
-
 //基本set场景，key固定为foo或bar，value为简单数字或字符串
 #[test]
 fn test_basic_set() {
@@ -93,6 +92,7 @@ fn getset_basic() {
 
 /// - mset ("xinxinkey1", 1), ("xinxinkey2", 2), ("xinxinkey3", 3),(arykey, 4)
 /// - expire_at 设置xinxinkey1的过期时间为当前秒级别时间戳+2s
+/// - 判断是否剩余过期过期时间，并get
 /// -  setex key2 4 22 将key2 value 改成22并设置过期时间4s
 /// - ttl/pttl key3存在 但是没有设置过期时间=》-1
 /// - ttl key1没过期
@@ -134,34 +134,49 @@ fn string_basic() {
         ]),
         Ok(true)
     );
+    loop {
+        let now = Local::now();
+        assert_eq!(
+            con.expire_at("xinxinkey1", (now.timestamp() + 2) as usize),
+            Ok(1)
+        );
+        let last_time: i128 = con
+            .ttl("xinxinkey1")
+            .map_err(|e| panic!("ttl error:{:?}", e))
+            .expect("ttl err");
+        if last_time > 0 {
+            assert_eq!(con.exists("xinxinkey1"), Ok(1));
+            break;
+        } else if last_time >= -1 {
+            assert_eq!(con.get("xinxinkey1"), Ok(1));
+        } else {
+            assert_eq!(con.get::<&str, Option<i32>>("xinxinkey1"), Ok(None));
 
-    let now = Local::now().timestamp();
-    let pttl_now = Instant::now();
-    assert_eq!(con.expire_at("xinxinkey1", (now + 2) as usize), Ok(1));
-    assert_eq!(con.set_ex("xinxinkey2", 22, 4), Ok(true));
+            assert_eq!(con.ttl("xinxinkey1"), Ok(-2));
+            assert_eq!(con.pttl("xinxinkey1"), Ok(-2));
+            assert_eq!(con.set_nx("xinxinkey1", 1), Ok(1));
+            assert_eq!(con.get("xinxinkey1"), Ok(1));
+        }
+    }
+
+    loop {
+        assert_eq!(con.set_ex("xinxinkey2", 22, 3), Ok(true));
+        let plast_time: i128 = con
+            .pttl("xinxinkey2")
+            .map_err(|e| panic!("pttl error:{:?}", e))
+            .expect("pttl err");
+        if plast_time > 0 {
+            assert_eq!(con.get("xinxinkey2"), Ok(22));
+            break;
+        } else if plast_time >= -1 {
+            assert_eq!(con.get("xinxinkey2"), Ok(22))
+        } else {
+            assert_eq!(con.get::<&str, Option<i32>>("xinxinkey2"), Ok(None))
+        }
+    }
 
     assert_eq!(con.ttl("xinxinkey3"), Ok(-1));
     assert_eq!(con.pttl("xinxinkey3"), Ok(-1));
-
-    assert_eq!(
-        con.ttl("xinxinkey1"),
-        Ok(4 - pttl_now.elapsed().as_secs() > 0)
-    );
-
-    thread::sleep(time::Duration::from_secs(2));
-
-    assert_eq!(
-        con.pttl("xinxinkey2"),
-        Ok(4000 - pttl_now.elapsed().as_millis() > 0)
-    );
-    assert_eq!(con.get("xinxinkey2"), Ok(22));
-
-    assert_eq!(con.exists("xinxinkey1"), Ok(0));
-    assert_eq!(con.ttl("xinxinkey1"), Ok(-2));
-    assert_eq!(con.pttl("xinxinkey1"), Ok(-2));
-
-    assert_eq!(con.set_nx("xinxinkey1", 11), Ok(1));
-    assert_eq!(con.get("xinxinkey1"), Ok(11));
     assert_eq!(con.set_nx("xinxinkey3", 2), Ok(0));
 
     assert_eq!(con.expire("xinxinkey3", 1), Ok(1));
@@ -171,18 +186,26 @@ fn string_basic() {
     assert_eq!(redis::cmd("DECR").arg(arykey).query(&mut con), Ok(5));
     assert_eq!(con.incr(arykey, 4.4), Ok(9.4));
 
-    assert_eq!(
-        con.pexpire_at(arykey, (Local::now().timestamp_millis() + 2000) as usize),
-        Ok(1)
-    );
-    thread::sleep(time::Duration::from_secs(1));
-    assert_eq!(con.pexpire(arykey, 5000 as usize), Ok(1));
-    assert_eq!(
-        con.ttl(arykey),
-        Ok(5000 - Instant::now().elapsed().as_millis() > 2000)
-    );
-    assert_eq!(con.exists("xinxinkey3"), Ok(0));
+    loop {
+        assert_eq!(
+            con.pexpire_at(arykey, (Local::now().timestamp_millis() + 2000) as usize),
+            Ok(1)
+        );
+        assert_eq!(con.pexpire(arykey, 4000 as usize), Ok(1));
+        let cov_plast_time: i128 = con
+            .pttl(arykey)
+            .map_err(|e| panic!("pttl error:{:?}", e))
+            .expect("pttl err");
+        //println!("{:?}", cov_plast_time);
+        if cov_plast_time > 2000 {
+            assert_eq!(con.persist(arykey), Ok(1));
 
-    assert_eq!(con.persist(arykey), Ok(1));
-    assert_eq!(con.ttl(arykey), Ok(-1));
+            assert_eq!(con.ttl(arykey), Ok(-1));
+            break;
+        } else if cov_plast_time >= -1 {
+            assert_eq!(con.get(arykey), Ok(9.4));
+        } else {
+            assert_eq!(con.get::<&str, Option<i32>>(arykey), Ok(None))
+        }
+    }
 }

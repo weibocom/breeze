@@ -86,11 +86,6 @@ pub trait Stream {
     fn reserve(&mut self, r: usize);
 }
 
-pub trait Builder {
-    type Endpoint: crate::Endpoint;
-    fn build(&self) -> Self::Endpoint;
-}
-
 pub struct Command {
     flag: Flag,
     cmd: ds::MemGuard,

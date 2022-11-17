@@ -53,7 +53,8 @@ impl GuardedBuffer {
     pub fn take(&mut self, n: usize) -> MemGuard {
         assert!(n > 0);
         assert!(self.taken + n <= self.writtened());
-        let guard = self.guards.push_back(AtomicU32::new(0));
+        let guard = unsafe { self.guards.push_back_mut() };
+        *guard.get_mut() = 0;
         let data = self.inner.slice(self.taken, n);
         self.taken += n;
         let ptr = guard as *const AtomicU32;
@@ -66,7 +67,7 @@ impl GuardedBuffer {
             if guard == 0 {
                 break;
             }
-            self.guards.pop_front();
+            unsafe { self.guards.forget_front() };
             self.inner.advance_read(guard as usize);
         }
     }

@@ -130,10 +130,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     }
     #[inline]
     fn shrink(&mut self) {
-        if self
-            .policy
-            .need_shrink(self.buf.len(), self.buf.capacity())
-        {
+        if self.policy.need_shrink(self.buf.len(), self.buf.capacity()) {
             let old = self.buf.capacity();
             let new = self.policy.shrink(self.buf.len(), old);
             self.buf.shrink_to(new);
