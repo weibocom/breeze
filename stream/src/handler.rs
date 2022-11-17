@@ -90,11 +90,7 @@ where
             let poll_read = self.buf.write(&mut reader)?;
 
             while self.buf.len() > 0 {
-                let req = self.pending.front().expect("parsing response");
-                match self
-                    .parser
-                    .parse_response(req.cmd(), &mut self.buf, req.can_retry())?
-                {
+                match self.parser.parse_response(&mut self.buf)? {
                     None => break,
                     Some(cmd) => {
                         let req = self.pending.pop_front().expect("take response");

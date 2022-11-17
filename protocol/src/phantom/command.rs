@@ -181,15 +181,20 @@ impl CommandProperties {
     // 构建一个nil rsp，返回格式类似： :-10\r\n
     #[inline(always)]
     pub(super) fn build_nil_rsp(&self) -> Command {
-        let nil_idx = self.nil_rsp as usize;
-        assert!(nil_idx > 0, "cmd:{}", self.name);
-
-        let nil_str = *PADDING_RSP_TABLE
-            .get(nil_idx)
-            .expect(format!("cmd:{}/{}", self.name, nil_idx).as_str());
+        let nil_str = self.get_nil_rsp_str();
         let mut rsp = Command::from_vec(Vec::from(nil_str));
         rsp.set_status_ok(false).set_nil_convert();
         rsp
+    }
+
+    #[inline(always)]
+    pub(super) fn get_nil_rsp_str(&self) -> &str {
+        let nil_idx = self.nil_rsp as usize;
+        assert!(nil_idx > 0, "cmd:{}", self.name);
+
+        *PADDING_RSP_TABLE
+            .get(nil_idx)
+            .expect(format!("cmd:{}/{}", self.name, nil_idx).as_str())
     }
 
     // 构建一个padding rsp，用于返回默认响应或server不可用响应

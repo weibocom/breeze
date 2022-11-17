@@ -209,12 +209,7 @@ impl Redis {
     }
 
     #[inline]
-    fn parse_response_inner<S: Stream>(
-        &self,
-        req: &HashedCommand,
-        s: &mut S,
-        req_can_retry: bool,
-    ) -> Result<Option<Command>> {
+    fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
         log::debug!("+++ will parse rsp:{:?}", data);
 
@@ -238,21 +233,12 @@ impl Redis {
                     panic!("not supported");
                 }
             }
-
-            // take 走解析完成的数据,设置flag
             assert!(oft <= data.len(), "{} data:{:?}", oft, data);
             let mem = s.take(oft);
-
-            // 对multi+多bulk请求的异常响应，若不能再重新请求，则构建nil rsp; 否则直接使用解析出来的resp
-            let cfg = command::get_cfg(req.op_code())?;
-            if !rsp_ok && !req_can_retry && cfg.multi && cfg.need_bulk_num {
-                return Ok(Some(cfg.build_nil_rsp()));
-            } else {
-                let mut flag = Flag::new();
-                flag.set_status_ok(rsp_ok);
-
-                return Ok(Some(Command::new(flag, mem)));
-            };
+            let mut flag = Flag::new();
+            // TODO 这次需要测试err场景 fishermen
+            flag.set_status_ok(rsp_ok);
+            return Ok(Some(Command::new(flag, mem)));
         }
         Ok(None)
     }
@@ -275,13 +261,8 @@ impl Protocol for Redis {
 
     // 为每一个req解析一个response
     #[inline]
-    fn parse_response<S: Stream>(
-        &self,
-        req: &HashedCommand,
-        data: &mut S,
-        req_can_retry: bool,
-    ) -> Result<Option<Command>> {
-        match self.parse_response_inner(req, data, req_can_retry) {
+    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+        match self.parse_response_inner(data) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => Ok(None),
             e => e,
@@ -350,8 +331,13 @@ impl Protocol for Redis {
                     w.write_s_u16(ext.key_count())?;
                     w.write(b"\r\n")?;
                 }
-
-                w.write_slice(response.data(), 0)?;
+                // 对于异常响应，如果resp是多bulk的，则需要将异常响应转为nil进行响应client
+                if !response.ok() && cfg.need_bulk_num {
+                    let nil = cfg.get_nil_rsp_str();
+                    w.write(nil.as_bytes())?;
+                } else {
+                    w.write_slice(response.data(), 0)?;
+                }
             }
             // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
             // mset always return +OK
