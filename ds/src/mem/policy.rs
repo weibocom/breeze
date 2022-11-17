@@ -56,7 +56,7 @@ impl MemPolicy {
                     self.continues.on_tick(self.check_max);
                 } else {
                     self.continues.reset();
-                    #[cfg(any(feature = "trace", feature = "debug"))]
+                    #[cfg(any(feature = "trace", debug_assertions))]
                     self.trace.trace_reset();
                 }
                 // 重新开始一个周期
