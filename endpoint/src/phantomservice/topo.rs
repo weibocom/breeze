@@ -8,13 +8,13 @@ use std::{
     time::Duration,
 };
 
+use crate::{shards::Shards, Builder, Endpoint, Topology};
 use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
 };
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology};
+use protocol::{Protocol, Request, Resource};
 use sharding::hash::Hasher;
-use stream::Shards;
 
 use super::config::{Backend, PhantomNamespace};
 use super::config::{ACCESS_NONE, ACCESS_READ, ACCESS_WRITE};
@@ -62,7 +62,7 @@ where
     }
 }
 
-impl<B, E, Req, P> protocol::Endpoint for PhantomService<B, E, Req, P>
+impl<B, E, Req, P> Endpoint for PhantomService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
