@@ -170,7 +170,7 @@ impl CallbackContext {
         unsafe { self.inited() && self.unchecked_response().ok() }
     }
     #[inline]
-    pub fn response_nil_conver(&self) -> bool {
+    pub fn response_nil_converted(&self) -> bool {
         unsafe { self.inited() && self.unchecked_response().nil_converted() }
     }
     #[inline]
