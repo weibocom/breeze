@@ -8,7 +8,9 @@ pub mod phantom;
 pub mod redis;
 pub mod req;
 //pub mod resp;
+pub mod metrics;
 pub mod msgque;
+pub use crate::metrics::CbMetrics;
 
 pub use flag::*;
 pub use parser::Proto as Protocol;
@@ -47,3 +49,7 @@ impl Resource {
 mod error;
 pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
+pub trait Metric {
+    fn get_metric(&mut self, num: i64) -> i64;
+    // fn down_num(&mut self) -> i64;
+}

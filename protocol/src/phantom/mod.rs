@@ -8,8 +8,8 @@ mod packet;
 //mod token;
 
 use crate::{
-    phantom::command::PADDING_RSP_TABLE, Command, Commander, Error, Flag, HashedCommand, Protocol,
-    RequestProcessor, Result, Stream,
+    phantom::command::PADDING_RSP_TABLE, CbMetrics, Command, Commander, Error, Flag, HashedCommand,
+    Protocol, RequestProcessor, Result, Stream,
 };
 use ds::RingSlice;
 use flag::RedisFlager;
@@ -185,6 +185,7 @@ impl Protocol for Phantom {
         &self,
         ctx: &mut C,
         w: &mut W,
+        metrics: &mut Arc<CbMetrics>,
     ) -> Result<usize> {
         let req = ctx.request();
         let op_code = req.op_code();
@@ -290,7 +291,10 @@ impl Protocol for Phantom {
     }
 }
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{
+    atomic::{AtomicI64, Ordering},
+    Arc,
+};
 static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0

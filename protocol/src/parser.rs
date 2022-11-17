@@ -6,7 +6,7 @@ use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::phantom::Phantom;
 use crate::redis::Redis;
-use crate::{Error, Flag, Result};
+use crate::{CbMetrics, Error, Flag, Result};
 
 #[enum_dispatch(Proto)]
 #[derive(Clone)]
@@ -41,6 +41,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         &self,
         ctx: &mut C,
         w: &mut W,
+        metrics: &mut Arc<CbMetrics>,
     ) -> Result<usize>;
     // 返回nil convert的数量
     #[inline]
@@ -194,6 +195,7 @@ impl AsRef<Command> for HashedCommand {
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
+use std::sync::Arc;
 impl Display for HashedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "hash:{} {}", self.hash, self.cmd)

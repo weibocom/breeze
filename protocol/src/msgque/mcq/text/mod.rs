@@ -3,10 +3,12 @@ mod error;
 mod reqpacket;
 mod rsppacket;
 
+use std::sync::Arc;
+
 use crate::msgque::mcq::text::rsppacket::RspPacket;
 use crate::{
-    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
-    Writer,
+    CbMetrics, Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result,
+    Stream, Writer,
 };
 
 use sharding::hash::Hash;
@@ -91,10 +93,21 @@ impl Protocol for McqText {
     }
 
     #[inline]
-    fn write_response<C: Commander, W: Writer>(&self, ctx: &mut C, w: &mut W) -> Result<usize> {
+    fn write_response<C: Commander, W: Writer>(
+        &self,
+        ctx: &mut C,
+        w: &mut W,
+        metrics: &mut Arc<CbMetrics>,
+    ) -> Result<usize> {
         let rsp = ctx.response();
         let data = rsp.data();
         w.write_slice(data, 0)?;
+        if ctx.request().operation().is_query() && ctx.response().ok() {
+            *metrics.read() += 1;
+        }
+        if ctx.request().operation().is_store() && ctx.response().ok() {
+            *metrics.write() += 1;
+        }
         Ok(0)
     }
 
