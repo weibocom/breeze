@@ -12,6 +12,7 @@ sharding = { path = "../sharding" }
 ds = { path = "../ds" }
 metrics = { path = "../metrics" }
 discovery = { path = "../discovery" }
+endpoint = { path = "../endpoint" }
 rt = { path = "../rt" }
 log = { path = "../log" }
 

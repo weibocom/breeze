@@ -9,8 +9,9 @@ use ds::chan::mpsc::{channel, Sender, TrySendError};
 use ds::Switcher;
 
 use crate::checker::BackendChecker;
+use endpoint::{Builder, Endpoint, Single};
 use metrics::Path;
-use protocol::{Endpoint, Error, Protocol, Request, Resource, Single};
+use protocol::{Error, Protocol, Request, Resource};
 
 #[derive(Clone)]
 pub struct BackendBuilder<P, R> {
@@ -18,7 +19,7 @@ pub struct BackendBuilder<P, R> {
 }
 
 use ds::time::Duration;
-impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
+impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
     fn build(
         addr: &str,
         parser: P,
