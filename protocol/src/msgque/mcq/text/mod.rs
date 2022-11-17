@@ -81,14 +81,8 @@ impl Protocol for McqText {
         }
     }
 
-    // req、req_can_retry 是为multi请求响应的nil convert准备的，mcq目前不需要
     #[inline]
-    fn parse_response<S: Stream>(
-        &self,
-        _req: &HashedCommand,
-        data: &mut S,
-        _req_can_retry: bool,
-    ) -> Result<Option<Command>> {
+    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         match self.parse_response_inner(data) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => Ok(None),

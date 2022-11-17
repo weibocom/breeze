@@ -112,30 +112,25 @@ impl Phantom {
     }
 
     #[inline]
-    fn parse_response_inner<S: Stream>(
-        &self,
-        req: &HashedCommand,
-        s: &mut S,
-        req_can_retry: bool,
-    ) -> Result<Option<Command>> {
+    fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data = s.slice();
         log::debug!("+++ will parse rsp:{:?}", data);
 
         // phantom 在rsp为负数（:-1/-2/-3\r\n），说明请求异常，需要重试
-        let mut resp_ok = true;
+        let mut status_ok = true;
         if data.len() > 2 {
             let mut oft = 0;
             match data.at(0) {
                 b':' => {
                     // 负数均重试，避免HA配置差异
                     if data.at(1) == b'-' {
-                        resp_ok = false;
+                        status_ok = false;
                     }
                     data.line(&mut oft)?;
                 }
                 b'-' | b'+' => {
                     // 对于phantom，-/+均需要重试
-                    resp_ok = false;
+                    status_ok = false;
                     data.line(&mut oft)?;
                 }
                 b'$' => {
@@ -149,19 +144,11 @@ impl Phantom {
                     panic!("not supported");
                 }
             }
-
-            // response解析完毕，首先take出来
             assert!(oft <= data.len(), "oft:{}/{:?}", oft, data);
             let mem = s.take(oft);
-
-            // 若请求异常，且不能再重新请求，对multi+多bulk请求的需要构建nil rsp; 否则直接使用解析出来的resp
-            let cfg = command::get_cfg(req.op_code())?;
-            if !resp_ok && !req_can_retry && cfg.multi && cfg.need_bulk_num {
-                return Ok(Some(cfg.build_nil_rsp()));
-            }
-
             let mut flag = Flag::new();
-            flag.set_status_ok(resp_ok);
+            flag.set_status_ok(status_ok);
+
             return Ok(Some(Command::new(flag, mem)));
         }
         Ok(None)
@@ -185,13 +172,8 @@ impl Protocol for Phantom {
 
     // 为每一个req解析一个response
     #[inline]
-    fn parse_response<S: Stream>(
-        &self,
-        req: &HashedCommand,
-        data: &mut S,
-        req_can_retry: bool,
-    ) -> Result<Option<Command>> {
-        match self.parse_response_inner(req, data, req_can_retry) {
+    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+        match self.parse_response_inner(data) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => Ok(None),
             e => e,
@@ -242,7 +224,13 @@ impl Protocol for Phantom {
                     w.write(ext.key_count().to_string().as_bytes())?;
                     w.write(b"\r\n")?;
                 }
-                w.write_slice(response.data(), 0)?;
+                // 对于异常响应，如果resp是多bulk的，则需要将异常响应转为nil进行响应client
+                if !response.ok() && cfg.need_bulk_num {
+                    let nil = cfg.get_nil_rsp_str();
+                    w.write(nil.as_bytes())?;
+                } else {
+                    w.write_slice(response.data(), 0)?;
+                }
             }
             // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
             // mset always return +OK

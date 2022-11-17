@@ -35,12 +35,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
-    fn parse_response<S: Stream>(
-        &self,
-        req: &HashedCommand,
-        data: &mut S,
-        req_can_retry: bool,
-    ) -> Result<Option<Command>>;
+    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
 
     // 根据req对resp进行重塑，对multi + 多bulk req + err-resp 做 nil conver
     // fn reshape_response(&self, req: &HashedCommand, resp: Command) -> Result<Command>;
