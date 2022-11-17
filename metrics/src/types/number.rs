@@ -49,6 +49,7 @@ impl Number {
         let cur = self.inner.cur.load(Ordering::Relaxed);
         if cur > 0 {
             w.write(&id.path, id.key, id.t.name(), cur);
+            println!("{:?},{:?},{:?},{:?}", &id.path, id.key, id.t.name(), cur);
         }
     }
     #[inline]

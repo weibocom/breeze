@@ -106,6 +106,7 @@ impl Protocol for McqText {
     ) -> Result<usize> {
         let rsp = ctx.response();
         let data = rsp.data();
+        w.write_slice(data, 0)?;
         if ctx.request().operation().is_query() && ctx.response().ok() {
             // m.get_metric(num);
             // let a = metrics::Path::new(vec![Resource::MsgQue.name(), "'"]).num("");
@@ -114,8 +115,6 @@ impl Protocol for McqText {
         if ctx.request().operation().is_store() && ctx.response().ok() {
             *metrics.downhit() += 1;
         }
-        w.write_slice(data, 0)?;
-
         Ok(0)
     }
 

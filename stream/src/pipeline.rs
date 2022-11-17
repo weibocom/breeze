@@ -182,6 +182,7 @@ where
             client.cache(!last);
             let op = ctx.request().operation();
             *metrics.key() += 1;
+            println!("{:?}", *metrics.key());
 
             if parser.cache() && op.is_query() {
                 *metrics.cache() += ctx.response_ok();

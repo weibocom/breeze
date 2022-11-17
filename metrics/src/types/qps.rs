@@ -10,6 +10,7 @@ impl Qps {
         let num = self.inner.take();
         if num > 0 {
             w.write(&id.path, id.key, id.t.name(), num as f64 / secs);
+            println!("{:?},{:?},{:?},{:?}", &id.path, id.key, id.t.name(), num);
         }
     }
 }
