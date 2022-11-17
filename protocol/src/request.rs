@@ -74,10 +74,10 @@ impl crate::Request for Request {
     fn try_next(&mut self, goon: bool) {
         self.ctx().ctx.try_next(goon);
     }
-    #[inline]
-    fn ignore_rsp(&self) -> bool {
-        self.req().ignore_rsp()
-    }
+    // #[inline]
+    // fn ignore_rsp(&self) -> bool {
+    //     self.req().ignore_rsp()
+    // }
     #[inline]
     fn direct_hash(&self) -> bool {
         self.req().direct_hash()
