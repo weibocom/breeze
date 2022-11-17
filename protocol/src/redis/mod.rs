@@ -209,7 +209,12 @@ impl Redis {
     }
 
     #[inline]
-    fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
+    fn parse_response_inner<S: Stream>(
+        &self,
+        req: &HashedCommand,
+        s: &mut S,
+        req_can_retry: bool,
+    ) -> Result<Option<Command>> {
         let data = s.slice();
         log::debug!("+++ will parse rsp:{:?}", data);
 
@@ -233,12 +238,21 @@ impl Redis {
                     panic!("not supported");
                 }
             }
+
+            // take 走解析完成的数据,设置flag
             assert!(oft <= data.len(), "{} data:{:?}", oft, data);
             let mem = s.take(oft);
-            let mut flag = Flag::new();
-            // TODO 这次需要测试err场景 fishermen
-            flag.set_status_ok(rsp_ok);
-            return Ok(Some(Command::new(flag, mem)));
+
+            // 对multi+多bulk请求的异常响应，若不能再重新请求，则构建nil rsp; 否则直接使用解析出来的resp
+            let cfg = command::get_cfg(req.op_code())?;
+            if !rsp_ok && !req_can_retry && cfg.multi && cfg.need_bulk_num {
+                return Ok(Some(cfg.build_nil_rsp()));
+            } else {
+                let mut flag = Flag::new();
+                flag.set_status_ok(rsp_ok);
+
+                return Ok(Some(Command::new(flag, mem)));
+            };
         }
         Ok(None)
     }
@@ -261,25 +275,16 @@ impl Protocol for Redis {
 
     // 为每一个req解析一个response
     #[inline]
-    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        match self.parse_response_inner(data) {
+    fn parse_response<S: Stream>(
+        &self,
+        req: &HashedCommand,
+        data: &mut S,
+        req_can_retry: bool,
+    ) -> Result<Option<Command>> {
+        match self.parse_response_inner(req, data, req_can_retry) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => Ok(None),
             e => e,
-        }
-    }
-
-    // 对resp做重塑:
-    //    1. 如果resp是multi+多bulk req的异常响应，需要将err转为nil rsp；
-    //    2. 否则仍然使用原resp；
-    fn reshape_response(&self, req: &HashedCommand, resp: Command) -> Result<Command> {
-        let cfg = command::get_cfg(req.op_code())?;
-
-        // 对multi+多bulk请求的异常响应，构建nil rsp
-        if cfg.multi && cfg.need_bulk_num && !resp.ok() {
-            Ok(cfg.build_nil_rsp())
-        } else {
-            Ok(resp)
         }
     }
 

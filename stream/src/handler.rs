@@ -90,16 +90,18 @@ where
             let poll_read = self.buf.write(&mut reader)?;
 
             while self.buf.len() > 0 {
-                match self.parser.parse_response(&mut self.buf)? {
+                let req = self.pending.front().expect("parsing response");
+                match self
+                    .parser
+                    .parse_response(req.cmd(), &mut self.buf, req.can_retry())?
+                {
                     None => break,
                     Some(cmd) => {
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.start_at().elapsed();
-                        // 这里有req、rsp信息，可以决策nil convert等了
-                        let real_rsp = self.parser.reshape_response(req.cmd(), cmd)?;
-                        req.on_complete(real_rsp);
+                        req.on_complete(cmd);
                     }
                 }
             }

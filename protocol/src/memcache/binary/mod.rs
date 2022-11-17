@@ -49,8 +49,15 @@ impl Protocol for MemcacheBinary {
         }
         Ok(())
     }
+
+    // req、req_can_retry 是为multi请求响应的nil convert准备的，mc 二进制协议目前不需要
     #[inline]
-    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+    fn parse_response<S: Stream>(
+        &self,
+        _req: &HashedCommand,
+        data: &mut S,
+        _req_can_retry: bool,
+    ) -> Result<Option<Command>> {
         log::debug!("+++ mc will parse rsp: {:?}", data.slice());
         assert!(data.len() > 0, "rsp: {:?}", data.slice());
         let len = data.len();
@@ -128,11 +135,6 @@ impl Protocol for MemcacheBinary {
             self.build_write_back_inplace(ctx.request_mut());
             None
         }
-    }
-
-    // TODO 当前mc不支持nil转换，先继续保持，后续有需要再支持 fishermen
-    fn reshape_response(&self, _req: &HashedCommand, resp: Command) -> Result<Command> {
-        Ok(resp)
     }
 
     // 构建本地响应resp策略：

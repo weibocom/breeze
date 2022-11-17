@@ -7,6 +7,8 @@ use ds::AtomicWaker;
 use crate::request::Request;
 use crate::{Command, Error, HashedCommand, TryNextType};
 
+const REQ_TRY_MAX_COUNT: usize = 3;
+
 pub struct Callback {
     exp_sec: Box<dyn Fn() -> u32>,
     cb: Box<dyn Fn(Request)>,
@@ -72,7 +74,10 @@ impl CallbackContext {
             self.request().data()
         );
 
-        self.on_done();
+        // 对noforward请求，只需要设置complete状态为true，不需要wake及其他逻辑
+        // self.on_done();
+        assert!(!self.complete(), "req:{:?}", self.request().data());
+        self.ctx.complete.store(true, Ordering::Release);
     }
 
     // 返回true: 表示发送完之后还未结束
@@ -149,15 +154,31 @@ impl CallbackContext {
 
     #[inline]
     fn need_goon(&self) -> bool {
-        if !self.is_in_async_write_back() {
-            // 正常访问请求。
-            // old: 除非出现了error，否则最多只尝试一次;
-            // 为了提升mcq的读写效率，tries改为3次
-            self.ctx.try_next && !self.response_ok() && self.tries < 3
+        // TODO: 原实现逻辑，暂时不删，等线上验证OK再清理 fishermen
+        // if !self.is_in_async_write_back() {
+        //     // 正常访问请求。
+        //     // old: 除非出现了error，否则最多只尝试一次;
+        //     // 为了提升mcq的读写效率，tries改为3次
+        //     self.ctx.try_next && !self.response_ok() && self.tries < REQ_TRY_MAX_COUNT
+        // } else {
+        //     // write back请求
+        //     self.ctx.write_back
+        // }
+
+        // 只有两种情况需要重试：1 非回写请求，可以重试同时本次响应异常； 2 回写请求，同时需要继续回写
+        if self.req_can_retry() && !self.response_ok() {
+            return true;
         } else {
-            // write back请求
-            self.ctx.write_back
+            self.is_in_async_write_back() && self.ctx.write_back
         }
+    }
+
+    // 本请求如果响应异常，是否可以再次尝试重新请求，条件有三：
+    //  1 非回写； 2 req设置了try_next为true； 3 重试次数小于阀值;
+    #[inline]
+    pub fn req_can_retry(&self) -> bool {
+        //TODO: 注意tries check fishermen
+        !self.is_in_async_write_back() && self.ctx.try_next && self.tries < REQ_TRY_MAX_COUNT
     }
     #[inline]
     pub fn response_ok(&self) -> bool {
