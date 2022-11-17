@@ -1,7 +1,7 @@
+use ds::time::Duration;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use ds::time::Duration;
 
 use discovery::TopologyWrite;
 use protocol::{Builder, Endpoint, Protocol, Request, Resource, Single, Topology};
@@ -12,6 +12,8 @@ use sharding::ReplicaSelect;
 use super::config::RedisNamespace;
 use crate::TimeoutAdjust;
 use discovery::dns::{self, IPPort};
+
+const CONFIG_UPDATED_KEY: &str = "__config__";
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -165,7 +167,14 @@ where
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
-            self.selector = ns.basic.selector;
+            // selector属性更新与域名实例更新保持一致
+            if self.selector != ns.basic.selector {
+                self.selector = ns.basic.selector;
+                self.updated
+                    .entry(CONFIG_UPDATED_KEY.to_string())
+                    .or_insert(Arc::new(AtomicBool::new(true)))
+                    .store(true, Ordering::Release);
+            }
             let mut shards_url = Vec::new();
             for shard in ns.backends.iter() {
                 let mut shard_url = Vec::new();
