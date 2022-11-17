@@ -205,7 +205,8 @@ where
             assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(&mut ctx, client)?;
 
-            if ctx.response_nil_conver() {
+            //TODO 部分请求的nil convert发生在write_response，待鑫鑫完成修改，这个统计后续也改到write_response中 fishermen 2022.11.17
+            if ctx.response_nil_converted() {
                 *metrics.nilconvert() += 1;
             }
 
