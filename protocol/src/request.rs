@@ -92,10 +92,6 @@ impl Request {
     pub fn new(ctx: *mut CallbackContext) -> Self {
         Self { ctx }
     }
-    #[inline]
-    pub fn start(self) {
-        self.ctx().start()
-    }
 
     #[inline]
     fn req(&self) -> &HashedCommand {

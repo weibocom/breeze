@@ -2,22 +2,27 @@ use ds::time::{Duration, Instant};
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering::*};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering::*},
+    Arc,
+};
 use std::task::{ready, Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use ds::AtomicWaker;
-use protocol::{
-    Commander, HashedCommand, Protocol, Result, Stream, Topology, TopologyCheck, Writer,
+use ds::{
+    time::{Duration, Instant},
+    AtomicWaker,
 };
+use endpoint::{Topology, TopologyCheck};
+use protocol::{Commander, HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::buffer::{Reader, StreamGuard};
 use crate::{Callback, CallbackContext, CallbackContextPtr, Request, StreamMetrics};
 
 pub async fn copy_bidirectional<C, P, T>(
     top: T,
-    mut metrics: StreamMetrics,
+    metrics: Arc<StreamMetrics>,
     client: C,
     parser: P,
 ) -> Result<()>
@@ -42,17 +47,14 @@ where
         start: Instant::now(),
         start_init: false,
         first: true, // 默认当前请求是第一个
-        req_new: 0,
-        req_dropped: AtomicUsize::new(0),
+        async_pending: AtomicUsize::new(0),
 
         dropping: Vec::new(),
-        //req_new_s: 0,
-        //dropping_at: Instant::now(),
     };
     rt::Entry::from(pipeline, Duration::from_secs(10)).await
 }
 
-struct CopyBidirectional<C, P, T> {
+pub struct CopyBidirectional<C, P, T> {
     top: T,
     rx_buf: StreamGuard,
     client: C,
@@ -62,20 +64,17 @@ struct CopyBidirectional<C, P, T> {
     flush: bool,
     cb: Callback,
 
-    metrics: StreamMetrics,
+    metrics: Arc<StreamMetrics>,
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
     // 如果一个multiget被拆分成多个请求，则start存储的是第一个请求的时间。
     start: Instant,
     start_init: bool,
     first: bool, // 当前解析的请求是否是第一个。
 
-    req_new: usize,           // 当前连接创建的req数量
-    req_dropped: AtomicUsize, // 销毁的连接的数量
+    async_pending: AtomicUsize, // 异步请求中的数量。
 
     // 等待删除的top. 第三个元素是dropping时的req_new的值。
-    dropping: Vec<(T, Callback, usize)>,
-    //req_new_s: usize,
-    //dropping_at: Instant,
+    dropping: Vec<(T, Callback)>,
 }
 impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
@@ -90,7 +89,7 @@ where
         self.waker.register(cx.waker());
         loop {
             // 从client接收数据写入到buffer
-            let request = self.poll_request(cx)?;
+            let request = self.poll_recv(cx)?;
             // 解析buffer中的请求，并且发送请求。
             self.parse_request()?;
 
@@ -116,7 +115,7 @@ where
 {
     // 从client读取request流的数据到buffer。
     #[inline]
-    fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         if self.pending.len() == 0 {
             let Self { client, rx_buf, .. } = self;
             let mut cx = Context::from_waker(cx.waker());
@@ -140,8 +139,6 @@ where
             rx_buf,
             first,
             cb,
-            req_new,
-            req_dropped,
             ..
         } = self;
         // 解析请求，发送请求，并且注册回调
@@ -152,8 +149,6 @@ where
             // parser,
             cb,
             first,
-            req_new,
-            req_dropped,
         };
 
         parser.parse_request(rx_buf, top.hasher(), &mut processor)
@@ -183,7 +178,7 @@ where
             if !ctx.complete() {
                 break;
             }
-            let mut ctx = pending.pop_front().expect("front");
+            let mut ctx: CallbackContext = pending.pop_front().expect("front").into();
             let last = ctx.last();
             // 当前不是最后一个值。也优先写入cache
             client.cache(!last);
@@ -205,6 +200,7 @@ where
             assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(&mut ctx, client)?;
 
+
             //TODO 部分请求的nil convert发生在write_response，待鑫鑫完成修改，这个统计后续也改到write_response中 fishermen 2022.11.17
             if ctx.response_nil_converted() {
                 *metrics.nilconvert() += 1;
@@ -212,7 +208,8 @@ where
 
             // 如果需要回写，且response正确，则进行回写
             if ctx.is_write_back() && ctx.response_ok() {
-                ctx.async_start_write_back(parser);
+                self.async_pending.fetch_add(1, AcqRel);
+                ctx.async_write_back(parser, &self.async_pending);
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，
@@ -244,8 +241,6 @@ struct Visitor<'a, T> {
     top: &'a T,
     // parser: &'a P,
     first: &'a mut bool,
-    req_new: &'a mut usize,
-    req_dropped: &'a AtomicUsize,
 }
 
 // impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
@@ -254,16 +249,17 @@ struct Visitor<'a, T> {
 impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
-        *self.req_new += 1;
         let first = *self.first;
         // 如果当前是最后一个子请求，那下一个请求就是一个全新的请求。
         // 否则下一个请求是子请求。
         *self.first = last;
         let cb = self.cb.into();
         let mut ctx: CallbackContextPtr =
-            CallbackContext::new(cmd, &self.waker, cb, first, last, self.req_dropped).into();
+
+        CallbackContext::new(cmd, &self.waker, cb, first, last, self.req_dropped).into();
 
         // pendding 会move走ctx，所以提前把req给封装好
+
         let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
         use protocol::req::Request as RequestTrait;
@@ -301,14 +297,8 @@ where
             }
             self.pending.pop_front();
         }
-        self.rx_buf.try_gc()
-            && self.pending.len() == 0
-            && self.req_new == self.req_dropped.load(Acquire)
+        self.rx_buf.try_gc() && self.pending.len() == 0 && self.async_pending.load(Acquire) == 0
     }
-    //#[inline]
-    //fn need_refresh(&self) -> bool {
-    //    true
-    //}
     #[inline]
     fn refresh(&mut self) -> bool {
         if let Some(top) = self.top.check() {
@@ -318,31 +308,19 @@ where
                 let cb = callback(&self.top);
                 let old_cb = std::ptr::replace(&mut self.cb as *mut _, cb);
 
-                self.dropping.push((old, old_cb, self.req_new));
-                //self.req_new_s = self.req_new;
-                //self.dropping_at = Instant::now();
+                self.dropping.push((old, old_cb));
             }
         }
-        if self.dropping.len() > 0 {
-            assert!(self.req_new >= self.req_dropped.load(Acquire), "{:?}", self);
-            let req_dropped = self.req_dropped.load(Acquire);
-            let max = self.dropping.last().expect("dropping").2;
-            if req_dropped >= max {
-                self.dropping.clear();
-            }
-            // 1024是一个经验值
-            // 如果访问量比较低，则很满足满足req_dropped > req_new
-            //if req_dropped > self.req_new_s + 1024
-            //    && self.dropping_at.elapsed() >= Duration::from_secs(15)
-            //{
-            //    log::warn!("top pending over 15 secs, dropping forcefully. {:?}", self);
-            //    self.dropping.clear();
-            //}
+        if self.dropping.len() > 0 && self.async_pending.load(Acquire) == 0 {
+            self.dropping.clear();
         }
         self.rx_buf.try_gc();
         self.rx_buf.shrink();
         self.client.shrink();
-        self.rx_buf.cap() + self.client.cap() > 4096
+        // 1. buffer 过大；2. 有异步请求未完成; 3. top 未drop
+        (self.rx_buf.cap() + self.client.cap() >= crate::REFRESH_THREASHOLD)
+            && self.async_pending.load(Acquire) > 0
+            && self.dropping.len() > 0
     }
 }
 impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
@@ -350,14 +328,13 @@ impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:{} flush:{} rx buf: {} dropping:{} requests: {} => {}",
+            "{} => pending:{} flush:{} rx buf: {} dropping:{}  => {}",
             self.metrics.biz(),
             self.pending.len(),
             self.flush,
             self.rx_buf.len(),
             self.dropping.len(),
-            self.req_new,
-            self.req_dropped.load(Acquire)
+            self.async_pending.load(Acquire)
         )
     }
 }

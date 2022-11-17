@@ -1,8 +1,8 @@
 use context::Quadruple;
+use ds::time::Duration;
 use net::Listener;
 use rt::spawn;
 use std::sync::Arc;
-use ds::time::Duration;
 
 use discovery::TopologyWriteGuard;
 use ds::chan::Sender;
@@ -12,7 +12,7 @@ use stream::pipeline::copy_bidirectional;
 use stream::{Backend, Builder, Request, StreamMetrics};
 
 type Endpoint = Arc<Backend<Request>>;
-type Topology = endpoint::Topology<Builder<Parser, Request>, Endpoint, Request, Parser>;
+type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
 // 一直侦听，直到成功侦听或者取消侦听（当前尚未支持取消侦听）
 // 1. 尝试侦听之前，先确保服务配置信息已经更新完成
 pub(super) async fn process_one(
@@ -20,7 +20,7 @@ pub(super) async fn process_one(
     discovery: Sender<TopologyWriteGuard<Topology>>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let p = Parser::try_from(&quard.protocol())?;
-    let top = endpoint::Topology::try_from(p.clone(), quard.endpoint())?;
+    let top = endpoint::TopologyProtocol::try_from(p.clone(), quard.endpoint())?;
     let (tx, rx) = discovery::topology(top, &quard.service());
     // 注册，定期更新配置
     discovery.send(tx).await.map_err(|e| e.to_string())?;
@@ -76,13 +76,13 @@ async fn _process_one(
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("started. {}", quard);
+    let metrics = Arc::new(StreamMetrics::new(path));
 
     loop {
         // 等待初始化成功
         let (client, _addr) = l.accept().await?;
         let client = rt::Stream::from(client);
         let p = p.clone();
-        let metrics = StreamMetrics::new(path);
         let _path = format!("{:?}", path);
         log::debug!("connection established:{:?}", _path);
         let ctop;
@@ -96,6 +96,7 @@ async fn _process_one(
         }
         let top = ctop.expect("build failed");
         let mut unsupport_cmd = path.num("unsupport_cmd");
+        let metrics = metrics.clone();
         spawn(async move {
             if let Err(e) = copy_bidirectional(top, metrics, client, p).await {
                 match e {
