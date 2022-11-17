@@ -10,12 +10,9 @@ use std::task::{ready, Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use ds::{
-    time::{Duration, Instant},
-    AtomicWaker,
-};
+use ds::AtomicWaker;
 use endpoint::{Topology, TopologyCheck};
-use protocol::{Commander, HashedCommand, Protocol, Result, Stream, Writer};
+use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::buffer::{Reader, StreamGuard};
 use crate::{Callback, CallbackContext, CallbackContextPtr, Request, StreamMetrics};
@@ -200,7 +197,6 @@ where
             assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(&mut ctx, client)?;
 
-
             //TODO 部分请求的nil convert发生在write_response，待鑫鑫完成修改，这个统计后续也改到write_response中 fishermen 2022.11.17
             if ctx.response_nil_converted() {
                 *metrics.nilconvert() += 1;
@@ -255,11 +251,9 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         *self.first = last;
         let cb = self.cb.into();
         let mut ctx: CallbackContextPtr =
-
-        CallbackContext::new(cmd, &self.waker, cb, first, last, self.req_dropped).into();
+            CallbackContext::new(cmd, &self.waker, cb, first, last).into();
 
         // pendding 会move走ctx，所以提前把req给封装好
-
         let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
         use protocol::req::Request as RequestTrait;
