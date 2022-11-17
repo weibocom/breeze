@@ -346,7 +346,7 @@ impl Protocol for Redis {
         Ok(())
     }
 
-    // TODO 测试完毕后，删除 fishermen
+    // TODO 暂时保留，备查及比对，待上线稳定一段时间后再删除（预计 2022.12.30之后可以） fishermen
     // dist_fn 用于类似hashkey、keyshard等指令，计算指令对应的分片索引
     // #[inline]
     // fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(

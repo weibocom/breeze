@@ -239,7 +239,7 @@ impl Protocol for Phantom {
         Ok(())
     }
 
-    // TODO 测试完毕清理 fishermen
+    // TODO 暂时保留，备查及比对，待上线稳定一段时间后再删除（预计 2022.12.30之后可以） fishermen
     // #[inline]
     // fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
     //     &self,

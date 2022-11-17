@@ -108,6 +108,7 @@ impl Protocol for MemcacheBinary {
 
         // 对于quit，直接返回error断连，其他正常返回
         match old_op_code {
+            // TODO: opcode按协议应该是u8，当前是u16，此处继续沿用数字，后续统一重构 fishermen
             0x07 | 0x17 => Err(Error::Quit),
             _ => Ok(()),
         }
@@ -204,6 +205,7 @@ impl Protocol for MemcacheBinary {
         req
     }
 
+    // TODO 暂时保留，备查及比对，待上线稳定一段时间后再删除（预计 2022.12.30之后可以） fishermen
     // #[inline]
     // fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
     //     &self,

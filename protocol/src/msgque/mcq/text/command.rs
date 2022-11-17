@@ -33,15 +33,6 @@ impl CommandProperties {
     pub fn req_type(&self) -> &RequestType {
         &self.req_type
     }
-    // #[inline]
-    // pub fn padding_rsp(&self) -> &str {
-    //     assert!(
-    //         (self.padding_rsp as usize) < PADDING_RSP_TABLE.len(),
-    //         "padding rsp: {}",
-    //         self.padding_rsp
-    //     );
-    //     PADDING_RSP_TABLE.get(self.padding_rsp as usize).unwrap()
-    // }
 
     // 构建一个padding rsp，用于返回默认响应或server不可用响应
     // 格式类似：1 VERSION 0.0.1\r\n ;
