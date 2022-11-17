@@ -36,22 +36,13 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         process: &mut P,
     ) -> Result<()>;
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
-    // 返回nil convert的数量
-    fn write_response<C: Commander, W: crate::Writer>(
-        &self,
-        ctx: &mut C,
-        w: &mut W,
-    ) -> Result<usize>;
-    // 返回nil convert的数量
-    #[inline]
-    fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
-        &self,
-        _req: &HashedCommand,
-        _w: &mut W,
-        _dist_fn: F,
-    ) -> Result<usize> {
-        Err(Error::NoResponseFound)
-    }
+
+    // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
+    fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
+        -> Command;
+
+    fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()>;
+
     #[inline]
     fn check(&self, _req: &HashedCommand, _resp: &Command) -> bool {
         true
@@ -111,6 +102,13 @@ impl Command {
     #[inline]
     pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
         Self { flag, cmd }
+    }
+    // 根据vec格式的data构建cmd，flag全部为默认值
+    pub fn from_vec(data: Vec<u8>) -> Self {
+        Self {
+            flag: Flag::new(),
+            cmd: MemGuard::from_vec(data),
+        }
     }
     #[inline]
     pub fn len(&self) -> usize {
@@ -176,10 +174,6 @@ impl HashedCommand {
         } else {
             log::warn!("should not update hash for non direct_hash!");
         }
-    }
-    #[inline]
-    pub fn set_ignore_rsp(&mut self, ignore_rsp: bool) {
-        self.cmd.set_ignore_rsp(ignore_rsp)
     }
     #[inline]
     pub fn master_only(&self) -> bool {

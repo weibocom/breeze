@@ -1,4 +1,4 @@
-use crate::{Builder, Endpoint, Single, Topology};
+use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
 use ds::time::Duration;
 use protocol::{Protocol, Request, Resource, TryNextType};
