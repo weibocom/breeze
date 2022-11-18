@@ -1,6 +1,6 @@
 use std::io::{Error, ErrorKind, Result};
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use ds::time::{Duration, Instant};
 
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

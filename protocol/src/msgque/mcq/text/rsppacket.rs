@@ -262,10 +262,6 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         Err(super::Error::ProtocolIncomplete)
     }
 
-    pub(super) fn is_empty(&self) -> bool {
-        self.rsp_type == RspType::End
-    }
-
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
         assert!(

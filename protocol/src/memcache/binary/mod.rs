@@ -29,6 +29,7 @@ impl Protocol for MemcacheBinary {
             req.check_request()?;
             let packet_len = req.packet_len();
             if req.len() < packet_len {
+                data.reserve(packet_len - req.len());
                 break;
             }
 
@@ -67,6 +68,8 @@ impl Protocol for MemcacheBinary {
                     assert!(!r.status_ok(), "rsp: {:?}", r);
                     data.ignore(pl);
                 }
+            } else {
+                data.reserve(pl - len);
             }
         }
         Ok(None)

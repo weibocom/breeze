@@ -9,8 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   redis: localhost:56810
+  redis_with_slave: localhost:56812
   counterservice: localhost:9302
   mc: localhost:9301
+  phantom: localhost:9303
   min_key: 1
   max_key: 10000
 
@@ -20,16 +22,23 @@ jobs:
 
     steps:
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci ficohu/breeze:githubci0011
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci 12323312323223/breeze:githubci105
       - uses: actions/checkout@v3
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
       - name: Build
-        run: cargo build 
+        run: cargo build
       - name: Check Vintage
         run: |
           docker ps -a
           curl http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
           curl http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all
           curl http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest
+          curl http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest
+          curl http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest
       - name: Create Socks
         run: |
           #ps -aux|grep breeze
@@ -37,15 +46,17 @@ jobs:
           mkdir -p /home/runner/work/breeze/snapshot
           mkdir -p /home/runner/work/breeze/socks
           touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
+          touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtestm@redis:56812@rs
           touch /home/runner/work/breeze/socks/config+v1+cache.service.testbreeze.pool.yf+all:meshtest@mc:9301@cs 
           touch /home/runner/work/breeze/socks/config+cloud+counterservice+testbreeze+meshtest@redis:9302@rs
+          touch /home/runner/work/breeze/socks/config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
           ls -all ./target/debug/agent
       - name: Run
         run: nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
-      - name: Check Port
+      - name: Check Status
         run: |
           sleep 6s
           #netstat -nat|grep LISTEN
@@ -57,5 +68,10 @@ jobs:
           tail -10 /home/runner/work/breeze/logs/breeze.log
           #cat /home/runner/work/breeze/logs/log.file
           #cat /home/runner/work/breeze/logs/breeze.log
-      - name: Run tests
-        run: cargo test 
+      - name: Run cargo-tarpaulin
+        uses: actions-rs/tarpaulin@v0.1
+        with:
+          version: '0.15.0'
+          args: '-- --test-threads 1'
+      #- name: Run tests
+      #  run: cargo test

@@ -42,7 +42,7 @@ impl<T: ToNumber> MetricData for T {
         crate::register_cache(id, self.int());
     }
 }
-use std::time::Duration;
+use ds::time::Duration;
 impl MetricData for Duration {
     #[inline]
     fn incr_to(self, data: &ItemData) {

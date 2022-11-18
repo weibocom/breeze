@@ -13,7 +13,7 @@ members = [
   "ds",
   "rt",
   "tests",
-  "tests_ci",
+  "tests_integration",
 ]
 
 exclude = ["api", "tests"]
@@ -23,13 +23,13 @@ exclude = ["api", "tests"]
 inherits = "release"
 
 [profile.release]
-#panic = "abort"
+panic = "abort"
 overflow-checks = false
-debug = false
+debug = true
 codegen-units = 1
 lto = "fat"
 opt-level = 3
-#strip = "symbols"
+strip = "symbols"
 
 [profile.release-perf]
 inherits = "release"

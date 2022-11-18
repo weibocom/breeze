@@ -14,15 +14,17 @@ macro_rules! define_metrics {
             $(
             $(
             #[inline]
-            pub fn $name(&mut self) -> &mut Metric {
-                &mut self.$name
+            pub fn $name(&self) -> &mut Metric {
+                // Metric操作是原子计数的，因此unsafe不会导致UB。
+               self.$name.as_mut()
             }
             )+
             )+
             #[inline]
-            pub fn ops(&mut self, op:Operation) -> &mut Metric {
+            pub fn ops(&self, op:Operation) -> &mut Metric {
+                // Metric操作是原子计数的，因此unsafe不会导致UB。
                 assert!(op.id() < self.ops.len());
-                unsafe{self.ops.get_unchecked_mut(op.id()) }
+                unsafe{self.ops.get_unchecked(op.id()).as_mut()}
             }
             pub fn new(path:&Path) -> Self {
                 let ops: [Metric; OPS.len()] =

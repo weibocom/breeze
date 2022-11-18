@@ -1,6 +1,7 @@
 //#![feature(map_first_last)]
 use std::collections::BTreeMap;
 
+use std::fmt::format;
 use std::{
     fs::File,
     io::{BufRead, BufReader},
@@ -31,6 +32,7 @@ fn crc32_short() {
     assert_eq!(h_point, 2642712869, "crc32-point hash");
 }
 
+#[allow(dead_code)]
 fn build_servers() -> Vec<String> {
     let shard_count = 8;
     let mut servers = Vec::with_capacity(shard_count);
@@ -39,6 +41,7 @@ fn build_servers() -> Vec<String> {
     }
     servers
 }
+#[allow(dead_code)]
 fn root_path() -> &'static str {
     "./records"
 }
@@ -163,6 +166,26 @@ fn shards_check() {
     md5(&key);
 }
 
+// #[test]
+// fn print_shards_check() {
+//     let shard_count = 4;
+//     let mut servers = Vec::with_capacity(shard_count);
+//     for i in 0..shard_count {
+//         servers.push(format!("192.168.0.{}", i).to_string());
+//     }
+//     let hasher = Hasher::from("crc32local");
+//     let dist = Distribute::from("modula", &servers);
+
+//     for i in 1..=20 {
+//         let key = format!("test_shards_{}", i);
+//         println!(
+//             "{}: shards {}",
+//             key,
+//             dist.index(hasher.hash(&key.as_bytes()))
+//         );
+//     }
+// }
+
 fn shard_check_with_files(path: String, hasher: &Hasher, dist: &Distribute) {
     shard_check_short_with_files(path.clone(), hasher, dist);
 
@@ -221,6 +244,7 @@ fn raw_hash() {
     assert_eq!(hash2, val1);
 }
 
+#[allow(dead_code)]
 fn bkdr_check(path: &str) {
     let file = File::open(path).unwrap();
     let mut reader = BufReader::new(file);
@@ -327,6 +351,7 @@ fn shard_check(path: &str, hasher: &Hasher, dist: &Distribute) {
     println!("check crc32 from file: {} completed!", path);
 }
 
+#[allow(dead_code)]
 fn consistent_check(path: &str) {
     let file = File::open(path).unwrap();
     let mut reader = BufReader::new(file);
@@ -377,12 +402,14 @@ fn consistent_check(path: &str) {
     println!("check consistent hash from file: {}", path);
 }
 
+#[allow(dead_code)]
 struct ConsistentHashInstance {
     consistent_map: BTreeMap<i64, usize>,
     shards: Vec<&'static str>,
 }
 
 impl ConsistentHashInstance {
+    #[allow(dead_code)]
     fn from(shards: Vec<&'static str>) -> Self {
         let mut consistent_map = BTreeMap::new();
         for idx in 0..shards.len() {
@@ -418,6 +445,7 @@ impl ConsistentHashInstance {
         }
     }
 
+    #[allow(dead_code)]
     fn get_hash_server(&self, key: &str) -> (i64, String) {
         // 一致性hash，选择hash环的第一个节点，不支持漂移，避免脏数据 fishermen
         let bk = Bkdr {};

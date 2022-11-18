@@ -7,7 +7,7 @@ pub struct Request {
 
 impl crate::Request for Request {
     #[inline]
-    fn start_at(&self) -> std::time::Instant {
+    fn start_at(&self) -> ds::time::Instant {
         self.ctx().start_at()
     }
 
@@ -91,10 +91,6 @@ impl Request {
     #[inline]
     pub fn new(ctx: *mut CallbackContext) -> Self {
         Self { ctx }
-    }
-    #[inline]
-    pub fn start(self) {
-        self.ctx().start()
     }
 
     #[inline]

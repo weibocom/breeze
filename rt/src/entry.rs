@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use ds::time::{Duration, Instant};
 
 use metrics::{Metric, Path};
 use std::task::ready;
@@ -27,14 +27,10 @@ pub trait ReEnter {
     // true: 成功关闭，释放相关资源
     // false: 还有资源未释放
     fn close(&mut self) -> bool;
-    //#[inline]
-    //fn need_refresh(&self) -> bool {
-    //    false
-    //}
-    #[inline]
-    fn refresh(&mut self) -> bool {
-        false
-    }
+    // 定期会调用，通常用来清理内存，更新数据等信息。
+    // 返回true: 表示期待进行下一次调用
+    // 返回false: 表示资源已经释放，不再需要调用。
+    fn refresh(&mut self) -> bool;
 }
 pub trait Cancel {
     fn cancel(&mut self);
@@ -65,7 +61,8 @@ pub struct Entry<F> {
     ready: bool,
     refresh_tick: Interval,
     out: Option<Result<()>>,
-    //runs: usize,
+    refresh_next: bool,
+    last_refresh: Instant,
 }
 impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
     #[inline]
@@ -73,7 +70,7 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
         let mut tick = interval(timeout.max(Duration::from_millis(50)));
         tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-        let mut refresh_tick = interval(Duration::from_secs(30));
+        let mut refresh_tick = interval(Duration::from_secs(9));
         refresh_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         let m_reenter = Path::base().rtt("reenter10ms");
@@ -87,18 +84,17 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
             ready: false,
             out: None,
             refresh_tick,
-            //runs: 0,
+            refresh_next: false,
+            last_refresh: Instant::now(),
         }
     }
     #[inline]
     fn poll_run(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let now = Instant::now();
-        //if self.inner.need_refresh() {
-        //    self.runs += 1;
-        //    if self.runs & 15 == 0 {
-        //        self.inner.refresh();
-        //    }
-        //}
+        if (now - self.last_refresh).as_secs() > 3 {
+            self.refresh_next = self.inner.refresh();
+            self.last_refresh = now;
+        }
 
         let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
         if tx > rx {
@@ -112,7 +108,8 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
         } else {
             self.last_rx = now;
         }
-        let ret = Pin::new(&mut self.inner).poll(cx);
+
+        let ret = Pin::new(&mut self.inner).poll(cx)?;
         let (tx_post, rx_post) = (self.inner.num_tx(), self.inner.num_rx());
         if tx_post > rx_post {
             self.last = Instant::now();
@@ -120,20 +117,17 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
             if rx_post > rx {
                 self.last_rx = self.last;
             }
-            loop {
-                ready!(self.tick.poll_tick(cx));
-            }
+            ready!(self.tick.poll_tick(cx));
+            self.tick.reset();
         } else {
-            //if self.inner.need_refresh() {
-            // 如果需要刷新，则不阻塞在原有的pending上
-            if self.inner.refresh() && ret.is_pending() {
-                loop {
+            if ret.is_pending() {
+                if self.refresh_next {
                     ready!(self.refresh_tick.poll_tick(cx));
+                    self.refresh_tick.reset();
                 }
             }
-            //}
-            ret
         }
+        ret.map(|r| Ok(r))
     }
 }
 

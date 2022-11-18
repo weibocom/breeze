@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use ds::{RingBuffer, RingSlice};
-    use std::time::{Duration, Instant};
+    use ds::time::{Duration, Instant};
 
     fn rnd_bytes(size: usize) -> Vec<u8> {
         let data: Vec<u8> = (0..size).map(|_| rand::random::<u8>()).collect();
@@ -64,7 +64,7 @@ mod tests {
         assert_eq!(buf.len(), 0);
 
         // 等待10ms。（默认是4ms）
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::thread::sleep(ds::time::Duration::from_millis(10));
         let buf = rrb.as_mut_bytes();
         assert_eq!(buf.len(), 1024);
         rrb.advance_write(1024);
@@ -76,7 +76,7 @@ mod tests {
         let ins = Instant::now();
         loop {
             rrb.advance_write(0);
-            std::thread::sleep(std::time::Duration::from_millis(3));
+            std::thread::sleep(ds::time::Duration::from_millis(3));
             if ins.elapsed() >= Duration::from_secs(70) {
                 break;
             }

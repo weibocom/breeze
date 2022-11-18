@@ -7,10 +7,19 @@ edition = "2021"
 
 [dependencies]
 log = { path = "../log" }
+minstant = "*"
 tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time"], default-features = false }
 
 byteorder = "1.4.3"
 rand = "0.8.4"
 atomic-waker = "*"
-#mimalloc = { version = "*", default-features = false }
 jemallocator = "*"
+cache-padded = "1.2.0"
+ctor = "*"
+
+[features]
+default = ["heap-stats"]
+heap-stats = []
+tsc = []
+trace = []
+

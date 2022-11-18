@@ -17,7 +17,7 @@ pub struct BackendBuilder<P, R> {
     _marker: std::marker::PhantomData<(P, R)>,
 }
 
-use std::time::Duration;
+use ds::time::Duration;
 impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
     fn build(
         addr: &str,

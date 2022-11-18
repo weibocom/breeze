@@ -53,7 +53,8 @@ impl GuardedBuffer {
     pub fn take(&mut self, n: usize) -> MemGuard {
         assert!(n > 0);
         assert!(self.taken + n <= self.writtened());
-        let guard = self.guards.push_back(AtomicU32::new(0));
+        let guard = unsafe { self.guards.push_back_mut() };
+        *guard.get_mut() = 0;
         let data = self.inner.slice(self.taken, n);
         self.taken += n;
         let ptr = guard as *const AtomicU32;
@@ -66,7 +67,7 @@ impl GuardedBuffer {
             if guard == 0 {
                 break;
             }
-            self.guards.pop_front();
+            unsafe { self.guards.forget_front() };
             self.inner.advance_read(guard as usize);
         }
     }
@@ -92,10 +93,10 @@ impl GuardedBuffer {
     fn offset(&self, oft: usize) -> usize {
         self.pending() + oft
     }
-    #[inline]
-    pub fn raw(&self) -> &[u8] {
-        self.inner.raw()
-    }
+    //#[inline]
+    //pub fn raw(&self) -> &[u8] {
+    //    self.inner.raw()
+    //}
 }
 use std::fmt::{self, Display, Formatter};
 impl Display for GuardedBuffer {
@@ -122,7 +123,7 @@ impl MemGuard {
         unsafe { assert_eq!((&*guard).load(Ordering::Acquire), 0) };
         Self {
             mem: data,
-            guard: guard,
+            guard,
             cap: 0,
         }
     }
