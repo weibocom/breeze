@@ -7,10 +7,23 @@ pub struct Flag {
     sentonly: bool,
     status_ok: bool,
     noforward: bool,
-    master_only: bool, // 是否只请求master？
     direct_hash: bool,
     nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
     v: u64,
+}
+
+impl std::ops::Deref for Flag {
+    type Target = u64;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.v
+    }
+}
+impl std::ops::DerefMut for Flag {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.v
+    }
 }
 
 impl Flag {
@@ -90,14 +103,6 @@ impl Flag {
     pub fn reset_flag(&mut self, op_code: OpCode, op: Operation) {
         self.op_code = op_code;
         self.op = op;
-    }
-    #[inline]
-    pub fn set_master_only(&mut self) {
-        self.master_only = true;
-    }
-    #[inline]
-    pub fn master_only(&self) -> bool {
-        self.master_only
     }
     #[inline]
     pub fn set_direct_hash(&mut self, direct_hash: bool) {

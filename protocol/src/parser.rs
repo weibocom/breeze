@@ -179,10 +179,6 @@ impl HashedCommand {
             log::warn!("should not update hash for non direct_hash!");
         }
     }
-    #[inline]
-    pub fn master_only(&self) -> bool {
-        self.cmd.master_only()
-    }
 }
 impl AsRef<Command> for HashedCommand {
     #[inline]
