@@ -171,6 +171,7 @@ where
             // 当前请求是第一个请求
             if !*start_init {
                 *start = ctx.start_at();
+                *start_init = true;
             }
             if !ctx.complete() {
                 break;
