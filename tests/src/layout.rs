@@ -7,7 +7,7 @@ use std::{
 use protocol::{callback::CallbackContext, Parser};
 use stream::{buffer::StreamGuard, Backend, Request};
 type Endpoint = Arc<Backend<Request>>;
-type Topology = endpoint::Topology<Builder, Endpoint, Request, Parser>;
+type Topology = endpoint::TopologyProtocol<Builder, Endpoint, Request, Parser>;
 //type RefreshTopology = endpoint::RefreshTopology<Topology>;
 
 type CheckedTopology = endpoint::CheckedTopology<Topology>;

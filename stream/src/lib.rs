@@ -1,10 +1,8 @@
 pub mod buffer;
 pub mod handler;
 pub mod pipeline;
-mod shards;
 pub use protocol::callback::*;
 pub use protocol::request::*;
-pub use shards::*;
 mod reconn;
 
 pub trait Read {

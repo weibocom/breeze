@@ -1,5 +1,5 @@
 use discovery::TopologyWrite;
-use protocol::{Builder, Protocol, Request, Resource};
+use protocol::{Protocol, Request, Resource};
 use std::{
     collections::HashSet,
     sync::{
@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use protocol::{Endpoint, Topology};
+use crate::{Builder, Endpoint, Topology};
 use sharding::hash::{Hasher, HASH_PADDING};
 
 use crate::msgque::strategy::hitfirst::Node;
@@ -132,7 +132,7 @@ where
 }
 
 //TODO: 验证的时候需要考虑512字节这种边界msg
-impl<B, E, Req, P> protocol::Endpoint for MsgQue<B, E, Req, P>
+impl<B, E, Req, P> Endpoint for MsgQue<B, E, Req, P>
 where
     B: Send + Sync,
     E: Endpoint<Item = Req>,

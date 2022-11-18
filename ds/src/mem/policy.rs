@@ -31,7 +31,7 @@ impl MemPolicy {
     }
     #[inline(always)]
     pub fn need_grow(&mut self, len: usize, cap: usize, reserve: usize) -> bool {
-        #[cfg(any(feature = "trace", feature = "debug"))]
+        #[cfg(any(feature = "trace", debug_assertions))]
         self.trace.trace_check(len, cap);
         log::debug!("need_grow: len={}, cap={}, reserve={}", len, cap, reserve);
         len + reserve > cap
@@ -41,7 +41,7 @@ impl MemPolicy {
         if self.check_max < len as u32 {
             self.check_max = len as u32;
         }
-        #[cfg(any(feature = "trace", feature = "debug"))]
+        #[cfg(any(feature = "trace", debug_assertions))]
         self.trace.trace_check(len, _cap);
     }
     // 每个周期（60秒）检查一次，是否满足max * 4 <= cap.
@@ -56,7 +56,7 @@ impl MemPolicy {
                     self.continues.on_tick(self.check_max);
                 } else {
                     self.continues.reset();
-                    #[cfg(any(feature = "trace", feature = "debug"))]
+                    #[cfg(any(feature = "trace", debug_assertions))]
                     self.trace.trace_reset();
                 }
                 // 重新开始一个周期
@@ -82,7 +82,7 @@ impl MemPolicy {
             log::info!("grow: {} {} > {} => {} {}", len, reserve, cap, new, self);
         }
         self.continues.reset();
-        #[cfg(feature = "trace")]
+        #[cfg(any(feature = "trace", debug_assertions))]
         self.trace.trace_reset();
         new
     }
@@ -95,7 +95,7 @@ impl MemPolicy {
         assert!(new >= len);
         self.continues.reset();
 
-        #[cfg(feature = "trace")]
+        #[cfg(any(feature = "trace", debug_assertions))]
         self.trace.trace_reset();
         new
     }

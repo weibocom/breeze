@@ -1,13 +1,13 @@
-use protocol::Endpoint;
+use crate::Endpoint;
 use sharding::distribution::Distribute;
 
 #[derive(Clone)]
-pub struct Shards<E, Req> {
+pub(crate) struct Shards<E, Req> {
     router: Distribute,
     backends: Vec<(E, String)>,
     _mark: std::marker::PhantomData<Req>,
 }
-impl<E, Req> protocol::Endpoint for Shards<E, Req>
+impl<E, Req> Endpoint for Shards<E, Req>
 where
     E: Endpoint<Item = Req>,
     Req: protocol::Request,

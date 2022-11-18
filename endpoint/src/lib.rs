@@ -1,3 +1,4 @@
+mod shards;
 mod topo;
 pub use topo::*;
 
@@ -32,3 +33,8 @@ impl TimeoutAdjust for Duration {
         }
     }
 }
+
+// pub trait Builder {
+//     type Endpoint: crate::Endpoint;
+//     fn build(&self) -> Self::Endpoint;
+// }

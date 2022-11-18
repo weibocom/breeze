@@ -1,12 +1,13 @@
+use crate::{Builder, Endpoint, Single, Topology};
 use discovery::TopologyWrite;
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology, TryNextType};
+use ds::time::Duration;
+use protocol::{Protocol, Request, Resource, TryNextType};
 use sharding::hash::Hasher;
 use sharding::Distance;
 use std::collections::HashMap;
-use ds::time::Duration;
 
+use crate::shards::Shards;
 use crate::TimeoutAdjust;
-use stream::Shards;
 
 #[derive(Clone)]
 pub struct CacheService<B, E, Req, P> {
@@ -66,7 +67,7 @@ where
     }
 }
 
-impl<B: Send + Sync, E, Req, P> protocol::Endpoint for CacheService<B, E, Req, P>
+impl<B: Send + Sync, E, Req, P> Endpoint for CacheService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,

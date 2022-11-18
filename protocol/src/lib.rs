@@ -10,12 +10,9 @@ pub mod req;
 //pub mod resp;
 pub mod msgque;
 
-mod topo;
-
 pub use flag::*;
 pub use parser::Proto as Protocol;
 pub use parser::*;
-pub use topo::*;
 
 mod write;
 pub use write::*;
@@ -47,12 +44,6 @@ impl Resource {
     }
 }
 
-use ds::time::Duration;
-pub trait Builder<P, R, E> {
-    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Duration) -> E
-    where
-        E: Endpoint<Item = R>;
-}
 mod error;
 pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
