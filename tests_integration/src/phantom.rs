@@ -38,7 +38,6 @@ fn test_bad_key_bfset() {
 
     let rs = cmd("bfset").arg("9").query::<i64>(&mut con);
     assert_eq!(rs, Ok(-1)); // 最小越界
-
 }
 
 // 正常key bfset 测试
@@ -107,4 +106,31 @@ fn test_bfmset() {
         .arg(key3)
         .query::<Vec<i64>>(&mut con);
     assert_eq!(rs, Ok(vec![1, 1, 1]));
+}
+
+// 后端的变化及实效性
+//
+// 保持原有配置不变，set 固定值，key会写入固定分片A
+// 更新配置:将 backends 列表进行更新
+// 等待15s(配置更新时长)， 配置更新完成后
+//
+// 配置如果更新成功，GET 固定key，value = 0, 表示后端backends 更新成功
+
+#[test]
+fn test_config_change_watched() {
+    let fixed_key = "100";
+    let mut con = get_conn(&file!().get_host());
+    // 初始 key:100 会分片到idx：0 分片
+    let _rs_set = cmd("bfset").arg(fixed_key).query::<i64>(&mut con);
+    let rs_get = cmd("bfget").arg(fixed_key).query::<i64>(&mut con);
+    assert!(rs_get.unwrap() > 0);
+
+    // mesh 启动 updating config tick_sec 默认15s ， 也就是sleep 16s ,相关元数据更新完毕
+    std::thread::sleep(std::time::Duration::from_secs(20));
+
+    // TODO 临时更新phantom 配置
+
+    let rs_get = cmd("bfget").arg(fixed_key).query::<i64>(&mut con);
+
+    assert_eq!(rs_get.unwrap(), 0);
 }
