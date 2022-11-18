@@ -25,10 +25,10 @@ impl RingSlice {
         }
     }
 
-    #[inline]
-    pub fn capacity(&self) -> usize {
-        self.cap
-    }
+    //#[inline]
+    //pub fn capacity(&self) -> usize {
+    //    self.cap
+    //}
 
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
