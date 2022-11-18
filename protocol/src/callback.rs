@@ -1,6 +1,6 @@
+use ds::time::Instant;
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::time::Instant;
 
 use ds::AtomicWaker;
 
@@ -27,15 +27,21 @@ impl Callback {
     }
 }
 
+// 在同步调用中设置waker
+// 在异步调用中设置on_drop
+union WakerDrop {
+    waker: *const AtomicWaker,
+    async_pending: *const AtomicUsize,
+}
+
 pub struct CallbackContext {
     pub(crate) ctx: Context,
     request: HashedCommand,
     response: MaybeUninit<Command>,
-    waker: *const AtomicWaker,
     callback: CallbackPtr,
-    start: Instant,
-    tries: usize,
-    on_drop: *const AtomicUsize,
+    start: Instant, // 请求的开始时间
+    tries: u8,
+    atomic: WakerDrop,
 }
 
 impl CallbackContext {
@@ -46,7 +52,6 @@ impl CallbackContext {
         cb: CallbackPtr,
         first: bool,
         last: bool,
-        on_drop: &AtomicUsize,
     ) -> Self {
         let mut ctx = Context::default();
         ctx.first = first;
@@ -54,13 +59,12 @@ impl CallbackContext {
         log::debug!("request prepared:{}", req);
         Self {
             ctx,
-            waker: waker as *const _,
             request: req,
             response: MaybeUninit::uninit(),
             callback: cb,
             start: Instant::now(),
             tries: 0,
-            on_drop,
+            atomic: WakerDrop { waker },
         }
     }
     #[inline]
@@ -89,7 +93,7 @@ impl CallbackContext {
     pub fn on_complete(&mut self, resp: Command) {
         log::debug!("on-complete:{} resp:{}", self, resp);
         // 异步请求不关注response。
-        if !self.is_in_async_write_back() {
+        if !self.ctx.async_mode {
             self.tries += 1;
             assert!(
                 !self.complete(),
@@ -110,18 +114,19 @@ impl CallbackContext {
         if self.need_goon() {
             return self.goon();
         }
-        if !self.ctx.drop_on_done() {
+        if !self.ctx.async_mode {
             // 说明有请求在pending
             assert!(!self.complete(), "req:{:?}", self.request().data());
             self.ctx.complete.store(true, Ordering::Release);
-            self.wake();
+            unsafe { (&*self.atomic.waker).wake() }
         } else {
+            // async_mode需要手动释放
             self.manual_drop();
         }
     }
     #[inline]
     fn need_goon(&self) -> bool {
-        if !self.is_in_async_write_back() {
+        if !self.ctx.async_mode {
             // 正常访问请求。
             // old: 除非出现了error，否则最多只尝试一次;
             // 为了提升mcq的读写效率，tries改为3次
@@ -161,10 +166,6 @@ impl CallbackContext {
     pub fn request_mut(&mut self) -> &mut HashedCommand {
         &mut self.request
     }
-    #[inline]
-    pub fn with_request(&mut self, new: HashedCommand) {
-        self.request = new;
-    }
     // 在使用前，先得判断inited
     #[inline]
     pub unsafe fn unchecked_response(&self) -> &Command {
@@ -184,22 +185,8 @@ impl CallbackContext {
         self.ctx.write_back
     }
     #[inline]
-    fn wake(&self) {
-        unsafe { (&*self.waker).wake() }
-    }
-    #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut Self {
         self as *mut _
-    }
-    #[inline]
-    pub fn start(&mut self) {
-        log::debug!("request started:{}", self);
-        if self.request().noforward() {
-            // 不需要转发，直接结束。response没有初始化，在write_response里面处理。
-            self.on_done();
-        } else {
-            self.send();
-        }
     }
     #[inline]
     pub fn send(&mut self) {
@@ -218,10 +205,6 @@ impl CallbackContext {
     #[inline]
     pub fn as_mut_context(&mut self) -> &mut Context {
         &mut self.ctx
-    }
-    #[inline]
-    fn is_in_async_write_back(&self) -> bool {
-        self.ctx.drop_on_done()
     }
     #[inline]
     fn try_drop_response(&mut self) {
@@ -246,6 +229,22 @@ impl CallbackContext {
     fn manual_drop(&mut self) {
         unsafe { Box::from_raw(self) };
     }
+    //需要在on_done时主动销毁self对象
+    #[inline]
+    pub fn async_write_back<P: crate::Protocol>(mut self, parser: &P, async_pending: &AtomicUsize) {
+        assert!(self.inited() && self.complete(), "cbptr:{:?}", self);
+        self.ctx.async_mode = true;
+        self.atomic.async_pending = async_pending;
+        let exp = self.callback.exp_sec();
+        if let Some(new) = parser.build_writeback_request(&mut self, exp) {
+            self.request = new;
+        }
+        log::debug!("start write back:{}", self);
+        self.try_drop_response();
+
+        let ptr: CallbackContextPtr = self.into();
+        unsafe { (&mut *ptr.ptr).goon() };
+    }
 }
 
 impl Drop for CallbackContext {
@@ -253,8 +252,8 @@ impl Drop for CallbackContext {
     fn drop(&mut self) {
         assert!(self.complete());
         self.try_drop_response();
-        unsafe {
-            (&*self.on_drop).fetch_add(1, Ordering::AcqRel);
+        if self.ctx.async_mode {
+            unsafe { (&*self.atomic.async_pending).fetch_sub(1, Ordering::AcqRel) };
         }
     }
 }
@@ -263,13 +262,14 @@ unsafe impl Send for CallbackContext {}
 unsafe impl Sync for CallbackContext {}
 #[derive(Default)]
 pub struct Context {
-    complete: AtomicBool,     // 当前请求是否完成
-    drop_on_done: AtomicBool, // on_done时，是否手工销毁
-    inited: AtomicBool,       // response是否已经初始化
-    try_next: bool,           // 请求失败是否需要重试
-    write_back: bool,         // 请求结束后，是否需要回写。
-    first: bool,              // 当前请求是否是所有子请求的第一个
-    last: bool,               // 当前请求是否是所有子请求的最后一个
+    complete: AtomicBool, // 当前请求是否完成
+    inited: AtomicBool,   // response是否已经初始化
+    async_mode: bool,     // 是否是异步请求
+    try_next: bool,       // 请求失败是否需要重试
+    write_back: bool,     // 请求结束后，是否需要回写。
+    first: bool,          // 当前请求是否是所有子请求的第一个
+    last: bool,           // 当前请求是否是所有子请求的最后一个
+    _padding: bool,
     flag: crate::Context,
 }
 
@@ -293,10 +293,6 @@ impl Context {
     #[inline]
     pub fn is_inited(&self) -> bool {
         self.inited.load(Ordering::Acquire)
-    }
-    #[inline]
-    fn drop_on_done(&self) -> bool {
-        self.drop_on_done.load(Ordering::Acquire)
     }
 }
 
@@ -322,7 +318,7 @@ impl Display for Context {
             "complete:{} init:{},async :{} try:{} write back:{}  context:{}",
             self.complete.load(Ordering::Acquire),
             self.is_inited(),
-            self.drop_on_done(),
+            self.async_mode,
             self.try_next,
             self.write_back,
             self.flag,
@@ -339,25 +335,12 @@ impl CallbackContextPtr {
     pub fn build_request(&mut self) -> Request {
         Request::new(self.ptr)
     }
-    //需要在on_done时主动销毁self对象
+}
+
+impl Into<CallbackContext> for CallbackContextPtr {
     #[inline]
-    pub fn async_start_write_back<P: crate::Protocol>(mut self, parser: &P) {
-        assert!(self.inited(), "cbptr:{:?}", &*self);
-        assert!(self.complete(), "cbptr:{:?}", &*self);
-        if self.is_write_back() && self.response_ok() {
-            let exp = self.callback.exp_sec();
-            if let Some(new) = parser.build_writeback_request(&mut self, exp) {
-                self.with_request(new);
-            }
-            // 还会有异步请求，内存释放交给异步操作完成后的on_done来处理
-            self.ctx.drop_on_done.store(true, Ordering::Release);
-            log::debug!("start write back:{}", &*self);
-            let ctx = self.ptr;
-            // 必须要提前drop，否则可能会因为continute在drop(self)之前完成，导致在on_done中释放context，
-            // 此时，此时内存被重置，导致drop_one_done为false，在drop(self)时，再次释放context
-            drop(self);
-            unsafe { (&mut *ctx).goon() };
-        }
+    fn into(self) -> CallbackContext {
+        unsafe { *Box::from_raw(self.ptr) }
     }
 }
 
@@ -369,16 +352,7 @@ impl From<CallbackContext> for CallbackContextPtr {
     }
 }
 
-impl Drop for CallbackContextPtr {
-    #[inline]
-    fn drop(&mut self) {
-        // 如果ignore为true，说明当前内存手工释放
-        if !self.ctx.drop_on_done() {
-            self.manual_drop();
-        }
-    }
-}
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 impl Deref for CallbackContextPtr {
     type Target = CallbackContext;
     #[inline]
@@ -386,12 +360,12 @@ impl Deref for CallbackContextPtr {
         unsafe { &*self.ptr }
     }
 }
-impl DerefMut for CallbackContextPtr {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.ptr }
-    }
-}
+//impl DerefMut for CallbackContextPtr {
+//    #[inline]
+//    fn deref_mut(&mut self) -> &mut Self::Target {
+//        unsafe { &mut *self.ptr }
+//    }
+//}
 unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 unsafe impl Send for CallbackPtr {}
@@ -419,7 +393,7 @@ impl From<&Callback> for CallbackPtr {
     }
 }
 
-impl crate::Commander for CallbackContextPtr {
+impl crate::Commander for CallbackContext {
     #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
         &mut self.request

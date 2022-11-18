@@ -7,7 +7,7 @@ const CRLF_LEN: usize = b"\r\n".len();
 // 必须是u64长度的。
 #[repr(C)]
 #[derive(Debug)]
-struct RequestContext {
+pub struct RequestContext {
     bulk: u16,
     op_code: u16,
     first: bool, // 在multi-get请求中是否是第一个请求。

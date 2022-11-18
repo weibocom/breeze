@@ -414,3 +414,6 @@ fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
 fn default_hash() -> i64 {
     AUTO.fetch_add(1, Ordering::Relaxed)
 }
+
+// tests only
+pub use packet::RequestContext;

@@ -7,7 +7,7 @@ pub mod phantomservice;
 pub mod redisservice;
 
 mod refresh;
-pub use refresh::RefreshTopology;
+pub use refresh::{CheckedTopology, RefreshTopology};
 
 // 不同资源默认的超时时间
 const TO_PHANTOM_M: Duration = Duration::from_millis(500);
@@ -24,7 +24,7 @@ trait TimeoutAdjust: Sized {
     }
 }
 
-use std::time::Duration;
+use ds::time::Duration;
 impl TimeoutAdjust for Duration {
     fn adjust(&mut self, ms: u32) {
         if ms > 0 {

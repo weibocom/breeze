@@ -102,6 +102,10 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
 
 impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     #[inline]
+    fn cap(&self) -> usize {
+        self.buf.capacity()
+    }
+    #[inline]
     fn pending(&self) -> usize {
         self.buf.len()
     }
@@ -124,6 +128,16 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
             self.write_to_buf = hint;
         }
     }
+    #[inline]
+    fn shrink(&mut self) {
+        if self.policy.need_shrink(self.buf.len(), self.buf.capacity()) {
+            let old = self.buf.capacity();
+            let new = self.policy.shrink(self.buf.len(), old);
+            self.buf.shrink_to(new);
+            assert_eq!(new, self.buf.capacity(), "{}/{}", new, self.buf.capacity());
+            self.buf_tx -= (old - new) as isize;
+        }
+    }
 }
 impl<S> Stream<S> {
     #[inline(always)]
@@ -143,13 +157,9 @@ impl<S> Stream<S> {
     // 所有数据flush完了之后，尝试进行缩容
     #[inline]
     fn clear(&mut self) {
-        if self.policy.need_shrink(self.buf.len(), self.buf.capacity()) {
-            let old = self.buf.capacity();
-            let new = self.policy.shrink(self.buf.len(), old);
-            self.buf.shrink_to(new);
-            assert_eq!(new, self.buf.capacity(), "{}/{}", new, self.buf.capacity());
-            self.buf_tx -= (old - new) as isize;
-        }
+        self.policy
+            .check_shrink(self.buf.len(), self.buf.capacity());
+
         self.idx = 0;
         unsafe { self.buf.set_len(0) };
     }

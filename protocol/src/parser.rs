@@ -92,6 +92,7 @@ pub trait Stream {
     fn context(&mut self) -> &mut u64;
     // 用于保存下一个cmd需要使用的hash
     fn reserved_hash(&mut self) -> &mut i64;
+    fn reserve(&mut self, r: usize);
 }
 
 pub trait Builder {

@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Display};
-use std::time::Instant;
+use ds::time::Instant;
 
 use ds::RingSlice;
 
