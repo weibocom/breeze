@@ -1,3 +1,4 @@
+use ds::time::{Duration, Instant};
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
@@ -9,12 +10,9 @@ use std::task::{ready, Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use ds::{
-    time::{Duration, Instant},
-    AtomicWaker,
-};
+use ds::AtomicWaker;
 use endpoint::{Topology, TopologyCheck};
-use protocol::{Commander, HashedCommand, Protocol, Result, Stream, Writer};
+use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::buffer::{Reader, StreamGuard};
 use crate::{Callback, CallbackContext, CallbackContextPtr, Request, StreamMetrics};
@@ -145,6 +143,7 @@ where
             pending,
             waker,
             top,
+            // parser,
             cb,
             first,
         };
@@ -155,7 +154,8 @@ where
     #[inline]
     fn process_pending(&mut self) -> Result<()> {
         let Self {
-            top,
+            // 修改处理流程后，不再用pedding
+            // top,
             client,
             pending,
             parser,
@@ -171,6 +171,7 @@ where
             // 当前请求是第一个请求
             if !*start_init {
                 *start = ctx.start_at();
+                *start_init = true;
             }
             if !ctx.complete() {
                 break;
@@ -186,30 +187,26 @@ where
                 *metrics.cache() += ctx.response_ok();
             }
 
-            if ctx.inited() && !ctx.request().ignore_rsp() {
-                let nil_convert = parser.write_response(&mut ctx, client)?;
-                if nil_convert > 0 {
-                    *metrics.nilconvert() += nil_convert;
-                }
-                if ctx.is_write_back() && ctx.response_ok() {
-                    self.async_pending.fetch_add(1, AcqRel);
-                    ctx.async_write_back(parser, &self.async_pending);
-                }
-            } else if ctx.request().ignore_rsp() {
-                // do nothing!
-                log::debug!("+++ ignore resp:{:?}=>{:?}", ctx.request(), ctx.response())
-            } else {
-                let req = ctx.request();
-                if !req.noforward() {
-                    *metrics.noresponse() += 1;
-                }
+            // 流程调整后，所有request都必须有response，异常请求、noforward请求，放在这里统一构建rsp fishermen
+            if !ctx.inited() {
+                let local_resp =
+                    parser.build_local_response(ctx.request(), |hash| self.top.shard_idx(hash));
+                ctx.adapt_local_response(local_resp);
+            }
 
-                // 传入top，某些指令需要
-                let nil_convert =
-                    parser.write_no_response(req, client, |hash| top.shard_idx(hash))?;
-                if nil_convert > 0 {
-                    *metrics.nilconvert() += nil_convert;
-                }
+            // 至此，所有req都有response，统一处理
+            assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
+            parser.write_response(&mut ctx, client)?;
+
+            //TODO 部分请求的nil convert发生在write_response，待鑫鑫完成修改，这个统计后续也改到write_response中 fishermen 2022.11.17
+            if ctx.response_nil_converted() {
+                *metrics.nilconvert() += 1;
+            }
+
+            // 如果需要回写，且response正确，则进行回写
+            if ctx.is_write_back() && ctx.response_ok() {
+                self.async_pending.fetch_add(1, AcqRel);
+                ctx.async_write_back(parser, &self.async_pending);
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，
@@ -233,14 +230,19 @@ where
     }
 }
 
+// struct Visitor<'a, P, T> {
 struct Visitor<'a, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
     cb: &'a Callback,
     top: &'a T,
+    // parser: &'a P,
     first: &'a mut bool,
 }
 
+// impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
+// where
+//     P: Protocol + Unpin,
 impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
@@ -251,9 +253,12 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         let cb = self.cb.into();
         let mut ctx: CallbackContextPtr =
             CallbackContext::new(cmd, &self.waker, cb, first, last).into();
+
+        // pendding 会move走ctx，所以提前把req给封装好
         let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
         use protocol::req::Request as RequestTrait;
+
         if req.cmd().noforward() {
             req.on_noforward();
         } else {

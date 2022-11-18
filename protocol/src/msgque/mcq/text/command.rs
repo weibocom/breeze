@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use sharding::hash::{Bkdr, Hash, UppercaseHashKey};
 
-use crate::{OpCode, Operation};
+use crate::{Command, OpCode, Operation};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CommandProperties {
@@ -13,6 +13,7 @@ pub(crate) struct CommandProperties {
     padding_rsp: u8,
     noforward: bool,
     supported: bool,
+    pub(super) quit: bool, // 是否需要quit掉连接
 }
 
 impl CommandProperties {
@@ -32,14 +33,20 @@ impl CommandProperties {
     pub fn req_type(&self) -> &RequestType {
         &self.req_type
     }
-    #[inline]
-    pub fn padding_rsp(&self) -> &str {
-        assert!(
-            (self.padding_rsp as usize) < PADDING_RSP_TABLE.len(),
-            "padding rsp: {}",
-            self.padding_rsp
-        );
-        PADDING_RSP_TABLE.get(self.padding_rsp as usize).unwrap()
+
+    // 构建一个padding rsp，用于返回默认响应或server不可用响应
+    // 格式类似：1 VERSION 0.0.1\r\n ;
+    //          2 SERVER_ERROR mcq not available\r\n
+    #[inline(always)]
+    pub(super) fn build_padding_rsp(&self) -> Command {
+        let padding_idx = self.padding_rsp as usize;
+        // 注意：quit的padding rsp为0
+        let padding_rsp = *PADDING_RSP_TABLE
+            .get(padding_idx)
+            .expect(format!("cmd:{}/{}", self.name, padding_idx).as_str());
+        let mut rsp = Command::from_vec(Vec::from(padding_rsp));
+        rsp.set_status_ok(self.op.is_meta());
+        rsp
     }
 }
 
@@ -53,6 +60,7 @@ impl Default for CommandProperties {
             padding_rsp: Default::default(),
             noforward: Default::default(),
             supported: Default::default(),
+            quit: false,
         }
     }
 }
@@ -118,6 +126,7 @@ impl Commands {
         // cmd 不能重复初始化
         assert!(!self.supported[idx].supported);
 
+        let quit = uppercase.eq("QUIT");
         self.supported[idx] = CommandProperties {
             name,
             req_type,
@@ -126,6 +135,7 @@ impl Commands {
             padding_rsp,
             noforward,
             supported: true,
+            quit,
         };
     }
 }

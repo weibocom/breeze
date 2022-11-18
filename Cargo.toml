@@ -25,7 +25,7 @@ inherits = "release"
 [profile.release]
 panic = "abort"
 overflow-checks = false
-debug = true
+debug = false
 codegen-units = 1
 lto = "fat"
 opt-level = 3

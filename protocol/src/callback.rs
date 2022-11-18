@@ -5,7 +5,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use ds::AtomicWaker;
 
 use crate::request::Request;
-use crate::{Command, Error, HashedCommand};
+use crate::{Command, Error, HashedCommand, TryNextType};
+
+const REQ_TRY_MAX_COUNT: u8 = 3;
 
 pub struct Callback {
     exp_sec: Box<dyn Fn() -> u32>,
@@ -67,6 +69,7 @@ impl CallbackContext {
             atomic: WakerDrop { waker },
         }
     }
+
     #[inline]
     pub(crate) fn on_noforward(&mut self) {
         assert!(
@@ -74,7 +77,11 @@ impl CallbackContext {
             "req: {:?}",
             self.request().data()
         );
-        self.on_done();
+
+        // 对noforward请求，只需要设置complete状态为true，不需要wake及其他逻辑
+        // self.on_done();
+        assert!(!self.complete(), "req:{:?}", self.request().data());
+        self.ctx.complete.store(true, Ordering::Release);
     }
 
     // 返回true: 表示发送完之后还未结束
@@ -108,6 +115,31 @@ impl CallbackContext {
         }
         self.on_done();
     }
+
+    // 对无响应请求，适配一个本地构建response，方便后续进行统一的响应处理
+    #[inline]
+    pub fn adapt_local_response(&mut self, local_resp: Command) {
+        // 构建本地response，说明请求肯定不是异步回写，即async_mode肯定为false
+        assert!(
+            !self.ctx.async_mode,
+            "should sync, req:{:?}, rsp:{:?}",
+            self.request(),
+            local_resp
+        );
+        log::debug!("+++ on-local-complete:{}, rsp:{:?}", self, local_resp);
+
+        // 首先尝试清理之前的老response
+        self.try_drop_response();
+        self.response.write(local_resp);
+        self.ctx.inited.store(true, Ordering::Release);
+
+        // 重置request的try next 及 write-back标志，统统不需要回写和重试
+        self.request.set_try_next_type(TryNextType::NotTryNext);
+        self.ctx.try_next(false);
+        self.ctx.write_back(false);
+    }
+
+    // 只有在构建了response，该request才可以设置completed为true
     #[inline]
     fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
@@ -124,26 +156,32 @@ impl CallbackContext {
             self.manual_drop();
         }
     }
+
     #[inline]
     fn need_goon(&self) -> bool {
         if !self.ctx.async_mode {
             // 正常访问请求。
             // old: 除非出现了error，否则最多只尝试一次;
             // 为了提升mcq的读写效率，tries改为3次
-            self.ctx.try_next && !self.response_ok() && self.tries < 3
+            self.ctx.try_next && !self.response_ok() && self.tries < REQ_TRY_MAX_COUNT
         } else {
             // write back请求
             self.ctx.write_back
         }
     }
+
     #[inline]
     pub fn response_ok(&self) -> bool {
         unsafe { self.inited() && self.unchecked_response().ok() }
     }
     #[inline]
+    pub fn response_nil_converted(&self) -> bool {
+        unsafe { self.inited() && self.unchecked_response().nil_converted() }
+    }
+    #[inline]
     pub fn on_err(&mut self, err: Error) {
         // 正常err场景，仅仅在debug时check
-        log::debug!("++++  hanle found err: {:?}", err);
+        log::debug!("+++ found err: {:?}", err);
         match err {
             Error::Closed => {}
             Error::ChanDisabled => {}
