@@ -102,6 +102,7 @@ where
         );
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
+        use protocol::RedisFlager;
         // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
         if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(
@@ -109,13 +110,13 @@ where
                 self.service,
                 req.hash(),
                 shard_idx,
-                req.master_only(),
+                req.cmd().master_only(),
                 req.data(),
             )
         }
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
-        if shard.has_slave() && !req.operation().is_store() && !req.master_only() {
+        if shard.has_slave() && !req.operation().is_store() && !req.cmd().master_only() {
             let ctx = super::transmute(req.context_mut());
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()

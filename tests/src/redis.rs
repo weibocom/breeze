@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod redis_test {
     use std::collections::{HashMap, HashSet};
+
+    use ds::MemGuard;
+    use protocol::Flag;
     #[test]
     fn test_hosts_eq() {
         let hosts1 = create_hosts();
@@ -35,5 +38,14 @@ mod redis_test {
             println!("{}:{}", p, key.as_bytes()[p] as char);
         }
         println!("\r\nhash find test ok!");
+    }
+
+    #[test]
+    fn redis_flag() {
+        use protocol::{HashedCommand, RedisFlager};
+        let mut cmd = HashedCommand::new(MemGuard::from_vec(vec![1u8]), 1, Flag::new());
+        assert!(!cmd.master_only());
+        cmd.set_master_only();
+        assert!(cmd.master_only());
     }
 }

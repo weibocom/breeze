@@ -71,9 +71,6 @@ impl crate::Request for Request {
     fn mut_context(&mut self) -> &mut Context {
         self.ctx().ctx.as_mut_flag()
     }
-    fn master_only(&self) -> bool {
-        self.req().master_only()
-    }
     #[inline]
     fn write_back(&mut self, wb: bool) {
         self.ctx().ctx.write_back(wb);

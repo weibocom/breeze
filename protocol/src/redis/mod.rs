@@ -1,6 +1,7 @@
 mod command;
 mod error;
 mod flag;
+pub use flag::RedisFlager;
 mod packet;
 //mod token;
 
@@ -15,7 +16,6 @@ use crate::{
 };
 use ds::RingSlice;
 use error::*;
-use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
 
