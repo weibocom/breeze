@@ -62,8 +62,8 @@ fn check_layout() {
 
     assert_eq!(272, size_of::<stream::StreamMetrics>());
 
-    assert_eq!((456, 712).select(), size_of::<CopyBidirectional>());
-    assert_eq!((608, 888).select(), size_of::<Entry<CopyBidirectional>>());
+    assert_eq!((456, 720).select(), size_of::<CopyBidirectional>());
+    assert_eq!((608, 896).select(), size_of::<Entry<CopyBidirectional>>());
 }
 
 trait Select {
