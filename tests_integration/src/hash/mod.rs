@@ -8,11 +8,13 @@ use std::{
 mod bkdr;
 mod crc32;
 mod crc32local;
-mod padding;
-mod random;
+
 mod raw;
 mod rawcrc32local;
-mod rawsuffix;
+
+//TODO rawsuffix hash
+//mod rawsuffix;
+//mod random;
 
 fn shard_check(path: &str, hasher: &Hasher, dist: &Distribute) {
     println!("will check file: {}", path);
@@ -32,13 +34,22 @@ fn shard_check(path: &str, hasher: &Hasher, dist: &Distribute) {
                 }
 
                 let props = line.split(" ").collect::<Vec<&str>>();
-                assert!(props.len() == 2);
+                assert!(props.len() == 3);
                 let key = props[0].trim();
-                let idx_in_java = props[1].trim();
+                let hash_in_java = props[1].trim();
+                let idx_in_java = props[2].trim();
 
                 let h = hasher.hash(&key.as_bytes());
+                let hash_in_java_u64 = hash_in_java.parse::<i64>().unwrap();
                 let idx = dist.index(h) as i64;
                 let idx_in_java_u64 = idx_in_java.parse::<i64>().unwrap();
+                if h != hash_in_java_u64 {
+                    println!(
+                        "{:?} found error - line in java: {}, rust hash: {}",
+                        hasher, line, h
+                    );
+                    panic!("crc32 check error");
+                }
                 if idx != idx_in_java_u64 {
                     println!(
                         "{:?} found error - line in java: {}, rust idx: {}",

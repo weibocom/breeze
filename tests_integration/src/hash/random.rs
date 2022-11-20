@@ -5,13 +5,10 @@ use sharding::hash::Hasher;
 const DISTS: [&str; 0] = [
     //"consistent",
     //"modrange",
-    //"consistent",
-    //"modrange",
     //"modula",
-    //"padding",
     //"range",
     //"slotmod",
-    //"splitmo",
+    //"splitmod",
 ];
 
 const HASHES: [&str; 1] = ["random"];
