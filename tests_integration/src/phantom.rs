@@ -1,8 +1,9 @@
 use crate::ci::env::*;
 use crate::redis_helper::*;
 use redis::cmd;
+use std::process::Command;
 use std::time::SystemTime;
-
+const SHELL_PATH: &str = "./src/shell/phantom.sh";
 /// # Phantom 简单介绍
 ///
 /// Phantom 存在性判断的缓存，采用BloomFilter实现。用于存储用户的访问记录
@@ -125,12 +126,28 @@ fn test_config_change_watched() {
     let rs_get = cmd("bfget").arg(fixed_key).query::<i64>(&mut con);
     assert!(rs_get.unwrap() > 0);
 
-    // mesh 启动 updating config tick_sec 默认15s ， 也就是sleep 16s ,相关元数据更新完毕
-    std::thread::sleep(std::time::Duration::from_secs(20));
-
     // TODO 临时更新phantom 配置
+    let remote_ip = std::env::var("remote_ip").unwrap_or_default();
+    assert!(remote_ip.len() > 0);
 
+    let cmd_str = SHELL_PATH.to_string();
+    let _exec = Command::new(cmd_str.clone())
+        .arg(remote_ip.clone())
+        .arg("backend_changed")
+        .output()
+        .expect("sh exec backend_changed error!");
+
+    println!("after:exec:{:?}", _exec);
+
+    // mesh 启动 updating config tick_sec 默认15s ，sleep 16s ,相关元数据变更watch完毕
+    std::thread::sleep(std::time::Duration::from_secs(16));
+
+    // 因后端变更变更 初始key写入的分片已经理论上不存在，
     let rs_get = cmd("bfget").arg(fixed_key).query::<i64>(&mut con);
-
-    assert_eq!(rs_get.unwrap(), 0);
+    //assert_eq!(rs_get.unwrap(), 0);
+    let _exec = Command::new(cmd_str.clone())
+        .arg(remote_ip.clone())
+        .arg("recover")
+        .output()
+        .expect("sh exec recover error!");
 }
