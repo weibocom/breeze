@@ -64,8 +64,10 @@ impl Host {
     }
     fn snapshot_base<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64) {
         use super::base::*;
-        w.write(BASE_PATH, "mem_buf_tx", "num", BUF_TX.load(Relaxed));
-        w.write(BASE_PATH, "mem_buf_rx", "num", BUF_RX.load(Relaxed));
+        w.write(BASE_PATH, "mem_buf_tx", "num", BUF_TX.get());
+        w.write(BASE_PATH, "mem_buf_rx", "num", BUF_RX.get());
+
+        w.write(BASE_PATH, "leak_conn", "num", LEAKED_CONN.take());
 
         self.qps(w, secs, &P_W_CACHE, "poll_write_cache");
         self.qps(w, secs, &POLL_READ, "poll_read");
@@ -74,11 +76,10 @@ impl Host {
         self.qps(w, secs, &POLL_PENDING_W, "w_pending");
         self.qps(w, secs, &REENTER_10MS, "reenter10ms");
     }
+    #[inline]
     fn qps<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64, m: &AtomicI64, key: &str) {
-        let v = m.load(Relaxed);
-        let qps = v as f64 / secs;
-        w.write(BASE_PATH, key, "qps", qps);
-        m.fetch_sub(v, Relaxed);
+        use super::base::*;
+        w.write(BASE_PATH, key, "qps", m.take() as f64 / secs);
     }
 }
 
