@@ -1,13 +1,9 @@
 pub use inner::*;
 #[cfg(feature = "poll-io-metrics")]
 mod inner {
-    use metrics::{Metric, Path};
+    use metrics::base::*;
+    #[repr(transparent)]
     pub struct MetricStream<S> {
-        write: Metric,
-        w_pending: Metric,
-        read_hit: Metric,
-        read: Metric,
-        r_pending: Metric,
         s: S,
     }
 
@@ -20,20 +16,7 @@ mod inner {
     impl<S> From<S> for MetricStream<S> {
         #[inline]
         fn from(s: S) -> Self {
-            let read = Path::base().qps("poll_read");
-            let read_hit = Path::base().ratio("poll_read");
-            let write = Path::base().qps("poll_write");
-            let r_pending = Path::base().qps("r_pending");
-            let w_pending = Path::base().qps("w_pending");
-
-            Self {
-                s,
-                read,
-                read_hit,
-                write,
-                r_pending,
-                w_pending,
-            }
+            Self { s }
         }
     }
 
@@ -44,17 +27,11 @@ mod inner {
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
         ) -> Poll<Result<()>> {
-            let pre = buf.remaining();
             let ret = Pin::new(&mut self.s).poll_read(cx, buf);
-            self.read += 1;
-            self.read_hit += buf.remaining() != pre;
+            POLL_READ.incr();
             if ret.is_pending() {
-                self.r_pending += 1;
+                POLL_PENDING_R.incr();
             }
-            //if hit > 0 {
-            //    use protocol::Utf8;
-            //    log::info!("poll_read-{:?} data:{:?}", self.s, buf.filled().utf8());
-            //}
             ret
         }
     }
@@ -66,13 +43,11 @@ mod inner {
             cx: &mut Context<'_>,
             buf: &[u8],
         ) -> Poll<Result<usize>> {
-            self.write += 1;
+            POLL_WRITE.incr();
             let r = Pin::new(&mut self.s).poll_write(cx, buf);
             if r.is_pending() {
-                self.w_pending += 1;
+                POLL_PENDING_W.incr();
             }
-            //use protocol::Utf8;
-            //log::info!("poll_write-{:?} data:{:?}", self.s, buf.utf8());
             r
         }
         #[inline]
