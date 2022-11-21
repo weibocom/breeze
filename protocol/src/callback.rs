@@ -1,6 +1,7 @@
 use ds::time::Instant;
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use ds::AtomicWaker;
 
@@ -41,7 +42,8 @@ pub struct CallbackContext {
     request: HashedCommand,
     response: MaybeUninit<Command>,
     callback: CallbackPtr,
-    start: Instant, // 请求的开始时间
+    start: Instant,           // 请求的开始时间
+    elapsed_before: Duration, // 本次重试请求前，消耗的时间
     tries: u8,
     atomic: WakerDrop,
 }
@@ -65,6 +67,7 @@ impl CallbackContext {
             response: MaybeUninit::uninit(),
             callback: cb,
             start: Instant::now(),
+            elapsed_before: Duration::ZERO,
             tries: 0,
             atomic: WakerDrop { waker },
         }
@@ -228,12 +231,36 @@ impl CallbackContext {
     }
     #[inline]
     pub fn send(&mut self) {
+        // 在重试时，需要记录已经elapsed的时间，从而方便计算本次请求的耗时
+        if self.tries > 0 {
+            self.elapsed_before = self.start.elapsed();
+        }
+
         let req = Request::new(self.as_mut_ptr());
         (*self.callback).send(req);
     }
     #[inline]
     pub fn start_at(&self) -> Instant {
         self.start
+    }
+
+    // 计算当前请求消耗的时间，更新
+    #[inline]
+    pub fn elapsed_current_req(&self) -> Duration {
+        // 该请求截止目前消耗的时间
+        let elapsed = self.start.elapsed();
+
+        // 如果是第一次请求，直接返回耗时
+        if self.elapsed_before.is_zero() {
+            return elapsed;
+        }
+
+        // 计算本次重试的耗时，需要减去请求之前已经产生的耗时
+        // 正常不会返回None，但在校正时间时，可能出现负值从而为None
+        if let Some(ela) = elapsed.checked_sub(self.elapsed_before) {
+            return ela;
+        }
+        return Duration::new(0, 0);
     }
 
     #[inline]

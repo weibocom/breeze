@@ -1,6 +1,7 @@
 use crate::callback::CallbackContext;
 use crate::{Command, Context, Error, HashedCommand, Operation};
 use std::fmt::{self, Debug, Display, Formatter};
+use std::time::Duration;
 pub struct Request {
     ctx: *mut CallbackContext,
 }
@@ -9,6 +10,10 @@ impl crate::Request for Request {
     #[inline]
     fn start_at(&self) -> ds::time::Instant {
         self.ctx().start_at()
+    }
+
+    fn elapsed_current_req(&self) -> Duration {
+        self.ctx().elapsed_current_req()
     }
 
     #[inline]

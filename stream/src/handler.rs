@@ -96,7 +96,7 @@ where
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
-                        self.rtt += req.start_at().elapsed();
+                        self.rtt += req.elapsed_current_req();
                         req.on_complete(cmd);
                     }
                 }
