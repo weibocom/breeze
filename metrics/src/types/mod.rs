@@ -19,22 +19,34 @@ pub mod base {
         fn incr(&self);
         fn incr_by(&self, v: i64);
         fn decr_by(&self, v: i64);
+        fn take(&self) -> i64;
+        fn get(&self) -> i64;
     }
     impl Adder for AtomicI64 {
         #[inline(always)]
         fn incr(&self) {
-            self.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.fetch_add(1, Relaxed);
         }
         #[inline(always)]
         fn incr_by(&self, v: i64) {
-            self.fetch_add(v, std::sync::atomic::Ordering::Relaxed);
+            self.fetch_add(v, Relaxed);
         }
         #[inline(always)]
         fn decr_by(&self, v: i64) {
-            self.fetch_sub(v, std::sync::atomic::Ordering::Relaxed);
+            self.fetch_sub(v, Relaxed);
+        }
+        #[inline(always)]
+        fn get(&self) -> i64 {
+            self.load(Relaxed)
+        }
+        #[inline(always)]
+        fn take(&self) -> i64 {
+            let v = self.get();
+            self.decr_by(v);
+            v
         }
     }
-    use std::sync::atomic::AtomicI64;
+    use std::sync::atomic::{AtomicI64, Ordering::Relaxed};
     pub static P_W_CACHE: AtomicI64 = AtomicI64::new(0);
     pub static BUF_TX: AtomicI64 = AtomicI64::new(0);
     pub static BUF_RX: AtomicI64 = AtomicI64::new(0);
@@ -43,4 +55,5 @@ pub mod base {
     pub static POLL_PENDING_R: AtomicI64 = AtomicI64::new(0);
     pub static POLL_PENDING_W: AtomicI64 = AtomicI64::new(0);
     pub static REENTER_10MS: AtomicI64 = AtomicI64::new(0);
+    pub static LEAKED_CONN: AtomicI64 = AtomicI64::new(0);
 }

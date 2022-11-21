@@ -4,6 +4,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
+use metrics::base::*;
+
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     time::{interval, Interval, MissedTickBehavior},
@@ -94,7 +96,6 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
         let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
         if tx > rx {
             if now - self.last >= Duration::from_millis(10) {
-                use metrics::base::*;
                 REENTER_10MS.incr();
             }
             if now - self.last_rx >= self.timeout {
@@ -141,6 +142,9 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Entry<
         while !self.inner.close() {
             ready!(self.tick.poll_tick(cx));
             log::info!("closing => {:?} {:?}", self.inner, self.out);
+            if self.last.elapsed().as_secs() % 15 == 0 {
+                LEAKED_CONN.incr();
+            }
         }
         Poll::Ready(self.out.take().unwrap())
     }
