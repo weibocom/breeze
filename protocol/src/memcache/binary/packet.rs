@@ -205,6 +205,7 @@ impl Binary<RingSlice> for RingSlice {
         assert!(self.len() >= HEADER_LEN);
         self.at(PacketPos::ExtrasLength as usize)
     }
+    #[inline(always)]
     fn extra_or_flag(&self) -> Self {
         // 读取flag时，需要有完整的packet
         assert!(self.len() >= HEADER_LEN);
@@ -252,12 +253,14 @@ impl Binary<RingSlice> for RingSlice {
         self.sub_slice(offset, key_len)
     }
     // 仅仅用于获取value长度，注意区分total body len
+    #[inline]
     fn value_len(&self) -> u32 {
         let total_body_len = self.total_body_len();
         let extra_len = self.extra_len() as u32;
         let key_len = self.key_len() as u32;
         total_body_len - extra_len - key_len
     }
+    #[inline]
     fn value(&self) -> Self {
         assert!(self.len() >= self.packet_len());
         let total_body_len = self.total_body_len() as usize;
