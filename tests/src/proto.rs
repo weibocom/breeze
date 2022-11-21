@@ -44,8 +44,8 @@ impl<T: AsRef<[u8]>> From<T> for WithData<T> {
 fn test_redis_panic() {
     const CAP: usize = 2048;
     let start = 4636157;
-    let end = 4637617;
-    let mut buf = stream::buffer::StreamGuard::raw_init(2048);
+    let _end = 4637617;
+    let mut buf = stream::buffer::StreamGuard::raw_init(CAP);
     let mut w = 0;
     while w < start {
         let batch = (start - w).min(511);
@@ -67,6 +67,9 @@ fn test_redis_panic() {
 
     use protocol::Protocol;
     let redis = protocol::redis::Redis {};
-    redis.parse_response(&mut buf);
+    match redis.parse_response(&mut buf) {
+        Ok(Some(_cmd)) => {}
+        e => panic!("parse response error:{:?} => {:?}", e, buf),
+    }
 }
 const DATA: [u8; 0] = [];
