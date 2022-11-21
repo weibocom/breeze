@@ -43,6 +43,14 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
 
     fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()>;
 
+    fn test_metrics<M: Metric<T>, T: std::ops::AddAssign<i64>>(&self, metric: &mut Arc<M>) -> () {
+        //let read = *metric.get(crate::MetricName::Read)+=1;
+        // **metric.get(MetricName::Read) += 1;
+        // *metric.get(MetricName::Read) += 1;
+
+        //  *metric.read += 1;
+        // metric
+    }
     #[inline]
     fn check(&self, _req: &HashedCommand, _resp: &Command) -> bool {
         true
@@ -188,6 +196,7 @@ impl AsRef<Command> for HashedCommand {
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
+use std::sync::Arc;
 impl Display for HashedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "hash:{} {}", self.hash, self.cmd)
@@ -238,4 +247,11 @@ pub trait Commander {
     fn request(&self) -> &HashedCommand;
     fn response(&self) -> &Command;
     fn response_mut(&mut self) -> &mut Command;
+}
+pub enum MetricName {
+    Read,
+    Write,
+}
+pub trait Metric<M: std::ops::AddAssign<i64>> {
+    fn get(&self, name: MetricName) -> &mut M;
 }
