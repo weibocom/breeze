@@ -25,21 +25,23 @@ impl<T> Allocator<T> for Heap {
 }
 
 pub struct Arena<T> {
-    _mark: std::marker::PhantomData<T>,
+    cache: cache::CachedArena<T, Heap>,
 }
 impl<T> Arena<T> {
     #[inline]
-    pub fn cache(_cache: usize) -> Self {
+    pub fn cache(cache: usize) -> Self {
         Self {
-            _mark: Default::default(),
+            cache: cache::CachedArena::with_capacity(cache, Heap),
         }
     }
-    #[inline]
+    #[inline(always)]
     pub fn alloc(&mut self, t: T) -> NonNull<T> {
-        Heap.alloc(t)
+        self.cache.alloc(t)
     }
-    #[inline]
+    #[inline(always)]
     pub fn dealloc(&mut self, t: NonNull<T>) {
-        Heap.dealloc(t);
+        self.cache.dealloc(t);
     }
 }
+unsafe impl<T> Sync for Arena<T> {}
+unsafe impl<T> Send for Arena<T> {}
