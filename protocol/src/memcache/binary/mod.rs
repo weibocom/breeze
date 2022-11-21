@@ -91,15 +91,13 @@ impl Protocol for MemcacheBinary {
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline]
     fn write_response<
-        C: crate::Commander,
+        C: crate::Commander + crate::Metric<T>,
         W: crate::Writer,
-        M: crate::Metric<T>,
         T: std::ops::AddAssign<i64>,
     >(
         &self,
         ctx: &mut C,
         w: &mut W,
-        metric: &mut std::sync::Arc<M>,
     ) -> Result<()> {
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();

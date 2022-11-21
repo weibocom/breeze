@@ -1,13 +1,17 @@
 use std::{
+    marker::PhantomData,
     mem::MaybeUninit,
     ptr::{self, NonNull},
-    sync::atomic::{AtomicBool, Ordering::*},
+    sync::{
+        atomic::{AtomicBool, Ordering::*},
+        Arc,
+    },
 };
 
 use ds::time::Instant;
 use ds::AtomicWaker;
 
-use crate::request::Request;
+use crate::{request::Request, Metric};
 use crate::{Command, Error, HashedCommand};
 
 const REQ_TRY_MAX_COUNT: u8 = 3;
@@ -361,12 +365,24 @@ impl CallbackContextPtr {
     }
     //需要在on_done时主动销毁self对象
     #[inline]
-    pub fn async_write_back<P: crate::Protocol>(&mut self, parser: &P, mut res: Command, exp: u32) {
+    pub fn async_write_back<
+        P: crate::Protocol,
+        M: crate::Metric<T>,
+        T: std::ops::AddAssign<i64>,
+    >(
+        &mut self,
+        parser: &P,
+        mut res: Command,
+        exp: u32,
+        metric: &mut Arc<M>,
+    ) {
         // 在异步处理之前，必须要先处理完response
         assert!(!self.inited() && self.complete(), "cbptr:{:?}", &**self);
         self.ctx.async_mode = true;
-        if let Some(new) = parser.build_writeback_request(&mut ResponseContext(self, &mut res), exp)
-        {
+        if let Some(new) = parser.build_writeback_request(
+            &mut ResponseContext(self, &mut res, metric, Default::default()),
+            exp,
+        ) {
             self.request = new;
         }
         log::debug!("start write back:{}", &**self);
@@ -435,9 +451,18 @@ impl From<&Callback> for CallbackPtr {
     }
 }
 
-pub struct ResponseContext<'a>(pub &'a mut CallbackContextPtr, pub &'a mut Command);
+//pub struct ResponseContext<'a>(pub &'a mut CallbackContextPtr, pub &'a mut Command,);
 
-impl<'a> crate::Commander for ResponseContext<'a> {
+pub struct ResponseContext<'a, M: crate::Metric<T>, T: std::ops::AddAssign<i64>>(
+    pub &'a mut CallbackContextPtr,
+    pub &'a mut Command,
+    pub &'a mut Arc<M>,
+    pub PhantomData<T>,
+);
+
+impl<'a, M: crate::Metric<T>, T: std::ops::AddAssign<i64>> crate::Commander
+    for ResponseContext<'a, M, T>
+{
     #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
         &mut self.0.request
@@ -453,5 +478,11 @@ impl<'a> crate::Commander for ResponseContext<'a> {
     #[inline]
     fn response_mut(&mut self) -> &mut Command {
         &mut self.1
+    }
+}
+impl<'a, M: crate::Metric<T>, T: std::ops::AddAssign<i64>> Metric<T> for ResponseContext<'a, M, T> {
+    #[inline]
+    fn get(&self, name: crate::MetricName) -> &mut T {
+        self.2.get(name)
     }
 }

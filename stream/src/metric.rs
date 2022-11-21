@@ -59,8 +59,8 @@ impl ProtoMetric<Metric> for CbMetrics {
     #[inline]
     fn get(&self, name: MetricName) -> &mut Metric {
         match name {
-            MetricName::Read => &mut *self.read(),
-            MetricName::Write => &mut *self.write(),
+            MetricName::Read => self.read(),
+            MetricName::Write => self.write(),
         }
     }
 }

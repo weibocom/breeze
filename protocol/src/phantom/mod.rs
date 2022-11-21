@@ -205,15 +205,13 @@ impl Protocol for Phantom {
     //  4 其他普通响应直接发送；
     #[inline]
     fn write_response<
-        C: crate::Commander,
+        C: crate::Commander + crate::Metric<T>,
         W: crate::Writer,
-        M: crate::Metric<T>,
         T: std::ops::AddAssign<i64>,
     >(
         &self,
         ctx: &mut C,
         w: &mut W,
-        metric: &mut std::sync::Arc<M>,
     ) -> Result<()> {
         let req = ctx.request();
         let op_code = req.op_code();

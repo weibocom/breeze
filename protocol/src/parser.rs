@@ -41,11 +41,10 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
         -> Command;
 
-    fn write_response<C: Commander, W: crate::Writer, M: Metric<T>, T: std::ops::AddAssign<i64>>(
+    fn write_response<C: Commander + Metric<T>, W: crate::Writer, T: std::ops::AddAssign<i64>>(
         &self,
         ctx: &mut C,
         w: &mut W,
-        metric: &mut Arc<M>,
     ) -> Result<()>;
 
     #[inline]
@@ -193,7 +192,6 @@ impl AsRef<Command> for HashedCommand {
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
-use std::sync::Arc;
 impl Display for HashedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "hash:{} {}", self.hash, self.cmd)

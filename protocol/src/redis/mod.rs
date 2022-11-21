@@ -309,15 +309,13 @@ impl Protocol for Redis {
     //  4 其他普通响应直接发送；
     #[inline]
     fn write_response<
-        C: Commander,
+        C: Commander + crate::Metric<T>,
         W: crate::Writer,
-        M: crate::Metric<T>,
         T: std::ops::AddAssign<i64>,
     >(
         &self,
         ctx: &mut C,
         w: &mut W,
-        metric: &mut std::sync::Arc<M>,
     ) -> Result<()> {
         let req = ctx.request();
         let cfg = command::get_cfg(req.op_code())?;
