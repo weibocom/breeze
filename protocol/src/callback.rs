@@ -2,9 +2,8 @@ use std::{
     mem::MaybeUninit,
     ptr::{self, NonNull},
     sync::atomic::{AtomicBool, Ordering::*},
-    time::Duration，
+    time::Duration,
 };
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use ds::time::Instant;
 use ds::AtomicWaker;
