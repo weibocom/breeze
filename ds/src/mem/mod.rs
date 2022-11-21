@@ -16,3 +16,5 @@ pub use policy::*;
 mod malloc;
 pub use malloc::*;
 
+pub mod arena;
+

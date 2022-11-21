@@ -1,7 +1,6 @@
 //#![feature(map_first_last)]
 use std::collections::BTreeMap;
 
-use std::fmt::format;
 use std::{
     fs::File,
     io::{BufRead, BufReader},

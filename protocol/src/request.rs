@@ -1,8 +1,10 @@
-use crate::callback::CallbackContext;
-use crate::{Command, Context, Error, HashedCommand, Operation};
-use std::fmt::{self, Debug, Display, Formatter};
+use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand, Operation};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    ptr::NonNull,
+};
 pub struct Request {
-    ctx: *mut CallbackContext,
+    ctx: NonNull<CallbackContext>,
 }
 
 impl crate::Request for Request {
@@ -74,10 +76,10 @@ impl crate::Request for Request {
     fn try_next(&mut self, goon: bool) {
         self.ctx().ctx.try_next(goon);
     }
-    #[inline]
-    fn ignore_rsp(&self) -> bool {
-        self.req().ignore_rsp()
-    }
+    // #[inline]
+    // fn ignore_rsp(&self) -> bool {
+    //     self.req().ignore_rsp()
+    // }
     #[inline]
     fn direct_hash(&self) -> bool {
         self.req().direct_hash()
@@ -89,7 +91,7 @@ impl crate::Request for Request {
 }
 impl Request {
     #[inline]
-    pub fn new(ctx: *mut CallbackContext) -> Self {
+    pub fn new(ctx: NonNull<CallbackContext>) -> Self {
         Self { ctx }
     }
 
@@ -104,7 +106,7 @@ impl Request {
     }
     #[inline]
     fn ctx(&self) -> &mut CallbackContext {
-        unsafe { &mut *self.ctx }
+        unsafe { &mut *self.ctx.as_ptr() }
     }
 }
 

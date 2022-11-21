@@ -7,7 +7,10 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use std::task::ready;
+
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+use metrics::base::*;
 
 // 1. read/write统计
 // 2. 支持write buffer。
@@ -17,8 +20,6 @@ pub struct Stream<S> {
     idx: usize,
     buf: Vec<u8>,
     write_to_buf: bool,
-    cache: metrics::Metric,
-    buf_tx: metrics::Metric,
     policy: MemPolicy,
 }
 impl<S> From<S> for Stream<S> {
@@ -29,8 +30,6 @@ impl<S> From<S> for Stream<S> {
             idx: 0,
             buf: Vec::new(),
             write_to_buf: false,
-            cache: metrics::Path::base().qps("poll_write_cache"),
-            buf_tx: metrics::Path::base().num("mem_buf_tx"),
             policy: MemPolicy::tx(),
         }
     }
@@ -135,7 +134,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
             let new = self.policy.shrink(self.buf.len(), old);
             self.buf.shrink_to(new);
             assert_eq!(new, self.buf.capacity(), "{}/{}", new, self.buf.capacity());
-            self.buf_tx -= (old - new) as isize;
+            BUF_TX.decr_by((old - new) as i64);
         }
     }
 }
@@ -148,9 +147,9 @@ impl<S> Stream<S> {
             let grow = new - self.buf.len();
             self.buf.reserve_exact(grow);
             assert_eq!(self.buf.capacity(), new, "{}/{}", self.buf.capacity(), new);
-            self.buf_tx += new - cap;
+            BUF_TX.incr_by((new - cap) as i64);
         }
-        self.cache += 1;
+        P_W_CACHE.incr();
         use ds::Buffer;
         self.buf.write(data);
     }
@@ -167,6 +166,6 @@ impl<S> Stream<S> {
 impl<S> Drop for Stream<S> {
     #[inline]
     fn drop(&mut self) {
-        self.buf_tx -= self.buf.capacity() as i64;
+        BUF_TX.decr_by(self.buf.capacity() as i64);
     }
 }

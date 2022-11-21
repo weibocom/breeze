@@ -1,11 +1,9 @@
+use ds::time::{Duration, Instant};
 use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{Context, Poll};
-use ds::time::{Duration, Instant};
+use std::task::{ready, Context, Poll};
 
-use metrics::{Metric, Path};
-use std::task::ready;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     time::{interval, Interval, MissedTickBehavior},
@@ -57,7 +55,6 @@ pub struct Entry<F> {
     inner: F,
     timeout: Duration,
     tick: Interval,
-    m_reenter: Metric,
     ready: bool,
     refresh_tick: Interval,
     out: Option<Result<()>>,
@@ -73,14 +70,12 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
         let mut refresh_tick = interval(Duration::from_secs(9));
         refresh_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-        let m_reenter = Path::base().rtt("reenter10ms");
         Self {
             inner: f,
             last: Instant::now(),
             last_rx: Instant::now(),
             timeout,
             tick,
-            m_reenter,
             ready: false,
             out: None,
             refresh_tick,
@@ -99,8 +94,8 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
         let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
         if tx > rx {
             if now - self.last >= Duration::from_millis(10) {
-                let elapsed = now - self.last;
-                self.m_reenter += elapsed;
+                use metrics::base::*;
+                REENTER_10MS.incr();
             }
             if now - self.last_rx >= self.timeout {
                 return Poll::Ready(Err(protocol::Error::Timeout(now - self.last_rx)));

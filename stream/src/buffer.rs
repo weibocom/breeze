@@ -113,9 +113,8 @@ impl StreamGuard {
     }
     #[inline]
     fn with(min: usize, max: usize, init: usize) -> Self {
-        let mut buf_rx = metrics::Path::base().num("mem_buf_rx");
         Self::from(GuardedBuffer::new(min, max, init, move |_old, delta| {
-            buf_rx += delta;
+            metrics::base::BUF_RX.fetch_add(delta as i64, std::sync::atomic::Ordering::Relaxed);
         }))
     }
     #[inline]

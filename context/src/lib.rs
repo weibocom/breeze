@@ -299,8 +299,15 @@ impl std::ops::Deref for Context {
 }
 impl From<ContextOption> for Context {
     fn from(option: ContextOption) -> Self {
+        let mut cpu = option.cpu.to_string();
+        let host_v3 = option.cpu == "v3"; // 宿主机是否支持v3
+        let v3 = cfg!(target_feature = "avx");
+        // 1. 如果宿主机的支持模式与编译器的编译方式不一致。
+        if v3 != host_v3 {
+            cpu += "!";
+        };
         Self {
-            version: SHORT_VERSION.to_string() + "_" + option.cpu.as_str(),
+            version: SHORT_VERSION.to_string() + "_" + &cpu,
             option,
         }
     }

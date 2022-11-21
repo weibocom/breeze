@@ -1,5 +1,6 @@
 use super::RingSlice;
 
+use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
 use std::slice::from_raw_parts_mut;
 
@@ -18,9 +19,8 @@ impl RingBuffer {
     // 否则可能导致读取时，size - 1越界
     pub fn with_capacity(size: usize) -> Self {
         assert!(size == 0 || size.is_power_of_two());
-        let mut data = Vec::with_capacity(size);
+        let mut data = ManuallyDrop::new(Vec::with_capacity(size));
         let ptr = unsafe { NonNull::new_unchecked(data.as_mut_ptr()) };
-        std::mem::forget(data);
         Self {
             size,
             data: ptr,
