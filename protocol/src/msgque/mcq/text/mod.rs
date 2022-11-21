@@ -103,13 +103,15 @@ impl Protocol for McqText {
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
     fn write_response<
-        // T: std::ops::AddAssign<i64>,
         C: Commander,
         W: crate::Writer,
+        M: crate::Metric<T>,
+        T: std::ops::AddAssign<i64>,
     >(
         &self,
         ctx: &mut C,
         w: &mut W,
+        metric: &mut std::sync::Arc<M>,
     ) -> Result<()> {
         // 对于quit指令，直接返回Err断连
         let cfg = command::get_cfg(ctx.request().op_code())?;
@@ -122,14 +124,13 @@ impl Protocol for McqText {
         if rsp.len() > 0 {
             w.write_slice(rsp, 0)?;
         }
+        if ctx.request().operation().is_query() && ctx.response().ok() {
+            *metric.get(crate::MetricName::Read) += 1;
+        }
+        if ctx.request().operation().is_store() && ctx.response().ok() {
+            *metric.get(crate::MetricName::Write) += 1;
+        }
         Ok(())
-    }
-    #[inline]
-    fn test_metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64>>(
-        &self,
-        metric: &mut std::sync::Arc<M>,
-    ) -> () {
-        *metric.get(crate::MetricName::Read) += 1;
     }
 
     // TODO 暂时保留，备查及比对，待上线稳定一段时间后再删除（预计 2022.12.30之后可以） fishermen
