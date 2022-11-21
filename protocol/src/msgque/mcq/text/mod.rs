@@ -102,7 +102,15 @@ impl Protocol for McqText {
 
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
-    fn write_response<C: Commander, W: Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
+    fn write_response<
+        C: Commander + crate::Metric<T>,
+        W: crate::Writer,
+        T: std::ops::AddAssign<i64>,
+    >(
+        &self,
+        ctx: &mut C,
+        w: &mut W,
+    ) -> Result<()> {
         // 对于quit指令，直接返回Err断连
         let cfg = command::get_cfg(ctx.request().op_code())?;
         if cfg.quit {
@@ -113,6 +121,16 @@ impl Protocol for McqText {
         // 虽然quit的响应长度为0，但不排除有其他响应长度为0的场景，还是用quit属性来断连更安全
         if rsp.len() > 0 {
             w.write_slice(rsp, 0)?;
+        }
+        if ctx.response().ok() {
+            match ctx.request().operation() {
+                crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
+                    *ctx.get(crate::MetricName::Read) += 1
+                }
+                crate::Operation::Store => *ctx.get(crate::MetricName::Write) += 1,
+                crate::Operation::Meta => todo!(),
+                crate::Operation::Other => todo!(),
+            }
         }
         Ok(())
     }
