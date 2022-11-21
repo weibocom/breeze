@@ -106,7 +106,7 @@ impl<'r> Responder<'r, 'r> for MemoryStatsResponse {
             let secs = last.elapsed().as_secs_f64();
             if secs >= 1f64 {
                 *last = Instant::now();
-                let body = ds::memtrack();
+                let body = ds::mem_stats_summary();
                 return response.sized_body(body.len(), Cursor::new(body)).ok();
             }
             return response.status(Status::NotModified).ok();
