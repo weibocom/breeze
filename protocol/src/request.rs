@@ -2,6 +2,7 @@ use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand, O
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
+    time::Duration,
 };
 
 pub struct Request {
