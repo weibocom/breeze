@@ -11,10 +11,11 @@ pub const DIST_CMD_HASHKEY: &str = "hashkey";
 pub const DIST_CMD_KEYSHARD: &str = "keyshard";
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Default, Debug)]
 pub(crate) struct CommandProperties {
     pub(super) name: &'static str,
     pub(super) mname: &'static str, // 将multi key映射成单个key的get命令，发送到backend
+    pub(super) mname_len: String,   // mname.len().to_string()
     pub(super) op_code: OpCode,
     // cmd 参数的个数，对于不确定的cmd，如mget、mset用负数表示最小数量
     arity: i8,
@@ -187,14 +188,14 @@ impl CommandProperties {
         data: &RingSlice,
     ) -> HashedCommand {
         use ds::Buffer;
-        assert!(self.name.len() < 10, "name:{}", self.name);
+        //assert!(self.name.len() < 10, "name:{}", self.name);
         let mut cmd = Vec::with_capacity(16 + data.len());
         cmd.push(b'*');
         // 1个cmd, 1个key，1个value。一共3个bulk
         cmd.push((2 + self.has_val as u8) + b'0');
         cmd.write("\r\n");
         cmd.push(b'$');
-        cmd.write(self.mname.len().to_string());
+        cmd.write(&self.mname_len);
         cmd.write("\r\n");
         cmd.write(self.mname);
         cmd.write("\r\n");
@@ -236,7 +237,7 @@ impl Commands {
     const MAPPING_RANGE: usize = 2048;
     fn new() -> Self {
         Self {
-            supported: [CommandProperties::default(); Self::MAPPING_RANGE],
+            supported: array_init::array_init(|_| Default::default()),
             // hash: Crc32::default(),
             hash: Bkdr::default(),
         }
@@ -290,7 +291,6 @@ impl Commands {
         assert!(!self.supported[idx].supported);
         c.supported = true;
         c.op_code = idx as u16;
-        self.supported[idx] = c;
 
         // 所有非swallowed cmd的padding-rsp都必须是合理值，此处统一判断
         if !c.swallowed {
@@ -300,6 +300,7 @@ impl Commands {
                 c.name
             );
         }
+        self.supported[idx] = c;
     }
 }
 
@@ -714,11 +715,13 @@ impl CommandProperties {
         Self {
             name,
             mname: name,
+            mname_len: name.len().to_string(),
             ..Default::default()
         }
     }
     fn m(mut self, mname: &'static str) -> Self {
         self.mname = mname;
+        self.mname_len = mname.len().to_string();
         self
     }
     fn arity(mut self, arity: i8) -> Self {
