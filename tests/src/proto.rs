@@ -67,9 +67,6 @@ fn test_redis_panic() {
 
     use protocol::Protocol;
     let redis = protocol::redis::Redis {};
-    match redis.parse_response(&mut buf) {
-        Ok(Some(_cmd)) => {}
-        e => panic!("parse response error:{:?} => {:?}", e, buf),
-    }
+    assert!(redis.parse_response(&mut buf).is_ok(), "{:?}", buf);
 }
 const DATA: [u8; 0] = [];

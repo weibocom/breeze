@@ -2,10 +2,8 @@ use std::{
     marker::PhantomData,
     mem::MaybeUninit,
     ptr::{self, NonNull},
-    sync::{
-        atomic::{AtomicBool, Ordering::*},
-        Arc,
-    },
+    sync::atomic::{AtomicBool, Ordering::*},
+    time::Duration,
 };
 
 use ds::time::Instant;
@@ -36,7 +34,8 @@ pub struct CallbackContext {
     request: HashedCommand,
     response: MaybeUninit<Command>,
     callback: CallbackPtr,
-    start: Instant, // 请求的开始时间
+    start: Instant,      // 请求的开始时间
+    last_start: Instant, // 本次资源请求的开始时间(一次请求可能触发多次资源请求)
     tries: u8,
     waker: *const AtomicWaker,
 }
@@ -60,6 +59,7 @@ impl CallbackContext {
             response: MaybeUninit::uninit(),
             callback: cb,
             start: Instant::now(),
+            last_start: Instant::now(),
             tries: 0,
             waker,
         }
@@ -145,6 +145,8 @@ impl CallbackContext {
     fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
         if self.need_goon() {
+            // 需要重试或回写
+            self.last_start = Instant::now();
             return self.goon();
         }
         if !self.ctx.async_mode {
@@ -240,6 +242,12 @@ impl CallbackContext {
     #[inline]
     pub fn start_at(&self) -> Instant {
         self.start
+    }
+
+    // 计算当前请求消耗的时间，更新
+    #[inline(always)]
+    pub fn elapsed_current_req(&self) -> Duration {
+        self.last_start.elapsed()
     }
 
     #[inline]
