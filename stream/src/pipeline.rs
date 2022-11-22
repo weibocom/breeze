@@ -209,9 +209,15 @@ where
             //    ctx.adapt_local_response(local_resp);
             //}
 
+            // 至此，所有req都有response，统一处理
+            // assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
+            // parser.write_response(&mut ctx, client, metrics)?;
             //// 至此，所有req都有response，统一处理
             //assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
-            parser.write_response(&mut ResponseContext(&mut ctx, &mut response), client)?;
+            parser.write_response(
+                &mut ResponseContext(&mut ctx, &mut response, metrics, Default::default()),
+                client,
+            )?;
 
             //TODO 部分请求的nil convert发生在write_response，待鑫鑫完成修改，这个统计后续也改到write_response中 fishermen 2022.11.17
             if response.nil_converted() {
@@ -220,7 +226,7 @@ where
 
             // 如果需要回写，且response正确，则进行回写
             if ctx.is_write_back() && response.ok() {
-                ctx.async_write_back(parser, response, self.top.exp_sec());
+                ctx.async_write_back(parser, response, self.top.exp_sec(), metrics);
                 self.async_pending.push_back(ctx);
             }
 

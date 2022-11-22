@@ -90,7 +90,11 @@ impl Protocol for MemcacheBinary {
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline]
-    fn write_response<C: crate::Commander, W: crate::Writer>(
+    fn write_response<
+        C: crate::Commander + crate::Metric<T>,
+        W: crate::Writer,
+        T: std::ops::AddAssign<i64>,
+    >(
         &self,
         ctx: &mut C,
         w: &mut W,
