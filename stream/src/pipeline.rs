@@ -42,7 +42,7 @@ where
         rx_buf: StreamGuard::new(),
         client,
         parser,
-        pending: VecDeque::with_capacity(63),
+        pending: VecDeque::with_capacity(31),
         waker: AtomicWaker::default(),
         flush: false,
         start: Instant::now(),
@@ -358,13 +358,13 @@ impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:{} flush:{} rx buf: {} dropping:{}  => {}",
+            "{} => pending:({},{}) flush:{} dropping:{} rx buf:{:?}",
             self.metrics.biz(),
             self.pending.len(),
+            self.async_pending.len(),
             self.flush,
-            self.rx_buf.len(),
             self.dropping.len(),
-            self.async_pending.len()
+            self.rx_buf,
         )
     }
 }
