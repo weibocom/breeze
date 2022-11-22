@@ -1,5 +1,4 @@
 use std::{
-    marker::PhantomData,
     mem::MaybeUninit,
     ptr::{self, NonNull},
     sync::atomic::{AtomicBool, Ordering::*},
@@ -9,7 +8,7 @@ use std::{
 use ds::time::Instant;
 use ds::AtomicWaker;
 
-use crate::{request::Request, Metric};
+use crate::request::Request;
 use crate::{Command, Error, HashedCommand};
 
 const REQ_TRY_MAX_COUNT: u8 = 3;
