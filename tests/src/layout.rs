@@ -46,6 +46,7 @@ fn checkout_basic() {
 }
 
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
+#[ignore]
 #[test]
 fn check_layout() {
     assert_eq!((200, 208).select(), size_of::<CallbackContext>());
