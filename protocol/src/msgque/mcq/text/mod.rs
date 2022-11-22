@@ -128,8 +128,7 @@ impl Protocol for McqText {
                     *ctx.get(crate::MetricName::Read) += 1
                 }
                 crate::Operation::Store => *ctx.get(crate::MetricName::Write) += 1,
-                crate::Operation::Meta => todo!(),
-                crate::Operation::Other => todo!(),
+                _ => {}
             }
         }
         Ok(())
