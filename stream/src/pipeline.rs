@@ -14,11 +14,12 @@ use ds::{
     AtomicWaker,
 };
 use endpoint::{Topology, TopologyCheck};
-use protocol::{callback::ResponseContext, HashedCommand, Protocol, Result, Stream, Writer};
+use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::{
     buffer::{Reader, StreamGuard},
-    Callback, CallbackContext, CallbackContextPtr, Request, StreamMetrics,
+    context::{CallbackContextPtr, ResponseContext},
+    Callback, CallbackContext, Request, StreamMetrics,
 };
 
 pub async fn copy_bidirectional<C, P, T>(
@@ -42,7 +43,7 @@ where
         rx_buf: StreamGuard::new(),
         client,
         parser,
-        pending: VecDeque::with_capacity(63),
+        pending: VecDeque::with_capacity(31),
         waker: AtomicWaker::default(),
         flush: false,
         start: Instant::now(),
@@ -227,8 +228,6 @@ where
             if ctx.is_write_back() && response.ok() {
                 ctx.async_write_back(parser, response, self.top.exp_sec(), metrics);
                 self.async_pending.push_back(ctx);
-            } else {
-                self.arena.dealloc(ctx.into());
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，
@@ -257,8 +256,7 @@ where
                 if !ctx.async_done() {
                     break;
                 }
-                let ctx = self.async_pending.pop_front().expect("pop");
-                self.arena.dealloc(ctx.into());
+                let _ctx = self.async_pending.pop_front();
             }
         }
     }
@@ -286,10 +284,10 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         // 否则下一个请求是子请求。
         *self.first = last;
         let cb = self.cb.into();
-        let mut ctx: CallbackContextPtr = self
+        let ctx = self
             .arena
-            .alloc(CallbackContext::new(cmd, &self.waker, cb, first, last))
-            .into();
+            .alloc(CallbackContext::new(cmd, &self.waker, cb, first, last));
+        let mut ctx = CallbackContextPtr::from(ctx, self.arena);
 
         // pendding 会move走ctx，所以提前把req给封装好
         let mut req: Request = ctx.build_request();
@@ -328,7 +326,7 @@ where
             if !ctx.complete() {
                 break;
             }
-            self.pending.pop_front();
+            let _ctx = self.pending.pop_front().expect("empty");
         }
         // 处理异步请求
         self.process_async_pending();
@@ -364,13 +362,13 @@ impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:{} flush:{} rx buf: {} dropping:{}  => {}",
+            "{} => pending:({},{}) flush:{} dropping:{} rx buf:{:?}",
             self.metrics.biz(),
             self.pending.len(),
+            self.async_pending.len(),
             self.flush,
-            self.rx_buf.len(),
             self.dropping.len(),
-            self.async_pending.len()
+            self.rx_buf,
         )
     }
 }
