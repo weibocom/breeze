@@ -243,6 +243,15 @@ impl CallbackContext {
         self.send();
     }
     #[inline]
+    pub fn async_mode(&mut self) {
+        self.ctx.async_mode = true;
+    }
+    #[inline]
+    pub fn with_request(&mut self, req: HashedCommand) {
+        assert!(self.ctx.async_mode, "{:?}", self);
+        self.request = req;
+    }
+    #[inline]
     pub fn as_mut_context(&mut self) -> &mut Context {
         &mut self.ctx
     }
@@ -350,67 +359,6 @@ impl Display for Context {
     }
 }
 
-pub struct CallbackContextPtr {
-    ptr: NonNull<CallbackContext>,
-}
-
-impl CallbackContextPtr {
-    #[inline]
-    pub fn build_request(&mut self) -> Request {
-        Request::new(self.ptr)
-    }
-    //需要在on_done时主动销毁self对象
-    #[inline]
-    pub fn async_write_back<P: crate::Protocol>(&mut self, parser: &P, mut res: Command, exp: u32) {
-        // 在异步处理之前，必须要先处理完response
-        assert!(!self.inited() && self.complete(), "cbptr:{:?}", &**self);
-        self.ctx.async_mode = true;
-        if let Some(new) = parser.build_writeback_request(&mut ResponseContext(self, &mut res), exp)
-        {
-            self.request = new;
-        }
-        log::debug!("start write back:{}", &**self);
-
-        self.goon();
-    }
-}
-
-impl Into<NonNull<CallbackContext>> for CallbackContextPtr {
-    #[inline]
-    fn into(self) -> NonNull<CallbackContext> {
-        self.ptr
-    }
-}
-
-impl From<NonNull<CallbackContext>> for CallbackContextPtr {
-    #[inline]
-    fn from(ptr: NonNull<CallbackContext>) -> Self {
-        //let ptr = Box::leak(Box::new(ctx));
-        Self { ptr }
-    }
-}
-//impl Drop for CallbackContextPtr {
-//    #[inline]
-//    fn drop(&mut self) {
-//        let _drop = unsafe { Box::from_raw(self.ptr) };
-//    }
-//}
-
-impl std::ops::Deref for CallbackContextPtr {
-    type Target = CallbackContext;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        unsafe { self.ptr.as_ref() }
-    }
-}
-impl std::ops::DerefMut for CallbackContextPtr {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.ptr.as_ptr() }
-    }
-}
-unsafe impl Send for CallbackContextPtr {}
-unsafe impl Sync for CallbackContextPtr {}
 unsafe impl Send for CallbackPtr {}
 unsafe impl Sync for CallbackPtr {}
 unsafe impl Send for Callback {}
@@ -432,26 +380,5 @@ impl From<&Callback> for CallbackPtr {
         Self {
             ptr: unsafe { NonNull::new_unchecked(cb as *const _ as *mut _) },
         }
-    }
-}
-
-pub struct ResponseContext<'a>(pub &'a mut CallbackContextPtr, pub &'a mut Command);
-
-impl<'a> crate::Commander for ResponseContext<'a> {
-    #[inline]
-    fn request_mut(&mut self) -> &mut HashedCommand {
-        &mut self.0.request
-    }
-    #[inline]
-    fn request(&self) -> &HashedCommand {
-        &self.0.request
-    }
-    #[inline]
-    fn response(&self) -> &Command {
-        &self.1
-    }
-    #[inline]
-    fn response_mut(&mut self) -> &mut Command {
-        &mut self.1
     }
 }
