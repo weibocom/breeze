@@ -57,11 +57,6 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn build_writeback_request<C: Commander>(&self, _ctx: &mut C, _: u32) -> Option<HashedCommand> {
         todo!("not implement");
     }
-    // 当前资源是否为cache。用来统计命中率
-    #[inline]
-    fn cache(&self) -> bool {
-        false
-    }
 }
 
 pub trait RequestProcessor {
@@ -247,6 +242,7 @@ pub trait Commander {
 pub enum MetricName {
     Read,
     Write,
+    Cache,
 }
 pub trait Metric<M: std::ops::AddAssign<i64>> {
     fn get(&self, name: MetricName) -> &mut M;
