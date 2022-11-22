@@ -7,7 +7,7 @@ use protocol::{
 
 use ds::arena::Arena;
 
-pub(super) struct CallbackContextPtr {
+pub(crate) struct CallbackContextPtr {
     ptr: NonNull<CallbackContext>,
     arena: NonNull<Arena<CallbackContext>>,
 }
@@ -29,10 +29,9 @@ impl CallbackContextPtr {
         // 在异步处理之前，必须要先处理完response
         assert!(!self.inited() && self.complete(), "cbptr:{:?}", &**self);
         self.async_mode();
-        if let Some(new) = parser.build_writeback_request(
-            &mut ResponseContext(self, &mut res, metric, Default::default()),
-            exp,
-        ) {
+        if let Some(new) =
+            parser.build_writeback_request(&mut ResponseContext::new(self, &mut res, metric), exp)
+        {
             self.with_request(new);
         }
         log::debug!("start write back:{}", &**self);
@@ -74,33 +73,47 @@ impl std::ops::DerefMut for CallbackContextPtr {
 unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 
-pub struct ResponseContext<'a, M: Metric<T>, T: std::ops::AddAssign<i64>>(
-    pub(super) &'a mut CallbackContextPtr,
-    pub &'a mut Command,
-    pub &'a mut Arc<M>,
-    pub PhantomData<T>,
-);
+pub struct ResponseContext<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> {
+    pub(crate) ctx: &'a mut CallbackContextPtr,
+    pub cmd: &'a mut Command,
+    pub metric: &'a mut Arc<M>,
+    _mark: PhantomData<T>,
+}
+impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> ResponseContext<'a, M, T> {
+    pub(crate) fn new(
+        ctx: &'a mut CallbackContextPtr,
+        cmd: &'a mut Command,
+        metric: &'a mut Arc<M>,
+    ) -> Self {
+        Self {
+            ctx,
+            cmd,
+            metric,
+            _mark: PhantomData,
+        }
+    }
+}
 impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> Commander for ResponseContext<'a, M, T> {
     #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
-        self.0.request_mut()
+        self.ctx.request_mut()
     }
     #[inline]
     fn request(&self) -> &HashedCommand {
-        self.0.request()
+        self.ctx.request()
     }
     #[inline]
     fn response(&self) -> &Command {
-        self.1
+        self.cmd
     }
     #[inline]
     fn response_mut(&mut self) -> &mut Command {
-        self.1
+        self.cmd
     }
 }
 impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> Metric<T> for ResponseContext<'a, M, T> {
     #[inline]
     fn get(&self, name: MetricName) -> &mut T {
-        self.2.get(name)
+        self.metric.get(name)
     }
 }

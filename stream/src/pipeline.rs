@@ -215,7 +215,7 @@ where
             //// 至此，所有req都有response，统一处理
             //assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(
-                &mut ResponseContext(&mut ctx, &mut response, metrics, Default::default()),
+                &mut ResponseContext::new(&mut ctx, &mut response, metrics),
                 client,
             )?;
 
