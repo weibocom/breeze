@@ -1,4 +1,4 @@
-use ds::time::Instant;
+use ds::time::{Duration, Instant};
 use std::fmt::{Debug, Display};
 
 use ds::RingSlice;
@@ -10,6 +10,7 @@ pub type Context = u64;
 pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     fn cmd(&self) -> &HashedCommand;
     fn start_at(&self) -> Instant;
+    fn elapsed_current_req(&self) -> Duration;
     fn operation(&self) -> Operation;
     fn len(&self) -> usize;
     fn hash(&self) -> i64;
