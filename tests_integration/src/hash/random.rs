@@ -1,0 +1,34 @@
+use crate::hash::{init_pods, shard_check_with_files};
+use sharding::distribution::Distribute;
+use sharding::hash::Hasher;
+
+const DISTS: [&str; 0] = [
+    //"consistent",
+    //"modrange",
+    //"modula",
+    //"range",
+    //"slotmod",
+    //"splitmod",
+];
+
+const HASHES: [&str; 1] = ["random"];
+
+const ROOT_PATH: &str = "./src/hash/records";
+
+#[test]
+fn random_test() {
+    let shard_count = 8;
+    let servers = init_pods(shard_count);
+    for hash in HASHES {
+        for dis in DISTS {
+            let hasher = Hasher::from(hash);
+            let dist = Distribute::from(dis, &servers);
+            //let h = hasher.hash(&"937529.WiC".as_bytes());
+            //let idx = dist.index(h) as i64;
+            //println!("index is :{}",idx);
+            let file_name = hash.replace("-", "_");
+            let path = format!("{}/{}{}", ROOT_PATH, file_name, "_");
+            shard_check_with_files(path, &hasher, &dist);
+        }
+    }
+}
