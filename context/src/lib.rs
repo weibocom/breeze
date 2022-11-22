@@ -1,6 +1,7 @@
 extern crate lazy_static;
 use clap::{FromArgMatches, IntoApp, Parser};
 use lazy_static::lazy_static;
+use ds::time::Duration;
 use std::path::Path;
 use std::{
     io::{Error, ErrorKind, Result},
@@ -154,6 +155,7 @@ impl ContextOption {
         ListenerIter {
             path: self.service_path.to_string(),
             processed: Default::default(),
+            first: true,
         }
     }
 
@@ -180,6 +182,7 @@ use std::collections::HashMap;
 pub struct ListenerIter {
     processed: HashMap<String, String>,
     path: String,
+    first: bool, //是否第一次扫描socks目录
 }
 
 impl ListenerIter {
@@ -187,6 +190,7 @@ impl ListenerIter {
         Self {
             processed: Default::default(),
             path,
+            first: true,
         }
     }
 
@@ -253,8 +257,20 @@ impl ListenerIter {
         }
         Ok(())
     }
-    async fn read_all(&self) -> Result<Vec<String>> {
+    async fn read_all(&mut self) -> Result<Vec<String>> {
         let mut found = vec![];
+        let dir_meta = tokio::fs::metadata(&self.path).await?;
+        let last_update = dir_meta.modified()?.elapsed();
+        match last_update {
+            Ok(t) => {
+                // socks目录超过2s未更改并且不是第一次扫描socks目录，则不需要读取sock文件
+                if t > Duration::from_secs(2) && !&self.first {
+                    return Ok(found);
+                }
+            }
+            Err(err) => log::warn!("get socks dir metadata err:{:?}", err),
+        }
+        self.first = false;
         let mut dir = tokio::fs::read_dir(&self.path).await?;
         while let Some(child) = dir.next_entry().await? {
             if child.metadata().await?.is_file() {
