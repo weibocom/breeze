@@ -219,7 +219,7 @@ pub async fn start_dns_resolver_refresher() {
         }
         //last = Instant::now();
 
-        log::debug!("refresh dns elapsed:{:?}", _start.elapsed());
+        log::trace!("refresh dns elapsed:{:?}", _start.elapsed());
     }
 }
 

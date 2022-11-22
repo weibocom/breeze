@@ -20,6 +20,8 @@ use super::config::{Backend, PhantomNamespace};
 use super::config::{ACCESS_NONE, ACCESS_READ, ACCESS_WRITE};
 use crate::TimeoutAdjust;
 
+const CONFIG_UPDATED_KEY: &str = "__config__";
+
 #[derive(Clone)]
 pub struct PhantomService<B, E, Req, P> {
     // 一般有2组，相互做HA，每组是一个域名列表，域名下只有一个ip，但会变化
@@ -160,6 +162,12 @@ where
                 );
             }
             self.streams_backend = ns.backends.clone();
+
+            // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
+            self.updated
+                .entry(CONFIG_UPDATED_KEY.to_string())
+                .or_insert(Arc::new(AtomicBool::new(true)))
+                .store(true, Ordering::Release);
         }
     }
 

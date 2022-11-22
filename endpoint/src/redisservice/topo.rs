@@ -155,26 +155,22 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
-            // TODO  放到parse的地方判断
-            // let len = ns.backends.len();
-            // let power_two = len > 0 && ((len & len - 1) == 0);
-            // if !power_two {
-            //     log::error!("{} shard num {} is not power of two", self.service, len);
-            //     return;
-            // }
-
             self.timeout_master.adjust(ns.basic.timeout_ms_master);
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
+            self.selector = ns.basic.selector;
+
+            // TODO 直接设置selector属性，在更新最后，设置全局更新标志，deadcode暂时保留，观察副作用 2022.12后可以删除
             // selector属性更新与域名实例更新保持一致
-            if self.selector != ns.basic.selector {
-                self.selector = ns.basic.selector;
-                self.updated
-                    .entry(CONFIG_UPDATED_KEY.to_string())
-                    .or_insert(Arc::new(AtomicBool::new(true)))
-                    .store(true, Ordering::Release);
-            }
+            // if self.selector != ns.basic.selector {
+            //     self.selector = ns.basic.selector;
+            //     self.updated
+            //         .entry(CONFIG_UPDATED_KEY.to_string())
+            //         .or_insert(Arc::new(AtomicBool::new(true)))
+            //         .store(true, Ordering::Release);
+            // }
+
             let mut shards_url = Vec::new();
             for shard in ns.backends.iter() {
                 let mut shard_url = Vec::new();
@@ -193,6 +189,12 @@ where
                 log::debug!("top updated from {:?} to {:?}", self.shards_url, shards_url);
             }
             self.shards_url = shards_url;
+
+            // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
+            self.updated
+                .entry(CONFIG_UPDATED_KEY.to_string())
+                .or_insert(Arc::new(AtomicBool::new(true)))
+                .store(true, Ordering::Release);
         }
         self.service = namespace.to_string();
     }
