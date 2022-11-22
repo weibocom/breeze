@@ -141,8 +141,10 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Entry<
         // close
         while !self.inner.close() {
             ready!(self.tick.poll_tick(cx));
-            log::info!("closing => {:?} {:?}", self.inner, self.out);
-            if self.last.elapsed().as_secs() % 15 == 0 {
+            let elapsed = self.last.elapsed().as_secs();
+            // 超过一秒才算异常. 通常的metrics是15秒一采集，确保数据在一个周期内被采集
+            if elapsed >= 1 && elapsed % 8 == 0 {
+                log::error!("closing({} secs) {:?} {:?}", elapsed, self.inner, self.out);
                 LEAKED_CONN.incr();
             }
         }
