@@ -2,6 +2,7 @@
 extern crate lazy_static;
 
 mod flag;
+use flag::BitOP;
 pub mod memcache;
 pub mod parser;
 pub mod phantom;

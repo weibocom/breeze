@@ -73,7 +73,8 @@ where
     fn send(&self, mut req: Self::Item) {
         assert_ne!(self.shards.len(), 0);
 
-        let shard_idx = match req.direct_hash() {
+        use protocol::RedisFlager;
+        let shard_idx = match req.cmd().direct_hash() {
             true => {
                 let dhash_boundary = protocol::MAX_DIRECT_HASH - self.shards.len() as i64;
                 // 大于direct hash边界，说明是全节点分发请求，发送请求前，需要调整hash为下次发送做准备
@@ -102,7 +103,6 @@ where
         );
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
-        use protocol::RedisFlager;
         // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
         if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(

@@ -173,11 +173,7 @@ impl HashedCommand {
     }
     #[inline]
     pub fn update_hash(&mut self, idx_hash: i64) {
-        if self.direct_hash() {
-            self.hash = idx_hash;
-        } else {
-            log::warn!("should not update hash for non direct_hash!");
-        }
+        self.hash = idx_hash;
     }
 }
 impl AsRef<Command> for HashedCommand {
