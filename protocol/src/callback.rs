@@ -244,7 +244,7 @@ impl CallbackContext {
     }
 
     // 计算当前请求消耗的时间，更新
-    #[inline]
+    #[inline(always)]
     pub fn elapsed_current_req(&self) -> Duration {
         self.last_start.elapsed()
     }
