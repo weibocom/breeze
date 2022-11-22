@@ -198,9 +198,9 @@ where
                 parser.build_local_response(ctx.request(), |hash| self.top.shard_idx(hash))
             });
 
-            if parser.cache() && op.is_query() {
-                *metrics.cache() += response.ok();
-            }
+            // if parser.cache() && op.is_query() {
+            //     *metrics.cache() += response.ok();
+            // }
 
             // 流程调整后，所有request都必须有response，异常请求、noforward请求，放在这里统一构建rsp fishermen
             //if !ctx.inited() {
