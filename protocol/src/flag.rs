@@ -7,7 +7,6 @@ pub struct Flag {
     sentonly: bool,
     status_ok: bool,
     noforward: bool,
-    direct_hash: bool,
     nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
     v: u64,
 }
@@ -105,14 +104,6 @@ impl Flag {
         self.op = op;
     }
     #[inline]
-    pub fn set_direct_hash(&mut self, direct_hash: bool) {
-        self.direct_hash = direct_hash
-    }
-    #[inline]
-    pub fn direct_hash(&self) -> bool {
-        self.direct_hash
-    }
-    #[inline]
     pub fn set_ext(&mut self, ext: u64) {
         self.v = ext;
     }
@@ -157,5 +148,38 @@ impl TryNextType {
 impl Default for TryNextType {
     fn default() -> Self {
         TryNextType::TryNext
+    }
+}
+
+pub(crate) trait BitOP {
+    fn set(&mut self, shift: u8, mask: u64, val: u64);
+    fn get(&self, shift: u8, mask: u64) -> u64;
+    fn bit_set(&mut self, bit: bool, shift: u8);
+    fn bit_get(&self, shift: u8) -> bool;
+}
+
+impl BitOP for u64 {
+    #[inline]
+    fn set(&mut self, shift: u8, mask: u64, val: u64) {
+        assert!(val <= mask);
+        assert_eq!(self.get(shift, mask), 0);
+        *self |= val << shift;
+        assert_eq!(val, self.get(shift, mask));
+    }
+    #[inline]
+    fn get(&self, shift: u8, mask: u64) -> u64 {
+        (*self >> shift) & mask
+    }
+    #[inline]
+    fn bit_set(&mut self, bit: bool, shift: u8) {
+        if bit {
+            *self |= 1 << shift;
+        } else {
+            *self &= !(1 << (shift));
+        }
+    }
+    #[inline]
+    fn bit_get(&self, shift: u8) -> bool {
+        self & (1 << shift) != 0
     }
 }

@@ -47,5 +47,13 @@ mod redis_test {
         assert!(!cmd.master_only());
         cmd.set_master_only();
         assert!(cmd.master_only());
+
+        assert!(!cmd.direct_hash());
+        cmd.set_direct_hash(true);
+        assert!(cmd.direct_hash());
+        cmd.set_direct_hash(false);
+        assert!(!cmd.direct_hash());
+        //对前面设置的flag没有影响
+        assert!(cmd.master_only());
     }
 }

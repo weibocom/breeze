@@ -27,7 +27,6 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
         self.mut_context()
     }
     fn mut_context(&mut self) -> &mut Context;
-    fn direct_hash(&self) -> bool;
     // 请求成功后，是否需要进行回写或者同步。
     fn write_back(&mut self, wb: bool);
     //fn is_write_back(&self) -> bool;
