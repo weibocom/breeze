@@ -208,6 +208,8 @@ impl ListenerIter {
                     if let Some(one) = Quadruple::parse(&self.path, &name) {
                         if !self.processed.contains_key(one.service()) {
                             listeners.push(one);
+                            // sock文件已生成且成功扫描到
+                            self.first = false;
                         } else {
                             // 包含了service，但端口、协议等任何其他发生变化，则立即汇报
                             let empty = "default-empty".to_string();
@@ -257,20 +259,19 @@ impl ListenerIter {
         }
         Ok(())
     }
-    async fn read_all(&mut self) -> Result<Vec<String>> {
+    async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];
         let dir_meta = tokio::fs::metadata(&self.path).await?;
         let last_update = dir_meta.modified()?.elapsed();
         match last_update {
             Ok(t) => {
-                // socks目录超过2s未更改并且不是第一次扫描socks目录，则不需要读取sock文件
+                // socks目录超过2s未更改并且不是第一次成功扫描到sock文件，则不需要读取sock文件
                 if t > Duration::from_secs(2) && !&self.first {
                     return Ok(found);
                 }
             }
             Err(err) => log::warn!("get socks dir metadata err:{:?}", err),
         }
-        self.first = false;
         let mut dir = tokio::fs::read_dir(&self.path).await?;
         while let Some(child) = dir.next_entry().await? {
             if child.metadata().await?.is_file() {
