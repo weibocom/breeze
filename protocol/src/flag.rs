@@ -151,35 +151,37 @@ impl Default for TryNextType {
     }
 }
 
-pub(crate) trait BitOP {
-    fn set(&mut self, shift: u8, mask: u64, val: u64);
-    fn get(&self, shift: u8, mask: u64) -> u64;
-    fn bit_set(&mut self, bit: bool, shift: u8);
-    fn bit_get(&self, shift: u8) -> bool;
+pub trait Bit {
+    fn mask_set(&mut self, shift: u8, mask: u64, val: u64);
+    fn mask_get(&self, shift: u8, mask: u64) -> u64;
+    fn set(&mut self, shift: u8);
+    fn clear(&mut self, shift: u8);
+    fn get(&self, shift: u8) -> bool;
 }
 
-impl BitOP for u64 {
+impl Bit for u64 {
+    //mask决定val中要set的位数
     #[inline]
-    fn set(&mut self, shift: u8, mask: u64, val: u64) {
+    fn mask_set(&mut self, shift: u8, mask: u64, val: u64) {
         assert!(val <= mask);
-        assert_eq!(self.get(shift, mask), 0);
+        assert_eq!(self.mask_get(shift, mask), 0);
         *self |= val << shift;
-        assert_eq!(val, self.get(shift, mask));
+        assert_eq!(val, self.mask_get(shift, mask));
     }
     #[inline]
-    fn get(&self, shift: u8, mask: u64) -> u64 {
+    fn mask_get(&self, shift: u8, mask: u64) -> u64 {
         (*self >> shift) & mask
     }
     #[inline]
-    fn bit_set(&mut self, bit: bool, shift: u8) {
-        if bit {
-            *self |= 1 << shift;
-        } else {
-            *self &= !(1 << (shift));
-        }
+    fn set(&mut self, shift: u8) {
+        *self |= 1 << shift;
     }
     #[inline]
-    fn bit_get(&self, shift: u8) -> bool {
+    fn clear(&mut self, shift: u8) {
+        *self &= !(1 << (shift));
+    }
+    #[inline]
+    fn get(&self, shift: u8) -> bool {
         self & (1 << shift) != 0
     }
 }
