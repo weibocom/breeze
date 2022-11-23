@@ -44,6 +44,7 @@ const RESTYPEWITHSLAVE: &str = "redis_with_slave";
 
 use crate::ci::env::*;
 use crate::redis_helper::*;
+#[allow(unused)]
 use function_name::named;
 use std::vec;
 
@@ -92,6 +93,7 @@ fn test_get_write_by_sdk() {
 ///  6. 以上set请求乱序set一遍
 #[named]
 #[test]
+#[cfg(feature = "github_workflow")]
 fn test_set_value_fix_size() {
     let arykey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
