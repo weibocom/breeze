@@ -37,12 +37,12 @@ impl RingSlice {
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
         assert!(offset + len <= self.len());
-        Self::from(
-            self.ptr(),
-            self.cap,
-            self.start + offset,
-            self.start + offset + len,
-        )
+        Self {
+            ptr: self.ptr,
+            cap: self.cap,
+            start: self.start + offset,
+            len,
+        }
     }
     // 读取数据. 可能只读取可读数据的一部分。
     #[inline]
