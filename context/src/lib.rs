@@ -265,8 +265,8 @@ impl ListenerIter {
         let last_update = dir_meta.modified()?.elapsed();
         match last_update {
             Ok(t) => {
-                // socks目录超过2s未更改并且不是第一次成功扫描到sock文件，则不需要读取sock文件
-                if t > Duration::from_secs(2) && !&self.first {
+                // socks目录超过10s未更改并且不是第一次成功扫描到sock文件，则不需要读取sock文件
+                if t > Duration::from_secs(10) && !&self.first {
                     return Ok(found);
                 }
             }
