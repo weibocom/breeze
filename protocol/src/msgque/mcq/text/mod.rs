@@ -4,10 +4,7 @@ mod reqpacket;
 mod rsppacket;
 
 use crate::msgque::mcq::text::rsppacket::RspPacket;
-use crate::{
-    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
-    Writer,
-};
+use crate::{Command, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream};
 
 use sharding::hash::Hash;
 
@@ -90,30 +87,47 @@ impl Protocol for McqText {
         }
     }
 
+    // TODO 测试完毕清理
     // msgque没有multi请求，直接构建padding rsp即可
-    fn build_local_response<F: Fn(i64) -> usize>(
-        &self,
-        req: &HashedCommand,
-        _dist_fn: F,
-    ) -> Command {
-        let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
-        cfg.build_padding_rsp()
-    }
+    // fn build_local_response<F: Fn(i64) -> usize>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     _dist_fn: F,
+    // ) -> Command {
+    //     let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
+    //     cfg.build_padding_rsp()
+    // }
 
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
-    fn write_response<C: Commander, W: Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
+    fn write_response<W: crate::Writer, F: Fn(i64) -> usize>(
+        &self,
+        request: &HashedCommand,
+        response: &mut Option<Command>,
+        _dist_fn: F,
+        w: &mut W,
+    ) -> Result<()> {
         // 对于quit指令，直接返回Err断连
-        let cfg = command::get_cfg(ctx.request().op_code())?;
+        let cfg = command::get_cfg(request.op_code())?;
         if cfg.quit {
+            // mc协议的quit，直接断连接
             return Err(crate::Error::Quit);
         }
 
-        let rsp = ctx.response().data();
-        // 虽然quit的响应长度为0，但不排除有其他响应长度为0的场景，还是用quit属性来断连更安全
-        if rsp.len() > 0 {
-            w.write_slice(rsp, 0)?;
+        if let Some(rsp) = response {
+            // 不再创建local rsp，所有server响应的rsp data长度应该大于0
+            debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
+            w.write_slice(rsp.data(), 0)?;
+        } else {
+            let padding = cfg.get_padding_rsp();
+            w.write(padding.as_bytes())?;
         }
+        // TODO 测试完毕后清理
+        // let rsp = ctx.response().data();
+        // // 虽然quit的响应长度为0，但不排除有其他响应长度为0的场景，还是用quit属性来断连更安全
+        // if rsp.len() > 0 {
+        //     w.write_slice(rsp, 0)?;
+        // }
         Ok(())
     }
 

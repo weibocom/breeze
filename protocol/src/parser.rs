@@ -38,10 +38,17 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
 
     // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
-    fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
-        -> Command;
+    // fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
+    //     -> Command;
 
-    fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()>;
+    // fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()>;
+    fn write_response<W: crate::Writer, F: Fn(i64) -> usize>(
+        &self,
+        request: &HashedCommand,
+        response: &mut Option<Command>,
+        dist_fn: F,
+        w: &mut W,
+    ) -> Result<()>;
 
     #[inline]
     fn check(&self, _req: &HashedCommand, _resp: &Command) -> bool {
@@ -103,13 +110,16 @@ impl Command {
     pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
         Self { flag, cmd }
     }
+
+    // TODO 测试完毕后清理
     // 根据vec格式的data构建cmd，flag全部为默认值
-    pub fn from_vec(data: Vec<u8>) -> Self {
-        Self {
-            flag: Flag::new(),
-            cmd: MemGuard::from_vec(data),
-        }
-    }
+    // pub fn from_vec(data: Vec<u8>) -> Self {
+    //     Self {
+    //         flag: Flag::new(),
+    //         cmd: MemGuard::from_vec(data),
+    //     }
+    // }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.cmd.len()

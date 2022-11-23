@@ -18,7 +18,7 @@ use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::{
     buffer::{Reader, StreamGuard},
-    context::{CallbackContextPtr, ResponseContext},
+    context::CallbackContextPtr,
     Callback, CallbackContext, Request, StreamMetrics,
 };
 
@@ -191,16 +191,17 @@ where
             let last = ctx.last();
             // 当前不是最后一个值。也优先写入cache
             client.cache(!last);
-            let op = ctx.request().operation();
+            // let op = ctx.request().operation();
             *metrics.key() += 1;
 
-            let mut response = ctx.take_response_or(|ctx| {
-                parser.build_local_response(ctx.request(), |hash| self.top.shard_idx(hash))
-            });
+            // let mut response = ctx.take_response_or(|ctx| {
+            //     parser.build_local_response(ctx.request(), |hash| self.top.shard_idx(hash))
+            // });
+            let mut response = ctx.take_response();
 
-            if parser.cache() && op.is_query() {
-                *metrics.cache() += response.ok();
-            }
+            // if response.is_some() && parser.cache() && op.is_query() {
+            //     *metrics.cache() += response.unwrap().ok();
+            // }
 
             // 流程调整后，所有request都必须有response，异常请求、noforward请求，放在这里统一构建rsp fishermen
             //if !ctx.inited() {
@@ -211,17 +212,30 @@ where
 
             //// 至此，所有req都有response，统一处理
             //assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
-            parser.write_response(&mut ResponseContext(&mut ctx, &mut response), client)?;
+            // parser.write_response(&mut ResponseContext(&mut ctx, &mut response), client)?;
+            parser.write_response(
+                ctx.request(),
+                &mut response,
+                |hash| self.top.shard_idx(hash),
+                client,
+            )?;
 
-            //TODO 部分请求的nil convert发生在write_response，待鑫鑫完成修改，这个统计后续也改到write_response中 fishermen 2022.11.17
-            if response.nil_converted() {
-                *metrics.nilconvert() += 1;
-            }
+            //TODO !!! 这个统计后续改到write_response中 fishermen 2022.11.23
+            // if response.nil_converted() {
+            //     *metrics.nilconvert() += 1;
+            // }
 
-            // 如果需要回写，且response正确，则进行回写
-            if ctx.is_write_back() && response.ok() {
-                ctx.async_write_back(parser, response, self.top.exp_sec());
-                self.async_pending.push_back(ctx);
+            // 回写及公共统计
+            let op = ctx.request().operation();
+            if let Some(rsp) = response {
+                if parser.cache() && op.is_query() {
+                    *metrics.cache() += rsp.ok();
+                }
+
+                if ctx.is_write_back() {
+                    ctx.async_write_back(parser, rsp, self.top.exp_sec());
+                    self.async_pending.push_back(ctx);
+                }
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，

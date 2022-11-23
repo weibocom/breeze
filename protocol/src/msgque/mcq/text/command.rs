@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use sharding::hash::{Bkdr, Hash, UppercaseHashKey};
 
-use crate::{Command, OpCode, Operation};
+use crate::{OpCode, Operation};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CommandProperties {
@@ -34,19 +34,32 @@ impl CommandProperties {
         &self.req_type
     }
 
+    // TODO 测试完毕后清理
+    // 构建一个padding rsp，用于返回默认响应或server不可用响应
+    // 格式类似：1 VERSION 0.0.1\r\n ;
+    //          2 SERVER_ERROR mcq not available\r\n
+    // #[inline(always)]
+    // pub(super) fn build_padding_rsp(&self) -> Command {
+    //     let padding_idx = self.padding_rsp as usize;
+    //     // 注意：quit的padding rsp为0
+    //     let padding_rsp = *PADDING_RSP_TABLE
+    //         .get(padding_idx)
+    //         .expect(format!("cmd:{}/{}", self.name, padding_idx).as_str());
+    //     let mut rsp = Command::from_vec(Vec::from(padding_rsp));
+    //     rsp.set_status_ok(self.op.is_meta());
+    //     rsp
+    // }
+
     // 构建一个padding rsp，用于返回默认响应或server不可用响应
     // 格式类似：1 VERSION 0.0.1\r\n ;
     //          2 SERVER_ERROR mcq not available\r\n
     #[inline(always)]
-    pub(super) fn build_padding_rsp(&self) -> Command {
+    pub(super) fn get_padding_rsp(&self) -> &str {
         let padding_idx = self.padding_rsp as usize;
         // 注意：quit的padding rsp为0
-        let padding_rsp = *PADDING_RSP_TABLE
+        *PADDING_RSP_TABLE
             .get(padding_idx)
-            .expect(format!("cmd:{}/{}", self.name, padding_idx).as_str());
-        let mut rsp = Command::from_vec(Vec::from(padding_rsp));
-        rsp.set_status_ok(self.op.is_meta());
-        rsp
+            .expect(format!("cmd:{}/{}", self.name, padding_idx).as_str())
     }
 }
 

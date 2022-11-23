@@ -1,14 +1,16 @@
-use crate::{Command, HashedCommand, OpCode, Operation};
+use crate::{HashedCommand, OpCode, Operation};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
 
+//============== 吞噬指令 ==============//
 pub const SWALLOWED_CMD_HASHKEYQ: &str = "hashkeyq";
 pub const SWALLOWED_CMD_HASHRANDOMQ: &str = "hashrandomq";
 
+//============== 需要本地构建特殊响应的cmd ==============//
 // 指示下一个cmd的用于计算分片hash的key
-pub const DIST_CMD_HASHKEY: &str = "hashkey";
+pub const SPEC_LOCAL_CMD_HASHKEY: &str = "hashkey";
 // 计算批量key的分片索引
-pub const DIST_CMD_KEYSHARD: &str = "keyshard";
+pub const SPEC_LOCAL_CMD_KEYSHARD: &str = "keyshard";
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Debug)]
@@ -29,8 +31,10 @@ pub(crate) struct CommandProperties {
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
     pub(super) padding_rsp: u8,
+
+    // TODO 把padding、nil、special-rsp整合成一个
     // multi类指令，如果返回多个bulk，err bulk需要转为nil
-    pub(super) nil_rsp: u8,
+    // pub(super) nil_rsp: u8,
     pub(super) has_val: bool,
     pub(super) has_key: bool,
     pub(super) noforward: bool,
@@ -61,56 +65,70 @@ const PADDING_RSP_TABLE: [&str; 7] = [
 // 这个idx通常来自于CommandProperties.padding_rsp
 
 impl CommandProperties {
+    // TODO 测试完毕清理 deadcode
     // 构建一个nil rsp，返回格式类似： $-1\r\n
-    #[inline(always)]
-    pub(super) fn build_nil_rsp(&self) -> Command {
-        let nil_str = self.get_nil_rsp_str();
-        let mut rsp = Command::from_vec(Vec::from(nil_str));
-        rsp.set_status_ok(false).set_nil_convert();
-        rsp
-    }
+    // #[inline(always)]
+    // pub(super) fn build_nil_rsp(&self) -> Command {
+    //     let nil_str = self.get_nil_rsp_str();
+    //     let mut rsp = Command::from_vec(Vec::from(nil_str));
+    //     rsp.set_status_ok(false).set_nil_convert();
+    //     rsp
+    // }
 
-    #[inline]
-    pub(super) fn get_nil_rsp_str(&self) -> &str {
-        let nil_idx = self.nil_rsp as usize;
-        assert!(nil_idx > 0, "cmd:{}", self.name);
+    // #[inline]
+    // pub(super) fn get_nil_rsp(&self) -> &str {
+    //     let nil_idx = self.nil_rsp as usize;
+    //     assert!(nil_idx > 0, "cmd:{}", self.name);
 
-        *PADDING_RSP_TABLE
-            .get(nil_idx)
-            .expect(format!("cmd:{}, nil_rsp:{}", self.name, nil_idx).as_str())
-    }
+    //     *PADDING_RSP_TABLE
+    //         .get(nil_idx)
+    //         .expect(format!("cmd:{}, nil_rsp:{}", self.name, nil_idx).as_str())
+    // }
 
+    // TODO 测试完毕清理 deadcode fishermen
     // 构建一个padding rsp，用于返回默认响应或server不可用响应，只有meta cfg才设置status为true；
     // 响应格式类似：1 pong； 2 -Err redis no available
+    // #[inline(always)]
+    // pub(super) fn build_padding_rsp(&self) -> Command {
+    //     // quit的padding rsp为1，所有的rsp padding都应该大于0
+    //     let padding_idx = self.padding_rsp as usize;
+    //     assert!(padding_idx > 0, "cmd:{}", self.name);
+
+    //     let padding_str = *PADDING_RSP_TABLE
+    //         .get(padding_idx)
+    //         .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str());
+    //     let mut rsp = Command::from_vec(Vec::from(padding_str));
+    //     rsp.set_status_ok(self.op.is_meta());
+    //     rsp
+    // }
+
     #[inline(always)]
-    pub(super) fn build_padding_rsp(&self) -> Command {
+    pub(super) fn get_padding_rsp(&self) -> &str {
         // quit的padding rsp为1，所有的rsp padding都应该大于0
         let padding_idx = self.padding_rsp as usize;
         assert!(padding_idx > 0, "cmd:{}", self.name);
 
-        let padding_str = *PADDING_RSP_TABLE
+        *PADDING_RSP_TABLE
             .get(padding_idx)
-            .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str());
-        let mut rsp = Command::from_vec(Vec::from(padding_str));
-        rsp.set_status_ok(self.op.is_meta());
-        rsp
+            .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str())
     }
 
     // 构建hashkey的resp
-    pub(super) fn build_rsp_hashkey(&self, shard: usize) -> Command {
-        let rsp_str = format!(":{}\r\n", shard);
-        let mut rsp = Command::from_vec(Vec::from(rsp_str));
-        rsp.set_status_ok(true);
-        rsp
+    pub(super) fn get_rsp_hashkey(&self, shard: usize) -> String {
+        format!(":{}\r\n", shard)
+        // let mut rsp = Command::from_vec(Vec::from(rsp_str));
+        // rsp.set_status_ok(true);
+        // rsp
     }
 
     // 构建keyshard的resp，注意返回的bulk
-    pub(super) fn build_rsp_keyshard(&self, shard: usize) -> Command {
+    pub(super) fn get_rsp_keyshard(&self, shard: usize) -> String {
         let shard_str = shard.to_string();
-        let rsp_str = format!("${}\r\n{}\r\n", shard_str.len(), shard_str);
-        let mut rsp = Command::from_vec(Vec::from(rsp_str));
-        rsp.set_status_ok(true);
-        rsp
+        format!("${}\r\n{}\r\n", shard_str.len(), shard_str)
+
+        // let mut rsp = Command::from_vec(Vec::from(rsp_str));
+        // rsp.set_status_ok(true);
+        // rsp
     }
 
     // TODO: quit测试完毕后删除该方法 fishermen
@@ -348,14 +366,17 @@ pub(super) static SUPPORTED: Commands = {
         //("set" ,"set",             3, Store, 1, 1, 1, 3, false, false, true, true, false),
         //("incr" ,"incr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
         //("decr" ,"decr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
-        Cmd::new("mget").m("get").arity(-2).op(MGet).first(1).last(-1).step(1).padding(3).multi().key().bulk().nil_rsp(6),
+        // Cmd::new("mget").m("get").arity(-2).op(MGet).first(1).last(-1).step(1).padding(3).multi().key().bulk().nil_rsp(6),
+        Cmd::new("mget").m("get").arity(-2).op(MGet).first(1).last(-1).step(1).padding(6).multi().key().bulk(),
+
         Cmd::new("set").arity(3).op(Store).first(1).last(1).step(1).padding(3).key().val(),
         Cmd::new("incr").arity(2).op(Store).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("decr").arity(2).op(Store).first(1).last(1).step(1).padding(3).key(),
 
         // multi请求：异常响应需要改为$-1
         //("mincr","mincr",         -2, Store, 1, -1, 1, 3, true, false, true, false, true),
-        Cmd::new("mincr").arity(-2).op(Store).first(1).last(-1).step(1).padding(3).multi().key().bulk().nil_rsp(6),
+        // Cmd::new("mincr").arity(-2).op(Store).first(1).last(-1).step(1).padding(3).multi().key().bulk().nil_rsp(6),
+        Cmd::new("mincr").arity(-2).op(Store).first(1).last(-1).step(1).padding(6).multi().key().bulk(),
 
         ////mset、del 是mlti指令，但只返回一个result，即need_bulk_num为false，那就只返回第一个key的响应 fishermen
         //// mset不需要bulk number
@@ -780,11 +801,13 @@ impl CommandProperties {
         self.swallowed = true;
         self
     }
-    fn nil_rsp(mut self, idx: u8) -> Self {
-        assert!(idx < PADDING_RSP_TABLE.len() as u8);
-        self.nil_rsp = idx;
-        self
-    }
+
+    // TODO 把nil 和 padding rsp整合，测试完毕后清理
+    // fn nil_rsp(mut self, idx: u8) -> Self {
+    //     assert!(idx < PADDING_RSP_TABLE.len() as u8);
+    //     self.nil_rsp = idx;
+    //     self
+    // }
     fn master(mut self) -> Self {
         self.master_next = true;
         self
