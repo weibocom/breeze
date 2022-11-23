@@ -1,4 +1,5 @@
 //! 需要先指定分片，多条命令配合的测试
+#![allow(unused)]
 
 use crate::ci::env::*;
 use crate::redis::{RESTYPE, RESTYPEWITHSLAVE};
@@ -46,6 +47,7 @@ const SERVERSWITHSLAVE: [[&str; 2]; 4] = [
 /// 读取100次，每个分片都有set的key, 则测试通过
 #[named]
 #[test]
+#[cfg(feature = "github_workflow")]
 fn test_hashrandomq1() {
     let arykey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
@@ -73,8 +75,9 @@ fn test_hashrandomq1() {
 /// 56379 set某key,因主没有56379端口,
 /// 通过hashrandomq get 100次, 应部分有值
 /// 通过master + hashrandomq get 100次, 应全部没值, 因master中没有56379
-// #[test]
+#[test]
 #[named]
+#[cfg(feature = "github_workflow")]
 fn test_hashrandomq_with_master() {
     let arykey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
