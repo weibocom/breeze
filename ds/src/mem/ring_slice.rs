@@ -12,10 +12,19 @@ pub struct RingSlice {
 }
 
 impl RingSlice {
+    const EMPTY: Self = Self {
+        ptr: 0,
+        cap: 0,
+        start: 0,
+        end: 0,
+    };
+    #[inline]
+    pub fn empty() -> Self {
+        Self::EMPTY
+    }
     #[inline]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
-        assert!(cap > 0);
-        assert_eq!(cap & cap - 1, 0);
+        assert!(cap == 0 || cap.is_power_of_two(), "not valid cap:{}", cap);
         assert!(end >= start);
         Self {
             ptr: ptr as usize,
@@ -62,7 +71,8 @@ impl RingSlice {
     }
     #[inline]
     fn mask(&self, oft: usize) -> usize {
-        (self.cap - 1) & oft
+        // 兼容cap是0的场景
+        self.cap.wrapping_sub(1) & oft
     }
 
     #[inline]
@@ -210,14 +220,6 @@ impl RingSlice {
 
         Err(Error::new(ErrorKind::Other, "no enough bytes"))
     }
-
-    // 只用来debug
-    #[inline]
-    fn to_vec(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(self.len());
-        self.copy_to_vec(&mut v);
-        v
-    }
 }
 
 unsafe impl Send for RingSlice {}
@@ -314,16 +316,16 @@ impl Debug for RingSlice {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         use crate::Utf8;
-        let data = if self.len() > 1024 {
-            format!("[hidden for too long len:{}]", self.len())
-        } else {
-            self.to_vec().utf8()
-        };
-
+        let slice = self.sub_slice(0, 512.min(self.len()));
+        let data = Vec::with_capacity(slice.len());
         write!(
             f,
             "ptr:{} start:{} end:{} cap:{} => {:?}",
-            self.ptr, self.start, self.end, self.cap, data
+            self.ptr,
+            self.start,
+            self.end,
+            self.cap,
+            data.utf8()
         )
     }
 }

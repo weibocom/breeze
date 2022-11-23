@@ -47,7 +47,8 @@ impl RingBuffer {
     }
     #[inline]
     fn mask(&self, offset: usize) -> usize {
-        offset & (self.size - 1)
+        // 兼容size为0的场景
+        offset & self.size.wrapping_sub(1)
     }
     // 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
     #[inline]
