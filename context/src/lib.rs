@@ -1,7 +1,7 @@
 extern crate lazy_static;
 use clap::{FromArgMatches, IntoApp, Parser};
 use lazy_static::lazy_static;
-use ds::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::Path;
 use std::{
     io::{Error, ErrorKind, Result},
@@ -155,7 +155,7 @@ impl ContextOption {
         ListenerIter {
             path: self.service_path.to_string(),
             processed: Default::default(),
-            first: true,
+            last_read: UNIX_EPOCH, //初始值设为0时
         }
     }
 
@@ -182,7 +182,7 @@ use std::collections::HashMap;
 pub struct ListenerIter {
     processed: HashMap<String, String>,
     path: String,
-    first: bool, //是否第一次扫描socks目录
+    last_read: SystemTime, //上次扫描到socks目录有更新时间
 }
 
 impl ListenerIter {
@@ -190,7 +190,7 @@ impl ListenerIter {
         Self {
             processed: Default::default(),
             path,
-            first: true,
+            last_read: UNIX_EPOCH, 
         }
     }
 
@@ -202,14 +202,14 @@ impl ListenerIter {
     pub async fn scan(&mut self) -> (Vec<Quadruple>, usize) {
         let mut failed = 0;
         let mut listeners = vec![];
+        // 本次循环开始时间
+        let start = SystemTime::now();
         match self.read_all().await {
             Ok(names) => {
                 for name in names {
                     if let Some(one) = Quadruple::parse(&self.path, &name) {
                         if !self.processed.contains_key(one.service()) {
                             listeners.push(one);
-                            // sock文件已生成且成功扫描到
-                            self.first = false;
                         } else {
                             // 包含了service，但端口、协议等任何其他发生变化，则立即汇报
                             let empty = "default-empty".to_string();
@@ -243,6 +243,7 @@ impl ListenerIter {
                 }
                 retain
             });
+            self.last_read = start;
         }
         (listeners, failed)
     }
@@ -262,16 +263,17 @@ impl ListenerIter {
     async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];
         let dir_meta = tokio::fs::metadata(&self.path).await?;
-        let last_update = dir_meta.modified()?.elapsed();
+        let last_update = dir_meta.modified();
         match last_update {
             Ok(t) => {
-                // socks目录超过10s未更改并且不是第一次成功扫描到sock文件，则不需要读取sock文件
-                if t > Duration::from_secs(10) && !&self.first {
+                //上次扫描到sock文件后后续再未更新
+                if &self.last_read > &t {
                     return Ok(found);
                 }
             }
             Err(err) => log::warn!("get socks dir metadata err:{:?}", err),
         }
+
         let mut dir = tokio::fs::read_dir(&self.path).await?;
         while let Some(child) = dir.next_entry().await? {
             if child.metadata().await?.is_file() {
