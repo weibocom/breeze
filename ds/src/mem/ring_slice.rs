@@ -34,11 +34,6 @@ impl RingSlice {
         }
     }
 
-    //#[inline]
-    //pub fn capacity(&self) -> usize {
-    //    self.cap
-    //}
-
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
         assert!(offset + len <= self.len());
@@ -101,26 +96,6 @@ impl RingSlice {
         self.ptr().offset(oft as isize)
     }
 
-    //pub fn split(&self, splitter: &[u8]) -> Vec<Self> {
-    //    let mut pos = 0 as usize;
-    //    let mut result: Vec<RingSlice> = vec![];
-    //    loop {
-    //        let new_pos = self.find_sub(pos, splitter);
-    //        if new_pos.is_none() {
-    //            if pos < self.len() {
-    //                result.push(self.sub_slice(pos, self.len() - pos));
-    //            }
-    //            return result;
-    //        } else {
-    //            let new_pos = new_pos.unwrap();
-    //            result.push(self.sub_slice(pos, new_pos));
-    //            if new_pos + splitter.len() == self.end - self.start {
-    //                return result;
-    //            }
-    //            pos = pos + new_pos + splitter.len();
-    //        }
-    //    }
-    //}
     #[inline]
     pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
         for i in offset..self.len() {
@@ -130,31 +105,6 @@ impl RingSlice {
         }
         None
     }
-    //// 从offset开始，查找s是否存在
-    //// 最坏时间复杂度 O(self.len() * s.len())
-    //// 但通常在协议处理过程中，被查的s都是特殊字符，而且s的长度通常比较小，因为时间复杂度会接近于O(self.len())
-    //pub fn find_sub(&self, offset: usize, s: &[u8]) -> Option<usize> {
-    //    if self.start + offset + s.len() > self.end {
-    //        return None;
-    //    }
-    //    let mut i = 0 as usize;
-    //    let i_cap = self.len() - s.len() - offset;
-    //    while i <= i_cap {
-    //        let mut found_len = 0 as usize;
-    //        for j in 0..s.len() {
-    //            if self.read_u8(offset + i + j) != s[j] {
-    //                i += 1;
-    //                break;
-    //            } else {
-    //                found_len = found_len + 1;
-    //            }
-    //        }
-    //        if found_len == s.len() {
-    //            return Some(i);
-    //        }
-    //    }
-    //    None
-    //}
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     #[inline]
     pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
@@ -296,8 +246,7 @@ impl From<&[u8]> for RingSlice {
     fn from(s: &[u8]) -> Self {
         // TODO 诸如quite/quit指令的响应无需内容，可能会存在0长度的data，关注是否有副作用 fishermen
         // assert_ne!(s.len(), 0);
-        let len = s.len();
-        let cap = len.next_power_of_two();
+        let cap = s.len().next_power_of_two();
         Self::from(s.as_ptr() as *mut u8, cap, 0, s.len())
     }
 }
