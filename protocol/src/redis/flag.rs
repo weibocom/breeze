@@ -16,7 +16,7 @@ const MASTER_ONLY_SHIFT: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
 const MASTER_ONLY_BIT: u8 = 1;
 // 37: direct_hash
 const DIRECT_HASH_SHIFT: u8 = MASTER_ONLY_SHIFT + MASTER_ONLY_BIT;
-const DIRECT_HASH_BIT: u8 = 1;
+const _DIRECT_HASH_BIT: u8 = 1;
 
 // 这些目前不再使用，暂时保留到2022.12 之后清理
 // // 36~43 8bit
@@ -38,7 +38,7 @@ pub trait RedisFlager {
     fn padding_rsp(&self) -> u8;
     fn set_master_only(&mut self);
     fn master_only(&self) -> bool;
-    fn set_direct_hash(&mut self, direct_hash: bool);
+    fn set_direct_hash(&mut self);
     fn direct_hash(&self) -> bool;
     // fn set_ignore_rsp(&mut self, ignore_rsp: bool);
     // fn ignore_rs(&self) -> bool;
@@ -49,15 +49,15 @@ pub trait RedisFlager {
     // fn token_count(&self) -> u8;
 }
 
-use crate::BitOP;
+use crate::Bit;
 impl RedisFlager for u64 {
     #[inline]
     fn set_key_count(&mut self, cnt: u16) {
-        self.set(KEY_COUNT_SHIFT, KEY_COUNT_MASK, cnt as u64)
+        self.mask_set(KEY_COUNT_SHIFT, KEY_COUNT_MASK, cnt as u64)
     }
     #[inline]
     fn key_count(&self) -> u16 {
-        self.get(KEY_COUNT_SHIFT, KEY_COUNT_MASK) as u16
+        self.mask_get(KEY_COUNT_SHIFT, KEY_COUNT_MASK) as u16
     }
     #[inline]
     fn set_mkey_first(&mut self) {
@@ -67,31 +67,31 @@ impl RedisFlager for u64 {
     }
     #[inline]
     fn mkey_first(&self) -> bool {
-        self.bit_get(MKEY_FIRST_SHIFT)
+        self.get(MKEY_FIRST_SHIFT)
     }
     #[inline]
     fn set_padding_rsp(&mut self, padding: u8) {
-        self.set(PADDING_RSP_SHIFT, PADDING_RSP_MASK, padding as u64);
+        self.mask_set(PADDING_RSP_SHIFT, PADDING_RSP_MASK, padding as u64);
     }
     #[inline]
     fn padding_rsp(&self) -> u8 {
-        self.get(PADDING_RSP_SHIFT, PADDING_RSP_MASK) as u8
+        self.mask_get(PADDING_RSP_SHIFT, PADDING_RSP_MASK) as u8
     }
     #[inline]
     fn set_master_only(&mut self) {
-        self.bit_set(true, MASTER_ONLY_SHIFT)
+        self.set(MASTER_ONLY_SHIFT)
     }
     #[inline]
     fn master_only(&self) -> bool {
-        self.bit_get(MASTER_ONLY_SHIFT)
+        self.get(MASTER_ONLY_SHIFT)
     }
     #[inline]
-    fn set_direct_hash(&mut self, direct_hash: bool) {
-        self.bit_set(direct_hash, DIRECT_HASH_SHIFT);
+    fn set_direct_hash(&mut self) {
+        self.set(DIRECT_HASH_SHIFT);
     }
     #[inline]
     fn direct_hash(&self) -> bool {
-        self.bit_get(DIRECT_HASH_SHIFT)
+        self.get(DIRECT_HASH_SHIFT)
     }
     // #[inline]
     // fn set_meta_len(&mut self, l: u8) {
