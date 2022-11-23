@@ -8,7 +8,7 @@ pub struct RingSlice {
     ptr: usize,
     cap: usize,
     start: usize,
-    end: usize,
+    len: usize,
 }
 
 impl RingSlice {
@@ -16,7 +16,7 @@ impl RingSlice {
         ptr: 0,
         cap: 0,
         start: 0,
-        end: 0,
+        len: 0,
     };
     #[inline]
     pub fn empty() -> Self {
@@ -30,7 +30,7 @@ impl RingSlice {
             ptr: ptr as usize,
             cap,
             start,
-            end,
+            len: end - start,
         }
     }
 
@@ -49,7 +49,7 @@ impl RingSlice {
     pub fn read(&self, offset: usize) -> &[u8] {
         assert!(offset < self.len());
         let oft = self.mask(self.start + offset);
-        let l = (self.cap - oft).min(self.end - self.start - offset);
+        let l = (self.cap - oft).min(self.len() - offset);
         unsafe { std::slice::from_raw_parts(self.ptr().offset(oft as isize), l) }
     }
     #[inline]
@@ -72,8 +72,7 @@ impl RingSlice {
 
     #[inline]
     pub fn len(&self) -> usize {
-        assert!(self.end >= self.start, "{}", self);
-        self.end - self.start
+        self.len
     }
     #[inline]
     pub fn at(&self, idx: usize) -> u8 {
@@ -141,6 +140,11 @@ impl RingSlice {
     }
 
     #[inline]
+    fn end(&self) -> usize {
+        self.start + self.len
+    }
+
+    #[inline]
     pub fn start_with_ignore_case(&self, offset: usize, dest: &[u8]) -> std::io::Result<bool> {
         let mut len = dest.len();
         if self.len() - offset < dest.len() {
@@ -184,7 +188,7 @@ macro_rules! define_read_number {
             assert!(self.len() >= offset + SIZE);
             unsafe {
                 let oft_start = (self.start + offset) & (self.cap - 1);
-                let oft_end = self.end & (self.cap - 1);
+                let oft_end = self.end() & (self.cap - 1);
                 if oft_end > oft_start || self.cap >= oft_start + SIZE {
                     let b = from_raw_parts(self.ptr().offset(oft_start as isize), SIZE);
                     $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
@@ -256,8 +260,8 @@ impl Display for RingSlice {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "ptr:{} start:{} end:{} cap:{}",
-            self.ptr, self.start, self.end, self.cap
+            "ptr:{} start:{} len:{} cap:{}",
+            self.ptr, self.start, self.len, self.cap
         )
     }
 }
@@ -269,10 +273,10 @@ impl Debug for RingSlice {
         let data = Vec::with_capacity(slice.len());
         write!(
             f,
-            "ptr:{} start:{} end:{} cap:{} => {:?}",
+            "ptr:{} start:{} len:{} cap:{} => {:?}",
             self.ptr,
             self.start,
-            self.end,
+            self.len,
             self.cap,
             data.utf8()
         )
