@@ -116,7 +116,7 @@ impl Redis {
                 if cfg.reserve_hash {
                     debug_assert!(cfg.has_key, "cfg:{}", cfg.name);
                     // 执行到这里，需要保留指示key的，目前只有hashkey
-                    debug_assert_eq!(cfg.name, command::DIST_CMD_HASHKEY);
+                    debug_assert_eq!(cfg.name, command::SPEC_LOCAL_CMD_HASHKEY);
                     packet.update_reserved_hash(hash);
                 }
             }
@@ -273,49 +273,72 @@ impl Protocol for Redis {
     //  1 对于hashkey、keyshard直接构建resp；
     //  2 对于除keyshard外的multi+多bulk req，构建nil rsp；(注意keyshard是mulit+多bulk)
     //  2 对其他固定响应的请求，构建padding rsp；
-    fn build_local_response<F: Fn(i64) -> usize>(
-        &self,
-        req: &HashedCommand,
-        dist_fn: F,
-    ) -> Command {
-        let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
+    // fn build_local_response<F: Fn(i64) -> usize>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     dist_fn: F,
+    // ) -> Command {
+    //     let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
 
-        // 对hashkey、keyshard构建协议格式的resp，对其他请求构建nil or padding rsp
-        let rsp = match cfg.name {
-            command::DIST_CMD_HASHKEY => {
-                let shard = dist_fn(req.hash());
-                cfg.build_rsp_hashkey(shard)
-            }
-            command::DIST_CMD_KEYSHARD => {
-                assert!(cfg.multi && cfg.need_bulk_num, "{} cfg malformed", cfg.name);
-                let shard = dist_fn(req.hash());
-                cfg.build_rsp_keyshard(shard)
-            }
-            _ => {
-                if cfg.multi && cfg.need_bulk_num {
-                    cfg.build_nil_rsp()
-                } else {
-                    cfg.build_padding_rsp()
-                }
-            }
-        };
-        rsp
-    }
+    //     // 对hashkey、keyshard构建协议格式的resp，对其他请求构建nil or padding rsp
+    //     let rsp = match cfg.name {
+    //         command::DIST_CMD_HASHKEY => {
+    //             let shard = dist_fn(req.hash());
+    //             cfg.build_rsp_hashkey(shard)
+    //         }
+    //         command::DIST_CMD_KEYSHARD => {
+    //             assert!(cfg.multi && cfg.need_bulk_num, "{} cfg malformed", cfg.name);
+    //             let shard = dist_fn(req.hash());
+    //             cfg.build_rsp_keyshard(shard)
+    //         }
+    //         _ => {
+    //             if cfg.multi && cfg.need_bulk_num {
+    //                 cfg.build_nil_rsp()
+    //             } else {
+    //                 cfg.build_padding_rsp()
+    //             }
+    //         }
+    //     };
+    //     rsp
+    // }
 
+    // TODO：当前把padding、nil整合成一个，接下来把spec-rsp也整合进来
     // 发送响应给client：
-    //  1 multi + need-bulk-num，对first先发bulk num，非first正常发送；
-    //  2 其他 multi，只发first响应，其他忽略；
-    //  3 quit 发送完毕后，返回Err 断开连接
-    //  4 其他普通响应直接发送；
+    //  1 非multi，有rsponse直接发送，否则构建padding or spec-rsp后发送；
+    //  2 multi，need-bulk-num为true，有response+ok直接发送，否则构建padding or spec-rsp后发送；
+    //  3 multi，need-bulk-num为false，first，有response直接发送，否则构建padding后发送；
+    //  4 multi，need-bulk-num为false，非first，不做任何操作；
     #[inline]
-    fn write_response<C: Commander, W: crate::Writer>(&self, ctx: &mut C, w: &mut W) -> Result<()> {
-        let req = ctx.request();
-        let cfg = command::get_cfg(req.op_code())?;
-        let response = ctx.response();
-
+    fn write_response<W: crate::Writer, F: Fn(i64) -> usize>(
+        &self,
+        request: &HashedCommand,
+        response: &mut Option<Command>,
+        dist_fn: F,
+        w: &mut W,
+    ) -> Result<()> {
+        // let req = ctx.request();
+        // let cfg = command::get_cfg(req.op_code())?;
+        // let response = ctx.response();
+        let cfg = command::get_cfg(request.op_code())?;
         if !cfg.multi {
-            // 非multi请求的响应，直接返回client
-            w.write_slice(response.data(), 0)?;
+            // 非multi请求,有响应直接返回client，否则构建
+            if let Some(rsp) = response {
+                w.write_slice(rsp.data(), 0)?;
+            } else {
+                // 无响应，则根据cmd name构建对应响应
+                match cfg.name {
+                    command::SPEC_LOCAL_CMD_HASHKEY => {
+                        let shard = dist_fn(request.hash());
+                        let rsp = cfg.get_rsp_hashkey(shard);
+                        w.write(rsp.as_bytes())?;
+                    }
+                    _ => {
+                        let padding = cfg.get_padding_rsp();
+                        w.write(padding.as_bytes())?;
+                    }
+                };
+            }
+
             // quit指令发送完毕后，返回异常断连接
             if cfg.quit {
                 return Err(crate::Error::Quit);
@@ -323,7 +346,7 @@ impl Protocol for Redis {
         } else {
             // multi请求，如果需要bulk num，对第一个key先返回bulk head；
             // 对第一个key的响应都要返回，但对不需要bulk num的其他key响应，不需要返回，直接吞噬
-            let ext = req.ext();
+            let ext = request.ext();
             let first = ext.mkey_first();
             if first || cfg.need_bulk_num {
                 if first && cfg.need_bulk_num {
@@ -331,15 +354,38 @@ impl Protocol for Redis {
                     w.write_s_u16(ext.key_count())?;
                     w.write(b"\r\n")?;
                 }
-                // 对于异常响应，如果resp是多bulk的，则需要将异常响应转为nil进行响应client
-                if !response.ok() && cfg.need_bulk_num {
-                    let nil = cfg.get_nil_rsp_str();
-                    w.write(nil.as_bytes())?;
-                } else {
-                    w.write_slice(response.data(), 0)?;
+
+                // 如果rsp是ok，或者不需要bulk num，直接发送；否则构建rsp or padding rsp
+                if let Some(rsp) = response {
+                    if rsp.ok() || !cfg.need_bulk_num {
+                        w.write_slice(rsp.data(), 0)?;
+                        return Ok(());
+                    }
                 }
+
+                // 构建rsp or padding rsp
+                match cfg.name {
+                    // 当前需要单独创建rsp的multi指令只有keyshard
+                    command::SPEC_LOCAL_CMD_KEYSHARD => {
+                        let shard = dist_fn(request.hash());
+                        let rsp = cfg.get_rsp_keyshard(shard);
+                        w.write(rsp.as_bytes())?;
+                    }
+                    _ => {
+                        let padding = cfg.get_padding_rsp();
+                        w.write(padding.as_bytes())?;
+                    }
+                };
+
+                // if !rsp_ok && cfg.need_bulk_num {
+                //     // let nil = cfg.get_nil_rsp_str();
+                //     // w.write(nil.as_bytes())?;
+                //     w.write(self.build_local_response(request, dist_fn).as_bytes())?;
+                // } else {
+                //     w.write_slice(response.data(), 0)?;
+                // }
             }
-            // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
+            // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可；这些响应直接吞噬。
             // mset always return +OK
             // https://redis.io/commands/mset
         }
