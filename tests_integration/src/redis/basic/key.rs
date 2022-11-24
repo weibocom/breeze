@@ -209,3 +209,64 @@ fn string_basic() {
         }
     }
 }
+
+//del 会丢一部分数据
+#[test]
+fn pipeline_basic() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let _: () = redis::pipe()
+        .cmd("del")
+        .arg("pipelinekey_1")
+        .ignore()
+        .cmd("del")
+        .arg("pipelinekey_2")
+        .ignore()
+        .cmd("SET")
+        .arg("pipelinekey_1")
+        .arg("onlyset1")
+        .ignore()
+        .cmd("SET")
+        .arg("pipelinekey_2")
+        .arg("onlyset2")
+        .query(&mut con)
+        .map_err(|e| panic!("pipeline set error:{:?}", e))
+        .expect("pipleline set err");
+    assert_eq!(con.get("pipelinekey_1"), Ok("onlyset1".to_string()));
+    assert_eq!(con.get("pipelinekey_2"), Ok("onlyset2".to_string()));
+
+    let (g1, g2): (String, String) = redis::pipe()
+        .cmd("GET")
+        .arg("pipelinekey_1")
+        .ignore()
+        .cmd("GET")
+        .arg("pipelinekey_2")
+        .query(&mut con)
+        .map_err(|e| panic!("pipeline set error:{:?}", e))
+        .expect("pipleline set err");
+
+    let (k1, k2): (String, String) = redis::pipe()
+        .cmd("del")
+        .arg("pipelinekey_1")
+        .ignore()
+        .cmd("del")
+        .arg("pipelinekey_2")
+        .ignore()
+        .cmd("SET")
+        .arg("pipelinekey_1")
+        .arg(44)
+        .ignore()
+        .cmd("SET")
+        .arg("pipelinekey_2")
+        .arg(444)
+        .ignore()
+        .cmd("GET")
+        .arg("pipelinekey_1")
+        .cmd("GET")
+        .arg("pipelinekey_2")
+        .query(&mut con)
+        .map_err(|e| panic!("pipeline error:{:?}", e))
+        .expect("pipleline err");
+
+    assert_eq!(k1, 44.to_string());
+    assert_eq!(k2, 444.to_string());
+}
