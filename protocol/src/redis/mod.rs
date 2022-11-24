@@ -1,6 +1,7 @@
 mod command;
 mod error;
 mod flag;
+pub use flag::RedisFlager;
 mod packet;
 //mod token;
 
@@ -15,7 +16,6 @@ use crate::{
 };
 use ds::RingSlice;
 use error::*;
-use flag::RedisFlager;
 use packet::Packet;
 use sharding::hash::Hash;
 
@@ -97,7 +97,7 @@ impl Redis {
                 if packet.reserved_hash() != 0 {
                     // 使用hashkey直接指定了hash
                     hash = packet.reserved_hash();
-                    flag.set_direct_hash(true);
+                    flag.set_direct_hash();
                 } else if cfg.need_reserved_hash {
                     return Err(RedisError::ReqInvalid.error());
                 } else if cfg.has_key {
