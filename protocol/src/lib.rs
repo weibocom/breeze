@@ -2,10 +2,12 @@
 extern crate lazy_static;
 
 mod flag;
+pub use flag::Bit;
 pub mod memcache;
 pub mod parser;
 pub mod phantom;
 pub mod redis;
+pub use redis::RedisFlager;
 pub mod req;
 //pub mod resp;
 pub mod msgque;

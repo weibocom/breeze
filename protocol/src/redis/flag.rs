@@ -11,6 +11,12 @@ const MKEY_FIRST_BIT: u8 = 1;
 const PADDING_RSP_SHIFT: u8 = MKEY_FIRST_SHIFT + MKEY_FIRST_BIT;
 const PADDING_RSP_BITS: u8 = 3;
 const PADDING_RSP_MASK: u64 = (1 << PADDING_RSP_BITS) - 1;
+// 36: master_only
+const MASTER_ONLY_SHIFT: u8 = PADDING_RSP_SHIFT + PADDING_RSP_BITS;
+const MASTER_ONLY_BIT: u8 = 1;
+// 37: direct_hash
+const DIRECT_HASH_SHIFT: u8 = MASTER_ONLY_SHIFT + MASTER_ONLY_BIT;
+const _DIRECT_HASH_BIT: u8 = 1;
 
 // 这些目前不再使用，暂时保留到2022.12 之后清理
 // // 36~43 8bit
@@ -23,13 +29,17 @@ const PADDING_RSP_MASK: u64 = (1 << PADDING_RSP_BITS) - 1;
 // const TOKEN_LEN_BITS: u8 = 8;
 // const TOKEN_LEN_MASK: u64 = (1 << TOKEN_LEN_BITS) - 1;
 
-pub(super) trait RedisFlager {
+pub trait RedisFlager {
     fn set_key_count(&mut self, cnt: u16);
     fn key_count(&self) -> u16;
     fn set_mkey_first(&mut self);
     fn mkey_first(&self) -> bool;
     fn set_padding_rsp(&mut self, idx: u8);
     fn padding_rsp(&self) -> u8;
+    fn set_master_only(&mut self);
+    fn master_only(&self) -> bool;
+    fn set_direct_hash(&mut self);
+    fn direct_hash(&self) -> bool;
     // fn set_ignore_rsp(&mut self, ignore_rsp: bool);
     // fn ignore_rs(&self) -> bool;
 
@@ -39,26 +49,15 @@ pub(super) trait RedisFlager {
     // fn token_count(&self) -> u8;
 }
 
-#[inline]
-fn set(v: &mut u64, shift: u8, mask: u64, val: u64) {
-    assert!(val <= mask);
-    assert_eq!(get(v, shift, mask), 0);
-    *v |= val << shift;
-    assert_eq!(val, get(v, shift, mask));
-}
-#[inline]
-fn get(v: &u64, shift: u8, mask: u64) -> u64 {
-    (*v >> shift) & mask
-}
-
+use crate::Bit;
 impl RedisFlager for u64 {
     #[inline]
     fn set_key_count(&mut self, cnt: u16) {
-        set(self, KEY_COUNT_SHIFT, KEY_COUNT_MASK, cnt as u64)
+        self.mask_set(KEY_COUNT_SHIFT, KEY_COUNT_MASK, cnt as u64)
     }
     #[inline]
     fn key_count(&self) -> u16 {
-        get(self, KEY_COUNT_SHIFT, KEY_COUNT_MASK) as u16
+        self.mask_get(KEY_COUNT_SHIFT, KEY_COUNT_MASK) as u16
     }
     #[inline]
     fn set_mkey_first(&mut self) {
@@ -68,15 +67,31 @@ impl RedisFlager for u64 {
     }
     #[inline]
     fn mkey_first(&self) -> bool {
-        *self & (1 << MKEY_FIRST_SHIFT) > 0
+        self.get(MKEY_FIRST_SHIFT)
     }
     #[inline]
     fn set_padding_rsp(&mut self, padding: u8) {
-        set(self, PADDING_RSP_SHIFT, PADDING_RSP_MASK, padding as u64);
+        self.mask_set(PADDING_RSP_SHIFT, PADDING_RSP_MASK, padding as u64);
     }
     #[inline]
     fn padding_rsp(&self) -> u8 {
-        get(self, PADDING_RSP_SHIFT, PADDING_RSP_MASK) as u8
+        self.mask_get(PADDING_RSP_SHIFT, PADDING_RSP_MASK) as u8
+    }
+    #[inline]
+    fn set_master_only(&mut self) {
+        self.set(MASTER_ONLY_SHIFT)
+    }
+    #[inline]
+    fn master_only(&self) -> bool {
+        self.get(MASTER_ONLY_SHIFT)
+    }
+    #[inline]
+    fn set_direct_hash(&mut self) {
+        self.set(DIRECT_HASH_SHIFT);
+    }
+    #[inline]
+    fn direct_hash(&self) -> bool {
+        self.get(DIRECT_HASH_SHIFT)
     }
     // #[inline]
     // fn set_meta_len(&mut self, l: u8) {
@@ -93,47 +108,5 @@ impl RedisFlager for u64 {
     // #[inline]
     // fn token_count(&self) -> u8 {
     //     get(self, TOKEN_LEN_SHIFT, TOKEN_LEN_MASK) as u8
-    // }
-}
-impl RedisFlager for crate::Flag {
-    #[inline]
-    fn set_key_count(&mut self, cnt: u16) {
-        self.ext_mut().set_key_count(cnt);
-    }
-    #[inline]
-    fn key_count(&self) -> u16 {
-        self.ext().key_count()
-    }
-    #[inline]
-    fn set_mkey_first(&mut self) {
-        self.ext_mut().set_mkey_first();
-    }
-    #[inline]
-    fn mkey_first(&self) -> bool {
-        self.ext().mkey_first()
-    }
-    #[inline]
-    fn set_padding_rsp(&mut self, padding: u8) {
-        self.ext_mut().set_padding_rsp(padding);
-    }
-    #[inline]
-    fn padding_rsp(&self) -> u8 {
-        self.ext().padding_rsp()
-    }
-    // #[inline]
-    // fn set_meta_len(&mut self, l: u8) {
-    //     self.ext_mut().set_meta_len(l);
-    // }
-    // #[inline]
-    // fn meta_len(&self) -> u8 {
-    //     self.ext().meta_len()
-    // }
-    // #[inline]
-    // fn set_token_count(&mut self, c: u8) {
-    //     self.ext_mut().set_token_count(c);
-    // }
-    // #[inline]
-    // fn token_count(&self) -> u8 {
-    //     self.ext().token_count()
     // }
 }
