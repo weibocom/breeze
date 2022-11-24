@@ -24,8 +24,8 @@ impl Rtt {
             let avg = (total_us as f64 / count as f64) as i64;
             w.write(&id.path, id.key, "avg_us", avg);
 
-            w.write(&id.path, id.key, "total_num", count);
-            w.write(&id.path, id.key, "total_us", total_us);
+            //w.write(&id.path, id.key, "total_num", count);
+            //w.write(&id.path, id.key, "total_us", total_us);
             // slow qps
             let slow = self.slow.take();
             if slow > 0 {
