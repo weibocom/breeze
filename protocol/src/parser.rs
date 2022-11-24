@@ -41,7 +41,11 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
         -> Command;
 
-    fn write_response<C: Commander + Metric<T>, W: crate::Writer, T: std::ops::AddAssign<i64>>(
+    fn write_response<
+        C: Commander + Metric<T>,
+        W: crate::Writer,
+        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
+    >(
         &self,
         ctx: &mut C,
         w: &mut W,
@@ -244,6 +248,6 @@ pub enum MetricName {
     Write,
     Cache,
 }
-pub trait Metric<M: std::ops::AddAssign<i64>> {
+pub trait Metric<M: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> {
     fn get(&self, name: MetricName) -> &mut M;
 }

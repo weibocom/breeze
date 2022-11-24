@@ -19,7 +19,11 @@ impl CallbackContextPtr {
     }
     //需要在on_done时主动销毁self对象
     #[inline]
-    pub(super) fn async_write_back<P: Protocol, M: Metric<T>, T: std::ops::AddAssign<i64>>(
+    pub(super) fn async_write_back<
+        P: Protocol,
+        M: Metric<T>,
+        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
+    >(
         &mut self,
         parser: &P,
         mut res: Command,
@@ -73,13 +77,19 @@ impl std::ops::DerefMut for CallbackContextPtr {
 unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 
-pub struct ResponseContext<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> {
+pub struct ResponseContext<
+    'a,
+    M: Metric<T>,
+    T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
+> {
     pub(crate) ctx: &'a mut CallbackContextPtr,
     pub cmd: &'a mut Command,
     pub metric: &'a mut Arc<M>,
     _mark: PhantomData<T>,
 }
-impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> ResponseContext<'a, M, T> {
+impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>
+    ResponseContext<'a, M, T>
+{
     pub(crate) fn new(
         ctx: &'a mut CallbackContextPtr,
         cmd: &'a mut Command,
@@ -93,7 +103,9 @@ impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> ResponseContext<'a, M, T> {
         }
     }
 }
-impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> Commander for ResponseContext<'a, M, T> {
+impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> Commander
+    for ResponseContext<'a, M, T>
+{
     #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
         self.ctx.request_mut()
@@ -111,7 +123,9 @@ impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> Commander for ResponseContex
         self.cmd
     }
 }
-impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> Metric<T> for ResponseContext<'a, M, T> {
+impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> Metric<T>
+    for ResponseContext<'a, M, T>
+{
     #[inline]
     fn get(&self, name: MetricName) -> &mut T {
         self.metric.get(name)
