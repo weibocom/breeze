@@ -2,7 +2,7 @@ use metrics::{Metric, Path};
 use protocol::{Metric as ProtoMetric, MetricName, Operation, OPS};
 macro_rules! define_metrics {
     ($($t:ident:$($name:ident-$key:expr),+);+) => {
-        pub struct CbMetrics {
+        pub struct StreamMetrics {
             $(
                 $(
                 $name: Metric,
@@ -11,7 +11,7 @@ macro_rules! define_metrics {
             ops: [Metric; OPS.len()],
             rtt: Metric,
         }
-        impl CbMetrics {
+        impl StreamMetrics {
             $(
             $(
             #[inline]
@@ -62,7 +62,7 @@ define_metrics!(
     ratio:  cache-hit
 );
 
-impl ProtoMetric<Metric> for CbMetrics {
+impl ProtoMetric<Metric> for StreamMetrics {
     #[inline]
     fn get(&self, name: MetricName) -> &mut Metric {
         match name {

@@ -61,7 +61,7 @@ fn check_layout() {
     assert_eq!(192, size_of::<PhantomService>());
     assert_eq!(392, size_of::<MsgQue>());
 
-    assert_eq!(272, size_of::<stream::StreamMetrics>());
+    assert_eq!(320, size_of::<stream::StreamMetrics>());
 
     assert_eq!((432, 632).select(), size_of::<CopyBidirectional>());
     assert_eq!((568, 792).select(), size_of::<Entry<CopyBidirectional>>());
