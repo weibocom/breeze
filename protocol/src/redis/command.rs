@@ -30,7 +30,7 @@ pub(crate) struct CommandProperties {
     /// key 步长，get的步长为1，mset的步长为2，like:k1 v1 k2 v2
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
-    pub(super) padding_rsp: u8,
+    pub(super) padding_rsp: usize,
 
     // TODO 把padding、nil、special-rsp整合成一个
     // multi类指令，如果返回多个bulk，err bulk需要转为nil
@@ -104,13 +104,9 @@ impl CommandProperties {
 
     #[inline(always)]
     pub(super) fn get_padding_rsp(&self) -> &str {
-        // quit的padding rsp为1，所有的rsp padding都应该大于0
-        let padding_idx = self.padding_rsp as usize;
-        assert!(padding_idx > 0, "cmd:{}", self.name);
-
         *PADDING_RSP_TABLE
-            .get(padding_idx)
-            .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str())
+            .get(self.padding_rsp)
+            .expect(format!("cmd:{}, padding_rsp:{}", self.name, self.padding_rsp).as_str())
     }
 
     // 构建hashkey的resp
@@ -189,8 +185,9 @@ impl CommandProperties {
 
     pub(super) fn flag(&self) -> crate::Flag {
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
-        use super::flag::RedisFlager;
-        flag.set_padding_rsp(self.padding_rsp);
+        // TODO padding_rsp不再放到flag中，测试完毕后清理 fishermen
+        // use super::flag::RedisFlager;
+        // flag.set_padding_rsp(self.padding_rsp);
         flag.set_noforward(self.noforward);
         flag
     }
@@ -765,7 +762,8 @@ impl CommandProperties {
         self.key_step = key_step;
         self
     }
-    fn padding(mut self, padding_rsp: u8) -> Self {
+    fn padding(mut self, padding_rsp: usize) -> Self {
+        assert!(padding_rsp < PADDING_RSP_TABLE.len(), "name:{}", self.name);
         self.padding_rsp = padding_rsp;
         self
     }
