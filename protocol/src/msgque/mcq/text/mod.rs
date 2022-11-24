@@ -100,11 +100,13 @@ impl Protocol for McqText {
 
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
-    fn write_response<W: crate::Writer, F: Fn(i64) -> usize>(
+    fn write_response<
+        C: Commander + crate::Metric<T>,
+        W: crate::Writer,
+        T: std::ops::AddAssign<i64>,
+    >(
         &self,
-        request: &HashedCommand,
-        response: &mut Option<Command>,
-        _dist_fn: F,
+        ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
         // 对于quit指令，直接返回Err断连
@@ -122,12 +124,24 @@ impl Protocol for McqText {
             let padding = cfg.get_padding_rsp();
             w.write(padding.as_bytes())?;
         }
+
         // TODO 测试完毕后清理
         // let rsp = ctx.response().data();
         // // 虽然quit的响应长度为0，但不排除有其他响应长度为0的场景，还是用quit属性来断连更安全
         // if rsp.len() > 0 {
         //     w.write_slice(rsp, 0)?;
         // }
+
+        if ctx.response().ok() {
+            match ctx.request().operation() {
+                crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
+                    *ctx.get(crate::MetricName::Read) += 1
+                }
+                crate::Operation::Store => *ctx.get(crate::MetricName::Write) += 1,
+                _ => {}
+            }
+        }
+
         Ok(())
     }
 

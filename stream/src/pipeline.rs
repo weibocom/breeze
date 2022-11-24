@@ -210,13 +210,22 @@ where
             //    ctx.adapt_local_response(local_resp);
             //}
 
+            // 至此，所有req都有response，统一处理
+            // assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
+            // parser.write_response(&mut ctx, client, metrics)?;
             //// 至此，所有req都有response，统一处理
             //assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
-            // parser.write_response(&mut ResponseContext(&mut ctx, &mut response), client)?;
+
+          
+            ?// parser.write_response(&mut ResponseContext(&mut ctx, &mut response), client)?;
+            //parser.write_response(
+            //    ctx.request(),
+             //   &mut response,
+              //  |hash| self.top.shard_idx(hash),
+
             parser.write_response(
-                ctx.request(),
-                &mut response,
-                |hash| self.top.shard_idx(hash),
+                &mut ResponseContext(&mut ctx, &mut response, metrics, Default::default()),
+
                 client,
             )?;
 
@@ -224,6 +233,7 @@ where
             // if response.nil_converted() {
             //     *metrics.nilconvert() += 1;
             // }
+
 
             // 回写及公共统计
             let op = ctx.request().operation();
@@ -236,6 +246,7 @@ where
                     ctx.async_write_back(parser, rsp, self.top.exp_sec());
                     self.async_pending.push_back(ctx);
                 }
+
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，
