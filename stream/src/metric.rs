@@ -9,6 +9,7 @@ macro_rules! define_metrics {
                 )+
             )+
             ops: [Metric; OPS.len()],
+            ops_base: [Metric; OPS.len()],
         }
         impl CbMetrics {
             $(
@@ -26,11 +27,21 @@ macro_rules! define_metrics {
                 assert!(op.id() < self.ops.len());
                 unsafe{self.ops.get_unchecked(op.id()).as_mut()}
             }
+            #[inline]
+            pub fn ops_base(&self, op:Operation) -> &mut Metric {
+                // Metric操作是原子计数的，因此unsafe不会导致UB。
+                assert!(op.id() < self.ops.len());
+                unsafe{self.ops_base.get_unchecked(op.id()).as_mut()}
+            }
             pub fn new(path:&Path) -> Self {
                 let ops: [Metric; OPS.len()] =
                     array_init::array_init(|idx| path.rtt(OPS[idx].name()));
+                let path_withno_biz = path.pop();
+                let ops_base: [Metric; OPS.len()] =
+                    array_init::array_init(|idx| path_withno_biz.rtt(OPS[idx].name()));
                 Self {
                     ops,
+                    ops_base,
                     $(
                         $(
                             $name: path.$t(stringify!($key)),
