@@ -11,7 +11,8 @@ use crate::{
         command::{CommandProperties, SWALLOWED_CMD_HASHKEYQ},
         packet::LayerType,
     },
-    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
+    Command, Commander, Error, Flag, HashedCommand, MetricName, Protocol, RequestProcessor, Result,
+    Stream,
 };
 use ds::RingSlice;
 use error::*;
@@ -318,8 +319,8 @@ impl Protocol for Redis {
         ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
-        let req = ctx.request();
-        let cfg = command::get_cfg(req.op_code())?;
+        let request = ctx.request();
+        let cfg = command::get_cfg(request.op_code())?;
         let response = ctx.response();
 
         if !cfg.multi {
@@ -330,7 +331,7 @@ impl Protocol for Redis {
                 // 无响应，则根据cmd name构建对应响应
                 match cfg.name {
                     command::SPEC_LOCAL_CMD_HASHKEY => {
-                        let shard = dist_fn(request.hash());
+                        let shard = ctx.request_shard();
                         let rsp = cfg.get_rsp_hashkey(shard);
                         w.write(rsp.as_bytes())?;
                     }
@@ -369,7 +370,7 @@ impl Protocol for Redis {
                 match cfg.name {
                     // 当前需要单独创建rsp的multi指令只有keyshard
                     command::SPEC_LOCAL_CMD_KEYSHARD => {
-                        let shard = dist_fn(request.hash());
+                        let shard = ctx.request_shard();
                         let rsp = cfg.get_rsp_keyshard(shard);
                         w.write(rsp.as_bytes())?;
                     }
@@ -378,6 +379,11 @@ impl Protocol for Redis {
                         w.write(padding.as_bytes())?;
                     }
                 };
+
+                // rsp不为ok，对need_bulk_num为false的cmd进行nil convert 统计
+                if cfg.need_bulk_num {
+                    *ctx.get(MetricName::NilConvert) += 1;
+                }
 
                 // if !rsp_ok && cfg.need_bulk_num {
                 //     // let nil = cfg.get_nil_rsp_str();

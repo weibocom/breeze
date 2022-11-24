@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ptr::NonNull, sync::Arc};
+use std::{marker::PhantomData, ops::AddAssign, ptr::NonNull, sync::Arc};
 
 use protocol::{
     callback::CallbackContext, request::Request, Command, Commander, HashedCommand, Metric,
@@ -30,7 +30,7 @@ impl CallbackContextPtr {
         assert!(!self.inited() && self.complete(), "cbptr:{:?}", &**self);
         self.async_mode();
         if let Some(new) = parser.build_writeback_request(
-            &mut ResponseContext(self, &mut res, metric, Default::default()),
+            &mut ResponseContext::new(self, Some(&mut res), metric, |_h| 0),
             exp,
         ) {
             self.with_request(new);
@@ -74,33 +74,70 @@ impl std::ops::DerefMut for CallbackContextPtr {
 unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 
-pub struct ResponseContext<'a, M: Metric<T>, T: std::ops::AddAssign<i64>>(
-    pub(super) &'a mut CallbackContextPtr,
-    pub &'a mut Command,
-    pub &'a mut Arc<M>,
-    pub PhantomData<T>,
-);
-impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> Commander for ResponseContext<'a, M, T> {
+pub struct ResponseContext<'a, M: Metric<T>, T: std::ops::AddAssign<i64>, F: Fn(i64) -> usize> {
+    // ctx 中的response不可直接用，先封住，按需暴露
+    ctx: &'a mut CallbackContextPtr,
+    pub response: Option<&'a mut Command>,
+    pub metrics: &'a mut Arc<M>,
+    dist_fn: F,
+    _mark: PhantomData<T>,
+}
+
+impl<'a, M: Metric<T>, T: AddAssign<i64>, F: Fn(i64) -> usize> ResponseContext<'a, M, T, F> {
+    pub(super) fn new(
+        ctx: &'a mut CallbackContextPtr,
+        response: Option<&'a mut Command>,
+        metrics: &'a mut Arc<M>,
+        dist_fn: F,
+    ) -> Self {
+        Self {
+            ctx,
+            response,
+            metrics,
+            dist_fn,
+            _mark: Default::default(),
+        }
+    }
+}
+
+impl<'a, M: Metric<T>, T: AddAssign<i64>, F: Fn(i64) -> usize> Commander
+    for ResponseContext<'a, M, T, F>
+{
     #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
-        self.0.request_mut()
+        self.ctx.request_mut()
     }
     #[inline]
     fn request(&self) -> &HashedCommand {
-        self.0.request()
+        self.ctx.request()
     }
     #[inline]
-    fn response(&self) -> &Command {
-        self.1
+    fn request_shard(&self) -> usize {
+        (self.dist_fn)(self.request().hash())
     }
     #[inline]
-    fn response_mut(&mut self) -> &mut Command {
-        self.1
+    fn response(&self) -> Option<&Command> {
+        if let Some(rsp) = &self.response {
+            Some(rsp)
+        } else {
+            None
+        }
+    }
+    #[inline]
+    fn response_mut(&mut self) -> Option<&mut Command> {
+        if let Some(rsp) = &mut self.response {
+            Some(rsp)
+        } else {
+            None
+        }
     }
 }
-impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>> Metric<T> for ResponseContext<'a, M, T> {
+
+impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>, F: Fn(i64) -> usize> Metric<T>
+    for ResponseContext<'a, M, T, F>
+{
     #[inline]
     fn get(&self, name: MetricName) -> &mut T {
-        self.2.get(name)
+        self.metrics.get(name)
     }
 }
