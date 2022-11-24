@@ -95,20 +95,23 @@ impl Protocol for MemcacheBinary {
         W: crate::Writer,
         T: std::ops::AddAssign<i64>,
     >(
-      ??
         &self,
-        request: &HashedCommand,
-        response: &mut Option<Command>,
-        _dist_fn: F,
+        ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
         // 如果原始请求是quite_get请求，并且not found，则不回写。
+        let old_op_code = ctx.request().op_code();
+        // let response = ctx.response_mut();
+        // 如果原始请求是quite_get请求，并且not found，则不回写。
 
-        if let Some(rsp) = response {
-            debug_assert!(rsp.data().len() > 0, "mc req:{:?}, rsp:{:?}", request, rsp);
-            debug_assert!(!request.sentonly(), "mc req:{:?}, rsp:{:?}", request, rsp);
+        if let Some(rsp) = ctx.response_mut() {
+            // debug_assert!(
+            //     !ctx.request().sentonly() && rsp.data().len() > 0,
+            //     "mc req:{:?}, rsp:{:?}",
+            //     ctx.request(),
+            //     rsp
+            // );
 
-            let old_op_code = request.op_code();
             // 如果quite 请求没拿到数据，直接忽略
             if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
                 return Ok(());
@@ -120,11 +123,11 @@ impl Protocol for MemcacheBinary {
             return Ok(());
         }
 
-        match request.op_code() as u8 {
+        match old_op_code as u8 {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_CODE_NOOP => {
                 w.write_u8(RESPONSE_MAGIC)?;
-                w.write_slice(request.data(), 1)?;
+                w.write_slice(ctx.request().data(), 1)?;
             }
 
             //version: 返回固定rsp
@@ -141,11 +144,15 @@ impl Protocol for MemcacheBinary {
             // 0x09 | 0x0d => return Ok(()),
 
             // set: mc status设为 Item Not Stored,status设为false
-            OP_CODE_SET => w.write(&self.build_empty_response(RespStatus::NotStored, request))?,
+            OP_CODE_SET => {
+                w.write(&self.build_empty_response(RespStatus::NotStored, ctx.request()))?
+            }
             // self.build_empty_response(RespStatus::NotStored, req)
 
             // get，返回key not found 对应的0x1
-            OP_CODE_GET => w.write(&self.build_empty_response(RespStatus::NotFound, request))?,
+            OP_CODE_GET => {
+                w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?
+            }
             // self.build_empty_response(RespStatus::NotFound, req)
 
             // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
@@ -179,8 +186,8 @@ impl Protocol for MemcacheBinary {
     ) -> Option<HashedCommand> {
         if ctx.request_mut().operation().is_retrival() {
             let req = &*ctx.request();
-            let resp = ctx.response();
-            self.build_write_back_get(req, resp, exp_sec)
+            let resp = ctx.response().expect("wb rsp none");
+            self.build_write_back_get(req, &resp, exp_sec)
         } else {
             self.build_write_back_inplace(ctx.request_mut());
             None

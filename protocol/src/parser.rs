@@ -243,13 +243,16 @@ impl Debug for Command {
 pub trait Commander {
     fn request_mut(&mut self) -> &mut HashedCommand;
     fn request(&self) -> &HashedCommand;
-    fn response(&self) -> &Command;
-    fn response_mut(&mut self) -> &mut Command;
+    fn response(&self) -> Option<&Command>;
+    fn response_mut(&mut self) -> Option<&mut Command>;
+    // 请求所在的分片位置
+    fn request_shard(&self) -> usize;
 }
 
 pub enum MetricName {
     Read,
     Write,
+    NilConvert,
 }
 pub trait Metric<M: std::ops::AddAssign<i64>> {
     fn get(&self, name: MetricName) -> &mut M;

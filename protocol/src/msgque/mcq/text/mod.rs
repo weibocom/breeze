@@ -4,7 +4,9 @@ mod reqpacket;
 mod rsppacket;
 
 use crate::msgque::mcq::text::rsppacket::RspPacket;
-use crate::{Command, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream};
+use crate::{
+    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
+};
 
 use sharding::hash::Hash;
 
@@ -61,6 +63,25 @@ impl McqText {
         let mem = packet.take();
         return Ok(Some(Command::new(flag, mem)));
     }
+
+    // 协议内部的metric统计，全部放置于此
+    #[inline]
+    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64>>(
+        &self,
+        request: &HashedCommand,
+        response: &Command,
+        metrics: &M,
+    ) {
+        if response.ok() {
+            match request.operation() {
+                crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
+                    *metrics.get(crate::MetricName::Read) += 1
+                }
+                crate::Operation::Store => *metrics.get(crate::MetricName::Write) += 1,
+                _ => {}
+            }
+        }
+    }
 }
 
 impl Protocol for McqText {
@@ -109,17 +130,21 @@ impl Protocol for McqText {
         ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
-        // 对于quit指令，直接返回Err断连
+        let request = ctx.request();
         let cfg = command::get_cfg(request.op_code())?;
+
+        // 对于quit指令，直接返回Err断连
         if cfg.quit {
             // mc协议的quit，直接断连接
             return Err(crate::Error::Quit);
         }
 
+        let response = ctx.response();
         if let Some(rsp) = response {
             // 不再创建local rsp，所有server响应的rsp data长度应该大于0
             debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
             w.write_slice(rsp.data(), 0)?;
+            self.metrics(request, rsp, ctx);
         } else {
             let padding = cfg.get_padding_rsp();
             w.write(padding.as_bytes())?;
@@ -131,16 +156,6 @@ impl Protocol for McqText {
         // if rsp.len() > 0 {
         //     w.write_slice(rsp, 0)?;
         // }
-
-        if ctx.response().ok() {
-            match ctx.request().operation() {
-                crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
-                    *ctx.get(crate::MetricName::Read) += 1
-                }
-                crate::Operation::Store => *ctx.get(crate::MetricName::Write) += 1,
-                _ => {}
-            }
-        }
 
         Ok(())
     }

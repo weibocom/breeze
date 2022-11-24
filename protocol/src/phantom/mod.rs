@@ -7,7 +7,9 @@ mod flag;
 mod packet;
 //mod token;
 
-use crate::{Command, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream};
+use crate::{
+    Command, Error, Flag, HashedCommand, MetricName, Protocol, RequestProcessor, Result, Stream,
+};
 use ds::RingSlice;
 use flag::RedisFlager;
 use packet::Packet;
@@ -212,11 +214,10 @@ impl Protocol for Phantom {
         ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
-        let req = ctx.request();
-        let op_code = req.op_code();
-        let cfg = command::get_cfg(op_code)?;
+        let request = ctx.request();
+        let cfg = command::get_cfg(request.op_code())?;
         let response = ctx.response();
-      
+
         if !cfg.multi {
             if let Some(rsp) = response {
                 w.write_slice(rsp.data(), 0)?;
@@ -246,8 +247,14 @@ impl Protocol for Phantom {
                         return Ok(());
                     }
                 }
+
                 let padding = cfg.get_padding_rsp();
                 w.write(padding.as_bytes())?;
+
+                // rsp不为ok，对need_bulk_num为false的cmd进行nil convert 统计
+                if cfg.need_bulk_num {
+                    *ctx.get(MetricName::NilConvert) += 1;
+                }
 
                 // 对于异常响应，如果resp是多bulk的，则需要将异常响应转为nil进行响应client
                 // if !response.ok() && cfg.need_bulk_num {

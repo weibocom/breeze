@@ -18,7 +18,7 @@ use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::{
     buffer::{Reader, StreamGuard},
-    context::CallbackContextPtr,
+    context::{CallbackContextPtr, ResponseContext},
     Callback, CallbackContext, Request, StreamMetrics,
 };
 
@@ -194,9 +194,6 @@ where
             // let op = ctx.request().operation();
             *metrics.key() += 1;
 
-            // let mut response = ctx.take_response_or(|ctx| {
-            //     parser.build_local_response(ctx.request(), |hash| self.top.shard_idx(hash))
-            // });
             let mut response = ctx.take_response();
 
             // if response.is_some() && parser.cache() && op.is_query() {
@@ -216,16 +213,17 @@ where
             //// 至此，所有req都有response，统一处理
             //assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
 
-          
-            ?// parser.write_response(&mut ResponseContext(&mut ctx, &mut response), client)?;
+            // parser.write_response(&mut ResponseContext(&mut ctx, &mut response), client)?;
             //parser.write_response(
             //    ctx.request(),
-             //   &mut response,
-              //  |hash| self.top.shard_idx(hash),
+            //   &mut response,
+            //  |hash| self.top.shard_idx(hash),
 
+            assert!(!ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(
-                &mut ResponseContext(&mut ctx, &mut response, metrics, Default::default()),
-
+                &mut ResponseContext::new(&mut ctx, response.as_mut(), metrics, |hash| {
+                    self.top.shard_idx(hash)
+                }),
                 client,
             )?;
 
@@ -234,8 +232,7 @@ where
             //     *metrics.nilconvert() += 1;
             // }
 
-
-            // 回写及公共统计
+            // TODO 回写及公共统计，跑通后修改这里  fishermen
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if parser.cache() && op.is_query() {
@@ -243,10 +240,9 @@ where
                 }
 
                 if ctx.is_write_back() {
-                    ctx.async_write_back(parser, rsp, self.top.exp_sec());
+                    ctx.async_write_back(parser, rsp, self.top.exp_sec(), metrics);
                     self.async_pending.push_back(ctx);
                 }
-
             }
 
             // 数据写完，统计耗时。当前数据只写入到buffer中，
