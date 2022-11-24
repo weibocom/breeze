@@ -236,7 +236,7 @@ where
                 let elapsed = start.elapsed();
                 *metrics.ops(op) += elapsed;
                 // 统计整机耗时
-                *metrics.ops_base(op) += elapsed;
+                *metrics.rtt() += elapsed;
                 *flush = true;
                 *start_init = false;
             }
