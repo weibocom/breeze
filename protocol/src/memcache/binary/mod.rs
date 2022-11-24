@@ -99,18 +99,18 @@ impl Protocol for MemcacheBinary {
         ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
+        // sendonly 直接返回
+        if ctx.request().sentonly() {
+            assert!(ctx.response().is_none(), "req:{:?}", ctx.request());
+            return Ok(());
+        }
+
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();
-        // let response = ctx.response_mut();
-        // 如果原始请求是quite_get请求，并且not found，则不回写。
 
+        // 如果原始请求是quite_get请求，并且not found，则不回写。
         if let Some(rsp) = ctx.response_mut() {
-            // debug_assert!(
-            //     !ctx.request().sentonly() && rsp.data().len() > 0,
-            //     "mc req:{:?}, rsp:{:?}",
-            //     ctx.request(),
-            //     rsp
-            // );
+            assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
 
             // 如果quite 请求没拿到数据，直接忽略
             if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
