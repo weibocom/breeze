@@ -9,6 +9,7 @@ macro_rules! define_metrics {
                 )+
             )+
             ops: [Metric; OPS.len()],
+            rtt: Metric,
         }
         impl CbMetrics {
             $(
@@ -26,11 +27,18 @@ macro_rules! define_metrics {
                 assert!(op.id() < self.ops.len());
                 unsafe{self.ops.get_unchecked(op.id()).as_mut()}
             }
+            // 所有命令所有业务的加权平均耗时
+            #[inline]
+            pub fn rtt(&self) -> &mut Metric {
+                // Metric操作是原子计数的，因此unsafe不会导致UB。
+                self.rtt.as_mut()
+            }
             pub fn new(path:&Path) -> Self {
                 let ops: [Metric; OPS.len()] =
                     array_init::array_init(|idx| path.rtt(OPS[idx].name()));
                 Self {
                     ops,
+                    rtt: path.pop().rtt("cmd_all"),
                     $(
                         $(
                             $name: path.$t(stringify!($key)),

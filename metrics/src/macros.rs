@@ -67,6 +67,12 @@ impl Path {
         Self::new(vec![crate::BASE_PATH])
     }
     #[inline]
+    pub fn pop(&self) -> Self {
+        let mut new = self.clone();
+        new.path.pop();
+        new
+    }
+    #[inline]
     pub fn new<T: ToString>(names: Vec<T>) -> Self {
         Self {
             path: names.into_iter().map(|s| s.to_string()).collect(),
