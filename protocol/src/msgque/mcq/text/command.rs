@@ -10,7 +10,7 @@ pub(crate) struct CommandProperties {
     req_type: RequestType,
     op_code: OpCode,
     op: Operation,
-    padding_rsp: u8,
+    padding_rsp: usize, // 从u8换为usize，从而在获取时不用做转换
     noforward: bool,
     supported: bool,
     pub(super) quit: bool, // 是否需要quit掉连接
@@ -34,32 +34,15 @@ impl CommandProperties {
         &self.req_type
     }
 
-    // TODO 测试完毕后清理
-    // 构建一个padding rsp，用于返回默认响应或server不可用响应
-    // 格式类似：1 VERSION 0.0.1\r\n ;
-    //          2 SERVER_ERROR mcq not available\r\n
-    // #[inline(always)]
-    // pub(super) fn build_padding_rsp(&self) -> Command {
-    //     let padding_idx = self.padding_rsp as usize;
-    //     // 注意：quit的padding rsp为0
-    //     let padding_rsp = *PADDING_RSP_TABLE
-    //         .get(padding_idx)
-    //         .expect(format!("cmd:{}/{}", self.name, padding_idx).as_str());
-    //     let mut rsp = Command::from_vec(Vec::from(padding_rsp));
-    //     rsp.set_status_ok(self.op.is_meta());
-    //     rsp
-    // }
-
     // 构建一个padding rsp，用于返回默认响应或server不可用响应
     // 格式类似：1 VERSION 0.0.1\r\n ;
     //          2 SERVER_ERROR mcq not available\r\n
     #[inline(always)]
     pub(super) fn get_padding_rsp(&self) -> &str {
-        let padding_idx = self.padding_rsp as usize;
         // 注意：quit的padding rsp为0
         *PADDING_RSP_TABLE
-            .get(padding_idx)
-            .expect(format!("cmd:{}/{}", self.name, padding_idx).as_str())
+            .get(self.padding_rsp)
+            .expect(format!("cmd:{}/{}", self.name, self.padding_rsp).as_str())
     }
 }
 
@@ -130,7 +113,7 @@ impl Commands {
         name: &'static str,
         req_type: RequestType,
         op: Operation,
-        padding_rsp: u8,
+        padding_rsp: usize,
         noforward: bool,
     ) {
         let uppercase = name.to_uppercase();
@@ -138,6 +121,7 @@ impl Commands {
         assert!(idx < self.supported.len(), "idx: {}", idx);
         // cmd 不能重复初始化
         assert!(!self.supported[idx].supported);
+        debug_assert!(padding_rsp < PADDING_RSP_TABLE.len(), "{}", name);
 
         let quit = uppercase.eq("QUIT");
         self.supported[idx] = CommandProperties {

@@ -20,7 +20,7 @@ pub(crate) struct CommandProperties {
     /// key 步长，get的步长为1，mset的步长为2，like:k1 v1 k2 v2
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
-    pub(super) padding_rsp: u8,
+    pub(super) padding_rsp: usize,
 
     // TODO 把padding、nil整合成一个，测试完毕后清理
     // pub(super) nil_rsp: u8,
@@ -89,7 +89,7 @@ impl CommandProperties {
         self.key_step as usize
     }
 
-    pub fn padding_rsp(&self) -> u8 {
+    pub fn padding_rsp(&self) -> usize {
         self.padding_rsp
     }
     #[inline]
@@ -98,9 +98,9 @@ impl CommandProperties {
     }
     #[inline]
     pub(super) fn flag(&self) -> crate::Flag {
-        use super::flag::RedisFlager;
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
-        flag.set_padding_rsp(self.padding_rsp);
+        //TODO 去掉padding_rsp，从req的cfg中获取，测试完毕后清理
+        // flag.set_padding_rsp(self.padding_rsp);
         flag.set_noforward(self.noforward);
         flag
     }
@@ -222,12 +222,9 @@ impl CommandProperties {
     // 格式类似：1 pong； 2 -Err redis no available
     #[inline(always)]
     pub(super) fn get_padding_rsp(&self) -> &str {
-        let padding_idx = self.padding_rsp as usize;
-        assert!(padding_idx < PADDING_RSP_TABLE.len(), "cmd:{}", self.name);
-
         *PADDING_RSP_TABLE
-            .get(padding_idx)
-            .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str())
+            .get(self.padding_rsp)
+            .expect(format!("cmd:{}, padding_rsp:{}", self.name, self.padding_rsp).as_str())
     }
 }
 
@@ -280,7 +277,7 @@ impl Commands {
         first_key_index: u8,
         last_key_index: i8,
         key_step: u8,
-        padding_rsp: u8,
+        padding_rsp: usize,
         multi: bool,
         noforward: bool,
         has_key: bool,
@@ -301,11 +298,7 @@ impl Commands {
         // }
 
         // 所有cmd的padding-rsp都必须是合理值，此处统一判断
-        assert!(
-            padding_rsp > 0 && (padding_rsp as usize) < PADDING_RSP_TABLE.len(),
-            "cmd:{}",
-            name
-        );
+        assert!(padding_rsp < PADDING_RSP_TABLE.len(), "cmd:{}", name);
 
         let quit = uppercase.eq("QUIT");
         self.supported[idx] = CommandProperties {
