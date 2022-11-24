@@ -309,17 +309,19 @@ impl Protocol for Redis {
     //  3 multi，need-bulk-num为false，first，有response直接发送，否则构建padding后发送；
     //  4 multi，need-bulk-num为false，非first，不做任何操作；
     #[inline]
-    fn write_response<W: crate::Writer, F: Fn(i64) -> usize>(
+    fn write_response<
+        C: Commander + crate::Metric<T>,
+        W: crate::Writer,
+        T: std::ops::AddAssign<i64>,
+    >(
         &self,
-        request: &HashedCommand,
-        response: &mut Option<Command>,
-        dist_fn: F,
+        ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
-        // let req = ctx.request();
-        // let cfg = command::get_cfg(req.op_code())?;
-        // let response = ctx.response();
-        let cfg = command::get_cfg(request.op_code())?;
+        let req = ctx.request();
+        let cfg = command::get_cfg(req.op_code())?;
+        let response = ctx.response();
+
         if !cfg.multi {
             // 非multi请求,有响应直接返回client，否则构建
             if let Some(rsp) = response {

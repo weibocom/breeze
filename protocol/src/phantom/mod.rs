@@ -203,16 +203,20 @@ impl Protocol for Phantom {
     //  3 quit 发送完毕后，返回Err 断开连接
     //  4 其他普通响应直接发送；
     #[inline]
-    fn write_response<W: crate::Writer, F: Fn(i64) -> usize>(
+    fn write_response<
+        C: crate::Commander + crate::Metric<T>,
+        W: crate::Writer,
+        T: std::ops::AddAssign<i64>,
+    >(
         &self,
-        request: &HashedCommand,
-        response: &mut Option<Command>,
-        _dist_fn: F,
+        ctx: &mut C,
         w: &mut W,
     ) -> Result<()> {
-        // let req = ctx.request();
-        // let response = ctx.response();
-        let cfg = command::get_cfg(request.op_code())?;
+        let req = ctx.request();
+        let op_code = req.op_code();
+        let cfg = command::get_cfg(op_code)?;
+        let response = ctx.response();
+      
         if !cfg.multi {
             if let Some(rsp) = response {
                 w.write_slice(rsp.data(), 0)?;
