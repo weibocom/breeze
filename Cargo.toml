@@ -33,3 +33,5 @@ strip = "symbols"
 
 [profile.release-perf]
 inherits = "release"
+strip = "none"
+codegen-units = 256
