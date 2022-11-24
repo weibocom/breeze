@@ -89,7 +89,7 @@ impl Protocol for MemcacheBinary {
     fn write_response<
         C: crate::Commander + crate::Metric<T>,
         W: crate::Writer,
-        T: std::ops::AddAssign<i64>,
+        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
     >(
         &self,
         ctx: &mut C,
@@ -105,8 +105,8 @@ impl Protocol for MemcacheBinary {
         let data = resp.data_mut();
         data.restore_op(old_op_code as u8);
         w.write_slice(data, 0)?;
-        if ctx.response().ok() && ctx.request().operation().is_query() {
-            *ctx.get(crate::MetricName::Cache) += 1
+        if ctx.request().operation().is_query() {
+            *ctx.get(crate::MetricName::Cache) += ctx.response().ok();
         }
         // 对于quit，直接返回error断连，其他正常返回
         match old_op_code {
