@@ -1,6 +1,7 @@
 extern crate lazy_static;
 use clap::{FromArgMatches, IntoApp, Parser};
 use lazy_static::lazy_static;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::Path;
 use std::{
     io::{Error, ErrorKind, Result},
@@ -154,6 +155,7 @@ impl ContextOption {
         ListenerIter {
             path: self.service_path.to_string(),
             processed: Default::default(),
+            last_read: UNIX_EPOCH, //初始值设为0时
         }
     }
 
@@ -180,6 +182,7 @@ use std::collections::HashMap;
 pub struct ListenerIter {
     processed: HashMap<String, String>,
     path: String,
+    last_read: SystemTime, //上次扫描到socks目录有更新时间
 }
 
 impl ListenerIter {
@@ -187,6 +190,7 @@ impl ListenerIter {
         Self {
             processed: Default::default(),
             path,
+            last_read: UNIX_EPOCH, 
         }
     }
 
@@ -198,6 +202,8 @@ impl ListenerIter {
     pub async fn scan(&mut self) -> (Vec<Quadruple>, usize) {
         let mut failed = 0;
         let mut listeners = vec![];
+        // 本次循环开始时间
+        let start = SystemTime::now();
         match self.read_all().await {
             Ok(names) => {
                 for name in names {
@@ -237,6 +243,7 @@ impl ListenerIter {
                 }
                 retain
             });
+            self.last_read = start;
         }
         (listeners, failed)
     }
@@ -255,6 +262,18 @@ impl ListenerIter {
     }
     async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];
+        let dir_meta = tokio::fs::metadata(&self.path).await?;
+        let last_update = dir_meta.modified();
+        match last_update {
+            Ok(t) => {
+                //上次扫描到sock文件后后续再未更新
+                if &self.last_read > &t {
+                    return Ok(found);
+                }
+            }
+            Err(err) => log::warn!("get socks dir metadata err:{:?}", err),
+        }
+
         let mut dir = tokio::fs::read_dir(&self.path).await?;
         while let Some(child) = dir.next_entry().await? {
             if child.metadata().await?.is_file() {

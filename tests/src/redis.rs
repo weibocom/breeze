@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod redis_test {
     use std::collections::{HashMap, HashSet};
+
+    use ds::MemGuard;
+    use protocol::Flag;
     #[test]
     fn test_hosts_eq() {
         let hosts1 = create_hosts();
@@ -35,5 +38,23 @@ mod redis_test {
             println!("{}:{}", p, key.as_bytes()[p] as char);
         }
         println!("\r\nhash find test ok!");
+    }
+
+    #[test]
+    fn redis_flag() {
+        use protocol::{Bit, HashedCommand, RedisFlager};
+        let mut cmd = HashedCommand::new(MemGuard::from_vec(vec![1u8]), 1, Flag::new());
+        assert!(!cmd.master_only());
+        cmd.set_master_only();
+        assert!(cmd.master_only());
+
+        assert!(!cmd.direct_hash());
+        cmd.set_direct_hash();
+        assert!(cmd.direct_hash());
+        //direct_hash所在位
+        cmd.ext_mut().clear(37);
+        assert!(!cmd.direct_hash());
+        //对前面设置的flag没有影响
+        assert!(cmd.master_only());
     }
 }
