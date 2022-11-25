@@ -70,9 +70,7 @@ impl CommandProperties {
     // 响应格式类似：1 pong； 2 -Err redis no available; 3 $-1\r\n
     #[inline(always)]
     pub(super) fn get_padding_rsp(&self) -> &str {
-        *PADDING_RSP_TABLE
-            .get(self.padding_rsp)
-            .expect(format!("cmd:{}, padding_rsp:{}", self.name, self.padding_rsp).as_str())
+        unsafe { *PADDING_RSP_TABLE.get_unchecked(self.padding_rsp) }
     }
 
     // 构建hashkey的resp,格式:1\r\n

@@ -40,9 +40,7 @@ impl CommandProperties {
     #[inline(always)]
     pub(super) fn get_padding_rsp(&self) -> &str {
         // 注意：quit的padding rsp为0
-        *PADDING_RSP_TABLE
-            .get(self.padding_rsp)
-            .expect(format!("cmd:{}/{}", self.name, self.padding_rsp).as_str())
+        unsafe { *PADDING_RSP_TABLE.get_unchecked(self.padding_rsp) }
     }
 }
 
