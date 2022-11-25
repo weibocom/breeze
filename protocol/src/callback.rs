@@ -101,17 +101,17 @@ impl CallbackContext {
     }
 
     #[inline]
-    pub fn take_response_or<F: Fn(&Self) -> Command>(&mut self, f: F) -> Command {
+    pub fn take_response(&mut self) -> Option<Command> {
         match self
             .ctx
             .inited
             .compare_exchange(true, false, AcqRel, Acquire)
         {
-            Ok(_) => unsafe { ptr::read(self.response.as_mut_ptr()) },
+            Ok(_) => unsafe { Some(ptr::read(self.response.as_mut_ptr())) },
             Err(_) => {
                 self.ctx.write_back = false;
                 //assert!(!self.ctx.try_next && !self.ctx.write_back, "{}", self);
-                f(self)
+                None
             }
         }
     }

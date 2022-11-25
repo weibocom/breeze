@@ -8,7 +8,7 @@ mod packet;
 //mod token;
 
 use crate::{
-    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
+    Command, Error, Flag, HashedCommand, MetricName, Protocol, RequestProcessor, Result, Stream,
 };
 use ds::RingSlice;
 use flag::RedisFlager;
@@ -180,23 +180,24 @@ impl Protocol for Phantom {
         }
     }
 
+    //TODO 测试完毕后清理
     // 构建本地响应resp策略：
     //  1 对于multi+多bulk req，构建nil rsp；
     //  2 对其他固定响应的请求，构建padding rsp；
-    fn build_local_response<F: Fn(i64) -> usize>(
-        &self,
-        req: &HashedCommand,
-        _dist_fn: F,
-    ) -> Command {
-        let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
+    // fn build_local_response<F: Fn(i64) -> usize>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     _dist_fn: F,
+    // ) -> Command {
+    //     let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
 
-        // 对hashkey、keyshard构建协议格式的resp，对其他请求构建nil or padding rsp
-        if cfg.multi && cfg.need_bulk_num {
-            cfg.build_nil_rsp()
-        } else {
-            cfg.build_padding_rsp()
-        }
-    }
+    //     // 对hashkey、keyshard构建协议格式的resp，对其他请求构建nil or padding rsp
+    //     if cfg.multi && cfg.need_bulk_num {
+    //         cfg.build_nil_rsp()
+    //     } else {
+    //         cfg.build_padding_rsp()
+    //     }
+    // }
 
     // 发送响应给client：
     //  1 multi + need-bulk-num，对first先发bulk num，非first正常发送；
@@ -211,20 +212,26 @@ impl Protocol for Phantom {
     >(
         &self,
         ctx: &mut C,
+        response: Option<&mut Command>,
         w: &mut W,
     ) -> Result<()> {
-        let req = ctx.request();
-        let op_code = req.op_code();
-        let cfg = command::get_cfg(op_code)?;
-        let response = ctx.response();
+        let request = ctx.request();
+        let cfg = command::get_cfg(request.op_code())?;
+
         if !cfg.multi {
-            w.write_slice(response.data(), 0)?;
+            if let Some(rsp) = response {
+                w.write_slice(rsp.data(), 0)?;
+            } else {
+                let padding = cfg.get_padding_rsp();
+                w.write(padding.as_bytes())?;
+            }
+
             // quit 指令发送响应后，返回Err关闭连接
             if cfg.quit {
                 return Err(crate::Error::Quit);
             }
         } else {
-            let ext = req.ext();
+            let ext = request.ext();
             let first = ext.mkey_first();
             if first || cfg.need_bulk_num {
                 if first && cfg.need_bulk_num {
@@ -232,12 +239,21 @@ impl Protocol for Phantom {
                     w.write(ext.key_count().to_string().as_bytes())?;
                     w.write(b"\r\n")?;
                 }
-                // 对于异常响应，如果resp是多bulk的，则需要将异常响应转为nil进行响应client
-                if !response.ok() && cfg.need_bulk_num {
-                    let nil = cfg.get_nil_rsp_str();
-                    w.write(nil.as_bytes())?;
-                } else {
-                    w.write_slice(response.data(), 0)?;
+
+                // 如果rsp是ok，或者不需要bulk num，直接发送；否则构建rsp or padding rsp
+                if let Some(rsp) = response {
+                    if rsp.ok() || !cfg.need_bulk_num {
+                        w.write_slice(rsp.data(), 0)?;
+                        return Ok(());
+                    }
+                }
+
+                let padding = cfg.get_padding_rsp();
+                w.write(padding.as_bytes())?;
+
+                // rsp不为ok，对need_bulk_num为true的cmd进行nil convert 统计
+                if cfg.need_bulk_num {
+                    *ctx.get(MetricName::NilConvert) += 1;
                 }
             }
             // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。

@@ -68,6 +68,7 @@ impl ProtoMetric<Metric> for StreamMetrics {
         match name {
             MetricName::Read => self.read(),
             MetricName::Write => self.write(),
+            MetricName::NilConvert => self.nilconvert(),
             MetricName::Cache => self.cache(),
         }
     }

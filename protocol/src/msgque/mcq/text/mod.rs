@@ -6,7 +6,6 @@ mod rsppacket;
 use crate::msgque::mcq::text::rsppacket::RspPacket;
 use crate::{
     Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
-    Writer,
 };
 
 use sharding::hash::Hash;
@@ -64,6 +63,25 @@ impl McqText {
         let mem = packet.take();
         return Ok(Some(Command::new(flag, mem)));
     }
+
+    // 协议内部的metric统计，全部放置于此
+    #[inline]
+    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>(
+        &self,
+        request: &HashedCommand,
+        response: &Command,
+        metrics: &M,
+    ) {
+        if response.ok() {
+            match request.operation() {
+                crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
+                    *metrics.get(crate::MetricName::Read) += 1
+                }
+                crate::Operation::Store => *metrics.get(crate::MetricName::Write) += 1,
+                _ => {}
+            }
+        }
+    }
 }
 
 impl Protocol for McqText {
@@ -90,15 +108,16 @@ impl Protocol for McqText {
         }
     }
 
+    // TODO 测试完毕清理
     // msgque没有multi请求，直接构建padding rsp即可
-    fn build_local_response<F: Fn(i64) -> usize>(
-        &self,
-        req: &HashedCommand,
-        _dist_fn: F,
-    ) -> Command {
-        let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
-        cfg.build_padding_rsp()
-    }
+    // fn build_local_response<F: Fn(i64) -> usize>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     _dist_fn: F,
+    // ) -> Command {
+    //     let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
+    //     cfg.build_padding_rsp()
+    // }
 
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
@@ -109,28 +128,36 @@ impl Protocol for McqText {
     >(
         &self,
         ctx: &mut C,
+        response: Option<&mut Command>,
         w: &mut W,
     ) -> Result<()> {
+        let request = ctx.request();
+        let cfg = command::get_cfg(request.op_code())?;
+
         // 对于quit指令，直接返回Err断连
-        let cfg = command::get_cfg(ctx.request().op_code())?;
         if cfg.quit {
+            // mc协议的quit，直接断连接
             return Err(crate::Error::Quit);
         }
 
-        let rsp = ctx.response().data();
-        // 虽然quit的响应长度为0，但不排除有其他响应长度为0的场景，还是用quit属性来断连更安全
-        if rsp.len() > 0 {
-            w.write_slice(rsp, 0)?;
+        if let Some(rsp) = response {
+            // 不再创建local rsp，所有server响应的rsp data长度应该大于0
+            debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
+            w.write_slice(rsp.data(), 0)?;
+            self.metrics(request, rsp, ctx);
+        } else {
+            let padding = cfg.get_padding_rsp();
+            w.write(padding.as_bytes())?;
+            // TODO 写失败尚没有统计（还没merge进来？），暂时先和dev保持一致 fishermen
         }
-        if ctx.response().ok() {
-            match ctx.request().operation() {
-                crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
-                    *ctx.get(crate::MetricName::Read) += 1
-                }
-                crate::Operation::Store => *ctx.get(crate::MetricName::Write) += 1,
-                _ => {}
-            }
-        }
+
+        // TODO 测试完毕后清理
+        // let rsp = ctx.response().data();
+        // // 虽然quit的响应长度为0，但不排除有其他响应长度为0的场景，还是用quit属性来断连更安全
+        // if rsp.len() > 0 {
+        //     w.write_slice(rsp, 0)?;
+        // }
+
         Ok(())
     }
 

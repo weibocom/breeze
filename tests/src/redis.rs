@@ -52,7 +52,7 @@ mod redis_test {
         cmd.set_direct_hash();
         assert!(cmd.direct_hash());
         //direct_hash所在位
-        cmd.ext_mut().clear(37);
+        cmd.ext_mut().clear(34);
         assert!(!cmd.direct_hash());
         //对前面设置的flag没有影响
         assert!(cmd.master_only());
