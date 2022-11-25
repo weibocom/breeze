@@ -128,6 +128,7 @@ impl Protocol for McqText {
     >(
         &self,
         ctx: &mut C,
+        response: Option<&mut Command>,
         w: &mut W,
     ) -> Result<()> {
         let request = ctx.request();
@@ -139,7 +140,7 @@ impl Protocol for McqText {
             return Err(crate::Error::Quit);
         }
 
-        if let Some(rsp) = ctx.response() {
+        if let Some(rsp) = response {
             // 不再创建local rsp，所有server响应的rsp data长度应该大于0
             debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
             w.write_slice(rsp.data(), 0)?;

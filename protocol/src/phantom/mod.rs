@@ -212,11 +212,11 @@ impl Protocol for Phantom {
     >(
         &self,
         ctx: &mut C,
+        response: Option<&mut Command>,
         w: &mut W,
     ) -> Result<()> {
         let request = ctx.request();
         let cfg = command::get_cfg(request.op_code())?;
-        let response = ctx.response();
 
         if !cfg.multi {
             if let Some(rsp) = response {

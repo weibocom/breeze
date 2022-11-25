@@ -48,6 +48,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     >(
         &self,
         ctx: &mut C,
+        response: Option<&mut Command>,
         w: &mut W,
     ) -> Result<()>;
 
@@ -58,7 +59,12 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     // 构建回写请求。
     // 返回None: 说明req复用，build in place
     // 返回新的request
-    fn build_writeback_request<C: Commander>(&self, _ctx: &mut C, _: u32) -> Option<HashedCommand> {
+    fn build_writeback_request<C: Commander>(
+        &self,
+        _ctx: &mut C,
+        _response: &Command,
+        _: u32,
+    ) -> Option<HashedCommand> {
         todo!("not implement");
     }
 }
@@ -225,8 +231,9 @@ impl Debug for Command {
 pub trait Commander {
     fn request_mut(&mut self) -> &mut HashedCommand;
     fn request(&self) -> &HashedCommand;
-    fn response(&self) -> Option<&Command>;
-    fn response_mut(&mut self) -> Option<&mut Command>;
+    // response  单独拆除
+    // fn response(&self) -> Option<&Command>;
+    // fn response_mut(&mut self) -> Option<&mut Command>;
     // 请求所在的分片位置
     fn request_shard(&self) -> usize;
 }

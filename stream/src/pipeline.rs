@@ -197,9 +197,8 @@ where
 
             assert!(!ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(
-                &mut ResponseContext::new(&mut ctx, response.as_mut(), metrics, |hash| {
-                    self.top.shard_idx(hash)
-                }),
+                &mut ResponseContext::new(&mut ctx, metrics, |hash| self.top.shard_idx(hash)),
+                response.as_mut(),
                 client,
             )?;
 
