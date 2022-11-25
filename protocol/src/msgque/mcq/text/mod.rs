@@ -124,7 +124,7 @@ impl Protocol for McqText {
     fn write_response<
         C: Commander + crate::Metric<T>,
         W: crate::Writer,
-        T: std::ops::AddAssign<i64>,
+        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
     >(
         &self,
         ctx: &mut C,

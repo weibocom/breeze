@@ -224,7 +224,10 @@ where
             // 数据写完，统计耗时。当前数据只写入到buffer中，
             // 但mesh通常与client部署在同一台物理机上，buffer flush的耗时通常在微秒级。
             if last {
-                *metrics.ops(op) += start.elapsed();
+                let elapsed = start.elapsed();
+                *metrics.ops(op) += elapsed;
+                // 统计整机耗时
+                *metrics.rtt() += elapsed;
                 *flush = true;
                 *start_init = false;
             }
