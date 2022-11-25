@@ -2,6 +2,7 @@
 mod proc_test {
     use ds::RingSlice;
     use protocol::redis::Redis;
+    use protocol::Bit;
 
     #[test]
     fn parse_rsp() {
@@ -29,5 +30,25 @@ mod proc_test {
             Ok(cmd) => println!("parsed cmd: {:?}", cmd),
             Err(e) => println!("parsed failed: {:?}", e),
         }
+    }
+
+    #[test]
+    fn bit() {
+        let mut v: u64 = 0;
+        //设置第0，3位
+        v.set(0);
+        v.set(2);
+        assert_eq!(v, 5);
+        assert_eq!(v.get(2), true);
+        assert_eq!(v.get(1), false);
+
+        //设置567位
+        v.mask_set(4, 0xf, 0x7);
+        assert_eq!(v, 0x75);
+        assert_eq!(v.mask_get(4, 0xf), 0x7);
+
+        v.clear(0);
+        v.clear(2);
+        assert_eq!(v, 0x70);
     }
 }

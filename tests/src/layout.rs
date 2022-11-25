@@ -34,7 +34,7 @@ fn checkout_basic() {
         size_of::<protocol::Context>(),
         size_of::<protocol::redis::RequestContext>()
     );
-    assert_eq!(24, size_of::<protocol::Flag>());
+    assert_eq!(16, size_of::<protocol::Flag>());
     assert_eq!(1, size_of::<protocol::Resource>());
     assert_eq!(56, size_of::<ds::queue::PinnedQueue<AtomicU32>>());
     assert_eq!(16, size_of::<metrics::Metric>());
@@ -61,7 +61,7 @@ fn check_layout() {
     assert_eq!(192, size_of::<PhantomService>());
     assert_eq!(392, size_of::<MsgQue>());
 
-    assert_eq!(272, size_of::<stream::StreamMetrics>());
+    assert_eq!(320, size_of::<stream::StreamMetrics>());
 
     assert_eq!((432, 632).select(), size_of::<CopyBidirectional>());
     assert_eq!((568, 792).select(), size_of::<Entry<CopyBidirectional>>());

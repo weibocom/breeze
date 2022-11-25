@@ -41,7 +41,11 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     // fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
     //     -> Command;
 
-    fn write_response<C: Commander + Metric<T>, W: crate::Writer, T: std::ops::AddAssign<i64>>(
+    fn write_response<
+        C: Commander + Metric<T>,
+        W: crate::Writer,
+        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
+    >(
         &self,
         ctx: &mut C,
         w: &mut W,
@@ -57,13 +61,6 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn build_writeback_request<C: Commander>(&self, _ctx: &mut C, _: u32) -> Option<HashedCommand> {
         todo!("not implement");
     }
-
-    //TODO 移到协议层
-    // // 当前资源是否为cache。用来统计命中率
-    // #[inline]
-    // fn cache(&self) -> bool {
-    //     false
-    // }
 }
 
 pub trait RequestProcessor {
@@ -169,15 +166,7 @@ impl HashedCommand {
     }
     #[inline]
     pub fn update_hash(&mut self, idx_hash: i64) {
-        if self.direct_hash() {
-            self.hash = idx_hash;
-        } else {
-            log::warn!("should not update hash for non direct_hash!");
-        }
-    }
-    #[inline]
-    pub fn master_only(&self) -> bool {
-        self.cmd.master_only()
+        self.hash = idx_hash;
     }
 }
 impl AsRef<Command> for HashedCommand {
@@ -248,6 +237,6 @@ pub enum MetricName {
     NilConvert,
     Cache, // cache(mc)命中率
 }
-pub trait Metric<M: std::ops::AddAssign<i64>> {
+pub trait Metric<M: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> {
     fn get(&self, name: MetricName) -> &mut M;
 }

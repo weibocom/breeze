@@ -73,7 +73,8 @@ where
     fn send(&self, mut req: Self::Item) {
         assert_ne!(self.shards.len(), 0);
 
-        let shard_idx = match req.direct_hash() {
+        use protocol::RedisFlager;
+        let shard_idx = match req.cmd().direct_hash() {
             true => {
                 let dhash_boundary = protocol::MAX_DIRECT_HASH - self.shards.len() as i64;
                 // 大于direct hash边界，说明是全节点分发请求，发送请求前，需要调整hash为下次发送做准备
@@ -109,13 +110,13 @@ where
                 self.service,
                 req.hash(),
                 shard_idx,
-                req.master_only(),
+                req.cmd().master_only(),
                 req.data(),
             )
         }
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
-        if shard.has_slave() && !req.operation().is_store() && !req.master_only() {
+        if shard.has_slave() && !req.operation().is_store() && !req.cmd().master_only() {
             let ctx = super::transmute(req.context_mut());
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()

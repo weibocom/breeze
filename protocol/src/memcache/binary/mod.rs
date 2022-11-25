@@ -11,11 +11,6 @@ pub struct MemcacheBinary;
 use crate::{Command, HashedCommand, Protocol, RequestProcessor};
 use sharding::hash::Hash;
 impl Protocol for MemcacheBinary {
-    // TODO 测试完毕清理
-    // #[inline]
-    // fn cache(&self) -> bool {
-    //     true
-    // }
     // 解析请求。把所有的multi-get请求转换成单一的n个get请求。
     #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
@@ -94,7 +89,7 @@ impl Protocol for MemcacheBinary {
     fn write_response<
         C: crate::Commander + crate::Metric<T>,
         W: crate::Writer,
-        T: std::ops::AddAssign<i64>,
+        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
     >(
         &self,
         ctx: &mut C,

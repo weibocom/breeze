@@ -7,7 +7,7 @@ use protocol::{
 
 use ds::arena::Arena;
 
-pub(super) struct CallbackContextPtr {
+pub(crate) struct CallbackContextPtr {
     ptr: NonNull<CallbackContext>,
     arena: NonNull<Arena<CallbackContext>>,
 }
@@ -19,7 +19,11 @@ impl CallbackContextPtr {
     }
     //需要在on_done时主动销毁self对象
     #[inline]
-    pub(super) fn async_write_back<P: Protocol, M: Metric<T>, T: std::ops::AddAssign<i64>>(
+    pub(super) fn async_write_back<
+        P: Protocol,
+        M: Metric<T>,
+        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
+    >(
         &mut self,
         parser: &P,
         mut res: Command,
@@ -77,7 +81,7 @@ impl std::ops::DerefMut for CallbackContextPtr {
 unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 
-pub struct ResponseContext<'a, M: Metric<T>, T: std::ops::AddAssign<i64>, F: Fn(i64) -> usize> {
+pub struct ResponseContext<'a, M: Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize> {
     // ctx 中的response不可直接用，先封住，按需暴露
     ctx: &'a mut CallbackContextPtr,
     pub response: Option<&'a mut Command>,
@@ -86,7 +90,7 @@ pub struct ResponseContext<'a, M: Metric<T>, T: std::ops::AddAssign<i64>, F: Fn(
     _mark: PhantomData<T>,
 }
 
-impl<'a, M: Metric<T>, T: AddAssign<i64>, F: Fn(i64) -> usize> ResponseContext<'a, M, T, F> {
+impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize> ResponseContext<'a, M, T, F> {
     pub(super) fn new(
         ctx: &'a mut CallbackContextPtr,
         response: Option<&'a mut Command>,
@@ -103,7 +107,7 @@ impl<'a, M: Metric<T>, T: AddAssign<i64>, F: Fn(i64) -> usize> ResponseContext<'
     }
 }
 
-impl<'a, M: Metric<T>, T: AddAssign<i64>, F: Fn(i64) -> usize> Commander
+impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize> Commander
     for ResponseContext<'a, M, T, F>
 {
     #[inline]
@@ -136,7 +140,7 @@ impl<'a, M: Metric<T>, T: AddAssign<i64>, F: Fn(i64) -> usize> Commander
     }
 }
 
-impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64>, F: Fn(i64) -> usize> Metric<T>
+impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize> Metric<T>
     for ResponseContext<'a, M, T, F>
 {
     #[inline]
