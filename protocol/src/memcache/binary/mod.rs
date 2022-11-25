@@ -386,9 +386,10 @@ impl MemcacheBinary {
     ) {
         if request.operation().is_query() {
             if let Some(rsp) = response {
-                *metrics.get(MetricName::Cache) += rsp.ok() as i64;
+                *metrics.get(MetricName::Cache) += rsp.ok();
             } else {
-                *metrics.get(MetricName::Cache) += 0
+                // 没有response的query，作为miss
+                *metrics.get(MetricName::Cache) += false;
             }
         }
     }
