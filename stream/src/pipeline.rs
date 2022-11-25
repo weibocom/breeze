@@ -191,33 +191,9 @@ where
             let last = ctx.last();
             // 当前不是最后一个值。也优先写入cache
             client.cache(!last);
-            // let op = ctx.request().operation();
+
             *metrics.key() += 1;
-
             let mut response = ctx.take_response();
-
-            // if response.is_some() && parser.cache() && op.is_query() {
-            //     *metrics.cache() += response.unwrap().ok();
-            // }
-
-            // 流程调整后，所有request都必须有response，异常请求、noforward请求，放在这里统一构建rsp fishermen
-            //if !ctx.inited() {
-            //    let local_resp =
-            //        parser.build_local_response(ctx.request(), |hash| self.top.shard_idx(hash));
-            //    ctx.adapt_local_response(local_resp);
-            //}
-
-            // 至此，所有req都有response，统一处理
-            // assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
-            // parser.write_response(&mut ctx, client, metrics)?;
-            //// 至此，所有req都有response，统一处理
-            //assert!(ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
-
-            // parser.write_response(&mut ResponseContext(&mut ctx, &mut response), client)?;
-            //parser.write_response(
-            //    ctx.request(),
-            //   &mut response,
-            //  |hash| self.top.shard_idx(hash),
 
             assert!(!ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(
@@ -227,19 +203,19 @@ where
                 client,
             )?;
 
-            //TODO !!! 这个统计后续改到write_response中 fishermen 2022.11.23
+            //TODO !!! 这几个统计改到write_response中 fishermen 2022.11.23
             // if response.nil_converted() {
             //     *metrics.nilconvert() += 1;
+            // }
+            // 移到协议处理的位置
+            // if parser.cache() && op.is_query() {
+            //      *metrics.cache() += rsp.ok();
             // }
 
             // TODO 回写及公共统计，跑通后修改这里  fishermen
             let op = ctx.request().operation();
             if let Some(rsp) = response {
-                if parser.cache() && op.is_query() {
-                    *metrics.cache() += rsp.ok();
-                }
-
-                if ctx.is_write_back() {
+                if ctx.is_write_back() && rsp.ok() {
                     ctx.async_write_back(parser, rsp, self.top.exp_sec(), metrics);
                     self.async_pending.push_back(ctx);
                 }

@@ -303,7 +303,7 @@ impl Protocol for Redis {
     //     rsp
     // }
 
-    // TODO：当前把padding、nil整合成一个，接下来把spec-rsp也整合进来
+    // TODO：当前把padding、nil整合成一个，后续考虑如何把spec-rsp也整合进来
     // 发送响应给client：
     //  1 非multi，有rsponse直接发送，否则构建padding or spec-rsp后发送；
     //  2 multi，need-bulk-num为true，有response+ok直接发送，否则构建padding or spec-rsp后发送；
@@ -380,18 +380,10 @@ impl Protocol for Redis {
                     }
                 };
 
-                // rsp不为ok，对need_bulk_num为false的cmd进行nil convert 统计
+                // rsp不为ok，对need_bulk_num为true的cmd进行nil convert 统计
                 if cfg.need_bulk_num {
                     *ctx.get(MetricName::NilConvert) += 1;
                 }
-
-                // if !rsp_ok && cfg.need_bulk_num {
-                //     // let nil = cfg.get_nil_rsp_str();
-                //     // w.write(nil.as_bytes())?;
-                //     w.write(self.build_local_response(request, dist_fn).as_bytes())?;
-                // } else {
-                //     w.write_slice(response.data(), 0)?;
-                // }
             }
             // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可；这些响应直接吞噬。
             // mset always return +OK

@@ -180,44 +180,6 @@ impl CommandProperties {
         HashedCommand::new(cmd, hash, flag)
     }
 
-    // TODO 上线稳定后清理，2022.12 后可清理 fishermen
-    // // 构建一个nil rsp，返回格式类似： :-10\r\n
-    // #[inline(always)]
-    // pub(super) fn build_nil_rsp(&self) -> Command {
-    //     let nil_str = self.get_nil_rsp_str();
-    //     let mut rsp = Command::from_vec(Vec::from(nil_str));
-    //     rsp.set_status_ok(false).set_nil_convert();
-    //     rsp
-    // }
-
-    // 构建一个nil rsp，返回格式类似： :-10\r\n
-    // #[inline(always)]
-    // pub(super) fn get_nil_rsp(&self) -> &str {
-    //     let nil_idx = self.nil_rsp as usize;
-    //     assert!(nil_idx > 0, "cmd:{}", self.name);
-
-    //     *PADDING_RSP_TABLE
-    //         .get(nil_idx)
-    //         .expect(format!("cmd:{}/{}", self.name, nil_idx).as_str())
-    // }
-
-    // TODO 上线稳定后清理，2022.12 后可清理 fishermen
-    // 构建一个padding rsp，用于返回默认响应或server不可用响应
-    // 格式类似：1 pong； 2 -Err redis no available
-    // #[inline(always)]
-    // pub(super) fn build_padding_rsp(&self) -> Command {
-    //     let padding_idx = self.padding_rsp as usize;
-    //     assert!(padding_idx < PADDING_RSP_TABLE.len(), "cmd:{}", self.name);
-
-    //     let padding_str = *PADDING_RSP_TABLE
-    //         .get(padding_idx)
-    //         .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str());
-    //     let mut rsp = Command::from_vec(Vec::from(padding_str));
-    //     // 只有meta的padding rsp才可以设status为true，其他都是异端
-    //     rsp.set_status_ok(self.op.is_meta());
-    //     rsp
-    // }
-
     // 构建一个padding rsp，用于返回默认响应或server不可用响应
     // 格式类似：1 pong； 2 -Err redis no available
     #[inline(always)]

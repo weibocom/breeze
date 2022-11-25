@@ -30,7 +30,10 @@ impl CallbackContextPtr {
         assert!(!self.inited() && self.complete(), "cbptr:{:?}", &**self);
         self.async_mode();
         if let Some(new) = parser.build_writeback_request(
-            &mut ResponseContext::new(self, Some(&mut res), metric, |_h| 0),
+            &mut ResponseContext::new(self, Some(&mut res), metric, |_h| {
+                assert!(false, "write back"); // 此处的dist_fn逻辑上暂时不用
+                0
+            }),
             exp,
         ) {
             self.with_request(new);
