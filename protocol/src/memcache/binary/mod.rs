@@ -3,7 +3,7 @@ mod packet;
 
 use packet::*;
 
-use crate::{Error, Flag, Metric, MetricName, Result, Stream};
+use crate::{Error, Flag, MetricName, Result, Stream};
 
 #[derive(Clone, Default)]
 pub struct MemcacheBinary;
@@ -378,7 +378,7 @@ impl MemcacheBinary {
 
     // 当前只统计缓存命中率，后续需要其他统计，在此增加
     #[inline(always)]
-    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64>>(
+    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>(
         &self,
         request: &HashedCommand,
         response: Option<&Command>,

@@ -66,7 +66,7 @@ impl McqText {
 
     // 协议内部的metric统计，全部放置于此
     #[inline]
-    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64>>(
+    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>(
         &self,
         request: &HashedCommand,
         response: &Command,
