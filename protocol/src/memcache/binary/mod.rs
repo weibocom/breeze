@@ -3,7 +3,7 @@ mod packet;
 
 use packet::*;
 
-use crate::{Error, Flag, Result, Stream};
+use crate::{Error, Flag, Metric, MetricName, Result, Stream};
 
 #[derive(Clone, Default)]
 pub struct MemcacheBinary;
@@ -11,10 +11,11 @@ pub struct MemcacheBinary;
 use crate::{Command, HashedCommand, Protocol, RequestProcessor};
 use sharding::hash::Hash;
 impl Protocol for MemcacheBinary {
-    #[inline]
-    fn cache(&self) -> bool {
-        true
-    }
+    // TODO 测试完毕清理
+    // #[inline]
+    // fn cache(&self) -> bool {
+    //     true
+    // }
     // 解析请求。把所有的multi-get请求转换成单一的n个get请求。
     #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
@@ -108,8 +109,13 @@ impl Protocol for MemcacheBinary {
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();
 
+        // 先进行metrics统计
+        self.metrics(ctx.request(), ctx.response(), ctx);
+
         // 如果原始请求是quite_get请求，并且not found，则不回写。
-        if let Some(rsp) = ctx.response_mut() {
+        // if let Some(rsp) = ctx.response_mut() {
+        if ctx.response().is_some() {
+            let rsp = ctx.response_mut().expect(old_op_code.to_string().as_str());
             assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
 
             // 如果quite 请求没拿到数据，直接忽略
@@ -120,6 +126,7 @@ impl Protocol for MemcacheBinary {
             let data = rsp.data_mut();
             data.restore_op(old_op_code as u8);
             w.write_slice(data, 0)?;
+
             return Ok(());
         }
 
@@ -159,21 +166,6 @@ impl Protocol for MemcacheBinary {
             _ => return Err(Error::NoResponseFound),
         }
         Ok(())
-
-        // if (QUITE_GET_TABLE[old_op_code as usize] == 1 && !resp.ok()) || resp.data().len() == 0 {
-        //     return Ok(());
-        // }
-        // log::debug!("+++ will write mc rsp:{:?}", resp.data());
-        // let data = resp.data_mut();
-        // data.restore_op(old_op_code as u8);
-        // w.write_slice(data, 0)?;
-
-        // 对于quit，直接返回error断连，其他正常返回
-        // match old_op_code {
-        //     // TODO: opcode按协议应该是u8，当前是u16，此处继续沿用数字，后续统一重构 fishermen
-        //     0x07 | 0x17 => Err(Error::Quit),
-        //     _ => Ok(()),
-        // }
     }
 
     // 如果是写请求，把cas请求转换为set请求。
@@ -387,5 +379,22 @@ impl MemcacheBinary {
         let guard = ds::MemGuard::from_vec(req_cmd);
         // TODO: 目前mc不需要用key_count，等又需要再调整
         Some(HashedCommand::new(guard, hash, flag))
+    }
+
+    // 当前只统计缓存命中率，后续需要其他统计，在此增加
+    #[inline(always)]
+    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64>>(
+        &self,
+        request: &HashedCommand,
+        response: Option<&Command>,
+        metrics: &M,
+    ) {
+        if request.operation().is_query() {
+            if let Some(rsp) = response {
+                *metrics.get(MetricName::Cache) += rsp.ok() as i64;
+            } else {
+                *metrics.get(MetricName::Cache) += 0
+            }
+        }
     }
 }

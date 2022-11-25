@@ -61,6 +61,7 @@ impl ProtoMetric<Metric> for CbMetrics {
             MetricName::Read => self.read(),
             MetricName::Write => self.write(),
             MetricName::NilConvert => self.nilconvert(),
+            MetricName::Cache => self.cache(),
         }
     }
 }

@@ -251,18 +251,10 @@ impl Protocol for Phantom {
                 let padding = cfg.get_padding_rsp();
                 w.write(padding.as_bytes())?;
 
-                // rsp不为ok，对need_bulk_num为false的cmd进行nil convert 统计
+                // rsp不为ok，对need_bulk_num为true的cmd进行nil convert 统计
                 if cfg.need_bulk_num {
                     *ctx.get(MetricName::NilConvert) += 1;
                 }
-
-                // 对于异常响应，如果resp是多bulk的，则需要将异常响应转为nil进行响应client
-                // if !response.ok() && cfg.need_bulk_num {
-                //     let nil = cfg.get_nil_rsp_str();
-                //     w.write(nil.as_bytes())?;
-                // } else {
-                //     w.write_slice(response.data(), 0)?;
-                // }
             }
             // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
             // mset always return +OK

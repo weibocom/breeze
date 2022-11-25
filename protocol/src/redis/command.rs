@@ -65,43 +65,9 @@ const PADDING_RSP_TABLE: [&str; 7] = [
 // 这个idx通常来自于CommandProperties.padding_rsp
 
 impl CommandProperties {
-    // TODO 测试完毕清理 deadcode
-    // 构建一个nil rsp，返回格式类似： $-1\r\n
-    // #[inline(always)]
-    // pub(super) fn build_nil_rsp(&self) -> Command {
-    //     let nil_str = self.get_nil_rsp_str();
-    //     let mut rsp = Command::from_vec(Vec::from(nil_str));
-    //     rsp.set_status_ok(false).set_nil_convert();
-    //     rsp
-    // }
-
-    // #[inline]
-    // pub(super) fn get_nil_rsp(&self) -> &str {
-    //     let nil_idx = self.nil_rsp as usize;
-    //     assert!(nil_idx > 0, "cmd:{}", self.name);
-
-    //     *PADDING_RSP_TABLE
-    //         .get(nil_idx)
-    //         .expect(format!("cmd:{}, nil_rsp:{}", self.name, nil_idx).as_str())
-    // }
-
     // TODO 测试完毕清理 deadcode fishermen
-    // 构建一个padding rsp，用于返回默认响应或server不可用响应，只有meta cfg才设置status为true；
-    // 响应格式类似：1 pong； 2 -Err redis no available
-    // #[inline(always)]
-    // pub(super) fn build_padding_rsp(&self) -> Command {
-    //     // quit的padding rsp为1，所有的rsp padding都应该大于0
-    //     let padding_idx = self.padding_rsp as usize;
-    //     assert!(padding_idx > 0, "cmd:{}", self.name);
-
-    //     let padding_str = *PADDING_RSP_TABLE
-    //         .get(padding_idx)
-    //         .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str());
-    //     let mut rsp = Command::from_vec(Vec::from(padding_str));
-    //     rsp.set_status_ok(self.op.is_meta());
-    //     rsp
-    // }
-
+    // 构建一个padding rsp，用于返回默认响应、server不可用响应、nil响应；
+    // 响应格式类似：1 pong； 2 -Err redis no available; 3 $-1\r\n
     #[inline(always)]
     pub(super) fn get_padding_rsp(&self) -> &str {
         *PADDING_RSP_TABLE
@@ -109,35 +75,18 @@ impl CommandProperties {
             .expect(format!("cmd:{}, padding_rsp:{}", self.name, self.padding_rsp).as_str())
     }
 
-    // 构建hashkey的resp
+    // 构建hashkey的resp,格式:1\r\n
     pub(super) fn get_rsp_hashkey(&self, shard: usize) -> String {
         format!(":{}\r\n", shard)
-        // let mut rsp = Command::from_vec(Vec::from(rsp_str));
-        // rsp.set_status_ok(true);
-        // rsp
     }
 
-    // 构建keyshard的resp，注意返回的bulk
+    // 构建keyshard的resp，注意返回的bulk num，格式:$1\r\n1\r\n
     pub(super) fn get_rsp_keyshard(&self, shard: usize) -> String {
         let shard_str = shard.to_string();
         format!("${}\r\n{}\r\n", shard_str.len(), shard_str)
-
-        // let mut rsp = Command::from_vec(Vec::from(rsp_str));
-        // rsp.set_status_ok(true);
-        // rsp
     }
 
-    // TODO: quit测试完毕后删除该方法 fishermen
-    // #[inline(always)]
-    // pub(super) fn get_pad_ok_rsp(&self) -> &'static str {
-    //     unsafe { PADDING_RSP_TABLE.get_unchecked(1) }
-    // }
-
-    //#[inline]
-    //pub fn operation(&self) -> &Operation {
-    //    &self.op
-    //}
-
+    // TODO 当前mesh不再进行cmd校验，由后端server进行
     //#[inline]
     //pub fn validate(&self, token_count: usize) -> bool {
     //    if self.arity == 0 {
@@ -169,18 +118,6 @@ impl CommandProperties {
     //        // 最后一个key的idx为负数，
     //        return (token_count as i64 + self.last_key_index as i64) as usize;
     //    }
-    //}
-
-    //pub fn key_step(&self) -> usize {
-    //    self.key_step as usize
-    //}
-
-    //pub fn padding_rsp(&self) -> u8 {
-    //    self.padding_rsp
-    //}
-    //#[inline]
-    //pub fn noforward(&self) -> bool {
-    //    self.noforward
     //}
 
     pub(super) fn flag(&self) -> crate::Flag {
@@ -763,6 +700,7 @@ impl CommandProperties {
         self
     }
     fn padding(mut self, padding_rsp: usize) -> Self {
+        // 属性注入时检查，使用时不再check
         assert!(padding_rsp < PADDING_RSP_TABLE.len(), "name:{}", self.name);
         self.padding_rsp = padding_rsp;
         self

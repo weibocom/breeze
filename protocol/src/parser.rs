@@ -57,11 +57,13 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn build_writeback_request<C: Commander>(&self, _ctx: &mut C, _: u32) -> Option<HashedCommand> {
         todo!("not implement");
     }
-    // 当前资源是否为cache。用来统计命中率
-    #[inline]
-    fn cache(&self) -> bool {
-        false
-    }
+
+    //TODO 移到协议层
+    // // 当前资源是否为cache。用来统计命中率
+    // #[inline]
+    // fn cache(&self) -> bool {
+    //     false
+    // }
 }
 
 pub trait RequestProcessor {
@@ -107,15 +109,6 @@ impl Command {
     pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
         Self { flag, cmd }
     }
-
-    // TODO 测试完毕后清理
-    // 根据vec格式的data构建cmd，flag全部为默认值
-    // pub fn from_vec(data: Vec<u8>) -> Self {
-    //     Self {
-    //         flag: Flag::new(),
-    //         cmd: MemGuard::from_vec(data),
-    //     }
-    // }
 
     #[inline]
     pub fn len(&self) -> usize {
@@ -253,6 +246,7 @@ pub enum MetricName {
     Read,
     Write,
     NilConvert,
+    Cache, // cache(mc)命中率
 }
 pub trait Metric<M: std::ops::AddAssign<i64>> {
     fn get(&self, name: MetricName) -> &mut M;

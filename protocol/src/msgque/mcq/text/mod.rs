@@ -139,8 +139,7 @@ impl Protocol for McqText {
             return Err(crate::Error::Quit);
         }
 
-        let response = ctx.response();
-        if let Some(rsp) = response {
+        if let Some(rsp) = ctx.response() {
             // 不再创建local rsp，所有server响应的rsp data长度应该大于0
             debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
             w.write_slice(rsp.data(), 0)?;
@@ -148,6 +147,7 @@ impl Protocol for McqText {
         } else {
             let padding = cfg.get_padding_rsp();
             w.write(padding.as_bytes())?;
+            // TODO 写失败尚没有统计（还没merge进来？），暂时先和dev保持一致 fishermen
         }
 
         // TODO 测试完毕后清理
