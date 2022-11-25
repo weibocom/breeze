@@ -93,25 +93,25 @@ impl Protocol for MemcacheBinary {
     >(
         &self,
         ctx: &mut C,
+        response: Option<&mut Command>,
         w: &mut W,
     ) -> Result<()> {
         // sendonly 直接返回
         if ctx.request().sentonly() {
-            assert!(ctx.response().is_none(), "req:{:?}", ctx.request());
+            assert!(response.is_none(), "req:{:?}", ctx.request());
             return Ok(());
         }
 
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         let old_op_code = ctx.request().op_code();
 
-        // 先进行metrics统计
-        self.metrics(ctx.request(), ctx.response(), ctx);
-
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         // if let Some(rsp) = ctx.response_mut() {
-        if ctx.response().is_some() {
-            let rsp = ctx.response_mut().expect(old_op_code.to_string().as_str());
+        if let Some(rsp) = response {
             assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
+
+            // 先进行metrics统计
+            self.metrics(ctx.request(), Some(&rsp), ctx);
 
             // 如果quite 请求没拿到数据，直接忽略
             if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
@@ -124,6 +124,9 @@ impl Protocol for MemcacheBinary {
 
             return Ok(());
         }
+
+        // 先进行metrics统计
+        self.metrics(ctx.request(), None, ctx);
 
         match old_op_code as u8 {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
@@ -169,12 +172,12 @@ impl Protocol for MemcacheBinary {
     fn build_writeback_request<C: crate::Commander>(
         &self,
         ctx: &mut C,
+        response: &Command,
         exp_sec: u32,
     ) -> Option<HashedCommand> {
         if ctx.request_mut().operation().is_retrival() {
             let req = &*ctx.request();
-            let resp = ctx.response().expect("wb rsp none");
-            self.build_write_back_get(req, &resp, exp_sec)
+            self.build_write_back_get(req, response, exp_sec)
         } else {
             self.build_write_back_inplace(ctx.request_mut());
             None
@@ -385,12 +388,7 @@ impl MemcacheBinary {
         metrics: &M,
     ) {
         if request.operation().is_query() {
-            if let Some(rsp) = response {
-                *metrics.get(MetricName::Cache) += rsp.ok();
-            } else {
-                // 没有response的query，作为miss
-                *metrics.get(MetricName::Cache) += false;
-            }
+            *metrics.get(MetricName::Cache) += response.map(|rsp| rsp.ok()).unwrap_or_default();
         }
     }
 }

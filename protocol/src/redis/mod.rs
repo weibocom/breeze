@@ -317,11 +317,11 @@ impl Protocol for Redis {
     >(
         &self,
         ctx: &mut C,
+        response: Option<&mut Command>,
         w: &mut W,
     ) -> Result<()> {
         let request = ctx.request();
         let cfg = command::get_cfg(request.op_code())?;
-        let response = ctx.response();
 
         if !cfg.multi {
             // 非multi请求,有响应直接返回client，否则构建
@@ -470,7 +470,12 @@ impl Protocol for Redis {
 
     // redis writeback场景：hashkey -1 时，需要对所有节点进行数据（一般为script）分发
     #[inline]
-    fn build_writeback_request<C: Commander>(&self, ctx: &mut C, _: u32) -> Option<HashedCommand> {
+    fn build_writeback_request<C: Commander>(
+        &self,
+        ctx: &mut C,
+        _response: &Command,
+        _: u32,
+    ) -> Option<HashedCommand> {
         let hash_cmd = ctx.request_mut();
         debug_assert!(hash_cmd.direct_hash(), "data: {:?}", hash_cmd.data());
 
