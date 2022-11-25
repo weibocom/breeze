@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ptr::NonNull, sync::Arc};
+use std::{marker::PhantomData, ops::AddAssign, ptr::NonNull, sync::Arc};
 
 use protocol::{
     callback::CallbackContext, request::Request, Command, Commander, HashedCommand, Metric,
@@ -26,16 +26,18 @@ impl CallbackContextPtr {
     >(
         &mut self,
         parser: &P,
-        mut res: Command,
+        resp: Command,
         exp: u32,
         metric: &mut Arc<M>,
     ) {
         // 在异步处理之前，必须要先处理完response
         assert!(!self.inited() && self.complete(), "cbptr:{:?}", &**self);
         self.async_mode();
-        if let Some(new) =
-            parser.build_writeback_request(&mut ResponseContext::new(self, &mut res, metric), exp)
-        {
+        let mut rsp_ctx = ResponseContext::new(self, metric, |_h| {
+            assert!(false, "write back"); // 此处的dist_fn逻辑上暂时不会用
+            0
+        });
+        if let Some(new) = parser.build_writeback_request(&mut rsp_ctx, &resp, exp) {
             self.with_request(new);
         }
         log::debug!("start write back:{}", &**self);
@@ -81,30 +83,35 @@ pub struct ResponseContext<
     'a,
     M: Metric<T>,
     T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
+    F: Fn(i64) -> usize,
 > {
-    pub(crate) ctx: &'a mut CallbackContextPtr,
-    pub cmd: &'a mut Command,
-    pub metric: &'a mut Arc<M>,
+    // ctx 中的response不可直接用，先封住，按需暴露
+    ctx: &'a mut CallbackContextPtr,
+    // pub response: Option<&'a mut Command>,
+    pub metrics: &'a mut Arc<M>,
+    dist_fn: F,
     _mark: PhantomData<T>,
 }
-impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>
-    ResponseContext<'a, M, T>
+
+impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize>
+    ResponseContext<'a, M, T, F>
 {
-    pub(crate) fn new(
+    pub(super) fn new(
         ctx: &'a mut CallbackContextPtr,
-        cmd: &'a mut Command,
-        metric: &'a mut Arc<M>,
+        metrics: &'a mut Arc<M>,
+        dist_fn: F,
     ) -> Self {
         Self {
             ctx,
-            cmd,
-            metric,
-            _mark: PhantomData,
+            metrics,
+            dist_fn,
+            _mark: Default::default(),
         }
     }
 }
-impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> Commander
-    for ResponseContext<'a, M, T>
+
+impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize> Commander
+    for ResponseContext<'a, M, T, F>
 {
     #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
@@ -115,19 +122,20 @@ impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> 
         self.ctx.request()
     }
     #[inline]
-    fn response(&self) -> &Command {
-        self.cmd
-    }
-    #[inline]
-    fn response_mut(&mut self) -> &mut Command {
-        self.cmd
+    fn request_shard(&self) -> usize {
+        (self.dist_fn)(self.request().hash())
     }
 }
-impl<'a, M: Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> Metric<T>
-    for ResponseContext<'a, M, T>
+
+impl<
+        'a,
+        M: Metric<T>,
+        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
+        F: Fn(i64) -> usize,
+    > Metric<T> for ResponseContext<'a, M, T, F>
 {
     #[inline]
     fn get(&self, name: MetricName) -> &mut T {
-        self.metric.get(name)
+        self.metrics.get(name)
     }
 }

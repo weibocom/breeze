@@ -131,8 +131,7 @@ impl MemGuard {
     pub fn from_vec(data: Vec<u8>) -> Self {
         let mem: RingSlice = data.as_slice().into();
         //assert_eq!(data.capacity(), mem.len());
-        // mc某些特殊请求，如quit、getq，data长度可能为0
-        // assert_ne!(data.len(), 0);
+        assert_ne!(data.len(), 0);
         let cap = data.capacity();
         let _ = std::mem::ManuallyDrop::new(data);
         let guard = 0 as *const _;

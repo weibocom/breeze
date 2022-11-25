@@ -1,4 +1,4 @@
-use crate::{Command, HashedCommand, OpCode, Operation};
+use crate::{HashedCommand, OpCode, Operation};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 
@@ -20,8 +20,10 @@ pub(crate) struct CommandProperties {
     /// key 步长，get的步长为1，mset的步长为2，like:k1 v1 k2 v2
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
-    pub(super) padding_rsp: u8,
-    pub(super) nil_rsp: u8,
+    pub(super) padding_rsp: usize,
+
+    // TODO 把padding、nil整合成一个，测试完毕后清理
+    // pub(super) nil_rsp: u8,
     pub(super) has_val: bool,
     pub(super) has_key: bool,
     pub(super) noforward: bool,
@@ -87,7 +89,7 @@ impl CommandProperties {
         self.key_step as usize
     }
 
-    pub fn padding_rsp(&self) -> u8 {
+    pub fn padding_rsp(&self) -> usize {
         self.padding_rsp
     }
     #[inline]
@@ -96,9 +98,9 @@ impl CommandProperties {
     }
     #[inline]
     pub(super) fn flag(&self) -> crate::Flag {
-        use super::flag::RedisFlager;
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
-        flag.set_padding_rsp(self.padding_rsp);
+        //TODO 去掉padding_rsp，从req的cfg中获取，测试完毕后清理
+        // flag.set_padding_rsp(self.padding_rsp);
         flag.set_noforward(self.noforward);
         flag
     }
@@ -178,39 +180,11 @@ impl CommandProperties {
         HashedCommand::new(cmd, hash, flag)
     }
 
-    // 构建一个nil rsp，返回格式类似： :-10\r\n
-    #[inline(always)]
-    pub(super) fn build_nil_rsp(&self) -> Command {
-        let nil_str = self.get_nil_rsp_str();
-        let mut rsp = Command::from_vec(Vec::from(nil_str));
-        rsp.set_status_ok(false).set_nil_convert();
-        rsp
-    }
-
-    #[inline(always)]
-    pub(super) fn get_nil_rsp_str(&self) -> &str {
-        let nil_idx = self.nil_rsp as usize;
-        assert!(nil_idx > 0, "cmd:{}", self.name);
-
-        *PADDING_RSP_TABLE
-            .get(nil_idx)
-            .expect(format!("cmd:{}/{}", self.name, nil_idx).as_str())
-    }
-
     // 构建一个padding rsp，用于返回默认响应或server不可用响应
     // 格式类似：1 pong； 2 -Err redis no available
     #[inline(always)]
-    pub(super) fn build_padding_rsp(&self) -> Command {
-        let padding_idx = self.padding_rsp as usize;
-        assert!(padding_idx < PADDING_RSP_TABLE.len(), "cmd:{}", self.name);
-
-        let padding_str = *PADDING_RSP_TABLE
-            .get(padding_idx)
-            .expect(format!("cmd:{}, padding_rsp:{}", self.name, padding_idx).as_str());
-        let mut rsp = Command::from_vec(Vec::from(padding_str));
-        // 只有meta的padding rsp才可以设status为true，其他都是异端
-        rsp.set_status_ok(self.op.is_meta());
-        rsp
+    pub(super) fn get_padding_rsp(&self) -> &str {
+        unsafe { *PADDING_RSP_TABLE.get_unchecked(self.padding_rsp) }
     }
 }
 
@@ -263,7 +237,7 @@ impl Commands {
         first_key_index: u8,
         last_key_index: i8,
         key_step: u8,
-        padding_rsp: u8,
+        padding_rsp: usize,
         multi: bool,
         noforward: bool,
         has_key: bool,
@@ -276,18 +250,15 @@ impl Commands {
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
 
+        // TODO 测试完毕后清理
         // bfmget、bfmset，在部分key 返回异常响应时，需要将异常信息转换为nil返回 fishermen
-        let mut nil_rsp = 0;
-        if uppercase.eq("BFMGET") || uppercase.eq("BFMSET") {
-            nil_rsp = 5;
-        }
+        // let mut nil_rsp = 0;
+        // if uppercase.eq("BFMGET") || uppercase.eq("BFMSET") {
+        //     nil_rsp = 5;
+        // }
 
         // 所有cmd的padding-rsp都必须是合理值，此处统一判断
-        assert!(
-            padding_rsp > 0 && (padding_rsp as usize) < PADDING_RSP_TABLE.len(),
-            "cmd:{}",
-            name
-        );
+        assert!(padding_rsp < PADDING_RSP_TABLE.len(), "cmd:{}", name);
 
         let quit = uppercase.eq("QUIT");
         self.supported[idx] = CommandProperties {
@@ -300,7 +271,7 @@ impl Commands {
             last_key_index,
             key_step,
             padding_rsp,
-            nil_rsp,
+            // nil_rsp,
             noforward,
             supported: true,
             multi,
@@ -342,9 +313,9 @@ pub(super) mod cmd {
                 ("bfget" , "bfget",        2, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("bfset", "bfset",         2, Store, 1, 1, 1, 3, false, false, true, false, false),
 
-                // bfmget、bfmset，在部分key 返回异常响应时，需要将异常信息转换为nil返回 fishermen
-                ("bfmget", "bfget",       -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
-                ("bfmset", "bfset",       -2, Store, 1, 1, 1, 3, true, false, true, false, true),
+                // bfmget、bfmset，padding改为5， fishermen
+                ("bfmget", "bfget",       -2, MGet, 1, -1, 1, 5, true, false, true, false, true),
+                ("bfmset", "bfset",       -2, Store, 1, 1, 1, 5, true, false, true, false, true),
 
 
 

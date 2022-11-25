@@ -38,8 +38,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
 
     // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
-    fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
-        -> Command;
+    // fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
+    //     -> Command;
 
     fn write_response<
         C: Commander + Metric<T>,
@@ -48,6 +48,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     >(
         &self,
         ctx: &mut C,
+        response: Option<&mut Command>,
         w: &mut W,
     ) -> Result<()>;
 
@@ -58,7 +59,12 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     // 构建回写请求。
     // 返回None: 说明req复用，build in place
     // 返回新的request
-    fn build_writeback_request<C: Commander>(&self, _ctx: &mut C, _: u32) -> Option<HashedCommand> {
+    fn build_writeback_request<C: Commander>(
+        &self,
+        _ctx: &mut C,
+        _response: &Command,
+        _: u32,
+    ) -> Option<HashedCommand> {
         todo!("not implement");
     }
 }
@@ -106,13 +112,7 @@ impl Command {
     pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
         Self { flag, cmd }
     }
-    // 根据vec格式的data构建cmd，flag全部为默认值
-    pub fn from_vec(data: Vec<u8>) -> Self {
-        Self {
-            flag: Flag::new(),
-            cmd: MemGuard::from_vec(data),
-        }
-    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.cmd.len()
@@ -231,14 +231,18 @@ impl Debug for Command {
 pub trait Commander {
     fn request_mut(&mut self) -> &mut HashedCommand;
     fn request(&self) -> &HashedCommand;
-    fn response(&self) -> &Command;
-    fn response_mut(&mut self) -> &mut Command;
+    // response  单独拆除
+    // fn response(&self) -> Option<&Command>;
+    // fn response_mut(&mut self) -> Option<&mut Command>;
+    // 请求所在的分片位置
+    fn request_shard(&self) -> usize;
 }
 
 pub enum MetricName {
     Read,
     Write,
-    Cache,
+    NilConvert,
+    Cache, // cache(mc)命中率
 }
 pub trait Metric<M: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> {
     fn get(&self, name: MetricName) -> &mut M;
