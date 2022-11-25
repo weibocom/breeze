@@ -270,7 +270,8 @@ impl Debug for RingSlice {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         use crate::Utf8;
         let slice = self.sub_slice(0, 512.min(self.len()));
-        let data = Vec::with_capacity(slice.len());
+        let mut data = Vec::with_capacity(slice.len());
+        slice.copy_to_vec(&mut data);
         write!(
             f,
             "ptr:{} start:{} len:{} cap:{} => {:?}",
