@@ -41,7 +41,7 @@ impl Redis {
         // 一个指令开始处理，可以重复进入
 
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        log::debug!("+++ rec req:{:?}", stream.slice());
+        log::debug!("+++ rec redis req:{:?}", stream.slice());
 
         let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
@@ -79,7 +79,7 @@ impl Redis {
                         hash = packet.reserved_hash();
                         log::info!("+++ use direct hash for multi cmd: {:?}", packet)
                     } else {
-                        hash = calculate_hash(alg, &key);
+                        hash = calculate_hash(cfg, alg, &key);
                     }
 
                     if cfg.has_val {
@@ -103,7 +103,7 @@ impl Redis {
                     return Err(RedisError::ReqInvalid.error());
                 } else if cfg.has_key {
                     let key = packet.parse_key()?;
-                    hash = calculate_hash(alg, &key);
+                    hash = calculate_hash(cfg, alg, &key);
                 } else {
                     hash = default_hash();
                 }
@@ -151,7 +151,7 @@ impl Redis {
                         log::info!("+++ will broadcast: {:?}", packet.inner_data());
                         hash = crate::MAX_DIRECT_HASH;
                     } else {
-                        hash = calculate_hash(alg, &key);
+                        hash = calculate_hash(cfg, alg, &key);
                     }
 
                     // 记录reserved hash，为下一个指令使用
@@ -488,12 +488,28 @@ static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0?
 #[inline]
-fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
-    if key.len() == 0 {
-        default_hash()
-    } else {
-        alg.hash(key)
+fn calculate_hash<H: Hash>(cfg: &CommandProperties, alg: &H, key: &RingSlice) -> i64 {
+    match key.len() {
+        0 => default_hash(),
+        2 => {
+            // 对“hashkey -1”做特殊处理，使用max hash，从而保持与hashkeyq一致
+            if key.len() == 2
+                && key.at(0) == ('-' as u8)
+                && key.at(1) == ('1' as u8)
+                && cfg.name.eq(command::SPEC_LOCAL_CMD_HASHKEY)
+            {
+                crate::MAX_DIRECT_HASH
+            } else {
+                alg.hash(key)
+            }
+        }
+        _ => alg.hash(key),
     }
+    // if key.len() == 0 {
+    //     default_hash()
+    // } else {
+    //     alg.hash(key)
+    // }
 }
 
 #[inline]
