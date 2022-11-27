@@ -1,8 +1,8 @@
 extern crate lazy_static;
 use clap::{FromArgMatches, IntoApp, Parser};
 use lazy_static::lazy_static;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
     io::{Error, ErrorKind, Result},
     vec,
@@ -190,7 +190,7 @@ impl ListenerIter {
         Self {
             processed: Default::default(),
             path,
-            last_read: UNIX_EPOCH, 
+            last_read: UNIX_EPOCH,
         }
     }
 
@@ -271,7 +271,7 @@ impl ListenerIter {
                     return Ok(found);
                 }
             }
-            Err(err) => log::warn!("get socks dir metadata err:{:?}", err),
+            Err(_err) => log::warn!("get socks dir metadata err:{:?}", _err),
         }
 
         let mut dir = tokio::fs::read_dir(&self.path).await?;

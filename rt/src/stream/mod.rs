@@ -4,33 +4,30 @@ use metric::MetricStream;
 
 use std::io;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 use std::task::ready;
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use metrics::base::*;
+mod tx_buf;
+pub use tx_buf::*;
 
 // 1. read/write统计
 // 2. 支持write buffer。
 // 3. poll_write总是成功
 pub struct Stream<S> {
     s: MetricStream<S>,
-    idx: usize,
-    buf: Vec<u8>,
+    buf: TxBuffer,
     write_to_buf: bool,
-    policy: MemPolicy,
 }
 impl<S> From<S> for Stream<S> {
     #[inline]
     fn from(s: S) -> Self {
         Self {
             s: s.into(),
-            idx: 0,
-            buf: Vec::new(),
+            buf: TxBuffer::new(),
             write_to_buf: false,
-            policy: MemPolicy::tx(),
         }
     }
 }
@@ -69,23 +66,24 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         }
         // 未写完的数据写入到buf。
         if oft < data.len() {
-            self.write_to_buf(&data[oft..])
+            self.buf.write(&data[oft..])
         }
         Poll::Ready(Ok(data.len()))
     }
     #[inline]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        if self.buf.len() > 0 {
-            let Self { s, idx, buf, .. } = &mut *self;
+        if self.buf.avail() {
+            let Self { s, buf, .. } = &mut *self;
             let mut w = Pin::new(s);
-            while *idx < buf.len() {
-                *idx += ready!(w.as_mut().poll_write(cx, &buf[*idx..]))?;
+            loop {
+                let data = buf.data();
+                let n = ready!(w.as_mut().poll_write(cx, data))?;
+                if buf.take(n) {
+                    break;
+                }
             }
-            assert_eq!(*idx, buf.len(), "{}/{}", *idx, buf.len());
             let flush = w.poll_flush(cx)?;
-            assert!(flush.is_ready());
             ready!(flush);
-            self.clear();
         }
         Poll::Ready(Ok(()))
     }
@@ -99,10 +97,13 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
     }
 }
 
+#[ctor::ctor]
+static NOOP: Waker = noop_waker::noop_waker();
+
 impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     #[inline]
     fn cap(&self) -> usize {
-        self.buf.capacity()
+        self.buf.cap
     }
     #[inline]
     fn pending(&self) -> usize {
@@ -111,14 +112,12 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     #[inline]
     fn write(&mut self, data: &[u8]) -> protocol::Result<()> {
         if data.len() <= 4 {
-            self.write_to_buf(data);
-            Ok(())
+            self.buf.write(data);
         } else {
-            let noop = noop_waker::noop_waker();
-            let mut ctx = Context::from_waker(&noop);
+            let mut ctx = Context::from_waker(&NOOP);
             let _ = Pin::new(self).poll_write(&mut ctx, data);
-            Ok(())
         }
+        Ok(())
     }
     // hint: 提示可能优先写入到cache
     #[inline]
@@ -129,43 +128,6 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     }
     #[inline]
     fn shrink(&mut self) {
-        if self.policy.need_shrink(self.buf.len(), self.buf.capacity()) {
-            let old = self.buf.capacity();
-            let new = self.policy.shrink(self.buf.len(), old);
-            self.buf.shrink_to(new);
-            assert_eq!(new, self.buf.capacity(), "{}/{}", new, self.buf.capacity());
-            BUF_TX.decr_by((old - new) as i64);
-        }
-    }
-}
-impl<S> Stream<S> {
-    #[inline(always)]
-    fn write_to_buf(&mut self, data: &[u8]) {
-        let (len, cap) = (self.buf.len(), self.buf.capacity());
-        if self.policy.need_grow(len, cap, data.len()) {
-            let new = self.policy.grow(len, cap, data.len());
-            let grow = new - self.buf.len();
-            self.buf.reserve_exact(grow);
-            assert_eq!(self.buf.capacity(), new, "{}/{}", self.buf.capacity(), new);
-            BUF_TX.incr_by((new - cap) as i64);
-        }
-        P_W_CACHE.incr();
-        use ds::Buffer;
-        self.buf.write(data);
-    }
-    // 所有数据flush完了之后，尝试进行缩容
-    #[inline]
-    fn clear(&mut self) {
-        self.policy
-            .check_shrink(self.buf.len(), self.buf.capacity());
-
-        self.idx = 0;
-        unsafe { self.buf.set_len(0) };
-    }
-}
-impl<S> Drop for Stream<S> {
-    #[inline]
-    fn drop(&mut self) {
-        BUF_TX.decr_by(self.buf.capacity() as i64);
+        self.buf.shrink();
     }
 }

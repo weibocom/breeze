@@ -45,7 +45,7 @@ fn test_redis_panic() {
     const CAP: usize = 2048;
     let start = 4636157;
     let _end = 4637617;
-    let mut buf = stream::buffer::StreamGuard::raw_init(CAP);
+    let mut buf = stream::buffer::StreamGuard::init(CAP);
     let mut w = 0;
     while w < start {
         let batch = (start - w).min(511);
