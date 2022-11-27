@@ -11,6 +11,7 @@ protocol = { path = "../protocol" }
 metrics = { path = "../metrics" }
 ds = { path = "../ds" }
 log = { path = "../log" }
+ctor = "*"
 
 noop-waker = "0.1.0"
 

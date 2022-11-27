@@ -20,8 +20,7 @@ pub trait Writer {
     }
 
     // hint: 提示可能优先写入到cache
-    #[inline]
-    fn cache(&mut self, _hint: bool) {}
+    fn cache(&mut self, hint: bool);
 
     #[inline]
     fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {

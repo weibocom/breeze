@@ -16,3 +16,4 @@ mod size;
 mod asserts;
 mod layout;
 mod ring_buffer;
+mod tx_buffer;
