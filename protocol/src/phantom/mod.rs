@@ -205,11 +205,7 @@ impl Protocol for Phantom {
     //  3 quit 发送完毕后，返回Err 断开连接
     //  4 其他普通响应直接发送；
     #[inline]
-    fn write_response<
-        C: crate::Commander + crate::Metric<T>,
-        W: crate::Writer,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    >(
+    fn write_response<C: crate::Commander + crate::Metric, W: crate::Writer>(
         &self,
         ctx: &mut C,
         response: Option<&mut Command>,

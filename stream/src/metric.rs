@@ -62,7 +62,7 @@ define_metrics!(
     ratio:  cache-hit
 );
 
-impl ProtoMetric<Metric> for StreamMetrics {
+impl ProtoMetric for StreamMetrics {
     #[inline]
     fn get(&self, name: MetricName) -> &mut Metric {
         match name {
