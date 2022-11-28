@@ -295,7 +295,8 @@ impl Drop for CallbackContext {
     #[inline]
     fn drop(&mut self) {
         assert!(*self.ctx.complete.get_mut(), "{}", self);
-        assert!(!*self.ctx.inited.get_mut(), "response not taken:{:?}", self);
+        self.try_drop_response();
+        //assert!(!self.inited(), "response not taken:{:?}", self);
         // 可以尝试检查double free
         *self.ctx.complete.get_mut() = false;
         //self.try_drop_response();
