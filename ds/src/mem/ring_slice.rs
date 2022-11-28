@@ -64,6 +64,7 @@ impl RingSlice {
             v.write(data);
         }
     }
+
     #[inline]
     fn mask(&self, oft: usize) -> usize {
         // 兼容cap是0的场景
