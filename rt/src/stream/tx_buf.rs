@@ -85,9 +85,8 @@ impl TxBuffer {
     }
     #[inline]
     fn resize(&mut self, new: usize) {
-        let delta = new as i64 - self.cap as i64;
-        BUF_TX.incr_by(delta);
         let data = if new > 0 {
+            ds::BUF_TX.incr_by(new);
             let mut data = ManuallyDrop::new(Vec::<u8>::with_capacity(new));
             let data = unsafe { NonNull::new_unchecked(data.as_mut_ptr()) };
             // 从self.read..self.write的数据复制过来
@@ -107,6 +106,7 @@ impl TxBuffer {
         // 释放老的data
         if self.cap > 0 {
             let _old = unsafe { Vec::<u8>::from_raw_parts(self.data.as_ptr(), 0, self.cap) };
+            ds::BUF_TX.decr_by(self.cap);
         }
         self.data = data;
         self.cap = new;

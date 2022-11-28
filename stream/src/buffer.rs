@@ -113,10 +113,7 @@ impl StreamGuard {
     }
     #[inline]
     fn with(min: usize, max: usize, init: usize) -> Self {
-        Self::from(GuardedBuffer::new(min, max, init, move |_old, delta| {
-            use metrics::base::*;
-            BUF_RX.incr_by(delta as i64);
-        }))
+        Self::from(GuardedBuffer::new(min, max, init))
     }
     //#[inline]
     //pub fn raw_init(init: usize) -> Self {

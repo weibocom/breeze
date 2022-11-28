@@ -49,11 +49,11 @@ fn checkout_basic() {
 #[ignore]
 #[test]
 fn check_layout() {
-    assert_eq!((200, 208).select(), size_of::<CallbackContext>());
-    assert_eq!((176, 256).select(), size_of::<StreamGuard>());
+    assert_eq!((192, 208).select(), size_of::<CallbackContext>());
+    assert_eq!((160, 240).select(), size_of::<StreamGuard>());
     assert_eq!((80, 168).select(), size_of::<Stream>());
-    assert_eq!((336, 504).select(), size_of::<Handler<'static>>());
-    assert_eq!((472, 664).select(), size_of::<Entry<Handler<'static>>>());
+    assert_eq!((320, 488).select(), size_of::<Handler<'static>>());
+    assert_eq!((456, 648).select(), size_of::<Entry<Handler<'static>>>());
 
     assert_eq!(392, size_of::<Topology>());
     assert_eq!(96, size_of::<CacheService>());
@@ -63,8 +63,8 @@ fn check_layout() {
 
     assert_eq!(320, size_of::<stream::StreamMetrics>());
 
-    assert_eq!((432, 632).select(), size_of::<CopyBidirectional>());
-    assert_eq!((568, 792).select(), size_of::<Entry<CopyBidirectional>>());
+    assert_eq!((440, 616).select(), size_of::<CopyBidirectional>());
+    assert_eq!((576, 776).select(), size_of::<Entry<CopyBidirectional>>());
 }
 
 trait Select {

@@ -1,10 +1,8 @@
 use rt::TxBuffer;
 #[test]
 fn check_tx_buffer() {
-    assert_eq!(BUF_TX.get(), 0);
     const MIN: usize = 2 * 1024;
     let mut buf = TxBuffer::new();
-    assert_eq!(BUF_TX.get(), 0);
     const EMPTY: [u8; 0] = [];
     assert_eq!(buf.data(), &EMPTY[..]);
     assert_eq!(buf.cap(), 0);
@@ -14,7 +12,6 @@ fn check_tx_buffer() {
     buf.write(v1);
     assert_eq!(buf.len(), v1.len());
     assert_eq!(buf.cap(), MIN);
-    assert_eq!(BUF_TX.get() as usize, buf.cap());
     let data = buf.data();
     assert_eq!(data, v1);
     buf.take(1);
@@ -36,9 +33,4 @@ fn check_tx_buffer() {
     assert_eq!(buf.cap(), MIN * 2);
     buf.take(v.len());
     assert_eq!(buf.len(), 0);
-
-    use metrics::base::*;
-    assert_eq!(BUF_TX.get() as usize, buf.cap());
-    drop(buf);
-    assert_eq!(BUF_TX.get() as usize, 0);
 }

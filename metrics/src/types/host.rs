@@ -1,7 +1,8 @@
 use psutil::process::Process;
 
-use crate::BASE_PATH;
-use ds::time::Instant;
+use super::base::*;
+use crate::{ItemWriter, BASE_PATH};
+use ds::{time::Instant, Buffers, BUF_RX, BUF_TX};
 use std::sync::atomic::{AtomicI64, Ordering::*};
 
 static TASK_NUM: AtomicI64 = AtomicI64::new(0);
@@ -63,9 +64,8 @@ impl Host {
         }
     }
     fn snapshot_base<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64) {
-        use super::base::*;
-        w.write(BASE_PATH, "mem_buf_tx", "num", BUF_TX.get());
-        w.write(BASE_PATH, "mem_buf_rx", "num", BUF_RX.get());
+        self.snapshot_buf(&BUF_TX, w, "mem_buf_tx", secs);
+        self.snapshot_buf(&BUF_RX, w, "mem_buf_rx", secs);
 
         w.write(BASE_PATH, "leak_conn", "num", LEAKED_CONN.take());
 
@@ -75,6 +75,25 @@ impl Host {
         self.qps(w, secs, &POLL_PENDING_R, "r_pending");
         self.qps(w, secs, &POLL_PENDING_W, "w_pending");
         self.qps(w, secs, &REENTER_10MS, "reenter10ms");
+    }
+    pub(super) fn snapshot_buf<W: ItemWriter>(
+        &mut self,
+        b: &Buffers,
+        w: &mut W,
+        key: &str,
+        secs: f64,
+    ) {
+        w.write(crate::BASE_PATH, key, "num", b.num.get());
+        w.write(crate::BASE_PATH, key, "cnt", b.cnt.get());
+        for (i, l) in b.layouts.iter().enumerate() {
+            let v = l.get();
+            if v > 0 {
+                let sub_key = format!("layout_{}", i);
+                w.write(crate::BASE_PATH, key, &sub_key, v);
+            }
+        }
+        self.qps(w, secs, &b.num_alloc, &(key.to_string() + "_num"));
+        self.qps(w, secs, &b.bytes_alloc, &(key.to_string() + "_bytes"));
     }
     #[inline]
     fn qps<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64, m: &AtomicI64, key: &str) {
