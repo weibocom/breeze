@@ -204,10 +204,20 @@ where
             )?;
 
             let op = ctx.request().operation();
+            let mut ok = false;
             if let Some(rsp) = response {
-                if ctx.is_write_back() && rsp.ok() {
+                ok = rsp.ok();
+                if ctx.is_write_back() && ok {
                     ctx.async_write_back(parser, rsp, self.top.exp_sec(), metrics);
                     self.async_pending.push_back(ctx);
+                }
+            }
+
+            if !ok {
+                if op.is_retrival() {
+                    *metrics.readerr() += 1
+                } else if op.is_store() {
+                    *metrics.writeerr() += 1
                 }
             }
 
