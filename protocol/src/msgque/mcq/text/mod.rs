@@ -69,12 +69,7 @@ impl McqText {
 
     // 协议内部的metric统计，全部放置于此
     #[inline]
-    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>(
-        &self,
-        request: &HashedCommand,
-        response: &Command,
-        metrics: &M,
-    ) {
+    fn metrics<M: crate::Metric>(&self, request: &HashedCommand, response: &Command, metrics: &M) {
         if response.ok() {
             match request.operation() {
                 crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
@@ -124,11 +119,7 @@ impl Protocol for McqText {
 
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
-    fn write_response<
-        C: Commander + crate::Metric<T>,
-        W: crate::Writer,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    >(
+    fn write_response<C: Commander + crate::Metric, W: crate::Writer>(
         &self,
         ctx: &mut C,
         response: Option<&mut Command>,

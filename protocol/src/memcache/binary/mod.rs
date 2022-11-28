@@ -86,11 +86,7 @@ impl Protocol for MemcacheBinary {
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline]
-    fn write_response<
-        C: crate::Commander + crate::Metric<T>,
-        W: crate::Writer,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    >(
+    fn write_response<C: crate::Commander + crate::Metric, W: crate::Writer>(
         &self,
         ctx: &mut C,
         response: Option<&mut Command>,
@@ -381,7 +377,7 @@ impl MemcacheBinary {
 
     // 当前只统计缓存命中率，后续需要其他统计，在此增加
     #[inline(always)]
-    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>(
+    fn metrics<M: crate::Metric>(
         &self,
         request: &HashedCommand,
         response: Option<&Command>,

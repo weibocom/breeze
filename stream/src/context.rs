@@ -19,11 +19,7 @@ impl CallbackContextPtr {
     }
     //需要在on_done时主动销毁self对象
     #[inline]
-    pub(super) fn async_write_back<
-        P: Protocol,
-        M: Metric<T>,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    >(
+    pub(super) fn async_write_back<P: Protocol, M: Metric>(
         &mut self,
         parser: &P,
         resp: Command,
@@ -79,23 +75,15 @@ impl std::ops::DerefMut for CallbackContextPtr {
 unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 
-pub struct ResponseContext<
-    'a,
-    M: Metric<T>,
-    T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    F: Fn(i64) -> usize,
-> {
+pub struct ResponseContext<'a, M: Metric, F: Fn(i64) -> usize> {
     // ctx 中的response不可直接用，先封住，按需暴露
     ctx: &'a mut CallbackContextPtr,
     // pub response: Option<&'a mut Command>,
     pub metrics: &'a mut Arc<M>,
     dist_fn: F,
-    _mark: PhantomData<T>,
 }
 
-impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize>
-    ResponseContext<'a, M, T, F>
-{
+impl<'a, M: Metric, F: Fn(i64) -> usize> ResponseContext<'a, M, F> {
     pub(super) fn new(
         ctx: &'a mut CallbackContextPtr,
         metrics: &'a mut Arc<M>,
@@ -105,14 +93,11 @@ impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64)
             ctx,
             metrics,
             dist_fn,
-            _mark: Default::default(),
         }
     }
 }
 
-impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize> Commander
-    for ResponseContext<'a, M, T, F>
-{
+impl<'a, M: Metric, F: Fn(i64) -> usize> Commander for ResponseContext<'a, M, F> {
     #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
         self.ctx.request_mut()
@@ -127,15 +112,9 @@ impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64)
     }
 }
 
-impl<
-        'a,
-        M: Metric<T>,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-        F: Fn(i64) -> usize,
-    > Metric<T> for ResponseContext<'a, M, T, F>
-{
+impl<'a, M: Metric, F: Fn(i64) -> usize> Metric for ResponseContext<'a, M, F> {
     #[inline]
-    fn get(&self, name: MetricName) -> &mut T {
+    fn get(&self, name: MetricName) -> &mut metrics::Metric {
         self.metrics.get(name)
     }
 }
