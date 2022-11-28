@@ -72,6 +72,7 @@ where
         self.s.cache(self.data.size_hint() > 1);
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
             self.num_tx += 1;
+            //实际上此处从不失败，如果失败会造成req永不complete
             self.s.write_slice(req.data(), 0)?;
             match req.on_sent() {
                 Some(r) => self.pending.push_back(r),

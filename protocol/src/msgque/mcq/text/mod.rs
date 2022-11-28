@@ -72,16 +72,15 @@ impl McqText {
     fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>(
         &self,
         request: &HashedCommand,
-        response: &Command,
+        response: Option<&mut Command>,
         metrics: &M,
     ) {
-        if response.ok() {
-            match request.operation() {
-                crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
-                    *metrics.get(crate::MetricName::Read) += 1
-                }
-                crate::Operation::Store => *metrics.get(crate::MetricName::Write) += 1,
-                _ => {}
+        let ok = response.map_or(false, |rsp| rsp.ok());
+        if ok {
+            if request.operation().is_retrival() {
+                *metrics.get(crate::MetricName::Read) += 1
+            } else if request.operation().is_store() {
+                *metrics.get(crate::MetricName::Write) += 1
             }
         }
     }
@@ -143,16 +142,15 @@ impl Protocol for McqText {
             return Err(crate::Error::Quit);
         }
 
-        if let Some(rsp) = response {
+        if let Some(ref rsp) = response {
             // 不再创建local rsp，所有server响应的rsp data长度应该大于0
             debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
             w.write_slice(rsp.data(), 0)?;
-            self.metrics(request, rsp, ctx);
         } else {
             let padding = cfg.get_padding_rsp();
             w.write(padding.as_bytes())?;
-            // TODO 写失败尚没有统计（还没merge进来？），暂时先和dev保持一致 fishermen
         }
+        self.metrics(request, response, ctx);
 
         // TODO 测试完毕后清理
         // let rsp = ctx.response().data();

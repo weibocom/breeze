@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use ds::{arena::Arena, time::Instant, AtomicWaker};
 use endpoint::{Topology, TopologyCheck};
-use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
+use protocol::{HashedCommand, Operation, Protocol, Result, Stream, Writer};
 
 use crate::{
     buffer::{Reader, StreamGuard},
@@ -194,7 +194,6 @@ where
                 client.cache(true);
             }
 
-            *metrics.key() += 1;
             let mut response = ctx.take_response();
 
             parser.write_response(
@@ -203,27 +202,56 @@ where
                 client,
             )?;
 
-            let op = ctx.request().operation();
+            let req = ctx.request();
+            let op = req.operation();
+            //todo: sentonly请求总认为是成功
+            let mut ok = req.sentonly() || req.noforward();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
                     ctx.async_write_back(parser, rsp, self.top.exp_sec(), metrics);
                     self.async_pending.push_back(ctx);
                 }
+                //凡是server端有响应的都认为是ok请求，否则想mc的不命中会造成巨量错误
+                ok = true;
             }
 
-            // 数据写完，统计耗时。当前数据只写入到buffer中，
-            // 但mesh通常与client部署在同一台物理机上，buffer flush的耗时通常在微秒级。
             if last {
-                let elapsed = start.elapsed();
-                *metrics.ops(op) += elapsed;
-                // 统计整机耗时
-                *metrics.rtt() += elapsed;
                 *flush = true;
                 *start_init = false;
             }
+            Self::metric(metrics, ok, op, last, start);
         }
         Ok(())
     }
+
+    #[inline]
+    fn metric(
+        metrics: &mut Arc<StreamMetrics>,
+        ok: bool,
+        op: Operation,
+        last: bool,
+        start: &mut Instant,
+    ) {
+        *metrics.key() += 1;
+
+        if !ok {
+            if op.is_retrival() {
+                *metrics.readerr() += 1
+            } else if op.is_store() {
+                *metrics.writeerr() += 1
+            }
+        }
+
+        // 数据写完，统计耗时。当前数据只写入到buffer中，
+        // 但mesh通常与client部署在同一台物理机上，buffer flush的耗时通常在微秒级。
+        if last {
+            let elapsed = start.elapsed();
+            *metrics.ops(op) += elapsed;
+            // 统计整机耗时
+            *metrics.rtt() += elapsed;
+        }
+    }
+
     // 把response数据flush到client
     #[inline]
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<()>> {
