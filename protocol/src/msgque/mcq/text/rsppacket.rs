@@ -272,9 +272,10 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
     }
 
     pub(super) fn delay_metric(&mut self) -> Result<()> {
-        if !self.data.start_with(0, &"VALUE".as_bytes())? {
+        // 只处理value类型的rsp（request为get xxx）
+        if self.rsp_type != RspType::Value {
             return Ok(());
-        };
+        }
 
         // 业务层只有接少数场景会用到flags 字段，也就是绝大多数场景下为0
         // 即使使用也为u8类型，实际场景下不会存在置为时间戳的场景, 万一使用，则存在被覆盖的bug

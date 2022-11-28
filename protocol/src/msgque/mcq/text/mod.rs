@@ -40,7 +40,7 @@ impl McqText {
             flag.set_noforward(cfg.noforward());
             let req_type = cfg.req_type().to_owned();
             let cmd = packet.take();
-            let cmd = packet.mark_flags(cmd, req_type);
+            let cmd = packet.mark_flags(cmd, req_type)?;
             let req = HashedCommand::new(cmd, 0, flag);
             process.process(req, true);
 
