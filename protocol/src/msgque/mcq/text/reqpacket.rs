@@ -274,15 +274,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         &mut self,
         req_cmd: ds::MemGuard,
         req_type: RequestType,
-    ) -> ds::MemGuard {
+    ) -> Result<ds::MemGuard> {
         // 只有set 指令 需要重置flags ，用作消费时间戳的填充
         if RequestType::Set != req_type {
-            return req_cmd;
+            return Ok(req_cmd);
         }
 
-        // flags 如果业务已特殊设置，则不做打标 直接返回
+        // TODO flags 如果业务已特殊设置，则先不予支持，然后根据实际场景确定方案？ fishermen
         if self.flags != 0 {
-            return req_cmd;
+            return Err(crate::Error::ProtocolNotSupported);
         }
 
         let time_sec = SystemTime::now()
@@ -305,7 +305,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         suffix_slice.copy_to_vec(&mut req_data);
 
         let marked_cmd = ds::MemGuard::from_vec(req_data);
-        return marked_cmd;
+        return Ok(marked_cmd);
     }
 }
 
