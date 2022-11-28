@@ -18,11 +18,11 @@ impl RingBuffer {
     // 如果size是0，则调用者需要确保数据先写入，再读取。
     // 否则可能导致读取时，size - 1越界
     pub fn with_capacity(size: usize) -> Self {
-        assert!(size == 0 || size.is_power_of_two());
+        assert!(size == 0 || size.is_power_of_two(), "{} not valid", size);
         let mut data = ManuallyDrop::new(Vec::with_capacity(size));
         assert_eq!(size, data.capacity());
         let ptr = unsafe { NonNull::new_unchecked(data.as_mut_ptr()) };
-        super::BUF_RX.incr_by(size );
+        super::BUF_RX.incr_by(size);
         Self {
             size,
             data: ptr,
