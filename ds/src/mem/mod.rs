@@ -80,7 +80,8 @@ impl Buffers {
         } else {
             assert!(v.is_power_of_two());
             let b = v / 2048;
-            assert!(b.is_power_of_two());
+            //#[cfg(not(debug_assertions))]
+            //assert!(b.is_power_of_two(), "{} not valid", v);
             (1 + b.trailing_zeros()).min(15) as usize
         }
     }
