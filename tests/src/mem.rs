@@ -34,9 +34,7 @@ fn ring_buffer() {
     let n = buf.write(&rs);
     assert_eq!(n, 32 - 19);
 
-    let mut rrb = ds::ResizedRingBuffer::from(256, 4 * 1024, 1024, |cap, delta| {
-        println!("resize {} => {}", cap, delta);
-    });
+    let mut rrb = ds::ResizedRingBuffer::from(256, 4 * 1024, 1024);
     assert_eq!(1024, rrb.cap());
     assert_eq!(0, rrb.len());
 
@@ -124,7 +122,7 @@ fn guarded_buffer() {
         num: 0,
     };
     use ds::GuardedBuffer;
-    let mut guard = GuardedBuffer::new(128, 1024, 128, |_, _| {});
+    let mut guard = GuardedBuffer::new(128, 1024, 128);
     let empty = guard.read();
     assert_eq!(empty.len(), 0);
     reader.num = 24;

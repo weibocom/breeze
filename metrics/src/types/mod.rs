@@ -16,17 +16,20 @@ pub(crate) use status::*;
 
 pub mod base {
     pub trait Adder {
-        fn incr(&self);
+        #[inline(always)]
+        fn incr(&self) {
+            self.incr_by(1);
+        }
         fn incr_by(&self, v: i64);
+        #[inline(always)]
+        fn decr(&self) {
+            self.decr_by(1);
+        }
         fn decr_by(&self, v: i64);
         fn take(&self) -> i64;
         fn get(&self) -> i64;
     }
     impl Adder for AtomicI64 {
-        #[inline(always)]
-        fn incr(&self) {
-            self.fetch_add(1, Relaxed);
-        }
         #[inline(always)]
         fn incr_by(&self, v: i64) {
             self.fetch_add(v, Relaxed);
@@ -48,8 +51,6 @@ pub mod base {
     }
     use std::sync::atomic::{AtomicI64, Ordering::Relaxed};
     pub static P_W_CACHE: AtomicI64 = AtomicI64::new(0);
-    pub static BUF_TX: AtomicI64 = AtomicI64::new(0);
-    pub static BUF_RX: AtomicI64 = AtomicI64::new(0);
     pub static POLL_READ: AtomicI64 = AtomicI64::new(0);
     pub static POLL_WRITE: AtomicI64 = AtomicI64::new(0);
     pub static POLL_PENDING_R: AtomicI64 = AtomicI64::new(0);

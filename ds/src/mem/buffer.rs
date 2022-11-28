@@ -20,7 +20,9 @@ impl RingBuffer {
     pub fn with_capacity(size: usize) -> Self {
         assert!(size == 0 || size.is_power_of_two());
         let mut data = ManuallyDrop::new(Vec::with_capacity(size));
+        assert_eq!(size, data.capacity());
         let ptr = unsafe { NonNull::new_unchecked(data.as_mut_ptr()) };
+        super::BUF_RX.incr_by(size );
         Self {
             size,
             data: ptr,
@@ -146,6 +148,7 @@ impl RingBuffer {
 
 impl Drop for RingBuffer {
     fn drop(&mut self) {
+        super::BUF_RX.decr_by(self.size);
         unsafe {
             let _ = Vec::from_raw_parts(self.data.as_ptr(), 0, self.size);
         }
