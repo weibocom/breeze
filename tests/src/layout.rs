@@ -34,7 +34,7 @@ fn checkout_basic() {
         size_of::<protocol::Context>(),
         size_of::<protocol::redis::RequestContext>()
     );
-    assert_eq!(24, size_of::<protocol::Flag>());
+    assert_eq!(16, size_of::<protocol::Flag>());
     assert_eq!(1, size_of::<protocol::Resource>());
     assert_eq!(56, size_of::<ds::queue::PinnedQueue<AtomicU32>>());
     assert_eq!(16, size_of::<metrics::Metric>());
@@ -46,24 +46,25 @@ fn checkout_basic() {
 }
 
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
+#[ignore]
 #[test]
 fn check_layout() {
-    assert_eq!((200, 208).select(), size_of::<CallbackContext>());
-    assert_eq!((176, 256).select(), size_of::<StreamGuard>());
-    assert_eq!((112, 280).select(), size_of::<Stream>());
-    assert_eq!((368, 616).select(), size_of::<Handler<'static>>());
-    assert_eq!((520, 792).select(), size_of::<Entry<Handler<'static>>>());
+    assert_eq!((192, 208).select(), size_of::<CallbackContext>());
+    assert_eq!((160, 240).select(), size_of::<StreamGuard>());
+    assert_eq!((80, 168).select(), size_of::<Stream>());
+    assert_eq!((320, 488).select(), size_of::<Handler<'static>>());
+    assert_eq!((456, 648).select(), size_of::<Entry<Handler<'static>>>());
 
-    //assert_eq!(400, size_of::<Topology>());
+    assert_eq!(392, size_of::<Topology>());
     assert_eq!(96, size_of::<CacheService>());
     assert_eq!(264, size_of::<RedisService>());
     assert_eq!(192, size_of::<PhantomService>());
     assert_eq!(392, size_of::<MsgQue>());
 
-    assert_eq!(288, size_of::<stream::StreamMetrics>());
+    assert_eq!(320, size_of::<stream::StreamMetrics>());
 
-    assert_eq!((456, 712).select(), size_of::<CopyBidirectional>());
-    assert_eq!((608, 888).select(), size_of::<Entry<CopyBidirectional>>());
+    assert_eq!((440, 616).select(), size_of::<CopyBidirectional>());
+    assert_eq!((576, 776).select(), size_of::<Entry<CopyBidirectional>>());
 }
 
 trait Select {

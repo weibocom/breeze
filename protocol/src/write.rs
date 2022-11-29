@@ -20,8 +20,7 @@ pub trait Writer {
     }
 
     // hint: 提示可能优先写入到cache
-    #[inline]
-    fn cache(&mut self, _hint: bool) {}
+    fn cache(&mut self, hint: bool);
 
     #[inline]
     fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
@@ -41,27 +40,27 @@ pub trait Writer {
     }
     fn shrink(&mut self);
 }
-impl Writer for Vec<u8> {
-    #[inline]
-    fn cap(&self) -> usize {
-        self.capacity()
-    }
-    #[inline]
-    fn pending(&self) -> usize {
-        self.len()
-    }
-    #[inline]
-    fn write(&mut self, data: &[u8]) -> Result<()> {
-        ds::vec::Buffer::write(self, data);
-        Ok(())
-    }
-    #[inline]
-    fn write_u8(&mut self, v: u8) -> Result<()> {
-        self.push(v);
-        Ok(())
-    }
-    #[inline]
-    fn shrink(&mut self) {
-        todo!("should not call shrink");
-    }
-}
+//impl Writer for Vec<u8> {
+//    #[inline]
+//    fn cap(&self) -> usize {
+//        self.capacity()
+//    }
+//    #[inline]
+//    fn pending(&self) -> usize {
+//        self.len()
+//    }
+//    #[inline]
+//    fn write(&mut self, data: &[u8]) -> Result<()> {
+//        ds::vec::Buffer::write(self, data);
+//        Ok(())
+//    }
+//    #[inline]
+//    fn write_u8(&mut self, v: u8) -> Result<()> {
+//        self.push(v);
+//        Ok(())
+//    }
+//    #[inline]
+//    fn shrink(&mut self) {
+//        todo!("should not call shrink");
+//    }
+//}

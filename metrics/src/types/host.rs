@@ -1,11 +1,9 @@
 use psutil::process::Process;
 
-use crate::BASE_PATH;
-use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
-use ds::time::Instant;
-
-static CPU_PERCENT: AtomicUsize = AtomicUsize::new(0);
-static MEMORY: AtomicI64 = AtomicI64::new(0);
+use super::base::*;
+use crate::{ItemWriter, BASE_PATH};
+use ds::{time::Instant, Buffers, BUF_RX, BUF_TX};
+use std::sync::atomic::{AtomicI64, Ordering::*};
 
 static TASK_NUM: AtomicI64 = AtomicI64::new(0);
 static SOCKFILE_FAILED: AtomicI64 = AtomicI64::new(0);
@@ -29,22 +27,26 @@ impl Host {
     }
     #[inline]
     pub(crate) fn snapshot<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64) {
-        self.refresh();
         let uptime = self.start.elapsed().as_secs() as i64;
         w.write(BASE_PATH, "host", "uptime_sec", uptime);
-        let percent = CPU_PERCENT.load(Ordering::Relaxed) as f64 / 100.0;
-        w.write(BASE_PATH, "host", "cpu", percent);
-        w.write(BASE_PATH, "host", "mem", MEMORY.load(Ordering::Relaxed));
+        if let Ok(percent) = self.process.cpu_percent() {
+            w.write(BASE_PATH, "host", "cpu", percent as f64);
+        }
+        if let Ok(mem) = self.process.memory_info() {
+            w.write(BASE_PATH, "host", "mem", mem.rss() as i64);
+        }
         self.snapshot_heap(w, secs);
 
-        let tasks = TASK_NUM.load(Ordering::Relaxed);
+        let tasks = TASK_NUM.load(Relaxed);
         w.write(BASE_PATH, "task", "num", tasks);
         w.write_opts(BASE_PATH, "version", "", 1, vec![("git", self.version)]);
 
-        let sockfile_failed = SOCKFILE_FAILED.load(Ordering::Relaxed);
+        let sockfile_failed = SOCKFILE_FAILED.load(Relaxed);
         w.write(BASE_PATH, "sockfile", "failed", sockfile_failed);
+
+        self.snapshot_base(w, secs);
     }
-    pub(crate) fn snapshot_heap<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
+    fn snapshot_heap<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
         if let Some(heap_stats) = ds::heap() {
             // 已使用堆内存
             w.write(BASE_PATH, "host", "heap", heap_stats.used as i64);
@@ -61,25 +63,54 @@ impl Host {
             self.heap = Some(heap_stats);
         }
     }
-    pub(crate) fn refresh(&mut self) {
-        if let Ok(percent) = self.process.cpu_percent() {
-            CPU_PERCENT.store((percent * 100.0) as usize, Ordering::Relaxed);
+    fn snapshot_base<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64) {
+        self.snapshot_buf(&BUF_TX, w, "mem_buf_tx", secs);
+        self.snapshot_buf(&BUF_RX, w, "mem_buf_rx", secs);
+
+        w.write(BASE_PATH, "leak_conn", "num", LEAKED_CONN.take());
+
+        self.qps(w, secs, &P_W_CACHE, "poll_write_cache");
+        self.qps(w, secs, &POLL_READ, "poll_read");
+        self.qps(w, secs, &POLL_WRITE, "poll_write");
+        self.qps(w, secs, &POLL_PENDING_R, "r_pending");
+        self.qps(w, secs, &POLL_PENDING_W, "w_pending");
+        self.qps(w, secs, &REENTER_10MS, "reenter10ms");
+    }
+    pub(super) fn snapshot_buf<W: ItemWriter>(
+        &mut self,
+        b: &Buffers,
+        w: &mut W,
+        key: &str,
+        secs: f64,
+    ) {
+        w.write(crate::BASE_PATH, key, "num", b.num.get());
+        w.write(crate::BASE_PATH, key, "cnt", b.cnt.get());
+        for (i, l) in b.layouts.iter().enumerate() {
+            let v = l.get();
+            if v > 0 {
+                let sub_key = format!("layout_{}", i);
+                w.write(crate::BASE_PATH, key, &sub_key, v);
+            }
         }
-        if let Ok(mem) = self.process.memory_info() {
-            MEMORY.store(mem.rss() as i64, Ordering::Relaxed);
-        }
+        self.qps(w, secs, &b.num_alloc, &(key.to_string() + "_num"));
+        self.qps(w, secs, &b.bytes_alloc, &(key.to_string() + "_bytes"));
+    }
+    #[inline]
+    fn qps<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64, m: &AtomicI64, key: &str) {
+        use super::base::*;
+        w.write(BASE_PATH, key, "qps", m.take() as f64 / secs);
     }
 }
 
 #[inline]
 pub fn incr_task() {
-    TASK_NUM.fetch_add(1, Ordering::Relaxed);
+    TASK_NUM.fetch_add(1, Relaxed);
 }
 #[inline]
 pub fn decr_task() {
-    TASK_NUM.fetch_sub(1, Ordering::Relaxed);
+    TASK_NUM.fetch_sub(1, Relaxed);
 }
 #[inline]
 pub fn set_sockfile_failed(failed_count: usize) {
-    SOCKFILE_FAILED.store(failed_count as i64, Ordering::Relaxed);
+    SOCKFILE_FAILED.store(failed_count as i64, Relaxed);
 }

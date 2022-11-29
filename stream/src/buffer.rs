@@ -113,17 +113,14 @@ impl StreamGuard {
     }
     #[inline]
     fn with(min: usize, max: usize, init: usize) -> Self {
-        let mut buf_rx = metrics::Path::base().num("mem_buf_rx");
-        Self::from(GuardedBuffer::new(min, max, init, move |_old, delta| {
-            buf_rx += delta;
-        }))
+        Self::from(GuardedBuffer::new(min, max, init))
     }
-    #[inline]
-    pub fn raw_init(init: usize) -> Self {
-        let min = init / 2;
-        let max = 64 << 20;
-        Self::from(GuardedBuffer::new(min, max, init, move |_old, _delta| {}))
-    }
+    //#[inline]
+    //pub fn raw_init(init: usize) -> Self {
+    //    let min = init / 2;
+    //    let max = 64 << 20;
+    //    Self::from(GuardedBuffer::new(min, max, init, move |_old, _delta| {}))
+    //}
     #[inline]
     pub fn pending(&self) -> usize {
         self.buf.pending()

@@ -73,19 +73,20 @@ where
     fn send(&self, mut req: Self::Item) {
         assert_ne!(self.shards.len(), 0);
 
-        let shard_idx = match req.direct_hash() {
+        use protocol::RedisFlager;
+        let shard_idx = match req.cmd().direct_hash() {
             true => {
                 let dhash_boundary = protocol::MAX_DIRECT_HASH - self.shards.len() as i64;
+                // 大于direct hash边界，说明是全节点分发请求，发送请求前，需要调整hash为下次发送做准备
+                // 备注：正常计算的hash范围是u32；
                 if req.hash() > dhash_boundary {
-                    // ignore_rsp 为false，说明req是client的请求，直接发送；
-                    // ignore_rsp 为true，说明req是用于数据同步的内部请求，此时逐次调整hash，来达到切换分片的目的 fishermen
-                    if req.ignore_rsp() {
-                        let nhash = req.hash() - 1;
-                        req.update_hash(nhash);
-                    }
-                    // 到了最后一个分片之前，write back为true
-                    req.write_back(req.hash() > dhash_boundary + 1);
-                    (protocol::MAX_DIRECT_HASH - req.hash()) as usize
+                    // 边界之上的hash，其idx为max减去对应hash值，从而轮询所有分片
+                    let idx = (protocol::MAX_DIRECT_HASH - req.hash()) as usize;
+
+                    // req的hash自减1，同时设置write back，为下一次write back分发做准备
+                    req.update_hash(req.hash() - 1);
+                    req.write_back(req.hash() > dhash_boundary);
+                    idx
                 } else {
                     self.distribute.index(req.hash())
                 }
@@ -105,18 +106,17 @@ where
         // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
         if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
             log::warn!(
-                "+++ send - {} hash/idx:{}/{}, master_only:{}, ignore_rsp:{}, req:{:?},",
+                "+++ send - {} hash/idx:{}/{}, master_only:{}, req:{:?},",
                 self.service,
                 req.hash(),
                 shard_idx,
-                req.master_only(),
-                req.ignore_rsp(),
+                req.cmd().master_only(),
                 req.data(),
             )
         }
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
-        if shard.has_slave() && !req.operation().is_store() && !req.master_only() {
+        if shard.has_slave() && !req.operation().is_store() && !req.cmd().master_only() {
             let ctx = super::transmute(req.context_mut());
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
@@ -156,26 +156,22 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
-            // TODO  放到parse的地方判断
-            // let len = ns.backends.len();
-            // let power_two = len > 0 && ((len & len - 1) == 0);
-            // if !power_two {
-            //     log::error!("{} shard num {} is not power of two", self.service, len);
-            //     return;
-            // }
-
             self.timeout_master.adjust(ns.basic.timeout_ms_master);
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
+            self.selector = ns.basic.selector;
+
+            // TODO 直接设置selector属性，在更新最后，设置全局更新标志，deadcode暂时保留，观察副作用 2022.12后可以删除
             // selector属性更新与域名实例更新保持一致
-            if self.selector != ns.basic.selector {
-                self.selector = ns.basic.selector;
-                self.updated
-                    .entry(CONFIG_UPDATED_KEY.to_string())
-                    .or_insert(Arc::new(AtomicBool::new(true)))
-                    .store(true, Ordering::Release);
-            }
+            // if self.selector != ns.basic.selector {
+            //     self.selector = ns.basic.selector;
+            //     self.updated
+            //         .entry(CONFIG_UPDATED_KEY.to_string())
+            //         .or_insert(Arc::new(AtomicBool::new(true)))
+            //         .store(true, Ordering::Release);
+            // }
+
             let mut shards_url = Vec::new();
             for shard in ns.backends.iter() {
                 let mut shard_url = Vec::new();
@@ -194,6 +190,12 @@ where
                 log::debug!("top updated from {:?} to {:?}", self.shards_url, shards_url);
             }
             self.shards_url = shards_url;
+
+            // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
+            self.updated
+                .entry(CONFIG_UPDATED_KEY.to_string())
+                .or_insert(Arc::new(AtomicBool::new(true)))
+                .store(true, Ordering::Release);
         }
         self.service = namespace.to_string();
     }

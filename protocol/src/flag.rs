@@ -7,10 +7,22 @@ pub struct Flag {
     sentonly: bool,
     status_ok: bool,
     noforward: bool,
-    master_only: bool, // 是否只请求master？
-    ignore_rsp: bool,  // 是否忽略响应，即不发送给client
-    direct_hash: bool,
+    nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
     v: u64,
+}
+
+impl std::ops::Deref for Flag {
+    type Target = u64;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.v
+    }
+}
+impl std::ops::DerefMut for Flag {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.v
+    }
 }
 
 impl Flag {
@@ -40,17 +52,19 @@ impl Flag {
         Self::default()
     }
     #[inline]
-    pub fn set_status_ok(&mut self, ok: bool) {
+    pub fn set_status_ok(&mut self, ok: bool) -> &mut Self {
         assert_eq!(self.ok(), false);
         self.status_ok = ok;
+        self
     }
     #[inline]
     pub fn ok(&self) -> bool {
         self.status_ok
     }
     #[inline]
-    pub fn set_sentonly(&mut self, sentonly: bool) {
+    pub fn set_sentonly(&mut self, sentonly: bool) -> &mut Self {
         self.sentonly = sentonly;
+        self
     }
     #[inline]
     pub fn sentonly(&self) -> bool {
@@ -65,9 +79,10 @@ impl Flag {
         self.op_code
     }
     #[inline]
-    pub fn set_noforward(&mut self, noforward: bool) {
+    pub fn set_noforward(&mut self, noforward: bool) -> &mut Self {
         assert!(!self.noforward());
         self.noforward = noforward;
+        self
     }
     #[inline]
     pub fn noforward(&self) -> bool {
@@ -89,30 +104,6 @@ impl Flag {
         self.op = op;
     }
     #[inline]
-    pub fn set_master_only(&mut self) {
-        self.master_only = true;
-    }
-    #[inline]
-    pub fn master_only(&self) -> bool {
-        self.master_only
-    }
-    #[inline]
-    pub fn set_ignore_rsp(&mut self, ignore_rsp: bool) {
-        self.ignore_rsp = ignore_rsp
-    }
-    #[inline]
-    pub fn ignore_rsp(&self) -> bool {
-        self.ignore_rsp
-    }
-    #[inline]
-    pub fn set_direct_hash(&mut self, direct_hash: bool) {
-        self.direct_hash = direct_hash
-    }
-    #[inline]
-    pub fn direct_hash(&self) -> bool {
-        self.direct_hash
-    }
-    #[inline]
     pub fn set_ext(&mut self, ext: u64) {
         self.v = ext;
     }
@@ -123,6 +114,15 @@ impl Flag {
     #[inline]
     pub fn ext_mut(&mut self) -> &mut u64 {
         &mut self.v
+    }
+    #[inline]
+    pub fn set_nil_convert(&mut self) -> &mut Self {
+        self.nil_converted = true;
+        self
+    }
+    #[inline]
+    pub fn nil_converted(&self) -> bool {
+        self.nil_converted
     }
 }
 
@@ -148,5 +148,40 @@ impl TryNextType {
 impl Default for TryNextType {
     fn default() -> Self {
         TryNextType::TryNext
+    }
+}
+
+pub trait Bit {
+    fn mask_set(&mut self, shift: u8, mask: u64, val: u64);
+    fn mask_get(&self, shift: u8, mask: u64) -> u64;
+    fn set(&mut self, shift: u8);
+    fn clear(&mut self, shift: u8);
+    fn get(&self, shift: u8) -> bool;
+}
+
+impl Bit for u64 {
+    //mask决定val中要set的位数
+    #[inline]
+    fn mask_set(&mut self, shift: u8, mask: u64, val: u64) {
+        assert!(val <= mask);
+        assert_eq!(self.mask_get(shift, mask), 0);
+        *self |= val << shift;
+        assert_eq!(val, self.mask_get(shift, mask));
+    }
+    #[inline]
+    fn mask_get(&self, shift: u8, mask: u64) -> u64 {
+        (*self >> shift) & mask
+    }
+    #[inline]
+    fn set(&mut self, shift: u8) {
+        *self |= 1 << shift;
+    }
+    #[inline]
+    fn clear(&mut self, shift: u8) {
+        *self &= !(1 << (shift));
+    }
+    #[inline]
+    fn get(&self, shift: u8) -> bool {
+        self & (1 << shift) != 0
     }
 }

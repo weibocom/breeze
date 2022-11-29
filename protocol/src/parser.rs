@@ -36,22 +36,22 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         process: &mut P,
     ) -> Result<()>;
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
-    // 返回nil convert的数量
-    fn write_response<C: Commander, W: crate::Writer>(
+
+    // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
+    // fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
+    //     -> Command;
+
+    fn write_response<
+        C: Commander + Metric<T>,
+        W: crate::Writer,
+        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
+    >(
         &self,
         ctx: &mut C,
+        response: Option<&mut Command>,
         w: &mut W,
-    ) -> Result<usize>;
-    // 返回nil convert的数量
-    #[inline]
-    fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
-        &self,
-        _req: &HashedCommand,
-        _w: &mut W,
-        _dist_fn: F,
-    ) -> Result<usize> {
-        Err(Error::NoResponseFound)
-    }
+    ) -> Result<()>;
+
     #[inline]
     fn check(&self, _req: &HashedCommand, _resp: &Command) -> bool {
         true
@@ -59,13 +59,13 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     // 构建回写请求。
     // 返回None: 说明req复用，build in place
     // 返回新的request
-    fn build_writeback_request<C: Commander>(&self, _ctx: &mut C, _: u32) -> Option<HashedCommand> {
+    fn build_writeback_request<C: Commander>(
+        &self,
+        _ctx: &mut C,
+        _response: &Command,
+        _: u32,
+    ) -> Option<HashedCommand> {
         todo!("not implement");
-    }
-    // 当前资源是否为cache。用来统计命中率
-    #[inline]
-    fn cache(&self) -> bool {
-        false
     }
 }
 
@@ -112,6 +112,7 @@ impl Command {
     pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
         Self { flag, cmd }
     }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.cmd.len()
@@ -171,19 +172,7 @@ impl HashedCommand {
     }
     #[inline]
     pub fn update_hash(&mut self, idx_hash: i64) {
-        if self.direct_hash() {
-            self.hash = idx_hash;
-        } else {
-            log::warn!("should not update hash for non direct_hash!");
-        }
-    }
-    #[inline]
-    pub fn set_ignore_rsp(&mut self, ignore_rsp: bool) {
-        self.cmd.set_ignore_rsp(ignore_rsp)
-    }
-    #[inline]
-    pub fn master_only(&self) -> bool {
-        self.cmd.master_only()
+        self.hash = idx_hash;
     }
 }
 impl AsRef<Command> for HashedCommand {
@@ -242,6 +231,19 @@ impl Debug for Command {
 pub trait Commander {
     fn request_mut(&mut self) -> &mut HashedCommand;
     fn request(&self) -> &HashedCommand;
-    fn response(&self) -> &Command;
-    fn response_mut(&mut self) -> &mut Command;
+    // response  单独拆除
+    // fn response(&self) -> Option<&Command>;
+    // fn response_mut(&mut self) -> Option<&mut Command>;
+    // 请求所在的分片位置
+    fn request_shard(&self) -> usize;
+}
+
+pub enum MetricName {
+    Read,
+    Write,
+    NilConvert,
+    Cache, // cache(mc)命中率
+}
+pub trait Metric<M: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> {
+    fn get(&self, name: MetricName) -> &mut M;
 }
