@@ -1,5 +1,5 @@
-use std::sync::{atomic::AtomicBool, Arc};
 use ds::time::Duration;
+use std::sync::{atomic::AtomicBool, Arc};
 
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -48,6 +48,7 @@ impl<P, Req> BackendChecker<P, Req> {
     {
         let path_addr = self.path.clone().push(&self.addr);
         let mut m_timeout = path_addr.qps("timeout");
+        let mut timeout = Path::base().qps("timeout");
         let mut reconn = crate::reconn::ReconnPolicy::new(&self.path, single);
         metrics::incr_task();
         while !self.finish.get() {
@@ -76,6 +77,7 @@ impl<P, Req> BackendChecker<P, Req> {
                 match e {
                     Error::Timeout(_t) => {
                         m_timeout += 1;
+                        timeout += 1;
                         log::info!("backend/{:?} timeout: {:?}", path_addr, _t);
                     }
                     _ => log::info!("backend/{:?} error: {:?}", path_addr, e),
