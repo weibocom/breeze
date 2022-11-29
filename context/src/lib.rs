@@ -2,6 +2,7 @@ extern crate lazy_static;
 use clap::{FromArgMatches, IntoApp, Parser};
 use lazy_static::lazy_static;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
     io::{Error, ErrorKind, Result},
     vec,
@@ -154,6 +155,7 @@ impl ContextOption {
         ListenerIter {
             path: self.service_path.to_string(),
             processed: Default::default(),
+            last_read: UNIX_EPOCH, //初始值设为0时
         }
     }
 
@@ -180,6 +182,7 @@ use std::collections::HashMap;
 pub struct ListenerIter {
     processed: HashMap<String, String>,
     path: String,
+    last_read: SystemTime, //上次扫描到socks目录有更新时间
 }
 
 impl ListenerIter {
@@ -187,6 +190,7 @@ impl ListenerIter {
         Self {
             processed: Default::default(),
             path,
+            last_read: UNIX_EPOCH,
         }
     }
 
@@ -198,6 +202,8 @@ impl ListenerIter {
     pub async fn scan(&mut self) -> (Vec<Quadruple>, usize) {
         let mut failed = 0;
         let mut listeners = vec![];
+        // 本次循环开始时间
+        let start = SystemTime::now();
         match self.read_all().await {
             Ok(names) => {
                 for name in names {
@@ -237,6 +243,7 @@ impl ListenerIter {
                 }
                 retain
             });
+            self.last_read = start;
         }
         (listeners, failed)
     }
@@ -255,6 +262,18 @@ impl ListenerIter {
     }
     async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];
+        let dir_meta = tokio::fs::metadata(&self.path).await?;
+        let last_update = dir_meta.modified();
+        match last_update {
+            Ok(t) => {
+                //上次扫描到sock文件后后续再未更新
+                if &self.last_read > &t {
+                    return Ok(found);
+                }
+            }
+            Err(_err) => log::warn!("get socks dir metadata err:{:?}", _err),
+        }
+
         let mut dir = tokio::fs::read_dir(&self.path).await?;
         while let Some(child) = dir.next_entry().await? {
             if child.metadata().await?.is_file() {
@@ -299,8 +318,15 @@ impl std::ops::Deref for Context {
 }
 impl From<ContextOption> for Context {
     fn from(option: ContextOption) -> Self {
+        let mut cpu = option.cpu.to_string();
+        let host_v3 = option.cpu == "v3"; // 宿主机是否支持v3
+        let v3 = cfg!(target_feature = "avx");
+        // 1. 如果宿主机的支持模式与编译器的编译方式不一致。
+        if v3 != host_v3 {
+            cpu += "!";
+        };
         Self {
-            version: SHORT_VERSION.to_string() + "_" + option.cpu.as_str(),
+            version: SHORT_VERSION.to_string() + "_" + &cpu,
             option,
         }
     }

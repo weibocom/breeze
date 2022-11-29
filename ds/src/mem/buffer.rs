@@ -1,5 +1,6 @@
 use super::RingSlice;
 
+use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
 use std::slice::from_raw_parts_mut;
 
@@ -17,10 +18,11 @@ impl RingBuffer {
     // 如果size是0，则调用者需要确保数据先写入，再读取。
     // 否则可能导致读取时，size - 1越界
     pub fn with_capacity(size: usize) -> Self {
-        assert!(size == 0 || size.is_power_of_two());
-        let mut data = Vec::with_capacity(size);
+        assert!(size == 0 || size.is_power_of_two(), "{} not valid", size);
+        let mut data = ManuallyDrop::new(Vec::with_capacity(size));
+        assert_eq!(size, data.capacity());
         let ptr = unsafe { NonNull::new_unchecked(data.as_mut_ptr()) };
-        std::mem::forget(data);
+        super::BUF_RX.incr_by(size);
         Self {
             size,
             data: ptr,
@@ -47,7 +49,8 @@ impl RingBuffer {
     }
     #[inline]
     fn mask(&self, offset: usize) -> usize {
-        offset & (self.size - 1)
+        // 兼容size为0的场景
+        offset & self.size.wrapping_sub(1)
     }
     // 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
     #[inline]
@@ -145,6 +148,7 @@ impl RingBuffer {
 
 impl Drop for RingBuffer {
     fn drop(&mut self) {
+        super::BUF_RX.decr_by(self.size);
         unsafe {
             let _ = Vec::from_raw_parts(self.data.as_ptr(), 0, self.size);
         }

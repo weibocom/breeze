@@ -16,14 +16,9 @@ pub struct GuardedBuffer {
 }
 
 impl GuardedBuffer {
-    pub fn new<F: FnMut(usize, isize) + 'static>(
-        min: usize,
-        max: usize,
-        init: usize,
-        cb: F,
-    ) -> Self {
+    pub fn new(min: usize, max: usize, init: usize) -> Self {
         Self {
-            inner: ResizedRingBuffer::from(min, max, init, cb),
+            inner: ResizedRingBuffer::from(min, max, init),
             guards: PinnedQueue::new(),
             taken: 0,
         }

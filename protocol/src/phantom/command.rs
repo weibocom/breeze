@@ -20,8 +20,10 @@ pub(crate) struct CommandProperties {
     /// key 步长，get的步长为1，mset的步长为2，like:k1 v1 k2 v2
     key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
-    pub(super) padding_rsp: u8,
-    pub(super) nil_rsp: u8,
+    pub(super) padding_rsp: usize,
+
+    // TODO 把padding、nil整合成一个，测试完毕后清理
+    // pub(super) nil_rsp: u8,
     pub(super) has_val: bool,
     pub(super) has_key: bool,
     pub(super) noforward: bool,
@@ -29,6 +31,7 @@ pub(crate) struct CommandProperties {
     pub(super) multi: bool, // 该命令是否可能会包含多个key
     // need bulk number只对multi key请求的有意义
     pub(super) need_bulk_num: bool, // mset所有的请求只返回一个+OK，不需要在首个请求前加*bulk_num。其他的都需要
+    pub(super) quit: bool,          // 是否需要quit掉连接
 }
 
 // 默认响应,第0个表示qui;
@@ -86,7 +89,7 @@ impl CommandProperties {
         self.key_step as usize
     }
 
-    pub fn padding_rsp(&self) -> u8 {
+    pub fn padding_rsp(&self) -> usize {
         self.padding_rsp
     }
     #[inline]
@@ -95,9 +98,9 @@ impl CommandProperties {
     }
     #[inline]
     pub(super) fn flag(&self) -> crate::Flag {
-        use super::flag::RedisFlager;
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
-        flag.set_padding_rsp(self.padding_rsp);
+        //TODO 去掉padding_rsp，从req的cfg中获取，测试完毕后清理
+        // flag.set_padding_rsp(self.padding_rsp);
         flag.set_noforward(self.noforward);
         flag
     }
@@ -176,6 +179,13 @@ impl CommandProperties {
         let cmd: MemGuard = MemGuard::from_vec(cmd);
         HashedCommand::new(cmd, hash, flag)
     }
+
+    // 构建一个padding rsp，用于返回默认响应或server不可用响应
+    // 格式类似：1 pong； 2 -Err redis no available
+    #[inline(always)]
+    pub(super) fn get_padding_rsp(&self) -> &str {
+        unsafe { *PADDING_RSP_TABLE.get_unchecked(self.padding_rsp) }
+    }
 }
 
 // https://redis.io/commands 一共145大类命令。使用 crate::sharding::Hash::Crc32
@@ -227,7 +237,7 @@ impl Commands {
         first_key_index: u8,
         last_key_index: i8,
         key_step: u8,
-        padding_rsp: u8,
+        padding_rsp: usize,
         multi: bool,
         noforward: bool,
         has_key: bool,
@@ -240,12 +250,17 @@ impl Commands {
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
 
+        // TODO 测试完毕后清理
         // bfmget、bfmset，在部分key 返回异常响应时，需要将异常信息转换为nil返回 fishermen
-        let mut nil_rsp = 0;
-        if uppercase.eq("BFMGET") || uppercase.eq("BFMSET") {
-            nil_rsp = 5;
-        }
+        // let mut nil_rsp = 0;
+        // if uppercase.eq("BFMGET") || uppercase.eq("BFMSET") {
+        //     nil_rsp = 5;
+        // }
 
+        // 所有cmd的padding-rsp都必须是合理值，此处统一判断
+        assert!(padding_rsp < PADDING_RSP_TABLE.len(), "cmd:{}", name);
+
+        let quit = uppercase.eq("QUIT");
         self.supported[idx] = CommandProperties {
             name,
             mname,
@@ -256,13 +271,14 @@ impl Commands {
             last_key_index,
             key_step,
             padding_rsp,
-            nil_rsp,
+            // nil_rsp,
             noforward,
             supported: true,
             multi,
             has_key,
             has_val,
             need_bulk_num,
+            quit,
         };
     }
 }
@@ -291,14 +307,15 @@ pub(super) mod cmd {
                 // 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
                 ("select", "select" ,      2, Meta, 0, 0, 0, 1, false, true, false, false, false),
                 ("hello", "hello" ,        2, Meta, 0, 0, 0, 4, false, true, false, false, false),
-                ("quit", "quit" ,          2, Meta, 0, 0, 0, 0, false, true, false, false, false),
+                // quit 的padding应该为1，返回+OK，并断连接
+                ("quit", "quit" ,          2, Meta, 0, 0, 0, 1, false, true, false, false, false),
 
                 ("bfget" , "bfget",        2, Get, 1, 1, 1, 3, false, false, true, false, false),
                 ("bfset", "bfset",         2, Store, 1, 1, 1, 3, false, false, true, false, false),
 
-                // bfmget、bfmset，在部分key 返回异常响应时，需要将异常信息转换为nil返回 fishermen
-                ("bfmget", "bfget",       -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
-                ("bfmset", "bfset",       -2, Store, 1, 1, 1, 3, true, false, true, false, true),
+                // bfmget、bfmset，padding改为5， fishermen
+                ("bfmget", "bfget",       -2, MGet, 1, -1, 1, 5, true, false, true, false, true),
+                ("bfmset", "bfset",       -2, Store, 1, 1, 1, 5, true, false, true, false, true),
 
 
 

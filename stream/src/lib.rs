@@ -5,6 +5,8 @@ pub use protocol::callback::*;
 pub use protocol::request::*;
 mod reconn;
 
+mod context;
+
 pub trait Read {
     fn consume<Out, C: Fn(&[u8]) -> (usize, Out)>(&mut self, c: C) -> Out;
 }
@@ -20,7 +22,7 @@ pub(crate) mod checker;
 //pub use gc::start_delay_drop;
 
 mod metric;
-pub use metric::CbMetrics as StreamMetrics;
+pub use metric::StreamMetrics;
 
 // 最小2K，至少容纳一个MTU
 pub(crate) const MIN_BUFFER_SIZE: usize = 1024 * 2;

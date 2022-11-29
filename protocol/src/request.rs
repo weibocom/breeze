@@ -1,14 +1,22 @@
-use crate::callback::CallbackContext;
-use crate::{Command, Context, Error, HashedCommand, Operation};
-use std::fmt::{self, Debug, Display, Formatter};
+use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand, Operation};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    ptr::NonNull,
+    time::Duration,
+};
+
 pub struct Request {
-    ctx: *mut CallbackContext,
+    ctx: NonNull<CallbackContext>,
 }
 
 impl crate::Request for Request {
     #[inline]
     fn start_at(&self) -> ds::time::Instant {
         self.ctx().start_at()
+    }
+
+    fn elapsed_current_req(&self) -> Duration {
+        self.ctx().elapsed_current_req()
     }
 
     #[inline]
@@ -63,9 +71,6 @@ impl crate::Request for Request {
     fn mut_context(&mut self) -> &mut Context {
         self.ctx().ctx.as_mut_flag()
     }
-    fn master_only(&self) -> bool {
-        self.req().master_only()
-    }
     #[inline]
     fn write_back(&mut self, wb: bool) {
         self.ctx().ctx.write_back(wb);
@@ -74,14 +79,10 @@ impl crate::Request for Request {
     fn try_next(&mut self, goon: bool) {
         self.ctx().ctx.try_next(goon);
     }
-    #[inline]
-    fn ignore_rsp(&self) -> bool {
-        self.req().ignore_rsp()
-    }
-    #[inline]
-    fn direct_hash(&self) -> bool {
-        self.req().direct_hash()
-    }
+    // #[inline]
+    // fn ignore_rsp(&self) -> bool {
+    //     self.req().ignore_rsp()
+    // }
     #[inline]
     fn update_hash(&mut self, idx_hash: i64) {
         self.req_mut().update_hash(idx_hash)
@@ -89,7 +90,7 @@ impl crate::Request for Request {
 }
 impl Request {
     #[inline]
-    pub fn new(ctx: *mut CallbackContext) -> Self {
+    pub fn new(ctx: NonNull<CallbackContext>) -> Self {
         Self { ctx }
     }
 
@@ -104,7 +105,7 @@ impl Request {
     }
     #[inline]
     fn ctx(&self) -> &mut CallbackContext {
-        unsafe { &mut *self.ctx }
+        unsafe { &mut *self.ctx.as_ptr() }
     }
 }
 

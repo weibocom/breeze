@@ -6,6 +6,7 @@ use super::{
     command::{self, CommandProperties, RequestType},
     error::{self, McqError},
 };
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CR: u8 = 13;
 const LF: u8 = 10;
@@ -20,6 +21,9 @@ pub(super) struct RequestPacket<'a, S> {
 
     // 生命周期为开始解析当前req，到下一个req解析开始
     cmd_cfg: Option<&'a CommandProperties>,
+    flags: usize,
+    flags_len: usize,
+    flags_start: usize,
 }
 
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
@@ -32,6 +36,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             oft_last: 0,
             oft: 0,
             cmd_cfg: None,
+            flags: 0,
+            flags_len: 0,
+            flags_start: 0,
         }
     }
 
@@ -49,14 +56,26 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         return Err(super::Error::ProtocolIncomplete);
     }
 
-    // #[inline]
-    // fn skip_back(&mut self, count: usize) -> Result<()> {
-    //     self.oft -= count;
-    //     if self.oft >= self.oft_last {
-    //         return Ok(());
-    //     }
-    //     Err(McqError::ReqInvalid.error())
-    // }
+    #[inline]
+    fn skip_back(&mut self, count: usize) -> Result<()> {
+        self.oft -= count;
+        if self.oft >= self.oft_last {
+            return Ok(());
+        }
+        Err(McqError::ReqInvalid.error())
+    }
+
+    // 进入flags 解析阶段且current byte 满足协议要求，才更新flags 相关信息
+    fn try_trace_flags(&mut self, state: ReqPacketState) {
+        if state != ReqPacketState::Flags || !self.current().is_ascii_digit() {
+            return;
+        }
+        if self.flags_start == 0 {
+            self.flags_start = self.oft;
+        }
+        self.flags = self.flags * 10 + (self.current() - b'0') as usize;
+        self.flags_len += 1;
+    }
 
     // #[inline]
     // pub(super) fn state(&self) -> &ReqPacketState {
@@ -153,12 +172,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         if !self.current().is_ascii_digit() {
                             return Err(McqError::ReqInvalid.error());
                         }
+                        self.skip_back(1)?;
                         state = ReqPacketState::Flags;
                     }
                 }
                 ReqPacketState::Flags => {
                     if self.current().is_ascii_digit() {
-                        // do nothing, just skip it
+                        // 追踪flags段相关信息
+                        self.try_trace_flags(state);
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeExpire;
                     } else {
@@ -247,6 +268,45 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
         self.stream.take(data.len())
     }
+
+    // 将mcq req 文本协议（set key flags exp vlen）中 flags 段用timestamp 填充 ，消费时用作topic延时指标
+    pub(super) fn mark_flags(
+        &mut self,
+        req_cmd: ds::MemGuard,
+        req_type: RequestType,
+    ) -> Result<ds::MemGuard> {
+        // 只有set 指令 需要重置flags ，用作消费时间戳的填充
+        if RequestType::Set != req_type {
+            return Ok(req_cmd);
+        }
+
+        // TODO flags 如果业务已特殊设置，则先不予支持，然后根据实际场景确定方案？ fishermen
+        if self.flags != 0 {
+            return Err(crate::Error::ProtocolNotSupported);
+        }
+
+        let time_sec = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .to_string();
+        let mut req_data: Vec<u8> = Vec::with_capacity(req_cmd.data().len() + time_sec.len());
+
+        //前: flags前半部分
+        let pref_slice = req_cmd.data().sub_slice(0, self.flags_start - 0);
+        pref_slice.copy_to_vec(&mut req_data);
+
+        //中: 时间戳
+        req_data.extend(time_sec.as_bytes());
+
+        // 后：flags 后半部分
+        let oft = self.flags_start + self.flags_len;
+        let suffix_slice = req_cmd.data().sub_slice(oft, self.data.len() - oft);
+        suffix_slice.copy_to_vec(&mut req_data);
+
+        let marked_cmd = ds::MemGuard::from_vec(req_data);
+        return Ok(marked_cmd);
+    }
 }
 
 pub trait Packet {
@@ -294,7 +354,7 @@ impl Packet for RingSlice {
     }
 }
 // mcq 解析时状态
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ReqPacketState {
     Start = 1,
     ReqType,
