@@ -114,7 +114,7 @@ where
     }
     //#[inline(always)]
     //fn check(&self, req: &Req, cmd: &protocol::Command) {
-    //    debug_assert!(
+    //    assert!(
     //        self.parser.check(req.cmd(), &cmd),
     //        "{:?} {:?} => {:?}",
     //        self,
@@ -128,6 +128,15 @@ unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
 impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnter
     for Handler<'r, Req, P, S>
 {
+    #[inline]
+    fn last(&self) -> Option<ds::time::Instant> {
+        if self.pending.len() > 0 {
+            assert_ne!(self.num_rx, self.num_tx, "{:?}", self);
+            Some(self.pending.front().expect("empty").last_start_at())
+        } else {
+            None
+        }
+    }
     #[inline]
     fn num_rx(&self) -> usize {
         self.num_rx
