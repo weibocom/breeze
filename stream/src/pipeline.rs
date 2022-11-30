@@ -186,28 +186,19 @@ where
             let mut ctx = pending.pop_front().expect("front");
             let last = ctx.last();
             // 当前不是最后一个值。也优先写入cache
-            client.cache(!last);
+            if !last {
+                client.cache(true);
+            }
 
             *metrics.key() += 1;
             let mut response = ctx.take_response();
 
-            assert!(!ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(
                 &mut ResponseContext::new(&mut ctx, metrics, |hash| self.top.shard_idx(hash)),
                 response.as_mut(),
                 client,
             )?;
 
-            //TODO !!! 这几个统计改到write_response中 fishermen 2022.11.23
-            // if response.nil_converted() {
-            //     *metrics.nilconvert() += 1;
-            // }
-            // 移到协议处理的位置
-            // if parser.cache() && op.is_query() {
-            //      *metrics.cache() += rsp.ok();
-            // }
-
-            // TODO 回写及公共统计，跑通后修改这里  fishermen
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
