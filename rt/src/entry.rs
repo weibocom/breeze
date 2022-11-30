@@ -4,6 +4,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
+use super::timeout::*;
+
 use metrics::base::*;
 
 use tokio::{
@@ -12,6 +14,10 @@ use tokio::{
 };
 
 pub trait ReEnter {
+    #[inline]
+    fn last(&self) -> Option<Instant> {
+        None
+    }
     // 发送的请求数量
     #[inline]
     fn num_tx(&self) -> usize {
@@ -51,33 +57,37 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Cancel for T {
 //  统计
 //  1. 每次poll的执行耗时
 //  2. 重入耗时间隔
-pub struct Entry<F> {
-    last: Instant,
-    last_rx: Instant, // 上一次有接收到请求的时间
+pub struct Entry<F, T> {
+    //last: Instant,
+    //last_rx: Instant, // 上一次有接收到请求的时间
     inner: F,
-    timeout: Duration,
-    tick: Interval,
+    //timeout: Duration,
+    //tick: Interval,
     ready: bool,
     refresh_tick: Interval,
     out: Option<Result<()>>,
     refresh_next: bool,
     last_refresh: Instant,
+
+    timeout: T,
 }
-impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
+impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + ReEnter + Debug>
+    Entry<F, T>
+{
     #[inline]
-    pub fn from(f: F, timeout: Duration) -> Self {
-        let mut tick = interval(timeout.max(Duration::from_millis(50)));
-        tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    pub fn timeout(f: F, timeout: T) -> Self {
+        //let mut tick = interval(timeout.max(Duration::from_millis(50)));
+        //tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         let mut refresh_tick = interval(Duration::from_secs(9));
         refresh_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         Self {
             inner: f,
-            last: Instant::now(),
-            last_rx: Instant::now(),
+            //last: Instant::now(),
+            //last_rx: Instant::now(),
             timeout,
-            tick,
+            //tick,
             ready: false,
             out: None,
             refresh_tick,
@@ -93,42 +103,28 @@ impl<F: Future<Output = Result<()>> + Unpin + ReEnter + Debug> Entry<F> {
             self.last_refresh = now;
         }
 
-        let (tx, rx) = (self.inner.num_tx(), self.inner.num_rx());
-        if tx > rx {
-            if now - self.last >= Duration::from_millis(10) {
-                REENTER_10MS.incr();
-            }
-            if now - self.last_rx >= self.timeout {
-                return Poll::Ready(Err(protocol::Error::Timeout(now - self.last_rx)));
-            }
-        } else {
-            self.last_rx = now;
-        }
+        let Self { timeout, inner, .. } = &mut *self;
 
-        let ret = Pin::new(&mut self.inner).poll(cx)?;
-        let (tx_post, rx_post) = (self.inner.num_tx(), self.inner.num_rx());
-        if tx_post > rx_post {
-            self.last = Instant::now();
-            // 有接收到请求，则更新timeout基准
-            if rx_post > rx {
-                self.last_rx = self.last;
-            }
-            ready!(self.tick.poll_tick(cx));
-            self.tick.reset();
-        } else {
-            if ret.is_pending() {
-                if self.refresh_next {
-                    ready!(self.refresh_tick.poll_tick(cx));
-                    self.refresh_tick.reset();
-                }
+        let ret = Pin::new(&mut *inner).poll(cx)?;
+
+        ready!(timeout.poll_check(cx, inner)?);
+
+        if ret.is_pending() {
+            if self.refresh_next {
+                ready!(self.refresh_tick.poll_tick(cx));
+                self.refresh_tick.reset();
+                ready!(self.refresh_tick.poll_tick(cx));
             }
         }
+        //}
         ret.map(|r| Ok(r))
     }
 }
 
 use protocol::Result;
-impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Entry<F> {
+impl<T: TimeoutCheck + Unpin, F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future
+    for Entry<F, T>
+{
     type Output = F::Output;
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -136,12 +132,13 @@ impl<F: Future<Output = Result<()>> + ReEnter + Debug + Unpin> Future for Entry<
             self.out = Some(ready!(self.as_mut().poll_run(cx)));
             self.ready = true;
             // 复用last来统计close的耗时
-            self.last = Instant::now();
+            self.last_refresh = Instant::now();
+            self.refresh_tick = interval(Duration::from_millis(100));
         }
         // close
         while !self.inner.close() {
-            ready!(self.tick.poll_tick(cx));
-            let elapsed = self.last.elapsed().as_secs();
+            ready!(self.refresh_tick.poll_tick(cx));
+            let elapsed = self.last_refresh.elapsed().as_secs();
             // 超过一秒才算异常. 通常的metrics是15秒一采集，确保数据在一个周期内被采集
             if elapsed >= 1 && elapsed % 8 == 0 {
                 log::error!("closing({} secs) {:?} {:?}", elapsed, self.inner, self.out);

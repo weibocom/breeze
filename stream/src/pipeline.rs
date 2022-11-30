@@ -8,11 +8,7 @@ use std::{
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use ds::{
-    arena::Arena,
-    time::{Duration, Instant},
-    AtomicWaker,
-};
+use ds::{arena::Arena, time::Instant, AtomicWaker};
 use endpoint::{Topology, TopologyCheck};
 use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
@@ -54,7 +50,7 @@ where
         dropping: Vec::new(),
         arena: Arena::cache(32),
     };
-    rt::Entry::from(pipeline, Duration::from_secs(10)).await
+    rt::Entry::timeout(pipeline, rt::DisableTimeout).await
 }
 
 pub struct CopyBidirectional<C, P, T> {

@@ -39,6 +39,12 @@ impl From<std::io::Error> for Error {
         Self::IO(err)
     }
 }
+impl From<Duration> for Error {
+    #[inline]
+    fn from(to: Duration) -> Self {
+        Self::Timeout(to)
+    }
+}
 
 impl std::error::Error for Error {}
 use std::fmt::{self, Display, Formatter};

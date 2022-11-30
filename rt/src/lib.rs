@@ -6,3 +6,6 @@ pub use entry::*;
 
 mod stream;
 pub use stream::*;
+
+mod timeout;
+pub use timeout::*;
