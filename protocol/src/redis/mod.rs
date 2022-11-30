@@ -231,7 +231,7 @@ impl Redis {
                 }
                 _ => {
                     log::info!("not supported:{:?}", data);
-                    panic!("not supported");
+                    panic!("not supported:{:?}", data);
                 }
             }
             assert!(oft <= data.len(), "{} data:{:?}", oft, data);
