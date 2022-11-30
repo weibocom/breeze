@@ -319,7 +319,12 @@ where
             if !ctx.complete() {
                 break;
             }
-            let _ctx = self.pending.pop_front().expect("empty");
+            let mut ctx = self.pending.pop_front().expect("empty");
+            // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
+            if ctx.inited() {
+                ctx.take_response();
+            }
+            debug_assert!(!ctx.inited());
         }
         // 处理异步请求
         self.process_async_pending();
