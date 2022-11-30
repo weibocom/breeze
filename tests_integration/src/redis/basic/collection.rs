@@ -132,27 +132,27 @@ fn test_geo_ops() {
         Ok(("u8vk6wjr4e0".to_string(), "u9e5nqkuc90".to_string()))
     );
     // operation not permitted on a read only server
-    // assert_eq!(
-    //     redis::cmd("GEORADIUS")
-    //         .arg(arykey)
-    //         .arg(28)
-    //         .arg(30)
-    //         .arg(100)
-    //         .arg("km")
-    //         .arg("WITHDIST")
-    //         .arg("WITHCOORD")
-    //         .query(&mut con),
-    //     Ok(0)
-    // );
-    // assert_eq!(
-    //     redis::cmd("GEORADIUSBYMEMBER")
-    //         .arg(arykey)
-    //         .arg("Tianjin")
-    //         .arg(100)
-    //         .arg("km")
-    //         .query(&mut con),
-    //     Ok(0)
-    // );
+    assert_eq!(
+        redis::cmd("GEORADIUS")
+            .arg(arykey)
+            .arg(28)
+            .arg(30)
+            .arg(100)
+            .arg("km")
+            .arg("WITHDIST")
+            .arg("WITHCOORD")
+            .query(&mut con),
+        Ok(())
+    );
+    assert_eq!(
+        redis::cmd("GEORADIUSBYMEMBER")
+            .arg(arykey)
+            .arg("Tianjin")
+            .arg(100)
+            .arg("km")
+            .query(&mut con),
+        Ok(("Tianjin".to_string(),))
+    );
 }
 
 /// - hash基本操作

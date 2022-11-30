@@ -5,8 +5,6 @@ use crate::redis_helper::*;
 use chrono::{prelude::*, Duration};
 use function_name::named;
 use redis::Commands;
-use std::thread::sleep;
-use std::{thread, time};
 //基本set场景，key固定为foo或bar，value为简单数字或字符串
 #[test]
 fn test_basic_set() {
