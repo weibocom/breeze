@@ -112,16 +112,6 @@ where
         ready!(Pin::new(&mut self.s).poll_flush(cx))?;
         Poll::Ready(Ok(()))
     }
-    //#[inline(always)]
-    //fn check(&self, req: &Req, cmd: &protocol::Command) {
-    //    assert!(
-    //        self.parser.check(req.cmd(), &cmd),
-    //        "{:?} {:?} => {:?}",
-    //        self,
-    //        req.cmd().data(),
-    //        cmd.data()
-    //    );
-    //}
 }
 unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
 unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
