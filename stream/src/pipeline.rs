@@ -23,6 +23,7 @@ pub async fn copy_bidirectional<C, P, T>(
     metrics: Arc<StreamMetrics>,
     client: C,
     parser: P,
+    pipeline: bool,
 ) -> Result<()>
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
@@ -33,6 +34,7 @@ where
     *metrics.conn_num() += 1;
     let cb = unsafe { callback(&top) };
     let pipeline = CopyBidirectional {
+        pipeline,
         cb,
         top,
         metrics,
@@ -54,6 +56,7 @@ where
 }
 
 pub struct CopyBidirectional<C, P, T> {
+    pipeline: bool, // 请求是否需要以pipeline方式进行
     top: T,
     rx_buf: StreamGuard,
     client: C,
@@ -99,13 +102,14 @@ where
             self.process_pending()?;
             let flush = self.poll_flush(cx)?;
 
-            ready!(flush);
-            ready!(request);
-
-            if self.pending.len() > 0 {
+            if self.pending.len() > 0 && !self.pipeline {
                 // CallbackContext::on_done负责唤醒
+                // 非pipeline请求（即ping-pong），已经有ping了，因此等待pong即可。
                 return Poll::Pending;
             }
+
+            ready!(flush);
+            ready!(request);
         }
     }
 }
@@ -118,13 +122,13 @@ where
     // 从client读取request流的数据到buffer。
     #[inline]
     fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        if self.pending.len() == 0 {
-            let Self { client, rx_buf, .. } = self;
-            let mut cx = Context::from_waker(cx.waker());
-            let mut rx = Reader::from(client, &mut cx);
-            ready!(rx_buf.write(&mut rx))?;
-            rx.check()?;
-        }
+        //if self.pending.len() == 0 {
+        let Self { client, rx_buf, .. } = self;
+        let mut cx = Context::from_waker(cx.waker());
+        let mut rx = Reader::from(client, &mut cx);
+        ready!(rx_buf.write(&mut rx))?;
+        rx.check()?;
+        //}
         Poll::Ready(Ok(()))
     }
     // 解析buffer，并且发送请求.
