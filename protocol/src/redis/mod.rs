@@ -210,52 +210,42 @@ impl Redis {
     }
 
     #[inline]
-    fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
+    fn parse_response_inner<S: Stream>(
+        &self,
+        s: &mut S,
+        oft: &mut usize,
+    ) -> Result<Option<Command>> {
         let data = s.slice();
         log::debug!("+++ will parse redis rsp:{:?}", data);
 
         if data.len() >= 2 {
             let mut rsp_ok = true;
-            let mut oft = 0;
-            match self.parse_response_packet(&data, &mut oft) {
-                Ok(rs) => rsp_ok = rs,
-                Err(Error::ProtocolIncomplete) => {
-                    debug_assert!(oft > s.len(), "redis rsp:{}/{:?}", oft, data);
-                    log::debug!("+++ reserve when parse redis rsp:{}", oft - s.len());
-                    s.reserve(oft - s.len());
-                    return Err(Error::ProtocolIncomplete);
+            match data.at(0) {
+                b'-' => {
+                    rsp_ok = false;
+                    data.line(oft)?;
                 }
-                Err(e) => return Err(e),
+                b':' | b'+' => data.line(oft)?,
+                b'$' => {
+                    let _num = data.num_and_skip(oft)?;
+                }
+                b'*' => {
+                    self.num_skip_all(&data, oft)?;
+                }
+                _ => {
+                    log::info!("not supported:{:?}", data);
+                    panic!("not supported:{:?}", data);
+                }
             }
 
-            assert!(oft <= data.len(), "{} data:{:?}", oft, data);
-            let mem = s.take(oft);
+            assert!(*oft <= data.len(), "{} data:{:?}", oft, data);
+            let mem = s.take(*oft);
             let mut flag = Flag::new();
             // TODO 这次需要测试err场景 fishermen
             flag.set_status_ok(rsp_ok);
             return Ok(Some(Command::new(flag, mem)));
         }
         Ok(None)
-    }
-
-    fn parse_response_packet(&self, data: &RingSlice, oft: &mut usize) -> Result<bool> {
-        let mut rsp_ok = true;
-        match data.at(0) {
-            b'-' => {
-                rsp_ok = false;
-                data.line(oft)?;
-            }
-            b':' | b'+' => data.line(oft)?,
-            b'$' => {
-                let _num = data.num_and_skip(oft)?;
-            }
-            b'*' => rsp_ok = self.parse_response_packet(data, oft)?,
-            _ => {
-                log::info!("not supported:{:?}", data);
-                panic!("not supported:{:?}", data);
-            }
-        }
-        Ok(rsp_ok)
     }
 }
 
@@ -282,9 +272,15 @@ impl Protocol for Redis {
     // 为每一个req解析一个response
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        match self.parse_response_inner(data) {
+        let mut oft = 0;
+        match self.parse_response_inner(data, &mut oft) {
             Ok(cmd) => Ok(cmd),
-            Err(Error::ProtocolIncomplete) => Ok(None),
+            Err(Error::ProtocolIncomplete) => {
+                assert!(oft > data.len(), "oft:{}, data:{:?}", oft, data.slice());
+                data.reserve(oft - data.len());
+
+                Ok(None)
+            }
             e => e,
         }
     }
