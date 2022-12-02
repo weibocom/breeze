@@ -31,7 +31,7 @@ impl Parser {
         match self {
             Self::McBin(_) => false,
             Self::Redis(_) => true,
-            Self::Phantom(_) => false,
+            Self::Phantom(_) => true,
             Self::MsgQue(_) => false,
         }
     }
