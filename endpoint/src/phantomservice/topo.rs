@@ -184,7 +184,7 @@ where
     }
     #[inline]
     fn load(&mut self) {
-        // 先改状态，再load，如果失败再改一个状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
+        // 先改通知状态，再load，如果失败改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
         for (_, updated) in self.updated.iter() {
             updated.store(false, Ordering::Release);
         }
@@ -194,9 +194,9 @@ where
         if !succeed {
             self.updated
                 .get_mut(CONFIG_UPDATED_KEY)
-                .expect("redis config state missed")
+                .expect("phantom config state missed")
                 .store(true, Ordering::Release);
-            log::error!("redis will reload topo later...");
+            log::warn!("phantom will reload topo later...");
         }
     }
 }
