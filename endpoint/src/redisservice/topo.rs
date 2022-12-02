@@ -210,28 +210,82 @@ where
                 .iter()
                 .fold(false, |acc, (_k, v)| acc || v.load(Ordering::Acquire))
     }
+
     #[inline]
     fn load(&mut self) {
-        // 把通知放在最前面，避免丢失通知。
+        // TODO: 先改状态，再load，如果失败，再改一个状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
         for (_, updated) in self.updated.iter() {
             updated.store(false, Ordering::Release);
         }
 
+        // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
+        let succeed = self.load_inner();
+        if !succeed {
+            self.updated
+                .get_mut(CONFIG_UPDATED_KEY)
+                .expect("redis config state missed")
+                .store(true, Ordering::Release);
+            log::error!("redis will reload topo later...");
+        }
+    }
+}
+impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
+where
+    E: discovery::Inited,
+{
+    // 每一个域名都有对应的endpoint，并且都初始化完成。
+    #[inline]
+    fn inited(&self) -> bool {
+        // 每一个分片都有初始, 并且至少有一主一从。
+        self.shards.len() > 0
+            && self.shards.len() == self.shards_url.len()
+            && self
+                .shards
+                .iter()
+                .fold(true, |inited, shard| inited && shard.inited())
+    }
+}
+
+impl<B, E, Req, P> RedisService<B, E, Req, P>
+where
+    B: Builder<P, Req, E>,
+    P: Protocol,
+    E: Endpoint<Item = Req> + Single,
+{
+    #[inline]
+    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Duration) -> E {
+        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
+            Some(Some(end)) => end,
+            _ => B::build(
+                &addr,
+                self.parser.clone(),
+                Resource::Redis,
+                &self.service,
+                timeout,
+            ),
+        }
+    }
+
+    // TODO 把load的日志级别提升，在罕见异常情况下（dns解析异常、配置异常）,持续load时可以通过日志来跟进具体状态；
+    //      当然，也可以通过指标汇报的方式进行，但对这种罕见情况进行metrics消耗，需要考量；
+    //      先对这种罕见情况用日志记录，确有需要，再考虑用指标汇报； 待讨论 fishermen
+    #[inline]
+    fn load_inner(&mut self) -> bool {
         // 所有的ip要都能解析出主从域名
         let mut addrs = Vec::with_capacity(self.shards_url.len());
         for shard in self.shards_url.iter() {
             if shard.len() < 2 {
                 log::warn!("{} both master and slave required.", self.service);
-                return;
+                return false;
             }
             let master_url = &shard[0];
             let masters = dns::lookup_ips(master_url.host());
             if masters.len() == 0 {
-                log::debug!("{} master not looked up", master_url);
-                return;
+                log::warn!("{} master not looked up", master_url);
+                return false;
             }
             if masters.len() > 1 {
-                log::info!("multi master ip parsed. {} => {:?}", master_url, masters);
+                log::warn!("multi master ip parsed. {} => {:?}", master_url, masters);
             }
             let master = String::from(&masters[0]) + ":" + master_url.port();
             let mut slaves = Vec::with_capacity(8);
@@ -246,8 +300,8 @@ where
                 }
             }
             if slaves.len() == 0 {
-                log::debug!("{:?} slave not looked up", &shard[1..]);
-                return;
+                log::warn!("{:?} slave not looked up", &shard[1..]);
+                return false;
             }
             addrs.push((master, slaves));
         }
@@ -287,7 +341,7 @@ where
             self.shards.len(),
             self.shards_url.len()
         );
-        log::debug!(
+        log::info!(
             "{} load complete. {} dropping:{:?}",
             self.service,
             self.shards.len(),
@@ -296,42 +350,8 @@ where
                 old.keys()
             }
         );
-    }
-}
-impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
-where
-    E: discovery::Inited,
-{
-    // 每一个域名都有对应的endpoint，并且都初始化完成。
-    #[inline]
-    fn inited(&self) -> bool {
-        // 每一个分片都有初始, 并且至少有一主一从。
-        self.shards.len() > 0
-            && self.shards.len() == self.shards_url.len()
-            && self
-                .shards
-                .iter()
-                .fold(true, |inited, shard| inited && shard.inited())
-    }
-}
-impl<B, E, Req, P> RedisService<B, E, Req, P>
-where
-    B: Builder<P, Req, E>,
-    P: Protocol,
-    E: Endpoint<Item = Req>,
-{
-    #[inline]
-    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Duration) -> E {
-        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
-            Some(Some(end)) => end,
-            _ => B::build(
-                &addr,
-                self.parser.clone(),
-                Resource::Redis,
-                &self.service,
-                timeout,
-            ),
-        }
+
+        true
     }
 }
 #[derive(Clone)]
