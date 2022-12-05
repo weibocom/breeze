@@ -43,35 +43,37 @@ fn checkout_basic() {
     assert_eq!(48, size_of::<Backend<Request>>());
     assert_eq!(0, size_of::<Builder>());
     assert_eq!(24, size_of::<CheckedTopology>());
+
+    assert_eq!(320, size_of::<stream::StreamMetrics>());
 }
 
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
 #[ignore]
 #[test]
 fn check_layout_rx_buffer() {
-    assert_eq!((40, 120).select(), size_of::<rt::TxBuffer>());
+    assert_eq!((40, 104).select(), size_of::<rt::TxBuffer>());
 }
 #[ignore]
 #[test]
 fn check_callback_ctx() {
-    assert_eq!((192, 208).select(), size_of::<CallbackContext>());
+    assert_eq!((192, 192).select(), size_of::<CallbackContext>());
 }
 #[ignore]
 #[test]
 fn check_stream_guard() {
-    assert_eq!((160, 240).select(), size_of::<StreamGuard>());
+    assert_eq!((160, 224).select(), size_of::<StreamGuard>());
 }
 #[ignore]
 #[test]
 fn check_stream() {
-    assert_eq!((72, 160).select(), size_of::<Stream>());
+    assert_eq!((72, 144).select(), size_of::<Stream>());
 }
 #[ignore]
 #[test]
 fn check_handler() {
-    assert_eq!((312, 480).select(), size_of::<Handler<'static>>());
+    assert_eq!((312, 448).select(), size_of::<Handler<'static>>());
     assert_eq!(
-        (432, 624).select(),
+        (432, 568).select(),
         size_of::<Entry<Handler<'static>, rt::Timeout>>()
     );
 }
@@ -81,7 +83,7 @@ fn check_handler() {
 fn check_topology() {
     assert_eq!(392, size_of::<Topology>());
     assert_eq!(96, size_of::<CacheService>());
-    assert_eq!(264, size_of::<RedisService>());
+    assert_eq!(240, size_of::<RedisService>());
     assert_eq!(192, size_of::<PhantomService>());
     assert_eq!(392, size_of::<MsgQue>());
 }
@@ -89,11 +91,10 @@ fn check_topology() {
 #[ignore]
 #[test]
 fn check_pipeline() {
-    assert_eq!(320, size_of::<stream::StreamMetrics>());
-    assert_eq!((432, 608).select(), size_of::<CopyBidirectional>());
+    assert_eq!((432, 568).select(), size_of::<CopyBidirectional>());
     // 512字节对齐
     assert_eq!(
-        (504, 688).select(),
+        (504, 640).select(),
         size_of::<Entry<CopyBidirectional, rt::DisableTimeout>>()
     );
 }
