@@ -8,7 +8,7 @@ use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::Hasher;
-use sharding::ReplicaSelect;
+use sharding::{ReplicaSelect, Selector};
 
 use super::config::RedisNamespace;
 use crate::TimeoutAdjust;
@@ -23,7 +23,7 @@ pub struct RedisService<B, E, Req, P> {
     shards_url: Vec<Vec<String>>,
     hasher: Hasher,
     distribute: Distribute,
-    selector: String, // 从的选择策略。
+    selector: Selector, // 从的选择策略。
     updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
     service: String,
@@ -42,7 +42,7 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             distribute: Default::default(),
             updated: Default::default(),
             service: Default::default(),
-            selector: Default::default(),
+            selector: Selector::Random,
             timeout_master: crate::TO_REDIS_M,
             timeout_slave: crate::TO_REDIS_S,
             _mark: Default::default(),
@@ -160,7 +160,7 @@ where
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
-            self.selector = ns.basic.selector;
+            self.selector = ns.basic.selector.as_str().into();
 
             // TODO 直接设置selector属性，在更新最后，设置全局更新标志，deadcode暂时保留，观察副作用 2022.12后可以删除
             // selector属性更新与域名实例更新保持一致
@@ -331,7 +331,7 @@ where
                 slave.disable_single();
                 replicas.push((addr, slave));
             }
-            let shard = Shard::selector(&self.selector, master_addr, master, replicas);
+            let shard = Shard::selector(self.selector, master_addr, master, replicas);
             self.shards.push(shard);
         }
         assert_eq!(
@@ -361,7 +361,7 @@ struct Shard<E> {
 }
 impl<E> Shard<E> {
     #[inline]
-    fn selector(s: &str, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(s: Selector, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
             slaves: ReplicaSelect::from(s, replicas),
