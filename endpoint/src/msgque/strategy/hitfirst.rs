@@ -133,7 +133,7 @@ impl HitFirstReader {
             self.qnodes
         );
         let node = self.qnodes.get(node_idx).unwrap();
-        log::debug!("+++ use common cursor:{}, {:?}", cursor_idx, self);
+        log::debug!("+++ read mcq:{}/{}, {:?}", node_idx, cursor_idx, self);
         node.id
     }
 
