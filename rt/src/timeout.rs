@@ -2,7 +2,7 @@ use std::task::{ready, Context, Poll};
 
 use tokio::time::{interval, Interval, MissedTickBehavior};
 
-use ds::time::{Duration, Instant};
+use ds::time::Duration;
 
 use super::entry::ReEnter;
 
@@ -28,7 +28,7 @@ impl TimeoutCheck for Timeout {
         to: &T,
     ) -> Poll<Result<(), Duration>> {
         if let Some(last) = to.last() {
-            let elapsed = Instant::now() - last;
+            let elapsed = last.elapsed();
             if elapsed >= self.timeout {
                 return Poll::Ready(Err(elapsed));
             }
