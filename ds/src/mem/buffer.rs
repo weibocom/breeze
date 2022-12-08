@@ -124,26 +124,26 @@ impl RingBuffer {
         new
     }
 
-    #[inline]
-    pub fn update(&mut self, idx: usize, val: u8) {
-        assert!(idx < self.len());
-        unsafe {
-            *self
-                .data
-                .as_ptr()
-                .offset(self.mask(self.read + idx) as isize) = val
-        }
-    }
-    #[inline]
-    pub fn at(&self, idx: usize) -> u8 {
-        assert!(idx < self.len());
-        unsafe {
-            *self
-                .data
-                .as_ptr()
-                .offset(self.mask(self.read + idx) as isize)
-        }
-    }
+    //#[inline]
+    //pub fn update(&mut self, idx: usize, val: u8) {
+    //    assert!(idx < self.len());
+    //    unsafe {
+    //        *self
+    //            .data
+    //            .as_ptr()
+    //            .offset(self.mask(self.read + idx) as isize) = val
+    //    }
+    //}
+    //#[inline]
+    //pub fn at(&self, idx: usize) -> u8 {
+    //    assert!(idx < self.len());
+    //    unsafe {
+    //        *self
+    //            .data
+    //            .as_ptr()
+    //            .offset(self.mask(self.read + idx) as isize)
+    //    }
+    //}
 }
 
 impl Drop for RingBuffer {
