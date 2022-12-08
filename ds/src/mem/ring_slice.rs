@@ -215,37 +215,37 @@ impl RingSlice {
     define_read_number!(read_u64, u64);
 }
 
-impl PartialEq<[u8]> for RingSlice {
-    #[inline]
-    fn eq(&self, other: &[u8]) -> bool {
-        if self.len() == other.len() {
-            for i in 0..other.len() {
-                if self.at(i) != other[i] {
-                    return false;
-                }
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
+//impl PartialEq<[u8]> for RingSlice {
+//    #[inline]
+//    fn eq(&self, other: &[u8]) -> bool {
+//        if self.len() == other.len() {
+//            for i in 0..other.len() {
+//                if self.at(i) != other[i] {
+//                    return false;
+//                }
+//            }
+//            true
+//        } else {
+//            false
+//        }
+//    }
+//}
 // 内容相等
-impl PartialEq<Self> for RingSlice {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        if self.len() == other.len() {
-            for i in 0..other.len() {
-                if self.at(i) != other.at(i) {
-                    return false;
-                }
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
+//impl PartialEq<Self> for RingSlice {
+//    #[inline]
+//    fn eq(&self, other: &Self) -> bool {
+//        if self.len() == other.len() {
+//            for i in 0..other.len() {
+//                if self.at(i) != other.at(i) {
+//                    return false;
+//                }
+//            }
+//            true
+//        } else {
+//            false
+//        }
+//    }
+//}
 impl From<&[u8]> for RingSlice {
     #[inline]
     fn from(s: &[u8]) -> Self {
