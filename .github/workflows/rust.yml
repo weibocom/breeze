@@ -59,7 +59,7 @@ jobs:
       - name: Check Status
         run: |
           sleep 6s
-          #netstat -nat|grep LISTEN
+          netstat -nat|grep LISTEN
           #ps -aux|grep breeze
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks

@@ -73,16 +73,15 @@ impl Protocol for MemcacheBinary {
         Ok(None)
     }
     #[inline]
-    fn check(&self, req: &HashedCommand, resp: &Command) -> bool {
+    fn check(&self, req: &HashedCommand, resp: &Command) {
         assert!(
             !resp.data().is_quiet()
                 && req.data().op() == resp.data().op()
                 && req.data().opaque() == resp.data().opaque(),
-            "req: {:?}, rsp: {:?}",
-            req.data(),
-            resp.data(),
+            "{:?} => {:?}",
+            req,
+            resp,
         );
-        true
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline]

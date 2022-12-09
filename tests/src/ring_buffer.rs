@@ -29,9 +29,7 @@ fn test_ring_buffer() {
     let n = buf.write(&rs);
     assert_eq!(n, 32 - 19);
 
-    let mut rrb = ds::ResizedRingBuffer::from(256, 4 * 1024, 1024, |cap, delta| {
-        println!("resize {} => {}", cap, delta);
-    });
+    let mut rrb = ds::ResizedRingBuffer::from(256, 4 * 1024, 1024);
     assert_eq!(1024, rrb.cap());
     assert_eq!(0, rrb.len());
 

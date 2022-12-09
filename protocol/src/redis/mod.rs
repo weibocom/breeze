@@ -34,16 +34,16 @@ impl Redis {
     #[inline]
     fn parse_request_inner<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
-        stream: &mut S,
+        packet: &mut RequestPacket<S>,
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
         // 一个指令开始处理，可以重复进入
 
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-        log::debug!("+++ rec redis req:{:?}", stream.slice());
+        log::debug!("+++ rec redis req:{:?}", packet.inner_data());
+        // let mut packet = packet::RequestPacket::new(stream);
 
-        let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
@@ -51,7 +51,7 @@ impl Redis {
             let cfg = match command::get_cfg(packet.op_code()) {
                 Ok(cfg) => cfg,
                 Err(super::Error::ProtocolNotSupported) => {
-                    log::warn!("+++ found unsupported req:{:?}", stream.slice());
+                    log::warn!("+++ found unsupported req:{:?}", packet.inner_data());
                     return Err(super::Error::ProtocolNotSupported);
                 }
                 Err(e) => return Err(e),
@@ -59,7 +59,7 @@ impl Redis {
             let mut hash;
             if cfg.swallowed {
                 // 优先处理swallow吞噬指令: master/hashkeyq/hashrandomq
-                self.parse_swallow_cmd(cfg, &mut packet, alg)?;
+                self.parse_swallow_cmd(cfg, packet, alg)?;
                 continue;
             } else if cfg.multi {
                 packet.multi_ready();
@@ -210,32 +210,36 @@ impl Redis {
     }
 
     #[inline]
-    fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
+    fn parse_response_inner<S: Stream>(
+        &self,
+        s: &mut S,
+        oft: &mut usize,
+    ) -> Result<Option<Command>> {
         let data = s.slice();
-        log::debug!("+++ will parse rsp:{:?}", data);
+        log::debug!("+++ will parse redis rsp:{:?}", data);
 
         if data.len() >= 2 {
             let mut rsp_ok = true;
-            let mut oft = 0;
             match data.at(0) {
                 b'-' => {
                     rsp_ok = false;
-                    data.line(&mut oft)?;
+                    data.line(oft)?;
                 }
-                b':' | b'+' => data.line(&mut oft)?,
+                b':' | b'+' => data.line(oft)?,
                 b'$' => {
-                    let _num = data.num_and_skip(&mut oft)?;
+                    let _num = data.num_and_skip(oft)?;
                 }
                 b'*' => {
-                    self.num_skip_all(&data, &mut oft)?;
+                    self.num_skip_all(&data, oft)?;
                 }
                 _ => {
                     log::info!("not supported:{:?}", data);
-                    panic!("not supported");
+                    panic!("not supported:{:?}", data);
                 }
             }
-            assert!(oft <= data.len(), "{} data:{:?}", oft, data);
-            let mem = s.take(oft);
+
+            assert!(*oft <= data.len(), "{} data:{:?}", oft, data);
+            let mem = s.take(*oft);
             let mut flag = Flag::new();
             // TODO 这次需要测试err场景 fishermen
             flag.set_status_ok(rsp_ok);
@@ -253,9 +257,14 @@ impl Protocol for Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        match self.parse_request_inner(stream, alg, process) {
+        let mut packet = packet::RequestPacket::new(stream);
+        match self.parse_request_inner(&mut packet, alg, process) {
             Ok(_) => Ok(()),
-            Err(Error::ProtocolIncomplete) => Ok(()),
+            Err(Error::ProtocolIncomplete) => {
+                // 如果解析数据不够，提前reserve stream的空间
+                packet.reserve_stream_buff();
+                Ok(())
+            }
             e => e,
         }
     }
@@ -263,9 +272,17 @@ impl Protocol for Redis {
     // 为每一个req解析一个response
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        match self.parse_response_inner(data) {
+        let mut oft = 0;
+        match self.parse_response_inner(data, &mut oft) {
             Ok(cmd) => Ok(cmd),
-            Err(Error::ProtocolIncomplete) => Ok(None),
+            Err(Error::ProtocolIncomplete) => {
+                assert!(oft + 2 >= data.len(), "oft:{} => {:?}", oft, data.slice());
+                if oft > data.len() {
+                    data.reserve(oft - data.len());
+                }
+
+                Ok(None)
+            }
             e => e,
         }
     }
