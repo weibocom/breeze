@@ -18,9 +18,11 @@ impl RingBuffer {
     // 如果size是0，则调用者需要确保数据先写入，再读取。
     // 否则可能导致读取时，size - 1越界
     pub fn with_capacity(size: usize) -> Self {
-        assert!(size == 0 || size.is_power_of_two());
+        assert!(size == 0 || size.is_power_of_two(), "{} not valid", size);
         let mut data = ManuallyDrop::new(Vec::with_capacity(size));
+        assert_eq!(size, data.capacity());
         let ptr = unsafe { NonNull::new_unchecked(data.as_mut_ptr()) };
+        super::BUF_RX.incr_by(size);
         Self {
             size,
             data: ptr,
@@ -122,30 +124,31 @@ impl RingBuffer {
         new
     }
 
-    #[inline]
-    pub fn update(&mut self, idx: usize, val: u8) {
-        assert!(idx < self.len());
-        unsafe {
-            *self
-                .data
-                .as_ptr()
-                .offset(self.mask(self.read + idx) as isize) = val
-        }
-    }
-    #[inline]
-    pub fn at(&self, idx: usize) -> u8 {
-        assert!(idx < self.len());
-        unsafe {
-            *self
-                .data
-                .as_ptr()
-                .offset(self.mask(self.read + idx) as isize)
-        }
-    }
+    //#[inline]
+    //pub fn update(&mut self, idx: usize, val: u8) {
+    //    assert!(idx < self.len());
+    //    unsafe {
+    //        *self
+    //            .data
+    //            .as_ptr()
+    //            .offset(self.mask(self.read + idx) as isize) = val
+    //    }
+    //}
+    //#[inline]
+    //pub fn at(&self, idx: usize) -> u8 {
+    //    assert!(idx < self.len());
+    //    unsafe {
+    //        *self
+    //            .data
+    //            .as_ptr()
+    //            .offset(self.mask(self.read + idx) as isize)
+    //    }
+    //}
 }
 
 impl Drop for RingBuffer {
     fn drop(&mut self) {
+        super::BUF_RX.decr_by(self.size);
         unsafe {
             let _ = Vec::from_raw_parts(self.data.as_ptr(), 0, self.size);
         }

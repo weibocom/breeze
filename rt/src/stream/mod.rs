@@ -103,7 +103,7 @@ static NOOP: Waker = noop_waker::noop_waker();
 impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     #[inline]
     fn cap(&self) -> usize {
-        self.buf.cap
+        self.buf.cap()
     }
     #[inline]
     fn pending(&self) -> usize {

@@ -18,7 +18,7 @@ cache-padded = "1.2.0"
 ctor = "*"
 
 [features]
-default = ["heap-stats"]
+default = ["heap-stats", "tsc"]
 heap-stats = []
 tsc = []
 trace = []

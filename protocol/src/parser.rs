@@ -26,6 +26,15 @@ impl Parser {
             _ => Err(Error::ProtocolNotSupported),
         }
     }
+    #[inline]
+    pub fn pipeline(&self) -> bool {
+        match self {
+            Self::McBin(_) => false,
+            Self::Redis(_) => true,
+            Self::Phantom(_) => true,
+            Self::MsgQue(_) => false,
+        }
+    }
 }
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
@@ -49,9 +58,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     ) -> Result<()>;
 
     #[inline]
-    fn check(&self, _req: &HashedCommand, _resp: &Command) -> bool {
-        true
-    }
+    fn check(&self, _req: &HashedCommand, _resp: &Command) {}
     // 构建回写请求。
     // 返回None: 说明req复用，build in place
     // 返回新的request

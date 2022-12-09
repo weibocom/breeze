@@ -65,6 +65,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             stream,
         }
     }
+
     #[inline]
     pub(super) fn has_bulk(&self) -> bool {
         self.bulk() > 0
@@ -251,6 +252,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn master_only(&self) -> bool {
         self.ctx.layer == LayerType::MasterOnly as u8
+    }
+
+    // 解析完毕，如果数据未读完，需要保留足够的buff空间
+    #[inline(always)]
+    pub(super) fn reserve_stream_buff(&mut self) {
+        if self.oft > self.stream.len() {
+            log::debug!("+++ will reserve len:{}", (self.oft - self.stream.len()));
+            self.stream.reserve(self.oft - self.data.len())
+        }
     }
 }
 

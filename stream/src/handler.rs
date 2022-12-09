@@ -97,6 +97,7 @@ where
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.elapsed_current_req();
+                        self.parser.check(req.cmd(), &cmd);
                         req.on_complete(cmd);
                     }
                 }
@@ -111,16 +112,6 @@ where
         ready!(Pin::new(&mut self.s).poll_flush(cx))?;
         Poll::Ready(Ok(()))
     }
-    //#[inline(always)]
-    //fn check(&self, req: &Req, cmd: &protocol::Command) {
-    //    debug_assert!(
-    //        self.parser.check(req.cmd(), &cmd),
-    //        "{:?} {:?} => {:?}",
-    //        self,
-    //        req.cmd().data(),
-    //        cmd.data()
-    //    );
-    //}
 }
 unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
 unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
@@ -128,13 +119,22 @@ impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnte
     for Handler<'r, Req, P, S>
 {
     #[inline]
-    fn num_rx(&self) -> usize {
-        self.num_rx
+    fn last(&self) -> Option<ds::time::Instant> {
+        if self.pending.len() > 0 {
+            assert_ne!(self.num_rx, self.num_tx, "{:?}", self);
+            Some(self.pending.front().expect("empty").last_start_at())
+        } else {
+            None
+        }
     }
-    #[inline]
-    fn num_tx(&self) -> usize {
-        self.num_tx
-    }
+    //#[inline]
+    //fn num_rx(&self) -> usize {
+    //    self.num_rx
+    //}
+    //#[inline]
+    //fn num_tx(&self) -> usize {
+    //    self.num_tx
+    //}
     #[inline]
     fn close(&mut self) -> bool {
         self.data.disable();

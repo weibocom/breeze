@@ -184,11 +184,45 @@ where
     }
     #[inline]
     fn load(&mut self) {
-        // 把通知放在最前面，避免丢失通知
+        // 先改通知状态，再load，如果失败改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
         for (_, updated) in self.updated.iter() {
             updated.store(false, Ordering::Release);
         }
 
+        // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
+        let succeed = self.load_inner();
+        if !succeed {
+            self.updated
+                .get_mut(CONFIG_UPDATED_KEY)
+                .expect("phantom config state missed")
+                .store(true, Ordering::Release);
+            log::warn!("phantom will reload topo later...");
+        }
+    }
+}
+
+impl<B, E, Req, P> PhantomService<B, E, Req, P>
+where
+    B: Builder<P, Req, E>,
+    P: Protocol,
+    E: Endpoint<Item = Req>,
+{
+    fn build(
+        &self,
+        old: &mut HashMap<String, E>,
+        backend: Backend,
+        name: &str,
+        timeout: Duration,
+    ) -> Shards<E, Req> {
+        Shards::from(backend.distribution.as_str(), backend.servers, |addr| {
+            old.remove(addr).map(|e| e).unwrap_or_else(|| {
+                B::build(addr, self.parser.clone(), Resource::Phantom, name, timeout)
+            })
+        })
+    }
+
+    #[inline]
+    fn load_inner(&mut self) -> bool {
         let mut addrs = Vec::with_capacity(self.streams_backend.len());
         for b in self.streams_backend.iter() {
             let mut stream = Vec::with_capacity(b.servers.len());
@@ -197,7 +231,7 @@ where
                 let ips = dns::lookup_ips(host_url);
                 if ips.len() == 0 {
                     log::warn!("phantom dns looked up failed for {}", hp);
-                    return;
+                    return false;
                 }
                 if ips.len() > 1 {
                     log::warn!(
@@ -230,27 +264,8 @@ where
             let shard = self.build(&mut old, b, self.service.as_str(), self.timeout);
             self.streams.push((shard, access_mod));
         }
-    }
-}
 
-impl<B, E, Req, P> PhantomService<B, E, Req, P>
-where
-    B: Builder<P, Req, E>,
-    P: Protocol,
-    E: Endpoint<Item = Req>,
-{
-    fn build(
-        &self,
-        old: &mut HashMap<String, E>,
-        backend: Backend,
-        name: &str,
-        timeout: Duration,
-    ) -> Shards<E, Req> {
-        Shards::from(backend.distribution.as_str(), backend.servers, |addr| {
-            old.remove(addr).map(|e| e).unwrap_or_else(|| {
-                B::build(addr, self.parser.clone(), Resource::Phantom, name, timeout)
-            })
-        })
+        true
     }
 }
 

@@ -8,6 +8,21 @@ pub use by_distance::*;
 
 use discovery::distance::*;
 
+#[derive(Clone, Copy)]
+pub enum Selector {
+    Random,
+    ByDistance,
+}
+impl From<&str> for Selector {
+    #[inline]
+    fn from(selector: &str) -> Self {
+        match selector {
+            "random" => Self::Random,
+            _ => Self::ByDistance,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum ReplicaSelect<T> {
     // 随机选择
@@ -18,10 +33,10 @@ pub enum ReplicaSelect<T> {
 
 impl<T: Addr> ReplicaSelect<T> {
     #[inline]
-    pub fn from(name: &str, replicas: Vec<T>) -> Self {
-        match name {
-            "random" => Self::random(replicas),
-            _ => Self::distance(replicas),
+    pub fn from(t: Selector, replicas: Vec<T>) -> Self {
+        match t {
+            Selector::Random => Self::random(replicas),
+            Selector::ByDistance => Self::distance(replicas),
         }
     }
     #[inline]
