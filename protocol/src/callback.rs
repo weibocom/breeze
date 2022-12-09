@@ -248,6 +248,10 @@ impl CallbackContext {
     pub fn elapsed_current_req(&self) -> Duration {
         self.last_start.elapsed()
     }
+    #[inline(always)]
+    pub fn last_start(&self) -> Instant {
+        self.last_start
+    }
 
     #[inline]
     fn goon(&mut self) {

@@ -71,23 +71,23 @@ impl GuardedBuffer {
     pub fn pending(&self) -> usize {
         self.taken - self.inner.read()
     }
-    #[inline]
-    pub fn update(&mut self, idx: usize, val: u8) {
-        let oft = self.offset(idx);
-        self.inner.update(oft, val);
-    }
-    #[inline]
-    pub fn at(&self, idx: usize) -> u8 {
-        self.inner.at(self.offset(idx))
-    }
+    //#[inline]
+    //pub fn update(&mut self, idx: usize, val: u8) {
+    //    let oft = self.offset(idx);
+    //    self.inner.update(oft, val);
+    //}
+    //#[inline]
+    //pub fn at(&self, idx: usize) -> u8 {
+    //    self.inner.at(self.offset(idx))
+    //}
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.len() - self.pending()
     }
-    #[inline]
-    fn offset(&self, oft: usize) -> usize {
-        self.pending() + oft
-    }
+    //#[inline]
+    //fn offset(&self, oft: usize) -> usize {
+    //    self.pending() + oft
+    //}
     //#[inline]
     //pub fn raw(&self) -> &[u8] {
     //    self.inner.raw()
