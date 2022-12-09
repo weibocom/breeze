@@ -79,7 +79,7 @@ impl MemPolicy {
             .max(BUF_MIN)
             .next_power_of_two();
         if cap > BUF_MIN {
-            log::info!("grow: {} {} > {} => {} {}", len, reserve, cap, new, self);
+            log::info!("grow: {}+{}>{} => {} {}", len, reserve, cap, new, self);
         }
         self.continues.reset();
         #[cfg(any(feature = "trace", debug_assertions))]

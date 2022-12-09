@@ -8,11 +8,7 @@ use std::{
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use ds::{
-    arena::Arena,
-    time::{Duration, Instant},
-    AtomicWaker,
-};
+use ds::{arena::Arena, time::Instant, AtomicWaker};
 use endpoint::{Topology, TopologyCheck};
 use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
@@ -27,6 +23,7 @@ pub async fn copy_bidirectional<C, P, T>(
     metrics: Arc<StreamMetrics>,
     client: C,
     parser: P,
+    pipeline: bool,
 ) -> Result<()>
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
@@ -37,6 +34,7 @@ where
     *metrics.conn_num() += 1;
     let cb = unsafe { callback(&top) };
     let pipeline = CopyBidirectional {
+        pipeline,
         cb,
         top,
         metrics,
@@ -54,10 +52,11 @@ where
         dropping: Vec::new(),
         arena: Arena::cache(32),
     };
-    rt::Entry::from(pipeline, Duration::from_secs(10)).await
+    rt::Entry::timeout(pipeline, rt::DisableTimeout).await
 }
 
 pub struct CopyBidirectional<C, P, T> {
+    pipeline: bool, // 请求是否需要以pipeline方式进行
     top: T,
     rx_buf: StreamGuard,
     client: C,
@@ -103,13 +102,14 @@ where
             self.process_pending()?;
             let flush = self.poll_flush(cx)?;
 
-            ready!(flush);
-            ready!(request);
-
-            if self.pending.len() > 0 {
+            if self.pending.len() > 0 && !self.pipeline {
                 // CallbackContext::on_done负责唤醒
+                // 非pipeline请求（即ping-pong），已经有ping了，因此等待pong即可。
                 return Poll::Pending;
             }
+
+            ready!(flush);
+            ready!(request);
         }
     }
 }
@@ -122,13 +122,13 @@ where
     // 从client读取request流的数据到buffer。
     #[inline]
     fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        if self.pending.len() == 0 {
-            let Self { client, rx_buf, .. } = self;
-            let mut cx = Context::from_waker(cx.waker());
-            let mut rx = Reader::from(client, &mut cx);
-            ready!(rx_buf.write(&mut rx))?;
-            rx.check()?;
-        }
+        //if self.pending.len() == 0 {
+        let Self { client, rx_buf, .. } = self;
+        let mut cx = Context::from_waker(cx.waker());
+        let mut rx = Reader::from(client, &mut cx);
+        ready!(rx_buf.write(&mut rx))?;
+        rx.check()?;
+        //}
         Poll::Ready(Ok(()))
     }
     // 解析buffer，并且发送请求.
@@ -190,28 +190,19 @@ where
             let mut ctx = pending.pop_front().expect("front");
             let last = ctx.last();
             // 当前不是最后一个值。也优先写入cache
-            client.cache(!last);
+            if !last {
+                client.cache(true);
+            }
 
             *metrics.key() += 1;
             let mut response = ctx.take_response();
 
-            assert!(!ctx.inited(), "ctx req:[{:?}]", ctx.request(),);
             parser.write_response(
                 &mut ResponseContext::new(&mut ctx, metrics, |hash| self.top.shard_idx(hash)),
                 response.as_mut(),
                 client,
             )?;
 
-            //TODO !!! 这几个统计改到write_response中 fishermen 2022.11.23
-            // if response.nil_converted() {
-            //     *metrics.nilconvert() += 1;
-            // }
-            // 移到协议处理的位置
-            // if parser.cache() && op.is_query() {
-            //      *metrics.cache() += rsp.ok();
-            // }
-
-            // TODO 回写及公共统计，跑通后修改这里  fishermen
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
@@ -319,7 +310,12 @@ where
             if !ctx.complete() {
                 break;
             }
-            let _ctx = self.pending.pop_front().expect("empty");
+            let mut ctx = self.pending.pop_front().expect("empty");
+            // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
+            if ctx.inited() {
+                ctx.take_response();
+            }
+            debug_assert!(!ctx.inited());
         }
         // 处理异步请求
         self.process_async_pending();
