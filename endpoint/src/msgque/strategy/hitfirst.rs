@@ -23,7 +23,7 @@ const PARALLEL_COUNT: usize = 5;
 // 单个ip，如果连续命中，最多一次读取1024条
 const MAX_HITS: u32 = 1024;
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub(crate) struct HitFirstReader {
     // 对ip随机排序后的组合
     qnodes: Vec<Node>,
