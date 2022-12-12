@@ -84,7 +84,10 @@ async fn _process_one(
         let (client, _addr) = l.accept().await?;
         let client = rt::Stream::from(client);
         let p = p.clone();
-        let _path = format!("{:?}", path);
+        let mut _path = String::new();
+        if log::log_enabled!(log::Level::Debug) {
+            _path = format!("{:?}", path);
+        }
         log::debug!("connection established:{:?}", _path);
         let ctop;
         loop {
