@@ -79,7 +79,7 @@ impl Redis {
                         hash = packet.reserved_hash();
                         log::info!("+++ use direct hash for multi cmd: {:?}", packet)
                     } else {
-                        hash = calculate_hash(cfg, alg, &key);
+                        hash = calculate_hash(cfg, alg, &key)?;
                     }
 
                     if cfg.has_val {
@@ -103,7 +103,7 @@ impl Redis {
                     return Err(RedisError::ReqInvalid.error());
                 } else if cfg.has_key {
                     let key = packet.parse_key()?;
-                    hash = calculate_hash(cfg, alg, &key);
+                    hash = calculate_hash(cfg, alg, &key)?;
                 } else {
                     hash = default_hash();
                 }
@@ -151,7 +151,7 @@ impl Redis {
                         log::info!("+++ will broadcast: {:?}", packet.inner_data());
                         hash = crate::MAX_DIRECT_HASH;
                     } else {
-                        hash = calculate_hash(cfg, alg, &key);
+                        hash = calculate_hash(cfg, alg, &key)?;
                     }
 
                     // 记录reserved hash，为下一个指令使用
@@ -508,9 +508,21 @@ static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0?
 #[inline]
-fn calculate_hash<H: Hash>(cfg: &CommandProperties, alg: &H, key: &RingSlice) -> i64 {
+fn calculate_hash<H: Hash>(cfg: &CommandProperties, alg: &H, key: &RingSlice) -> Result<i64> {
+    // 99%以上的请求，key大于2，此处可以直接返回
+    if key.len() > 2 {
+        return Ok(alg.hash(key));
+    }
+
+    // 特殊key请求、非key请求、异常请求在此处理
     match key.len() {
-        0 => default_hash(),
+        0 => {
+            if !cfg.has_key {
+                return Ok(default_hash());
+            }
+            // 如果cmd需要key，但是协议未出啊
+            return Err(Error::RequestProtocolInvalid("empty key"));
+        }
         2 => {
             // 对“hashkey -1”做特殊处理，使用max hash，从而保持与hashkeyq一致
             if key.len() == 2
@@ -518,12 +530,15 @@ fn calculate_hash<H: Hash>(cfg: &CommandProperties, alg: &H, key: &RingSlice) ->
                 && key.at(1) == ('1' as u8)
                 && cfg.name.eq(command::SPEC_LOCAL_CMD_HASHKEY)
             {
-                crate::MAX_DIRECT_HASH
+                Ok(crate::MAX_DIRECT_HASH)
             } else {
-                alg.hash(key)
+                Ok(alg.hash(key))
             }
         }
-        _ => alg.hash(key),
+        _ => {
+            debug_assert!(key.len() == 1, "cfg:{:?}, key:{:?}", cfg, key);
+            Ok(alg.hash(key))
+        }
     }
     // if key.len() == 0 {
     //     default_hash()

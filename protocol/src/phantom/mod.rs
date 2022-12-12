@@ -327,20 +327,23 @@ static AUTO: AtomicI64 = AtomicI64::new(0);
 // 避免异常情况下hash为0，请求集中到某一个shard上。
 // hash正常情况下可能为0
 #[inline]
-fn split_and_calculate_hash<H: Hash>(alg: &H, full_key: &RingSlice) -> (i64, RingSlice) {
+fn split_and_calculate_hash<H: Hash>(alg: &H, full_key: &RingSlice) -> Result<(i64, RingSlice)> {
     if let Some(idx) = full_key.find(0, b'.') {
         debug_assert!(idx > 0);
+
         let hash_key = full_key.sub_slice(0, idx);
         let real_key_len = full_key.len() - idx - 1;
         let real_key = full_key.sub_slice(idx + 1, real_key_len);
 
         debug_assert!(real_key.len() > 0);
         let hash = alg.hash(&hash_key);
-        return (hash, real_key);
+        return Ok((hash, real_key));
     }
 
     log::warn!("phantom - malform key: {:?}", full_key);
-    (0, full_key.sub_slice(0, full_key.len()))
+    // TODO：0 长key直接过滤，非0长特殊key也返回Err，待讨论 fishermen
+    if full_key.len() == 0 {}
+    Ok((0, full_key.sub_slice(0, full_key.len())))
 }
 
 #[inline]
