@@ -12,12 +12,6 @@ use enum_dispatch::enum_dispatch;
 pub trait Endpoint: Sized + Send + Sync {
     type Item;
     fn send(&self, req: Self::Item);
-    //#[inline]
-    //fn static_send(receiver: usize, req: Self::Item) {
-    //    let e = unsafe { &*(receiver as *const Self) };
-    //    e.send(req);
-    //}
-    //
     // 返回hash应该发送的分片idx
     fn shard_idx(&self, _hash: i64) -> usize {
         log::warn!("+++ should not use defatult shard idx");

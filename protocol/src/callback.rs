@@ -5,11 +5,9 @@ use std::{
     time::Duration,
 };
 
-use ds::time::Instant;
-use ds::AtomicWaker;
+use ds::{time::Instant, AtomicWaker};
 
-use crate::request::Request;
-use crate::{Command, Error, HashedCommand};
+use crate::{request::Request, Command, Error, HashedCommand};
 
 const REQ_TRY_MAX_COUNT: u8 = 3;
 
@@ -70,7 +68,7 @@ impl CallbackContext {
 
         // 对noforward请求，只需要设置complete状态为true，不需要wake及其他逻辑
         // self.on_done();
-        assert!(!self.complete(), "{:?}", self);
+        assert!(!*self.ctx.complete.get_mut(), "{:?}", self);
         self.ctx.complete.store(true, Release);
     }
 
@@ -186,10 +184,6 @@ impl CallbackContext {
     fn response_ok(&self) -> bool {
         unsafe { self.inited() && self.unchecked_response().ok() }
     }
-    //#[inline]
-    //pub fn response_nil_converted(&self) -> bool {
-    //    unsafe { self.inited() && self.unchecked_response().nil_converted() }
-    //}
     #[inline]
     pub fn on_err(&mut self, err: Error) {
         // 正常err场景，仅仅在debug时check
@@ -214,7 +208,6 @@ impl CallbackContext {
     // 在使用前，先得判断inited
     #[inline]
     unsafe fn unchecked_response(&self) -> &Command {
-        assert!(self.inited());
         self.response.assume_init_ref()
     }
     #[inline]
@@ -289,21 +282,16 @@ impl CallbackContext {
     pub fn last(&self) -> bool {
         self.ctx.last
     }
-    //#[inline]
-    //fn manual_drop(&mut self) {
-    //    unsafe { Box::from_raw(self) };
-    //}
 }
 
 impl Drop for CallbackContext {
     #[inline]
     fn drop(&mut self) {
         assert!(*self.ctx.complete.get_mut(), "{}", self);
-        self.try_drop_response();
-        //assert!(!self.inited(), "response not taken:{:?}", self);
+        //self.try_drop_response();
+        assert!(!*self.ctx.inited.get_mut(), "response not taken:{:?}", self);
         // 可以尝试检查double free
         *self.ctx.complete.get_mut() = false;
-        //self.try_drop_response();
     }
 }
 
