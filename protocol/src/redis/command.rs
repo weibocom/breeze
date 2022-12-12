@@ -84,39 +84,38 @@ impl CommandProperties {
         format!("${}\r\n{}\r\n", shard_str.len(), shard_str)
     }
 
-    // TODO 当前mesh不再进行cmd校验，由后端server进行
-    //#[inline]
-    //pub fn validate(&self, token_count: usize) -> bool {
-    //    if self.arity == 0 {
-    //        return false;
-    //    }
-    //    if self.arity > 0 {
-    //        return token_count == self.arity as usize;
-    //    } else {
-    //        let last_key_idx = self.last_key_index(token_count);
-    //        return token_count > last_key_idx && last_key_idx >= self.first_key_index();
-    //    }
-    //}
+    // mesh 需要进行validate，避免不必要的异常 甚至 hang住 fishermen
+    #[inline]
+    pub fn validate(&self, total_bulks: usize) -> bool {
+        // 初始化时会进行check arity，此处主要是心理安慰剂，另外避免init的arity check被不小心干掉
+        debug_assert!(self.arity != 0, "name:{}", self.name);
 
-    //#[inline]
-    //pub fn first_key_index(&self) -> usize {
-    //    self.first_key_index as usize
-    //}
+        if self.arity > 0 {
+            return total_bulks == self.arity as usize;
+        } else {
+            return total_bulks >= self.arity.abs() as usize;
+        }
+    }
+
+    // #[inline]
+    // pub fn first_key_index(&self) -> usize {
+    //     self.first_key_index as usize
+    // }
 
     // 如果last key index为负数，token count加上该负数，即为key的结束idx
-    //#[inline]
-    //pub fn last_key_index(&self, token_count: usize) -> usize {
-    //    assert!(
-    //        token_count as i64 > self.first_key_index as i64
-    //            && token_count as i64 > self.last_key_index as i64
-    //    );
-    //    if self.last_key_index >= 0 {
-    //        return self.last_key_index as usize;
-    //    } else {
-    //        // 最后一个key的idx为负数，
-    //        return (token_count as i64 + self.last_key_index as i64) as usize;
-    //    }
-    //}
+    // #[inline]
+    // pub fn last_key_index(&self, token_count: usize) -> usize {
+    //     assert!(
+    //         token_count as i64 > self.first_key_index as i64
+    //             && token_count as i64 > self.last_key_index as i64
+    //     );
+    //     if self.last_key_index >= 0 {
+    //         return self.last_key_index as usize;
+    //     } else {
+    //         // 最后一个key的idx为负数，
+    //         return (token_count as i64 + self.last_key_index as i64) as usize;
+    //     }
+    // }
 
     pub(super) fn flag(&self) -> crate::Flag {
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
@@ -241,6 +240,9 @@ impl Commands {
         assert!(!self.supported[idx].supported);
         c.supported = true;
         c.op_code = idx as u16;
+
+        // arity 不能为0
+        assert!(c.arity != 0, "invalid redis cmd: {}", c.name);
 
         // 所有非swallowed cmd的padding-rsp都必须是合理值，此处统一判断
         if !c.swallowed {
