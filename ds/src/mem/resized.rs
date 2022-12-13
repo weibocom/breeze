@@ -79,15 +79,17 @@ impl ResizedRingBuffer {
     }
     #[inline]
     pub fn grow(&mut self, reserve: usize) {
-        if self.policy.need_grow(self.len(), self.cap(), reserve) {
-            let new = self.policy.grow(self.len(), self.cap(), reserve);
+        let len = self.len();
+        if self.policy.need_grow(len, self.cap(), reserve) {
+            let new = self.policy.grow(len, self.cap(), reserve);
             self.resize(new);
         }
     }
     #[inline]
     pub fn shrink(&mut self) {
-        if self.policy.need_shrink(self.len(), self.cap()) {
-            let new = self.policy.shrink(self.len(), self.cap());
+        let len = self.len();
+        if self.policy.need_shrink(len, self.cap()) {
+            let new = self.policy.shrink(len, self.cap());
             self.resize(new);
         }
     }
