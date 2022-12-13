@@ -88,7 +88,7 @@ impl CommandProperties {
     #[inline]
     pub fn validate(&self, total_bulks: usize) -> bool {
         // 初始化时会进行check arity，此处主要是心理安慰剂，另外避免init的arity check被不小心干掉
-        debug_assert!(self.arity != 0, "name:{}", self.name);
+        debug_assert!(self.arity != 0, "redis cmd:{}", self.name);
 
         if self.arity > 0 {
             return total_bulks == self.arity as usize;
