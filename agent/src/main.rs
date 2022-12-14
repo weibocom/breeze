@@ -17,8 +17,153 @@ use rt::spawn;
 
 use protocol::Result;
 
+use serde::{Deserialize, Serialize};
+
+use actix_web::{
+    error, guard,
+    http::{header::ContentType, StatusCode},
+    web::{get, head, post, resource, scope, Data, Form, Json, Path, Query, ServiceConfig},
+    App, Either, HttpRequest, HttpResponse, HttpServer, Responder,
+};
+use derive_more::{Display, Error};
+
+#[derive(Debug, Display, Error)]
+#[display(fmt = "my error: {}", name)]
+pub struct MyError {
+    name: &'static str,
+}
+
+// Use default implementation for `error_response()` method
+impl error::ResponseError for MyError {}
+
+// #[get("/")]
+// async fn index() -> Result<&'static str, MyError> {
+//    let err = MyError { name: "test error" };
+//    info!("{}", err);
+//    Err(err)
+// }
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Office {
+    worker: i32,
+    status: String,
+    address: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OptionOffice {
+    worker: Option<i32>,
+    status: Option<String>,
+    address: Option<String>,
+}
+
+async fn hello() -> impl Responder {
+    "Hello world!"
+}
+
+async fn path_req(data: Data<Office>) -> String {
+    format!(
+        "worker:{},status:{},address:{}",
+        data.worker, data.status, data.address
+    )
+}
+
+async fn show_office() -> Json<Office> {
+    let company = Office {
+        worker: 1,
+        status: "healthy".to_string(),
+        address: "sixA".to_string(),
+    };
+    Json(company)
+}
+
+//actix中配置不同路由可通过configure实现
+fn scoped_config(cfg: &mut ServiceConfig) {
+    cfg.service(
+        resource("/test")
+            .route(get().to(show_office))
+            .route(head().to(|| HttpResponse::MethodNotAllowed())),
+    );
+}
+
+fn config(cfg: &mut ServiceConfig) {
+    cfg.service(
+        resource("/app")
+            .route(get().to(path_req))
+            .route(head().to(|| HttpResponse::MethodNotAllowed())),
+    );
+}
+// pub enum Hand<L, R> {
+//     Left(L),
+//     Right(R),
+// }
+
+// #[post("/")]
+// fn index(form: Either<Json<Office>, Form<Office>>) -> String {
+//     let name: String = match form {
+//         Either::Left(json) => json.status.to_owned(),
+//         Either::Right(form) => form.address.to_owned(),
+//     };
+//     format!("company {}!", name)
+// }
+
+async fn index(path: Path<(String, String)>, json: Json<Office>) -> impl Responder {
+    let (name, count) = path.into_inner();
+    format!("Welcome {}! {},{}", name, count, json.worker)
+}
+
+async fn query_req(args: Query<OptionOffice>) -> String {
+    format!(
+        "worker:{},status:{},address:{}",
+        args.worker.unwrap_or(16).clone(),
+        args.status.clone().unwrap_or("heaalthy".to_string()),
+        args.address.clone().unwrap_or_default(),
+    )
+}
+
+async fn post_json(company: Form<Office>) -> String {
+    format!("Welcome {:?}!", company.into_inner())
+}
 // 默认支持
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
+    let company = Data::new(Office {
+        worker: 20,
+        status: "healthy".to_string(),
+        address: "address".to_string(),
+    });
+    HttpServer::new(move || {
+        App::new()
+            //在注册数据之前创建一份数据
+            .app_data(company.clone())
+            .route("/path_req", get().to(path_req))
+            .configure(config)
+            //.route(post().to(path_req))
+            .service(
+                //scope设置特定应用前缀
+                scope("/users")
+                    .configure(scoped_config)
+                    // .configure(scoped_config)
+                    //.guard(guard::Header("user", "show"))
+                    .route("/", get().to(hello))
+                    .route("/show", get().to(show_office))
+                    // /users/reso {"worker": 12,"status": "rain",address: "play"}
+                    .service(resource("/reso").route(post().to(post_json))),
+            )
+            //反序列化路径 默认come black
+            .route("/hello/{name}/{count}/{worker}", get().to(index))
+            .route(
+                "/query_req/{worker}/{status}/{address}",
+                get().to(query_req),
+            )
+    })
+    //.keep_alive(None)
+    //.workers(context::get().thread_num as usize)
+    .bind("127.0.0.1:4000")?
+    .run()
+    .await
+    .unwrap();
+
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(context::get().thread_num as usize)
         .thread_name("breeze-w")
