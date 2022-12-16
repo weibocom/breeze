@@ -151,20 +151,15 @@ impl<'a, 'r> ItemWriter for PrometheusItemWriter<'a, 'r> {
          */
 
         //从 name 中截取 source、namespace和topic、instance
-        let source = name
-            .split(crate::TARGET_SPLIT as char)
-            .nth(0)
-            .unwrap_or("")
-            .as_bytes();
-        let bip = name
-            .split(crate::TARGET_SPLIT as char)
-            .nth(2)
-            .unwrap_or("")
-            .as_bytes();
-        let charname = name.split(crate::TARGET_SPLIT as char).nth(1).unwrap_or("");
+        let mut all_iter = name.split(crate::TARGET_SPLIT as char);
+        let source = all_iter.next().unwrap_or("").as_bytes();
+        let nameandtopic = all_iter.next().unwrap_or("");
+        let bip = all_iter.next().unwrap_or("").as_bytes();
+        //let charname = name.split(crate::TARGET_SPLIT as char).nth(1).unwrap_or("");
         //针对mcq,namespace中可能包含topic,先根据 ‘#’分割;
-        let namespace = charname.split("#").nth(0).unwrap_or("").as_bytes();
-        let topic = charname.split("#").nth(1).unwrap_or("").as_bytes();
+        let mut name_iter = nameandtopic.split("#");
+        let namespace = name_iter.next().unwrap_or("").as_bytes();
+        let topic = name_iter.next().unwrap_or("").as_bytes();
 
         let metric_name = MetricName(key, sub_key);
 
