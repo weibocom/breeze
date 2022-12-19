@@ -104,20 +104,18 @@ pub struct ContextOption {
 }
 
 lazy_static! {
-    // rmlog-760-g3a7a12b-modified
-    // 取 g3a7a12b-modified
+    // tags/v0.0.1.59-0-gd80aa42d
+    // heads/dev-0-gc647f866
     static ref SHORT_VERSION: String = {
-        let full = git_version::git_version!();
-        let fields:Vec<&str> = full.split('-').collect();
-        let len = fields.len();
-        let last = *fields.get(len-1).unwrap_or(&"");
+        let full = git_version::git_version!(args = ["--long", "--all", "--dirty=-modified"]);
+
+        let v = match full.find('/') {
+            Some(idx) => &full[idx+1..],
+            None => &full[..],
+        };
+
         let build = if cfg!(debug_assertions) { "_debug" } else { "" };
-        if last == "modified" {
-            let second_last = fields.get(len-2).unwrap_or(&"");
-            format!("{}_{}{}", second_last, last, build)
-        } else {
-            last.to_string() + build
-        }
+        format!("{}_{}", v, build)
     };
     static ref CONTEXT: Context = {
         let ctx = ContextOption::from_os_args();
