@@ -115,7 +115,7 @@ lazy_static! {
         };
 
         let build = if cfg!(debug_assertions) { "_debug" } else { "" };
-        format!("{}_{}", v, build)
+        format!("{}{}", v, build)
     };
     static ref CONTEXT: Context = {
         let ctx = ContextOption::from_os_args();
