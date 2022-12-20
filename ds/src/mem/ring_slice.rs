@@ -209,27 +209,12 @@ macro_rules! define_read_number {
 
 impl RingSlice {
     // big endian
-    define_read_number!(read_u8, u8);
+    //define_read_number!(read_u8, u8);
     define_read_number!(read_u16, u16);
     define_read_number!(read_u32, u32);
     define_read_number!(read_u64, u64);
 }
 
-impl PartialEq<[u8]> for RingSlice {
-    #[inline]
-    fn eq(&self, other: &[u8]) -> bool {
-        if self.len() == other.len() {
-            for i in 0..other.len() {
-                if self.at(i) != other[i] {
-                    return false;
-                }
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
 impl From<&[u8]> for RingSlice {
     #[inline]
     fn from(s: &[u8]) -> Self {
@@ -266,5 +251,39 @@ impl Debug for RingSlice {
             self.cap,
             data.utf8()
         )
+    }
+}
+
+pub mod tests {
+    impl PartialEq<[u8]> for super::RingSlice {
+        #[inline]
+        fn eq(&self, other: &[u8]) -> bool {
+            if self.len() == other.len() {
+                for i in 0..other.len() {
+                    if self.at(i) != other[i] {
+                        return false;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
+    }
+    // 内容相等
+    impl PartialEq<Self> for super::RingSlice {
+        #[inline]
+        fn eq(&self, other: &Self) -> bool {
+            if self.len() == other.len() {
+                for i in 0..other.len() {
+                    if self.at(i) != other.at(i) {
+                        return false;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
     }
 }
