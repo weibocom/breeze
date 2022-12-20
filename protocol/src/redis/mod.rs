@@ -6,10 +6,9 @@ mod packet;
 //mod token;
 
 use crate::{
-    redis::command::SWALLOWED_CMD_HASHRANDOMQ,
     redis::packet::RequestPacket,
     redis::{
-        command::{CommandProperties, SWALLOWED_CMD_HASHKEYQ},
+        command::{CommandProperties, CommandType},
         packet::LayerType,
     },
     Command, Commander, Error, Flag, HashedCommand, MetricName, Protocol, RequestProcessor, Result,
@@ -111,7 +110,7 @@ impl Redis {
                 if cfg.reserve_hash {
                     debug_assert!(cfg.has_key, "cfg:{}", cfg.name);
                     // 执行到这里，需要保留指示key的，目前只有hashkey
-                    debug_assert_eq!(cfg.name, command::SPEC_LOCAL_CMD_HASHKEY);
+                    debug_assert_eq!(cfg.cmd_type, CommandType::SpecLocalCmdHashkey);
                     packet.update_reserved_hash(hash);
                 }
             }
@@ -135,9 +134,9 @@ impl Redis {
             packet.set_layer(LayerType::MasterOnly);
         } else {
             // 非master指令check后处理
-            match cfg.name {
+            match cfg.cmd_type {
                 // cmd: hashkeyq $key
-                SWALLOWED_CMD_HASHKEYQ => {
+                CommandType::SwallowedCmdHashkeyq => {
                     let key = packet.parse_key()?;
                     let hash: i64;
                     // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
@@ -152,7 +151,7 @@ impl Redis {
                     packet.update_reserved_hash(hash);
                 }
                 // cmd: hashrandomq
-                SWALLOWED_CMD_HASHRANDOMQ => {
+                CommandType::SwallowedCmdHashrandomq => {
                     // 虽然hash名义为i64，但实际当前均为u32
                     let hash = rand::random::<u32>();
                     // 记录reserved hash，为下一个指令使用
@@ -347,11 +346,12 @@ impl Protocol for Redis {
                 w.write_slice(rsp.data(), 0)?;
             } else {
                 // 无响应，则根据cmd name构建对应响应
-                match cfg.name {
-                    command::SPEC_LOCAL_CMD_HASHKEY => {
-                        let shard = ctx.request_shard();
-                        let rsp = cfg.get_rsp_hashkey(shard);
-                        w.write(rsp.as_bytes())?;
+                match cfg.cmd_type {
+                    CommandType::SpecLocalCmdHashkey => {
+                        // format!(":{}\r\n", shard)
+                        w.write(b":")?;
+                        w.write(ctx.request_shard().to_string().as_bytes())?;
+                        w.write(b"\r\n")?;
                     }
                     _ => {
                         let padding = cfg.get_padding_rsp();
@@ -385,12 +385,16 @@ impl Protocol for Redis {
                 }
 
                 // 构建rsp or padding rsp
-                match cfg.name {
+                match cfg.cmd_type {
                     // 当前需要单独创建rsp的multi指令只有keyshard
-                    command::SPEC_LOCAL_CMD_KEYSHARD => {
-                        let shard = ctx.request_shard();
-                        let rsp = cfg.get_rsp_keyshard(shard);
-                        w.write(rsp.as_bytes())?;
+                    CommandType::SpecLocalCmdKeyshard => {
+                        let shard = ctx.request_shard().to_string();
+                        // format!("${}\r\n{}\r\n", shard_str.len(), shard_str);
+                        w.write(b"$")?;
+                        w.write(shard.len().to_string().as_bytes())?;
+                        w.write(b"\r\n")?;
+                        w.write(shard.as_bytes())?;
+                        w.write(b"\r\n")?;
                     }
                     _ => {
                         let padding = cfg.get_padding_rsp();
@@ -519,7 +523,7 @@ fn calculate_hash<H: Hash>(cfg: &CommandProperties, alg: &H, key: &RingSlice) ->
             if key.len() == 2
                 && key.at(0) == ('-' as u8)
                 && key.at(1) == ('1' as u8)
-                && cfg.name.eq(command::SPEC_LOCAL_CMD_HASHKEY)
+                && cfg.cmd_type == CommandType::SpecLocalCmdHashkey
             {
                 crate::MAX_DIRECT_HASH
             } else {
