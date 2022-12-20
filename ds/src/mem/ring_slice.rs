@@ -230,22 +230,6 @@ impl PartialEq<[u8]> for RingSlice {
         }
     }
 }
-// 内容相等
-impl PartialEq<Self> for RingSlice {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        if self.len() == other.len() {
-            for i in 0..other.len() {
-                if self.at(i) != other.at(i) {
-                    return false;
-                }
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
 impl From<&[u8]> for RingSlice {
     #[inline]
     fn from(s: &[u8]) -> Self {

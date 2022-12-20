@@ -29,7 +29,7 @@ fn ring_buffer() {
     assert_eq!(n, rs.len());
     assert_eq!(buf.len(), rs.len());
     assert_eq!(buf.len(), 19);
-    assert_eq!(buf.data(), rs);
+    assert!(ringslice_eq(&buf.data(), &rs));
     let rs = RingSlice::from(data.as_ptr(), cap, 32, 32 + 32);
     let n = buf.write(&rs);
     assert_eq!(n, 32 - 19);
@@ -153,4 +153,19 @@ fn guarded_buffer() {
 
     drop(g0);
     guard.gc();
+}
+
+// 内容相等
+#[inline]
+fn ringslice_eq(this: &RingSlice, other: &RingSlice) -> bool {
+    if this.len() == other.len() {
+        for i in 0..other.len() {
+            if this.at(i) != other.at(i) {
+                return false;
+            }
+        }
+        true
+    } else {
+        false
+    }
 }
