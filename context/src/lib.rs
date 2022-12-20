@@ -335,7 +335,6 @@ impl From<ContextOption> for Context {
         if version.as_bytes().last() == Some(&b'_') {
             version.pop();
         }
-        println!("version:{}", version);
         Self { version, option }
     }
 }
