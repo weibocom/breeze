@@ -125,7 +125,6 @@ fn test_hashrandomq_with_master() {
 /// 先set arykey 1到指定56378端口 set arykey 2 到56381
 /// master后从库56381是2 56378是1
 /// 56378端口从库是56381正常get是1 但是加完master后是从主库读所以是2
-
 #[named]
 #[test]
 fn test_master() {
@@ -158,7 +157,6 @@ fn test_master() {
 /// 利用hashkeyq set落到第三片 hashkeyq + test_sharsd_4+ set arykey 1在第三片"127.0.0.1:56381,127.0.0.1:56381上
 /// 然后直接get会从第一片上get get不到
 ///  再利用hashkeyq + test_sharsd_4+ get arykey去get 成功获取到
-
 #[named]
 #[test]
 fn test_hashkeyq_3() {
@@ -199,7 +197,6 @@ fn test_hashkeyq_3() {
 /// 加master get失败 没有56379d的主库 所以获取失败
 /// 利用hashkeyq set
 /// master hashkeyq get 成功获取到值
-
 #[named]
 #[test]
 fn master_hashkeyq_1() {
@@ -247,4 +244,19 @@ fn master_hashkeyq_1() {
     )
     .expect("send err");
     assert_eq!(con.get(arykey), Ok(2));
+}
+
+#[test]
+#[named]
+#[cfg(feature = "github_workflow")]
+fn test_keyshard() {
+    let arykey = function_name!();
+    let mut con = get_conn(&RESTYPE.get_host());
+
+    assert_eq!(
+        redis::cmd("keyshard")
+            .arg(&["test_shards_19", "test_shards_20"])
+            .query(&mut con),
+        Ok((1, 2))
+    );
 }
