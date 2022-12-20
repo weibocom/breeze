@@ -2,15 +2,20 @@ use crate::{HashedCommand, OpCode, Operation, Result};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
 
-//============== 吞噬指令 ==============//
-pub const SWALLOWED_CMD_HASHKEYQ: &str = "hashkeyq";
-pub const SWALLOWED_CMD_HASHRANDOMQ: &str = "hashrandomq";
+#[derive(Default, Debug, PartialEq, Clone, Copy)]
+pub(crate) enum CommandType {
+    #[default]
+    Other,
+    //============== 吞噬指令 ==============//
+    SwallowedCmdHashkeyq,
+    SwallowedCmdHashrandomq,
 
-//============== 需要本地构建特殊响应的cmd ==============//
-// 指示下一个cmd的用于计算分片hash的key
-pub const SPEC_LOCAL_CMD_HASHKEY: &str = "hashkey";
-// 计算批量key的分片索引
-pub const SPEC_LOCAL_CMD_KEYSHARD: &str = "keyshard";
+    //============== 需要本地构建特殊响应的cmd ==============//
+    // 指示下一个cmd的用于计算分片hash的key
+    SpecLocalCmdHashkey,
+    // 计算批量key的分片索引
+    SpecLocalCmdKeyshard,
+}
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Debug)]
@@ -47,6 +52,7 @@ pub(crate) struct CommandProperties {
     pub(super) need_reserved_hash: bool, // 是否需要前一个指令明确指定的hash，如果为true，则必须有key或者通过hashkey指定明确的hash
     pub(super) master_next: bool,        // 是否需要将下一个cmd发送到master
     pub(super) quit: bool,               // 是否需要quit掉连接
+    pub(super) cmd_type: CommandType,    //用来标识自身，opcode非静态可知
 }
 
 // 默认响应
@@ -73,16 +79,16 @@ impl CommandProperties {
         unsafe { *PADDING_RSP_TABLE.get_unchecked(self.padding_rsp) }
     }
 
-    // 构建hashkey的resp,格式:1\r\n
-    pub(super) fn get_rsp_hashkey(&self, shard: usize) -> String {
-        format!(":{}\r\n", shard)
-    }
+    // // 构建hashkey的resp,格式:1\r\n
+    // pub(super) fn get_rsp_hashkey(&self, shard: usize) -> String {
+    //     format!(":{}\r\n", shard)
+    // }
 
-    // 构建keyshard的resp，注意返回的bulk num，格式:$1\r\n1\r\n
-    pub(super) fn get_rsp_keyshard(&self, shard: usize) -> String {
-        let shard_str = shard.to_string();
-        format!("${}\r\n{}\r\n", shard_str.len(), shard_str)
-    }
+    // // 构建keyshard的resp，注意返回的bulk num，格式:$1\r\n1\r\n
+    // pub(super) fn get_rsp_keyshard(&self, shard: usize) -> String {
+    //     let shard_str = shard.to_string();
+    //     format!("${}\r\n{}\r\n", shard_str.len(), shard_str)
+    // }
 
     // mesh 需要进行validate，避免不必要的异常 甚至 hang住 fishermen
     #[inline]
@@ -546,8 +552,10 @@ pub(super) static SUPPORTED: Commands = {
         // swallowed扩展指令，属性在add_support方法中增加 fishermen
         //("hashkeyq", "hashkeyq",                   2,  Meta,  1, 1, 1, 5, false, true, true, false, false),
         //("hashrandomq", "hashrandomq",             1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
-        Cmd::new("hashkeyq").arity(2).op(Meta).first(1).last(1).step(1).padding(5).nofwd().key().resv_hash().swallow(),
-        Cmd::new("hashrandomq").arity(1).op(Meta).padding(5).nofwd().resv_hash().swallow(),
+        Cmd::new("hashkeyq").arity(2).op(Meta).first(1).last(1).step(1).padding(5).
+        nofwd().key().resv_hash().swallow().cmd_type(CommandType::SwallowedCmdHashkeyq),
+        Cmd::new("hashrandomq").arity(1).op(Meta).padding(5).nofwd().resv_hash().swallow().
+        cmd_type(CommandType::SwallowedCmdHashrandomq),
 
         // swallowed扩展指令对应的有返回值的指令，去掉q即可
         //("hashkey", "hashkey",                     2,  Get,  1, 1, 1, 5, false, true, true, false, false),
@@ -555,8 +563,10 @@ pub(super) static SUPPORTED: Commands = {
         // 这个指令暂无需求，先不支持
         // ("hashrandom", "hashrandom",               1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
         // hashkey、keyshard 改为meta，确保构建rsp时的status管理
-        Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(5).nofwd().key().resv_hash(),
-        Cmd::new("keyshard").arity(-2).op(Meta).first(1).last(-1).step(1).padding(5).multi().nofwd().key().bulk().resv_hash(),
+        Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(5).nofwd().key().resv_hash().
+        cmd_type(CommandType::SpecLocalCmdHashkey),
+        Cmd::new("keyshard").arity(-2).op(Meta).first(1).last(-1).step(1).padding(5).multi().
+        nofwd().key().bulk().resv_hash().cmd_type(CommandType::SpecLocalCmdKeyshard),
 
         // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
         //("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false),
@@ -760,6 +770,10 @@ impl CommandProperties {
     }
     fn quit(mut self) -> Self {
         self.quit = true;
+        self
+    }
+    fn cmd_type(mut self, cmd_type: CommandType) -> Self {
+        self.cmd_type = cmd_type;
         self
     }
 }

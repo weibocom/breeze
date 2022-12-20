@@ -247,10 +247,8 @@ fn master_hashkeyq_1() {
 }
 
 #[test]
-#[named]
 #[cfg(feature = "github_workflow")]
 fn test_keyshard() {
-    let arykey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
 
     assert_eq!(
