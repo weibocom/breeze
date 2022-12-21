@@ -22,10 +22,13 @@ pub fn raw_local_ip() -> &'static str {
 }
 
 use std::io::Result;
-use std::net::TcpStream;
+use std::net::{TcpStream, SocketAddr};
+use std::str::FromStr;
+use std::time::Duration;
 
 fn _init_local_ip(addr: &str) -> Result<()> {
-    let local = TcpStream::connect(addr)?.local_addr()?.ip().to_string();
+    let sock_addr = SocketAddr::from_str(addr).unwrap();
+    let local = TcpStream::connect_timeout(&sock_addr,  Duration::from_secs(30))?.local_addr()?.ip().to_string();
 
     let raw = local.clone();
     #[cfg(feature = "mock-local-ip")]
