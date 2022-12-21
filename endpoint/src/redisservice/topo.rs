@@ -71,7 +71,7 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, mut req: Self::Item) {
-        assert_ne!(self.shards.len(), 0);
+        debug_assert_ne!(self.shards.len(), 0);
 
         use protocol::RedisFlager;
         let shard_idx = match req.cmd().direct_hash() {
@@ -94,7 +94,7 @@ where
             false => self.distribute.index(req.hash()),
         };
 
-        assert!(
+        debug_assert!(
             shard_idx < self.shards.len(),
             "redis: {}/{} req:{:?}",
             shard_idx,
@@ -104,15 +104,8 @@ where
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
 
         // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
-        if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
-            log::warn!(
-                "+++ send - {} hash/idx:{}/{}, master_only:{}, req:{:?},",
-                self.service,
-                req.hash(),
-                shard_idx,
-                req.cmd().master_only(),
-                req.data(),
-            )
+        if req.hash() <= 0 {
+            log::warn!("{} send {} => {:?}", self.service, shard_idx, req)
         }
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
