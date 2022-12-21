@@ -155,10 +155,10 @@ fn test_master() {
     }
 }
 
-/// hashkeyq + test_sharsd_4+ set arykey 1在第三片"127.0.0.1:56381,127.0.0.1:56381上
-/// 直接get会从第一片上get get不到
-///  hashkeyq + test_sharsd_4+ get arykey
-/// todo:直接get会在第一片和第0片get到
+/// 利用hashkeyq set落到第三片 hashkeyq + test_sharsd_4+ set arykey 1在第三片"127.0.0.1:56381,127.0.0.1:56381上
+/// 然后直接get会从第一片上get get不到
+///  再利用hashkeyq + test_sharsd_4+ get arykey去get 成功获取到
+
 #[named]
 #[test]
 fn test_hashkeyq_3() {
@@ -187,15 +187,18 @@ fn test_hashkeyq_3() {
     assert_eq!(con.get(arykey), Ok(true));
 }
 
+/// 测试master+hashkeyq
 ///  set arykey 1
 /// master
 /// master_hashkeyq_1在第2片  key:test_shards_5在第1片
 ///
+///
+///
 /// 向56379 set arykey 1
-/// get arykey 1 在第二片
-/// 加master get失败 没有56379d的主库
-///hashkeyq set
-/// master hashkeyq get
+/// get arykey 1 在第二片可以get到
+/// 加master get失败 没有56379d的主库 所以获取失败
+/// 利用hashkeyq set
+/// master hashkeyq get 成功获取到值
 
 #[named]
 #[test]

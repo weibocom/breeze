@@ -92,6 +92,10 @@ fn limit_big_value_size() {
     );
 }
 
+///测试命令中参数异常的情况
+/// set key 不加val 提示wrong num
+/// get 后不加任何值 提示结尾异常
+/// mset key 不加val 程序直接异常退出
 #[named]
 #[test]
 fn limit_par_num() {
@@ -109,6 +113,8 @@ fn limit_par_num() {
     //     .map_err(|e| panic!("mset error:{:?}", e))
     //     .expect("mset err");
 }
+///list相关的test
+/// hsset空key
 #[test]
 fn limit_key_item() {
     let mut con = get_conn(&RESTYPE.get_host());
