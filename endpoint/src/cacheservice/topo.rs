@@ -76,7 +76,7 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, mut req: Self::Item) {
-        assert!(self.streams.local_len() > 0);
+        debug_assert!(self.streams.local_len() > 0);
 
         let mut idx: usize = 0; // master
         if !req.operation().master_only() {
@@ -96,13 +96,8 @@ where
             }
         }
         log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
-        assert!(
-            idx < self.streams.len(),
-            "{} < {} => {:?}",
-            idx,
-            self.streams.len(),
-            req
-        );
+        debug_assert!(idx < self.streams.len(), "{} {} => {:?}", idx, self, req);
+
         unsafe { self.streams.get_unchecked(idx).send(req) };
     }
 }
