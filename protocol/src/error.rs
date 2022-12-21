@@ -1,4 +1,4 @@
-use std::time::Duration;
+use ds::time::Duration;
 
 #[derive(Debug)]
 pub enum Error {
@@ -37,6 +37,12 @@ impl From<std::io::Error> for Error {
     #[inline]
     fn from(err: std::io::Error) -> Self {
         Self::IO(err)
+    }
+}
+impl From<Duration> for Error {
+    #[inline]
+    fn from(to: Duration) -> Self {
+        Self::Timeout(to)
     }
 }
 

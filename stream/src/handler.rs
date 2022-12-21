@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
-use protocol::{Error, Protocol, Request, Result, Stream};
+use protocol::{Error, Protocol, Request, Result, Stream, Writer};
 use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -12,7 +12,7 @@ use crate::buffer::StreamGuard;
 
 use metrics::Metric;
 
-pub(crate) struct Handler<'r, Req, P, S> {
+pub struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
     pending: VecDeque<Req>,
 
@@ -29,7 +29,7 @@ pub(crate) struct Handler<'r, Req, P, S> {
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
     Req: Request + Unpin,
-    S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
+    S: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
 {
     type Output = Result<()>;
@@ -96,7 +96,8 @@ where
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
-                        self.rtt += req.start_at().elapsed();
+                        self.rtt += req.elapsed_current_req();
+                        self.parser.check(req.cmd(), &cmd);
                         req.on_complete(cmd);
                     }
                 }
@@ -111,30 +112,29 @@ where
         ready!(Pin::new(&mut self.s).poll_flush(cx))?;
         Poll::Ready(Ok(()))
     }
-    //#[inline(always)]
-    //fn check(&self, req: &Req, cmd: &protocol::Command) {
-    //    debug_assert!(
-    //        self.parser.check(req.cmd(), &cmd),
-    //        "{:?} {:?} => {:?}",
-    //        self,
-    //        req.cmd().data(),
-    //        cmd.data()
-    //    );
-    //}
 }
 unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
 unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
-impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin> rt::ReEnter
+impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnter
     for Handler<'r, Req, P, S>
 {
     #[inline]
-    fn num_rx(&self) -> usize {
-        self.num_rx
+    fn last(&self) -> Option<ds::time::Instant> {
+        if self.pending.len() > 0 {
+            assert_ne!(self.num_rx, self.num_tx, "{:?}", self);
+            Some(self.pending.front().expect("empty").last_start_at())
+        } else {
+            None
+        }
     }
-    #[inline]
-    fn num_tx(&self) -> usize {
-        self.num_tx
-    }
+    //#[inline]
+    //fn num_rx(&self) -> usize {
+    //    self.num_rx
+    //}
+    //#[inline]
+    //fn num_tx(&self) -> usize {
+    //    self.num_tx
+    //}
     #[inline]
     fn close(&mut self) -> bool {
         self.data.disable();
@@ -154,6 +154,14 @@ impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin> rt::ReEnter
 
         self.buf.try_gc()
     }
+    #[inline]
+    fn refresh(&mut self) -> bool {
+        log::debug!("handler:{:?}", self);
+        self.buf.try_gc();
+        self.buf.shrink();
+        self.s.shrink();
+        self.buf.cap() + self.s.cap() >= crate::REFRESH_THREASHOLD
+    }
 }
 
 use std::fmt::{self, Debug, Formatter};
@@ -162,7 +170,7 @@ impl<'r, Req, P, S> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler tx_seq:{} rx_seq:{} pending:{} {} buf:{:?}",
+            "handler tx_seq:{} rx_seq:{} p_req:{} {} buf:{:?}",
             self.num_tx,
             self.num_rx,
             self.pending.len(),

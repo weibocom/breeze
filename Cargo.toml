@@ -23,13 +23,15 @@ exclude = ["api", "tests"]
 inherits = "release"
 
 [profile.release]
-#panic = "abort"
+panic = "abort"
 overflow-checks = false
 debug = false
 codegen-units = 1
 lto = "fat"
 opt-level = 3
-#strip = "symbols"
+strip = "symbols"
 
 [profile.release-perf]
 inherits = "release"
+strip = "none"
+codegen-units = 256

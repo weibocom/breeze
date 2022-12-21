@@ -1,5 +1,5 @@
 use discovery::TopologyWrite;
-use protocol::{Builder, Protocol, Request, Resource};
+use protocol::{Protocol, Request, Resource};
 use std::{
     collections::HashSet,
     sync::{
@@ -14,8 +14,8 @@ use std::{
     time::Duration,
 };
 
-use protocol::{Endpoint, Topology};
-use sharding::hash::{Hasher, HASH_PADDING};
+use crate::{Builder, Endpoint, Topology};
+use sharding::hash::{Hasher, Padding};
 
 use crate::msgque::strategy::hitfirst::Node;
 
@@ -46,11 +46,10 @@ pub struct MsgQue<B, E, Req, P> {
     offline_hits: Arc<AtomicUsize>,
     offline_time: Instant,
 
-    read_strategy: HitFirstReader,
-    write_strategy: RobbinWriter,
+    read_strategy: Arc<HitFirstReader>,
+    write_strategy: Arc<RobbinWriter>,
     parser: P,
     // 占位hasher，暂时不需要真实计算
-    hash_padding: Hasher,
     max_size: usize,
 
     timeout_write: Duration,
@@ -70,9 +69,8 @@ impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
             offline_time: Instant::now(),
             read_strategy: Default::default(),
             write_strategy: Default::default(),
-            parser: parser,
+            parser,
             max_size: super::BLOCK_SIZE,
-            hash_padding: Hasher::from(HASH_PADDING),
             timeout_write: Duration::from_millis(200),
             timeout_read: Duration::from_millis(100),
             _marker: Default::default(),
@@ -112,6 +110,8 @@ where
     }
 }
 
+const PADDING: Hasher = Hasher::Padding(Padding);
+
 impl<B, E, Req, P> Topology for MsgQue<B, E, Req, P>
 where
     B: Send + Sync,
@@ -121,7 +121,7 @@ where
 {
     #[inline]
     fn hasher(&self) -> &Hasher {
-        &&self.hash_padding
+        &PADDING
     }
     #[inline]
     fn exp_sec(&self) -> u32 {
@@ -132,7 +132,7 @@ where
 }
 
 //TODO: 验证的时候需要考虑512字节这种边界msg
-impl<B, E, Req, P> protocol::Endpoint for MsgQue<B, E, Req, P>
+impl<B, E, Req, P> Endpoint for MsgQue<B, E, Req, P>
 where
     B: Send + Sync,
     E: Endpoint<Item = Req>,
@@ -428,7 +428,7 @@ where
                 .enumerate()
                 .map(|(i, (_, _, size))| Node::from(i as QID, *size))
                 .collect();
-            self.read_strategy = HitFirstReader::from(readers_assit);
+            self.read_strategy = HitFirstReader::from(readers_assit).into();
 
             // 构建写stream
             self.streams_write = self.build_write_stream(&ns.sized_queue, name, self.timeout_write);
@@ -442,7 +442,7 @@ where
                     )
                 })
                 .collect();
-            self.write_strategy = RobbinWriter::from(writers_assist);
+            self.write_strategy = RobbinWriter::from(writers_assist).into();
             log::debug!(
                 "+++ updated msgque for offline/{}, reads/{}, writes/{}",
                 self.streams_offline.len(),

@@ -45,6 +45,11 @@ impl Metric {
     fn try_inited(&mut self) {
         self.item.try_init(&self.id);
     }
+    // 所有的基于metrics的操作都是原子的
+    #[inline(always)]
+    pub fn as_mut(&self) -> &mut Self {
+        unsafe { &mut *(self as *const _ as *mut _) }
+    }
 }
 impl<T: MetricData + Debug> AddAssign<T> for Metric {
     #[inline]

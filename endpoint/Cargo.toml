@@ -12,7 +12,6 @@ net = { path = "../net"}
 discovery = { path = "../discovery" }
 protocol = { path = "../protocol" }
 sharding = { path = "../sharding" }
-stream = { path = "../stream" }
 log = { path = "../log" }
 rt = { path = "../rt" }
 

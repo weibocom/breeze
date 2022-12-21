@@ -2,6 +2,7 @@ extern crate lazy_static;
 use clap::{FromArgMatches, IntoApp, Parser};
 use lazy_static::lazy_static;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
     io::{Error, ErrorKind, Result},
     vec,
@@ -31,13 +32,24 @@ pub struct ContextOption {
     )]
     pub discovery: Url,
 
+    // 用于设置url的统一前缀，从而减少配置参数的长度，用途：
+    //    1 和service_pool整合，可构建基于vintage拉取sock file的url；
+    //    2 和idc_path整合，可以作为完整的idc path url
+    #[clap(
+        long,
+        help("registry url prefix. e.g. static.config.xxx.xxx"),
+        default_value("")
+    )]
+    url_prefix: String,
+
+    // 需要兼容url_prefix不设置的场景，故去掉pub属性
     #[clap(
         short,
         long,
         help("idc config path"),
         default_value("/3/config/breeze/idc_region")
     )]
-    pub idc_path: String,
+    idc_path: String,
 
     #[clap(
         long,
@@ -77,7 +89,7 @@ pub struct ContextOption {
     )]
     pub metrics_probe: String,
 
-    #[clap(long, help("log level. debug|info|warn|error"), default_value("info"))]
+    #[clap(long, help("log level. debug|info|warn|error"), default_value("error"))]
     pub log_level: String,
 
     #[clap(long, help("service pool"), default_value("default_pool"))]
@@ -92,19 +104,17 @@ pub struct ContextOption {
 }
 
 lazy_static! {
-    // rmlog-760-g3a7a12b-modified
-    // 取 g3a7a12b-modified
+    // tags/v0.0.1.59-0-gd80aa42d
+    // heads/dev-0-gc647f866
     static ref SHORT_VERSION: String = {
-        let full = git_version::git_version!();
-        let fields:Vec<&str> = full.split('-').collect();
-        let len = fields.len();
-        let last = *fields.get(len-1).unwrap_or(&"");
-        if last == "modified" {
-            let second_last = fields.get(len-2).unwrap_or(&"");
-            format!("{}_{}", second_last, last)
-        } else {
-            last.to_string()
-        }
+        let full = git_version::git_version!(args = ["--long", "--all", "--dirty=-m"]);
+
+        let v = match full.find('/') {
+            Some(idx) => &full[idx+1..],
+            None => &full[..],
+        };
+
+        v.to_owned()
     };
     static ref CONTEXT: Context = {
         let ctx = ContextOption::from_os_args();
@@ -133,16 +143,35 @@ impl ContextOption {
         Ok(())
     }
 
-    pub fn tick(&self) -> std::time::Duration {
+    pub fn tick(&self) -> ds::time::Duration {
         assert!(self.tick_sec >= 1 && self.tick_sec <= 60);
-        std::time::Duration::from_secs(self.tick_sec as u64)
+        ds::time::Duration::from_secs(self.tick_sec as u64)
     }
     // 如果是以升级模式启动，则会将原有的端口先关闭。
     pub fn listeners(&self) -> ListenerIter {
         ListenerIter {
             path: self.service_path.to_string(),
             processed: Default::default(),
+            last_read: UNIX_EPOCH, //初始值设为0时
         }
+    }
+
+    // 兼容策略：如果idc不包含url_prefix加上该前缀；否则直接返回;
+    pub fn idc_path_url(&self) -> String {
+        // idc-path参数
+        if self.url_prefix.len() > 0 && !self.idc_path.contains(&self.url_prefix.to_string()) {
+            return format!("{}/{}", self.url_prefix, self.idc_path);
+        }
+        self.idc_path.clone()
+    }
+
+    // 根据url_prefix和service_pool 构建 服务池socks url
+    pub fn service_pool_socks_url(&self) -> String {
+        if self.url_prefix.len() > 0 {
+            let socks_path = "3/config/datamesh/config";
+            return format!("{}/{}/{}", self.url_prefix, socks_path, self.service_pool);
+        }
+        Default::default()
     }
 }
 
@@ -150,6 +179,7 @@ use std::collections::HashMap;
 pub struct ListenerIter {
     processed: HashMap<String, String>,
     path: String,
+    last_read: SystemTime, //上次扫描到socks目录有更新时间
 }
 
 impl ListenerIter {
@@ -157,6 +187,7 @@ impl ListenerIter {
         Self {
             processed: Default::default(),
             path,
+            last_read: UNIX_EPOCH,
         }
     }
 
@@ -168,6 +199,8 @@ impl ListenerIter {
     pub async fn scan(&mut self) -> (Vec<Quadruple>, usize) {
         let mut failed = 0;
         let mut listeners = vec![];
+        // 本次循环开始时间
+        let start = SystemTime::now();
         match self.read_all().await {
             Ok(names) => {
                 for name in names {
@@ -207,6 +240,7 @@ impl ListenerIter {
                 }
                 retain
             });
+            self.last_read = start;
         }
         (listeners, failed)
     }
@@ -225,6 +259,18 @@ impl ListenerIter {
     }
     async fn read_all(&self) -> Result<Vec<String>> {
         let mut found = vec![];
+        let dir_meta = tokio::fs::metadata(&self.path).await?;
+        let last_update = dir_meta.modified();
+        match last_update {
+            Ok(t) => {
+                //上次扫描到sock文件后后续再未更新
+                if &self.last_read > &t {
+                    return Ok(found);
+                }
+            }
+            Err(_err) => log::warn!("get socks dir metadata err:{:?}", _err),
+        }
+
         let mut dir = tokio::fs::read_dir(&self.path).await?;
         while let Some(child) = dir.next_entry().await? {
             if child.metadata().await?.is_file() {
@@ -269,10 +315,27 @@ impl std::ops::Deref for Context {
 }
 impl From<ContextOption> for Context {
     fn from(option: ContextOption) -> Self {
-        Self {
-            version: SHORT_VERSION.to_string() + "_" + option.cpu.as_str(),
-            option,
+        let mut version = String::with_capacity(64);
+        version.push_str(SHORT_VERSION.as_str());
+        version.push('_');
+        if cfg!(debug_assertions) {
+            version.push('d');
+        };
+        if log::log_enabled() {
+            version.push('l');
         }
+        if option.cpu == "v3" {
+            version.push('3');
+        }
+        let host_v3 = option.cpu == "v3";
+        // 1. 如果宿主机的支持模式与编译器的编译方式不一致。
+        if cfg!(target_feature = "avx") != host_v3 {
+            version.push('!');
+        };
+        if version.as_bytes().last() == Some(&b'_') {
+            version.pop();
+        }
+        Self { version, option }
     }
 }
 #[inline(always)]

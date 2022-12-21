@@ -40,7 +40,6 @@ fn test_bad_key_bfset() {
     let rs = cmd("bfset").arg("9").query::<i64>(&mut con);
     assert_eq!(rs, Ok(-1)); // 最小越界
 }
-
 // 正常key bfset 测试
 
 #[test]

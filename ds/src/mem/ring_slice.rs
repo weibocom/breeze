@@ -8,44 +8,48 @@ pub struct RingSlice {
     ptr: usize,
     cap: usize,
     start: usize,
-    end: usize,
+    len: usize,
 }
 
 impl RingSlice {
+    const EMPTY: Self = Self {
+        ptr: 0,
+        cap: 0,
+        start: 0,
+        len: 0,
+    };
+    #[inline]
+    pub fn empty() -> Self {
+        Self::EMPTY
+    }
     #[inline]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
-        assert!(cap > 0);
-        assert_eq!(cap & cap - 1, 0);
+        assert!(cap == 0 || cap.is_power_of_two(), "not valid cap:{}", cap);
         assert!(end >= start);
         Self {
             ptr: ptr as usize,
             cap,
             start,
-            end,
+            len: end - start,
         }
-    }
-
-    #[inline]
-    pub fn capacity(&self) -> usize {
-        self.cap
     }
 
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
         assert!(offset + len <= self.len());
-        Self::from(
-            self.ptr(),
-            self.cap,
-            self.start + offset,
-            self.start + offset + len,
-        )
+        Self {
+            ptr: self.ptr,
+            cap: self.cap,
+            start: self.start + offset,
+            len,
+        }
     }
     // 读取数据. 可能只读取可读数据的一部分。
     #[inline]
     pub fn read(&self, offset: usize) -> &[u8] {
         assert!(offset < self.len());
         let oft = self.mask(self.start + offset);
-        let l = (self.cap - oft).min(self.end - self.start - offset);
+        let l = (self.cap - oft).min(self.len() - offset);
         unsafe { std::slice::from_raw_parts(self.ptr().offset(oft as isize), l) }
     }
     #[inline]
@@ -60,15 +64,16 @@ impl RingSlice {
             v.write(data);
         }
     }
+
     #[inline]
     fn mask(&self, oft: usize) -> usize {
-        (self.cap - 1) & oft
+        // 兼容cap是0的场景
+        self.cap.wrapping_sub(1) & oft
     }
 
     #[inline]
     pub fn len(&self) -> usize {
-        assert!(self.end >= self.start);
-        self.end - self.start
+        self.len
     }
     #[inline]
     pub fn at(&self, idx: usize) -> u8 {
@@ -91,55 +96,10 @@ impl RingSlice {
         self.ptr().offset(oft as isize)
     }
 
-    pub fn split(&self, splitter: &[u8]) -> Vec<Self> {
-        let mut pos = 0 as usize;
-        let mut result: Vec<RingSlice> = vec![];
-        loop {
-            let new_pos = self.find_sub(pos, splitter);
-            if new_pos.is_none() {
-                if pos < self.len() {
-                    result.push(self.sub_slice(pos, self.len() - pos));
-                }
-                return result;
-            } else {
-                let new_pos = new_pos.unwrap();
-                result.push(self.sub_slice(pos, new_pos));
-                if new_pos + splitter.len() == self.end - self.start {
-                    return result;
-                }
-                pos = pos + new_pos + splitter.len();
-            }
-        }
-    }
     #[inline]
     pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
         for i in offset..self.len() {
             if self.at(i) == b {
-                return Some(i);
-            }
-        }
-        None
-    }
-    // 从offset开始，查找s是否存在
-    // 最坏时间复杂度 O(self.len() * s.len())
-    // 但通常在协议处理过程中，被查的s都是特殊字符，而且s的长度通常比较小，因为时间复杂度会接近于O(self.len())
-    pub fn find_sub(&self, offset: usize, s: &[u8]) -> Option<usize> {
-        if self.start + offset + s.len() > self.end {
-            return None;
-        }
-        let mut i = 0 as usize;
-        let i_cap = self.len() - s.len() - offset;
-        while i <= i_cap {
-            let mut found_len = 0 as usize;
-            for j in 0..s.len() {
-                if self.read_u8(offset + i + j) != s[j] {
-                    i += 1;
-                    break;
-                } else {
-                    found_len = found_len + 1;
-                }
-            }
-            if found_len == s.len() {
                 return Some(i);
             }
         }
@@ -181,6 +141,11 @@ impl RingSlice {
     }
 
     #[inline]
+    fn end(&self) -> usize {
+        self.start + self.len
+    }
+
+    #[inline]
     pub fn start_with_ignore_case(&self, offset: usize, dest: &[u8]) -> std::io::Result<bool> {
         let mut len = dest.len();
         if self.len() - offset < dest.len() {
@@ -210,14 +175,6 @@ impl RingSlice {
 
         Err(Error::new(ErrorKind::Other, "no enough bytes"))
     }
-
-    // 只用来debug
-    #[inline]
-    fn to_vec(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(self.len());
-        self.copy_to_vec(&mut v);
-        v
-    }
 }
 
 unsafe impl Send for RingSlice {}
@@ -232,7 +189,7 @@ macro_rules! define_read_number {
             assert!(self.len() >= offset + SIZE);
             unsafe {
                 let oft_start = (self.start + offset) & (self.cap - 1);
-                let oft_end = self.end & (self.cap - 1);
+                let oft_end = self.end() & (self.cap - 1);
                 if oft_end > oft_start || self.cap >= oft_start + SIZE {
                     let b = from_raw_parts(self.ptr().offset(oft_start as isize), SIZE);
                     $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
@@ -252,49 +209,18 @@ macro_rules! define_read_number {
 
 impl RingSlice {
     // big endian
-    define_read_number!(read_u8, u8);
+    //define_read_number!(read_u8, u8);
     define_read_number!(read_u16, u16);
     define_read_number!(read_u32, u32);
     define_read_number!(read_u64, u64);
 }
 
-impl PartialEq<[u8]> for RingSlice {
-    #[inline]
-    fn eq(&self, other: &[u8]) -> bool {
-        if self.len() == other.len() {
-            for i in 0..other.len() {
-                if self.at(i) != other[i] {
-                    return false;
-                }
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
-// 内容相等
-impl PartialEq<Self> for RingSlice {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        if self.len() == other.len() {
-            for i in 0..other.len() {
-                if self.at(i) != other.at(i) {
-                    return false;
-                }
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
 impl From<&[u8]> for RingSlice {
     #[inline]
     fn from(s: &[u8]) -> Self {
-        assert_ne!(s.len(), 0);
-        let len = s.len();
-        let cap = len.next_power_of_two();
+        // TODO 诸如quite/quit指令的响应无需内容，可能会存在0长度的data，关注是否有副作用 fishermen
+        // assert_ne!(s.len(), 0);
+        let cap = s.len().next_power_of_two();
         Self::from(s.as_ptr() as *mut u8, cap, 0, s.len())
     }
 }
@@ -304,8 +230,8 @@ impl Display for RingSlice {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "ptr:{} start:{} end:{} cap:{}",
-            self.ptr, self.start, self.end, self.cap
+            "ptr:{} start:{} len:{} cap:{}",
+            self.ptr, self.start, self.len, self.cap
         )
     }
 }
@@ -313,16 +239,51 @@ impl Debug for RingSlice {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         use crate::Utf8;
-        let data = if self.len() > 1024 {
-            format!("[hidden for too long len:{}]", self.len())
-        } else {
-            self.to_vec().utf8()
-        };
-
+        let slice = self.sub_slice(0, 512.min(self.len()));
+        let mut data = Vec::with_capacity(slice.len());
+        slice.copy_to_vec(&mut data);
         write!(
             f,
-            "ptr:{} start:{} end:{} cap:{} => {:?}",
-            self.ptr, self.start, self.end, self.cap, data
+            "ptr:{} start:{} len:{} cap:{} => {:?}",
+            self.ptr,
+            self.start,
+            self.len,
+            self.cap,
+            data.utf8()
         )
+    }
+}
+
+pub mod tests {
+    impl PartialEq<[u8]> for super::RingSlice {
+        #[inline]
+        fn eq(&self, other: &[u8]) -> bool {
+            if self.len() == other.len() {
+                for i in 0..other.len() {
+                    if self.at(i) != other[i] {
+                        return false;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
+    }
+    // 内容相等
+    impl PartialEq<Self> for super::RingSlice {
+        #[inline]
+        fn eq(&self, other: &Self) -> bool {
+            if self.len() == other.len() {
+                for i in 0..other.len() {
+                    if self.at(i) != other.at(i) {
+                        return false;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
     }
 }

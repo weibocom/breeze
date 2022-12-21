@@ -1,6 +1,6 @@
-use mimalloc::MiMalloc;
+use ds::BrzMalloc;
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: BrzMalloc = BrzMalloc {};
 
 #[macro_use]
 extern crate rocket;
@@ -12,8 +12,8 @@ mod service;
 use discovery::*;
 mod init;
 
+use ds::time::Duration;
 use rt::spawn;
-use std::time::Duration;
 
 use protocol::Result;
 
@@ -39,10 +39,20 @@ async fn run() -> Result<()> {
     let snapshot = ctx.snapshot_path.to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
-    fix.register(
-        ctx.idc_path.to_string(),
-        discovery::distance::build_refresh_idc(),
-    );
+    fix.register(ctx.idc_path_url(), discovery::distance::build_refresh_idc());
+
+    // 从vintage获取socks
+    if ctx.service_pool_socks_url().len() > 1 {
+        fix.register(
+            ctx.service_pool_socks_url(),
+            discovery::socks::build_refresh_socks(ctx.service_path.clone()),
+        );
+    } else {
+        log::info!(
+            "only use socks from local path: {}",
+            ctx.service_path.clone()
+        );
+    }
 
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
     log::info!("server inited {:?}", ctx);

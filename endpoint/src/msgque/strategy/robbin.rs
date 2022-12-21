@@ -12,7 +12,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use super::QID;
 
 // 按照轮询方式写入，根据讨论，暂时不在支持晋级size，只写对应size的queue pool
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct RobbinWriter {
     qnodes: BTreeMap<usize, Vec<QID>>,
     cursors: HashMap<usize, Arc<AtomicUsize>>,

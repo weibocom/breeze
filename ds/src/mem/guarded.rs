@@ -16,14 +16,9 @@ pub struct GuardedBuffer {
 }
 
 impl GuardedBuffer {
-    pub fn new<F: FnMut(usize, isize) + 'static>(
-        min: usize,
-        max: usize,
-        init: usize,
-        cb: F,
-    ) -> Self {
+    pub fn new(min: usize, max: usize, init: usize) -> Self {
         Self {
-            inner: ResizedRingBuffer::from(min, max, init, cb),
+            inner: ResizedRingBuffer::from(min, max, init),
             guards: PinnedQueue::new(),
             taken: 0,
         }
@@ -53,7 +48,8 @@ impl GuardedBuffer {
     pub fn take(&mut self, n: usize) -> MemGuard {
         assert!(n > 0);
         assert!(self.taken + n <= self.writtened());
-        let guard = self.guards.push_back(AtomicU32::new(0));
+        let guard = unsafe { self.guards.push_back_mut() };
+        *guard.get_mut() = 0;
         let data = self.inner.slice(self.taken, n);
         self.taken += n;
         let ptr = guard as *const AtomicU32;
@@ -66,7 +62,7 @@ impl GuardedBuffer {
             if guard == 0 {
                 break;
             }
-            self.guards.pop_front();
+            unsafe { self.guards.forget_front() };
             self.inner.advance_read(guard as usize);
         }
     }
@@ -75,23 +71,23 @@ impl GuardedBuffer {
     pub fn pending(&self) -> usize {
         self.taken - self.inner.read()
     }
-    #[inline]
-    pub fn update(&mut self, idx: usize, val: u8) {
-        let oft = self.offset(idx);
-        self.inner.update(oft, val);
-    }
-    #[inline]
-    pub fn at(&self, idx: usize) -> u8 {
-        self.inner.at(self.offset(idx))
-    }
+    //#[inline]
+    //pub fn update(&mut self, idx: usize, val: u8) {
+    //    let oft = self.offset(idx);
+    //    self.inner.update(oft, val);
+    //}
+    //#[inline]
+    //pub fn at(&self, idx: usize) -> u8 {
+    //    self.inner.at(self.offset(idx))
+    //}
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.len() - self.pending()
     }
-    #[inline]
-    fn offset(&self, oft: usize) -> usize {
-        self.pending() + oft
-    }
+    //#[inline]
+    //fn offset(&self, oft: usize) -> usize {
+    //    self.pending() + oft
+    //}
     //#[inline]
     //pub fn raw(&self) -> &[u8] {
     //    self.inner.raw()
@@ -122,7 +118,7 @@ impl MemGuard {
         unsafe { assert_eq!((&*guard).load(Ordering::Acquire), 0) };
         Self {
             mem: data,
-            guard: guard,
+            guard,
             cap: 0,
         }
     }

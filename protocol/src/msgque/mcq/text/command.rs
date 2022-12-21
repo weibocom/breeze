@@ -10,9 +10,10 @@ pub(crate) struct CommandProperties {
     req_type: RequestType,
     op_code: OpCode,
     op: Operation,
-    padding_rsp: u8,
+    padding_rsp: usize, // 从u8换为usize，从而在获取时不用做转换
     noforward: bool,
     supported: bool,
+    pub(super) quit: bool, // 是否需要quit掉连接
 }
 
 impl CommandProperties {
@@ -32,14 +33,14 @@ impl CommandProperties {
     pub fn req_type(&self) -> &RequestType {
         &self.req_type
     }
-    #[inline]
-    pub fn padding_rsp(&self) -> &str {
-        assert!(
-            (self.padding_rsp as usize) < PADDING_RSP_TABLE.len(),
-            "padding rsp: {}",
-            self.padding_rsp
-        );
-        PADDING_RSP_TABLE.get(self.padding_rsp as usize).unwrap()
+
+    // 构建一个padding rsp，用于返回默认响应或server不可用响应
+    // 格式类似：1 VERSION 0.0.1\r\n ;
+    //          2 SERVER_ERROR mcq not available\r\n
+    #[inline(always)]
+    pub(super) fn get_padding_rsp(&self) -> &str {
+        // 注意：quit的padding rsp为0
+        unsafe { *PADDING_RSP_TABLE.get_unchecked(self.padding_rsp) }
     }
 }
 
@@ -53,6 +54,7 @@ impl Default for CommandProperties {
             padding_rsp: Default::default(),
             noforward: Default::default(),
             supported: Default::default(),
+            quit: false,
         }
     }
 }
@@ -109,7 +111,7 @@ impl Commands {
         name: &'static str,
         req_type: RequestType,
         op: Operation,
-        padding_rsp: u8,
+        padding_rsp: usize,
         noforward: bool,
     ) {
         let uppercase = name.to_uppercase();
@@ -117,7 +119,9 @@ impl Commands {
         assert!(idx < self.supported.len(), "idx: {}", idx);
         // cmd 不能重复初始化
         assert!(!self.supported[idx].supported);
+        debug_assert!(padding_rsp < PADDING_RSP_TABLE.len(), "{}", name);
 
+        let quit = uppercase.eq("QUIT");
         self.supported[idx] = CommandProperties {
             name,
             req_type,
@@ -126,6 +130,7 @@ impl Commands {
             padding_rsp,
             noforward,
             supported: true,
+            quit,
         };
     }
 }
@@ -174,7 +179,7 @@ impl Display for CommandProperties {
 
 // mcq2 目前只支持如下指令
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum RequestType {
     Unknown,
     Get,

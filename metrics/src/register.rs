@@ -168,7 +168,7 @@ pub struct MetricRegister {
 
 impl MetricRegister {
     fn new(rx: Receiver<(Arc<Id>, i64)>, metrics: CowWriteHandle<Metrics>) -> Self {
-        let mut tick = interval(std::time::Duration::from_secs(3));
+        let mut tick = interval(ds::time::Duration::from_secs(3));
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         Self {
             rx,
