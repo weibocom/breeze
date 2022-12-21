@@ -8,31 +8,31 @@ use redis::Commands;
 /// val为空字符串
 /// key为空字符串
 /// hset key为空字符串是error
-#[named]
-#[test]
-fn limit_val_empty() {
-    let arykey = function_name!();
-    let mut con = get_conn(&RESTYPE.get_host());
+// #[named]
+// #[test]
+// fn limit_val_empty() {
+//     let arykey = function_name!();
+//     let mut con = get_conn(&RESTYPE.get_host());
 
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
-    redis::cmd("DEL").arg("").execute(&mut con);
+//     redis::cmd("DEL").arg(arykey).execute(&mut con);
+//     redis::cmd("DEL").arg("").execute(&mut con);
 
-    let empty_string = String::new();
+//     let empty_string = String::new();
 
-    redis::cmd("SET")
-        .arg(arykey)
-        .arg(empty_string)
-        .execute(&mut con);
-    assert_eq!(con.get(arykey), Ok("".to_string()));
+//     redis::cmd("SET")
+//         .arg(arykey)
+//         .arg(empty_string)
+//         .execute(&mut con);
+//     assert_eq!(con.get(arykey), Ok("".to_string()));
 
-    redis::cmd("SET").arg("").arg(1).execute(&mut con);
-    assert_eq!(
-        con.get::<&str, Option<i32>>("")
-            .map_err(|e| panic!("get empty key error:{:?}", e))
-            .expect("get empty key err"),
-        Some(1)
-    );
-}
+//     redis::cmd("SET").arg("").arg(1).execute(&mut con);
+//     assert_eq!(
+//         con.get::<&str, Option<i32>>("")
+//             .map_err(|e| panic!("get empty key error:{:?}", e))
+//             .expect("get empty key err"),
+//         Some(1)
+//     );
+// }
 
 /// incr 0 =>wrong number of arguments for 'incr'
 /// incr -1=>wrong number of arguments for 'incr'
