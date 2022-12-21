@@ -30,38 +30,38 @@ use std::vec;
 #[named]
 #[test]
 fn test_list_ops() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
-    assert_eq!(con.lpush(arykey, &[1, 2]), Ok(2));
-    assert_eq!(con.lpush(arykey, &[3, 4]), Ok(4));
-    assert_eq!(con.rpush(arykey, &[5, 6]), Ok(6));
-    assert_eq!(con.rpush(arykey, &[7, 8]), Ok(8));
+    assert_eq!(con.lpush(argkey, &[1, 2]), Ok(2));
+    assert_eq!(con.lpush(argkey, &[3, 4]), Ok(4));
+    assert_eq!(con.rpush(argkey, &[5, 6]), Ok(6));
+    assert_eq!(con.rpush(argkey, &[7, 8]), Ok(8));
 
-    assert_eq!(con.lrange(arykey, 0, -1), Ok((4, 3, 2, 1, 5, 6, 7, 8)));
+    assert_eq!(con.lrange(argkey, 0, -1), Ok((4, 3, 2, 1, 5, 6, 7, 8)));
 
-    assert_eq!(con.lpop(arykey, Default::default()), Ok(4));
-    assert_eq!(con.rpop(arykey, Default::default()), Ok(8));
-    assert_eq!(con.llen(arykey), Ok(6));
-    assert_eq!(con.lrange(arykey, 0, -1), Ok((3, 2, 1, 5, 6, 7)));
+    assert_eq!(con.lpop(argkey, Default::default()), Ok(4));
+    assert_eq!(con.rpop(argkey, Default::default()), Ok(8));
+    assert_eq!(con.llen(argkey), Ok(6));
+    assert_eq!(con.lrange(argkey, 0, -1), Ok((3, 2, 1, 5, 6, 7)));
 
-    assert_eq!(con.lset(arykey, 0, 4), Ok(true));
-    assert_eq!(con.lindex(arykey, 0), Ok(4));
+    assert_eq!(con.lset(argkey, 0, 4), Ok(true));
+    assert_eq!(con.lindex(argkey, 0), Ok(4));
 
-    assert_eq!(con.linsert_before(arykey, 4, 4), Ok(7));
-    assert_eq!(con.linsert_after(arykey, 7, 7), Ok(8));
-    assert_eq!(con.lrange(arykey, 0, -1), Ok((4, 4, 2, 1, 5, 6, 7, 7)));
+    assert_eq!(con.linsert_before(argkey, 4, 4), Ok(7));
+    assert_eq!(con.linsert_after(argkey, 7, 7), Ok(8));
+    assert_eq!(con.lrange(argkey, 0, -1), Ok((4, 4, 2, 1, 5, 6, 7, 7)));
 
-    assert_eq!(con.lrem(arykey, 1, 4), Ok(1));
-    assert_eq!(con.lrem(arykey, -2, 7), Ok(2));
-    assert_eq!(con.lrem(arykey, 0, 2), Ok(1));
-    assert_eq!(con.lrange(arykey, 0, -1), Ok((4, 1, 5, 6)));
+    assert_eq!(con.lrem(argkey, 1, 4), Ok(1));
+    assert_eq!(con.lrem(argkey, -2, 7), Ok(2));
+    assert_eq!(con.lrem(argkey, 0, 2), Ok(1));
+    assert_eq!(con.lrange(argkey, 0, -1), Ok((4, 1, 5, 6)));
 
-    assert_eq!(con.ltrim(arykey, 1, 2), Ok(true));
-    assert_eq!(con.lpush_exists(arykey, 1), Ok(3));
-    assert_eq!(con.rpush_exists(arykey, 5), Ok(4));
-    assert_eq!(con.lrange(arykey, 0, -1), Ok((1, 1, 5, 5)));
+    assert_eq!(con.ltrim(argkey, 1, 2), Ok(true));
+    assert_eq!(con.lpush_exists(argkey, 1), Ok(3));
+    assert_eq!(con.rpush_exists(argkey, 5), Ok(4));
+    assert_eq!(con.lrange(argkey, 0, -1), Ok((1, 1, 5, 5)));
 }
 
 /// - geoadd 添加地理位置经纬度
@@ -75,13 +75,13 @@ fn test_list_ops() {
 #[named]
 #[test]
 fn test_geo_ops() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
     assert_eq!(
         redis::cmd("GEOADD")
-            .arg(arykey)
+            .arg(argkey)
             .arg(30)
             .arg(50)
             .arg("Beijing")
@@ -97,7 +97,7 @@ fn test_geo_ops() {
 
     assert_eq!(
         redis::cmd("GEODIST")
-            .arg(arykey)
+            .arg(argkey)
             .arg("Beijing")
             .arg("Tianjin")
             .arg("km")
@@ -107,7 +107,7 @@ fn test_geo_ops() {
 
     assert_eq!(
         redis::cmd("GEOPOS")
-            .arg(arykey)
+            .arg(argkey)
             .arg("Beijing")
             .arg("Tianjin")
             .query(&mut con),
@@ -125,7 +125,7 @@ fn test_geo_ops() {
 
     assert_eq!(
         redis::cmd("GEOHASH")
-            .arg(arykey)
+            .arg(argkey)
             .arg("Beijing")
             .arg("Tianjin")
             .query(&mut con),
@@ -134,7 +134,7 @@ fn test_geo_ops() {
     // operation not permitted on a read only server
     // assert_eq!(
     //     redis::cmd("GEORADIUS")
-    //         .arg(arykey)
+    //         .arg(argkey)
     //         .arg(28)
     //         .arg(30)
     //         .arg(100)
@@ -146,7 +146,7 @@ fn test_geo_ops() {
     // );
     // assert_eq!(
     //     redis::cmd("GEORADIUSBYMEMBER")
-    //         .arg(arykey)
+    //         .arg(argkey)
     //         .arg("Tianjin")
     //         .arg(100)
     //         .arg("km")
@@ -179,20 +179,20 @@ fn test_geo_ops() {
 #[named]
 #[test]
 fn test_hash_ops() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
     redis::cmd("DEL").arg("hashkey").execute(&mut con);
 
     assert_eq!(
         con.hset_multiple(
-            arykey,
+            argkey,
             &[("filed1", 1), ("filed2", 2), ("filed3", 3), ("filed4", 4),]
         ),
         Ok(true)
     );
     assert_eq!(
-        con.hgetall(arykey),
+        con.hgetall(argkey),
         Ok((
             "filed1".to_string(),
             1.to_string(),
@@ -205,10 +205,10 @@ fn test_hash_ops() {
         ))
     );
 
-    assert_eq!(con.hdel(arykey, "filed1"), Ok(1));
-    assert_eq!(con.hlen(arykey), Ok(3));
+    assert_eq!(con.hdel(argkey, "filed1"), Ok(1));
+    assert_eq!(con.hlen(argkey), Ok(3));
     assert_eq!(
-        con.hkeys(arykey),
+        con.hkeys(argkey),
         Ok((
             "filed2".to_string(),
             "filed3".to_string(),
@@ -216,22 +216,22 @@ fn test_hash_ops() {
         ))
     );
 
-    assert_eq!(con.hset(arykey, "filed5", 5), Ok(1));
-    assert_eq!(con.hset(arykey, "filed2", 22), Ok(0));
+    assert_eq!(con.hset(argkey, "filed5", 5), Ok(1));
+    assert_eq!(con.hset(argkey, "filed2", 22), Ok(0));
     assert_eq!(
-        con.hget(arykey, &["filed2", "filed5"]),
+        con.hget(argkey, &["filed2", "filed5"]),
         Ok((22.to_string(), 5.to_string()))
     );
 
-    assert_eq!(con.hincr(arykey, "filed2", 4), Ok(26));
-    assert_eq!(con.hincr(arykey, "filed5", 3.4), Ok(8.4));
+    assert_eq!(con.hincr(argkey, "filed2", 4), Ok(26));
+    assert_eq!(con.hincr(argkey, "filed5", 3.4), Ok(8.4));
 
-    assert_eq!(con.hexists(arykey, "filed6"), Ok(0));
-    assert_eq!(con.hset_nx(arykey, "filed6", 6), Ok(1));
-    assert_eq!(con.hset_nx(arykey, "filed6", 6), Ok(0));
+    assert_eq!(con.hexists(argkey, "filed6"), Ok(0));
+    assert_eq!(con.hset_nx(argkey, "filed6", 6), Ok(1));
+    assert_eq!(con.hset_nx(argkey, "filed6", 6), Ok(0));
 
     assert_eq!(
-        con.hvals(arykey),
+        con.hvals(argkey),
         Ok((
             26.to_string(),
             3.to_string(),
@@ -252,7 +252,7 @@ fn test_hash_ops() {
     assert!(found.contains(&("hashfiled6".to_string(), 6)));
 
     let iter = con
-        .hscan_match::<&str, &str, (String, i64)>(arykey, "filed6")
+        .hscan_match::<&str, &str, (String, i64)>(argkey, "filed6")
         .expect("hscan match error");
     let mut hscan_match_found = HashSet::new();
     for item in iter {
@@ -266,76 +266,76 @@ fn test_hash_ops() {
 #[named]
 #[test]
 fn str_basic() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
-    assert_eq!(con.set(arykey, "Hello World"), Ok("OK".to_string()));
-    assert_eq!(con.setrange(arykey, 6, "Redis"), Ok(11));
-    assert_eq!(con.getrange(arykey, 6, 10), Ok("Redis".to_string()));
+    assert_eq!(con.set(argkey, "Hello World"), Ok("OK".to_string()));
+    assert_eq!(con.setrange(argkey, 6, "Redis"), Ok(11));
+    assert_eq!(con.getrange(argkey, 6, 10), Ok("Redis".to_string()));
     assert_eq!(
-        con.getset(arykey, "Hello World"),
+        con.getset(argkey, "Hello World"),
         Ok("Hello Redis".to_string())
     );
-    assert_eq!(con.append(arykey, "!"), Ok(12));
-    assert_eq!(con.strlen(arykey), Ok(12));
+    assert_eq!(con.append(argkey, "!"), Ok(12));
+    assert_eq!(con.strlen(argkey), Ok(12));
 }
 
 /// 单个long set基本操作, lsset, lsdump, lsput, lsgetall, lsdel, lslen, lsmexists, lsdset
 #[named]
 #[test]
 fn test_lsset_basic() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
-    // lsmalloc arykey 8, lsput argkey 1后的实际内存表现
+    // lsmalloc argkey 8, lsput argkey 1后的实际内存表现
     let lsset = vec![
         1u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
     redis::cmd("lsset")
-        .arg(arykey)
+        .arg(argkey)
         .arg(1)
         .arg(&lsset)
         .execute(&mut con);
     assert_eq!(
-        redis::cmd("lsdump").arg(arykey).query(&mut con),
+        redis::cmd("lsdump").arg(argkey).query(&mut con),
         Ok(lsset.clone())
     );
 
     assert_eq!(
-        redis::cmd("lsput").arg(arykey).arg(2).query(&mut con),
+        redis::cmd("lsput").arg(argkey).arg(2).query(&mut con),
         Ok(1)
     );
     assert_eq!(
-        redis::cmd("lsgetall").arg(arykey).query(&mut con),
+        redis::cmd("lsgetall").arg(argkey).query(&mut con),
         Ok((1, 2))
     );
 
     assert_eq!(
-        redis::cmd("lsdel").arg(arykey).arg(2).query(&mut con),
+        redis::cmd("lsdel").arg(argkey).arg(2).query(&mut con),
         Ok(1)
     );
-    assert_eq!(redis::cmd("lslen").arg(arykey).query(&mut con), Ok(1));
+    assert_eq!(redis::cmd("lslen").arg(argkey).query(&mut con), Ok(1));
     assert_eq!(
         redis::cmd("lsmexists")
-            .arg(arykey)
+            .arg(argkey)
             .arg(1)
             .arg(2)
             .query(&mut con),
         Ok("10".to_string())
     );
 
-    let arykey = arykey.to_string() + "dset";
+    let argkey = argkey.to_string() + "dset";
     redis::cmd("lsdset")
-        .arg(&arykey)
+        .arg(&argkey)
         .arg(1)
         .arg(&lsset)
         .execute(&mut con);
     assert_eq!(
-        redis::cmd("lsgetall").arg(&arykey).query(&mut con),
+        redis::cmd("lsgetall").arg(&argkey).query(&mut con),
         Ok((1,))
     );
 }
@@ -348,9 +348,9 @@ fn test_lsset_basic() {
 #[named]
 #[test]
 fn zset_basic() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
     let values = &[
         (1, "one".to_string()),
@@ -359,9 +359,9 @@ fn zset_basic() {
         (4, "four".to_string()),
     ];
 
-    assert_eq!(con.zadd_multiple(arykey, values), Ok(4));
+    assert_eq!(con.zadd_multiple(argkey, values), Ok(4));
     assert_eq!(
-        con.zrange_withscores(arykey, 0, -1),
+        con.zrange_withscores(argkey, 0, -1),
         Ok(vec![
             ("one".to_string(), 1),
             ("two".to_string(), 2),
@@ -371,7 +371,7 @@ fn zset_basic() {
     );
 
     assert_eq!(
-        con.zrevrange_withscores(arykey, 0, -1),
+        con.zrevrange_withscores(argkey, 0, -1),
         Ok(vec![
             ("four".to_string(), 4),
             ("three".to_string(), 3),
@@ -380,10 +380,10 @@ fn zset_basic() {
         ])
     );
 
-    assert_eq!(con.zincr(arykey, "one", 4), Ok("5".to_string()));
-    assert_eq!(con.zrem(arykey, "four"), Ok(1));
-    assert_eq!(con.zremrangebyrank(arykey, 0, 0), Ok(1));
-    assert_eq!(con.zrembyscore(arykey, 1, 3), Ok(1));
+    assert_eq!(con.zincr(argkey, "one", 4), Ok("5".to_string()));
+    assert_eq!(con.zrem(argkey, "four"), Ok(1));
+    assert_eq!(con.zremrangebyrank(argkey, 0, 0), Ok(1));
+    assert_eq!(con.zrembyscore(argkey, 1, 3), Ok(1));
 
     let samescore = &[
         (0, "aaaa".to_string()),
@@ -393,23 +393,23 @@ fn zset_basic() {
         (0, "e".to_string()),
     ];
 
-    assert_eq!(con.zadd_multiple(arykey, samescore), Ok(5));
-    assert_eq!(con.zrembylex(arykey, "[b", "(c"), Ok(1));
+    assert_eq!(con.zadd_multiple(argkey, samescore), Ok(5));
+    assert_eq!(con.zrembylex(argkey, "[b", "(c"), Ok(1));
     assert_eq!(
-        con.zrangebylex(arykey, "-", "(c"),
+        con.zrangebylex(argkey, "-", "(c"),
         Ok(vec!["aaaa".to_string(),])
     );
     assert_eq!(
-        con.zrevrangebylex(arykey, "(c", "-"),
+        con.zrevrangebylex(argkey, "(c", "-"),
         Ok(vec!["aaaa".to_string(),])
     );
-    assert_eq!(con.zcount(arykey, 0, 2), Ok(4));
-    assert_eq!(con.zlexcount(arykey, "-", "+"), Ok(5));
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
-    assert_eq!(con.zadd_multiple(arykey, values), Ok(4));
+    assert_eq!(con.zcount(argkey, 0, 2), Ok(4));
+    assert_eq!(con.zlexcount(argkey, "-", "+"), Ok(5));
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
+    assert_eq!(con.zadd_multiple(argkey, values), Ok(4));
 
     assert_eq!(
-        con.zrangebyscore(arykey, 0, 5),
+        con.zrangebyscore(argkey, 0, 5),
         Ok(vec![
             "one".to_string(),
             "two".to_string(),
@@ -419,7 +419,7 @@ fn zset_basic() {
     );
 
     assert_eq!(
-        con.zrevrangebyscore(arykey, 5, 0),
+        con.zrevrangebyscore(argkey, 5, 0),
         Ok(vec![
             "four".to_string(),
             "three".to_string(),
@@ -428,16 +428,16 @@ fn zset_basic() {
         ])
     );
 
-    assert_eq!(con.zcard(arykey), Ok(4));
-    assert_eq!(con.zrank(arykey, "one"), Ok(0));
-    assert_eq!(con.zscore(arykey, "one"), Ok(1));
+    assert_eq!(con.zcard(argkey), Ok(4));
+    assert_eq!(con.zrank(argkey, "one"), Ok(0));
+    assert_eq!(con.zscore(argkey, "one"), Ok(1));
 
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
     let values = &[(1, "one".to_string()), (2, "two".to_string())];
-    assert_eq!(con.zadd_multiple(arykey, values), Ok(2));
+    assert_eq!(con.zadd_multiple(argkey, values), Ok(2));
 
     let res: Result<(i32, Vec<String>), RedisError> =
-        redis::cmd("ZSCAN").arg(arykey).arg(0).query(&mut con);
+        redis::cmd("ZSCAN").arg(argkey).arg(0).query(&mut con);
     assert!(res.is_ok());
     let (cur, mut s): (i32, Vec<String>) = res.expect("ok");
 
@@ -460,27 +460,27 @@ fn zset_basic() {
 #[named]
 #[test]
 fn set_basic() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
-    assert_eq!(con.sadd(arykey, "one"), Ok(1));
-    assert_eq!(con.sadd(arykey, "two"), Ok(1));
+    assert_eq!(con.sadd(argkey, "one"), Ok(1));
+    assert_eq!(con.sadd(argkey, "two"), Ok(1));
 
-    let res: Result<Vec<String>, RedisError> = con.smembers(arykey);
+    let res: Result<Vec<String>, RedisError> = con.smembers(argkey);
     assert!(res.is_ok());
     assert_eq!(res.expect("ok").len(), 2);
 
-    assert_eq!(con.srem(arykey, "one"), Ok(1));
-    assert_eq!(con.sismember(arykey, "one"), Ok(0));
+    assert_eq!(con.srem(argkey, "one"), Ok(1));
+    assert_eq!(con.sismember(argkey, "one"), Ok(0));
 
-    assert_eq!(con.scard(arykey), Ok(1));
+    assert_eq!(con.scard(argkey), Ok(1));
 
-    assert_eq!(con.srandmember(arykey), Ok("two".to_string()));
-    assert_eq!(con.spop(arykey), Ok("two".to_string()));
+    assert_eq!(con.srandmember(argkey), Ok("two".to_string()));
+    assert_eq!(con.spop(argkey), Ok("two".to_string()));
 
-    assert_eq!(con.sadd(arykey, "hello"), Ok(1));
-    assert_eq!(con.sadd(arykey, "hi"), Ok(1));
+    assert_eq!(con.sadd(argkey, "hello"), Ok(1));
+    assert_eq!(con.sadd(argkey, "hi"), Ok(1));
 
     redis::cmd("DEL").arg("foo").execute(&mut con);
     assert_eq!(con.sadd("foo", &[1, 2, 3]), Ok(3));
@@ -500,16 +500,16 @@ fn set_basic() {
 #[named]
 #[test]
 fn bit_basic() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
-    assert_eq!(con.setbit(arykey, 10086, true), Ok(0));
-    assert_eq!(con.getbit(arykey, 10086), Ok(1));
-    assert_eq!(con.bitcount(arykey), Ok(1));
+    assert_eq!(con.setbit(argkey, 10086, true), Ok(0));
+    assert_eq!(con.getbit(argkey, 10086), Ok(1));
+    assert_eq!(con.bitcount(argkey), Ok(1));
 
     let res: Result<u64, RedisError> = redis::cmd("BITPOS")
-        .arg(arykey)
+        .arg(argkey)
         .arg(1)
         .arg(0)
         .query(&mut con);
@@ -517,7 +517,7 @@ fn bit_basic() {
     assert_eq!(res.expect("ok"), 10086);
 
     let res: Result<Vec<u8>, RedisError> = redis::cmd("BITFIELD")
-        .arg(arykey)
+        .arg(argkey)
         .arg("GET")
         .arg("u4")
         .arg("0")
