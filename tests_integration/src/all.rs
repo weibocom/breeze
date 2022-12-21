@@ -1,3 +1,4 @@
+mod api;
 mod ci;
 mod counterservice;
 mod mc;

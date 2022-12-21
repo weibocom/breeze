@@ -1,8 +1,11 @@
 use ds::RingSlice;
 
 use crate::Result;
+use metrics::Path;
 
 use super::{error::McqError, reqpacket::Packet};
+use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 const CR: u8 = 13;
 const LF: u8 = 10;
 const MAX_KEY_LEN: usize = 250;
@@ -20,8 +23,9 @@ pub(super) struct RspPacket<'a, S> {
     // vlen: usize,
     // key_start: usize,
     // key_len: usize,
-    // flags: usize,
-    // flags_len: usize,
+    flags: usize,
+    flags_len: usize,
+    flags_start: usize,
     // end: usize,
 }
 
@@ -42,8 +46,9 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
             // vlen: 0,
             // key_start: 0,
             // key_len: 0,
-            // flags: 0,
-            // flags_len: 0,
+            flags: 0,
+            flags_len: 0,
+            flags_start: 0,
             // end: 0,
         }
     }
@@ -155,12 +160,16 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     }
                 }
                 RspPacketState::Flags => {
-                    if self.current().is_ascii_digit() {
-                        // do nothing
-                    } else if self.current() == b' ' {
-                        state = RspPacketState::SpacesBeforeVlen;
+                    if self.current() != b' ' {
+                        if self.flags_start == 0 {
+                            self.flags_start = self.oft;
+                        }
+                        self.flags = self.flags * 10 + (self.current() - b'0') as usize;
+                        self.flags_len += 1;
                     } else {
-                        return Err(McqError::RspInvalid.error());
+                        self.skip_back(1)?;
+                        self.data.token(&mut self.oft, 0)?;
+                        state = RspPacketState::SpacesBeforeVlen;
                     }
                 }
                 RspPacketState::SpacesBeforeVlen => {
@@ -260,6 +269,35 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
             self.skip(1)?;
         }
         Err(super::Error::ProtocolIncomplete)
+    }
+
+    pub(super) fn delay_metric(&mut self) -> Result<()> {
+        // 只处理value类型的rsp（request为get xxx）
+        if self.rsp_type != RspType::Value {
+            return Ok(());
+        }
+
+        // 业务层只有接少数场景会用到flags 字段，也就是绝大多数场景下为0
+        // 即使使用也为u8类型，实际场景下不会存在置为时间戳的场景, 万一使用，则存在被覆盖的bug
+        //
+        // 超过一个小时(3600s) ,延时指标统计也无实际意义
+        let time_sec = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        const HOUR_SECS: u64 = 3600;
+        let sub = time_sec - self.flags as u64;
+        if sub > HOUR_SECS {
+            return Ok(());
+        }
+
+        let mut delay_metric = Path::base().rtt("mcq_delay");
+        delay_metric += Duration::from_secs(sub);
+
+        for idx in self.flags_start..(self.flags_start + self.flags_len) {
+            self.data.update(idx, b'0');
+        }
+        return Ok(());
     }
 
     #[inline]

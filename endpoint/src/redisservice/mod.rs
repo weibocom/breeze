@@ -8,6 +8,7 @@ struct Context {
 
 #[inline]
 fn transmute(ctx: &mut u64) -> &mut Context {
-    assert_eq!(std::mem::size_of::<Context>(), 8);
+    // 这个放在layout的单元测试里面
+    //assert_eq!(std::mem::size_of::<Context>(), 8);
     unsafe { std::mem::transmute(ctx) }
 }

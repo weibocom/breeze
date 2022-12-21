@@ -15,7 +15,6 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection};
 use std::collections::HashMap;
-use std::time::Instant;
 use std::vec;
 
 use crate::ci::env::exists_key_iter;

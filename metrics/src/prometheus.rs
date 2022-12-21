@@ -162,9 +162,9 @@ impl<'a, 'r> ItemWriter for PrometheusItemWriter<'a, 'r> {
 
         let metric_name = MetricName(key, sub_key);
         //promethues # HELP
-        self.put_slice("# HELP ");
-        metric_name.write_to(self);
-        self.put_slice("\n");
+        //self.put_slice("# HELP ");
+        //metric_name.write_to(self);
+        //self.put_slice("\n");
 
         //promethues # TYPE
         self.put_slice("# TYPE ");
@@ -176,9 +176,9 @@ impl<'a, 'r> ItemWriter for PrometheusItemWriter<'a, 'r> {
         self.put_slice("{");
         self.first = true;
         //确保第一个put的label一定不为空; 后续优化
-        self.put_label("source", source);
-        self.put_label("pool", context::get().service_pool.as_bytes());
-        self.put_label("namespace", namespace);
+        self.put_label("src", source);
+        //self.put_label("pool", context::get().service_pool.as_bytes());
+        self.put_label("ns", namespace);
         self.put_label("topic", topic);
         self.put_label("bip", bip);
 

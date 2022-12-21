@@ -31,6 +31,21 @@ pub enum Opcode {
     StartAuth = 0x21,
     GETS = 0x48,
 }
+
+// response status 共11种，协议中占2个字节，当前只有1字节，如果超范围需要在协议处理位置对应修改
+#[allow(dead_code)]
+pub enum RespStatus {
+    NoError = 0x0000,
+    NotFound = 0x0001,
+    InvalidArg = 0x0004,
+    NotStored = 0x0005,
+    NonNumeric = 0x0006,
+    // 扩展一个quit，用于支持关闭连接
+    Quit = 0x0007,
+    UnkownCmd = 0x0081,
+    OutOfMemory = 0x0082,
+}
+
 use crate::Operation;
 #[allow(dead_code)]
 pub(super) enum PacketPos {
@@ -96,16 +111,22 @@ const TRY_NEXT_TABLE: [u8; 128] = [
 
 pub(super) const REQUEST_MAGIC: u8 = 0x80;
 pub(super) const RESPONSE_MAGIC: u8 = 0x81;
-//pub(super) const OP_CODE_GET: u8 = 0x00;
+pub(super) const OP_CODE_GET: u8 = 0x00;
 pub(super) const OP_CODE_NOOP: u8 = 0x0a;
+pub(super) const OP_CODE_VERSION: u8 = 0x0b;
+pub(super) const OP_CODE_STAT: u8 = 0x10;
+pub(super) const OP_CODE_QUIT: u8 = 0x07;
+pub(super) const OP_CODE_QUITQ: u8 = 0x17;
+pub(super) const OP_CODE_GETKQ: u8 = 0x0d;
+pub(super) const OP_CODE_GETQ: u8 = 0x09;
+pub(super) const OP_CODE_SET: u8 = 0x01;
+
 //pub(super) const OP_CODE_GETK: u8 = 0x0c;
-//pub(super) const OP_CODE_GETKQ: u8 = 0x0d;
-//pub(super) const OP_CODE_GETQ: u8 = 0x09;
+
 // 这个专门为gets扩展
 //pub(super) const OP_CODE_GETS: u8 = 0x48;
 //pub(super) const OP_CODE_GETSQ: u8 = 0x49;
 
-//pub(super) const OP_CODE_SET: u8 = 0x01;
 //pub(super) const OP_CODE_ADD: u8 = 0x02;
 //pub(super) const OP_CODE_DEL: u8 = 0x04;
 
@@ -186,6 +207,7 @@ impl Binary<RingSlice> for RingSlice {
         assert!(self.len() >= HEADER_LEN);
         self.at(PacketPos::ExtrasLength as usize)
     }
+    #[inline(always)]
     fn extra_or_flag(&self) -> Self {
         // 读取flag时，需要有完整的packet
         assert!(self.len() >= HEADER_LEN);
@@ -233,12 +255,14 @@ impl Binary<RingSlice> for RingSlice {
         self.sub_slice(offset, key_len)
     }
     // 仅仅用于获取value长度，注意区分total body len
+    #[inline]
     fn value_len(&self) -> u32 {
         let total_body_len = self.total_body_len();
         let extra_len = self.extra_len() as u32;
         let key_len = self.key_len() as u32;
         total_body_len - extra_len - key_len
     }
+    #[inline]
     fn value(&self) -> Self {
         assert!(self.len() >= self.packet_len());
         let total_body_len = self.total_body_len() as usize;

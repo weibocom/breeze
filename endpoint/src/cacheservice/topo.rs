@@ -1,12 +1,13 @@
+use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
-use protocol::{Builder, Endpoint, Protocol, Request, Resource, Topology, TryNextType};
+use ds::time::Duration;
+use protocol::{Protocol, Request, Resource, TryNextType};
 use sharding::hash::Hasher;
 use sharding::Distance;
 use std::collections::HashMap;
-use std::time::Duration;
 
+use crate::shards::Shards;
 use crate::TimeoutAdjust;
-use stream::Shards;
 
 #[derive(Clone)]
 pub struct CacheService<B, E, Req, P> {
@@ -66,7 +67,7 @@ where
     }
 }
 
-impl<B: Send + Sync, E, Req, P> protocol::Endpoint for CacheService<B, E, Req, P>
+impl<B: Send + Sync, E, Req, P> Endpoint for CacheService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -201,9 +202,8 @@ where
 
             use discovery::distance::{Balance, ByDistance};
             let master = ns.master.clone();
-            let mut local_len = ns.local_len();
             let local = ns.local_affinity;
-            let mut backends = ns.take_backends();
+            let (mut local_len, mut backends) = ns.take_backends();
             //let local = true;
             if local {
                 backends.balance(&master);

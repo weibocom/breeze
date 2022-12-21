@@ -2,7 +2,7 @@
 use crate::ci::env::*;
 use crate::redis::RESTYPE;
 use crate::redis_helper::*;
-use chrono::{prelude::*, Duration};
+use chrono::prelude::*;
 use function_name::named;
 use redis::Commands;
 //基本set场景，key固定为foo或bar，value为简单数字或字符串

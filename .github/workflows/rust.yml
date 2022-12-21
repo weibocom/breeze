@@ -31,7 +31,7 @@ jobs:
           toolchain: stable
           override: true
       - name: Build
-        run: cargo build
+        run: cargo build --features=console-api
       - name: Check Vintage
         run: |
           docker ps -a
@@ -60,7 +60,7 @@ jobs:
       - name: Check Status
         run: |
           sleep 6s
-          #netstat -nat|grep LISTEN
+          netstat -nat|grep LISTEN
           #ps -aux|grep breeze
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
@@ -72,7 +72,7 @@ jobs:
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
-          version: '0.15.0'
-          args: '-- --test-threads 1'
+          version: "0.15.0"
+          args: "--features=github_workflow -- --test-threads 1"
       #- name: Run tests
       #  run: cargo test

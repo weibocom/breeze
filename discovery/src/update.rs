@@ -1,12 +1,13 @@
 // 定期更新discovery.
 use super::{Discover, ServiceId, TopologyWrite};
 use ds::chan::Receiver;
-use std::time::{Duration, Instant};
+use ds::time::Duration;
 use tokio::time::interval;
 
 use crate::cache::DiscoveryCache;
 use crate::path::ToName;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering::*};
 
 pub async fn watch_discovery<D, T>(
     snapshot: String,
@@ -18,6 +19,7 @@ pub async fn watch_discovery<D, T>(
     T: Send + TopologyWrite + ServiceId + 'static + Sync,
     D: Send + Sync + Discover + Unpin + 'static,
 {
+    let tick = Duration::from_secs(3).max(tick);
     let cache = DiscoveryCache::new(discovery);
     let mut refresher = Refresher {
         snapshot,
@@ -47,41 +49,48 @@ where
     async fn watch(&mut self) {
         log::info!("task started ==> topology refresher");
         // 降低tick的频率，便于快速从chann中接收新的服务。
-        let mut tick = interval(Duration::from_secs(1));
+        let period = Duration::from_secs(1);
+        let cycle = (self.tick.as_secs_f64() / period.as_secs_f64()).ceil() as usize;
+        let mut cycle_i = 0usize;
+        let mut tick = interval(period);
         self.cb.with_discovery(self.discovery.inner()).await;
         let mut services = HashMap::new();
-        let mut last = Instant::now();
+        // 每秒钟处理一次，一次只处理部分service。
+        // 每个周期结束清理缓存
         loop {
             while let Ok(t) = self.rx.try_recv() {
                 let service = t.service().name();
                 if services.contains_key(&service) {
                     log::error!("service duplicatedly registered:{}", service);
                 } else {
+                    static SEQ: AtomicUsize = AtomicUsize::new(0);
+                    let id = SEQ.fetch_add(1, Relaxed);
                     log::debug!("service path:{:?} registered ", service);
                     let mut t: crate::cfg::Config<T> = t.into();
                     t.init(&self.snapshot, &mut self.discovery).await;
-                    services.insert(service, t);
+                    services.insert(service, (id, t));
                 }
             }
-            if last.elapsed() >= self.tick {
-                self.check_once(&mut services).await;
-                last = Instant::now();
-
-                self.cb.with_discovery(self.discovery.inner()).await;
+            for (_name, (id, service)) in services.iter_mut() {
+                // 每秒钟只更新部分。
+                if cycle_i == *id % cycle {
+                    service
+                        .check_update(&self.snapshot, &mut self.discovery)
+                        .await;
+                }
             }
-            for (_service, t) in services.iter_mut() {
+
+            for (_service, (_id, t)) in services.iter_mut() {
                 t.try_load();
+            }
+            cycle_i += 1;
+            if cycle_i == cycle {
+                self.cb.with_discovery(self.discovery.inner()).await;
+                cycle_i = 0;
+                // 清空缓存
+                self.discovery.clear();
             }
             tick.tick().await;
         }
-    }
-    async fn check_once(&mut self, services: &mut HashMap<String, crate::cfg::Config<T>>) {
-        for (_name, service) in services.iter_mut() {
-            service
-                .check_update(&self.snapshot, &mut self.discovery)
-                .await;
-        }
-        // 清空缓存
-        self.discovery.clear();
     }
 }

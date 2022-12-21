@@ -9,16 +9,17 @@ use ds::chan::mpsc::{channel, Sender, TrySendError};
 use ds::Switcher;
 
 use crate::checker::BackendChecker;
+use endpoint::{Builder, Endpoint, Single};
 use metrics::Path;
-use protocol::{Endpoint, Error, Protocol, Request, Resource, Single};
+use protocol::{Error, Protocol, Request, Resource};
 
 #[derive(Clone)]
 pub struct BackendBuilder<P, R> {
     _marker: std::marker::PhantomData<(P, R)>,
 }
 
-use std::time::Duration;
-impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
+use ds::time::Duration;
+impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
     fn build(
         addr: &str,
         parser: P,
@@ -30,8 +31,7 @@ impl<P: Protocol, R: Request> protocol::Builder<P, R, Arc<Backend<R>>> for Backe
         let finish: Switcher = false.into();
         let init: Switcher = false.into();
         let f = finish.clone();
-        let path_prefix = rsrc.name().to_string() + "_backend";
-        let path = Path::new(vec![path_prefix.as_str(), service]);
+        let path = Path::new(vec![rsrc.name(), service]);
         let single = Arc::new(AtomicBool::new(false));
         let mut checker = BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout);
         let s = single.clone();

@@ -1,5 +1,5 @@
+use ds::time::{Duration, Instant};
 use std::fmt::{Debug, Display};
-use std::time::Instant;
 
 use ds::RingSlice;
 
@@ -10,6 +10,8 @@ pub type Context = u64;
 pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     fn cmd(&self) -> &HashedCommand;
     fn start_at(&self) -> Instant;
+    fn last_start_at(&self) -> ds::time::Instant;
+    fn elapsed_current_req(&self) -> Duration;
     fn operation(&self) -> Operation;
     fn len(&self) -> usize;
     fn hash(&self) -> i64;
@@ -26,9 +28,6 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
         self.mut_context()
     }
     fn mut_context(&mut self) -> &mut Context;
-    fn master_only(&self) -> bool;
-    fn ignore_rsp(&self) -> bool;
-    fn direct_hash(&self) -> bool;
     // 请求成功后，是否需要进行回写或者同步。
     fn write_back(&mut self, wb: bool);
     //fn is_write_back(&self) -> bool;
