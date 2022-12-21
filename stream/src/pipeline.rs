@@ -41,7 +41,7 @@ where
         rx_buf: StreamGuard::new(),
         client,
         parser,
-        pending: VecDeque::with_capacity(31),
+        pending: VecDeque::with_capacity(15),
         waker: AtomicWaker::default(),
         flush: false,
         start: Instant::now(),
@@ -56,20 +56,20 @@ where
 }
 
 pub struct CopyBidirectional<C, P, T> {
-    pipeline: bool, // 请求是否需要以pipeline方式进行
     top: T,
     rx_buf: StreamGuard,
     client: C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
     waker: AtomicWaker,
-    flush: bool,
     cb: Callback,
 
     metrics: Arc<StreamMetrics>,
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
     // 如果一个multiget被拆分成多个请求，则start存储的是第一个请求的时间。
     start: Instant,
+    pipeline: bool, // 请求是否需要以pipeline方式进行
+    flush: bool,
     start_init: bool,
     first: bool, // 当前解析的请求是否是第一个。
 
