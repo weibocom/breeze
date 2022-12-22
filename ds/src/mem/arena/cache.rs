@@ -12,7 +12,7 @@ impl<T, H: super::Allocator<T>> CachedArena<T, H> {
     // 最多缓存64个对象
     pub fn with_capacity(cap: usize, heap: H) -> Self {
         let cap = cap.next_power_of_two().min(32) as u32;
-        let bits = !0 << cap;
+        let bits = ((!0u64) << cap) as u32;
         let mut cache = std::mem::ManuallyDrop::new(Vec::with_capacity(cap as usize));
         let cache = unsafe { NonNull::new_unchecked(cache.as_mut_ptr()) };
         Self {
@@ -54,7 +54,11 @@ impl<T, H: super::Allocator<T>> CachedArena<T, H> {
 
 impl<T, H> Drop for CachedArena<T, H> {
     fn drop(&mut self) {
-        assert_eq!(self.bits, !0 << self.cap, "arena is not empty");
+        assert_eq!(
+            self.bits,
+            ((!0u64) << self.cap) as u32,
+            "arena is not empty"
+        );
         unsafe {
             let _cache = Vec::from_raw_parts(self.cache.as_ptr(), 0, self.cap as usize);
         }
