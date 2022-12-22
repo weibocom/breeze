@@ -93,10 +93,10 @@ fn check_topology() {
 #[ignore]
 #[test]
 fn check_pipeline() {
-    assert_eq!((416, 576).select(), size_of::<CopyBidirectional>());
+    assert_eq!((424, 584).select(), size_of::<CopyBidirectional>());
     // 512字节对齐
     assert_eq!(
-        (480, 640).select(),
+        (488, 648).select(),
         size_of::<Entry<CopyBidirectional, rt::DisableTimeout>>()
     );
 }
