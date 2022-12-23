@@ -200,7 +200,7 @@ where
             let local = ns.local_affinity;
             let (mut local_len, mut backends) = ns.take_backends();
             //let local = true;
-            if local {
+            if local && local_len > 1 {
                 backends.balance(&master);
                 local_len = backends.sort(master);
             }
