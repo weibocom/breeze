@@ -340,10 +340,11 @@ where
         self.rx_buf.try_gc();
         self.rx_buf.shrink();
         self.client.shrink();
+        // 满足条件之一说明需要刷新
         // 1. buffer 过大；2. 有异步请求未完成; 3. top 未drop
-        (self.rx_buf.cap() + self.client.cap() >= crate::REFRESH_THREASHOLD)
-            && self.async_pending.len() > 0
-            && self.dropping.len() > 0
+        (self.rx_buf.cap() + self.client.cap()) >= crate::REFRESH_THREASHOLD
+            || self.async_pending.len() > 0
+            || self.dropping.len() > 0
     }
 }
 impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
