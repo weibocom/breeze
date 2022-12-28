@@ -35,7 +35,6 @@ name = "criterion"
 path = "src/benches/criterion.rs"
 harness = false
 
-
 [features]
 default = ["layout-max"]
 layout-min = ["ds/tsc"]
