@@ -1,10 +1,10 @@
 use criterion::{black_box, Criterion};
 use ds::RingSlice;
 pub(super) fn bench_iter(c: &mut Criterion) {
-    let slice = (0..2048).into_iter().map(|x| x as u8).collect::<Vec<u8>>();
+    let slice = (0..64).into_iter().map(|x| x as u8).collect::<Vec<u8>>();
     let len = slice.len();
     let mut group = c.benchmark_group("ring_slice_iter");
-    let rs = RingSlice::from(slice.as_ptr(), slice.len(), 0, 2048);
+    let rs = RingSlice::from(slice.as_ptr(), slice.len(), 0, len);
     group.bench_function("vec", |b| {
         b.iter(|| {
             black_box({
