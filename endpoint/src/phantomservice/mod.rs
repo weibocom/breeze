@@ -32,7 +32,7 @@ impl Context {
         self.ctx & (1 << 62) > 0
     }
 
-    // 低8位存储下一次访问的idx，不存在回写的场景，所以读写共享相同的bit
+    // 低8位存储下一次访问的idx，phantom的回写实际是多写，所以读写共享相同的bit即可
     #[inline]
     fn take_proc_idx(&mut self) -> u8 {
         let idx = self.ctx as u8;

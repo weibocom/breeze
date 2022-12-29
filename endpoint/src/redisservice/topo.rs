@@ -102,11 +102,7 @@ where
             req
         );
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-
-        // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
-        if req.hash() <= 0 {
-            log::warn!("{} send {} => {:?}", self.service, shard_idx, req)
-        }
+        log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() && !req.cmd().master_only() {
