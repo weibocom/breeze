@@ -84,10 +84,12 @@ fn test_bfmget() {
 
 #[test]
 fn test_bfmset() {
+    // 避免与其他test的key重复
     let pref_key = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
-        .as_secs();
+        .as_secs()
+        + 10000;
 
     let mut con = get_conn(&file!().get_host());
     let key2 = pref_key + 30;

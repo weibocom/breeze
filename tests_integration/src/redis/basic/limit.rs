@@ -3,7 +3,6 @@ use crate::redis::RESTYPE;
 use crate::redis_helper::*;
 use assert_panic::assert_panic;
 use function_name::named;
-use redis::Commands;
 //use std::fmt::Write;
 /// val为空字符串
 /// key为空字符串
