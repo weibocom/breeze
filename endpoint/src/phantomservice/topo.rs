@@ -14,6 +14,7 @@ use discovery::{
     TopologyWrite,
 };
 use protocol::{Protocol, Request, Resource};
+use rand::{seq::SliceRandom, thread_rng};
 use sharding::hash::Hasher;
 
 use super::config::{Backend, PhantomNamespace};
@@ -28,6 +29,7 @@ pub struct PhantomService<B, E, Req, P> {
     streams: Vec<(Shards<E, Req>, AccessMod)>,
     // 不同streams的url
     streams_backend: Vec<Backend>,
+    write_all: bool,
     updated: HashMap<String, Arc<AtomicBool>>,
     hasher: Hasher,
     parser: P,
@@ -42,6 +44,7 @@ impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
             parser,
             streams: Default::default(),
             streams_backend: Default::default(),
+            write_all: Default::default(),
             updated: Default::default(),
             hasher: Default::default(),
             service: Default::default(),
@@ -78,9 +81,11 @@ where
 
         let mut context = super::Context::from(*req.context_mut());
 
+        // TODO: 初始化时，把最近分组作为第一个分组，其他按距离排序 fishermen
+        // TODO：按顺序轮询分组 vs 随机轮询？推荐按序，这样有助于性能提升，需要vintage配置配合 fishermen
         let (idx, try_next) = self.get_context(&mut context, req.operation().is_store());
         if idx >= self.streams.len() {
-            log::debug!(
+            log::warn!(
                 "+++ ignore req for idx/{} is bigger than streams.len/{}, req: {:?}",
                 idx,
                 self.streams.len(),
@@ -89,9 +94,13 @@ where
             return;
         }
 
-        // TODO 测试用例检查context里的数据变化
         req.try_next(try_next);
         *req.mut_context() = context.ctx;
+
+        // 对于phantom，如果是write_all,则对write类型cmd都需要回种所有分组
+        let write_back = self.write_all && req.operation().is_store();
+        req.write_back(write_back);
+        log::debug!("+++ {} send {}:{:?}", self.service, idx, req);
 
         unsafe { self.streams.get_unchecked(idx).0.send(req) };
     }
@@ -138,10 +147,17 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         self.service = namespace.to_string();
-        if let Some(ns) = PhantomNamespace::try_from(cfg) {
+        if let Some(mut ns) = PhantomNamespace::try_from(cfg) {
             self.timeout.adjust(ns.basic.timeout);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.service = namespace.to_string();
+            self.write_all = ns.basic.write_all;
+
+            // TODO: 需要计算分组资源的距离，实现就近访问策略 fishermen
+
+            // 先用随机，下一版考虑调整配置 + 计算就近访问
+            let mut rng = thread_rng();
+            ns.backends.shuffle(&mut rng);
 
             for b in ns.backends.iter() {
                 for hp in b.servers.iter() {
@@ -155,7 +171,7 @@ where
 
             if ns.backends.len() > 0 {
                 log::info!(
-                    "phantom/{} topo updated from {:?} to {:?}",
+                    "+++ phantom/{} topo updated from {:?} to {:?}",
                     namespace,
                     self.streams_backend,
                     ns.backends

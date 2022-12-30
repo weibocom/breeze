@@ -14,16 +14,15 @@ pub struct PhantomNamespace {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Basic {
-    // #[serde(default)]
-    // pub(crate) access_mod: String,
     #[serde(default)]
     pub(crate) hash: String,
-    // #[serde(default)]
-    // pub(crate) distribution: String,
     #[serde(default)]
     pub(crate) listen: String,
     #[serde(default)]
     resource_type: String,
+    // 默认写所有分组
+    #[serde(default = "Basic::default_write_all")]
+    pub write_all: bool,
     #[serde(default)]
     pub(crate) timeout: u32,
 }
@@ -64,4 +63,11 @@ impl PhantomNamespace {
     //pub(super) fn timeout(&self) -> Duration {
     //    Duration::from_millis(200.max(self.basic.timeout as u64))
     //}
+}
+
+impl Basic {
+    // 默认写所有的ha分片
+    fn default_write_all() -> bool {
+        true
+    }
 }
