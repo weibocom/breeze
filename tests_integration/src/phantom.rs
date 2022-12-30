@@ -63,6 +63,7 @@ fn test_bfget() {
     let rs = cmd("bfget").arg(pref_key).query::<i64>(&mut con);
     // assert_eq!(rs, Ok(orgin_rs.unwrap() + 1));
     // phantom可能返回大于等于1的值，只要大于等于1都说明存在，不能用1来assert
+    assert!(orgin_rs.is_ok());
     assert!(rs.is_ok() && rs.unwrap() >= 1);
 }
 
@@ -112,7 +113,9 @@ fn test_bfmset() {
 
     // 可能返回大于1的结果，也表明存在
     // assert_eq!(rs, Ok(vec![1, 1, 1]));
-    assert!(
-        rs.is_ok() && rs.unwrap().get(0) >= 1 && rs.unwrap().get(1) >= 1 && rs.unwrap().get(2) >= 1
-    );
+    assert!(rs.is_ok());
+    let rs_real = rs.unwrap();
+    for r in rs_real.iter() {
+        assert!(*r >= 1);
+    }
 }
