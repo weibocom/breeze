@@ -44,6 +44,7 @@ pub fn register(host: &str) -> Arc<AtomicBool> {
 }
 
 pub fn lookup_ips(host: &str) -> Vec<String> {
+    // log::debug!("++++ lookup ips:{:?}", DNSCACHE.get().hosts);
     DNSCACHE.get().lookup(host)
 }
 
