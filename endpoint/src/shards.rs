@@ -22,7 +22,6 @@ where
         //     0
         // };
         let idx = self.shard_idx(req.hash());
-        log::debug!("+++ mc hash/idx: {}/{}", req.hash(), idx);
         unsafe {
             assert!(idx < self.backends.len());
             self.backends.get_unchecked(idx).0.send(req);
