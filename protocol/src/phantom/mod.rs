@@ -8,7 +8,8 @@ mod packet;
 //mod token;
 
 use crate::{
-    Command, Error, Flag, HashedCommand, MetricName, Protocol, RequestProcessor, Result, Stream,
+    Command, Commander, Error, Flag, HashedCommand, MetricName, Protocol, RequestProcessor, Result,
+    Stream,
 };
 use ds::RingSlice;
 use flag::RedisFlager;
@@ -261,6 +262,18 @@ impl Protocol for Phantom {
             // https://redis.io/commands/mset
         }
         Ok(())
+    }
+
+    // phantom writeback场景：所有的bfset or bfmset
+    #[inline]
+    fn build_writeback_request<C: Commander>(
+        &self,
+        _ctx: &mut C,
+        _response: &Command,
+        _: u32,
+    ) -> Option<HashedCommand> {
+        // 目前不需要对req做调整
+        None
     }
 
     // TODO 暂时保留，备查及比对，待上线稳定一段时间后再删除（预计 2022.12.30之后可以） fishermen

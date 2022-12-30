@@ -13,9 +13,10 @@ impl super::Hash for Bkdr {
             h = h.wrapping_mul(-1);
         }
 
-        if h == 0 {
-            log::error!("bkdr - found zero hash for key: {:?}", b);
-        }
+        // 由于计算过程有溢出，部分key最终的hash可以为0，eg："2993365881.sup"
+        // if h == 0 {
+        //     log::error!("bkdr - found zero hash for key: {:?}", b);
+        // }
 
         h as i64
     }
