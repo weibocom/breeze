@@ -16,31 +16,50 @@ impl Context {
     fn from(ctx: protocol::Context) -> Self {
         Self { ctx }
     }
-
     #[inline]
-    fn check_and_inited(&mut self, write: bool) -> bool {
-        if self.ctx > 0 {
-            return true;
-        }
-        let inited = 0b10 | write as u64;
-        self.ctx = inited << 62;
-        false
+    fn inited(&self) -> bool {
+        self.ctx & (1 << 63) != 0
+    }
+    #[inline]
+    fn check_inited(&mut self) {
+        self.ctx = self.ctx | 1 << 63;
     }
 
-    #[inline]
-    fn is_write(&self) -> bool {
-        self.ctx & (1 << 62) > 0
-    }
+    //#[inline]
+    //fn check_and_inited(&mut self, write: bool) -> bool {
+    //    if self.ctx > 0 {
+    //        return true;
+    //    }
+    //    let inited = 0b10 | write as u64;
+    //    self.ctx = inited << 62;
+    //    false
+    //}
 
-    // 低8位存储下一次访问的idx，phantom的回写实际是多写，所以读写共享相同的bit即可
+    //#[inline]
+    //fn is_write(&self) -> bool {
+    //    self.ctx & (1 << 62) > 0
+    //}
+
+    //// 低8位存储下一次访问的idx，phantom的回写实际是多写，所以读写共享相同的bit即可
+    //#[inline]
+    //fn take_proc_idx(&mut self) -> u8 {
+    //    let idx = self.ctx as u8;
+    //    self.ctx += 1;
+    //    idx
+    //}
+
     #[inline]
-    fn take_proc_idx(&mut self) -> u8 {
-        let idx = self.ctx as u8;
+    fn index(&self) -> usize {
+        self.ctx as u8 as usize
+    }
+    #[inline]
+    fn fetch_add_idx(&mut self) -> usize {
+        let old = self.ctx as u8 as usize;
         self.ctx += 1;
-        idx
+        old
     }
-
-    // fn index(&self) -> u8 {
-    //     self.ctx as u8
-    // }
+    #[inline]
+    fn update_idx(&mut self, idx: usize) {
+        self.ctx = idx as u64;
+    }
 }
