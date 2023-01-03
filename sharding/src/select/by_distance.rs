@@ -77,28 +77,28 @@ impl<T: Addr> Distance<T> {
         let idx = self.select_idx();
         (idx, unsafe { self.replicas.get_unchecked(idx) })
     }
+    // idx: 上一次获取到的idx
+    // runs: 已经连续获取到的次数
     #[inline]
     pub fn select_next_idx(&self, idx: usize, runs: usize) -> usize {
-        assert!(runs < self.len());
+        assert!(runs < self.len(), "{} {} {:?}", idx, runs, self);
         // 还可以从local中取
-        let idx = if runs < self.local_len() {
+        let s_idx = if runs < self.local_len() {
             // 在sort时，相关的distance会进行一次random处理，在idx节点宕机时，不会让idx+1个节点成为热点
             (idx + 1) % self.local_len()
         } else {
-            assert_ne!(self.local_len(), self.len());
-            if idx == self.local_len() {
-                // 从[idx_local..idx_remote)随机取一个
+            // 从remote中取. remote_len > 0
+            assert_ne!(self.local_len(), self.len(), "{} {} {:?}", idx, runs, self);
+            if idx < self.local_len() {
+                // 第一次使用remote，为避免热点，从[idx_local..idx_remote)随机取一个
                 self.seq.fetch_add(1, Relaxed) % self.remote_len() + self.local_len()
             } else {
-                if idx + 1 == self.len() {
-                    self.local_len()
-                } else {
-                    idx + 1
-                }
+                // 按顺序从remote中取. 走到最后一个时，从local_len开始
+                ((idx + 1) % self.len()).max(self.local_len())
             }
         };
-        assert!(idx < self.replicas.len());
-        idx
+        assert!(s_idx < self.len(), "{},{} {} {:?}", idx, s_idx, runs, self);
+        s_idx
     }
     #[inline]
     pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T) {
@@ -118,5 +118,17 @@ impl<T> std::ops::DerefMut for Distance<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.replicas
+    }
+}
+
+impl<T: Addr> std::fmt::Debug for Distance<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "len: {}, local: {} backends:{:?}",
+            self.len(),
+            self.len_local,
+            self.replicas.first().map(|s| s.addr())
+        )
     }
 }
