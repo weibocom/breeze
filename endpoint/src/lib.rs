@@ -11,7 +11,7 @@ mod refresh;
 pub use refresh::{CheckedTopology, RefreshTopology};
 
 // 不同资源默认的超时时间
-const TO_PHANTOM_M: Duration = Duration::from_millis(500);
+const TO_PHANTOM_M: Duration = Duration::from_millis(200);
 const TO_REDIS_M: Duration = Duration::from_millis(500);
 const TO_REDIS_S: Duration = Duration::from_millis(200);
 const TO_MC_M: Duration = Duration::from_millis(500);
@@ -34,7 +34,3 @@ impl TimeoutAdjust for Duration {
     }
 }
 
-// pub trait Builder {
-//     type Endpoint: crate::Endpoint;
-//     fn build(&self) -> Self::Endpoint;
-// }
