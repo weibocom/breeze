@@ -12,6 +12,8 @@ pub struct Range {
 impl Range {
     pub fn from(name: &str, shards: usize) -> Self {
         let mut slot = DIST_RANGE_SLOT_COUNT_DEFAULT;
+
+        // 只支持两种格式：range，range-xxx
         // 带slot count数的range
         if name.starts_with(DIST_RANGE_WITH_SLOT_PREFIX) {
             assert!(name.starts_with(DIST_RANGE_WITH_SLOT_PREFIX));
@@ -21,6 +23,8 @@ impl Range {
             } else {
                 log::warn!("found unknown distribution: {}, will use range", name);
             }
+        } else {
+            assert!(name.eq(super::DIST_RANGE), "malformed dist range:{}", name);
         }
         assert!(shards > 0 && slot >= shards as u64);
         Range {

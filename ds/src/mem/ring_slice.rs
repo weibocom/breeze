@@ -50,7 +50,33 @@ impl RingSlice {
         assert!(offset < self.len());
         let oft = self.mask(self.start + offset);
         let l = (self.cap - oft).min(self.len() - offset);
-        unsafe { std::slice::from_raw_parts(self.ptr().offset(oft as isize), l) }
+        unsafe { from_raw_parts(self.ptr().offset(oft as isize), l) }
+    }
+    #[inline(always)]
+    pub fn data<'a>(&self) -> (&'a [u8], &'a [u8]) {
+        unsafe {
+            if self.end() <= self.cap {
+                (
+                    from_raw_parts(self.ptr().offset(self.start as isize), self.len()),
+                    &[],
+                )
+            } else {
+                (
+                    from_raw_parts(self.ptr().add(self.start), self.cap - self.start),
+                    from_raw_parts(self.ptr(), self.end() - self.cap),
+                )
+            }
+        }
+    }
+    #[inline]
+    pub fn visit(&self, mut f: impl FnMut(u8)) {
+        let (first, sec) = self.data();
+        for v in first {
+            f(*v);
+        }
+        for v in sec {
+            f(*v);
+        }
     }
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
@@ -65,7 +91,7 @@ impl RingSlice {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn mask(&self, oft: usize) -> usize {
         // 兼容cap是0的场景
         self.cap.wrapping_sub(1) & oft
@@ -75,7 +101,7 @@ impl RingSlice {
     pub fn len(&self) -> usize {
         self.len
     }
-    #[inline]
+    #[inline(always)]
     pub fn at(&self, idx: usize) -> u8 {
         assert!(idx < self.len());
         unsafe { *self.oft_ptr(idx) }
@@ -89,9 +115,9 @@ impl RingSlice {
     pub fn ptr(&self) -> *mut u8 {
         self.ptr as *mut u8
     }
-    #[inline]
+    #[inline(always)]
     unsafe fn oft_ptr(&self, idx: usize) -> *mut u8 {
-        assert!(idx < self.len());
+        debug_assert!(idx < self.len());
         let oft = self.mask(self.start + idx);
         self.ptr().offset(oft as isize)
     }
@@ -209,43 +235,12 @@ macro_rules! define_read_number {
 
 impl RingSlice {
     // big endian
-    define_read_number!(read_u8, u8);
+    //define_read_number!(read_u8, u8);
     define_read_number!(read_u16, u16);
     define_read_number!(read_u32, u32);
     define_read_number!(read_u64, u64);
 }
 
-impl PartialEq<[u8]> for RingSlice {
-    #[inline]
-    fn eq(&self, other: &[u8]) -> bool {
-        if self.len() == other.len() {
-            for i in 0..other.len() {
-                if self.at(i) != other[i] {
-                    return false;
-                }
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
-// 内容相等
-impl PartialEq<Self> for RingSlice {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        if self.len() == other.len() {
-            for i in 0..other.len() {
-                if self.at(i) != other.at(i) {
-                    return false;
-                }
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
 impl From<&[u8]> for RingSlice {
     #[inline]
     fn from(s: &[u8]) -> Self {
@@ -282,5 +277,39 @@ impl Debug for RingSlice {
             self.cap,
             data.utf8()
         )
+    }
+}
+
+pub mod tests {
+    impl PartialEq<[u8]> for super::RingSlice {
+        #[inline]
+        fn eq(&self, other: &[u8]) -> bool {
+            if self.len() == other.len() {
+                for i in 0..other.len() {
+                    if self.at(i) != other[i] {
+                        return false;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
+    }
+    // 内容相等
+    impl PartialEq<Self> for super::RingSlice {
+        #[inline]
+        fn eq(&self, other: &Self) -> bool {
+            if self.len() == other.len() {
+                for i in 0..other.len() {
+                    if self.at(i) != other.at(i) {
+                        return false;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
     }
 }

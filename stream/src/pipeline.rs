@@ -41,7 +41,7 @@ where
         rx_buf: StreamGuard::new(),
         client,
         parser,
-        pending: VecDeque::with_capacity(31),
+        pending: VecDeque::with_capacity(15),
         waker: AtomicWaker::default(),
         flush: false,
         start: Instant::now(),
@@ -56,20 +56,20 @@ where
 }
 
 pub struct CopyBidirectional<C, P, T> {
-    pipeline: bool, // 请求是否需要以pipeline方式进行
     top: T,
     rx_buf: StreamGuard,
     client: C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
     waker: AtomicWaker,
-    flush: bool,
     cb: Callback,
 
     metrics: Arc<StreamMetrics>,
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
     // 如果一个multiget被拆分成多个请求，则start存储的是第一个请求的时间。
     start: Instant,
+    pipeline: bool, // 请求是否需要以pipeline方式进行
+    flush: bool,
     start_init: bool,
     first: bool, // 当前解析的请求是否是第一个。
 
@@ -340,10 +340,11 @@ where
         self.rx_buf.try_gc();
         self.rx_buf.shrink();
         self.client.shrink();
+        // 满足条件之一说明需要刷新
         // 1. buffer 过大；2. 有异步请求未完成; 3. top 未drop
-        (self.rx_buf.cap() + self.client.cap() >= crate::REFRESH_THREASHOLD)
-            && self.async_pending.len() > 0
-            && self.dropping.len() > 0
+        (self.rx_buf.cap() + self.client.cap()) >= crate::REFRESH_THREASHOLD
+            || self.async_pending.len() > 0
+            || self.dropping.len() > 0
     }
 }
 impl<C, P, T> Debug for CopyBidirectional<C, P, T> {

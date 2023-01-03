@@ -6,3 +6,7 @@
 mod init;
 
 pub use init::*;
+
+pub fn log_enabled() -> bool {
+    cfg!(feature = "enable-log")
+}

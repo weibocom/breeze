@@ -8,16 +8,15 @@ use std::{
     time::Duration,
 };
 
-use crate::{shards::Shards, Builder, Endpoint, Topology};
+use crate::{Builder, Endpoint, Topology};
 use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
 };
 use protocol::{Protocol, Request, Resource};
-use sharding::hash::Hasher;
+use sharding::{distribution::Range, hash::Hasher, Distance};
 
-use super::config::{Backend, PhantomNamespace};
-use super::config::{ACCESS_NONE, ACCESS_READ, ACCESS_WRITE};
+use super::config::PhantomNamespace;
 use crate::TimeoutAdjust;
 
 const CONFIG_UPDATED_KEY: &str = "__config__";
@@ -25,11 +24,12 @@ const CONFIG_UPDATED_KEY: &str = "__config__";
 #[derive(Clone)]
 pub struct PhantomService<B, E, Req, P> {
     // 一般有2组，相互做HA，每组是一个域名列表，域名下只有一个ip，但会变化
-    streams: Vec<(Shards<E, Req>, AccessMod)>,
-    // 不同streams的url
-    streams_backend: Vec<Backend>,
+    streams: Vec<Distance<(String, E)>>,
+    // m * n: m个shard，每个shard有n个ip
+    streams_backend: Vec<Vec<String>>,
     updated: HashMap<String, Arc<AtomicBool>>,
     hasher: Hasher,
+    distribution: Range,
     parser: P,
     service: String,
     timeout: Duration,
@@ -46,6 +46,7 @@ impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
             hasher: Default::default(),
             service: Default::default(),
             timeout: crate::TO_PHANTOM_M,
+            distribution: Default::default(),
             _mark: Default::default(),
         }
     }
@@ -74,58 +75,34 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, mut req: Self::Item) {
-        assert_ne!(self.streams.len(), 0);
+        debug_assert_ne!(self.streams.len(), 0);
 
-        let mut context = super::Context::from(*req.context_mut());
+        // 确认分片idx
+        let idx = self.distribution.index(req.hash());
+        assert!(idx < self.streams.len(), "{} {:?} {:?}", idx, self, req);
+        let shard = unsafe { self.streams.get_unchecked(idx) };
+        // 低8位是索引，最高bit表示是否初始化
+        let mut ctx = super::Context::from(*req.context_mut());
 
-        let (idx, try_next) = self.get_context(&mut context, req.operation().is_store());
-        if idx >= self.streams.len() {
-            log::debug!(
-                "+++ ignore req for idx/{} is bigger than streams.len/{}, req: {:?}",
-                idx,
-                self.streams.len(),
-                req.data(),
-            );
-            return;
-        }
-
-        // TODO 测试用例检查context里的数据变化
-        req.try_next(try_next);
-        *req.mut_context() = context.ctx;
-
-        unsafe { self.streams.get_unchecked(idx).0.send(req) };
-    }
-}
-
-impl<B, E, Req, P> PhantomService<B, E, Req, P>
-where
-    E: Endpoint<Item = Req>,
-    Req: Request,
-    P: Protocol,
-    B: Send + Sync,
-{
-    //
-    #[inline]
-    fn get_context(&self, ctx: &mut super::Context, is_write: bool) -> (usize, bool) {
-        ctx.check_and_inited(is_write);
-
-        // TODO: 这里处理idx，随机是不是更佳？线上是按顺序访问，调通后考虑修改 fishermen
-        let mut idx = ctx.take_proc_idx() as usize;
-        if idx >= self.streams.len() {
-            return (idx, false);
-        }
-        let stream_mod = &self.streams.get(idx).unwrap().1;
-        while (ctx.is_write() && !stream_mod.can_write())
-            || (!ctx.is_write() && !stream_mod.can_read())
-        {
-            idx = ctx.take_proc_idx() as usize;
-            if idx >= self.streams.len() {
-                return (idx, false);
+        let e = if req.operation().is_store() {
+            let idx = ctx.fetch_add_idx();
+            req.write_back(ctx.index() < shard.len());
+            unsafe { shard.get_unchecked(idx) }
+        } else {
+            // 读请求。
+            if !ctx.inited() {
+                let (idx, e) = shard.unsafe_select();
+                req.try_next(shard.len() > 1);
+                ctx.update_idx(idx);
+                e
+            } else {
+                req.try_next(false);
+                unsafe { shard.unsafe_next(ctx.index(), 1).1 }
             }
-        }
-
-        let try_next = idx + 1 < self.streams.len();
-        (idx, try_next)
+        };
+        ctx.check_inited();
+        *req.context_mut() = ctx.ctx;
+        e.1.send(req)
     }
 }
 
@@ -139,29 +116,26 @@ where
     fn update(&mut self, namespace: &str, cfg: &str) {
         self.service = namespace.to_string();
         if let Some(ns) = PhantomNamespace::try_from(cfg) {
-            self.timeout.adjust(ns.basic.timeout);
+            log::info!("topo updating {:?} => {:?}", self, ns);
+            self.timeout.adjust(ns.basic.timeout_ms);
             self.hasher = Hasher::from(&ns.basic.hash);
+            self.distribution = Range::from(&ns.basic.distribution, ns.backends.len());
             self.service = namespace.to_string();
 
-            for b in ns.backends.iter() {
-                for hp in b.servers.iter() {
-                    let host = hp.host();
+            self.streams_backend = ns
+                .backends
+                .iter()
+                .map(|v| v.split(',').map(|s| s.to_string()).collect())
+                .collect();
+            for b in self.streams_backend.iter() {
+                for url_port in b {
+                    let host = url_port.host();
                     if !self.updated.contains_key(host) {
                         let watcher = dns::register(host);
                         self.updated.insert(host.to_string(), watcher);
                     }
                 }
             }
-
-            if ns.backends.len() > 0 {
-                log::info!(
-                    "phantom/{} topo updated from {:?} to {:?}",
-                    namespace,
-                    self.streams_backend,
-                    ns.backends
-                );
-            }
-            self.streams_backend = ns.backends.clone();
 
             // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
             self.updated
@@ -207,62 +181,64 @@ where
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
-    fn build(
-        &self,
-        old: &mut HashMap<String, E>,
-        backend: Backend,
-        name: &str,
-        timeout: Duration,
-    ) -> Shards<E, Req> {
-        Shards::from(backend.distribution.as_str(), backend.servers, |addr| {
-            old.remove(addr).map(|e| e).unwrap_or_else(|| {
-                B::build(addr, self.parser.clone(), Resource::Phantom, name, timeout)
-            })
-        })
+    #[inline]
+    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Duration) -> E {
+        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
+            Some(Some(end)) => end,
+            _ => B::build(
+                &addr,
+                self.parser.clone(),
+                Resource::Redis,
+                &self.service,
+                timeout,
+            ),
+        }
     }
 
     #[inline]
     fn load_inner(&mut self) -> bool {
         let mut addrs = Vec::with_capacity(self.streams_backend.len());
-        for b in self.streams_backend.iter() {
-            let mut stream = Vec::with_capacity(b.servers.len());
-            for hp in b.servers.iter() {
-                let host_url = hp.host();
-                let ips = dns::lookup_ips(host_url);
+        for shard in self.streams_backend.iter() {
+            if shard.is_empty() {
+                log::warn!("{:?} shard is empty", self);
+                return false;
+            }
+            let mut shard_ips = Vec::with_capacity(shard.len());
+            for url_port in shard.iter() {
+                let host = url_port.host();
+                let ips = dns::lookup_ips(host);
                 if ips.len() == 0 {
-                    log::warn!("phantom dns looked up failed for {}", hp);
+                    log::warn!("phantom dns looked up failed for {} => {:?}", host, self);
                     return false;
                 }
-                if ips.len() > 1 {
-                    log::warn!(
-                        "host/{} has {} ips: {:?}, will use{}",
-                        host_url,
-                        ips.len(),
-                        ips,
-                        ips[0]
-                    );
+                for ip in ips {
+                    shard_ips.push(ip + ":" + url_port.port());
                 }
-                let addr = ips[0].clone() + ":" + host_url.port();
-                stream.push(addr);
             }
-            addrs.push(stream);
+            assert!(!shard_ips.is_empty());
+            addrs.push(shard_ips);
         }
 
         let old_streams = self.streams.split_off(0);
         self.streams.reserve(old_streams.len());
         let mut old = HashMap::with_capacity(old_streams.len() * 8);
 
-        for shard in old_streams {
-            let pool: Vec<(E, String)> = shard.0.into();
-            for e in pool {
-                old.insert(e.1, e.0);
+        for mut shard in old_streams {
+            for (addr, e) in shard.take() {
+                old.entry(addr).or_insert(Vec::new()).push(e);
             }
         }
 
-        for b in self.streams_backend.clone() {
-            let access_mod = AccessMod::from(b.access_mod.as_str());
-            let shard = self.build(&mut old, b, self.service.as_str(), self.timeout);
-            self.streams.push((shard, access_mod));
+        for a in addrs.iter() {
+            let mut shard_streams = Vec::with_capacity(a.len());
+            for addr in a {
+                let shard = self.take_or_build(&mut old, addr.as_str(), self.timeout);
+                shard_streams.push((addr.clone(), shard));
+            }
+
+            let shard = Distance::from(shard_streams);
+
+            self.streams.push(shard);
         }
 
         true
@@ -278,46 +254,22 @@ where
     fn inited(&self) -> bool {
         self.streams.len() > 0
             && self.streams.len() == self.streams_backend.len()
-            && self
-                .streams
-                .iter()
-                .fold(true, |inited, (s, _)| inited && s.inited())
+            && self.streams.iter().fold(true, |inited, shard| {
+                inited && {
+                    // 每个shard都有对应的endpoint，并且都初始化完成。
+                    shard
+                        .iter()
+                        .fold(true, |inited, (_, e)| inited && e.inited())
+                }
+            })
     }
 }
-
-#[derive(Clone)]
-struct AccessMod {
-    read: bool,
-    write: bool,
-}
-
-impl AccessMod {
-    #[inline]
-    fn from(access_mod: &str) -> Self {
-        let access = access_mod.to_ascii_lowercase();
-        // access mod 只有 none、r、w、rw四种组合
-        if ACCESS_NONE.eq(&access) {
-            return AccessMod {
-                read: false,
-                write: false,
-            };
-        }
-        assert!(access.len() <= 2, "access: {}/{}", access_mod, access.len());
-        let rmod = access.contains(ACCESS_READ);
-        let wmod = access.contains(ACCESS_WRITE);
-        Self {
-            read: rmod,
-            write: wmod,
-        }
-    }
-
-    #[inline]
-    fn can_read(&self) -> bool {
-        self.read
-    }
-
-    #[inline]
-    fn can_write(&self) -> bool {
-        self.write
+impl<B, E, Req, P> std::fmt::Debug for PhantomService<B, E, Req, P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "service:{} backends:{:?} timeout:{:?}",
+            self.service, self.streams_backend, self.timeout
+        )
     }
 }

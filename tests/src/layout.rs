@@ -53,29 +53,29 @@ fn checkout_basic() {
 #[ignore]
 #[test]
 fn check_layout_rx_buffer() {
-    assert_eq!((40, 104).select(), size_of::<rt::TxBuffer>());
+    assert_eq!((32, 96).select(), size_of::<rt::TxBuffer>());
 }
 #[ignore]
 #[test]
 fn check_callback_ctx() {
-    assert_eq!((192, 192).select(), size_of::<CallbackContext>());
+    assert_eq!(192, size_of::<CallbackContext>());
 }
 #[ignore]
 #[test]
 fn check_stream_guard() {
-    assert_eq!((160, 224).select(), size_of::<StreamGuard>());
+    assert_eq!((152, 216).select(), size_of::<StreamGuard>());
 }
 #[ignore]
 #[test]
 fn check_stream() {
-    assert_eq!((80, 152).select(), size_of::<Stream>());
+    assert_eq!((72, 144).select(), size_of::<Stream>());
 }
 #[ignore]
 #[test]
 fn check_handler() {
-    assert_eq!((320, 456).select(), size_of::<Handler<'static>>());
+    assert_eq!((304, 440).select(), size_of::<Handler<'static>>());
     assert_eq!(
-        (432, 568).select(),
+        (416, 552).select(),
         size_of::<Entry<Handler<'static>, rt::Timeout>>()
     );
 }
@@ -93,10 +93,10 @@ fn check_topology() {
 #[ignore]
 #[test]
 fn check_pipeline() {
-    assert_eq!((440, 576).select(), size_of::<CopyBidirectional>());
+    assert_eq!((424, 560).select(), size_of::<CopyBidirectional>());
     // 512字节对齐
     assert_eq!(
-        (504, 640).select(),
+        (488, 624).select(),
         size_of::<Entry<CopyBidirectional, rt::DisableTimeout>>()
     );
 }

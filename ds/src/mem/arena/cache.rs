@@ -11,7 +11,7 @@ pub struct CachedArena<T, H> {
 impl<T, H: super::Allocator<T>> CachedArena<T, H> {
     // 最多缓存64个对象
     pub fn with_capacity(cap: usize, heap: H) -> Self {
-        let cap = cap.next_power_of_two().min(64);
+        let cap = cap.next_power_of_two().min(32).max(1);
         let bits = !0 << cap;
         let mut cache = std::mem::ManuallyDrop::new(Vec::with_capacity(cap));
         let cache = unsafe { NonNull::new_unchecked(cache.as_mut_ptr()) };
