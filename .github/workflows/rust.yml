@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci 12323312323223/breeze:githubci105
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci xinxin111/breeze:githubci106
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -71,7 +71,7 @@ jobs:
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
-          version: "0.15.0"
+          version: "latest"
           args: "--features=github_workflow -- --test-threads 1"
       #- name: Run tests
       #  run: cargo test

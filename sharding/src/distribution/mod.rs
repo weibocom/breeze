@@ -10,7 +10,7 @@ use consistent::Consistent;
 use modrange::ModRange;
 use modula::Modula;
 use padding::Padding;
-use range::Range;
+pub use range::Range;
 use splitmod::SplitMod;
 
 use crate::distribution::slotmod::SlotMod;

@@ -15,18 +15,25 @@ protocol = { path = "../protocol" }
 rand = "0.8.4"
 rust-crypto = "0.2.36"
 byteorder = "1.4.3"
-bmemcached = "0.5.0"
 assert-panic = "1.0.1"
 metrics = { path = "../metrics" }
 endpoint = { path = "../endpoint" }
 
 tokio = { version = "1.21.2", features = ["fs"] }
-redis = { version = "0.22.0", default-features = false, features = [] }
+
+[dev-dependencies.criterion]
+version = "0.4"
+[dev-dependencies.minstant]
+version = "*"
 
 [[test]]
 name = "test_all"
 path = "src/all.rs"
 
+[[bench]]
+name = "criterion"
+path = "src/benches/criterion.rs"
+harness = false
 
 [features]
 default = ["layout-max"]

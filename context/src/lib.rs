@@ -104,20 +104,17 @@ pub struct ContextOption {
 }
 
 lazy_static! {
-    // rmlog-760-g3a7a12b-modified
-    // 取 g3a7a12b-modified
+    // tags/v0.0.1.59-0-gd80aa42d
+    // heads/dev-0-gc647f866
     static ref SHORT_VERSION: String = {
-        let full = git_version::git_version!();
-        let fields:Vec<&str> = full.split('-').collect();
-        let len = fields.len();
-        let last = *fields.get(len-1).unwrap_or(&"");
-        let build = if cfg!(debug_assertions) { "_debug" } else { "" };
-        if last == "modified" {
-            let second_last = fields.get(len-2).unwrap_or(&"");
-            format!("{}_{}{}", second_last, last, build)
-        } else {
-            last.to_string() + build
-        }
+        let full = git_version::git_version!(args = ["--long", "--all", "--dirty=-m"]);
+
+        let v = match full.find('/') {
+            Some(idx) => &full[idx+1..],
+            None => &full[..],
+        };
+
+        v.to_owned()
     };
     static ref CONTEXT: Context = {
         let ctx = ContextOption::from_os_args();
@@ -318,17 +315,27 @@ impl std::ops::Deref for Context {
 }
 impl From<ContextOption> for Context {
     fn from(option: ContextOption) -> Self {
-        let mut cpu = option.cpu.to_string();
-        let host_v3 = option.cpu == "v3"; // 宿主机是否支持v3
-        let v3 = cfg!(target_feature = "avx");
-        // 1. 如果宿主机的支持模式与编译器的编译方式不一致。
-        if v3 != host_v3 {
-            cpu += "!";
+        let mut version = String::with_capacity(64);
+        version.push_str(SHORT_VERSION.as_str());
+        version.push('_');
+        if cfg!(debug_assertions) {
+            version.push('d');
         };
-        Self {
-            version: SHORT_VERSION.to_string() + "_" + &cpu,
-            option,
+        if log::log_enabled() {
+            version.push('l');
         }
+        if option.cpu == "v3" {
+            version.push('3');
+        }
+        let host_v3 = option.cpu == "v3";
+        // 1. 如果宿主机的支持模式与编译器的编译方式不一致。
+        if cfg!(target_feature = "avx") != host_v3 {
+            version.push('!');
+        };
+        if version.as_bytes().last() == Some(&b'_') {
+            version.pop();
+        }
+        Self { version, option }
     }
 }
 #[inline(always)]

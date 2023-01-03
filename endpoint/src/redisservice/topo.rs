@@ -71,7 +71,7 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, mut req: Self::Item) {
-        assert_ne!(self.shards.len(), 0);
+        debug_assert_ne!(self.shards.len(), 0);
 
         use protocol::RedisFlager;
         let shard_idx = match req.cmd().direct_hash() {
@@ -94,7 +94,7 @@ where
             false => self.distribute.index(req.hash()),
         };
 
-        assert!(
+        debug_assert!(
             shard_idx < self.shards.len(),
             "redis: {}/{} req:{:?}",
             shard_idx,
@@ -102,18 +102,7 @@ where
             req
         );
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-
-        // 跟踪hash<=0的场景，hash设置错误、潜在bug可能导致hash为0，特殊场景hash可能为负，待2022.12后再考虑清理 fishermen
-        if req.hash() <= 0 || log::log_enabled!(log::Level::Debug) {
-            log::warn!(
-                "+++ send - {} hash/idx:{}/{}, master_only:{}, req:{:?},",
-                self.service,
-                req.hash(),
-                shard_idx,
-                req.cmd().master_only(),
-                req.data(),
-            )
-        }
+        log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() && !req.cmd().master_only() {
@@ -133,7 +122,9 @@ where
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
             // 1. 第一次访问. （无论如何都允许try_next，如果只有一个从，则下一次失败时访问主）
             // 2. 有多个从，访问的次数小于从的数量
-            let try_next = ctx.runs == 1 || (ctx.runs as usize) < shard.slaves.len();
+            //let try_next = ctx.runs == 1 || (ctx.runs as usize) < shard.slaves.len();
+            // 只重试一次，重试次数过多，可能会导致雪崩。
+            let try_next = ctx.runs == 1;
             req.try_next(try_next);
 
             endpoint.1.send(req)
