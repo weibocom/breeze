@@ -122,7 +122,9 @@ where
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
             // 1. 第一次访问. （无论如何都允许try_next，如果只有一个从，则下一次失败时访问主）
             // 2. 有多个从，访问的次数小于从的数量
-            let try_next = ctx.runs == 1 || (ctx.runs as usize) < shard.slaves.len();
+            //let try_next = ctx.runs == 1 || (ctx.runs as usize) < shard.slaves.len();
+            // 只重试一次，重试次数过多，可能会导致雪崩。
+            let try_next = ctx.runs == 1;
             req.try_next(try_next);
 
             endpoint.1.send(req)
