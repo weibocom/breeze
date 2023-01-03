@@ -15,6 +15,10 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) distribution: String,
     #[serde(default)]
+    pub(crate) listen: String,
+    #[serde(default)]
+    resource_type: String,
+    #[serde(default)]
     pub(crate) timeout_ms: u32,
 }
 

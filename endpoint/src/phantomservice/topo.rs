@@ -230,7 +230,7 @@ where
         }
 
         for a in addrs.iter() {
-            let mut shard_streams = Vec::with_capacity(addrs.len());
+            let mut shard_streams = Vec::with_capacity(a.len());
             for addr in a {
                 let shard = self.take_or_build(&mut old, addr.as_str(), self.timeout);
                 shard_streams.push((addr.clone(), shard));
