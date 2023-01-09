@@ -5,9 +5,12 @@ use crate::redis_helper::*;
 use chrono::prelude::*;
 use function_name::named;
 use redis::Commands;
-//基本set场景，key固定为foo或bar，value为简单数字或字符串
+/// 基本set场景，key固定为foo或bar，value为简单数字或字符串
+/// set ex
 #[test]
+#[named]
 fn test_basic_set() {
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
 
     redis::cmd("SET").arg("fooset").arg(42).execute(&mut con);
@@ -18,6 +21,14 @@ fn test_basic_set() {
         redis::cmd("GET").arg("barset").query(&mut con),
         Ok(b"foo".to_vec())
     );
+
+    redis::cmd("SET")
+        .arg(argkey)
+        .arg(argkey)
+        .arg("EX")
+        .arg(3)
+        .execute(&mut con);
+    assert!(con.ttl::<&str, isize>(argkey).unwrap() >= 0);
 }
 
 /// mget 两个key, 其中只有一个set了, 预期应有一个none结果

@@ -58,8 +58,8 @@ fn limit_incr_non_positive() {
         Some(44)
     );
 
-    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(arykey).arg::<i32>(0).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "wrong number");
-    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(arykey).arg::<i32>(-1).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "wrong number");
+    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(arykey).arg::<i32>(0).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
+    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(arykey).arg::<i32>(-1).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
 }
 
 /// 设置value大小为512
@@ -102,7 +102,7 @@ fn limit_par_num() {
     let mut con = get_conn(&RESTYPE.get_host());
     redis::cmd("DEL").arg(arykey).execute(&mut con);
 
-    assert_panic!(panic!( "{:?}", redis::cmd("SET").arg::<&str>(arykey).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "wrong number");
+    assert_panic!(panic!( "{:?}", redis::cmd("SET").arg::<&str>(arykey).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
     assert_panic!(panic!( "{:?}", redis::cmd("GET").query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
     //会直接crash退出程序
     // let _: () = redis::cmd("MSET")
