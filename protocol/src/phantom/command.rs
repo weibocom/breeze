@@ -1,4 +1,4 @@
-use crate::{HashedCommand, OpCode, Operation};
+use crate::{HashedCommand, OpCode, Operation, Result};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 
@@ -53,14 +53,20 @@ impl CommandProperties {
     }
 
     #[inline]
-    pub fn validate(&self, total_bulks: usize) -> bool {
+    pub fn validate(&self, total_bulks: usize) -> Result<()> {
         debug_assert!(self.arity != 0, "cmd:{}", self.name);
 
         if self.arity > 0 {
-            return total_bulks == self.arity as usize;
-        } else {
-            return total_bulks >= self.arity.abs() as usize;
+            // 如果cmd的arity大于0，请求参数必须等于cmd的arity
+            if total_bulks == (self.arity as usize) {
+                return Ok(());
+            }
+        } else if total_bulks >= (self.arity.abs() as usize) {
+            // 如果cmd的arity小于0，请求参数必须大于等于cmd的arity绝对值
+            return Ok(());
         }
+
+        Err(crate::Error::RequestProtocolInvalid("pt bulk num invalied"))
     }
 
     #[inline]

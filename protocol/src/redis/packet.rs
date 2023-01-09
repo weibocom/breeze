@@ -97,12 +97,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
             // 第一次解析cmd需要对协议进行合法性校验
             let cfg = command::get_cfg(self.op_code())?;
-            if !cfg.validate(self.bulk() as usize) {
-                log::warn!("+++ found invalid redis req: {:?}", self.data);
-                return Err(crate::Error::RequestProtocolInvalid("bulk num invalied"));
-            }
+            cfg.validate(self.bulk() as usize)?;
 
-            // cmd 解析完毕，bulk 减 1
+            // cmd name 解析完毕，bulk 减 1
             self.ctx.bulk -= 1;
         }
         Ok(())

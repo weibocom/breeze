@@ -259,7 +259,14 @@ impl Protocol for Redis {
                 packet.reserve_stream_buff();
                 Ok(())
             }
-            e => e,
+            e => {
+                log::warn!(
+                    "+++ redis parsed err: {:?}, req: {:?} ",
+                    e,
+                    packet.inner_data(),
+                );
+                e
+            }
         }
     }
 
