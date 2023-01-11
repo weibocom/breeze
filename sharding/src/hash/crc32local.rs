@@ -3,7 +3,7 @@
 use std::fmt::Display;
 
 use super::{
-    crc32::{CRC32TAB, CRC_SEED},
+    crc32::{self, CRC32TAB, CRC_SEED},
     Hash,
 };
 
@@ -93,5 +93,27 @@ impl super::Hash for Crc32localDelimiter {
 impl Display for Crc32localDelimiter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
+    }
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct Crc32localSmartNum {}
+
+impl super::Hash for Crc32localSmartNum {
+    fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
+        // 解析出smartnum hashkey的位置
+        let (start, end) = crc32::parse_smartnum_hashkey(key);
+
+        let mut crc: i64 = CRC_SEED;
+        for i in start..end {
+            let c = key.at(i);
+            // smartnum hash，理论上必须是全部数字，但非法请求可能包含非数字（或者配置错误）
+            debug_assert!(c.is_ascii_digit(), "malfromed smart key:{:?}", key);
+            crc = crc >> 8 ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+        }
+
+        crc ^= CRC_SEED;
+        let crc32 = crc as i32;
+        crc32.abs() as i64
     }
 }

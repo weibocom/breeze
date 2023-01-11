@@ -59,6 +59,9 @@ pub struct Crc32Delimiter {
     name: String,
 }
 
+#[derive(Default, Clone, Debug)]
+pub struct Crc32SmartNum {}
+
 // 对全key做crc32
 impl super::Hash for Crc32 {
     #[inline]
@@ -223,18 +226,62 @@ impl Display for Crc32Delimiter {
     }
 }
 
-//fn crc32_hash<K: super::HashKey>(key: &K) -> i64 {
-//    let mut crc: i64 = CRC_SEED;
-//
-//    for i in 0..key.len() {
-//        let c = key.at(i);
-//        crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
-//    }
-//
-//    crc ^= CRC_SEED;
-//    crc &= CRC_SEED;
-//    if crc <= 0 {
-//        log::debug!("crc32 - error hash/{} for key/{:?}", crc, key);
-//    }
-//    crc
-//}
+impl super::Hash for Crc32SmartNum {
+    fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
+        // 解析出smartnum hashkey的位置
+        let (start, end) = parse_smartnum_hashkey(key);
+
+        let mut crc: i64 = CRC_SEED;
+        for i in start..end {
+            let c = key.at(i);
+            // smartnum hash，理论上必须是全部数字，但非法请求可能包含非数字（或者配置错误）
+            debug_assert!(c.is_ascii_digit(), "malfromed smart key:{:?}", key);
+            crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+        }
+
+        crc ^= CRC_SEED;
+        crc &= CRC_SEED;
+        if crc <= 0 {
+            log::warn!("+++ crc32-smartnum key:{:?}, hash:{}", key, crc);
+        }
+        crc
+    }
+}
+
+// 解析smartnum key中hashkey
+pub(crate) fn parse_smartnum_hashkey<S: super::HashKey>(key: &S) -> (usize, usize) {
+    // 找到真正hashkey的起始位置，要求：连续的数字，数字位数大于等于4
+    let mut start = usize::MAX;
+    let mut end = usize::MAX;
+    for i in 0..key.len() {
+        let c = key.at(i);
+        if c.is_ascii_digit() && start == usize::MAX {
+            // 第一次发现数字，设置start
+            start = i;
+        } else if start != usize::MAX && !c.is_ascii_digit() {
+            // 发现数字后，第一次发现非数字
+            end = i;
+            // 第一串长度大于5的数字做为hashkey
+            if end - start >= super::SMARTNUM_MIN_LEN {
+                break;
+            } else {
+                // 长度小于uid最小长度，重置
+                start = usize::MAX;
+                end = usize::MAX;
+            }
+        }
+    }
+    // 处理结尾仍然是数字的场景
+    if start != usize::MAX && end == usize::MAX {
+        end = key.len();
+    }
+
+    // 异常请求场景: 非法key，先只打印日志
+    if start == usize::MAX || (end - start) < super::SMARTNUM_MIN_LEN {
+        start = 0;
+        end = key.len();
+        log::error!("+++ malformed smartnum key:{:?}", key);
+    }
+
+    (start, end)
+}
