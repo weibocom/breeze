@@ -234,7 +234,7 @@ impl super::Hash for Crc32SmartNum {
         let mut crc: i64 = CRC_SEED;
         for i in start..end {
             let c = key.at(i);
-            // smartnum hash，理论上必须是全部数字，但非法请求可能包含非数字
+            // smartnum hash，理论上必须是全部数字，但非法请求可能包含非数字（或者配置错误）
             debug_assert!(c.is_ascii_digit(), "malfromed smart key:{:?}", key);
             crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
         }
@@ -276,17 +276,11 @@ pub(crate) fn parse_smartnum_hashkey<S: super::HashKey>(key: &S) -> (usize, usiz
         end = key.len();
     }
 
-    // 异常请求场景1: 非法key，先只打印日志
-    if start == usize::MAX {
-        assert!(end == usize::MAX, "malformed smart key:{:?}", key);
-        log::error!("+++ malformed smartnum key:{:?}", key);
+    // 异常请求场景: 非法key，先只打印日志
+    if start == usize::MAX || (end - start) < super::SMARTNUM_MIN_LEN {
         start = 0;
         end = key.len();
-    }
-
-    // 异常请求场景2: smartnum key的数字长度应该小于5，先只打印日志
-    if (end - start) < super::SMARTNUM_MIN_LEN {
-        log::error!("+++ num_len < 5,malformed smartnum key:{:?}", key);
+        log::error!("+++ malformed smartnum key:{:?}", key);
     }
 
     (start, end)
