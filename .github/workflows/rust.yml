@@ -73,5 +73,10 @@ jobs:
         with:
           version: "latest"
           args: "--features=github_workflow -- --test-threads 1"
+      - name: view log
+        run: |
+          ps -aux|grep breeze
+          ls -all /home/runner/work/breeze/logs
+          cat /home/runner/work/breeze/logs/breeze.log
       #- name: Run tests
       #  run: cargo test
