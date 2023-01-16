@@ -33,11 +33,13 @@ pub enum Hasher {
     Crc32(Crc32),
     Crc32Short(Crc32Short),         // mc short crc32
     Crc32Num(Crc32Num),             // crc32 for a hash key whick is a num,
+    Crc32SmartNum(Crc32SmartNum),   // crc32 for key like： xxx + id + xxx，id的长度需要大于等于5
     Crc32Delimiter(Crc32Delimiter), // crc32 for a hash key which has a delimiter of "." or "_" or "#" etc.
     Crc32local(Crc32local),         // crc32local for a hash key like: xx.x, xx_x, xx#x etc.
     Crc32localDelimiter(Crc32localDelimiter),
-    Rawcrc32local(Rawcrc32local), // raw or crc32local
-    Random(RandomHash),           // random hash
+    Crc32localSmartNum(Crc32localSmartNum), //crc32 for key like： xxx + id + xxx，id的长度需要大于等于5
+    Rawcrc32local(Rawcrc32local),           // raw or crc32local
+    Random(RandomHash),                     // random hash
     RawSuffix(RawSuffix),
 }
 
@@ -51,12 +53,18 @@ pub const HASHER_NAME_DELIMITER: char = '-';
 pub const CRC32_EXT_SHORT: &str = "short";
 // hash key是数字
 const CRC32_EXT_NUM: &str = "num";
+// hash key是第一串长度大于等于5位数字id
+const CRC32_EXT_SMARTNUM: &str = "smartnum";
+// smart num的hashkey最小长度为5
+const SMARTNUM_MIN_LEN: usize = 5;
+
 // hash key是点号"."分割的之前/后的部分
 const KEY_DELIMITER_POINT: &str = "point";
 // hash key是“#”之前/后的部分
 const KEY_DELIMITER_POUND: &str = "pound";
 // hash key是"_"之前/后的部分
 const KEY_DELIMITER_UNDERSCORE: &str = "underscore";
+
 // 用于表示无分隔符的场景
 const KEY_DELIMITER_NONE: u8 = 0;
 
@@ -115,11 +123,13 @@ impl Hasher {
             "crc32" => match alg_parts[1] {
                 CRC32_EXT_SHORT => Self::Crc32Short(Default::default()),
                 CRC32_EXT_NUM => Self::Crc32Num(Crc32Num::from(alg_lower.as_str())),
+                CRC32_EXT_SMARTNUM => Self::Crc32SmartNum(Default::default()),
                 _ => Self::Crc32Delimiter(Crc32Delimiter::from(alg_lower.as_str())),
             },
-            "crc32local" => {
-                Self::Crc32localDelimiter(Crc32localDelimiter::from(alg_lower.as_str()))
-            }
+            "crc32local" => match alg_parts[1] {
+                CRC32_EXT_SMARTNUM => Self::Crc32localSmartNum(Default::default()),
+                _ => Self::Crc32localDelimiter(Crc32localDelimiter::from(alg_lower.as_str())),
+            },
             "rawsuffix" => Self::RawSuffix(RawSuffix::from(alg_lower.as_str())),
             _ => {
                 log::error!("found unknow hash: {} use crc32 instead", alg);
