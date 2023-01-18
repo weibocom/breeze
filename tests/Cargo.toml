@@ -19,7 +19,7 @@ assert-panic = "1.0.1"
 metrics = { path = "../metrics" }
 endpoint = { path = "../endpoint" }
 
-tokio = { version = "1.21.2", features = ["fs"] }
+tokio = { version = "1.24.2", features = ["fs"] }
 
 [dev-dependencies.criterion]
 version = "0.4"
