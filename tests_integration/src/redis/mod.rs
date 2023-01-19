@@ -1,7 +1,7 @@
 //! # 已测试场景
 //! ## 基本操作验证
 //! ### key
-//! - basic set
+//! - basic set, set ex
 //! - mget 两个key, 其中只有一个set了, 预期应有一个none结果
 //! - basic del
 //! - basic incr
@@ -36,6 +36,8 @@
 //! - value大小数组[4, 40, 400, 4000, 8000, 20000, 3000000],依次set后随机set,验证buffer扩容
 //! - key大小数组[4, 40, 400, 4000], 依次set后get
 //! - pipiline方式,set 两个key后,mget读取(注释了,暂未验证)
+//! ## 非合法性指令
+//! - set key, 无value; get key key 应返回错误
 
 mod basic;
 
@@ -144,3 +146,20 @@ fn test_mget_1000() {
     }
     assert_eq!(redis::cmd("MGET").arg(&keys).query(&mut con), Ok(keys));
 }
+
+// #[test]
+// #[named]
+// fn test_illegal() {
+//     let argkey = function_name!();
+//     let mut con = get_conn(&RESTYPE.get_host());
+
+//     redis::cmd("SET")
+//         .arg(argkey)
+//         .query::<()>(&mut con)
+//         .unwrap_err().detail()
+//     redis::cmd("GET")
+//         .arg(argkey)
+//         .arg(argkey)
+//         .query::<()>(&mut con)
+//         .expect_err("get with two arg should panic");
+// }
