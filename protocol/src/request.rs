@@ -35,10 +35,10 @@ impl crate::Request for Request {
     fn data(&self) -> &ds::RingSlice {
         self.req().data()
     }
-    #[inline]
-    fn read(&self, oft: usize) -> &[u8] {
-        self.req().read(oft)
-    }
+    //#[inline]
+    //fn read(&self, oft: usize) -> &[u8] {
+    //    self.req().read(oft)
+    //}
     #[inline]
     fn operation(&self) -> Operation {
         self.req().operation()

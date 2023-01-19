@@ -20,7 +20,7 @@ pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
     fn on_sent(self) -> Option<Self>;
     fn sentonly(&self) -> bool;
     fn data(&self) -> &RingSlice;
-    fn read(&self, oft: usize) -> &[u8];
+    //fn read(&self, oft: usize) -> &[u8];
     fn on_complete(self, resp: Command);
     fn on_err(self, err: crate::Error);
     #[inline]
