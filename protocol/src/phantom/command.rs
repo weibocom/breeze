@@ -1,4 +1,4 @@
-use crate::{HashedCommand, OpCode, Operation};
+use crate::{HashedCommand, OpCode, Operation, Result};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Crc32, Hash, UppercaseHashKey};
 
@@ -53,16 +53,20 @@ impl CommandProperties {
     }
 
     #[inline]
-    pub fn validate(&self, token_count: usize) -> bool {
-        if self.arity == 0 {
-            return false;
-        }
+    pub fn validate(&self, total_bulks: usize) -> Result<()> {
+        debug_assert!(self.arity != 0, "cmd:{}", self.name);
+
         if self.arity > 0 {
-            return token_count == self.arity as usize;
-        } else {
-            let last_key_idx = self.last_key_index(token_count);
-            return token_count > last_key_idx && last_key_idx >= self.first_key_index();
+            // 如果cmd的arity大于0，请求参数必须等于cmd的arity
+            if total_bulks == (self.arity as usize) {
+                return Ok(());
+            }
+        } else if total_bulks >= (self.arity.abs() as usize) {
+            // 如果cmd的arity小于0，请求参数必须大于等于cmd的arity绝对值
+            return Ok(());
         }
+
+        Err(crate::Error::RequestProtocolInvalid("pt bulk num invalied"))
     }
 
     #[inline]
@@ -259,6 +263,8 @@ impl Commands {
 
         // 所有cmd的padding-rsp都必须是合理值，此处统一判断
         assert!(padding_rsp < PADDING_RSP_TABLE.len(), "cmd:{}", name);
+        // arity 不能为0
+        assert!(arity != 0, "invalid redis cmd: {}", name);
 
         let quit = uppercase.eq("QUIT");
         self.supported[idx] = CommandProperties {
