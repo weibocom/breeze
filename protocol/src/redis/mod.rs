@@ -47,15 +47,9 @@ impl Redis {
         while packet.available() {
             packet.parse_bulk_num()?;
             packet.parse_cmd()?;
-            // 对于不支持的cmd，记录协议
-            let cfg = match command::get_cfg(packet.op_code()) {
-                Ok(cfg) => cfg,
-                Err(super::Error::ProtocolNotSupported) => {
-                    log::warn!("+++ found unsupported req:{:?}", packet.inner_data());
-                    return Err(super::Error::ProtocolNotSupported);
-                }
-                Err(e) => return Err(e),
-            };
+
+            // TODO cfg 大概率会多取一次，有没有更好的办法 fishermen
+            let cfg = command::get_cfg(packet.op_code())?;
             let mut hash;
             if cfg.swallowed {
                 // 优先处理swallow吞噬指令: master/hashkeyq/hashrandomq
@@ -265,7 +259,14 @@ impl Protocol for Redis {
                 packet.reserve_stream_buff();
                 Ok(())
             }
-            e => e,
+            e => {
+                log::warn!(
+                    "+++ redis parsed err: {:?}, req: {:?} ",
+                    e,
+                    packet.inner_data(),
+                );
+                e
+            }
         }
     }
 
