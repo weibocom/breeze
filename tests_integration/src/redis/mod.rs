@@ -97,14 +97,14 @@ fn test_get_write_by_sdk() {
 #[test]
 #[cfg(feature = "github_workflow")]
 fn test_set_value_fix_size() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
 
     let mut v_sizes = [4, 40, 400, 4000, 8000, 20000, 3000000];
     for v_size in v_sizes {
         let val = vec![1u8; v_size];
-        redis::cmd("SET").arg(arykey).arg(&val).execute(&mut con);
-        assert_eq!(redis::cmd("GET").arg(arykey).query(&mut con), Ok(val));
+        redis::cmd("SET").arg(argkey).arg(&val).execute(&mut con);
+        assert_eq!(redis::cmd("GET").arg(argkey).query(&mut con), Ok(val));
     }
 
     //todo random iter
@@ -113,8 +113,8 @@ fn test_set_value_fix_size() {
     v_sizes.shuffle(&mut rng);
     for v_size in v_sizes {
         let val = vec![1u8; v_size];
-        redis::cmd("SET").arg(arykey).arg(&val).execute(&mut con);
-        assert_eq!(redis::cmd("GET").arg(arykey).query(&mut con), Ok(val));
+        redis::cmd("SET").arg(argkey).arg(&val).execute(&mut con);
+        assert_eq!(redis::cmd("GET").arg(argkey).query(&mut con), Ok(val));
     }
 }
 
