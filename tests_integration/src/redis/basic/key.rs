@@ -35,13 +35,13 @@ fn test_basic_set() {
 #[named]
 #[test]
 fn test_set_optionals() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
 
-    redis::cmd("SET").arg(arykey).arg(1).execute(&mut con);
+    redis::cmd("SET").arg(argkey).arg(1).execute(&mut con);
 
     let (a, b): (Option<i32>, Option<i32>) = redis::cmd("MGET")
-        .arg(arykey)
+        .arg(argkey)
         .arg("missing")
         .query(&mut con)
         .unwrap();
@@ -52,17 +52,17 @@ fn test_set_optionals() {
 #[named]
 #[test]
 fn test_basic_del() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
 
-    redis::cmd("SET").arg(arykey).arg(42).execute(&mut con);
+    redis::cmd("SET").arg(argkey).arg(42).execute(&mut con);
 
-    assert_eq!(redis::cmd("GET").arg(arykey).query(&mut con), Ok(42));
+    assert_eq!(redis::cmd("GET").arg(argkey).query(&mut con), Ok(42));
 
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
     assert_eq!(
-        redis::cmd("GET").arg(arykey).query(&mut con),
+        redis::cmd("GET").arg(argkey).query(&mut con),
         Ok(None::<usize>)
     );
 }
@@ -70,11 +70,11 @@ fn test_basic_del() {
 #[named]
 #[test]
 fn test_basic_incr() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
 
-    redis::cmd("SET").arg(arykey).arg(42).execute(&mut con);
-    assert_eq!(redis::cmd("INCR").arg(arykey).query(&mut con), Ok(43usize));
+    redis::cmd("SET").arg(argkey).arg(42).execute(&mut con);
+    assert_eq!(redis::cmd("INCR").arg(argkey).query(&mut con), Ok(43usize));
 }
 
 //getset key不存在时 返回nil 并set key
@@ -84,22 +84,22 @@ fn test_basic_incr() {
 #[named]
 #[test]
 fn getset_basic() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
     assert_eq!(
-        con.getset::<&str, i32, Option<i32>>(arykey, 2)
+        con.getset::<&str, i32, Option<i32>>(argkey, 2)
             .map_err(|e| panic!("set error:{:?}", e))
             .expect("set err"),
         None
     );
-    assert_eq!(con.get(arykey), Ok(2));
-    assert_eq!(con.getset(arykey, 1), Ok(2));
-    assert_eq!(con.get(arykey), Ok(1));
+    assert_eq!(con.get(argkey), Ok(2));
+    assert_eq!(con.getset(argkey, 1), Ok(2));
+    assert_eq!(con.get(argkey), Ok(1));
 }
 
-/// - mset ("xinxinkey1", 1), ("xinxinkey2", 2), ("xinxinkey3", 3),(arykey, 4)
+/// - mset ("xinxinkey1", 1), ("xinxinkey2", 2), ("xinxinkey3", 3),(argkey, 4)
 /// - expire_at 设置xinxinkey1的过期时间为当前秒级别时间戳+2s
 /// - 判断是否剩余过期过期时间，并get
 /// -  setex key2 4 22 将key2 value 改成22并设置过期时间4s
@@ -118,19 +118,19 @@ fn getset_basic() {
 /// - decrby 2 =>6
 /// - decr =>5
 /// - incrbyfloat 4.4 =>9.4
-/// - pexpireat 设置arykey的过期时间为当前时间戳+2000ms p都是ms级别
+/// - pexpireat 设置argkey的过期时间为当前时间戳+2000ms p都是ms级别
 /// - sleep 1s
-/// - pexpire 设置arykey过期时间为5000ms
-/// - ttl arykey过期时间》2000 由于pexpire把key3过期时间覆盖
+/// - pexpire 设置argkey过期时间为5000ms
+/// - ttl argkey过期时间》2000 由于pexpire把key3过期时间覆盖
 /// - exists key3 0 已经过期
-/// - persist arykey 移除过期时间
-/// - ttl arykey -1 已经移除
+/// - persist argkey 移除过期时间
+/// - ttl argkey -1 已经移除
 #[named]
 #[test]
 fn string_basic() {
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
     redis::cmd("DEL").arg("xinxinkey1").execute(&mut con);
     redis::cmd("DEL").arg("xinxinkey2").execute(&mut con);
     redis::cmd("DEL").arg("xinxinkey3").execute(&mut con);
@@ -139,7 +139,7 @@ fn string_basic() {
             ("xinxinkey1", 1),
             ("xinxinkey2", 2),
             ("xinxinkey3", 3),
-            (arykey, 4)
+            (argkey, 4)
         ]),
         Ok(true)
     );
@@ -190,31 +190,31 @@ fn string_basic() {
 
     assert_eq!(con.expire("xinxinkey3", 1), Ok(1));
 
-    assert_eq!(con.incr(arykey, 4), Ok(8));
-    assert_eq!(con.decr(arykey, 2), Ok(6));
-    assert_eq!(redis::cmd("DECR").arg(arykey).query(&mut con), Ok(5));
-    assert_eq!(con.incr(arykey, 4.4), Ok(9.4));
+    assert_eq!(con.incr(argkey, 4), Ok(8));
+    assert_eq!(con.decr(argkey, 2), Ok(6));
+    assert_eq!(redis::cmd("DECR").arg(argkey).query(&mut con), Ok(5));
+    assert_eq!(con.incr(argkey, 4.4), Ok(9.4));
 
     loop {
         assert_eq!(
-            con.pexpire_at(arykey, (Local::now().timestamp_millis() + 2000) as usize),
+            con.pexpire_at(argkey, (Local::now().timestamp_millis() + 2000) as usize),
             Ok(1)
         );
-        assert_eq!(con.pexpire(arykey, 4000 as usize), Ok(1));
+        assert_eq!(con.pexpire(argkey, 4000 as usize), Ok(1));
         let cov_plast_time: i128 = con
-            .pttl(arykey)
+            .pttl(argkey)
             .map_err(|e| panic!("pttl error:{:?}", e))
             .expect("pttl err");
         //println!("{:?}", cov_plast_time);
         if cov_plast_time > 2000 {
-            assert_eq!(con.persist(arykey), Ok(1));
+            assert_eq!(con.persist(argkey), Ok(1));
 
-            assert_eq!(con.ttl(arykey), Ok(-1));
+            assert_eq!(con.ttl(argkey), Ok(-1));
             break;
         } else if cov_plast_time >= -1 {
-            assert_eq!(con.get(arykey), Ok(9.4));
+            assert_eq!(con.get(argkey), Ok(9.4));
         } else {
-            assert_eq!(con.get::<&str, Option<i32>>(arykey), Ok(None))
+            assert_eq!(con.get::<&str, Option<i32>>(argkey), Ok(None))
         }
     }
 }
