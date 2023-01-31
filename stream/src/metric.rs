@@ -57,7 +57,7 @@ macro_rules! define_metrics {
 
 define_metrics!(
     qps:    tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn, key-key, nilconvert-nilconvert;
-    num:    conn_num-conn, read-read, write-write, invalid_cmd-invalid_cmd;
+    num:    conn_num-conn, read-read, write-write, invalid_cmd-invalid_cmd, unsupport_cmd-unsupport_cmd;
     rtt:    avg-avg;
     ratio:  cache-hit
 );
