@@ -94,6 +94,8 @@ impl Host {
         }
         self.qps(w, secs, &b.num_alloc, &(key.to_string() + "_num"));
         self.qps(w, secs, &b.bytes_alloc, &(key.to_string() + "_bytes"));
+
+        self.qps(w, secs, &ds::CACHE_ALLOC_NUM, "heap_cache_num");
     }
     #[inline]
     fn qps<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64, m: &AtomicI64, key: &str) {
