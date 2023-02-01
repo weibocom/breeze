@@ -142,16 +142,21 @@ impl RingSlice {
         });
     }
     #[inline]
+    pub fn copy_to<W: crate::BufWriter>(&self, oft: usize, w: &mut W) -> std::io::Result<()> {
+        with_segment_oft!(
+            self,
+            oft,
+            |p, l| w.write_all(from_raw_parts(p, l)),
+            |p0, l0, p1, l1| { w.write_seg_all(from_raw_parts(p0, l0), from_raw_parts(p1, l1)) }
+        )
+    }
+    #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
-        let len = self.len();
-        v.reserve(len);
-        let mut oft = 0;
-        use crate::Buffer;
-        while oft < len {
-            let data = self.read(oft);
-            oft += data.len();
-            v.write(data);
-        }
+        v.reserve(self.len());
+        self.visit_segment_oft(0, |p, l| unsafe {
+            copy_nonoverlapping(p, v.as_mut_ptr().add(v.len()), l);
+            v.set_len(v.len() + l);
+        });
     }
 
     #[inline(always)]
