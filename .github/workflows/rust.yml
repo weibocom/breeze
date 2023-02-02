@@ -58,7 +58,7 @@ jobs:
         run: nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
       - name: Check Status
         run: |
-          sleep 6s
+          sleep 60s
           netstat -nat|grep LISTEN
           #ps -aux|grep breeze
           ls -all /home/runner/work/breeze/snapshot
