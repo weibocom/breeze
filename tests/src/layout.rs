@@ -83,10 +83,10 @@ fn check_handler() {
 #[ignore]
 #[test]
 fn check_topology() {
-    assert_eq!(248, size_of::<Topology>());
+    assert_eq!(240, size_of::<Topology>());
     assert_eq!(96, size_of::<CacheService>());
     assert_eq!(240, size_of::<RedisService>());
-    assert_eq!(192, size_of::<PhantomService>());
+    assert_eq!(208, size_of::<PhantomService>());
     assert_eq!(184, size_of::<MsgQue>());
 }
 
