@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -50,10 +50,12 @@ impl<T> Receiver<T> {
     }
     #[inline]
     pub fn size_hint(&mut self) -> usize {
-        let tx = self.tx.load(Ordering::Relaxed);
+        let tx = self.tx.load(Acquire);
         tx - tx.min(self.rx)
     }
     pub fn enable(&mut self) {
+        self.rx = 0;
+        self.tx.store(0, Release);
         self.switcher.on();
     }
     pub fn disable(&mut self) {
@@ -69,7 +71,7 @@ impl<T> Sender<T> {
                 tokio::sync::mpsc::error::TrySendError::Full(t) => TrySendError::Full(t),
                 tokio::sync::mpsc::error::TrySendError::Closed(t) => TrySendError::Closed(t),
             })?;
-            self.tx.fetch_add(1, Ordering::Relaxed);
+            self.tx.fetch_add(1, AcqRel);
             Ok(())
         } else {
             Err(TrySendError::Disabled(message))
