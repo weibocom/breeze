@@ -14,7 +14,7 @@ pub struct RingSlice {
 // 将ring_slice拆分成2个seg。分别调用
 macro_rules! with_segment_oft {
     ($self:expr, $oft:expr, $noseg:expr, $seg:expr) => {{
-        debug_assert!($oft < $self.len);
+        debug_assert!($oft <= $self.len);
         let oft_start = $self.mask($self.start + $oft);
         let len = $self.len - $oft;
         if oft_start + len <= $self.cap {
@@ -70,7 +70,6 @@ impl RingSlice {
     }
     #[inline(always)]
     fn visit_segment_oft(&self, oft: usize, mut v: impl FnMut(*mut u8, usize)) {
-        debug_assert!(oft < self.len());
         with_segment_oft!(self, oft, |p, l| v(p, l), |p0, l0, p1, l1| {
             v(p0, l0);
             v(p1, l1);

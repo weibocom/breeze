@@ -15,10 +15,10 @@ pub struct Ephemera<T, const ITEM_NUM: usize> {
 }
 
 impl<T, const ITEM_NUM: usize> Ephemera<T, ITEM_NUM> {
-    const LEN0: usize = ITEM_NUM / 2;
-    const LEN1: usize = ITEM_NUM - Self::LEN0;
+    const LEN1: usize = ITEM_NUM / 2;
+    const LEN0: usize = ITEM_NUM - Self::LEN1;
     pub const fn new() -> Self {
-        assert!(ITEM_NUM > 1);
+        assert!(ITEM_NUM >= 4);
         assert!(std::mem::size_of::<T>() > 0);
         unsafe {
             let data = MaybeUninit::<[MaybeUninit<T>; ITEM_NUM]>::uninit().assume_init();
@@ -33,7 +33,6 @@ impl<T, const ITEM_NUM: usize> Ephemera<T, ITEM_NUM> {
     }
     #[inline]
     unsafe fn alloc_by_idx(&self, idx: usize, t: T) -> NonNull<T> {
-        super::super::CACHE_ALLOC_NUM.fetch_add(1, Relaxed);
         let ptr = self.ptr().add(idx);
         ptr.write(t);
         NonNull::new_unchecked(ptr)
@@ -44,8 +43,10 @@ impl<T, const ITEM_NUM: usize> Ephemera<T, ITEM_NUM> {
             self.chunk0.try_clear();
             self.chunk1.try_clear();
             if let Some(idx) = self.chunk0.reserve().or_else(|| self.chunk1.reserve()) {
+                super::super::CACHE_ALLOC_NUM.fetch_add(1, Relaxed);
                 self.alloc_by_idx(idx, t)
             } else {
+                super::super::CACHE_MISS_ALLOC_NUM.fetch_add(1, Relaxed);
                 let ptr = Box::into_raw(Box::new(t));
                 NonNull::new_unchecked(ptr)
             }
@@ -122,8 +123,9 @@ impl Chunk {
     #[inline]
     fn try_clear(&self) {
         if self.free.load(Acquire) == self.len {
-            self.free.store(0, Release);
-            self.idx.store(0, Release);
+            if let Ok(_) = self.free.compare_exchange(self.len, 0, AcqRel, Acquire) {
+                self.idx.store(0, Release);
+            }
         }
     }
 }
@@ -136,5 +138,11 @@ impl Debug for Chunk {
             self.idx.load(Acquire),
             self.free.load(Acquire)
         )
+    }
+}
+impl Drop for Chunk {
+    fn drop(&mut self) {
+        let free = self.free.load(Acquire);
+        assert!(free == 0 || free == self.len, "mem leak:{:?}", self);
     }
 }
