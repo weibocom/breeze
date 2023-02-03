@@ -151,20 +151,17 @@ impl<'a, 'r> ItemWriter for PrometheusItemWriter<'a, 'r> {
          */
 
         //从 name 中截取 source、namespace和topic、instance
-        let all_name: Vec<&str> = name.split(crate::TARGET_SPLIT as char).collect();
-        let source = all_name.get(0).unwrap_or(&"").as_bytes();
-        let charname = *all_name.get(1).unwrap_or(&"");
+        let mut all_iter = name.split(crate::TARGET_SPLIT as char);
+        let source = all_iter.next().unwrap_or("").as_bytes();
+        let nameandtopic = all_iter.next().unwrap_or("");
+        let bip = all_iter.next().unwrap_or("").as_bytes();
+        //let charname = name.split(crate::TARGET_SPLIT as char).nth(1).unwrap_or("");
         //针对mcq,namespace中可能包含topic,先根据 ‘#’分割;
-        let nameandtopic: Vec<&str> = charname.split("#").collect();
-        let namespace = nameandtopic.get(0).unwrap_or(&"").as_bytes();
-        let topic = nameandtopic.get(1).unwrap_or(&"").as_bytes();
-        let bip = all_name.get(2).unwrap_or(&"").as_bytes();
+        let mut name_iter = nameandtopic.split("#");
+        let namespace = name_iter.next().unwrap_or("").as_bytes();
+        let topic = name_iter.next().unwrap_or("").as_bytes();
 
         let metric_name = MetricName(key, sub_key);
-        //promethues # HELP
-        //self.put_slice("# HELP ");
-        //metric_name.write_to(self);
-        //self.put_slice("\n");
 
         //promethues # TYPE
         self.put_slice("# TYPE ");

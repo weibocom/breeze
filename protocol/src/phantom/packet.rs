@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{phantom::command, Result};
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
@@ -78,7 +78,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         // 需要确保，如果op_code不为0，则之前的数据一定处理过。
         if self.ctx.op_code == 0 {
             let cmd_len = self.data.num_and_skip(&mut self.oft)?;
-            self.ctx.bulk -= 1;
             let start = self.oft - cmd_len - CRLF_LEN;
             let cmd = self.data.sub_slice(start, cmd_len);
             self.ctx.op_code = super::command::get_op_code(&cmd);
@@ -87,6 +86,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 "{}/data:{:?}",
                 self.ctx.op_code, self.data
             );
+
+            // 第一次解析cmd需要对协议进行合法性校验
+            let cfg = command::get_cfg(self.op_code())?;
+            cfg.validate(self.bulk() as usize)?;
+
+            // cmd 解析完毕，bulk 减 1
+            self.ctx.bulk -= 1;
         }
         Ok(())
     }

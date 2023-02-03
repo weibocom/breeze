@@ -11,9 +11,9 @@ use redis::RedisError;
 #[test]
 fn sys_basic() {
     // hello、master 未实现
-    let arykey = function_name!();
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
-    redis::cmd("DEL").arg(arykey).execute(&mut con);
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
 
     let res: Result<String, RedisError> = redis::cmd("COMMAND").query(&mut con);
     assert_eq!(res.expect("ok"), "OK".to_string());

@@ -167,7 +167,14 @@ impl Protocol for Phantom {
         match self.parse_request_inner(stream, alg, process) {
             Ok(_) => Ok(()),
             Err(Error::ProtocolIncomplete) => Ok(()),
-            e => e,
+            e => {
+                log::warn!(
+                    "+++ phantom parsed err: {:?}, req: {:?} ",
+                    e,
+                    stream.slice()
+                );
+                e
+            }
         }
     }
 
