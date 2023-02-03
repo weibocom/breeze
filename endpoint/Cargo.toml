@@ -15,7 +15,7 @@ sharding = { path = "../sharding" }
 log = { path = "../log" }
 rt = { path = "../rt" }
 
-tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time", "fs"], default-features = false }
+tokio = { version = "1.24.2", features = ["rt", "net", "rt-multi-thread", "time", "fs"], default-features = false }
 byteorder = "1.4.3"
 bytes = "1.0.1"
 

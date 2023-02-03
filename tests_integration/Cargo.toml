@@ -14,7 +14,7 @@ assert-panic = "1.0.1"
 function_name = "0.3.0"
 chrono = "0.4"
 
-tokio = { version = "1.21.2", features = ["fs"] }
+tokio = { version = "1.24.2", features = ["fs"] }
 redis = { version = "0.22.0", default-features = false, features = [] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11.4", features = ["json","blocking"], default-features = false }

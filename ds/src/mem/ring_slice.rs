@@ -11,6 +11,22 @@ pub struct RingSlice {
     len: usize,
 }
 
+// 将ring_slice拆分成2个seg。分别调用
+macro_rules! with_segment_oft {
+    ($self:expr, $oft:expr, $noseg:expr, $seg:expr) => {{
+        debug_assert!($oft < $self.len);
+        let oft_start = $self.mask($self.start + $oft);
+        let len = $self.len - $oft;
+        if oft_start + len <= $self.cap {
+            unsafe { $noseg($self.ptr().add(oft_start), len) }
+        } else {
+            let seg1 = $self.cap - oft_start;
+            let seg2 = len - seg1;
+            unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
+        }
+    }};
+}
+
 impl RingSlice {
     const EMPTY: Self = Self {
         ptr: 0,
@@ -53,30 +69,77 @@ impl RingSlice {
         unsafe { from_raw_parts(self.ptr().offset(oft as isize), l) }
     }
     #[inline(always)]
-    pub fn data<'a>(&self) -> (&'a [u8], &'a [u8]) {
-        unsafe {
-            if self.end() <= self.cap {
-                (
-                    from_raw_parts(self.ptr().offset(self.start as isize), self.len()),
-                    &[],
-                )
-            } else {
-                (
-                    from_raw_parts(self.ptr().add(self.start), self.cap - self.start),
-                    from_raw_parts(self.ptr(), self.end() - self.cap),
-                )
-            }
-        }
+    fn visit_segment_oft(&self, oft: usize, mut v: impl FnMut(*mut u8, usize)) {
+        debug_assert!(oft < self.len());
+        with_segment_oft!(self, oft, |p, l| v(p, l), |p0, l0, p1, l1| {
+            v(p0, l0);
+            v(p1, l1);
+        });
     }
-    #[inline]
+    #[inline(always)]
+    pub fn data_oft(&self, oft: usize) -> (&[u8], &[u8]) {
+        static EMPTY: &[u8] = &[];
+        with_segment_oft!(
+            self,
+            oft,
+            |ptr, len| (from_raw_parts(ptr, len), EMPTY),
+            |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
+        )
+    }
+    #[inline(always)]
+    pub fn data(&self) -> (&[u8], &[u8]) {
+        self.data_oft(0)
+    }
+    #[inline(always)]
+    pub fn fold<I>(&self, mut init: I, mut v: impl FnMut(&mut I, u8)) -> I {
+        self.visit_segment_oft(0, |p, l| {
+            for i in 0..l {
+                unsafe { v(&mut init, *p.add(i)) };
+            }
+        });
+        init
+    }
+    // 从oft开始访问，走到until返回false
+    // 只有until返回true的数据都会被访问
+    #[inline(always)]
+    pub fn fold_until<I>(
+        &self,
+        oft: usize,
+        mut init: I,
+        mut v: impl FnMut(&mut I, u8),
+        until: impl Fn(u8) -> bool,
+    ) -> I {
+        let mut visit = |p: *mut u8, l| -> bool {
+            for i in 0..l {
+                let c = unsafe { *p.add(i) };
+                if !until(c) {
+                    return false;
+                }
+                v(&mut init, c);
+            }
+            true
+        };
+        with_segment_oft!(
+            self,
+            oft,
+            |p, l| {
+                visit(p, l);
+            },
+            |p0, l0, p1, l1| {
+                if visit(p0, l0) {
+                    visit(p1, l1);
+                }
+            }
+        );
+        init
+    }
+    #[inline(always)]
     pub fn visit(&self, mut f: impl FnMut(u8)) {
-        let (first, sec) = self.data();
-        for v in first {
-            f(*v);
-        }
-        for v in sec {
-            f(*v);
-        }
+        self.visit_segment_oft(0, |p, l| {
+            for i in 0..l {
+                unsafe { f(*p.add(i)) };
+            }
+        });
     }
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
@@ -200,6 +263,26 @@ impl RingSlice {
         }
 
         Err(Error::new(ErrorKind::Other, "no enough bytes"))
+    }
+    #[inline(always)]
+    pub fn read_num_be(&self, oft: usize) -> u64 {
+        const SIZE: usize = std::mem::size_of::<u64>();
+        assert!(self.len() >= oft + SIZE);
+        with_segment_oft!(
+            self,
+            oft,
+            |ptr, _len| u64::from_be_bytes(from_raw_parts(ptr, SIZE)[..SIZE].try_into().unwrap()),
+            |ptr0, len0, ptr1, _len1| {
+                if len0 >= SIZE {
+                    u64::from_be_bytes(from_raw_parts(ptr0, SIZE)[..SIZE].try_into().unwrap())
+                } else {
+                    let mut b = [0u8; SIZE];
+                    copy_nonoverlapping(ptr0, b.as_mut_ptr(), len0);
+                    copy_nonoverlapping(ptr1, b.as_mut_ptr().add(len0), SIZE - len0);
+                    u64::from_be_bytes(b)
+                }
+            }
+        )
     }
 }
 

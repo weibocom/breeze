@@ -24,7 +24,7 @@ api = { path = "../api" }
 backtrace = "0.3.63"
 lazy_static = "1.4.0"
 
-tokio = { version = "1.21.2", features = ["rt", "net", "rt-multi-thread", "time"], default-features = false }
+tokio = { version = "1.24.2", features = ["rt", "net", "rt-multi-thread", "time"], default-features = false }
 once_cell = "*"
 
 rlimit = "0.8.3"

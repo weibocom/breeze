@@ -1,16 +1,21 @@
-use crate::{HashedCommand, OpCode, Operation};
+use crate::{HashedCommand, OpCode, Operation, Result};
 use ds::{MemGuard, RingSlice};
 use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
 
-//============== 吞噬指令 ==============//
-pub const SWALLOWED_CMD_HASHKEYQ: &str = "hashkeyq";
-pub const SWALLOWED_CMD_HASHRANDOMQ: &str = "hashrandomq";
+#[derive(Default, Debug, PartialEq, Clone, Copy)]
+pub(crate) enum CommandType {
+    #[default]
+    Other,
+    //============== 吞噬指令 ==============//
+    SwallowedCmdHashkeyq,
+    SwallowedCmdHashrandomq,
 
-//============== 需要本地构建特殊响应的cmd ==============//
-// 指示下一个cmd的用于计算分片hash的key
-pub const SPEC_LOCAL_CMD_HASHKEY: &str = "hashkey";
-// 计算批量key的分片索引
-pub const SPEC_LOCAL_CMD_KEYSHARD: &str = "keyshard";
+    //============== 需要本地构建特殊响应的cmd ==============//
+    // 指示下一个cmd的用于计算分片hash的key
+    SpecLocalCmdHashkey,
+    // 计算批量key的分片索引
+    SpecLocalCmdKeyshard,
+}
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Debug)]
@@ -47,6 +52,7 @@ pub(crate) struct CommandProperties {
     pub(super) need_reserved_hash: bool, // 是否需要前一个指令明确指定的hash，如果为true，则必须有key或者通过hashkey指定明确的hash
     pub(super) master_next: bool,        // 是否需要将下一个cmd发送到master
     pub(super) quit: bool,               // 是否需要quit掉连接
+    pub(super) cmd_type: CommandType,    //用来标识自身，opcode非静态可知
 }
 
 // 默认响应
@@ -73,50 +79,55 @@ impl CommandProperties {
         unsafe { *PADDING_RSP_TABLE.get_unchecked(self.padding_rsp) }
     }
 
-    // 构建hashkey的resp,格式:1\r\n
-    pub(super) fn get_rsp_hashkey(&self, shard: usize) -> String {
-        format!(":{}\r\n", shard)
+    // // 构建hashkey的resp,格式:1\r\n
+    // pub(super) fn get_rsp_hashkey(&self, shard: usize) -> String {
+    //     format!(":{}\r\n", shard)
+    // }
+
+    // // 构建keyshard的resp，注意返回的bulk num，格式:$1\r\n1\r\n
+    // pub(super) fn get_rsp_keyshard(&self, shard: usize) -> String {
+    //     let shard_str = shard.to_string();
+    //     format!("${}\r\n{}\r\n", shard_str.len(), shard_str)
+    // }
+
+    // mesh 需要进行validate，避免不必要的异常 甚至 hang住 fishermen
+    #[inline]
+    pub fn validate(&self, total_bulks: usize) -> Result<()> {
+        // 初始化时会进行check arity，此处主要是心理安慰剂，另外避免init的arity check被不小心干掉
+        debug_assert!(self.arity != 0, "redis cmd:{}", self.name);
+
+        if self.arity > 0 {
+            // 如果cmd的arity大于0，请求参数必须等于cmd的arity
+            if total_bulks == (self.arity as usize) {
+                return Ok(());
+            }
+        } else if total_bulks >= (self.arity.abs() as usize) {
+            // 如果cmd的arity小于0，请求参数必须大于等于cmd的arity绝对值
+            return Ok(());
+        }
+
+        Err(crate::Error::RequestProtocolInvalid("bulk num invalied"))
     }
 
-    // 构建keyshard的resp，注意返回的bulk num，格式:$1\r\n1\r\n
-    pub(super) fn get_rsp_keyshard(&self, shard: usize) -> String {
-        let shard_str = shard.to_string();
-        format!("${}\r\n{}\r\n", shard_str.len(), shard_str)
-    }
-
-    // TODO 当前mesh不再进行cmd校验，由后端server进行
-    //#[inline]
-    //pub fn validate(&self, token_count: usize) -> bool {
-    //    if self.arity == 0 {
-    //        return false;
-    //    }
-    //    if self.arity > 0 {
-    //        return token_count == self.arity as usize;
-    //    } else {
-    //        let last_key_idx = self.last_key_index(token_count);
-    //        return token_count > last_key_idx && last_key_idx >= self.first_key_index();
-    //    }
-    //}
-
-    //#[inline]
-    //pub fn first_key_index(&self) -> usize {
-    //    self.first_key_index as usize
-    //}
+    // #[inline]
+    // pub fn first_key_index(&self) -> usize {
+    //     self.first_key_index as usize
+    // }
 
     // 如果last key index为负数，token count加上该负数，即为key的结束idx
-    //#[inline]
-    //pub fn last_key_index(&self, token_count: usize) -> usize {
-    //    assert!(
-    //        token_count as i64 > self.first_key_index as i64
-    //            && token_count as i64 > self.last_key_index as i64
-    //    );
-    //    if self.last_key_index >= 0 {
-    //        return self.last_key_index as usize;
-    //    } else {
-    //        // 最后一个key的idx为负数，
-    //        return (token_count as i64 + self.last_key_index as i64) as usize;
-    //    }
-    //}
+    // #[inline]
+    // pub fn last_key_index(&self, token_count: usize) -> usize {
+    //     assert!(
+    //         token_count as i64 > self.first_key_index as i64
+    //             && token_count as i64 > self.last_key_index as i64
+    //     );
+    //     if self.last_key_index >= 0 {
+    //         return self.last_key_index as usize;
+    //     } else {
+    //         // 最后一个key的idx为负数，
+    //         return (token_count as i64 + self.last_key_index as i64) as usize;
+    //     }
+    // }
 
     pub(super) fn flag(&self) -> crate::Flag {
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
@@ -242,6 +253,9 @@ impl Commands {
         c.supported = true;
         c.op_code = idx as u16;
 
+        // arity 不能为0
+        assert!(c.arity != 0, "invalid redis cmd: {}", c.name);
+
         // 所有非swallowed cmd的padding-rsp都必须是合理值，此处统一判断
         if !c.swallowed {
             assert!(
@@ -295,13 +309,13 @@ pub(super) static SUPPORTED: Commands = {
         // multi请求：异常响应需要改为$-1
         //("mget", "get",           -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
 
-        //("set" ,"set",             3, Store, 1, 1, 1, 3, false, false, true, true, false),
+        //("set" ,"set",             -3, Store, 1, 1, 1, 3, false, false, true, true, false),
         //("incr" ,"incr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
         //("decr" ,"decr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
         // Cmd::new("mget").m("get").arity(-2).op(MGet).first(1).last(-1).step(1).padding(3).multi().key().bulk().nil_rsp(6),
         Cmd::new("mget").m("get").arity(-2).op(MGet).first(1).last(-1).step(1).padding(6).multi().key().bulk(),
 
-        Cmd::new("set").arity(3).op(Store).first(1).last(1).step(1).padding(3).key().val(),
+        Cmd::new("set").arity(-3).op(Store).first(1).last(1).step(1).padding(3).key().val(),
         Cmd::new("incr").arity(2).op(Store).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("decr").arity(2).op(Store).first(1).last(1).step(1).padding(3).key(),
 
@@ -327,6 +341,8 @@ pub(super) static SUPPORTED: Commands = {
         //("persist", "persist",     2, Store, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("mset").m("set").arity(-3).op(Store).first(1).last(-1).step(2).padding(3).multi().key().val(),
         Cmd::new("del").arity(-2).op(Store).first(1).last(-1).step(1).padding(3).multi().key(),
+
+        // 即便应对多语言，exists 也只支持一个key，否则需要计算多个后端数据，作为一个数字返回 fishermen
         Cmd::new("exists").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("expire").arity(3).op(Store).first(1).last(1).step(1).padding(3).key(),
         Cmd::new("expireat").arity(3).op(Store).first(1).last(1).step(1).padding(3).key(),
@@ -379,7 +395,7 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("zscan").arity(-3).op(Get).first(1).last(1).step(1).padding(3).key(),
 
         // hash 相关 multi, noforward, has_key, has_val, need_bulk_num
-        //("hset", "hset",                          4, Store, 1, 1, 1, 3, false, false, true, true, false),
+        //("hset", "hset",                          -4, Store, 1, 1, 1, 3, false, false, true, true, false),
         //("hsetnx", "hsetnx",                      4, Store, 1, 1, 1, 3, false, false, true, true, false),
         //("hmset","hmset",                        -4, Store, 1, 1, 1, 3, false, false, true, true, false),
         //("hincrby", "hincrby",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
@@ -393,7 +409,8 @@ pub(super) static SUPPORTED: Commands = {
         //("hvals", "hvals",                        2, Get, 1, 1, 1, 3, false, false, true, false, false),
         //("hexists", "hexists",                    3, Get, 1, 1, 1, 3, false, false, true, false, false),
         //("hscan", "hscan",                        -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        Cmd::new("hset").arity(4).op(Store).first(1).last(1).step(1).padding(3).key().val(),
+        // hset 支持多field、value，hmset后续会被deprecated
+        Cmd::new("hset").arity(-4).op(Store).first(1).last(1).step(1).padding(3).key().val(),
         Cmd::new("hsetnx").arity(4).op(Store).first(1).last(1).step(1).padding(3).key().val(),
         Cmd::new("hmset").arity(-4).op(Store).first(1).last(1).step(1).padding(3).key().val(),
         Cmd::new("hincrby").arity(4).op(Store).first(1).last(1).step(1).padding(3).key().val(),
@@ -421,22 +438,23 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("append").arity(3).op(Store).first(1).last(1).step(1).padding(3).key().val(),
 
         // longset 相关指令
-        //("lsset", "lsset",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("lsdset", "lsdset",                       -3, Store, 1, 1, 1, 3, false, false, true, true, false),
+        //("lsset", "lsset",                         4, Store, 1, 1, 1, 3, false, false, true, true, false),
+        //("lsdset", "lsdset",                       4, Store, 1, 1, 1, 3, false, false, true, true, false),
         //("lsput", "lsput",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
         //("lsdel", "lsdel",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
         //("lsmexists", "lsmexists",                 -3, Get, 1, 1, 1, 3, false, false, true, true, false),
-        //("lsgetall", "lsgetall",                   -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("lsdump", "lsdump",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("lslen", "lslen",                         -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        Cmd::new("lsset").arity(-3).op(Store).first(1).last(1).step(1).padding(3).key().val(),
-        Cmd::new("lsdset").arity(-3).op(Store).first(1).last(1).step(1).padding(3).key().val(),
+        //("lsgetall", "lsgetall",                   2, Get, 1, 1, 1, 3, false, false, true, false, false),
+        //("lsdump", "lsdump",                       2, Get, 1, 1, 1, 3, false, false, true, false, false),
+        //("lslen", "lslen",                         2, Get, 1, 1, 1, 3, false, false, true, false, false),
+        // 根据eredis 3.1 修改
+        Cmd::new("lsset").arity(4).op(Store).first(1).last(1).step(1).padding(3).key().val(),
+        Cmd::new("lsdset").arity(4).op(Store).first(1).last(1).step(1).padding(3).key().val(),
         Cmd::new("lsput").arity(-3).op(Store).first(1).last(1).step(1).padding(3).key().val(),
         Cmd::new("lsdel").arity(-3).op(Store).first(1).last(1).step(1).padding(3).key().val(),
         Cmd::new("lsmexists").arity(-3).op(Get).first(1).last(1).step(1).padding(3).key().val(),
-        Cmd::new("lsgetall").arity(-3).op(Get).first(1).last(1).step(1).padding(3).key(),
-        Cmd::new("lsdump").arity(-3).op(Get).first(1).last(1).step(1).padding(3).key(),
-        Cmd::new("lslen").arity(-3).op(Get).first(1).last(1).step(1).padding(3).key(),
+        Cmd::new("lsgetall").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
+        Cmd::new("lsdump").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
+        Cmd::new("lslen").arity(2).op(Get).first(1).last(1).step(1).padding(3).key(),
 
         // list 相关指令
         //("rpush", "rpush",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
@@ -534,8 +552,10 @@ pub(super) static SUPPORTED: Commands = {
         // swallowed扩展指令，属性在add_support方法中增加 fishermen
         //("hashkeyq", "hashkeyq",                   2,  Meta,  1, 1, 1, 5, false, true, true, false, false),
         //("hashrandomq", "hashrandomq",             1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
-        Cmd::new("hashkeyq").arity(2).op(Meta).first(1).last(1).step(1).padding(5).nofwd().key().resv_hash().swallow(),
-        Cmd::new("hashrandomq").arity(1).op(Meta).padding(5).nofwd().resv_hash().swallow(),
+        Cmd::new("hashkeyq").arity(2).op(Meta).first(1).last(1).step(1).padding(5).
+        nofwd().key().resv_hash().swallow().cmd_type(CommandType::SwallowedCmdHashkeyq),
+        Cmd::new("hashrandomq").arity(1).op(Meta).padding(5).nofwd().resv_hash().swallow().
+        cmd_type(CommandType::SwallowedCmdHashrandomq),
 
         // swallowed扩展指令对应的有返回值的指令，去掉q即可
         //("hashkey", "hashkey",                     2,  Get,  1, 1, 1, 5, false, true, true, false, false),
@@ -543,8 +563,10 @@ pub(super) static SUPPORTED: Commands = {
         // 这个指令暂无需求，先不支持
         // ("hashrandom", "hashrandom",               1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
         // hashkey、keyshard 改为meta，确保构建rsp时的status管理
-        Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(5).nofwd().key().resv_hash(),
-        Cmd::new("keyshard").arity(-2).op(Meta).first(1).last(-1).step(1).padding(5).multi().nofwd().key().bulk().resv_hash(),
+        Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(5).nofwd().key().resv_hash().
+        cmd_type(CommandType::SpecLocalCmdHashkey),
+        Cmd::new("keyshard").arity(-2).op(Meta).first(1).last(-1).step(1).padding(5).multi().
+        nofwd().key().bulk().resv_hash().cmd_type(CommandType::SpecLocalCmdKeyshard),
 
         // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
         //("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false),
@@ -748,6 +770,10 @@ impl CommandProperties {
     }
     fn quit(mut self) -> Self {
         self.quit = true;
+        self
+    }
+    fn cmd_type(mut self, cmd_type: CommandType) -> Self {
+        self.cmd_type = cmd_type;
         self
     }
 }
