@@ -24,14 +24,20 @@ impl<T> Allocator<T> for Heap {
     }
 }
 
-pub struct Arena<T> {
-    cache: cache::CachedArena<T, Heap>,
+pub struct Arena<T, H = Heap> {
+    cache: cache::CachedArena<T, H>,
 }
-impl<T> Arena<T> {
+impl<T, H: Allocator<T>> Arena<T, H> {
+    //#[inline]
+    //pub fn cache(cache: usize) -> Self {
+    //    Self {
+    //        cache: cache::CachedArena::with_capacity(cache, Heap),
+    //    }
+    //}
     #[inline]
-    pub fn cache(cache: usize) -> Self {
+    pub fn with_cache(cache: usize, heap: H) -> Self {
         Self {
-            cache: cache::CachedArena::with_capacity(cache, Heap),
+            cache: cache::CachedArena::with_capacity(cache, heap),
         }
     }
     #[inline(always)]
@@ -43,5 +49,5 @@ impl<T> Arena<T> {
         self.cache.dealloc(t);
     }
 }
-unsafe impl<T> Sync for Arena<T> {}
-unsafe impl<T> Send for Arena<T> {}
+unsafe impl<T, H> Sync for Arena<T, H> {}
+unsafe impl<T, H> Send for Arena<T, H> {}

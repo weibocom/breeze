@@ -75,6 +75,9 @@ impl Host {
         self.qps(w, secs, &POLL_PENDING_R, "r_pending");
         self.qps(w, secs, &POLL_PENDING_W, "w_pending");
         self.qps(w, secs, &REENTER_10MS, "reenter10ms");
+
+        self.qps(w, secs, &ds::CACHE_ALLOC_NUM, "heap_cache_num");
+        self.qps(w, secs, &ds::CACHE_MISS_ALLOC_NUM, "heap_cache_miss_num");
     }
     pub(super) fn snapshot_buf<W: ItemWriter>(
         &mut self,
@@ -87,7 +90,8 @@ impl Host {
         w.write(crate::BASE_PATH, key, "cnt", b.cnt.get());
         for (i, l) in b.layouts.iter().enumerate() {
             let v = l.get();
-            if v > 0 {
+            // i == 0 对应于0字节，不统计。
+            if i > 0 && v > 0 {
                 let sub_key = format!("layout_{}", i);
                 w.write(crate::BASE_PATH, key, &sub_key, v);
             }
@@ -98,7 +102,10 @@ impl Host {
     #[inline]
     fn qps<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64, m: &AtomicI64, key: &str) {
         use super::base::*;
-        w.write(BASE_PATH, key, "qps", m.take() as f64 / secs);
+        let v = m.take();
+        if v > 0 {
+            w.write(BASE_PATH, key, "qps", v as f64 / secs);
+        }
     }
 }
 

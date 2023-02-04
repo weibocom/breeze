@@ -5,11 +5,11 @@ use protocol::{
     MetricName, Protocol,
 };
 
-use ds::arena::Arena;
+use crate::arena::CallbackContextArena;
 
 pub(crate) struct CallbackContextPtr {
     ptr: NonNull<CallbackContext>,
-    arena: NonNull<Arena<CallbackContext>>,
+    arena: NonNull<CallbackContextArena>,
 }
 
 impl CallbackContextPtr {
@@ -48,7 +48,7 @@ impl CallbackContextPtr {
 
 impl CallbackContextPtr {
     #[inline]
-    pub(crate) fn from(ptr: NonNull<CallbackContext>, arena: &mut Arena<CallbackContext>) -> Self {
+    pub(crate) fn from(ptr: NonNull<CallbackContext>, arena: &mut CallbackContextArena) -> Self {
         let arena = unsafe { NonNull::new_unchecked(arena) };
         Self { ptr, arena }
     }
