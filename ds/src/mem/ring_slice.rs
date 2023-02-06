@@ -1,5 +1,4 @@
 use std::fmt::{Debug, Display, Formatter};
-//use std::io::{Error, ErrorKind};
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
@@ -180,8 +179,6 @@ impl RingSlice {
     #[inline(always)]
     pub fn update(&mut self, idx: usize, b: u8) {
         self[idx] = b;
-        //assert!(idx < self.len());
-        //unsafe { *self.oft_ptr(idx) = b }
     }
     #[inline(always)]
     pub(super) fn ptr(&self) -> *mut u8 {
@@ -197,7 +194,7 @@ impl RingSlice {
     #[inline]
     pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
         for i in offset..self.len() {
-            if self.at(i) == b {
+            if self[i] == b {
                 return Some(i);
             }
         }
@@ -208,11 +205,8 @@ impl RingSlice {
     pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
         for i in offset..self.len() - 1 {
             // 先找'\r'
-            if self.at(i) == b'\r' {
-                // 再验证'\n'
-                if self.at(i + 1) == b'\n' {
-                    return Some(i);
-                }
+            if self[i] == b'\r' && self[i + 1] == b'\n' {
+                return Some(i);
             }
         }
         None
@@ -243,36 +237,6 @@ impl RingSlice {
         self.start + self.len
     }
 
-    //#[inline]
-    //pub fn start_with_ignore_case(&self, offset: usize, dest: &[u8]) -> std::io::Result<bool> {
-    //    let mut len = dest.len();
-    //    if self.len() - offset < dest.len() {
-    //        len = self.len() - offset;
-    //    }
-
-    //    for i in 0..len {
-    //        let c = dest[i] as char;
-    //        // 对于非ascii字母，直接比较，否则忽略大小写比较
-    //        if !c.is_ascii_alphabetic() {
-    //            if self.at(offset + i) != dest[i] {
-    //                return Ok(false);
-    //            }
-    //        } else {
-    //            let c_lower = c.to_ascii_lowercase() as u8;
-    //            let c_uper = c.to_ascii_uppercase() as u8;
-    //            let src = self.at(offset + i);
-    //            if src != c_lower && src != c_uper {
-    //                return Ok(false);
-    //            }
-    //        }
-    //    }
-
-    //    if len == dest.len() {
-    //        return Ok(true);
-    //    }
-
-    //    Err(Error::new(ErrorKind::Other, "no enough bytes"))
-    //}
     #[inline(always)]
     pub fn read_num_be(&self, oft: usize) -> u64 {
         const SIZE: usize = std::mem::size_of::<u64>();
