@@ -368,3 +368,10 @@ impl PartialEq<Self> for super::RingSlice {
         self.len() == other.len() && self.start_with(0, f) && self.start_with(f.len(), s)
     }
 }
+impl PartialEq<(&[u8], &[u8])> for super::RingSlice {
+    #[inline]
+    fn eq(&self, other: &(&[u8], &[u8])) -> bool {
+        let (f, s) = self.data_oft(0);
+        f == other.0 && s == other.1
+    }
+}
