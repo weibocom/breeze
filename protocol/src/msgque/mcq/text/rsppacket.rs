@@ -52,6 +52,14 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
             // end: 0,
         }
     }
+    #[inline]
+    fn start_with(&self, oft: usize, s: &[u8]) -> Result<bool> {
+        if oft + s.len() > self.data.len() {
+            Err(crate::Error::ProtocolIncomplete)
+        } else {
+            Ok(self.data.start_with(oft, s))
+        }
+    }
 
     // memcache rsponse 解析的状态机，后续考虑优化 fishermen
     pub(super) fn parse(&mut self) -> Result<()> {
@@ -73,41 +81,41 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     self.rsp_type = RspType::Unknown;
                     match tlen {
                         3 => {
-                            if self.data.start_with(start, &"END\r".as_bytes())? {
+                            if self.start_with(start, &"END\r".as_bytes())? {
                                 self.rsp_type = RspType::End;
                             }
                         }
                         5 => {
-                            if self.data.start_with(start, &"VALUE".as_bytes())? {
+                            if self.start_with(start, &"VALUE".as_bytes())? {
                                 self.rsp_type = RspType::Value;
-                            } else if self.data.start_with(start, &"ERROR".as_bytes())? {
+                            } else if self.start_with(start, &"ERROR".as_bytes())? {
                                 self.rsp_type = RspType::Error;
                             }
                         }
                         6 => {
-                            if self.data.start_with(start, &"STORED".as_bytes())? {
+                            if self.start_with(start, &"STORED".as_bytes())? {
                                 self.rsp_type = RspType::Stored;
                             }
                         }
                         7 => {
-                            if self.data.start_with(start, &"DELETED".as_bytes())? {
+                            if self.start_with(start, &"DELETED".as_bytes())? {
                                 self.rsp_type = RspType::Deleted;
                             }
                         }
                         9 => {
-                            if self.data.start_with(start, &"NOT_FOUND".as_bytes())? {
+                            if self.start_with(start, &"NOT_FOUND".as_bytes())? {
                                 self.rsp_type = RspType::NotFound;
                             }
                         }
                         10 => {
-                            if self.data.start_with(start, &"NOT_STORED".as_bytes())? {
+                            if self.start_with(start, &"NOT_STORED".as_bytes())? {
                                 self.rsp_type = RspType::NotStored;
                             }
                         }
                         12 => {
-                            if self.data.start_with(start, &"CLIENT_ERROR".as_bytes())? {
+                            if self.start_with(start, &"CLIENT_ERROR".as_bytes())? {
                                 self.rsp_type = RspType::ClientError;
-                            } else if self.data.start_with(start, &"SERVER_ERROR".as_bytes())? {
+                            } else if self.start_with(start, &"SERVER_ERROR".as_bytes())? {
                                 self.rsp_type = RspType::ServerError;
                             }
                         }
@@ -231,7 +239,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     if self.current() == CR {
                         let tlen = self.oft - token;
                         if tlen == 3 {
-                            if self.data.start_with(token, &"END\r".as_bytes())? {
+                            if self.start_with(token, &"END\r".as_bytes())? {
                                 state = RspPacketState::AlmostDone;
                             }
                         } else {
