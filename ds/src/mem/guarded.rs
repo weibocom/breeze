@@ -145,10 +145,10 @@ impl MemGuard {
     pub fn len(&self) -> usize {
         self.mem.len()
     }
-    #[inline]
-    pub fn read(&self, oft: usize) -> &[u8] {
-        self.mem.read(oft)
-    }
+    //#[inline]
+    //pub fn read(&self, oft: usize) -> &[u8] {
+    //    self.mem.read(oft)
+    //}
 }
 impl Drop for MemGuard {
     #[inline]

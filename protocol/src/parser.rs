@@ -124,10 +124,10 @@ impl Command {
     pub fn len(&self) -> usize {
         self.cmd.len()
     }
-    #[inline]
-    pub fn read(&self, oft: usize) -> &[u8] {
-        self.cmd.read(oft)
-    }
+    //#[inline]
+    //pub fn read(&self, oft: usize) -> &[u8] {
+    //    self.cmd.read(oft)
+    //}
     #[inline]
     pub fn data(&self) -> &ds::RingSlice {
         self.cmd.data()
