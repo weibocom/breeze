@@ -1,8 +1,8 @@
-use crate::{redis::command, Result};
-use ds::RingSlice;
+use super::{command::CommandProperties, error::RedisError};
+use crate::{redis::command, HashedCommand, Result};
+use ds::{MemGuard, RingSlice};
 
 const CRLF_LEN: usize = b"\r\n".len();
-
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
 #[repr(C)]
@@ -40,7 +40,8 @@ impl RequestContext {
     }
 }
 
-pub(super) struct RequestPacket<'a, S> {
+//包含流解析过程中当前命令和前面命令的状态
+pub(crate) struct RequestPacket<'a, S> {
     stream: &'a mut S,
     data: RingSlice,
     // 低16位是bulk_num
@@ -50,9 +51,10 @@ pub(super) struct RequestPacket<'a, S> {
     oft_last: usize,
     oft: usize,
 }
+
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
-    pub(super) fn new(stream: &'a mut S) -> Self {
+    pub(crate) fn new(stream: &'a mut S) -> Self {
         let ctx = RequestContext::from(*stream.context());
         let reserved_hash = *stream.reserved_hash();
         let data = stream.slice();
@@ -67,16 +69,16 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    pub(super) fn has_bulk(&self) -> bool {
+    pub(crate) fn has_bulk(&self) -> bool {
         self.bulk() > 0
     }
     #[inline]
-    pub(super) fn available(&self) -> bool {
+    pub(crate) fn available(&self) -> bool {
         self.oft < self.data.len()
     }
 
     #[inline]
-    pub(super) fn parse_bulk_num(&mut self) -> Result<()> {
+    pub(crate) fn parse_bulk_num(&mut self) -> Result<()> {
         if self.bulk() == 0 {
             self.check_start()?;
             self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
@@ -86,7 +88,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Ok(())
     }
     #[inline]
-    pub(super) fn parse_cmd(&mut self) -> Result<()> {
+    pub(crate) fn parse_cmd(&mut self) -> Result<&'static CommandProperties> {
+        let cfg;
         // 需要确保，如果op_code不为0，则之前的数据一定处理过。
         if self.ctx.op_code == 0 {
             let cmd_len = self.data.num_and_skip(&mut self.oft)?;
@@ -96,16 +99,98 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             assert_ne!(self.ctx.op_code, 0, "packet:{}", self);
 
             // 第一次解析cmd需要对协议进行合法性校验
-            let cfg = command::get_cfg(self.op_code())?;
+            cfg = command::get_cfg(self.op_code())?;
             cfg.validate(self.bulk() as usize)?;
 
             // cmd name 解析完毕，bulk 减 1
             self.ctx.bulk -= 1;
+        } else {
+            cfg = command::get_cfg(self.op_code())?;
         }
-        Ok(())
+        Ok(cfg)
     }
     #[inline]
-    pub(super) fn parse_key(&mut self) -> Result<RingSlice> {
+    pub(crate) fn build_request_with_key(
+        &self,
+        cfg: &CommandProperties,
+        hash: i64,
+        real_key: &RingSlice,
+    ) -> HashedCommand {
+        use ds::Buffer;
+        assert!(cfg.name.len() < 10, "name:{}", cfg.name);
+        let mut cmd = Vec::with_capacity(24 + real_key.len());
+        cmd.push(b'*');
+        // 1个cmd, 1个key，1个value。一共3个bulk
+        cmd.push((2 + cfg.has_val as u8) + b'0');
+        cmd.write("\r\n");
+        cmd.push(b'$');
+        cmd.write(cfg.mname.len().to_string());
+        cmd.write("\r\n");
+        cmd.write(cfg.mname);
+        cmd.write("\r\n");
+        cmd.push(b'$');
+        cmd.write(real_key.len().to_string());
+        cmd.write("\r\n");
+        cmd.write_slice(real_key);
+        cmd.write("\r\n");
+
+        //data.copy_to_vec(&mut cmd);
+        let flag = cfg.flag();
+        let cmd: MemGuard = MemGuard::from_vec(cmd);
+        HashedCommand::new(cmd, hash, flag)
+    }
+
+    // bulk_num只有在first=true时才有意义。
+    #[inline]
+    pub(crate) fn build_request_with_key_for_multi(
+        &self,
+        cfg: &CommandProperties,
+        hash: i64,
+        bulk_num: u16,
+        first: bool,
+        real_key: &RingSlice,
+    ) -> HashedCommand {
+        use ds::Buffer;
+        assert!(cfg.name.len() < 10, "name:{}", cfg.name);
+        let mut cmd = Vec::with_capacity(24 + real_key.len());
+        cmd.push(b'*');
+        // 1个cmd, 1个key，1个value。一共3个bulk
+        cmd.push((2 + cfg.has_val as u8) + b'0');
+        cmd.write("\r\n");
+        cmd.push(b'$');
+        cmd.write(cfg.mname.len().to_string());
+        cmd.write("\r\n");
+        cmd.write(cfg.mname);
+        cmd.write("\r\n");
+        cmd.push(b'$');
+        cmd.write(real_key.len().to_string());
+        cmd.write("\r\n");
+        cmd.write_slice(real_key);
+        cmd.write("\r\n");
+
+        //data.copy_to_vec(&mut cmd);
+        let mut flag = cfg.flag();
+        use super::flag::RedisFlager;
+        if first {
+            flag.set_mkey_first();
+            // mset只有一个返回值。
+            // 其他的multi请求的key的数量就是bulk_num
+            assert!(
+                cfg.key_step == 1 || cfg.key_step == 2,
+                "step:{}",
+                cfg.key_step
+            );
+            let mut key_num = bulk_num;
+            if cfg.key_step == 2 {
+                key_num >>= 1;
+            }
+            flag.set_key_count(key_num);
+        }
+        let cmd: MemGuard = MemGuard::from_vec(cmd);
+        HashedCommand::new(cmd, hash, flag)
+    }
+    #[inline]
+    pub(crate) fn parse_key(&mut self) -> Result<RingSlice> {
         assert_ne!(self.ctx.op_code, 0, "packet:{:?}", self);
         assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
         let key_len = self.data.num_and_skip(&mut self.oft)?;
@@ -114,14 +199,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Ok(self.data.sub_slice(start, key_len))
     }
     #[inline]
-    pub(super) fn ignore_one_bulk(&mut self) -> Result<()> {
+    pub(crate) fn ignore_one_bulk(&mut self) -> Result<()> {
         assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
         self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         Ok(())
     }
     #[inline]
-    pub(super) fn ignore_all_bulks(&mut self) -> Result<()> {
+    pub(crate) fn ignore_all_bulks(&mut self) -> Result<()> {
         while self.bulk() > 0 {
             self.ignore_one_bulk()?;
         }
@@ -129,7 +214,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     // 忽略掉之前的数据，通常是multi请求的前面部分。
     #[inline]
-    pub(super) fn multi_ready(&mut self) {
+    pub(crate) fn multi_ready(&mut self) {
         if self.oft > self.oft_last {
             self.stream.ignore(self.oft - self.oft_last);
             self.oft_last = self.oft;
@@ -170,7 +255,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    pub(super) fn take(&mut self) -> ds::MemGuard {
+    pub(crate) fn take(&mut self) -> ds::MemGuard {
         assert!(self.oft_last < self.oft, "packet:{}", self);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
@@ -231,24 +316,24 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
     }
     #[inline]
-    pub(super) fn first(&self) -> bool {
+    pub(crate) fn first(&self) -> bool {
         self.ctx.first
     }
     #[inline]
-    pub(super) fn bulk(&self) -> u16 {
+    pub(crate) fn bulk(&self) -> u16 {
         self.ctx.bulk
     }
     #[inline]
-    pub(super) fn op_code(&self) -> u16 {
+    pub(crate) fn op_code(&self) -> u16 {
         self.ctx.op_code
     }
     #[inline]
-    pub(super) fn complete(&self) -> bool {
+    pub(crate) fn complete(&self) -> bool {
         self.ctx.bulk == 0
     }
     #[allow(dead_code)]
     #[inline]
-    pub(super) fn inner_data(&self) -> &RingSlice {
+    pub(crate) fn inner_data(&self) -> &RingSlice {
         &self.data
     }
     #[inline]
@@ -262,7 +347,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     // 解析完毕，如果数据未读完，需要保留足够的buff空间
     #[inline(always)]
-    pub(super) fn reserve_stream_buff(&mut self) {
+    pub(crate) fn reserve_stream_buff(&mut self) {
         if self.oft > self.stream.len() {
             log::debug!("+++ will reserve len:{}", (self.oft - self.stream.len()));
             self.stream.reserve(self.oft - self.data.len())
@@ -270,7 +355,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 }
 
-pub(super) trait Packet {
+pub trait Packet {
     // 从oft指定的位置开始，解析数字，直到\r\n。
     // 协议错误返回Err
     // 如果数据不全，则返回ProtocolIncomplete
@@ -279,6 +364,7 @@ pub(super) trait Packet {
     // 计算当前的数字，并且将其跳过。如果跑过的字节数比计算的num少，则返回ProtocolIncomplete
     fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize>;
     fn line(&self, oft: &mut usize) -> crate::Result<()>;
+    fn num_skip_all(&self, oft: &mut usize) -> Result<()>;
 }
 
 impl Packet for ds::RingSlice {
@@ -348,6 +434,33 @@ impl Packet for ds::RingSlice {
             Err(crate::Error::ProtocolIncomplete)
         }
     }
+    // 需要支持4种协议格式：（除了-代表的错误类型）
+    //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
+    #[inline]
+    fn num_skip_all(&self, oft: &mut usize) -> Result<()> {
+        let mut bulk_count = self.num(oft)?;
+        while bulk_count > 0 {
+            if *oft >= self.len() {
+                return Err(crate::Error::ProtocolIncomplete);
+            }
+            match self.at(*oft) {
+                b'*' => {
+                    self.num_skip_all(oft)?;
+                }
+                b'$' => {
+                    self.num_and_skip(oft)?;
+                }
+                b'+' | b':' => self.line(oft)?,
+                _ => {
+                    log::info!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
+                    panic!("not supported in num_skip_all");
+                }
+            }
+            // data.num_and_skip(&mut oft)?;
+            bulk_count -= 1;
+        }
+        Ok(())
+    }
 }
 #[inline]
 fn is_number_digit(d: u8) -> bool {
@@ -385,7 +498,6 @@ fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-use super::error::RedisError;
 impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

@@ -11,7 +11,8 @@ pub trait BuffRead {
 
 pub struct GuardedBuffer {
     inner: ResizedRingBuffer,
-    taken: usize, // 已取走未释放的位置 read <= taken <= write
+    // 已取走未释放的位置 read <= taken <= write，释放后才会真正读走ResizedRingBuffer
+    taken: usize,
     guards: PinnedQueue<AtomicU32>,
 }
 

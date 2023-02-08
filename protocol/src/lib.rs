@@ -8,6 +8,8 @@ pub mod parser;
 pub mod phantom;
 pub mod redis;
 pub use redis::RedisFlager;
+//for test
+pub use redis::packet::Packet;
 pub mod req;
 //pub mod resp;
 pub mod msgque;
