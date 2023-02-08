@@ -32,7 +32,7 @@ fn checkout_basic() {
     assert_eq!(8, size_of::<protocol::Context>());
     assert_eq!(
         size_of::<protocol::Context>(),
-        size_of::<protocol::redis::RequestContext>()
+        size_of::<protocol::redis::RedisRequestContext>()
     );
     assert_eq!(16, size_of::<protocol::Flag>());
     assert_eq!(1, size_of::<protocol::Resource>());

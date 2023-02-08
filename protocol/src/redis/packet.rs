@@ -1,8 +1,8 @@
+use super::error::RedisError;
 use crate::{redis::command, Result};
 use ds::RingSlice;
 
-const CRLF_LEN: usize = b"\r\n".len();
-
+pub const CRLF_LEN: usize = b"\r\n".len();
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
 #[repr(C)]
@@ -11,13 +11,7 @@ pub struct RequestContext {
     bulk: u16,
     op_code: u16,
     first: bool, // 在multi-get请求中是否是第一个请求。
-    layer: u8,   // 请求的层次，目前只支持：master，all
-    _ignore: [u8; 2],
-}
-
-// 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
-pub enum LayerType {
-    MasterOnly = 1,
+    _ignore: [u8; 3],
 }
 
 impl RequestContext {
@@ -46,37 +40,35 @@ pub(super) struct RequestPacket<'a, S> {
     // 低16位是bulk_num
     // 次低16位是op_code.
     ctx: RequestContext,
-    reserved_hash: i64,
     oft_last: usize,
     oft: usize,
 }
+
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
-    pub(super) fn new(stream: &'a mut S) -> Self {
+    pub(crate) fn new(stream: &'a mut S) -> Self {
         let ctx = RequestContext::from(*stream.context());
-        let reserved_hash = *stream.reserved_hash();
         let data = stream.slice();
         Self {
             oft_last: 0,
             oft: 0,
             data,
             ctx,
-            reserved_hash,
             stream,
         }
     }
 
     #[inline]
-    pub(super) fn has_bulk(&self) -> bool {
+    pub(crate) fn has_bulk(&self) -> bool {
         self.bulk() > 0
     }
     #[inline]
-    pub(super) fn available(&self) -> bool {
+    pub(crate) fn available(&self) -> bool {
         self.oft < self.data.len()
     }
 
     #[inline]
-    pub(super) fn parse_bulk_num(&mut self) -> Result<()> {
+    pub(crate) fn parse_bulk_num(&mut self) -> Result<()> {
         if self.bulk() == 0 {
             self.check_start()?;
             self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
@@ -86,7 +78,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Ok(())
     }
     #[inline]
-    pub(super) fn parse_cmd(&mut self) -> Result<()> {
+    pub(crate) fn parse_cmd(&mut self) -> Result<()> {
         // 需要确保，如果op_code不为0，则之前的数据一定处理过。
         if self.ctx.op_code == 0 {
             let cmd_len = self.data.num_and_skip(&mut self.oft)?;
@@ -105,7 +97,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Ok(())
     }
     #[inline]
-    pub(super) fn parse_key(&mut self) -> Result<RingSlice> {
+    pub(crate) fn parse_key(&mut self) -> Result<RingSlice> {
         assert_ne!(self.ctx.op_code, 0, "packet:{:?}", self);
         assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
         let key_len = self.data.num_and_skip(&mut self.oft)?;
@@ -114,14 +106,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Ok(self.data.sub_slice(start, key_len))
     }
     #[inline]
-    pub(super) fn ignore_one_bulk(&mut self) -> Result<()> {
+    pub(crate) fn ignore_one_bulk(&mut self) -> Result<()> {
         assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
         self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         Ok(())
     }
     #[inline]
-    pub(super) fn ignore_all_bulks(&mut self) -> Result<()> {
+    pub(crate) fn ignore_all_bulks(&mut self) -> Result<()> {
         while self.bulk() > 0 {
             self.ignore_one_bulk()?;
         }
@@ -129,7 +121,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     // 忽略掉之前的数据，通常是multi请求的前面部分。
     #[inline]
-    pub(super) fn multi_ready(&mut self) {
+    pub(crate) fn multi_ready(&mut self) {
         if self.oft > self.oft_last {
             self.stream.ignore(self.oft - self.oft_last);
             self.oft_last = self.oft;
@@ -152,25 +144,22 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         assert_eq!(self.ctx.u64(), 0, "packet:{}", self);
     }
 
-    // 重置reserved hash，包括stream中的对应值
     #[inline]
-    fn reset_reserved_hash(&mut self) {
-        self.update_reserved_hash(0)
+    pub(crate) fn reserver_context(&mut self) {
+        *self.stream.context() = self.ctx.u64()
     }
-    // 更新reserved hash
-    #[inline]
-    pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
-        self.reserved_hash = reserved_hash;
-        *self.stream.reserved_hash() = reserved_hash;
+
+    // 解析完毕，如果数据未读完，需要保留足够的buff空间
+    #[inline(always)]
+    pub(crate) fn reserve_stream_buff(&mut self) {
+        if self.oft > self.stream().len() {
+            log::debug!("+++ will reserve len:{}", (self.oft - self.stream.len()));
+            self.stream.reserve(self.oft - self.data.len())
+        }
     }
 
     #[inline]
-    pub(super) fn reserved_hash(&self) -> i64 {
-        self.reserved_hash
-    }
-
-    #[inline]
-    pub(super) fn take(&mut self) -> ds::MemGuard {
+    pub(crate) fn take(&mut self) -> ds::MemGuard {
         assert!(self.oft_last < self.oft, "packet:{}", self);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
@@ -180,41 +169,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.ctx.bulk == 0 {
             // 重置context、reserved-hash
             self.reset_context();
-            self.reset_reserved_hash();
         }
         self.stream.take(data.len())
-    }
-
-    // trim掉已解析的cmd相关元数据，只保留在master_only、reserved_hash这两个元数据
-    #[inline]
-    pub(super) fn trim_swallowed_cmd(&mut self) -> Result<()> {
-        // trim 吞噬指令时，整个吞噬指令必须已经被解析完毕
-        debug_assert!(self.ctx.bulk == 0, "packet:{}", self);
-
-        // 移动oft到吞噬指令之后
-        let len = self.oft - self.oft_last;
-        self.oft_last = self.oft;
-        self.stream.ignore(len);
-
-        // 记录需保留的状态：目前只有master only状态【direct hash保存在stream的非ctx字段中】
-        let master_only = self.master_only();
-
-        // 重置context，去掉packet/stream的ctx信息
-        self.reset_context();
-
-        // 保留后续cmd执行需要的状态：当前只有master
-        if master_only {
-            // 保留master only 设置
-            self.set_layer(LayerType::MasterOnly);
-        }
-
-        // 设置packet的ctx到stream的ctx中，供下一个指令使用
-        *self.stream.context() = self.ctx.u64();
-
-        if self.available() {
-            return Ok(());
-        }
-        return Err(crate::Error::ProtocolIncomplete);
     }
 
     #[inline]
@@ -231,42 +187,30 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
     }
     #[inline]
-    pub(super) fn first(&self) -> bool {
-        self.ctx.first
-    }
-    #[inline]
-    pub(super) fn bulk(&self) -> u16 {
-        self.ctx.bulk
-    }
-    #[inline]
-    pub(super) fn op_code(&self) -> u16 {
-        self.ctx.op_code
-    }
-    #[inline]
-    pub(super) fn complete(&self) -> bool {
-        self.ctx.bulk == 0
-    }
-    #[allow(dead_code)]
-    #[inline]
-    pub(super) fn inner_data(&self) -> &RingSlice {
+    pub(crate) fn inner_data(&self) -> &RingSlice {
         &self.data
     }
     #[inline]
-    pub(super) fn set_layer(&mut self, layer: LayerType) {
-        self.ctx.layer = layer as u8;
+    pub(crate) fn first(&self) -> bool {
+        self.ctx.first
     }
     #[inline]
-    pub(super) fn master_only(&self) -> bool {
-        self.ctx.layer == LayerType::MasterOnly as u8
+    pub(crate) fn bulk(&self) -> u16 {
+        self.ctx.bulk
     }
-
-    // 解析完毕，如果数据未读完，需要保留足够的buff空间
-    #[inline(always)]
-    pub(super) fn reserve_stream_buff(&mut self) {
-        if self.oft > self.stream.len() {
-            log::debug!("+++ will reserve len:{}", (self.oft - self.stream.len()));
-            self.stream.reserve(self.oft - self.data.len())
-        }
+    #[inline]
+    pub(crate) fn op_code(&self) -> u16 {
+        self.ctx.op_code
+    }
+    pub(crate) fn ctx(&mut self) -> &mut RequestContext {
+        &mut self.ctx
+    }
+    pub(crate) fn stream(&mut self) -> &mut S {
+        &mut self.stream
+    }
+    #[inline]
+    pub(crate) fn complete(&self) -> bool {
+        self.ctx.bulk == 0
     }
 }
 
@@ -385,7 +329,6 @@ fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-use super::error::RedisError;
 impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
