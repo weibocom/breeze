@@ -162,7 +162,7 @@ impl Protocol for MemcacheBinary {
 
             // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
             _ => {
-                log::error!("+++ NoResponseFound req: {:?}",  ctx.request());
+                log::error!("+++ NoResponseFound req: {}/{:?}",  old_op_code, ctx.request());
                 return Err(Error::NoResponseFound);
             },
         }
