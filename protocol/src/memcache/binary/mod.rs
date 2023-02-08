@@ -161,7 +161,10 @@ impl Protocol for MemcacheBinary {
             // self.build_empty_response(RespStatus::NotFound, req)
 
             // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
-            _ => return Err(Error::NoResponseFound),
+            _ => {
+                log::debug!("+++ NoResponseFound req: {:?}",  ctx.request());
+                return Err(Error::NoResponseFound);
+            },
         }
         Ok(())
     }
