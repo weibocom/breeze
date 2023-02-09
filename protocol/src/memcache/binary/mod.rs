@@ -127,6 +127,7 @@ impl Protocol for MemcacheBinary {
         // 先进行metrics统计
         self.metrics(ctx.request(), None, ctx);
 
+        log::debug!("+++ proc no resp for req: {}/{:?}",  old_op_code, ctx.request());
         match old_op_code as u8 {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_CODE_NOOP => {
@@ -162,7 +163,7 @@ impl Protocol for MemcacheBinary {
 
             // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
             _ => {
-                log::error!("+++ NoResponseFound req: {}/{:?}",  old_op_code, ctx.request());
+                log::warn!("+++ mc NoResponseFound req: {}/{:?}",  old_op_code, ctx.request());
                 return Err(Error::NoResponseFound);
             },
         }
