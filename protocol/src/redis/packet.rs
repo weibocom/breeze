@@ -2,13 +2,13 @@ use super::{
     command::{CommandProperties, Commands},
     error::RedisError,
 };
-use crate::{redis::command, Result};
+use crate::Result;
 use ds::RingSlice;
 
 pub const CRLF_LEN: usize = b"\r\n".len();
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
-// 不要改动此结构体
+// 重要！！不要改动此结构体
 #[repr(C)]
 #[derive(Debug)]
 pub(crate) struct RequestContext {
@@ -230,7 +230,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 }
 
-pub(super) trait Packet {
+pub(crate) trait Packet {
     // 从oft指定的位置开始，解析数字，直到\r\n。
     // 协议错误返回Err
     // 如果数据不全，则返回ProtocolIncomplete
@@ -309,7 +309,6 @@ impl Packet for ds::RingSlice {
             Err(crate::Error::ProtocolIncomplete)
         }
     }
-    // TODO 临时测试设为pub，测试完毕后去掉pub fishermen
     // 需要支持4种协议格式：（除了-代表的错误类型）
     //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
     #[inline]

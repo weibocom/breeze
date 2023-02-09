@@ -1,5 +1,5 @@
-mod command;
-mod error;
+pub(crate) mod command;
+pub(crate) mod error;
 mod flag;
 pub use flag::RedisFlager;
 pub(crate) mod packet;

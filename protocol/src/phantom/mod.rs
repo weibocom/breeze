@@ -2,18 +2,19 @@
 // 为了避免对redis的侵入，独立实现
 
 mod command;
-mod error;
+// mod error;
 mod flag;
 mod packet;
 //mod token;
 
+use crate::phantom::command::SUPPORTED;
 use crate::{
     Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
 use ds::RingSlice;
 use flag::RedisFlager;
-use packet::Packet;
+use packet::*;
 use sharding::hash::Hash;
 
 #[derive(Clone, Default)]
@@ -30,11 +31,10 @@ impl Phantom {
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         log::debug!("+++ rec req:{:?}", stream.slice());
 
-        let mut packet = packet::RequestPacket::new(stream);
+        let mut packet = PhantomRequestPacket::new(stream);
         while packet.available() {
             packet.parse_bulk_num()?;
-            packet.parse_cmd()?;
-            let cfg = command::get_cfg(packet.op_code())?;
+            let cfg = packet.parse_cmd(&SUPPORTED)?;
             if cfg.multi {
                 packet.multi_ready();
                 while packet.has_bulk() {
@@ -51,7 +51,8 @@ impl Phantom {
                     // }
                     // packet里的数据不用，重新构建cmd
                     let _ = packet.take();
-                    let req = cfg.build_request_with_key_for_multi(hash, bulk, first, &real_key);
+                    let req =
+                        packet.build_request_with_key_for_multi(cfg, hash, bulk, first, &real_key);
                     process.process(req, packet.complete());
                 }
             } else {
@@ -62,7 +63,7 @@ impl Phantom {
 
                     // 需要根据key进行重建
                     let _ = packet.take();
-                    let req = cfg.build_request_with_key(hash, &real_key);
+                    let req = packet.build_request_with_key(cfg, hash, &real_key);
                     process.process(req, true);
                 } else {
                     let hash = default_hash();
@@ -82,38 +83,9 @@ impl Phantom {
         Ok(())
     }
 
-    // TODO 临时测试设为pub，测试完毕后去掉pub fishermen
-    // 需要支持4种协议格式：（除了-代表的错误类型）
-    //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
-    #[inline]
-    pub fn num_skip_all(&self, data: &RingSlice, mut oft: &mut usize) -> Result<Option<Command>> {
-        let mut bulk_count = data.num(&mut oft)?;
-        while bulk_count > 0 {
-            if *oft >= data.len() {
-                return Err(crate::Error::ProtocolIncomplete);
-            }
-            match data.at(*oft) {
-                b'*' => {
-                    self.num_skip_all(data, oft)?;
-                }
-                b'$' => {
-                    data.num_and_skip(&mut oft)?;
-                }
-                b'+' => data.line(oft)?,
-                b':' => data.line(oft)?,
-                _ => {
-                    log::info!("unsupport rsp:{:?}, pos: {}/{}", data, oft, bulk_count);
-                    panic!("not supported in num_skip_all");
-                }
-            }
-            // data.num_and_skip(&mut oft)?;
-            bulk_count -= 1;
-        }
-        Ok(None)
-    }
-
     #[inline]
     fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
+        use crate::redis::packet::Packet;
         let data = s.slice();
         log::debug!("+++ will parse rsp:{:?}", data);
 
@@ -138,7 +110,7 @@ impl Phantom {
                     let _num = data.num_and_skip(&mut oft)?;
                 }
                 b'*' => {
-                    self.num_skip_all(&data, &mut oft)?;
+                    data.num_skip_all(&mut oft)?;
                 }
                 _ => {
                     log::info!("phantom not supported:{:?}", data);
@@ -226,7 +198,7 @@ impl Protocol for Phantom {
         W: Writer,
     {
         let request = ctx.request();
-        let cfg = command::get_cfg(request.op_code())?;
+        let cfg = SUPPORTED.get_by_op(request.op_code())?;
 
         if !cfg.multi {
             if let Some(rsp) = response {
