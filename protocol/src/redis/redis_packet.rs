@@ -97,8 +97,8 @@ impl<'a, S: crate::Stream> RedisRequestPacket<'a, S> {
         // 记录需保留的状态：目前只有master only状态【direct hash保存在stream的非ctx字段中】
         let master_only = self.master_only();
 
-        //重置ctx
-        let _ = self.take();
+        //重置ctx，保留reserved_hash
+        let _ = self.req_packet.take();
 
         // 保留后续cmd执行需要的状态：当前只有master
         if master_only {
