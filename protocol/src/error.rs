@@ -24,6 +24,7 @@ pub enum Error {
     TopChanged,
     WriteResponseErr,
     NoResponseFound,
+    OpCodeNotSupported(u16),
     // CommandNotSupported,
     BufferFull,
     Quit,
