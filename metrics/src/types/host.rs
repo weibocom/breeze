@@ -30,7 +30,7 @@ impl Host {
         let uptime = self.start.elapsed().as_secs() as i64;
         w.write(BASE_PATH, "host", "uptime_sec", uptime);
         if let Ok(percent) = self.process.cpu_percent() {
-            w.write(BASE_PATH, "host", "cpu", percent.min(200f32) as f64);
+            w.write(BASE_PATH, "host", "cpu", percent.min(400f32) as f64);
         }
         if let Ok(mem) = self.process.memory_info() {
             w.write(BASE_PATH, "host", "mem", mem.rss() as i64);
