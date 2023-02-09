@@ -153,7 +153,7 @@ impl Protocol for MemcacheBinary {
             }
             // self.build_empty_response(RespStatus::NotStored, req)
 
-            // get，返回key not found 对应的0x1
+            // get/gets，返回key not found 对应的0x1
             OP_CODE_GET | OP_CODE_GETS => {
                 w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?
             }
