@@ -189,7 +189,7 @@ impl CommandProperties {
 
 // https://redis.io/commands 一共145大类命令。使用 crate::sharding::Hash::Crc32
 // 算法能够完整的将其映射到0~4095这个区间。因为使用这个避免大量的match消耗。
-pub(super) struct Commands {
+pub(crate) struct Commands {
     supported: [CommandProperties; Self::MAPPING_RANGE],
     // hash: Crc32,
     hash: Bkdr,
@@ -273,7 +273,7 @@ pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
     SUPPORTED.get_op_code(cmd)
 }
 #[inline]
-pub(super) fn get_cfg<'a>(op_code: u16) -> crate::Result<&'a CommandProperties> {
+pub(super) fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties> {
     SUPPORTED.get_by_op(op_code)
 }
 

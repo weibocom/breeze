@@ -1,13 +1,17 @@
-use super::error::RedisError;
+use super::{
+    command::{CommandProperties, Commands},
+    error::RedisError,
+};
 use crate::{redis::command, Result};
 use ds::RingSlice;
 
 pub const CRLF_LEN: usize = b"\r\n".len();
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
+// 不要改动此结构体
 #[repr(C)]
 #[derive(Debug)]
-pub struct RequestContext {
+pub(crate) struct RequestContext {
     bulk: u16,
     op_code: u16,
     first: bool, // 在multi-get请求中是否是第一个请求。
@@ -34,7 +38,8 @@ impl RequestContext {
     }
 }
 
-pub(super) struct RequestPacket<'a, S> {
+//包含流解析过程中当前命令和前面命令的状态
+pub(crate) struct RequestPacket<'a, S> {
     stream: &'a mut S,
     data: RingSlice,
     // 低16位是bulk_num
@@ -78,23 +83,29 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Ok(())
     }
     #[inline]
-    pub(crate) fn parse_cmd(&mut self) -> Result<()> {
+    pub(crate) fn parse_cmd(
+        &mut self,
+        cmds: &'static Commands,
+    ) -> Result<&'static CommandProperties> {
+        let cfg;
         // 需要确保，如果op_code不为0，则之前的数据一定处理过。
         if self.ctx.op_code == 0 {
             let cmd_len = self.data.num_and_skip(&mut self.oft)?;
             let start = self.oft - cmd_len - CRLF_LEN;
             let cmd = self.data.sub_slice(start, cmd_len);
-            self.ctx.op_code = super::command::get_op_code(&cmd);
+            self.ctx.op_code = cmds.get_op_code(&cmd);
             assert_ne!(self.ctx.op_code, 0, "packet:{}", self);
 
             // 第一次解析cmd需要对协议进行合法性校验
-            let cfg = command::get_cfg(self.op_code())?;
+            cfg = cmds.get_by_op(self.op_code())?;
             cfg.validate(self.bulk() as usize)?;
 
             // cmd name 解析完毕，bulk 减 1
             self.ctx.bulk -= 1;
+        } else {
+            cfg = cmds.get_by_op(self.ctx.op_code)?;
         }
-        Ok(())
+        Ok(cfg)
     }
     #[inline]
     pub(crate) fn parse_key(&mut self) -> Result<RingSlice> {
@@ -202,9 +213,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(crate) fn op_code(&self) -> u16 {
         self.ctx.op_code
     }
-    pub(crate) fn ctx(&mut self) -> &mut RequestContext {
+    pub(crate) fn ctx(&self) -> &RequestContext {
+        &self.ctx
+    }
+    #[inline]
+    pub(crate) fn ctx_mut(&mut self) -> &mut RequestContext {
         &mut self.ctx
     }
+    #[inline]
     pub(crate) fn stream(&mut self) -> &mut S {
         &mut self.stream
     }
@@ -223,6 +239,7 @@ pub(super) trait Packet {
     // 计算当前的数字，并且将其跳过。如果跑过的字节数比计算的num少，则返回ProtocolIncomplete
     fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize>;
     fn line(&self, oft: &mut usize) -> crate::Result<()>;
+    fn num_skip_all(&self, oft: &mut usize) -> Result<()>;
 }
 
 impl Packet for ds::RingSlice {
@@ -291,6 +308,35 @@ impl Packet for ds::RingSlice {
         } else {
             Err(crate::Error::ProtocolIncomplete)
         }
+    }
+    // TODO 临时测试设为pub，测试完毕后去掉pub fishermen
+    // 需要支持4种协议格式：（除了-代表的错误类型）
+    //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
+    #[inline]
+    fn num_skip_all(&self, oft: &mut usize) -> Result<()> {
+        let mut bulk_count = self.num(oft)?;
+        while bulk_count > 0 {
+            if *oft >= self.len() {
+                return Err(crate::Error::ProtocolIncomplete);
+            }
+            match self.at(*oft) {
+                b'*' => {
+                    self.num_skip_all(oft)?;
+                }
+                b'$' => {
+                    self.num_and_skip(oft)?;
+                }
+                b'+' => self.line(oft)?,
+                b':' => self.line(oft)?,
+                _ => {
+                    log::info!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
+                    panic!("not supported in num_skip_all");
+                }
+            }
+            // data.num_and_skip(&mut oft)?;
+            bulk_count -= 1;
+        }
+        Ok(())
     }
 }
 #[inline]

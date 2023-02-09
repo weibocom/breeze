@@ -6,8 +6,8 @@ use crate::Result;
 pub struct RedisRequestContext {
     bulk: u16,
     op_code: u16,
-    first: bool, // 在multi-get请求中是否是第一个请求。
-    layer: u8,   // 请求的层次，目前只支持：master，all
+    first: bool,
+    layer: u8, // 请求的层次，目前只支持：master，all
     _ignore: [u8; 2],
 }
 
@@ -18,25 +18,11 @@ pub enum LayerType {
 
 impl RedisRequestContext {
     #[inline]
-    fn reset(&mut self) {
-        assert_eq!(std::mem::size_of::<Self>(), 8);
-        *self.u64_mut() = 0;
-    }
-    #[inline]
-    fn u64(&mut self) -> u64 {
-        *self.u64_mut()
-    }
-    #[inline]
-    fn u64_mut(&mut self) -> &mut u64 {
-        unsafe { std::mem::transmute(self) }
-    }
-    #[inline]
-    fn from(v: u64) -> Self {
+    fn from_packet(v: &RequestContext) -> &Self {
         unsafe { std::mem::transmute(v) }
     }
-
     #[inline]
-    fn from_packet(v: &mut RequestContext) -> &mut Self {
+    fn from_packet_mut(v: &mut RequestContext) -> &mut Self {
         unsafe { std::mem::transmute(v) }
     }
 }
@@ -52,19 +38,24 @@ pub(super) struct RedisRequestPacket<'a, S> {
     reserved_hash: i64,
 }
 
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 impl<'a, S: crate::Stream> Deref for RedisRequestPacket<'a, S> {
     type Target = RequestPacket<'a, S>;
     fn deref(&self) -> &Self::Target {
         &self.req_packet
     }
 }
+impl<'a, S: crate::Stream> DerefMut for RedisRequestPacket<'a, S> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.req_packet
+    }
+}
 
 impl<'a, S: crate::Stream> RedisRequestPacket<'a, S> {
     #[inline]
     pub(super) fn new(stream: &'a mut S) -> Self {
-        let req_packet = RequestPacket::new(stream);
         let reserved_hash = *stream.reserved_hash();
+        let req_packet = RequestPacket::new(stream);
         Self {
             req_packet,
             reserved_hash,
@@ -126,7 +117,7 @@ impl<'a, S: crate::Stream> RedisRequestPacket<'a, S> {
 
     #[inline]
     pub(super) fn set_layer(&mut self, layer: LayerType) {
-        RedisRequestContext::from_packet(self.ctx()).layer = layer as u8;
+        RedisRequestContext::from_packet_mut(self.ctx_mut()).layer = layer as u8;
     }
     #[inline]
     pub(super) fn master_only(&self) -> bool {

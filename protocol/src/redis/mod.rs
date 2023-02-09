@@ -9,7 +9,7 @@ mod redis_packet;
 use crate::{
     redis::redis_packet::RedisRequestPacket,
     redis::{
-        command::{CommandProperties, CommandType},
+        command::{CommandProperties, CommandType, SUPPORTED},
         redis_packet::LayerType,
     },
     Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
@@ -46,10 +46,8 @@ impl Redis {
 
         while packet.available() {
             packet.parse_bulk_num()?;
-            packet.parse_cmd()?;
+            let cfg = packet.parse_cmd(&SUPPORTED)?;
 
-            // TODO cfg 大概率会多取一次，有没有更好的办法 fishermen
-            let cfg = command::get_cfg(packet.op_code())?;
             let mut hash;
             if cfg.swallowed {
                 // 优先处理swallow吞噬指令: master/hashkeyq/hashrandomq
@@ -173,36 +171,6 @@ impl Redis {
         Ok(())
     }
 
-    // TODO 临时测试设为pub，测试完毕后去掉pub fishermen
-    // 需要支持4种协议格式：（除了-代表的错误类型）
-    //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
-    #[inline]
-    pub fn num_skip_all(&self, data: &RingSlice, mut oft: &mut usize) -> Result<Option<Command>> {
-        let mut bulk_count = data.num(&mut oft)?;
-        while bulk_count > 0 {
-            if *oft >= data.len() {
-                return Err(crate::Error::ProtocolIncomplete);
-            }
-            match data.at(*oft) {
-                b'*' => {
-                    self.num_skip_all(data, oft)?;
-                }
-                b'$' => {
-                    data.num_and_skip(&mut oft)?;
-                }
-                b'+' => data.line(oft)?,
-                b':' => data.line(oft)?,
-                _ => {
-                    log::info!("unsupport rsp:{:?}, pos: {}/{}", data, oft, bulk_count);
-                    panic!("not supported in num_skip_all");
-                }
-            }
-            // data.num_and_skip(&mut oft)?;
-            bulk_count -= 1;
-        }
-        Ok(None)
-    }
-
     #[inline]
     fn parse_response_inner<S: Stream>(
         &self,
@@ -224,7 +192,7 @@ impl Redis {
                     let _num = data.num_and_skip(oft)?;
                 }
                 b'*' => {
-                    self.num_skip_all(&data, oft)?;
+                    data.num_skip_all(oft)?;
                 }
                 _ => {
                     log::info!("not supported:{:?}", data);
