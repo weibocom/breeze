@@ -230,7 +230,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 }
 
-pub(crate) trait Packet {
+pub trait Packet {
     // 从oft指定的位置开始，解析数字，直到\r\n。
     // 协议错误返回Err
     // 如果数据不全，则返回ProtocolIncomplete
