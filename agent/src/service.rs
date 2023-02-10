@@ -99,11 +99,12 @@ async fn _process_one(
         let metrics = metrics.clone();
         spawn(async move {
             if let Err(e) = copy_bidirectional(top, metrics.clone(), client, p, pipeline).await {
+                use protocol::Error::*;
                 match e {
                     //protocol::Error::Quit => {} // client发送quit协议退出
                     //protocol::Error::Eof => {}
-                    protocol::Error::RequestProtocolInvalid(_) => *metrics.invalid_cmd() += 1,
-                    protocol::Error::ProtocolNotSupported => *metrics.unsupport_cmd() += 1,
+                    RequestProtocolInvalid(_) => *metrics.invalid_cmd() += 1,
+                    ProtocolNotSupported => *metrics.unsupport_cmd() += 1,
                     // 发送异常信息给client
                     _e => log::debug!("{:?} disconnected. {:?}", _path, _e),
                 }
