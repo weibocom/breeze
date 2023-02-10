@@ -17,6 +17,9 @@ pub struct Socks {
 
     #[serde(skip)]
     socks_path: String,
+
+    // TODO：会议讨论的新逻辑：第一次成功更新后，不再从vintage更新，方便当前从本地随意调整socks，后续有需要再实时更新； fishermen 2023.2.10
+    refreshed: bool,
 }
 
 pub static SOCKS: OnceCell<CowReadHandle<Socks>> = OnceCell::new();
@@ -47,6 +50,12 @@ impl Socks {
         }
     }
     fn refresh(&mut self, cfg: &str) {
+        // 如果已经refreshed过了，暂时不再更新，后续有需要，重新打开
+        if self.refreshed {
+            log::debug!("+++ ignore socklist from vintage now!");
+            return;
+        }
+
         // 如果socklist为空，应该是刚启动，sockslist尝试从本地加载
         if self.socklist.len() == 0 {
             self.socklist = self.load_socks();
@@ -97,6 +106,9 @@ impl Socks {
                         Err(_e) => log::warn!("delete sock/{} failed: {:?}", fname, _e),
                     }
                 }
+
+                // 设置刷新flag
+                self.refreshed = true;
             }
             Err(_e) => log::warn!("parse socks file failed: {:?}, cfg:{} ", _e, cfg),
         }
