@@ -167,14 +167,18 @@ impl Protocol for MemcacheBinary {
             }
             // self.build_empty_response(RespStatus::NotStored, req)
 
-            // get，返回key not found 对应的0x1
-            OP_CODE_GET => {
+            // get/gets，返回key not found 对应的0x1
+            OP_CODE_GET | OP_CODE_GETS => {
                 w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?
             }
+
             // self.build_empty_response(RespStatus::NotFound, req)
 
             // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
-            _ => return Err(Error::OpCodeNotSupported(old_op_code)),
+            _ => {
+                log::warn!("+++ mc NoResponseFound req: {}/{:?}",  old_op_code, ctx.request());
+                return Err(Error::OpCodeNotSupported(old_op_code));
+            }
         }
         Ok(())
     }
