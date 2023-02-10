@@ -3,9 +3,9 @@ mod error;
 mod reqpacket;
 mod rsppacket;
 
-use crate::msgque::mcq::text::rsppacket::RspPacket;
 use crate::{
-    Command, Commander, Error, Flag, HashedCommand, Protocol, RequestProcessor, Result, Stream,
+    msgque::mcq::text::rsppacket::RspPacket, Command, Commander, Error, Flag, HashedCommand,
+    Metric, MetricItem, Protocol, RequestProcessor, Result, Stream, Writer,
 };
 
 use sharding::hash::Hash;
@@ -69,18 +69,18 @@ impl McqText {
 
     // 协议内部的metric统计，全部放置于此
     #[inline]
-    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>(
-        &self,
-        request: &HashedCommand,
-        response: &Command,
-        metrics: &M,
-    ) {
+    fn metrics<C, M, I>(&self, request: &HashedCommand, response: &Command, metrics: &C)
+    where
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
         if response.ok() {
             match request.operation() {
                 crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
-                    *metrics.get(crate::MetricName::Read) += 1
+                    *metrics.metric().get(crate::MetricName::Read) += 1
                 }
-                crate::Operation::Store => *metrics.get(crate::MetricName::Write) += 1,
+                crate::Operation::Store => *metrics.metric().get(crate::MetricName::Write) += 1,
                 _ => {}
             }
         }
@@ -124,16 +124,18 @@ impl Protocol for McqText {
 
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
-    fn write_response<
-        C: Commander + crate::Metric<T>,
-        W: crate::Writer,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    >(
+    fn write_response<C, W, M, I>(
         &self,
         ctx: &mut C,
         response: Option<&mut Command>,
         w: &mut W,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        W: Writer,
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
         let request = ctx.request();
         let cfg = command::get_cfg(request.op_code())?;
 

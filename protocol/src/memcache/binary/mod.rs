@@ -3,12 +3,14 @@ mod packet;
 
 use packet::*;
 
-use crate::{Error, Flag, MetricName, Result, Stream};
-
 #[derive(Clone, Default)]
 pub struct MemcacheBinary;
 
-use crate::{Command, HashedCommand, Protocol, RequestProcessor};
+use crate::{
+    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
+    Result, Stream, Writer,
+};
+
 use sharding::hash::Hash;
 impl Protocol for MemcacheBinary {
     // 解析请求。把所有的multi-get请求转换成单一的n个get请求。
@@ -85,20 +87,27 @@ impl Protocol for MemcacheBinary {
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline]
-    fn write_response<
-        C: crate::Commander + crate::Metric<T>,
-        W: crate::Writer,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    >(
+    fn write_response<C, W, M, I>(
         &self,
         ctx: &mut C,
         response: Option<&mut Command>,
         w: &mut W,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        W: Writer,
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
         // sendonly 直接返回
         if ctx.request().sentonly() {
             assert!(response.is_none(), "req:{:?}", ctx.request());
             return Ok(());
+        }
+        // 查询请求统计缓存命中率
+        if ctx.request().operation().is_query() {
+            ctx.metric()
+                .cache(response.as_ref().map(|r| r.ok()).unwrap_or_default());
         }
 
         // 如果原始请求是quite_get请求，并且not found，则不回写。
@@ -109,8 +118,13 @@ impl Protocol for MemcacheBinary {
         if let Some(rsp) = response {
             assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
 
+            // 验证Opaque是否相同. 不相同说明数据不一致
+            if ctx.request().data().opaque() != rsp.data().opaque() {
+                ctx.metric().inconsist(1);
+            }
+
             // 先进行metrics统计
-            self.metrics(ctx.request(), Some(&rsp), ctx);
+            //self.metrics(ctx.request(), Some(&rsp), ctx);
 
             // 如果quite 请求没拿到数据，直接忽略
             if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
@@ -125,7 +139,7 @@ impl Protocol for MemcacheBinary {
         }
 
         // 先进行metrics统计
-        self.metrics(ctx.request(), None, ctx);
+        //self.metrics(ctx.request(), None, ctx);
 
         match old_op_code as u8 {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
@@ -160,7 +174,7 @@ impl Protocol for MemcacheBinary {
             // self.build_empty_response(RespStatus::NotFound, req)
 
             // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
-            _ => return Err(Error::NoResponseFound),
+            _ => return Err(Error::OpCodeNotSupported(old_op_code)),
         }
         Ok(())
     }
@@ -168,12 +182,17 @@ impl Protocol for MemcacheBinary {
     // 如果是写请求，把cas请求转换为set请求。
     // 如果是读请求，则通过response重新构建一个新的写请求。
     #[inline]
-    fn build_writeback_request<C: crate::Commander>(
+    fn build_writeback_request<C, M, I>(
         &self,
         ctx: &mut C,
         response: &Command,
         exp_sec: u32,
-    ) -> Option<HashedCommand> {
+    ) -> Option<HashedCommand>
+    where
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
         if ctx.request_mut().operation().is_retrival() {
             let req = &*ctx.request();
             self.build_write_back_get(req, response, exp_sec)
@@ -379,15 +398,17 @@ impl MemcacheBinary {
     }
 
     // 当前只统计缓存命中率，后续需要其他统计，在此增加
-    #[inline(always)]
-    fn metrics<M: crate::Metric<T>, T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>>(
-        &self,
-        request: &HashedCommand,
-        response: Option<&Command>,
-        metrics: &M,
-    ) {
-        if request.operation().is_query() {
-            *metrics.get(MetricName::Cache) += response.map(|rsp| rsp.ok()).unwrap_or_default();
-        }
-    }
+    //#[inline(always)]
+    //fn metrics<C, M, I>(&self, request: &HashedCommand, response: Option<&Command>, metrics: &C)
+    //where
+    //    C: Commander<M, I>,
+    //    M: Metric<I>,
+    //    I: MetricItem,
+    //{
+    //    if request.operation().is_query() {
+    //        metrics
+    //            .metric()
+    //            .cache(response.map(|rsp| rsp.ok()).unwrap_or_default());
+    //    }
+    //}
 }
