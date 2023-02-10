@@ -57,6 +57,7 @@ fn check_layout_rx_buffer() {
 #[test]
 fn check_callback_ctx() {
     assert_eq!(192, size_of::<CallbackContext>());
+    assert_eq!(16, size_of::<protocol::callback::Context>());
 }
 #[ignore]
 #[test]
