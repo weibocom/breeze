@@ -11,8 +11,8 @@ use crate::{
         command::{CommandProperties, CommandType},
         packet::LayerType,
     },
-    Command, Commander, Error, Flag, HashedCommand, MetricName, Protocol, RequestProcessor, Result,
-    Stream,
+    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
+    RequestProcessor, Result, Stream, Writer,
 };
 use ds::RingSlice;
 use error::*;
@@ -327,16 +327,18 @@ impl Protocol for Redis {
     //  3 multi，need-bulk-num为false，first，有response直接发送，否则构建padding后发送；
     //  4 multi，need-bulk-num为false，非first，不做任何操作；
     #[inline]
-    fn write_response<
-        C: Commander + crate::Metric<T>,
-        W: crate::Writer,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    >(
+    fn write_response<C, W, M, I>(
         &self,
         ctx: &mut C,
         response: Option<&mut Command>,
         w: &mut W,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        W: Writer,
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
         let request = ctx.request();
         let cfg = command::get_cfg(request.op_code())?;
 
@@ -404,7 +406,7 @@ impl Protocol for Redis {
 
                 // rsp不为ok，对need_bulk_num为true的cmd进行nil convert 统计
                 if cfg.need_bulk_num {
-                    *ctx.get(MetricName::NilConvert) += 1;
+                    *ctx.metric().get(MetricName::NilConvert) += 1;
                 }
             }
             // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可；这些响应直接吞噬。
@@ -492,12 +494,17 @@ impl Protocol for Redis {
 
     // redis writeback场景：hashkey -1 时，需要对所有节点进行数据（一般为script）分发
     #[inline]
-    fn build_writeback_request<C: Commander>(
+    fn build_writeback_request<C, M, I>(
         &self,
         ctx: &mut C,
         _response: &Command,
         _: u32,
-    ) -> Option<HashedCommand> {
+    ) -> Option<HashedCommand>
+    where
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
         let hash_cmd = ctx.request_mut();
         debug_assert!(hash_cmd.direct_hash(), "data: {:?}", hash_cmd.data());
 

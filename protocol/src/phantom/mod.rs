@@ -8,8 +8,8 @@ mod packet;
 //mod token;
 
 use crate::{
-    Command, Commander, Error, Flag, HashedCommand, MetricName, Protocol, RequestProcessor, Result,
-    Stream,
+    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
+    RequestProcessor, Result, Stream, Writer,
 };
 use ds::RingSlice;
 use flag::RedisFlager;
@@ -213,16 +213,18 @@ impl Protocol for Phantom {
     //  3 quit 发送完毕后，返回Err 断开连接
     //  4 其他普通响应直接发送；
     #[inline]
-    fn write_response<
-        C: crate::Commander + crate::Metric<T>,
-        W: crate::Writer,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    >(
+    fn write_response<C, W, M, I>(
         &self,
         ctx: &mut C,
         response: Option<&mut Command>,
         w: &mut W,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+        W: Writer,
+    {
         let request = ctx.request();
         let cfg = command::get_cfg(request.op_code())?;
 
@@ -261,7 +263,7 @@ impl Protocol for Phantom {
 
                 // rsp不为ok，对need_bulk_num为true的cmd进行nil convert 统计
                 if cfg.need_bulk_num {
-                    *ctx.get(MetricName::NilConvert) += 1;
+                    *ctx.metric().get(MetricName::NilConvert) += 1;
                 }
             }
             // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可。
@@ -273,12 +275,17 @@ impl Protocol for Phantom {
 
     // phantom writeback场景：所有的bfset or bfmset
     #[inline]
-    fn build_writeback_request<C: Commander>(
+    fn build_writeback_request<C, M, I>(
         &self,
         _ctx: &mut C,
         _response: &Command,
         _: u32,
-    ) -> Option<HashedCommand> {
+    ) -> Option<HashedCommand>
+    where
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
         // 目前不需要对req做调整
         None
     }

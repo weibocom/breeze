@@ -56,7 +56,7 @@ macro_rules! define_metrics {
 }
 
 define_metrics!(
-    qps:    tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn, key-key, nilconvert-nilconvert;
+    qps:    tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn, key-key, nilconvert-nilconvert, inconsist-inconsist;
     num:    conn_num-conn, read-read, write-write, invalid_cmd-invalid_cmd, unsupport_cmd-unsupport_cmd;
     rtt:    avg-avg;
     ratio:  cache-hit
@@ -70,6 +70,15 @@ impl ProtoMetric<Metric> for StreamMetrics {
             MetricName::Write => self.write(),
             MetricName::NilConvert => self.nilconvert(),
             MetricName::Cache => self.cache(),
+            MetricName::Inconsist => self.inconsist(),
         }
+    }
+    #[inline(always)]
+    fn cache(&self, hit: bool) {
+        *self.cache() += hit;
+    }
+    #[inline(always)]
+    fn inconsist(&self, c: i64) {
+        *self.inconsist() += c;
     }
 }

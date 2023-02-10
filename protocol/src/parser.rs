@@ -6,7 +6,7 @@ use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::phantom::Phantom;
 use crate::redis::Redis;
-use crate::{Error, Flag, Result};
+use crate::{Error, Flag, Result, Writer};
 
 #[enum_dispatch(Proto)]
 #[derive(Clone)]
@@ -50,28 +50,34 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     // fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
     //     -> Command;
 
-    fn write_response<
-        C: Commander + Metric<T>,
-        W: crate::Writer,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    >(
+    fn write_response<C, W, M, I>(
         &self,
         ctx: &mut C,
         response: Option<&mut Command>,
         w: &mut W,
-    ) -> Result<()>;
+    ) -> Result<()>
+    where
+        W: Writer,
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem;
 
     #[inline]
     fn check(&self, _req: &HashedCommand, _resp: &Command) {}
     // 构建回写请求。
     // 返回None: 说明req复用，build in place
     // 返回新的request
-    fn build_writeback_request<C: Commander>(
+    fn build_writeback_request<C, M, I>(
         &self,
         _ctx: &mut C,
         _response: &Command,
         _: u32,
-    ) -> Option<HashedCommand> {
+    ) -> Option<HashedCommand>
+    where
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
         todo!("not implement");
     }
 }
@@ -235,7 +241,7 @@ impl Debug for Command {
     }
 }
 
-pub trait Commander {
+pub trait Commander<M: Metric<I>, I: MetricItem> {
     fn request_mut(&mut self) -> &mut HashedCommand;
     fn request(&self) -> &HashedCommand;
     // response  单独拆除
@@ -243,6 +249,7 @@ pub trait Commander {
     // fn response_mut(&mut self) -> Option<&mut Command>;
     // 请求所在的分片位置
     fn request_shard(&self) -> usize;
+    fn metric(&self) -> &M;
 }
 
 pub enum MetricName {
@@ -250,7 +257,18 @@ pub enum MetricName {
     Write,
     NilConvert,
     Cache, // cache(mc)命中率
+    Inconsist,
 }
-pub trait Metric<M: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> {
-    fn get(&self, name: MetricName) -> &mut M;
+pub trait Metric<Item: MetricItem> {
+    fn get(&self, name: MetricName) -> &mut Item;
+    #[inline]
+    fn cache(&self, hit: bool) {
+        *self.get(MetricName::Cache) += hit;
+    }
+    #[inline]
+    fn inconsist(&self, c: i64) {
+        *self.get(MetricName::Inconsist) += c;
+    }
 }
+pub trait MetricItem: std::ops::AddAssign<i64> + std::ops::AddAssign<bool> {}
+impl<T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> MetricItem for T {}
