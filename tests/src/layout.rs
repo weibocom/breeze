@@ -43,9 +43,7 @@ fn checkout_basic() {
     assert_eq!(48, size_of::<Backend<Request>>());
     assert_eq!(0, size_of::<Builder>());
     assert_eq!(24, size_of::<CheckedTopology>());
-
-    assert_eq!(352, size_of::<stream::StreamMetrics>());
-
+    assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(48, size_of::<sharding::hash::Hasher>());
 }
 
