@@ -83,17 +83,13 @@ pub struct ResponseContext<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize>
     // ctx 中的response不可直接用，先封住，按需暴露
     ctx: &'a mut CallbackContextPtr,
     // pub response: Option<&'a mut Command>,
-    pub metrics: &'a mut Arc<M>,
+    metrics: &'a Arc<M>,
     dist_fn: F,
     _mark: PhantomData<T>,
 }
 
 impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> ResponseContext<'a, M, T, F> {
-    pub(super) fn new(
-        ctx: &'a mut CallbackContextPtr,
-        metrics: &'a mut Arc<M>,
-        dist_fn: F,
-    ) -> Self {
+    pub(super) fn new(ctx: &'a mut CallbackContextPtr, metrics: &'a Arc<M>, dist_fn: F) -> Self {
         Self {
             ctx,
             metrics,
@@ -123,12 +119,3 @@ impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> Commander<M, T>
         &self.metrics
     }
 }
-
-//impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> Metric<T>
-//    for ResponseContext<'a, M, T, F>
-//{
-//    #[inline]
-//    fn get(&self, name: MetricName) -> &mut T {
-//        self.metrics.get(name)
-//    }
-//}

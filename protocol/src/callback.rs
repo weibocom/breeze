@@ -323,10 +323,10 @@ impl Context {
     pub fn write_back(&mut self, wb: bool) {
         self.write_back = wb;
     }
-    #[inline]
-    pub fn is_write_back(&self) -> bool {
-        self.write_back
-    }
+    //#[inline]
+    //pub fn is_write_back(&self) -> bool {
+    //    self.write_back
+    //}
     #[inline]
     pub fn is_inited(&self) -> bool {
         self.inited.load(Acquire)
