@@ -122,7 +122,9 @@ impl Protocol for McqBinary {
                 w.write(&self.build_empty_response(0x1, req.data()))?;
                 Ok(0)
             } // get: 0x01 NotFound
-            _ => Err(Error::NoResponseFound),
+            _ => {
+                log::warn!("+++ mcq NoResponseFound req: {}/{:?}",  old_op_code, ctx.request());
+                return Err(Error::NoResponseFound); },
         }
     }
     #[inline]
