@@ -3,18 +3,18 @@
 
 mod command;
 // mod error;
-mod flag;
-mod packet;
+// mod flag;
+// mod packet;
 //mod token;
 
 use crate::phantom::command::SUPPORTED;
+use crate::redis::flag::RedisFlager;
+use crate::redis::packet::RequestPacket;
 use crate::{
     Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
 use ds::RingSlice;
-use flag::RedisFlager;
-use packet::*;
 use sharding::hash::Hash;
 
 #[derive(Clone, Default)]
@@ -31,7 +31,7 @@ impl Phantom {
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         log::debug!("+++ rec req:{:?}", stream.slice());
 
-        let mut packet = PhantomRequestPacket::new(stream);
+        let mut packet = RequestPacket::new(stream);
         while packet.available() {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd(&SUPPORTED)?;

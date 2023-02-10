@@ -2,20 +2,25 @@ use super::{
     command::{CommandProperties, Commands},
     error::RedisError,
 };
-use crate::Result;
-use ds::RingSlice;
+use crate::{HashedCommand, Result};
+use ds::{MemGuard, RingSlice};
 
-pub const CRLF_LEN: usize = b"\r\n".len();
+const CRLF_LEN: usize = b"\r\n".len();
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
-// 重要！！不要改动此结构体
 #[repr(C)]
 #[derive(Debug)]
-pub(crate) struct RequestContext {
+pub struct RequestContext {
     bulk: u16,
     op_code: u16,
     first: bool, // 在multi-get请求中是否是第一个请求。
-    _ignore: [u8; 3],
+    layer: u8,   // 请求的层次，目前只支持：master，all
+    _ignore: [u8; 2],
+}
+
+// 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
+pub enum LayerType {
+    MasterOnly = 1,
 }
 
 impl RequestContext {
@@ -45,6 +50,7 @@ pub(crate) struct RequestPacket<'a, S> {
     // 低16位是bulk_num
     // 次低16位是op_code.
     ctx: RequestContext,
+    reserved_hash: i64,
     oft_last: usize,
     oft: usize,
 }
@@ -53,12 +59,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(crate) fn new(stream: &'a mut S) -> Self {
         let ctx = RequestContext::from(*stream.context());
+        let reserved_hash = *stream.reserved_hash();
         let data = stream.slice();
         Self {
             oft_last: 0,
             oft: 0,
             data,
             ctx,
+            reserved_hash,
             stream,
         }
     }
@@ -108,6 +116,86 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Ok(cfg)
     }
     #[inline]
+    pub(crate) fn build_request_with_key(
+        &self,
+        cfg: &CommandProperties,
+        hash: i64,
+        real_key: &RingSlice,
+    ) -> HashedCommand {
+        use ds::Buffer;
+        assert!(cfg.name.len() < 10, "name:{}", cfg.name);
+        let mut cmd = Vec::with_capacity(24 + real_key.len());
+        cmd.push(b'*');
+        // 1个cmd, 1个key，1个value。一共3个bulk
+        cmd.push((2 + cfg.has_val as u8) + b'0');
+        cmd.write("\r\n");
+        cmd.push(b'$');
+        cmd.write(cfg.mname.len().to_string());
+        cmd.write("\r\n");
+        cmd.write(cfg.mname);
+        cmd.write("\r\n");
+        cmd.push(b'$');
+        cmd.write(real_key.len().to_string());
+        cmd.write("\r\n");
+        cmd.write_slice(real_key);
+        cmd.write("\r\n");
+
+        //data.copy_to_vec(&mut cmd);
+        let flag = cfg.flag();
+        let cmd: MemGuard = MemGuard::from_vec(cmd);
+        HashedCommand::new(cmd, hash, flag)
+    }
+
+    // bulk_num只有在first=true时才有意义。
+    #[inline]
+    pub(crate) fn build_request_with_key_for_multi(
+        &self,
+        cfg: &CommandProperties,
+        hash: i64,
+        bulk_num: u16,
+        first: bool,
+        real_key: &RingSlice,
+    ) -> HashedCommand {
+        use ds::Buffer;
+        assert!(cfg.name.len() < 10, "name:{}", cfg.name);
+        let mut cmd = Vec::with_capacity(24 + real_key.len());
+        cmd.push(b'*');
+        // 1个cmd, 1个key，1个value。一共3个bulk
+        cmd.push((2 + cfg.has_val as u8) + b'0');
+        cmd.write("\r\n");
+        cmd.push(b'$');
+        cmd.write(cfg.mname.len().to_string());
+        cmd.write("\r\n");
+        cmd.write(cfg.mname);
+        cmd.write("\r\n");
+        cmd.push(b'$');
+        cmd.write(real_key.len().to_string());
+        cmd.write("\r\n");
+        cmd.write_slice(real_key);
+        cmd.write("\r\n");
+
+        //data.copy_to_vec(&mut cmd);
+        let mut flag = cfg.flag();
+        use super::flag::RedisFlager;
+        if first {
+            flag.set_mkey_first();
+            // mset只有一个返回值。
+            // 其他的multi请求的key的数量就是bulk_num
+            assert!(
+                cfg.key_step == 1 || cfg.key_step == 2,
+                "step:{}",
+                cfg.key_step
+            );
+            let mut key_num = bulk_num;
+            if cfg.key_step == 2 {
+                key_num >>= 1;
+            }
+            flag.set_key_count(key_num);
+        }
+        let cmd: MemGuard = MemGuard::from_vec(cmd);
+        HashedCommand::new(cmd, hash, flag)
+    }
+    #[inline]
     pub(crate) fn parse_key(&mut self) -> Result<RingSlice> {
         assert_ne!(self.ctx.op_code, 0, "packet:{:?}", self);
         assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
@@ -155,18 +243,21 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         assert_eq!(self.ctx.u64(), 0, "packet:{}", self);
     }
 
+    // 重置reserved hash，包括stream中的对应值
     #[inline]
-    pub(crate) fn reserver_context(&mut self) {
-        *self.stream.context() = self.ctx.u64()
+    fn reset_reserved_hash(&mut self) {
+        self.update_reserved_hash(0)
+    }
+    // 更新reserved hash
+    #[inline]
+    pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
+        self.reserved_hash = reserved_hash;
+        *self.stream.reserved_hash() = reserved_hash;
     }
 
-    // 解析完毕，如果数据未读完，需要保留足够的buff空间
-    #[inline(always)]
-    pub(crate) fn reserve_stream_buff(&mut self) {
-        if self.oft > self.stream().len() {
-            log::debug!("+++ will reserve len:{}", (self.oft - self.stream.len()));
-            self.stream.reserve(self.oft - self.data.len())
-        }
+    #[inline]
+    pub(super) fn reserved_hash(&self) -> i64 {
+        self.reserved_hash
     }
 
     #[inline]
@@ -180,8 +271,41 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.ctx.bulk == 0 {
             // 重置context、reserved-hash
             self.reset_context();
+            self.reset_reserved_hash();
         }
         self.stream.take(data.len())
+    }
+
+    // trim掉已解析的cmd相关元数据，只保留在master_only、reserved_hash这两个元数据
+    #[inline]
+    pub(super) fn trim_swallowed_cmd(&mut self) -> Result<()> {
+        // trim 吞噬指令时，整个吞噬指令必须已经被解析完毕
+        debug_assert!(self.ctx.bulk == 0, "packet:{}", self);
+
+        // 移动oft到吞噬指令之后
+        let len = self.oft - self.oft_last;
+        self.oft_last = self.oft;
+        self.stream.ignore(len);
+
+        // 记录需保留的状态：目前只有master only状态【direct hash保存在stream的非ctx字段中】
+        let master_only = self.master_only();
+
+        // 重置context，去掉packet/stream的ctx信息
+        self.reset_context();
+
+        // 保留后续cmd执行需要的状态：当前只有master
+        if master_only {
+            // 保留master only 设置
+            self.set_layer(LayerType::MasterOnly);
+        }
+
+        // 设置packet的ctx到stream的ctx中，供下一个指令使用
+        *self.stream.context() = self.ctx.u64();
+
+        if self.available() {
+            return Ok(());
+        }
+        return Err(crate::Error::ProtocolIncomplete);
     }
 
     #[inline]
@@ -198,10 +322,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
     }
     #[inline]
-    pub(crate) fn inner_data(&self) -> &RingSlice {
-        &self.data
-    }
-    #[inline]
     pub(crate) fn first(&self) -> bool {
         self.ctx.first
     }
@@ -213,20 +333,31 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(crate) fn op_code(&self) -> u16 {
         self.ctx.op_code
     }
-    pub(crate) fn ctx(&self) -> &RequestContext {
-        &self.ctx
-    }
-    #[inline]
-    pub(crate) fn ctx_mut(&mut self) -> &mut RequestContext {
-        &mut self.ctx
-    }
-    #[inline]
-    pub(crate) fn stream(&mut self) -> &mut S {
-        &mut self.stream
-    }
     #[inline]
     pub(crate) fn complete(&self) -> bool {
         self.ctx.bulk == 0
+    }
+    #[allow(dead_code)]
+    #[inline]
+    pub(crate) fn inner_data(&self) -> &RingSlice {
+        &self.data
+    }
+    #[inline]
+    pub(super) fn set_layer(&mut self, layer: LayerType) {
+        self.ctx.layer = layer as u8;
+    }
+    #[inline]
+    pub(super) fn master_only(&self) -> bool {
+        self.ctx.layer == LayerType::MasterOnly as u8
+    }
+
+    // 解析完毕，如果数据未读完，需要保留足够的buff空间
+    #[inline(always)]
+    pub(crate) fn reserve_stream_buff(&mut self) {
+        if self.oft > self.stream.len() {
+            log::debug!("+++ will reserve len:{}", (self.oft - self.stream.len()));
+            self.stream.reserve(self.oft - self.data.len())
+        }
     }
 }
 

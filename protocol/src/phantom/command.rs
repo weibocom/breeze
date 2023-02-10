@@ -2,7 +2,7 @@ use crate::{operation::Operation, redis::command::*};
 
 // 默认响应,第0个表示qui;
 // bfmget、bfmset在key异常响应时，返回-10作为nil
-pub const PADDING_RSP_TABLE: [&str; 6] = [
+const PADDING_RSP_TABLE: [&str; 6] = [
     "",
     "+OK\r\n",
     "+PONG\r\n",

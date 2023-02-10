@@ -1,17 +1,13 @@
 pub(crate) mod command;
 pub(crate) mod error;
-mod flag;
+pub(crate) mod flag;
 pub use flag::RedisFlager;
 pub(crate) mod packet;
-mod redis_packet;
 //mod token;
 
 use crate::{
-    redis::redis_packet::RedisRequestPacket,
-    redis::{
-        command::{CommandProperties, CommandType, SUPPORTED},
-        redis_packet::LayerType,
-    },
+    redis::command::{CommandProperties, CommandType, SUPPORTED},
+    redis::packet::{LayerType, RequestPacket},
     Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
@@ -34,7 +30,7 @@ impl Redis {
     #[inline]
     fn parse_request_inner<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
-        packet: &mut RedisRequestPacket<S>,
+        packet: &mut RequestPacket<S>,
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
@@ -123,7 +119,7 @@ impl Redis {
     fn parse_swallow_cmd<S: Stream, H: Hash>(
         &self,
         cfg: &CommandProperties,
-        packet: &mut RedisRequestPacket<S>,
+        packet: &mut RequestPacket<S>,
         alg: &H,
     ) -> Result<()> {
         debug_assert!(cfg.swallowed, "cfg:{}", cfg.name);
@@ -219,7 +215,7 @@ impl Protocol for Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        let mut packet = redis_packet::RedisRequestPacket::new(stream);
+        let mut packet = RequestPacket::new(stream);
         match self.parse_request_inner(&mut packet, alg, process) {
             Ok(_) => Ok(()),
             Err(Error::ProtocolIncomplete) => {
@@ -521,4 +517,4 @@ fn default_hash() -> i64 {
 }
 
 // tests only
-pub use redis_packet::RedisRequestContext;
+pub use packet::RequestContext;
