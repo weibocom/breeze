@@ -3,7 +3,7 @@
 // mod hash_test;
 mod shard_test;
 //mod memcached_text;
-mod mem;
+//mod mem;
 mod proto;
 mod protocol;
 mod queue;
