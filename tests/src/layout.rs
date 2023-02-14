@@ -43,9 +43,7 @@ fn checkout_basic() {
     assert_eq!(48, size_of::<Backend<Request>>());
     assert_eq!(0, size_of::<Builder>());
     assert_eq!(24, size_of::<CheckedTopology>());
-
-    assert_eq!(352, size_of::<stream::StreamMetrics>());
-
+    assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(48, size_of::<sharding::hash::Hasher>());
 }
 
@@ -59,6 +57,7 @@ fn check_layout_rx_buffer() {
 #[test]
 fn check_callback_ctx() {
     assert_eq!(192, size_of::<CallbackContext>());
+    assert_eq!(16, size_of::<protocol::callback::Context>());
 }
 #[ignore]
 #[test]
@@ -83,10 +82,10 @@ fn check_handler() {
 #[ignore]
 #[test]
 fn check_topology() {
-    assert_eq!(248, size_of::<Topology>());
+    assert_eq!(240, size_of::<Topology>());
     assert_eq!(96, size_of::<CacheService>());
     assert_eq!(240, size_of::<RedisService>());
-    assert_eq!(192, size_of::<PhantomService>());
+    assert_eq!(208, size_of::<PhantomService>());
     assert_eq!(184, size_of::<MsgQue>());
 }
 

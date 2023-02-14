@@ -13,6 +13,7 @@ mod redis;
 mod ring_slice;
 mod size;
 //mod slice;
+mod arena;
 mod asserts;
 mod layout;
 mod ring_buffer;

@@ -1,15 +1,15 @@
-use std::{marker::PhantomData, ops::AddAssign, ptr::NonNull, sync::Arc};
+use std::{marker::PhantomData, ptr::NonNull, sync::Arc};
 
 use protocol::{
     callback::CallbackContext, request::Request, Command, Commander, HashedCommand, Metric,
-    MetricName, Protocol,
+    MetricItem, Protocol,
 };
 
-use ds::arena::Arena;
+use crate::arena::CallbackContextArena;
 
 pub(crate) struct CallbackContextPtr {
     ptr: NonNull<CallbackContext>,
-    arena: NonNull<Arena<CallbackContext>>,
+    arena: NonNull<CallbackContextArena>,
 }
 
 impl CallbackContextPtr {
@@ -48,7 +48,7 @@ impl CallbackContextPtr {
 
 impl CallbackContextPtr {
     #[inline]
-    pub(crate) fn from(ptr: NonNull<CallbackContext>, arena: &mut Arena<CallbackContext>) -> Self {
+    pub(crate) fn from(ptr: NonNull<CallbackContext>, arena: &mut CallbackContextArena) -> Self {
         let arena = unsafe { NonNull::new_unchecked(arena) };
         Self { ptr, arena }
     }
@@ -79,28 +79,17 @@ impl std::ops::DerefMut for CallbackContextPtr {
 unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 
-pub struct ResponseContext<
-    'a,
-    M: Metric<T>,
-    T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-    F: Fn(i64) -> usize,
-> {
+pub struct ResponseContext<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> {
     // ctx 中的response不可直接用，先封住，按需暴露
     ctx: &'a mut CallbackContextPtr,
     // pub response: Option<&'a mut Command>,
-    pub metrics: &'a mut Arc<M>,
+    metrics: &'a Arc<M>,
     dist_fn: F,
     _mark: PhantomData<T>,
 }
 
-impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize>
-    ResponseContext<'a, M, T, F>
-{
-    pub(super) fn new(
-        ctx: &'a mut CallbackContextPtr,
-        metrics: &'a mut Arc<M>,
-        dist_fn: F,
-    ) -> Self {
+impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> ResponseContext<'a, M, T, F> {
+    pub(super) fn new(ctx: &'a mut CallbackContextPtr, metrics: &'a Arc<M>, dist_fn: F) -> Self {
         Self {
             ctx,
             metrics,
@@ -110,7 +99,7 @@ impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64)
     }
 }
 
-impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64) -> usize> Commander
+impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> Commander<M, T>
     for ResponseContext<'a, M, T, F>
 {
     #[inline]
@@ -125,17 +114,8 @@ impl<'a, M: Metric<T>, T: AddAssign<i64> + std::ops::AddAssign<bool>, F: Fn(i64)
     fn request_shard(&self) -> usize {
         (self.dist_fn)(self.request().hash())
     }
-}
-
-impl<
-        'a,
-        M: Metric<T>,
-        T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
-        F: Fn(i64) -> usize,
-    > Metric<T> for ResponseContext<'a, M, T, F>
-{
-    #[inline]
-    fn get(&self, name: MetricName) -> &mut T {
-        self.metrics.get(name)
+    #[inline(always)]
+    fn metric(&self) -> &M {
+        &self.metrics
     }
 }

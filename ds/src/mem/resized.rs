@@ -75,7 +75,9 @@ impl ResizedRingBuffer {
     #[inline]
     pub fn write(&mut self, data: &RingSlice) -> usize {
         self.grow(data.len());
-        self.inner.write(data)
+        //self.inner.write(data)
+        unsafe { self.inner.write_all(data) };
+        data.len()
     }
     #[inline]
     pub fn grow(&mut self, reserve: usize) {

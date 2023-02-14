@@ -21,6 +21,8 @@ pub mod arena;
 use std::sync::atomic::{AtomicI64, Ordering::Relaxed};
 pub static BUF_TX: Buffers = Buffers::new();
 pub static BUF_RX: Buffers = Buffers::new();
+pub static CACHE_ALLOC_NUM: AtomicI64 = AtomicI64::new(0);
+pub static CACHE_MISS_ALLOC_NUM: AtomicI64 = AtomicI64::new(0);
 
 pub struct Buffers {
     pub num: AtomicI64,         // 字节数
