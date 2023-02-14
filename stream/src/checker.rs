@@ -53,7 +53,7 @@ impl<P, Req> BackendChecker<P, Req> {
         metrics::incr_task();
         while !self.finish.get() {
             // reconn.check().await;
-            let stream = self.try_connect().await;
+            let stream = self.reconnect().await;
             if stream.is_none() {
                 // 连接失败，按策略sleep
                 reconn.conn_failed().await;
@@ -74,42 +74,29 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = Handler::from(rx, stream, p, rtt);
             let handler = rt::Entry::timeout(handler, rt::Timeout::from(self.timeout));
             if let Err(e) = handler.await {
+                log::info!("backend error {:?} => {:?}", path_addr, e);
                 match e {
                     Error::Timeout(_t) => {
                         m_timeout += 1;
                         timeout += 1;
-                        log::info!("backend/{:?} timeout: {:?}", path_addr, _t);
                     }
-                    _ => log::info!("backend/{:?} error: {:?}", path_addr, e),
+                    _ => {}
                 }
             }
         }
         metrics::decr_task();
         log::info!("{:?} finished {}", path_addr, self.addr);
     }
-    async fn try_connect(&mut self) -> Option<TcpStream>
-    where
-        P: Protocol,
-        Req: Request,
-    {
-        match self.reconnected_once().await {
-            Ok(stream) => {
-                return Some(stream);
-            }
-            Err(_e) => {
-                log::debug!("conn to {} err:{}", self.addr, _e);
-            }
-        }
-        None
-    }
-    #[inline]
-    async fn reconnected_once(&self) -> std::result::Result<TcpStream, Box<dyn std::error::Error>>
-    where
-        P: Unpin + Send + Sync + Protocol + 'static + Clone,
-        Req: Request + Send + Sync + Unpin + 'static,
-    {
-        let stream = timeout(Duration::from_secs(2), TcpStream::connect(&self.addr)).await??;
-        let _ = stream.set_nodelay(true);
-        Ok(stream)
+    async fn reconnect(&self) -> Option<TcpStream> {
+        timeout(Duration::from_secs(2), TcpStream::connect(&self.addr))
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))
+            .and_then(|x| x)
+            .map_err(|_e| log::debug!("conn to {} err:{}", self.addr, _e))
+            .ok()
+            .map(|s| {
+                let _ = s.set_nodelay(true);
+                s
+            })
     }
 }
