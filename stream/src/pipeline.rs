@@ -8,11 +8,12 @@ use std::{
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use ds::{arena::Arena, time::Instant, AtomicWaker};
+use ds::{time::Instant, AtomicWaker};
 use endpoint::{Topology, TopologyCheck};
 use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::{
+    arena::CallbackContextArena,
     buffer::{Reader, StreamGuard},
     context::{CallbackContextPtr, ResponseContext},
     Callback, CallbackContext, Request, StreamMetrics,
@@ -50,7 +51,7 @@ where
         async_pending: VecDeque::new(),
 
         dropping: Vec::new(),
-        arena: Arena::cache(32),
+        arena: CallbackContextArena::with_cache(32),
     };
     rt::Entry::timeout(pipeline, rt::DisableTimeout).await
 }
@@ -78,7 +79,7 @@ pub struct CopyBidirectional<C, P, T> {
     // 等待删除的top. 第三个元素是dropping时的req_new的值。
     dropping: Vec<(T, Callback)>,
 
-    arena: Arena<CallbackContext>,
+    arena: CallbackContextArena,
 }
 impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
@@ -254,7 +255,7 @@ struct Visitor<'a, T> {
     top: &'a T,
     // parser: &'a P,
     first: &'a mut bool,
-    arena: &'a mut Arena<CallbackContext>,
+    arena: &'a mut CallbackContextArena,
 }
 
 // impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>

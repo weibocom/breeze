@@ -5,8 +5,9 @@ use std::ptr::NonNull;
 use std::slice::from_raw_parts_mut;
 
 // <= read的字节是已经全部读取完的
-// [read, processed]是已经写入，但未全部收到读取完成通知的
+// [read, write]是已经写入，但未全部收到读取完成通知的
 // write是当前写入的地址
+// write..size是可写区域
 pub struct RingBuffer {
     data: NonNull<u8>,
     size: usize,
@@ -84,28 +85,53 @@ impl RingBuffer {
     pub fn cap(&self) -> usize {
         self.size
     }
+    // 可以读写的数据长度
     #[inline]
     pub fn len(&self) -> usize {
         assert!(self.write >= self.read);
         self.write - self.read
     }
     #[inline]
-    pub fn write(&mut self, data: &RingSlice) -> usize {
-        let mut w = 0;
-        while w < data.len() {
-            let src = data.read(w);
-            assert!(src.len() > 0);
-            let dst = self.as_mut_bytes();
-            if dst.len() == 0 {
-                break;
+    fn available(&self) -> usize {
+        self.size - self.len()
+    }
+    #[inline]
+    pub(super) unsafe fn write_all(&mut self, rs: &RingSlice) {
+        use std::ptr::copy_nonoverlapping as copy;
+        debug_assert!(rs.len() <= self.available());
+        // 写入的位置
+        rs.visit_segment_oft(0, |p, l| {
+            let offset = self.mask(self.write);
+            let n = l.min(self.size - offset);
+            copy(p, self.data.as_ptr().add(offset), n);
+            if n < l {
+                copy(p.add(n), self.data.as_ptr(), l - n);
             }
-            let l = src.len().min(dst.len());
-            use std::ptr::copy_nonoverlapping as copy;
-            unsafe { copy(src.as_ptr(), dst.as_mut_ptr(), l) };
             self.advance_write(l);
-            w += l;
+        });
+    }
+    #[inline]
+    pub fn write(&mut self, data: &RingSlice) -> usize {
+        let n = data.len().min(self.available());
+        unsafe {
+            self.write_all(&data.slice(0, n));
         }
-        w
+        n
+        //let mut w = 0;
+        //while w < data.len() {
+        //    let src = data.read(w);
+        //    assert!(src.len() > 0);
+        //    let dst = self.as_mut_bytes();
+        //    if dst.len() == 0 {
+        //        break;
+        //    }
+        //    let l = src.len().min(dst.len());
+        //    use std::ptr::copy_nonoverlapping as copy;
+        //    unsafe { copy(src.as_ptr(), dst.as_mut_ptr(), l) };
+        //    self.advance_write(l);
+        //    w += l;
+        //}
+        //w
     }
 
     // cap > self.len()
@@ -117,7 +143,8 @@ impl RingBuffer {
         new.read = self.read;
         new.write = self.read;
         if self.len() > 0 {
-            new.write(&self.data());
+            assert!(new.available() >= self.len());
+            unsafe { new.write_all(&self.data()) };
         }
         assert_eq!(self.write, new.write);
         assert_eq!(self.read, new.read);

@@ -12,7 +12,7 @@ fn test_ring_slice() {
 
     let in_range = RingSlice::from(ptr, cap, 0, 32);
     assert_eq!(in_range.len(), 32);
-    assert_eq!(in_range.read(0), &dc[0..32]);
+    assert_eq!(in_range, dc[0..32]);
     let (f, s) = in_range.data_oft(0);
     assert_eq!(f, &dc[0..32]);
     assert!(s.len() == 0);
@@ -22,7 +22,7 @@ fn test_ring_slice() {
     //let s = end_range.as_slices();
     //assert_eq!(s.len(), 1);
     assert_eq!(end_range.len(), 32);
-    assert_eq!(end_range.read(0), &dc[cap - 32..cap]);
+    assert_eq!(end_range, dc[cap - 32..cap]);
     let (f, s) = in_range.data_oft(0);
     assert_eq!(f, &dc[0..32]);
     assert!(s.len() == 0);
@@ -31,8 +31,7 @@ fn test_ring_slice() {
     //let s = over_range.as_slices();
     //assert_eq!(over_range.len(), 64);
     //assert_eq!(s.len(), 2);
-    assert_eq!(over_range.read(0), &dc[cap - 32..cap]);
-    assert_eq!(over_range.read(32), &dc[0..32]);
+    assert_eq!(over_range, (&dc[cap - 32..cap], &dc[0..32]));
     let mut v: Vec<u8> = Vec::new();
     over_range.copy_to_vec(&mut v);
     assert_eq!(&v[0..32], &dc[cap - 32..cap]);

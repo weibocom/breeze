@@ -1,5 +1,5 @@
 use super::Result;
-pub trait Writer {
+pub trait Writer: ds::BufWriter + Sized {
     fn cap(&self) -> usize;
     fn pending(&self) -> usize;
     // 写数据，一次写完
@@ -24,18 +24,19 @@ pub trait Writer {
 
     #[inline]
     fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
-        let mut oft = oft;
-        let len = data.len();
-        log::debug!("+++ will write to client/server:{:?}", data);
-        while oft < len {
-            let data = data.read(oft);
-            oft += data.len();
-            if oft < len {
-                // 说明有多次写入，将其cache下来
-                self.cache(true);
-            }
-            self.write(data)?;
-        }
+        data.copy_to(oft, self)?;
+        //let mut oft = oft;
+        //let len = data.len();
+        //log::debug!("+++ will write to client/server:{:?}", data);
+        //while oft < len {
+        //    let data = data.read(oft);
+        //    oft += data.len();
+        //    if oft < len {
+        //        // 说明有多次写入，将其cache下来
+        //        self.cache(true);
+        //    }
+        //    self.write(data)?;
+        //}
         Ok(())
     }
     fn shrink(&mut self);
