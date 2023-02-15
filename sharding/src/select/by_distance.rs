@@ -33,7 +33,7 @@ impl<T: Addr> Distance<T> {
     pub fn topn(&mut self, n: usize) {
         assert!(n > 0 && n <= self.len(), "n: {}, len:{}", n, self.len());
         self.len_local = n as u16;
-        let batch = 1024usize;
+        let batch = 1usize;
         // 最小是1，最大是65536
         let batch_shift = batch.max(1).next_power_of_two().min(65536).trailing_zeros() as u8;
         self.seq.store(rand::random::<u16>() as usize, Relaxed);
