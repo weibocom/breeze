@@ -17,6 +17,8 @@ const TO_REDIS_M: Duration = Duration::from_millis(500);
 const TO_REDIS_S: Duration = Duration::from_millis(200);
 const TO_MC_M: Duration = Duration::from_millis(500);
 const TO_MC_S: Duration = Duration::from_millis(80);
+const TO_MYSQL_M: Duration = Duration::from_millis(1000);
+const TO_MYSQL_S: Duration = Duration::from_millis(500);
 
 trait TimeoutAdjust: Sized {
     fn adjust(&mut self, ms: u32);

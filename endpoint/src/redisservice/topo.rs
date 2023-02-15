@@ -14,7 +14,7 @@ use super::config::RedisNamespace;
 use crate::TimeoutAdjust;
 use discovery::dns::{self, IPPort};
 
-const CONFIG_UPDATED_KEY: &str = "__config__";
+const CONFIG_UPDATED_KEY: &str = "__redis_config__";
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
