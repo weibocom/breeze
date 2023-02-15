@@ -11,6 +11,7 @@ pub use redis::RedisFlager;
 pub mod req;
 //pub mod resp;
 pub mod msgque;
+pub mod mysql;
 
 pub use flag::*;
 pub use parser::Proto as Protocol;

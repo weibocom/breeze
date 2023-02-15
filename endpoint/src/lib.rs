@@ -4,6 +4,7 @@ pub use topo::*;
 
 pub mod cacheservice;
 pub mod msgque;
+pub mod mysql;
 pub mod phantomservice;
 pub mod redisservice;
 
@@ -33,4 +34,3 @@ impl TimeoutAdjust for Duration {
         }
     }
 }
-
