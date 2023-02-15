@@ -87,6 +87,8 @@ where
 {
     type Item = Req;
 
+    // todo: 这里req拿到mid解出时间,得出具体年库 ？？？
+    // todo: sql语句怎么传过去 ？
     fn send(&self, req: Self::Item) {}
 
     fn shard_idx(&self, hash: i64) -> usize {
@@ -150,6 +152,8 @@ where
             }
             self.direct_shards_url = shards_url;
 
+            //todo: archive shard 未处理
+
             // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
             self.updated
                 .entry(CONFIG_UPDATED_KEY.to_string())
@@ -165,7 +169,8 @@ where
     P: Protocol,
     E: Endpoint<Item = Req> + Single,
 {
-    // mysql tcp connection and msql handshake complete
+    // todo: mysql tcp connection and msql handshake complete
+    // 这里需要把用户名/密码 都传过去 ？？
     // #[inline]
     // fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Duration) -> E {
     //     match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
@@ -206,6 +211,7 @@ where
     }
 }
 
+// todo: 这一段跟redis是一样的，这段可以提到外面去
 impl<E: discovery::Inited> Shard<E> {
     // 1. 主已经初始化
     // 2. 有从
@@ -221,6 +227,7 @@ impl<E: discovery::Inited> Shard<E> {
                 .fold(true, |inited, (_, e)| inited && e.inited())
     }
 }
+// todo: 这一段跟redis是一样的，这段可以提到外面去
 impl<E> Shard<E> {
     #[inline]
     fn selector(s: Selector, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
@@ -246,6 +253,8 @@ impl<E> Shard<E> {
         unsafe { self.slaves.unsafe_next(idx, runs) }
     }
 }
+
+// todo: 这一段跟redis是一样的，这段可以提到外面去
 #[derive(Clone)]
 struct Shard<E> {
     master: (String, E),
