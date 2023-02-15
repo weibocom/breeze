@@ -19,6 +19,7 @@ pub struct Socks {
     socks_path: String,
 
     // TODO：会议讨论的新逻辑：第一次成功更新后，不再从vintage更新，方便当前从本地随意调整socks，后续有需要再实时更新； fishermen 2023.2.10
+    #[serde(default)]
     refreshed: bool,
 }
 
