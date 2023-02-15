@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct MysqlNamespace {
     // TODO speed up, ref: https://git/platform/resportal/-/issues/548
     pub(crate) basic: Basic,
+    pub(crate) sql: HashMap<String, String>,
     pub(crate) backends: Vec<String>,
     pub(crate) archive: HashMap<String, Vec<String>>,
 }
@@ -28,7 +29,20 @@ pub struct Basic {
     pub(crate) timeout_ms_slave: u32,
     #[serde(default)]
     pub(crate) min_pool_size: u16,
-    // TODO speed up
+    #[serde(default)]
+    pub(crate) max_idle_time: u32,
+    #[serde(default)]
+    pub(crate) db_prefix: String,
+    #[serde(default)]
+    pub(crate) table_prefix: String,
+    #[serde(default)]
+    pub(crate) table_postfix: String,
+    #[serde(default)]
+    pub(crate) db_count: u32,
+    #[serde(default)]
+    pub(crate) table_count: u32,
+    #[serde(default)]
+    pub(crate) hierarchy: bool,
 }
 
 impl MysqlNamespace {
