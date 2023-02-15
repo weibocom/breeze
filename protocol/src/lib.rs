@@ -35,6 +35,7 @@ pub enum Resource {
     Redis,
     Phantom,
     MsgQue,
+    Mysql,
 }
 
 impl Resource {
@@ -45,6 +46,7 @@ impl Resource {
             Self::Redis => "redis",
             Self::Phantom => "phantom",
             Self::MsgQue => "msgque",
+            Self::Mysql => "mysql",
         }
     }
 }

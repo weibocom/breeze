@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct MysqlNamespace {
-    // TODO speed up, ref: https://git.intra.weibo.com/platform/resportal/-/issues/548
+    // TODO speed up, ref: https://git/platform/resportal/-/issues/548
     pub(crate) basic: Basic,
     pub(crate) backends: Vec<String>,
     pub(crate) archive: HashMap<String, Vec<String>>,
@@ -29,4 +29,19 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) min_pool_size: u16,
     // TODO speed up
+}
+
+impl MysqlNamespace {
+    pub(super) fn try_from(cfg: &str) -> Option<Self> {
+        let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
+            .map_err(|e| {
+                log::info!("failed to parse mysql config:{}", cfg);
+                e
+            })
+            .ok();
+        if let Some(ns) = nso {
+            return Some(ns);
+        }
+        nso
+    }
 }
