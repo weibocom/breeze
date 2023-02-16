@@ -59,8 +59,13 @@ pub struct Crc32Delimiter {
     name: String,
 }
 
+// 第一串长度大于等于5的数字做为hashkey
 #[derive(Default, Clone, Debug)]
 pub struct Crc32SmartNum {}
+
+// mixnum: 两串num拼接成一个字串num做hashkey
+#[derive(Default, Clone, Debug)]
+pub struct Crc32MixNum {}
 
 // 对全key做crc32
 impl super::Hash for Crc32 {
@@ -261,7 +266,7 @@ pub(crate) fn parse_smartnum_hashkey<S: super::HashKey>(key: &S) -> (usize, usiz
         } else if start != usize::MAX && !c.is_ascii_digit() {
             // 发现数字后，第一次发现非数字
             end = i;
-            // 第一串长度大于5的数字做为hashkey
+            // 第一串长度大于等于5的数字做为hashkey
             if end - start >= super::SMARTNUM_MIN_LEN {
                 break;
             } else {
@@ -284,4 +289,42 @@ pub(crate) fn parse_smartnum_hashkey<S: super::HashKey>(key: &S) -> (usize, usiz
     }
 
     (start, end)
+}
+
+// 将分隔符分开的两个字符串num合并到一起来计算hash，如abc_123_456_cde、123_456_xx的hashkey都是: 123456
+impl super::Hash for Crc32MixNum {
+    fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
+        // 将分隔符分开的两个字符串num合并到一起来计算hash
+
+        const MAX_NUM_COUNT: u32 = 2;
+        let mut num_count = 0;
+        let mut num_started = false;
+        let mut crc: i64 = CRC_SEED;
+        for i in 0..key.len() {
+            let c = key.at(i);
+            if c.is_ascii_digit() {
+                // 从遇到的第一个数字开始，之后连续的2个num都是hashkey
+                if !num_started {
+                    num_started = true;
+                }
+                // log::debug!("+++ crc32-mixnum:{}", c as char);
+                // 进行crc32计算
+                crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+            } else if num_started {
+                // 如果数字id开始后，第一个非数字即为num的结束
+                num_started = false;
+                num_count += 1;
+                if num_count == MAX_NUM_COUNT {
+                    break;
+                }
+            }
+        }
+
+        crc ^= CRC_SEED;
+        crc &= CRC_SEED;
+        if crc <= 0 {
+            log::warn!("+++ crc32-smartnum key:{:?}, hash:{}", key, crc);
+        }
+        crc
+    }
 }
