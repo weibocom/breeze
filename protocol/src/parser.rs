@@ -5,7 +5,7 @@ use sharding::hash::Hash;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
-use crate::{Error, Flag, Request, Result, Writer};
+use crate::{Error, Flag, Request, Resource, Result, Writer};
 
 #[enum_dispatch(Proto)]
 #[derive(Clone)]
@@ -41,6 +41,7 @@ impl Parser {
 pub struct ResOption {
     // pub method: AuthMethod,
     pub token: String,
+    pub username: String,
 }
 
 pub enum HandShake {
@@ -52,7 +53,12 @@ pub enum HandShake {
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     //配置在parser初始化时候传入或者handle存auth？token咋存？
-    fn handshake<S: Stream>(&self, _stream: &mut S) -> Result<HandShake> {
+    fn handshake(
+        &self,
+        _stream: &mut impl Stream,
+        s: &mut impl Writer,
+        option: &mut ResOption,
+    ) -> Result<HandShake> {
         Ok(HandShake::Success)
     }
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(

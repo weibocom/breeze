@@ -9,10 +9,25 @@ use crate::RequestProcessor;
 use crate::Stream;
 use sharding::hash::Hash;
 
+#[derive(Debug)]
+pub(self) enum HandShakeStatus {
+    Init,
+}
+
 #[derive(Clone, Default)]
 pub struct Mysql;
 
 impl Protocol for Mysql {
+    //todo 握手
+    fn handshake(
+        &self,
+        _stream: &mut impl Stream,
+        s: &mut impl crate::Writer,
+        option: &mut crate::ResOption,
+    ) -> Result<crate::HandShake> {
+        todo!();
+    }
+
     // TODO in: mc vs redis, out: mysql
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
@@ -59,5 +74,10 @@ impl Protocol for Mysql {
 
     fn check(&self, _req: &crate::HashedCommand, _resp: &crate::Command) {
         // TODO speed up
+    }
+
+    //修改req，seq +1
+    fn before_send<S: Stream, Req: crate::Request>(&self, _stream: &mut S, _req: &mut Req) {
+        todo!()
     }
 }

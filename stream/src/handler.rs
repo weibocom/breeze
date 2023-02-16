@@ -79,7 +79,10 @@ where
 
     fn poll_auth(&mut self, _cx: &mut Context) -> Poll<Result<()>> {
         //是否auth，parser有状态了，状态机？parser 传进去的是buf，不是client，所以前后还要加异步读写
-        match self.parser.handshake(&mut self.buf)? {
+        match self
+            .parser
+            .handshake(&mut self.buf, &mut self.s, self.option)?
+        {
             HandShake::Failed => Poll::Ready(Err(Error::AuthFailed)),
             HandShake::Continue => Poll::Pending,
             HandShake::Success => Poll::Ready(Ok(())),
