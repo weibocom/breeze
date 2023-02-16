@@ -291,32 +291,18 @@ pub(crate) fn parse_smartnum_hashkey<S: super::HashKey>(key: &S) -> (usize, usiz
     (start, end)
 }
 
-// 将key中分隔符分开的两个num合并到一起来计算hash，如abc_123_456_cde、123_456_xx的hashkey都是: 123456
+// 将key中非数字分开的所有num合并到一起来计算hash，如abc_123_45_cde6、123_456_xx的hashkey都是: 123456
 impl super::Hash for Crc32MixNum {
     fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
-        const MAX_NUM_COUNT: u32 = 2;
-        let mut num_count = 0;
-        let mut num_started = false;
         let mut crc: i64 = CRC_SEED;
-
-        // 找出最多两个num来作为hashkey
+        // 找出所有num来作为hashkey
         for i in 0..key.len() {
             let c = key.at(i);
             if c.is_ascii_digit() {
-                // 从遇到的第一个数字开始，之后连续的2个num都是hashkey
-                if !num_started {
-                    num_started = true;
-                }
-                // log::debug!("+++ crc32-mixnum:{}", c as char);
+                log::debug!("+++ crc32-mixnum:{}", c as char);
+
                 // 进行crc32计算
                 crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
-            } else if num_started {
-                // 如果数字id开始后，第一个非数字即为num的结束
-                num_started = false;
-                num_count += 1;
-                if num_count == MAX_NUM_COUNT {
-                    break;
-                }
             }
         }
 
