@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
-use protocol::{Error, HandShake, Protocol, Request, Result, Stream, Token, Writer};
+use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream, Writer};
 use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -24,7 +24,7 @@ pub struct Handler<'r, Req, P, S> {
     num_rx: usize,
     num_tx: usize,
 
-    token: Token,
+    option: &'r mut ResOption,
     rtt: Metric,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
@@ -56,7 +56,13 @@ where
     S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
     P: Protocol + Unpin,
 {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, rtt: Metric) -> Self {
+    pub(crate) fn from(
+        data: &'r mut Receiver<Req>,
+        s: S,
+        parser: P,
+        rtt: Metric,
+        option: &'r mut ResOption,
+    ) -> Self {
         data.enable();
         Self {
             data,
@@ -67,7 +73,7 @@ where
             rtt,
             num_rx: 0,
             num_tx: 0,
-            token: Default::default(),
+            option,
         }
     }
 

@@ -2,7 +2,7 @@ use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
 use ds::time::Duration;
-use protocol::{Protocol, Resource};
+use protocol::{Protocol, ResOption, Resource};
 use sharding::hash::Hasher;
 
 // pub use protocol::Endpoint;
@@ -101,7 +101,14 @@ where
 }
 
 pub trait Builder<P, R, E> {
-    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Duration) -> E
+    fn build(
+        addr: &str,
+        parser: P,
+        rsrc: Resource,
+        service: &str,
+        timeout: Duration,
+        option: ResOption,
+    ) -> E
     where
         E: Endpoint<Item = R>;
 }

@@ -4,7 +4,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use protocol::{Error, Protocol, Request};
+use protocol::{Error, Protocol, Request, ResOption};
 
 use crate::handler::Handler;
 use ds::chan::mpsc::Receiver;
@@ -19,6 +19,7 @@ pub struct BackendChecker<P, Req> {
     addr: String,
     timeout: Duration,
     path: Path,
+    option: ResOption,
 }
 
 impl<P, Req> BackendChecker<P, Req> {
@@ -30,6 +31,7 @@ impl<P, Req> BackendChecker<P, Req> {
         parser: P,
         path: Path,
         timeout: Duration,
+        option: ResOption,
     ) -> Self {
         Self {
             addr: addr.to_string(),
@@ -39,6 +41,7 @@ impl<P, Req> BackendChecker<P, Req> {
             parser,
             timeout,
             path,
+            option,
         }
     }
     pub(crate) async fn start_check(&mut self, single: Arc<AtomicBool>)
@@ -71,7 +74,7 @@ impl<P, Req> BackendChecker<P, Req> {
             self.init.on();
             log::debug!("handler started:{:?}", self.path);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, stream, p, rtt);
+            let handler = Handler::from(rx, stream, p, rtt, &mut self.option);
             let handler = rt::Entry::timeout(handler, rt::Timeout::from(self.timeout));
             if let Err(e) = handler.await {
                 log::info!("backend error {:?} => {:?}", path_addr, e);
