@@ -32,7 +32,7 @@ const CRC32_EXT_NUM: &str = "num";
 const CRC32_EXT_SMARTNUM: &str = "smartnum";
 // smart num的hashkey最小长度为5
 const SMARTNUM_MIN_LEN: usize = 5;
-// mixnum 的 hashkey 是最前面2串num的混合
+// mixnum 的 hashkey 是所有key中num的混合
 const CRC32_EXT_MIXNUM: &str = "mixnum";
 
 // hash key是点号"."分割的之前/后的部分
@@ -63,7 +63,7 @@ pub enum Hasher {
     Crc32Short(Crc32Short),         // mc short crc32
     Crc32Num(Crc32Num),             // crc32 for a hash key whick is a num,
     Crc32SmartNum(Crc32SmartNum),   // crc32 for key like： xxx + id + xxx，id的长度需要大于等于5
-    Crc32MixNum(Crc32MixNum), // crc32 for key: xx_num1_num2_xx，最初两个num即hashkey(num1num2)
+    Crc32MixNum(Crc32MixNum),       // crc32 for key: xx_num1_num2_xx，所有num即hashkey(num1num2)
     Crc32Delimiter(Crc32Delimiter), // crc32 for a hash key which has a delimiter of "." or "_" or "#" etc.
     Crc32local(Crc32local),         // crc32local for a hash key like: xx.x, xx_x, xx#x etc.
     Crc32localDelimiter(Crc32localDelimiter),
