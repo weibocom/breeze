@@ -63,7 +63,7 @@ pub struct Crc32Delimiter {
 #[derive(Default, Clone, Debug)]
 pub struct Crc32SmartNum {}
 
-// mixnum: key中两串num拼接成一个字串num做hashkey，like a_123_456_bc的hashkey是123456
+// mixnum: key中所有num拼接成一个字串num做hashkey，like a_123_456_bc的hashkey是123456
 #[derive(Default, Clone, Debug)]
 pub struct Crc32MixNum {}
 
