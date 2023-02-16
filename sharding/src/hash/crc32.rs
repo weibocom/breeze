@@ -63,7 +63,7 @@ pub struct Crc32Delimiter {
 #[derive(Default, Clone, Debug)]
 pub struct Crc32SmartNum {}
 
-// mixnum: 两串num拼接成一个字串num做hashkey
+// mixnum: key中两串num拼接成一个字串num做hashkey，like a_123_456_bc的hashkey是123456
 #[derive(Default, Clone, Debug)]
 pub struct Crc32MixNum {}
 
@@ -291,15 +291,15 @@ pub(crate) fn parse_smartnum_hashkey<S: super::HashKey>(key: &S) -> (usize, usiz
     (start, end)
 }
 
-// 将分隔符分开的两个字符串num合并到一起来计算hash，如abc_123_456_cde、123_456_xx的hashkey都是: 123456
+// 将key中分隔符分开的两个num合并到一起来计算hash，如abc_123_456_cde、123_456_xx的hashkey都是: 123456
 impl super::Hash for Crc32MixNum {
     fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
-        // 将分隔符分开的两个字符串num合并到一起来计算hash
-
         const MAX_NUM_COUNT: u32 = 2;
         let mut num_count = 0;
         let mut num_started = false;
         let mut crc: i64 = CRC_SEED;
+
+        // 找出最多两个num来作为hashkey
         for i in 0..key.len() {
             let c = key.at(i);
             if c.is_ascii_digit() {
