@@ -18,6 +18,35 @@ pub use rawsuffix::RawSuffix;
 
 use enum_dispatch::enum_dispatch;
 
+// 占位hash，主要用于兼容服务框架，供mq等业务使用
+pub const HASH_PADDING: &str = "padding";
+
+// hash算法名称分隔符，合法的算法如：crc32,crc-short, crc32-num, crc32-point, crc32-pound, crc32-underscore
+pub const HASHER_NAME_DELIMITER: char = '-';
+
+// hash key是全部的key，但最后要做short截断
+pub const CRC32_EXT_SHORT: &str = "short";
+// hash key是数字
+const CRC32_EXT_NUM: &str = "num";
+// hash key是第一串长度大于等于5位数字id
+const CRC32_EXT_SMARTNUM: &str = "smartnum";
+// smart num的hashkey最小长度为5
+const SMARTNUM_MIN_LEN: usize = 5;
+// mixnum 的 hashkey 是最前面2串num的混合
+const CRC32_EXT_MIXNUM: &str = "mixnum";
+
+// hash key是点号"."分割的之前/后的部分
+const KEY_DELIMITER_POINT: &str = "point";
+// hash key是“#”之前/后的部分
+const KEY_DELIMITER_POUND: &str = "pound";
+// hash key是"_"之前/后的部分
+const KEY_DELIMITER_UNDERSCORE: &str = "underscore";
+
+// 用于表示无分隔符的场景
+const KEY_DELIMITER_NONE: u8 = 0;
+
+const NAME_RAWSUFFIX: &str = "rawsuffix";
+
 #[enum_dispatch]
 pub trait Hash {
     // hash 可能返回负数
@@ -34,6 +63,7 @@ pub enum Hasher {
     Crc32Short(Crc32Short),         // mc short crc32
     Crc32Num(Crc32Num),             // crc32 for a hash key whick is a num,
     Crc32SmartNum(Crc32SmartNum),   // crc32 for key like： xxx + id + xxx，id的长度需要大于等于5
+    Crc32MixNum(Crc32MixNum), // crc32 for key: xx_num1_num2_xx，最初两个num即hashkey(num1num2)
     Crc32Delimiter(Crc32Delimiter), // crc32 for a hash key which has a delimiter of "." or "_" or "#" etc.
     Crc32local(Crc32local),         // crc32local for a hash key like: xx.x, xx_x, xx#x etc.
     Crc32localDelimiter(Crc32localDelimiter),
@@ -42,33 +72,6 @@ pub enum Hasher {
     Random(RandomHash),                     // random hash
     RawSuffix(RawSuffix),
 }
-
-// 占位hash，主要用于兼容服务框架，供mq等业务使用
-pub const HASH_PADDING: &str = "padding";
-
-// hash算法名称分隔符，合法的算法如：crc32,crc-short, crc32-num, crc32-point, crc32-pound, crc32-underscore
-pub const HASHER_NAME_DELIMITER: char = '-';
-
-// hash key是全部的key，但最后要做short截断
-pub const CRC32_EXT_SHORT: &str = "short";
-// hash key是数字
-const CRC32_EXT_NUM: &str = "num";
-// hash key是第一串长度大于等于5位数字id
-const CRC32_EXT_SMARTNUM: &str = "smartnum";
-// smart num的hashkey最小长度为5
-const SMARTNUM_MIN_LEN: usize = 5;
-
-// hash key是点号"."分割的之前/后的部分
-const KEY_DELIMITER_POINT: &str = "point";
-// hash key是“#”之前/后的部分
-const KEY_DELIMITER_POUND: &str = "pound";
-// hash key是"_"之前/后的部分
-const KEY_DELIMITER_UNDERSCORE: &str = "underscore";
-
-// 用于表示无分隔符的场景
-const KEY_DELIMITER_NONE: u8 = 0;
-
-const NAME_RAWSUFFIX: &str = "rawsuffix";
 
 impl Hasher {
     // 主要做3件事：1）将hash alg转为小写；2）兼容xx-range；3）兼容-id为-num
@@ -124,6 +127,7 @@ impl Hasher {
                 CRC32_EXT_SHORT => Self::Crc32Short(Default::default()),
                 CRC32_EXT_NUM => Self::Crc32Num(Crc32Num::from(alg_lower.as_str())),
                 CRC32_EXT_SMARTNUM => Self::Crc32SmartNum(Default::default()),
+                CRC32_EXT_MIXNUM => Self::Crc32MixNum(Default::default()),
                 _ => Self::Crc32Delimiter(Crc32Delimiter::from(alg_lower.as_str())),
             },
             "crc32local" => match alg_parts[1] {
