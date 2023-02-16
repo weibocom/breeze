@@ -37,8 +37,8 @@ impl Parser {
 // #[derive(Default)]
 // pub enum AuthMethod {}
 
-#[derive(Default)]
-pub struct Token {
+#[derive(Default, Clone)]
+pub struct ResOption {
     // pub method: AuthMethod,
     pub token: String,
 }

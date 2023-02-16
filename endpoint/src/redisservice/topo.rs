@@ -253,6 +253,7 @@ where
                 Resource::Redis,
                 &self.service,
                 timeout,
+                Default::default(),
             ),
         }
     }
