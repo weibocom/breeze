@@ -38,6 +38,7 @@ impl RingSlice {
     pub fn empty() -> Self {
         Self::EMPTY
     }
+    //从不拥有数据
     #[inline]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
         assert!(cap.is_power_of_two() || cap == 0, "not valid cap:{}", cap);
