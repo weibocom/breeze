@@ -74,8 +74,10 @@ fn ring_buffer_basic() {
         let src = rs.slice(0, m);
         assert_eq!(writtened, src, "{}-th", i);
         // 随机消费n条数据
-        let n = rand::random::<u32>() as usize % buf.len();
-        buf.consume(n);
+        if buf.len() > 0 {
+            let n = rand::random::<u32>() as usize % buf.len();
+            buf.consume(n);
+        }
     }
 
     // 随机从reader读取数据

@@ -1,5 +1,8 @@
-use super::{command::CommandProperties, error::RedisError};
-use crate::{redis::command, Result};
+use super::{
+    command::{CommandHasher, CommandProperties},
+    error::RedisError,
+};
+use crate::{error::Error, redis::command, Result};
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
@@ -43,7 +46,7 @@ impl RequestContext {
 //包含流解析过程中当前命令和前面命令的状态
 pub(crate) struct RequestPacket<'a, S> {
     stream: &'a mut S,
-    data: RingSlice,
+    data: Packet,
     // 低16位是bulk_num
     // 次低16位是op_code.
     ctx: RequestContext,
@@ -61,7 +64,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Self {
             oft_last: 0,
             oft: 0,
-            data,
+            data: Packet { inner: data },
             ctx,
             reserved_hash,
             stream,
@@ -80,39 +83,65 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(crate) fn parse_bulk_num(&mut self) -> Result<()> {
         if self.bulk() == 0 {
-            self.check_start()?;
-            self.ctx.bulk = self.data.num(&mut self.oft)? as u16;
+            debug_assert!(self.available(), "{:?}", self);
+            if self.data[self.oft] != b'*' {
+                return Err(RedisError::ReqInvalidStar.error());
+            }
+            self.ctx.bulk = self.data.num_of_bulks(&mut self.oft)? as u16;
             self.ctx.first = true;
             assert_ne!(self.bulk(), 0, "packet:{}", self);
         }
         Ok(())
     }
+    //#[inline(always)]
+    //fn incr_oft(&mut self, by: usize) -> Result<()> {
+    //    self.oft += by;
+    //    if self.oft > self.data.len() {
+    //        return Err(crate::Error::ProtocolIncomplete);
+    //    }
+    //    Ok(())
+    //}
     #[inline]
     pub(crate) fn parse_cmd(&mut self) -> Result<&'static CommandProperties> {
-        let cfg;
         // 需要确保，如果op_code不为0，则之前的数据一定处理过。
         if self.ctx.op_code == 0 {
-            let cmd_len = self.data.num_and_skip(&mut self.oft)?;
-            let start = self.oft - cmd_len - CRLF_LEN;
-            let cmd = self.data.sub_slice(start, cmd_len);
-            self.ctx.op_code = super::command::get_op_code(&cmd);
-            assert_ne!(self.ctx.op_code, 0, "packet:{}", self);
+            // 当前上下文是获取命令。格式为:  $num\r\ncmd\r\n
+            if let Some(first_r) = self.data.find(self.oft, b'\r') {
+                debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
+                // 路过CRLF_LEN个字节，通过命令获取op_code
+                let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
+                self.ctx.op_code = op_code;
+                // 第一次解析cmd需要对协议进行合法性校验
+                let cfg = command::get_cfg(self.op_code())?;
+                cfg.validate(self.bulk() as usize)?;
 
-            // 第一次解析cmd需要对协议进行合法性校验
-            cfg = command::get_cfg(self.op_code())?;
-            cfg.validate(self.bulk() as usize)?;
+                // check 命令长度
+                debug_assert_eq!(
+                    cfg.name.len(),
+                    self.data
+                        .slice(self.oft + 1, first_r - self.oft - 1)
+                        .fold(0usize, |c, b| {
+                            *c = *c * 10 + (b - b'0') as usize;
+                        }),
+                    "{:?}",
+                    self
+                );
 
-            // cmd name 解析完毕，bulk 减 1
-            self.ctx.bulk -= 1;
+                // cmd name 解析完毕，bulk 减 1
+                self.oft = idx + CRLF_LEN;
+                self.ctx.bulk -= 1;
+                Ok(cfg)
+            } else {
+                return Err(crate::Error::ProtocolIncomplete);
+            }
         } else {
-            cfg = command::get_cfg(self.op_code())?;
+            command::get_cfg(self.op_code())
         }
-        Ok(cfg)
     }
     #[inline]
     pub(crate) fn parse_key(&mut self) -> Result<RingSlice> {
-        assert_ne!(self.ctx.op_code, 0, "packet:{:?}", self);
-        assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
+        debug_assert_ne!(self.ctx.op_code, 0, "packet:{:?}", self);
+        debug_assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
         let key_len = self.data.num_and_skip(&mut self.oft)?;
         self.ctx.bulk -= 1;
         let start = self.oft - CRLF_LEN - key_len;
@@ -223,19 +252,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    fn current(&self) -> u8 {
-        assert!(self.available(), "packet:{}", self);
-        self.data.at(self.oft)
-    }
-    #[inline]
-    fn check_start(&self) -> Result<()> {
-        if self.current() != b'*' {
-            Err(RedisError::ReqInvalidStar.error())
-        } else {
-            Ok(())
-        }
-    }
-    #[inline]
     pub(crate) fn first(&self) -> bool {
         self.ctx.first
     }
@@ -275,28 +291,91 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 }
 
-pub trait Packet {
-    // 从oft指定的位置开始，解析数字，直到\r\n。
-    // 协议错误返回Err
-    // 如果数据不全，则返回ProtocolIncomplete
-    // 1. number; 2. 返回下一次扫描的oft的位置
-    fn num(&self, oft: &mut usize) -> crate::Result<usize>;
-    // 计算当前的数字，并且将其跳过。如果跑过的字节数比计算的num少，则返回ProtocolIncomplete
-    fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize>;
-    fn line(&self, oft: &mut usize) -> crate::Result<()>;
-    fn num_skip_all(&self, oft: &mut usize) -> Result<()>;
+#[derive(Debug)]
+pub struct Packet {
+    inner: RingSlice,
+}
+impl From<RingSlice> for Packet {
+    #[inline(always)]
+    fn from(s: RingSlice) -> Self {
+        Self { inner: s }
+    }
+}
+impl std::ops::Deref for Packet {
+    type Target = RingSlice;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
-impl Packet for ds::RingSlice {
+impl Packet {
+    // 调用方确保oft元素为'*'
+    // *num\r\n
+    // oft移动到\r\n之后。 调用完该方法后，可能出现oft >= self.len()的情况
+    #[inline]
+    pub fn num_of_bulks(&self, oft: &mut usize) -> crate::Result<usize> {
+        debug_assert!(*oft < self.len() && self[*oft] == b'*');
+        let mut n = 0;
+        for i in *oft + 1..self.len() {
+            if self[i] == b'\r' {
+                // 下一个字符必须是'\n'
+                debug_assert!(i + 1 < self.len() || self[i + 1] == b'\n');
+                *oft = i + 2;
+                return Ok(n);
+            }
+            debug_assert!(self[i].is_ascii_digit(), "num:{} => {:?}", i, self);
+            n = n * 10 + (self[i] - b'0') as usize;
+        }
+        Err(Error::ProtocolIncomplete)
+    }
+    // oft + MIN <= self.len()
+    // $-1\r\n     ==> null.  返回0
+    // $num\r\n 读取num
+    // oft移动到\r位置处, 调用方需要处理oft对于\r\n的偏移量
+    #[inline]
+    pub fn num_of_string(&self, oft: &mut usize) -> Result<usize> {
+        debug_assert!(self.check_onetoken(*oft).is_ok(), "{} => {:?}", oft, self);
+        debug_assert!(self[*oft] == b'$');
+        match self[*oft + 1] {
+            b'-' => {
+                debug_assert!(self[*oft + 2] == b'1' && self[*oft + 3] == b'\r');
+                // 跳过 $-1 3个字节
+                // null当前的bulk不包含\r\n，这样使用方可以假设后面带有一个0长度的\r\n
+                *oft += 3;
+                Ok(0)
+            }
+            _ => {
+                // 解析数字
+                let mut n = 0;
+                for i in *oft + 1..self.len() {
+                    if self[i] == b'\r' {
+                        debug_assert!(i + 1 >= self.len() || self[i + 1] == b'\n');
+                        // 额外跳过\r\n
+                        *oft = i + 2;
+                        return Ok(n);
+                    }
+                    debug_assert!(self[i].is_ascii_digit(), "invalid:{} => {:?}", i, self);
+                    n = n * 10 + (self[i] - b'0') as usize;
+                }
+                Err(Error::ProtocolIncomplete)
+            }
+        }
+    }
     // 第一个字节是类型标识。 '*' '$'等等，由调用方确认。
     // 三种额外的情况处理
     // $0\r\n\r\n  ==> 长度为0的字符串
     // $-1\r\n     ==> null
     // *0\r\n      ==> 0 bulk number
     #[inline]
-    fn num(&self, oft: &mut usize) -> crate::Result<usize> {
-        if *oft + 2 < self.len() {
-            assert!(is_valid_leading_num_char(self.at(*oft)), "packet:{}", self);
+    pub fn num(&self, oft: &mut usize) -> crate::Result<usize> {
+        // 至少4个字节
+        if *oft + 4 <= self.len() {
+            debug_assert!(
+                self[*oft] == b'*' || self[*oft] == b'$',
+                "packet:{:?}",
+                self
+            );
             let start = *oft;
             *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
             let mut val: usize = 0;
@@ -345,10 +424,19 @@ impl Packet for ds::RingSlice {
             Err(crate::Error::ProtocolIncomplete)
         }
     }
-    #[inline]
-    fn line(&self, oft: &mut usize) -> crate::Result<()> {
+    #[inline(always)]
+    pub fn line(&self, oft: &mut usize) -> crate::Result<()> {
         if let Some(idx) = self.find_lf_cr(*oft) {
             *oft = idx + 2;
+            Ok(())
+        } else {
+            Err(crate::Error::ProtocolIncomplete)
+        }
+    }
+    #[inline(always)]
+    pub fn check_onetoken(&self, oft: usize) -> Result<()> {
+        // 一个token至少4个字节
+        if oft + 4 <= self.len() {
             Ok(())
         } else {
             Err(crate::Error::ProtocolIncomplete)
@@ -357,7 +445,42 @@ impl Packet for ds::RingSlice {
     // 需要支持4种协议格式：（除了-代表的错误类型）
     //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
     #[inline]
-    fn num_skip_all(&self, oft: &mut usize) -> Result<()> {
+    pub fn skip_all_bulk(&self, oft: &mut usize) -> Result<()> {
+        let mut bulk_count = self.num_of_bulks(oft)?;
+        // 使用stack实现递归, 通常没有递归，可以初始化这Empty
+        let mut levels = Vec::new();
+        while bulk_count > 0 || levels.len() > 0 {
+            if bulk_count == 0 {
+                bulk_count = levels.pop().expect("levels is empty");
+            }
+            self.check_onetoken(*oft)?;
+            match self.at(*oft) {
+                b'*' => {
+                    let current = self.num_of_bulks(oft)?;
+                    if bulk_count > 1 {
+                        levels.push(bulk_count - 1);
+                    }
+                    bulk_count = current;
+                    continue;
+                }
+                b'$' => {
+                    // 跳过num个字节 + "\r\n" 2个字节
+                    *oft += self.num_of_string(oft)? + CRLF_LEN;
+                }
+                b'+' | b':' => self.line(oft)?,
+                _ => {
+                    log::warn!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
+                    panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
+                }
+            }
+            bulk_count -= 1;
+        }
+        Ok(())
+    }
+    // 需要支持4种协议格式：（除了-代表的错误类型）
+    //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
+    #[inline]
+    pub fn num_skip_all(&self, oft: &mut usize) -> Result<()> {
         let mut bulk_count = self.num(oft)?;
         while bulk_count > 0 {
             if *oft >= self.len() {
@@ -385,35 +508,6 @@ impl Packet for ds::RingSlice {
 #[inline]
 fn is_number_digit(d: u8) -> bool {
     d >= b'0' && d <= b'9'
-}
-// 这个字节后面会带一个数字。
-#[inline]
-fn is_valid_leading_num_char(d: u8) -> bool {
-    d == b'$' || d == b'*'
-}
-#[allow(dead_code)]
-fn num_inner(data: &RingSlice, oft: &mut usize) -> crate::Result<usize> {
-    let mut val = 0;
-    while *oft < data.len() - 1 {
-        let b = data.at(*oft);
-        *oft += 1;
-        if b == b'\r' {
-            if data.at(*oft) == b'\n' {
-                *oft += 1;
-                return Ok(val);
-            }
-            // \r后面没有接\n。错误的协议
-            return Err(RedisError::ReqInvalidNoReturn.error());
-        }
-        if is_number_digit(b) {
-            val = val * 10 + (b - b'0') as usize;
-            if val <= std::u32::MAX as usize {
-                continue;
-            }
-        }
-        return Err(RedisError::ReqInvalidNum.error());
-    }
-    Err(crate::Error::ProtocolIncomplete)
 }
 
 use std::fmt::{self, Debug, Display, Formatter};

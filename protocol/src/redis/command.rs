@@ -1,6 +1,6 @@
 use crate::{HashedCommand, OpCode, Operation, Result};
 use ds::{MemGuard, RingSlice};
-use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
+//use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
 
 #[derive(Default, Debug, PartialEq, Clone, Copy)]
 pub(crate) enum CommandType {
@@ -15,6 +15,46 @@ pub(crate) enum CommandType {
     SpecLocalCmdHashkey,
     // 计算批量key的分片索引
     SpecLocalCmdKeyshard,
+}
+
+#[derive(Default)]
+pub(super) struct CommandHasher(i32);
+impl CommandHasher {
+    #[inline(always)]
+    fn hash(&mut self, mut b: u8) {
+        if b.is_ascii_lowercase() {
+            // 转换大写  32 = 'a' - 'A'
+            b -= b'a' - b'A';
+        }
+        // 31作为seed
+        self.0 = self.0.wrapping_mul(31).wrapping_add(b as i32);
+    }
+    #[inline(always)]
+    fn finish(mut self) -> u16 {
+        if self.0 < 0 {
+            self.0 = self.0.wrapping_mul(-1);
+        }
+        1.max(self.0 as usize & (Commands::MAPPING_RANGE - 1)) as u16
+    }
+    fn hash_bytes(data: &[u8]) -> u16 {
+        let mut h = CommandHasher::default();
+        for b in data {
+            h.hash(*b);
+        }
+        h.finish()
+    }
+    // oft: 指向'\r'的位置
+    #[inline(always)]
+    pub(super) fn hash_slice(slice: &RingSlice, oft: usize) -> Result<(u16, usize)> {
+        let mut h = CommandHasher::default();
+        for i in oft..slice.len() {
+            if slice[i] == b'\r' {
+                return Ok((h.finish(), i));
+            }
+            h.hash(slice[i]);
+        }
+        Err(crate::Error::ProtocolIncomplete)
+    }
 }
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
@@ -193,7 +233,7 @@ impl CommandProperties {
 pub(super) struct Commands {
     supported: [CommandProperties; Self::MAPPING_RANGE],
     // hash: Crc32,
-    hash: Bkdr,
+    //hash: Bkdr,
 }
 impl Commands {
     const MAPPING_RANGE: usize = 2048;
@@ -201,18 +241,18 @@ impl Commands {
         Self {
             supported: array_init::array_init(|_| Default::default()),
             // hash: Crc32::default(),
-            hash: Bkdr::default(),
+            //hash: Bkdr::default(),
         }
     }
-    #[inline]
-    pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
-        let uppercase = UppercaseHashKey::new(name);
-        // let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
-        let idx = self.inner_hash(&uppercase);
-        // op_code 0表示未定义,不存在
-        assert_ne!(idx, 0);
-        idx as u16
-    }
+    //#[inline]
+    //pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
+    //    let uppercase = UppercaseHashKey::new(name);
+    //    // let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
+    //    let idx = self.inner_hash(&uppercase);
+    //    // op_code 0表示未定义,不存在
+    //    assert_ne!(idx, 0);
+    //    idx as u16
+    //}
 
     #[inline]
     pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
@@ -233,22 +273,23 @@ impl Commands {
     //    self.get_by_op(idx as u16)
     //}
 
-    #[inline]
-    fn inner_hash<K: HashKey>(&self, key: &K) -> usize {
-        let idx = self.hash.hash(key) as usize & (Self::MAPPING_RANGE - 1);
-        // 由于op_code 0表示未定义,不存在,故对于0需要进行转换为1
-        if idx == 0 {
-            return 1;
-        }
-        idx
-    }
+    //#[inline]
+    //fn inner_hash<K: HashKey>(&self, key: &K) -> usize {
+    //    let idx = self.hash.hash(key) as usize & (Self::MAPPING_RANGE - 1);
+    //    // 由于op_code 0表示未定义,不存在,故对于0需要进行转换为1
+    //    if idx == 0 {
+    //        return 1;
+    //    }
+    //    idx
+    //}
 
     #[inline]
     fn add_support(&mut self, mut c: CommandProperties) {
-        let uppercase = c.name.to_uppercase();
-        // let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (mut self::MAPPING_RANGE - 1);
-        let idx = self.inner_hash(&uppercase.as_bytes());
-        assert!(idx < self.supported.len(), "idx:{}", idx);
+        //use sharding::hash::Hash;
+        //let old_idx = sharding::hash::Bkdr.hash(&c.name.to_uppercase().as_bytes()) as usize
+        //    & (Self::MAPPING_RANGE - 1);
+        let idx = CommandHasher::hash_bytes(c.name.as_bytes()) as usize;
+        assert!(idx > 0 && idx < self.supported.len(), "idx:{}", idx);
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
         c.supported = true;
@@ -265,11 +306,11 @@ impl Commands {
     }
 }
 
-#[inline]
-pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
-    SUPPORTED.get_op_code(cmd)
-}
-#[inline]
+//#[inline]
+//pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
+//    SUPPORTED.get_op_code(cmd)
+//}
+#[inline(always)]
 pub(crate) fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties> {
     SUPPORTED.get_by_op(op_code)
 }
