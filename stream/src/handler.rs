@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
+use ds::Switcher;
 use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream, Writer};
 use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -25,6 +26,9 @@ pub struct Handler<'r, Req, P, S> {
     num_tx: usize,
 
     option: &'r mut ResOption,
+    init: &'r mut Switcher,
+    authed: bool,
+
     rtt: Metric,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
@@ -38,7 +42,9 @@ where
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
-        ready!(me.poll_auth(cx)?);
+        if me.parser.need_auth() && !me.authed {
+            ready!(me.poll_auth(cx)?);
+        }
 
         let request = me.poll_request(cx)?;
         let flush = me.poll_flush(cx)?;
@@ -62,6 +68,7 @@ where
         parser: P,
         rtt: Metric,
         option: &'r mut ResOption,
+        init: &'r mut Switcher,
     ) -> Self {
         data.enable();
         Self {
@@ -74,6 +81,8 @@ where
             num_rx: 0,
             num_tx: 0,
             option,
+            init,
+            authed: false,
         }
     }
 
@@ -85,7 +94,11 @@ where
         {
             HandShake::Failed => Poll::Ready(Err(Error::AuthFailed)),
             HandShake::Continue => Poll::Pending,
-            HandShake::Success => Poll::Ready(Ok(())),
+            HandShake::Success => {
+                self.init.on();
+                self.authed = true;
+                Poll::Ready(Ok(()))
+            }
         }
     }
 
