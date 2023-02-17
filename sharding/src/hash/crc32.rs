@@ -59,8 +59,13 @@ pub struct Crc32Delimiter {
     name: String,
 }
 
+// 第一串长度大于等于5的数字做为hashkey
 #[derive(Default, Clone, Debug)]
 pub struct Crc32SmartNum {}
+
+// mixnum: key中所有num拼接成一个字串num做hashkey，like a_123_456_bc的hashkey是123456
+#[derive(Default, Clone, Debug)]
+pub struct Crc32MixNum {}
 
 // 对全key做crc32
 impl super::Hash for Crc32 {
@@ -261,7 +266,7 @@ pub(crate) fn parse_smartnum_hashkey<S: super::HashKey>(key: &S) -> (usize, usiz
         } else if start != usize::MAX && !c.is_ascii_digit() {
             // 发现数字后，第一次发现非数字
             end = i;
-            // 第一串长度大于5的数字做为hashkey
+            // 第一串长度大于等于5的数字做为hashkey
             if end - start >= super::SMARTNUM_MIN_LEN {
                 break;
             } else {
@@ -284,4 +289,28 @@ pub(crate) fn parse_smartnum_hashkey<S: super::HashKey>(key: &S) -> (usize, usiz
     }
 
     (start, end)
+}
+
+// 将key中非数字分开的所有num合并到一起来计算hash，如abc_123_45_cde6、123_456_xx的hashkey都是: 123456
+impl super::Hash for Crc32MixNum {
+    fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
+        let mut crc: i64 = CRC_SEED;
+        // 找出所有num来作为hashkey
+        for i in 0..key.len() {
+            let c = key.at(i);
+            if c.is_ascii_digit() {
+                log::debug!("+++ crc32-mixnum:{}", c as char);
+
+                // 进行crc32计算
+                crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+            }
+        }
+
+        crc ^= CRC_SEED;
+        crc &= CRC_SEED;
+        if crc <= 0 {
+            log::warn!("+++ crc32-smartnum key:{:?}, hash:{}", key, crc);
+        }
+        crc
+    }
 }
