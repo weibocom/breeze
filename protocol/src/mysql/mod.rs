@@ -27,6 +27,9 @@ impl Protocol for Mysql {
     ) -> Result<crate::HandShake> {
         todo!();
     }
+    fn need_auth(&self) -> bool {
+        true
+    }
 
     // TODO in: mc vs redis, out: mysql
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(

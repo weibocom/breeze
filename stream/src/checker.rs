@@ -1,3 +1,4 @@
+use discovery::Inited;
 use ds::time::Duration;
 use std::sync::{atomic::AtomicBool, Arc};
 
@@ -71,10 +72,12 @@ impl<P, Req> BackendChecker<P, Req> {
             let stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
             rx.enable();
-            self.init.on();
+            if !self.parser.need_auth() {
+                self.init.on();
+            }
             log::debug!("handler started:{:?}", self.path);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, stream, p, rtt, &mut self.option);
+            let handler = Handler::from(rx, stream, p, rtt, &mut self.option, &mut self.init);
             let handler = rt::Entry::timeout(handler, rt::Timeout::from(self.timeout));
             if let Err(e) = handler.await {
                 log::info!("backend error {:?} => {:?}", path_addr, e);

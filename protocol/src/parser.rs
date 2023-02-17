@@ -4,6 +4,7 @@ use sharding::hash::Hash;
 
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
+use crate::mysql::Mysql;
 use crate::redis::Redis;
 use crate::{Error, Flag, Request, Resource, Result, Writer};
 
@@ -13,6 +14,7 @@ pub enum Parser {
     McBin(MemcacheBinary),
     Redis(Redis),
     MsgQue(MsgQue),
+    Mysql(Mysql),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
@@ -20,6 +22,7 @@ impl Parser {
             "mc" => Ok(Self::McBin(Default::default())),
             "redis" | "phantom" => Ok(Self::Redis(Default::default())),
             "msgque" => Ok(Self::MsgQue(Default::default())),
+            "mysql" => Ok(Self::Mysql(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }
@@ -30,6 +33,7 @@ impl Parser {
             Self::Redis(_) => true,
             // Self::Phantom(_) => true,
             Self::MsgQue(_) => false,
+            Self::Mysql(_) => false,
         }
     }
 }
@@ -103,6 +107,9 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         I: MetricItem,
     {
         None
+    }
+    fn need_auth(&self) -> bool {
+        false
     }
 }
 
