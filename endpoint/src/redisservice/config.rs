@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 //use ds::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -8,15 +7,6 @@ use serde::{Deserialize, Serialize};
 pub struct RedisNamespace {
     pub(crate) basic: Basic,
     pub(crate) backends: Vec<String>,
-    #[serde(default)]
-    pub(crate) master: Vec<String>,
-    // 可能是域名，也可能是ip，调用者确认
-    #[serde(default)]
-    pub(crate) slaves: Vec<Vec<String>>,
-
-    // TODO 下面这几个稍后抽取到更高一层次 fishermen
-    #[serde(default)]
-    pub(crate) host_addrs: HashMap<String, HashSet<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -27,8 +17,8 @@ pub struct Basic {
     pub(crate) hash: String,
     #[serde(default)]
     pub(crate) distribution: String,
-    #[serde(default)]
-    pub(crate) listen: String,
+    //#[serde(default)]
+    //pub(crate) listen: String,
     #[serde(default)]
     resource_type: String,
     #[serde(default)]
@@ -37,6 +27,9 @@ pub struct Basic {
     pub(crate) timeout_ms_master: u32,
     #[serde(default)]
     pub(crate) timeout_ms_slave: u32,
+    // master是否参与读
+    #[serde(default)]
+    pub(crate) master_read: bool,
 }
 
 impl RedisNamespace {
