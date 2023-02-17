@@ -13,7 +13,7 @@ use crate::{
 };
 use ds::RingSlice;
 use error::*;
-use packet::Packet;
+pub use packet::Packet;
 use sharding::hash::Hash;
 
 use rand;
@@ -173,30 +173,30 @@ impl Redis {
         s: &mut S,
         oft: &mut usize,
     ) -> Result<Option<Command>> {
-        let data = s.slice();
+        let data: Packet = s.slice().into();
         log::debug!("+++ will parse redis rsp:{:?}", data);
+        data.check_onetoken(*oft)?;
 
-        if data.len() >= 2 {
-            let mut rsp_ok = true;
-            match data.at(0) {
-                b'-' => {
-                    rsp_ok = false;
-                    data.line(oft)?;
-                }
-                b':' | b'+' => data.line(oft)?,
-                b'$' => {
-                    let _num = data.num_and_skip(oft)?;
-                }
-                b'*' => {
-                    data.num_skip_all(oft)?;
-                }
-                _ => {
-                    log::info!("not supported:{:?}", data);
-                    panic!("not supported:{:?}", data);
-                }
+        let mut rsp_ok = true;
+        match data.at(0) {
+            b'-' => {
+                rsp_ok = false;
+                data.line(oft)?;
             }
+            b':' | b'+' => data.line(oft)?,
+            b'$' => {
+                *oft += data.num_of_string(oft)? + 2;
+            }
+            b'*' => {
+                data.skip_all_bulk(oft)?;
+            }
+            _ => {
+                log::info!("not supported:{:?}", data);
+                panic!("not supported:{:?}", data);
+            }
+        }
 
-            assert!(*oft <= data.len(), "{} data:{:?}", oft, data);
+        if *oft <= data.len() {
             let mem = s.take(*oft);
             let mut flag = Flag::new();
             // TODO 这次需要测试err场景 fishermen
