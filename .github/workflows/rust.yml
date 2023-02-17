@@ -72,6 +72,6 @@ jobs:
         uses: actions-rs/tarpaulin@v0.1
         with:
           version: "0.22.0"
-          args: "--features=github_workflow -- --test-threads 1"
+          args: "--features=github_workflow --features=console-api -- --test-threads 1"
       #- name: Run tests
       #  run: cargo test
