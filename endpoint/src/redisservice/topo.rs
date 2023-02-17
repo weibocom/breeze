@@ -151,7 +151,7 @@ where
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
-            self.selector = ns.basic.selector.as_str().into();
+            self.selector = ns.local().as_str().into();
 
             // TODO 直接设置selector属性，在更新最后，设置全局更新标志，deadcode暂时保留，观察副作用 2022.12后可以删除
             // selector属性更新与域名实例更新保持一致
