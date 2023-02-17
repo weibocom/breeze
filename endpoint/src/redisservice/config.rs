@@ -40,6 +40,17 @@ pub struct Basic {
 }
 
 impl RedisNamespace {
+    pub(super) fn local(&self) -> String {
+        match std::env::var("BREEZE_LOCAL")
+            .unwrap_or("".to_string())
+            .as_str()
+        {
+            "distance" => "distance",
+            _ => self.basic.selector.as_str(),
+        }
+        .to_string()
+    }
+
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         let nso = serde_yaml::from_str::<RedisNamespace>(cfg)
             .map_err(|e| {
