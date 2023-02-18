@@ -114,29 +114,6 @@ impl CallbackContext {
         }
     }
 
-    // 对无响应请求，适配一个本地构建response，方便后续进行统一的响应处理
-    //#[inline]
-    //pub fn adapt_local_response(&mut self, local_resp: Command) {
-    //    // 构建本地response，说明请求肯定不是异步回写，即async_mode肯定为false
-    //    assert!(
-    //        !self.ctx.async_mode,
-    //        "should sync, req:{:?}, rsp:{:?}",
-    //        self.request(),
-    //        local_resp
-    //    );
-    //    log::debug!("+++ on-local-complete:{}, rsp:{:?}", self, local_resp);
-
-    //    // 首先尝试清理之前的老response
-    //    self.try_drop_response();
-    //    self.response.write(local_resp);
-    //    self.ctx.inited.store(true, Release);
-
-    //    // 重置request的try next 及 write-back标志，统统不需要回写和重试
-    //    self.request.set_try_next_type(TryNextType::NotTryNext);
-    //    self.ctx.try_next(false);
-    //    self.ctx.write_back(false);
-    //}
-
     // 只有在构建了response，该request才可以设置completed为true
     #[inline]
     fn on_done(&mut self) {
@@ -187,13 +164,11 @@ impl CallbackContext {
     #[inline]
     pub fn on_err(&mut self, err: Error) {
         // 正常err场景，仅仅在debug时check
-        log::debug!("+++ found err: {:?}", err);
+        log::debug!("+++ on_err: {:?} => {:?}", err, self);
+        use Error::*;
         match err {
-            Error::Closed => {}
-            Error::ChanDisabled => {}
-            Error::Waiting => {}
-            Error::Pending => {}
-            _err => log::debug!("on-err:{} {:?}", self, _err),
+            Closed | ChanDisabled | Waiting | Pending => {}
+            _err => log::warn!("on-err:{} {:?}", self, _err),
         }
         self.on_done();
     }
