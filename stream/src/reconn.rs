@@ -1,7 +1,7 @@
+use ds::time::Duration;
 use metrics::{Metric, Path};
 use std::sync::atomic::{AtomicBool, Ordering::Acquire};
 use std::sync::Arc;
-use ds::time::Duration;
 pub(crate) struct ReconnPolicy {
     single: Arc<AtomicBool>,
     conns: usize,
@@ -26,32 +26,20 @@ impl ReconnPolicy {
         self.continue_fails += 1;
 
         static MAX_FAILED: usize = 1;
-        let mut sleep_mills = 0;
-        if self.continue_fails >= MAX_FAILED {
-            // 连续失败超过$MAX_FAILED次，master sleep 100ms，slave sleep 3000
-            if self.single.load(Acquire) {
-                sleep_mills = 100;
+        // 1. 如果是master，第一次立即重连，后续每隔100ms。
+        // 2. 如果是slave，则隔3s重连一次。
+        let sleep_ms = if self.single.load(Acquire) {
+            if self.continue_fails == 1 {
+                0
             } else {
-                sleep_mills = 3 * 1000;
+                100
             }
+        } else {
+            3000
         };
 
-        if self.continue_fails == 1 {
-            log::info!(
-                "{}-th conn {} sleep:{} ",
-                self.conns,
-                self.continue_fails,
-                sleep_mills
-            );
-        } else {
-            log::debug!(
-                "{}-th conn {} sleep:{} ",
-                self.conns,
-                self.continue_fails,
-                sleep_mills
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(sleep_mills)).await;
+        log::info!("reconn-{}/{} {}", self.conns, self.continue_fails, sleep_ms);
+        tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
     }
 
     // 连接创建成功，连接次数加1，重置持续失败次数
