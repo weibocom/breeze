@@ -38,7 +38,13 @@ impl ReconnPolicy {
             3000
         };
 
-        log::info!("reconn-{}/{} {}", self.conns, self.continue_fails, sleep_ms);
+        log::info!(
+            "reconn-{}/{} {} => {:?}",
+            self.conns,
+            self.continue_fails,
+            sleep_ms,
+            self.metric
+        );
         tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
     }
 

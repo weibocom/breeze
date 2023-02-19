@@ -19,18 +19,43 @@ impl WriteTo for i64 {
         } else {
             *self as usize
         };
-        if v < ds::NUM_STR_TBL.len() {
-            w.put_slice(ds::NUM_STR_TBL[v]);
-        } else {
-            w.put_slice(self.to_string());
+        // 减少to_string时的拷贝。这个优化效果未验证
+        match v {
+            0..=9 => w.put_slice(&[b'0' + v as u8]),
+            10..=99 => {
+                w.put_slice(&[b'0' + (v / 10) as u8, b'0' + (v % 10) as u8]);
+            }
+            100..=1_000_000_000_000_000 => {
+                let mut buf = [0u8; 16];
+                let mut left = v;
+                let mut idx = buf.len();
+                while left > 0 {
+                    idx -= 1;
+                    buf[idx] = (left % 10) as u8 + b'0';
+                    left = left / 10;
+                }
+                w.put_slice(&buf[idx..]);
+            }
+            _ => w.put_slice(v.to_string()),
         }
     }
 }
 impl WriteTo for f64 {
     #[inline]
     fn write_to<W: ItemWriter>(&self, w: &mut W) {
-        let s = format!("{:.3}", *self);
-        w.put_slice(s);
+        let z = *self as i64;
+        // 处理整数部分
+        z.write_to(w);
+        let mut fraction = ((*self - z as f64) * 1000f64) as i64;
+        // 处理小数部分
+        if fraction > 0 {
+            w.put_slice(&[b'.']);
+            // 去掉末尾的0
+            while fraction % 10 == 0 {
+                fraction /= 10;
+            }
+            fraction.write_to(w);
+        }
     }
 }
 
