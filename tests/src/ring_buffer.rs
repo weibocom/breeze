@@ -143,42 +143,30 @@ struct Reader {
     source: Vec<u8>,
     offset: usize,
 }
-impl Reader {}
+impl Reader {
+    fn num(&mut self, n: usize) {
+        self.num = n;
+        self.offset = 0;
+    }
+}
 impl ds::BuffRead for Reader {
     type Out = usize;
     fn read(&mut self, b: &mut [u8]) -> (usize, Self::Out) {
         assert!(self.num > 0);
-        let mut w = 0;
-        while w < self.num {
+        let old = self.offset;
+        while self.offset < self.num {
             let oft = self.offset % self.source.len();
-            let l = b.len().min(self.num - w);
+            let l = b.len().min(self.num - self.offset);
             use std::ptr::copy_nonoverlapping as copy;
             unsafe { copy(self.source.as_ptr().offset(oft as isize), b.as_mut_ptr(), l) };
-            w += l;
             self.offset += l;
         }
-        (w, w)
+        (self.offset - old, self.offset)
     }
 }
 
 #[test]
 fn guarded_buffer() {
-    // 测试MemGuard
-    //let data: Vec<u8> = "abcdefg".into();
-    //let s: &[u8] = &data;
-    //let slice: RingSlice = s.into();
-    //let g0: MemGuard = slice.into();
-    //assert_eq!(g0.read(0), &data);
-    //// 指向同一块内存
-    //assert_eq!(g0.read(0).as_ptr() as usize, data.as_ptr() as usize);
-    //g0.recall();
-    //// 内存回收，共享内存被释放。数据被复制，指向不同的内存。
-    //assert_ne!(g0.read(0).as_ptr() as usize, data.as_ptr() as usize);
-    //// 但是数据一致
-    //assert_eq!(g0.read(0), &data);
-    ////assert_eq!(g0.len(), data.len());
-    //drop(data);
-
     let mut reader = Reader {
         offset: 0,
         source: Vec::from("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
@@ -188,10 +176,11 @@ fn guarded_buffer() {
     let mut guard = GuardedBuffer::new(128, 1024, 128);
     let empty = guard.read();
     assert_eq!(empty.len(), 0);
-    reader.num = 24;
+    reader.num(24);
     let n = guard.write(&mut reader);
-    assert_eq!(n, guard.len());
+    assert_eq!(n, guard.len(), "{}", guard);
     assert_eq!(n, reader.num);
+    println!("guarded_buffer => 2");
 
     let data = guard.read();
     assert_eq!(n, data.len());
@@ -203,17 +192,18 @@ fn guarded_buffer() {
     let data = guard.read();
     assert_eq!(n - len_g0, data.len());
     //g0.read(0);
-    reader.num = 17;
+    reader.num(17);
     guard.write(&mut reader);
     let g1 = guard.take(10);
     let g2 = guard.take(3);
     let g3 = guard.take(3);
     drop(g2);
     drop(g1);
-    reader.num = 1;
+    reader.num(1);
     guard.write(&mut reader);
     drop(g3);
 
     drop(g0);
     guard.gc();
+    println!("guarded_buffer => 10");
 }

@@ -46,8 +46,8 @@ impl GuardedBuffer {
     }
     #[inline]
     pub fn take(&mut self, n: usize) -> MemGuard {
-        assert!(n > 0);
-        assert!(self.taken + n <= self.writtened());
+        debug_assert!(n > 0);
+        debug_assert!(self.taken + n <= self.writtened());
         let guard = unsafe { self.guards.push_back_mut() };
         *guard.get_mut() = 0;
         let data = self.inner.slice(self.taken, n);

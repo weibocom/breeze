@@ -95,7 +95,10 @@ impl<P, Req> BackendChecker<P, Req> {
             .map_err(|_e| log::debug!("conn to {} err:{}", self.addr, _e))
             .ok()
             .map(|s| {
-                let _ = s.set_nodelay(true);
+                match s.set_nodelay(true) {
+                    Ok(()) => {}
+                    Err(e) => panic!("set nodelay err:{} => {}", e, self.addr),
+                }
                 s
             })
     }

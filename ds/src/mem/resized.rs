@@ -47,12 +47,12 @@ impl ResizedRingBuffer {
     #[inline]
     pub fn copy_from<O, R: crate::BuffRead<Out = O>>(&mut self, src: &mut R) -> O {
         loop {
+            // TODO 优化，如果当前buffer已经满了，可以直接返回
             self.grow(512);
-            let out = self.inner.copy_from(src);
-            if self.inner.available() > 0 {
+            let (out, n) = self.inner.copy_from_once(src);
+            if n == 0 {
                 return out;
             }
-            // 否则说明buffer已经满了，需要再次读取
         }
     }
     // 需要写入数据时，判断是否需要扩容

@@ -54,42 +54,23 @@ impl RingBuffer {
         offset & self.size.wrapping_sub(1)
     }
     #[inline]
-    pub fn copy_from<O, R: crate::BuffRead<Out = O>>(&mut self, src: &mut R) -> O {
+    pub fn copy_from_once<O, R: crate::BuffRead<Out = O>>(&mut self, src: &mut R) -> (O, usize) {
         let oft = self.mask(self.write);
-        let avail = self.available();
-        let n = (self.size - oft).min(avail);
+        let n = (self.size - oft).min(self.available());
         let b = unsafe { from_raw_parts_mut(self.data.as_ptr().add(oft), n) };
         let (read, out) = src.read(b);
         self.advance_write(read);
-        // read < n：buffer未满，则认定为已读取完毕
-        // avail == read:  当前buffer已满.
-        if read < n || avail == read {
+        (out, read)
+    }
+    #[inline]
+    pub fn copy_from<O, R: crate::BuffRead<Out = O>>(&mut self, src: &mut R) -> O {
+        let (out, read) = self.copy_from_once(src);
+        if read == 0 || self.available() == 0 {
             return out;
         }
-        // 运行到这说明：buf分段，且未满
-        // 从0开始读取
-        let b = unsafe { from_raw_parts_mut(self.data.as_ptr(), avail - read) };
-        let (read, out) = src.read(b);
-        self.advance_write(read);
+        let (out, _read) = self.copy_from_once(src);
         out
     }
-    //// 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
-    //#[inline]
-    //fn as_mut_bytes(&mut self) -> &mut [u8] {
-    //    if self.read + self.size == self.write {
-    //        // 已满
-    //        unsafe { from_raw_parts_mut(self.data.as_ptr(), 0) }
-    //    } else {
-    //        let offset = self.mask(self.write);
-    //        let read = self.mask(self.read);
-    //        let n = if offset < read {
-    //            read - offset
-    //        } else {
-    //            self.size - offset
-    //        };
-    //        unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
-    //    }
-    //}
     #[inline]
     pub fn data(&self) -> RingSlice {
         RingSlice::from(self.data.as_ptr(), self.size, self.read, self.write)
