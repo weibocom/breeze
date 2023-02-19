@@ -23,15 +23,15 @@ impl Parser {
             _ => Err(Error::ProtocolNotSupported),
         }
     }
-    #[inline]
-    pub fn pipeline(&self) -> bool {
-        match self {
-            Self::McBin(_) => false,
-            Self::Redis(_) => true,
-            // Self::Phantom(_) => true,
-            Self::MsgQue(_) => false,
-        }
-    }
+    //#[inline]
+    //pub fn pipeline(&self) -> bool {
+    //    match self {
+    //        Self::McBin(_) => false,
+    //        Self::Redis(_) => true,
+    //        // Self::Phantom(_) => true,
+    //        Self::MsgQue(_) => false,
+    //    }
+    //}
 }
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
