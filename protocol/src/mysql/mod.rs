@@ -15,6 +15,7 @@ use sharding::hash::Hash;
 
 #[derive(Debug, Clone, Copy)]
 pub(self) enum HandShakeStatus {
+    #[allow(dead_code)]
     Init,
     InitialhHandshakeResponse,
     AuthSucceed,
@@ -39,7 +40,10 @@ impl Protocol for Mysql {
                     initial_handshake.check_fast_auth_and_native()?;
                     let response = packet.build_handshake_response(
                         option,
-                        &native_auth(initial_handshake.auth_plugin_data.as_bytes()),
+                        &native_auth(
+                            initial_handshake.auth_plugin_data.as_bytes(),
+                            option.token.as_bytes(),
+                        ),
                     )?;
                     s.write(&response)?;
 
@@ -58,6 +62,7 @@ impl Protocol for Mysql {
             HandShakeStatus::AuthSucceed => Ok(HandShake::Success),
         }
     }
+
     fn need_auth(&self) -> bool {
         true
     }
