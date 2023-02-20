@@ -4,6 +4,7 @@ use ds::RingSlice;
 use crate::{ResOption, Result};
 
 use super::HandShakeStatus;
+#[derive(Clone)]
 pub(super) struct InitialHandshake {
     pub(super) auth_plugin_name: String,
     pub(super) auth_plugin_data: String,
@@ -31,6 +32,17 @@ impl From<&mut u64> for &mut ResponseContext {
     }
 }
 
+//原地反序列化,
+pub(super) trait ParsePacket<T> {
+    fn parse(&self) -> T;
+}
+
+impl<T> ParsePacket<T> for RingSlice {
+    fn parse(&self) -> T {
+        todo!();
+    }
+}
+
 //解析rsp的时候，take的时候seq才加一？
 pub(super) struct ResponsePacket<'a, S> {
     stream: &'a mut S,
@@ -46,10 +58,24 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         self.ctx
     }
 
+    pub(crate) fn parse_packet(&mut self) -> Result<RingSlice> {
+        todo!()
+    }
+
+    #[inline]
+    pub(crate) fn take(&mut self) -> ds::MemGuard {
+        todo!()
+    }
+
     //解析initial_handshake，暂定解析成功会take走stream，协议未完成返回incomplete
     //如果这样会copy，可返回引用，外部take，但问题不大
     pub(super) fn take_initial_handshake(&mut self) -> Result<InitialHandshake> {
-        todo!()
+        let packet = self.parse_packet()?;
+        let packet: InitialHandshake = packet.parse();
+        //为了take走还有效
+        let packet = packet.clone();
+        self.take();
+        Ok(packet)
     }
     //构建采用Native Authentication快速认证的handshake response，seq+1
     pub(super) fn build_handshake_response(

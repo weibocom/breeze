@@ -18,3 +18,5 @@ rand = "0.8.4"
 
 ctor = "0.1.23"
 array-init = "2"
+
+rust-crypto = "0.2.36"
