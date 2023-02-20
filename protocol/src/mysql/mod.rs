@@ -1,17 +1,23 @@
+mod auth;
 mod reqpacket;
 mod rsppacket;
 
 use super::Protocol;
 use super::Result;
+use crate::mysql::auth::native_auth;
 use crate::Command;
 use crate::Error;
+use crate::HandShake;
 use crate::RequestProcessor;
 use crate::Stream;
+use rsppacket::ResponsePacket;
 use sharding::hash::Hash;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(self) enum HandShakeStatus {
     Init,
+    InitialhHandshakeResponse,
+    AuthSucceed,
 }
 
 #[derive(Clone, Default)]
@@ -21,11 +27,36 @@ impl Protocol for Mysql {
     //todo 握手
     fn handshake(
         &self,
-        _stream: &mut impl Stream,
+        stream: &mut impl Stream,
         s: &mut impl crate::Writer,
         option: &mut crate::ResOption,
-    ) -> Result<crate::HandShake> {
-        todo!();
+    ) -> Result<HandShake> {
+        let mut packet = ResponsePacket::new(stream);
+        match packet.ctx().status {
+            HandShakeStatus::Init => match packet.take_initial_handshake() {
+                Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+                Ok(initial_handshake) => {
+                    initial_handshake.check_fast_auth_and_native()?;
+                    let response = packet.build_handshake_response(
+                        option,
+                        &native_auth(initial_handshake.auth_plugin_data.as_bytes()),
+                    )?;
+                    s.write(&response)?;
+
+                    packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
+                    Ok(HandShake::Continue)
+                }
+                Err(e) => Err(e),
+            },
+            HandShakeStatus::InitialhHandshakeResponse => match packet.take_and_ok() {
+                Ok(_) => {
+                    packet.ctx().status = HandShakeStatus::AuthSucceed;
+                    Ok(HandShake::Success)
+                }
+                Err(e) => Err(e),
+            },
+            HandShakeStatus::AuthSucceed => Ok(HandShake::Success),
+        }
     }
     fn need_auth(&self) -> bool {
         true
