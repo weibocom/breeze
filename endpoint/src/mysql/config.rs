@@ -8,7 +8,7 @@ pub struct MysqlNamespace {
     pub(crate) basic: Basic,
     pub(crate) sql: HashMap<String, String>,
     pub(crate) backends: Vec<String>,
-    pub(crate) archive: HashMap<String, Vec<String>>,
+    // pub(crate) archive: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -43,6 +43,10 @@ pub struct Basic {
     pub(crate) table_count: u32,
     #[serde(default)]
     pub(crate) hierarchy: bool,
+    #[serde(default)]
+    pub(crate) password: String,
+    #[serde(default)]
+    pub(crate) user: String,
 }
 
 impl MysqlNamespace {
