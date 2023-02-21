@@ -68,10 +68,12 @@ jobs:
           tail -10 /home/runner/work/breeze/logs/breeze.log
           #cat /home/runner/work/breeze/logs/log.file
           #cat /home/runner/work/breeze/logs/breeze.log
-      - name: Run cargo-tarpaulin
-        uses: actions-rs/tarpaulin@v0.1
-        with:
-          version: "0.22.0"
-          args: "--features=github_workflow --features=console-api -- --test-threads 1"
-      #- name: Run tests
-      #  run: cargo test
+      #- name: Run cargo-tarpaulin
+      #  uses: actions-rs/tarpaulin@v0.1
+      #  with:
+      #    version: "0.22.0"
+      #    args: "--features=github_workflow --features=console-api -- --test-threads 1"
+      - name: Run unit tests
+        run: cargo test -p tests
+      - name: Run ci tests
+        run: cargo test -p tests_integration --features github_workflow --features=console-api -- --test-threads 1
