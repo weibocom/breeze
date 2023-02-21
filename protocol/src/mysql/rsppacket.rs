@@ -6,7 +6,7 @@ use crate::{ResOption, Result};
 use super::HandShakeStatus;
 #[derive(Clone)]
 pub(super) struct InitialHandshake {
-    pub(super) auth_plugin_name: String,
+    pub(super) _auth_plugin_name: String,
     pub(super) auth_plugin_data: String,
 }
 
@@ -23,7 +23,7 @@ impl InitialHandshake {
 pub(super) struct ResponseContext {
     pub(super) seq_id: u8,
     pub(super) status: HandShakeStatus,
-    _ignore: [u8; 8],
+    _ignore: [u8; 7],
 }
 
 impl From<&mut u64> for &mut ResponseContext {

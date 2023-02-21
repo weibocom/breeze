@@ -25,7 +25,6 @@ pub(self) enum HandShakeStatus {
 pub struct Mysql;
 
 impl Protocol for Mysql {
-    //todo 握手
     fn handshake(
         &self,
         stream: &mut impl Stream,
@@ -57,6 +56,7 @@ impl Protocol for Mysql {
                     packet.ctx().status = HandShakeStatus::AuthSucceed;
                     Ok(HandShake::Success)
                 }
+                Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
                 Err(e) => Err(e),
             },
             HandShakeStatus::AuthSucceed => Ok(HandShake::Success),

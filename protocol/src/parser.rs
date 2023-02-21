@@ -6,7 +6,7 @@ use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::mysql::Mysql;
 use crate::redis::Redis;
-use crate::{Error, Flag, Request, Resource, Result, Writer};
+use crate::{Error, Flag, Request, Result, Writer};
 
 #[enum_dispatch(Proto)]
 #[derive(Clone)]
@@ -60,8 +60,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn handshake(
         &self,
         _stream: &mut impl Stream,
-        s: &mut impl Writer,
-        option: &mut ResOption,
+        _s: &mut impl Writer,
+        _option: &mut ResOption,
     ) -> Result<HandShake> {
         Ok(HandShake::Success)
     }
