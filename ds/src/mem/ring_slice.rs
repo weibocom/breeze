@@ -104,7 +104,7 @@ impl RingSlice {
     }
     // 从oft开始访问，走到until返回false
     // 只有until返回true的数据都会被访问
-    #[inline(always)]
+    #[inline]
     pub fn fold_until<I>(
         &self,
         oft: usize,

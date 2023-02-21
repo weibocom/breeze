@@ -38,6 +38,15 @@ pub struct Namespace {
 }
 
 impl Namespace {
+    pub(crate) fn is_local(&self) -> bool {
+        self.local_affinity || match std::env::var("BREEZE_LOCAL")
+                .unwrap_or("".to_string())
+                .as_str()
+            {
+                "distance" => true,
+                _ => false,
+            }
+    }
     //pub(crate) fn local_len(&self) -> usize {
     //    1 + self.master_l1.len()
     //}

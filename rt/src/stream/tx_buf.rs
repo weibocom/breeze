@@ -9,7 +9,7 @@ use std::{
 pub struct TxBuffer {
     read: u32,
     write: u32,
-    pub(super) cap: u32,
+    cap: u32,
     data: NonNull<u8>,
     policy: MemPolicy,
 }

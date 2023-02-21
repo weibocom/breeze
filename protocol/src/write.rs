@@ -4,7 +4,7 @@ pub trait Writer: ds::BufWriter + Sized {
     fn pending(&self) -> usize;
     // 写数据，一次写完
     fn write(&mut self, data: &[u8]) -> Result<()>;
-    #[inline]
+    #[inline(always)]
     fn write_u8(&mut self, v: u8) -> Result<()> {
         self.write(&[v])
     }
@@ -12,11 +12,31 @@ pub trait Writer: ds::BufWriter + Sized {
     // write(v.to_string().as_bytes())
     #[inline]
     fn write_s_u16(&mut self, v: u16) -> Result<()> {
-        if v < ds::NUM_STR_TBL.len() as u16 {
-            self.write(ds::NUM_STR_TBL[v as usize].as_bytes())
-        } else {
-            self.write(v.to_string().as_bytes())
+        match v {
+            0..=9 => self.write_u8(b'0' + v as u8),
+            10..=99 => {
+                let mut buf = [0u8; 2];
+                buf[0] = b'0' + (v / 10) as u8;
+                buf[1] = b'0' + (v % 10) as u8;
+                self.write(&buf)
+            }
+            100..=u16::MAX => {
+                let mut buf = [0u8; 8];
+                let mut left = v;
+                let mut idx = buf.len();
+                while left > 0 {
+                    idx -= 1;
+                    buf[idx] = (left % 10) as u8 + b'0';
+                    left = left / 10;
+                }
+                self.write(&buf[idx..])
+            }
         }
+        //if v < ds::NUM_STR_TBL.len() as u16 {
+        //    self.write(ds::NUM_STR_TBL[v as usize].as_bytes())
+        //} else {
+        //    self.write(v.to_string().as_bytes())
+        //}
     }
 
     // hint: 提示可能优先写入到cache

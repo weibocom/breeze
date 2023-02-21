@@ -1,7 +1,7 @@
 use std::{
     mem::MaybeUninit,
     ptr::{self, NonNull},
-    sync::atomic::{AtomicBool, Ordering::*},
+    sync::atomic::{AtomicBool, AtomicU8, Ordering::*},
     time::Duration,
 };
 
@@ -9,7 +9,7 @@ use ds::{time::Instant, AtomicWaker};
 
 use crate::{request::Request, Command, Error, HashedCommand};
 
-const REQ_TRY_MAX_COUNT: u8 = 3;
+//const REQ_TRY_MAX_COUNT: u8 = 3;
 
 pub struct Callback {
     cb: Box<dyn Fn(Request)>,
@@ -33,7 +33,7 @@ pub struct CallbackContext {
     callback: CallbackPtr,
     start: Instant,      // 请求的开始时间
     last_start: Instant, // 本次资源请求的开始时间(一次请求可能触发多次资源请求)
-    tries: u8,
+    tries: AtomicU8,
     waker: *const AtomicWaker,
 }
 
@@ -57,7 +57,7 @@ impl CallbackContext {
             callback: cb,
             start: Instant::now(),
             last_start: Instant::now(),
-            tries: 0,
+            tries: 0.into(),
             waker,
         }
     }
@@ -89,53 +89,35 @@ impl CallbackContext {
         log::debug!("on-complete:{} resp:{}", self, resp);
         // 异步请求不关注response。
         if !self.ctx.async_mode {
-            self.tries += 1;
-            assert!(!self.complete(), "{:?}", self);
-            self.try_drop_response();
-            self.response.write(resp);
-            self.ctx.inited.store(true, Release);
+            debug_assert!(!self.complete(), "{:?}", self);
+            self.swap_response(resp);
         }
         self.on_done();
     }
 
     #[inline]
     pub fn take_response(&mut self) -> Option<Command> {
-        match self
-            .ctx
-            .inited
-            .compare_exchange(true, false, AcqRel, Acquire)
-        {
-            Ok(_) => unsafe { Some(ptr::read(self.response.as_mut_ptr())) },
-            Err(_) => {
-                self.ctx.write_back = false;
-                //assert!(!self.ctx.try_next && !self.ctx.write_back, "{}", self);
-                None
-            }
+        if self.ctx.inited.load(Acquire) {
+            *self.ctx.inited.get_mut() = false;
+            //self.ctx.inited.store(false, Release);
+            unsafe { Some(ptr::read(self.response.as_mut_ptr())) }
+        } else {
+            self.ctx.write_back = false;
+            None
         }
+        //match self
+        //    .ctx
+        //    .inited
+        //    .compare_exchange(true, false, AcqRel, Acquire)
+        //{
+        //    Ok(_) => unsafe { Some(ptr::read(self.response.as_mut_ptr())) },
+        //    Err(_) => {
+        //        self.ctx.write_back = false;
+        //        //assert!(!self.ctx.try_next && !self.ctx.write_back, "{}", self);
+        //        None
+        //    }
+        //}
     }
-
-    // 对无响应请求，适配一个本地构建response，方便后续进行统一的响应处理
-    //#[inline]
-    //pub fn adapt_local_response(&mut self, local_resp: Command) {
-    //    // 构建本地response，说明请求肯定不是异步回写，即async_mode肯定为false
-    //    assert!(
-    //        !self.ctx.async_mode,
-    //        "should sync, req:{:?}, rsp:{:?}",
-    //        self.request(),
-    //        local_resp
-    //    );
-    //    log::debug!("+++ on-local-complete:{}, rsp:{:?}", self, local_resp);
-
-    //    // 首先尝试清理之前的老response
-    //    self.try_drop_response();
-    //    self.response.write(local_resp);
-    //    self.ctx.inited.store(true, Release);
-
-    //    // 重置request的try next 及 write-back标志，统统不需要回写和重试
-    //    self.request.set_try_next_type(TryNextType::NotTryNext);
-    //    self.ctx.try_next(false);
-    //    self.ctx.write_back(false);
-    //}
 
     // 只有在构建了response，该request才可以设置completed为true
     #[inline]
@@ -148,26 +130,29 @@ impl CallbackContext {
         }
         if !self.ctx.async_mode {
             // 说明有请求在pending
-            assert!(!self.complete(), "{:?}", self);
+            debug_assert!(!self.complete(), "{:?}", self);
             self.ctx.complete.store(true, Release);
             unsafe { (&*self.waker).wake() }
         } else {
+            self.ctx.async_done.store(true, Release);
             // async_mode需要手动释放
             //self.manual_drop();
-            self.ctx
-                .async_done
-                .compare_exchange(false, true, AcqRel, Acquire)
-                .expect("double free?");
+            //self.ctx
+            //    .async_done
+            //    .compare_exchange(false, true, AcqRel, Acquire)
+            //    .expect("double free?");
         }
     }
 
     #[inline]
     fn need_goon(&self) -> bool {
         if !self.ctx.async_mode {
+            if self.response_ok() || !self.ctx.try_next {
+                return false;
+            }
             // 正常访问请求。
             // old: 除非出现了error，否则最多只尝试一次;
-            // 为了提升mcq的读写效率，tries改为3次
-            self.ctx.try_next && !self.response_ok() && self.tries < REQ_TRY_MAX_COUNT
+            self.tries.fetch_add(1, Release) < 1
         } else {
             // write back请求
             self.ctx.write_back
@@ -187,13 +172,11 @@ impl CallbackContext {
     #[inline]
     pub fn on_err(&mut self, err: Error) {
         // 正常err场景，仅仅在debug时check
-        log::debug!("+++ found err: {:?}", err);
+        log::debug!("+++ on_err: {:?} => {:?}", err, self);
+        use Error::*;
         match err {
-            Error::Closed => {}
-            Error::ChanDisabled => {}
-            Error::Waiting => {}
-            Error::Pending => {}
-            _err => log::debug!("on-err:{} {:?}", self, _err),
+            Closed | ChanDisabled | Waiting | Pending => {}
+            _err => log::warn!("on-err:{} {:?}", self, _err),
         }
         self.on_done();
     }
@@ -264,14 +247,17 @@ impl CallbackContext {
         &mut self.ctx
     }
     #[inline]
-    fn try_drop_response(&mut self) {
+    fn swap_response(&mut self, resp: Command) {
         if self.ctx.is_inited() {
             log::debug!("drop response:{}", unsafe { self.unchecked_response() });
-            self.ctx
-                .inited
-                .compare_exchange(true, false, AcqRel, Relaxed)
-                .expect("cas failed");
-            unsafe { std::ptr::drop_in_place(self.response.as_mut_ptr()) };
+            //self.ctx
+            //    .inited
+            //    .compare_exchange(true, false, AcqRel, Relaxed)
+            //    .expect("cas failed");
+            unsafe { std::ptr::replace(self.response.as_mut_ptr(), resp) };
+        } else {
+            self.response.write(resp);
+            self.ctx.inited.store(true, Release);
         }
     }
     #[inline]
@@ -337,7 +323,13 @@ use std::fmt::{self, Debug, Display, Formatter};
 impl Display for CallbackContext {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} tries:{}", self.ctx, self.request(), self.tries)
+        write!(
+            f,
+            "{} {} tries:{}",
+            self.ctx,
+            self.request(),
+            self.tries.load(Acquire)
+        )
     }
 }
 impl Debug for CallbackContext {

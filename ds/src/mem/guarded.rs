@@ -1,8 +1,6 @@
-use crate::ResizedRingBuffer;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use super::RingSlice;
-use crate::PinnedQueue;
+use crate::{PinnedQueue, ResizedRingBuffer, RingSlice};
 
 pub trait BuffRead {
     type Out;
@@ -11,7 +9,8 @@ pub trait BuffRead {
 
 pub struct GuardedBuffer {
     inner: ResizedRingBuffer,
-    taken: usize, // 已取走未释放的位置 read <= taken <= write
+    // 已取走未释放的位置 read <= taken <= write，释放后才会真正读走ResizedRingBuffer
+    taken: usize,
     guards: PinnedQueue<AtomicU32>,
 }
 
@@ -29,15 +28,16 @@ impl GuardedBuffer {
         R: BuffRead<Out = O>,
     {
         self.gc();
-        loop {
-            let b = self.inner.as_mut_bytes();
-            let cap = b.len();
-            let (n, out) = r.read(b);
-            self.inner.advance_write(n);
-            if cap > n || n == 0 {
-                return out;
-            }
-        }
+        self.inner.copy_from(r)
+        //loop {
+        //    let b = self.inner.as_mut_bytes();
+        //    let cap = b.len();
+        //    let (n, out) = r.read(b);
+        //    self.inner.advance_write(n);
+        //    if cap > n || n == 0 {
+        //        return out;
+        //    }
+        //}
     }
     #[inline]
     pub fn read(&self) -> RingSlice {
@@ -46,8 +46,8 @@ impl GuardedBuffer {
     }
     #[inline]
     pub fn take(&mut self, n: usize) -> MemGuard {
-        assert!(n > 0);
-        assert!(self.taken + n <= self.writtened());
+        debug_assert!(n > 0);
+        debug_assert!(self.taken + n <= self.writtened());
         let guard = unsafe { self.guards.push_back_mut() };
         *guard.get_mut() = 0;
         let data = self.inner.slice(self.taken, n);

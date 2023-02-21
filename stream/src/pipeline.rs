@@ -24,7 +24,6 @@ pub async fn copy_bidirectional<C, P, T>(
     metrics: Arc<StreamMetrics>,
     client: C,
     parser: P,
-    pipeline: bool,
 ) -> Result<()>
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
@@ -35,7 +34,6 @@ where
     *metrics.conn_num() += 1;
     let cb = unsafe { callback(&top) };
     let pipeline = CopyBidirectional {
-        pipeline,
         cb,
         top,
         metrics,
@@ -44,6 +42,7 @@ where
         parser,
         pending: VecDeque::with_capacity(15),
         waker: AtomicWaker::default(),
+        registered: false,
         flush: false,
         start: Instant::now(),
         start_init: false,
@@ -63,13 +62,13 @@ pub struct CopyBidirectional<C, P, T> {
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
     waker: AtomicWaker,
+    registered: bool, // waker注册标记
     cb: Callback,
 
     metrics: Arc<StreamMetrics>,
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
     // 如果一个multiget被拆分成多个请求，则start存储的是第一个请求的时间。
     start: Instant,
-    pipeline: bool, // 请求是否需要以pipeline方式进行
     flush: bool,
     start_init: bool,
     first: bool, // 当前解析的请求是否是第一个。
@@ -91,27 +90,25 @@ where
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        self.waker.register(cx.waker());
-        self.process_async_pending();
-        loop {
-            // 从client接收数据写入到buffer
-            let request = self.poll_recv(cx)?;
-            // 解析buffer中的请求，并且发送请求。
-            self.parse_request()?;
-
-            // 把已经返回的response，写入到buffer中。
-            self.process_pending()?;
-            let flush = self.poll_flush(cx)?;
-
-            if self.pending.len() > 0 && !self.pipeline {
-                // CallbackContext::on_done负责唤醒
-                // 非pipeline请求（即ping-pong），已经有ping了，因此等待pong即可。
-                return Poll::Pending;
-            }
-
-            ready!(flush);
-            ready!(request);
+        if !self.registered {
+            self.waker.register(cx.waker());
+            self.registered = true;
         }
+        self.process_async_pending();
+        // 从client接收数据写入到buffer
+        let request = self.poll_recv(cx)?;
+        // 解析buffer中的请求，并且发送请求。
+        self.parse_request()?;
+
+        // 把已经返回的response，写入到buffer中。
+        // 如果有未处理完的请求，则需要register waker，避免miss通知
+        self.waker.clear();
+        self.process_pending()?;
+
+        ready!(self.poll_flush(cx))?;
+        ready!(request);
+
+        Poll::Pending
     }
 }
 impl<C, P, T> CopyBidirectional<C, P, T>
@@ -123,13 +120,13 @@ where
     // 从client读取request流的数据到buffer。
     #[inline]
     fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        //if self.pending.len() == 0 {
-        let Self { client, rx_buf, .. } = self;
-        let mut cx = Context::from_waker(cx.waker());
-        let mut rx = Reader::from(client, &mut cx);
-        ready!(rx_buf.write(&mut rx))?;
-        rx.check()?;
-        //}
+        if self.pending.len() == 0 || !self.waker.waking() {
+            let Self { client, rx_buf, .. } = self;
+            let mut cx = Context::from_waker(cx.waker());
+            let mut rx = Reader::from(client, &mut cx);
+            ready!(rx_buf.write(&mut rx))?;
+            rx.check()?;
+        }
         Poll::Ready(Ok(()))
     }
     // 解析buffer，并且发送请求.
@@ -313,10 +310,7 @@ where
             }
             let mut ctx = self.pending.pop_front().expect("empty");
             // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
-            if ctx.inited() {
-                ctx.take_response();
-            }
-            debug_assert!(!ctx.inited());
+            let _dropped = ctx.take_response();
         }
         // 处理异步请求
         self.process_async_pending();

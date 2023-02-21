@@ -40,21 +40,36 @@ impl ResizedRingBuffer {
             policy: MemPolicy::rx(min, max),
         }
     }
-    // 需要写入数据时，判断是否需要扩容
+    // 从src中读取数据，直到所有数据都读取完毕。满足以下任一条件时，返回：
+    // 1. 读取的字节数为0；
+    // 2. 读取的字节数小于buffer长度;
+    // 对于场景2，有可能还有数据未读取，需要再次调用. 主要是为了降级一次系统调用的开销
     #[inline]
-    pub fn as_mut_bytes(&mut self) -> &mut [u8] {
-        self.grow(512);
-        self.inner.as_mut_bytes()
-    }
-    // 有数写入时，判断是否需要缩容
-    #[inline]
-    pub fn advance_write(&mut self, n: usize) {
-        if n > 0 {
-            self.inner.advance_write(n);
-            self.policy.check_shrink(self.len(), self.cap());
+    pub fn copy_from<O, R: crate::BuffRead<Out = O>>(&mut self, src: &mut R) -> O {
+        loop {
+            // TODO 优化，如果当前buffer已经满了，可以直接返回
+            self.grow(512);
+            let (out, n) = self.inner.copy_from_once(src);
+            if n == 0 {
+                return out;
+            }
         }
-        // 判断是否需要缩容
     }
+    // 需要写入数据时，判断是否需要扩容
+    //#[inline]
+    //fn as_mut_bytes(&mut self) -> &mut [u8] {
+    //    self.grow(512);
+    //    self.inner.as_mut_bytes()
+    //}
+    // 有数写入时，判断是否需要缩容
+    //#[inline]
+    //fn advance_write(&mut self, n: usize) {
+    //    if n > 0 {
+    //        self.inner.advance_write(n);
+    //        self.policy.check_shrink(self.len(), self.cap());
+    //    }
+    //    // 判断是否需要缩容
+    //}
     #[inline]
     fn resize(&mut self, cap: usize) {
         let new = self.inner.resize(cap);

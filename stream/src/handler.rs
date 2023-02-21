@@ -127,14 +127,6 @@ impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnte
             None
         }
     }
-    //#[inline]
-    //fn num_rx(&self) -> usize {
-    //    self.num_rx
-    //}
-    //#[inline]
-    //fn num_tx(&self) -> usize {
-    //    self.num_tx
-    //}
     #[inline]
     fn close(&mut self) -> bool {
         self.data.disable();

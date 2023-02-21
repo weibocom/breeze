@@ -77,7 +77,6 @@ async fn _process_one(
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("started. {}", quard);
     let metrics = Arc::new(StreamMetrics::new(path));
-    let pipeline = p.pipeline();
 
     loop {
         // 等待初始化成功
@@ -98,7 +97,7 @@ async fn _process_one(
         let top = ctop.expect("build failed");
         let metrics = metrics.clone();
         spawn(async move {
-            if let Err(e) = copy_bidirectional(top, metrics.clone(), client, p, pipeline).await {
+            if let Err(e) = copy_bidirectional(top, metrics.clone(), client, p).await {
                 use protocol::Error::*;
                 match e {
                     //protocol::Error::Quit => {} // client发送quit协议退出

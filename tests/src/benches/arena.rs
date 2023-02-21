@@ -5,7 +5,7 @@ use criterion::{black_box, Criterion};
 use ds::arena::{Allocator, Heap};
 pub(super) fn bench_alloc(c: &mut Criterion) {
     let mut group = c.benchmark_group("arena_alloc");
-    let mut cache = ds::arena::Arena::cache(16);
+    let mut cache = ds::arena::Arena::with_cache(16, Heap);
     const RUNS: u64 = 4;
     group.bench_function("cache", |b| {
         b.iter(|| {

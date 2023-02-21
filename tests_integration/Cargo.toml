@@ -25,3 +25,4 @@ path = "src/all.rs"
 
 [features]
 github_workflow = []
+#default = ["github_workflow"]
