@@ -76,4 +76,4 @@ jobs:
       - name: Run unit tests
         run: cargo test -p tests
       - name: Run ci tests
-        run: cargo test -p tests_integration --features github_workflow --features=console-api -- --test-threads 1
+        run: cargo test -p tests_integration --features github_workflow -- --test-threads 1
