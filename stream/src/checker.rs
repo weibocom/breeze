@@ -1,4 +1,3 @@
-use discovery::Inited;
 use ds::time::Duration;
 use std::sync::{atomic::AtomicBool, Arc};
 

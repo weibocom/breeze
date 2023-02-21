@@ -86,9 +86,18 @@ where
         }
     }
 
-    fn poll_auth(&mut self, _cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_auth(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         //是否auth，parser有状态了，状态机？parser 传进去的是buf，不是client，所以前后还要加异步读写
-        match self
+        //todo:读buf代码重复了与下面
+        let mut cx1 = Context::from_waker(cx.waker());
+        let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx1);
+        let poll_read = self.buf.write(&mut reader)?;
+        //有可能出错了，会有未使用的读取，放使用后会有两个mut
+        if let Poll::Ready(_) = poll_read {
+            reader.check()?;
+        }
+
+        let result = match self
             .parser
             .handshake(&mut self.buf, &mut self.s, self.option)?
         {
@@ -99,7 +108,12 @@ where
                 self.authed = true;
                 Poll::Ready(Ok(()))
             }
-        }
+        };
+
+        //成功之后，写pengding会出现未完成情况
+        let _ = self.poll_flush(cx)?;
+
+        result
     }
 
     // 发送request. 读空所有的request，并且发送。直到pending或者error
