@@ -4,7 +4,6 @@ use sharding::hash::Hash;
 
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
-use crate::phantom::Phantom;
 use crate::redis::Redis;
 use crate::{Error, Flag, Result, Writer};
 
@@ -13,28 +12,26 @@ use crate::{Error, Flag, Result, Writer};
 pub enum Parser {
     McBin(MemcacheBinary),
     Redis(Redis),
-    Phantom(Phantom),
     MsgQue(MsgQue),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
         match name {
             "mc" => Ok(Self::McBin(Default::default())),
-            "redis" => Ok(Self::Redis(Default::default())),
-            "phantom" => Ok(Self::Phantom(Default::default())),
+            "redis" | "phantom" => Ok(Self::Redis(Default::default())),
             "msgque" => Ok(Self::MsgQue(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }
-    #[inline]
-    pub fn pipeline(&self) -> bool {
-        match self {
-            Self::McBin(_) => false,
-            Self::Redis(_) => true,
-            Self::Phantom(_) => true,
-            Self::MsgQue(_) => false,
-        }
-    }
+    //#[inline]
+    //pub fn pipeline(&self) -> bool {
+    //    match self {
+    //        Self::McBin(_) => false,
+    //        Self::Redis(_) => true,
+    //        // Self::Phantom(_) => true,
+    //        Self::MsgQue(_) => false,
+    //    }
+    //}
 }
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
@@ -78,7 +75,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         M: Metric<I>,
         I: MetricItem,
     {
-        todo!("not implement");
+        None
     }
 }
 

@@ -36,39 +36,40 @@ impl RingBuffer {
         self.read
     }
     #[inline]
-    pub fn advance_read(&mut self, n: usize) {
-        assert!(n <= self.len());
+    pub(super) fn advance_read(&mut self, n: usize) {
+        debug_assert!(n <= self.len());
         self.read += n;
     }
-    #[inline]
-    pub fn writtened(&self) -> usize {
+    #[inline(always)]
+    pub(super) fn writtened(&self) -> usize {
         self.write
     }
-    #[inline]
-    pub fn advance_write(&mut self, n: usize) {
+    #[inline(always)]
+    fn advance_write(&mut self, n: usize) {
         self.write += n;
     }
-    #[inline]
+    #[inline(always)]
     fn mask(&self, offset: usize) -> usize {
         // 兼容size为0的场景
         offset & self.size.wrapping_sub(1)
     }
-    // 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
     #[inline]
-    pub fn as_mut_bytes(&mut self) -> &mut [u8] {
-        if self.read + self.size == self.write {
-            // 已满
-            unsafe { from_raw_parts_mut(self.data.as_ptr(), 0) }
-        } else {
-            let offset = self.mask(self.write);
-            let read = self.mask(self.read);
-            let n = if offset < read {
-                read - offset
-            } else {
-                self.size - offset
-            };
-            unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
+    pub fn copy_from_once<O, R: crate::BuffRead<Out = O>>(&mut self, src: &mut R) -> (O, usize) {
+        let oft = self.mask(self.write);
+        let n = (self.size - oft).min(self.available());
+        let b = unsafe { from_raw_parts_mut(self.data.as_ptr().add(oft), n) };
+        let (read, out) = src.read(b);
+        self.advance_write(read);
+        (out, read)
+    }
+    #[inline]
+    pub fn copy_from<O, R: crate::BuffRead<Out = O>>(&mut self, src: &mut R) -> O {
+        let (out, read) = self.copy_from_once(src);
+        if read == 0 || self.available() == 0 {
+            return out;
         }
+        let (out, _read) = self.copy_from_once(src);
+        out
     }
     #[inline]
     pub fn data(&self) -> RingSlice {
@@ -88,13 +89,14 @@ impl RingBuffer {
     // 可以读写的数据长度
     #[inline]
     pub fn len(&self) -> usize {
-        assert!(self.write >= self.read);
+        debug_assert!(self.write >= self.read);
         self.write - self.read
     }
     #[inline]
-    fn available(&self) -> usize {
+    pub fn available(&self) -> usize {
         self.size - self.len()
     }
+    // 调用方确保buf.available() >= rs.len()，否则UB
     #[inline]
     pub(super) unsafe fn write_all(&mut self, rs: &RingSlice) {
         use std::ptr::copy_nonoverlapping as copy;
@@ -113,25 +115,8 @@ impl RingBuffer {
     #[inline]
     pub fn write(&mut self, data: &RingSlice) -> usize {
         let n = data.len().min(self.available());
-        unsafe {
-            self.write_all(&data.slice(0, n));
-        }
+        unsafe { self.write_all(&data.slice(0, n)) };
         n
-        //let mut w = 0;
-        //while w < data.len() {
-        //    let src = data.read(w);
-        //    assert!(src.len() > 0);
-        //    let dst = self.as_mut_bytes();
-        //    if dst.len() == 0 {
-        //        break;
-        //    }
-        //    let l = src.len().min(dst.len());
-        //    use std::ptr::copy_nonoverlapping as copy;
-        //    unsafe { copy(src.as_ptr(), dst.as_mut_ptr(), l) };
-        //    self.advance_write(l);
-        //    w += l;
-        //}
-        //w
     }
 
     // cap > self.len()
@@ -150,27 +135,6 @@ impl RingBuffer {
         assert_eq!(self.read, new.read);
         new
     }
-
-    //#[inline]
-    //pub fn update(&mut self, idx: usize, val: u8) {
-    //    assert!(idx < self.len());
-    //    unsafe {
-    //        *self
-    //            .data
-    //            .as_ptr()
-    //            .offset(self.mask(self.read + idx) as isize) = val
-    //    }
-    //}
-    //#[inline]
-    //pub fn at(&self, idx: usize) -> u8 {
-    //    assert!(idx < self.len());
-    //    unsafe {
-    //        *self
-    //            .data
-    //            .as_ptr()
-    //            .offset(self.mask(self.read + idx) as isize)
-    //    }
-    //}
 }
 
 impl Drop for RingBuffer {
@@ -204,6 +168,15 @@ impl Debug for RingBuffer {
             self.read,
             self.write
         )
+    }
+}
+
+mod tests {
+    impl super::RingBuffer {
+        pub fn consume(&mut self, n: usize) {
+            assert!(self.len() >= n);
+            self.advance_read(n);
+        }
     }
 }
 
