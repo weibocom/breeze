@@ -99,7 +99,7 @@ where
         let shard_idx = self.distribute.index(req.hash());
         debug_assert!(
             shard_idx < self.direct_shards.len(),
-            "redis: {}/{} req:{:?}",
+            "mysql: {}/{} req:{:?}",
             shard_idx,
             self.direct_shards.len(),
             req
@@ -144,9 +144,9 @@ where
         if !succeed {
             self.updated
                 .get_mut(CONFIG_UPDATED_KEY)
-                .expect("redis config state missed")
+                .expect("mysql config state missed")
                 .store(true, Ordering::Release);
-            log::warn!("redis will reload topo later...");
+            log::warn!("mysql will reload topo later...");
         }
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -269,8 +269,7 @@ where
                 old.entry(addr).or_insert(Vec::new()).push(endpoint);
             }
         }
-        //
-
+        // 用户名和密码
         let mut res_option = ResOption::default();
         res_option.token = self.password.clone();
         res_option.username = self.user.clone();
