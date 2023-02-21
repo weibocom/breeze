@@ -6,16 +6,16 @@ use tokio::io::{AsyncRead, ReadBuf};
 use ds::BuffRead;
 use protocol::{Error, Result};
 
-pub(crate) struct Reader<'a, C> {
+pub(crate) struct Reader<'a, 'b, C> {
     n: usize, // 成功读取的数据
     b: usize, // 可以读取的字节数（即buffer的大小）
     client: &'a mut C,
-    cx: &'a mut Context<'a>,
+    cx: &'a mut Context<'b>,
 }
 
-impl<'a, C> Reader<'a, C> {
+impl<'a, 'b, C> Reader<'a, 'b, C> {
     #[inline]
-    pub(crate) fn from(client: &'a mut C, cx: &'a mut Context<'a>) -> Self {
+    pub(crate) fn from(client: &'a mut C, cx: &'a mut Context<'b>) -> Self {
         let n = 0;
         let b = 0;
         Self { n, client, cx, b }
@@ -35,7 +35,7 @@ impl<'a, C> Reader<'a, C> {
     }
 }
 
-impl<'a, C> BuffRead for Reader<'a, C>
+impl<'a, 'b, C> BuffRead for Reader<'a, 'b, C>
 where
     C: AsyncRead + Unpin,
 {

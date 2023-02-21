@@ -89,8 +89,8 @@ where
     fn poll_auth(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         //是否auth，parser有状态了，状态机？parser 传进去的是buf，不是client，所以前后还要加异步读写
         //todo:读buf代码重复了与下面
-        let mut cx1 = Context::from_waker(cx.waker());
-        let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx1);
+        // let mut cx1 = Context::from_waker(cx.waker());
+        let mut reader = crate::buffer::Reader::from(&mut self.s, cx);
         let poll_read = self.buf.write(&mut reader)?;
         //有可能出错了，会有未使用的读取，放使用后会有两个mut
         if let Poll::Ready(_) = poll_read {
@@ -138,8 +138,8 @@ where
     #[inline]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         while self.pending.len() > 0 {
-            let mut cx = Context::from_waker(cx.waker());
-            let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx);
+            // let mut cx = Context::from_waker(cx.waker());
+            let mut reader = crate::buffer::Reader::from(&mut self.s, cx);
             let poll_read = self.buf.write(&mut reader)?;
 
             while self.buf.len() > 0 {
