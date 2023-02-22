@@ -16,10 +16,12 @@ impl Drop for V {
     }
 }
 
+const CACHE_SIZE: usize = 32;
 #[ctor::ctor]
-static ARENA: Ephemera<V> = Ephemera::with_cache(32);
+static ARENA: Ephemera<V> = Ephemera::with_cache(CACHE_SIZE);
 #[test]
 fn test_ephemera() {
+    assert_eq!(std::mem::size_of::<Ephemera<V>>(), 64);
     let v = ARENA.alloc(V::new(1));
     ARENA.dealloc(v);
 
@@ -47,24 +49,26 @@ fn random_once() {
     let mut seq = 0;
 
     while total > 0 {
-        let create = rng.gen_range(1..=total);
-        let mut free = rng.gen_range(0..=create);
+        let create = rng.gen_range(1..=(CACHE_SIZE * 2).min(total));
         for _i in 0..=create {
             let v = seq;
             seq += 1;
             let ptr = ARENA.alloc(V::new(v));
             assert_eq!(unsafe { (&*ptr.as_ptr()).0 }, v);
             let drop_immediately: bool = rng.gen();
-            if drop_immediately && free > 0 {
+            if drop_immediately {
                 ARENA.dealloc(ptr);
-                free -= 1;
             } else {
                 pending.push_back(ptr);
             }
         }
-        for _i in 0..free {
-            let ptr = pending.pop_back().expect("double free");
-            ARENA.dealloc(ptr);
+
+        // 按照 1/3的概率进行一次clear
+        let clear = rng.gen_range(0..3);
+        if clear == 0 {
+            while let Some(ptr) = pending.pop_back() {
+                ARENA.dealloc(ptr);
+            }
         }
         total -= create;
     }
