@@ -320,7 +320,7 @@ where
         self.rx_buf.try_gc() && self.pending.len() == 0 && self.async_pending.len() == 0
     }
     #[inline]
-    fn refresh(&mut self) -> bool {
+    fn refresh(&mut self) -> Result<bool> {
         if let Some(top) = self.top.check() {
             unsafe {
                 let old = std::ptr::replace(&mut self.top as *mut T, top);
@@ -340,9 +340,11 @@ where
         self.client.shrink();
         // 满足条件之一说明需要刷新
         // 1. buffer 过大；2. 有异步请求未完成; 3. top 未drop
-        (self.rx_buf.cap() + self.client.cap()) >= crate::REFRESH_THREASHOLD
-            || self.async_pending.len() > 0
-            || self.dropping.len() > 0
+        Ok(
+            (self.rx_buf.cap() + self.client.cap()) >= crate::REFRESH_THREASHOLD
+                || self.async_pending.len() > 0
+                || self.dropping.len() > 0,
+        )
     }
 }
 impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
