@@ -177,21 +177,15 @@ impl Redis {
         log::debug!("+++ will parse redis rsp:{:?}", data);
         data.check_onetoken(*oft)?;
 
-        let mut rsp_ok = true;
         match data.at(0) {
-            b'-' => {
-                rsp_ok = false;
-                data.line(oft)?;
-            }
-            b':' | b'+' => data.line(oft)?,
+            b'-' | b':' | b'+' => data.line(oft)?,
             b'$' => {
                 *oft += data.num_of_string(oft)? + 2;
             }
-            b'*' => {
-                data.skip_all_bulk(oft)?;
-            }
+            b'*' => data.skip_all_bulk(oft)?,
+
             _ => {
-                log::info!("not supported:{:?}", data);
+                log::error!("not supported:{:?}", data);
                 panic!("not supported:{:?}", data);
             }
         }
@@ -200,7 +194,7 @@ impl Redis {
             let mem = s.take(*oft);
             let mut flag = Flag::new();
             // TODO 这次需要测试err场景 fishermen
-            flag.set_status_ok(rsp_ok);
+            flag.set_status_ok(true);
             return Ok(Some(Command::new(flag, mem)));
         }
         Ok(None)
@@ -479,6 +473,12 @@ impl Protocol for Redis {
         // 去掉ignore rsp，改由drop_on_done来处理
         // hash_cmd.set_ignore_rsp(true);
         None
+    }
+    #[inline(always)]
+    fn check(&self, _req: &HashedCommand, _resp: &Command) {
+        if _resp.data()[0] == b'-' {
+            log::error!("+++ check failed for req:{:?}, resp:{:?}", _req, _resp);
+        }
     }
 }
 
