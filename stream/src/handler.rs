@@ -3,9 +3,13 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use ds::chan::mpsc::Receiver;
+use ds::{
+    chan::mpsc::Receiver,
+    time::{Duration, Instant},
+};
 use protocol::{Error, Protocol, Request, Result, Stream, Writer};
 use std::task::ready;
+use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::buffer::StreamGuard;
@@ -23,6 +27,10 @@ pub struct Handler<'r, Req, P, S> {
     // 处理timeout
     num_rx: usize,
     num_tx: usize,
+
+    // 发送ping请求时 num_tx的值
+    last_ping_num_tx: usize,
+    last_ping_at: Instant,
 
     rtt: Metric,
 }
@@ -64,7 +72,55 @@ where
             rtt,
             num_rx: 0,
             num_tx: 0,
+            last_ping_num_tx: 0,
+            last_ping_at: Instant::now(),
         }
+    }
+    // 检查连接是否存在
+    // 1. 连续5分钟没有发送请求，则进行检查
+    // 2. 从io进行一次poll_read
+    // 3. 如果poll_read返回Pending，则说明连接正常
+    // 4. 如果poll_read返回Ready，并且返回的数据为0，则说明连接已经断开
+    // 5. 如果poll_read返回Ready，并且返回的数据不为0，则说明收到异常请求
+    #[inline]
+    fn check_alive(&mut self) -> Result<()> {
+        if self.num_tx != self.last_ping_num_tx {
+            // 有请求发送，不需要ping
+            self.last_ping_num_tx = self.num_tx;
+            self.last_ping_at = Instant::now();
+            return Ok(());
+        }
+        // 如果最近5分钟之内没有请求，则发送一个ping作为心跳
+        if self.last_ping_at.elapsed() > Duration::from_secs(5 * 60) {
+            assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
+            // 通过一次poll read来判断是否连接已经断开。
+            let noop = noop_waker::noop_waker();
+            let mut ctx = std::task::Context::from_waker(&noop);
+            let mut data = [0u8; 8];
+            let mut buf = ReadBuf::new(&mut data);
+            let poll_read = Pin::new(&mut self.s).poll_read(&mut ctx, &mut buf);
+            // 只有Pending才说明连接是正常的。
+            match poll_read {
+                Poll::Ready(Ok(_)) => {
+                    // 没有请求，但是读到了数据？bug
+                    debug_assert_eq!(buf.filled().len(), 0, "unexpected:{:?} => {:?}", self, data);
+                    if buf.filled().len() > 0 {
+                        log::error!("unexpected data from server:{:?} => {:?}", self, data);
+                        return Err(Error::UnexpectedData);
+                    } else {
+                        // 读到了EOF，连接已经断开。
+                        return Err(Error::Eof);
+                    }
+                }
+                Poll::Ready(Err(e)) => {
+                    return Err(e.into());
+                }
+                Poll::Pending => {}
+            }
+            self.last_ping_at = Instant::now();
+        }
+
+        Ok(())
     }
     // 发送request. 读空所有的request，并且发送。直到pending或者error
     #[inline]
@@ -115,7 +171,7 @@ where
 }
 unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
 unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
-impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnter
+impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnter
     for Handler<'r, Req, P, S>
 {
     #[inline]
@@ -147,12 +203,15 @@ impl<'r, Req: Request, P, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnte
         self.buf.try_gc()
     }
     #[inline]
-    fn refresh(&mut self) -> bool {
+    fn refresh(&mut self) -> Result<bool> {
         log::debug!("handler:{:?}", self);
         self.buf.try_gc();
         self.buf.shrink();
         self.s.shrink();
-        self.buf.cap() + self.s.cap() >= crate::REFRESH_THREASHOLD
+
+        self.check_alive()?;
+        Ok(true)
+        //self.buf.cap() + self.s.cap() >= crate::REFRESH_THREASHOLD
     }
 }
 
