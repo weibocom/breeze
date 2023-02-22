@@ -62,4 +62,17 @@ impl MysqlNamespace {
         }
         nso
     }
+    //todo: 生成表名/库名/sql语句
+    fn build_table(&self, id: u64) -> String {
+        "db".to_string()
+    }
+    fn build_db(&self, id: u64) -> String {
+        "db".to_string()
+    }
+    pub(super) fn build_sql(&self, id: u64, sql_key: &str) -> String {
+        "sql".to_string()
+    }
+    fn get_time_from_id(&self, id: u64) -> u64 {
+        234234234
+    }
 }
