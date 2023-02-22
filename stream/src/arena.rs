@@ -28,9 +28,9 @@ impl CallbackContextArena {
 
 type Global = Ephemera<CallbackContext>;
 
-// 占用内存约为 20480 * 256 = 5.2M
+// 占用内存约为 32768 * 192 = 6.2Mb
 #[ctor::ctor]
-static GLOBAL_CACHE: Global = Global::with_cache(20480);
+static GLOBAL_CACHE: Global = Global::with_cache(1 << 15);
 
 struct GlobalArena;
 
