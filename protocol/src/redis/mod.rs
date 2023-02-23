@@ -184,10 +184,7 @@ impl Redis {
             }
             b'*' => data.skip_all_bulk(oft)?,
 
-            _ => {
-                log::error!("not supported:{:?}", data);
-                panic!("not supported:{:?}", data);
-            }
+            _ => panic!("not supported:{:?}", data),
         }
 
         if *oft <= data.len() {
@@ -218,11 +215,7 @@ impl Protocol for Redis {
                 Ok(())
             }
             e => {
-                log::warn!(
-                    "+++ redis parsed err: {:?}, req: {:?} ",
-                    e,
-                    packet.inner_data(),
-                );
+                log::warn!("redis parsed err: {:?}, req: {:?} ", e, packet.inner_data());
                 e
             }
         }
