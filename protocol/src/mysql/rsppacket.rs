@@ -441,6 +441,7 @@ impl<T> ParsePacket<T> for RingSlice {
 // impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 //     #[inline]
 //     pub(super) fn new(stream: &'a mut S) -> Self {
+//from实现解除了ctx和stream的关联，所以可以有两个mut引用
 //         let ctx = stream.context().into();
 //         Self { stream, ctx }
 //     }
