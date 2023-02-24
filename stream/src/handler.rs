@@ -4,7 +4,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use ds::chan::mpsc::Receiver;
-use protocol::{Error, Protocol, Request, Result, Stream, Writer};
+use ds::Switcher;
+use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream, Writer};
 use std::task::ready;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -24,6 +25,10 @@ pub struct Handler<'r, Req, P, S> {
     num_rx: usize,
     num_tx: usize,
 
+    option: &'r mut ResOption,
+    init: &'r mut Switcher,
+    authed: bool,
+
     rtt: Metric,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
@@ -37,6 +42,10 @@ where
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
+        if me.parser.need_auth() && !me.authed {
+            ready!(me.poll_auth(cx)?);
+        }
+
         let request = me.poll_request(cx)?;
         let flush = me.poll_flush(cx)?;
         let response = me.poll_response(cx)?;
@@ -53,7 +62,14 @@ where
     S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
     P: Protocol + Unpin,
 {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, rtt: Metric) -> Self {
+    pub(crate) fn from(
+        data: &'r mut Receiver<Req>,
+        s: S,
+        parser: P,
+        rtt: Metric,
+        option: &'r mut ResOption,
+        init: &'r mut Switcher,
+    ) -> Self {
         data.enable();
         Self {
             data,
@@ -64,15 +80,52 @@ where
             rtt,
             num_rx: 0,
             num_tx: 0,
+            option,
+            init,
+            authed: false,
         }
     }
+
+    fn poll_auth(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        //是否auth，parser有状态了，状态机？parser 传进去的是buf，不是client，所以前后还要加异步读写
+        //todo:读buf代码重复了与下面
+        // let mut cx1 = Context::from_waker(cx.waker());
+        let mut reader = crate::buffer::Reader::from(&mut self.s, cx);
+        let poll_read = self.buf.write(&mut reader)?;
+        //有可能出错了，会有未使用的读取，放使用后会有两个mut
+        if let Poll::Ready(_) = poll_read {
+            reader.check()?;
+        }
+
+        let result = match self
+            .parser
+            .handshake(&mut self.buf, &mut self.s, self.option)?
+        {
+            HandShake::Failed => Poll::Ready(Err(Error::AuthFailed)),
+            HandShake::Continue => Poll::Pending,
+            HandShake::Success => {
+                self.init.on();
+                self.authed = true;
+                Poll::Ready(Ok(()))
+            }
+        };
+
+        //成功之后，写pengding会出现未完成情况
+        let _ = self.poll_flush(cx)?;
+
+        result
+    }
+
     // 发送request. 读空所有的request，并且发送。直到pending或者error
     #[inline]
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         self.s.cache(self.data.size_hint() > 1);
-        while let Some(req) = ready!(self.data.poll_recv(cx)) {
+        while let Some(mut req) = ready!(self.data.poll_recv(cx)) {
+            //插入mysql seqid
+            self.parser.before_send(&mut self.buf, &mut req);
             self.num_tx += 1;
             self.s.write_slice(req.data(), 0)?;
+            //此处paser需要插钩子，设置seqid
             match req.on_sent() {
                 Some(r) => self.pending.push_back(r),
                 None => {
@@ -85,8 +138,8 @@ where
     #[inline]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         while self.pending.len() > 0 {
-            let mut cx = Context::from_waker(cx.waker());
-            let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx);
+            // let mut cx = Context::from_waker(cx.waker());
+            let mut reader = crate::buffer::Reader::from(&mut self.s, cx);
             let poll_read = self.buf.write(&mut reader)?;
 
             while self.buf.len() > 0 {

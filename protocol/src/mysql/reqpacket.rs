@@ -93,3 +93,5 @@ impl TypeConvert for RingSlice {
         unsafe { std::mem::transmute(SQL_TYPE_IDX[op_code]) }
     }
 }
+
+

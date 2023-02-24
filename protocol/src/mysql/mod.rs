@@ -1,6 +1,5 @@
 #[macro_use]
 pub mod bitflags_ext;
-
 pub mod constants;
 mod error;
 mod io;
@@ -10,7 +9,7 @@ mod named_params;
 mod opts;
 mod packets;
 mod params;
-pub(crate) mod proto;
+mod proto;
 mod reqpacket;
 mod row;
 mod rsppacket;
@@ -43,6 +42,7 @@ use ds::MemGuard;
 use mcpacket::Binary;
 use sharding::hash::Hash;
 
+
 #[derive(Clone)]
 pub struct Mysql {
     convert_strategy: MysqlStrategy,
@@ -58,9 +58,57 @@ impl Default for Mysql {
     }
 }
 
+
+#[derive(Debug, Clone, Copy)]
+pub(self) enum HandShakeStatus {
+    #[allow(dead_code)]
+    Init,
+    InitialhHandshakeResponse,
+    AuthSucceed,
+}
+
 impl Protocol for Mysql {
-    // in：mc二进制协议解析； out：mysql协议
-    // 支持的mc协议包括：get、getq+noops、set、del
+    fn handshake(
+        &self,
+        stream: &mut impl Stream,
+        s: &mut impl crate::Writer,
+        option: &mut crate::ResOption,
+    ) -> Result<HandShake> {
+        let mut packet = ResponsePacket::new(stream, None);
+        match packet.ctx().status {
+            HandShakeStatus::Init => match packet.take_initial_handshake() {
+                Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+                Ok(initial_handshake) => {
+                    initial_handshake.check_fast_auth_and_native()?;
+                    let auth_data = &native_auth(
+                        initial_handshake.auth_plugin_data.as_bytes(),
+                        option.token.as_bytes(),
+                    );
+                    let response = packet.build_handshake_response(option, auth_data)?;
+                    s.write(&response)?;
+
+                    packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
+                    Ok(HandShake::Continue)
+                }
+                Err(e) => Err(e),
+            },
+            HandShakeStatus::InitialhHandshakeResponse => match packet.take_and_ok() {
+                Ok(_) => {
+                    packet.ctx().status = HandShakeStatus::AuthSucceed;
+                    Ok(HandShake::Success)
+                }
+                Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+                Err(e) => Err(e),
+            },
+            HandShakeStatus::AuthSucceed => Ok(HandShake::Success),
+        }
+    }
+
+    fn need_auth(&self) -> bool {
+        true
+    }
+
+    // TODO in: mc vs redis, out: mysql
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
@@ -206,6 +254,7 @@ impl Protocol for Mysql {
             }
         }
         Ok(())
+
     }
 
     fn build_writeback_request<C, M, I>(
@@ -268,6 +317,11 @@ impl Mysql {
         }
         response
     }
+
+     //修改req，seq +1
+    fn before_send<S: Stream, Req: crate::Request>(&self, _stream: &mut S, _req: &mut Req) {
+        todo!()
+    }
 }
 
 pub enum ConnState {
@@ -277,3 +331,6 @@ pub enum ConnState {
     // 对于AuthError，通过直接返回异常来标志
     AuthOk,
 }
+
+   
+

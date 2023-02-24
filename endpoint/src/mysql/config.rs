@@ -4,10 +4,18 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct MysqlNamespace {
+<<<<<<< HEAD
     // TODO speed up, ref: https://git.intra.weibo.com/platform/resportal/-/issues/548
     pub(crate) basic: Basic,
     pub(crate) backends: Vec<String>,
     pub(crate) archive: HashMap<String, Vec<String>>,
+=======
+    // TODO speed up, ref: https://git/platform/resportal/-/issues/548
+    pub(crate) basic: Basic,
+    pub(crate) sql: HashMap<String, String>,
+    pub(crate) backends: Vec<String>,
+    // pub(crate) archive: HashMap<String, Vec<String>>,
+>>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -28,5 +36,54 @@ pub struct Basic {
     pub(crate) timeout_ms_slave: u32,
     #[serde(default)]
     pub(crate) min_pool_size: u16,
+<<<<<<< HEAD
     // TODO speed up
+=======
+    #[serde(default)]
+    pub(crate) max_idle_time: u32,
+    #[serde(default)]
+    pub(crate) db_prefix: String,
+    #[serde(default)]
+    pub(crate) table_prefix: String,
+    #[serde(default)]
+    pub(crate) table_postfix: String,
+    #[serde(default)]
+    pub(crate) db_count: u32,
+    #[serde(default)]
+    pub(crate) table_count: u32,
+    #[serde(default)]
+    pub(crate) hierarchy: bool,
+    #[serde(default)]
+    pub(crate) password: String,
+    #[serde(default)]
+    pub(crate) user: String,
+}
+
+impl MysqlNamespace {
+    pub(super) fn try_from(cfg: &str) -> Option<Self> {
+        let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
+            .map_err(|e| {
+                log::info!("failed to parse mysql config:{}", cfg);
+                e
+            })
+            .ok();
+        if let Some(ns) = nso {
+            return Some(ns);
+        }
+        nso
+    }
+    //todo: 生成表名/库名/sql语句
+    fn build_table(&self, id: u64) -> String {
+        "db".to_string()
+    }
+    fn build_db(&self, id: u64) -> String {
+        "db".to_string()
+    }
+    pub(super) fn build_sql(&self, id: u64, sql_key: &str) -> String {
+        "sql".to_string()
+    }
+    fn get_time_from_id(&self, id: u64) -> u64 {
+        234234234
+    }
+>>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
 }
