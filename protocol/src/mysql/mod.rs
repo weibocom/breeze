@@ -1,31 +1,116 @@
-mod reqpacket;
-mod rsppacket;
+#[macro_use]
+pub mod bitflags_ext;
 
+pub mod constants;
+mod error;
+mod io;
+mod mcpacket;
+mod misc;
+mod named_params;
+mod opts;
+mod packets;
+mod params;
+pub(crate) mod proto;
+mod reqpacket;
+mod row;
+mod rsppacket;
+mod scramble;
+mod strategy;
+mod value;
+
+use std::io::Read;
+
+use self::mcpacket::PacketPos;
+use self::mcpacket::RespStatus;
+use self::mcpacket::*;
+use self::opts::Opts;
+use self::reqpacket::RequestPacket;
+use self::rsppacket::ResponsePacket;
+use self::strategy::MysqlStrategy;
+
+use super::Flag;
 use super::Protocol;
 use super::Result;
+use crate::mysql::mcpacket::QUITE_GET_TABLE;
 use crate::Command;
 use crate::Error;
+use crate::HashedCommand;
 use crate::RequestProcessor;
 use crate::Stream;
+use byteorder::WriteBytesExt;
+use ds::Buffer;
+use ds::MemGuard;
+use mcpacket::Binary;
 use sharding::hash::Hash;
 
-#[derive(Clone, Default)]
-pub struct Mysql;
+#[derive(Clone)]
+pub struct Mysql {
+    convert_strategy: MysqlStrategy,
+    // req_packet: RequestPacket,
+}
+
+impl Default for Mysql {
+    fn default() -> Self {
+        Mysql {
+            convert_strategy: Default::default(),
+            // req_packet: Default::default(),
+        }
+    }
+}
 
 impl Protocol for Mysql {
-    // TODO in: mc vs redis, out: mysql
+    // in：mc二进制协议解析； out：mysql协议
+    // 支持的mc协议包括：get、getq+noops、set、del
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        Err(Error::ProtocolNotSupported)
+        assert!(stream.len() > 0, "mc req: {:?}", stream.slice());
+        log::debug!("recv mc:{:?}", stream.slice());
+
+        // TODO: 这个需要把encode、decode抽出来，然后去掉mut，提升为Mysql结构体的字段 fishermen
+        let mut req_packet = RequestPacket::new();
+
+        // TODO request的解析部分待抽到reqpacket中
+        while stream.len() >= mcpacket::HEADER_LEN {
+            let req = stream.slice();
+            req.check_request()?;
+            let packet_len = req.packet_len();
+            if req.len() < packet_len {
+                stream.reserve(packet_len - req.len());
+                break;
+            }
+
+            let last = !req.quiet_get();
+            let cmd = req.operation();
+            let op_code = req.op();
+            let mut flag = Flag::from_op(op_code as u16, cmd);
+            flag.set_try_next_type(req.try_next_type());
+            flag.set_sentonly(req.sentonly());
+            flag.set_noforward(req.noforward());
+
+            let hash = req.hash(alg);
+
+            // 确认请求类型和sql，构建mysql request
+            let sql = self.convert_strategy.build_sql(&req)?;
+            let mysql_cmd = req.mysql_cmd();
+            let request = req_packet.build_request(mysql_cmd, &sql)?;
+
+            let memguard = MemGuard::from_vec(request);
+            let cmd = HashedCommand::new(memguard, hash, flag);
+            process.process(cmd, last);
+        }
+
+        Ok(())
     }
 
-    // TODO mysql
+    // TODO in: mysql, out: mc vs redis
+    //  1 解析mysql response； 2 转换为mc响应
     fn parse_response<S: crate::Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        Err(Error::ProtocolNotSupported)
+        let mut rsp_packet = ResponsePacket::new(data, None);
+        rsp_packet.proc_cmd()
     }
 
     fn write_response<C, W, M, I>(
@@ -40,7 +125,87 @@ impl Protocol for Mysql {
         M: crate::Metric<I>,
         I: crate::MetricItem,
     {
-        Err(Error::Closed)
+        // sendonly 直接返回
+        if ctx.request().sentonly() {
+            assert!(response.is_none(), "req:{:?}", ctx.request());
+            return Ok(());
+        }
+
+        // 如果原始请求是quite_get请求，并且not found，则不回写。
+        let old_op_code = ctx.request().op_code();
+
+        // 如果原始请求是quite_get请求，并且not found，则不回写。
+        // if let Some(rsp) = ctx.response_mut() {
+        if let Some(rsp) = response {
+            assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
+
+            // 验证Opaque是否相同. 不相同说明数据不一致
+            if ctx.request().data().opaque() != rsp.data().opaque() {
+                ctx.metric().inconsist(1);
+            }
+
+            // 先进行metrics统计
+            //self.metrics(ctx.request(), Some(&rsp), ctx);
+
+            // 如果quite 请求没拿到数据，直接忽略
+            if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
+                return Ok(());
+            }
+            log::debug!("+++ will write mc rsp:{:?}", rsp.data());
+            let data = rsp.data_mut();
+            data.restore_op(old_op_code as u8);
+            w.write_slice(data, 0)?;
+
+            return Ok(());
+        }
+
+        // 先进行metrics统计
+        //self.metrics(ctx.request(), None, ctx);
+
+        match old_op_code as u8 {
+            // noop: 第一个字节变更为Response，其他的与Request保持一致
+            OP_CODE_NOOP => {
+                w.write_u8(RESPONSE_MAGIC)?;
+                w.write_slice(ctx.request().data(), 1)?;
+            }
+
+            //version: 返回固定rsp
+            OP_CODE_VERSION => w.write(&VERSION_RESPONSE)?,
+
+            // stat：返回固定rsp
+            OP_CODE_STAT => w.write(&STAT_RESPONSE)?,
+
+            // quit/quitq 无需返回rsp
+            OP_CODE_QUIT | OP_CODE_QUITQ => return Err(Error::Quit),
+
+            // quite get 请求，无需返回任何rsp，但没实际发送，rsp_ok设为false
+            OP_CODE_GETQ | OP_CODE_GETKQ => return Ok(()),
+            // 0x09 | 0x0d => return Ok(()),
+
+            // set: mc status设为 Item Not Stored,status设为false
+            OP_CODE_SET => {
+                w.write(&self.build_empty_response(RespStatus::NotStored, ctx.request()))?
+            }
+            // self.build_empty_response(RespStatus::NotStored, req)
+
+            // get/gets，返回key not found 对应的0x1
+            OP_CODE_GET => {
+                w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?
+            }
+
+            // self.build_empty_response(RespStatus::NotFound, req)
+
+            // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
+            _ => {
+                log::warn!(
+                    "+++ mc NoResponseFound req: {}/{:?}",
+                    old_op_code,
+                    ctx.request()
+                );
+                return Err(Error::OpCodeNotSupported(old_op_code));
+            }
+        }
+        Ok(())
     }
 
     fn build_writeback_request<C, M, I>(
@@ -60,4 +225,55 @@ impl Protocol for Mysql {
     fn check(&self, _req: &crate::HashedCommand, _resp: &crate::Command) {
         // TODO speed up
     }
+}
+
+impl Mysql {
+    // 1 解析shakehand、构建shakehandresponse；
+    // 2 解析AuthSwitchRequest、AuthMoreData等【next】
+    // 3 解析Ok 或 Error packet
+    pub fn parse_auth<S: crate::Stream>(
+        &self,
+        data: &mut S,
+        state: ConnState,
+        opts: Opts,
+    ) -> Result<(Option<HashedCommand>, ConnState)> {
+        let mut rsppacket = ResponsePacket::new(data, Some(opts));
+        match state {
+            ConnState::ShakeHand => {
+                let handshake_rsp = rsppacket.proc_handshake()?;
+                return Ok((Some(handshake_rsp), ConnState::AuthSwitch));
+            }
+            ConnState::AuthSwitch => {
+                rsppacket.proc_auth()?;
+                return Ok((None, ConnState::AuthOk));
+            }
+            _ => {
+                log::warn!("unsupport now!");
+                return Err(Error::ProtocolNotSupported);
+            }
+        }
+    }
+
+    // 根据req构建response，status为mc协议status，共11种
+    #[inline]
+    fn build_empty_response(&self, status: RespStatus, req: &HashedCommand) -> [u8; HEADER_LEN] {
+        let req_slice = req.data();
+        let mut response = [0; HEADER_LEN];
+        response[PacketPos::Magic as usize] = RESPONSE_MAGIC;
+        response[PacketPos::Opcode as usize] = req_slice.op();
+        response[PacketPos::Status as usize + 1] = status as u8;
+        //复制 Opaque
+        for i in PacketPos::Opaque as usize..PacketPos::Opaque as usize + 4 {
+            response[i] = req_slice.at(i);
+        }
+        response
+    }
+}
+
+pub enum ConnState {
+    ShakeHand,
+    AuthSwitch,
+    AuthMoreData,
+    // 对于AuthError，通过直接返回异常来标志
+    AuthOk,
 }
