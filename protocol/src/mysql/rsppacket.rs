@@ -366,6 +366,14 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     pub(super) fn take_and_ok(&mut self) -> Result<()> {
         todo!();
     }
+
+    pub(super) fn ctx(&mut self) -> &mut ResponseContext {
+        self.ctx
+    }
+
+    pub(crate) fn parse_packet(&mut self) -> Result<RingSlice> {
+        todo!()
+    }
 }
 
 impl<'a, S: crate::Stream> Display for ResponsePacket<'a, S> {
