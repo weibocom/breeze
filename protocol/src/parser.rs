@@ -4,25 +4,25 @@ use sharding::hash::Hash;
 
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
-use crate::phantom::Phantom;
+use crate::mysql::Mysql;
 use crate::redis::Redis;
-use crate::{Error, Flag, Result, Writer};
+use crate::{Error, Flag, Request, Result, Writer};
 
 #[enum_dispatch(Proto)]
 #[derive(Clone)]
 pub enum Parser {
     McBin(MemcacheBinary),
     Redis(Redis),
-    Phantom(Phantom),
     MsgQue(MsgQue),
+    Mysql(Mysql),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
         match name {
             "mc" => Ok(Self::McBin(Default::default())),
-            "redis" => Ok(Self::Redis(Default::default())),
-            "phantom" => Ok(Self::Phantom(Default::default())),
+            "redis" | "phantom" => Ok(Self::Redis(Default::default())),
             "msgque" => Ok(Self::MsgQue(Default::default())),
+            "mysql" => Ok(Self::Mysql(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }
@@ -31,19 +31,47 @@ impl Parser {
         match self {
             Self::McBin(_) => false,
             Self::Redis(_) => true,
-            Self::Phantom(_) => true,
+            // Self::Phantom(_) => true,
             Self::MsgQue(_) => false,
+            Self::Mysql(_) => false,
         }
     }
 }
+
+// #[derive(Default)]
+// pub enum AuthMethod {}
+
+#[derive(Default, Clone)]
+pub struct ResOption {
+    // pub method: AuthMethod,
+    pub token: String,
+    pub username: String,
+}
+
+pub enum HandShake {
+    Success,
+    Failed,
+    Continue,
+}
+
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
+    //配置在parser初始化时候传入或者handle存auth？token咋存？
+    fn handshake(
+        &self,
+        _stream: &mut impl Stream,
+        _s: &mut impl Writer,
+        _option: &mut ResOption,
+    ) -> Result<HandShake> {
+        Ok(HandShake::Success)
+    }
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
+    fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
 
     // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
@@ -78,7 +106,10 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         M: Metric<I>,
         I: MetricItem,
     {
-        todo!("not implement");
+        None
+    }
+    fn need_auth(&self) -> bool {
+        false
     }
 }
 

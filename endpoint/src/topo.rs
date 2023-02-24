@@ -2,7 +2,7 @@ use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
 use ds::time::Duration;
-use protocol::{Protocol, Resource};
+use protocol::{Protocol, ResOption, Resource};
 use sharding::hash::Hasher;
 
 // pub use protocol::Endpoint;
@@ -101,7 +101,14 @@ where
 }
 
 pub trait Builder<P, R, E> {
-    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Duration) -> E
+    fn build(
+        addr: &str,
+        parser: P,
+        rsrc: Resource,
+        service: &str,
+        timeout: Duration,
+        option: ResOption,
+    ) -> E
     where
         E: Endpoint<Item = R>;
 }
@@ -212,6 +219,7 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
 
 use crate::cacheservice::topo::CacheService;
 use crate::msgque::topo::MsgQue;
+use crate::mysql::topo::MysqlService;
 use crate::phantomservice::topo::PhantomService;
 use crate::redisservice::topo::RedisService;
 
@@ -219,5 +227,6 @@ define_topology! {
     RedisService<B, E, R, P>, RedisService, "rs";
     CacheService<B, E, R, P>, CacheService, "cs";
     PhantomService<B, E, R, P>, PhantomService, "pt";
-    MsgQue<B, E, R, P>, MsgQue, "mq"
+    MsgQue<B, E, R, P>, MsgQue, "mq";
+    MysqlService<B, E, R, P>, MysqlService, "mysql"
 }

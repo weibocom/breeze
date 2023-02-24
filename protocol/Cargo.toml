@@ -43,3 +43,6 @@ percent-encoding = "2.1.0"
 proptest = "1.0"
 flate2 = { version = "1.0", default-features = false }
 
+
+rust-crypto = "0.2.36"
+
