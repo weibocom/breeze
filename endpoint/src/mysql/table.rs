@@ -26,8 +26,8 @@ impl TNamePostfixType {
     }
 }
 
-pub struct table;
-impl table {
+pub struct Table;
+impl Table {
     pub fn get_sql(
         item: &MysqlNamespace,
         sql_name: &str,
@@ -81,18 +81,14 @@ impl table {
     fn get_db_name_by_id(item: &MysqlNamespace, id: i64) -> Option<String> {
         let (db_name_prefix, db_count) = (item.basic.db_prefix.clone(), item.basic.db_count);
         //todo: check db_name_prefix not empty
-        if let id = id {
-            let db_index = 0;
-            // let db_index = api_util::get_hash4split(id, db_count * item.table_count.max(1));
-            let db_index = db_index / item.basic.table_count;
-            return Some(format!("{}_{}", db_name_prefix, db_index));
-        } else {
-            log::error!("id is null");
-        }
-        None
+
+        let db_index = 0;
+        // let db_index = api_util::get_hash4split(id, db_count * item.table_count.max(1));
+        let db_index = db_index / item.basic.table_count;
+        return Some(format!("{}_{}", db_name_prefix, db_index));
     }
     fn get_index_table_name_by_id(item: &MysqlNamespace, id: i64) -> Option<String> {
-        let (table_prefix, id) = (item.basic.table_prefix.clone(), id);
+        let table_prefix = item.basic.table_prefix.clone();
         //todo: check db_name_prefix not empty
         if item.basic.table_count > 0 && item.basic.db_count > 0 {
             let mut tbl_index = 0;
@@ -109,24 +105,19 @@ impl table {
         id: i64,
         is_display_day: bool,
     ) -> Option<String> {
-        if let id_val = id {
-            let milliseconds = UuidHelper::get_time_from_id(id_val) * 1000;
-            let yy_mm_dd = if is_display_day {
-                chrono::Utc
-                    .timestamp_millis(milliseconds)
-                    .format("%y%m%d")
-                    .to_string()
-            } else {
-                chrono::Utc
-                    .timestamp_millis(milliseconds)
-                    .format("%y%m")
-                    .to_string()
-            };
-            Some(format!("{}_{}", tbl_prefix, yy_mm_dd))
+        let milliseconds = UuidHelper::get_time_from_id(id) * 1000;
+        let yy_mm_dd = if is_display_day {
+            chrono::Utc
+                .timestamp_millis(milliseconds)
+                .format("%y%m%d")
+                .to_string()
         } else {
-            log::error!("tblPrefix is null or empty, id is null");
-            None
-        }
+            chrono::Utc
+                .timestamp_millis(milliseconds)
+                .format("%y%m")
+                .to_string()
+        };
+        Some(format!("{}_{}", tbl_prefix, yy_mm_dd))
     }
 
     pub fn get_sql_key(db_name: &str, table_name: &str, sql_name: &str) -> String {
