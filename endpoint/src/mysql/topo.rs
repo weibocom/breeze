@@ -35,7 +35,7 @@ pub struct MysqlService<B, E, Req, P> {
     // 按时间维度分库分表
     archive_shards: HashMap<String, Vec<Shard<E>>>,
     archive_shards_url: HashMap<String, Vec<Vec<String>>>,
-
+    sql: HashMap<String, String>,
     hasher: Hasher,
     distribute: Distribute,
     selector: Selector, // 从的选择策略。
@@ -48,7 +48,6 @@ pub struct MysqlService<B, E, Req, P> {
     user: String,
     password: String,
 }
-
 impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
@@ -68,6 +67,7 @@ impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
             _mark: Default::default(),
             user: Default::default(),
             password: Default::default(),
+            sql: Default::default(),
         }
     }
 }
@@ -158,7 +158,7 @@ where
             self.selector = ns.basic.selector.as_str().into();
             self.user = ns.basic.user.as_str().into();
             self.password = ns.basic.password.as_str().into();
-
+            self.sql = ns.sql.clone();
             let mut shards_url = Vec::new();
             for shard in ns.backends.iter() {
                 let mut shard_url = Vec::new();
