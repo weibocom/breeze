@@ -437,11 +437,14 @@ impl<T> ParsePacket<T> for RingSlice {
 
 // TODO 代码冲突，merge 到上面的ResponsePacket，暂时保留备查 fishermen
 // //解析rsp的时候，take的时候seq才加一？
-// pub(super) struct ResponsePacket<'a, S> {}
+// pub(super) struct ResponsePacket<'a, S> {
+//     stream: &'a mut S,
+//     ctx: &'a mut ResponseContext,
+// }
 // impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 //     #[inline]
 //     pub(super) fn new(stream: &'a mut S) -> Self {
-//from实现解除了ctx和stream的关联，所以可以有两个mut引用
+//         //from实现解除了ctx和stream的关联 ，所以可以有两个mut引用
 //         let ctx = stream.context().into();
 //         Self { stream, ctx }
 //     }
