@@ -110,7 +110,7 @@ where
             }
         };
 
-        //成功之后，写pengding会出现未完成情况
+        //成功之后，写pending会出现未完成情况
         let _ = self.poll_flush(cx)?;
 
         result
