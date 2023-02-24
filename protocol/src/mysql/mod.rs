@@ -30,6 +30,7 @@ use self::strategy::MysqlStrategy;
 use super::Flag;
 use super::Protocol;
 use super::Result;
+use crate::HandShake;
 use crate::mysql::mcpacket::QUITE_GET_TABLE;
 use crate::Command;
 use crate::Error;
