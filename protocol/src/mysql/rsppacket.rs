@@ -347,12 +347,13 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     //解析initial_handshake，暂定解析成功会take走stream，协议未完成返回incomplete
     //如果这样会copy，可返回引用，外部take，但问题不大
     pub(super) fn take_initial_handshake(&mut self) -> Result<InitialHandshake> {
-        let packet = self.parse_packet()?;
-        let packet: InitialHandshake = packet.parse();
-        //为了take走还有效
-        let packet = packet.clone();
-        self.take();
-        Ok(packet)
+        // let packet = self.parse_packet()?;
+        // let packet: InitialHandshake = packet.parse();
+        // //为了take走还有效
+        // let packet = packet.clone();
+        // self.take();
+        // Ok(packet)
+        todo!()
     }
     //构建采用Native Authentication快速认证的handshake response，seq+1
     pub(super) fn build_handshake_response(
