@@ -30,11 +30,9 @@ impl CommandHasher {
         self.0 = self.0.wrapping_mul(31).wrapping_add(b as i32);
     }
     #[inline(always)]
-    fn finish(mut self) -> u16 {
-        if self.0 < 0 {
-            self.0 = self.0.wrapping_mul(-1);
-        }
-        1.max(self.0 as usize & (Commands::MAPPING_RANGE - 1)) as u16
+    fn finish(self) -> u16 {
+        // +1 避免0
+        1 + (self.0.abs() as usize & (Commands::MAPPING_RANGE - 1)) as u16
     }
     fn hash_bytes(data: &[u8]) -> u16 {
         let mut h = CommandHasher::default();
