@@ -22,6 +22,8 @@ use crate::TimeoutAdjust;
 use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
+use super::strategy;
+use super::strategy::Strategy;
 const CONFIG_UPDATED_KEY: &str = "__mysql_config__";
 
 #[derive(Clone)]
@@ -47,6 +49,7 @@ pub struct MysqlService<B, E, Req, P> {
     _mark: std::marker::PhantomData<(B, Req)>,
     user: String,
     password: String,
+    strategy: Strategy,
 }
 
 impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
@@ -69,6 +72,7 @@ impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
             user: Default::default(),
             password: Default::default(),
             sql: Default::default(),
+            strategy: Default::default(),
         }
     }
 }
@@ -107,6 +111,11 @@ where
         );
         let shard = unsafe { self.direct_shards.get_unchecked(shard_idx) };
         log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
+
+        //todo 等波神接口
+        let id = 3379782484330149i64;
+        self.strategy
+            .get_sql("GET_LATEST_STATUS_IDS".to_string().as_str(), id, id);
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
             //todo: 访问slave
@@ -117,6 +126,7 @@ where
     }
 
     fn shard_idx(&self, hash: i64) -> usize {
+        //todo: 根据db_count * table_count 进行求余
         self.distribute.index(hash)
     }
 }
@@ -182,6 +192,7 @@ where
                 );
             }
             self.direct_shards_url = shards_url;
+            self.strategy = Strategy::try_from(&ns);
 
             //todo: archive shard 未处理
 
