@@ -56,6 +56,7 @@ impl<P, Req> BackendChecker<P, Req> {
     {
         let path_addr = self.path.clone().push(&self.addr);
         let mut m_timeout = path_addr.qps("timeout");
+        let mut auth_failed = path_addr.status("auth_failed");
         let mut timeout = Path::base().qps("timeout");
         let mut reconn = crate::reconn::ReconnPolicy::new(&self.path, single);
         metrics::incr_task();
@@ -75,17 +76,23 @@ impl<P, Req> BackendChecker<P, Req> {
             let rtt = path_addr.rtt("req");
             let mut stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
-            rx.enable();
+
             if !self.parser.need_auth() {
                 //todo 处理认证结果
-                Auth {
+                let auth = Auth {
                     buf: StreamGuard::new(),
                     option: &mut self.option,
                     s: &mut stream,
                     parser: self.parser.clone(),
+                };
+                if let Err(_) = auth.await {
+                    //todo 需要减一吗，listen_failed好像没有减
+                    auth_failed += 1;
+                    continue;
                 }
-                .await;
             }
+
+            rx.enable();
             self.init.on();
             log::debug!("handler started:{:?}", self.path);
             let p = self.parser.clone();
@@ -157,6 +164,7 @@ where
             }
         };
 
+        //todo 成功失败后可能会有数据flush pending，单后续handle会flush，问题应该不大
         let _ = Pin::new(&mut me.s).poll_flush(cx);
 
         result
