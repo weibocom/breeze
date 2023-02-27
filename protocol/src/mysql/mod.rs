@@ -1,5 +1,6 @@
 #[macro_use]
 pub mod bitflags_ext;
+mod auth;
 pub mod constants;
 mod error;
 mod io;
@@ -17,8 +18,7 @@ mod scramble;
 mod strategy;
 mod value;
 
-use std::io::Read;
-
+use self::auth::native_auth;
 use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
 use self::mcpacket::*;
@@ -30,10 +30,10 @@ use self::strategy::MysqlStrategy;
 use super::Flag;
 use super::Protocol;
 use super::Result;
-use crate::HandShake;
 use crate::mysql::mcpacket::QUITE_GET_TABLE;
 use crate::Command;
 use crate::Error;
+use crate::HandShake;
 use crate::HashedCommand;
 use crate::RequestProcessor;
 use crate::Stream;
@@ -42,7 +42,6 @@ use ds::Buffer;
 use ds::MemGuard;
 use mcpacket::Binary;
 use sharding::hash::Hash;
-
 
 #[derive(Clone)]
 pub struct Mysql {
@@ -58,7 +57,6 @@ impl Default for Mysql {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Copy)]
 pub(self) enum HandShakeStatus {
@@ -255,7 +253,6 @@ impl Protocol for Mysql {
             }
         }
         Ok(())
-
     }
 
     fn build_writeback_request<C, M, I>(
@@ -319,7 +316,7 @@ impl Mysql {
         response
     }
 
-     //修改req，seq +1
+    //修改req，seq +1
     fn before_send<S: Stream, Req: crate::Request>(&self, _stream: &mut S, _req: &mut Req) {
         todo!()
     }
@@ -332,6 +329,3 @@ pub enum ConnState {
     // 对于AuthError，通过直接返回异常来标志
     AuthOk,
 }
-
-   
-

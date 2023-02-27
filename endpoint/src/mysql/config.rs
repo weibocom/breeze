@@ -4,18 +4,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct MysqlNamespace {
-<<<<<<< HEAD
-    // TODO speed up, ref: https://git.intra.weibo.com/platform/resportal/-/issues/548
-    pub(crate) basic: Basic,
-    pub(crate) backends: Vec<String>,
-    pub(crate) archive: HashMap<String, Vec<String>>,
-=======
     // TODO speed up, ref: https://git/platform/resportal/-/issues/548
     pub(crate) basic: Basic,
     pub(crate) sql: HashMap<String, String>,
     pub(crate) backends: Vec<String>,
     // pub(crate) archive: HashMap<String, Vec<String>>,
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -36,9 +29,7 @@ pub struct Basic {
     pub(crate) timeout_ms_slave: u32,
     #[serde(default)]
     pub(crate) min_pool_size: u16,
-<<<<<<< HEAD
-    // TODO speed up
-=======
+
     #[serde(default)]
     pub(crate) max_idle_time: u32,
     #[serde(default)]
@@ -85,5 +76,4 @@ impl MysqlNamespace {
     fn get_time_from_id(&self, id: u64) -> u64 {
         234234234
     }
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
 }

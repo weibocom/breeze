@@ -1,24 +1,16 @@
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
-<<<<<<< HEAD
-use std::sync::Arc;
-
-=======
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use discovery::dns;
 use discovery::dns::IPPort;
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
 use discovery::TopologyWrite;
 use ds::time::Duration;
 use protocol::Protocol;
 use protocol::Request;
-<<<<<<< HEAD
-=======
 use protocol::ResOption;
 use protocol::Resource;
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
 use sharding::distribution::Distribute;
 use sharding::hash::Hasher;
 use sharding::ReplicaSelect;
@@ -26,17 +18,12 @@ use sharding::Selector;
 
 use crate::Builder;
 use crate::Single;
-<<<<<<< HEAD
-use crate::{Endpoint, Topology};
-
-=======
 use crate::TimeoutAdjust;
 use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
 const CONFIG_UPDATED_KEY: &str = "__mysql_config__";
 
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
 #[derive(Clone)]
 pub struct MysqlService<B, E, Req, P> {
     // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -44,18 +31,11 @@ pub struct MysqlService<B, E, Req, P> {
     // 默认不同sharding的url。第0个是master
     direct_shards_url: Vec<Vec<String>>,
 
-<<<<<<< HEAD
-    // 按时间维度分库分表
-    archive_shards: HashMap<String, Vec<Shard<E>>>,
-    archive_shards_url: HashMap<String, Vec<Vec<String>>>,
-
-=======
     // todo: 暂不实现这块处理逻辑
     // 按时间维度分库分表
     archive_shards: HashMap<String, Vec<Shard<E>>>,
     archive_shards_url: HashMap<String, Vec<Vec<String>>>,
     sql: HashMap<String, String>,
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
     hasher: Hasher,
     distribute: Distribute,
     selector: Selector, // 从的选择策略。
@@ -65,14 +45,10 @@ pub struct MysqlService<B, E, Req, P> {
     timeout_master: Duration,
     timeout_slave: Duration,
     _mark: std::marker::PhantomData<(B, Req)>,
-<<<<<<< HEAD
-}
-
-=======
     user: String,
     password: String,
 }
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
+
 impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
@@ -87,18 +63,12 @@ impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
             updated: Default::default(),
             service: Default::default(),
             selector: Selector::Random,
-<<<<<<< HEAD
-            timeout_master: crate::TO_REDIS_M,
-            timeout_slave: crate::TO_REDIS_S,
-            _mark: Default::default(),
-=======
             timeout_master: crate::TO_MYSQL_M,
             timeout_slave: crate::TO_MYSQL_S,
             _mark: Default::default(),
             user: Default::default(),
             password: Default::default(),
             sql: Default::default(),
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
         }
     }
 }
@@ -123,9 +93,6 @@ where
 {
     type Item = Req;
 
-<<<<<<< HEAD
-    fn send(&self, req: Self::Item) {}
-=======
     // todo: 这里req拿到mid解出时间,得出具体年库 ？？？
     // todo: sql语句怎么传过去 ？
     fn send(&self, req: Self::Item) {
@@ -148,7 +115,6 @@ where
             shard.master().send(req);
         }
     }
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
 
     fn shard_idx(&self, hash: i64) -> usize {
         self.distribute.index(hash)
@@ -162,13 +128,6 @@ where
     E: Endpoint<Item = Req> + Single,
 {
     fn need_load(&self) -> bool {
-<<<<<<< HEAD
-        false
-    }
-    fn load(&mut self) {}
-    fn update(&mut self, name: &str, cfg: &str) {}
-}
-=======
         self.direct_shards.len() != self.direct_shards_url.len()
             || self
                 .updated
@@ -424,7 +383,6 @@ impl<E> Shard<E> {
 }
 
 // todo: 这一段跟redis是一样的，这段可以提到外面去
->>>>>>> ae6ab01c6fe217397733d6a7bf083718085d376f
 #[derive(Clone)]
 struct Shard<E> {
     master: (String, E),
