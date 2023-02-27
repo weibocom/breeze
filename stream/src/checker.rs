@@ -1,4 +1,5 @@
 use ds::time::Duration;
+use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{atomic::AtomicBool, Arc};
@@ -88,6 +89,7 @@ impl<P, Req> BackendChecker<P, Req> {
                 if let Err(_) = auth.await {
                     //todo 需要减一吗，listen_failed好像没有减
                     auth_failed += 1;
+                    stream.cancel();
                     continue;
                 }
             }
