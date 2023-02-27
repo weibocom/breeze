@@ -95,6 +95,9 @@ pub struct ContextOption {
     #[clap(long, help("service pool"), default_value("default_pool"))]
     pub service_pool: String,
 
+    #[clap(long, help("idc"), default_value(""))]
+    pub idc: String,
+
     #[clap(long, help("cpu level"), default_value("vx"))]
     pub cpu: String,
 
