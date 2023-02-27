@@ -79,7 +79,7 @@ impl Protocol for Mysql {
                 Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
                 Ok(initial_handshake) => {
                     initial_handshake.check_fast_auth_and_native()?;
-                    let auth_data = &native_auth(
+                    let auth_data = &auth::native_auth(
                         initial_handshake.auth_plugin_data.as_bytes(),
                         option.token.as_bytes(),
                     );
