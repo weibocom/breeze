@@ -39,12 +39,17 @@ async fn run() -> Result<()> {
     let snapshot = ctx.snapshot_path.to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
-    fix.register(ctx.idc_path_url(), discovery::distance::build_refresh_idc());
+    fix.register(
+        ctx.idc_path_url(),
+        "",
+        discovery::distance::build_refresh_idc(),
+    );
 
     // 从vintage获取socks
     if ctx.service_pool_socks_url().len() > 1 {
         fix.register(
             ctx.service_pool_socks_url(),
+            &ctx.idc,
             discovery::socks::build_refresh_socks(ctx.service_path.clone()),
         );
     } else {
