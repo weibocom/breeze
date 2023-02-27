@@ -96,13 +96,8 @@ where
             false => self.distribute.index(req.hash()),
         };
 
-        debug_assert!(
-            shard_idx < self.shards.len(),
-            "redis: {}/{} req:{:?}",
-            shard_idx,
-            self.shards.len(),
-            req
-        );
+        assert!(shard_idx < self.len(), "{} {:?} {}", shard_idx, req, self);
+
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
@@ -228,6 +223,12 @@ where
                 .shards
                 .iter()
                 .fold(true, |inited, shard| inited && shard.inited())
+    }
+}
+impl<B, E, Req, P> RedisService<B, E, Req, P> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.shards.len()
     }
 }
 
@@ -385,5 +386,19 @@ impl<E: discovery::Inited> Shard<E> {
                 .as_ref()
                 .iter()
                 .fold(true, |inited, (_, e)| inited && e.inited())
+    }
+}
+impl<B: Send + Sync, E, Req, P> std::fmt::Display for RedisService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RedisService")
+            .field("service", &self.service)
+            .field("shards", &self.shards.len())
+            .field("shards_url", &self.shards_url)
+            .finish()
     }
 }
