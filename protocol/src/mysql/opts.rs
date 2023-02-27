@@ -284,6 +284,15 @@ impl Opts {
         from_url(url)
     }
 
+    // TODO 先用最简洁的方式构建，按需扩展
+    pub fn from_user_pwd(user: String, pwd: String) -> Opts {
+        let mut opt: InnerOpts = Default::default();
+        opt.user = Some(user);
+        opt.pass = Some(pwd);
+
+        Self(Box::new(opt))
+    }
+
     pub(crate) fn get_host(&self) -> url::Host {
         self.0.ip_or_hostname.clone()
     }

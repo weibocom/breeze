@@ -73,32 +73,44 @@ impl Protocol for Mysql {
         s: &mut impl crate::Writer,
         option: &mut crate::ResOption,
     ) -> Result<HandShake> {
-        let mut packet = ResponsePacket::new(stream, None);
+        let opt = Opts::from_user_pwd(option.username.clone(), option.token.clone());
+        let mut packet = ResponsePacket::new(stream, Some(opt));
         match packet.ctx().status {
-            HandShakeStatus::Init => match packet.take_initial_handshake() {
-                Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
-                Ok(initial_handshake) => {
-                    initial_handshake.check_fast_auth_and_native()?;
-                    let auth_data = &native_auth(
-                        initial_handshake.auth_plugin_data.as_bytes(),
-                        option.token.as_bytes(),
-                    );
-                    let response = packet.build_handshake_response(option, auth_data)?;
-                    s.write(&response)?;
+            HandShakeStatus::Init => {
+                let handshake_rsp = packet.proc_handshake()?;
+                handshake_rsp.data().copy_to(0, s)?;
+                packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
+                Ok(HandShake::Continue)
+            }
+            // HandShakeStatus::Init => match packet.take_initial_handshake() {
+            //     Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+            //     Ok(initial_handshake) => {
+            //         initial_handshake.check_fast_auth_and_native()?;
+            //         let auth_data = &native_auth(
+            //             initial_handshake.auth_plugin_data.as_bytes(),
+            //             option.token.as_bytes(),
+            //         );
+            //         let response = packet.build_handshake_response(option, auth_data)?;
+            //         s.write(&response)?;
 
-                    packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
-                    Ok(HandShake::Continue)
-                }
-                Err(e) => Err(e),
-            },
-            HandShakeStatus::InitialhHandshakeResponse => match packet.take_and_ok() {
-                Ok(_) => {
-                    packet.ctx().status = HandShakeStatus::AuthSucceed;
-                    Ok(HandShake::Success)
-                }
-                Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
-                Err(e) => Err(e),
-            },
+            //         packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
+            //         Ok(HandShake::Continue)
+            //     }
+            //     Err(e) => Err(e),
+            // },
+            // HandShakeStatus::InitialhHandshakeResponse => match packet.take_and_ok() {
+            //     Ok(_) => {
+            //         packet.ctx().status = HandShakeStatus::AuthSucceed;
+            //         Ok(HandShake::Success)
+            //     }
+            //     Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+            //     Err(e) => Err(e),
+            // },
+            HandShakeStatus::InitialhHandshakeResponse => {
+                packet.proc_auth()?;
+                packet.ctx().status = HandShakeStatus::AuthSucceed;
+                Ok(HandShake::Success)
+            }
             HandShakeStatus::AuthSucceed => Ok(HandShake::Success),
         }
     }
