@@ -23,19 +23,12 @@ impl Fixed {
                         *sig = new_sig;
                         cb(&cfg);
                     }
-                    e @ Ok(Config::NotFound) => {
+                    _e @ Ok(Config::NotFound) => {
                         use_name = true;
-                        log::warn!(
-                            "get service {} err {:?}, continue get whitout {}",
-                            name,
-                            e,
-                            name_ext
-                        );
+                        log::warn!("get service {} err {:?}, without {}", name, _e, name_ext);
                     }
                     //其余情况不能判定应使用name配置
-                    e => {
-                        log::warn!("get service {} err {:?}", name, e);
-                    }
+                    _e => log::warn!("get service {} err {:?}", name, _e),
                 }
             }
             if name_ext.is_empty() || use_name {
@@ -44,9 +37,7 @@ impl Fixed {
                         *sig = new_sig;
                         cb(&cfg);
                     }
-                    e => {
-                        log::warn!("get service {} err {:?}", name, e);
-                    }
+                    _e => log::warn!("get service {} err {:?}", name, _e),
                 }
             }
         }
