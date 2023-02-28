@@ -46,6 +46,26 @@ pub struct Strategy {
 }
 
 impl Strategy {
+    pub fn new(
+        db_prefix: String,
+        table_prefix: String,
+        table_postfix: String,
+        db_count: u32,
+        table_count: u32,
+        hierarchy: bool,
+        sql: HashMap<String, String>,
+    ) -> Self {
+        Self {
+            db_prefix: db_prefix.clone(),
+            table_prefix: table_prefix.clone(),
+            table_postfix: table_postfix.clone(),
+            db_count: db_count,
+            table_count: table_count,
+            hierarchy: hierarchy,
+            sql: sql.clone(),
+        }
+    }
+
     pub fn try_from(item: &MysqlNamespace) -> Self {
         Self {
             db_prefix: item.basic.db_prefix.clone(),
