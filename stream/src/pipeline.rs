@@ -332,7 +332,7 @@ where
             }
         }
         self.process_async_pending();
-        if self.dropping.len() > 0 && self.async_pending.len() == 0 {
+        if self.dropping.len() > 0 && self.async_pending.len() == 0 && self.pending.len() == 0 {
             self.dropping.clear();
         }
         self.rx_buf.try_gc();
