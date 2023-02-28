@@ -2,7 +2,7 @@ use super::{
     command::{CommandHasher, CommandProperties},
     error::RedisError,
 };
-use crate::{error::Error, redis::command, Result};
+use crate::{error::Error, redis::command, ReservedHash, Result};
 use ds::RingSlice;
 
 const CRLF_LEN: usize = b"\r\n".len();
@@ -13,8 +13,8 @@ const CRLF_LEN: usize = b"\r\n".len();
 pub struct RequestContext {
     bulk: u16,
     op_code: u16,
-    first: bool, // 在multi-get请求中是否是第一个请求。
     layer: u8,   // 请求的层次，目前只支持：master，all
+    first: bool, // 在multi-get请求中是否是第一个请求。
     _ignore: [u8; 2],
 }
 
@@ -50,7 +50,7 @@ pub(crate) struct RequestPacket<'a, S> {
     // 低16位是bulk_num
     // 次低16位是op_code.
     ctx: RequestContext,
-    reserved_hash: i64,
+    reserved_hash: ReservedHash,
     oft_last: usize,
     oft: usize,
 }
@@ -189,17 +189,18 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     // 重置reserved hash，包括stream中的对应值
     #[inline]
     fn reset_reserved_hash(&mut self) {
-        self.update_reserved_hash(0)
+        self.reserved_hash.take();
+        self.stream.reserved_hash().take();
     }
     // 更新reserved hash
     #[inline]
     pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
-        self.reserved_hash = reserved_hash;
-        *self.stream.reserved_hash() = reserved_hash;
+        self.reserved_hash.replace(reserved_hash);
+        self.stream.reserved_hash().replace(reserved_hash);
     }
 
     #[inline]
-    pub(super) fn reserved_hash(&self) -> i64 {
+    pub(super) fn reserved_hash(&self) -> ReservedHash {
         self.reserved_hash
     }
 

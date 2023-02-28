@@ -61,14 +61,17 @@ impl Redis {
                     // 不管是否使用当前cmd的key来计算hash，都需要解析出一个key
                     let key = packet.parse_key()?;
 
+                    let hash = packet
+                        .reserved_hash()
+                        .unwrap_or_else(|| calculate_hash(cfg, alg, &key));
                     // mutli cmd 也支持swallow指令
-                    if packet.reserved_hash() != 0 {
-                        // 使用hashkey直接指定了hash
-                        hash = packet.reserved_hash();
-                        log::info!("+++ use direct hash for multi cmd: {:?}", packet)
-                    } else {
-                        hash = calculate_hash(cfg, alg, &key);
-                    }
+                    // if packet.reserved_hash() {
+                    //     // 使用hashkey直接指定了hash
+                    //     hash = packet.reserved_hash();
+                    //     log::info!("+++ use direct hash for multi cmd: {:?}", packet)
+                    // } else {
+                    //     hash = calculate_hash(cfg, alg, &key);
+                    // }
 
                     if cfg.has_val {
                         packet.ignore_one_bulk()?;
@@ -83,10 +86,10 @@ impl Redis {
                     flag.set_master_only();
                 }
 
-                if packet.reserved_hash() != 0 {
+                if packet.reserved_hash().is_some() {
                     // 使用hashkey直接指定了hash
-                    hash = packet.reserved_hash();
-                    flag.set_direct_hash();
+                    hash = packet.reserved_hash().unwrap();
+                    // flag.set_direct_hash();
                 } else if cfg.need_reserved_hash {
                     return Err(RedisError::ReqInvalid.error());
                 } else if cfg.has_key {

@@ -87,10 +87,10 @@ impl crate::Request for Request {
     // fn ignore_rsp(&self) -> bool {
     //     self.req().ignore_rsp()
     // }
-    #[inline]
-    fn update_hash(&mut self, idx_hash: i64) {
-        self.req_mut().update_hash(idx_hash)
-    }
+    // #[inline]
+    // fn update_hash(&mut self, idx_hash: i64) {
+    //     self.req_mut().update_hash(idx_hash)
+    // }
 }
 impl Request {
     #[inline]

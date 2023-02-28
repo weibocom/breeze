@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::{Builder, Endpoint, Single, Topology};
 use discovery::TopologyWrite;
-use protocol::{Protocol, Request, Resource};
+use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::Hasher;
 use sharding::{ReplicaSelect, Selector};
@@ -75,25 +75,16 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
 
-        use protocol::RedisFlager;
-        let shard_idx = match req.cmd().direct_hash() {
-            true => {
-                let dhash_boundary = protocol::MAX_DIRECT_HASH - self.shards.len() as i64;
-                // 大于direct hash边界，说明是全节点分发请求，发送请求前，需要调整hash为下次发送做准备
-                // 备注：正常计算的hash范围是u32；
-                if req.hash() > dhash_boundary {
-                    // 边界之上的hash，其idx为max减去对应hash值，从而轮询所有分片
-                    let idx = (protocol::MAX_DIRECT_HASH - req.hash()) as usize;
-
-                    // req的hash自减1，同时设置write back，为下一次write back分发做准备
-                    req.update_hash(req.hash() - 1);
-                    req.write_back(req.hash() > dhash_boundary);
-                    idx
-                } else {
-                    self.distribute.index(req.hash())
-                }
-            }
-            false => self.distribute.index(req.hash()),
+        let shard_idx = if req.hash() == protocol::MAX_DIRECT_HASH {
+            //全节点分发请求
+            // 备注：正常计算的hash范围是u32；
+            let ctx = super::transmute(req.context_mut());
+            let idx = ctx.shard_idx as usize;
+            ctx.shard_idx += 1;
+            req.write_back(idx < self.shards.len() - 1);
+            idx
+        } else {
+            self.distribute.index(req.hash())
         };
 
         assert!(shard_idx < self.len(), "{} {:?} {}", shard_idx, req, self);
@@ -114,7 +105,7 @@ where
                     (ctx.idx as usize, &shard.master)
                 }
             };
-            ctx.idx = idx as u32;
+            ctx.idx = idx as u16;
             ctx.runs += 1;
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
             // 1. 第一次访问. （无论如何都允许try_next，如果只有一个从，则下一次失败时访问主）
