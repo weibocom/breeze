@@ -16,5 +16,6 @@ mod size;
 mod arena;
 mod asserts;
 mod layout;
+mod mysql_strategy;
 mod ring_buffer;
 mod tx_buffer;
