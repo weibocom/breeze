@@ -146,9 +146,9 @@ where
             let poll_read = self.buf.write(&mut reader)?;
 
             while self.buf.len() > 0 {
-                match self.parser.parse_response(&mut self.buf)? {
-                    None => break,
-                    Some(cmd) => {
+                match self.parser.parse_response(&mut self.buf) {
+                    Ok(None) => break,
+                    Ok(Some(cmd)) => {
                         let req = self.pending.pop_front().expect("take response");
                         self.num_rx += 1;
                         // 统计请求耗时。
@@ -156,6 +156,24 @@ where
                         self.parser.check(req.cmd(), &cmd);
                         req.on_complete(cmd);
                     }
+                    Err(e) => match e {
+                        Error::UnexpectedData => {
+                            let req = self
+                                .pending
+                                .iter()
+                                .map(|r| r.cmd().data())
+                                .collect::<Vec<_>>();
+                            panic!(
+                                "unexpected handler:{:?} data:{:?} pending req:{:?} ",
+                                self,
+                                self.buf.slice().data(),
+                                req
+                            );
+                        }
+                        _ => {
+                            return Poll::Ready(Err(e.into()));
+                        }
+                    },
                 }
             }
             ready!(poll_read);
