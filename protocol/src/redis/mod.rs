@@ -183,8 +183,10 @@ impl Redis {
                 *oft += data.num_of_string(oft)? + 2;
             }
             b'*' => data.skip_all_bulk(oft)?,
-
-            _ => panic!("not supported:{:?}", data),
+            _ => {
+                log::error!("+++ found malformed redis rsp:{:?}", data);
+                return Err(Error::UnexpectedData);
+            } // _ => panic!("not supported:{:?}", data),
         }
 
         if *oft <= data.len() {
