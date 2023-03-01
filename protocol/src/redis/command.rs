@@ -7,9 +7,12 @@ pub(crate) enum CommandType {
     #[default]
     Other,
     //============== 吞噬指令 ==============//
+    SwallowedMaster,
     SwallowedCmdHashkeyq,
     SwallowedCmdHashrandomq,
 
+    CmdSendToAll,
+    CmdSendToAllq,
     //============== 需要本地构建特殊响应的cmd ==============//
     // 指示下一个cmd的用于计算分片hash的key
     SpecLocalCmdHashkey,
@@ -185,6 +188,7 @@ impl CommandProperties {
         bulk_num: u16,
         first: bool,
         master_only: bool,
+        sendto_all: bool,
         data: &RingSlice,
     ) -> HashedCommand {
         use ds::Buffer;
@@ -220,6 +224,9 @@ impl CommandProperties {
         }
         if master_only {
             flag.set_master_only();
+        }
+        if sendto_all {
+            flag.set_sendto_all()
         }
         let cmd: MemGuard = MemGuard::from_vec(cmd);
         HashedCommand::new(cmd, hash, flag)
@@ -338,7 +345,7 @@ pub(super) static SUPPORTED: Commands = {
         // quit、master的指令token数/arity应该都是1,quit 的padding设为1 
         // TODO quit 的padding设为1，需要验证后删除本注释 fishermen
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
-        Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow(),
+        Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::SwallowedMaster),
 
         //("get" , "get",            2, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("get").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
@@ -593,6 +600,9 @@ pub(super) static SUPPORTED: Commands = {
         nofwd().key().resv_hash().swallow().cmd_type(CommandType::SwallowedCmdHashkeyq),
         Cmd::new("hashrandomq").arity(1).op(Meta).padding(pt[5]).nofwd().resv_hash().swallow().
         cmd_type(CommandType::SwallowedCmdHashrandomq),
+        
+        Cmd::new("sendtoall").arity(1).op(Meta).padding(pt[5]).nofwd().cmd_type(CommandType::CmdSendToAll),
+        Cmd::new("sendtoallq").arity(1).op(Meta).padding(pt[5]).nofwd().swallow().cmd_type(CommandType::CmdSendToAllq),
 
         // swallowed扩展指令对应的有返回值的指令，去掉q即可
         //("hashkey", "hashkey",                     2,  Get,  1, 1, 1, 5, false, true, true, false, false),

@@ -103,10 +103,10 @@ impl Request {
         self.ctx().request()
     }
 
-    #[inline]
-    fn req_mut(&self) -> &mut HashedCommand {
-        self.ctx().request_mut()
-    }
+    // #[inline]
+    // fn req_mut(&self) -> &mut HashedCommand {
+    //     self.ctx().request_mut()
+    // }
     #[inline]
     fn ctx(&self) -> &mut CallbackContext {
         unsafe { &mut *self.ctx.as_ptr() }

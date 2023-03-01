@@ -13,9 +13,10 @@ const CRLF_LEN: usize = b"\r\n".len();
 pub struct RequestContext {
     bulk: u16,
     op_code: u16,
-    layer: u8,   // 请求的层次，目前只支持：master，all
-    first: bool, // 在multi-get请求中是否是第一个请求。
-    _ignore: [u8; 2],
+    layer: u8,        // 请求的层次，目前只支持：master，all
+    first: bool,      // 在multi-get请求中是否是第一个请求。
+    sendto_all: bool, //发送到所有shard
+    _ignore: [u8; 1],
 }
 
 // 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
@@ -193,15 +194,25 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.stream.reserved_hash().take();
     }
     // 更新reserved hash
-    #[inline]
-    pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
-        self.reserved_hash.replace(reserved_hash);
-        self.stream.reserved_hash().replace(reserved_hash);
-    }
+    // #[inline]
+    // pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
+    //     self.reserved_hash.replace(reserved_hash);
+    //     self.stream.reserved_hash().replace(reserved_hash);
+    // }
 
     #[inline]
     pub(super) fn reserved_hash(&self) -> ReservedHash {
         self.reserved_hash
+    }
+
+    #[inline]
+    pub(super) fn sendto_all(&self) -> bool {
+        self.ctx.sendto_all
+    }
+
+    #[inline]
+    pub(super) fn set_sendto_all(&mut self) {
+        self.ctx.sendto_all = true;
     }
 
     #[inline]
@@ -220,36 +231,31 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.stream.take(data.len())
     }
 
-    // trim掉已解析的cmd相关元数据，只保留在master_only、reserved_hash这两个元数据
     #[inline]
-    pub(super) fn trim_swallowed_cmd(&mut self) -> Result<()> {
-        // trim 吞噬指令时，整个吞噬指令必须已经被解析完毕
-        debug_assert!(self.ctx.bulk == 0, "packet:{}", self);
-
-        // 移动oft到吞噬指令之后
-        let len = self.oft - self.oft_last;
-        self.oft_last = self.oft;
-        self.stream.ignore(len);
-
-        // 记录需保留的状态：目前只有master only状态【direct hash保存在stream的非ctx字段中】
-        let master_only = self.master_only();
-
-        // 重置context，去掉packet/stream的ctx信息
-        self.reset_context();
-
-        // 保留后续cmd执行需要的状态：当前只有master
+    pub(super) fn reserve_status(
+        &mut self,
+        master_only: bool,
+        sendto_all: bool,
+        reserved_hash: ReservedHash,
+    ) {
         if master_only {
             // 保留master only 设置
             self.set_layer(LayerType::MasterOnly);
         }
-
-        // 设置packet的ctx到stream的ctx中，供下一个指令使用
+        if sendto_all {
+            self.set_sendto_all()
+        }
         *self.stream.context() = self.ctx.u64();
 
-        if self.available() {
-            return Ok(());
-        }
-        return Err(crate::Error::ProtocolIncomplete);
+        self.reserved_hash = reserved_hash;
+        *self.stream.reserved_hash() = reserved_hash;
+        // 设置packet的ctx到stream的ctx中，供下一个指令使用
+
+        // 这个有必要保留吗？
+        // if self.available() {
+        //     return Ok(());
+        // }
+        // return Err(crate::Error::ProtocolIncomplete);
     }
 
     #[inline]
