@@ -13,7 +13,7 @@ mod mysql_strategy {
         let mut sqls = HashMap::with_capacity(4);
         sqls.insert("GET_LATEST_STATUS_IDS".to_string(), SQL_SELECT.to_string());
 
-        let s = Strategy::new(
+        let s = Strategy::from(
             "status".to_string(),
             "status".to_string(),
             "yymmdd".to_string(),
