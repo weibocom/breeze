@@ -3,6 +3,7 @@ use ds::time::Duration;
 #[derive(Debug)]
 pub enum Error {
     Eof,
+    UnexpectedData,
     QueueClosed,
     NotInit,
     Closed,

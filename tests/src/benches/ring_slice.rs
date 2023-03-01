@@ -33,6 +33,17 @@ pub(super) fn bench_iter(c: &mut Criterion) {
             });
         });
     });
+    group.bench_function("index", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                for i in 0..rs.len() {
+                    t += rs[i] as u64
+                }
+                t
+            });
+        });
+    });
     group.bench_function("iter", |b| {
         b.iter(|| {
             black_box({
@@ -93,23 +104,6 @@ pub(super) fn bench_iter(c: &mut Criterion) {
                     },
                     |_| true,
                 )
-            });
-        });
-    });
-    group.bench_function("read", |b| {
-        b.iter(|| {
-            black_box({
-                let mut t = 0u64;
-                let data = rs.read(0);
-                for v in data {
-                    t += *v as u64;
-                }
-                if rs.len() > data.len() {
-                    for v in rs.read(data.len()) {
-                        t += *v as u64;
-                    }
-                }
-                t
             });
         });
     });

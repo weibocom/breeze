@@ -1,22 +1,19 @@
-mod command;
-mod error;
-mod flag;
+pub(crate) mod command;
+pub(crate) mod error;
+pub(crate) mod flag;
 pub use flag::RedisFlager;
-mod packet;
+pub(crate) mod packet;
 //mod token;
 
 use crate::{
-    redis::packet::RequestPacket,
-    redis::{
-        command::{CommandProperties, CommandType},
-        packet::LayerType,
-    },
+    redis::command::{CommandProperties, CommandType},
+    redis::packet::{LayerType, RequestPacket},
     Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
 use ds::RingSlice;
 use error::*;
-use packet::Packet;
+pub use packet::Packet;
 use sharding::hash::Hash;
 
 use rand;
@@ -45,10 +42,8 @@ impl Redis {
 
         while packet.available() {
             packet.parse_bulk_num()?;
-            packet.parse_cmd()?;
+            let cfg = packet.parse_cmd()?;
 
-            // TODO cfg 大概率会多取一次，有没有更好的办法 fishermen
-            let cfg = command::get_cfg(packet.op_code())?;
             let mut hash;
             if cfg.swallowed {
                 // 优先处理swallow吞噬指令: master/hashkeyq/hashrandomq
@@ -172,70 +167,33 @@ impl Redis {
         Ok(())
     }
 
-    // TODO 临时测试设为pub，测试完毕后去掉pub fishermen
-    // 需要支持4种协议格式：（除了-代表的错误类型）
-    //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
-    #[inline]
-    pub fn num_skip_all(&self, data: &RingSlice, mut oft: &mut usize) -> Result<Option<Command>> {
-        let mut bulk_count = data.num(&mut oft)?;
-        while bulk_count > 0 {
-            if *oft >= data.len() {
-                return Err(crate::Error::ProtocolIncomplete);
-            }
-            match data.at(*oft) {
-                b'*' => {
-                    self.num_skip_all(data, oft)?;
-                }
-                b'$' => {
-                    data.num_and_skip(&mut oft)?;
-                }
-                b'+' => data.line(oft)?,
-                b':' => data.line(oft)?,
-                _ => {
-                    log::info!("unsupport rsp:{:?}, pos: {}/{}", data, oft, bulk_count);
-                    panic!("not supported in num_skip_all");
-                }
-            }
-            // data.num_and_skip(&mut oft)?;
-            bulk_count -= 1;
-        }
-        Ok(None)
-    }
-
     #[inline]
     fn parse_response_inner<S: Stream>(
         &self,
         s: &mut S,
         oft: &mut usize,
     ) -> Result<Option<Command>> {
-        let data = s.slice();
+        let data: Packet = s.slice().into();
         log::debug!("+++ will parse redis rsp:{:?}", data);
+        data.check_onetoken(*oft)?;
 
-        if data.len() >= 2 {
-            let mut rsp_ok = true;
-            match data.at(0) {
-                b'-' => {
-                    rsp_ok = false;
-                    data.line(oft)?;
-                }
-                b':' | b'+' => data.line(oft)?,
-                b'$' => {
-                    let _num = data.num_and_skip(oft)?;
-                }
-                b'*' => {
-                    self.num_skip_all(&data, oft)?;
-                }
-                _ => {
-                    log::info!("not supported:{:?}", data);
-                    panic!("not supported:{:?}", data);
-                }
+        match data.at(0) {
+            b'-' | b':' | b'+' => data.line(oft)?,
+            b'$' => {
+                *oft += data.num_of_string(oft)? + 2;
             }
+            b'*' => data.skip_all_bulk(oft)?,
+            _ => {
+                log::error!("+++ found malformed redis rsp:{:?}", data);
+                return Err(Error::UnexpectedData);
+            } // _ => panic!("not supported:{:?}", data),
+        }
 
-            assert!(*oft <= data.len(), "{} data:{:?}", oft, data);
+        if *oft <= data.len() {
             let mem = s.take(*oft);
             let mut flag = Flag::new();
             // TODO 这次需要测试err场景 fishermen
-            flag.set_status_ok(rsp_ok);
+            flag.set_status_ok(true);
             return Ok(Some(Command::new(flag, mem)));
         }
         Ok(None)
@@ -250,7 +208,7 @@ impl Protocol for Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
-        let mut packet = packet::RequestPacket::new(stream);
+        let mut packet = RequestPacket::new(stream);
         match self.parse_request_inner(&mut packet, alg, process) {
             Ok(_) => Ok(()),
             Err(Error::ProtocolIncomplete) => {
@@ -259,11 +217,7 @@ impl Protocol for Redis {
                 Ok(())
             }
             e => {
-                log::warn!(
-                    "+++ redis parsed err: {:?}, req: {:?} ",
-                    e,
-                    packet.inner_data(),
-                );
+                log::warn!("redis parsed err: {:?}, req: {:?} ", e, packet.inner_data());
                 e
             }
         }
@@ -496,7 +450,7 @@ impl Protocol for Redis {
     #[inline]
     fn build_writeback_request<C, M, I>(
         &self,
-        ctx: &mut C,
+        _ctx: &mut C,
         _response: &Command,
         _: u32,
     ) -> Option<HashedCommand>
@@ -505,8 +459,8 @@ impl Protocol for Redis {
         M: Metric<I>,
         I: MetricItem,
     {
-        let hash_cmd = ctx.request_mut();
-        debug_assert!(hash_cmd.direct_hash(), "data: {:?}", hash_cmd.data());
+        // let hash_cmd = ctx.request_mut();
+        // debug_assert!(hash_cmd.direct_hash(), "data: {:?}", hash_cmd.data());
 
         // hash idx 放到topo.send 中处理
         // let idx_hash = hash_cmd.hash() - 1;
@@ -514,6 +468,12 @@ impl Protocol for Redis {
         // 去掉ignore rsp，改由drop_on_done来处理
         // hash_cmd.set_ignore_rsp(true);
         None
+    }
+    #[inline(always)]
+    fn check(&self, _req: &HashedCommand, _resp: &Command) {
+        if _resp.data()[0] == b'-' {
+            log::error!("+++ check failed for req:{:?}, resp:{:?}", _req, _resp);
+        }
     }
 }
 

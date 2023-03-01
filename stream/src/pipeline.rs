@@ -313,17 +313,14 @@ where
             }
             let mut ctx = self.pending.pop_front().expect("empty");
             // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
-            if ctx.inited() {
-                ctx.take_response();
-            }
-            debug_assert!(!ctx.inited());
+            let _dropped = ctx.take_response();
         }
         // 处理异步请求
         self.process_async_pending();
         self.rx_buf.try_gc() && self.pending.len() == 0 && self.async_pending.len() == 0
     }
     #[inline]
-    fn refresh(&mut self) -> bool {
+    fn refresh(&mut self) -> Result<bool> {
         if let Some(top) = self.top.check() {
             unsafe {
                 let old = std::ptr::replace(&mut self.top as *mut T, top);
@@ -335,7 +332,7 @@ where
             }
         }
         self.process_async_pending();
-        if self.dropping.len() > 0 && self.async_pending.len() == 0 {
+        if self.dropping.len() > 0 && self.async_pending.len() == 0 && self.pending.len() == 0 {
             self.dropping.clear();
         }
         self.rx_buf.try_gc();
@@ -343,9 +340,11 @@ where
         self.client.shrink();
         // 满足条件之一说明需要刷新
         // 1. buffer 过大；2. 有异步请求未完成; 3. top 未drop
-        (self.rx_buf.cap() + self.client.cap()) >= crate::REFRESH_THREASHOLD
-            || self.async_pending.len() > 0
-            || self.dropping.len() > 0
+        Ok(
+            (self.rx_buf.cap() + self.client.cap()) >= crate::REFRESH_THREASHOLD
+                || self.async_pending.len() > 0
+                || self.dropping.len() > 0,
+        )
     }
 }
 impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
