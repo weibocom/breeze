@@ -46,7 +46,7 @@ pub struct Strategy {
 }
 
 impl Strategy {
-    pub fn new(
+    pub fn from(
         db_prefix: String,
         table_prefix: String,
         table_postfix: String,
@@ -124,7 +124,7 @@ impl Strategy {
     }
 
     fn get_db_name_by_id(&self, id: i64) -> Option<String> {
-        let (db_name_prefix, db_count) = (self.db_prefix.clone(), self.db_count);
+        let db_name_prefix = self.db_prefix.clone();
         //todo: check db_name_prefix not empty
 
         let db_index = 0;
