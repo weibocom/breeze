@@ -1,9 +1,12 @@
 use super::{
-    command::{CommandHasher, CommandProperties},
+    command::{CommandHasher, CommandProperties, CommandType},
     error::RedisError,
 };
-use crate::{error::Error, redis::command, ReservedHash, Result};
+use crate::{
+    error::Error, redis::command, Flag, HashedCommand, RequestProcessor, ReservedHash, Result,
+};
 use ds::RingSlice;
+use sharding::hash::Hash;
 
 const CRLF_LEN: usize = b"\r\n".len();
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
@@ -229,6 +232,83 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             self.reset_reserved_hash();
         }
         self.stream.take(data.len())
+    }
+
+    pub(super) fn flag(&self, cfg: &CommandProperties) -> Flag {
+        use super::RedisFlager;
+        let mut flag = cfg.flag();
+        if self.master_only() {
+            flag.set_master_only();
+        }
+        if self.sendto_all() {
+            flag.set_sendto_all();
+        }
+        flag
+    }
+
+    //总是会parsekey
+    pub(super) fn hash<H: Hash>(&mut self, cfg: &CommandProperties, alg: &H) -> Result<i64> {
+        let mut key: RingSlice = Default::default();
+        if cfg.has_key {
+            key = self.parse_key()?;
+        }
+        let hash = if self.reserved_hash().is_some() {
+            // 使用hashkey直接指定了hash
+            self.reserved_hash().unwrap()
+            // flag.set_direct_hash();
+        } else if cfg.need_reserved_hash {
+            return Err(RedisError::ReqInvalid.error());
+        } else if cfg.has_key {
+            calculate_hash(alg, &key)
+        } else {
+            default_hash()
+        };
+        Ok(hash)
+    }
+
+    pub(super) fn proc_side_effect_cmd<H: Hash, P: RequestProcessor>(
+        &mut self,
+        cfg: &CommandProperties,
+        alg: &H,
+        process: &mut P,
+    ) -> Result<()> {
+        //保留所有旧状态
+        let mut master_only = self.master_only();
+        let mut sendto_all = self.sendto_all();
+        let mut reserved_hash = self.reserved_hash();
+        let mut hash: i64 = 0;
+        match cfg.cmd_type {
+            CommandType::SwallowedMaster => master_only = true,
+            // cmd: hashkeyq $key
+            CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
+                let key = self.parse_key()?;
+                hash = calculate_hash(alg, &key);
+                reserved_hash.replace(hash);
+            }
+            // cmd: hashrandomq
+            CommandType::SwallowedCmdHashrandomq => {
+                // 虽然hash名义为i64，但实际当前均为u32
+                hash = rand::random::<u32>() as i64;
+                reserved_hash.replace(hash);
+            }
+            CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
+                sendto_all = true;
+            }
+            _ => {
+                assert!(false, "unknown swallowed cmd:{}", cfg.name);
+                log::warn!("should not come here![hashkey?]");
+            }
+        }
+
+        // 吞噬掉整个cmd，准备处理下一个cmd fishermen
+        self.ignore_all_bulks()?;
+        let cmd = self.take();
+        if !cfg.swallowed {
+            let req = HashedCommand::new(cmd, hash, cfg.flag());
+            process.process(req, true);
+        }
+        self.reserve_status(master_only, sendto_all, reserved_hash);
+        Ok(())
     }
 
     #[inline]
@@ -515,6 +595,41 @@ impl Packet {
 #[inline]
 fn is_number_digit(d: u8) -> bool {
     d >= b'0' && d <= b'9'
+}
+
+use std::sync::atomic::{AtomicI64, Ordering};
+static AUTO: AtomicI64 = AtomicI64::new(0);
+
+// 避免异常情况下hash为0，请求集中到某一个shard上。
+// hash正常情况下可能为0?
+#[inline]
+fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
+    match key.len() {
+        0 => default_hash(),
+        // 2 => {
+        //     // 对“hashkey -1”做特殊处理，使用max hash，从而保持与hashkeyq一致
+        //     if key.len() == 2
+        //         && key.at(0) == ('-' as u8)
+        //         && key.at(1) == ('1' as u8)
+        //         && cfg.cmd_type == CommandType::SpecLocalCmdHashkey
+        //     {
+        //         crate::MAX_DIRECT_HASH
+        //     } else {
+        //         alg.hash(key)
+        //     }
+        // }
+        _ => alg.hash(key),
+    }
+    // if key.len() == 0 {
+    //     default_hash()
+    // } else {
+    //     alg.hash(key)
+    // }
+}
+
+#[inline]
+fn default_hash() -> i64 {
+    AUTO.fetch_add(1, Ordering::Relaxed)
 }
 
 use std::fmt::{self, Debug, Display, Formatter};

@@ -1,4 +1,4 @@
-use crate::{HashedCommand, OpCode, Operation, Result};
+use crate::{Flag, HashedCommand, OpCode, Operation, Result};
 use ds::{MemGuard, RingSlice};
 //use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
 
@@ -187,8 +187,7 @@ impl CommandProperties {
         hash: i64,
         bulk_num: u16,
         first: bool,
-        master_only: bool,
-        sendto_all: bool,
+        flag: Flag,
         data: &RingSlice,
     ) -> HashedCommand {
         use ds::Buffer;
@@ -221,12 +220,6 @@ impl CommandProperties {
                 key_num >>= 1;
             }
             flag.set_key_count(key_num);
-        }
-        if master_only {
-            flag.set_master_only();
-        }
-        if sendto_all {
-            flag.set_sendto_all()
         }
         let cmd: MemGuard = MemGuard::from_vec(cmd);
         HashedCommand::new(cmd, hash, flag)
