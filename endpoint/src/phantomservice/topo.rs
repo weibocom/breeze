@@ -87,6 +87,7 @@ where
         let e = if req.operation().is_store() {
             let idx = ctx.fetch_add_idx();
             req.write_back(ctx.index() < shard.len());
+            assert!(idx < shard.len(), "{} {:?} {:?}", idx, self, req);
             unsafe { shard.get_unchecked(idx) }
         } else {
             // 读请求。
@@ -97,6 +98,7 @@ where
                 e
             } else {
                 req.try_next(false);
+                assert!(ctx.index() < shard.len(), "{} {:?} {:?}", idx, self, req);
                 unsafe { shard.unsafe_next(ctx.index(), 1).1 }
             }
         };

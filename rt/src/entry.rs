@@ -18,25 +18,15 @@ pub trait ReEnter {
     fn last(&self) -> Option<Instant> {
         None
     }
-    //// 发送的请求数量
-    //#[inline]
-    //fn num_tx(&self) -> usize {
-    //    0
-    //}
-    //// 接收到的请求数量
-    //#[inline]
-    //fn num_rx(&self) -> usize {
-    //    0
-    //}
+    // 定期会调用，通常用来清理内存，更新数据等信息。
+    // 返回true: 表示期待进行下一次调用
+    // 返回false: 表示资源已经释放，不再需要调用。
+    fn refresh(&mut self) -> Result<bool>;
     // 在Future.poll返回前执行。
     // 可能会多次执行，直到close返回true。
     // true: 成功关闭，释放相关资源
     // false: 还有资源未释放
     fn close(&mut self) -> bool;
-    // 定期会调用，通常用来清理内存，更新数据等信息。
-    // 返回true: 表示期待进行下一次调用
-    // 返回false: 表示资源已经释放，不再需要调用。
-    fn refresh(&mut self) -> bool;
 }
 pub trait Cancel {
     fn cancel(&mut self);
@@ -70,7 +60,7 @@ impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + R
 {
     #[inline]
     pub fn timeout(f: F, timeout: T) -> Self {
-        let mut refresh_tick = interval(Duration::from_secs(9));
+        let mut refresh_tick = interval(Duration::from_secs(30));
         refresh_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         Self {
@@ -92,7 +82,7 @@ impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + R
             // 只有pengding时，才尝试刷新
             ready!(self.refresh_tick.poll_tick(cx));
             self.refresh_tick.reset();
-            if self.inner.refresh() {
+            if self.inner.refresh()? {
                 // 还需要继续refresh
                 ready!(self.refresh_tick.poll_tick(cx));
             }

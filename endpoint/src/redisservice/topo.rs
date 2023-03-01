@@ -29,6 +29,7 @@ pub struct RedisService<B, E, Req, P> {
     service: String,
     timeout_master: Duration,
     timeout_slave: Duration,
+    master_read: bool,
     _mark: std::marker::PhantomData<(B, Req)>,
 }
 impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
@@ -45,6 +46,7 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             selector: Selector::Random,
             timeout_master: crate::TO_REDIS_M,
             timeout_slave: crate::TO_REDIS_S,
+            master_read: false,
             _mark: Default::default(),
         }
     }
@@ -94,13 +96,8 @@ where
             false => self.distribute.index(req.hash()),
         };
 
-        debug_assert!(
-            shard_idx < self.shards.len(),
-            "redis: {}/{} req:{:?}",
-            shard_idx,
-            self.shards.len(),
-            req
-        );
+        assert!(shard_idx < self.len(), "{} {:?} {}", shard_idx, req, self);
+
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
@@ -151,17 +148,9 @@ where
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
-            self.selector = ns.basic.selector.as_str().into();
+            self.selector = ns.local().as_str().into();
 
-            // TODO 直接设置selector属性，在更新最后，设置全局更新标志，deadcode暂时保留，观察副作用 2022.12后可以删除
-            // selector属性更新与域名实例更新保持一致
-            // if self.selector != ns.basic.selector {
-            //     self.selector = ns.basic.selector;
-            //     self.updated
-            //         .entry(CONFIG_UPDATED_KEY.to_string())
-            //         .or_insert(Arc::new(AtomicBool::new(true)))
-            //         .store(true, Ordering::Release);
-            // }
+            self.master_read = ns.basic.master_read;
 
             let mut shards_url = Vec::new();
             for shard in ns.backends.iter() {
@@ -236,6 +225,12 @@ where
                 .fold(true, |inited, shard| inited && shard.inited())
     }
 }
+impl<B, E, Req, P> RedisService<B, E, Req, P> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.shards.len()
+    }
+}
 
 impl<B, E, Req, P> RedisService<B, E, Req, P>
 where
@@ -280,6 +275,9 @@ where
             }
             let master = String::from(&masters[0]) + ":" + master_url.port();
             let mut slaves = Vec::with_capacity(8);
+            if self.master_read {
+                slaves.push(master.clone());
+            }
             for url_port in &shard[1..] {
                 let url = url_port.host();
                 let port = url_port.port();
@@ -388,5 +386,19 @@ impl<E: discovery::Inited> Shard<E> {
                 .as_ref()
                 .iter()
                 .fold(true, |inited, (_, e)| inited && e.inited())
+    }
+}
+impl<B: Send + Sync, E, Req, P> std::fmt::Display for RedisService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RedisService")
+            .field("service", &self.service)
+            .field("shards", &self.shards.len())
+            .field("shards_url", &self.shards_url)
+            .finish()
     }
 }
