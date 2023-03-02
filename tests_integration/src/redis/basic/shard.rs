@@ -286,3 +286,31 @@ fn test_keyshard() {
         Ok((1, 2))
     );
 }
+
+//sendtoall  sendtoallq 命令
+#[test]
+#[named]
+#[cfg(feature = "github_workflow")]
+fn test_sendto_all() {
+    let argkey = function_name!();
+    let mut con = get_conn(&RESTYPE.get_host());
+
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        redis::cmd("DEL").arg(argkey).execute(&mut con);
+    }
+    redis::cmd("SENDTOALL").execute(&mut con);
+    redis::cmd("SET").arg(argkey).arg(1).execute(&mut con);
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        assert_eq!(con.get(argkey), Ok(1));
+    }
+
+    con.send_packed_command(&redis::cmd("SENDTOALLQ").get_packed_command())
+        .expect("send err");
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        assert_eq!(con.get(argkey), Ok(false));
+    }
+}

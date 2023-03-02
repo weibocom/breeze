@@ -75,9 +75,8 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
 
-        let shard_idx = if req.hash() == protocol::MAX_DIRECT_HASH {
+        let shard_idx = if req.cmd().sendto_all() {
             //全节点分发请求
-            // 备注：正常计算的hash范围是u32；
             let ctx = super::transmute(req.context_mut());
             let idx = ctx.shard_idx as usize;
             ctx.shard_idx += 1;

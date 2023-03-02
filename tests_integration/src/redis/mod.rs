@@ -30,6 +30,7 @@
 //!     ping、command、select、quit
 //! ### 吞噬指令
 //! - hashrandomq, master + hashrandomq
+//! - sendtoall  sendtoallq 命令
 //!## 复杂场景
 //!  - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
 //! 从mesh读取, 验证业务写入与mesh读取之间的一致性
