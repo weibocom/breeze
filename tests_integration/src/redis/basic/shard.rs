@@ -1,6 +1,8 @@
 //! 需要先指定分片，多条命令配合的测试
 #![allow(unused)]
 
+use std::time::Duration;
+
 use crate::ci::env::*;
 use crate::redis::{RESTYPE, RESTYPEWITHSLAVE};
 use crate::redis_helper::*;
