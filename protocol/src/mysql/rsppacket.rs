@@ -96,15 +96,16 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // 读一个完整的响应包，如果数据不完整，返回ProtocolIncomplete
     pub(super) fn next_packet(&mut self) -> Result<()> {
         // mysql packet至少需要4个字节来读取sequence id
-        if self.data.len() < 4 {
+        let head_len = 4;
+        if self.data.len() < head_len {
             return Err(Error::ProtocolIncomplete);
         }
-        let mut data: Vec<u8> = Vec::with_capacity(4);
+        let mut data: Vec<u8> = Vec::with_capacity(head_len);
         self.data.copy_to_vec(&mut data);
         let raw_chunk_len = LittleEndian::read_u24(&data) as usize;
         self.payload_len = raw_chunk_len;
         let seq_id = self.data.at(3);
-        self.oft += 3;
+        self.oft += head_len;
 
         match NonZeroUsize::new(raw_chunk_len) {
             Some(_chunk_len) => {
@@ -149,25 +150,35 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         // 先读一个完整的packet
         self.next_packet()?;
 
+        log::debug!("+++ before parse handshake, payload:{}", self.payload_len);
         // 解析整个packet
         let mut handshake_data = Vec::with_capacity(self.payload_len);
-        self.data.copy_to_vec(&mut handshake_data);
+        self.data
+            .sub_slice(self.oft, self.payload_len)
+            .copy_to_vec(&mut handshake_data);
         // TODO 先跑通，后面统一基于RingSlice进行parse
+        self.oft += self.payload_len;
         self.take();
         let handshake = ParseBuf(&handshake_data[0..]).parse::<HandshakePacket>(())?;
+        log::debug!("+++ after parse handshake:{}", handshake.protocol_version());
 
         // 3.21.0 之后handshake是v10版本，更古老的版本不支持
         if handshake.protocol_version() != 10u8 {
+            log::warn!("unsupport mysql proto version should be 10");
             return Err(DriverError::UnsupportedProtocol(handshake.protocol_version()).error());
         }
+
+        log::debug!("+++ capabilities:{:?}", handshake.capabilities());
 
         if !handshake
             .capabilities()
             .contains(CapabilityFlags::CLIENT_PROTOCOL_41)
         {
+            log::warn!("mysql handshake should contains cp41");
             return Err(DriverError::Protocol41NotSet.error());
         }
 
+        log::debug!("+++ will handl handshake packet local");
         self.handle_handshake(&handshake);
 
         // TODO 当前先不支持ssl，后续再考虑 fishermen
@@ -205,14 +216,21 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         flag.set_sentonly(false);
         flag.set_noforward(false);
         let cmd = HashedCommand::new(mem_guard, 0, flag);
+        log::debug!("+++ already build handshake rsp");
         Ok(cmd)
     }
 
     // 处理handshakeresponse的mysql响应，即auth
     pub(super) fn proc_auth(&mut self) -> Result<()> {
+        log::debug!(
+            "+++ proc auth result..., oft:{}/{}",
+            self.oft,
+            self.oft_last
+        );
         // 先读取一个packet
         self.next_packet()?;
 
+        log::debug!("+++ proc auth result..., flag:{}", self.current());
         // Ok packet header 是 0x00 或者0xFE
         match self.current() {
             0x00 => {
@@ -347,12 +365,13 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     //解析initial_handshake，暂定解析成功会take走stream，协议未完成返回incomplete
     //如果这样会copy，可返回引用，外部take，但问题不大
     pub(super) fn take_initial_handshake(&mut self) -> Result<InitialHandshake> {
-        let packet = self.parse_packet()?;
-        let packet: InitialHandshake = packet.parse();
-        //为了take走还有效
-        let packet = packet.clone();
-        self.take();
-        Ok(packet)
+        // let packet = self.parse_packet()?;
+        // let packet: InitialHandshake = packet.parse();
+        // //为了take走还有效
+        // let packet = packet.clone();
+        // self.take();
+        // Ok(packet)
+        todo!()
     }
     //构建采用Native Authentication快速认证的handshake response，seq+1
     pub(super) fn build_handshake_response(
@@ -437,10 +456,14 @@ impl<T> ParsePacket<T> for RingSlice {
 
 // TODO 代码冲突，merge 到上面的ResponsePacket，暂时保留备查 fishermen
 // //解析rsp的时候，take的时候seq才加一？
-// pub(super) struct ResponsePacket<'a, S> {}
+// pub(super) struct ResponsePacket<'a, S> {
+//     stream: &'a mut S,
+//     ctx: &'a mut ResponseContext,
+// }
 // impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 //     #[inline]
 //     pub(super) fn new(stream: &'a mut S) -> Self {
+//         //from实现解除了ctx和stream的关联 ，所以可以有两个mut引用
 //         let ctx = stream.context().into();
 //         Self { stream, ctx }
 //     }

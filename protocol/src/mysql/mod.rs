@@ -73,44 +73,25 @@ impl Protocol for Mysql {
         s: &mut impl crate::Writer,
         option: &mut crate::ResOption,
     ) -> Result<HandShake> {
+        log::debug!("+++ recv mysql handshake packet:{:?}", stream.slice());
         let opt = Opts::from_user_pwd(option.username.clone(), option.token.clone());
         let mut packet = ResponsePacket::new(stream, Some(opt));
+        log::debug!("+++ ctx status:{:?}", packet.ctx().status);
         match packet.ctx().status {
             HandShakeStatus::Init => {
                 let handshake_rsp = packet.proc_handshake()?;
+                log::debug!("+++ will send handshakersp:{:?}", handshake_rsp.data());
                 handshake_rsp.data().copy_to(0, s)?;
+                log::debug!("+++ after send handshakersp:{:?}", handshake_rsp.data());
                 packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
                 Ok(HandShake::Continue)
             }
-            // HandShakeStatus::Init => match packet.take_initial_handshake() {
-            //     Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
-            //     Ok(initial_handshake) => {
-            //         initial_handshake.check_fast_auth_and_native()?;
-            //         let auth_data = &native_auth(
-            //             initial_handshake.auth_plugin_data.as_bytes(),
-            //             option.token.as_bytes(),
-            //         );
-            //         let response = packet.build_handshake_response(option, auth_data)?;
-            //         s.write(&response)?;
-
-            //         packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
-            //         Ok(HandShake::Continue)
-            //     }
-            //     Err(e) => Err(e),
-            // },
-            // HandShakeStatus::InitialhHandshakeResponse => match packet.take_and_ok() {
-            //     Ok(_) => {
-            //         packet.ctx().status = HandShakeStatus::AuthSucceed;
-            //         Ok(HandShake::Success)
-            //     }
-            //     Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
-            //     Err(e) => Err(e),
-            // },
             HandShakeStatus::InitialhHandshakeResponse => {
                 packet.proc_auth()?;
                 packet.ctx().status = HandShakeStatus::AuthSucceed;
                 Ok(HandShake::Success)
             }
+
             HandShakeStatus::AuthSucceed => Ok(HandShake::Success),
         }
     }
@@ -127,7 +108,7 @@ impl Protocol for Mysql {
         process: &mut P,
     ) -> Result<()> {
         assert!(stream.len() > 0, "mc req: {:?}", stream.slice());
-        log::debug!("recv mc:{:?}", stream.slice());
+        log::debug!("recv mysql-mc req:{:?}", stream.slice());
 
         // TODO: 这个需要把encode、decode抽出来，然后去掉mut，提升为Mysql结构体的字段 fishermen
         let mut req_packet = RequestPacket::new();
