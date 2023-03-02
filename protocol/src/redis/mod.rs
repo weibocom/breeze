@@ -6,20 +6,12 @@ pub(crate) mod packet;
 //mod token;
 
 use crate::{
-    redis::packet::RequestPacket,
-    redis::{
-        command::{CommandProperties, CommandType},
-        packet::NextReqStatus,
-    },
-    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
-    RequestProcessor, Result, Stream, Writer,
+    redis::command::CommandType, redis::packet::RequestPacket, Command, Commander, Error, Flag,
+    HashedCommand, Metric, MetricItem, MetricName, Protocol, RequestProcessor, Result, Stream,
+    Writer,
 };
-use ds::RingSlice;
-use error::*;
 pub use packet::Packet;
-use sharding::hash::{self, Hash};
-
-use rand;
+use sharding::hash::Hash;
 
 // redis 协议最多支持10w个token
 //const MAX_TOKEN_COUNT: usize = 100000;
@@ -45,10 +37,8 @@ impl Redis {
         while packet.available() {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd()?;
-            let mut next_req_status = NextReqStatus::default();
-
             //处理对下条指令有影响的命令，可以叠加，因此不清除状态，现状是swallow命令的超集
-            packet.prepare(&cfg, &mut next_req_status, alg)?;
+            let next_req_status = packet.prepare(&cfg, alg)?;
             if cfg.multi {
                 packet.multi_ready();
                 while packet.has_bulk() {
@@ -63,7 +53,7 @@ impl Redis {
                     if cfg.has_val {
                         packet.ignore_one_bulk()?;
                     }
-                    let kv = packet.take(&mut next_req_status);
+                    let kv = packet.take();
                     let req = cfg.build_request(hash, bulk, first, flag, kv.data());
                     process.process(req, packet.complete());
                 }
@@ -72,7 +62,7 @@ impl Redis {
                 let hash = packet.hash(cfg, alg)?;
 
                 packet.ignore_all_bulks()?;
-                let cmd = packet.take(&mut next_req_status);
+                let cmd = packet.take();
                 if !cfg.swallowed {
                     let req = HashedCommand::new(cmd, hash, flag);
                     process.process(req, true);
@@ -86,6 +76,8 @@ impl Redis {
                 //     packet.update_reserved_hash(hash);
                 // }
             }
+            //一个请求结束才会走到这
+            packet.clear_status(next_req_status);
         }
         Ok(())
     }
