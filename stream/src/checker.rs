@@ -150,10 +150,16 @@ where
         //todo:读buf代码重复了与下面
         // let mut cx1 = Context::from_waker(cx.waker());
         let mut reader = crate::buffer::Reader::from(&mut me.s, cx);
-        let poll_read = me.buf.write(&mut reader)?;
-        //有可能出错了，会有未使用的读取，放使用后会有两个mut
-        if let Poll::Ready(_) = poll_read {
-            reader.check()?;
+        // loop {
+        //     let poll_read = me.buf.write(&mut reader)?;
+        //     match poll_read {
+        //         Poll::Pending => break,
+        //         Poll::Ready(_) => reader.check()?,
+        //     }
+        //     //有可能出错了，会有未使用的读取，放使用后会有两个mut
+        // }
+        while let Poll::Ready(_) = me.buf.write(&mut reader)? {
+            reader.check()?
         }
 
         let result = match me.parser.handshake(&mut me.buf, me.s, me.option)? {
