@@ -3,6 +3,8 @@ use super::topo::MysqlService;
 use super::uuid::UuidHelper;
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
+use sharding::distribution::Distribute;
+use sharding::hash::{Hash, Hasher};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
@@ -43,6 +45,9 @@ pub struct Strategy {
     pub(crate) hierarchy: bool,
     #[serde(default)]
     pub(crate) sql: HashMap<String, String>,
+    // #[default]
+    // hasher: Hasher,
+    // distribution: Distribute,
 }
 
 impl Strategy {
@@ -54,6 +59,8 @@ impl Strategy {
         table_count: u32,
         hierarchy: bool,
         sql: HashMap<String, String>,
+        // h:String,
+        // dist: String,
     ) -> Self {
         Self {
             db_prefix: db_prefix.clone(),
@@ -63,6 +70,11 @@ impl Strategy {
             table_count: table_count,
             hierarchy: hierarchy,
             sql: sql.clone(),
+            // distribute: Distribute::from_num(
+            //     dist.as_str(),
+            //     (db_count * table_count) as usize
+            // ),
+            // hash: Hasher::default(),
         }
     }
 
@@ -75,6 +87,11 @@ impl Strategy {
             table_count: item.basic.table_count,
             hierarchy: item.basic.hierarchy,
             sql: item.sql.clone(),
+            // distribute: Distribute::from_num(
+            //     item.basic.distribution.as_str(),
+            //     (item.basic.db_count * item.basic.table_count) as usize,
+            // ),
+            // hash: Hasher::default(),
         }
     }
 
@@ -137,6 +154,7 @@ impl Strategy {
         //todo: check db_name_prefix not empty
         if self.table_count > 0 && self.db_count > 0 {
             let mut tbl_index = 0;
+            // tbl_index = self.distribute.index(self.hash.hash(id))
             // tbl_index = api_util::get_hash4split(id, item.db_count * item.table_count);
             tbl_index = tbl_index % self.table_count;
             return Some(format!("{}_{}", table_prefix, tbl_index));
