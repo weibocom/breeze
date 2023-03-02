@@ -56,7 +56,7 @@ pub enum HandShake {
 
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
-    //配置在parser初始化时候传入或者handle存auth？token咋存？
+    //todo, Stream和Writer合并，ResOption用一个字段？
     fn handshake(
         &self,
         _stream: &mut impl Stream,
@@ -120,6 +120,10 @@ pub trait RequestProcessor {
     // 2. 请求被拆分成了多个子请求；
     // 3. 当前子请求为最后一个；
     fn process(&mut self, req: HashedCommand, last: bool);
+}
+
+pub trait StreamWithWriter: Stream {
+    fn write(&mut self, data: &[u8]) -> Result<()>;
 }
 
 pub trait Stream {

@@ -1,10 +1,11 @@
+use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, ReadBuf};
 
 use ds::BuffRead;
-use protocol::{Error, Result};
+use protocol::{Error, Result, Stream, StreamWithWriter, Writer};
 
 pub(crate) struct Reader<'a, 'b, C> {
     n: usize, // 成功读取的数据
@@ -48,7 +49,7 @@ where
         let out = Pin::new(&mut **client).poll_read(cx, &mut rb);
         let r = rb.capacity() - rb.remaining();
         if r > 0 {
-            log::debug!("{} bytes received", r);
+            log::debug!("+++ {} bytes received", r);
         }
         *n += r;
 
@@ -158,5 +159,46 @@ impl Debug for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "ctx:{} StreamGuard :{}", self.ctx, self.buf)
+    }
+}
+
+pub struct StreamGuardWithWriter<'a, W> {
+    stream: &'a mut StreamGuard,
+    writer: &'a mut W,
+}
+
+impl<'a, W> Stream for StreamGuardWithWriter<'a, W> {
+    #[inline]
+    fn take(&mut self, n: usize) -> MemGuard {
+        self.stream.take(n)
+    }
+    #[inline]
+    fn len(&self) -> usize {
+        self.stream.len()
+    }
+    #[inline]
+    fn slice(&self) -> RingSlice {
+        self.stream.slice()
+    }
+    #[inline]
+    fn context(&mut self) -> &mut u64 {
+        self.stream.context()
+    }
+    #[inline]
+    fn reserved_hash(&mut self) -> &mut i64 {
+        self.stream.reserved_hash()
+    }
+    #[inline]
+    fn reserve(&mut self, r: usize) {
+        self.stream.reserve(r);
+    }
+}
+
+impl<'a, W> StreamWithWriter for StreamGuardWithWriter<'a, W>
+where
+    W: Writer,
+{
+    fn write(&mut self, data: &[u8]) -> Result<()> {
+        self.writer.write(data)
     }
 }
