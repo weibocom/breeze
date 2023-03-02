@@ -27,18 +27,6 @@ use rand;
 pub struct Redis;
 
 impl Redis {
-    fn has_effect_to_next_req(cfg: &CommandProperties) -> bool {
-        match cfg.cmd_type {
-            CommandType::SwallowedMaster
-            | CommandType::SwallowedCmdHashkeyq
-            | CommandType::SpecLocalCmdHashkey
-            | CommandType::SwallowedCmdHashrandomq
-            | CommandType::CmdSendToAll
-            | CommandType::CmdSendToAllq => true,
-            _ => false,
-        }
-    }
-
     #[inline]
     fn parse_request_inner<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
@@ -55,9 +43,10 @@ impl Redis {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd()?;
 
-            if Self::has_effect_to_next_req(cfg) {
+            if cfg.effect_on_next_req {
                 //对下条指令有影响的命令，可以叠加，因此不清除状态，现状是swallow命令的超集
                 packet.proc_side_effect_cmd(&cfg, alg, process)?;
+                continue;
             } else if cfg.multi {
                 packet.multi_ready();
                 while packet.has_bulk() {

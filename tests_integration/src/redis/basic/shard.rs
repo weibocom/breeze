@@ -301,6 +301,7 @@ fn test_sendto_all() {
     }
     redis::cmd("SENDTOALL").execute(&mut con);
     redis::cmd("SET").arg(argkey).arg(1).execute(&mut con);
+    std::thread::sleep(Duration::from_secs(1));
     for server in SERVERS {
         let mut con = get_conn(server[0]);
         assert_eq!(con.get(argkey), Ok(1));
@@ -309,6 +310,7 @@ fn test_sendto_all() {
     con.send_packed_command(&redis::cmd("SENDTOALLQ").get_packed_command())
         .expect("send err");
     redis::cmd("DEL").arg(argkey).execute(&mut con);
+    std::thread::sleep(Duration::from_secs(1));
     for server in SERVERS {
         let mut con = get_conn(server[0]);
         assert_eq!(con.get(argkey), Ok(false));
