@@ -2,6 +2,7 @@ use super::config::MysqlNamespace;
 use super::topo::MysqlService;
 use super::uuid::UuidHelper;
 use chrono::{DateTime, TimeZone, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
@@ -26,23 +27,67 @@ impl TNamePostfixType {
     }
 }
 
-pub struct Table;
-impl Table {
-    pub fn get_sql(
-        item: &MysqlNamespace,
-        sql_name: &str,
-        db_id: i64,
-        tb_id: i64,
-    ) -> Option<String> {
-        let table_name = match Self::get_table_name(item, tb_id) {
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct Strategy {
+    #[serde(default)]
+    pub(crate) db_prefix: String,
+    #[serde(default)]
+    pub(crate) table_prefix: String,
+    #[serde(default)]
+    pub(crate) table_postfix: String,
+    #[serde(default)]
+    pub(crate) db_count: u32,
+    #[serde(default)]
+    pub(crate) table_count: u32,
+    #[serde(default)]
+    pub(crate) hierarchy: bool,
+    #[serde(default)]
+    pub(crate) sql: HashMap<String, String>,
+}
+
+impl Strategy {
+    pub fn from(
+        db_prefix: String,
+        table_prefix: String,
+        table_postfix: String,
+        db_count: u32,
+        table_count: u32,
+        hierarchy: bool,
+        sql: HashMap<String, String>,
+    ) -> Self {
+        Self {
+            db_prefix: db_prefix.clone(),
+            table_prefix: table_prefix.clone(),
+            table_postfix: table_postfix.clone(),
+            db_count: db_count,
+            table_count: table_count,
+            hierarchy: hierarchy,
+            sql: sql.clone(),
+        }
+    }
+
+    pub fn try_from(item: &MysqlNamespace) -> Self {
+        Self {
+            db_prefix: item.basic.db_prefix.clone(),
+            table_prefix: item.basic.table_prefix.clone(),
+            table_postfix: item.basic.table_postfix.clone(),
+            db_count: item.basic.db_count,
+            table_count: item.basic.table_count,
+            hierarchy: item.basic.hierarchy,
+            sql: item.sql.clone(),
+        }
+    }
+
+    pub fn get_sql(&self, sql_name: &str, db_id: i64, tb_id: i64) -> Option<String> {
+        let table_name = match self.get_table_name(tb_id) {
             Some(table_name) => table_name,
             None => return None,
         };
-        let db_name = match Self::get_db_name_by_id(item, db_id) {
+        let db_name = match self.get_db_name_by_id(db_id) {
             Some(db_name) => db_name,
             None => return None,
         };
-        let mut sql = item.sql.get(sql_name).unwrap_or(&String::new()).clone();
+        let mut sql = self.sql.get(sql_name).unwrap_or(&String::new()).clone();
         if !sql.is_empty() {
             sql = sql.replace(DB_NAME_EXPRESSION, &db_name);
             sql = sql.replace(TABLE_NAME_EXPRESSION, &table_name);
@@ -53,47 +98,47 @@ impl Table {
         Some(sql)
     }
 
-    pub fn get_table_name(item: &MysqlNamespace, id: i64) -> Option<String> {
-        let postfix_type = if item.basic.table_postfix == "yymmdd" {
+    pub fn get_table_name(&self, id: i64) -> Option<String> {
+        let postfix_type = if self.table_postfix == "yymmdd" {
             TNamePostfixType::YYMMDD
-        } else if item.basic.table_postfix == "yymm" {
+        } else if self.table_postfix == "yymm" {
             TNamePostfixType::YYMM
         } else {
             TNamePostfixType::INDEX
         };
-        let table_prefix = item.basic.table_prefix.as_str();
+        let table_prefix = self.table_prefix.as_str();
         match postfix_type {
             TNamePostfixType::YYMM => {
-                let table_name = Self::get_date_table_name_by_id(table_prefix, id, false);
+                let table_name = self.get_date_table_name_by_id(table_prefix, id, false);
                 table_name
             }
             TNamePostfixType::YYMMDD => {
-                let table_name = Self::get_date_table_name_by_id(table_prefix, id, true);
+                let table_name = self.get_date_table_name_by_id(table_prefix, id, true);
                 table_name
             }
             TNamePostfixType::INDEX => {
-                let table_name = Self::get_index_table_name_by_id(item, id);
+                let table_name = self.get_index_table_name_by_id(id);
                 table_name
             }
         }
     }
 
-    fn get_db_name_by_id(item: &MysqlNamespace, id: i64) -> Option<String> {
-        let (db_name_prefix, db_count) = (item.basic.db_prefix.clone(), item.basic.db_count);
+    fn get_db_name_by_id(&self, id: i64) -> Option<String> {
+        let db_name_prefix = self.db_prefix.clone();
         //todo: check db_name_prefix not empty
 
         let db_index = 0;
         // let db_index = api_util::get_hash4split(id, db_count * item.table_count.max(1));
-        let db_index = db_index / item.basic.table_count;
+        let db_index = db_index / self.table_count;
         return Some(format!("{}_{}", db_name_prefix, db_index));
     }
-    fn get_index_table_name_by_id(item: &MysqlNamespace, id: i64) -> Option<String> {
-        let table_prefix = item.basic.table_prefix.clone();
+    fn get_index_table_name_by_id(&self, id: i64) -> Option<String> {
+        let table_prefix = self.table_prefix.clone();
         //todo: check db_name_prefix not empty
-        if item.basic.table_count > 0 && item.basic.db_count > 0 {
+        if self.table_count > 0 && self.db_count > 0 {
             let mut tbl_index = 0;
             // tbl_index = api_util::get_hash4split(id, item.db_count * item.table_count);
-            tbl_index = tbl_index % item.basic.table_count;
+            tbl_index = tbl_index % self.table_count;
             return Some(format!("{}_{}", table_prefix, tbl_index));
         } else {
             log::error!("id is null");
@@ -101,6 +146,7 @@ impl Table {
         None
     }
     fn get_date_table_name_by_id(
+        &self,
         tbl_prefix: &str,
         id: i64,
         is_display_day: bool,
