@@ -59,6 +59,13 @@ pub(crate) struct RequestPacket<'a, S> {
     oft: usize,
 }
 
+#[derive(Default)]
+pub(crate) struct NextReqStatus {
+    pub master_only: bool,
+    pub sendto_all: bool,
+    pub reserved_hash: ReservedHash,
+}
+
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(crate) fn new(stream: &'a mut S) -> Self {
@@ -217,9 +224,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(super) fn set_sendto_all(&mut self) {
         self.ctx.sendto_all = true;
     }
+    #[inline]
+    pub(super) fn clear_sendto_all(&mut self) {
+        self.ctx.sendto_all = false;
+    }
 
     #[inline]
-    pub(crate) fn take(&mut self) -> ds::MemGuard {
+    pub(crate) fn take(&mut self, next_req_status: &mut NextReqStatus) -> ds::MemGuard {
         assert!(self.oft_last < self.oft, "packet:{}", self);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
@@ -231,6 +242,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             self.reset_context();
             self.reset_reserved_hash();
         }
+        self.reserve_status(next_req_status);
         self.stream.take(data.len())
     }
 
@@ -266,69 +278,74 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         Ok(hash)
     }
 
-    pub(super) fn proc_side_effect_cmd<H: Hash, P: RequestProcessor>(
+    pub(super) fn prepare<H: Hash>(
         &mut self,
         cfg: &CommandProperties,
+        next_req_status: &mut NextReqStatus,
         alg: &H,
-        process: &mut P,
     ) -> Result<()> {
-        //保留所有旧状态
-        let mut master_only = self.master_only();
-        let mut sendto_all = self.sendto_all();
-        let mut reserved_hash = self.reserved_hash();
-        let mut hash: i64 = 0;
-        match cfg.cmd_type {
-            CommandType::SwallowedMaster => master_only = true,
-            // cmd: hashkeyq $key
-            CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
-                let key = self.parse_key()?;
-                hash = calculate_hash(alg, &key);
-                reserved_hash.replace(hash);
+        let NextReqStatus {
+            master_only,
+            sendto_all,
+            reserved_hash,
+        } = next_req_status;
+
+        if cfg.effect_on_next_req {
+            //保留所有旧状态, 且清除当前状态，因为处理特殊指令的时刻，不需要特殊处理
+            *master_only = self.master_only();
+            *sendto_all = self.sendto_all();
+            *reserved_hash = self.reserved_hash();
+            self.clear_master_only();
+            self.clear_sendto_all();
+            self.reserved_hash.take();
+
+            match cfg.cmd_type {
+                CommandType::SwallowedMaster => *master_only = true,
+                // cmd: hashkeyq $key
+                CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
+                    let key = self.parse_key()?;
+                    let hash = calculate_hash(alg, &key);
+                    reserved_hash.replace(hash);
+                }
+                // cmd: hashrandomq
+                CommandType::SwallowedCmdHashrandomq => {
+                    // 虽然hash名义为i64，但实际当前均为u32
+                    let hash = rand::random::<u32>() as i64;
+                    reserved_hash.replace(hash);
+                }
+                CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
+                    *sendto_all = true;
+                }
+                _ => {
+                    assert!(false, "unknown swallowed cmd:{}", cfg.name);
+                    log::warn!("should not come here![hashkey?]");
+                }
             }
-            // cmd: hashrandomq
-            CommandType::SwallowedCmdHashrandomq => {
-                // 虽然hash名义为i64，但实际当前均为u32
-                hash = rand::random::<u32>() as i64;
-                reserved_hash.replace(hash);
-            }
-            CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
-                sendto_all = true;
-            }
-            _ => {
-                assert!(false, "unknown swallowed cmd:{}", cfg.name);
-                log::warn!("should not come here![hashkey?]");
-            }
+        } else {
+            //普通请求不需要保留状态
         }
 
-        // 吞噬掉整个cmd，准备处理下一个cmd fishermen
-        self.ignore_all_bulks()?;
-        let cmd = self.take();
-        if !cfg.swallowed {
-            let req = HashedCommand::new(cmd, hash, cfg.flag());
-            process.process(req, true);
-        }
-        self.reserve_status(master_only, sendto_all, reserved_hash);
         Ok(())
     }
 
     #[inline]
-    pub(super) fn reserve_status(
-        &mut self,
-        master_only: bool,
-        sendto_all: bool,
-        reserved_hash: ReservedHash,
-    ) {
-        if master_only {
+    pub(super) fn reserve_status(&mut self, next_req_status: &mut NextReqStatus) {
+        let NextReqStatus {
+            master_only,
+            sendto_all,
+            reserved_hash,
+        } = next_req_status;
+        if *master_only {
             // 保留master only 设置
-            self.set_layer(LayerType::MasterOnly);
+            self.set_master_only();
         }
-        if sendto_all {
-            self.set_sendto_all()
+        if *sendto_all {
+            self.set_sendto_all();
         }
         *self.stream.context() = self.ctx.u64();
 
-        self.reserved_hash = reserved_hash;
-        *self.stream.reserved_hash() = reserved_hash;
+        self.reserved_hash = *reserved_hash;
+        *self.stream.reserved_hash() = *reserved_hash;
         // 设置packet的ctx到stream的ctx中，供下一个指令使用
 
         // 这个有必要保留吗？
@@ -364,8 +381,16 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.ctx.layer = layer as u8;
     }
     #[inline]
+    pub(super) fn set_master_only(&mut self) {
+        self.set_layer(LayerType::MasterOnly);
+    }
+    #[inline]
     pub(super) fn master_only(&self) -> bool {
         self.ctx.layer == LayerType::MasterOnly as u8
+    }
+    #[inline]
+    pub(super) fn clear_master_only(&mut self) -> bool {
+        self.ctx.layer == 0
     }
 
     // 解析完毕，如果数据未读完，需要保留足够的buff空间

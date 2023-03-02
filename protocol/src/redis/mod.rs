@@ -6,8 +6,11 @@ pub(crate) mod packet;
 //mod token;
 
 use crate::{
-    redis::command::{CommandProperties, CommandType},
     redis::packet::RequestPacket,
+    redis::{
+        command::{CommandProperties, CommandType},
+        packet::NextReqStatus,
+    },
     Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
@@ -42,12 +45,11 @@ impl Redis {
         while packet.available() {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd()?;
+            let mut next_req_status = NextReqStatus::default();
 
-            if cfg.effect_on_next_req {
-                //对下条指令有影响的命令，可以叠加，因此不清除状态，现状是swallow命令的超集
-                packet.proc_side_effect_cmd(&cfg, alg, process)?;
-                continue;
-            } else if cfg.multi {
+            //处理对下条指令有影响的命令，可以叠加，因此不清除状态，现状是swallow命令的超集
+            packet.prepare(&cfg, &mut next_req_status, alg)?;
+            if cfg.multi {
                 packet.multi_ready();
                 while packet.has_bulk() {
                     // take会将first变为false, 需要在take之前调用。
@@ -61,7 +63,7 @@ impl Redis {
                     if cfg.has_val {
                         packet.ignore_one_bulk()?;
                     }
-                    let kv = packet.take();
+                    let kv = packet.take(&mut next_req_status);
                     let req = cfg.build_request(hash, bulk, first, flag, kv.data());
                     process.process(req, packet.complete());
                 }
@@ -70,9 +72,11 @@ impl Redis {
                 let hash = packet.hash(cfg, alg)?;
 
                 packet.ignore_all_bulks()?;
-                let cmd = packet.take();
-                let req = HashedCommand::new(cmd, hash, flag);
-                process.process(req, true);
+                let cmd = packet.take(&mut next_req_status);
+                if !cfg.swallowed {
+                    let req = HashedCommand::new(cmd, hash, flag);
+                    process.process(req, true);
+                }
 
                 // // 如果是指示下一个cmd hash的特殊指令，需要保留hash
                 // if cfg.reserve_hash {
