@@ -14,7 +14,11 @@ use discovery::{
     TopologyWrite,
 };
 use protocol::{Protocol, Request, Resource};
-use sharding::{distribution::Range, hash::Hasher, Distance};
+use sharding::{
+    distribution::Range,
+    hash::{Crc32, Hash, HashKey},
+    Distance,
+};
 
 use super::config::PhantomNamespace;
 use crate::TimeoutAdjust;
@@ -28,7 +32,7 @@ pub struct PhantomService<B, E, Req, P> {
     // m * n: m个shard，每个shard有n个ip
     streams_backend: Vec<Vec<String>>,
     updated: HashMap<String, Arc<AtomicBool>>,
-    hasher: Hasher,
+    hasher: Crc32,
     distribution: Range,
     parser: P,
     service: String,
@@ -60,8 +64,8 @@ where
     B: Send + Sync,
 {
     #[inline]
-    fn hasher(&self) -> &Hasher {
-        &self.hasher
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        self.hasher.hash(k)
     }
 }
 
@@ -120,7 +124,8 @@ where
         if let Some(ns) = PhantomNamespace::try_from(cfg) {
             log::info!("topo updating {:?} => {:?}", self, ns);
             self.timeout.adjust(ns.basic.timeout_ms);
-            self.hasher = Hasher::from(&ns.basic.hash);
+            // phantome 只会使用crc32
+            //self.hasher = Hasher::from(&ns.basic.hash);
             self.distribution = Range::from(&ns.basic.distribution, ns.backends.len());
             self.service = namespace.to_string();
 
