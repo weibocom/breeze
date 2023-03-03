@@ -1,3 +1,4 @@
+use super::DebugName;
 use std::fmt::Display;
 
 pub(super) const CRC32TAB: [i64; 256] = [
@@ -56,7 +57,7 @@ pub struct Crc32Num {
 pub struct Crc32Delimiter {
     start_pos: usize,
     delimiter: u8,
-    name: String,
+    name: DebugName,
 }
 
 // 第一串长度大于等于5的数字做为hashkey
@@ -178,8 +179,8 @@ impl Crc32Delimiter {
         if alg_parts.len() == 2 {
             return Self {
                 start_pos: 0,
-                delimiter: delimiter,
-                name: alg.to_string(),
+                delimiter,
+                name: alg.into(),
             };
         }
 
@@ -187,15 +188,15 @@ impl Crc32Delimiter {
         if let Ok(prefix_len) = alg_parts[2].parse::<usize>() {
             return Self {
                 start_pos: prefix_len,
-                delimiter: delimiter,
-                name: alg.to_string(),
+                delimiter,
+                name: alg.into(),
             };
         } else {
             log::debug!("found unknown hash/{}, ignore prefix instead", alg);
             return Self {
                 start_pos: 0,
-                delimiter: delimiter,
-                name: alg.to_string(),
+                delimiter,
+                name: alg.into(),
             };
         }
     }
@@ -219,7 +220,7 @@ impl super::Hash for Crc32Delimiter {
         crc ^= CRC_SEED;
         crc &= CRC_SEED;
         if crc <= 0 {
-            log::debug!("{} - malform hash/{} for key/{:?}", self.name, crc, key);
+            log::debug!("{:?} - malform hash/{} for key/{:?}", self.name, crc, key);
         }
         crc
     }
@@ -227,7 +228,7 @@ impl super::Hash for Crc32Delimiter {
 
 impl Display for Crc32Delimiter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{:?}", self.name)
     }
 }
 
