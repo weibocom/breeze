@@ -9,7 +9,7 @@ mod time;
 
 criterion_group!(time, time::bench_instant, time::bench_duration);
 criterion_group!(heap, heap::bench_get_checked);
-criterion_group!(hash, hash::bench_crc32);
+criterion_group!(hash, hash::bench_crc32, hash::bench_num_to_str);
 criterion_group!(redis, redis::parse, redis::parse_num);
 criterion_group!(
     ring_slice,

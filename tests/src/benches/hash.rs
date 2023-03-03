@@ -1,4 +1,4 @@
-use criterion::Criterion;
+use criterion::{black_box, Criterion};
 use ds::RingSlice;
 use sharding::hash::{Crc32, Hash, Hasher};
 pub(super) fn bench_crc32(c: &mut Criterion) {
@@ -17,6 +17,45 @@ pub(super) fn bench_crc32(c: &mut Criterion) {
         b.iter(|| {
             Crc32.hash(&key.slice(0, idx))
             //black_box(Crc32.hash(&key.slice(0, idx)));
+        });
+    });
+    group.finish();
+}
+pub(super) fn bench_num_to_str(c: &mut Criterion) {
+    let mut group = c.benchmark_group("num_to_str");
+    let end = 999;
+    group.bench_function("to_string", |b| {
+        b.iter(|| {
+            black_box({
+                let mut len = 0;
+                for i in 0..=end {
+                    len += i.to_string().len();
+                }
+                len
+            });
+        });
+    });
+    group.bench_function("tunning", |b| {
+        b.iter(|| {
+            black_box({
+                use ds::NumStr;
+                let mut len = 0;
+                for i in 0..=end {
+                    i.with_str(|s| len += s.len());
+                }
+                len
+            });
+        });
+    });
+    group.bench_function("loop_buf", |b| {
+        b.iter(|| {
+            black_box({
+                let mut len = 0;
+                for i in 0..=end {
+                    ds::with_str(i, |s| len += s.len());
+                }
+                len
+            });
         });
     });
     group.finish();
