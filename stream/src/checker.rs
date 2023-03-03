@@ -182,10 +182,12 @@ where
 
         log::debug!("+++ 333 read size:{}", me.buf.slice().len());
 
-        let result = match me.parser.handshake(&mut me.buf, me.s, me.option)? {
-            HandShake::Failed => Poll::Ready(Err(Error::AuthFailed)),
-            HandShake::Continue => Poll::Pending,
-            HandShake::Success => {
+        let result = match me.parser.handshake(&mut me.buf, me.s, me.option) {
+            Err(Error::ProtocolIncomplete) => Poll::Pending,
+            Err(e) => Poll::Ready(Err(e)),
+            Ok(HandShake::Failed) => Poll::Ready(Err(Error::AuthFailed)),
+            Ok(HandShake::Continue) => Poll::Pending,
+            Ok(HandShake::Success) => {
                 // me.init.on();
                 // me.authed = true;
                 Poll::Ready(Ok(()))
