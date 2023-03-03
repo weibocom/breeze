@@ -24,6 +24,7 @@ impl<'a, 'b, C> Reader<'a, 'b, C> {
     // 如果eof了，则返回错误，否则返回读取的num数量
     #[inline(always)]
     pub(crate) fn check(&self) -> Result<()> {
+        log::debug!("+++ in reader.check, n:{}, b:{}", self.n, self.b);
         if self.n > 0 {
             Ok(())
         } else {

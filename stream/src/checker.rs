@@ -2,6 +2,7 @@ use ds::time::Duration;
 use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::AtomicU64;
 use std::sync::{atomic::AtomicBool, Arc};
 use std::task::{Context, Poll};
 
@@ -86,12 +87,14 @@ impl<P, Req> BackendChecker<P, Req> {
 
             if self.parser.need_auth() {
                 log::debug!("+++ will auth when connect:{}", self.addr);
+                static ID_GEN: AtomicU64 = AtomicU64::new(0);
                 //todo 处理认证结果
                 let auth = Auth {
                     buf: StreamGuard::new(),
                     option: &mut self.option,
                     s: &mut stream,
                     parser: self.parser.clone(),
+                    id: ID_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 };
                 if let Err(_) = auth.await {
                     //todo 需要减一吗，listen_failed好像没有减
@@ -140,6 +143,7 @@ struct Auth<'a, P, S> {
     pub s: &'a mut S,
     pub buf: StreamGuard,
     pub parser: P,
+    pub id: u64,
 }
 
 impl<'a, P, S> Future for Auth<'a, P, S>
@@ -157,20 +161,25 @@ where
         //todo:读buf代码重复了与下面
         // let mut cx1 = Context::from_waker(cx.waker());
         let mut reader = crate::buffer::Reader::from(&mut me.s, cx);
-
+        let id = me.id;
         // let poll_read = me.buf.write(&mut reader)?;
-        log::debug!("+++ 111 read size:{}", me.buf.slice().len());
+        log::debug!("+++ 111-id:{} read size:{}", id, me.buf.slice().len());
         //有可能出错了，会有未使用的读取，放使用后会有两个mut
         // if let Poll::Ready(_) = poll_read {
         //     reader.check()?;
         // }
+
         while let Poll::Ready(_) = me.buf.write(&mut reader)? {
-            log::debug!("+++ in 222 read size:{}", me.buf.slice().len());
+            log::debug!("+++ in 222-id:{} read size:{}", id, me.buf.slice().len());
             reader.check()?;
-            log::debug!("+++ in 222.111 read size:{}", me.buf.slice().len());
+            log::debug!(
+                "+++ in 222.111-id:{} read size:{}",
+                id,
+                me.buf.slice().len()
+            );
         }
 
-        log::debug!("+++ 333 read size:{}", me.buf.slice().len());
+        log::debug!("+++ 333-id:{} read size:{}", id, me.buf.slice().len());
 
         let result = match me.parser.handshake(&mut me.buf, me.s, me.option)? {
             HandShake::Failed => Poll::Ready(Err(Error::AuthFailed)),
