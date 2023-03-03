@@ -8,8 +8,7 @@ pub enum Magic {
 }
 
 pub const CAS_LEN: usize = 8;
-use crate::memcache::binary::error::MemcacheError;
-use crate::{Result, TryNextType};
+use crate::{Error, Result, TryNextType};
 
 // 总共有48个opcode，这里先只部分支持
 #[allow(dead_code)]
@@ -192,7 +191,7 @@ use ds::RingSlice;
 impl Binary<RingSlice> for RingSlice {
     #[inline(always)]
     fn op(&self) -> u8 {
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         self.at(PacketPos::Opcode as usize)
     }
     #[inline(always)]
@@ -211,23 +210,23 @@ impl Binary<RingSlice> for RingSlice {
     #[inline(always)]
     fn extra_or_flag(&self) -> Self {
         // 读取flag时，需要有完整的packet
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         let extra_len = self.extra_len() as usize;
         self.sub_slice(HEADER_LEN, extra_len)
     }
     #[inline(always)]
     fn total_body_len(&self) -> u32 {
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         self.read_u32(PacketPos::TotalBodyLength as usize)
     }
     #[inline(always)]
     fn opaque(&self) -> u32 {
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         self.read_u32(PacketPos::Opaque as usize)
     }
     #[inline(always)]
     fn cas(&self) -> u64 {
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         self.read_u64(PacketPos::Cas as usize)
     }
     #[inline(always)]
@@ -237,22 +236,22 @@ impl Binary<RingSlice> for RingSlice {
     }
     #[inline(always)]
     fn status_ok(&self) -> bool {
-        assert!(self.len() >= HEADER_LEN);
-        assert_eq!(self.at(PacketPos::Magic as usize), RESPONSE_MAGIC);
+        debug_assert!(self.len() >= HEADER_LEN);
+        debug_assert_eq!(self.at(PacketPos::Magic as usize), RESPONSE_MAGIC);
         self.at(6) == 0 && self.at(7) == 0
     }
     #[inline(always)]
     fn key_len(&self) -> u16 {
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         self.read_u16(PacketPos::Key as usize)
     }
     #[inline(always)]
     fn key(&self) -> Self {
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         let extra_len = self.extra_len() as usize;
         let offset = extra_len + HEADER_LEN;
         let key_len = self.key_len() as usize;
-        assert!(key_len + offset <= self.len());
+        debug_assert!(key_len + offset <= self.len());
         self.sub_slice(offset, key_len)
     }
     // 仅仅用于获取value长度，注意区分total body len
@@ -265,7 +264,7 @@ impl Binary<RingSlice> for RingSlice {
     }
     #[inline]
     fn value(&self) -> Self {
-        assert!(self.len() >= self.packet_len());
+        debug_assert!(self.len() >= self.packet_len());
         let total_body_len = self.total_body_len() as usize;
         let extra_len = self.extra_len() as usize;
         let key_len = self.key_len() as usize;
@@ -281,7 +280,7 @@ impl Binary<RingSlice> for RingSlice {
     }
     #[inline(always)]
     fn clear_cas(&mut self) {
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         for i in PacketPos::Cas as usize..PacketPos::Cas as usize + CAS_LEN {
             self.update(i, 0);
         }
@@ -325,20 +324,20 @@ impl Binary<RingSlice> for RingSlice {
     }
     #[inline(always)]
     fn check_request(&self) -> Result<()> {
-        assert_ne!(self.len(), 0);
+        debug_assert_ne!(self.len(), 0);
         if self.at(0) == REQUEST_MAGIC {
             Ok(())
         } else {
-            Err(MemcacheError::ReqInvalid.error())
+            Err(Error::RequestInvalidMagic)
         }
     }
     #[inline(always)]
     fn check_response(&self) -> Result<()> {
-        assert_ne!(self.len(), 0);
+        debug_assert_ne!(self.len(), 0);
         if self.at(0) == RESPONSE_MAGIC {
             Ok(())
         } else {
-            Err(MemcacheError::ReqInvalid.error())
+            Err(Error::ResponseInvalidMagic)
         }
     }
 
