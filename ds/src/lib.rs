@@ -35,3 +35,51 @@ pub trait BufWriter {
         self.write_all(buf1)
     }
 }
+
+pub trait NumStr {
+    fn with_str(&self, f: impl FnMut(&[u8]));
+}
+
+impl NumStr for usize {
+    #[inline]
+    fn with_str(&self, mut f: impl FnMut(&[u8])) {
+        match *self {
+            0..=9 => f(&[b'0' + *self as u8]),
+            10..=99 => {
+                let mut buf = [0u8; 2];
+                buf[0] = b'0' + (*self / 10) as u8;
+                buf[1] = b'0' + (*self % 10) as u8;
+                f(&buf);
+            }
+            100..=999 => {
+                let mut buf = [0u8; 3];
+                buf[0] = b'0' + (*self / 100) as u8;
+                buf[1] = b'0' + (*self / 10 % 10) as u8;
+                buf[2] = b'0' + (*self % 10) as u8;
+                f(&buf);
+            }
+            _ => {
+                let mut buf = [0u8; 32];
+                let mut left = *self;
+                let idx = buf.len() - 1;
+                while left > 0 {
+                    buf[idx] = b'0' + (left % 10) as u8;
+                    left /= 10;
+                }
+                f(&buf[idx..]);
+            }
+        }
+    }
+}
+
+#[inline]
+pub fn with_str(n: usize, mut f: impl FnMut(&[u8])) {
+    let mut buf = [0u8; 32];
+    let mut left = n;
+    let idx = buf.len() - 1;
+    while left > 0 {
+        buf[idx] = b'0' + (left % 10) as u8;
+        left /= 10;
+    }
+    f(&buf[idx..]);
+}
