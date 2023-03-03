@@ -11,7 +11,7 @@ mod mysql_strategy {
     fn test_get_sql() {
         let id = 3379782484330149i64;
         let mut sqls = HashMap::with_capacity(4);
-        sqls.insert("GET_LATEST_STATUS_IDS".to_string(), SQL_SELECT.to_string());
+        sqls.insert("SQL_SELECT".to_string(), SQL_SELECT.to_string());
 
         let s = Strategy::from(
             "status".to_string(),
@@ -21,6 +21,8 @@ mod mysql_strategy {
             1,
             false,
             sqls,
+            "crc32".to_string(),
+            "modula".to_string(),
         );
         let mut sql_cmd = s.get_sql("GET_LATEST_STATUS_IDS", id, id);
         if sql_cmd != None {

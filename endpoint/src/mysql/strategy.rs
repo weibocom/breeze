@@ -3,6 +3,8 @@ use super::topo::MysqlService;
 use super::uuid::UuidHelper;
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
+use sharding::distribution::Distribute;
+use sharding::hash::{Hash, HashKey, Hasher};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
@@ -10,6 +12,8 @@ use std::time::{Duration, UNIX_EPOCH};
 
 const DB_NAME_EXPRESSION: &str = "$db$";
 const TABLE_NAME_EXPRESSION: &str = "$tb$";
+
+const KEY_EXPRESSION: &str = "$k$";
 
 pub enum TNamePostfixType {
     YYMM,
@@ -27,22 +31,17 @@ impl TNamePostfixType {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default)]
 pub struct Strategy {
-    #[serde(default)]
     pub(crate) db_prefix: String,
-    #[serde(default)]
     pub(crate) table_prefix: String,
-    #[serde(default)]
     pub(crate) table_postfix: String,
-    #[serde(default)]
     pub(crate) db_count: u32,
-    #[serde(default)]
     pub(crate) table_count: u32,
-    #[serde(default)]
     pub(crate) hierarchy: bool,
-    #[serde(default)]
     pub(crate) sql: HashMap<String, String>,
+    pub(crate) hasher: Hasher,
+    pub(crate) distribution: Distribute,
 }
 
 impl Strategy {
@@ -54,6 +53,8 @@ impl Strategy {
         table_count: u32,
         hierarchy: bool,
         sql: HashMap<String, String>,
+        h: String,
+        dist: String,
     ) -> Self {
         Self {
             db_prefix: db_prefix.clone(),
@@ -63,6 +64,8 @@ impl Strategy {
             table_count: table_count,
             hierarchy: hierarchy,
             sql: sql.clone(),
+            distribution: Distribute::from_num(dist.as_str(), (db_count * table_count) as usize),
+            hasher: Hasher::from(h.as_str()),
         }
     }
 
@@ -75,6 +78,11 @@ impl Strategy {
             table_count: item.basic.table_count,
             hierarchy: item.basic.hierarchy,
             sql: item.sql.clone(),
+            distribution: Distribute::from_num(
+                item.basic.distribution.as_str(),
+                (item.basic.db_count * item.basic.table_count) as usize,
+            ),
+            hasher: Hasher::from(item.basic.hash.as_str()),
         }
     }
 
@@ -91,6 +99,7 @@ impl Strategy {
         if !sql.is_empty() {
             sql = sql.replace(DB_NAME_EXPRESSION, &db_name);
             sql = sql.replace(TABLE_NAME_EXPRESSION, &table_name);
+            sql = sql.replace(KEY_EXPRESSION, db_id.to_string().as_str());
         } else {
             log::error!("find the sql by name {} is empty or null", sql_name);
         }
@@ -126,10 +135,12 @@ impl Strategy {
     fn get_db_name_by_id(&self, id: i64) -> Option<String> {
         let db_name_prefix = self.db_prefix.clone();
         //todo: check db_name_prefix not empty
-
-        let db_index = 0;
+        let mut db_index = 0;
+        db_index = self
+            .distribution
+            .index(self.hasher.hash(&id.to_string().as_bytes()));
         // let db_index = api_util::get_hash4split(id, db_count * item.table_count.max(1));
-        let db_index = db_index / self.table_count;
+        let db_index = db_index / self.table_count as usize;
         return Some(format!("{}_{}", db_name_prefix, db_index));
     }
     fn get_index_table_name_by_id(&self, id: i64) -> Option<String> {
@@ -137,8 +148,11 @@ impl Strategy {
         //todo: check db_name_prefix not empty
         if self.table_count > 0 && self.db_count > 0 {
             let mut tbl_index = 0;
+            tbl_index = self
+                .distribution
+                .index(self.hasher.hash(&id.to_string().as_bytes()));
             // tbl_index = api_util::get_hash4split(id, item.db_count * item.table_count);
-            tbl_index = tbl_index % self.table_count;
+            tbl_index = tbl_index % self.table_count as usize;
             return Some(format!("{}_{}", table_prefix, tbl_index));
         } else {
             log::error!("id is null");

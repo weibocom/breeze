@@ -114,8 +114,7 @@ where
 
         //todo 等波神接口
         let id = 3379782484330149i64;
-        self.strategy
-            .get_sql("GET_LATEST_STATUS_IDS".to_string().as_str(), id, id);
+        self.strategy.get_sql("SQL_SELECT", id, id);
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
             //todo: 访问slave
@@ -165,7 +164,10 @@ where
             self.timeout_master.adjust(ns.basic.timeout_ms_master);
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
-            self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
+            self.distribute = Distribute::from_num(
+                ns.basic.distribution.as_str(),
+                (ns.basic.db_count * ns.basic.table_count) as usize,
+            );
             self.selector = ns.basic.selector.as_str().into();
             self.user = ns.basic.user.as_str().into();
             self.password = ns.basic.password.as_str().into();
