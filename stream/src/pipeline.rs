@@ -12,6 +12,8 @@ use ds::{time::Instant, AtomicWaker};
 use endpoint::{Topology, TopologyCheck};
 use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
+use sharding::hash::Hash;
+
 use crate::{
     arena::CallbackContextArena,
     buffer::{Reader, StreamGuard},
@@ -29,7 +31,7 @@ pub async fn copy_bidirectional<C, P, T>(
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck,
+    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
@@ -85,7 +87,7 @@ impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck,
+    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
 {
     type Output = Result<()>;
 
@@ -118,7 +120,7 @@ impl<C, P, T> CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck,
+    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
 {
     // 从client读取request流的数据到buffer。
     #[inline]
@@ -161,7 +163,7 @@ where
         };
 
         parser
-            .parse_request(rx_buf, top.hasher(), &mut processor)
+            .parse_request(rx_buf, top, &mut processor)
             .map_err(|e| {
                 log::info!("parse request error: {:?} {:?}", e, self);
                 e
@@ -303,7 +305,7 @@ impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Writer + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck,
+    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
 {
     #[inline]
     fn close(&mut self) -> bool {

@@ -3,7 +3,7 @@ use std::io::{Error, ErrorKind, Result};
 use discovery::Inited;
 use ds::time::Duration;
 use protocol::{Protocol, Resource};
-use sharding::hash::Hasher;
+use sharding::hash::{HashKey};
 
 // pub use protocol::Endpoint;
 
@@ -56,7 +56,7 @@ pub trait Topology: Endpoint {
     fn exp_sec(&self) -> u32 {
         86400
     }
-    fn hasher(&self) -> &Hasher;
+    fn hash<K: HashKey>(&self, key: &K) -> i64;
 }
 
 impl<T> Topology for std::sync::Arc<T>
@@ -68,8 +68,8 @@ where
         (**self).exp_sec()
     }
     #[inline]
-    fn hasher(&self) -> &Hasher {
-        (**self).hasher()
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        (**self).hash(k)
     }
 }
 pub trait TopologyCheck: Sized {
@@ -163,10 +163,10 @@ impl<B, E, R, P> discovery::TopologyWrite for TopologyProtocol<B, E, R, P> where
 impl<B:Send+Sync, E, R, P> Topology for TopologyProtocol<B, E, R, P>
 where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
     #[inline]
-    fn hasher(&self) -> &Hasher {
+    fn hash<K:HashKey>(&self, k:&K) -> i64 {
         match self {
             $(
-                Self::$item(p) => p.hasher(),
+                Self::$item(p) => p.hash(k),
             )+
         }
     }
