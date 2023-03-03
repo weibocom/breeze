@@ -160,7 +160,12 @@ where
             arena,
         };
 
-        parser.parse_request(rx_buf, top.hasher(), &mut processor)
+        parser
+            .parse_request(rx_buf, top.hasher(), &mut processor)
+            .map_err(|e| {
+                log::info!("parse request error: {:?} {:?}", e, self);
+                e
+            })
     }
     // 处理pending中的请求，并且把数据发送到buffer
     #[inline]
@@ -352,13 +357,14 @@ impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:({},{}) flush:{} dropping:{} rx buf:{:?}",
+            "{} => pending:({},{}) flush:{} dropping:{} rx buf:{:?} => {:?}",
             self.metrics.biz(),
             self.pending.len(),
             self.async_pending.len(),
             self.flush,
             self.dropping.len(),
             self.rx_buf,
+            self.rx_buf.slice(),
         )
     }
 }
