@@ -24,7 +24,7 @@ impl ModRange {
 
         assert!(shards > 0 && slot >= shards as u64);
         ModRange {
-            slot: slot,
+            slot,
             interval: slot / shards as u64,
         }
     }
