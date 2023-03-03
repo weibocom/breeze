@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{Endpoint, Topology, TopologyCheck};
 use discovery::{TopologyRead, TopologyReadGuard};
-use sharding::hash::Hasher;
+use sharding::hash::{Hash, HashKey};
 
 // 支持刷新
 pub struct RefreshTopology<T> {
@@ -125,8 +125,8 @@ impl<T: Topology + Clone + 'static> Topology for CheckedTopology<T> {
         self.top.exp_sec()
     }
     #[inline]
-    fn hasher(&self) -> &Hasher {
-        self.top.hasher()
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        self.top.hash(k)
     }
 }
 impl<T: Topology + Clone + 'static> TopologyCheck for CheckedTopology<T> {
@@ -138,6 +138,12 @@ impl<T: Topology + Clone + 'static> TopologyCheck for CheckedTopology<T> {
         } else {
             None
         }
+    }
+}
+impl<T: Topology + Clone + 'static> Hash for CheckedTopology<T> {
+    #[inline(always)]
+    fn hash<S: HashKey>(&self, key: &S) -> i64 {
+        self.top.hash(key)
     }
 }
 

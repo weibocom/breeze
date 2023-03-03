@@ -2,7 +2,7 @@ use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
 use ds::time::Duration;
 use protocol::{Protocol, Request, Resource, TryNextType};
-use sharding::hash::Hasher;
+use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
 use std::collections::HashMap;
 
@@ -58,8 +58,8 @@ where
     B: Send + Sync,
 {
     #[inline]
-    fn hasher(&self) -> &Hasher {
-        &self.hasher
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        self.hasher.hash(k)
     }
     #[inline]
     fn exp_sec(&self) -> u32 {
