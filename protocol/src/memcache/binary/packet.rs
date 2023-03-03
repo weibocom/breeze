@@ -111,20 +111,20 @@ const TRY_NEXT_TABLE: [u8; 128] = [
 
 pub(super) const REQUEST_MAGIC: u8 = 0x80;
 pub(super) const RESPONSE_MAGIC: u8 = 0x81;
-pub(super) const OP_CODE_GET: u8 = 0x00;
-pub(super) const OP_CODE_NOOP: u8 = 0x0a;
-pub(super) const OP_CODE_VERSION: u8 = 0x0b;
-pub(super) const OP_CODE_STAT: u8 = 0x10;
-pub(super) const OP_CODE_QUIT: u8 = 0x07;
-pub(super) const OP_CODE_QUITQ: u8 = 0x17;
-pub(super) const OP_CODE_GETKQ: u8 = 0x0d;
-pub(super) const OP_CODE_GETQ: u8 = 0x09;
-pub(super) const OP_CODE_SET: u8 = 0x01;
+pub(super) const OP_GET: u8 = 0x00;
+pub(super) const OP_NOOP: u8 = 0x0a;
+pub(super) const OP_VERSION: u8 = 0x0b;
+pub(super) const OP_STAT: u8 = 0x10;
+pub(super) const OP_QUIT: u8 = 0x07;
+pub(super) const OP_QUITQ: u8 = 0x17;
+pub(super) const OP_GETKQ: u8 = 0x0d;
+pub(super) const OP_GETQ: u8 = 0x09;
+pub(super) const OP_SET: u8 = 0x01;
 
 //pub(super) const OP_CODE_GETK: u8 = 0x0c;
 
 // 这个专门为gets扩展
-pub(super) const OP_CODE_GETS: u8 = 0x48;
+pub(super) const OP_GETS: u8 = 0x48;
 // 这个没有业务使用，先注销掉
 // pub(super) const OP_CODE_GETSQ: u8 = 0x49;
 
@@ -197,7 +197,7 @@ impl Binary<RingSlice> for RingSlice {
     }
     #[inline(always)]
     fn noop(&self) -> bool {
-        self.op() == OP_CODE_NOOP
+        self.op() == OP_NOOP
     }
     #[inline(always)]
     fn operation(&self) -> Operation {
