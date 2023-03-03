@@ -93,8 +93,9 @@ impl<P, Req> BackendChecker<P, Req> {
                     s: &mut stream,
                     parser: self.parser.clone(),
                 };
-                if let Err(_) = auth.await {
+                if let Err(e) = auth.await {
                     //todo 需要减一吗，listen_failed好像没有减
+                    log::debug!("+++ auth err {}", e);
                     auth_failed += 1;
                     stream.cancel();
                     continue;
@@ -156,18 +157,27 @@ where
         //是否auth，parser有状态了，状态机？parser 传进去的是buf，不是client，所以前后还要加异步读写
         //todo:读buf代码重复了与下面
         // let mut cx1 = Context::from_waker(cx.waker());
-        let mut reader = crate::buffer::Reader::from(&mut me.s, cx);
 
         // let poll_read = me.buf.write(&mut reader)?;
-        log::debug!("+++ 111 read size:{}", me.buf.slice().len());
+        // log::debug!("+++ 111 read size:{}", me.buf.slice().len());
         //有可能出错了，会有未使用的读取，放使用后会有两个mut
         // if let Poll::Ready(_) = poll_read {
         //     reader.check()?;
         // }
-        while let Poll::Ready(_) = me.buf.write(&mut reader)? {
+        // while let Poll::Ready(_) = me.buf.write(&mut reader)? {
+        //     log::debug!("+++ in 222 read size:{}", me.buf.slice().len());
+        //     reader.check()?;
+        //     log::debug!("+++ in 222.111 read size:{}", me.buf.slice().len());
+        //     reader = crate::buffer::Reader::from(&mut me.s, cx);
+        // }
+        loop {
+            let mut reader = crate::buffer::Reader::from(&mut me.s, cx);
+            let poll_read = me.buf.write(&mut reader)?;
             log::debug!("+++ in 222 read size:{}", me.buf.slice().len());
-            reader.check()?;
-            log::debug!("+++ in 222.111 read size:{}", me.buf.slice().len());
+            match poll_read {
+                Poll::Ready(_) => reader.check()?,
+                Poll::Pending => break,
+            }
         }
 
         log::debug!("+++ 333 read size:{}", me.buf.slice().len());
