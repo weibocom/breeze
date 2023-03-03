@@ -177,12 +177,13 @@ where
                 let mut shard_url = Vec::new();
                 for url_port in shard.split(",") {
                     // 注册域名。后续可以通常lookup进行查询。
-                    let host = url_port.host();
+                    let url_port_trimed = url_port.trim();
+                    let host = url_port_trimed.host();
                     if !self.updated.contains_key(host) {
                         let watcher = dns::register(host);
                         self.updated.insert(host.to_string(), watcher);
                     }
-                    shard_url.push(url_port.to_string());
+                    shard_url.push(url_port_trimed.to_string());
                 }
                 shards_url.push(shard_url);
             }

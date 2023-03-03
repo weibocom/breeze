@@ -73,26 +73,13 @@ impl Protocol for Mysql {
         s: &mut impl crate::Writer,
         option: &mut crate::ResOption,
     ) -> Result<HandShake> {
-        log::debug!("+++ recv mysql handshake packet:{:?}", stream.slice());
-        let opt = Opts::from_user_pwd(option.username.clone(), option.token.clone());
-        let mut packet = ResponsePacket::new(stream, Some(opt));
-        log::debug!("+++ ctx status:{:?}", packet.ctx().status);
-        match packet.ctx().status {
-            HandShakeStatus::Init => {
-                let handshake_rsp = packet.proc_handshake()?;
-                log::debug!("+++ will send handshakersp:{:?}", handshake_rsp.data());
-                handshake_rsp.data().copy_to(0, s)?;
-                log::debug!("+++ after send handshakersp:{:?}", handshake_rsp.data());
-                packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
-                Ok(HandShake::Continue)
+        match self.handshake_inner(stream, s, option) {
+            Ok(h) => Ok(h),
+            Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+            Err(e) => {
+                log::warn!("+++ found err when shake hand:{:?}", e);
+                Err(e)
             }
-            HandShakeStatus::InitialhHandshakeResponse => {
-                packet.proc_auth()?;
-                packet.ctx().status = HandShakeStatus::AuthSucceed;
-                Ok(HandShake::Success)
-            }
-
-            HandShakeStatus::AuthSucceed => Ok(HandShake::Success),
         }
     }
 
@@ -268,6 +255,35 @@ impl Protocol for Mysql {
 }
 
 impl Mysql {
+    fn handshake_inner(
+        &self,
+        stream: &mut impl Stream,
+        s: &mut impl crate::Writer,
+        option: &mut crate::ResOption,
+    ) -> Result<HandShake> {
+        log::debug!("+++ recv mysql handshake packet:{:?}", stream.slice());
+        let opt = Opts::from_user_pwd(option.username.clone(), option.token.clone());
+        let mut packet = ResponsePacket::new(stream, Some(opt));
+        log::debug!("+++ ctx status:{:?}", packet.ctx().status);
+        match packet.ctx().status {
+            HandShakeStatus::Init => {
+                let handshake_rsp = packet.proc_handshake()?;
+                log::debug!("+++ will send handshakersp:{:?}", handshake_rsp.data());
+                handshake_rsp.data().copy_to(0, s)?;
+                log::debug!("+++ after send handshakersp:{:?}", handshake_rsp.data());
+                packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
+                Ok(HandShake::Continue)
+            }
+            HandShakeStatus::InitialhHandshakeResponse => {
+                packet.proc_auth()?;
+                packet.ctx().status = HandShakeStatus::AuthSucceed;
+                Ok(HandShake::Success)
+            }
+
+            HandShakeStatus::AuthSucceed => Ok(HandShake::Success),
+        }
+    }
+
     // 1 解析shakehand、构建shakehandresponse；
     // 2 解析AuthSwitchRequest、AuthMoreData等【next】
     // 3 解析Ok 或 Error packet
