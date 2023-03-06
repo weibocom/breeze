@@ -41,15 +41,16 @@ pub(super) fn bench_num_to_str(c: &mut Criterion) {
 pub(super) fn bench_mod(c: &mut Criterion) {
     use rand::Rng;
     let mut r = rand::thread_rng();
-    let (range, shards) = if r.gen::<bool>() {
+    let (range, interval) = if r.gen::<bool>() {
         (1024usize, 32usize)
     } else {
         (512, 32)
     };
     let r_shift = range.trailing_zeros();
-    let s_mask = shards - 1;
+    let r_mask = range - 1;
+    let s_shift = interval.trailing_zeros();
     let runs = 16usize;
-    let shift = shards & (shards - 1) == 0;
+    let shift = interval & (interval - 1) == 0;
 
     let mut group = c.benchmark_group("range_mod");
     group.bench_function("div_mod", |b| {
@@ -57,7 +58,7 @@ pub(super) fn bench_mod(c: &mut Criterion) {
             black_box({
                 let mut s = 0usize;
                 for i in 0..runs {
-                    s += (i / range) % shards;
+                    s += ((i / range) % range) / interval;
                 }
                 s
             });
@@ -69,11 +70,11 @@ pub(super) fn bench_mod(c: &mut Criterion) {
                 let mut s = 0usize;
                 if shift {
                     for i in 0..runs {
-                        s += (i >> r_shift) & s_mask;
+                        s += ((i >> r_shift) & r_mask) >> s_shift;
                     }
                 } else {
                     for i in 0..runs {
-                        s += (i / range) % shards;
+                        s += ((i / range) % range) / interval;
                     }
                 }
                 s
@@ -85,7 +86,7 @@ pub(super) fn bench_mod(c: &mut Criterion) {
             black_box({
                 let mut s = 0usize;
                 for i in 0..runs {
-                    s += (i >> r_shift) & s_mask;
+                    s += ((i >> r_shift) & r_mask) >> s_shift;
                 }
                 s
             });
