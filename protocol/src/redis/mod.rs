@@ -37,7 +37,6 @@ impl Redis {
         while packet.available() {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd()?;
-            //处理对下条指令有影响的命令，可以叠加，因此不清除状态，现状是swallow命令的超集
             let mut next_req_status = None;
             if cfg.multi {
                 packet.multi_ready();

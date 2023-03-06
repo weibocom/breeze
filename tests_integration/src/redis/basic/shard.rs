@@ -48,7 +48,7 @@ const SERVERSWITHSLAVE: [[&str; 2]; 4] = [
 /// 读取100次，每个分片都有set的key, 则测试通过
 #[named]
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_hashrandomq1() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
@@ -78,7 +78,7 @@ fn test_hashrandomq1() {
 /// 通过master + hashrandomq get 100次, 应全部没值, 因master中没有56379
 #[test]
 #[named]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_hashrandomq_with_master() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
@@ -129,7 +129,7 @@ fn test_hashrandomq_with_master() {
 /// 56378端口从库是56381正常get是1 但是加完master后是从主库读所以是2
 #[named]
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_master() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
@@ -203,13 +203,13 @@ fn hashkey(swallow: bool) {
 /// 然后直接get会从第一片上get get不到
 ///  再利用hashkeyq + test_sharsd_4+ get argkey去get 成功获取到
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_hashkeyq() {
     hashkey(true);
 }
 
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_hashkey() {
     hashkey(false);
 }
@@ -278,7 +278,7 @@ fn master_hashkeyq_1() {
 }
 
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_keyshard() {
     let mut con = get_conn(&RESTYPE.get_host());
 
@@ -293,7 +293,7 @@ fn test_keyshard() {
 //sendtoall  sendtoallq 命令
 #[test]
 #[named]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_sendto_all() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());

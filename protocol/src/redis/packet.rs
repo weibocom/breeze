@@ -284,7 +284,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             default_hash()
         };
 
-        if cfg.reserve_hash {
+        if cfg.reserve_hash && next_req_status.is_some() {
             next_req_status
                 .as_mut()
                 .expect("next_req_status should not be none")
@@ -326,8 +326,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 next_req_status.sendto_all = true;
             }
             _ => {
-                assert!(false, "unknown swallowed cmd:{}", cfg.name);
-                log::warn!("should not come here![hashkey?]");
+                assert!(false, "unknown effect_on_next_req_cmd:{}", cfg.name);
             }
         }
 
