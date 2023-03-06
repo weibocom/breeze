@@ -323,13 +323,7 @@ where
             let shard = Shard::selector(self.selector, master_addr, master, replicas);
             self.shards.push(shard);
         }
-        assert_eq!(
-            self.shards.len(),
-            self.shards_url.len(),
-            "shards/urs: {}/{}",
-            self.shards.len(),
-            self.shards_url.len()
-        );
+        assert_eq!(self.shards.len(), self.shards_url.len());
         log::info!(
             "{} load complete. {} dropping:{:?}",
             self.service,
