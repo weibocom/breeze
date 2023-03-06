@@ -44,7 +44,7 @@ fn checkout_basic() {
     assert_eq!(0, size_of::<Builder>());
     assert_eq!(24, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
-    assert_eq!(48, size_of::<sharding::hash::Hasher>());
+    assert_eq!(24, size_of::<sharding::hash::Hasher>());
 }
 
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
