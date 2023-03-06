@@ -263,66 +263,79 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     //总是会parsekey
-    pub(super) fn hash<H: Hash>(&mut self, cfg: &CommandProperties, alg: &H) -> Result<i64> {
+    pub(super) fn hash<H: Hash>(
+        &mut self,
+        cfg: &CommandProperties,
+        alg: &H,
+        next_req_status: &mut Option<NextReqStatus>,
+    ) -> Result<i64> {
         let mut key: RingSlice = Default::default();
         if cfg.has_key {
             key = self.parse_key()?;
         }
-        let hash = if self.reserved_hash().is_some() {
+        let hash = if let CommandType::SwallowedCmdHashrandomq = cfg.cmd_type {
+            // 虽然hash名义为i64，但实际当前均为u32
+            rand::random::<u32>() as i64
+        } else if self.reserved_hash().is_some() {
             self.reserved_hash().unwrap()
         } else if cfg.has_key {
             calculate_hash(alg, &key)
         } else {
             default_hash()
         };
+
+        if cfg.reserve_hash {
+            next_req_status
+                .as_mut()
+                .expect("next_req_status should not be none")
+                .reserved_hash
+                .replace(hash);
+        }
+
         Ok(hash)
     }
 
-    pub(super) fn prepare<H: Hash>(
+    //处理对下条指令有影响的命令，其造成的影响单独存放，不影响平常流程
+    pub(super) fn proc_effect_on_next_req_cmd(
         &mut self,
         cfg: &CommandProperties,
-        alg: &H,
     ) -> Result<Option<NextReqStatus>> {
-        if cfg.effect_on_next_req {
-            //保留所有旧状态, 且清除当前状态，因为处理特殊指令的时刻，不需要特殊处理
-            let mut next_req_status = NextReqStatus {
-                master_only: self.master_only(),
-                sendto_all: self.sendto_all(),
-                reserved_hash: self.reserved_hash(),
-            };
+        //保留所有旧状态, 且清除当前状态，因为处理特殊指令的时刻，不需要特殊处理
+        let mut next_req_status = NextReqStatus {
+            master_only: self.master_only(),
+            sendto_all: self.sendto_all(),
+            reserved_hash: self.reserved_hash(),
+        };
 
-            match cfg.cmd_type {
-                CommandType::SwallowedMaster => next_req_status.master_only = true,
-                // cmd: hashkeyq $key
-                CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
-                    let key = self.parse_key()?;
-                    let hash = calculate_hash(alg, &key);
-                    next_req_status.reserved_hash.replace(hash);
-                }
-                // cmd: hashrandomq
-                CommandType::SwallowedCmdHashrandomq => {
-                    // 虽然hash名义为i64，但实际当前均为u32
-                    let hash = rand::random::<u32>() as i64;
-                    next_req_status.reserved_hash.replace(hash);
-                }
-                CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
-                    next_req_status.sendto_all = true;
-                }
-                _ => {
-                    assert!(false, "unknown swallowed cmd:{}", cfg.name);
-                    log::warn!("should not come here![hashkey?]");
-                }
+        match cfg.cmd_type {
+            CommandType::SwallowedMaster => next_req_status.master_only = true,
+            // cmd: hashkeyq $key
+            // 流程放到计算hash中处理
+            CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
+                // let key = self.parse_key()?;
+                // let hash = calculate_hash(alg, &key);
+                // next_req_status.reserved_hash.replace(hash);
             }
-
-            //不要清除stream状态，防止如果清除了协议未完成
-            self.clear_master_only();
-            self.clear_sendto_all();
-            self.reserved_hash.take();
-            Ok(Some(next_req_status))
-        } else {
-            //普通请求不需要保留状态
-            Ok(None)
+            // cmd: hashrandomq
+            CommandType::SwallowedCmdHashrandomq => {
+                // 虽然hash名义为i64，但实际当前均为u32
+                // let hash = rand::random::<u32>() as i64;
+                // next_req_status.reserved_hash.replace(hash);
+            }
+            CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
+                next_req_status.sendto_all = true;
+            }
+            _ => {
+                assert!(false, "unknown swallowed cmd:{}", cfg.name);
+                log::warn!("should not come here![hashkey?]");
+            }
         }
+
+        //不要清除stream状态，防止如果清除了协议未完成
+        self.clear_master_only();
+        self.clear_sendto_all();
+        self.reserved_hash.take();
+        Ok(Some(next_req_status))
     }
 
     #[inline]

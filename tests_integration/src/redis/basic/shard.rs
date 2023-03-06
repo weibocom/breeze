@@ -218,17 +218,15 @@ fn test_hashkey() {
 ///  set argkey 1
 /// master
 /// master_hashkeyq_1在第2片  key:test_shards_5在第1片
-///
-///
-///
 /// 向56379 set argkey 1
 /// get argkey 1 在第二片可以get到
 /// 加master get失败 没有56379d的主库 所以获取失败
 /// 利用hashkeyq set
 /// master hashkeyq get 成功获取到值
+/// 再次get argkey应为1，确保master和hashkeyq的副作用消失
 #[named]
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn master_hashkeyq_1() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
@@ -274,6 +272,9 @@ fn master_hashkeyq_1() {
     )
     .expect("send err");
     assert_eq!(con.get(argkey), Ok(2));
+
+    //
+    assert_eq!(con.get(argkey), Ok(1));
 }
 
 #[test]

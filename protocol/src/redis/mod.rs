@@ -38,7 +38,7 @@ impl Redis {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd()?;
             //处理对下条指令有影响的命令，可以叠加，因此不清除状态，现状是swallow命令的超集
-            let next_req_status = packet.prepare(&cfg, alg)?;
+            let mut next_req_status = None;
             if cfg.multi {
                 packet.multi_ready();
                 while packet.has_bulk() {
@@ -48,7 +48,7 @@ impl Redis {
                     assert!(cfg.has_key, "cfg:{}", cfg.name);
 
                     let flag = packet.flag(cfg);
-                    let hash = packet.hash(cfg, alg)?;
+                    let hash = packet.hash(cfg, alg, &mut next_req_status)?;
 
                     if cfg.has_val {
                         packet.ignore_one_bulk()?;
@@ -58,8 +58,11 @@ impl Redis {
                     process.process(req, packet.complete());
                 }
             } else {
+                if cfg.effect_on_next_req {
+                    next_req_status = packet.proc_effect_on_next_req_cmd(&cfg)?;
+                }
                 let flag = packet.flag(cfg);
-                let hash = packet.hash(cfg, alg)?;
+                let hash = packet.hash(cfg, alg, &mut next_req_status)?;
 
                 packet.ignore_all_bulks()?;
                 let cmd = packet.take();
