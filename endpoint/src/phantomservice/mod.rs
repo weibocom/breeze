@@ -16,14 +16,14 @@ impl Context {
     fn from(ctx: protocol::Context) -> Self {
         Self { ctx }
     }
-    #[inline]
-    fn inited(&self) -> bool {
-        self.ctx & (1 << 63) != 0
-    }
-    #[inline]
-    fn check_inited(&mut self) {
-        self.ctx = self.ctx | 1 << 63;
-    }
+    //#[inline]
+    //fn inited(&self) -> bool {
+    //    self.ctx & (1 << 63) != 0
+    //}
+    //#[inline]
+    //fn check_inited(&mut self) {
+    //    self.ctx = self.ctx | 1 << 63;
+    //}
 
     //#[inline]
     //fn check_and_inited(&mut self, write: bool) -> bool {
@@ -58,8 +58,8 @@ impl Context {
         self.ctx += 1;
         old
     }
-    #[inline]
-    fn update_idx(&mut self, idx: usize) {
-        self.ctx = idx as u64;
-    }
+    //#[inline]
+    //fn update_idx(&mut self, idx: usize) {
+    //    self.ctx = idx as u64;
+    //}
 }

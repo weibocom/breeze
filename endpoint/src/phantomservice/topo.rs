@@ -82,31 +82,20 @@ where
         debug_assert_ne!(self.streams.len(), 0);
 
         // 确认分片idx
-        let idx = self.distribution.index(req.hash());
-        assert!(idx < self.streams.len(), "{} {:?} {:?}", idx, self, req);
-        let shard = unsafe { self.streams.get_unchecked(idx) };
-        // 低8位是索引，最高bit表示是否初始化
-        let mut ctx = super::Context::from(*req.context_mut());
+        let s_idx = self.distribution.index(req.hash());
+        debug_assert!(s_idx < self.streams.len(), "{} {:?} {:?}", s_idx, self, req);
+        let shard = unsafe { self.streams.get_unchecked(s_idx) };
 
-        let e = if req.operation().is_store() {
-            let idx = ctx.fetch_add_idx();
-            req.write_back(ctx.index() < shard.len());
-            assert!(idx < shard.len(), "{} {:?} {:?}", idx, self, req);
-            unsafe { shard.get_unchecked(idx) }
-        } else {
-            // 读请求。
-            if !ctx.inited() {
-                let (idx, e) = shard.unsafe_select();
-                req.try_next(shard.len() > 1);
-                ctx.update_idx(idx);
-                e
-            } else {
-                req.try_next(false);
-                assert!(ctx.index() < shard.len(), "{} {:?} {:?}", idx, self, req);
-                unsafe { shard.unsafe_next(ctx.index(), 1).1 }
-            }
-        };
-        ctx.check_inited();
+        let mut ctx = super::Context::from(*req.context_mut());
+        let idx = ctx.fetch_add_idx(); // 按顺序轮询
+                                       // 写操作，写所有实例
+        req.write_back(req.operation().is_store() && ctx.index() < shard.len());
+        // 读操作，只重试一次
+        req.try_next(idx == 0);
+        //ctx.update_idx(idx);
+        assert!(idx < shard.len(), "{} {:?} {:?}", idx, self, req);
+        let e = unsafe { shard.get_unchecked(idx) };
+        //ctx.check_inited();
         *req.context_mut() = ctx.ctx;
         e.1.send(req)
     }
