@@ -12,7 +12,6 @@ use std::time::{Duration, UNIX_EPOCH};
 
 const DB_NAME_EXPRESSION: &str = "$db$";
 const TABLE_NAME_EXPRESSION: &str = "$tb$";
-
 const KEY_EXPRESSION: &str = "$k$";
 
 pub enum TNamePostfixType {
@@ -45,7 +44,7 @@ pub struct Strategy {
 }
 
 impl Strategy {
-    pub fn from(
+    pub fn new(
         db_prefix: String,
         table_prefix: String,
         table_postfix: String,
@@ -87,21 +86,20 @@ impl Strategy {
     }
 
     //todo: sql_name 枚举
-    //todo: db_id tb_id是否一致
-    pub fn get_sql(&self, sql_name: &str, db_id: i64, tb_id: i64) -> Option<String> {
-        let table_name = match self.get_table_name(tb_id) {
-            Some(table_name) => table_name,
+    pub fn build_sql(&self, sql_name: &str, did: i64, tid: i64) -> Option<String> {
+        let tname = match self.build_tname(tid) {
+            Some(tname) => tname,
             None => return None,
         };
-        let db_name = match self.get_db_name_by_id(db_id) {
-            Some(db_name) => db_name,
+        let dname = match self.build_dname(did) {
+            Some(dname) => dname,
             None => return None,
         };
         let mut sql = self.sql.get(sql_name).unwrap_or(&String::new()).clone();
         if !sql.is_empty() {
-            sql = sql.replace(DB_NAME_EXPRESSION, &db_name);
-            sql = sql.replace(TABLE_NAME_EXPRESSION, &table_name);
-            sql = sql.replace(KEY_EXPRESSION, db_id.to_string().as_str());
+            sql = sql.replace(DB_NAME_EXPRESSION, &dname);
+            sql = sql.replace(TABLE_NAME_EXPRESSION, &tname);
+            sql = sql.replace(KEY_EXPRESSION, did.to_string().as_str());
         } else {
             log::error!("find the sql by name {} is empty or null", sql_name);
         }
@@ -109,7 +107,7 @@ impl Strategy {
         Some(sql)
     }
 
-    pub fn get_table_name(&self, id: i64) -> Option<String> {
+    pub fn build_tname(&self, id: i64) -> Option<String> {
         let postfix_type = if self.table_postfix == "yymmdd" {
             TNamePostfixType::YYMMDD
         } else if self.table_postfix == "yymm" {
@@ -120,32 +118,32 @@ impl Strategy {
         let table_prefix = self.table_prefix.as_str();
         match postfix_type {
             TNamePostfixType::YYMM => {
-                let table_name = self.get_date_table_name_by_id(table_prefix, id, false);
-                table_name
+                let tname = self.build_date_tname(table_prefix, id, false);
+                tname
             }
             TNamePostfixType::YYMMDD => {
-                let table_name = self.get_date_table_name_by_id(table_prefix, id, true);
-                table_name
+                let tname = self.build_date_tname(table_prefix, id, true);
+                tname
             }
             TNamePostfixType::INDEX => {
-                let table_name = self.get_index_table_name_by_id(id);
-                table_name
+                let tname = self.build_idx_tname(id);
+                tname
             }
         }
     }
 
-    fn get_db_name_by_id(&self, id: i64) -> Option<String> {
-        let db_name_prefix = self.db_prefix.clone();
+    fn build_dname(&self, id: i64) -> Option<String> {
+        let dname_prefix = self.db_prefix.clone();
         //todo: check db_name_prefix not empty
-        let mut db_index = 0;
-        db_index = self
+        let mut db_idx = 0;
+        db_idx = self
             .distribution
             .index(self.hasher.hash(&id.to_string().as_bytes()));
         // let db_index = api_util::get_hash4split(id, db_count * item.table_count.max(1));
-        let db_index = db_index / self.table_count as usize;
-        return Some(format!("{}_{}", db_name_prefix, db_index));
+        let db_idx = db_idx / self.table_count as usize;
+        return Some(format!("{}_{}", dname_prefix, db_idx));
     }
-    fn get_index_table_name_by_id(&self, id: i64) -> Option<String> {
+    fn build_idx_tname(&self, id: i64) -> Option<String> {
         let table_prefix = self.table_prefix.clone();
         //todo: check db_name_prefix not empty
         if self.table_count > 0 && self.db_count > 0 {
@@ -161,12 +159,7 @@ impl Strategy {
         }
         None
     }
-    fn get_date_table_name_by_id(
-        &self,
-        tbl_prefix: &str,
-        id: i64,
-        is_display_day: bool,
-    ) -> Option<String> {
+    fn build_date_tname(&self, tbl_prefix: &str, id: i64, is_display_day: bool) -> Option<String> {
         let milliseconds = UuidHelper::get_time_from_id(id) * 1000;
         let yy_mm_dd = if is_display_day {
             chrono::Utc
@@ -182,7 +175,7 @@ impl Strategy {
         Some(format!("{}_{}", tbl_prefix, yy_mm_dd))
     }
 
-    pub fn get_sql_key(db_name: &str, table_name: &str, sql_name: &str) -> String {
+    pub fn build_sql_key(db_name: &str, table_name: &str, sql_name: &str) -> String {
         format!("{}.{}.{}", db_name, table_name, sql_name)
     }
 }
