@@ -363,6 +363,11 @@ impl PacketCodec {
         self.inner.reset_seq_id();
     }
 
+    // TODO 临时加入设置seq id的方法
+    pub fn set_seq_id(&mut self, sid: u8) {
+        self.inner.set_seq_id(sid);
+    }
+
     /// Overwrites plain sequence id with compressed sequence id.
     pub fn sync_seq_id(&mut self) {
         self.inner.sync_seq_id();
@@ -421,6 +426,14 @@ impl PacketCodecInner {
         match self {
             PacketCodecInner::Plain(c) => c.reset_seq_id(),
             PacketCodecInner::Comp(c) => c.reset_seq_id(),
+        }
+    }
+
+    // TODO 临时增加设置seq id的方法
+    fn set_seq_id(&mut self, sid: u8) {
+        match self {
+            PacketCodecInner::Plain(c) => c.set_seq_id(sid),
+            PacketCodecInner::Comp(c) => c.set_seq_id(sid),
         }
     }
 
@@ -501,6 +514,11 @@ impl PlainPacketCodec {
     /// Sets sequence id to `0`.
     fn reset_seq_id(&mut self) {
         self.seq_id = 0;
+    }
+
+    // TODO 临时加一个直接更新sid的方法
+    fn set_seq_id(&mut self, sid: u8) {
+        self.seq_id = sid;
     }
 
     /// Will try to decode packet from `src` into `dst`.
@@ -589,6 +607,11 @@ impl CompPacketCodec {
     fn reset_seq_id(&mut self) {
         self.comp_seq_id = 0;
         self.plain_codec.reset_seq_id();
+    }
+
+    // TODO 临时加一个直接更新sid的方法
+    fn set_seq_id(&mut self, sid: u8) {
+        self.comp_seq_id = sid;
     }
 
     /// Overwrites plain sequence id with compressed sequence id

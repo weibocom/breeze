@@ -268,9 +268,8 @@ impl Mysql {
         match packet.ctx().status {
             HandShakeStatus::Init => {
                 let handshake_rsp = packet.proc_handshake()?;
-                log::debug!("+++ will send handshakersp:{:?}", handshake_rsp.data());
-                handshake_rsp.data().copy_to(0, s)?;
-                log::debug!("+++ after send handshakersp:{:?}", handshake_rsp.data());
+                s.write(&handshake_rsp)?;
+                log::debug!("+++ after send handshakersp:{:?}", handshake_rsp);
                 packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
                 Ok(HandShake::Continue)
             }
@@ -281,32 +280,6 @@ impl Mysql {
             }
 
             HandShakeStatus::AuthSucceed => Ok(HandShake::Success),
-        }
-    }
-
-    // 1 解析shakehand、构建shakehandresponse；
-    // 2 解析AuthSwitchRequest、AuthMoreData等【next】
-    // 3 解析Ok 或 Error packet
-    pub fn parse_auth<S: crate::Stream>(
-        &self,
-        data: &mut S,
-        state: ConnState,
-        opts: Opts,
-    ) -> Result<(Option<HashedCommand>, ConnState)> {
-        let mut rsppacket = ResponsePacket::new(data, Some(opts));
-        match state {
-            ConnState::ShakeHand => {
-                let handshake_rsp = rsppacket.proc_handshake()?;
-                return Ok((Some(handshake_rsp), ConnState::AuthSwitch));
-            }
-            ConnState::AuthSwitch => {
-                rsppacket.proc_auth()?;
-                return Ok((None, ConnState::AuthOk));
-            }
-            _ => {
-                log::warn!("unsupport now!");
-                return Err(Error::ProtocolNotSupported);
-            }
         }
     }
 
