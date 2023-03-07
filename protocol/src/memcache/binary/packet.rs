@@ -129,7 +129,7 @@ pub(super) const OP_CODE_GETS: u8 = 0x48;
 // pub(super) const OP_CODE_GETSQ: u8 = 0x49;
 
 //pub(super) const OP_CODE_ADD: u8 = 0x02;
-//pub(super) const OP_CODE_DEL: u8 = 0x04;
+pub(super) const OP_CODE_DEL: u8 = 0x04;
 
 // 0x09: getq
 // 0x0d: getkq
