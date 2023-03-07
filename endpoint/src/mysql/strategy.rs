@@ -86,6 +86,8 @@ impl Strategy {
         }
     }
 
+    //todo: sql_name 枚举
+    //todo: db_id tb_id是否一致
     pub fn get_sql(&self, sql_name: &str, db_id: i64, tb_id: i64) -> Option<String> {
         let table_name = match self.get_table_name(tb_id) {
             Some(table_name) => table_name,
