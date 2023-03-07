@@ -115,6 +115,7 @@ where
         //todo 等波神接口
         let id = 3379782484330149i64;
         self.strategy.get_sql("SQL_SELECT", id, id);
+
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
             //todo: 访问slave
