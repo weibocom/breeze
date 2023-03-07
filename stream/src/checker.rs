@@ -195,6 +195,10 @@ where
         let _ = Pin::new(&mut me.s).poll_flush(cx);
         log::debug!("++++++++ flushed!!!");
 
+        if result.is_ready() {
+            self.buf.try_gc();
+        }
+
         result
     }
 }
