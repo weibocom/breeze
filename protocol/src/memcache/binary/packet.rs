@@ -120,6 +120,7 @@ pub(super) const OP_GETKQ: u8 = 0x0d;
 pub(super) const OP_GETQ: u8 = 0x09;
 pub(super) const OP_SET: u8 = 0x01;
 pub(super) const OP_DEL: u8 = 0x04;
+pub(super) const OP_ADD: u8 = 0x02;
 
 //pub(super) const OP_CODE_GETK: u8 = 0x0c;
 
@@ -127,8 +128,6 @@ pub(super) const OP_DEL: u8 = 0x04;
 pub(super) const OP_GETS: u8 = 0x48;
 // 这个没有业务使用，先注销掉
 // pub(super) const OP_CODE_GETSQ: u8 = 0x49;
-
-//pub(super) const OP_CODE_ADD: u8 = 0x02;
 
 // 0x09: getq
 // 0x0d: getkq
