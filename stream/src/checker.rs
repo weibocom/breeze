@@ -183,7 +183,6 @@ where
         log::debug!("+++ 333 read size:{}", me.buf.slice().len());
 
         let result = match me.parser.handshake(&mut me.buf, me.s, me.option) {
-            Err(Error::ProtocolIncomplete) => Poll::Pending,
             Err(e) => Poll::Ready(Err(e)),
             Ok(HandShake::Failed) => Poll::Ready(Err(Error::AuthFailed)),
             Ok(HandShake::Continue) => Poll::Pending,
@@ -194,8 +193,10 @@ where
             }
         };
 
+        log::debug!("+++ after handshake rs:{:?}, will flush...", result);
         //todo 成功失败后可能会有数据flush pending，单后续handle会flush，问题应该不大
         let _ = Pin::new(&mut me.s).poll_flush(cx);
+        log::debug!("++++++++ flushed!!!");
 
         result
     }
