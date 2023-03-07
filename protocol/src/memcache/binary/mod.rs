@@ -171,6 +171,9 @@ impl Protocol for MemcacheBinary {
             OP_CODE_GET | OP_CODE_GETS => {
                 w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?
             }
+            OP_CODE_DEL => {
+                w.write(&self.build_empty_response(RespStatus::NotStored, ctx.request()))?
+            }
 
             // self.build_empty_response(RespStatus::NotFound, req)
 
