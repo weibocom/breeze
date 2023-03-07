@@ -22,6 +22,8 @@ endpoint = { path = "../endpoint" }
 tokio = { version = "1.24.2", features = ["fs"] }
 ctor = "0.1.23"
 
+mysql = "*"
+
 [dev-dependencies.criterion]
 version = "0.4"
 [dev-dependencies.minstant]

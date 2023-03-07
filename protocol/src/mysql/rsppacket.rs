@@ -1,10 +1,13 @@
 // TODO 解析mysql协议， 转换为mc vs redis 协议
 
+use crate::mysql::constants::DEFAULT_MAX_ALLOWED_PACKET;
 use crate::ResOption;
 
+use super::proto::codec::PacketCodec;
 use super::HandShakeStatus;
 
 use byteorder::{ByteOrder, LittleEndian};
+use bytes::BytesMut;
 use core::num::NonZeroUsize;
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter};
@@ -30,10 +33,12 @@ pub(super) struct ResponsePacket<'a, S> {
 
     ctx: &'a mut ResponseContext,
 
+    codec: PacketCodec,
+
     // packet的起始3字节
     payload_len: usize,
     // packet的第四个字节
-    seq_id: u8,
+    // seq_id: u8,
     // TODO：这些需要整合到connection中，handshake 中获取的字段
     capability_flags: CapabilityFlags,
     connection_id: u32,
@@ -65,8 +70,9 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             stream,
             data,
             ctx,
+            codec: PacketCodec::default(),
             payload_len: 0,
-            seq_id: 0,
+            // seq_id: 0,
             capability_flags: Default::default(),
             connection_id: Default::default(),
             status_flags: Default::default(),
@@ -110,7 +116,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         match NonZeroUsize::new(raw_chunk_len) {
             Some(_chunk_len) => {
                 // TODO 此处暂时不考虑max_allowed packet问题，由分配内存的位置考虑? fishermen
-                self.seq_id = seq_id;
+                self.codec.set_seq_id(seq_id.wrapping_add(1));
             }
             None => {
                 return Err(Error::ProtocolIncomplete);
@@ -122,14 +128,11 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         if self.data.len() >= PREFIX_LEN + raw_chunk_len {
             // 0xFF ERR packet header
             if self.current() == 0xFF {
-                let mut data: Vec<u8> = Vec::with_capacity(raw_chunk_len);
-                self.data
-                    .sub_slice(PREFIX_LEN, raw_chunk_len)
-                    .copy_to_vec(&mut data);
-                match ParseBuf(&data[0..]).parse(self.capability_flags)? {
+                match ParseBuf(&data[self.oft..]).parse(self.capability_flags)? {
                     // TODO Error process 异常响应稍后处理 fishermen
                     ErrPacket::Error(server_error) => {
                         // self.handle_err();
+                        log::debug!("+++ parse packet err:{:?}", server_error);
                         return Err(MySqlError(From::from(server_error)).error());
                     }
                     ErrPacket::Progress(_progress_report) => {
@@ -138,6 +141,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
                 }
             }
 
+            // self.seq_id = self.seq_id.wrapping_add(1);
             log::warn!("mysql sucess rsp:{:?}", self.data);
             return Ok(());
         }
@@ -146,7 +150,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     }
 
     // 解析Handshake packet，构建HandshakeResponse packet
-    pub(super) fn proc_handshake(&mut self) -> Result<HashedCommand> {
+    pub(super) fn proc_handshake(&mut self) -> Result<Vec<u8>> {
         // 先读一个完整的packet
         self.next_packet()?;
 
@@ -205,19 +209,24 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         }
 
         let auth_data = auth_plugin.gen_data(self.opts.get_pass(), &*nonce);
+        log::debug!(
+            "+++ auth_data:{:?}, deref:{:?}",
+            auth_data,
+            auth_data.as_deref()
+        );
         let handshake_rsp =
             self.build_handshake_response_packet(&auth_plugin, auth_data.as_deref())?;
-        let mem_guard = MemGuard::from_vec(handshake_rsp);
+        // let mem_guard = MemGuard::from_vec(handshake_rsp);
 
         // TODO 先随意设置一个op_code
-        let op_code = 0_u8;
-        let mut flag = Flag::from_op(op_code as u16, crate::Operation::Meta);
-        flag.set_try_next_type(crate::TryNextType::NotTryNext);
-        flag.set_sentonly(false);
-        flag.set_noforward(false);
-        let cmd = HashedCommand::new(mem_guard, 0, flag);
+        // let op_code = 0_u8;
+        // let mut flag = Flag::from_op(op_code as u16, crate::Operation::Meta);
+        // flag.set_try_next_type(crate::TryNextType::NotTryNext);
+        // flag.set_sentonly(false);
+        // flag.set_noforward(false);
+        // let cmd = HashedCommand::new(mem_guard, 0, flag);
         log::debug!("+++ already build handshake rsp");
-        Ok(cmd)
+        Ok(handshake_rsp)
     }
 
     // 处理handshakeresponse的mysql响应，即auth
@@ -230,7 +239,11 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         // 先读取一个packet
         self.next_packet()?;
 
-        log::debug!("+++ proc auth result..., flag:{}", self.current());
+        log::debug!(
+            "+++ proc auth result..., oft:{} paload:{}",
+            self.oft,
+            self.payload_len
+        );
         // Ok packet header 是 0x00 或者0xFE
         match self.current() {
             0x00 => {
@@ -253,7 +266,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     // 根据auth plugin、scramble及connection 属性，构建shakehandRsp packet
     fn build_handshake_response_packet(
-        &self,
+        &mut self,
         auth_plugin: &AuthPlugin<'_>,
         scramble_buf: Option<&[u8]>,
     ) -> Result<Vec<u8>> {
@@ -266,10 +279,25 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             self.capability_flags,
             Some(self.connect_attrs().clone()),
         );
+        log::debug!("+++ scrable_buf111:{:?}", handshake_response.scramble_buf);
+        log::debug!("+++ handshakersp:{:?}", handshake_response);
         let mut buf: Vec<u8> = Vec::with_capacity(256);
-
         handshake_response.serialize(&mut buf);
-        Ok(buf)
+        let mut src_buf = BytesMut::with_capacity(buf.len());
+        src_buf.extend(buf);
+
+        let mut encoded_raw = BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET);
+        match self.codec.encode(&mut src_buf, &mut encoded_raw) {
+            Ok(_) => {
+                let mut encoded = Vec::with_capacity(encoded_raw.len());
+                encoded.extend(&encoded_raw[0..]);
+                return Ok(encoded);
+            }
+            Err(e) => {
+                log::warn!("encode request failed:{:?}", e);
+                return Err(Error::WriteResponseErr);
+            }
+        }
     }
 
     // TODO ======= handle_handshake、get_client_flags 都需要移到conn关联的逻辑中 fishermen
@@ -284,7 +312,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     fn get_client_flags(&self) -> CapabilityFlags {
         let mut client_flags = CapabilityFlags::CLIENT_PROTOCOL_41
-            // | CapabilityFlags::CLIENT_SECURE_CONNECTION
+            | CapabilityFlags::CLIENT_SECURE_CONNECTION
             | CapabilityFlags::CLIENT_LONG_PASSWORD
             | CapabilityFlags::CLIENT_TRANSACTIONS
             | CapabilityFlags::CLIENT_LOCAL_FILES
@@ -343,6 +371,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         // TODO 先跑通，后面统一基于RingSlice进行parse
         let mut packet_data: Vec<u8> = Vec::with_capacity(self.payload_len);
         self.data.copy_to_vec(&mut packet_data);
+        self.oft += self.payload_len;
         self.take();
 
         let ok = ParseBuf(&packet_data[0..])

@@ -96,8 +96,9 @@ impl<P, Req> BackendChecker<P, Req> {
                     parser: self.parser.clone(),
                     id: ID_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 };
-                if let Err(_) = auth.await {
+                if let Err(e) = auth.await {
                     //todo 需要减一吗，listen_failed好像没有减
+                    log::debug!("+++ auth err {}", e);
                     auth_failed += 1;
                     stream.cancel();
                     continue;
@@ -160,31 +161,38 @@ where
         //是否auth，parser有状态了，状态机？parser 传进去的是buf，不是client，所以前后还要加异步读写
         //todo:读buf代码重复了与下面
         // let mut cx1 = Context::from_waker(cx.waker());
+
         let mut reader = crate::buffer::Reader::from(&mut me.s, cx);
-        let id = me.id;
         // let poll_read = me.buf.write(&mut reader)?;
-        log::debug!("+++ 111-id:{} read size:{}", id, me.buf.slice().len());
+        // log::debug!("+++ 111 read size:{}", me.buf.slice().len());
         //有可能出错了，会有未使用的读取，放使用后会有两个mut
         // if let Poll::Ready(_) = poll_read {
         //     reader.check()?;
         // }
 
         while let Poll::Ready(_) = me.buf.write(&mut reader)? {
-            log::debug!("+++ in 222-id:{} read size:{}", id, me.buf.slice().len());
+            log::debug!("+++ in 222 read size:{}", me.buf.slice().len());
             reader.check()?;
-            log::debug!(
-                "+++ in 222.111-id:{} read size:{}",
-                id,
-                me.buf.slice().len()
-            );
+            log::debug!("+++ in 222.111 read size:{}", me.buf.slice().len());
         }
+        // loop {
+        //     let mut reader = crate::buffer::Reader::from(&mut me.s, cx);
+        //     let poll_read = me.buf.write(&mut reader)?;
+        //     log::debug!("+++ in 222 read size:{}", me.buf.slice().len());
+        //     match poll_read {
+        //         Poll::Ready(_) => reader.check()?,
+        //         Poll::Pending => break,
+        //     }
+        // }
 
-        log::debug!("+++ 333-id:{} read size:{}", id, me.buf.slice().len());
+        log::debug!("+++ 333 read size:{}", me.buf.slice().len());
 
-        let result = match me.parser.handshake(&mut me.buf, me.s, me.option)? {
-            HandShake::Failed => Poll::Ready(Err(Error::AuthFailed)),
-            HandShake::Continue => Poll::Pending,
-            HandShake::Success => {
+        let result = match me.parser.handshake(&mut me.buf, me.s, me.option) {
+            Err(Error::ProtocolIncomplete) => Poll::Pending,
+            Err(e) => Poll::Ready(Err(e)),
+            Ok(HandShake::Failed) => Poll::Ready(Err(Error::AuthFailed)),
+            Ok(HandShake::Continue) => Poll::Pending,
+            Ok(HandShake::Success) => {
                 // me.init.on();
                 // me.authed = true;
                 Poll::Ready(Ok(()))

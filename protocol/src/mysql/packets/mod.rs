@@ -12,6 +12,7 @@ use regex::bytes::Regex;
 use smallvec::SmallVec;
 use uuid::Uuid;
 
+use std::fmt::{write, Display};
 use std::str::FromStr;
 use std::{
     borrow::Cow, cmp::max, collections::HashMap, convert::TryFrom, fmt, io, marker::PhantomData,
@@ -1624,12 +1625,25 @@ type ScrambleBuf<'a> =
 pub struct HandshakeResponse<'a> {
     capabilities: Const<CapabilityFlags, LeU32>,
     collation: RawInt<u8>,
-    scramble_buf: ScrambleBuf<'a>,
+    pub scramble_buf: ScrambleBuf<'a>,
     user: RawBytes<'a, NullBytes>,
     db_name: Option<RawBytes<'a, NullBytes>>,
     auth_plugin: Option<AuthPlugin<'a>>,
     connect_attributes: Option<HashMap<RawBytes<'a, LenEnc>, RawBytes<'a, LenEnc>>>,
 }
+
+// impl<'a> Display for HandshakeResponse<'a> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(
+//             f,
+//             "HandshakeResponse[capabilities:{:?}, colloation:{}, user:{}, db_name:{:?}]",
+//             self.capabilities.0,
+//             self.collation.0,
+//             self.user.as_str(),
+//             self.db_name,
+//         )
+//     }
+// }
 
 impl<'a> HandshakeResponse<'a> {
     pub fn new(
@@ -1651,6 +1665,7 @@ impl<'a> HandshakeResponse<'a> {
                     scramble_buf.map(Into::into).unwrap_or_default(),
                 )))
             } else {
+                log::debug!("+++=== update ");
                 Either::Right(Either::Right(RawBytes::new(
                     scramble_buf.map(Into::into).unwrap_or_default(),
                 )))
@@ -1799,7 +1814,18 @@ impl MySerialize for HandshakeResponse<'_> {
         self.collation.serialize(&mut *buf);
         buf.put_slice(&[0; 23]);
         self.user.serialize(&mut *buf);
+
+        log::debug!("+++ scrable_buf:{:?}", self.scramble_buf);
         self.scramble_buf.serialize(&mut *buf);
+
+        //TODO test
+        let mut sbuf = Vec::with_capacity(64);
+        self.scramble_buf.serialize(&mut sbuf);
+        log::debug!(
+            "+++ scrable_buf:{:?}, serialize:{:?}",
+            self.scramble_buf,
+            sbuf
+        );
 
         if let Some(db_name) = &self.db_name {
             db_name.serialize(&mut *buf);
