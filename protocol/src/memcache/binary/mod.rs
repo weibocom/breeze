@@ -152,6 +152,7 @@ impl Protocol for MemcacheBinary {
             OP_SET => w.write(&self.build_empty_response(NotStored, ctx.request())),
             OP_GET | OP_GETS => w.write(&self.build_empty_response(NotFound, ctx.request())),
             OP_QUIT | OP_QUITQ => Err(Error::Quit),
+            OP_DEL => w.write(&self.build_empty_response(NotStored, ctx.request())),
             _ => Err(Error::OpCodeNotSupported(old_op_code)),
         }
     }
