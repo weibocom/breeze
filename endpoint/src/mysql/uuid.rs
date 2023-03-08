@@ -77,26 +77,26 @@ impl UuidHelper {
     pub fn is_valid_id(id: i64) -> bool {
         id > UuidHelper::MIN_VALID_ID && id < UuidHelper::MAX_VALID_ID
     }
-    pub fn get_time_from_id(id: i64) -> i64 {
-        UuidHelper::get_time_number_from_id(id) + UuidConst::ID_OFFSET
+    pub fn get_time(id: i64) -> i64 {
+        UuidHelper::get_time_number(id) + UuidConst::ID_OFFSET
     }
-    pub fn get_time_number_from_id(id: i64) -> i64 {
+    pub fn get_time_number(id: i64) -> i64 {
         id >> UuidConst::IDC_SEQ_BIT_LENGTH
     }
-    pub fn get_idc_id_from_id(id: i64) -> i64 {
+    pub fn get_idc(id: i64) -> i64 {
         (id & UuidHelper::IDC_ID_BIT) >> UuidConst::SEQ_BIT_LENGTH
     }
-    pub fn get_seq_from_id(id: i64) -> i64 {
+    pub fn get_seq(id: i64) -> i64 {
         if UuidHelper::is_spec_uuid(id) {
             (id >> 1) % UuidConst::SPEC_SEQ_LIMIT
         } else {
             id % UuidConst::SEQ_LIMIT
         }
     }
-    pub fn get_unix_time_from_id(id: i64) -> i64 {
+    pub fn get_unix_time(id: i64) -> i64 {
         (id + UuidConst::ID_OFFSET_2014) * 1000
     }
-    pub fn get_time_30_from_id(id: i64) -> i64 {
+    pub fn get_time_30(id: i64) -> i64 {
         let actual_id = id / 1000 - UuidConst::ID_OFFSET_2014;
         if actual_id > 0 {
             actual_id
@@ -105,7 +105,7 @@ impl UuidHelper {
         }
     }
     //get biz flag for spec uuid
-    pub fn get_biz_flag(id: i64) -> i64 {
+    pub fn get_biz(id: i64) -> i64 {
         if Self::is_spec_uuid(id) {
             return (id & Self::BIZ_FLAG_BIT) >> UuidConst::SPEC_SEQ_HA_BIT_LENGTH;
         }
@@ -121,25 +121,25 @@ impl UuidHelper {
     }
     //check if the uuid is spec uuid
     fn is_spec_uuid(id: i64) -> bool {
-        let idc_id = Self::get_idc_id_from_id(id);
+        let idc_id = Self::get_idc(id);
         return Self::is_spec_idc(idc_id);
     }
 
     //get id by date
-    pub fn get_id_by_date(date: DateTime<Utc>) -> i64 {
+    pub fn get_id(date: DateTime<Utc>) -> i64 {
         return UuidSimulator::new().generate_id(date.timestamp_millis());
     }
     //get min id by date
-    pub fn get_min_id_by_date(date: DateTime<Utc>) -> i64 {
+    pub fn get_min_id(date: DateTime<Utc>) -> i64 {
         return UuidSimulator::new().generate_min_id(date.timestamp_millis());
     }
     //get max id by date
-    pub fn get_max_id_by_date(date: DateTime<Utc>) -> i64 {
+    pub fn get_max_id(date: DateTime<Utc>) -> i64 {
         return UuidSimulator::new().generate_max_id(date.timestamp_millis());
     }
     //get timestamp from id with second precision
     pub fn get_timestamp_from_id(id: i64) -> i64 {
-        return (Self::get_time_number_from_id(id) + UuidConst::ID_OFFSET) * 1000;
+        return (Self::get_time_number(id) + UuidConst::ID_OFFSET) * 1000;
     }
 }
 
