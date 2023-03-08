@@ -13,7 +13,7 @@ mod mysql_strategy {
         let mut sqls = HashMap::with_capacity(4);
         sqls.insert("SQL_SELECT".to_string(), SQL_SELECT.to_string());
 
-        let s = Strategy::from(
+        let s = Strategy::new(
             "status".to_string(),
             "status".to_string(),
             "yymmdd".to_string(),
@@ -24,7 +24,7 @@ mod mysql_strategy {
             "crc32".to_string(),
             "modula".to_string(),
         );
-        let mut sql_cmd = s.get_sql("GET_LATEST_STATUS_IDS", id, id);
+        let mut sql_cmd = s.build_sql("SQL_SELECT", id, id);
         if sql_cmd != None {
             println!("id: {}, sql: {}", id, sql_cmd.unwrap());
         }
@@ -33,26 +33,26 @@ mod mysql_strategy {
     #[test]
     fn text_id_to_unix_time() {
         let id = 3379782484330149i64;
-        let unix_time = UuidHelper::get_unix_time_from_id(id);
+        let unix_time = UuidHelper::get_unix_time(id);
         println!("id: {} , unix_time: {}", id, unix_time);
     }
     #[test]
     fn text_id_to_idc() {
         let id = 3379782484330149i64;
-        let idc = UuidHelper::get_idc_id_from_id(id);
+        let idc = UuidHelper::get_idc(id);
         println!("id: {} , idc: {}", id, idc);
     }
     #[test]
     fn text_id_to_time() {
         let id = 3379782484330149i64;
-        let time = UuidHelper::get_time_from_id(id);
+        let time = UuidHelper::get_time(id);
         println!("id: {} , time: {}", id, time);
     }
 
     #[test]
     fn text_id_to_biz() {
         let id = 3379782484330149i64;
-        let biz = UuidHelper::get_biz_flag(id);
+        let biz = UuidHelper::get_biz(id);
         println!("id: {} , biz: {}", id, biz);
     }
 }
