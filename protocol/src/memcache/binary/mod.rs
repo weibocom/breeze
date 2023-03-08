@@ -149,10 +149,11 @@ impl Protocol for MemcacheBinary {
             OP_VERSION => w.write(&VERSION_RESPONSE),
             OP_STAT => w.write(&STAT_RESPONSE),
             OP_GETQ | OP_GETKQ => Ok(()),
-            OP_SET => w.write(&self.build_empty_response(NotStored, ctx.request())),
+            OP_SET | OP_DEL | OP_ADD => {
+                w.write(&self.build_empty_response(NotStored, ctx.request()))
+            }
             OP_GET | OP_GETS => w.write(&self.build_empty_response(NotFound, ctx.request())),
             OP_QUIT | OP_QUITQ => Err(Error::Quit),
-            OP_DEL => w.write(&self.build_empty_response(NotStored, ctx.request())),
             _ => Err(Error::OpCodeNotSupported(old_op_code)),
         }
     }
