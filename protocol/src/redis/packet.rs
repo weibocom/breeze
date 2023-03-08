@@ -284,7 +284,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             default_hash()
         };
 
-        if cfg.reserve_hash && next_req_status.is_some() {
+        if cfg.reserve_hash {
             next_req_status
                 .as_mut()
                 .expect("next_req_status should not be none")

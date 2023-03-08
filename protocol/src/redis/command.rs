@@ -606,7 +606,7 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(pt[5]).nofwd().key().resv_hash().
         cmd_type(CommandType::SpecLocalCmdHashkey).effect_on_next_req(),
         Cmd::new("keyshard").arity(-2).op(Meta).first(1).last(-1).step(1).padding(pt[5]).multi().
-        nofwd().key().bulk().resv_hash().cmd_type(CommandType::SpecLocalCmdKeyshard),
+        nofwd().key().bulk().cmd_type(CommandType::SpecLocalCmdKeyshard),
 
         // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
         //("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false),
