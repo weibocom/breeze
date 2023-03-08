@@ -37,7 +37,6 @@ impl Redis {
         while packet.available() {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd()?;
-            let mut next_req_status = None;
             if cfg.multi {
                 packet.multi_ready();
                 while packet.has_bulk() {
@@ -47,7 +46,7 @@ impl Redis {
                     assert!(cfg.has_key, "cfg:{}", cfg.name);
 
                     let flag = packet.flag(cfg);
-                    let hash = packet.hash(cfg, alg, &mut next_req_status)?;
+                    let hash = packet.hash(cfg, alg)?;
 
                     if cfg.has_val {
                         packet.ignore_one_bulk()?;
@@ -58,17 +57,16 @@ impl Redis {
                 }
             } else {
                 if cfg.effect_on_next_req {
-                    next_req_status = packet.proc_effect_on_next_req_cmd(&cfg)?;
+                    packet.proc_effect_on_next_req_cmd(&cfg, alg, process)?;
+                    continue;
                 }
                 let flag = packet.flag(cfg);
-                let hash = packet.hash(cfg, alg, &mut next_req_status)?;
+                let hash = packet.hash(cfg, alg)?;
 
                 packet.ignore_all_bulks()?;
                 let cmd = packet.take();
-                if !cfg.swallowed {
-                    let req = HashedCommand::new(cmd, hash, flag);
-                    process.process(req, true);
-                }
+                let req = HashedCommand::new(cmd, hash, flag);
+                process.process(req, true);
 
                 // // 如果是指示下一个cmd hash的特殊指令，需要保留hash
                 // if cfg.reserve_hash {
@@ -79,7 +77,7 @@ impl Redis {
                 // }
             }
             //一个请求结束才会走到这
-            packet.clear_status(next_req_status);
+            packet.clear_status();
         }
         Ok(())
     }

@@ -2,7 +2,9 @@ use super::{
     command::{CommandHasher, CommandProperties, CommandType},
     error::RedisError,
 };
-use crate::{error::Error, redis::command, Flag, ReservedHash, Result};
+use crate::{
+    error::Error, redis::command, Flag, HashedCommand, RequestProcessor, ReservedHash, Result,
+};
 use ds::RingSlice;
 use sharding::hash::Hash;
 
@@ -55,13 +57,6 @@ pub(crate) struct RequestPacket<'a, S> {
     reserved_hash: ReservedHash,
     oft_last: usize,
     oft: usize,
-}
-
-#[derive(Default, Clone, Copy)]
-pub(super) struct NextReqStatus {
-    pub master_only: bool,
-    pub sendto_all: bool,
-    pub reserved_hash: ReservedHash,
 }
 
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
@@ -195,8 +190,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
         // 重置stream的ctx
         *self.stream.context() = 0;
-
-        assert_eq!(self.ctx.u64(), 0, "packet:{}", self);
     }
 
     // 重置reserved hash，包括stream中的对应值
@@ -226,17 +219,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(super) fn set_sendto_all(&mut self) {
         self.ctx.sendto_all = true;
     }
-    #[inline]
-    pub(super) fn clear_sendto_all(&mut self) {
-        self.ctx.sendto_all = false;
-    }
 
     #[inline]
-    pub(super) fn clear_status(&mut self, next_req_status: Option<NextReqStatus>) {
+    pub(super) fn clear_status(&mut self) {
         // 重置context、reserved-hash
         self.reset_context();
         self.reset_reserved_hash();
-        self.reserve_status(next_req_status);
     }
 
     #[inline]
@@ -263,20 +251,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     //总是会parsekey
-    pub(super) fn hash<H: Hash>(
-        &mut self,
-        cfg: &CommandProperties,
-        alg: &H,
-        next_req_status: &mut Option<NextReqStatus>,
-    ) -> Result<i64> {
+    pub(super) fn hash<H: Hash>(&mut self, cfg: &CommandProperties, alg: &H) -> Result<i64> {
         let mut key: RingSlice = Default::default();
         if cfg.has_key {
             key = self.parse_key()?;
         }
-        let hash = if let CommandType::SwallowedCmdHashrandomq = cfg.cmd_type {
-            // 虽然hash名义为i64，但实际当前均为u32
-            rand::random::<u32>() as i64
-        } else if self.reserved_hash().is_some() {
+        let hash = if self.reserved_hash().is_some() {
             self.reserved_hash().unwrap()
         } else if cfg.has_key {
             calculate_hash(alg, &key)
@@ -284,79 +264,75 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             default_hash()
         };
 
-        if cfg.reserve_hash {
-            next_req_status
-                .as_mut()
-                .expect("next_req_status should not be none")
-                .reserved_hash
-                .replace(hash);
-        }
-
         Ok(hash)
     }
 
     //处理对下条指令有影响的命令，其造成的影响单独存放，不影响平常流程
-    pub(super) fn proc_effect_on_next_req_cmd(
+    pub(super) fn proc_effect_on_next_req_cmd<H: Hash, P: RequestProcessor>(
         &mut self,
         cfg: &CommandProperties,
-    ) -> Result<Option<NextReqStatus>> {
-        //保留所有旧状态, 且清除当前状态，因为处理特殊指令的时刻，不需要特殊处理
-        let mut next_req_status = NextReqStatus {
-            master_only: self.master_only(),
-            sendto_all: self.sendto_all(),
-            reserved_hash: self.reserved_hash(),
-        };
+        alg: &H,
+        process: &mut P,
+    ) -> Result<()> {
+        //保留所有旧状态
+        let mut master_only = self.master_only();
+        let mut sendto_all = self.sendto_all();
+        let mut reserved_hash = self.reserved_hash();
+        let mut hash: i64 = 0;
 
         match cfg.cmd_type {
-            CommandType::SwallowedMaster => next_req_status.master_only = true,
+            CommandType::SwallowedMaster => master_only = true,
             // cmd: hashkeyq $key
             // 流程放到计算hash中处理
             CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
-                // let key = self.parse_key()?;
-                // let hash = calculate_hash(alg, &key);
-                // next_req_status.reserved_hash.replace(hash);
+                let key = self.parse_key()?;
+                hash = calculate_hash(alg, &key);
+                reserved_hash.replace(hash);
             }
             // cmd: hashrandomq
             CommandType::SwallowedCmdHashrandomq => {
                 // 虽然hash名义为i64，但实际当前均为u32
-                // let hash = rand::random::<u32>() as i64;
-                // next_req_status.reserved_hash.replace(hash);
+                hash = rand::random::<u32>() as i64;
+                reserved_hash.replace(hash);
             }
             CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
-                next_req_status.sendto_all = true;
+                sendto_all = true;
             }
             _ => {
                 assert!(false, "unknown effect_on_next_req_cmd:{}", cfg.name);
             }
         }
 
-        //不要清除stream状态，防止如果清除了协议未完成
-        self.clear_master_only();
-        self.clear_sendto_all();
-        self.reserved_hash.take();
-        Ok(Some(next_req_status))
+        // 吞噬掉整个cmd，准备处理下一个cmd fishermen
+        self.ignore_all_bulks()?;
+        let cmd = self.take();
+        if !cfg.swallowed {
+            let req = HashedCommand::new(cmd, hash, cfg.flag());
+            process.process(req, true);
+        }
+        self.clear_status();
+        self.reserve_status(master_only, sendto_all, reserved_hash);
+        Ok(())
     }
 
     #[inline]
-    pub(super) fn reserve_status(&mut self, next_req_status: Option<NextReqStatus>) {
-        if let Some(NextReqStatus {
-            master_only,
-            sendto_all,
-            reserved_hash,
-        }) = next_req_status
-        {
-            if master_only {
-                // 保留master only 设置
-                self.set_master_only();
-            }
-            if sendto_all {
-                self.set_sendto_all();
-            }
-            *self.stream.context() = self.ctx.u64();
-
-            self.reserved_hash = reserved_hash;
-            *self.stream.reserved_hash() = reserved_hash;
+    pub(super) fn reserve_status(
+        &mut self,
+        master_only: bool,
+        sendto_all: bool,
+        reserved_hash: ReservedHash,
+    ) {
+        if master_only {
+            // 保留master only 设置
+            self.set_layer(LayerType::MasterOnly);
         }
+        if sendto_all {
+            self.set_sendto_all()
+        }
+        *self.stream.context() = self.ctx.u64();
+
+        self.reserved_hash = reserved_hash;
+        *self.stream.reserved_hash() = reserved_hash;
         // 设置packet的ctx到stream的ctx中，供下一个指令使用
 
         // 这个有必要保留吗？
@@ -392,18 +368,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.ctx.layer = layer as u8;
     }
     #[inline]
-    pub(super) fn set_master_only(&mut self) {
-        self.set_layer(LayerType::MasterOnly);
-    }
-    #[inline]
     pub(super) fn master_only(&self) -> bool {
         self.ctx.layer == LayerType::MasterOnly as u8
     }
-    #[inline]
-    pub(super) fn clear_master_only(&mut self) -> bool {
-        self.ctx.layer == 0
-    }
-
     // 解析完毕，如果数据未读完，需要保留足够的buff空间
     #[inline(always)]
     pub(crate) fn reserve_stream_buff(&mut self) {
