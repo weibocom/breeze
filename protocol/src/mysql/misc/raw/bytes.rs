@@ -146,7 +146,6 @@ impl BytesRepr for U8Bytes {
     type Ctx = ();
 
     fn serialize(text: &[u8], buf: &mut Vec<u8>) {
-        log::debug!("+++=== U8Bytes serialize buf, max_len:{}", U8Bytes::MAX_LEN);
         buf.put_u8_str(text);
     }
 
@@ -192,10 +191,6 @@ impl BytesRepr for NullBytes {
     type Ctx = ();
 
     fn serialize(text: &[u8], buf: &mut Vec<u8>) {
-        log::debug!(
-            "+++=== NullBytes serialize buf, max_len:{}",
-            NullBytes::MAX_LEN
-        );
         let last = text
             .iter()
             .position(|x| *x == 0)

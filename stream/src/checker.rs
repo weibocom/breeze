@@ -173,11 +173,6 @@ where
         loop {
             let mut reader = crate::buffer::Reader::from(&mut me.s, cx);
             let poll_read = me.buf.write(&mut reader)?;
-            log::debug!(
-                "+++ in 222 read size:{}, poll_result {:?}",
-                me.buf.slice().len(),
-                poll_read
-            );
             match poll_read {
                 Poll::Ready(_) => reader.check()?,
                 Poll::Pending => break,
