@@ -84,11 +84,12 @@ impl<P, Req> BackendChecker<P, Req> {
             let mut stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
 
+            let mut buf = StreamGuard::new();
             if self.parser.need_auth() {
                 log::debug!("+++ will auth when connect:{}", self.addr);
                 //todo 处理认证结果
                 let auth = Auth {
-                    buf: StreamGuard::new(),
+                    buf: &mut buf,
                     option: &mut self.option,
                     s: &mut stream,
                     parser: self.parser.clone(),
@@ -106,7 +107,7 @@ impl<P, Req> BackendChecker<P, Req> {
             self.init.on();
             log::debug!("handler started:{:?}", self.path);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, stream, p, rtt);
+            let handler = Handler::from(rx, &mut buf, stream, p, rtt);
             let handler = rt::Entry::timeout(handler, rt::Timeout::from(self.timeout));
             if let Err(e) = handler.await {
                 log::info!("backend error {:?} => {:?}", path_addr, e);
@@ -139,7 +140,7 @@ impl<P, Req> BackendChecker<P, Req> {
 struct Auth<'a, P, S> {
     pub option: &'a mut ResOption,
     pub s: &'a mut S,
-    pub buf: StreamGuard,
+    pub buf: &'a mut StreamGuard,
     pub parser: P,
 }
 
@@ -179,7 +180,7 @@ where
             }
         }
 
-        let result = match me.parser.handshake(&mut me.buf, me.s, me.option) {
+        let result = match me.parser.handshake(me.buf, me.s, me.option) {
             Err(e) => Poll::Ready(Err(e)),
             Ok(HandShake::Failed) => Poll::Ready(Err(Error::AuthFailed)),
             Ok(HandShake::Continue) => Poll::Pending,

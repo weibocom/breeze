@@ -18,7 +18,7 @@ pub struct Handler<'r, Req, P, S> {
     pending: VecDeque<Req>,
 
     s: S,
-    buf: StreamGuard,
+    buf: &'r mut StreamGuard,
     parser: P,
 
     // 处理timeout
@@ -55,14 +55,20 @@ where
     S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
     P: Protocol + Unpin,
 {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, rtt: Metric) -> Self {
+    pub(crate) fn from(
+        data: &'r mut Receiver<Req>,
+        buf: &'r mut StreamGuard,
+        s: S,
+        parser: P,
+        rtt: Metric,
+    ) -> Self {
         data.enable();
         Self {
             data,
             pending: VecDeque::with_capacity(31),
             s,
             parser,
-            buf: StreamGuard::new(),
+            buf: buf,
             rtt,
             num_rx: 0,
             num_tx: 0,
@@ -75,7 +81,7 @@ where
         self.s.cache(self.data.size_hint() > 1);
         while let Some(mut req) = ready!(self.data.poll_recv(cx)) {
             //插入mysql seqid
-            self.parser.before_send(&mut self.buf, &mut req);
+            self.parser.before_send(self.buf, &mut req);
             self.num_tx += 1;
             self.s.write_slice(req.data(), 0)?;
             //此处paser需要插钩子，设置seqid
@@ -96,7 +102,7 @@ where
             let poll_read = self.buf.write(&mut reader)?;
 
             while self.buf.len() > 0 {
-                match self.parser.parse_response(&mut self.buf)? {
+                match self.parser.parse_response(self.buf)? {
                     None => break,
                     Some(cmd) => {
                         let req = self.pending.pop_front().expect("take response");
