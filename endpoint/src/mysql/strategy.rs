@@ -160,7 +160,7 @@ impl Strategy {
         None
     }
     fn build_date_tname(&self, tbl_prefix: &str, id: i64, is_display_day: bool) -> Option<String> {
-        let milliseconds = UuidHelper::get_time_from_id(id) * 1000;
+        let milliseconds = UuidHelper::get_time(id) * 1000;
         let yy_mm_dd = if is_display_day {
             chrono::Utc
                 .timestamp_millis(milliseconds)
