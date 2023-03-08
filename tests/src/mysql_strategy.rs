@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod mysql_strategy {
     use endpoint::mysql::strategy::Strategy;
-    use endpoint::mysql::uuid::UuidHelper;
+    use endpoint::mysql::uuid::{UuidHelper, UuidSimulator};
     use std::collections::HashMap;
     const SQL_INSERT: &'static str = "insert into $db$.$tb$ (id, content) values($k$, $v$)";
     const SQL_UPDATE: &'static str = "update $db$.$tb$ set content=$v$ where id=$k$";
@@ -9,7 +9,9 @@ mod mysql_strategy {
     const SQL_SELECT: &'static str = "select content from $db$.$tb$ where id=$k$";
     #[test]
     fn test_get_sql() {
-        let id = 3379782484330149i64;
+        // let id = 3094373189550081i64;
+        let id = UuidSimulator::new().generate_id(1253239522000i64); // Tue Sep 18
+
         let mut sqls = HashMap::with_capacity(4);
         sqls.insert("SQL_SELECT".to_string(), SQL_SELECT.to_string());
 
