@@ -221,10 +221,19 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    pub(super) fn clear_status(&mut self) {
-        // 重置context、reserved-hash
-        self.reset_context();
-        self.reset_reserved_hash();
+    pub(super) fn clear_status(&mut self, cfg: &CommandProperties) {
+        if cfg.effect_on_next_req {
+            let master_only = self.master_only();
+            let sendto_all = self.sendto_all();
+            let reserved_hash = self.reserved_hash();
+            // 重置context、reserved-hash
+            self.reset_context();
+            self.reset_reserved_hash();
+            self.reserve_status(master_only, sendto_all, reserved_hash);
+        } else {
+            self.reset_context();
+            self.reset_reserved_hash();
+        }
     }
 
     #[inline]
@@ -268,51 +277,35 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     //处理对下条指令有影响的命令，其造成的影响单独存放，不影响平常流程
-    pub(super) fn proc_effect_on_next_req_cmd<H: Hash, P: RequestProcessor>(
+    pub(super) fn proc_effect_on_next_req_cmd<H: Hash>(
         &mut self,
         cfg: &CommandProperties,
         alg: &H,
-        process: &mut P,
-    ) -> Result<()> {
-        //保留所有旧状态
-        let mut master_only = self.master_only();
-        let mut sendto_all = self.sendto_all();
-        let mut reserved_hash = self.reserved_hash();
-        let mut hash: i64 = 0;
-
+    ) -> Result<(Flag, i64)> {
+        let hash = 0;
         match cfg.cmd_type {
-            CommandType::SwallowedMaster => master_only = true,
+            CommandType::SwallowedMaster => self.set_master_only(),
             // cmd: hashkeyq $key
             // 流程放到计算hash中处理
             CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
                 let key = self.parse_key()?;
-                hash = calculate_hash(alg, &key);
-                reserved_hash.replace(hash);
+                let hash = calculate_hash(alg, &key);
+                self.reserved_hash.replace(hash);
             }
             // cmd: hashrandomq
             CommandType::SwallowedCmdHashrandomq => {
                 // 虽然hash名义为i64，但实际当前均为u32
-                hash = rand::random::<u32>() as i64;
-                reserved_hash.replace(hash);
+                let hash = rand::random::<u32>() as i64;
+                self.reserved_hash.replace(hash);
             }
             CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
-                sendto_all = true;
+                self.set_sendto_all();
             }
             _ => {
                 assert!(false, "unknown effect_on_next_req_cmd:{}", cfg.name);
             }
         }
-
-        // 吞噬掉整个cmd，准备处理下一个cmd fishermen
-        self.ignore_all_bulks()?;
-        let cmd = self.take();
-        if !cfg.swallowed {
-            let req = HashedCommand::new(cmd, hash, cfg.flag());
-            process.process(req, true);
-        }
-        self.clear_status();
-        self.reserve_status(master_only, sendto_all, reserved_hash);
-        Ok(())
+        Ok((cfg.flag(), hash))
     }
 
     #[inline]
@@ -370,6 +363,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn master_only(&self) -> bool {
         self.ctx.layer == LayerType::MasterOnly as u8
+    }
+    #[inline]
+    pub(super) fn set_master_only(&mut self) {
+        self.ctx.layer = LayerType::MasterOnly as u8;
     }
     // 解析完毕，如果数据未读完，需要保留足够的buff空间
     #[inline(always)]

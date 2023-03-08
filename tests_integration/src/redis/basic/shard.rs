@@ -175,7 +175,7 @@ fn hashkey(swallow: bool) {
     } else {
         assert_eq!(
             redis::cmd("hashkey").arg("test_shards_4").query(&mut con),
-            Ok(3)
+            Ok(true)
         );
     }
     //set 到了分片3
@@ -193,7 +193,7 @@ fn hashkey(swallow: bool) {
     } else {
         assert_eq!(
             redis::cmd("hashkey").arg("test_shards_4").query(&mut con),
-            Ok(3)
+            Ok(true)
         )
     }
     assert_eq!(con.get(argkey), Ok(true));

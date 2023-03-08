@@ -56,18 +56,18 @@ impl Redis {
                     process.process(req, packet.complete());
                 }
             } else {
-                if cfg.effect_on_next_req {
-                    packet.proc_effect_on_next_req_cmd(&cfg, alg, process)?;
-                    continue;
-                }
-                let flag = packet.flag(cfg);
-                let hash = packet.hash(cfg, alg)?;
+                let (flag, hash) = if cfg.effect_on_next_req {
+                    packet.proc_effect_on_next_req_cmd(&cfg, alg)?
+                } else {
+                    (packet.flag(cfg), packet.hash(cfg, alg)?)
+                };
 
                 packet.ignore_all_bulks()?;
                 let cmd = packet.take();
-                let req = HashedCommand::new(cmd, hash, flag);
-                process.process(req, true);
-
+                if !cfg.swallowed {
+                    let req = HashedCommand::new(cmd, hash, flag);
+                    process.process(req, true);
+                }
                 // // 如果是指示下一个cmd hash的特殊指令，需要保留hash
                 // if cfg.reserve_hash {
                 //     debug_assert!(cfg.has_key, "cfg:{}", cfg.name);
@@ -77,7 +77,7 @@ impl Redis {
                 // }
             }
             //一个请求结束才会走到这
-            packet.clear_status();
+            packet.clear_status(cfg);
         }
         Ok(())
     }
@@ -270,12 +270,12 @@ impl Protocol for Redis {
             } else {
                 // 无响应，则根据cmd name构建对应响应
                 match cfg.cmd_type {
-                    CommandType::SpecLocalCmdHashkey => {
-                        // format!(":{}\r\n", shard)
-                        w.write(b":")?;
-                        w.write(ctx.request_shard().to_string().as_bytes())?;
-                        w.write(b"\r\n")?;
-                    }
+                    // CommandType::SpecLocalCmdHashkey => {
+                    //     // format!(":{}\r\n", shard)
+                    //     w.write(b":")?;
+                    //     w.write(ctx.request_shard().to_string().as_bytes())?;
+                    //     w.write(b"\r\n")?;
+                    // }
                     _ => {
                         let padding = cfg.get_padding_rsp();
                         w.write(padding.as_bytes())?;

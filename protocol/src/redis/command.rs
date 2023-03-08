@@ -603,7 +603,7 @@ pub(super) static SUPPORTED: Commands = {
         // 这个指令暂无需求，先不支持
         // ("hashrandom", "hashrandom",               1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
         // hashkey、keyshard 改为meta，确保构建rsp时的status管理
-        Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(pt[5]).nofwd().key().resv_hash().
+        Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(pt[1]).nofwd().key().resv_hash().
         cmd_type(CommandType::SpecLocalCmdHashkey).effect_on_next_req(),
         Cmd::new("keyshard").arity(-2).op(Meta).first(1).last(-1).step(1).padding(pt[5]).multi().
         nofwd().key().bulk().cmd_type(CommandType::SpecLocalCmdKeyshard),
