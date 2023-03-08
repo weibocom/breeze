@@ -18,6 +18,7 @@ use std::{
     borrow::Cow, cmp::max, collections::HashMap, convert::TryFrom, fmt, io, marker::PhantomData,
 };
 
+use crate::mysql::error::DriverError;
 use crate::mysql::{
     constants::{
         CapabilityFlags, ColumnFlags, ColumnType, Command, CursorType, SessionStateType,
@@ -1571,6 +1572,8 @@ impl<'a> HandshakePacket<'a> {
         self.scramble_2.as_ref().map(|x| x.as_bytes())
     }
 
+    /// 处理nonce，即scramble的2个部分: scramble_1 8bytes，scramble_2最多13bytes
+    /// Handshake scramble is always 21 bytes length (20 + zero terminator)
     /// Returns concatenated auth plugin nonce.
     pub fn nonce(&self) -> Vec<u8> {
         let mut out = Vec::from(self.scramble_1_ref());

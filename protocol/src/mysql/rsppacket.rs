@@ -20,12 +20,16 @@ use super::packets::{
     AuthPlugin, CommonOkPacket, HandshakeResponse, OkPacket, OkPacketDeserializer, OkPacketKind,
 };
 use super::{constants::CapabilityFlags, io::ParseBuf, packets::HandshakePacket};
-use ds::{MemGuard, RingSlice};
+use ds::RingSlice;
 
 use crate::mysql::error::Error::MySqlError;
 use crate::mysql::proto::MySerialize;
-use crate::{mysql::packets::ErrPacket, HashedCommand, Result, Stream};
-use crate::{Command, Error, Flag};
+use crate::{mysql::packets::ErrPacket, Result};
+use crate::{Command, Error};
+
+const HEADER_LEN: usize = 4;
+const HEADER_FLAG_OK: u8 = 0x00;
+const HEADER_FLAG_CONTINUE: u8 = 0xFE;
 
 pub(super) struct ResponsePacket<'a, S> {
     stream: &'a mut S,
@@ -47,13 +51,12 @@ pub(super) struct ResponsePacket<'a, S> {
 
     // TODO：这些需要整合到connection中 fishermen
     opts: Opts,
-    last_command: u8,
-    connected: bool,
-    has_results: bool,
+    // last_command: u8,
+    // connected: bool,
+    // has_results: bool,
     server_version: Option<(u16, u16, u16)>,
     /// Last Ok packet, if any.
-    ok_packet: Option<OkPacket<'static>>,
-
+    // ok_packet: Option<OkPacket<'static>>,
     oft_last: usize,
     oft: usize,
 }
@@ -78,12 +81,11 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             status_flags: Default::default(),
             character_set: Default::default(),
             opts,
-            last_command: Default::default(),
-            connected: Default::default(),
-            has_results: Default::default(),
+            // last_command: Default::default(),
+            // connected: Default::default(),
+            // has_results: Default::default(),
             server_version: Default::default(),
-            ok_packet: None,
-
+            // ok_packet: None,
             oft_last: 0,
             oft: 0,
         }
@@ -99,19 +101,38 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         self.data.at(self.oft)
     }
 
+    /// TODO 解析一个完整的packet，并copy出待解析的数据，注意copy只是临时动作，待优化  fishermen
+    fn next_packet_data(&mut self) -> Result<Vec<u8>> {
+        // 先确认解析出一个完整的packet
+        self.next_packet()?;
+
+        // TODO：将对应的payload copy出，供类型转换使用，后续这一步骤需要优化掉 fishermen
+        let mut payload = Vec::with_capacity(self.payload_len);
+        self.data
+            .sub_slice(self.oft, self.payload_len)
+            .copy_to_vec(&mut payload);
+
+        // 对stream中已经copy出来的数据进行take掉
+        self.oft += self.payload_len;
+        self.take();
+
+        Ok(payload)
+    }
+
     // 读一个完整的响应包，如果数据不完整，返回ProtocolIncomplete
-    pub(super) fn next_packet(&mut self) -> Result<()> {
+    fn next_packet(&mut self) -> Result<()> {
         // mysql packet至少需要4个字节来读取sequence id
-        let head_len = 4;
-        if self.data.len() < head_len {
+        if self.data.len() <= HEADER_LEN {
             return Err(Error::ProtocolIncomplete);
         }
-        let mut data: Vec<u8> = Vec::with_capacity(head_len);
+
+        // 解析mysql packet header
+        let mut data: Vec<u8> = Vec::with_capacity(HEADER_LEN);
         self.data.copy_to_vec(&mut data);
         let raw_chunk_len = LittleEndian::read_u24(&data) as usize;
         self.payload_len = raw_chunk_len;
         let seq_id = self.data.at(3);
-        self.oft += head_len;
+        self.oft += HEADER_LEN;
 
         match NonZeroUsize::new(raw_chunk_len) {
             Some(_chunk_len) => {
@@ -123,19 +144,19 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             }
         };
 
-        // TODO 4 字节之后是各种实际的packet
-        const PREFIX_LEN: usize = 4;
-        if self.data.len() >= PREFIX_LEN + raw_chunk_len {
+        // 4 字节之后是各种实际的packet payload
+        if self.data.len() >= HEADER_LEN + raw_chunk_len {
             // 0xFF ERR packet header
             if self.current() == 0xFF {
                 match ParseBuf(&data[self.oft..]).parse(self.capability_flags)? {
                     // TODO Error process 异常响应稍后处理 fishermen
                     ErrPacket::Error(server_error) => {
                         // self.handle_err();
-                        log::debug!("+++ parse packet err:{:?}", server_error);
+                        log::warn!("+++ parse packet err:{:?}", server_error);
                         return Err(MySqlError(From::from(server_error)).error());
                     }
                     ErrPacket::Progress(_progress_report) => {
+                        log::warn!("+++ parse packet Progress err:{:?}", _progress_report);
                         return Err(DriverError::UnexpectedPacket.error());
                     }
                 }
@@ -145,61 +166,40 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             log::warn!("mysql sucess rsp:{:?}", self.data);
             return Ok(());
         }
-        log::warn!("incomplte rsp:{:?}", self.data);
+
         Err(Error::ProtocolIncomplete)
     }
 
     // 解析Handshake packet，构建HandshakeResponse packet
     pub(super) fn proc_handshake(&mut self) -> Result<Vec<u8>> {
-        // 先读一个完整的packet
-        self.next_packet()?;
+        // 读取完整packet，并解析为HandshakePacket
+        let packet_data = self.next_packet_data()?;
+        let handshake = ParseBuf(&packet_data[0..]).parse::<HandshakePacket>(())?;
 
-        log::debug!("+++ before parse handshake, payload:{}", self.payload_len);
-        // 解析整个packet
-        let mut handshake_data = Vec::with_capacity(self.payload_len);
-        self.data
-            .sub_slice(self.oft, self.payload_len)
-            .copy_to_vec(&mut handshake_data);
-        // TODO 先跑通，后面统一基于RingSlice进行parse
-        self.oft += self.payload_len;
-        self.take();
-        let handshake = ParseBuf(&handshake_data[0..]).parse::<HandshakePacket>(())?;
-        log::debug!("+++ after parse handshake:{}", handshake.protocol_version());
+        log::debug!("+++ mysql capabilities:{:?}", handshake.capabilities());
 
-        // 3.21.0 之后handshake是v10版本，更古老的版本不支持
+        // 3.21.0 之后handshake是v10版本，不支持更古老的版本
         if handshake.protocol_version() != 10u8 {
             log::warn!("unsupport mysql proto version should be 10");
             return Err(DriverError::UnsupportedProtocol(handshake.protocol_version()).error());
         }
 
-        log::debug!("+++ capabilities:{:?}", handshake.capabilities());
-
         if !handshake
             .capabilities()
             .contains(CapabilityFlags::CLIENT_PROTOCOL_41)
         {
-            log::warn!("mysql handshake should contains cp41");
             return Err(DriverError::Protocol41NotSet.error());
         }
 
-        log::debug!("+++ will handl handshake packet local");
         self.handle_handshake(&handshake);
 
         // TODO 当前先不支持ssl，后续再考虑 fishermen
 
-        // 处理nonce，即scramble的2个部分
+        // 处理nonce，即scramble的2个部分:scramble_1 8bytes，scramble_2最多13bytes
         // Handshake scramble is always 21 bytes length (20 + zero terminator)
-        // scramble_1 8bytes，scramble_2最多13bytes
-        let nonce = {
-            let mut nonce = Vec::from(handshake.scramble_1_ref());
-            nonce.extend_from_slice(handshake.scramble_2_ref().unwrap_or(&[][..]));
-            // Trim zero terminator. Fill with zeroes if nonce
-            // is somehow smaller than 20 bytes (this matches the server behavior).
-            nonce.resize(20, 0);
-            nonce
-        };
+        let nonce = handshake.nonce();
 
-        // 处理auth_plugin，默认使用NativePassword
+        // 获取auth_plugin，默认使用NativePassword
         let auth_plugin = handshake
             .auth_plugin()
             .unwrap_or(AuthPlugin::MysqlNativePassword);
@@ -209,49 +209,27 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         }
 
         let auth_data = auth_plugin.gen_data(self.opts.get_pass(), &*nonce);
-        log::debug!(
-            "+++ auth_data:{:?}, deref:{:?}",
-            auth_data,
-            auth_data.as_deref()
-        );
+
         let handshake_rsp =
             self.build_handshake_response_packet(&auth_plugin, auth_data.as_deref())?;
-        // let mem_guard = MemGuard::from_vec(handshake_rsp);
 
-        // TODO 先随意设置一个op_code
-        // let op_code = 0_u8;
-        // let mut flag = Flag::from_op(op_code as u16, crate::Operation::Meta);
-        // flag.set_try_next_type(crate::TryNextType::NotTryNext);
-        // flag.set_sentonly(false);
-        // flag.set_noforward(false);
-        // let cmd = HashedCommand::new(mem_guard, 0, flag);
-        log::debug!("+++ already build handshake rsp");
         Ok(handshake_rsp)
     }
 
     // 处理handshakeresponse的mysql响应，即auth
     pub(super) fn proc_auth(&mut self) -> Result<()> {
-        log::debug!(
-            "+++ proc auth result..., oft:{}/{}",
-            self.oft,
-            self.oft_last
-        );
         // 先读取一个packet
-        self.next_packet()?;
+        let payload = self.next_packet_data()?;
 
-        log::debug!(
-            "+++ proc auth result..., oft:{} paload:{}",
-            self.oft,
-            self.payload_len
-        );
         // Ok packet header 是 0x00 或者0xFE
-        match self.current() {
-            0x00 => {
+        match payload[0] {
+            HEADER_FLAG_OK => {
                 log::info!("found ok packet for mysql");
-                self.handle_ok::<CommonOkPacket>().map(drop);
+                self.handle_ok::<CommonOkPacket>(&payload).map(drop)?;
                 return Ok(());
             }
-            0xFE => {
+            HEADER_FLAG_CONTINUE => {
+                // TODO 稍后支持auth switch fishermen
                 log::warn!("unsupport auth_switched now");
                 return Err(DriverError::UnexpectedPacket.error());
             }
@@ -311,7 +289,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     }
 
     fn get_client_flags(&self) -> CapabilityFlags {
-        let mut client_flags = CapabilityFlags::CLIENT_PROTOCOL_41
+        let client_flags = CapabilityFlags::CLIENT_PROTOCOL_41
             | CapabilityFlags::CLIENT_SECURE_CONNECTION
             | CapabilityFlags::CLIENT_LONG_PASSWORD
             | CapabilityFlags::CLIENT_TRANSACTIONS
@@ -367,19 +345,12 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         attrs
     }
 
-    fn handle_ok<T: OkPacketKind>(&mut self) -> crate::Result<()> {
-        // TODO 先跑通，后面统一基于RingSlice进行parse
-        let mut packet_data: Vec<u8> = Vec::with_capacity(self.payload_len);
-        self.data.copy_to_vec(&mut packet_data);
-        self.oft += self.payload_len;
-        self.take();
-
-        let ok = ParseBuf(&packet_data[0..])
+    fn handle_ok<T: OkPacketKind>(&mut self, payload: &Vec<u8>) -> crate::Result<()> {
+        let ok = ParseBuf(payload)
             .parse::<OkPacketDeserializer<T>>(self.capability_flags)?
             .into_inner();
         self.status_flags = ok.status_flags();
-        self.ok_packet = Some(ok.clone().into_owned());
-        // TODO 暂时先不返回ok packet
+        log::debug!("+++ mysql ok packet:{:?}", ok);
         Ok(())
     }
 

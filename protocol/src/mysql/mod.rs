@@ -264,12 +264,11 @@ impl Mysql {
         log::debug!("+++ recv mysql handshake packet:{:?}", stream.slice());
         let opt = Opts::from_user_pwd(option.username.clone(), option.token.clone());
         let mut packet = ResponsePacket::new(stream, Some(opt));
-        log::debug!("+++ ctx status:{:?}", packet.ctx().status);
+
         match packet.ctx().status {
             HandShakeStatus::Init => {
                 let handshake_rsp = packet.proc_handshake()?;
                 s.write(&handshake_rsp)?;
-                log::debug!("+++ after send handshakersp:{:?}", handshake_rsp);
                 packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
                 Ok(HandShake::Continue)
             }
