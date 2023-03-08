@@ -257,8 +257,6 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             self.capability_flags,
             Some(self.connect_attrs().clone()),
         );
-        log::debug!("+++ scrable_buf111:{:?}", handshake_response.scramble_buf);
-        log::debug!("+++ handshakersp:{:?}", handshake_response);
         let mut buf: Vec<u8> = Vec::with_capacity(256);
         handshake_response.serialize(&mut buf);
         let mut src_buf = BytesMut::with_capacity(buf.len());
