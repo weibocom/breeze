@@ -166,7 +166,26 @@ impl UuidSimulator {
             }
         }
         Self {
-            idc_id: Self::IDC_ID_FOR_DEFAULT_UUID,
+            idc_id: 1,
+            ha_id: 1,
+            seq: AtomicI64::new(0),
+            spec_seq_ids,
+        }
+    }
+    pub fn from(idc: i64) -> Self {
+        let mut spec_seq_ids = HashMap::new();
+        if UuidHelper::is_spec_idc(idc) {
+            for biz_flag in &[
+                BizFlag::Activity,
+                BizFlag::Api,
+                BizFlag::DefaultBiz,
+                BizFlag::Video,
+            ] {
+                spec_seq_ids.insert(biz_flag.get_value(), AtomicI64::new(0));
+            }
+        }
+        Self {
+            idc_id: idc,
             ha_id: 1,
             seq: AtomicI64::new(0),
             spec_seq_ids,
