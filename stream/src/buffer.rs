@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, ReadBuf};
 
 use ds::BuffRead;
-use protocol::{Error, Result};
+use protocol::{Error, ReservedHash, Result};
 
 pub(crate) struct Reader<'a, C> {
     n: usize, // 成功读取的数据
@@ -59,7 +59,7 @@ use ds::{GuardedBuffer, MemGuard, RingSlice};
 // 已写入未处理的数据流。
 pub struct StreamGuard {
     ctx: u64,
-    reserved_hash: i64,
+    reserved_hash: ReservedHash,
     buf: GuardedBuffer,
 }
 impl protocol::Stream for StreamGuard {
@@ -80,7 +80,7 @@ impl protocol::Stream for StreamGuard {
         &mut self.ctx
     }
     #[inline]
-    fn reserved_hash(&mut self) -> &mut i64 {
+    fn reserved_hash(&mut self) -> &mut ReservedHash {
         &mut self.reserved_hash
     }
     #[inline]
@@ -94,7 +94,7 @@ impl From<GuardedBuffer> for StreamGuard {
         Self {
             buf,
             ctx: 0,
-            reserved_hash: 0,
+            reserved_hash: None,
         }
     }
 }

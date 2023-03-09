@@ -1,9 +1,10 @@
 use super::{
-    command::{CommandHasher, CommandProperties},
+    command::{CommandHasher, CommandProperties, CommandType},
     error::RedisError,
 };
-use crate::{error::Error, redis::command, Result};
+use crate::{error::Error, redis::command, Flag, ReservedHash, Result};
 use ds::RingSlice;
+use sharding::hash::Hash;
 
 const CRLF_LEN: usize = b"\r\n".len();
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
@@ -13,9 +14,10 @@ const CRLF_LEN: usize = b"\r\n".len();
 pub struct RequestContext {
     bulk: u16,
     op_code: u16,
-    first: bool, // 在multi-get请求中是否是第一个请求。
-    layer: u8,   // 请求的层次，目前只支持：master，all
-    _ignore: [u8; 2],
+    layer: u8,        // 请求的层次，目前只支持：master，all
+    first: bool,      // 在multi-get请求中是否是第一个请求。
+    sendto_all: bool, //发送到所有shard
+    _ignore: [u8; 1],
 }
 
 // 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
@@ -50,7 +52,7 @@ pub(crate) struct RequestPacket<'a, S> {
     // 低16位是bulk_num
     // 次低16位是op_code.
     ctx: RequestContext,
-    reserved_hash: i64,
+    reserved_hash: ReservedHash,
     oft_last: usize,
     oft: usize,
 }
@@ -115,6 +117,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 let cfg = command::get_cfg(self.op_code())?;
                 cfg.validate(self.bulk() as usize)?;
 
+                if cfg.need_reserved_hash && !(self.sendto_all() || self.reserved_hash().is_some())
+                {
+                    return Err(RedisError::ReqInvalid.error());
+                }
                 // check 命令长度
                 debug_assert_eq!(
                     cfg.name.len(),
@@ -182,73 +188,149 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
         // 重置stream的ctx
         *self.stream.context() = 0;
-
-        assert_eq!(self.ctx.u64(), 0, "packet:{}", self);
     }
 
     // 重置reserved hash，包括stream中的对应值
     #[inline]
     fn reset_reserved_hash(&mut self) {
-        self.update_reserved_hash(0)
+        self.reserved_hash.take();
+        self.stream.reserved_hash().take();
     }
     // 更新reserved hash
-    #[inline]
-    pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
-        self.reserved_hash = reserved_hash;
-        *self.stream.reserved_hash() = reserved_hash;
-    }
+    // #[inline]
+    // pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
+    //     self.reserved_hash.replace(reserved_hash);
+    //     self.stream.reserved_hash().replace(reserved_hash);
+    // }
 
     #[inline]
-    pub(super) fn reserved_hash(&self) -> i64 {
+    pub(super) fn reserved_hash(&self) -> ReservedHash {
         self.reserved_hash
     }
 
     #[inline]
-    pub(crate) fn take(&mut self) -> ds::MemGuard {
+    pub(super) fn sendto_all(&self) -> bool {
+        self.ctx.sendto_all
+    }
+
+    #[inline]
+    pub(super) fn set_sendto_all(&mut self) {
+        self.ctx.sendto_all = true;
+    }
+
+    #[inline]
+    pub(super) fn clear_status(&mut self, cfg: &CommandProperties) {
+        if cfg.effect_on_next_req {
+            let master_only = self.master_only();
+            let sendto_all = self.sendto_all();
+            let reserved_hash = self.reserved_hash();
+            // 重置context、reserved-hash
+            self.reset_context();
+            self.reset_reserved_hash();
+            self.reserve_status(master_only, sendto_all, reserved_hash);
+        } else {
+            self.reset_context();
+            self.reset_reserved_hash();
+        }
+    }
+
+    #[inline]
+    pub(super) fn take(&mut self) -> ds::MemGuard {
         assert!(self.oft_last < self.oft, "packet:{}", self);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
         // 更新上下文的bulk num。
         self.ctx.first = false;
         *self.stream.context() = self.ctx.u64();
-        if self.ctx.bulk == 0 {
-            // 重置context、reserved-hash
-            self.reset_context();
-            self.reset_reserved_hash();
-        }
         self.stream.take(data.len())
     }
 
-    // trim掉已解析的cmd相关元数据，只保留在master_only、reserved_hash这两个元数据
+    pub(super) fn flag(&self, cfg: &CommandProperties) -> Flag {
+        use super::RedisFlager;
+        let mut flag = cfg.flag();
+        if self.master_only() {
+            flag.set_master_only();
+        }
+        if self.sendto_all() {
+            flag.set_sendto_all();
+        }
+        flag
+    }
+
+    //总是会parsekey
+    pub(super) fn hash<H: Hash>(&mut self, cfg: &CommandProperties, alg: &H) -> Result<i64> {
+        let mut key: RingSlice = Default::default();
+        if cfg.has_key {
+            key = self.parse_key()?;
+        }
+        let hash = if self.reserved_hash().is_some() {
+            self.reserved_hash().unwrap()
+        } else if cfg.has_key {
+            calculate_hash(alg, &key)
+        } else {
+            default_hash()
+        };
+
+        Ok(hash)
+    }
+
+    //处理对下条指令有影响的命令，其造成的影响单独存放，不影响平常流程
+    pub(super) fn proc_effect_on_next_req_cmd<H: Hash>(
+        &mut self,
+        cfg: &CommandProperties,
+        alg: &H,
+    ) -> Result<(Flag, i64)> {
+        let hash = 0;
+        match cfg.cmd_type {
+            CommandType::SwallowedMaster => self.set_master_only(),
+            // cmd: hashkeyq $key
+            // 流程放到计算hash中处理
+            CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
+                let key = self.parse_key()?;
+                let hash = calculate_hash(alg, &key);
+                self.reserved_hash.replace(hash);
+            }
+            // cmd: hashrandomq
+            CommandType::SwallowedCmdHashrandomq => {
+                // 虽然hash名义为i64，但实际当前均为u32
+                let hash = rand::random::<u32>() as i64;
+                self.reserved_hash.replace(hash);
+            }
+            CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
+                self.set_sendto_all();
+            }
+            _ => {
+                assert!(false, "unknown effect_on_next_req_cmd:{}", cfg.name);
+            }
+        }
+        Ok((cfg.flag(), hash))
+    }
+
     #[inline]
-    pub(super) fn trim_swallowed_cmd(&mut self) -> Result<()> {
-        // trim 吞噬指令时，整个吞噬指令必须已经被解析完毕
-        debug_assert!(self.ctx.bulk == 0, "packet:{}", self);
-
-        // 移动oft到吞噬指令之后
-        let len = self.oft - self.oft_last;
-        self.oft_last = self.oft;
-        self.stream.ignore(len);
-
-        // 记录需保留的状态：目前只有master only状态【direct hash保存在stream的非ctx字段中】
-        let master_only = self.master_only();
-
-        // 重置context，去掉packet/stream的ctx信息
-        self.reset_context();
-
-        // 保留后续cmd执行需要的状态：当前只有master
+    pub(super) fn reserve_status(
+        &mut self,
+        master_only: bool,
+        sendto_all: bool,
+        reserved_hash: ReservedHash,
+    ) {
         if master_only {
             // 保留master only 设置
             self.set_layer(LayerType::MasterOnly);
         }
-
-        // 设置packet的ctx到stream的ctx中，供下一个指令使用
+        if sendto_all {
+            self.set_sendto_all()
+        }
         *self.stream.context() = self.ctx.u64();
 
-        if self.available() {
-            return Ok(());
-        }
-        return Err(crate::Error::ProtocolIncomplete);
+        self.reserved_hash = reserved_hash;
+        *self.stream.reserved_hash() = reserved_hash;
+        // 设置packet的ctx到stream的ctx中，供下一个指令使用
+
+        // 这个有必要保留吗？
+        // if self.available() {
+        //     return Ok(());
+        // }
+        // return Err(crate::Error::ProtocolIncomplete);
     }
 
     #[inline]
@@ -280,7 +362,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(super) fn master_only(&self) -> bool {
         self.ctx.layer == LayerType::MasterOnly as u8
     }
-
+    #[inline]
+    pub(super) fn set_master_only(&mut self) {
+        self.ctx.layer = LayerType::MasterOnly as u8;
+    }
     // 解析完毕，如果数据未读完，需要保留足够的buff空间
     #[inline(always)]
     pub(crate) fn reserve_stream_buff(&mut self) {
@@ -508,6 +593,41 @@ impl Packet {
 #[inline]
 fn is_number_digit(d: u8) -> bool {
     d >= b'0' && d <= b'9'
+}
+
+use std::sync::atomic::{AtomicI64, Ordering};
+static AUTO: AtomicI64 = AtomicI64::new(0);
+
+// 避免异常情况下hash为0，请求集中到某一个shard上。
+// hash正常情况下可能为0?
+#[inline]
+fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
+    match key.len() {
+        0 => default_hash(),
+        // 2 => {
+        //     // 对“hashkey -1”做特殊处理，使用max hash，从而保持与hashkeyq一致
+        //     if key.len() == 2
+        //         && key.at(0) == ('-' as u8)
+        //         && key.at(1) == ('1' as u8)
+        //         && cfg.cmd_type == CommandType::SpecLocalCmdHashkey
+        //     {
+        //         crate::MAX_DIRECT_HASH
+        //     } else {
+        //         alg.hash(key)
+        //     }
+        // }
+        _ => alg.hash(key),
+    }
+    // if key.len() == 0 {
+    //     default_hash()
+    // } else {
+    //     alg.hash(key)
+    // }
+}
+
+#[inline]
+fn default_hash() -> i64 {
+    AUTO.fetch_add(1, Ordering::Relaxed)
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
