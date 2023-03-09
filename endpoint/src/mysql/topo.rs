@@ -101,7 +101,6 @@ where
     fn send(&self, req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
         let raw_req = req.data();
-        let mid = raw_req.key();
 
         debug_assert_ne!(self.direct_shards.len(), 0);
 
@@ -116,6 +115,7 @@ where
         let shard = unsafe { self.direct_shards.get_unchecked(shard_idx) };
         log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
+        let mid = raw_req.key();
         let sql = self
             .strategy
             .build_sql("SQL_SELECT", &mid, &mid)
