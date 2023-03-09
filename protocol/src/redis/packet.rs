@@ -2,9 +2,7 @@ use super::{
     command::{CommandHasher, CommandProperties, CommandType},
     error::RedisError,
 };
-use crate::{
-    error::Error, redis::command, Flag, HashedCommand, RequestProcessor, ReservedHash, Result,
-};
+use crate::{error::Error, redis::command, Flag, ReservedHash, Result};
 use ds::RingSlice;
 use sharding::hash::Hash;
 
