@@ -71,6 +71,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
+    fn build_request(&self, _req: &mut HashedCommand, _new_req: String) {}
     fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
 
@@ -176,6 +177,10 @@ impl Command {
     #[inline]
     pub fn data_mut(&mut self) -> &mut ds::RingSlice {
         self.cmd.data_mut()
+    }
+    #[inline]
+    pub fn cmd(&mut self) -> &mut MemGuard {
+        &mut self.cmd
     }
 }
 impl std::ops::Deref for Command {

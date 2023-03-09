@@ -130,6 +130,15 @@ impl Protocol for Mysql {
         Ok(())
     }
 
+    fn build_request(&self, req: &mut HashedCommand, new_req: String) {
+        let data = req.data();
+        let mysql_cmd = data.mysql_cmd();
+        let new_req = RequestPacket::new()
+            .build_request(mysql_cmd, &new_req)
+            .unwrap();
+        *req.cmd() = MemGuard::from_vec(new_req);
+    }
+
     // TODO in: mysql, out: mc vs redis
     //  1 解析mysql response； 2 转换为mc响应
     fn parse_response<S: crate::Stream>(&self, data: &mut S) -> Result<Option<Command>> {
