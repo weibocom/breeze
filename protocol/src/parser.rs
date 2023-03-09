@@ -88,6 +88,8 @@ pub trait RequestProcessor {
     fn process(&mut self, req: HashedCommand, last: bool);
 }
 
+pub type ReservedHash = Option<i64>;
+
 pub trait Stream {
     fn len(&self) -> usize;
     //fn at(&self, idx: usize) -> u8;
@@ -101,7 +103,7 @@ pub trait Stream {
     // 在解析一个流的不同的req/response时，有时候需要共享数据。
     fn context(&mut self) -> &mut u64;
     // 用于保存下一个cmd需要使用的hash
-    fn reserved_hash(&mut self) -> &mut i64;
+    fn reserved_hash(&mut self) -> &mut ReservedHash;
     fn reserve(&mut self, r: usize);
 }
 
