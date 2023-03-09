@@ -116,9 +116,14 @@ where
         let shard = unsafe { self.direct_shards.get_unchecked(shard_idx) };
         log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
-        //todo 等波神接口
-        // let id = 3379782484330149i64;
-        self.strategy.build_sql("SQL_SELECT", &mid, &mid);
+        let sql = self
+            .strategy
+            .build_sql("SQL_SELECT", &mid, &mid)
+            .expect("malformed sql");
+        let mysql_cmd = raw_req.mysql_cmd();
+
+        // TODO 利用req_packet构建新的mysq request，然后进行send fishermen
+        // let request = req_packet.build_request(mysql_cmd, &sql)?;
 
         if shard.has_slave() && !req.operation().is_store() {
             //todo: 访问slave
