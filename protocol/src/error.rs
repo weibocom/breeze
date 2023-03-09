@@ -12,6 +12,8 @@ pub enum Error {
     ChanDisabled,
     ChanClosed,
     ProtocolIncomplete,
+    RequestInvalidMagic,
+    ResponseInvalidMagic,
     RequestProtocolInvalid(&'static str),
     RequestProtocolInvalidNumber(&'static str),
     RequestProtocolInvalidStar(&'static str),
