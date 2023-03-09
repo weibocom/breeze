@@ -2,6 +2,8 @@ use super::config::MysqlNamespace;
 use super::topo::MysqlService;
 use super::uuid::UuidHelper;
 use chrono::{DateTime, TimeZone, Utc};
+use ds::RingSlice;
+use protocol::Result;
 use serde::{Deserialize, Serialize};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
@@ -86,12 +88,17 @@ impl Strategy {
     }
 
     //todo: sql_name 枚举
-    pub fn build_sql(&self, sql_name: &str, did: i64, tid: i64) -> Option<String> {
-        let tname = match self.build_tname(tid) {
+    pub fn build_sql(
+        &self,
+        sql_name: &str,
+        db_key: &RingSlice,
+        tbl_key: &RingSlice,
+    ) -> Option<String> {
+        let tname = match self.build_tname(tbl_key) {
             Some(tname) => tname,
             None => return None,
         };
-        let dname = match self.build_dname(did) {
+        let dname = match self.build_dname(db_key) {
             Some(dname) => dname,
             None => return None,
         };
@@ -99,7 +106,10 @@ impl Strategy {
         if !sql.is_empty() {
             sql = sql.replace(DB_NAME_EXPRESSION, &dname);
             sql = sql.replace(TABLE_NAME_EXPRESSION, &tname);
-            sql = sql.replace(KEY_EXPRESSION, did.to_string().as_str());
+
+            // TODO 先走通，再优化 fishermen
+            sql = replace_one(&sql, KEY_EXPRESSION, db_key).expect("malformed sql");
+            // sql = sql.replace(KEY_EXPRESSION, did.to_string().as_str());
         } else {
             log::error!("find the sql by name {} is empty or null", sql_name);
         }
@@ -107,7 +117,7 @@ impl Strategy {
         Some(sql)
     }
 
-    pub fn build_tname(&self, id: i64) -> Option<String> {
+    pub fn build_tname(&self, key: &RingSlice) -> Option<String> {
         let postfix_type = if self.table_postfix == "yymmdd" {
             TNamePostfixType::YYMMDD
         } else if self.table_postfix == "yymm" {
@@ -118,39 +128,35 @@ impl Strategy {
         let table_prefix = self.table_prefix.as_str();
         match postfix_type {
             TNamePostfixType::YYMM => {
-                let tname = self.build_date_tname(table_prefix, id, false);
+                let tname = self.build_date_tname(table_prefix, key, false);
                 tname
             }
             TNamePostfixType::YYMMDD => {
-                let tname = self.build_date_tname(table_prefix, id, true);
+                let tname = self.build_date_tname(table_prefix, key, true);
                 tname
             }
             TNamePostfixType::INDEX => {
-                let tname = self.build_idx_tname(id);
+                let tname = self.build_idx_tname(key);
                 tname
             }
         }
     }
 
-    fn build_dname(&self, id: i64) -> Option<String> {
+    fn build_dname(&self, key: &RingSlice) -> Option<String> {
         let dname_prefix = self.db_prefix.clone();
         //todo: check db_name_prefix not empty
         let mut db_idx = 0;
-        db_idx = self
-            .distribution
-            .index(self.hasher.hash(&id.to_string().as_bytes()));
+        db_idx = self.distribution.index(self.hasher.hash(key));
         // let db_index = api_util::get_hash4split(id, db_count * item.table_count.max(1));
         let db_idx = db_idx / self.table_count as usize;
         return Some(format!("{}_{}", dname_prefix, db_idx));
     }
-    fn build_idx_tname(&self, id: i64) -> Option<String> {
+    fn build_idx_tname(&self, key: &RingSlice) -> Option<String> {
         let table_prefix = self.table_prefix.clone();
         //todo: check db_name_prefix not empty
         if self.table_count > 0 && self.db_count > 0 {
             let mut tbl_index = 0;
-            tbl_index = self
-                .distribution
-                .index(self.hasher.hash(&id.to_string().as_bytes()));
+            tbl_index = self.distribution.index(self.hasher.hash(key));
             // tbl_index = api_util::get_hash4split(id, item.db_count * item.table_count);
             tbl_index = tbl_index % self.table_count as usize;
             return Some(format!("{}_{}", table_prefix, tbl_index));
@@ -159,7 +165,15 @@ impl Strategy {
         }
         None
     }
-    fn build_date_tname(&self, tbl_prefix: &str, id: i64, is_display_day: bool) -> Option<String> {
+    fn build_date_tname(
+        &self,
+        tbl_prefix: &str,
+        key: &RingSlice,
+        is_display_day: bool,
+    ) -> Option<String> {
+        // TODO key 转位i64，后面整合到类型parse的专门类中 fishermen
+        let id = to_i64(key);
+
         let milliseconds = UuidHelper::get_time(id) * 1000;
         let yy_mm_dd = if is_display_day {
             chrono::Utc
@@ -178,4 +192,30 @@ impl Strategy {
     pub fn build_sql_key(db_name: &str, table_name: &str, sql_name: &str) -> String {
         format!("{}.{}.{}", db_name, table_name, sql_name)
     }
+}
+
+fn replace_one(raw_sql: &String, from: &'static str, to: &RingSlice) -> Result<String> {
+    match raw_sql.find(from) {
+        Some(start) => {
+            let end = start + from.len();
+            Ok(format!(
+                "{} {} {}",
+                raw_sql.get(0..start).unwrap(),
+                to,
+                raw_sql.get(end..).unwrap()
+            ))
+        }
+        None => Err(protocol::Error::ResponseProtocolInvalid),
+    }
+}
+
+fn to_i64(key: &RingSlice) -> i64 {
+    let mut id = 0_i64;
+    const ZERO: i64 = '0' as i64;
+    for i in 0..key.len() {
+        let c = key.at(i);
+        assert!(c.is_ascii_digit());
+        id = id * 10 + (c as i64) - ZERO;
+    }
+    id
 }

@@ -4,7 +4,7 @@ mod auth;
 pub mod constants;
 mod error;
 mod io;
-mod mcpacket;
+pub mod mcpacket;
 mod misc;
 mod named_params;
 mod opts;
@@ -18,7 +18,6 @@ mod scramble;
 mod strategy;
 mod value;
 
-use self::auth::native_auth;
 use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
 use self::mcpacket::*;
@@ -37,8 +36,6 @@ use crate::HandShake;
 use crate::HashedCommand;
 use crate::RequestProcessor;
 use crate::Stream;
-use byteorder::WriteBytesExt;
-use ds::Buffer;
 use ds::MemGuard;
 use mcpacket::Binary;
 use sharding::hash::Hash;
@@ -87,7 +84,7 @@ impl Protocol for Mysql {
         true
     }
 
-    // TODO in: mc vs redis, out: mysql
+    // 解析mc binary协议，在发送端进行协议转换
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
@@ -102,7 +99,7 @@ impl Protocol for Mysql {
 
         // TODO request的解析部分待抽到reqpacket中
         while stream.len() >= mcpacket::HEADER_LEN {
-            let req = stream.slice();
+            let mut req = stream.slice();
             req.check_request()?;
             let packet_len = req.packet_len();
             if req.len() < packet_len {
@@ -110,24 +107,24 @@ impl Protocol for Mysql {
                 break;
             }
 
-            let last = !req.quiet_get();
+            let last = !req.quiet_get(); // 须在map_op之前获取
             let cmd = req.operation();
-            let op_code = req.op();
+            let op_code = req.map_op(); // 把quite get请求，转换成单个的get请求s
             let mut flag = Flag::from_op(op_code as u16, cmd);
             flag.set_try_next_type(req.try_next_type());
             flag.set_sentonly(req.sentonly());
             flag.set_noforward(req.noforward());
 
+            let guard = stream.take(packet_len);
             let hash = req.hash(alg);
+            let cmd = HashedCommand::new(guard, hash, flag);
+            assert!(!cmd.data().quiet_get());
+            process.process(cmd, last);
 
             // 确认请求类型和sql，构建mysql request
-            let sql = self.convert_strategy.build_sql(&req)?;
-            let mysql_cmd = req.mysql_cmd();
-            let request = req_packet.build_request(mysql_cmd, &sql)?;
-
-            let memguard = MemGuard::from_vec(request);
-            let cmd = HashedCommand::new(memguard, hash, flag);
-            process.process(cmd, last);
+            // let sql = self.convert_strategy.build_sql(&req)?;
+            // let mysql_cmd = req.mysql_cmd();
+            // let request = req_packet.build_request(mysql_cmd, &sql)?;
         }
 
         Ok(())

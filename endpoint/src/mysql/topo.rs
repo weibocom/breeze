@@ -7,6 +7,7 @@ use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::time::Duration;
+use protocol::mysql::mcpacket::Binary;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -100,6 +101,10 @@ where
     // todo: 这里req拿到mid解出时间,得出具体年库 ？？？
     // todo: sql语句怎么传过去 ？
     fn send(&self, req: Self::Item) {
+        // req 是mc binary协议，需要展出字段，转换成sql
+        let raw_req = req.data();
+        let mid = raw_req.key();
+
         debug_assert_ne!(self.direct_shards.len(), 0);
         let shard_idx = self.distribute.index(req.hash());
         debug_assert!(
@@ -113,8 +118,8 @@ where
         log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
         //todo 等波神接口
-        let id = 3379782484330149i64;
-        self.strategy.build_sql("SQL_SELECT", id, id);
+        // let id = 3379782484330149i64;
+        self.strategy.build_sql("SQL_SELECT", &mid, &mid);
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
