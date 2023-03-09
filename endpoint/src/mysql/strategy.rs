@@ -86,6 +86,12 @@ impl Strategy {
             hasher: Hasher::from(item.basic.hash.as_str()),
         }
     }
+    pub fn distribution(&self) -> &Distribute {
+        &self.distribution
+    }
+    pub fn hasher(&self) -> &Hasher {
+        &self.hasher
+    }
 
     //todo: sql_name 枚举
     pub fn build_sql(
