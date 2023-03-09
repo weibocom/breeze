@@ -39,8 +39,8 @@ pub struct MysqlService<B, E, Req, P> {
     archive_shards: HashMap<String, Vec<Shard<E>>>,
     archive_shards_url: HashMap<String, Vec<Vec<String>>>,
     sql: HashMap<String, String>,
-    hasher: Hasher,
-    distribute: Distribute,
+    // hasher: Hasher,
+    // distribute: Distribute,
     selector: Selector, // 从的选择策略。
     updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
@@ -62,8 +62,6 @@ impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
             direct_shards_url: Default::default(),
             archive_shards: Default::default(),
             archive_shards_url: Default::default(),
-            hasher: Default::default(),
-            distribute: Default::default(),
             updated: Default::default(),
             service: Default::default(),
             selector: Selector::Random,
@@ -86,7 +84,7 @@ where
     B: Send + Sync,
 {
     fn hasher(&self) -> &sharding::hash::Hasher {
-        &self.hasher
+        self.strategy.hasher()
     }
 }
 
@@ -106,7 +104,8 @@ where
         let mid = raw_req.key();
 
         debug_assert_ne!(self.direct_shards.len(), 0);
-        let shard_idx = self.distribute.index(req.hash());
+
+        let shard_idx = self.strategy.distribution().index(req.hash());
         debug_assert!(
             shard_idx < self.direct_shards.len(),
             "mysql: {}/{} req:{:?}",
@@ -121,7 +120,6 @@ where
         // let id = 3379782484330149i64;
         self.strategy.build_sql("SQL_SELECT", &mid, &mid);
 
-        // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() {
             //todo: 访问slave
             shard.master().send(req);
@@ -132,7 +130,7 @@ where
 
     fn shard_idx(&self, hash: i64) -> usize {
         //todo: 根据db_count * table_count 进行求余
-        self.distribute.index(hash)
+        self.strategy.distribution().index(hash)
     }
 }
 
@@ -169,11 +167,6 @@ where
         if let Some(ns) = MysqlNamespace::try_from(cfg) {
             self.timeout_master.adjust(ns.basic.timeout_ms_master);
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
-            self.hasher = Hasher::from(&ns.basic.hash);
-            self.distribute = Distribute::from_num(
-                ns.basic.distribution.as_str(),
-                (ns.basic.db_count * ns.basic.table_count) as usize,
-            );
             self.selector = ns.basic.selector.as_str().into();
             self.user = ns.basic.user.as_str().into();
             self.password = ns.basic.password.as_str().into();
