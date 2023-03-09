@@ -15,7 +15,7 @@ use std::{
 };
 
 use crate::{Builder, Endpoint, Topology};
-use sharding::hash::{Hasher, Padding};
+use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
 use crate::msgque::strategy::hitfirst::Node;
 
@@ -120,8 +120,8 @@ where
     P: Protocol,
 {
     #[inline]
-    fn hasher(&self) -> &Hasher {
-        &PADDING
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        PADDING.hash(k)
     }
     #[inline]
     fn exp_sec(&self) -> u32 {

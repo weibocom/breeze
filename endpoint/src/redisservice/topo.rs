@@ -7,7 +7,7 @@ use crate::{Builder, Endpoint, Single, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource};
 use sharding::distribution::Distribute;
-use sharding::hash::Hasher;
+use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::{ReplicaSelect, Selector};
 
 use super::config::RedisNamespace;
@@ -59,8 +59,8 @@ where
     B: Send + Sync,
 {
     #[inline]
-    fn hasher(&self) -> &Hasher {
-        &self.hasher
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        self.hasher.hash(k)
     }
 }
 
@@ -323,13 +323,7 @@ where
             let shard = Shard::selector(self.selector, master_addr, master, replicas);
             self.shards.push(shard);
         }
-        assert_eq!(
-            self.shards.len(),
-            self.shards_url.len(),
-            "shards/urs: {}/{}",
-            self.shards.len(),
-            self.shards_url.len()
-        );
+        assert_eq!(self.shards.len(), self.shards_url.len());
         log::info!(
             "{} load complete. {} dropping:{:?}",
             self.service,

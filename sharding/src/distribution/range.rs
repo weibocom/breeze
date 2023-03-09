@@ -16,7 +16,6 @@ impl Range {
         // 只支持两种格式：range，range-xxx
         // 带slot count数的range
         if name.starts_with(DIST_RANGE_WITH_SLOT_PREFIX) {
-            assert!(name.starts_with(DIST_RANGE_WITH_SLOT_PREFIX));
             let slot_str = &name[DIST_RANGE_WITH_SLOT_PREFIX.len()..];
             if let Ok(s) = slot_str.parse::<u64>() {
                 slot = s;
