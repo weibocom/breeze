@@ -205,9 +205,9 @@ fn replace_one(raw_sql: &String, from: &'static str, to: &RingSlice) -> Result<S
         Some(start) => {
             let end = start + from.len();
             Ok(format!(
-                "{} {} {}",
+                "{}{}{}",
                 raw_sql.get(0..start).unwrap(),
-                to,
+                to_i64(to),
                 raw_sql.get(end..).unwrap()
             ))
         }
