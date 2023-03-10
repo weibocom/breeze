@@ -139,11 +139,15 @@ where
     }
 
     fn shard_idx(&self, hash: i64) -> usize {
-        //todo: 根据db_count * table_count 进行求余
-        self.strategy.distribution().index(hash)
-            / self.strategy.table_count as usize
-            / self.strategy.db_count as usize
-            / self.direct_shards.len()
+        assert!(self.direct_shards.len() > 0);
+        if self.direct_shards.len() > 1 {
+            self.strategy.distribution().index(hash)
+                / self.strategy.table_count as usize
+                / self.strategy.db_count as usize
+                / self.direct_shards.len()
+        } else {
+            0
+        }
     }
 }
 
