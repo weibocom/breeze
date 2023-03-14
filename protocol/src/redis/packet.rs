@@ -2,22 +2,30 @@ use super::{
     command::{CommandHasher, CommandProperties, CommandType},
     error::RedisError,
 };
-use crate::{error::Error, redis::command, Flag, ReservedHash, Result};
+use crate::{error::Error, redis::command, Flag, Result, StreamContext};
 use ds::RingSlice;
 use sharding::hash::Hash;
 
 const CRLF_LEN: usize = b"\r\n".len();
-// 这个context是用于中multi请求中，同一个multi请求中跨request协调
-// 必须是u64长度的。
+// 这个context是用于中multi请求中，同一个multi请求中跨request协调;或上条请求对下条请求的影响
+// RequestContext需与StreamContext大小一致
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RequestContext {
-    bulk: u16,
-    op_code: u16,
-    layer: u8,        // 请求的层次，目前只支持：master，all
-    first: bool,      // 在multi-get请求中是否是第一个请求。
-    sendto_all: bool, //发送到所有shard
-    _ignore: [u8; 1],
+    pub bulk: u16,
+    pub op_code: u16,
+    pub first: bool,      // 在multi-get请求中是否是第一个请求。
+    pub layer: u8,        // 请求的层次，目前只支持：master，all
+    pub sendto_all: bool, //发送到所有shard
+    pub is_reserved_hash: bool,
+    pub reserved_hash: i64,
+    pub oft: usize, //上一次解析的位置
+}
+
+impl From<&mut StreamContext> for &mut RequestContext {
+    fn from(value: &mut StreamContext) -> Self {
+        unsafe { std::mem::transmute(value) }
+    }
 }
 
 // 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
@@ -25,25 +33,21 @@ pub enum LayerType {
     MasterOnly = 1,
 }
 
-impl RequestContext {
-    #[inline]
-    fn reset(&mut self) {
-        assert_eq!(std::mem::size_of::<Self>(), 8);
-        *self.u64_mut() = 0;
-    }
-    #[inline]
-    fn u64(&mut self) -> u64 {
-        *self.u64_mut()
-    }
-    #[inline]
-    fn u64_mut(&mut self) -> &mut u64 {
-        unsafe { std::mem::transmute(self) }
-    }
-    #[inline]
-    fn from(v: u64) -> Self {
-        unsafe { std::mem::transmute(v) }
-    }
-}
+// impl RequestContext {
+//     #[inline]
+//     fn reset(&mut self) {
+//         assert_eq!(std::mem::size_of::<Self>(), 8);
+//         *self.u64_mut() = 0;
+//     }
+//     #[inline]
+//     fn u64(&mut self) -> u64 {
+//         *self.u64_mut()
+//     }
+//     #[inline]
+//     fn u64_mut(&mut self) -> &mut u64 {
+//         unsafe { std::mem::transmute(self) }
+//     }
+// }
 
 //包含流解析过程中当前命令和前面命令的状态
 pub(crate) struct RequestPacket<'a, S> {
@@ -51,25 +55,25 @@ pub(crate) struct RequestPacket<'a, S> {
     data: Packet,
     // 低16位是bulk_num
     // 次低16位是op_code.
-    ctx: RequestContext,
-    reserved_hash: ReservedHash,
-    oft_last: usize,
+    ctx: &'a mut RequestContext,
+    //为什么保留oft呢？解析不完整协议时不能更新oft，解析成功才能更新
     oft: usize,
+    oft_last: usize,
 }
 
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(crate) fn new(stream: &'a mut S) -> Self {
-        let ctx = RequestContext::from(*stream.context());
-        let reserved_hash = *stream.reserved_hash();
+        //注意：此时实际上有了两个stream的mut ref
+        let ctx: &mut RequestContext = stream.context().into();
+        let oft = ctx.oft;
         let data = stream.slice();
         Self {
-            oft_last: 0,
-            oft: 0,
             data: Packet { inner: data },
             ctx,
-            reserved_hash,
             stream,
+            oft,
+            oft_last: 0,
         }
     }
 
@@ -90,6 +94,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 return Err(RedisError::ReqInvalidStar.error());
             }
             self.ctx.bulk = self.data.num_of_bulks(&mut self.oft)? as u16;
+            self.ctx.oft = self.oft;
             self.ctx.first = true;
             assert_ne!(self.bulk(), 0, "packet:{}", self);
         }
@@ -117,8 +122,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 let cfg = command::get_cfg(self.op_code())?;
                 cfg.validate(self.bulk() as usize)?;
 
-                if cfg.need_reserved_hash && !(self.sendto_all() || self.reserved_hash().is_some())
-                {
+                if cfg.need_reserved_hash && !(self.sendto_all() || self.is_reserved_hash()) {
                     return Err(RedisError::ReqInvalid.error());
                 }
                 // check 命令长度
@@ -135,6 +139,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
                 // cmd name 解析完毕，bulk 减 1
                 self.oft = idx + CRLF_LEN;
+                self.ctx.oft = self.oft;
                 self.ctx.bulk -= 1;
                 Ok(cfg)
             } else {
@@ -169,33 +174,22 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     // 忽略掉之前的数据，通常是multi请求的前面部分。
     #[inline]
-    pub(crate) fn multi_ready(&mut self) {
+    pub(crate) fn ignore_parsed(&mut self) {
         if self.oft > self.oft_last {
             self.stream.ignore(self.oft - self.oft_last);
             self.oft_last = self.oft;
 
             assert_ne!(self.ctx.op_code, 0, "packet:{}", self);
             // 更新
-            *self.stream.context() = self.ctx.u64();
+            // *self.stream.context() = self.ctx.u64();
         }
     }
 
-    // 重置context，包括stream中的context
     #[inline]
     fn reset_context(&mut self) {
-        // 重置packet的ctx
-        self.ctx.reset();
-
-        // 重置stream的ctx
-        *self.stream.context() = 0;
+        *self.ctx = Default::default();
     }
 
-    // 重置reserved hash，包括stream中的对应值
-    #[inline]
-    fn reset_reserved_hash(&mut self) {
-        self.reserved_hash.take();
-        self.stream.reserved_hash().take();
-    }
     // 更新reserved hash
     // #[inline]
     // pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
@@ -204,8 +198,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     // }
 
     #[inline]
-    pub(super) fn reserved_hash(&self) -> ReservedHash {
-        self.reserved_hash
+    pub(super) fn is_reserved_hash(&self) -> bool {
+        self.ctx.is_reserved_hash
+    }
+    #[inline]
+    pub(super) fn reserved_hash(&self) -> i64 {
+        self.ctx.reserved_hash
     }
 
     #[inline]
@@ -223,14 +221,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if cfg.effect_on_next_req {
             let master_only = self.master_only();
             let sendto_all = self.sendto_all();
-            let reserved_hash = self.reserved_hash();
+            let is_reserved_hash = self.ctx.is_reserved_hash;
+            let reserved_hash = self.ctx.reserved_hash;
             // 重置context、reserved-hash
             self.reset_context();
-            self.reset_reserved_hash();
-            self.reserve_status(master_only, sendto_all, reserved_hash);
+            self.reserve_status(master_only, sendto_all, is_reserved_hash, reserved_hash);
         } else {
             self.reset_context();
-            self.reset_reserved_hash();
         }
     }
 
@@ -241,7 +238,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.oft_last = self.oft;
         // 更新上下文的bulk num。
         self.ctx.first = false;
-        *self.stream.context() = self.ctx.u64();
         self.stream.take(data.len())
     }
 
@@ -263,8 +259,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if cfg.has_key {
             key = self.parse_key()?;
         }
-        let hash = if self.reserved_hash().is_some() {
-            self.reserved_hash().unwrap()
+        let hash = if self.ctx.is_reserved_hash {
+            self.ctx.reserved_hash
         } else if cfg.has_key {
             calculate_hash(alg, &key)
         } else {
@@ -292,14 +288,16 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     self.set_sendto_all();
                 } else {
                     let hash = calculate_hash(alg, &key);
-                    self.reserved_hash.replace(hash);
+                    self.ctx.is_reserved_hash = true;
+                    self.ctx.reserved_hash = hash;
                 }
             }
             // cmd: hashrandomq
             CommandType::SwallowedCmdHashrandomq => {
                 // 虽然hash名义为i64，但实际当前均为u32
                 let hash = rand::random::<u32>() as i64;
-                self.reserved_hash.replace(hash);
+                self.ctx.is_reserved_hash = true;
+                self.ctx.reserved_hash = hash;
             }
             CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
                 self.set_sendto_all();
@@ -316,19 +314,19 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         &mut self,
         master_only: bool,
         sendto_all: bool,
-        reserved_hash: ReservedHash,
+        is_reserved_hash: bool,
+        reserved_hash: i64,
     ) {
         if master_only {
             // 保留master only 设置
             self.set_layer(LayerType::MasterOnly);
         }
         if sendto_all {
-            self.set_sendto_all()
+            self.set_sendto_all();
         }
-        *self.stream.context() = self.ctx.u64();
 
-        self.reserved_hash = reserved_hash;
-        *self.stream.reserved_hash() = reserved_hash;
+        self.ctx.is_reserved_hash = is_reserved_hash;
+        self.ctx.reserved_hash = reserved_hash;
         // 设置packet的ctx到stream的ctx中，供下一个指令使用
 
         // 这个有必要保留吗？
@@ -397,6 +395,16 @@ impl std::ops::Deref for Packet {
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
+}
+
+fn update_oft_if_ok<T>(oft: &mut usize, f: impl Fn(&mut usize) -> Result<T>) -> Result<T> {
+    let mut tmp_oft = *oft;
+    let rst = f(&mut tmp_oft);
+    match rst {
+        Ok(_) => *oft = tmp_oft,
+        _ => (),
+    }
+    rst
 }
 
 impl Packet {
