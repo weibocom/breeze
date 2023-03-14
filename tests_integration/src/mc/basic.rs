@@ -1,4 +1,4 @@
-use crate::mc::mc_get_conn;
+use crate::mc_helper::*;
 use memcache::MemcacheError;
 /// # 已测试场景：
 /// - 验证 mesh buffer 扩容，同一个连接，同一个key，set 8次不同大小的String value
@@ -18,7 +18,7 @@ use std::collections::HashMap;
 /// 测试场景：基本的mc add 命令验证
 #[test]
 fn mc_max_key() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let key = "simplefooadd";
     let value = "bar";
     let result: Result<Option<String>, MemcacheError> = client.get(key);
@@ -31,7 +31,7 @@ fn mc_max_key() {
 /// 测试场景：基本的mc add 命令验证
 #[test]
 fn mc_simple_add() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let key = "fooadd";
     let value = "bar";
     let result: Result<Option<String>, MemcacheError> = client.get(key);
@@ -45,7 +45,7 @@ fn mc_simple_add() {
 /// 测试步骤：get(key) key 为预先写入的key
 #[test]
 fn mc_simple_get() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let result: Result<Option<String>, MemcacheError> = client.get("307");
     assert!(result.is_ok());
     assert_eq!(result.expect("ok").expect("ok"), "307");
@@ -53,7 +53,7 @@ fn mc_simple_get() {
 /// 测试场景：基本的mc replace 命令验证
 #[test]
 fn mc_simple_replace() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let key = "fooreplace";
     let value = "bar";
     assert!(client.set(key, value, 3).is_ok());
@@ -65,7 +65,7 @@ fn mc_simple_replace() {
 ///测试场景：基本的mc delete 命令验证
 #[test]
 fn mc_simple_delete() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let key = "foodel";
     let value = "bar";
     let result: Result<Option<String>, MemcacheError> = client.get(key);
@@ -78,7 +78,7 @@ fn mc_simple_delete() {
 /*
 #[test]
 fn only_set_value() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let mut key: String;
     let mut number: u32 = 0;
     while number < 10000 {
@@ -91,7 +91,7 @@ fn only_set_value() {
 ///测试场景：基本的mc append 命令验证
 #[test]
 fn mc_simple_append() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let key = "append";
     let value = "bar";
     let append_value = "baz";
@@ -104,7 +104,7 @@ fn mc_simple_append() {
 ///测试场景：基本的mc prepend 命令验证
 #[test]
 fn mc_simple_prepend() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let key = "prepend";
     let value = "bar";
     let prepend_value = "foo";
@@ -117,7 +117,7 @@ fn mc_simple_prepend() {
 ///测试场景：基本的mc cas 命令验证
 #[test]
 fn mc_simple_cas() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     assert!(client.set("foocas", "bar", 10).is_ok());
     let getsres: Result<HashMap<String, (Vec<u8>, u32, Option<u64>)>, MemcacheError> =
         client.gets(&["foocas"]);
@@ -131,7 +131,7 @@ fn mc_simple_cas() {
 #[test]
 fn mc_simple_gets() {
     //多个key
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let key = "getsfoo";
     let value = "getsbar";
     assert!(client.set(key, value, 2).is_ok());
@@ -144,7 +144,7 @@ fn mc_simple_gets() {
 ///测试场景：基本的mc incr和decr 命令验证
 #[test]
 fn mc_simple_incr_decr() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let key = "fooinde";
     assert!(client.set(key, 10, 3).is_ok());
     let res = client.increment(key, 5);

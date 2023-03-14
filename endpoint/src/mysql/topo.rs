@@ -98,13 +98,12 @@ where
 
     // todo: 这里req拿到mid解出时间,得出具体年库 ？？？
     // todo: sql语句怎么传过去 ？
-    fn send(&self, req: Self::Item) {
+    fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-        let raw_req = req.data();
 
         debug_assert_ne!(self.direct_shards.len(), 0);
 
-        let shard_idx = self.strategy.distribution().index(req.hash());
+        let shard_idx = self.shard_idx(req.hash());
         debug_assert!(
             shard_idx < self.direct_shards.len(),
             "mysql: {}/{} req:{:?}",
@@ -115,15 +114,21 @@ where
         let shard = unsafe { self.direct_shards.get_unchecked(shard_idx) };
         log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
+        let raw_req = req.data();
         let mid = raw_req.key();
         let sql = self
             .strategy
             .build_sql("SQL_SELECT", &mid, &mid)
             .expect("malformed sql");
-        let mysql_cmd = raw_req.mysql_cmd();
 
-        // TODO 利用req_packet构建新的mysq request，然后进行send fishermen
-        // let request = req_packet.build_request(mysql_cmd, &sql)?;
+        // let mysql_cmd = raw_req.mysql_cmd();
+        self.parser.build_request(req.cmd_mut(), sql);
+        log::debug!(
+            "+++ {} send after build_request {} => {:?}",
+            self.service,
+            shard_idx,
+            req
+        );
 
         if shard.has_slave() && !req.operation().is_store() {
             //todo: 访问slave
@@ -134,8 +139,15 @@ where
     }
 
     fn shard_idx(&self, hash: i64) -> usize {
-        //todo: 根据db_count * table_count 进行求余
-        self.strategy.distribution().index(hash)
+        assert!(self.direct_shards.len() > 0);
+        if self.direct_shards.len() > 1 {
+            self.strategy.distribution().index(hash)
+                / self.strategy.table_count as usize
+                / self.strategy.db_count as usize
+                / self.direct_shards.len()
+        } else {
+            0
+        }
     }
 }
 
