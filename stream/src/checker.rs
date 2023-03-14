@@ -11,13 +11,15 @@ use ds::chan::mpsc::Receiver;
 use ds::Switcher;
 use metrics::Path;
 
+use rt::{Entry, Timeout};
+
 pub struct BackendChecker<P, Req> {
     rx: Receiver<Req>,
     finish: Switcher,
     init: Switcher,
     parser: P,
     addr: String,
-    timeout: Duration,
+    timeout: endpoint::Timeout,
     path: Path,
 }
 
@@ -29,7 +31,7 @@ impl<P, Req> BackendChecker<P, Req> {
         init: Switcher,
         parser: P,
         path: Path,
-        timeout: Duration,
+        timeout: endpoint::Timeout,
     ) -> Self {
         Self {
             addr: addr.to_string(),
@@ -72,7 +74,7 @@ impl<P, Req> BackendChecker<P, Req> {
             log::debug!("handler started:{:?}", self.path);
             let p = self.parser.clone();
             let handler = Handler::from(rx, stream, p, rtt);
-            let handler = rt::Entry::timeout(handler, rt::Timeout::from(self.timeout));
+            let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             if let Err(e) = handler.await {
                 log::info!("backend error {:?} => {:?}", path_addr, e);
                 match e {

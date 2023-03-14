@@ -1,4 +1,3 @@
-use ds::time::Duration;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -11,7 +10,7 @@ use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::{ReplicaSelect, Selector};
 
 use super::config::RedisNamespace;
-use crate::TimeoutAdjust;
+use crate::Timeout;
 use discovery::dns::{self, IPPort};
 
 const CONFIG_UPDATED_KEY: &str = "__config__";
@@ -27,8 +26,8 @@ pub struct RedisService<B, E, Req, P> {
     updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
     service: String,
-    timeout_master: Duration,
-    timeout_slave: Duration,
+    timeout_master: Timeout,
+    timeout_slave: Timeout,
     master_read: bool,
     _mark: std::marker::PhantomData<(B, Req)>,
 }
@@ -229,7 +228,7 @@ where
     E: Endpoint<Item = Req> + Single,
 {
     #[inline]
-    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Duration) -> E {
+    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
             _ => B::build(

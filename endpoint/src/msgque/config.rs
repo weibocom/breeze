@@ -36,9 +36,9 @@ pub struct Namespace {
     pub sized_queue: BTreeMap<usize, Vec<String>>,
 
     #[serde(default)]
-    timeout_read: u64,
+    pub(crate) timeout_read: u32,
     #[serde(default)]
-    timeout_write: u64,
+    pub(crate) timeout_write: u32,
 
     #[serde(default)]
     pub offline_idle_time: Duration,
@@ -85,13 +85,13 @@ impl Namespace {
         }
     }
 
-    #[inline]
-    pub(crate) fn timeout_read(&self) -> Duration {
-        Duration::from_millis(200.max(self.timeout_read))
-    }
+    //#[inline]
+    //pub(crate) fn timeout_read(&self) -> Duration {
+    //    Duration::from_millis(200.max(self.timeout_read))
+    //}
 
-    #[inline]
-    pub(crate) fn timeout_write(&self) -> Duration {
-        Duration::from_millis(300.max(self.timeout_write))
-    }
+    //#[inline]
+    //pub(crate) fn timeout_write(&self) -> Duration {
+    //    Duration::from_millis(300.max(self.timeout_write))
+    //}
 }

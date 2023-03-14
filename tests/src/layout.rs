@@ -74,7 +74,7 @@ fn check_stream() {
 fn check_handler() {
     assert_eq!((328, 464).select(), size_of::<Handler<'static>>());
     assert_eq!(
-        (440, 576).select(),
+        (432, 568).select(),
         size_of::<Entry<Handler<'static>, rt::Timeout>>()
     );
 }
@@ -83,11 +83,11 @@ fn check_handler() {
 #[test]
 fn check_topology() {
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
-    assert_eq!(216, size_of::<Topology>());
+    assert_eq!(184, size_of::<Topology>());
     assert_eq!(72, size_of::<CacheService>());
-    assert_eq!(216, size_of::<RedisService>());
-    assert_eq!(160, size_of::<PhantomService>());
-    assert_eq!(184, size_of::<MsgQue>());
+    assert_eq!(184, size_of::<RedisService>());
+    assert_eq!(144, size_of::<PhantomService>());
+    assert_eq!(152, size_of::<MsgQue>());
 }
 
 #[ignore]

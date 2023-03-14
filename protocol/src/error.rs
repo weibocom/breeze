@@ -1,5 +1,3 @@
-use ds::time::Duration;
-
 #[derive(Debug)]
 pub enum Error {
     Eof,
@@ -31,7 +29,7 @@ pub enum Error {
     // CommandNotSupported,
     BufferFull,
     Quit,
-    Timeout(Duration),
+    Timeout(u64),
     Pending, // 在连接退出时，仍然有请求在队列中没有发送。
     Waiting, // 连接退出时，有请求已发送，但未接收到response
     IO(std::io::Error),
@@ -43,9 +41,9 @@ impl From<std::io::Error> for Error {
         Self::IO(err)
     }
 }
-impl From<Duration> for Error {
+impl From<u64> for Error {
     #[inline]
-    fn from(to: Duration) -> Self {
+    fn from(to: u64) -> Self {
         Self::Timeout(to)
     }
 }
