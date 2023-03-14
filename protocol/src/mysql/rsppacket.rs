@@ -3,7 +3,9 @@
 use crate::mysql::constants::DEFAULT_MAX_ALLOWED_PACKET;
 use crate::ResOption;
 
+use super::buffer_pool::Buffer;
 use super::proto::codec::PacketCodec;
+use super::query_result::Or;
 use super::HandShakeStatus;
 
 use byteorder::{ByteOrder, LittleEndian};
@@ -13,23 +15,28 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::process;
 
-use super::constants::StatusFlags;
+use super::constants::{StatusFlags, MAX_PAYLOAD_LEN};
 use super::error::DriverError;
 use super::opts::Opts;
 use super::packets::{
-    AuthPlugin, CommonOkPacket, HandshakeResponse, OkPacket, OkPacketDeserializer, OkPacketKind,
+    AuthPlugin, Column, CommonOkPacket, HandshakeResponse, OkPacket, OkPacketDeserializer,
+    OkPacketKind, OldEofPacket, ResultSetTerminator,
 };
 use super::{constants::CapabilityFlags, io::ParseBuf, packets::HandshakePacket};
 use ds::RingSlice;
 
 use crate::mysql::error::Error::MySqlError;
+use crate::mysql::io::ReadMysqlExt;
 use crate::mysql::proto::MySerialize;
 use crate::{mysql::packets::ErrPacket, Result};
 use crate::{Command, Error};
 
 const HEADER_LEN: usize = 4;
-const HEADER_FLAG_OK: u8 = 0x00;
-const HEADER_FLAG_CONTINUE: u8 = 0xFE;
+pub(super) const HEADER_FLAG_OK: u8 = 0x00;
+// auth switch 或者 EOF
+pub(super) const HEADER_FLAG_CONTINUE: u8 = 0xFE;
+// local infile 的response data
+pub(super) const HEADER_FLAG_LOCAL_INFILE: u8 = 0xFB;
 
 pub(super) struct ResponsePacket<'a, S> {
     stream: &'a mut S,
@@ -53,7 +60,7 @@ pub(super) struct ResponsePacket<'a, S> {
     opts: Opts,
     // last_command: u8,
     // connected: bool,
-    // has_results: bool,
+    has_results: bool,
     server_version: Option<(u16, u16, u16)>,
     /// Last Ok packet, if any.
     // ok_packet: Option<OkPacket<'static>>,
@@ -83,7 +90,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             opts,
             // last_command: Default::default(),
             // connected: Default::default(),
-            // has_results: Default::default(),
+            has_results: Default::default(),
             server_version: Default::default(),
             // ok_packet: None,
             oft_last: 0,
@@ -101,8 +108,39 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         self.data.at(self.oft)
     }
 
+    pub(super) fn handle_result_set(&mut self) -> Result<Or<Vec<Column>, OkPacket<'static>>> {
+        // 全部解析完毕前，不对数据进行take
+        let payload = self.next_packet_data(false)?;
+        match payload[0] {
+            HEADER_FLAG_OK => {
+                let ok = self.handle_ok::<CommonOkPacket>(&payload)?;
+                self.take();
+                Ok(Or::B(ok.into_owned()))
+            }
+            HEADER_FLAG_LOCAL_INFILE => {
+                assert!(false, "not support local infile now!");
+                self.take();
+                Err(Error::ProtocolNotSupported)
+            }
+            _ => {
+                let mut reader = &payload[..];
+                let column_count = reader.read_lenenc_int()?;
+                let mut columns: Vec<Column> = Vec::with_capacity(column_count as usize);
+                for _ in 0..column_count {
+                    let pld = self.next_packet_data(false)?;
+                    let column = ParseBuf(&*pld).parse(())?;
+                    columns.push(column);
+                }
+                // skip eof packet
+                self.drop_packet();
+                self.has_results = column_count > 0;
+                Ok(Or::A(columns))
+            }
+        }
+    }
+
     /// TODO 解析一个完整的packet，并copy出待解析的数据，注意copy只是临时动作，待优化  fishermen
-    fn next_packet_data(&mut self) -> Result<Vec<u8>> {
+    pub(super) fn next_packet_data(&mut self, take_data: bool) -> Result<Vec<u8>> {
         // 先确认解析出一个完整的packet
         self.next_packet()?;
 
@@ -114,9 +152,45 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
         // 对stream中已经copy出来的数据进行take掉
         self.oft += self.payload_len;
-        self.take();
+        if take_data {
+            self.take();
+        }
 
         Ok(payload)
+    }
+
+    /// Must not be called before handle_handshake.
+    const fn has_capability(&self, flag: CapabilityFlags) -> bool {
+        self.capability_flags.contains(flag)
+    }
+
+    pub(super) fn next_row_packet(&mut self) -> Result<Option<Buffer>> {
+        if !self.has_results {
+            return Ok(None);
+        }
+
+        let pld = self.next_packet_data(false)?;
+
+        if self.has_capability(CapabilityFlags::CLIENT_DEPRECATE_EOF) {
+            if pld[0] == 0xfe && pld.len() < MAX_PAYLOAD_LEN {
+                self.has_results = false;
+                self.handle_ok::<ResultSetTerminator>(&pld)?;
+                return Ok(None);
+            }
+        } else {
+            if pld[0] == 0xfe && pld.len() < 8 {
+                self.has_results = false;
+                self.handle_ok::<OldEofPacket>(&pld)?;
+                return Ok(None);
+            }
+        }
+
+        let buff = Buffer::new(pld);
+        Ok(Some(buff))
+    }
+
+    pub(super) fn drop_packet(&mut self) -> Result<()> {
+        self.next_packet_data(true).map(drop)
     }
 
     // 读一个完整的响应包，如果数据不完整，返回ProtocolIncomplete
@@ -173,7 +247,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // 解析Handshake packet，构建HandshakeResponse packet
     pub(super) fn proc_handshake(&mut self) -> Result<Vec<u8>> {
         // 读取完整packet，并解析为HandshakePacket
-        let packet_data = self.next_packet_data()?;
+        let packet_data = self.next_packet_data(true)?;
         let handshake = ParseBuf(&packet_data[0..]).parse::<HandshakePacket>(())?;
 
         log::debug!("+++ mysql capabilities:{:?}", handshake.capabilities());
@@ -219,7 +293,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // 处理handshakeresponse的mysql响应，即auth
     pub(super) fn proc_auth(&mut self) -> Result<()> {
         // 先读取一个packet
-        let payload = self.next_packet_data()?;
+        let payload = self.next_packet_data(true)?;
 
         // Ok packet header 是 0x00 或者0xFE
         match payload[0] {
@@ -240,6 +314,11 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // TODO speed up
     pub(super) fn proc_cmd(&mut self) -> Result<Option<Command>> {
         Ok(None)
+    }
+
+    pub(super) fn more_results_exists(&self) -> bool {
+        self.status_flags
+            .contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS)
     }
 
     // 根据auth plugin、scramble及connection 属性，构建shakehandRsp packet
@@ -343,13 +422,16 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         attrs
     }
 
-    fn handle_ok<T: OkPacketKind>(&mut self, payload: &Vec<u8>) -> crate::Result<()> {
+    pub(super) fn handle_ok<'t, T: OkPacketKind>(
+        &mut self,
+        payload: &'t Vec<u8>,
+    ) -> crate::Result<OkPacket<'t>> {
         let ok = ParseBuf(payload)
             .parse::<OkPacketDeserializer<T>>(self.capability_flags)?
             .into_inner();
         self.status_flags = ok.status_flags();
         log::debug!("+++ mysql ok packet:{:?}", ok);
-        Ok(())
+        Ok(ok)
     }
 
     #[inline]
@@ -390,6 +472,13 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     pub(crate) fn parse_packet(&mut self) -> Result<RingSlice> {
         todo!()
+    }
+
+    #[inline]
+    pub(super) fn reserve(&mut self) {
+        if self.oft > self.data.len() {
+            self.stream.reserve(self.oft)
+        }
     }
 }
 
