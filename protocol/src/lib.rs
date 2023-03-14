@@ -18,8 +18,10 @@ pub use flag::*;
 pub use parser::Proto as Protocol;
 pub use parser::*;
 
-mod write;
-pub use write::*;
+//mod write;
+//pub use write::*;
+mod stream;
+pub use stream::*;
 
 pub use req::*;
 mod operation;

@@ -29,15 +29,6 @@ impl GuardedBuffer {
     {
         self.gc();
         self.inner.copy_from(r)
-        //loop {
-        //    let b = self.inner.as_mut_bytes();
-        //    let cap = b.len();
-        //    let (n, out) = r.read(b);
-        //    self.inner.advance_write(n);
-        //    if cap > n || n == 0 {
-        //        return out;
-        //    }
-        //}
     }
     #[inline]
     pub fn read(&self) -> RingSlice {
@@ -95,6 +86,15 @@ impl GuardedBuffer {
 }
 use std::fmt::{self, Display, Formatter};
 impl Display for GuardedBuffer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "taken:{} {} guarded:{}",
+            self.taken, self.inner, self.guards
+        )
+    }
+}
+impl fmt::Debug for GuardedBuffer {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -185,6 +185,12 @@ impl Display for MemGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "data:{}  guarded:{}", self.mem, !self.guard.is_null())
+    }
+}
+impl fmt::Debug for MemGuard {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "data:{:?}  guarded:{}", self.mem, !self.guard.is_null())
     }
 }
 impl Drop for GuardedBuffer {

@@ -10,13 +10,12 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use ds::{time::Instant, AtomicWaker};
 use endpoint::{Topology, TopologyCheck};
-use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
+use protocol::{HashedCommand, Protocol, Result, Stream};
 
 use sharding::hash::Hash;
 
 use crate::{
     arena::CallbackContextArena,
-    buffer::{Reader, StreamGuard},
     context::{CallbackContextPtr, ResponseContext},
     Callback, CallbackContext, Request, StreamMetrics,
 };
@@ -29,7 +28,7 @@ pub async fn copy_bidirectional<C, P, T>(
     pipeline: bool,
 ) -> Result<()>
 where
-    C: AsyncRead + AsyncWrite + Writer + Unpin,
+    C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
     T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
 {
@@ -41,7 +40,6 @@ where
         cb,
         top,
         metrics,
-        rx_buf: StreamGuard::new(),
         client,
         parser,
         pending: VecDeque::with_capacity(15),
@@ -60,7 +58,6 @@ where
 
 pub struct CopyBidirectional<C, P, T> {
     top: T,
-    rx_buf: StreamGuard,
     client: C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
@@ -85,7 +82,7 @@ pub struct CopyBidirectional<C, P, T> {
 }
 impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
-    C: AsyncRead + AsyncWrite + Writer + Unpin,
+    C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
     T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
 {
@@ -97,7 +94,7 @@ where
         self.process_async_pending();
         loop {
             // 从client接收数据写入到buffer
-            let request = self.poll_recv(cx)?;
+            let request = self.client.poll_recv(cx)?;
             // 解析buffer中的请求，并且发送请求。
             self.parse_request()?;
 
@@ -118,34 +115,22 @@ where
 }
 impl<C, P, T> CopyBidirectional<C, P, T>
 where
-    C: AsyncRead + AsyncWrite + Writer + Unpin,
+    C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
     T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
 {
-    // 从client读取request流的数据到buffer。
-    #[inline]
-    fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        //if self.pending.len() == 0 {
-        let Self { client, rx_buf, .. } = self;
-        let mut cx = Context::from_waker(cx.waker());
-        let mut rx = Reader::from(client, &mut cx);
-        ready!(rx_buf.write(&mut rx))?;
-        rx.check()?;
-        //}
-        Poll::Ready(Ok(()))
-    }
     // 解析buffer，并且发送请求.
     #[inline]
     fn parse_request(&mut self) -> Result<()> {
-        if self.rx_buf.len() == 0 {
+        if self.client.len() == 0 {
             return Ok(());
         }
         let Self {
+            client,
             top,
             parser,
             pending,
             waker,
-            rx_buf,
             first,
             cb,
             arena,
@@ -163,7 +148,7 @@ where
         };
 
         parser
-            .parse_request(rx_buf, top, &mut processor)
+            .parse_request(client, top, &mut processor)
             .map_err(|e| {
                 log::info!("parse request error: {:?} {:?}", e, self);
                 e
@@ -303,7 +288,7 @@ impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
 use std::fmt::{self, Debug, Formatter};
 impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
 where
-    C: AsyncRead + AsyncWrite + Writer + Unpin,
+    C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
     T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
 {
@@ -324,7 +309,7 @@ where
         }
         // 处理异步请求
         self.process_async_pending();
-        self.rx_buf.try_gc() && self.pending.len() == 0 && self.async_pending.len() == 0
+        self.client.try_gc() && self.pending.len() == 0 && self.async_pending.len() == 0
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
@@ -342,31 +327,27 @@ where
         if self.dropping.len() > 0 && self.async_pending.len() == 0 && self.pending.len() == 0 {
             self.dropping.clear();
         }
-        self.rx_buf.try_gc();
-        self.rx_buf.shrink();
+        self.client.try_gc();
         self.client.shrink();
         // 满足条件之一说明需要刷新
         // 1. buffer 过大；2. 有异步请求未完成; 3. top 未drop
-        Ok(
-            (self.rx_buf.cap() + self.client.cap()) >= crate::REFRESH_THREASHOLD
-                || self.async_pending.len() > 0
-                || self.dropping.len() > 0,
-        )
+        Ok(self.client.cap() >= crate::REFRESH_THREASHOLD
+            || self.async_pending.len() > 0
+            || self.dropping.len() > 0)
     }
 }
-impl<C, P, T> Debug for CopyBidirectional<C, P, T> {
+impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:({},{}) flush:{} dropping:{} rx buf:{:?} => {:?}",
+            "{} => pending:({},{}) flush:{} dropping:{}  => {:?}",
             self.metrics.biz(),
             self.pending.len(),
             self.async_pending.len(),
             self.flush,
             self.dropping.len(),
-            self.rx_buf,
-            self.rx_buf.slice(),
+            self.client,
         )
     }
 }
