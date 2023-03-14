@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 enum_dispatch = "0.3.8"
-rust-crypto = "0.2.36"
+md5 = "*"
 ds = { path = "../ds" }
 discovery = { path = "../discovery" }
 metrics = { path = "../metrics" }
