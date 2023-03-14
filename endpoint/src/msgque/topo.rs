@@ -9,12 +9,9 @@ use std::{
 };
 use tokio::time::Instant;
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    time::Duration,
-};
+use std::collections::{BTreeMap, HashMap};
 
-use crate::{Builder, Endpoint, Topology};
+use crate::{Builder, Endpoint, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
 use crate::msgque::strategy::hitfirst::Node;
@@ -52,8 +49,8 @@ pub struct MsgQue<B, E, Req, P> {
     // 占位hasher，暂时不需要真实计算
     max_size: usize,
 
-    timeout_write: Duration,
-    timeout_read: Duration,
+    timeout_write: Timeout,
+    timeout_read: Timeout,
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -71,8 +68,8 @@ impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
             write_strategy: Default::default(),
             parser,
             max_size: super::BLOCK_SIZE,
-            timeout_write: Duration::from_millis(200),
-            timeout_read: Duration::from_millis(100),
+            timeout_write: Timeout::from_millis(200),
+            timeout_read: Timeout::from_millis(100),
             _marker: Default::default(),
         }
     }
@@ -287,7 +284,7 @@ where
         old: &mut HashMap<String, E>,
         addrs: &BTreeMap<usize, Vec<String>>,
         name: &str,
-        timeout: Duration,
+        timeout: Timeout,
     ) -> Vec<(String, E, usize)> {
         let mut streams = Vec::with_capacity(addrs.len());
         for (size, servs) in addrs.iter() {
@@ -317,7 +314,7 @@ where
         &mut self,
         addrs: &BTreeMap<usize, Vec<String>>,
         name: &str,
-        timeout: Duration,
+        timeout: Timeout,
     ) -> BTreeMap<usize, Vec<(String, E)>> {
         let mut old_streams = HashMap::with_capacity(self.streams_write.len() * 3);
         if self.streams_write.len() > 0 {
@@ -393,8 +390,8 @@ where
 
             self.service = name.to_string();
 
-            self.timeout_read = ns.timeout_read();
-            self.timeout_write = ns.timeout_write();
+            self.timeout_read.adjust(ns.timeout_read);
+            self.timeout_write.adjust(ns.timeout_write);
 
             let old_r = self.streams_read.split_off(0);
             let mut old_streams_read: HashMap<String, E> =

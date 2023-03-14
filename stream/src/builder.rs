@@ -9,7 +9,7 @@ use ds::chan::mpsc::{channel, Sender, TrySendError};
 use ds::Switcher;
 
 use crate::checker::BackendChecker;
-use endpoint::{Builder, Endpoint, Single};
+use endpoint::{Builder, Endpoint, Single, Timeout};
 use metrics::Path;
 use protocol::{Error, Protocol, Request, Resource};
 
@@ -18,14 +18,13 @@ pub struct BackendBuilder<P, R> {
     _marker: std::marker::PhantomData<(P, R)>,
 }
 
-use ds::time::Duration;
 impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
     fn build(
         addr: &str,
         parser: P,
         rsrc: Resource,
         service: &str,
-        timeout: Duration,
+        timeout: Timeout,
     ) -> Arc<Backend<R>> {
         let (tx, rx) = channel(256);
         let finish: Switcher = false.into();
