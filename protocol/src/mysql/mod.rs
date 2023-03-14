@@ -1,6 +1,7 @@
 #[macro_use]
 pub mod bitflags_ext;
 mod auth;
+mod buffer_pool;
 pub mod constants;
 mod error;
 mod io;
@@ -11,6 +12,7 @@ mod opts;
 mod packets;
 mod params;
 mod proto;
+mod query_result;
 mod reqpacket;
 mod row;
 mod rsppacket;
@@ -22,14 +24,16 @@ use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
 use self::mcpacket::*;
 use self::opts::Opts;
+use self::proto::Text;
+use self::query_result::QueryResult;
 use self::reqpacket::RequestPacket;
+use self::row::convert::from_row;
 use self::rsppacket::ResponsePacket;
 use self::strategy::MysqlStrategy;
 
 use super::Flag;
 use super::Protocol;
 use super::Result;
-use crate::mysql::mcpacket::QUITE_GET_TABLE;
 use crate::Command;
 use crate::Error;
 use crate::HandShake;
@@ -38,7 +42,24 @@ use crate::RequestProcessor;
 use crate::Stream;
 use ds::MemGuard;
 use mcpacket::Binary;
+use prelude::FromRow;
 use sharding::hash::Hash;
+
+pub mod prelude {
+
+    #[doc(inline)]
+    pub use crate::mysql::row::convert::FromRow;
+    #[doc(inline)]
+    pub use crate::mysql::row::ColumnIndex;
+    #[doc(inline)]
+    pub use crate::mysql::value::convert::{ConvIr, FromValue, ToValue};
+
+    /// Trait for protocol markers [`crate::Binary`] and [`crate::Text`].
+    pub(super) trait Protocol: crate::mysql::query_result::Protocol {}
+
+    impl Protocol for crate::mysql::proto::Binary {}
+    impl Protocol for crate::mysql::proto::Text {}
+}
 
 #[derive(Clone)]
 pub struct Mysql {
@@ -134,7 +155,14 @@ impl Protocol for Mysql {
     //  1 解析mysql response； 2 转换为mc响应
     fn parse_response<S: crate::Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         let mut rsp_packet = ResponsePacket::new(data, None);
-        rsp_packet.proc_cmd()
+        match self.parse_response_inner(&mut rsp_packet) {
+            Ok(cmd) => Ok(cmd),
+            Err(Error::ProtocolIncomplete) => {
+                // rsp_packet.reserve();
+                Ok(None)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn write_response<C, W, M, I>(
@@ -164,21 +192,22 @@ impl Protocol for Mysql {
             assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
 
             // 验证Opaque是否相同. 不相同说明数据不一致
-            if ctx.request().data().opaque() != rsp.data().opaque() {
-                ctx.metric().inconsist(1);
-            }
+            // if ctx.request().data().opaque() != rsp.data().opaque() {
+            //     ctx.metric().inconsist(1);
+            // }
 
             // 先进行metrics统计
             //self.metrics(ctx.request(), Some(&rsp), ctx);
 
             // 如果quite 请求没拿到数据，直接忽略
-            if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
-                return Ok(());
-            }
+            // if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
+            //     return Ok(());
+            // }
             log::debug!("+++ will write mc rsp:{:?}", rsp.data());
-            let data = rsp.data_mut();
-            data.restore_op(old_op_code as u8);
-            w.write_slice(data, 0)?;
+            // 这个只是value，还需要write header等
+            // let data = rsp.data_mut();
+            // data.restore_op(old_op_code as u8);
+            self.write_mc_packet(ctx.request(), rsp, w)?;
 
             return Ok(());
         }
@@ -297,6 +326,72 @@ impl Mysql {
     //修改req，seq +1
     fn before_send<S: Stream, Req: crate::Request>(&self, _stream: &mut S, _req: &mut Req) {
         todo!()
+    }
+
+    // 包比较复杂，不能随意take，得等到最复杂场景解析完毕后，才能统一take走
+    fn parse_response_inner<'a, S: crate::Stream>(
+        &self,
+        rsp_packet: &'a mut ResponsePacket<'a, S>,
+    ) -> Result<Option<Command>> {
+        let result_set = self.parse_and_fold(rsp_packet, Vec::new(), |mut acc, row| {
+            acc.push(from_row(row));
+            acc
+        })?;
+
+        // 返回mysql响应，在write response处进行协议转换
+        let mem = MemGuard::from_vec(result_set);
+        let mut flag = Flag::from_op(OP_CODE_GET as u16, crate::Operation::Get);
+        flag.set_status_ok(true);
+        let cmd = Command::new(flag, mem);
+        Ok(Some(cmd))
+    }
+
+    fn parse_and_fold<'a, T, F, U, S>(
+        &self,
+        rsp_packet: &'a mut ResponsePacket<'a, S>,
+        init: U,
+        mut f: F,
+    ) -> Result<U>
+    where
+        T: FromRow,
+        F: FnMut(U, T) -> U,
+        S: crate::Stream,
+    {
+        let meta = rsp_packet.handle_result_set()?;
+        // TODO 先打通Get，实际响应可能会包含更多字段  fishermen
+        let result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
+        result
+            .map(|row| row.map(from_row::<T>))
+            .try_fold(init, |acc, row| row.map(|row| f(acc, row)))
+    }
+
+    #[inline]
+    fn write_mc_packet<W>(
+        &self,
+        request: &HashedCommand,
+        response: &crate::Command,
+        w: &mut W,
+    ) -> Result<()>
+    where
+        W: crate::Writer,
+    {
+        // let req = ctx.request().data();
+        let old_op_code = request.op_code();
+        let req = request.data();
+        w.write_u8(mcpacket::Magic::Response as u8)?; //magic 1byte
+        w.write_u8(old_op_code as u8)?; // opcode 1 byte
+        let key_len = req.key_len();
+        w.write_u16(req.key_len())?; // key len 2 bytes
+        let extra_len = 0_u8;
+        w.write_u8(extra_len)?; //extras length 1byte
+        w.write_u8(0_u8); //data type 1byte
+        w.write_u16(mcpacket::RespStatus::NoError as u16)?; // Status 2byte
+        let total_body_len = extra_len as u32 + key_len as u32 + response.data().len() as u32;
+        w.write_u32(total_body_len); // total body len: 4 bytes
+        w.write_u32(req.opaque())?; //opaque: 4bytes
+        w.write_u64(0)?; //cas: 8 bytes
+        w.write_slice(&req.key(), 0)?; // key
+        w.write_slice(response.data(), 0) // value
     }
 }
 
