@@ -32,6 +32,10 @@ impl crate::Request for Request {
         self.req()
     }
     #[inline]
+    fn cmd_mut(&mut self) -> &mut HashedCommand {
+        self.req_mut()
+    }
+    #[inline]
     fn data(&self) -> &ds::RingSlice {
         self.req().data()
     }

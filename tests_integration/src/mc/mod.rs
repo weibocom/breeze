@@ -1,5 +1,6 @@
 mod basic;
 use crate::ci::env::{exists_key_iter, Mesh};
+use crate::mc_helper::*;
 use memcache::{Client, MemcacheError};
 use std::collections::HashMap;
 
@@ -14,7 +15,7 @@ use std::collections::HashMap;
 ///     <5> 重复步骤 <3>
 #[test]
 fn buffer_capacity_a() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let key = "fooset";
     let mut v_sizes = [1048507, 4, 4000, 40, 8000, 20000, 0, 400];
     for v_size in v_sizes {
@@ -53,7 +54,7 @@ fn buffer_capacity_a() {
 /// 测试步骤：根据已知的 key&value,通过 mesh 获取并对比结果
 #[test]
 fn only_get_value() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let mut key: String;
     for value in exists_key_iter() {
         key = value.to_string();
@@ -66,7 +67,7 @@ fn only_get_value() {
 /// 测试场景: 测试mc 单次最多gets 多少个key
 #[test]
 fn mc_gets_keys() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     let mut key: Vec<String> = Vec::new();
     for keycount in 10001..=11000u64 {
         let k = keycount.to_string();
@@ -87,7 +88,7 @@ fn mc_gets_keys() {
 /// 测试场景: 测试key的长度
 #[test]
 fn mc_key_length() {
-    let client = mc_get_conn();
+    let client = mc_get_conn("mc");
     for k_len in 1..=251usize {
         let key = vec![0x42; k_len];
         let set_res = client.set(
@@ -109,12 +110,4 @@ fn mc_key_length() {
             assert!(result.is_err())
         }
     }
-}
-
-fn mc_get_conn() -> Client {
-    let host_ip = "mc".get_host();
-    let host = String::from("memcache://") + &host_ip;
-    let client = memcache::connect(host);
-    assert_eq!(true, client.is_ok());
-    return client.expect("ok");
 }
