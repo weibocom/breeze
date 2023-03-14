@@ -1,17 +1,22 @@
 mod metric;
-use ds::MemPolicy;
 use metric::MetricStream;
 
 use std::io;
 use std::pin::Pin;
-use std::task::{Context, Poll, Waker};
+use std::task::{ready, Context, Poll, Waker};
 
-use std::task::ready;
-
+use ds::{GuardedBuffer, MemGuard, MemPolicy, RingSlice};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+use protocol::ReservedHash;
 
 mod tx_buf;
 pub use tx_buf::*;
+
+mod reader;
+use reader::*;
+
+impl<S: AsyncWrite + AsyncRead + Unpin + std::fmt::Debug> protocol::Stream for Stream<S> {}
 
 // 1. read/write统计
 // 2. 支持write buffer。
@@ -19,7 +24,11 @@ pub use tx_buf::*;
 pub struct Stream<S> {
     s: MetricStream<S>,
     buf: TxBuffer,
+    rx_buf: GuardedBuffer,
     write_to_buf: bool,
+
+    ctx: u64,
+    hash: ReservedHash,
 }
 impl<S> From<S> for Stream<S> {
     #[inline]
@@ -27,7 +36,13 @@ impl<S> From<S> for Stream<S> {
         Self {
             s: s.into(),
             buf: TxBuffer::new(),
+            // 最小2K：覆盖一个MSS
+            // 最大64M：经验值。
+            // 初始化为0：针对部分只有连接没有请求的场景，不占用内存。
+            rx_buf: GuardedBuffer::new(2048, 64 * 1024 * 1024, 0),
             write_to_buf: false,
+            ctx: 0,
+            hash: None,
         }
     }
 }
@@ -103,7 +118,7 @@ static NOOP: Waker = noop_waker::noop_waker();
 impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     #[inline]
     fn cap(&self) -> usize {
-        self.buf.cap()
+        self.buf.cap() + self.rx_buf.cap()
     }
     #[inline]
     fn pending(&self) -> usize {
@@ -129,6 +144,12 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     #[inline]
     fn shrink(&mut self) {
         self.buf.shrink();
+        self.rx_buf.shrink();
+    }
+    #[inline]
+    fn try_gc(&mut self) -> bool {
+        self.rx_buf.gc();
+        self.rx_buf.pending() == 0
     }
 }
 impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::BufWriter for Stream<S> {
@@ -149,5 +170,58 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::BufWriter for Stream<S> {
         }
         self.write_all(buf0)?;
         self.write_all(buf1)
+    }
+}
+impl<S> protocol::BufRead for Stream<S> {
+    #[inline]
+    fn take(&mut self, n: usize) -> MemGuard {
+        self.rx_buf.take(n)
+    }
+    #[inline]
+    fn len(&self) -> usize {
+        self.rx_buf.len()
+    }
+    #[inline]
+    fn slice(&self) -> RingSlice {
+        self.rx_buf.read()
+    }
+    #[inline]
+    fn context(&mut self) -> &mut u64 {
+        &mut self.ctx
+    }
+    #[inline]
+    fn reserved_hash(&mut self) -> &mut ReservedHash {
+        &mut self.hash
+    }
+    #[inline]
+    fn reserve(&mut self, r: usize) {
+        self.rx_buf.grow(r);
+    }
+}
+
+impl<S: AsyncRead + Unpin + std::fmt::Debug> protocol::AsyncBufRead for Stream<S> {
+    // 把数据从client中，读取到rx_buf。
+    #[inline]
+    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<protocol::Result<()>> {
+        let Self { s, rx_buf, .. } = self;
+        let mut cx = Context::from_waker(cx.waker());
+        let mut rx = Reader::from(s, &mut cx);
+        ready!(rx_buf.write(&mut rx))?;
+        rx.check()?;
+        Poll::Ready(Ok(()))
+    }
+}
+
+use std::fmt::{self, Debug, Formatter};
+impl<S: std::fmt::Debug> Debug for Stream<S> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Stream")
+            .field("s", &self.s)
+            .field("buf", &self.buf)
+            .field("rx_buf", &self.rx_buf)
+            .field("ctx", &self.ctx)
+            .field("hash", &self.hash)
+            .field("write_to_buf", &self.write_to_buf)
+            .finish()
     }
 }

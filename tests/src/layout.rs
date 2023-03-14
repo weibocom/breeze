@@ -5,7 +5,7 @@ use std::{
 };
 
 use protocol::{callback::CallbackContext, Parser};
-use stream::{buffer::StreamGuard, Backend, Request};
+use stream::{Backend, Request};
 type Endpoint = Arc<Backend<Request>>;
 type Topology = endpoint::TopologyProtocol<Builder, Endpoint, Request, Parser>;
 //type RefreshTopology = endpoint::RefreshTopology<Topology>;
@@ -59,22 +59,22 @@ fn check_callback_ctx() {
     assert_eq!(192, size_of::<CallbackContext>());
     assert_eq!(16, size_of::<protocol::callback::Context>());
 }
-#[ignore]
-#[test]
-fn check_stream_guard() {
-    assert_eq!((152, 216).select(), size_of::<StreamGuard>());
-}
+//#[ignore]
+//#[test]
+//fn check_stream_guard() {
+//    assert_eq!((152, 216).select(), size_of::<StreamGuard>());
+//}
 #[ignore]
 #[test]
 fn check_stream() {
-    assert_eq!((72, 144).select(), size_of::<Stream>());
+    assert_eq!((232, 368).select(), size_of::<Stream>());
 }
 #[ignore]
 #[test]
 fn check_handler() {
-    assert_eq!((320, 456).select(), size_of::<Handler<'static>>());
+    assert_eq!((328, 464).select(), size_of::<Handler<'static>>());
     assert_eq!(
-        (432, 568).select(),
+        (440, 576).select(),
         size_of::<Entry<Handler<'static>, rt::Timeout>>()
     );
 }
@@ -93,10 +93,10 @@ fn check_topology() {
 #[ignore]
 #[test]
 fn check_pipeline() {
-    assert_eq!((424, 560).select(), size_of::<CopyBidirectional>());
+    assert_eq!((432, 568).select(), size_of::<CopyBidirectional>());
     // 512字节对齐
     assert_eq!(
-        (488, 624).select(),
+        (496, 632).select(),
         size_of::<Entry<CopyBidirectional, rt::DisableTimeout>>()
     );
 }
