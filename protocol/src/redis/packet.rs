@@ -413,19 +413,21 @@ impl Packet {
     // oft移动到\r\n之后。 调用完该方法后，可能出现oft >= self.len()的情况
     #[inline]
     pub fn num_of_bulks(&self, oft: &mut usize) -> crate::Result<usize> {
-        debug_assert!(*oft < self.len() && self[*oft] == b'*');
-        let mut n = 0;
-        for i in *oft + 1..self.len() {
-            if self[i] == b'\r' {
-                // 下一个字符必须是'\n'
-                debug_assert!(i + 1 < self.len() || self[i + 1] == b'\n');
-                *oft = i + 2;
-                return Ok(n);
+        update_oft_if_ok(oft, |oft| {
+            debug_assert!(*oft < self.len() && self[*oft] == b'*');
+            let mut n = 0;
+            for i in *oft + 1..self.len() {
+                if self[i] == b'\r' {
+                    // 下一个字符必须是'\n'
+                    debug_assert!(i + 1 < self.len() || self[i + 1] == b'\n');
+                    *oft = i + 2;
+                    return Ok(n);
+                }
+                debug_assert!(self[i].is_ascii_digit(), "num:{} => {:?}", i, self);
+                n = n * 10 + (self[i] - b'0') as usize;
             }
-            debug_assert!(self[i].is_ascii_digit(), "num:{} => {:?}", i, self);
-            n = n * 10 + (self[i] - b'0') as usize;
-        }
-        Err(Error::ProtocolIncomplete)
+            Err(Error::ProtocolIncomplete)
+        })
     }
     // oft + MIN <= self.len()
     // $-1\r\n     ==> null.  返回0
@@ -433,32 +435,34 @@ impl Packet {
     // oft移动到\r位置处, 调用方需要处理oft对于\r\n的偏移量
     #[inline]
     pub fn num_of_string(&self, oft: &mut usize) -> Result<usize> {
-        debug_assert!(self.check_onetoken(*oft).is_ok(), "{} => {:?}", oft, self);
-        debug_assert!(self[*oft] == b'$');
-        match self[*oft + 1] {
-            b'-' => {
-                debug_assert!(self[*oft + 2] == b'1' && self[*oft + 3] == b'\r');
-                // 跳过 $-1 3个字节
-                // null当前的bulk不包含\r\n，这样使用方可以假设后面带有一个0长度的\r\n
-                *oft += 3;
-                Ok(0)
-            }
-            _ => {
-                // 解析数字
-                let mut n = 0;
-                for i in *oft + 1..self.len() {
-                    if self[i] == b'\r' {
-                        debug_assert!(i + 1 >= self.len() || self[i + 1] == b'\n');
-                        // 额外跳过\r\n
-                        *oft = i + 2;
-                        return Ok(n);
-                    }
-                    debug_assert!(self[i].is_ascii_digit(), "invalid:{} => {:?}", i, self);
-                    n = n * 10 + (self[i] - b'0') as usize;
+        update_oft_if_ok(oft, |oft| {
+            debug_assert!(self.check_onetoken(*oft).is_ok(), "{} => {:?}", oft, self);
+            debug_assert!(self[*oft] == b'$');
+            match self[*oft + 1] {
+                b'-' => {
+                    debug_assert!(self[*oft + 2] == b'1' && self[*oft + 3] == b'\r');
+                    // 跳过 $-1 3个字节
+                    // null当前的bulk不包含\r\n，这样使用方可以假设后面带有一个0长度的\r\n
+                    *oft += 3;
+                    Ok(0)
                 }
-                Err(Error::ProtocolIncomplete)
+                _ => {
+                    // 解析数字
+                    let mut n = 0;
+                    for i in *oft + 1..self.len() {
+                        if self[i] == b'\r' {
+                            debug_assert!(i + 1 >= self.len() || self[i + 1] == b'\n');
+                            // 额外跳过\r\n
+                            *oft = i + 2;
+                            return Ok(n);
+                        }
+                        debug_assert!(self[i].is_ascii_digit(), "invalid:{} => {:?}", i, self);
+                        n = n * 10 + (self[i] - b'0') as usize;
+                    }
+                    Err(Error::ProtocolIncomplete)
+                }
             }
-        }
+        })
     }
     // 第一个字节是类型标识。 '*' '$'等等，由调用方确认。
     // 三种额外的情况处理
@@ -467,47 +471,49 @@ impl Packet {
     // *0\r\n      ==> 0 bulk number
     #[inline]
     pub fn num(&self, oft: &mut usize) -> crate::Result<usize> {
-        // 至少4个字节
-        if *oft + 4 <= self.len() {
-            debug_assert!(
-                self[*oft] == b'*' || self[*oft] == b'$',
-                "packet:{:?}",
-                self
-            );
-            let start = *oft;
-            *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
-            let mut val: usize = 0;
-            while *oft < self.len() - 1 {
-                let b = self.at(*oft);
-                *oft += 1;
-                if b == b'\r' {
-                    if self.at(*oft) == b'\n' {
-                        *oft += 1;
-                        if val == 0 {
-                            // 如果是长度为$0\r\n\r\n
-                            if self.at(start) == b'$' && self.at(start + 1) == b'0' {
-                                *oft += 2;
-                                if *oft > self.len() {
-                                    break;
+        update_oft_if_ok(oft, |oft| {
+            // 至少4个字节
+            if *oft + 4 <= self.len() {
+                debug_assert!(
+                    self[*oft] == b'*' || self[*oft] == b'$',
+                    "packet:{:?}",
+                    self
+                );
+                let start = *oft;
+                *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
+                let mut val: usize = 0;
+                while *oft < self.len() - 1 {
+                    let b = self.at(*oft);
+                    *oft += 1;
+                    if b == b'\r' {
+                        if self.at(*oft) == b'\n' {
+                            *oft += 1;
+                            if val == 0 {
+                                // 如果是长度为$0\r\n\r\n
+                                if self.at(start) == b'$' && self.at(start + 1) == b'0' {
+                                    *oft += 2;
+                                    if *oft > self.len() {
+                                        break;
+                                    }
                                 }
                             }
+                            return Ok(val);
                         }
-                        return Ok(val);
+                        // \r后面没有接\n。错误的协议
+                        return Err(RedisError::ReqInvalidNoReturn.error());
                     }
-                    // \r后面没有接\n。错误的协议
-                    return Err(RedisError::ReqInvalidNoReturn.error());
-                }
-                if is_number_digit(b) {
-                    val = val * 10 + (b - b'0') as usize;
-                    if val <= std::u32::MAX as usize {
-                        continue;
+                    if is_number_digit(b) {
+                        val = val * 10 + (b - b'0') as usize;
+                        if val <= std::u32::MAX as usize {
+                            continue;
+                        }
                     }
+                    log::info!("oft:{} not valid number:{:?}, {:?}", *oft, self, self);
+                    return Err(RedisError::ReqInvalidNum.error());
                 }
-                log::info!("oft:{} not valid number:{:?}, {:?}", *oft, self, self);
-                return Err(RedisError::ReqInvalidNum.error());
             }
-        }
-        Err(crate::Error::ProtocolIncomplete)
+            Err(crate::Error::ProtocolIncomplete)
+        })
     }
     #[inline]
     fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize> {
@@ -524,12 +530,14 @@ impl Packet {
     }
     #[inline(always)]
     pub fn line(&self, oft: &mut usize) -> crate::Result<()> {
-        if let Some(idx) = self.find_lf_cr(*oft) {
-            *oft = idx + 2;
-            Ok(())
-        } else {
-            Err(crate::Error::ProtocolIncomplete)
-        }
+        update_oft_if_ok(oft, |oft| {
+            if let Some(idx) = self.find_lf_cr(*oft) {
+                *oft = idx + 2;
+                Ok(())
+            } else {
+                Err(crate::Error::ProtocolIncomplete)
+            }
+        })
     }
     #[inline(always)]
     pub fn check_onetoken(&self, oft: usize) -> Result<()> {
@@ -544,63 +552,67 @@ impl Packet {
     //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
     #[inline]
     pub fn skip_all_bulk(&self, oft: &mut usize) -> Result<()> {
-        let mut bulk_count = self.num_of_bulks(oft)?;
-        // 使用stack实现递归, 通常没有递归，可以初始化这Empty
-        let mut levels = Vec::new();
-        while bulk_count > 0 || levels.len() > 0 {
-            if bulk_count == 0 {
-                bulk_count = levels.pop().expect("levels is empty");
-            }
-            self.check_onetoken(*oft)?;
-            match self.at(*oft) {
-                b'*' => {
-                    let current = self.num_of_bulks(oft)?;
-                    if bulk_count > 1 {
-                        levels.push(bulk_count - 1);
+        update_oft_if_ok(oft, |oft| {
+            let mut bulk_count = self.num_of_bulks(oft)?;
+            // 使用stack实现递归, 通常没有递归，可以初始化这Empty
+            let mut levels = Vec::new();
+            while bulk_count > 0 || levels.len() > 0 {
+                if bulk_count == 0 {
+                    bulk_count = levels.pop().expect("levels is empty");
+                }
+                self.check_onetoken(*oft)?;
+                match self.at(*oft) {
+                    b'*' => {
+                        let current = self.num_of_bulks(oft)?;
+                        if bulk_count > 1 {
+                            levels.push(bulk_count - 1);
+                        }
+                        bulk_count = current;
+                        continue;
                     }
-                    bulk_count = current;
-                    continue;
+                    b'$' => {
+                        // 跳过num个字节 + "\r\n" 2个字节
+                        *oft += self.num_of_string(oft)? + CRLF_LEN;
+                    }
+                    b'+' | b':' => self.line(oft)?,
+                    _ => {
+                        log::warn!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
+                        panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
+                    }
                 }
-                b'$' => {
-                    // 跳过num个字节 + "\r\n" 2个字节
-                    *oft += self.num_of_string(oft)? + CRLF_LEN;
-                }
-                b'+' | b':' => self.line(oft)?,
-                _ => {
-                    log::warn!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                    panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                }
+                bulk_count -= 1;
             }
-            bulk_count -= 1;
-        }
-        Ok(())
+            Ok(())
+        })
     }
     // 需要支持4种协议格式：（除了-代表的错误类型）
     //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
     #[inline]
     pub fn num_skip_all(&self, oft: &mut usize) -> Result<()> {
-        let mut bulk_count = self.num(oft)?;
-        while bulk_count > 0 {
-            if *oft >= self.len() {
-                return Err(crate::Error::ProtocolIncomplete);
+        update_oft_if_ok(oft, |oft| {
+            let mut bulk_count = self.num(oft)?;
+            while bulk_count > 0 {
+                if *oft >= self.len() {
+                    return Err(crate::Error::ProtocolIncomplete);
+                }
+                match self.at(*oft) {
+                    b'*' => {
+                        self.num_skip_all(oft)?;
+                    }
+                    b'$' => {
+                        self.num_and_skip(oft)?;
+                    }
+                    b'+' | b':' => self.line(oft)?,
+                    _ => {
+                        log::info!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
+                        panic!("not supported in num_skip_all");
+                    }
+                }
+                // data.num_and_skip(&mut oft)?;
+                bulk_count -= 1;
             }
-            match self.at(*oft) {
-                b'*' => {
-                    self.num_skip_all(oft)?;
-                }
-                b'$' => {
-                    self.num_and_skip(oft)?;
-                }
-                b'+' | b':' => self.line(oft)?,
-                _ => {
-                    log::info!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                    panic!("not supported in num_skip_all");
-                }
-            }
-            // data.num_and_skip(&mut oft)?;
-            bulk_count -= 1;
-        }
-        Ok(())
+            Ok(())
+        })
     }
 }
 #[inline]
