@@ -7,7 +7,7 @@ use discovery::TopologyWrite;
 use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
-use sharding::{ReplicaSelect, Selector};
+use sharding::{Distance, Selector};
 
 use super::config::RedisNamespace;
 use crate::Timeout;
@@ -329,14 +329,14 @@ where
 #[derive(Clone)]
 struct Shard<E> {
     master: (String, E),
-    slaves: ReplicaSelect<(String, E)>,
+    slaves: Distance<(String, E)>,
 }
 impl<E> Shard<E> {
     #[inline]
     fn selector(s: Selector, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
-            slaves: ReplicaSelect::from(s, replicas),
+            slaves: Distance::with_local(replicas, s.is_local()),
         }
     }
     #[inline]
@@ -349,7 +349,7 @@ impl<E> Shard<E> {
     }
     #[inline]
     fn select(&self) -> (usize, &(String, E)) {
-        unsafe { self.slaves.unsafe_select() }
+        self.slaves.unsafe_select()
     }
     #[inline]
     fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
@@ -366,7 +366,6 @@ impl<E: discovery::Inited> Shard<E> {
             && self.has_slave()
             && self
                 .slaves
-                .as_ref()
                 .iter()
                 .fold(true, |inited, (_, e)| inited && e.inited())
     }
