@@ -37,7 +37,7 @@ impl Redis {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd()?;
             if cfg.multi {
-                packet.ignore_parsed();
+                packet.multi_ready();
                 while packet.has_bulk() {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
