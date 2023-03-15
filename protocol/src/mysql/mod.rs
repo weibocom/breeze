@@ -29,7 +29,6 @@ use self::query_result::QueryResult;
 use self::reqpacket::RequestPacket;
 use self::row::convert::from_row;
 use self::rsppacket::ResponsePacket;
-use self::strategy::MysqlStrategy;
 
 use super::Flag;
 use super::Protocol;
@@ -61,20 +60,8 @@ pub mod prelude {
     impl Protocol for crate::mysql::proto::Text {}
 }
 
-#[derive(Clone)]
-pub struct Mysql {
-    convert_strategy: MysqlStrategy,
-    // req_packet: RequestPacket,
-}
-
-impl Default for Mysql {
-    fn default() -> Self {
-        Mysql {
-            convert_strategy: Default::default(),
-            // req_packet: Default::default(),
-        }
-    }
-}
+#[derive(Clone, Default)]
+pub struct Mysql {}
 
 #[derive(Debug, Clone, Copy)]
 pub(self) enum HandShakeStatus {
@@ -113,10 +100,10 @@ impl Protocol for Mysql {
         process: &mut P,
     ) -> Result<()> {
         assert!(stream.len() > 0, "mc req: {:?}", stream.slice());
-        log::debug!("recv mysql-mc req:{:?}", stream.slice());
+        log::debug!("+++ recv mysql-mc req:{:?}", stream.slice());
 
         // TODO: 这个需要把encode、decode抽出来，然后去掉mut，提升为Mysql结构体的字段 fishermen
-        let mut req_packet = RequestPacket::new();
+        // let mut req_packet = RequestPacket::new();
 
         // TODO request的解析部分待抽到reqpacket中
         while stream.len() >= mcpacket::HEADER_LEN {
@@ -163,6 +150,7 @@ impl Protocol for Mysql {
     // TODO in: mysql, out: mc vs redis
     //  1 解析mysql response； 2 转换为mc响应
     fn parse_response<S: crate::Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+        log::debug!("+++ recv mysql response:{:?}", data.slice());
         let mut rsp_packet = ResponsePacket::new(data, None);
         match self.parse_response_inner(&mut rsp_packet) {
             Ok(cmd) => Ok(cmd),
@@ -170,7 +158,10 @@ impl Protocol for Mysql {
                 // rsp_packet.reserve();
                 Ok(None)
             }
-            Err(e) => Err(e),
+            Err(e) => {
+                log::warn!("+++ err when parse mysql response: {:?}", e);
+                Err(e)
+            }
         }
     }
 
@@ -186,6 +177,8 @@ impl Protocol for Mysql {
         M: crate::Metric<I>,
         I: crate::MetricItem,
     {
+        log::debug!("+++ will write response: {:?}", response);
+
         // sendonly 直接返回
         if ctx.request().sentonly() {
             assert!(response.is_none(), "req:{:?}", ctx.request());
@@ -193,7 +186,7 @@ impl Protocol for Mysql {
         }
 
         // 如果原始请求是quite_get请求，并且not found，则不回写。
-        let old_op_code = ctx.request().op_code();
+        let old_op_code = ctx.request().op_code() as u8;
 
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         // if let Some(rsp) = ctx.response_mut() {
@@ -216,7 +209,7 @@ impl Protocol for Mysql {
             // 这个只是value，还需要write header等
             // let data = rsp.data_mut();
             // data.restore_op(old_op_code as u8);
-            self.write_mc_packet(ctx.request(), rsp, w)?;
+            self.write_mc_packet(old_op_code, rsp, w)?;
 
             return Ok(());
         }
@@ -224,7 +217,7 @@ impl Protocol for Mysql {
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
 
-        match old_op_code as u8 {
+        match old_op_code {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_CODE_NOOP => {
                 w.write_u8(RESPONSE_MAGIC)?;
@@ -264,7 +257,7 @@ impl Protocol for Mysql {
                     old_op_code,
                     ctx.request()
                 );
-                return Err(Error::OpCodeNotSupported(old_op_code));
+                return Err(Error::OpCodeNotSupported(old_op_code as u16));
             }
         }
         Ok(())
@@ -342,13 +335,20 @@ impl Mysql {
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
     ) -> Result<Option<Command>> {
-        let result_set = self.parse_and_fold(rsp_packet, Vec::new(), |mut acc, row| {
+        let mut result_set = self.parse_and_fold(rsp_packet, Vec::new(), |mut acc, row| {
             acc.push(from_row(row));
             acc
         })?;
 
+        log::debug!("+++ parsed response:{:?}", result_set);
         // 返回mysql响应，在write response处进行协议转换
-        let mem = MemGuard::from_vec(result_set);
+        // TODO 这里临时打通，需要进一步完善修改 fishermen
+        let row = match result_set.len() > 0 {
+            true => result_set.remove(0),
+            false => vec![],
+        };
+
+        let mem = MemGuard::from_vec(row);
         let mut flag = Flag::from_op(OP_CODE_GET as u16, crate::Operation::Get);
         flag.set_status_ok(true);
         let cmd = Command::new(flag, mem);
@@ -366,7 +366,9 @@ impl Mysql {
         F: FnMut(U, T) -> U,
         S: crate::Stream,
     {
+        log::debug!("+++ parse columns...");
         let meta = rsp_packet.handle_result_set()?;
+        log::debug!("+++ after parse columns competed!");
         // TODO 先打通Get，实际响应可能会包含更多字段  fishermen
         let result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
         result
@@ -375,31 +377,33 @@ impl Mysql {
     }
 
     #[inline]
-    fn write_mc_packet<W>(
-        &self,
-        request: &HashedCommand,
-        response: &crate::Command,
-        w: &mut W,
-    ) -> Result<()>
+    fn write_mc_packet<W>(&self, old_opcode: u8, response: &crate::Command, w: &mut W) -> Result<()>
     where
         W: crate::Writer,
     {
-        // let req = ctx.request().data();
-        let old_op_code = request.op_code();
-        let req = request.data();
+        // header 24 bytes
         w.write_u8(mcpacket::Magic::Response as u8)?; //magic 1byte
-        w.write_u8(old_op_code as u8)?; // opcode 1 byte
-        let key_len = req.key_len();
-        w.write_u16(req.key_len())?; // key len 2 bytes
-        let extra_len = 0_u8;
+        w.write_u8(old_opcode)?; // opcode 1 byte
+        let key_len = 0; // TODO：key已丢失，当前先返回0（后续保留？待定） fishermen
+        w.write_u16(key_len)?; // key len 2 bytes
+        let extra_len = 4_u8; // get 响应必须有extra，用于存放set时设置的flag
         w.write_u8(extra_len)?; //extras length 1byte
-        w.write_u8(0_u8); //data type 1byte
+        w.write_u8(0_u8)?; //data type 1byte
         w.write_u16(mcpacket::RespStatus::NoError as u16)?; // Status 2byte
         let total_body_len = extra_len as u32 + key_len as u32 + response.data().len() as u32;
-        w.write_u32(total_body_len); // total body len: 4 bytes
-        w.write_u32(req.opaque())?; //opaque: 4bytes
+        w.write_u32(total_body_len)?; // total body len: 4 bytes
+        w.write_u32(0)?; //opaque: 4bytes
         w.write_u64(0)?; //cas: 8 bytes
-        w.write_slice(&req.key(), 0)?; // key
+
+        // body： total body len
+        // TODO flag涉及到不同语言的解析问题，需要考虑兼容 fishermen
+        const FLAG_BYTEARR_JAVA: u32 = 4096;
+        //extra, 只传bytearr类型（java为4096，其他语言如何处理？），由client解析
+        w.write_u32(FLAG_BYTEARR_JAVA)?;
+
+        //TODO 由于存在协议转换，key 丢失，如果需要传回key进行check，需要考虑保存原始req  fishermen
+        // w.write_slice(&req.key(), 0)?;
+
         w.write_slice(response.data(), 0) // value
     }
 }

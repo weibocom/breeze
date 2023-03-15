@@ -78,7 +78,6 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
     }
     #[inline]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        log::debug!("+++ poll flush in...");
         if self.buf.avail() {
             let Self { s, buf, .. } = &mut *self;
             let mut w = Pin::new(s);
