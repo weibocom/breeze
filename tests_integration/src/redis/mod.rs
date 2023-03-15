@@ -40,6 +40,7 @@
 //! ## 非合法性指令
 //! - set key, 无value; get key key 应返回错误
 //！- mget 分两个包发送
+//！- mset 分两个包发送
 //! - get 分两个包发送
 
 mod basic;
@@ -51,6 +52,8 @@ use crate::ci::env::*;
 use crate::redis_helper::*;
 #[allow(unused)]
 use function_name::named;
+use redis::Commands;
+use std::time::Duration;
 use std::vec;
 
 //github ci 过不了,本地可以过,不清楚原因
@@ -169,6 +172,37 @@ fn test_mget_1000() {
 //         .expect_err("get with two arg should panic");
 // }
 
+/// mset 分两个包发送
+#[test]
+fn test_mset_reenter() {
+    let mut con = get_conn(&RESTYPE.get_host());
+
+    let mset1 = "*5\r\n$4\r\nmset\r\n$18\r\ntest_mset_reenter1\r\n$1\r\n1\r\n";
+
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    for i in 0..10 {
+        let mset = format!("*5\r\n$4\r\nmset\r\n$18\r\ntest_mset_reenter1\r\n$1\r\n{}\r\n$18\r\ntest_mset_reenter2\r\n$1\r\n{}\r\n", i, i);
+        let mid = if i == 0 {
+            mset1.len()
+        } else {
+            rng.gen_range(1..mset.len() - 1)
+        };
+        println!("{mid}");
+        con.send_packed_command(mset[..mid].as_bytes())
+            .expect("send err");
+        std::thread::sleep(Duration::from_millis(100));
+        con.send_packed_command(mset[mid..].as_bytes())
+            .expect("send err");
+        assert_eq!(con.recv_response().unwrap(), redis::Value::Okay);
+        let key = ("test_mset_reenter1", "test_mset_reenter2");
+        assert_eq!(
+            con.mget::<(&str, &str), (usize, usize)>(key).unwrap(),
+            (i, i)
+        );
+    }
+}
+
 /// mget 分两个包发送
 #[named]
 #[test]
@@ -203,6 +237,7 @@ fn test_mget_reenter() {
         };
         con.send_packed_command(mget[..mid].as_bytes())
             .expect("send err");
+        std::thread::sleep(Duration::from_millis(100));
         con.send_packed_command(mget[mid..].as_bytes())
             .expect("send err");
         assert_eq!(
@@ -232,6 +267,7 @@ fn test_get_reenter() {
         let mid = rng.gen_range(1..mget.len() - 1);
         con.send_packed_command(mget[..mid].as_bytes())
             .expect("send err");
+        std::thread::sleep(Duration::from_millis(100));
         con.send_packed_command(mget[mid..].as_bytes())
             .expect("send err");
         assert_eq!(con.recv_response().unwrap(), redis::Value::Data("1".into()));

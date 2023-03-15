@@ -424,7 +424,7 @@ impl Packet {
         for i in *oft + 1..self.len() {
             if self[i] == b'\r' {
                 // 下一个字符必须是'\n'
-                debug_assert!(i + 1 < self.len() || self[i + 1] == b'\n');
+                debug_assert!(i + 1 > self.len() || self[i + 1] == b'\n');
                 *oft = i + 2;
                 return Ok(n);
             }

@@ -174,6 +174,9 @@ impl Protocol for Redis {
         alg: &H,
         process: &mut P,
     ) -> Result<()> {
+        if stream.slice().len() > 0 {
+            log::info!("parse {:?}", stream.slice());
+        }
         let mut packet = RequestPacket::new(stream);
         match self.parse_request_inner(&mut packet, alg, process) {
             Ok(_) => Ok(()),
