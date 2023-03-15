@@ -137,7 +137,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
                 // cmd name 解析完毕，bulk 减 1
                 self.ctx.oft = idx + CRLF_LEN;
-                self.ctx.oft = self.ctx.oft;
                 self.ctx.bulk -= 1;
                 Ok(cfg)
             } else {

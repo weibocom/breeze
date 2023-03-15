@@ -30,8 +30,9 @@ use rt::Entry;
 fn checkout_basic() {
     assert_eq!(24, size_of::<ds::RingSlice>());
     assert_eq!(8, size_of::<protocol::Context>());
+    assert_eq!(size_of::<protocol::Context>(), 8);
     assert_eq!(
-        size_of::<protocol::Context>(),
+        size_of::<protocol::parser::StreamContext>(),
         size_of::<protocol::redis::RequestContext>()
     );
     assert_eq!(16, size_of::<protocol::Flag>());
