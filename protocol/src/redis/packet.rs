@@ -18,7 +18,9 @@ pub struct RequestContext {
     pub layer: u8,        // 请求的层次，目前只支持：master，all
     pub sendto_all: bool, //发送到所有shard
     pub is_reserved_hash: bool,
+    //16
     pub reserved_hash: i64,
+    //24，默认usize是64位
     pub oft: usize, //上一次解析的位置
 }
 
@@ -57,8 +59,8 @@ pub(crate) struct RequestPacket<'a, S> {
     // 次低16位是op_code.
     ctx: &'a mut RequestContext,
     //为什么保留oft呢？解析不完整协议时不能更新oft，解析成功才能更新
-    oft: usize,
-    oft_last: usize,
+    // oft: usize,
+    // oft_last: usize,
 }
 
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
@@ -66,14 +68,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(crate) fn new(stream: &'a mut S) -> Self {
         //注意：此时实际上有了两个stream的mut ref
         let ctx: &mut RequestContext = stream.context().into();
-        let oft = ctx.oft;
         let data = stream.slice();
         Self {
             data: Packet { inner: data },
             ctx,
             stream,
-            oft,
-            oft_last: 0,
         }
     }
 
@@ -83,18 +82,17 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     #[inline]
     pub(crate) fn available(&self) -> bool {
-        self.oft < self.data.len()
+        self.ctx.oft < self.data.len()
     }
 
     #[inline]
     pub(crate) fn parse_bulk_num(&mut self) -> Result<()> {
         if self.bulk() == 0 {
             debug_assert!(self.available(), "{:?}", self);
-            if self.data[self.oft] != b'*' {
+            if self.data[self.ctx.oft] != b'*' {
                 return Err(RedisError::ReqInvalidStar.error());
             }
-            self.ctx.bulk = self.data.num_of_bulks(&mut self.oft)? as u16;
-            self.ctx.oft = self.oft;
+            self.ctx.bulk = self.data.num_of_bulks(&mut self.ctx.oft)? as u16;
             self.ctx.first = true;
             assert_ne!(self.bulk(), 0, "packet:{}", self);
         }
@@ -102,8 +100,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
     //#[inline(always)]
     //fn incr_oft(&mut self, by: usize) -> Result<()> {
-    //    self.oft += by;
-    //    if self.oft > self.data.len() {
+    //    self.ctx.oft += by;
+    //    if self.ctx.oft > self.data.len() {
     //        return Err(crate::Error::ProtocolIncomplete);
     //    }
     //    Ok(())
@@ -113,8 +111,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         // 需要确保，如果op_code不为0，则之前的数据一定处理过。
         if self.ctx.op_code == 0 {
             // 当前上下文是获取命令。格式为:  $num\r\ncmd\r\n
-            if let Some(first_r) = self.data.find(self.oft, b'\r') {
-                debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
+            if let Some(first_r) = self.data.find(self.ctx.oft, b'\r') {
+                debug_assert_eq!(self.data[self.ctx.oft], b'$', "{:?}", self);
                 // 路过CRLF_LEN个字节，通过命令获取op_code
                 let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
                 self.ctx.op_code = op_code;
@@ -122,14 +120,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 let cfg = command::get_cfg(self.op_code())?;
                 cfg.validate(self.bulk() as usize)?;
 
-                if cfg.need_reserved_hash && !(self.sendto_all() || self.is_reserved_hash()) {
+                if cfg.need_reserved_hash && !(self.sendto_all() || self.ctx.is_reserved_hash) {
                     return Err(RedisError::ReqInvalid.error());
                 }
                 // check 命令长度
                 debug_assert_eq!(
                     cfg.name.len(),
                     self.data
-                        .slice(self.oft + 1, first_r - self.oft - 1)
+                        .slice(self.ctx.oft + 1, first_r - self.ctx.oft - 1)
                         .fold(0usize, |c, b| {
                             *c = *c * 10 + (b - b'0') as usize;
                         }),
@@ -138,8 +136,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 );
 
                 // cmd name 解析完毕，bulk 减 1
-                self.oft = idx + CRLF_LEN;
-                self.ctx.oft = self.oft;
+                self.ctx.oft = idx + CRLF_LEN;
+                self.ctx.oft = self.ctx.oft;
                 self.ctx.bulk -= 1;
                 Ok(cfg)
             } else {
@@ -153,15 +151,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(crate) fn parse_key(&mut self) -> Result<RingSlice> {
         debug_assert_ne!(self.ctx.op_code, 0, "packet:{:?}", self);
         debug_assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
-        let key_len = self.data.num_and_skip(&mut self.oft)?;
+        let key_len = self.data.num_and_skip(&mut self.ctx.oft)?;
         self.ctx.bulk -= 1;
-        let start = self.oft - CRLF_LEN - key_len;
+        let start = self.ctx.oft - CRLF_LEN - key_len;
         Ok(self.data.sub_slice(start, key_len))
     }
     #[inline]
     pub(crate) fn ignore_one_bulk(&mut self) -> Result<()> {
         assert_ne!(self.ctx.bulk, 0, "packet:{:?}", self);
-        self.data.num_and_skip(&mut self.oft)?;
+        self.data.num_and_skip(&mut self.ctx.oft)?;
         self.ctx.bulk -= 1;
         Ok(())
     }
@@ -172,13 +170,20 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
         Ok(())
     }
+
+    //oft代表的是为被读走的索引
+    #[inline]
+    fn update_oft(&mut self) {
+        self.ctx.oft = 0;
+        self.data = self.stream.slice().into();
+    }
+
     // 忽略掉之前的数据，通常是multi请求的前面部分。
     #[inline]
     pub(crate) fn ignore_parsed(&mut self) {
-        if self.oft > self.oft_last {
-            self.stream.ignore(self.oft - self.oft_last);
-            self.oft_last = self.oft;
-
+        if self.ctx.oft > 0 {
+            self.stream.ignore(self.ctx.oft);
+            self.update_oft();
             assert_ne!(self.ctx.op_code, 0, "packet:{}", self);
             // 更新
             // *self.stream.context() = self.ctx.u64();
@@ -197,14 +202,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     //     self.stream.reserved_hash().replace(reserved_hash);
     // }
 
-    #[inline]
-    pub(super) fn is_reserved_hash(&self) -> bool {
-        self.ctx.is_reserved_hash
-    }
-    #[inline]
-    pub(super) fn reserved_hash(&self) -> i64 {
-        self.ctx.reserved_hash
-    }
+    // #[inline]
+    // pub(super) fn is_reserved_hash(&self) -> bool {
+    //     self.ctx.is_reserved_hash
+    // }
+    // #[inline]
+    // pub(super) fn reserved_hash(&self) -> i64 {
+    //     self.ctx.reserved_hash
+    // }
 
     #[inline]
     pub(super) fn sendto_all(&self) -> bool {
@@ -233,12 +238,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
-        assert!(self.oft_last < self.oft, "packet:{}", self);
-        let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
-        self.oft_last = self.oft;
-        // 更新上下文的bulk num。
+        assert!(self.ctx.oft > 0, "packet:{}", self);
+        let req = self.stream.take(self.ctx.oft);
+        self.update_oft();
         self.ctx.first = false;
-        self.stream.take(data.len())
+        req
     }
 
     pub(super) fn flag(&self, cfg: &CommandProperties) -> Flag {
@@ -372,9 +376,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     // 解析完毕，如果数据未读完，需要保留足够的buff空间
     #[inline(always)]
     pub(crate) fn reserve_stream_buff(&mut self) {
-        if self.oft > self.stream.len() {
-            log::debug!("+++ will reserve len:{}", (self.oft - self.stream.len()));
-            self.stream.reserve(self.oft - self.data.len())
+        if self.ctx.oft > self.stream.len() {
+            log::debug!(
+                "+++ will reserve len:{}",
+                (self.ctx.oft - self.stream.len())
+            );
+            self.stream.reserve(self.ctx.oft - self.data.len())
         }
     }
 }
@@ -517,16 +524,18 @@ impl Packet {
     }
     #[inline]
     fn num_and_skip(&self, oft: &mut usize) -> crate::Result<usize> {
-        let num = self.num(oft)?;
-        if num > 0 {
-            // skip num个字节 + "\r\n" 2个字节
-            *oft += num + 2;
-        }
-        if *oft <= self.len() {
-            Ok(num)
-        } else {
-            Err(crate::Error::ProtocolIncomplete)
-        }
+        update_oft_if_ok(oft, |oft| {
+            let num = self.num(oft)?;
+            if num > 0 {
+                // skip num个字节 + "\r\n" 2个字节
+                *oft += num + 2;
+            }
+            if *oft <= self.len() {
+                Ok(num)
+            } else {
+                Err(crate::Error::ProtocolIncomplete)
+            }
+        })
     }
     #[inline(always)]
     pub fn line(&self, oft: &mut usize) -> crate::Result<()> {
@@ -662,12 +671,11 @@ impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(packet => len:{} bulk num: {} op_code:{} oft:({} => {})) first:{} data:{:?}",
+            "(packet => len:{} bulk num: {} op_code:{} oft:{}) first:{} data:{:?}",
             self.data.len(),
             self.bulk(),
             self.op_code(),
-            self.oft_last,
-            self.oft,
+            self.ctx.oft,
             self.first(),
             self.data
         )
