@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
-use crate::{Builder, Endpoint, Single, Topology};
+use crate::{Builder, Endpoint, Notify, Single, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
@@ -13,7 +11,6 @@ use super::config::RedisNamespace;
 use crate::Timeout;
 use discovery::dns::{self, IPPort};
 
-const CONFIG_UPDATED_KEY: &str = "__config__";
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -23,7 +20,7 @@ pub struct RedisService<B, E, Req, P> {
     hasher: Hasher,
     distribute: Distribute,
     selector: Selector, // 从的选择策略。
-    updated: HashMap<String, Arc<AtomicBool>>,
+    updated: Notify,
     parser: P,
     service: String,
     timeout_master: Timeout,
@@ -161,10 +158,7 @@ where
             self.shards_url = shards_url;
 
             // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
-            self.updated
-                .entry(CONFIG_UPDATED_KEY.to_string())
-                .or_insert(Arc::new(AtomicBool::new(true)))
-                .store(true, Ordering::Release);
+            self.updated.notify();
         }
         self.service = namespace.to_string();
     }
@@ -173,27 +167,18 @@ where
     // 2. 近期有dns更新。
     #[inline]
     fn need_load(&self) -> bool {
-        self.shards.len() != self.shards_url.len()
-            || self
-                .updated
-                .iter()
-                .fold(false, |acc, (_k, v)| acc || v.load(Ordering::Acquire))
+        self.shards.len() != self.shards_url.len() || self.updated.waiting()
     }
 
     #[inline]
     fn load(&mut self) {
         // TODO: 先改通知状态，再load，如果失败，改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        for (_, updated) in self.updated.iter() {
-            updated.store(false, Ordering::Release);
-        }
+        self.updated.clear();
 
         // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
         let succeed = self.load_inner();
         if !succeed {
-            self.updated
-                .get_mut(CONFIG_UPDATED_KEY)
-                .expect("redis config state missed")
-                .store(true, Ordering::Release);
+            self.updated.notify();
             log::warn!("redis will reload topo later...");
         }
     }

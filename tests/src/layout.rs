@@ -45,6 +45,8 @@ fn checkout_basic() {
     assert_eq!(24, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
+    assert_eq!(48, size_of::<ds::MemGuard>());
+    assert_eq!(48, size_of::<std::collections::HashMap<usize, usize>>());
 }
 
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
@@ -83,10 +85,10 @@ fn check_handler() {
 #[test]
 fn check_topology() {
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
-    assert_eq!(184, size_of::<Topology>());
+    assert_eq!(160, size_of::<Topology>());
     assert_eq!(72, size_of::<CacheService>());
-    assert_eq!(184, size_of::<RedisService>());
-    assert_eq!(144, size_of::<PhantomService>());
+    assert_eq!(160, size_of::<RedisService>());
+    assert_eq!(120, size_of::<PhantomService>());
     assert_eq!(152, size_of::<MsgQue>());
 }
 
