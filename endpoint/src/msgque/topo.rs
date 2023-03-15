@@ -12,7 +12,7 @@ use tokio::time::Instant;
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{Builder, Endpoint, Timeout, Topology};
-use sharding::hash::{Hash, HashKey, Hasher, Padding};
+use sharding::hash::HashKey;
 
 use crate::msgque::strategy::hitfirst::Node;
 
@@ -107,7 +107,7 @@ where
     }
 }
 
-const PADDING: Hasher = Hasher::Padding(Padding);
+//const PADDING: Hasher = Hasher::Padding(Padding);
 
 impl<B, E, Req, P> Topology for MsgQue<B, E, Req, P>
 where
@@ -117,8 +117,9 @@ where
     P: Protocol,
 {
     #[inline]
-    fn hash<K: HashKey>(&self, k: &K) -> i64 {
-        PADDING.hash(k)
+    fn hash<K: HashKey>(&self, _k: &K) -> i64 {
+        log::warn!("msg queue does't support hash");
+        0
     }
     #[inline]
     fn exp_sec(&self) -> u32 {

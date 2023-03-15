@@ -56,7 +56,7 @@ pub trait Hash {
 #[enum_dispatch(Hash)]
 #[derive(Debug, Clone)]
 pub enum Hasher {
-    Padding(Padding),
+    //Padding(Padding),
     Raw(Raw), // redis raw, long型字符串直接用数字作为hash
     Bkdr(Bkdr),
     Crc32(Crc32),
@@ -101,7 +101,7 @@ impl Hasher {
         // 简单hash，即名字中没有"-"的hash，目前只有bkdr、raw、crc32
         if alg_parts.len() == 1 {
             return match alg_parts[0] {
-                HASH_PADDING => Self::Padding(Default::default()),
+                //HASH_PADDING => Self::Padding(Default::default()),
                 "bkdr" => Self::Bkdr(Default::default()),
                 "raw" => Self::Raw(Raw::from(Default::default())),
                 "crc32" => Self::Crc32(Default::default()),
