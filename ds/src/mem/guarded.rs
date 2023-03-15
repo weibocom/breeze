@@ -37,8 +37,8 @@ impl GuardedBuffer {
     }
     #[inline]
     pub fn take(&mut self, n: usize) -> MemGuard {
-        assert!(n > 0);
-        assert!(self.taken + n <= self.writtened());
+        debug_assert!(n > 0);
+        debug_assert!(self.taken + n <= self.writtened());
         let guard = unsafe { self.guards.push_back_mut() };
         *guard.get_mut() = 0;
         let data = self.inner.slice(self.taken, n);
@@ -62,27 +62,10 @@ impl GuardedBuffer {
     pub fn pending(&self) -> usize {
         self.taken - self.inner.read()
     }
-    //#[inline]
-    //pub fn update(&mut self, idx: usize, val: u8) {
-    //    let oft = self.offset(idx);
-    //    self.inner.update(oft, val);
-    //}
-    //#[inline]
-    //pub fn at(&self, idx: usize) -> u8 {
-    //    self.inner.at(self.offset(idx))
-    //}
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.len() - self.pending()
     }
-    //#[inline]
-    //fn offset(&self, oft: usize) -> usize {
-    //    self.pending() + oft
-    //}
-    //#[inline]
-    //pub fn raw(&self) -> &[u8] {
-    //    self.inner.raw()
-    //}
 }
 use std::fmt::{self, Display, Formatter};
 impl Display for GuardedBuffer {
@@ -113,9 +96,9 @@ pub struct MemGuard {
 impl MemGuard {
     #[inline]
     fn new(data: RingSlice, guard: *const AtomicU32) -> Self {
-        assert!(!guard.is_null());
-        assert_ne!(data.len(), 0);
-        unsafe { assert_eq!((&*guard).load(Ordering::Acquire), 0) };
+        debug_assert!(!guard.is_null());
+        debug_assert_ne!(data.len(), 0);
+        unsafe { debug_assert_eq!((&*guard).load(Ordering::Acquire), 0) };
         Self {
             mem: data,
             guard,
@@ -125,8 +108,7 @@ impl MemGuard {
     #[inline]
     pub fn from_vec(data: Vec<u8>) -> Self {
         let mem: RingSlice = data.as_slice().into();
-        //assert_eq!(data.capacity(), mem.len());
-        assert_ne!(data.len(), 0);
+        debug_assert_ne!(data.len(), 0);
         let cap = data.capacity();
         let _ = std::mem::ManuallyDrop::new(data);
         let guard = 0 as *const _;
@@ -145,20 +127,16 @@ impl MemGuard {
     pub fn len(&self) -> usize {
         self.mem.len()
     }
-    //#[inline]
-    //pub fn read(&self, oft: usize) -> &[u8] {
-    //    self.mem.read(oft)
-    //}
 }
 impl Drop for MemGuard {
     #[inline]
     fn drop(&mut self) {
         unsafe {
             if self.guard.is_null() {
-                assert!(self.cap >= self.mem.len());
+                debug_assert!(self.cap >= self.mem.len());
                 let _v = Vec::from_raw_parts(self.mem.ptr(), 0, self.cap);
             } else {
-                assert_eq!((&*self.guard).load(Ordering::Acquire), 0);
+                debug_assert_eq!((&*self.guard).load(Ordering::Acquire), 0);
                 (&*self.guard).store(self.mem.len() as u32, Ordering::Release);
             }
         }
