@@ -60,7 +60,6 @@ impl RingBuffer {
         let n = (self.size - oft).min(avail);
         let b = unsafe { from_raw_parts_mut(self.data.as_ptr().add(oft), n) };
         let (read, out) = src.read(b);
-        log::debug!("+++ already read count:{}", read);
         self.advance_write(read);
         // read < n：buffer未满，则认定为已读取完毕
         // avail == read:  当前buffer已满.

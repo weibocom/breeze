@@ -373,12 +373,17 @@ impl<'c, T: crate::mysql::prelude::Protocol, S: Stream> Iterator for QueryResult
             // },
             InSet(cols) => match self.rsp_packet.next_row_packet() {
                 Ok(Some(pld)) => {
+                    log::debug!("+++ read row data: {:?}", pld);
                     match ParseBuf(&*pld).parse::<RowDeserializer<(), Text>>(cols.clone()) {
                         Ok(row) => {
+                            log::debug!("+++ parsed row: {:?}", row);
                             self.state = InSet(cols.clone());
                             Some(Ok(row.into()))
                         }
-                        Err(e) => None,
+                        Err(e) => {
+                            log::warn!("+++ parsed row failed: {:?}, data: {:?}", e, pld);
+                            None
+                        }
                     }
                 }
                 Ok(None) => {

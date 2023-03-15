@@ -109,10 +109,13 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     }
 
     pub(super) fn handle_result_set(&mut self) -> Result<Or<Vec<Column>, OkPacket<'static>>> {
+        log::debug!("+++ in handle result set");
         // 全部解析完毕前，不对数据进行take
-        let payload = self.next_packet_data(false)?;
+        let payload = self.next_packet_data(true)?;
+        log::debug!("+++ column hdr packet data:{:?}", payload);
         match payload[0] {
             HEADER_FLAG_OK => {
+                log::debug!("+++ parsed ok rs data:{:?}", payload);
                 let ok = self.handle_ok::<CommonOkPacket>(&payload)?;
                 self.take();
                 Ok(Or::B(ok.into_owned()))
@@ -125,15 +128,23 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             _ => {
                 let mut reader = &payload[..];
                 let column_count = reader.read_lenenc_int()?;
+                log::debug!("+++ parsed result set column count:{:?}", column_count);
                 let mut columns: Vec<Column> = Vec::with_capacity(column_count as usize);
-                for _ in 0..column_count {
-                    let pld = self.next_packet_data(false)?;
+                for i in 0..column_count {
+                    let pld = self.next_packet_data(true)?;
                     let column = ParseBuf(&*pld).parse(())?;
+                    log::debug!("+++ parsed column-{} :{:?}", i, pld);
                     columns.push(column);
                 }
                 // skip eof packet
-                self.drop_packet();
+                log::debug!("+++ will drop eof ");
+                self.drop_packet()?;
                 self.has_results = column_count > 0;
+                log::debug!(
+                    "+++ parsed columns succeed! left data:{:?}, columns: {:?}",
+                    self.data.sub_slice(self.oft, self.left_len()),
+                    columns
+                );
                 Ok(Or::A(columns))
             }
         }
@@ -164,12 +175,16 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         self.capability_flags.contains(flag)
     }
 
+    // TODO 先在此处take，后续需要改为最后解析完毕后，只take一次  fishermen
     pub(super) fn next_row_packet(&mut self) -> Result<Option<Buffer>> {
         if !self.has_results {
             return Ok(None);
         }
 
-        let pld = self.next_packet_data(false)?;
+        log::debug!("+++ will parse next row...");
+        // TODO 这个可以通过row count来确定最后一行记录，然后进行一次性take fishermen
+        let pld = self.next_packet_data(true)?;
+        log::debug!("+++ read next row data succeed!");
 
         if self.has_capability(CapabilityFlags::CLIENT_DEPRECATE_EOF) {
             if pld[0] == 0xfe && pld.len() < MAX_PAYLOAD_LEN {
@@ -185,12 +200,25 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             }
         }
 
+        log::debug!("+++ parsed next row succeed!");
         let buff = Buffer::new(pld);
         Ok(Some(buff))
     }
 
     pub(super) fn drop_packet(&mut self) -> Result<()> {
         self.next_packet_data(true).map(drop)
+    }
+
+    #[inline(always)]
+    fn copy_left_to_vec(&mut self, data: &mut Vec<u8>) {
+        self.data
+            .sub_slice(self.oft, self.left_len())
+            .copy_to_vec(data);
+    }
+
+    #[inline(always)]
+    fn left_len(&self) -> usize {
+        self.data.len() - self.oft
     }
 
     // 读一个完整的响应包，如果数据不完整，返回ProtocolIncomplete
@@ -202,10 +230,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
         // 解析mysql packet header
         let mut data: Vec<u8> = Vec::with_capacity(HEADER_LEN);
-        self.data.copy_to_vec(&mut data);
+        self.copy_left_to_vec(&mut data);
         let raw_chunk_len = LittleEndian::read_u24(&data) as usize;
         self.payload_len = raw_chunk_len;
-        let seq_id = self.data.at(3);
+        let seq_id = data[3];
         self.oft += HEADER_LEN;
 
         match NonZeroUsize::new(raw_chunk_len) {
@@ -219,10 +247,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         };
 
         // 4 字节之后是各种实际的packet payload
-        if self.data.len() >= HEADER_LEN + raw_chunk_len {
+        if data.len() >= HEADER_LEN + raw_chunk_len {
             // 0xFF ERR packet header
             if self.current() == 0xFF {
-                match ParseBuf(&data[self.oft..]).parse(self.capability_flags)? {
+                match ParseBuf(&data[HEADER_LEN..]).parse(self.capability_flags)? {
                     // TODO Error process 异常响应稍后处理 fishermen
                     ErrPacket::Error(server_error) => {
                         // self.handle_err();
@@ -237,7 +265,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             }
 
             // self.seq_id = self.seq_id.wrapping_add(1);
-            log::warn!("mysql sucess rsp:{:?}", self.data);
+            log::warn!("mysql sucess rsp:{:?}", data);
             return Ok(());
         }
 
