@@ -165,9 +165,6 @@ pub async fn start_dns_resolver_refresher() {
     let mut cache = dns_resolver.tx;
     let mut rx = dns_resolver.reg_rx;
     let mut resolver = dns_resolver.resolver;
-    use std::task::Poll;
-    let noop = noop_waker::noop_waker();
-    let mut ctx = std::task::Context::from_waker(&noop);
     use ds::time::{Duration, Instant};
     const BATCH_CNT: usize = 128;
     let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -175,7 +172,7 @@ pub async fn start_dns_resolver_refresher() {
     let mut idx = 0;
     loop {
         let mut regs = Vec::new();
-        while let Poll::Ready(Some(reg)) = rx.poll_recv(&mut ctx) {
+        while let Ok(reg) = rx.try_recv() {
             regs.push(reg);
         }
         if regs.len() > 0 {

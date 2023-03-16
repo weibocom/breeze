@@ -1,6 +1,7 @@
 const BUF_MIN: usize = 2 * 1024;
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
+#[derive(Debug)]
 pub struct MemPolicy {
     max: u32,    // 最近一个周期内，最大的内存使用量
     cycles: u32, // 连续多少次tick返回true

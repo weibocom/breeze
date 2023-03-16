@@ -1,6 +1,3 @@
-use crypto::digest::Digest;
-use crypto::md5::Md5;
-
 use std::collections::BTreeMap;
 use std::ops::Bound::Included;
 
@@ -31,12 +28,8 @@ impl Consistent {
         for idx in 0..shards.len() {
             let factor = 40;
             for i in 0..factor {
-                let mut md5 = Md5::new();
                 let data: String = shards[idx].to_string() + "-" + &i.to_string();
-                let data_str = data.as_str();
-                md5.input_str(data_str);
-                let mut out_bytes = [0u8; 16];
-                md5.result(&mut out_bytes);
+                let out_bytes = md5::compute(data.as_str());
                 for j in 0..4 {
                     let hash = (((out_bytes[3 + j * 4] & 0xFF) as i64) << 24)
                         | (((out_bytes[2 + j * 4] & 0xFF) as i64) << 16)

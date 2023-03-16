@@ -6,17 +6,12 @@ pub(crate) mod packet;
 //mod token;
 
 use crate::{
-    redis::command::{CommandProperties, CommandType},
-    redis::packet::{LayerType, RequestPacket},
-    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, MetricName, Protocol,
-    RequestProcessor, Result, Stream, Writer,
+    redis::command::CommandType, redis::packet::RequestPacket, Command, Commander, Error, Flag,
+    HashedCommand, Metric, MetricItem, MetricName, Protocol, RequestProcessor, Result, Stream,
+    Writer,
 };
-use ds::RingSlice;
-use error::*;
 pub use packet::Packet;
 use sharding::hash::Hash;
-
-use rand;
 
 // redis 协议最多支持10w个token
 //const MAX_TOKEN_COUNT: usize = 100000;
@@ -39,133 +34,105 @@ impl Redis {
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         log::debug!("+++ rec redis req:{:?}", packet.inner_data());
         // let mut packet = packet::RequestPacket::new(stream);
-
         while packet.available() {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd()?;
-
-            let mut hash;
-            if cfg.swallowed {
-                // 优先处理swallow吞噬指令: master/hashkeyq/hashrandomq
-                self.parse_swallow_cmd(cfg, packet, alg)?;
-                continue;
-            } else if cfg.multi {
+            if cfg.multi {
                 packet.multi_ready();
-                let master_only = packet.master_only();
                 while packet.has_bulk() {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
                     let first = packet.first();
                     assert!(cfg.has_key, "cfg:{}", cfg.name);
 
-                    // 不管是否使用当前cmd的key来计算hash，都需要解析出一个key
-                    let key = packet.parse_key()?;
-
-                    // mutli cmd 也支持swallow指令
-                    if packet.reserved_hash() != 0 {
-                        // 使用hashkey直接指定了hash
-                        hash = packet.reserved_hash();
-                        log::info!("+++ use direct hash for multi cmd: {:?}", packet)
-                    } else {
-                        hash = calculate_hash(cfg, alg, &key);
-                    }
+                    let flag = packet.flag(cfg);
+                    let hash = packet.hash(cfg, alg)?;
 
                     if cfg.has_val {
                         packet.ignore_one_bulk()?;
                     }
                     let kv = packet.take();
-                    let req = cfg.build_request(hash, bulk, first, master_only, kv.data());
+                    let req = cfg.build_request(hash, bulk, first, flag, kv.data());
                     process.process(req, packet.complete());
                 }
             } else {
-                let mut flag = cfg.flag();
-                if packet.master_only() {
-                    flag.set_master_only();
-                }
-
-                if packet.reserved_hash() != 0 {
-                    // 使用hashkey直接指定了hash
-                    hash = packet.reserved_hash();
-                    flag.set_direct_hash();
-                } else if cfg.need_reserved_hash {
-                    return Err(RedisError::ReqInvalid.error());
-                } else if cfg.has_key {
-                    let key = packet.parse_key()?;
-                    hash = calculate_hash(cfg, alg, &key);
+                let (flag, hash) = if cfg.effect_on_next_req {
+                    packet.proc_effect_on_next_req_cmd(&cfg, alg)?
                 } else {
-                    hash = default_hash();
-                }
+                    (packet.flag(cfg), packet.hash(cfg, alg)?)
+                };
+
                 packet.ignore_all_bulks()?;
-
                 let cmd = packet.take();
-                let req = HashedCommand::new(cmd, hash, flag);
-                process.process(req, true);
-
-                // 如果是指示下一个cmd hash的特殊指令，需要保留hash
-                if cfg.reserve_hash {
-                    debug_assert!(cfg.has_key, "cfg:{}", cfg.name);
-                    // 执行到这里，需要保留指示key的，目前只有hashkey
-                    debug_assert_eq!(cfg.cmd_type, CommandType::SpecLocalCmdHashkey);
-                    packet.update_reserved_hash(hash);
+                if !cfg.swallowed {
+                    let req = HashedCommand::new(cmd, hash, flag);
+                    process.process(req, true);
                 }
+                // // 如果是指示下一个cmd hash的特殊指令，需要保留hash
+                // if cfg.reserve_hash {
+                //     debug_assert!(cfg.has_key, "cfg:{}", cfg.name);
+                //     // 执行到这里，需要保留指示key的，目前只有hashkey
+                //     debug_assert_eq!(cfg.cmd_type, CommandType::SpecLocalCmdHashkey);
+                //     packet.update_reserved_hash(hash);
+                // }
             }
-
-            // 至此，一个指令处理完毕
+            //一个请求结束才会走到这
+            packet.clear_status(cfg);
         }
         Ok(())
     }
 
     // 解析待吞噬的cmd，解析后会trim掉吞噬指令，消除吞噬指令的影响，目前swallowed cmds有master、hashkeyq、hashrandomq这几个，后续还有扩展就在这里加 fishermen
-    fn parse_swallow_cmd<S: Stream, H: Hash>(
-        &self,
-        cfg: &CommandProperties,
-        packet: &mut RequestPacket<S>,
-        alg: &H,
-    ) -> Result<()> {
-        debug_assert!(cfg.swallowed, "cfg:{}", cfg.name);
-        // 目前master_next 为true的只有master指令，所以不用比对cfg name
-        if cfg.master_next {
-            // cmd: master
-            packet.set_layer(LayerType::MasterOnly);
-        } else {
-            // 非master指令check后处理
-            match cfg.cmd_type {
-                // cmd: hashkeyq $key
-                CommandType::SwallowedCmdHashkeyq => {
-                    let key = packet.parse_key()?;
-                    let hash: i64;
-                    // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
-                    if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
-                        log::info!("+++ will broadcast: {:?}", packet.inner_data());
-                        hash = crate::MAX_DIRECT_HASH;
-                    } else {
-                        hash = calculate_hash(cfg, alg, &key);
-                    }
+    // fn parse_swallow_cmd<S: Stream, H: Hash>(
+    //     &self,
+    //     cfg: &CommandProperties,
+    //     packet: &mut RequestPacket<S>,
+    //     alg: &H,
+    // ) -> Result<()> {
+    //     debug_assert!(cfg.swallowed, "cfg:{}", cfg.name);
+    //     // 目前master_next 为true的只有master指令，所以不用比对cfg name
+    //     if cfg.master_next {
+    //         // cmd: master
+    //         packet.set_layer(LayerType::MasterOnly);
+    //     } else {
+    //         // 非master指令check后处理
+    //         match cfg.cmd_type {
+    //             // cmd: hashkeyq $key
+    //             CommandType::SwallowedCmdHashkeyq => {
+    //                 let key = packet.parse_key()?;
+    //                 // let hash: i64;
+    //                 // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
+    //                 // if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
+    //                 //     log::info!("+++ will broadcast: {:?}", packet.inner_data());
+    //                 //     hash = crate::MAX_DIRECT_HASH;
+    //                 // } else {
+    //                 let hash = calculate_hash(cfg, alg, &key);
+    //                 // }
 
-                    // 记录reserved hash，为下一个指令使用
-                    packet.update_reserved_hash(hash);
-                }
-                // cmd: hashrandomq
-                CommandType::SwallowedCmdHashrandomq => {
-                    // 虽然hash名义为i64，但实际当前均为u32
-                    let hash = rand::random::<u32>();
-                    // 记录reserved hash，为下一个指令使用
-                    packet.update_reserved_hash(hash as i64);
-                }
-                _ => {
-                    debug_assert!(false, "unknown swallowed cmd:{}", cfg.name);
-                    log::warn!("should not come here![hashkey?]");
-                }
-            }
-        }
+    //                 // 记录reserved hash，为下一个指令使用
+    //                 packet.update_reserved_hash(hash);
+    //             }
+    //             // cmd: hashrandomq
+    //             CommandType::SwallowedCmdHashrandomq => {
+    //                 // 虽然hash名义为i64，但实际当前均为u32
+    //                 let hash = rand::random::<u32>();
+    //                 // 记录reserved hash，为下一个指令使用
+    //                 packet.update_reserved_hash(hash as i64);
+    //             }
+    //             _ => {
+    //                 debug_assert!(false, "unknown swallowed cmd:{}", cfg.name);
+    //                 log::warn!("should not come here![hashkey?]");
+    //             }
+    //         }
+    //     }
 
-        // 吞噬掉整个cmd，准备处理下一个cmd fishermen
-        packet.ignore_all_bulks()?;
-        // 吞噬/trim掉当前 cmd data，准备解析下一个cmd
-        packet.trim_swallowed_cmd()?;
+    //     // 吞噬掉整个cmd，准备处理下一个cmd fishermen
+    //     packet.ignore_all_bulks()?;
+    //     // 吞噬/trim掉当前 cmd data，准备解析下一个cmd
+    //     packet.trim_swallowed_cmd()?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     #[inline]
     fn parse_response_inner<S: Stream>(
@@ -303,12 +270,12 @@ impl Protocol for Redis {
             } else {
                 // 无响应，则根据cmd name构建对应响应
                 match cfg.cmd_type {
-                    CommandType::SpecLocalCmdHashkey => {
-                        // format!(":{}\r\n", shard)
-                        w.write(b":")?;
-                        w.write(ctx.request_shard().to_string().as_bytes())?;
-                        w.write(b"\r\n")?;
-                    }
+                    // CommandType::SpecLocalCmdHashkey => {
+                    //     // format!(":{}\r\n", shard)
+                    //     w.write(b":")?;
+                    //     w.write(ctx.request_shard().to_string().as_bytes())?;
+                    //     w.write(b"\r\n")?;
+                    // }
                     _ => {
                         let padding = cfg.get_padding_rsp();
                         w.write(padding.as_bytes())?;
@@ -475,40 +442,6 @@ impl Protocol for Redis {
             log::error!("+++ check failed for req:{:?}, resp:{:?}", _req, _resp);
         }
     }
-}
-
-use std::sync::atomic::{AtomicI64, Ordering};
-static AUTO: AtomicI64 = AtomicI64::new(0);
-// 避免异常情况下hash为0，请求集中到某一个shard上。
-// hash正常情况下可能为0?
-#[inline]
-fn calculate_hash<H: Hash>(cfg: &CommandProperties, alg: &H, key: &RingSlice) -> i64 {
-    match key.len() {
-        0 => default_hash(),
-        2 => {
-            // 对“hashkey -1”做特殊处理，使用max hash，从而保持与hashkeyq一致
-            if key.len() == 2
-                && key.at(0) == ('-' as u8)
-                && key.at(1) == ('1' as u8)
-                && cfg.cmd_type == CommandType::SpecLocalCmdHashkey
-            {
-                crate::MAX_DIRECT_HASH
-            } else {
-                alg.hash(key)
-            }
-        }
-        _ => alg.hash(key),
-    }
-    // if key.len() == 0 {
-    //     default_hash()
-    // } else {
-    //     alg.hash(key)
-    // }
-}
-
-#[inline]
-fn default_hash() -> i64 {
-    AUTO.fetch_add(1, Ordering::Relaxed)
 }
 
 // tests only

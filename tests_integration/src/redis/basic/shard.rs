@@ -1,6 +1,8 @@
 //! 需要先指定分片，多条命令配合的测试
 #![allow(unused)]
 
+use std::time::Duration;
+
 use crate::ci::env::*;
 use crate::redis::{RESTYPE, RESTYPEWITHSLAVE};
 use crate::redis_helper::*;
@@ -46,7 +48,7 @@ const SERVERSWITHSLAVE: [[&str; 2]; 4] = [
 /// 读取100次，每个分片都有set的key, 则测试通过
 #[named]
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_hashrandomq1() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
@@ -76,7 +78,7 @@ fn test_hashrandomq1() {
 /// 通过master + hashrandomq get 100次, 应全部没值, 因master中没有56379
 #[test]
 #[named]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_hashrandomq_with_master() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
@@ -127,7 +129,7 @@ fn test_hashrandomq_with_master() {
 /// 56378端口从库是56381正常get是1 但是加完master后是从主库读所以是2
 #[named]
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_master() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
@@ -173,7 +175,7 @@ fn hashkey(swallow: bool) {
     } else {
         assert_eq!(
             redis::cmd("hashkey").arg("test_shards_4").query(&mut con),
-            Ok(3)
+            Ok(true)
         );
     }
     //set 到了分片3
@@ -191,7 +193,7 @@ fn hashkey(swallow: bool) {
     } else {
         assert_eq!(
             redis::cmd("hashkey").arg("test_shards_4").query(&mut con),
-            Ok(3)
+            Ok(true)
         )
     }
     assert_eq!(con.get(argkey), Ok(true));
@@ -201,13 +203,13 @@ fn hashkey(swallow: bool) {
 /// 然后直接get会从第一片上get get不到
 ///  再利用hashkeyq + test_sharsd_4+ get argkey去get 成功获取到
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_hashkeyq() {
     hashkey(true);
 }
 
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_hashkey() {
     hashkey(false);
 }
@@ -216,17 +218,15 @@ fn test_hashkey() {
 ///  set argkey 1
 /// master
 /// master_hashkeyq_1在第2片  key:test_shards_5在第1片
-///
-///
-///
 /// 向56379 set argkey 1
 /// get argkey 1 在第二片可以get到
 /// 加master get失败 没有56379d的主库 所以获取失败
 /// 利用hashkeyq set
 /// master hashkeyq get 成功获取到值
+/// 再次get argkey应为1，确保master和hashkeyq的副作用消失
 #[named]
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn master_hashkeyq_1() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
@@ -272,10 +272,13 @@ fn master_hashkeyq_1() {
     )
     .expect("send err");
     assert_eq!(con.get(argkey), Ok(2));
+
+    //
+    assert_eq!(con.get(argkey), Ok(1));
 }
 
 #[test]
-#[cfg(feature = "github_workflow")]
+// #[cfg(feature = "github_workflow")]
 fn test_keyshard() {
     let mut con = get_conn(&RESTYPE.get_host());
 
@@ -285,4 +288,34 @@ fn test_keyshard() {
             .query(&mut con),
         Ok((1, 2))
     );
+}
+
+//sendtoall  sendtoallq 命令
+#[test]
+#[named]
+// #[cfg(feature = "github_workflow")]
+fn test_sendto_all() {
+    let argkey = function_name!();
+    let mut con = get_conn(&RESTYPE.get_host());
+
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        redis::cmd("DEL").arg(argkey).execute(&mut con);
+    }
+    redis::cmd("SENDTOALL").execute(&mut con);
+    redis::cmd("SET").arg(argkey).arg(1).execute(&mut con);
+    std::thread::sleep(Duration::from_secs(1));
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        assert_eq!(con.get(argkey), Ok(1));
+    }
+
+    con.send_packed_command(&redis::cmd("SENDTOALLQ").get_packed_command())
+        .expect("send err");
+    redis::cmd("DEL").arg(argkey).execute(&mut con);
+    std::thread::sleep(Duration::from_secs(1));
+    for server in SERVERS {
+        let mut con = get_conn(server[0]);
+        assert_eq!(con.get(argkey), Ok(false));
+    }
 }

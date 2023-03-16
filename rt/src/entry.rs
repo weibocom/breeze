@@ -110,6 +110,7 @@ impl<T: TimeoutCheck + Unpin, F: Future<Output = Result<()>> + ReEnter + Debug +
             self.closing = self.closing.wrapping_add(1);
             // 一次tick是200ms，10秒钟统计一次
             if self.closing % (10 * 5) == 0 {
+                println!("closing=>{} {:?} {:?}", self.closing, self.inner, self.out);
                 log::error!("closing=>{} {:?} {:?}", self.closing, self.inner, self.out);
                 LEAKED_CONN.incr();
             }

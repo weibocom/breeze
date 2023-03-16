@@ -21,13 +21,27 @@ impl<T: Addr> Distance<T> {
             replicas: Vec::new(),
         }
     }
+    pub fn with_local(replicas: Vec<T>, local: bool) -> Self {
+        assert_ne!(replicas.len(), 0);
+        let mut me = Self {
+            batch_shift: 0,
+            len_local: 0,
+            seq: Arc::new(AtomicUsize::new(0)),
+            replicas,
+        };
+        if local {
+            me.local();
+        } else {
+            use rand::seq::SliceRandom;
+            use rand::thread_rng;
+            me.replicas.shuffle(&mut thread_rng());
+            me.topn(me.len());
+        }
+        me
+    }
     #[inline]
     pub fn from(replicas: Vec<T>) -> Self {
-        assert_ne!(replicas.len(), 0);
-        let mut me = Self::new();
-        me.replicas = replicas;
-        me.local();
-        me
+        Self::with_local(replicas, true)
     }
     // 只取前n个进行批量随机访问
     pub fn topn(&mut self, n: usize) {
@@ -104,6 +118,9 @@ impl<T: Addr> Distance<T> {
     pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T) {
         let idx = self.select_next_idx(idx, runs);
         (idx, self.replicas.get_unchecked(idx))
+    }
+    pub fn into_inner(self) -> Vec<T> {
+        self.replicas
     }
 }
 

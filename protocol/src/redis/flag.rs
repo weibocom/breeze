@@ -10,9 +10,9 @@ const MKEY_FIRST_BIT: u8 = 1; // 这个先保留，后续增加字段时需要
                               // 33: master_only
 const MASTER_ONLY_SHIFT: u8 = MKEY_FIRST_SHIFT + MKEY_FIRST_BIT;
 const MASTER_ONLY_BIT: u8 = 1;
-// 34: direct_hash
-const DIRECT_HASH_SHIFT: u8 = MASTER_ONLY_SHIFT + MASTER_ONLY_BIT;
-const _DIRECT_HASH_BIT: u8 = 1;
+// 34: sendto_all
+const SENDTO_ALL_SHIFT: u8 = MASTER_ONLY_SHIFT + MASTER_ONLY_BIT;
+const _SENDTO_ALL_BIT: u8 = 1;
 
 pub trait RedisFlager {
     fn set_key_count(&mut self, cnt: u16);
@@ -25,8 +25,8 @@ pub trait RedisFlager {
 
     fn set_master_only(&mut self);
     fn master_only(&self) -> bool;
-    fn set_direct_hash(&mut self);
-    fn direct_hash(&self) -> bool;
+    fn set_sendto_all(&mut self);
+    fn sendto_all(&self) -> bool;
 
     // fn set_ignore_rsp(&mut self, ignore_rsp: bool);
     // fn ignore_rs(&self) -> bool;
@@ -77,11 +77,11 @@ impl RedisFlager for u64 {
         self.get(MASTER_ONLY_SHIFT)
     }
     #[inline]
-    fn set_direct_hash(&mut self) {
-        self.set(DIRECT_HASH_SHIFT);
+    fn set_sendto_all(&mut self) {
+        self.set(SENDTO_ALL_SHIFT);
     }
     #[inline]
-    fn direct_hash(&self) -> bool {
-        self.get(DIRECT_HASH_SHIFT)
+    fn sendto_all(&self) -> bool {
+        self.get(SENDTO_ALL_SHIFT)
     }
 }
