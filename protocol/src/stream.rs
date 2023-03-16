@@ -1,8 +1,8 @@
-use crate::ReservedHash;
-
 pub trait AsyncBufRead {
     fn poll_recv(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<crate::Result<()>>;
 }
+
+pub type StreamContext = [u8; 16];
 
 pub trait BufRead {
     fn len(&self) -> usize;
@@ -15,9 +15,7 @@ pub trait BufRead {
         let _ = self.take(n);
     }
     // 在解析一个流的不同的req/response时，有时候需要共享数据。
-    fn context(&mut self) -> &mut u64;
-    // 用于保存下一个cmd需要使用的hash
-    fn reserved_hash(&mut self) -> &mut ReservedHash;
+    fn context(&mut self) -> &mut StreamContext;
     fn reserve(&mut self, r: usize);
 }
 use super::Result;
