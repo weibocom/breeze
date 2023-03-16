@@ -388,8 +388,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     // 解析完毕，如果数据未读完，需要保留足够的buff空间
     #[inline(always)]
     pub(crate) fn reserve_stream_buff(&mut self) {
-        if self.oft > self.stream.len() {
-            log::debug!("+++ will reserve len:{}", (self.oft - self.stream.len()));
+        if self.oft > self.data.len() {
+            log::debug!("+++ will reserve len:{}", (self.oft - self.data.len()));
             self.stream.reserve(self.oft - self.data.len())
         }
     }
