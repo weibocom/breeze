@@ -87,8 +87,11 @@ where
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
+        // 在top构建的时候，限制了一定会有slave
+        debug_assert!(shard.has_slave());
+
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
-        if shard.has_slave() && !req.operation().is_store() && !req.cmd().master_only() {
+        if !req.operation().is_store() && !req.master_only() {
             let ctx = super::transmute(req.context_mut());
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
@@ -102,10 +105,8 @@ where
             };
             ctx.idx = idx as u16;
             ctx.runs += 1;
-            // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
             // 1. 第一次访问. （无论如何都允许try_next，如果只有一个从，则下一次失败时访问主）
             // 2. 有多个从，访问的次数小于从的数量
-            //let try_next = ctx.runs == 1 || (ctx.runs as usize) < shard.slaves.len();
             // 只重试一次，重试次数过多，可能会导致雪崩。
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
