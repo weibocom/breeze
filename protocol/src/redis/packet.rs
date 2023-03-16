@@ -125,9 +125,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
                 // 路过CRLF_LEN个字节，通过命令获取op_code
                 let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
+                if idx + 2 >= self.data.len() {
+                    return Err(crate::Error::ProtocolIncomplete);
+                }
                 self.ctx.op_code = op_code;
                 // 第一次解析cmd需要对协议进行合法性校验
-                let cfg = command::get_cfg(self.op_code())?;
+                let cfg = command::get_cfg(op_code)?;
                 cfg.validate(self.bulk() as usize)?;
 
                 if cfg.need_reserved_hash && !(self.sendto_all() || self.ctx.is_reserved_hash) {
@@ -424,7 +427,7 @@ impl Packet {
         for i in *oft + 1..self.len() {
             if self[i] == b'\r' {
                 // 下一个字符必须是'\n'
-                debug_assert!(i + 1 > self.len() || self[i + 1] == b'\n');
+                debug_assert!(i + 1 >= self.len() || self[i + 1] == b'\n');
                 *oft = i + 2;
                 return Ok(n);
             }
@@ -499,6 +502,9 @@ impl Packet {
                             }
                         }
                         return Ok(val);
+                    }
+                    if *oft >= self.len() {
+                        return Err(crate::Error::ProtocolIncomplete);
                     }
                     // \r后面没有接\n。错误的协议
                     return Err(RedisError::ReqInvalidNoReturn.error());

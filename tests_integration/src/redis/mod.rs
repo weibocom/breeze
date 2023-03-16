@@ -174,31 +174,34 @@ fn test_mget_1000() {
 
 /// mset 分两个包发送
 #[test]
+#[named]
 fn test_mset_reenter() {
+    let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
 
-    let mset1 = "*5\r\n$4\r\nmset\r\n$18\r\ntest_mset_reenter1\r\n$1\r\n1\r\n";
+    "*5\r\n$4\r\nmset\r\n$18\r\ntest_mset_reenter1\r\n$1\r\n{}\r\n$18\r\ntest_mset_reenter2\r\n$1\r\n{}\r\n";
+    let mut mid = 0;
 
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    for i in 0..10 {
-        let mset = format!("*5\r\n$4\r\nmset\r\n$18\r\ntest_mset_reenter1\r\n$1\r\n{}\r\n$18\r\ntest_mset_reenter2\r\n$1\r\n{}\r\n", i, i);
-        let mid = if i == 0 {
-            mset1.len()
-        } else {
-            rng.gen_range(1..mset.len() - 1)
-        };
+    loop {
+        mid += 1;
+        let mset = redis::cmd("mset")
+            .arg(argkey.to_string() + "1")
+            .arg(mid)
+            .arg(argkey.to_string() + "2")
+            .arg(mid)
+            .get_packed_command();
+        if mid > mset.len() - 1 {
+            break;
+        }
         println!("{mid}");
-        con.send_packed_command(mset[..mid].as_bytes())
-            .expect("send err");
+        con.send_packed_command(&mset[..mid]).expect("send err");
         std::thread::sleep(Duration::from_millis(100));
-        con.send_packed_command(mset[mid..].as_bytes())
-            .expect("send err");
+        con.send_packed_command(&mset[mid..]).expect("send err");
         assert_eq!(con.recv_response().unwrap(), redis::Value::Okay);
         let key = ("test_mset_reenter1", "test_mset_reenter2");
         assert_eq!(
             con.mget::<(&str, &str), (usize, usize)>(key).unwrap(),
-            (i, i)
+            (mid, mid)
         );
     }
 }
