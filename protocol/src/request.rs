@@ -35,10 +35,6 @@ impl crate::Request for Request {
     fn data(&self) -> &ds::RingSlice {
         self.req().data()
     }
-    //#[inline]
-    //fn read(&self, oft: usize) -> &[u8] {
-    //    self.req().read(oft)
-    //}
     #[inline]
     fn operation(&self) -> Operation {
         self.req().operation()
@@ -72,7 +68,7 @@ impl crate::Request for Request {
         self.ctx().on_err(err);
     }
     #[inline]
-    fn mut_context(&mut self) -> &mut Context {
+    fn context_mut(&mut self) -> &mut Context {
         self.ctx().ctx.as_mut_flag()
     }
     #[inline]
@@ -83,14 +79,6 @@ impl crate::Request for Request {
     fn try_next(&mut self, goon: bool) {
         self.ctx().ctx.try_next(goon);
     }
-    // #[inline]
-    // fn ignore_rsp(&self) -> bool {
-    //     self.req().ignore_rsp()
-    // }
-    // #[inline]
-    // fn update_hash(&mut self, idx_hash: i64) {
-    //     self.req_mut().update_hash(idx_hash)
-    // }
 }
 impl Request {
     #[inline]
@@ -103,10 +91,6 @@ impl Request {
         self.ctx().request()
     }
 
-    // #[inline]
-    // fn req_mut(&self) -> &mut HashedCommand {
-    //     self.ctx().request_mut()
-    // }
     #[inline]
     fn ctx(&self) -> &mut CallbackContext {
         unsafe { &mut *self.ctx.as_ptr() }
@@ -133,3 +117,12 @@ impl Debug for Request {
 
 unsafe impl Send for Request {}
 unsafe impl Sync for Request {}
+
+use std::ops::Deref;
+impl Deref for Request {
+    type Target = HashedCommand;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        self.req()
+    }
+}
