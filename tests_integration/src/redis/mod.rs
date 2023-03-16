@@ -30,6 +30,7 @@
 //!     ping、command、select、quit
 //! ### 吞噬指令
 //! - hashrandomq, master + hashrandomq
+//! - sendtoall  sendtoallq 命令
 //!## 复杂场景
 //!  - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
 //! 从mesh读取, 验证业务写入与mesh读取之间的一致性
@@ -77,6 +78,7 @@ use std::vec;
 /// set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
 /// 从mesh读取, 验证业务写入与mesh读取之间的一致性
 #[test]
+#[cfg(feature = "github_workflow")]
 fn test_get_write_by_sdk() {
     let mut con = get_conn(&RESTYPE.get_host());
     for i in exists_key_iter() {
@@ -136,6 +138,7 @@ fn test_set_key_fix_size() {
 
 //mget 获取10000个key
 #[test]
+#[cfg(feature = "github_workflow")]
 fn test_mget_1000() {
     let mut con = get_conn(&RESTYPE.get_host());
 

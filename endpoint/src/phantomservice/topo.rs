@@ -5,7 +5,6 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
 };
 
 use crate::{Builder, Endpoint, Topology};
@@ -21,7 +20,7 @@ use sharding::{
 };
 
 use super::config::PhantomNamespace;
-use crate::TimeoutAdjust;
+use crate::Timeout;
 
 const CONFIG_UPDATED_KEY: &str = "__config__";
 
@@ -36,7 +35,7 @@ pub struct PhantomService<B, E, Req, P> {
     distribution: Range,
     parser: P,
     service: String,
-    timeout: Duration,
+    timeout: Timeout,
     _mark: PhantomData<(B, Req)>,
 }
 
@@ -178,7 +177,7 @@ where
     E: Endpoint<Item = Req>,
 {
     #[inline]
-    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Duration) -> E {
+    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
             _ => B::build(

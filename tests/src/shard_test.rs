@@ -6,8 +6,6 @@ use std::{
     io::{BufRead, BufReader},
 };
 
-use crypto::digest::Digest;
-use crypto::md5::Md5;
 use ds::RingSlice;
 use sharding::distribution::Distribute;
 use sharding::hash::{Bkdr, Hash, Hasher};
@@ -414,12 +412,8 @@ impl ConsistentHashInstance {
         for idx in 0..shards.len() {
             let factor = 40;
             for i in 0..factor {
-                let mut md5 = Md5::new();
                 let data: String = shards[idx].to_string() + "-" + &i.to_string();
-                let data_str = data.as_str();
-                md5.input_str(data_str);
-                let mut digest_bytes = [0u8; 16];
-                md5.result(&mut digest_bytes);
+                let digest_bytes = md5::compute(data.as_str());
                 for j in 0..4 {
                     let hash = (((digest_bytes[3 + j * 4] & 0xFF) as i64) << 24)
                         | (((digest_bytes[2 + j * 4] & 0xFF) as i64) << 16)
@@ -470,11 +464,8 @@ impl ConsistentHashInstance {
 }
 
 fn md5(key: &str) {
-    let mut md5 = Md5::new();
-    md5.input_str(key);
     // let digest_str = md5.result_str();
-    let mut out = [0u8; 16];
-    md5.result(&mut out);
+    let out = md5::compute(key);
     // println!("key={}, md5={:?}", key, &out);
 
     // let digest_bytes = digest_str.as_bytes();

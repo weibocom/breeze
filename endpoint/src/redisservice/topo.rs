@@ -1,17 +1,16 @@
-use ds::time::Duration;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::{Builder, Endpoint, Single, Topology};
 use discovery::TopologyWrite;
-use protocol::{Protocol, Request, Resource};
+use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
-use sharding::{ReplicaSelect, Selector};
+use sharding::{Distance, Selector};
 
 use super::config::RedisNamespace;
-use crate::TimeoutAdjust;
+use crate::Timeout;
 use discovery::dns::{self, IPPort};
 
 const CONFIG_UPDATED_KEY: &str = "__config__";
@@ -27,8 +26,8 @@ pub struct RedisService<B, E, Req, P> {
     updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
     service: String,
-    timeout_master: Duration,
-    timeout_slave: Duration,
+    timeout_master: Timeout,
+    timeout_slave: Timeout,
     master_read: bool,
     _mark: std::marker::PhantomData<(B, Req)>,
 }
@@ -75,25 +74,15 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
 
-        use protocol::RedisFlager;
-        let shard_idx = match req.cmd().direct_hash() {
-            true => {
-                let dhash_boundary = protocol::MAX_DIRECT_HASH - self.shards.len() as i64;
-                // 大于direct hash边界，说明是全节点分发请求，发送请求前，需要调整hash为下次发送做准备
-                // 备注：正常计算的hash范围是u32；
-                if req.hash() > dhash_boundary {
-                    // 边界之上的hash，其idx为max减去对应hash值，从而轮询所有分片
-                    let idx = (protocol::MAX_DIRECT_HASH - req.hash()) as usize;
-
-                    // req的hash自减1，同时设置write back，为下一次write back分发做准备
-                    req.update_hash(req.hash() - 1);
-                    req.write_back(req.hash() > dhash_boundary);
-                    idx
-                } else {
-                    self.distribute.index(req.hash())
-                }
-            }
-            false => self.distribute.index(req.hash()),
+        let shard_idx = if req.cmd().sendto_all() {
+            //全节点分发请求
+            let ctx = super::transmute(req.context_mut());
+            let idx = ctx.shard_idx as usize;
+            ctx.shard_idx += 1;
+            req.write_back(idx < self.shards.len() - 1);
+            idx
+        } else {
+            self.distribute.index(req.hash())
         };
 
         assert!(shard_idx < self.len(), "{} {:?} {}", shard_idx, req, self);
@@ -114,7 +103,7 @@ where
                     (ctx.idx as usize, &shard.master)
                 }
             };
-            ctx.idx = idx as u32;
+            ctx.idx = idx as u16;
             ctx.runs += 1;
             // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
             // 1. 第一次访问. （无论如何都允许try_next，如果只有一个从，则下一次失败时访问主）
@@ -239,7 +228,7 @@ where
     E: Endpoint<Item = Req> + Single,
 {
     #[inline]
-    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Duration) -> E {
+    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
             _ => B::build(
@@ -340,14 +329,14 @@ where
 #[derive(Clone)]
 struct Shard<E> {
     master: (String, E),
-    slaves: ReplicaSelect<(String, E)>,
+    slaves: Distance<(String, E)>,
 }
 impl<E> Shard<E> {
     #[inline]
     fn selector(s: Selector, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
-            slaves: ReplicaSelect::from(s, replicas),
+            slaves: Distance::with_local(replicas, s.is_local()),
         }
     }
     #[inline]
@@ -360,7 +349,7 @@ impl<E> Shard<E> {
     }
     #[inline]
     fn select(&self) -> (usize, &(String, E)) {
-        unsafe { self.slaves.unsafe_select() }
+        self.slaves.unsafe_select()
     }
     #[inline]
     fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
@@ -377,7 +366,6 @@ impl<E: discovery::Inited> Shard<E> {
             && self.has_slave()
             && self
                 .slaves
-                .as_ref()
                 .iter()
                 .fold(true, |inited, (_, e)| inited && e.inited())
     }

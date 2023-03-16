@@ -3,6 +3,7 @@ pub use inner::*;
 mod inner {
     use metrics::base::*;
     #[repr(transparent)]
+    #[derive(Debug)]
     pub struct MetricStream<S> {
         s: S,
     }

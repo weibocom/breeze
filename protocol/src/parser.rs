@@ -5,7 +5,7 @@ use sharding::hash::Hash;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
-use crate::{Error, Flag, Result, Writer};
+use crate::{Error, Flag, Result, Stream, Writer};
 
 #[enum_dispatch(Proto)]
 #[derive(Clone)]
@@ -88,22 +88,7 @@ pub trait RequestProcessor {
     fn process(&mut self, req: HashedCommand, last: bool);
 }
 
-pub trait Stream {
-    fn len(&self) -> usize;
-    //fn at(&self, idx: usize) -> u8;
-    fn slice(&self) -> ds::RingSlice;
-    //fn update(&mut self, idx: usize, val: u8);
-    fn take(&mut self, n: usize) -> ds::MemGuard;
-    #[inline]
-    fn ignore(&mut self, n: usize) {
-        let _ = self.take(n);
-    }
-    // 在解析一个流的不同的req/response时，有时候需要共享数据。
-    fn context(&mut self) -> &mut u64;
-    // 用于保存下一个cmd需要使用的hash
-    fn reserved_hash(&mut self) -> &mut i64;
-    fn reserve(&mut self, r: usize);
-}
+pub type ReservedHash = Option<i64>;
 
 pub struct Command {
     flag: Flag,

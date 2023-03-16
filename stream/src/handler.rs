@@ -7,12 +7,10 @@ use ds::{
     chan::mpsc::Receiver,
     time::{Duration, Instant},
 };
-use protocol::{Error, Protocol, Request, Result, Stream, Writer};
+use protocol::{Error, Protocol, Request, Result, Stream};
 use std::task::ready;
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncWrite};
-
-use crate::buffer::StreamGuard;
 
 use metrics::Metric;
 
@@ -21,7 +19,6 @@ pub struct Handler<'r, Req, P, S> {
     pending: VecDeque<Req>,
 
     s: S,
-    buf: StreamGuard,
     parser: P,
 
     // 处理timeout
@@ -37,7 +34,7 @@ pub struct Handler<'r, Req, P, S> {
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
     Req: Request + Unpin,
-    S: AsyncRead + AsyncWrite + Writer + Unpin,
+    S: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
 {
     type Output = Result<()>;
@@ -58,7 +55,7 @@ where
 impl<'r, Req, P, S> Handler<'r, Req, P, S>
 where
     Req: Request + Unpin,
-    S: AsyncRead + AsyncWrite + protocol::Writer + Unpin,
+    S: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
 {
     pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, rtt: Metric) -> Self {
@@ -68,7 +65,6 @@ where
             pending: VecDeque::with_capacity(31),
             s,
             parser,
-            buf: StreamGuard::new(),
             rtt,
             num_rx: 0,
             num_tx: 0,
@@ -142,11 +138,12 @@ where
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         while self.pending.len() > 0 {
             let mut cx = Context::from_waker(cx.waker());
-            let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx);
-            let poll_read = self.buf.write(&mut reader)?;
+            //let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx);
+            //let poll_read = self.buf.write(&mut reader)?;
+            let poll_read = self.s.poll_recv(&mut cx);
 
-            while self.buf.len() > 0 {
-                match self.parser.parse_response(&mut self.buf) {
+            while self.s.len() > 0 {
+                match self.parser.parse_response(&mut self.s) {
                     Ok(None) => break,
                     Ok(Some(cmd)) => {
                         let req = self.pending.pop_front().expect("take response");
@@ -166,7 +163,7 @@ where
                             panic!(
                                 "unexpected handler:{:?} data:{:?} pending req:{:?} ",
                                 self,
-                                self.buf.slice().data(),
+                                self.s.slice().data(),
                                 req
                             );
                         }
@@ -176,8 +173,7 @@ where
                     },
                 }
             }
-            ready!(poll_read);
-            reader.check()?;
+            ready!(poll_read)?;
         }
         Poll::Ready(Ok(()))
     }
@@ -189,7 +185,7 @@ where
 }
 unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
 unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
-impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Writer> rt::ReEnter
+impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> rt::ReEnter
     for Handler<'r, Req, P, S>
 {
     #[inline]
@@ -218,13 +214,12 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Writer> 
         use rt::Cancel;
         self.s.cancel();
 
-        self.buf.try_gc()
+        self.s.try_gc()
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
         log::debug!("handler:{:?}", self);
-        self.buf.try_gc();
-        self.buf.shrink();
+        self.s.try_gc();
         self.s.shrink();
 
         self.check_alive()?;
@@ -234,7 +229,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Writer> 
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<'r, Req, P, S> Debug for Handler<'r, Req, P, S> {
+impl<'r, Req, P, S: Debug> Debug for Handler<'r, Req, P, S> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
@@ -244,7 +239,7 @@ impl<'r, Req, P, S> Debug for Handler<'r, Req, P, S> {
             self.num_rx,
             self.pending.len(),
             self.rtt,
-            self.buf,
+            self.s,
         )
     }
 }

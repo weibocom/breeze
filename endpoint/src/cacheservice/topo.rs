@@ -1,13 +1,12 @@
 use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
-use ds::time::Duration;
 use protocol::{Protocol, Request, Resource, TryNextType};
 use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
 use std::collections::HashMap;
 
 use crate::shards::Shards;
-use crate::TimeoutAdjust;
+use crate::Timeout;
 
 #[derive(Clone)]
 pub struct CacheService<B, E, Req, P> {
@@ -240,7 +239,7 @@ where
         addrs: Vec<String>,
         dist: &str,
         name: &str,
-        timeout: Duration,
+        timeout: Timeout,
     ) -> Shards<E, Req> {
         Shards::from(dist, addrs, |addr| {
             old.remove(addr).map(|e| e).unwrap_or_else(|| {

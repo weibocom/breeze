@@ -1,11 +1,11 @@
 use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
-use ds::time::Duration;
 use protocol::{Protocol, Resource};
-use sharding::hash::{HashKey};
+use sharding::hash::HashKey;
 
 // pub use protocol::Endpoint;
+use crate::Timeout;
 
 use enum_dispatch::enum_dispatch;
 
@@ -101,7 +101,7 @@ where
 }
 
 pub trait Builder<P, R, E> {
-    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Duration) -> E
+    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E
     where
         E: Endpoint<Item = R>;
 }
