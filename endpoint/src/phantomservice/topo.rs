@@ -7,7 +7,7 @@ use discovery::{
 };
 use protocol::{Protocol, Request, Resource};
 use sharding::{
-    distribution::Range,
+    distribution::{DivMod, Range},
     hash::{Crc32, Hash, HashKey},
     Distance,
 };
@@ -23,7 +23,7 @@ pub struct PhantomService<B, E, Req, P> {
     streams_backend: Vec<Vec<String>>,
     updated: Notify,
     hasher: Crc32,
-    distribution: Range,
+    distribution: DivMod,
     parser: P,
     service: String,
     timeout: Timeout,

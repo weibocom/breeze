@@ -1,3 +1,4 @@
+use super::DivMod;
 use crate::distribution::DIST_MOD_RANGE_WITH_SLOT_PREFIX;
 
 // // alg: hash%slot/(slot/shards.len)
@@ -27,6 +28,16 @@ impl ModRange {
             slot,
             interval: slot / shards as u64,
         }
+    }
+
+    pub(super) fn div_mod(name: &str, shards: usize) -> DivMod {
+        debug_assert!(shards > 0);
+        debug_assert!(name.starts_with(DIST_MOD_RANGE_WITH_SLOT_PREFIX));
+        let slot = name[DIST_MOD_RANGE_WITH_SLOT_PREFIX.len()..]
+            .parse::<usize>()
+            .unwrap_or(256);
+        // 不用除slot，直接为1
+        DivMod::pow(1, slot, slot / shards)
     }
 
     pub fn index(&self, hash: i64) -> usize {

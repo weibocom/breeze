@@ -6,10 +6,13 @@ mod range;
 mod slotmod;
 mod splitmod;
 
+mod div_mod;
+pub use div_mod::DivMod;
+
 use consistent::Consistent;
 use modrange::ModRange;
 use modula::Modula;
-use padding::Padding;
+//use padding::Padding;
 pub use range::Range;
 use splitmod::SplitMod;
 
@@ -17,13 +20,14 @@ use crate::distribution::slotmod::SlotMod;
 
 #[derive(Clone, Debug)]
 pub enum Distribute {
-    Padding(Padding),
+    //Padding(Padding),
     Consistent(Consistent),
     Modula(Modula),
-    Range(Range),
-    ModRange(ModRange),
-    SplitMod(SplitMod),
+    //Range(Range),
+    //ModRange(ModRange),
+    //SplitMod(SplitMod),
     SlotMod(SlotMod),
+    DivMod(DivMod),
 }
 
 pub const DIST_PADDING: &str = "padding";
@@ -56,35 +60,36 @@ impl Distribute {
         let dist = distribution.to_ascii_lowercase();
 
         match dist.as_str() {
-            DIST_PADDING => Self::Padding(Default::default()),
-            DIST_MODULA => Self::Modula(Modula::from(names.len(), false)),
-            DIST_ABS_MODULA => Self::Modula(Modula::from(names.len(), true)),
-            DIST_KETAMA => Self::Consistent(Consistent::from(names)),
-            _ => {
-                if distribution.starts_with(DIST_RANGE) {
-                    return Self::Range(Range::from(distribution, names.len()));
-                } else if distribution.starts_with(DIST_MOD_RANGE_WITH_SLOT_PREFIX) {
-                    return Self::ModRange(ModRange::from(distribution, names.len()));
-                } else if distribution.starts_with(DIST_SPLIT_MOD_WITH_SLOT_PREFIX) {
-                    return Self::SplitMod(SplitMod::from(distribution, names.len()));
-                } else if distribution.starts_with(DIST_SLOT_MOD_PREFIX) {
-                    return Self::SlotMod(SlotMod::from(distribution, names.len()));
-                }
-                log::warn!("'{}' is not valid , use modula instead", distribution);
-                Self::Modula(Modula::from(names.len(), false))
+            //DIST_PADDING => Self::Padding(Default::default()),
+            DIST_MODULA | DIST_ABS_MODULA => {
+                Self::Modula(Modula::from(names.len(), dist == DIST_ABS_MODULA))
             }
+            //DIST_ABS_MODULA => Self::Modula(Modula::from(names.len(), true)),
+            DIST_KETAMA => Self::Consistent(Consistent::from(names)),
+            d if d.starts_with(DIST_RANGE) => Self::DivMod(Range::div_mod(d, names.len())),
+            d if d.starts_with(DIST_MOD_RANGE_WITH_SLOT_PREFIX) => {
+                Self::DivMod(ModRange::div_mod(distribution, names.len()))
+            }
+            d if d.starts_with(DIST_SPLIT_MOD_WITH_SLOT_PREFIX) => {
+                Self::DivMod(SplitMod::div_mod(distribution, names.len()))
+            }
+            d if d.starts_with(DIST_SLOT_MOD_PREFIX) => {
+                Self::SlotMod(SlotMod::from(distribution, names.len()))
+            }
+            _ => Self::Modula(Modula::from(names.len(), false)),
         }
     }
     #[inline]
     pub fn index(&self, hash: i64) -> usize {
         match self {
-            Self::Padding(pd) => pd.index(hash),
+            //Self::Padding(pd) => pd.index(hash),
             Self::Consistent(d) => d.index(hash),
             Self::Modula(d) => d.index(hash),
-            Self::Range(r) => r.index(hash),
-            Self::ModRange(m) => m.index(hash),
-            Self::SplitMod(s) => s.index(hash),
+            //Self::Range(r) => r.index(hash),
+            //Self::ModRange(m) => m.index(hash),
+            //Self::SplitMod(s) => s.index(hash),
             Self::SlotMod(s) => s.index(hash),
+            Self::DivMod(d) => d.index(hash),
         }
     }
 }
