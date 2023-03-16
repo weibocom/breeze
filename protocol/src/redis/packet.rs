@@ -125,7 +125,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
                 // 路过CRLF_LEN个字节，通过命令获取op_code
                 let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
-                if idx + 2 >= self.data.len() {
+                if idx + 2 > self.data.len() {
                     return Err(crate::Error::ProtocolIncomplete);
                 }
                 self.ctx.op_code = op_code;
@@ -279,10 +279,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
         let hash = if self.ctx.is_reserved_hash {
             self.ctx.reserved_hash
-        } else if cfg.has_key {
-            calculate_hash(alg, &key)
         } else {
-            default_hash()
+            calculate_hash(alg, &key)
         };
 
         Ok(hash)
@@ -416,6 +414,7 @@ impl std::ops::Deref for Packet {
     }
 }
 
+//整体解析原则，解析方保证解析完\r\n, oft移到\n+1, 即作为参数传入的oft不保证未溢出
 impl Packet {
     // 调用方确保oft元素为'*'
     // *num\r\n
@@ -424,7 +423,7 @@ impl Packet {
     pub fn num_of_bulks(&self, oft: &mut usize) -> crate::Result<usize> {
         debug_assert!(*oft < self.len() && self[*oft] == b'*');
         let mut n = 0;
-        for i in *oft + 1..self.len() {
+        for i in *oft + 1..self.len() - 1 {
             if self[i] == b'\r' {
                 // 下一个字符必须是'\n'
                 debug_assert!(i + 1 >= self.len() || self[i + 1] == b'\n');
