@@ -503,9 +503,6 @@ impl Packet {
                         }
                         return Ok(val);
                     }
-                    if *oft >= self.len() {
-                        return Err(crate::Error::ProtocolIncomplete);
-                    }
                     // \r后面没有接\n。错误的协议
                     return Err(RedisError::ReqInvalidNoReturn.error());
                 }
