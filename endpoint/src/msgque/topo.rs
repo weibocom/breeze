@@ -140,7 +140,7 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, mut req: Self::Item) {
-        let mut ctx = super::Context::from(*req.mut_context());
+        let mut ctx = super::Context::from(*req.context_mut());
 
         let inited = ctx.check_inited();
         let rw_count = ctx.get_and_incr_count();
@@ -162,7 +162,7 @@ where
             }
             // 是否重试：之前重试次数小于阀值-1，且不是从offline streams获取(offline是最后一次获取)
             req.try_next(rw_count < (READ_RETRY_COUNT - 1) && !get_offline);
-            *req.mut_context() = ctx.ctx;
+            *req.context_mut() = ctx.ctx;
             log::debug!(
                 "+++ mcq get {} from qid/{}, from_offline/{} req: {:?}",
                 self.service,
@@ -187,7 +187,7 @@ where
         ctx.update_write_size(wsize);
         ctx.update_qid(qid);
         req.try_next(rw_count < WRITE_RETRY_COUNT);
-        *req.mut_context() = ctx.ctx;
+        *req.context_mut() = ctx.ctx;
 
         log::debug!(
             "+++ will send mcq to {}/{}/{}, req:{:?}",

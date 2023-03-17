@@ -71,7 +71,7 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
 
-        let shard_idx = if req.cmd().sendto_all() {
+        let shard_idx = if req.sendto_all() {
             //全节点分发请求
             let ctx = super::transmute(req.context_mut());
             let idx = ctx.shard_idx as usize;

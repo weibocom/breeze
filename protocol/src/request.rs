@@ -1,4 +1,4 @@
-use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand, Operation};
+use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
@@ -23,30 +23,6 @@ impl crate::Request for Request {
         self.ctx().elapsed_current_req()
     }
 
-    #[inline]
-    fn len(&self) -> usize {
-        self.req().len()
-    }
-    #[inline]
-    fn cmd(&self) -> &HashedCommand {
-        self.req()
-    }
-    #[inline]
-    fn data(&self) -> &ds::RingSlice {
-        self.req().data()
-    }
-    #[inline]
-    fn operation(&self) -> Operation {
-        self.req().operation()
-    }
-    #[inline]
-    fn hash(&self) -> i64 {
-        self.req().hash()
-    }
-    #[inline]
-    fn sentonly(&self) -> bool {
-        self.req().sentonly()
-    }
     #[inline]
     fn on_noforward(&mut self) {
         self.ctx().on_noforward();
