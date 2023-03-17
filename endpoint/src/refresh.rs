@@ -39,7 +39,7 @@ impl<T: Clone + 'static> RefreshTopology<T> {
         })
     }
     #[inline]
-    fn update(&self, cycle: usize, _update_cycle: usize) {
+    fn update(&self, _cycle: usize, _update_cycle: usize) {
         // 所有的连接都会触发更新。因为需要加写锁
         self.top.try_write().map(|top| {
             let new = Arc::new(self.reader.do_with(|t| t.clone()).into());
@@ -50,7 +50,7 @@ impl<T: Clone + 'static> RefreshTopology<T> {
             let _drop = unsafe { Box::from_raw(old) };
             log::warn!(
                 "top updated. cycle:{} => {}({}) top:{} => {}",
-                cycle,
+                _cycle,
                 self.reader.cycle(),
                 _update_cycle,
                 new as *const _ as usize,
