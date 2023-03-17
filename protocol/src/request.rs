@@ -69,15 +69,15 @@ impl crate::Request for Request {
     }
     #[inline]
     fn context_mut(&mut self) -> &mut Context {
-        self.ctx().ctx.as_mut_flag()
+        self.ctx().flag_mut()
     }
     #[inline]
     fn write_back(&mut self, wb: bool) {
-        self.ctx().ctx.write_back(wb);
+        self.ctx().write_back(wb);
     }
     #[inline]
     fn try_next(&mut self, goon: bool) {
-        self.ctx().ctx.try_next(goon);
+        self.ctx().try_next(goon);
     }
 }
 impl Request {
