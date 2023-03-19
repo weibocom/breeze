@@ -45,7 +45,7 @@ fn checkout_basic() {
     assert_eq!(24, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
-    assert_eq!(40, size_of::<ds::MemGuard>());
+    assert_eq!(32, size_of::<ds::MemGuard>());
 }
 
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
@@ -56,10 +56,9 @@ fn check_layout_rx_buffer() {
 }
 #[test]
 fn check_callback_ctx() {
-    assert_eq!(40, size_of::<ds::MemGuard>());
-    assert_eq!(64, size_of::<protocol::HashedCommand>());
-    assert_eq!(56, size_of::<protocol::Command>());
-    assert_eq!(168, size_of::<CallbackContext>());
+    assert_eq!(56, size_of::<protocol::HashedCommand>());
+    assert_eq!(48, size_of::<protocol::Command>());
+    assert_eq!(152, size_of::<CallbackContext>());
 }
 //#[ignore]
 //#[test]

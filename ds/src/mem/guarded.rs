@@ -90,7 +90,6 @@ impl fmt::Debug for GuardedBuffer {
 pub struct MemGuard {
     mem: RingSlice,
     guard: *const AtomicU32, //  当前guard是否拥有mem。如果拥有，则在drop时需要手工销毁内存
-    cap: u32,                // from vec时，cap存储了Vec::capacity()用于释放内存
 }
 
 impl MemGuard {
@@ -99,21 +98,16 @@ impl MemGuard {
         debug_assert!(!guard.is_null());
         debug_assert_ne!(data.len(), 0);
         unsafe { debug_assert_eq!((&*guard).load(Ordering::Acquire), 0) };
-        Self {
-            mem: data,
-            guard,
-            cap: 0,
-        }
+        Self { mem: data, guard }
     }
     #[inline]
     pub fn from_vec(data: Vec<u8>) -> Self {
-        let mem: RingSlice = data.as_slice().into();
         debug_assert_ne!(data.len(), 0);
         debug_assert!(data.capacity() < u32::MAX as usize);
-        let cap = data.capacity() as u32;
+        let mem: RingSlice = RingSlice::from_vec(&data);
         let _ = std::mem::ManuallyDrop::new(data);
         let guard = 0 as *const _;
-        Self { mem, guard, cap }
+        Self { mem, guard }
     }
 
     #[inline]
@@ -134,9 +128,11 @@ impl Drop for MemGuard {
     fn drop(&mut self) {
         unsafe {
             if self.guard.is_null() {
-                debug_assert!(self.cap as usize >= self.mem.len());
-                let _v = Vec::from_raw_parts(self.mem.ptr(), 0, self.cap as usize);
+                // 通过from_vec创建的, 需要释放vec内存
+                debug_assert!(self.mem.cap() >= self.mem.len());
+                let _v = Vec::from_raw_parts(self.mem.ptr(), 0, self.mem.cap());
             } else {
+                // 通过take创建的，需要释放guard
                 debug_assert_eq!((&*self.guard).load(Ordering::Acquire), 0);
                 (&*self.guard).store(self.mem.len() as u32, Ordering::Release);
             }

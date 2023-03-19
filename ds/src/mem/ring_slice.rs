@@ -8,6 +8,7 @@ pub struct RingSlice {
     cap: u32,
     start: u32,
     len: u32,
+    mask: u32,
 }
 
 // 将ring_slice拆分成2个seg。分别调用
@@ -33,6 +34,7 @@ impl RingSlice {
         cap: 0,
         start: 0,
         len: 0,
+        mask: 0,
     };
     #[inline]
     pub fn empty() -> Self {
@@ -43,12 +45,21 @@ impl RingSlice {
         assert!(cap.is_power_of_two() || cap == 0, "not valid cap:{}", cap);
         debug_assert!(end >= start && end - start <= cap);
         debug_assert!(cap < u32::MAX as usize);
+        let mask = cap.wrapping_sub(1) as u32;
         Self {
             ptr: ptr as usize,
             cap: cap as u32,
-            start: (start & (cap.wrapping_sub(1))) as u32,
+            mask,
+            start: (start & mask as usize) as u32,
             len: (end - start) as u32,
         }
+    }
+    // 从Vec<u8>构造RingSlice，cap存储Vec::capacity()
+    #[inline]
+    pub fn from_vec(data: &Vec<u8>) -> Self {
+        let mut mem: RingSlice = data.as_slice().into();
+        mem.cap = mem.len() as u32;
+        mem
     }
     #[inline(always)]
     pub fn slice(&self, offset: usize, len: usize) -> RingSlice {
@@ -60,6 +71,7 @@ impl RingSlice {
         assert!(offset + len <= self.len());
         Self {
             ptr: self.ptr,
+            mask: self.mask,
             cap: self.cap,
             start: self.mask(self.start() + offset) as u32,
             len: len as u32,
@@ -160,7 +172,7 @@ impl RingSlice {
         self.cap.wrapping_sub(1) as usize & oft
     }
     #[inline(always)]
-    fn cap(&self) -> usize {
+    pub(super) fn cap(&self) -> usize {
         self.cap as usize
     }
     #[inline(always)]
