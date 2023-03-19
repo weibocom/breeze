@@ -110,11 +110,7 @@ impl CallbackContext {
     pub fn take_response(&mut self) -> Option<Command> {
         match self.inited.compare_exchange(true, false, AcqRel, Acquire) {
             Ok(_) => unsafe { Some(ptr::read(self.response.as_mut_ptr())) },
-            Err(_) => {
-                self.write_back = false;
-                //assert!(!self.ctx.try_next && !self.ctx.write_back, "{}", self);
-                None
-            }
+            Err(_) => None,
         }
     }
 
@@ -123,11 +119,9 @@ impl CallbackContext {
     fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
         let goon = if !self.async_mode {
-            // 正常访问请求。
-            // old: 除非出现了error，否则最多只尝试一次;
+            // 除非出现了error，否则最多只尝试一次;
             !self.response_ok() && self.try_next && self.tries.fetch_add(1, Release) < 1
         } else {
-            // write back请求
             self.write_back
         };
 
@@ -220,13 +214,14 @@ impl CallbackContext {
         self.send();
     }
     #[inline]
-    pub fn async_mode(&mut self) {
+    pub fn enter_async_mode(&mut self) {
+        // 在异步处理之前，必须要先处理完response
+        debug_assert!(!self.inited() && self.complete(), "{:?}", self);
         self.async_mode = true;
         self.complete.store(false, Release);
     }
     #[inline]
     pub fn with_request(&mut self, req: HashedCommand) {
-        assert!(self.async_mode, "{:?}", self);
         self.request = req;
     }
     #[inline]

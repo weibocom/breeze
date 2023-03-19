@@ -60,7 +60,6 @@ fn check_callback_ctx() {
     assert_eq!(64, size_of::<protocol::HashedCommand>());
     assert_eq!(56, size_of::<protocol::Command>());
     assert_eq!(168, size_of::<CallbackContext>());
-    //assert_eq!(16, size_of::<protocol::callback::Context>());
 }
 //#[ignore]
 //#[test]

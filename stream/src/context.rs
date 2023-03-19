@@ -32,13 +32,11 @@ impl CallbackContextPtr {
         metric: &mut Arc<M>,
         top: &E,
     ) {
-        // 在异步处理之前，必须要先处理完response
-        assert!(!self.inited() && self.complete(), "cbptr:{:?}", &**self);
-        self.async_mode();
         let mut rsp_ctx = ResponseContext::new(self, metric, top);
         if let Some(new) = parser.build_writeback_request(&mut rsp_ctx, &resp, exp) {
             self.with_request(new);
         }
+        self.enter_async_mode();
         log::debug!("start write back:{}", &**self);
 
         self.send();
