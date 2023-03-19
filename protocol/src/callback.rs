@@ -25,7 +25,6 @@ impl Callback {
         (self.cb)(req);
     }
 }
-
 pub struct CallbackContext {
     request: HashedCommand,
     response: MaybeUninit<Command>,

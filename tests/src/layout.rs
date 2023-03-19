@@ -28,7 +28,7 @@ use rt::Entry;
 
 #[test]
 fn checkout_basic() {
-    assert_eq!(32, size_of::<ds::RingSlice>());
+    assert_eq!(24, size_of::<ds::RingSlice>());
     assert_eq!(8, size_of::<protocol::Context>());
     assert_eq!(
         size_of::<protocol::Context>(),
@@ -45,8 +45,7 @@ fn checkout_basic() {
     assert_eq!(24, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
-    assert_eq!(48, size_of::<ds::MemGuard>());
-    assert_eq!(48, size_of::<std::collections::HashMap<usize, usize>>());
+    assert_eq!(40, size_of::<ds::MemGuard>());
 }
 
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
@@ -55,10 +54,12 @@ fn checkout_basic() {
 fn check_layout_rx_buffer() {
     assert_eq!((32, 96).select(), size_of::<rt::TxBuffer>());
 }
-#[ignore]
 #[test]
 fn check_callback_ctx() {
-    assert_eq!(192, size_of::<CallbackContext>());
+    assert_eq!(40, size_of::<ds::MemGuard>());
+    assert_eq!(64, size_of::<protocol::HashedCommand>());
+    assert_eq!(56, size_of::<protocol::Command>());
+    assert_eq!(176, size_of::<CallbackContext>());
     //assert_eq!(16, size_of::<protocol::callback::Context>());
 }
 //#[ignore]
