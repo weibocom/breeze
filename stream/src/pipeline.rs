@@ -190,16 +190,13 @@ where
             *metrics.key() += 1;
             let mut response = ctx.take_response();
 
-            parser.write_response(
-                &mut ResponseContext::new(&mut ctx, metrics, |hash| self.top.shard_idx(hash)),
-                response.as_mut(),
-                client,
-            )?;
+            let mut r_ctx = ResponseContext::new(&mut ctx, metrics, &self.top);
+            parser.write_response(&mut r_ctx, response.as_mut(), client)?;
 
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
-                    ctx.async_write_back(parser, rsp, self.top.exp_sec(), metrics);
+                    ctx.async_write_back(parser, rsp, self.top.exp_sec(), metrics, &self.top);
                     self.async_pending.push_back(ctx);
                 }
             }

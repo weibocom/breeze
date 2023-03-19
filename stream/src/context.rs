@@ -23,20 +23,19 @@ impl CallbackContextPtr {
         P: Protocol,
         M: Metric<T>,
         T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>,
+        E: Endpoint<Item = Request>,
     >(
         &mut self,
         parser: &P,
         resp: Command,
         exp: u32,
         metric: &mut Arc<M>,
+        top: &E,
     ) {
         // 在异步处理之前，必须要先处理完response
         assert!(!self.inited() && self.complete(), "cbptr:{:?}", &**self);
         self.async_mode();
-        let mut rsp_ctx = ResponseContext::new(self, metric, |_h| {
-            assert!(false, "write back"); // 此处的dist_fn逻辑上暂时不会用
-            0
-        });
+        let mut rsp_ctx = ResponseContext::new(self, metric, top);
         if let Some(new) = parser.build_writeback_request(&mut rsp_ctx, &resp, exp) {
             self.with_request(new);
         }
@@ -79,28 +78,31 @@ impl std::ops::DerefMut for CallbackContextPtr {
 unsafe impl Send for CallbackContextPtr {}
 unsafe impl Sync for CallbackContextPtr {}
 
-pub struct ResponseContext<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> {
+pub struct ResponseContext<'a, M: Metric<T>, T: MetricItem, E> {
     // ctx 中的response不可直接用，先封住，按需暴露
     ctx: &'a mut CallbackContextPtr,
     // pub response: Option<&'a mut Command>,
     metrics: &'a Arc<M>,
-    dist_fn: F,
+    top: &'a E,
     _mark: PhantomData<T>,
 }
 
-impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> ResponseContext<'a, M, T, F> {
-    pub(super) fn new(ctx: &'a mut CallbackContextPtr, metrics: &'a Arc<M>, dist_fn: F) -> Self {
+impl<'a, M: Metric<T>, T: MetricItem, E> ResponseContext<'a, M, T, E> {
+    #[inline(always)]
+    pub(super) fn new(ctx: &'a mut CallbackContextPtr, metrics: &'a Arc<M>, top: &'a E) -> Self {
         Self {
             ctx,
             metrics,
-            dist_fn,
+            top,
             _mark: Default::default(),
         }
     }
 }
 
-impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> Commander<M, T>
-    for ResponseContext<'a, M, T, F>
+use endpoint::Endpoint;
+// <Item = crate::Request>,
+impl<'a, M: Metric<T>, T: MetricItem, E: Endpoint<Item = Request>> Commander<M, T>
+    for ResponseContext<'a, M, T, E>
 {
     #[inline]
     fn request_mut(&mut self) -> &mut HashedCommand {
@@ -112,7 +114,7 @@ impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> Commander<M, T>
     }
     #[inline]
     fn request_shard(&self) -> usize {
-        (self.dist_fn)(self.request().hash())
+        self.top.shard_idx(self.ctx.request().hash())
     }
     #[inline(always)]
     fn metric(&self) -> &M {
