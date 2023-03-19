@@ -33,14 +33,13 @@ pub struct CallbackContext {
     last_start: Instant, // 本次资源请求的开始时间(一次请求可能触发多次资源请求)
     tries: AtomicU8,
     waker: *const AtomicWaker,
-    complete: AtomicBool, // 当前请求是否完成
+    complete: AtomicBool, // 当前请求是否完成.
     inited: AtomicBool,   // response是否已经初始化
-    async_done: AtomicBool,
-    async_mode: bool, // 是否是异步请求
-    try_next: bool,   // 请求失败是否需要重试
-    write_back: bool, // 请求结束后，是否需要回写。
-    first: bool,      // 当前请求是否是所有子请求的第一个
-    last: bool,       // 当前请求是否是所有子请求的最后一个
+    async_mode: bool,     // 是否是异步请求
+    try_next: bool,       // 请求失败是否需要重试
+    write_back: bool,     // 请求结束后，是否需要回写。
+    first: bool,          // 当前请求是否是所有子请求的第一个
+    last: bool,           // 当前请求是否是所有子请求的最后一个
     flag: crate::Context,
 }
 
@@ -67,7 +66,6 @@ impl CallbackContext {
             last,
             complete: false.into(),
             inited: false.into(),
-            async_done: false.into(),
             async_mode: false,
             try_next: true,
             write_back: false,
@@ -138,26 +136,19 @@ impl CallbackContext {
             self.last_start = Instant::now();
             return self.goon();
         }
+        debug_assert!(!self.complete(), "{:?}", self);
+        self.complete.store(true, Release);
+        // 说明有请求在pending
+        // 只有最后一个请求才需要唤醒
         if !self.async_mode {
-            // 说明有请求在pending
-            debug_assert!(!self.complete(), "{:?}", self);
-            self.complete.store(true, Release);
             unsafe { (&*self.waker).wake() }
-        } else {
-            self.async_done.store(true, Release);
-            // async_mode需要手动释放
-            //self.manual_drop();
-            //self.ctx
-            //    .async_done
-            //    .compare_exchange(false, true, AcqRel, Acquire)
-            //    .expect("double free?");
         }
     }
 
     #[inline]
     pub fn async_done(&self) -> bool {
         assert!(self.async_mode, "{:?}", self);
-        self.async_done.load(Acquire)
+        self.complete.load(Acquire)
     }
 
     #[inline]
@@ -231,6 +222,7 @@ impl CallbackContext {
     #[inline]
     pub fn async_mode(&mut self) {
         self.async_mode = true;
+        self.complete.store(false, Release);
     }
     #[inline]
     pub fn with_request(&mut self, req: HashedCommand) {
@@ -241,10 +233,6 @@ impl CallbackContext {
     fn swap_response(&mut self, resp: Command) {
         if self.inited() {
             log::debug!("drop response:{}", unsafe { self.unchecked_response() });
-            //self.ctx
-            //    .inited
-            //    .compare_exchange(true, false, AcqRel, Relaxed)
-            //    .expect("cas failed");
             unsafe { std::ptr::replace(self.response.as_mut_ptr(), resp) };
         } else {
             self.response.write(resp);
