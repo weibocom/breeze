@@ -287,8 +287,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             // 流程放到计算hash中处理
             CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
                 let key = self.parse_key()?;
-                let hash = calculate_hash(alg, &key);
-                self.reserved_hash.replace(hash);
+                //兼容老版本
+                if key.len() == 2 && key[0] == ('-' as u8) && key[1] == ('1' as u8) {
+                    self.set_sendto_all();
+                } else {
+                    let hash = calculate_hash(alg, &key);
+                    self.reserved_hash.replace(hash);
+                }
             }
             // cmd: hashrandomq
             CommandType::SwallowedCmdHashrandomq => {
