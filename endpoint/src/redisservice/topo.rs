@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
-use crate::{Builder, Endpoint, Single, Topology};
+use crate::{Builder, Endpoint, Notify, Single, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
@@ -13,7 +11,6 @@ use super::config::RedisNamespace;
 use crate::Timeout;
 use discovery::dns::{self, IPPort};
 
-const CONFIG_UPDATED_KEY: &str = "__config__";
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -23,7 +20,7 @@ pub struct RedisService<B, E, Req, P> {
     hasher: Hasher,
     distribute: Distribute,
     selector: Selector, // 从的选择策略。
-    updated: HashMap<String, Arc<AtomicBool>>,
+    updated: Notify,
     parser: P,
     service: String,
     timeout_master: Timeout,
@@ -74,7 +71,7 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
 
-        let shard_idx = if req.cmd().sendto_all() {
+        let shard_idx = if req.sendto_all() {
             //全节点分发请求
             let ctx = super::transmute(req.context_mut());
             let idx = ctx.shard_idx as usize;
@@ -90,8 +87,11 @@ where
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
         log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
 
+        // 在top构建的时候，限制了一定会有slave
+        debug_assert!(shard.has_slave());
+
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
-        if shard.has_slave() && !req.operation().is_store() && !req.cmd().master_only() {
+        if !req.operation().is_store() && !req.master_only() {
             let ctx = super::transmute(req.context_mut());
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
@@ -105,10 +105,8 @@ where
             };
             ctx.idx = idx as u16;
             ctx.runs += 1;
-            // TODO: 但是如果所有slave失败，需要访问master，这个逻辑后续需要来加上 fishermen
             // 1. 第一次访问. （无论如何都允许try_next，如果只有一个从，则下一次失败时访问主）
             // 2. 有多个从，访问的次数小于从的数量
-            //let try_next = ctx.runs == 1 || (ctx.runs as usize) < shard.slaves.len();
             // 只重试一次，重试次数过多，可能会导致雪崩。
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
@@ -161,10 +159,7 @@ where
             self.shards_url = shards_url;
 
             // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
-            self.updated
-                .entry(CONFIG_UPDATED_KEY.to_string())
-                .or_insert(Arc::new(AtomicBool::new(true)))
-                .store(true, Ordering::Release);
+            self.updated.notify();
         }
         self.service = namespace.to_string();
     }
@@ -173,27 +168,18 @@ where
     // 2. 近期有dns更新。
     #[inline]
     fn need_load(&self) -> bool {
-        self.shards.len() != self.shards_url.len()
-            || self
-                .updated
-                .iter()
-                .fold(false, |acc, (_k, v)| acc || v.load(Ordering::Acquire))
+        self.shards.len() != self.shards_url.len() || self.updated.waiting()
     }
 
     #[inline]
     fn load(&mut self) {
         // TODO: 先改通知状态，再load，如果失败，改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        for (_, updated) in self.updated.iter() {
-            updated.store(false, Ordering::Release);
-        }
+        self.updated.clear();
 
         // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
         let succeed = self.load_inner();
         if !succeed {
-            self.updated
-                .get_mut(CONFIG_UPDATED_KEY)
-                .expect("redis config state missed")
-                .store(true, Ordering::Release);
+            self.updated.notify();
             log::warn!("redis will reload topo later...");
         }
     }

@@ -37,8 +37,8 @@ impl GuardedBuffer {
     }
     #[inline]
     pub fn take(&mut self, n: usize) -> MemGuard {
-        assert!(n > 0);
-        assert!(self.taken + n <= self.writtened());
+        debug_assert!(n > 0);
+        debug_assert!(self.taken + n <= self.writtened());
         let guard = unsafe { self.guards.push_back_mut() };
         *guard.get_mut() = 0;
         let data = self.inner.slice(self.taken, n);
@@ -62,27 +62,10 @@ impl GuardedBuffer {
     pub fn pending(&self) -> usize {
         self.taken - self.inner.read()
     }
-    //#[inline]
-    //pub fn update(&mut self, idx: usize, val: u8) {
-    //    let oft = self.offset(idx);
-    //    self.inner.update(oft, val);
-    //}
-    //#[inline]
-    //pub fn at(&self, idx: usize) -> u8 {
-    //    self.inner.at(self.offset(idx))
-    //}
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.len() - self.pending()
     }
-    //#[inline]
-    //fn offset(&self, oft: usize) -> usize {
-    //    self.pending() + oft
-    //}
-    //#[inline]
-    //pub fn raw(&self) -> &[u8] {
-    //    self.inner.raw()
-    //}
 }
 use std::fmt::{self, Display, Formatter};
 impl Display for GuardedBuffer {
@@ -107,30 +90,24 @@ impl fmt::Debug for GuardedBuffer {
 pub struct MemGuard {
     mem: RingSlice,
     guard: *const AtomicU32, //  当前guard是否拥有mem。如果拥有，则在drop时需要手工销毁内存
-    cap: usize,              // from vec时，cap存储了Vec::capacity()用于释放内存
 }
 
 impl MemGuard {
     #[inline]
     fn new(data: RingSlice, guard: *const AtomicU32) -> Self {
-        assert!(!guard.is_null());
-        assert_ne!(data.len(), 0);
-        unsafe { assert_eq!((&*guard).load(Ordering::Acquire), 0) };
-        Self {
-            mem: data,
-            guard,
-            cap: 0,
-        }
+        debug_assert!(!guard.is_null());
+        debug_assert_ne!(data.len(), 0);
+        unsafe { debug_assert_eq!((&*guard).load(Ordering::Acquire), 0) };
+        Self { mem: data, guard }
     }
     #[inline]
     pub fn from_vec(data: Vec<u8>) -> Self {
-        let mem: RingSlice = data.as_slice().into();
-        //assert_eq!(data.capacity(), mem.len());
-        assert_ne!(data.len(), 0);
-        let cap = data.capacity();
+        debug_assert_ne!(data.len(), 0);
+        debug_assert!(data.capacity() < u32::MAX as usize);
+        let mem: RingSlice = RingSlice::from_vec(&data);
         let _ = std::mem::ManuallyDrop::new(data);
         let guard = 0 as *const _;
-        Self { mem, guard, cap }
+        Self { mem, guard }
     }
 
     #[inline]
@@ -141,24 +118,22 @@ impl MemGuard {
     pub fn data_mut(&mut self) -> &mut RingSlice {
         &mut self.mem
     }
-    #[inline]
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.mem.len()
     }
-    //#[inline]
-    //pub fn read(&self, oft: usize) -> &[u8] {
-    //    self.mem.read(oft)
-    //}
 }
 impl Drop for MemGuard {
     #[inline]
     fn drop(&mut self) {
         unsafe {
             if self.guard.is_null() {
-                assert!(self.cap >= self.mem.len());
-                let _v = Vec::from_raw_parts(self.mem.ptr(), 0, self.cap);
+                // 通过from_vec创建的, 需要释放vec内存
+                debug_assert!(self.mem.cap() >= self.mem.len());
+                let _v = Vec::from_raw_parts(self.mem.ptr(), 0, self.mem.cap());
             } else {
-                assert_eq!((&*self.guard).load(Ordering::Acquire), 0);
+                // 通过take创建的，需要释放guard
+                debug_assert_eq!((&*self.guard).load(Ordering::Acquire), 0);
                 (&*self.guard).store(self.mem.len() as u32, Ordering::Release);
             }
         }
