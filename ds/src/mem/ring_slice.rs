@@ -169,7 +169,7 @@ impl RingSlice {
 
     #[inline(always)]
     fn mask(&self, oft: usize) -> usize {
-        self.cap.wrapping_sub(1) as usize & oft
+        self.mask as usize & oft
     }
     #[inline(always)]
     pub(super) fn cap(&self) -> usize {
