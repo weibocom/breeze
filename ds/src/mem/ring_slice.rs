@@ -57,8 +57,9 @@ impl RingSlice {
     // 从Vec<u8>构造RingSlice，cap存储Vec::capacity()
     #[inline]
     pub fn from_vec(data: &Vec<u8>) -> Self {
+        debug_assert!(data.capacity() < u32::MAX as usize);
         let mut mem: RingSlice = data.as_slice().into();
-        mem.cap = mem.len() as u32;
+        mem.cap = data.capacity() as u32;
         mem
     }
     #[inline(always)]
