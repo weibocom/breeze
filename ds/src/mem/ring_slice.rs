@@ -5,22 +5,23 @@ use std::slice::from_raw_parts;
 #[derive(Default)]
 pub struct RingSlice {
     ptr: usize,
-    cap: usize,
-    start: usize,
-    len: usize,
+    cap: u32,
+    start: u32,
+    len: u32,
+    mask: u32,
 }
 
 // 将ring_slice拆分成2个seg。分别调用
 macro_rules! with_segment_oft {
     ($self:expr, $oft:expr, $noseg:expr, $seg:expr) => {{
-        debug_assert!($oft <= $self.len);
-        let oft_start = $self.mask($self.start + $oft);
-        let len = $self.len - $oft;
+        debug_assert!($oft <= $self.len());
+        let oft_start = $self.mask($self.start() + $oft);
+        let len = $self.len() - $oft;
 
-        if oft_start + len <= $self.cap {
+        if oft_start + len <= $self.cap() {
             unsafe { $noseg($self.ptr().add(oft_start), len) }
         } else {
-            let seg1 = $self.cap - oft_start;
+            let seg1 = $self.cap() - oft_start;
             let seg2 = len - seg1;
             unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
         }
@@ -33,6 +34,7 @@ impl RingSlice {
         cap: 0,
         start: 0,
         len: 0,
+        mask: 0,
     };
     #[inline]
     pub fn empty() -> Self {
@@ -42,12 +44,23 @@ impl RingSlice {
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
         assert!(cap.is_power_of_two() || cap == 0, "not valid cap:{}", cap);
         debug_assert!(end >= start && end - start <= cap);
+        debug_assert!(cap < u32::MAX as usize);
+        let mask = cap.wrapping_sub(1) as u32;
         Self {
             ptr: ptr as usize,
-            cap,
-            start: start & (cap.wrapping_sub(1)),
-            len: end - start,
+            cap: cap as u32,
+            mask,
+            start: (start & mask as usize) as u32,
+            len: (end - start) as u32,
         }
+    }
+    // 从Vec<u8>构造RingSlice，cap存储Vec::capacity()
+    #[inline]
+    pub fn from_vec(data: &Vec<u8>) -> Self {
+        debug_assert!(data.capacity() < u32::MAX as usize);
+        let mut mem: RingSlice = data.as_slice().into();
+        mem.cap = data.capacity() as u32;
+        mem
     }
     #[inline(always)]
     pub fn slice(&self, offset: usize, len: usize) -> RingSlice {
@@ -59,9 +72,10 @@ impl RingSlice {
         assert!(offset + len <= self.len());
         Self {
             ptr: self.ptr,
+            mask: self.mask,
             cap: self.cap,
-            start: self.mask(self.start + offset),
-            len,
+            start: self.mask(self.start() + offset) as u32,
+            len: len as u32,
         }
     }
     #[inline(always)]
@@ -156,12 +170,20 @@ impl RingSlice {
 
     #[inline(always)]
     fn mask(&self, oft: usize) -> usize {
-        self.cap.wrapping_sub(1) & oft
+        self.mask as usize & oft
+    }
+    #[inline(always)]
+    pub(super) fn cap(&self) -> usize {
+        self.cap as usize
+    }
+    #[inline(always)]
+    fn start(&self) -> usize {
+        self.start as usize
     }
 
     #[inline(always)]
     pub fn len(&self) -> usize {
-        self.len
+        self.len as usize
     }
     #[inline(always)]
     pub fn at(&self, idx: usize) -> u8 {
@@ -249,8 +271,8 @@ macro_rules! define_read_number {
         pub fn $fn_name(&self, oft: usize) -> $type_name {
             const SIZE: usize = std::mem::size_of::<$type_name>();
             debug_assert!(self.len() >= oft + SIZE);
-            let oft_start = self.mask(oft + self.start);
-            let len = self.cap - oft_start; // 从oft_start到cap的长度
+            let oft_start = self.mask(oft + self.start());
+            let len = self.cap() - oft_start; // 从oft_start到cap的长度
             if len >= SIZE {
                 let b = unsafe { from_raw_parts(self.ptr().add(oft_start), SIZE) };
                 $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
@@ -317,7 +339,7 @@ impl std::ops::Index<usize> for RingSlice {
     #[inline(always)]
     fn index(&self, idx: usize) -> &Self::Output {
         debug_assert!(idx < self.len());
-        unsafe { &*self.ptr().add(self.mask(self.start + idx)) }
+        unsafe { &*self.ptr().add(self.mask(self.start() + idx)) }
     }
 }
 impl std::ops::IndexMut<usize> for RingSlice {
@@ -325,7 +347,7 @@ impl std::ops::IndexMut<usize> for RingSlice {
     #[inline(always)]
     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
         debug_assert!(idx < self.len());
-        unsafe { &mut *self.ptr().add(self.mask(self.start + idx)) }
+        unsafe { &mut *self.ptr().add(self.mask(self.start() + idx)) }
     }
 }
 
