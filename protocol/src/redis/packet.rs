@@ -125,7 +125,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
                 // 路过CRLF_LEN个字节，通过命令获取op_code
                 let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
-                if idx + 2 > self.data.len() {
+                if idx + CRLF_LEN > self.data.len() {
                     return Err(crate::Error::ProtocolIncomplete);
                 }
                 self.ctx.op_code = op_code;
@@ -206,11 +206,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     // // 重置reserved hash，包括stream中的对应值
-    // #[inline]
-    // fn reset_reserved_hash(&mut self) {
-    //     self.reserved_hash.take();
-    //     self.stream.ctx.reserved_hash.take();
-    // }
+    #[inline]
+    fn set_reserved_hash(&mut self, hash: i64) {
+        self.ctx.is_reserved_hash = true;
+        self.ctx.reserved_hash = hash;
+    }
     // 更新reserved hash
     // #[inline]
     // pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
@@ -304,16 +304,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     self.set_sendto_all();
                 } else {
                     let hash = calculate_hash(alg, &key);
-                    self.ctx.is_reserved_hash = true;
-                    self.ctx.reserved_hash = hash;
+                    self.set_reserved_hash(hash);
                 }
             }
             // cmd: hashrandomq
             CommandType::SwallowedCmdHashrandomq => {
                 // 虽然hash名义为i64，但实际当前均为u32
                 let hash = rand::random::<u32>() as i64;
-                self.ctx.is_reserved_hash = true;
-                self.ctx.reserved_hash = hash;
+                self.set_reserved_hash(hash);
             }
             CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
                 self.set_sendto_all();

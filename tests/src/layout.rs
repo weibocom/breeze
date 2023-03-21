@@ -31,6 +31,7 @@ fn checkout_basic() {
     assert_eq!(24, size_of::<ds::RingSlice>());
     assert_eq!(8, size_of::<protocol::Context>());
     assert_eq!(size_of::<protocol::Context>(), 8);
+    assert_eq!(size_of::<protocol::StreamContext>(), 16);
     assert_eq!(
         size_of::<protocol::StreamContext>(),
         size_of::<protocol::redis::RequestContext>()
