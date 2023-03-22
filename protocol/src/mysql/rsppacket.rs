@@ -108,10 +108,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         self.data.at(self.oft)
     }
 
-    pub(super) fn handle_result_set(&mut self) -> Result<Or<Vec<Column>, OkPacket<'static>>> {
+    pub(super) fn parse_result_set_meta(&mut self) -> Result<Or<Vec<Column>, OkPacket<'static>>> {
         log::debug!("+++ in handle result set");
         // 全部解析完毕前，不对数据进行take
-        let payload = self.next_packet_data(true)?;
+        let payload = self.next_packet_data(false)?;
         log::debug!("+++ column hdr packet data:{:?}", payload);
         match payload[0] {
             HEADER_FLAG_OK => {
@@ -131,7 +131,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
                 log::debug!("+++ parsed result set column count:{:?}", column_count);
                 let mut columns: Vec<Column> = Vec::with_capacity(column_count as usize);
                 for i in 0..column_count {
-                    let pld = self.next_packet_data(true)?;
+                    let pld = self.next_packet_data(false)?;
                     let column = ParseBuf(&*pld).parse(())?;
                     log::debug!("+++ parsed column-{} :{:?}", i, pld);
                     columns.push(column);
@@ -183,7 +183,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
         log::debug!("+++ will parse next row...");
         // TODO 这个可以通过row count来确定最后一行记录，然后进行一次性take fishermen
-        let pld = self.next_packet_data(true)?;
+        let pld = self.next_packet_data(false)?;
         log::debug!("+++ read next row data succeed!");
 
         if self.has_capability(CapabilityFlags::CLIENT_DEPRECATE_EOF) {
@@ -193,6 +193,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
                 return Ok(None);
             }
         } else {
+            // TODO 根据mysql doc，EOF_Packet的长度是小于9
             if pld[0] == 0xfe && pld.len() < 8 {
                 self.has_results = false;
                 self.handle_ok::<OldEofPacket>(&pld)?;
@@ -206,7 +207,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     }
 
     pub(super) fn drop_packet(&mut self) -> Result<()> {
-        self.next_packet_data(true).map(drop)
+        self.next_packet_data(false).map(drop)
     }
 
     #[inline(always)]
@@ -318,9 +319,9 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         Ok(handshake_rsp)
     }
 
-    // 处理handshakeresponse的mysql响应，即auth
+    // 处理handshakeresponse的mysql响应，默认是ok即auth
     pub(super) fn proc_auth(&mut self) -> Result<()> {
-        // 先读取一个packet
+        // 先读取一个OK/Err packet
         let payload = self.next_packet_data(true)?;
 
         // Ok packet header 是 0x00 或者0xFE

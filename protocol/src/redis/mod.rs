@@ -141,7 +141,6 @@ impl Redis {
                     } else {
                         hash = calculate_hash(cfg, alg, &key);
                     }
-
                     // 记录reserved hash，为下一个指令使用
                     packet.update_reserved_hash(hash);
                 }
