@@ -124,8 +124,9 @@ where
         // let mysql_cmd = raw_req.mysql_cmd();
         self.parser.build_request(req.cmd_mut(), sql);
         log::debug!(
-            "+++ {} send after build_request {} => {:?}",
+            "+++ {} send sql[{}] after build_request {} => {:?}",
             self.service,
+            sql,
             shard_idx,
             req
         );
