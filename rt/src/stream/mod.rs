@@ -8,7 +8,7 @@ use std::task::{ready, Context, Poll, Waker};
 use ds::{GuardedBuffer, MemGuard, MemPolicy, RingSlice};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use protocol::ReservedHash;
+use protocol::StreamContext;
 
 mod tx_buf;
 pub use tx_buf::*;
@@ -27,8 +27,7 @@ pub struct Stream<S> {
     rx_buf: GuardedBuffer,
     write_to_buf: bool,
 
-    ctx: u64,
-    hash: ReservedHash,
+    ctx: StreamContext,
 }
 impl<S> From<S> for Stream<S> {
     #[inline]
@@ -41,8 +40,7 @@ impl<S> From<S> for Stream<S> {
             // 初始化为0：针对部分只有连接没有请求的场景，不占用内存。
             rx_buf: GuardedBuffer::new(2048, 64 * 1024 * 1024, 0),
             write_to_buf: false,
-            ctx: 0,
-            hash: None,
+            ctx: Default::default(),
         }
     }
 }
@@ -186,12 +184,8 @@ impl<S> protocol::BufRead for Stream<S> {
         self.rx_buf.read()
     }
     #[inline]
-    fn context(&mut self) -> &mut u64 {
+    fn context(&mut self) -> &mut StreamContext {
         &mut self.ctx
-    }
-    #[inline]
-    fn reserved_hash(&mut self) -> &mut ReservedHash {
-        &mut self.hash
     }
     #[inline]
     fn reserve(&mut self, r: usize) {
@@ -220,7 +214,6 @@ impl<S: std::fmt::Debug> Debug for Stream<S> {
             .field("buf", &self.buf)
             .field("rx_buf", &self.rx_buf)
             .field("ctx", &self.ctx)
-            .field("hash", &self.hash)
             .field("write_to_buf", &self.write_to_buf)
             .finish()
     }
