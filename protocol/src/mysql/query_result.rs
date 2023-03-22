@@ -13,6 +13,8 @@ use std::{borrow::Cow, marker::PhantomData, sync::Arc};
 use crate::mysql::packets::Column;
 use crate::mysql::row::Row;
 
+use super::row::convert::{from_row, FromRow};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Or<A, B> {
     A(A),
@@ -169,7 +171,7 @@ impl<'c, T: crate::mysql::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         // if status_flags.contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS) {}
 
         if self.rsp_packet.more_results_exists() {
-            match self.rsp_packet.handle_result_set() {
+            match self.rsp_packet.parse_result_set_meta() {
                 Ok(meta) => self.state = meta.into(),
                 Err(err) => self.state = err.into(),
             }
@@ -256,6 +258,60 @@ impl<'c, T: crate::mysql::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
                 set_index: self.set_index,
                 inner: self,
             })
+        }
+    }
+
+    pub(super) fn scan_rows<R, F, U>(&mut self, mut init: U, mut f: F) -> Result<U>
+    where
+        R: FromRow,
+        F: FnMut(U, R) -> U,
+    {
+        loop {
+            match self.scan_row()? {
+                Some(row) => {
+                    init = f(init, from_row::<R>(row));
+                }
+
+                None => {
+                    let _ = self.rsp_packet.take();
+                    return Ok(init);
+                }
+            }
+        }
+    }
+
+    fn scan_row(&mut self) -> Result<Option<Row>> {
+        use SetIteratorState::*;
+        let state = std::mem::replace(&mut self.state, OnBoundary);
+        match state {
+            InSet(cols) => match self.rsp_packet.next_row_packet()? {
+                Some(pld) => {
+                    let row_data =
+                        ParseBuf(&*pld).parse::<RowDeserializer<(), Text>>(cols.clone())?;
+                    self.state = InSet(cols.clone());
+                    return Ok(Some(row_data.into()));
+                }
+                None => {
+                    self.handle_next();
+                    return Ok(None);
+                }
+            },
+            InEmptySet(_) => {
+                self.handle_next();
+                Ok(None)
+            }
+            Errored(err) => {
+                self.handle_next();
+                Err(err)
+            }
+            OnBoundary => {
+                self.handle_next();
+                Ok(None)
+            }
+            Done => {
+                self.state = Done;
+                Ok(None)
+            }
         }
     }
 
@@ -357,20 +413,6 @@ impl<'c, T: crate::mysql::prelude::Protocol, S: Stream> Iterator for QueryResult
 
         let state = std::mem::replace(&mut self.state, OnBoundary);
         match state {
-            // InSet(cols) => match T::next(&mut self.rsp_packet, cols.clone()) {
-            //     Ok(Some(row)) => {
-            //         self.state = InSet(cols.clone());
-            //         Some(Ok(row))
-            //     }
-            //     Ok(None) => {
-            //         self.handle_next();
-            //         None
-            //     }
-            //     Err(e) => {
-            //         self.handle_next();
-            //         Some(Err(e))
-            //     }
-            // },
             InSet(cols) => match self.rsp_packet.next_row_packet() {
                 Ok(Some(pld)) => {
                     log::debug!("+++ read row data: {:?}", pld);

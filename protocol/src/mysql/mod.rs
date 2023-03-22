@@ -335,7 +335,7 @@ impl Mysql {
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
     ) -> Result<Option<Command>> {
-        let mut result_set = self.parse_and_fold(rsp_packet, Vec::new(), |mut acc, row| {
+        let mut result_set = self.parse_result_set(rsp_packet, Vec::new(), |mut acc, row| {
             acc.push(from_row(row));
             acc
         })?;
@@ -343,10 +343,14 @@ impl Mysql {
         log::debug!("+++ parsed response:{:?}", result_set);
         // 返回mysql响应，在write response处进行协议转换
         // TODO 这里临时打通，需要进一步完善修改 fishermen
-        let row = match result_set.len() > 0 {
+        let mut row: Vec<u8> = match result_set.len() > 0 {
             true => result_set.remove(0),
-            false => vec![],
+            false => Vec::with_capacity(10),
         };
+
+        if row.len() == 0 {
+            row.extend("check dist for: not found data".as_bytes());
+        }
 
         let mem = MemGuard::from_vec(row);
         let mut flag = Flag::from_op(OP_CODE_GET as u16, crate::Operation::Get);
@@ -355,25 +359,21 @@ impl Mysql {
         Ok(Some(cmd))
     }
 
-    fn parse_and_fold<'a, T, F, U, S>(
+    fn parse_result_set<'a, T, F, U, S>(
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
         init: U,
-        mut f: F,
+        f: F,
     ) -> Result<U>
     where
         T: FromRow,
         F: FnMut(U, T) -> U,
         S: crate::Stream,
     {
-        log::debug!("+++ parse columns...");
-        let meta = rsp_packet.handle_result_set()?;
-        log::debug!("+++ after parse columns competed!");
-        // TODO 先打通Get，实际响应可能会包含更多字段  fishermen
-        let result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
-        result
-            .map(|row| row.map(from_row::<T>))
-            .try_fold(init, |acc, row| row.map(|row| f(acc, row)))
+        let meta = rsp_packet.parse_result_set_meta()?;
+        log::debug!("+++===== parsed columns:{:?}", meta);
+        let mut result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
+        result.scan_rows(init, f)
     }
 
     #[inline]
