@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
+//从不拥有数据，是对ptr+start的引用
 #[derive(Default)]
 pub struct RingSlice {
     ptr: usize,
