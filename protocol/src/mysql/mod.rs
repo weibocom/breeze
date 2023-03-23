@@ -199,7 +199,10 @@ impl Protocol for Mysql {
 
                 return Ok(());
             } else {
-                log::warn!("not found response for req:{:?}", ctx.request());
+                log::warn!(
+                    "not found response for req:{:?}",
+                    ctx.request().data().key()
+                );
             }
         }
 
