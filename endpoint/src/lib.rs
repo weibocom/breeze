@@ -10,6 +10,9 @@ pub mod redisservice;
 mod refresh;
 pub use refresh::{CheckedTopology, RefreshTopology};
 
+mod notify;
+pub use notify::Notify;
+
 // 不同资源默认的超时时间
 const TO_PHANTOM_M: Timeout = Timeout::from_millis(200);
 const TO_REDIS_M: Timeout = Timeout::from_millis(500);

@@ -150,16 +150,12 @@ where
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.elapsed_current_req();
-                        self.parser.check(req.cmd(), &cmd);
+                        self.parser.check(&*req, &cmd);
                         req.on_complete(cmd);
                     }
                     Err(e) => match e {
                         Error::UnexpectedData => {
-                            let req = self
-                                .pending
-                                .iter()
-                                .map(|r| r.cmd().data())
-                                .collect::<Vec<_>>();
+                            let req = self.pending.iter().map(|r| r.data()).collect::<Vec<_>>();
                             panic!(
                                 "unexpected handler:{:?} data:{:?} pending req:{:?} ",
                                 self,

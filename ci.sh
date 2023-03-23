@@ -36,3 +36,5 @@ sleep 10
 cargo test -p tests_integration --features github_workflow
 
 kill -9 $pid
+
+docker rm -f "$container_name"
