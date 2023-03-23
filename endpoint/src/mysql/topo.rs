@@ -121,9 +121,10 @@ where
             .build_sql("SQL_SELECT", &mid, &mid)
             .expect("malformed sql");
         log::debug!(
-            "+++ {} send sql[{}] after build_request {} => {:?}",
+            "+++ {} send sql[{}] after build_request {}/{} => {:?}",
             self.service,
             sql,
+            req.hash(),
             shard_idx,
             req
         );
