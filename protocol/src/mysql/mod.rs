@@ -198,6 +198,8 @@ impl Protocol for Mysql {
                 self.write_mc_packet(old_op_code, rsp, w)?;
 
                 return Ok(());
+            } else {
+                log::warn!("not found response for req:{:?}", ctx.request());
             }
         }
 
