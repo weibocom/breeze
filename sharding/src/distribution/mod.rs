@@ -1,4 +1,5 @@
 mod consistent;
+mod dbrange;
 mod modrange;
 mod modula;
 mod padding;
@@ -7,6 +8,7 @@ mod slotmod;
 mod splitmod;
 
 use consistent::Consistent;
+pub use dbrange::DBRange;
 use modrange::ModRange;
 use modula::Modula;
 use padding::Padding;

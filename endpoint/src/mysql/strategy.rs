@@ -5,7 +5,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use ds::RingSlice;
 use protocol::Result;
 use serde::{Deserialize, Serialize};
-use sharding::distribution::Distribute;
+use sharding::distribution::{self, DBRange, Distribute};
 use sharding::hash::{Hash, HashKey, Hasher};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
@@ -42,33 +42,34 @@ pub struct Strategy {
     pub(crate) hierarchy: bool,
     pub(crate) sql: HashMap<String, String>,
     pub(crate) hasher: Hasher,
-    pub(crate) distribution: Distribute,
+    pub(crate) distribution: DBRange,
 }
 
 impl Strategy {
-    pub fn new(
-        db_prefix: String,
-        table_prefix: String,
-        table_postfix: String,
-        db_count: u32,
-        table_count: u32,
-        hierarchy: bool,
-        sql: HashMap<String, String>,
-        h: String,
-        dist: String,
-    ) -> Self {
-        Self {
-            db_prefix: db_prefix.clone(),
-            table_prefix: table_prefix.clone(),
-            table_postfix: table_postfix.clone(),
-            db_count: db_count,
-            table_count: table_count,
-            hierarchy: hierarchy,
-            sql: sql.clone(),
-            distribution: Distribute::from_num(dist.as_str(), (db_count * table_count) as usize),
-            hasher: Hasher::from(h.as_str()),
-        }
-    }
+    // pub fn new(
+    //     db_prefix: String,
+    //     table_prefix: String,
+    //     table_postfix: String,
+    //     db_count: u32,
+    //     table_count: u32,
+    //     hierarchy: bool,
+    //     sql: HashMap<String, String>,
+    //     h: String,
+    //     dist: String,
+    // ) -> Self {
+    //     let dist_real = Self::real_dist(&dist, db_count, table_count);
+    //     Self {
+    //         db_prefix: db_prefix.clone(),
+    //         table_prefix: table_prefix.clone(),
+    //         table_postfix: table_postfix.clone(),
+    //         db_count: db_count,
+    //         table_count: table_count,
+    //         hierarchy: hierarchy,
+    //         sql: sql.clone(),
+    //         distribution: Distribute::from(&dist_real, names),
+    //         hasher: Hasher::from(h.as_str()),
+    //     }
+    // }
 
     pub fn try_from(item: &MysqlNamespace) -> Self {
         Self {
@@ -79,14 +80,15 @@ impl Strategy {
             table_count: item.basic.table_count,
             hierarchy: item.basic.hierarchy,
             sql: item.sql.clone(),
-            distribution: Distribute::from_num(
-                item.basic.distribution.as_str(),
-                (item.basic.db_count * item.basic.table_count) as usize,
+            distribution: DBRange::new(
+                item.basic.db_count as usize,
+                item.basic.table_count as usize,
+                item.backends.len() as usize,
             ),
             hasher: Hasher::from(item.basic.hash.as_str()),
         }
     }
-    pub fn distribution(&self) -> &Distribute {
+    pub fn distribution(&self) -> &DBRange {
         &self.distribution
     }
     pub fn hasher(&self) -> &Hasher {
@@ -152,9 +154,9 @@ impl Strategy {
         let dname_prefix = self.db_prefix.clone();
         //todo: check db_name_prefix not empty
         let mut db_idx = 0;
-        db_idx = self.distribution.index(self.hasher.hash(key));
+        db_idx = self.distribution.db_idx(self.hasher.hash(key));
         // let db_index = api_util::get_hash4split(id, db_count * item.table_count.max(1));
-        let db_idx = db_idx / self.table_count as usize;
+        // let db_idx = db_idx / self.table_count as usize;
         return Some(format!("{}_{}", dname_prefix, db_idx));
     }
     fn build_idx_tname(&self, key: &RingSlice) -> Option<String> {
@@ -162,9 +164,9 @@ impl Strategy {
         //todo: check db_name_prefix not empty
         if self.table_count > 0 && self.db_count > 0 {
             let mut tbl_index = 0;
-            tbl_index = self.distribution.index(self.hasher.hash(key));
+            tbl_index = self.distribution.table_idx(self.hasher.hash(key));
             // tbl_index = api_util::get_hash4split(id, item.db_count * item.table_count);
-            tbl_index = tbl_index % self.table_count as usize;
+            // tbl_index = tbl_index % self.table_count as usize;
             return Some(format!("{}_{}", table_prefix, tbl_index));
         } else {
             log::error!("id is null");
