@@ -120,9 +120,6 @@ where
             .strategy
             .build_sql("SQL_SELECT", &mid, &mid)
             .expect("malformed sql");
-
-        // let mysql_cmd = raw_req.mysql_cmd();
-        self.parser.build_request(req.cmd_mut(), sql);
         log::debug!(
             "+++ {} send sql[{}] after build_request {} => {:?}",
             self.service,
@@ -130,6 +127,9 @@ where
             shard_idx,
             req
         );
+
+        // let mysql_cmd = raw_req.mysql_cmd();
+        self.parser.build_request(req.cmd_mut(), sql);
 
         if shard.has_slave() && !req.operation().is_store() {
             //todo: 访问slave
