@@ -1,13 +1,6 @@
-use std::{
-    collections::HashMap,
-    marker::PhantomData,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::{collections::HashMap, marker::PhantomData};
 
-use crate::{Builder, Endpoint, Topology};
+use crate::{Builder, Endpoint, Notify, Topology};
 use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
@@ -22,15 +15,13 @@ use sharding::{
 use super::config::PhantomNamespace;
 use crate::Timeout;
 
-const CONFIG_UPDATED_KEY: &str = "__config__";
-
 #[derive(Clone)]
 pub struct PhantomService<B, E, Req, P> {
     // 一般有2组，相互做HA，每组是一个域名列表，域名下只有一个ip，但会变化
     streams: Vec<Distance<(String, E)>>,
     // m * n: m个shard，每个shard有n个ip
     streams_backend: Vec<Vec<String>>,
-    updated: HashMap<String, Arc<AtomicBool>>,
+    updated: Notify,
     hasher: Crc32,
     distribution: Range,
     parser: P,
@@ -133,10 +124,7 @@ where
             }
 
             // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
-            self.updated
-                .entry(CONFIG_UPDATED_KEY.to_string())
-                .or_insert(Arc::new(AtomicBool::new(true)))
-                .store(true, Ordering::Release);
+            self.updated.notify();
         }
     }
 
@@ -145,26 +133,17 @@ where
     //   2. 近期有dns更新；
     #[inline]
     fn need_load(&self) -> bool {
-        self.streams.len() != self.streams_backend.len()
-            || self
-                .updated
-                .iter()
-                .fold(false, |acc, (_k, v)| acc || v.load(Ordering::Acquire))
+        self.streams.len() != self.streams_backend.len() || self.updated.waiting()
     }
     #[inline]
     fn load(&mut self) {
         // 先改通知状态，再load，如果失败改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        for (_, updated) in self.updated.iter() {
-            updated.store(false, Ordering::Release);
-        }
+        self.updated.clear();
 
         // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
         let succeed = self.load_inner();
         if !succeed {
-            self.updated
-                .get_mut(CONFIG_UPDATED_KEY)
-                .expect("phantom config state missed")
-                .store(true, Ordering::Release);
+            self.updated.notify();
             log::warn!("phantom will reload topo later...");
         }
     }

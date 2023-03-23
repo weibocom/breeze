@@ -88,8 +88,6 @@ pub trait RequestProcessor {
     fn process(&mut self, req: HashedCommand, last: bool);
 }
 
-pub type ReservedHash = Option<i64>;
-
 pub struct Command {
     flag: Flag,
     cmd: ds::MemGuard,

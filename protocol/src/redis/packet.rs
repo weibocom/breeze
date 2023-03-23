@@ -2,7 +2,7 @@ use super::{
     command::{CommandHasher, CommandProperties, CommandType},
     error::RedisError,
 };
-use crate::{error::Error, redis::command, Flag, ReservedHash, Result};
+use crate::{error::Error, redis::command, Flag, Result, StreamContext};
 use ds::RingSlice;
 use sharding::hash::Hash;
 
@@ -10,40 +10,56 @@ const CRLF_LEN: usize = b"\r\n".len();
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct RequestContext {
-    bulk: u16,
-    op_code: u16,
-    layer: u8,        // 请求的层次，目前只支持：master，all
-    first: bool,      // 在multi-get请求中是否是第一个请求。
-    sendto_all: bool, //发送到所有shard
-    _ignore: [u8; 1],
+    pub bulk: u16,
+    pub op_code: u16,
+    pub first: bool,      // 在multi-get请求中是否是第一个请求。
+    pub layer: u8,        // 请求的层次，目前只支持：master，all
+    pub sendto_all: bool, //发送到所有shard
+    //手动option，屏蔽需要对option repr的了解
+    pub is_reserved_hash: bool,
+    //16
+    pub reserved_hash: i64,
+}
+
+impl From<&mut StreamContext> for RequestContext {
+    fn from(value: &mut StreamContext) -> Self {
+        unsafe { std::mem::transmute(*value) }
+    }
+}
+
+impl From<RequestContext> for StreamContext {
+    fn from(value: RequestContext) -> Self {
+        unsafe { std::mem::transmute(value) }
+    }
 }
 
 // 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
+#[repr(u8)]
 pub enum LayerType {
     MasterOnly = 1,
 }
 
-impl RequestContext {
-    #[inline]
-    fn reset(&mut self) {
-        assert_eq!(std::mem::size_of::<Self>(), 8);
-        *self.u64_mut() = 0;
-    }
-    #[inline]
-    fn u64(&mut self) -> u64 {
-        *self.u64_mut()
-    }
-    #[inline]
-    fn u64_mut(&mut self) -> &mut u64 {
-        unsafe { std::mem::transmute(self) }
-    }
-    #[inline]
-    fn from(v: u64) -> Self {
-        unsafe { std::mem::transmute(v) }
-    }
-}
+// impl RequestContext {
+//     #[inline]
+//     fn reset(&mut self) {
+//         assert_eq!(std::mem::size_of::<Self>(), 8);
+//         *self.u64_mut() = 0;
+//     }
+//     #[inline]
+//     fn u64(&mut self) -> u64 {
+//         *self.u64_mut()
+//     }
+//     #[inline]
+//     fn u64_mut(&mut self) -> &mut u64 {
+//         unsafe { std::mem::transmute(self) }
+//     }
+//     #[inline]
+//     fn from(v: u64) -> Self {
+//         unsafe { std::mem::transmute(v) }
+//     }
+// }
 
 //包含流解析过程中当前命令和前面命令的状态
 pub(crate) struct RequestPacket<'a, S> {
@@ -52,7 +68,6 @@ pub(crate) struct RequestPacket<'a, S> {
     // 低16位是bulk_num
     // 次低16位是op_code.
     ctx: RequestContext,
-    reserved_hash: ReservedHash,
     oft_last: usize,
     oft: usize,
 }
@@ -60,15 +75,13 @@ pub(crate) struct RequestPacket<'a, S> {
 impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(crate) fn new(stream: &'a mut S) -> Self {
-        let ctx = RequestContext::from(*stream.context());
-        let reserved_hash = *stream.reserved_hash();
+        let ctx = stream.context().into();
         let data = stream.slice();
         Self {
             oft_last: 0,
             oft: 0,
             data: Packet { inner: data },
             ctx,
-            reserved_hash,
             stream,
         }
     }
@@ -112,13 +125,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
                 // 路过CRLF_LEN个字节，通过命令获取op_code
                 let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
+                if idx + CRLF_LEN > self.data.len() {
+                    return Err(crate::Error::ProtocolIncomplete);
+                }
                 self.ctx.op_code = op_code;
                 // 第一次解析cmd需要对协议进行合法性校验
-                let cfg = command::get_cfg(self.op_code())?;
+                let cfg = command::get_cfg(op_code)?;
                 cfg.validate(self.bulk() as usize)?;
 
-                if cfg.need_reserved_hash && !(self.sendto_all() || self.reserved_hash().is_some())
-                {
+                if cfg.need_reserved_hash && !(self.sendto_all() || self.ctx.is_reserved_hash) {
                     return Err(RedisError::ReqInvalid.error());
                 }
                 // check 命令长度
@@ -176,7 +191,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
             assert_ne!(self.ctx.op_code, 0, "packet:{}", self);
             // 更新
-            *self.stream.context() = self.ctx.u64();
+            *self.stream.context() = self.ctx.into();
         }
     }
 
@@ -184,29 +199,29 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     fn reset_context(&mut self) {
         // 重置packet的ctx
-        self.ctx.reset();
+        self.ctx = Default::default();
 
         // 重置stream的ctx
-        *self.stream.context() = 0;
+        *self.stream.context() = Default::default();
     }
 
-    // 重置reserved hash，包括stream中的对应值
+    // // 重置reserved hash，包括stream中的对应值
     #[inline]
-    fn reset_reserved_hash(&mut self) {
-        self.reserved_hash.take();
-        self.stream.reserved_hash().take();
+    fn set_reserved_hash(&mut self, hash: i64) {
+        self.ctx.is_reserved_hash = true;
+        self.ctx.reserved_hash = hash;
     }
     // 更新reserved hash
     // #[inline]
     // pub(super) fn update_reserved_hash(&mut self, reserved_hash: i64) {
     //     self.reserved_hash.replace(reserved_hash);
-    //     self.stream.reserved_hash().replace(reserved_hash);
+    //     self.stream.ctx.reserved_hash.replace(reserved_hash);
     // }
 
-    #[inline]
-    pub(super) fn reserved_hash(&self) -> ReservedHash {
-        self.reserved_hash
-    }
+    // #[inline]
+    // pub(super) fn reserved_hash(&self) -> ReservedHash {
+    //     self.reserved_hash
+    // }
 
     #[inline]
     pub(super) fn sendto_all(&self) -> bool {
@@ -223,14 +238,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if cfg.effect_on_next_req {
             let master_only = self.master_only();
             let sendto_all = self.sendto_all();
-            let reserved_hash = self.reserved_hash();
+            let is_reserved_hash = self.ctx.is_reserved_hash;
+            let reserved_hash = self.ctx.reserved_hash;
             // 重置context、reserved-hash
             self.reset_context();
-            self.reset_reserved_hash();
-            self.reserve_status(master_only, sendto_all, reserved_hash);
+            self.reserve_status(master_only, sendto_all, is_reserved_hash, reserved_hash);
         } else {
             self.reset_context();
-            self.reset_reserved_hash();
         }
     }
 
@@ -241,7 +255,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.oft_last = self.oft;
         // 更新上下文的bulk num。
         self.ctx.first = false;
-        *self.stream.context() = self.ctx.u64();
+        *self.stream.context() = self.ctx.into();
         self.stream.take(data.len())
     }
 
@@ -263,12 +277,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if cfg.has_key {
             key = self.parse_key()?;
         }
-        let hash = if self.reserved_hash().is_some() {
-            self.reserved_hash().unwrap()
-        } else if cfg.has_key {
-            calculate_hash(alg, &key)
+        let hash = if self.ctx.is_reserved_hash {
+            self.ctx.reserved_hash
         } else {
-            default_hash()
+            calculate_hash(alg, &key)
         };
 
         Ok(hash)
@@ -287,14 +299,19 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             // 流程放到计算hash中处理
             CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
                 let key = self.parse_key()?;
-                let hash = calculate_hash(alg, &key);
-                self.reserved_hash.replace(hash);
+                //兼容老版本
+                if key.len() == 2 && key[0] == ('-' as u8) && key[1] == ('1' as u8) {
+                    self.set_sendto_all();
+                } else {
+                    let hash = calculate_hash(alg, &key);
+                    self.set_reserved_hash(hash);
+                }
             }
             // cmd: hashrandomq
             CommandType::SwallowedCmdHashrandomq => {
                 // 虽然hash名义为i64，但实际当前均为u32
                 let hash = rand::random::<u32>() as i64;
-                self.reserved_hash.replace(hash);
+                self.set_reserved_hash(hash);
             }
             CommandType::CmdSendToAll | CommandType::CmdSendToAllq => {
                 self.set_sendto_all();
@@ -311,7 +328,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         &mut self,
         master_only: bool,
         sendto_all: bool,
-        reserved_hash: ReservedHash,
+        is_reserved_hash: bool,
+        reserved_hash: i64,
     ) {
         if master_only {
             // 保留master only 设置
@@ -320,10 +338,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if sendto_all {
             self.set_sendto_all()
         }
-        *self.stream.context() = self.ctx.u64();
+        self.ctx.is_reserved_hash = is_reserved_hash;
+        self.ctx.reserved_hash = reserved_hash;
+        *self.stream.context() = self.ctx.into();
 
-        self.reserved_hash = reserved_hash;
-        *self.stream.reserved_hash() = reserved_hash;
         // 设置packet的ctx到stream的ctx中，供下一个指令使用
 
         // 这个有必要保留吗？
@@ -369,8 +387,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     // 解析完毕，如果数据未读完，需要保留足够的buff空间
     #[inline(always)]
     pub(crate) fn reserve_stream_buff(&mut self) {
-        if self.oft > self.stream.len() {
-            log::debug!("+++ will reserve len:{}", (self.oft - self.stream.len()));
+        if self.oft > self.data.len() {
+            log::debug!("+++ will reserve len:{}", (self.oft - self.data.len()));
             self.stream.reserve(self.oft - self.data.len())
         }
     }
@@ -394,6 +412,7 @@ impl std::ops::Deref for Packet {
     }
 }
 
+//整体解析原则，解析方保证解析完\r\n, oft移到\n+1, 即作为参数传入的oft不保证未溢出
 impl Packet {
     // 调用方确保oft元素为'*'
     // *num\r\n
@@ -402,10 +421,10 @@ impl Packet {
     pub fn num_of_bulks(&self, oft: &mut usize) -> crate::Result<usize> {
         debug_assert!(*oft < self.len() && self[*oft] == b'*');
         let mut n = 0;
-        for i in *oft + 1..self.len() {
+        for i in *oft + 1..self.len() - 1 {
             if self[i] == b'\r' {
                 // 下一个字符必须是'\n'
-                debug_assert!(i + 1 < self.len() || self[i + 1] == b'\n');
+                debug_assert!(i + 1 >= self.len() || self[i + 1] == b'\n');
                 *oft = i + 2;
                 return Ok(n);
             }

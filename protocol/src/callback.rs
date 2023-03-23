@@ -25,9 +25,7 @@ impl Callback {
         (self.cb)(req);
     }
 }
-
 pub struct CallbackContext {
-    pub(crate) ctx: Context,
     request: HashedCommand,
     response: MaybeUninit<Command>,
     callback: CallbackPtr,
@@ -35,6 +33,14 @@ pub struct CallbackContext {
     last_start: Instant, // 本次资源请求的开始时间(一次请求可能触发多次资源请求)
     tries: AtomicU8,
     waker: *const AtomicWaker,
+    complete: AtomicBool, // 当前请求是否完成.
+    inited: AtomicBool,   // response是否已经初始化
+    async_mode: bool,     // 是否是异步请求
+    try_next: bool,       // 请求失败是否需要重试
+    write_back: bool,     // 请求结束后，是否需要回写。
+    first: bool,          // 当前请求是否是所有子请求的第一个
+    last: bool,           // 当前请求是否是所有子请求的最后一个
+    flag: crate::Context,
 }
 
 impl CallbackContext {
@@ -46,19 +52,24 @@ impl CallbackContext {
         first: bool,
         last: bool,
     ) -> Self {
-        let mut ctx = Context::default();
-        ctx.first = first;
-        ctx.last = last;
         log::debug!("request prepared:{}", req);
+        let start = Instant::now();
         Self {
-            ctx,
             request: req,
             response: MaybeUninit::uninit(),
             callback: cb,
-            start: Instant::now(),
-            last_start: Instant::now(),
+            start,
+            last_start: start,
             tries: 0.into(),
             waker,
+            first,
+            last,
+            complete: false.into(),
+            inited: false.into(),
+            async_mode: false,
+            try_next: true,
+            write_back: false,
+            flag: crate::Context::default(),
         }
     }
 
@@ -68,8 +79,8 @@ impl CallbackContext {
 
         // 对noforward请求，只需要设置complete状态为true，不需要wake及其他逻辑
         // self.on_done();
-        assert!(!*self.ctx.complete.get_mut(), "{:?}", self);
-        self.ctx.complete.store(true, Release);
+        assert!(!*self.complete.get_mut(), "{:?}", self);
+        self.complete.store(true, Release);
     }
 
     // 返回true: 表示发送完之后还未结束
@@ -88,7 +99,7 @@ impl CallbackContext {
     pub fn on_complete(&mut self, resp: Command) {
         log::debug!("on-complete:{} resp:{}", self, resp);
         // 异步请求不关注response。
-        if !self.ctx.async_mode {
+        if !self.async_mode {
             debug_assert!(!self.complete(), "{:?}", self);
             self.swap_response(resp);
         }
@@ -97,17 +108,9 @@ impl CallbackContext {
 
     #[inline]
     pub fn take_response(&mut self) -> Option<Command> {
-        match self
-            .ctx
-            .inited
-            .compare_exchange(true, false, AcqRel, Acquire)
-        {
+        match self.inited.compare_exchange(true, false, AcqRel, Acquire) {
             Ok(_) => unsafe { Some(ptr::read(self.response.as_mut_ptr())) },
-            Err(_) => {
-                self.ctx.write_back = false;
-                //assert!(!self.ctx.try_next && !self.ctx.write_back, "{}", self);
-                None
-            }
+            Err(_) => None,
         }
     }
 
@@ -115,13 +118,11 @@ impl CallbackContext {
     #[inline]
     fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
-        let goon = if !self.ctx.async_mode {
-            // 正常访问请求。
-            // old: 除非出现了error，否则最多只尝试一次;
-            !self.response_ok() && self.ctx.try_next && self.tries.fetch_add(1, Release) < 1
+        let goon = if !self.async_mode {
+            // 除非出现了error，否则最多只尝试一次;
+            !self.response_ok() && self.try_next && self.tries.fetch_add(1, Release) < 1
         } else {
-            // write back请求
-            self.ctx.write_back
+            self.write_back
         };
 
         if goon {
@@ -129,41 +130,19 @@ impl CallbackContext {
             self.last_start = Instant::now();
             return self.goon();
         }
-        if !self.ctx.async_mode {
-            // 说明有请求在pending
-            debug_assert!(!self.complete(), "{:?}", self);
-            self.ctx.complete.store(true, Release);
+        debug_assert!(!self.complete(), "{:?}", self);
+        self.complete.store(true, Release);
+        // 说明有请求在pending
+        // 只有最后一个请求才需要唤醒
+        if !self.async_mode {
             unsafe { (&*self.waker).wake() }
-        } else {
-            self.ctx.async_done.store(true, Release);
-            // async_mode需要手动释放
-            //self.manual_drop();
-            //self.ctx
-            //    .async_done
-            //    .compare_exchange(false, true, AcqRel, Acquire)
-            //    .expect("double free?");
         }
     }
 
-    //#[inline]
-    //fn need_goon(&self) -> bool {
-    //    if !self.ctx.async_mode {
-    //        if self.response_ok() || !self.ctx.try_next {
-    //            return false;
-    //        }
-    //        // 正常访问请求。
-    //        // old: 除非出现了error，否则最多只尝试一次;
-    //        self.tries.fetch_add(1, Release) < 1
-    //    } else {
-    //        // write back请求
-    //        self.ctx.write_back
-    //    }
-    //}
-
     #[inline]
     pub fn async_done(&self) -> bool {
-        assert!(self.ctx.async_mode, "{:?}", self);
-        self.ctx.async_done.load(Acquire)
+        assert!(self.async_mode, "{:?}", self);
+        self.complete.load(Acquire)
     }
 
     #[inline]
@@ -196,15 +175,15 @@ impl CallbackContext {
     }
     #[inline]
     pub fn complete(&self) -> bool {
-        self.ctx.complete.load(Acquire)
+        self.complete.load(Acquire)
     }
     #[inline]
     pub fn inited(&self) -> bool {
-        self.ctx.is_inited()
+        self.inited.load(Acquire)
     }
     #[inline]
     pub fn is_write_back(&self) -> bool {
-        self.ctx.write_back
+        self.write_back
     }
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut Self {
@@ -235,90 +214,63 @@ impl CallbackContext {
         self.send();
     }
     #[inline]
-    pub fn async_mode(&mut self) {
-        self.ctx.async_mode = true;
+    pub fn enter_async_mode(&mut self) {
+        // 在异步处理之前，必须要先处理完response
+        debug_assert!(!self.inited() && self.complete(), "{:?}", self);
+        self.async_mode = true;
+        self.complete.store(false, Release);
     }
     #[inline]
     pub fn with_request(&mut self, req: HashedCommand) {
-        assert!(self.ctx.async_mode, "{:?}", self);
         self.request = req;
     }
     #[inline]
-    pub fn as_mut_context(&mut self) -> &mut Context {
-        &mut self.ctx
-    }
-    #[inline]
     fn swap_response(&mut self, resp: Command) {
-        if self.ctx.is_inited() {
+        if self.inited() {
             log::debug!("drop response:{}", unsafe { self.unchecked_response() });
-            //self.ctx
-            //    .inited
-            //    .compare_exchange(true, false, AcqRel, Relaxed)
-            //    .expect("cas failed");
             unsafe { std::ptr::replace(self.response.as_mut_ptr(), resp) };
         } else {
             self.response.write(resp);
-            self.ctx.inited.store(true, Release);
+            self.inited.store(true, Release);
         }
     }
     #[inline]
     pub fn first(&self) -> bool {
-        self.ctx.first
+        self.first
     }
     #[inline]
     pub fn last(&self) -> bool {
-        self.ctx.last
+        self.last
+    }
+    #[inline]
+    pub fn write_back(&mut self, wb: bool) {
+        self.write_back = wb;
+    }
+    #[inline]
+    pub fn flag_mut(&mut self) -> &mut crate::Context {
+        &mut self.flag
+    }
+    #[inline]
+    pub fn try_next(&mut self, goon: bool) {
+        if self.try_next != goon {
+            self.try_next = goon;
+        }
     }
 }
 
 impl Drop for CallbackContext {
     #[inline]
     fn drop(&mut self) {
-        assert!(*self.ctx.complete.get_mut(), "{}", self);
+        assert!(*self.complete.get_mut(), "{}", self);
         //self.try_drop_response();
-        assert!(!*self.ctx.inited.get_mut(), "response not taken:{:?}", self);
+        assert!(!*self.inited.get_mut(), "response not taken:{:?}", self);
         // 可以尝试检查double free
-        *self.ctx.complete.get_mut() = false;
+        *self.complete.get_mut() = false;
     }
 }
 
 unsafe impl Send for CallbackContext {}
 unsafe impl Sync for CallbackContext {}
-#[derive(Default)]
-pub struct Context {
-    complete: AtomicBool, // 当前请求是否完成
-    inited: AtomicBool,   // response是否已经初始化
-    async_done: AtomicBool,
-    async_mode: bool, // 是否是异步请求
-    try_next: bool,   // 请求失败是否需要重试
-    write_back: bool, // 请求结束后，是否需要回写。
-    first: bool,      // 当前请求是否是所有子请求的第一个
-    last: bool,       // 当前请求是否是所有子请求的最后一个
-    flag: crate::Context,
-}
-
-impl Context {
-    #[inline]
-    pub fn as_mut_flag(&mut self) -> &mut crate::Context {
-        &mut self.flag
-    }
-    #[inline]
-    pub fn try_next(&mut self, goon: bool) {
-        self.try_next = goon;
-    }
-    #[inline]
-    pub fn write_back(&mut self, wb: bool) {
-        self.write_back = wb;
-    }
-    //#[inline]
-    //pub fn is_write_back(&self) -> bool {
-    //    self.write_back
-    //}
-    #[inline]
-    pub fn is_inited(&self) -> bool {
-        self.inited.load(Acquire)
-    }
-}
 
 use std::fmt::{self, Debug, Display, Formatter};
 impl Display for CallbackContext {
@@ -326,10 +278,15 @@ impl Display for CallbackContext {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {} tries:{}",
-            self.ctx,
+            "{} tries:{} complete:{} init:{} async:{} try:{} write back:{} flag:{}",
             self.request(),
-            self.tries.load(Acquire)
+            self.tries.load(Acquire),
+            self.complete.load(Acquire),
+            self.inited(),
+            self.async_mode,
+            self.try_next,
+            self.write_back,
+            self.flag,
         )
     }
 }
@@ -337,22 +294,6 @@ impl Debug for CallbackContext {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(self, f)
-    }
-}
-
-impl Display for Context {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "complete:{} init:{} async:{} try:{} write back:{} flag:{}",
-            self.complete.load(Acquire),
-            self.is_inited(),
-            self.async_mode,
-            self.try_next,
-            self.write_back,
-            self.flag,
-        )
     }
 }
 

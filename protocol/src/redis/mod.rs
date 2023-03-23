@@ -33,7 +33,6 @@ impl Redis {
 
         // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
         log::debug!("+++ rec redis req:{:?}", packet.inner_data());
-        // let mut packet = packet::RequestPacket::new(stream);
         while packet.available() {
             packet.parse_bulk_num()?;
             let cfg = packet.parse_cmd()?;
