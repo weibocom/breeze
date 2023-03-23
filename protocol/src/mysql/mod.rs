@@ -191,27 +191,14 @@ impl Protocol for Mysql {
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         // if let Some(rsp) = ctx.response_mut() {
         if let Some(rsp) = response {
-            assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
+            // mysql 请求到正确的数据，才会转换并write
+            if rsp.ok() {
+                assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
+                log::debug!("+++ will write mc rsp:{:?}", rsp.data());
+                self.write_mc_packet(old_op_code, rsp, w)?;
 
-            // 验证Opaque是否相同. 不相同说明数据不一致
-            // if ctx.request().data().opaque() != rsp.data().opaque() {
-            //     ctx.metric().inconsist(1);
-            // }
-
-            // 先进行metrics统计
-            //self.metrics(ctx.request(), Some(&rsp), ctx);
-
-            // 如果quite 请求没拿到数据，直接忽略
-            // if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
-            //     return Ok(());
-            // }
-            log::debug!("+++ will write mc rsp:{:?}", rsp.data());
-            // 这个只是value，还需要write header等
-            // let data = rsp.data_mut();
-            // data.restore_op(old_op_code as u8);
-            self.write_mc_packet(old_op_code, rsp, w)?;
-
-            return Ok(());
+                return Ok(());
+            }
         }
 
         // 先进行metrics统计
@@ -348,13 +335,14 @@ impl Mysql {
             false => Vec::with_capacity(10),
         };
 
+        let mut flag = Flag::from_op(OP_CODE_GET as u16, crate::Operation::Get);
         if row.len() == 0 {
-            row.extend("check dist for: not found data".as_bytes());
+            row.extend("not found data".as_bytes());
+        } else {
+            flag.set_status_ok(true);
         }
 
         let mem = MemGuard::from_vec(row);
-        let mut flag = Flag::from_op(OP_CODE_GET as u16, crate::Operation::Get);
-        flag.set_status_ok(true);
         let cmd = Command::new(flag, mem);
         Ok(Some(cmd))
     }
