@@ -142,10 +142,7 @@ where
     fn shard_idx(&self, hash: i64) -> usize {
         assert!(self.direct_shards.len() > 0);
         if self.direct_shards.len() > 1 {
-            self.strategy.distribution().index(hash)
-                / self.strategy.table_count as usize
-                / self.strategy.db_count as usize
-                / self.direct_shards.len()
+            self.strategy.distribution.index(hash)
         } else {
             0
         }

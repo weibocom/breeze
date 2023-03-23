@@ -194,7 +194,7 @@ impl Protocol for Mysql {
             // mysql 请求到正确的数据，才会转换并write
             if rsp.ok() {
                 assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
-                log::debug!("+++ will write mysql/mysql rsp:{:?}", rsp.data());
+                log::debug!("+++ will write mysql/mc rsp:{:?}", rsp.data());
                 self.write_mc_packet(old_op_code, rsp, w)?;
 
                 return Ok(());
