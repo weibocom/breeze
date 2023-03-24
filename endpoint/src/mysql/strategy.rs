@@ -192,6 +192,7 @@ impl Strategy {
                 .format("%y%m")
                 .to_string()
         };
+        log::debug!("with shanghai timezone:{} {}", key, yy_mm_dd);
         Some(format!("{}_{}", tbl_prefix, yy_mm_dd))
     }
 
