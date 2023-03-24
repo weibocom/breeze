@@ -32,6 +32,7 @@ mod mysql_strategy {
             "yymmdd".to_string(),
             32,
             1,
+            8,
             false,
             sqls,
             "crc32".to_string(),

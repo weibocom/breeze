@@ -1,16 +1,13 @@
 use super::config::MysqlNamespace;
-use super::topo::MysqlService;
 use super::uuid::UuidHelper;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
+use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
 use protocol::Result;
-use serde::{Deserialize, Serialize};
-use sharding::distribution::{self, DBRange, Distribute};
-use sharding::hash::{Hash, HashKey, Hasher};
+
+use sharding::distribution::DBRange;
+use sharding::hash::{Hash, Hasher};
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
-use std::time::SystemTime;
-use std::time::{Duration, UNIX_EPOCH};
 
 const DB_NAME_EXPRESSION: &str = "$db$";
 const TABLE_NAME_EXPRESSION: &str = "$tb$";
@@ -46,30 +43,30 @@ pub struct Strategy {
 }
 
 impl Strategy {
-    // pub fn new(
-    //     db_prefix: String,
-    //     table_prefix: String,
-    //     table_postfix: String,
-    //     db_count: u32,
-    //     table_count: u32,
-    //     hierarchy: bool,
-    //     sql: HashMap<String, String>,
-    //     h: String,
-    //     dist: String,
-    // ) -> Self {
-    //     let dist_real = Self::real_dist(&dist, db_count, table_count);
-    //     Self {
-    //         db_prefix: db_prefix.clone(),
-    //         table_prefix: table_prefix.clone(),
-    //         table_postfix: table_postfix.clone(),
-    //         db_count: db_count,
-    //         table_count: table_count,
-    //         hierarchy: hierarchy,
-    //         sql: sql.clone(),
-    //         distribution: Distribute::from(&dist_real, names),
-    //         hasher: Hasher::from(h.as_str()),
-    //     }
-    // }
+    pub fn new(
+        db_prefix: String,
+        table_prefix: String,
+        table_postfix: String,
+        db_count: u32,
+        table_count: u32,
+        shards: u32,
+        hierarchy: bool,
+        sql: HashMap<String, String>,
+        h: String,
+        dist: String,
+    ) -> Self {
+        Self {
+            db_prefix: db_prefix.clone(),
+            table_prefix: table_prefix.clone(),
+            table_postfix: table_postfix.clone(),
+            db_count: db_count,
+            table_count: table_count,
+            hierarchy: hierarchy,
+            sql: sql.clone(),
+            distribution: DBRange::new(db_count as usize, table_count as usize, shards as usize),
+            hasher: Hasher::from(h.as_str()),
+        }
+    }
 
     pub fn try_from(item: &MysqlNamespace) -> Self {
         Self {
@@ -181,16 +178,17 @@ impl Strategy {
     ) -> Option<String> {
         // TODO key 转位i64，后面整合到类型parse的专门类中 fishermen
         let id = to_i64(key);
-
         let milliseconds = UuidHelper::get_time(id) * 1000;
         let yy_mm_dd = if is_display_day {
             chrono::Utc
                 .timestamp_millis(milliseconds)
+                .with_timezone(&Shanghai)
                 .format("%y%m%d")
                 .to_string()
         } else {
             chrono::Utc
                 .timestamp_millis(milliseconds)
+                .with_timezone(&Shanghai)
                 .format("%y%m")
                 .to_string()
         };
