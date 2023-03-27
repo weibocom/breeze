@@ -7,11 +7,11 @@ pub struct DivMod {
     x_shift: u8,
     y_mask: u32,
     z_shift: u8,
-    absolute_hash: bool,
+    // absolute_hash: bool,
 }
 
 impl DivMod {
-    pub fn pow(x: usize, y: usize, z: usize, absolute_hash: bool) -> Self {
+    pub fn pow(x: usize, y: usize, z: usize, _absolute_hash: bool) -> Self {
         debug_assert!(x.is_power_of_two());
         debug_assert!(y.is_power_of_two());
         debug_assert!(z.is_power_of_two());
@@ -23,15 +23,18 @@ impl DivMod {
             x_shift,
             y_mask,
             z_shift,
-            absolute_hash,
+            // absolute_hash,
         }
     }
 
     #[inline(always)]
-    pub fn index(&self, mut hash: i64) -> usize {
-        if self.absolute_hash {
-            hash = (hash as i32).wrapping_abs() as i64
-        }
+    pub fn abs_index(&self, mut hash: i64) -> usize {
+        hash = (hash as i32).wrapping_abs() as i64;
+        (((hash as usize) >> self.x_shift) & self.y_mask as usize) >> self.z_shift
+    }
+
+    #[inline(always)]
+    pub fn index(&self, hash: i64) -> usize {
         (((hash as usize) >> self.x_shift) & self.y_mask as usize) >> self.z_shift
     }
 }

@@ -23,6 +23,7 @@ pub enum Distribute {
     //ModRange(ModRange),
     //SplitMod(SplitMod),
     DivMod(DivMod),
+    AbsDivMod(DivMod),
 }
 
 // pub const DIST_PADDING: &str = "padding";
@@ -58,7 +59,11 @@ impl Distribute {
             DIST_MODULA | DIST_ABS_MODULA => {
                 let sharding_num = names.len();
                 if sharding_num == 0 || sharding_num & (sharding_num - 1) == 0 {
-                    Self::DivMod(modula::div_mod(names.len(), dist == DIST_ABS_MODULA))
+                    if dist == DIST_ABS_MODULA {
+                        Self::AbsDivMod(modula::div_mod(names.len(), dist == DIST_ABS_MODULA))
+                    } else {
+                        Self::DivMod(modula::div_mod(names.len(), dist == DIST_ABS_MODULA))
+                    }
                 } else {
                     Self::ModulaNoPow2(ModulaNoPow2::from(names.len(), dist == DIST_ABS_MODULA))
                 }
@@ -88,6 +93,7 @@ impl Distribute {
             //Self::ModRange(m) => m.index(hash),
             //Self::SplitMod(s) => s.index(hash),
             Self::DivMod(d) => d.index(hash),
+            Self::AbsDivMod(d) => d.abs_index(hash),
         }
     }
 }
