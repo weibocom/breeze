@@ -100,6 +100,18 @@ impl RingSlice {
     pub fn data(&self) -> (&[u8], &[u8]) {
         self.data_oft(0)
     }
+
+    // 特殊情况下，打印合法字节，以及buff中全部的字节
+    pub fn data_dump(&self) -> (&[u8], &[u8], &[u8]) {
+        let oft_start = self.mask(self.start());
+        unsafe {
+            (
+                from_raw_parts(self.ptr().add(oft_start), self.len()),
+                from_raw_parts(self.ptr().add(oft_start), self.cap() - oft_start),
+                from_raw_parts(self.ptr().sub(oft_start), oft_start),
+            )
+        }
+    }
     #[inline(always)]
     pub fn fold<I>(&self, mut init: I, mut v: impl FnMut(&mut I, u8)) -> I {
         self.visit_segment_oft(0, |p, l| {
