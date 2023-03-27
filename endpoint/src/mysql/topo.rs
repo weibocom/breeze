@@ -36,8 +36,8 @@ pub struct MysqlService<B, E, Req, P> {
 
     // todo: 暂不实现这块处理逻辑
     // 按时间维度分库分表
-    archive_shards: HashMap<String, Vec<Shard<E>>>,
-    archive_shards_url: HashMap<String, Vec<Vec<String>>>,
+    archive_shards: HashMap<u16, Vec<Shard<E>>>,
+    archive_shards_url: HashMap<u16, Vec<Vec<String>>>,
     sql: HashMap<String, String>,
     // hasher: Hasher,
     // distribute: Distribute,
@@ -213,8 +213,37 @@ where
             self.direct_shards_url = shards_url;
             self.strategy = Strategy::try_from(&ns);
 
-            //todo: archive shard 未处理
-
+            // archive shard 处理
+            // 2009-2012 ,[111xxx.com:111,222xxx.com:222]
+            // 2013 ,[112xxx.com:112,223xxx.com:223]
+            for (key, val) in ns.archive.iter() {
+                let mut shards_url = Vec::new();
+                for shard in val.iter() {
+                    let mut shard_url = Vec::new();
+                    for url_port in shard.split(",") {
+                        // 注册域名。后续可以通常lookup进行查询。
+                        let url_port_trimed = url_port.trim();
+                        let host = url_port_trimed.host();
+                        if !self.updated.contains_key(host) {
+                            let watcher = dns::register(host);
+                            self.updated.insert(host.to_string(), watcher);
+                        }
+                        shard_url.push(url_port_trimed.to_string());
+                    }
+                    shards_url.push(shard_url);
+                }
+                //适配N年共用一个组shard情况，例如2009-2012共用
+                let years: Vec<&str> = key.split("-").collect();
+                let min: u16 = years[0].parse().unwrap();
+                if years.len() > 1 {
+                    let max: u16 = years[1].parse().unwrap();
+                    for i in min..max {
+                        self.archive_shards_url.insert(i, shards_url.clone());
+                    }
+                } else {
+                    self.archive_shards_url.insert(min, shards_url);
+                }
+            }
             // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
             self.updated
                 .entry(CONFIG_UPDATED_KEY.to_string())
@@ -289,7 +318,6 @@ where
             addrs.push((master, slaves));
         }
         // 到这之后，所有的shard都能解析出ip
-
         let mut old = HashMap::with_capacity(self.direct_shards_url.len());
         for shard in self.direct_shards.split_off(0) {
             old.entry(shard.master.0)
