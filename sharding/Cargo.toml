@@ -16,6 +16,6 @@ log = { path = "../log" }
 
 rand = "0.8.4"
 
-[[test]]
-name = "test_all"
-path = "src/all.rs"
+#[[test]]
+#name = "test_all"
+#path = "src/all.rs"

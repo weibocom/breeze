@@ -7,7 +7,7 @@ use discovery::{
 };
 use protocol::{Protocol, Request, Resource};
 use sharding::{
-    distribution::{DivMod, Range},
+    distribution::DivMod,
     hash::{Crc32, Hash, HashKey},
     Distance,
 };
@@ -105,7 +105,8 @@ where
             self.timeout.adjust(ns.basic.timeout_ms);
             // phantome 只会使用crc32
             //self.hasher = Hasher::from(&ns.basic.hash);
-            self.distribution = Range::from(&ns.basic.distribution, ns.backends.len());
+            self.distribution =
+                sharding::distribution::range_div_mod(&ns.basic.distribution, ns.backends.len());
             self.service = namespace.to_string();
 
             self.streams_backend = ns

@@ -8,29 +8,24 @@ mod splitmod;
 
 mod div_mod;
 pub use div_mod::DivMod;
+pub use range::div_mod as range_div_mod;
 
 use consistent::Consistent;
-use modrange::ModRange;
-use modula::Modula;
+use modula::ModulaNoPow2;
 //use padding::Padding;
-pub use range::Range;
-use splitmod::SplitMod;
-
-use crate::distribution::slotmod::SlotMod;
 
 #[derive(Clone, Debug)]
 pub enum Distribute {
     //Padding(Padding),
     Consistent(Consistent),
-    Modula(Modula),
+    ModulaNoPow2(ModulaNoPow2),
     //Range(Range),
     //ModRange(ModRange),
     //SplitMod(SplitMod),
-    SlotMod(SlotMod),
     DivMod(DivMod),
 }
 
-pub const DIST_PADDING: &str = "padding";
+// pub const DIST_PADDING: &str = "padding";
 pub const DIST_MODULA: &str = "modula";
 pub const DIST_ABS_MODULA: &str = "absmodula";
 pub const DIST_KETAMA: &str = "ketama";
@@ -60,23 +55,27 @@ impl Distribute {
         let dist = distribution.to_ascii_lowercase();
 
         match dist.as_str() {
-            //DIST_PADDING => Self::Padding(Default::default()),
             DIST_MODULA | DIST_ABS_MODULA => {
-                Self::Modula(Modula::from(names.len(), dist == DIST_ABS_MODULA))
+                let sharding_num = names.len();
+                if sharding_num == 0 || sharding_num & (sharding_num - 1) == 0 {
+                    Self::DivMod(modula::div_mod(names.len(), dist == DIST_ABS_MODULA))
+                } else {
+                    Self::ModulaNoPow2(ModulaNoPow2::from(names.len(), dist == DIST_ABS_MODULA))
+                }
             }
             //DIST_ABS_MODULA => Self::Modula(Modula::from(names.len(), true)),
             DIST_KETAMA => Self::Consistent(Consistent::from(names)),
-            d if d.starts_with(DIST_RANGE) => Self::DivMod(Range::div_mod(d, names.len())),
+            d if d.starts_with(DIST_RANGE) => Self::DivMod(range::div_mod(d, names.len())),
             d if d.starts_with(DIST_MOD_RANGE_WITH_SLOT_PREFIX) => {
-                Self::DivMod(ModRange::div_mod(distribution, names.len()))
+                Self::DivMod(modrange::div_mod(distribution, names.len()))
             }
             d if d.starts_with(DIST_SPLIT_MOD_WITH_SLOT_PREFIX) => {
-                Self::DivMod(SplitMod::div_mod(distribution, names.len()))
+                Self::DivMod(splitmod::div_mod(distribution, names.len()))
             }
             d if d.starts_with(DIST_SLOT_MOD_PREFIX) => {
-                Self::SlotMod(SlotMod::from(distribution, names.len()))
+                Self::DivMod(slotmod::div_mod(distribution, names.len()))
             }
-            _ => Self::Modula(Modula::from(names.len(), false)),
+            _ => Self::ModulaNoPow2(ModulaNoPow2::from(names.len(), false)),
         }
     }
     #[inline]
@@ -84,11 +83,10 @@ impl Distribute {
         match self {
             //Self::Padding(pd) => pd.index(hash),
             Self::Consistent(d) => d.index(hash),
-            Self::Modula(d) => d.index(hash),
+            Self::ModulaNoPow2(d) => d.index(hash),
             //Self::Range(r) => r.index(hash),
             //Self::ModRange(m) => m.index(hash),
             //Self::SplitMod(s) => s.index(hash),
-            Self::SlotMod(s) => s.index(hash),
             Self::DivMod(d) => d.index(hash),
         }
     }
@@ -97,6 +95,6 @@ impl Distribute {
 // 默认不分片
 impl Default for Distribute {
     fn default() -> Self {
-        Self::Modula(Modula::from(1, false))
+        Self::ModulaNoPow2(ModulaNoPow2::from(1, false))
     }
 }
