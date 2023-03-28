@@ -2,19 +2,20 @@
 
 use std::fmt::Display;
 
-use super::crc32::{CRC32TAB, CRC_SEED};
+use super::{
+    crc32::{CRC32TAB, CRC_SEED},
+    DebugName,
+};
 
 // LBCrc32local算法，需要先转为u64的bytes，然后再计算hash
 #[derive(Default, Clone, Debug)]
 pub struct LBCrc32localDelimiter {
-    name: String,
+    name: DebugName,
 }
 
 impl LBCrc32localDelimiter {
     pub fn from(alg: &str) -> Self {
-        Self {
-            name: alg.to_string(),
-        }
+        Self { name: alg.into() }
     }
 }
 
@@ -46,6 +47,6 @@ impl super::Hash for LBCrc32localDelimiter {
 
 impl Display for LBCrc32localDelimiter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{:?}", self.name)
     }
 }
