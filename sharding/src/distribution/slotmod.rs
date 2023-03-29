@@ -6,17 +6,8 @@ pub struct SlotMod {
 }
 
 impl SlotMod {
-    pub fn from(name: &str, shards: usize) -> Self {
-        assert!(name.starts_with(super::DIST_SLOT_MOD_PREFIX));
-        assert!(name.len() > super::DIST_SLOT_MOD_PREFIX.len());
-
-        let slot = match name[super::DIST_SLOT_MOD_PREFIX.len()..].parse::<u64>() {
-            Ok(s) => s,
-            Err(_e) => {
-                log::error!("slotmod - found malformed dist: {}, e: {:?}", name, _e);
-                1024 // 默认1024个slot，保持与业务相同
-            }
-        };
+    pub fn from(num: Option<u64>, shards: usize) -> Self {
+        let slot = num.unwrap_or(1024);
         SlotMod {
             slot_count: slot,
             shard_count: shards as u64,

@@ -105,7 +105,12 @@ where
             self.timeout.adjust(ns.basic.timeout_ms);
             // phantome 只会使用crc32
             //self.hasher = Hasher::from(&ns.basic.hash);
-            self.distribution = Range::from(&ns.basic.distribution, ns.backends.len());
+            let dist = &ns.basic.distribution;
+            let num = dist
+                .find('-')
+                .map(|idx| dist[idx + 1..].parse::<u64>().ok())
+                .flatten();
+            self.distribution = Range::from(num, ns.backends.len());
             self.service = namespace.to_string();
 
             self.streams_backend = ns
