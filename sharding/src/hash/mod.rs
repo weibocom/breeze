@@ -1,6 +1,7 @@
 pub mod bkdr;
 pub mod crc32;
 pub mod crc32local;
+pub mod lbcrc32local;
 pub mod padding;
 pub mod random;
 pub mod raw;
@@ -10,6 +11,7 @@ pub mod rawsuffix;
 pub use bkdr::Bkdr;
 pub use crc32::*;
 pub use crc32local::*;
+pub use lbcrc32local::LBCrc32localDelimiter;
 pub use padding::Padding;
 pub use random::RandomHash;
 pub use raw::Raw;
@@ -68,8 +70,9 @@ pub enum Hasher {
     Crc32local(Crc32local),         // crc32local for a hash key like: xx.x, xx_x, xx#x etc.
     Crc32localDelimiter(Crc32localDelimiter),
     Crc32localSmartNum(Crc32localSmartNum), //crc32 for key like： xxx + id + xxx，id的长度需要大于等于5
-    Rawcrc32local(Rawcrc32local),           // raw or crc32local
-    Random(RandomHash),                     // random hash
+    LBCrc32localDelimiter(LBCrc32localDelimiter), // long bytes crc32local for hash like: 123.a, 124_a, 123#a
+    Rawcrc32local(Rawcrc32local),                 // raw or crc32local
+    Random(RandomHash),                           // random hash
     RawSuffix(RawSuffix),
 }
 
@@ -107,6 +110,9 @@ impl Hasher {
                 "crc32" => Self::Crc32(Default::default()),
                 "crc32local" => Self::Crc32local(Default::default()),
                 "rawcrc32local" => Self::Rawcrc32local(Default::default()),
+                "lbcrc32local" => {
+                    Self::LBCrc32localDelimiter(LBCrc32localDelimiter::from(alg_lower.as_str()))
+                }
                 "random" => Self::Random(Default::default()),
                 _ => {
                     // 默认采用mc的crc32-s hash
