@@ -156,11 +156,11 @@ where
                     Err(e) => match e {
                         Error::UnexpectedData => {
                             let req = self.pending.iter().map(|r| r.data()).collect::<Vec<_>>();
+                            let rsp_data = self.s.slice();
+                            let rsp_buf = unsafe { rsp_data.data_dump() };
                             panic!(
-                                "unexpected handler:{:?} data:{:?} pending req:{:?} ",
-                                self,
-                                self.s.slice().data(),
-                                req
+                                "unexpected handler:{:?} rsp data:[{:?}] buff:{:?} pending req:[{:?}] ",
+                                self, rsp_data, rsp_buf, req
                             );
                         }
                         _ => {
