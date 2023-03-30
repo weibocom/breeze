@@ -1,4 +1,4 @@
-use super::DIST_SPLIT_MOD_WITH_SLOT_PREFIX;
+//use super::DIST_SPLIT_MOD_WITH_SLOT_PREFIX;
 
 // 算法： hash/split_count%split_count%sharding
 #[derive(Clone, Debug, Default)]
@@ -8,18 +8,9 @@ pub struct SplitMod {
 }
 
 impl SplitMod {
-    pub fn from(name: &str, shards: usize) -> Self {
-        assert!(name.len() > DIST_SPLIT_MOD_WITH_SLOT_PREFIX.len());
-        assert!(name.starts_with(DIST_SPLIT_MOD_WITH_SLOT_PREFIX));
-
+    pub fn from(num: Option<u64>, shards: usize) -> Self {
         // 根据算法，默认采用32
-        let mut split = 32;
-        let slot_str = &name[DIST_SPLIT_MOD_WITH_SLOT_PREFIX.len()..];
-        if let Ok(s) = slot_str.parse::<u64>() {
-            split = s;
-        } else {
-            log::warn!("found unknown distribution: {}, will use range", name);
-        }
+        let split = num.unwrap_or(32);
 
         assert!(shards > 0 && split >= shards as u64);
         SplitMod {
