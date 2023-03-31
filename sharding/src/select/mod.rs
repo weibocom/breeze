@@ -6,6 +6,8 @@ pub use random::*;
 mod by_distance;
 pub use by_distance::*;
 
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+
 //use discovery::distance::*;
 
 #[derive(Clone, Copy)]
@@ -29,6 +31,18 @@ impl From<&str> for Selector {
             _ => Self::ByDistance,
         }
     }
+}
+
+pub static SELECTOR_TIMER: AtomicUsize =  AtomicUsize::new(0);
+pub fn init_selector_timer() {
+    // 每4秒刷新一次
+    let mut interval = tokio::time::interval(ds::time::Duration::from_secs(4));
+    tokio::spawn(async move {
+        loop {
+            SELECTOR_TIMER.fetch_add(4, Relaxed);
+            interval.tick().await;
+        }
+    });
 }
 
 //#[derive(Clone)]
