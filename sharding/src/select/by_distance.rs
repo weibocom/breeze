@@ -1,6 +1,8 @@
 use discovery::distance::{Addr, ByDistance};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::sync::Arc;
+
+use crate::SELECTOR_TIMER;
 // 按机器之间的距离来选择replica。
 // 1. B类地址相同的最近与同一个zone的是近距离，优先访问。
 // 2. 其他的只做错误处理时访问。
@@ -10,6 +12,7 @@ pub struct Distance<T> {
     batch_shift: u8,
     len_local: u16,
     seq: Arc<AtomicUsize>,
+    current: Arc<AtomicUsize>, // 当前使用的backend使用的时间点
     pub(super) replicas: Vec<T>,
 }
 impl<T: Addr> Distance<T> {
@@ -18,6 +21,7 @@ impl<T: Addr> Distance<T> {
             batch_shift: 0,
             len_local: 0,
             seq: Arc::new(AtomicUsize::new(0)),
+            current: Arc::new(AtomicUsize::new(0)),
             replicas: Vec::new(),
         }
     }
@@ -27,6 +31,7 @@ impl<T: Addr> Distance<T> {
             batch_shift: 0,
             len_local: 0,
             seq: Arc::new(AtomicUsize::new(0)),
+            current: Arc::new(AtomicUsize::new(0)),
             replicas,
         };
         if local {
@@ -80,7 +85,13 @@ impl<T: Addr> Distance<T> {
         let idx = if self.len() == 1 {
             0
         } else {
-            (self.seq.fetch_add(1, Relaxed) >> self.batch_shift as usize) % self.local_len()
+            let t = SELECTOR_TIMER.load(Relaxed);
+            if self.current.load(Relaxed) < t {
+                self.current.store(t, Relaxed);
+                self.seq.fetch_add(1, Relaxed) % self.local_len()
+            } else {
+                self.seq.load(Relaxed) % self.local_len()
+            }
         };
         assert!(idx < self.len(), "{} >= {}", idx, self.len());
         idx

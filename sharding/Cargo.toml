@@ -12,6 +12,6 @@ ds = { path = "../ds" }
 discovery = { path = "../discovery" }
 metrics = { path = "../metrics" }
 log = { path = "../log" }
-
+tokio = { version = "1.24.2", features = ["rt", "rt-multi-thread", "time"], default-features = false }
 
 rand = "0.8.4"
