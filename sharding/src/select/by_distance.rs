@@ -8,17 +8,14 @@ use crate::SELECTOR_TIMER;
 // 2. 其他的只做错误处理时访问。
 #[derive(Clone)]
 pub struct Distance<T> {
-    // batch: 至少在一个T上连续连续多少次
-    batch_shift: u8,
     len_local: u16,
     seq: Arc<AtomicUsize>,
-    current: Arc<AtomicUsize>, // 当前使用的backend使用的时间点
+    current: Arc<AtomicUsize>, // 当前使用的backend使用的时间标记
     pub(super) replicas: Vec<T>,
 }
 impl<T: Addr> Distance<T> {
     pub fn new() -> Self {
         Self {
-            batch_shift: 0,
             len_local: 0,
             seq: Arc::new(AtomicUsize::new(0)),
             current: Arc::new(AtomicUsize::new(0)),
@@ -28,7 +25,6 @@ impl<T: Addr> Distance<T> {
     pub fn with_local(replicas: Vec<T>, local: bool) -> Self {
         assert_ne!(replicas.len(), 0);
         let mut me = Self {
-            batch_shift: 0,
             len_local: 0,
             seq: Arc::new(AtomicUsize::new(0)),
             current: Arc::new(AtomicUsize::new(0)),
@@ -52,11 +48,7 @@ impl<T: Addr> Distance<T> {
     pub fn topn(&mut self, n: usize) {
         assert!(n > 0 && n <= self.len(), "n: {}, len:{}", n, self.len());
         self.len_local = n as u16;
-        let batch = 1024usize;
-        // 最小是1，最大是65536
-        let batch_shift = batch.max(1).next_power_of_two().min(65536).trailing_zeros() as u8;
         self.seq.store(rand::random::<u16>() as usize, Relaxed);
-        self.batch_shift = batch_shift;
     }
     // 前freeze个是local的，不参与排序
     fn local(&mut self) {

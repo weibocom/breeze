@@ -39,7 +39,7 @@ pub fn init_selector_timer() {
     let mut interval = tokio::time::interval(ds::time::Duration::from_secs(4));
     tokio::spawn(async move {
         loop {
-            SELECTOR_TIMER.fetch_add(4, Relaxed);
+            SELECTOR_TIMER.fetch_add(1, Relaxed);
             interval.tick().await;
         }
     });
