@@ -1,4 +1,4 @@
-use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand};
+use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand, Operation};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
@@ -24,6 +24,34 @@ impl crate::Request for Request {
     }
 
     #[inline]
+    fn len(&self) -> usize {
+        self.req().len()
+    }
+    #[inline]
+    fn cmd(&self) -> &HashedCommand {
+        self.req()
+    }
+    #[inline]
+    fn data(&self) -> &ds::RingSlice {
+        self.req().data()
+    }
+    //#[inline]
+    //fn read(&self, oft: usize) -> &[u8] {
+    //    self.req().read(oft)
+    //}
+    #[inline]
+    fn operation(&self) -> Operation {
+        self.req().operation()
+    }
+    #[inline]
+    fn hash(&self) -> i64 {
+        self.req().hash()
+    }
+    #[inline]
+    fn sentonly(&self) -> bool {
+        self.req().sentonly()
+    }
+    #[inline]
     fn on_noforward(&mut self) {
         self.ctx().on_noforward();
     }
@@ -44,17 +72,25 @@ impl crate::Request for Request {
         self.ctx().on_err(err);
     }
     #[inline]
-    fn context_mut(&mut self) -> &mut Context {
-        self.ctx().flag_mut()
+    fn mut_context(&mut self) -> &mut Context {
+        self.ctx().ctx.as_mut_flag()
     }
     #[inline]
     fn write_back(&mut self, wb: bool) {
-        self.ctx().write_back(wb);
+        self.ctx().ctx.write_back(wb);
     }
     #[inline]
     fn try_next(&mut self, goon: bool) {
-        self.ctx().try_next(goon);
+        self.ctx().ctx.try_next(goon);
     }
+    // #[inline]
+    // fn ignore_rsp(&self) -> bool {
+    //     self.req().ignore_rsp()
+    // }
+    // #[inline]
+    // fn update_hash(&mut self, idx_hash: i64) {
+    //     self.req_mut().update_hash(idx_hash)
+    // }
 }
 impl Request {
     #[inline]
@@ -67,6 +103,10 @@ impl Request {
         self.ctx().request()
     }
 
+    // #[inline]
+    // fn req_mut(&self) -> &mut HashedCommand {
+    //     self.ctx().request_mut()
+    // }
     #[inline]
     fn ctx(&self) -> &mut CallbackContext {
         unsafe { &mut *self.ctx.as_ptr() }
@@ -93,12 +133,3 @@ impl Debug for Request {
 
 unsafe impl Send for Request {}
 unsafe impl Sync for Request {}
-
-use std::ops::Deref;
-impl Deref for Request {
-    type Target = HashedCommand;
-    #[inline(always)]
-    fn deref(&self) -> &Self::Target {
-        self.req()
-    }
-}
