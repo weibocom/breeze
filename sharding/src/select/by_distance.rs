@@ -126,7 +126,7 @@ impl<T: Addr> Distance<T> {
 
 impl<T> std::ops::Deref for Distance<T> {
     type Target = Vec<T>;
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.replicas
     }

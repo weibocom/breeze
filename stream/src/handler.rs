@@ -150,7 +150,7 @@ where
                         self.num_rx += 1;
                         // 统计请求耗时。
                         self.rtt += req.elapsed_current_req();
-                        self.parser.check(&*req, &cmd);
+                        self.parser.check(req.cmd(), &cmd);
                         req.on_complete(cmd);
                     }
                     Err(e) => match e {
