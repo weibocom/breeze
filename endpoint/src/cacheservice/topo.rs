@@ -79,15 +79,15 @@ where
 
         let mut idx: usize = 0; // master
         if !req.operation().master_only() {
-            let mut ctx = super::Context::from(*req.context_mut());
+            let mut ctx = super::Context::from(*req.mut_context());
             let (i, try_next, write_back) = if req.operation().is_store() {
-                self.context_store(&mut ctx, req.try_next_type())
+                self.context_store(&mut ctx, req.cmd().try_next_type())
             } else {
                 self.context_get(&mut ctx)
             };
             req.try_next(try_next);
             req.write_back(write_back);
-            *req.context_mut() = ctx.ctx;
+            *req.mut_context() = ctx.ctx;
             idx = i;
             if idx >= self.streams.len() {
                 req.on_err(protocol::Error::TopChanged);
