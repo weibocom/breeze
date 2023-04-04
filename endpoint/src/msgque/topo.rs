@@ -12,7 +12,7 @@ use tokio::time::Instant;
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{Builder, Endpoint, Timeout, Topology};
-use sharding::hash::HashKey;
+use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
 use crate::msgque::strategy::hitfirst::Node;
 
@@ -107,7 +107,7 @@ where
     }
 }
 
-//const PADDING: Hasher = Hasher::Padding(Padding);
+const PADDING: Hasher = Hasher::Padding(Padding);
 
 impl<B, E, Req, P> Topology for MsgQue<B, E, Req, P>
 where
@@ -117,9 +117,8 @@ where
     P: Protocol,
 {
     #[inline]
-    fn hash<K: HashKey>(&self, _k: &K) -> i64 {
-        log::warn!("msg queue does't support hash");
-        0
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        PADDING.hash(k)
     }
     #[inline]
     fn exp_sec(&self) -> u32 {
@@ -140,7 +139,7 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, mut req: Self::Item) {
-        let mut ctx = super::Context::from(*req.context_mut());
+        let mut ctx = super::Context::from(*req.mut_context());
 
         let inited = ctx.check_inited();
         let rw_count = ctx.get_and_incr_count();
@@ -162,7 +161,7 @@ where
             }
             // 是否重试：之前重试次数小于阀值-1，且不是从offline streams获取(offline是最后一次获取)
             req.try_next(rw_count < (READ_RETRY_COUNT - 1) && !get_offline);
-            *req.context_mut() = ctx.ctx;
+            *req.mut_context() = ctx.ctx;
             log::debug!(
                 "+++ mcq get {} from qid/{}, from_offline/{} req: {:?}",
                 self.service,
@@ -187,7 +186,7 @@ where
         ctx.update_write_size(wsize);
         ctx.update_qid(qid);
         req.try_next(rw_count < WRITE_RETRY_COUNT);
-        *req.context_mut() = ctx.ctx;
+        *req.mut_context() = ctx.ctx;
 
         log::debug!(
             "+++ will send mcq to {}/{}/{}, req:{:?}",
