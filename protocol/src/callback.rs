@@ -1,7 +1,10 @@
 use std::{
     mem::MaybeUninit,
     ptr::{self, NonNull},
-    sync::atomic::{AtomicBool, AtomicU8, Ordering::*},
+    sync::{
+        atomic::{AtomicBool, AtomicU8, Ordering::*},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -362,20 +365,18 @@ unsafe impl Send for Callback {}
 unsafe impl Sync for Callback {}
 #[derive(Clone)]
 pub struct CallbackPtr {
-    ptr: NonNull<Callback>,
+    ptr: Arc<Callback>,
 }
 impl std::ops::Deref for CallbackPtr {
     type Target = Callback;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        unsafe { self.ptr.as_ref() }
+        self.ptr.as_ref()
     }
 }
-impl From<&Callback> for CallbackPtr {
+impl From<Callback> for CallbackPtr {
     // 调用方确保CallbackPtr在使用前，指针的有效性。
-    fn from(cb: &Callback) -> Self {
-        Self {
-            ptr: unsafe { NonNull::new_unchecked(cb as *const _ as *mut _) },
-        }
+    fn from(cb: Callback) -> Self {
+        Self { ptr: Arc::new(cb) }
     }
 }

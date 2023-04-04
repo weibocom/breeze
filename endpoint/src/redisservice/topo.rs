@@ -1,34 +1,24 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use crate::{Builder, Endpoint, Single, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
-use sharding::{Distance, Selector};
+use sharding::Distance;
 
 use super::config::RedisNamespace;
-use crate::Timeout;
+use crate::{dns::DnsConfig, Timeout};
 use discovery::dns::{self, IPPort};
 
-const CONFIG_UPDATED_KEY: &str = "__config__";
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
     shards: Vec<Shard<E>>,
-    // 不同sharding的url。第0个是master
-    shards_url: Vec<Vec<String>>,
     hasher: Hasher,
     distribute: Distribute,
-    selector: Selector, // 从的选择策略。
-    updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
-    service: String,
-    timeout_master: Timeout,
-    timeout_slave: Timeout,
-    master_read: bool,
+    cfg: Box<DnsConfig<RedisNamespace>>,
     _mark: std::marker::PhantomData<(B, Req)>,
 }
 impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
@@ -37,15 +27,9 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
         Self {
             parser,
             shards: Default::default(),
-            shards_url: Default::default(),
             hasher: Default::default(),
             distribute: Default::default(),
-            updated: Default::default(),
-            service: Default::default(),
-            selector: Selector::Random,
-            timeout_master: crate::TO_REDIS_M,
-            timeout_slave: crate::TO_REDIS_S,
-            master_read: false,
+            cfg: Default::default(),
             _mark: Default::default(),
         }
     }
@@ -88,7 +72,7 @@ where
         assert!(shard_idx < self.len(), "{} {:?} {}", shard_idx, req, self);
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-        log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
+        log::debug!("+++ {} send {} => {:?}", self.cfg.service, shard_idx, req);
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() && !req.cmd().master_only() {
@@ -133,67 +117,27 @@ where
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
-            self.timeout_master.adjust(ns.basic.timeout_ms_master);
-            self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
-            self.selector = ns.local().as_str().into();
-
-            self.master_read = ns.basic.master_read;
-
-            let mut shards_url = Vec::new();
-            for shard in ns.backends.iter() {
-                let mut shard_url = Vec::new();
-                for url_port in shard.split(",") {
-                    // 注册域名。后续可以通常lookup进行查询。
-                    let host = url_port.host();
-                    if !self.updated.contains_key(host) {
-                        let watcher = dns::register(host);
-                        self.updated.insert(host.to_string(), watcher);
-                    }
-                    shard_url.push(url_port.to_string());
-                }
-                shards_url.push(shard_url);
-            }
-            if self.shards_url.len() > 0 {
-                log::debug!("top updated from {:?} to {:?}", self.shards_url, shards_url);
-            }
-            self.shards_url = shards_url;
-
-            // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
-            self.updated
-                .entry(CONFIG_UPDATED_KEY.to_string())
-                .or_insert(Arc::new(AtomicBool::new(true)))
-                .store(true, Ordering::Release);
+            self.cfg.update(namespace, ns);
         }
-        self.service = namespace.to_string();
     }
     // 满足以下两个条件之一，则需要更新：
     // 1. 存在某dns未成功解析，并且dns数据准备就绪
     // 2. 近期有dns更新。
     #[inline]
     fn need_load(&self) -> bool {
-        self.shards.len() != self.shards_url.len()
-            || self
-                .updated
-                .iter()
-                .fold(false, |acc, (_k, v)| acc || v.load(Ordering::Acquire))
+        self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
     }
 
     #[inline]
     fn load(&mut self) {
         // TODO: 先改通知状态，再load，如果失败，改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        for (_, updated) in self.updated.iter() {
-            updated.store(false, Ordering::Release);
-        }
+        self.cfg.clear_status();
 
-        // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
         let succeed = self.load_inner();
         if !succeed {
-            self.updated
-                .get_mut(CONFIG_UPDATED_KEY)
-                .expect("redis config state missed")
-                .store(true, Ordering::Release);
+            self.cfg.enable_notified();
             log::warn!("redis will reload topo later...");
         }
     }
@@ -207,7 +151,7 @@ where
     fn inited(&self) -> bool {
         // 每一个分片都有初始, 并且至少有一主一从。
         self.shards.len() > 0
-            && self.shards.len() == self.shards_url.len()
+            && self.shards.len() == self.cfg.shards_url.len()
             && self
                 .shards
                 .iter()
@@ -229,13 +173,14 @@ where
 {
     #[inline]
     fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
+        let service = &self.cfg.service;
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
             _ => B::build(
                 &addr,
                 self.parser.clone(),
                 Resource::Redis,
-                &self.service,
+                service,
                 timeout,
             ),
         }
@@ -247,10 +192,10 @@ where
     #[inline]
     fn load_inner(&mut self) -> bool {
         // 所有的ip要都能解析出主从域名
-        let mut addrs = Vec::with_capacity(self.shards_url.len());
-        for shard in self.shards_url.iter() {
+        let mut addrs = Vec::with_capacity(self.cfg.shards_url.len());
+        for shard in self.cfg.shards_url.iter() {
             if shard.len() < 2 {
-                log::warn!("{} both master and slave required.", self.service);
+                log::warn!("{} both master and slave required.", self.cfg.service);
                 return false;
             }
             let master_url = &shard[0];
@@ -264,7 +209,7 @@ where
             }
             let master = String::from(&masters[0]) + ":" + master_url.port();
             let mut slaves = Vec::with_capacity(8);
-            if self.master_read {
+            if self.cfg.basic.master_read {
                 slaves.push(master.clone());
             }
             for url_port in &shard[1..] {
@@ -299,23 +244,23 @@ where
         for (master_addr, slaves) in addrs {
             assert_ne!(master_addr.len(), 0);
             assert_ne!(slaves.len(), 0);
-            let master = self.take_or_build(&mut old, &master_addr, self.timeout_master);
+            let master = self.take_or_build(&mut old, &master_addr, self.cfg.timeout_master());
             master.enable_single();
 
             // slave
             let mut replicas = Vec::with_capacity(8);
             for addr in slaves {
-                let slave = self.take_or_build(&mut old, &addr, self.timeout_slave);
+                let slave = self.take_or_build(&mut old, &addr, self.cfg.timeout_slave());
                 slave.disable_single();
                 replicas.push((addr, slave));
             }
-            let shard = Shard::selector(self.selector, master_addr, master, replicas);
+            let shard = Shard::selector(self.cfg.is_local(), master_addr, master, replicas);
             self.shards.push(shard);
         }
-        assert_eq!(self.shards.len(), self.shards_url.len());
+        assert_eq!(self.shards.len(), self.cfg.shards_url.len());
         log::info!(
             "{} load complete. {} dropping:{:?}",
-            self.service,
+            self.cfg.service,
             self.shards.len(),
             {
                 old.retain(|_k, v| v.len() > 0);
@@ -333,10 +278,10 @@ struct Shard<E> {
 }
 impl<E> Shard<E> {
     #[inline]
-    fn selector(s: Selector, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(local: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
-            slaves: Distance::with_local(replicas, s.is_local()),
+            slaves: Distance::with_local(replicas, local),
         }
     }
     #[inline]
@@ -378,9 +323,8 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RedisService")
-            .field("service", &self.service)
+            .field("cfg", &self.cfg)
             .field("shards", &self.shards.len())
-            .field("shards_url", &self.shards_url)
             .finish()
     }
 }

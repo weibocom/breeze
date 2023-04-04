@@ -44,7 +44,7 @@ fn checkout_basic() {
     assert_eq!(1, size_of::<Parser>());
     assert_eq!(48, size_of::<Backend<Request>>());
     assert_eq!(0, size_of::<Builder>());
-    assert_eq!(24, size_of::<CheckedTopology>());
+    assert_eq!(32, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
 }
@@ -69,14 +69,14 @@ fn check_callback_ctx() {
 #[ignore]
 #[test]
 fn check_stream() {
-    assert_eq!((224, 360).select(), size_of::<Stream>());
+    assert_eq!((216, 352).select(), size_of::<Stream>());
 }
 #[ignore]
 #[test]
 fn check_handler() {
-    assert_eq!((320, 456).select(), size_of::<Handler<'static>>());
+    assert_eq!((312, 448).select(), size_of::<Handler<'static>>());
     assert_eq!(
-        (424, 560).select(),
+        (416, 552).select(),
         size_of::<Entry<Handler<'static>, rt::Timeout>>()
     );
 }
@@ -85,20 +85,21 @@ fn check_handler() {
 #[test]
 fn check_topology() {
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
-    assert_eq!(184, size_of::<Topology>());
+    assert_eq!(96, size_of::<Topology>());
     assert_eq!(72, size_of::<CacheService>());
-    assert_eq!(184, size_of::<RedisService>());
-    assert_eq!(144, size_of::<PhantomService>());
+    assert_eq!(96, size_of::<RedisService>());
+    assert_eq!(56, size_of::<PhantomService>());
+
     assert_eq!(152, size_of::<MsgQue>());
 }
 
 #[ignore]
 #[test]
 fn check_pipeline() {
-    assert_eq!((424, 560).select(), size_of::<CopyBidirectional>());
+    assert_eq!((384, 520).select(), size_of::<CopyBidirectional>());
     // 512字节对齐
     assert_eq!(
-        (488, 624).select(),
+        (448, 584).select(),
         size_of::<Entry<CopyBidirectional, rt::DisableTimeout>>()
     );
 }

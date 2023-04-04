@@ -7,6 +7,8 @@ pub mod msgque;
 pub mod phantomservice;
 pub mod redisservice;
 
+pub(crate) mod dns;
+
 mod refresh;
 pub use refresh::{CheckedTopology, RefreshTopology};
 
@@ -24,6 +26,11 @@ pub struct Timeout {
 impl Timeout {
     const fn from_millis(ms: u16) -> Self {
         Self { ms }
+    }
+    pub fn new(ms: u32) -> Self {
+        let mut me = Self { ms: 0 };
+        me.adjust(ms);
+        me
     }
     pub fn adjust(&mut self, ms: u32) {
         self.ms = ms.max(100).min(6000) as u16;

@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
-use protocol::{Protocol, Resource};
+use protocol::{callback::CallbackPtr, Protocol, Resource};
 use sharding::hash::HashKey;
 
 // pub use protocol::Endpoint;
@@ -73,7 +73,8 @@ where
     }
 }
 pub trait TopologyCheck: Sized {
-    fn check(&mut self) -> Option<Self>;
+    fn refresh(&mut self) -> bool;
+    fn callback(&self) -> CallbackPtr;
 }
 
 pub trait Single {
@@ -210,14 +211,16 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
     };
 }
 
-use crate::cacheservice::topo::CacheService;
+#[cfg(feature = "mq")]
 use crate::msgque::topo::MsgQue;
+
+use crate::cacheservice::topo::CacheService;
 use crate::phantomservice::topo::PhantomService;
 use crate::redisservice::topo::RedisService;
 
 define_topology! {
+    //MsgQue<B, E, R, P>, MsgQue, "mq";
     RedisService<B, E, R, P>, RedisService, "rs";
     CacheService<B, E, R, P>, CacheService, "cs";
-    PhantomService<B, E, R, P>, PhantomService, "pt";
-    MsgQue<B, E, R, P>, MsgQue, "mq"
+    PhantomService<B, E, R, P>, PhantomService, "pt"
 }
