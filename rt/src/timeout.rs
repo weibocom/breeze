@@ -24,10 +24,9 @@ impl TimeoutCheck for Timeout {
             if elapsed >= self.timeout_ms as u64 {
                 return Poll::Ready(Err(elapsed));
             }
-            ready!(self.tick.poll_tick(cx));
-            self.tick.reset();
-            ready!(self.tick.poll_tick(cx));
-            panic!("never should run here");
+            loop {
+                ready!(self.tick.poll_tick(cx));
+            }
         }
         Poll::Ready(Ok(()))
     }

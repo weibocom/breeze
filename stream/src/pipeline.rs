@@ -308,12 +308,13 @@ where
         if self.top.refresh() {
             log::info!("topology refreshed: {:?}", self);
         }
-        self.process_async_pending();
+        //self.process_async_pending();
         self.client.try_gc();
         self.client.shrink();
+        Ok(true)
         // 满足条件之一说明需要刷新
         // 1. buffer 过大；2. 有异步请求未完成; 3. top 未drop
-        Ok(self.client.cap() >= crate::REFRESH_THREASHOLD || self.async_pending.len() > 0)
+        //Ok(self.client.cap() >= crate::REFRESH_THREASHOLD || self.async_pending.len() > 0)
     }
 }
 impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {

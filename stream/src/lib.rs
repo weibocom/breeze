@@ -30,4 +30,4 @@ mod arena;
 //pub(crate) const MIN_BUFFER_SIZE: usize = 1024 * 2;
 //pub(crate) const MAX_BUFFER_SIZE: usize = 64 << 20;
 // 如果连接占用的buff(tx+tx) >= 该值，在pending时就会触发定期回收
-pub(crate) const REFRESH_THREASHOLD: usize = 16 * 1024;
+//pub(crate) const REFRESH_THREASHOLD: usize = 16 * 1024;
