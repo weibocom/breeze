@@ -23,9 +23,9 @@ use crate::TimeoutAdjust;
 use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
-use super::strategy;
 use super::strategy::Strategy;
 const CONFIG_UPDATED_KEY: &str = "__mysql_config__";
+const ARCHIVE_SHARDS_KEY: &str = "__direct__";
 
 #[derive(Clone)]
 pub struct MysqlService<B, E, Req, P> {
@@ -33,11 +33,9 @@ pub struct MysqlService<B, E, Req, P> {
     direct_shards: Vec<Shard<E>>,
     // 默认不同sharding的url。第0个是master
     direct_shards_url: Vec<Vec<String>>,
-
-    // todo: 暂不实现这块处理逻辑
     // 按时间维度分库分表
-    archive_shards: HashMap<u16, Vec<Shard<E>>>,
-    archive_shards_url: HashMap<u16, Vec<Vec<String>>>,
+    archive_shards: HashMap<String, Vec<Shard<E>>>,
+    archive_shards_url: HashMap<String, Vec<Vec<String>>>,
     sql: HashMap<String, String>,
     // hasher: Hasher,
     // distribute: Distribute,
@@ -96,35 +94,47 @@ where
 {
     type Item = Req;
 
-    // todo: 这里req拿到mid解出时间,得出具体年库 ？？？
-    // todo: sql语句怎么传过去 ？
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-
-        debug_assert_ne!(self.direct_shards.len(), 0);
-
-        let shard_idx = self.shard_idx(req.hash());
-        debug_assert!(
-            shard_idx < self.direct_shards.len(),
-            "mysql: {}/{} req:{:?}",
-            shard_idx,
-            self.direct_shards.len(),
-            req
-        );
-        let shard = unsafe { self.direct_shards.get_unchecked(shard_idx) };
-        log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
-
         let raw_req = req.data();
         let mid = raw_req.key();
         let sql = self
             .strategy
             .build_sql("SQL_SELECT", &mid, &mid)
             .expect("malformed sql");
+
+        //定位年库
+        let year = self.strategy.get_year(&mid);
+        let shards = if self.strategy.hierarchy || self.archive_shards.get(&year).is_some() {
+            self.archive_shards.get(&year).unwrap()
+        } else {
+            &self.direct_shards
+            // self.archive_shards.get(ARCHIVE_SHARDS_KEY).unwrap()
+        };
+
+        debug_assert_ne!(shards.len(), 0);
+        assert!(shards.len() > 0);
+        let shard_idx = if shards.len() > 1 {
+            self.shard_idx(req.hash())
+        } else {
+            0
+        };
+        debug_assert!(
+            shard_idx < shards.len(),
+            "mysql: {}/{} req:{:?}",
+            shard_idx,
+            shards.len(),
+            req
+        );
+
+        let shard = unsafe { shards.get_unchecked(shard_idx) };
+        log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
+
         log::debug!(
             "+++ {} send sql[{}] after build_request {}/{}/{} => {:?}",
             self.service,
             sql,
-            self.direct_shards.len(),
+            shards.len(),
             req.hash(),
             shard_idx,
             req
@@ -142,12 +152,7 @@ where
     }
 
     fn shard_idx(&self, hash: i64) -> usize {
-        assert!(self.direct_shards.len() > 0);
-        if self.direct_shards.len() > 1 {
-            self.strategy.distribution.index(hash)
-        } else {
-            0
-        }
+        self.strategy.distribution.index(hash)
     }
 }
 
@@ -158,7 +163,19 @@ where
     E: Endpoint<Item = Req> + Single,
 {
     fn need_load(&self) -> bool {
-        self.direct_shards.len() != self.direct_shards_url.len()
+        let archive = self.archive_shards.iter().fold(true, |acc, (_k, v)| {
+            acc || v.len() != self.archive_shards_url.get(_k).unwrap().len()
+        });
+        let direct = self.direct_shards.len() != self.direct_shards_url.len();
+        // let direct = if self.archive_shards.get(ARCHIVE_SHARDS_KEY).is_some() {
+        //     self.archive_shards.get(ARCHIVE_SHARDS_KEY).unwrap().len()
+        //         != self.direct_shards_url.len()
+        // } else {
+        //     false
+        // };
+
+        direct
+            || archive
             || self
                 .updated
                 .iter()
@@ -169,7 +186,6 @@ where
         for (_, updated) in self.updated.iter() {
             updated.store(false, Ordering::Release);
         }
-
         // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
         let succeed = self.load_inner();
         if !succeed {
@@ -238,12 +254,18 @@ where
                 if years.len() > 1 {
                     let max: u16 = years[1].parse().unwrap();
                     for i in min..max {
-                        self.archive_shards_url.insert(i, shards_url.clone());
+                        self.archive_shards_url
+                            .insert(i.to_string(), shards_url.clone());
                     }
                 } else {
-                    self.archive_shards_url.insert(min, shards_url);
+                    self.archive_shards_url.insert(min.to_string(), shards_url);
                 }
             }
+
+            //处理backends shard url
+            // (self.direct_shards_url, self.archive_shards_url) =
+            //   Archive::convert_url(&ns, &mut self.updated);
+
             // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
             self.updated
                 .entry(CONFIG_UPDATED_KEY.to_string())
@@ -259,8 +281,6 @@ where
     P: Protocol,
     E: Endpoint<Item = Req> + Single,
 {
-    // todo: mysql tcp connection and msql handshake complete
-    // 这里需要把用户名/密码 都传过去 ？？
     // #[inline]
     fn take_or_build(
         &self,
@@ -283,96 +303,148 @@ where
     }
     #[inline]
     fn load_inner(&mut self) -> bool {
-        // 所有的ip要都能解析出主从域名
-        let mut addrs = Vec::with_capacity(self.direct_shards_url.len());
-        for shard in self.direct_shards_url.iter() {
-            if shard.len() < 2 {
-                log::warn!("{} both master and slave required.", self.service);
-                return false;
+        self.archive_shards_url.insert(
+            ARCHIVE_SHARDS_KEY.to_string(),
+            self.direct_shards_url.clone(),
+        );
+        for i in self.archive_shards_url.iter() {
+            // 所有的ip要都能解析出主从域名
+            let mut addrs = Vec::with_capacity(i.1.len());
+            for shard in i.1.iter() {
+                if shard.len() < 2 {
+                    log::warn!("{} both master and slave required.", self.service);
+                    return false;
+                }
+                let master_url = &shard[0];
+                let masters = dns::lookup_ips(master_url.host());
+                if masters.len() == 0 {
+                    log::warn!("{} master not looked up", master_url);
+                    return false;
+                }
+                if masters.len() > 1 {
+                    log::warn!("multi master ip parsed. {} => {:?}", master_url, masters);
+                }
+                let master = String::from(&masters[0]) + ":" + master_url.port();
+                let mut slaves = Vec::with_capacity(8);
+                for url_port in &shard[1..] {
+                    let url = url_port.host();
+                    let port = url_port.port();
+                    for slave_ip in dns::lookup_ips(url) {
+                        let addr = slave_ip + ":" + port;
+                        if !slaves.contains(&addr) {
+                            slaves.push(addr);
+                        }
+                    }
+                }
+                if slaves.len() == 0 {
+                    log::warn!("{:?} slave not looked up", &shard[1..]);
+                    return false;
+                }
+                addrs.push((master, slaves));
             }
-            let master_url = &shard[0];
-            let masters = dns::lookup_ips(master_url.host());
-            if masters.len() == 0 {
-                log::warn!("{} master not looked up", master_url);
-                return false;
-            }
-            if masters.len() > 1 {
-                log::warn!("multi master ip parsed. {} => {:?}", master_url, masters);
-            }
-            let master = String::from(&masters[0]) + ":" + master_url.port();
-            let mut slaves = Vec::with_capacity(8);
-            for url_port in &shard[1..] {
-                let url = url_port.host();
-                let port = url_port.port();
-                for slave_ip in dns::lookup_ips(url) {
-                    let addr = slave_ip + ":" + port;
-                    if !slaves.contains(&addr) {
-                        slaves.push(addr);
+            // 到这之后，所有的shard都能解析出ip
+            let mut old = HashMap::with_capacity(i.1.len());
+            if i.0.to_string() == ARCHIVE_SHARDS_KEY {
+                for shard in self.direct_shards.split_off(0) {
+                    old.entry(shard.master.0)
+                        .or_insert(Vec::new())
+                        .push(shard.master.1);
+                    for (addr, endpoint) in shard.slaves.into_inner() {
+                        // 一个ip可能存在于多个域名中。
+                        old.entry(addr).or_insert(Vec::new()).push(endpoint);
+                    }
+                }
+            } else {
+                for shard in self
+                    .archive_shards
+                    .entry(i.0.to_string())
+                    .or_default()
+                    .split_off(0)
+                {
+                    old.entry(shard.master.0)
+                        .or_insert(Vec::new())
+                        .push(shard.master.1);
+                    for (addr, endpoint) in shard.slaves.into_inner() {
+                        // 一个ip可能存在于多个域名中。
+                        old.entry(addr).or_insert(Vec::new()).push(endpoint);
                     }
                 }
             }
-            if slaves.len() == 0 {
-                log::warn!("{:?} slave not looked up", &shard[1..]);
-                return false;
-            }
-            addrs.push((master, slaves));
-        }
-        // 到这之后，所有的shard都能解析出ip
-        let mut old = HashMap::with_capacity(self.direct_shards_url.len());
-        for shard in self.direct_shards.split_off(0) {
-            old.entry(shard.master.0)
-                .or_insert(Vec::new())
-                .push(shard.master.1);
-            for (addr, endpoint) in shard.slaves.into_inner() {
-                // 一个ip可能存在于多个域名中。
-                old.entry(addr).or_insert(Vec::new()).push(endpoint);
-            }
-        }
-        // 用户名和密码
-        let mut res_option = ResOption::default();
-        res_option.token = self.password.clone();
-        res_option.username = self.user.clone();
 
-        // 遍历所有的shards_url
-        for (master_addr, slaves) in addrs {
-            assert_ne!(master_addr.len(), 0);
-            assert_ne!(slaves.len(), 0);
-            let master = self.take_or_build(
-                &mut old,
-                &master_addr,
-                self.timeout_master,
-                res_option.clone(),
-            );
-            master.enable_single();
+            // 用户名和密码
+            let mut res_option = ResOption::default();
+            res_option.token = self.password.clone();
+            res_option.username = self.user.clone();
 
-            // slave
-            let mut replicas = Vec::with_capacity(8);
-            for addr in slaves {
-                let slave =
-                    self.take_or_build(&mut old, &addr, self.timeout_slave, res_option.clone());
-                slave.disable_single();
-                replicas.push((addr, slave));
+            // 遍历所有的shards_url
+            for (master_addr, slaves) in addrs {
+                assert_ne!(master_addr.len(), 0);
+                assert_ne!(slaves.len(), 0);
+                let master = self.take_or_build(
+                    &mut old,
+                    &master_addr,
+                    self.timeout_master,
+                    res_option.clone(),
+                );
+                master.enable_single();
+
+                // slave
+                let mut replicas = Vec::with_capacity(8);
+                for addr in slaves {
+                    let slave =
+                        self.take_or_build(&mut old, &addr, self.timeout_slave, res_option.clone());
+                    slave.disable_single();
+                    replicas.push((addr, slave));
+                }
+                let shard = Shard::selector(self.selector, master_addr, master, replicas);
+                if i.0.to_string() == ARCHIVE_SHARDS_KEY {
+                    self.direct_shards.push(shard);
+                } else {
+                    self.archive_shards
+                        .entry(i.0.to_string())
+                        .or_default()
+                        .push(shard);
+                }
             }
-            let shard = Shard::selector(self.selector, master_addr, master, replicas);
-            self.direct_shards.push(shard);
+            if i.0.to_string() == ARCHIVE_SHARDS_KEY {
+                assert_eq!(
+                    self.direct_shards.len(),
+                    self.direct_shards_url.len(),
+                    "direct_shards/urs: {}/{}",
+                    self.direct_shards.len(),
+                    self.direct_shards_url.len()
+                );
+                log::info!(
+                    "{} direct_shards load complete. {} dropping:{:?}",
+                    self.service,
+                    self.direct_shards.len(),
+                    {
+                        old.retain(|_k, v| v.len() > 0);
+                        old.keys()
+                    }
+                );
+            } else {
+                assert_eq!(
+                    self.archive_shards.get(i.0).unwrap().len(),
+                    i.1.len(),
+                    "archive_key/archive_shard/urs: {}/{}/{}",
+                    i.0,
+                    self.archive_shards.get(i.0).unwrap().len(),
+                    i.1.len()
+                );
+                log::info!(
+                    "{} archive_shards {} load complete. {} dropping:{:?}",
+                    self.service,
+                    i.0,
+                    self.archive_shards.get(i.0).unwrap().len(),
+                    {
+                        old.retain(|_k, v| v.len() > 0);
+                        old.keys()
+                    }
+                );
+            }
         }
-        assert_eq!(
-            self.direct_shards.len(),
-            self.direct_shards_url.len(),
-            "shards/urs: {}/{}",
-            self.direct_shards.len(),
-            self.direct_shards_url.len()
-        );
-        log::info!(
-            "{} load complete. {} dropping:{:?}",
-            self.service,
-            self.direct_shards.len(),
-            {
-                old.retain(|_k, v| v.len() > 0);
-                old.keys()
-            }
-        );
-
+        self.archive_shards_url.remove(ARCHIVE_SHARDS_KEY);
         true
     }
 }
@@ -383,17 +455,30 @@ where
     // 每一个域名都有对应的endpoint，并且都初始化完成。
     #[inline]
     fn inited(&self) -> bool {
-        // direct_shards 实例初始化
-        self.direct_shards.len() > 0
+        //处理archive_shards
+        let default = true;
+        for i in self.archive_shards.iter() {
+            let r = i.1.len() > 0
+                && i.1.len() == self.archive_shards_url.get(i.0).unwrap().len()
+                && i.1
+                    .iter()
+                    .fold(true, |inited, shards| inited && shards.inited());
+            if !r {
+                return r;
+            }
+        }
+
+        // 处理direct_shards
+        if !(self.direct_shards.len() > 0
             && self.direct_shards.len() == self.direct_shards_url.len()
             && self
                 .direct_shards
                 .iter()
-                .fold(true, |inited, direct_shards| {
-                    inited && direct_shards.inited()
-                })
-
-        // todo: archive_shards 实例没有初始化完成
+                .fold(true, |inited, shards| inited && shards.inited()))
+        {
+            return false;
+        }
+        return default;
     }
 }
 
