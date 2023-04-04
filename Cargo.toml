@@ -29,7 +29,7 @@ debug = false
 codegen-units = 1
 lto = "fat"
 opt-level = 3
-strip = "symbols"
+strip = "none"
 
 [profile.release-perf]
 inherits = "release"
