@@ -92,6 +92,16 @@ impl Strategy {
         &self.hasher
     }
 
+    pub fn get_year(&self, key: &RingSlice) -> String {
+        let id = to_i64(key);
+        let milliseconds = UuidHelper::get_time(id) * 1000;
+        chrono::Utc
+            .timestamp_millis(milliseconds)
+            .with_timezone(&Shanghai)
+            .format("%Y")
+            .to_string()
+    }
+
     //todo: sql_name 枚举
     pub fn build_sql(
         &self,
@@ -122,7 +132,7 @@ impl Strategy {
         Some(sql)
     }
 
-    pub fn build_tname(&self, key: &RingSlice) -> Option<String> {
+    fn build_tname(&self, key: &RingSlice) -> Option<String> {
         let postfix_type = if self.table_postfix == "yymmdd" {
             TNamePostfixType::YYMMDD
         } else if self.table_postfix == "yymm" {
