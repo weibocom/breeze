@@ -80,11 +80,10 @@ impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + R
 
         if ret.is_pending() {
             // 只有pengding时，才尝试刷新
-            ready!(self.refresh_tick.poll_tick(cx));
-            self.refresh_tick.reset();
-            if self.inner.refresh()? {
-                // 还需要继续refresh
+            loop {
                 ready!(self.refresh_tick.poll_tick(cx));
+                // 总是定期刷新
+                let _ = self.inner.refresh()?;
             }
         }
         ret.map(|r| Ok(r))
