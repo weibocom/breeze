@@ -69,14 +69,14 @@ fn check_callback_ctx() {
 #[ignore]
 #[test]
 fn check_stream() {
-    assert_eq!((216, 352).select(), size_of::<Stream>());
+    assert_eq!((200, 336).select(), size_of::<Stream>());
 }
 #[ignore]
 #[test]
 fn check_handler() {
-    assert_eq!((312, 448).select(), size_of::<Handler<'static>>());
+    assert_eq!((296, 432).select(), size_of::<Handler<'static>>());
     assert_eq!(
-        (416, 552).select(),
+        (376, 512).select(),
         size_of::<Entry<Handler<'static>, rt::Timeout>>()
     );
 }
@@ -96,10 +96,10 @@ fn check_topology() {
 #[ignore]
 #[test]
 fn check_pipeline() {
-    assert_eq!((384, 520).select(), size_of::<CopyBidirectional>());
+    assert_eq!((368, 504).select(), size_of::<CopyBidirectional>());
     // 512字节对齐
     assert_eq!(
-        (448, 584).select(),
+        (408, 544).select(),
         size_of::<Entry<CopyBidirectional, rt::DisableTimeout>>()
     );
 }

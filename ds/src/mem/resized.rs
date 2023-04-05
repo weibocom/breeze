@@ -7,7 +7,7 @@ pub struct ResizedRingBuffer {
     // 在resize之后，不能立即释放ringbuffer，因为有可能还有外部引用。
     // 需要在所有的processed的字节都被ack之后（通过reset_read）才能释放
     max_processed: usize,
-    old: Vec<RingBuffer>,
+    old: Box<Vec<RingBuffer>>,
     inner: RingBuffer,
     policy: MemPolicy,
 }
@@ -35,7 +35,7 @@ impl ResizedRingBuffer {
         let buf = RingBuffer::with_capacity(init);
         Self {
             max_processed: std::usize::MAX,
-            old: Vec::new(),
+            old: Default::default(),
             inner: buf,
             policy: MemPolicy::rx(min, max),
         }

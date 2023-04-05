@@ -100,7 +100,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.bulk() == 0 {
             debug_assert!(self.available(), "{:?}", self);
             if self.data[self.oft] != b'*' {
-                return Err(RedisError::ReqInvalidStar.error());
+                return Err(RedisError::ReqInvalidStar.into());
             }
             self.ctx.bulk = self.data.num_of_bulks(&mut self.oft)? as u16;
             self.ctx.first = true;
@@ -134,7 +134,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 cfg.validate(self.bulk() as usize)?;
 
                 if cfg.need_reserved_hash && !(self.sendto_all() || self.ctx.is_reserved_hash) {
-                    return Err(RedisError::ReqInvalid.error());
+                    return Err(RedisError::ReqInvalid.into());
                 }
                 // check 命令长度
                 debug_assert_eq!(
@@ -501,7 +501,7 @@ impl Packet {
                         return Ok(val);
                     }
                     // \r后面没有接\n。错误的协议
-                    return Err(RedisError::ReqInvalidNoReturn.error());
+                    return Err(RedisError::ReqInvalidNoReturn.into());
                 }
                 if is_number_digit(b) {
                     val = val * 10 + (b - b'0') as usize;
@@ -510,7 +510,7 @@ impl Packet {
                     }
                 }
                 log::info!("oft:{} not valid number:{:?}, {:?}", *oft, self, self);
-                return Err(RedisError::ReqInvalidNum.error());
+                return Err(RedisError::ReqInvalidNum.into());
             }
         }
         Err(crate::Error::ProtocolIncomplete)
