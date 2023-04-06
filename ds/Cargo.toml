@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 log = { path = "../log" }
 minstant = "*"
-tokio = { version = "1.24.2", features = ["rt", "net", "rt-multi-thread", "time"], default-features = false }
+tokio.workspace = true
 
 byteorder = "1.4.3"
 rand = "0.8.4"
