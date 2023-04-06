@@ -28,7 +28,7 @@ use rt::Entry;
 
 #[test]
 fn checkout_basic() {
-    assert_eq!(32, size_of::<ds::RingSlice>());
+    assert_eq!(24, size_of::<ds::RingSlice>());
     assert_eq!(8, size_of::<protocol::Context>());
     assert_eq!(size_of::<protocol::Context>(), 8);
     assert_eq!(size_of::<protocol::StreamContext>(), 16);
@@ -58,7 +58,7 @@ fn check_layout_rx_buffer() {
 #[ignore]
 #[test]
 fn check_callback_ctx() {
-    assert_eq!(192, size_of::<CallbackContext>());
+    assert_eq!(160, size_of::<CallbackContext>());
     assert_eq!(16, size_of::<protocol::callback::Context>());
 }
 //#[ignore]
