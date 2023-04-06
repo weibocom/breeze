@@ -12,11 +12,36 @@ use crate::{dns::DnsConfig, Timeout};
 use discovery::dns::{self, IPPort};
 
 #[derive(Clone)]
+enum ResourceType {
+    Redis,
+    Pika,
+}
+
+impl From<&str> for ResourceType {
+    fn from(value: &str) -> Self {
+        match value {
+            "pika" => ResourceType::Pika,
+            _ => ResourceType::Redis,
+        }
+    }
+}
+
+impl ResourceType {
+    fn get_conn_nums(&self) -> usize {
+        match self {
+            Self::Pika => 2,
+            _ => 1,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
     shards: Vec<Shard<E>>,
     hasher: Hasher,
     distribute: Distribute,
+    resource_type: ResourceType,
     parser: P,
     cfg: Box<DnsConfig<RedisNamespace>>,
     _mark: std::marker::PhantomData<(B, Req)>,
@@ -29,6 +54,7 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
             shards: Default::default(),
             hasher: Default::default(),
             distribute: Default::default(),
+            resource_type: ResourceType::Redis,
             cfg: Default::default(),
             _mark: Default::default(),
         }
@@ -250,9 +276,12 @@ where
             // slave
             let mut replicas = Vec::with_capacity(8);
             for addr in slaves {
-                let slave = self.take_or_build(&mut old, &addr, self.cfg.timeout_slave());
-                slave.disable_single();
-                replicas.push((addr, slave));
+                for _ in 0..self.resource_type.get_conn_nums() {
+                    //如以前存在，timeout不会更新
+                    let slave = self.take_or_build(&mut old, &addr, self.cfg.timeout_slave());
+                    slave.disable_single();
+                    replicas.push((addr.clone(), slave));
+                }
             }
             let shard = Shard::selector(self.cfg.is_local(), master_addr, master, replicas);
             self.shards.push(shard);
