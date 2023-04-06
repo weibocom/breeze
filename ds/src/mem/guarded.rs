@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering, Ordering::*},
+    atomic::{AtomicUsize, Ordering::*},
     Arc,
 };
 
@@ -156,7 +156,7 @@ impl Drop for GuardedBuffer {
     #[inline]
     fn drop(&mut self) {
         // 如果guards不为0，说明MemGuard未释放，当前buffer销毁后，会导致MemGuard指向内存错误。
-        //assert_eq!(self.guards.len(), 0, "guarded buffer dropped:{}", self);
+        assert_eq!(self.pending(), 0, "mem leaked:{}", self);
     }
 }
 
@@ -179,6 +179,6 @@ impl Drop for Guard {
 impl fmt::Debug for Guard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.released.load(Ordering::Acquire))
+        write!(f, "{}", self.released.load(Acquire))
     }
 }

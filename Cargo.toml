@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "api",
   "stream",
   "sharding",
   "endpoint",
@@ -16,7 +17,7 @@ members = [
   "tests_integration",
 ]
 
-exclude = ["api", "tests"]
+exclude = ["api", "tests", "tests_integration"]
 
 
 [profile.release-test]
@@ -35,3 +36,7 @@ strip = "none"
 inherits = "release"
 strip = "none"
 codegen-units = 256
+
+
+[workspace.dependencies]
+tokio = { version = "1.27.0", features = ["rt", "fs", "net", "rt-multi-thread", "time"], default-features = false }
