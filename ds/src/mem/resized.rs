@@ -122,6 +122,11 @@ impl Display for ResizedRingBuffer {
         )
     }
 }
+impl fmt::Debug for ResizedRingBuffer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
 
 unsafe impl Send for ResizedRingBuffer {}
 unsafe impl Sync for ResizedRingBuffer {}
