@@ -61,14 +61,8 @@ impl ResizedRingBuffer {
     }
     #[inline]
     pub fn advance_read(&mut self, n: usize) {
-        let len = self.len();
-        self.policy.check_shrink(len, self.cap());
+        self.policy.check_shrink(self.len(), self.cap());
         self.inner.advance_read(n);
-        if len == n {
-            // 如果当前buffer已经读取完毕，说明resize之前的buffer已经没有外部引用了，可以释放
-            debug_assert_eq!(self.inner.len(), 0);
-            self.dropping.clear();
-        }
     }
     #[inline]
     pub fn grow(&mut self, reserve: usize) {
@@ -81,6 +75,9 @@ impl ResizedRingBuffer {
     #[inline]
     pub fn shrink(&mut self) {
         let len = self.len();
+        if len == 0 {
+            self.dropping.clear();
+        }
         if self.policy.need_shrink(len, self.cap()) {
             let new = self.policy.shrink(len, self.cap());
             self.resize(new);
@@ -132,16 +129,16 @@ impl Dropping {
     fn clear(&mut self) {
         if self.ptr != 0 {
             self.as_mut().clear();
-            let ptr = self.ptr as *mut Vec<RingBuffer>;
-            let _dropped = unsafe { Box::from_raw(ptr) };
-            self.ptr = 0;
         }
     }
 }
 impl Drop for Dropping {
     fn drop(&mut self) {
-        self.clear();
-        debug_assert_eq!(self.ptr, 0);
+        if self.ptr > 0 {
+            let ptr = self.ptr as *mut Vec<RingBuffer>;
+            let _dropped = unsafe { Box::from_raw(ptr) };
+            self.ptr = 0;
+        }
     }
 }
 impl fmt::Debug for Dropping {
