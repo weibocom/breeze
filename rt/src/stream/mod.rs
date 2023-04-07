@@ -205,7 +205,7 @@ impl<S: std::fmt::Debug> Debug for Stream<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Stream")
             .field("s", &self.s)
-            .field("buf", &self.buf)
+            .field("tx_buf", &self.buf)
             .field("rx_buf", &self.rx_buf)
             .field("ctx", &self.ctx)
             .finish()
