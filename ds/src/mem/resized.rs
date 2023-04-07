@@ -121,14 +121,17 @@ impl Dropping {
             return;
         }
         if self.ptr == 0 {
-            let v = Box::leak(Box::new(Vec::<RingBuffer>::with_capacity(1)));
+            let v = Box::leak(Box::new(Vec::<RingBuffer>::new()));
             self.ptr = v as *mut _ as usize;
         }
         self.as_mut().push(buf);
     }
     fn clear(&mut self) {
         if self.ptr != 0 {
-            self.as_mut().clear();
+            let rbs = self.as_mut();
+            if rbs.len() > 0 {
+                rbs.clear();
+            }
         }
     }
 }
