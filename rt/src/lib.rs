@@ -9,3 +9,7 @@ pub use stream::*;
 
 mod timeout;
 pub use timeout::*;
+
+mod interval;
+
+pub use interval::FixInterval;

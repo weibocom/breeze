@@ -10,7 +10,7 @@ use metrics::base::*;
 
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    time::{interval, Interval, MissedTickBehavior},
+    time::{interval, MissedTickBehavior},
 };
 
 pub trait ReEnter {
@@ -47,11 +47,13 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Cancel for T {
 //  统计
 //  1. 每次poll的执行耗时
 //  2. 重入耗时间隔
+#[derive(Debug)]
 pub struct Entry<F, T> {
     inner: F,
-    refresh_tick: Interval,
     out: Option<Result<()>>,
-    closing: u32,
+    closing: u16,
+    refresh_id: u32,
+    refresh_cycle: u8,
 
     timeout: T,
 }
@@ -67,25 +69,33 @@ impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + R
             inner: f,
             timeout,
             out: None,
-            refresh_tick,
             closing: 0,
+            refresh_id: u32::MAX,
+            refresh_cycle: 0,
         }
     }
-    #[inline]
+    #[inline(always)]
     fn poll_run(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let Self { timeout, inner, .. } = &mut *self;
+        if self.refresh_id == u32::MAX {
+            self.refresh_id = crate::interval::register(cx.waker().clone());
+        }
+        let Self {
+            timeout,
+            inner,
+            refresh_cycle,
+            ..
+        } = &mut *self;
         let ret = Pin::new(&mut *inner).poll(cx)?;
         ready!(timeout.poll_check(cx, inner)?);
         // 运行到这里说明：没有需要check timeout的请求
 
-        if ret.is_pending() {
-            // 只有pengding时，才尝试刷新
-            loop {
-                ready!(self.refresh_tick.poll_tick(cx));
-                // 总是定期刷新
-                let _ = self.inner.refresh()?;
-            }
+        let cycle = super::interval::refresh_cycle();
+        if *refresh_cycle != cycle as u8 {
+            *refresh_cycle = cycle as u8;
+            let _goon = inner.refresh()?;
+            log::debug!("refreshed:{:?}", self);
         }
+
         ret.map(|r| Ok(r))
     }
 }
@@ -100,20 +110,23 @@ impl<T: TimeoutCheck + Unpin, F: Future<Output = Result<()>> + ReEnter + Debug +
         if self.closing == 0 {
             self.out = Some(ready!(self.as_mut().poll_run(cx)));
             self.closing = 1;
-            // 复用原来的tick
-            self.refresh_tick = interval(Duration::from_millis(200));
         }
         // close
-        while !self.inner.close() {
-            ready!(self.refresh_tick.poll_tick(cx));
-            self.closing = self.closing.wrapping_add(1);
+        if !self.inner.close() {
+            if self.closing == 1 {
+                crate::interval::unregistering(self.refresh_id);
+            }
+            // max(1) 避免closing为0，又被重入到poll_run
+            self.closing = self.closing.wrapping_add(1).max(1);
             // 一次tick是200ms，10秒钟统计一次
-            if self.closing % (10 * 5) == 0 {
+            if self.closing % crate::interval::INTERVALS_PER_SEC as u16 == 0 {
                 println!("closing=>{} {:?} {:?}", self.closing, self.inner, self.out);
                 log::error!("closing=>{} {:?} {:?}", self.closing, self.inner, self.out);
                 LEAKED_CONN.incr();
             }
+            return Poll::Pending;
         }
+        crate::interval::unregister(self.refresh_id);
         Poll::Ready(self.out.take().unwrap())
     }
 }

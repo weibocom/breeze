@@ -11,6 +11,7 @@ metrics = { path = "../metrics" }
 ds = { path = "../ds" }
 log = { path = "../log" }
 ctor = "*"
+spin = "*"
 
 noop-waker = "0.1.0"
 tokio.workspace = true

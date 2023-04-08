@@ -76,7 +76,7 @@ fn check_stream() {
 fn check_handler() {
     assert_eq!((216, 368).select(), size_of::<Handler<'static>>());
     assert_eq!(
-        (296, 448).select(),
+        (272, 424).select(),
         size_of::<Entry<Handler<'static>, rt::Timeout>>()
     );
 }
@@ -99,7 +99,7 @@ fn check_pipeline() {
     assert_eq!((320, 456).select(), size_of::<CopyBidirectional>());
     // 512字节对齐
     assert_eq!(
-        (360, 496).select(),
+        (336, 472).select(),
         size_of::<Entry<CopyBidirectional, rt::DisableTimeout>>()
     );
 }

@@ -6,7 +6,7 @@ use ds::time::Duration;
 
 use super::entry::ReEnter;
 
-pub trait TimeoutCheck {
+pub trait TimeoutCheck: Debug {
     fn poll_check<T: ReEnter>(&mut self, ctx: &mut Context<'_>, to: &T) -> Poll<Result<(), u64>>;
 }
 
@@ -42,11 +42,21 @@ impl From<u16> for Timeout {
     }
 }
 
+#[derive(Debug)]
 pub struct DisableTimeout;
 
 impl TimeoutCheck for DisableTimeout {
     #[inline(always)]
     fn poll_check<T: ReEnter>(&mut self, _ctx: &mut Context<'_>, _to: &T) -> Poll<Result<(), u64>> {
         Poll::Ready(Ok(()))
+    }
+}
+
+use std::fmt::{self, Debug, Formatter};
+impl Debug for Timeout {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Timeout")
+            .field("timeout_ms", &self.timeout_ms)
+            .finish()
     }
 }
