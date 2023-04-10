@@ -104,6 +104,7 @@ impl Display for GuardedBuffer {
     }
 }
 
+#[derive(Debug)]
 pub struct MemGuard {
     mem: RingSlice,
     guard: *const AtomicU32, //  当前guard是否拥有mem。如果拥有，则在drop时需要手工销毁内存

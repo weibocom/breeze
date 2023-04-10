@@ -128,11 +128,6 @@ impl Protocol for Mysql {
             let cmd = HashedCommand::new(guard, hash, flag);
             assert!(!cmd.data().quiet_get());
             process.process(cmd, last);
-
-            // 确认请求类型和sql，构建mysql request
-            // let sql = self.convert_strategy.build_sql(&req)?;
-            // let mysql_cmd = req.mysql_cmd();
-            // let request = req_packet.build_request(mysql_cmd, &sql)?;
         }
 
         Ok(())
@@ -144,7 +139,8 @@ impl Protocol for Mysql {
         let new_req = RequestPacket::new()
             .build_request(mysql_cmd, &new_req)
             .unwrap();
-        *req.cmd() = MemGuard::from_vec(new_req);
+        // *req.cmd() = MemGuard::from_vec(new_req);
+        req.reshape(MemGuard::from_vec(new_req));
     }
 
     // TODO in: mysql, out: mc vs redis
@@ -195,7 +191,7 @@ impl Protocol for Mysql {
             if rsp.ok() {
                 assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
                 log::debug!("+++ will write mysql/mc rsp:{:?}", rsp.data());
-                self.write_mc_packet(old_op_code, rsp, w)?;
+                self.write_mc_packet(ctx.request(), rsp, w)?;
 
                 return Ok(());
             } else {
@@ -205,7 +201,7 @@ impl Protocol for Mysql {
 
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
-
+        log::debug!("+++ in write_response old op code:{}", old_op_code);
         match old_op_code {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_CODE_NOOP => {
@@ -367,15 +363,21 @@ impl Mysql {
     }
 
     #[inline]
-    fn write_mc_packet<W>(&self, old_opcode: u8, response: &crate::Command, w: &mut W) -> Result<()>
+    fn write_mc_packet<W>(
+        &self,
+        request: &HashedCommand,
+        response: &crate::Command,
+        w: &mut W,
+    ) -> Result<()>
     where
         W: crate::Writer,
     {
         // header 24 bytes
         w.write_u8(mcpacket::Magic::Response as u8)?; //magic 1byte
-        w.write_u8(old_opcode)?; // opcode 1 byte
-        let key_len = 0; // TODO：key已丢失，当前先返回0（后续保留？待定） fishermen
-        w.write_u16(key_len)?; // key len 2 bytes
+        w.write_u8(request.op_code() as u8)?; // opcode 1 byte
+        let origin_req = request.origin_data(); // old request
+        let key_len = origin_req.key_len(); // old key len
+        w.write_u16(origin_req.key_len())?; // key len 2 bytes
         let extra_len = 4_u8; // get 响应必须有extra，用于存放set时设置的flag
         w.write_u8(extra_len)?; //extras length 1byte
         w.write_u8(0_u8)?; //data type 1byte
@@ -391,8 +393,8 @@ impl Mysql {
         //extra, 只传bytearr类型（java为4096，其他语言如何处理？），由client解析
         w.write_u32(FLAG_BYTEARR_JAVA)?;
 
-        //TODO 由于存在协议转换，key 丢失，如果需要传回key进行check，需要考虑保存原始req  fishermen
-        // w.write_slice(&req.key(), 0)?;
+        // 返回key
+        w.write_slice(&origin_req.key(), 0)?;
 
         w.write_slice(response.data(), 0) // value
     }

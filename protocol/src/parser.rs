@@ -146,7 +146,8 @@ pub trait Stream {
 
 pub struct Command {
     flag: Flag,
-    cmd: ds::MemGuard,
+    cmd: MemGuard,
+    origin_cmd: Option<MemGuard>,
 }
 
 pub const MAX_DIRECT_HASH: i64 = i64::MAX;
@@ -159,7 +160,11 @@ pub struct HashedCommand {
 impl Command {
     #[inline]
     pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
-        Self { flag, cmd }
+        Self {
+            flag,
+            cmd,
+            origin_cmd: None,
+        }
     }
 
     #[inline]
@@ -178,9 +183,28 @@ impl Command {
     pub fn data_mut(&mut self) -> &mut ds::RingSlice {
         self.cmd.data_mut()
     }
+    // 不再暴露cmd，需要保存原有的cmd
+    // #[inline]
+    // pub fn cmd(&mut self) -> &mut MemGuard {
+    //     &mut self.cmd
+    // }
+    pub fn origin_data(&self) -> &ds::RingSlice {
+        if let Some(origin) = &self.origin_cmd {
+            origin.data()
+        } else {
+            panic!("error: origin cmd is none, cmd:{:?}", self.cmd)
+        }
+    }
     #[inline]
-    pub fn cmd(&mut self) -> &mut MemGuard {
-        &mut self.cmd
+    pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
+        assert!(
+            self.origin_cmd.is_none(),
+            "origin cmd should be nnone: {:?}",
+            self.origin_cmd
+        );
+        // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
+        mem::swap(&mut self.cmd, &mut dest_cmd);
+        self.origin_cmd = Some(dest_cmd);
     }
 }
 impl std::ops::Deref for Command {
@@ -216,7 +240,11 @@ impl HashedCommand {
     pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {
         Self {
             hash,
-            cmd: Command { flag, cmd },
+            cmd: Command {
+                flag,
+                cmd,
+                origin_cmd: None,
+            },
         }
     }
     #[inline]
@@ -236,6 +264,7 @@ impl AsRef<Command> for HashedCommand {
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
+use std::mem;
 impl Display for HashedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "hash:{} {}", self.hash, self.cmd)
