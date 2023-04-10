@@ -105,7 +105,7 @@ where
 
         //定位年库
         let year = self.strategy.get_year(&mid);
-        let shards = if self.strategy.hierarchy || self.archive_shards.get(&year).is_some() {
+        let shards = if self.strategy.hierarchy && self.archive_shards.get(&year).is_some() {
             self.archive_shards.get(&year).unwrap()
         } else {
             &self.direct_shards
