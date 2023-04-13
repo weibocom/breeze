@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use ds::{time::Instant, AtomicWaker};
 use endpoint::{Topology, TopologyCheck};
-use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
+use protocol::{mysql::mcpacket::Binary, HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::{
     arena::CallbackContextArena,
@@ -316,6 +316,10 @@ where
             if ctx.inited() {
                 ctx.take_response();
             }
+            // TODO: 临时加日志，check mysql req被清理的key
+            let req = ctx.request().origin_data();
+            log::info!("+++ will clear req for mysql key:{}", req.key());
+
             debug_assert!(!ctx.inited());
         }
         // 处理异步请求
