@@ -319,7 +319,7 @@ where
             // TODO: 临时加日志，check mysql req被清理的key
             let req = ctx.request().origin_data();
             if req.key_len() > 0 {
-                log::info!("+++ will clear req for mysql key:{:?}", req.key());
+                log::warn!("+++ will clear req for mysql key:{:?}", req.key());
             }
 
             debug_assert!(!ctx.inited());

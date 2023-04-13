@@ -24,10 +24,10 @@ impl<'a, 'b, C> Reader<'a, 'b, C> {
     // 如果eof了，则返回错误，否则返回读取的num数量
     #[inline(always)]
     pub(crate) fn check(&self) -> Result<()> {
-        log::debug!("+++ in reader.check, n:{}, b:{}", self.n, self.b);
         if self.n > 0 {
             Ok(())
         } else {
+            log::warn!("+++ in reader.check, n:{}, b:{}", self.n, self.b);
             if self.b == 0 {
                 Err(Error::BufferFull)
             } else {
@@ -49,9 +49,6 @@ where
         let mut rb = ReadBuf::new(buf);
         let out = Pin::new(&mut **client).poll_read(cx, &mut rb);
         let r = rb.capacity() - rb.remaining();
-        if r > 0 {
-            log::debug!("+++ {} bytes received", r);
-        }
         *n += r;
 
         (r, out)
