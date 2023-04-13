@@ -303,7 +303,7 @@ where
             
             // TODO: 临时加日志，check mysql req被清理的key
             let req = ctx.request().origin_data();
-            log::info!("+++ will clear req for mysql key:{:?}", req.key().data());
+            log::info!("+++ will clear req for mysql key:{:?}", req.key());
 
             // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
             let _dropped = ctx.take_response();
