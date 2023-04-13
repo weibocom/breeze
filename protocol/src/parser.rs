@@ -77,8 +77,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     // TODO: debug完毕，清理掉Request
     fn parse_response_debug<S: Stream>(
         &self,
-        req: &HashedCommand,
-        data: &mut S,
+        _req: &HashedCommand,
+        _data: &mut S,
     ) -> Result<Option<Command>> {
         // TODO: just for debug
         Err(Error::NotInit)
