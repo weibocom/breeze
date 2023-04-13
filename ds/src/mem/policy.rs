@@ -1,6 +1,7 @@
 const BUF_MIN: usize = 2 * 1024;
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
+#[derive(Debug)]
 pub struct MemPolicy {
     max: u32,    // 最近一个周期内，最大的内存使用量
     cycles: u32, // 连续多少次tick返回true
@@ -43,7 +44,7 @@ impl MemPolicy {
     }
     // 调用方定期调用need_shrink，如果返回true，则需要缩容
     // 1. 如果max > 1/4 cap，则重置max.
-    // 2. 如果连续64个周期满足 max < 1/4 cap，则返回true
+    // 2. 如果连续20个周期满足 max < 1/4 cap，则返回true
     #[inline]
     pub fn need_shrink(&mut self, len: usize, cap: usize) -> bool {
         log::debug!("need_shrink: len: {}, cap: {} => {}", len, cap, self);
@@ -57,8 +58,9 @@ impl MemPolicy {
             // 满足缩容条件
             self.cycles += 1;
         }
-        // 连续64个周期满足缩容条件。 64的解释见方法注释
-        self.cycles >= 64
+        // 1. 连续20个周期满足缩容条件, 并且len为0，这样避免缩容时的数据拷贝。
+        // 2. 连续64个周期满足缩容条件，这样避免频繁的缩容。
+        (self.cycles >= 20 && len == 0) || self.cycles >= 64
     }
     #[inline]
     fn reset(&mut self) {

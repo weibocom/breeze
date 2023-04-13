@@ -1,8 +1,11 @@
-use ds::time::Duration;
-
+use crate::{msgque::mcq::text::error::McqError, redis::error::RedisError};
 #[derive(Debug)]
+#[repr(u8)]
 pub enum Error {
+    Redis(RedisError),
+    Mcq(McqError),
     Eof,
+    UnexpectedData,
     QueueClosed,
     NotInit,
     Closed,
@@ -11,12 +14,14 @@ pub enum Error {
     ChanDisabled,
     ChanClosed,
     ProtocolIncomplete,
-    RequestProtocolInvalid(&'static str),
-    RequestProtocolInvalidNumber(&'static str),
-    RequestProtocolInvalidStar(&'static str),
-    RequestProtocolInvalidNumberZero(&'static str),
-    RequestProtocolInvalidDigit(&'static str),
-    RequestProtocolInvalidNoReturn(&'static str),
+    RequestInvalidMagic,
+    ResponseInvalidMagic,
+    RequestProtocolInvalid,
+    //RequestProtocolInvalidNumber(&'static str),
+    //RequestProtocolInvalidStar(&'static str),
+    //RequestProtocolInvalidNumberZero(&'static str),
+    //RequestProtocolInvalidDigit(&'static str),
+    //RequestProtocolInvalidNoReturn(&'static str),
     ResponseProtocolInvalid,
     ProtocolNotSupported,
     //IndexOutofBound,
@@ -28,23 +33,23 @@ pub enum Error {
     // CommandNotSupported,
     BufferFull,
     Quit,
-    Timeout(Duration),
+    Timeout(u16),
     Pending, // 在连接退出时，仍然有请求在队列中没有发送。
     Waiting, // 连接退出时，有请求已发送，但未接收到response
-    IO(std::io::Error),
+    IO(std::io::ErrorKind),
     AuthFailed,
 }
 
 impl From<std::io::Error> for Error {
     #[inline]
     fn from(err: std::io::Error) -> Self {
-        Self::IO(err)
+        Self::IO(err.kind())
     }
 }
-impl From<Duration> for Error {
+impl From<u64> for Error {
     #[inline]
-    fn from(to: Duration) -> Self {
-        Self::Timeout(to)
+    fn from(to: u64) -> Self {
+        Self::Timeout(to.min(u16::MAX as u64) as u16)
     }
 }
 
@@ -53,12 +58,12 @@ use std::fmt::{self, Display, Formatter};
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Error::RequestProtocolInvalid(desc) => write!(f, "{}", desc),
-            Error::RequestProtocolInvalidNumber(desc) => write!(f, "{}", desc),
-            Error::RequestProtocolInvalidStar(desc) => write!(f, "{}", desc),
+            //Error::RequestProtocolInvalid(desc) => write!(f, "{}", desc),
+            //Error::RequestProtocolInvalidNumber(desc) => write!(f, "{}", desc),
+            //Error::RequestProtocolInvalidStar(desc) => write!(f, "{}", desc),
             // Error::RequestProtocolInvalidNumberZero(desc) => write!(f, "{}", desc),
-            // Error::RequestProtocolInvalidDigit(desc) => write!(f, "{}", desc),
-            Error::RequestProtocolInvalidNoReturn(desc) => write!(f, "{}", desc),
+            //// Error::RequestProtocolInvalidDigit(desc) => write!(f, "{}", desc),
+            //Error::RequestProtocolInvalidNoReturn(desc) => write!(f, "{}", desc),
             _ => write!(f, "error: {:?}", self),
         }
     }

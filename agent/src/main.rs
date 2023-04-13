@@ -39,20 +39,22 @@ async fn run() -> Result<()> {
     let snapshot = ctx.snapshot_path.to_string();
     let tick = ctx.tick();
     let mut fix = discovery::Fixed::default();
-    fix.register(ctx.idc_path_url(), discovery::distance::build_refresh_idc());
 
-    // 从vintage获取socks
+    // 首先从vintage获取socks
     if ctx.service_pool_socks_url().len() > 1 {
         fix.register(
             ctx.service_pool_socks_url(),
+            &ctx.idc,
             discovery::socks::build_refresh_socks(ctx.service_path.clone()),
         );
-    } else {
-        log::info!(
-            "only use socks from local path: {}",
-            ctx.service_path.clone()
-        );
     }
+
+    // 优先获取socks，再做其他操作，确保socks文件尽快构建
+    fix.register(
+        ctx.idc_path_url(),
+        "",
+        discovery::distance::build_refresh_idc(),
+    );
 
     rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
     log::info!("server inited {:?}", ctx);

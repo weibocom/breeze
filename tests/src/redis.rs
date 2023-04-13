@@ -48,12 +48,12 @@ mod redis_test {
         cmd.set_master_only();
         assert!(cmd.master_only());
 
-        assert!(!cmd.direct_hash());
-        cmd.set_direct_hash();
-        assert!(cmd.direct_hash());
-        //direct_hash所在位
-        cmd.ext_mut().clear(34);
-        assert!(!cmd.direct_hash());
+        assert!(!cmd.mkey_first());
+        cmd.set_mkey_first();
+        assert!(cmd.mkey_first());
+        //mkey_first所在位
+        cmd.ext_mut().clear(32);
+        assert!(!cmd.mkey_first());
         //对前面设置的flag没有影响
         assert!(cmd.master_only());
     }

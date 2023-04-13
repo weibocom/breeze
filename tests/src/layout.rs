@@ -5,7 +5,7 @@ use std::{
 };
 
 use protocol::{callback::CallbackContext, Parser};
-use stream::{buffer::StreamGuard, Backend, Request};
+use stream::{Backend, Request};
 type Endpoint = Arc<Backend<Request>>;
 type Topology = endpoint::TopologyProtocol<Builder, Endpoint, Request, Parser>;
 //type RefreshTopology = endpoint::RefreshTopology<Topology>;
@@ -28,10 +28,12 @@ use rt::Entry;
 
 #[test]
 fn checkout_basic() {
-    assert_eq!(32, size_of::<ds::RingSlice>());
+    assert_eq!(24, size_of::<ds::RingSlice>());
     assert_eq!(8, size_of::<protocol::Context>());
+    assert_eq!(size_of::<protocol::Context>(), 8);
+    assert_eq!(size_of::<protocol::StreamContext>(), 16);
     assert_eq!(
-        size_of::<protocol::Context>(),
+        size_of::<protocol::StreamContext>(),
         size_of::<protocol::redis::RequestContext>()
     );
     assert_eq!(16, size_of::<protocol::Flag>());
@@ -42,9 +44,9 @@ fn checkout_basic() {
     assert_eq!(1, size_of::<Parser>());
     assert_eq!(48, size_of::<Backend<Request>>());
     assert_eq!(0, size_of::<Builder>());
-    assert_eq!(24, size_of::<CheckedTopology>());
+    assert_eq!(32, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
-    assert_eq!(48, size_of::<sharding::hash::Hasher>());
+    assert_eq!(24, size_of::<sharding::hash::Hasher>());
 }
 
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
@@ -56,25 +58,25 @@ fn check_layout_rx_buffer() {
 #[ignore]
 #[test]
 fn check_callback_ctx() {
-    assert_eq!(192, size_of::<CallbackContext>());
-    assert_eq!(16, size_of::<protocol::callback::Context>());
+    assert_eq!(160, size_of::<CallbackContext>());
+    //assert_eq!(16, size_of::<protocol::callback::Context>());
 }
-#[ignore]
-#[test]
-fn check_stream_guard() {
-    assert_eq!((152, 216).select(), size_of::<StreamGuard>());
-}
+//#[ignore]
+//#[test]
+//fn check_stream_guard() {
+//    assert_eq!((152, 216).select(), size_of::<StreamGuard>());
+//}
 #[ignore]
 #[test]
 fn check_stream() {
-    assert_eq!((72, 144).select(), size_of::<Stream>());
+    assert_eq!((152, 288).select(), size_of::<Stream>());
 }
 #[ignore]
 #[test]
 fn check_handler() {
-    assert_eq!((304, 440).select(), size_of::<Handler<'static>>());
+    assert_eq!((216, 368).select(), size_of::<Handler<'static>>());
     assert_eq!(
-        (416, 552).select(),
+        (296, 448).select(),
         size_of::<Entry<Handler<'static>, rt::Timeout>>()
     );
 }
@@ -82,20 +84,22 @@ fn check_handler() {
 #[ignore]
 #[test]
 fn check_topology() {
-    assert_eq!(240, size_of::<Topology>());
-    assert_eq!(96, size_of::<CacheService>());
-    assert_eq!(240, size_of::<RedisService>());
-    assert_eq!(208, size_of::<PhantomService>());
-    assert_eq!(184, size_of::<MsgQue>());
+    assert_eq!(24, size_of::<sharding::hash::Hasher>());
+    assert_eq!(96, size_of::<Topology>());
+    assert_eq!(72, size_of::<CacheService>());
+    assert_eq!(96, size_of::<RedisService>());
+    assert_eq!(56, size_of::<PhantomService>());
+
+    assert_eq!(152, size_of::<MsgQue>());
 }
 
 #[ignore]
 #[test]
 fn check_pipeline() {
-    assert_eq!((424, 560).select(), size_of::<CopyBidirectional>());
+    assert_eq!((320, 456).select(), size_of::<CopyBidirectional>());
     // 512字节对齐
     assert_eq!(
-        (488, 624).select(),
+        (360, 496).select(),
         size_of::<Entry<CopyBidirectional, rt::DisableTimeout>>()
     );
 }

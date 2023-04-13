@@ -1,11 +1,11 @@
 use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
-use ds::time::Duration;
-use protocol::{Protocol, ResOption, Resource};
-use sharding::hash::Hasher;
+use protocol::{callback::CallbackPtr, Protocol, ResOption, Resource};
+use sharding::hash::HashKey;
 
 // pub use protocol::Endpoint;
+use crate::Timeout;
 
 use enum_dispatch::enum_dispatch;
 
@@ -56,7 +56,7 @@ pub trait Topology: Endpoint {
     fn exp_sec(&self) -> u32 {
         86400
     }
-    fn hasher(&self) -> &Hasher;
+    fn hash<K: HashKey>(&self, key: &K) -> i64;
 }
 
 impl<T> Topology for std::sync::Arc<T>
@@ -68,12 +68,13 @@ where
         (**self).exp_sec()
     }
     #[inline]
-    fn hasher(&self) -> &Hasher {
-        (**self).hasher()
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        (**self).hash(k)
     }
 }
 pub trait TopologyCheck: Sized {
-    fn check(&mut self) -> Option<Self>;
+    fn refresh(&mut self) -> bool;
+    fn callback(&self) -> CallbackPtr;
 }
 
 pub trait Single {
@@ -106,7 +107,7 @@ pub trait Builder<P, R, E> {
         parser: P,
         rsrc: Resource,
         service: &str,
-        timeout: Duration,
+        timeout: Timeout,
         option: ResOption,
     ) -> E
     where
@@ -170,10 +171,10 @@ impl<B, E, R, P> discovery::TopologyWrite for TopologyProtocol<B, E, R, P> where
 impl<B:Send+Sync, E, R, P> Topology for TopologyProtocol<B, E, R, P>
 where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
     #[inline]
-    fn hasher(&self) -> &Hasher {
+    fn hash<K:HashKey>(&self, k:&K) -> i64 {
         match self {
             $(
-                Self::$item(p) => p.hasher(),
+                Self::$item(p) => p.hash(k),
             )+
         }
     }
@@ -217,16 +218,18 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
     };
 }
 
-use crate::cacheservice::topo::CacheService;
+#[cfg(feature = "mq")]
 use crate::msgque::topo::MsgQue;
 use crate::mysql::topo::MysqlService;
+
+use crate::cacheservice::topo::CacheService;
 use crate::phantomservice::topo::PhantomService;
 use crate::redisservice::topo::RedisService;
 
 define_topology! {
+    //MsgQue<B, E, R, P>, MsgQue, "mq";
     RedisService<B, E, R, P>, RedisService, "rs";
     CacheService<B, E, R, P>, CacheService, "cs";
     PhantomService<B, E, R, P>, PhantomService, "pt";
-    MsgQue<B, E, R, P>, MsgQue, "mq";
     MysqlService<B, E, R, P>, MysqlService, "mysql"
 }

@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, ReadBuf};
 
 use ds::BuffRead;
-use protocol::{Error, Result, Stream, StreamWithWriter, Writer};
+use protocol::{Error, Result, StreamContext};
 
 pub(crate) struct Reader<'a, 'b, C> {
     n: usize, // 成功读取的数据
@@ -60,8 +60,7 @@ where
 use ds::{GuardedBuffer, MemGuard, RingSlice};
 // 已写入未处理的数据流。
 pub struct StreamGuard {
-    ctx: u64,
-    reserved_hash: i64,
+    ctx: StreamContext,
     buf: GuardedBuffer,
 }
 impl protocol::Stream for StreamGuard {
@@ -78,13 +77,13 @@ impl protocol::Stream for StreamGuard {
         self.buf.read()
     }
     #[inline]
-    fn context(&mut self) -> &mut u64 {
+    fn context(&mut self) -> &mut StreamContext {
         &mut self.ctx
     }
-    #[inline]
-    fn reserved_hash(&mut self) -> &mut i64 {
-        &mut self.reserved_hash
-    }
+    // #[inline]
+    // fn reserved_hash(&mut self) -> &mut ReservedHash {
+    //     &mut self.reserved_hash
+    // }
     #[inline]
     fn reserve(&mut self, r: usize) {
         self.buf.grow(r);
@@ -95,8 +94,8 @@ impl From<GuardedBuffer> for StreamGuard {
     fn from(buf: GuardedBuffer) -> Self {
         Self {
             buf,
-            ctx: 0,
-            reserved_hash: 0,
+            ctx: Default::default(),
+            // reserved_hash: None,
         }
     }
 }
@@ -153,13 +152,13 @@ use std::fmt::{self, Debug, Display, Formatter};
 impl Display for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "ctx:{} {}", self.ctx, self.buf)
+        write!(f, "ctx:{:?} {}", self.ctx, self.buf)
     }
 }
 impl Debug for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "ctx:{} StreamGuard :{}", self.ctx, self.buf)
+        write!(f, "ctx:{:?} StreamGuard :{}", self.ctx, self.buf)
     }
 }
 

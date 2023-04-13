@@ -1,7 +1,7 @@
 // TODO 解析mysql协议， 转换为mc vs redis 协议
 
 use crate::mysql::constants::DEFAULT_MAX_ALLOWED_PACKET;
-use crate::ResOption;
+use crate::{ResOption, StreamContext};
 
 use super::buffer_pool::Buffer;
 use super::proto::codec::PacketCodec;
@@ -274,7 +274,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     }
 
     // 解析Handshake packet，构建HandshakeResponse packet
-    pub(super) fn proc_handshake(&mut self) -> Result<Vec<u8>> {
+    pub(super) fn proc_handshake(&mut self) -> Result<()> {
         // 读取完整packet，并解析为HandshakePacket
         let packet_data = self.next_packet_data(true)?;
         let handshake = ParseBuf(&packet_data[0..]).parse::<HandshakePacket>(())?;
@@ -316,7 +316,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         let handshake_rsp =
             self.build_handshake_response_packet(&auth_plugin, auth_data.as_deref())?;
 
-        Ok(handshake_rsp)
+        self.stream.write(&handshake_rsp)?;
+        Ok(())
     }
 
     // 处理handshakeresponse的mysql响应，默认是ok即auth
@@ -544,20 +545,25 @@ impl InitialHandshake {
 }
 
 // 这个context用于多请求之间的状态协作
-// 必须是u64长度的。
 #[repr(C)]
 #[derive(Debug)]
 pub(super) struct ResponseContext {
     pub(super) seq_id: u8,
     pub(super) status: HandShakeStatus,
-    _ignore: [u8; 7],
+    _ignore: [u8; 14],
 }
 
-impl From<&mut u64> for &mut ResponseContext {
-    fn from(value: &mut u64) -> Self {
+impl From<&mut StreamContext> for &mut ResponseContext {
+    fn from(value: &mut StreamContext) -> Self {
         unsafe { std::mem::transmute(value) }
     }
 }
+
+// impl From<RequestContext> for StreamContext {
+//     fn from(value: RequestContext) -> Self {
+//         unsafe { std::mem::transmute(value) }
+//     }
+// }
 
 //原地反序列化,
 pub(super) trait ParsePacket<T> {
