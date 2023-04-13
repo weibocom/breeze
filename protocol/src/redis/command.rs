@@ -149,7 +149,8 @@ impl CommandProperties {
             return Ok(());
         }
 
-        Err(crate::Error::RequestProtocolInvalid("bulk num invalied"))
+        use super::error::RedisError;
+        Err(RedisError::ReqInvalidBulkNum.into())
     }
 
     // #[inline]

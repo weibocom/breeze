@@ -49,8 +49,8 @@ impl<T> Receiver<T> {
         })
     }
     #[inline(always)]
-    pub fn size_hint(&mut self) -> usize {
-        self.tx.load(Acquire) - self.rx
+    pub fn has_multi(&mut self) -> bool {
+        self.tx.load(Acquire) >= self.rx + 2
     }
     pub fn enable(&mut self) {
         self.rx = 0;

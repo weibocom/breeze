@@ -1,5 +1,6 @@
 use ds::time::{Duration, Instant};
 use std::fmt::{Debug, Display};
+use std::ops::{Deref, DerefMut};
 
 use ds::RingSlice;
 
@@ -7,7 +8,17 @@ use crate::{Command, HashedCommand, Operation};
 
 pub type Context = u64;
 
-pub trait Request: Debug + Display + Send + Sync + 'static + Unpin + Sized {
+pub trait Request:
+    Debug
+    + Display
+    + Send
+    + Sync
+    + 'static
+    + Unpin
+    + Sized
+    + Deref<Target = HashedCommand>
+    + DerefMut<Target = HashedCommand>
+{
     fn cmd(&self) -> &HashedCommand;
     fn start_at(&self) -> Instant;
     fn last_start_at(&self) -> ds::time::Instant;

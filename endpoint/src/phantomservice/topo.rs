@@ -1,13 +1,6 @@
-use std::{
-    collections::HashMap,
-    marker::PhantomData,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::{collections::HashMap, marker::PhantomData};
 
-use crate::{Builder, Endpoint, Topology};
+use crate::{dns::DnsConfig, Builder, Endpoint, Timeout, Topology};
 use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
@@ -20,22 +13,15 @@ use sharding::{
 };
 
 use super::config::PhantomNamespace;
-use crate::Timeout;
-
-const CONFIG_UPDATED_KEY: &str = "__config__";
 
 #[derive(Clone)]
 pub struct PhantomService<B, E, Req, P> {
     // 一般有2组，相互做HA，每组是一个域名列表，域名下只有一个ip，但会变化
     streams: Vec<Distance<(String, E)>>,
-    // m * n: m个shard，每个shard有n个ip
-    streams_backend: Vec<Vec<String>>,
-    updated: HashMap<String, Arc<AtomicBool>>,
     hasher: Crc32,
     distribution: Range,
     parser: P,
-    service: String,
-    timeout: Timeout,
+    cfg: Box<DnsConfig<PhantomNamespace>>,
     _mark: PhantomData<(B, Req)>,
 }
 
@@ -44,12 +30,9 @@ impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
         Self {
             parser,
             streams: Default::default(),
-            streams_backend: Default::default(),
-            updated: Default::default(),
             hasher: Default::default(),
-            service: Default::default(),
-            timeout: crate::TO_PHANTOM_M,
             distribution: Default::default(),
+            cfg: Default::default(),
             _mark: Default::default(),
         }
     }
@@ -108,10 +91,8 @@ where
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
-        self.service = namespace.to_string();
         if let Some(ns) = PhantomNamespace::try_from(cfg) {
             log::info!("topo updating {:?} => {:?}", self, ns);
-            self.timeout.adjust(ns.basic.timeout_ms);
             // phantome 只会使用crc32
             //self.hasher = Hasher::from(&ns.basic.hash);
             let dist = &ns.basic.distribution;
@@ -120,28 +101,8 @@ where
                 .map(|idx| dist[idx + 1..].parse::<u64>().ok())
                 .flatten();
             self.distribution = Range::from(num, ns.backends.len());
-            self.service = namespace.to_string();
 
-            self.streams_backend = ns
-                .backends
-                .iter()
-                .map(|v| v.split(',').map(|s| s.to_string()).collect())
-                .collect();
-            for b in self.streams_backend.iter() {
-                for url_port in b {
-                    let host = url_port.host();
-                    if !self.updated.contains_key(host) {
-                        let watcher = dns::register(host);
-                        self.updated.insert(host.to_string(), watcher);
-                    }
-                }
-            }
-
-            // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
-            self.updated
-                .entry(CONFIG_UPDATED_KEY.to_string())
-                .or_insert(Arc::new(AtomicBool::new(true)))
-                .store(true, Ordering::Release);
+            self.cfg.update(namespace, ns);
         }
     }
 
@@ -150,26 +111,17 @@ where
     //   2. 近期有dns更新；
     #[inline]
     fn need_load(&self) -> bool {
-        self.streams.len() != self.streams_backend.len()
-            || self
-                .updated
-                .iter()
-                .fold(false, |acc, (_k, v)| acc || v.load(Ordering::Acquire))
+        self.streams.len() != self.cfg.shards_url.len() || self.cfg.need_load()
     }
     #[inline]
     fn load(&mut self) {
         // 先改通知状态，再load，如果失败改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        for (_, updated) in self.updated.iter() {
-            updated.store(false, Ordering::Release);
-        }
+        self.cfg.clear_status();
 
         // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
         let succeed = self.load_inner();
         if !succeed {
-            self.updated
-                .get_mut(CONFIG_UPDATED_KEY)
-                .expect("phantom config state missed")
-                .store(true, Ordering::Release);
+            self.cfg.enable_notified();
             log::warn!("phantom will reload topo later...");
         }
     }
@@ -189,7 +141,7 @@ where
                 &addr,
                 self.parser.clone(),
                 Resource::Redis,
-                &self.service,
+                &self.cfg.service,
                 timeout,
             ),
         }
@@ -197,8 +149,8 @@ where
 
     #[inline]
     fn load_inner(&mut self) -> bool {
-        let mut addrs = Vec::with_capacity(self.streams_backend.len());
-        for shard in self.streams_backend.iter() {
+        let mut addrs = Vec::with_capacity(self.cfg.shards_url.len());
+        for shard in self.cfg.shards_url.iter() {
             if shard.is_empty() {
                 log::warn!("{:?} shard is empty", self);
                 return false;
@@ -232,7 +184,7 @@ where
         for a in addrs.iter() {
             let mut shard_streams = Vec::with_capacity(a.len());
             for addr in a {
-                let shard = self.take_or_build(&mut old, addr.as_str(), self.timeout);
+                let shard = self.take_or_build(&mut old, addr.as_str(), self.cfg.timeout());
                 shard_streams.push((addr.clone(), shard));
             }
 
@@ -253,7 +205,7 @@ where
     #[inline]
     fn inited(&self) -> bool {
         self.streams.len() > 0
-            && self.streams.len() == self.streams_backend.len()
+            && self.streams.len() == self.cfg.shards_url.len()
             && self.streams.iter().fold(true, |inited, shard| {
                 inited && {
                     // 每个shard都有对应的endpoint，并且都初始化完成。
@@ -266,10 +218,6 @@ where
 }
 impl<B, E, Req, P> std::fmt::Debug for PhantomService<B, E, Req, P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "service:{} backends:{:?} timeout:{:?}",
-            self.service, self.streams_backend, self.timeout
-        )
+        write!(f, "{:?}", self.cfg)
     }
 }
