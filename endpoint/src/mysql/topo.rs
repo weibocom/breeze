@@ -253,7 +253,8 @@ where
                 let years: Vec<&str> = key.split("-").collect();
                 let min: u16 = years[0].parse().unwrap();
                 if years.len() > 1 {
-                    let max: u16 = years[1].parse().unwrap();
+                    // 2009-2012 包括2012,故max需要加1
+                    let max = years[1].parse::<u16>().expect("malformed mysql cfg") + 1_u16;
                     for i in min..max {
                         self.archive_shards_url
                             .insert(i.to_string(), shards_url.clone());
