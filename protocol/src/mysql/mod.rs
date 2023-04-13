@@ -174,8 +174,8 @@ impl Protocol for Mysql {
     {
         let origin_req = ctx.request().origin_data();
         log::debug!(
-            "+++ will write rsp for key:{}, response: {:?}",
-            origin_req.key(),
+            "+++ will write rsp for key:{:?}, response: {:?}",
+            origin_req.key().data(),
             response
         );
 
