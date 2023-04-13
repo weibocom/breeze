@@ -17,7 +17,7 @@ use sharding::hash::Hash;
 use crate::{
     arena::CallbackContextArena,
     context::{CallbackContextPtr, ResponseContext},
-    Callback, CallbackContext, Request, StreamMetrics,
+    CallbackContext, Request, StreamMetrics,
 };
 
 pub async fn copy_bidirectional<C, P, T>(
@@ -34,10 +34,8 @@ where
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
-    let cb = unsafe { callback(&top) };
     let pipeline = CopyBidirectional {
         pipeline,
-        cb,
         top,
         metrics,
         client,
@@ -50,7 +48,6 @@ where
         first: true, // 默认当前请求是第一个
         async_pending: VecDeque::new(),
 
-        dropping: Vec::new(),
         arena: CallbackContextArena::with_cache(32),
     };
     rt::Entry::timeout(pipeline, rt::DisableTimeout).await
@@ -62,7 +59,6 @@ pub struct CopyBidirectional<C, P, T> {
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
     waker: AtomicWaker,
-    cb: Callback,
 
     metrics: Arc<StreamMetrics>,
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
@@ -74,9 +70,6 @@ pub struct CopyBidirectional<C, P, T> {
     first: bool, // 当前解析的请求是否是第一个。
 
     async_pending: VecDeque<CallbackContextPtr>, // 异步请求中的数量。
-
-    // 等待删除的top. 第三个元素是dropping时的req_new的值。
-    dropping: Vec<(T, Callback)>,
 
     arena: CallbackContextArena,
 }
@@ -132,7 +125,6 @@ where
             pending,
             waker,
             first,
-            cb,
             arena,
             ..
         } = self;
@@ -142,7 +134,6 @@ where
             waker,
             top,
             // parser,
-            cb,
             first,
             arena,
         };
@@ -243,7 +234,6 @@ where
 struct Visitor<'a, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
-    cb: &'a Callback,
     top: &'a T,
     // parser: &'a P,
     first: &'a mut bool,
@@ -253,14 +243,16 @@ struct Visitor<'a, T> {
 // impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
 // where
 //     P: Protocol + Unpin,
-impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
+impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
+    for Visitor<'a, T>
+{
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
         let first = *self.first;
         // 如果当前是最后一个子请求，那下一个请求就是一个全新的请求。
         // 否则下一个请求是子请求。
         *self.first = last;
-        let cb = self.cb.into();
+        let cb = self.top.callback();
         let ctx = self
             .arena
             .alloc(CallbackContext::new(cmd, &self.waker, cb, first, last));
@@ -313,27 +305,16 @@ where
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
-        if let Some(top) = self.top.check() {
-            unsafe {
-                let old = std::ptr::replace(&mut self.top as *mut T, top);
-
-                let cb = callback(&self.top);
-                let old_cb = std::ptr::replace(&mut self.cb as *mut _, cb);
-
-                self.dropping.push((old, old_cb));
-            }
+        if self.top.refresh() {
+            log::info!("topology refreshed: {:?}", self);
         }
-        self.process_async_pending();
-        if self.dropping.len() > 0 && self.async_pending.len() == 0 && self.pending.len() == 0 {
-            self.dropping.clear();
-        }
+        //self.process_async_pending();
         self.client.try_gc();
         self.client.shrink();
+        Ok(true)
         // 满足条件之一说明需要刷新
         // 1. buffer 过大；2. 有异步请求未完成; 3. top 未drop
-        Ok(self.client.cap() >= crate::REFRESH_THREASHOLD
-            || self.async_pending.len() > 0
-            || self.dropping.len() > 0)
+        //Ok(self.client.cap() >= crate::REFRESH_THREASHOLD || self.async_pending.len() > 0)
     }
 }
 impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
@@ -341,22 +322,21 @@ impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:({},{}) flush:{} dropping:{}  => {:?}",
+            "{} => pending:({},{}) flush:{}  => {:?}",
             self.metrics.biz(),
             self.pending.len(),
             self.async_pending.len(),
             self.flush,
-            self.dropping.len(),
             self.client,
         )
     }
 }
 
-unsafe fn callback<T: Topology<Item = Request>>(top: &T) -> Callback {
-    let receiver = top as *const T as usize;
-    let send = Box::new(move |req| {
-        let t = &*(receiver as *const T);
-        t.send(req)
-    });
-    Callback::new(send)
-}
+//unsafe fn callback<T: Topology<Item = Request>>(top: &T) -> Callback {
+//    let receiver = top as *const T as usize;
+//    let send = Box::new(move |req| {
+//        let t = &*(receiver as *const T);
+//        t.send(req)
+//    });
+//    Callback::new(send)
+//}

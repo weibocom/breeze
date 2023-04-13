@@ -1,69 +1,41 @@
-use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
 
 use crate::{Endpoint, Topology, TopologyCheck};
 use discovery::{TopologyRead, TopologyReadGuard};
 use sharding::hash::{Hash, HashKey};
 
+use protocol::{
+    callback::{Callback, CallbackPtr},
+    request::Request,
+};
+
 // 支持刷新
 pub struct RefreshTopology<T> {
     reader: TopologyReadGuard<T>,
-    top: spin::RwLock<AtomicPtr<Arc<DropLog<T>>>>,
+    top: spin::RwLock<SharedTop<T>>,
 }
-impl<T: Clone + 'static> RefreshTopology<T> {
+impl<T: Clone + 'static + Endpoint<Item = Request>> RefreshTopology<T> {
     // reader一定是已经初始化过的，否则会UB
     #[inline]
     pub fn from(reader: TopologyReadGuard<T>) -> Self {
-        let top = Arc::new(reader.do_with(|t| t.clone()).into());
-        let top = Box::leak(Box::new(top));
-        let top = AtomicPtr::new(top).into();
+        let top = SharedTop::new(&reader).into();
         Self { top, reader }
     }
     pub fn build(self: &Arc<Self>) -> Option<CheckedTopology<T>> {
-        // 读取一次cycle，保证更新后的cycle一定大于当前的cycle
-        let cycle = self.reader.cycle();
-        self._build(cycle)
-    }
-    pub fn _build(self: &Arc<Self>, cycle: usize) -> Option<CheckedTopology<T>> {
-        self.get().map(|top| CheckedTopology {
-            cycle,
-            top,
-            inner: self.clone(),
-        })
-    }
-    #[inline]
-    fn get(&self) -> Option<Arc<DropLog<T>>> {
-        self.top.try_read().map(|top| {
-            let top = unsafe { &*top.load(Ordering::Acquire) }.clone();
-            top
-        })
-    }
-    #[inline]
-    fn update(&self, _cycle: usize, _update_cycle: usize) {
-        // 所有的连接都会触发更新。因为需要加写锁
-        self.top.try_write().map(|top| {
-            let new = Arc::new(self.reader.do_with(|t| t.clone()).into());
-            let new = Box::leak(Box::new(new));
-            let old = top.swap(new, Ordering::AcqRel);
-            assert!(!old.is_null());
-            // 直接释放是安全的。因为这是个Arc
-            let _drop = unsafe { Box::from_raw(old) };
-            log::warn!(
-                "top updated. cycle:{} => {}({}) top:{} => {}",
-                _cycle,
-                self.reader.cycle(),
-                _update_cycle,
-                new as *const _ as usize,
-                old as *const _ as usize
-            );
-        });
+        let shared = self.top.try_read()?.clone();
+        return Some(CheckedTopology::new(shared, self.clone()));
     }
 }
 
+// 每个connection持有一个CheckedTopology，在refresh时调用check检查是否有更新
 pub struct CheckedTopology<T> {
-    cycle: usize,
-    top: Arc<DropLog<T>>,
+    top: SharedTop<T>,
     inner: Arc<RefreshTopology<T>>,
+}
+impl<T> CheckedTopology<T> {
+    fn new(top: SharedTop<T>, inner: Arc<RefreshTopology<T>>) -> Self {
+        Self { top, inner }
+    }
 }
 impl<T: Endpoint + Clone + 'static> Endpoint for CheckedTopology<T> {
     type Item = T::Item;
@@ -87,17 +59,48 @@ impl<T: Topology + Clone + 'static> Topology for CheckedTopology<T> {
         self.top.hash(k)
     }
 }
-impl<T: Topology + Clone + 'static> TopologyCheck for CheckedTopology<T> {
+impl<T: Topology + Clone + 'static + Endpoint<Item = Request>> CheckedTopology<T> {
+    // 检查是否有更新
+    // 一共有三个cycle来控制更新
+    // 1. reader_cycle：TopologyReadGuard.cycle()，每次top下电梯，该值都会+1.
+    // 2. shared_cycle：SharedTop.cycle 当前所有连接共享top的cycle。如果shared_cycle <
+    //    reader_cycle，则需要更新SharedTop
+    // 3. conn_cycle: CheckedTopology.cycle，当前conn持有的top，如果conn_cycle <
+    //    reader_cycle，则需要触发更新SharedTop，并发更新时需要加锁。
     #[inline]
     fn check(&mut self) -> Option<Self> {
-        // update_cycle先load出来，避免update过程中cycle变化导致丢失更新
-        let update_cycle = self.inner.reader.cycle();
-        if self.cycle < update_cycle {
-            self.inner.update(self.cycle, update_cycle);
-            self.inner._build(update_cycle)
-        } else {
-            None
+        let reader_cycle = self.inner.reader.cycle();
+        if self.top.cycle() >= reader_cycle {
+            // 当前connection持有的top是最新的。
+            return None;
         }
+        self.top.cycle = reader_cycle;
+        // 更新
+        let shared_top = self.inner.top.try_read()?;
+        if shared_top.cycle() >= reader_cycle {
+            // 说明别的conn已经触发了更新，直接获取即可
+            let shared = shared_top.clone();
+            return Some(Self::new(shared, self.inner.clone()));
+        }
+        // 释放读锁
+        drop(shared_top);
+        let new = SharedTop::new(&self.inner.reader);
+        let mut top = self.inner.top.try_write()?;
+        *top = new;
+        let shared = top.clone();
+        Some(Self::new(shared, self.inner.clone()))
+    }
+}
+impl<T: Topology + Clone + 'static + Endpoint<Item = Request>> TopologyCheck
+    for CheckedTopology<T>
+{
+    #[inline]
+    fn refresh(&mut self) -> bool {
+        self.check().is_some()
+    }
+    #[inline(always)]
+    fn callback(&self) -> CallbackPtr {
+        self.top.callback.clone()
     }
 }
 impl<T: Topology + Clone + 'static> Hash for CheckedTopology<T> {
@@ -107,40 +110,31 @@ impl<T: Topology + Clone + 'static> Hash for CheckedTopology<T> {
     }
 }
 
-unsafe impl<T> Send for RefreshTopology<T> {}
-unsafe impl<T> Sync for RefreshTopology<T> {}
-unsafe impl<T> Send for CheckedTopology<T> {}
-unsafe impl<T> Sync for CheckedTopology<T> {}
-
-#[repr(transparent)]
-struct DropLog<T> {
-    t: T,
+#[derive(Clone)]
+struct SharedTop<T> {
+    t: Arc<Box<T>>,
+    callback: CallbackPtr,
+    cycle: usize,
 }
-impl<T> Drop for DropLog<T> {
-    #[inline]
-    fn drop(&mut self) {
-        log::info!("top dropped {}", self as *const _ as usize);
+impl<T: Clone + Endpoint<Item = Request> + 'static> SharedTop<T> {
+    fn new(reader: &TopologyReadGuard<T>) -> Self {
+        let cycle = reader.cycle();
+        let top = Box::new(reader.do_with(|t| t.clone()));
+        let t = Arc::new(top);
+        let cb_top = t.clone();
+        let send = Box::new(move |req| cb_top.send(req));
+        let callback = Callback::new(send).into();
+        Self { t, callback, cycle }
     }
-}
-impl<T> From<T> for DropLog<T> {
-    fn from(t: T) -> Self {
-        Self { t }
+    fn cycle(&self) -> usize {
+        self.cycle
     }
 }
 use std::ops::Deref;
-impl<T> Deref for DropLog<T> {
+impl<T> Deref for SharedTop<T> {
     type Target = T;
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.t
-    }
-}
-
-impl<T> Drop for RefreshTopology<T> {
-    fn drop(&mut self) {
-        let top = self.top.try_write().expect("top write lock");
-        let old = top.swap(0 as *mut _, Ordering::AcqRel);
-        assert!(!old.is_null());
-        unsafe { Box::from_raw(old) };
     }
 }

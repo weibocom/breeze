@@ -3,10 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use ds::{
-    chan::mpsc::Receiver,
-    time::{Duration, Instant},
-};
+use ds::chan::mpsc::Receiver;
 use protocol::{Error, Protocol, Request, Result, Stream};
 use std::task::ready;
 use tokio::io::ReadBuf;
@@ -20,16 +17,13 @@ pub struct Handler<'r, Req, P, S> {
 
     s: S,
     parser: P,
+    rtt: Metric,
 
     // 处理timeout
-    num_rx: usize,
-    num_tx: usize,
+    num: Number,
 
-    // 发送ping请求时 num_tx的值
-    last_ping_num_tx: usize,
-    last_ping_at: Instant,
-
-    rtt: Metric,
+    // 连续多少个cycle检查到当前没有请求发送，则发送一个ping
+    ping_cycle: u16,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
@@ -66,10 +60,8 @@ where
             s,
             parser,
             rtt,
-            num_rx: 0,
-            num_tx: 0,
-            last_ping_num_tx: 0,
-            last_ping_at: Instant::now(),
+            num: Number::default(),
+            ping_cycle: 0,
         }
     }
     // 检查连接是否存在
@@ -80,55 +72,53 @@ where
     // 5. 如果poll_read返回Ready，并且返回的数据不为0，则说明收到异常请求
     #[inline]
     fn check_alive(&mut self) -> Result<()> {
-        if self.num_tx != self.last_ping_num_tx {
+        if self.pending.len() != 0 {
             // 有请求发送，不需要ping
-            self.last_ping_num_tx = self.num_tx;
-            self.last_ping_at = Instant::now();
+            self.ping_cycle = 0;
             return Ok(());
         }
-        // 如果最近5分钟之内没有请求，则发送一个ping作为心跳
-        if self.last_ping_at.elapsed() > Duration::from_secs(5 * 60) {
-            assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
-            // 通过一次poll read来判断是否连接已经断开。
-            let noop = noop_waker::noop_waker();
-            let mut ctx = std::task::Context::from_waker(&noop);
-            let mut data = [0u8; 8];
-            let mut buf = ReadBuf::new(&mut data);
-            let poll_read = Pin::new(&mut self.s).poll_read(&mut ctx, &mut buf);
-            // 只有Pending才说明连接是正常的。
-            match poll_read {
-                Poll::Ready(Ok(_)) => {
-                    // 没有请求，但是读到了数据？bug
-                    debug_assert_eq!(buf.filled().len(), 0, "unexpected:{:?} => {:?}", self, data);
-                    if buf.filled().len() > 0 {
-                        log::error!("unexpected data from server:{:?} => {:?}", self, data);
-                        return Err(Error::UnexpectedData);
-                    } else {
-                        // 读到了EOF，连接已经断开。
-                        return Err(Error::Eof);
-                    }
-                }
-                Poll::Ready(Err(e)) => {
-                    return Err(e.into());
-                }
-                Poll::Pending => {}
-            }
-            self.last_ping_at = Instant::now();
+        self.ping_cycle += 1;
+        // 目前调用方每隔30秒调用一次，所以这里是5分钟检查一次心跳
+        // 如果最近5分钟之内pending为0（pending为0并不意味着没有请求），则发送一个ping作为心跳
+        if self.ping_cycle <= 10 {
+            return Ok(());
         }
-
-        Ok(())
+        self.ping_cycle = 0;
+        assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
+        // 通过一次poll read来判断是否连接已经断开。
+        let noop = noop_waker::noop_waker();
+        let mut ctx = std::task::Context::from_waker(&noop);
+        let mut data = [0u8; 8];
+        let mut buf = ReadBuf::new(&mut data);
+        let poll_read = Pin::new(&mut self.s).poll_read(&mut ctx, &mut buf);
+        // 只有Pending才说明连接是正常的。
+        match poll_read {
+            Poll::Ready(Ok(_)) => {
+                // 没有请求，但是读到了数据？bug
+                debug_assert_eq!(buf.filled().len(), 0, "unexpected:{:?} => {:?}", self, data);
+                if buf.filled().len() > 0 {
+                    log::error!("unexpected data from server:{:?} => {:?}", self, data);
+                    Err(Error::UnexpectedData)
+                } else {
+                    // 读到了EOF，连接已经断开。
+                    Err(Error::Eof)
+                }
+            }
+            Poll::Ready(Err(e)) => Err(e.into()),
+            Poll::Pending => Ok(()),
+        }
     }
     // 发送request. 读空所有的request，并且发送。直到pending或者error
     #[inline]
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        self.s.cache(self.data.size_hint() > 1);
+        self.s.cache(self.data.has_multi());
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
-            self.num_tx += 1;
+            self.num.tx();
             self.s.write_slice(req.data(), 0)?;
             match req.on_sent() {
                 Some(r) => self.pending.push_back(r),
                 None => {
-                    self.num_rx += 1;
+                    self.num.rx();
                 }
             }
         }
@@ -147,7 +137,7 @@ where
                     Ok(None) => break,
                     Ok(Some(cmd)) => {
                         let req = self.pending.pop_front().expect("take response");
-                        self.num_rx += 1;
+                        self.num.rx();
                         // 统计请求耗时。
                         self.rtt += req.elapsed_current_req();
                         self.parser.check(req.cmd(), &cmd);
@@ -187,7 +177,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
     #[inline]
     fn last(&self) -> Option<ds::time::Instant> {
         if self.pending.len() > 0 {
-            assert_ne!(self.num_rx, self.num_tx, "{:?}", self);
+            self.num.check_pending();
             Some(self.pending.front().expect("empty").last_start_at())
         } else {
             None
@@ -230,12 +220,43 @@ impl<'r, Req, P, S: Debug> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler tx_seq:{} rx_seq:{} p_req:{} {} buf:{:?}",
-            self.num_tx,
-            self.num_rx,
+            "handler num:{:?}  p_req:{} {} buf:{:?}",
+            self.num,
             self.pending.len(),
             self.rtt,
             self.s,
         )
     }
+}
+
+#[derive(Default, Debug)]
+struct Number {
+    #[cfg(debug_assertions)]
+    rx: usize,
+    #[cfg(debug_assertions)]
+    tx: usize,
+}
+#[cfg(debug_assertions)]
+impl Number {
+    #[inline(always)]
+    fn rx(&mut self) {
+        self.rx += 1;
+    }
+    #[inline(always)]
+    fn tx(&mut self) {
+        self.tx += 1;
+    }
+    #[inline(always)]
+    fn check_pending(&self) {
+        debug_assert!(self.tx > self.rx, "tx:{} rx:{}", self.tx, self.rx);
+    }
+}
+#[cfg(not(debug_assertions))]
+impl Number {
+    #[inline(always)]
+    fn rx(&mut self) {}
+    #[inline(always)]
+    fn tx(&mut self) {}
+    #[inline(always)]
+    fn check_pending(&self) {}
 }

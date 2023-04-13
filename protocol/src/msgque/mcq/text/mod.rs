@@ -1,5 +1,5 @@
 mod command;
-mod error;
+pub(crate) mod error;
 mod reqpacket;
 mod rsppacket;
 

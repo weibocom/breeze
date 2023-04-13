@@ -73,11 +73,17 @@ impl<D: Discover + Send + Sync> Cache for DiscoveryCache<D> {
                     let hash = Sig::new(md5::compute(v).into(), path_sig.clone());
                     self.cache.insert(name, (v.to_string(), hash));
                 }
-                return self.cache.remove(name);
+                return self.cache.remove(name).or_else(|| {
+                    log::warn!("group cfg found, but namespace missed:{}", name);
+                    let empty_sig = Sig::new(md5::compute(&[]).into(), path_sig.clone());
+                    Some((String::new(), empty_sig))
+                });
             }
             log::warn!("this should not happen. cfg not found for {}", name);
         }
-        *path_sig = sig.to_string();
+        if path_sig != sig {
+            *path_sig = sig.to_string();
+        }
         log::debug!("{} not changed by discovery", name);
         None
     }

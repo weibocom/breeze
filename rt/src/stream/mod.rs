@@ -25,7 +25,6 @@ pub struct Stream<S> {
     s: MetricStream<S>,
     buf: TxBuffer,
     rx_buf: GuardedBuffer,
-    write_to_buf: bool,
 
     ctx: StreamContext,
 }
@@ -39,7 +38,6 @@ impl<S> From<S> for Stream<S> {
             // 最大64M：经验值。
             // 初始化为0：针对部分只有连接没有请求的场景，不占用内存。
             rx_buf: GuardedBuffer::new(2048, 64 * 1024 * 1024, 0),
-            write_to_buf: false,
             ctx: Default::default(),
         }
     }
@@ -74,7 +72,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         let mut oft = 0;
         // 1. buf.len()必须为0；
         // 2. 如果没有显示要求写入到buf, 或者数据量大，则直接写入
-        if self.buf.len() == 0 && (!self.write_to_buf || data.len() >= LARGE_SIZE) {
+        if self.buf.len() == 0 && (!self.buf.enable || data.len() >= LARGE_SIZE) {
             let _ = Pin::new(&mut self.s).poll_write(cx, data)?.map(|n| oft = n);
         }
         // 未写完的数据写入到buf。
@@ -135,9 +133,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     // hint: 提示可能优先写入到cache
     #[inline]
     fn cache(&mut self, hint: bool) {
-        if self.write_to_buf != hint {
-            self.write_to_buf = hint;
-        }
+        self.buf.enable = hint;
     }
     #[inline]
     fn shrink(&mut self) {
@@ -163,9 +159,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::BufWriter for Stream<S> {
     }
     #[inline]
     fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) -> std::io::Result<()> {
-        if self.write_to_buf != true {
-            self.write_to_buf = true;
-        }
+        self.buf.enable = true;
         self.write_all(buf0)?;
         self.write_all(buf1)
     }
@@ -211,10 +205,9 @@ impl<S: std::fmt::Debug> Debug for Stream<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Stream")
             .field("s", &self.s)
-            .field("buf", &self.buf)
+            .field("tx_buf", &self.buf)
             .field("rx_buf", &self.rx_buf)
             .field("ctx", &self.ctx)
-            .field("write_to_buf", &self.write_to_buf)
             .finish()
     }
 }
