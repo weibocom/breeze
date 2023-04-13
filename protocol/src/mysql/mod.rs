@@ -75,10 +75,9 @@ impl Protocol for Mysql {
     fn handshake(
         &self,
         stream: &mut impl Stream,
-        s: &mut impl crate::Writer,
         option: &mut crate::ResOption,
     ) -> Result<HandShake> {
-        match self.handshake_inner(stream, s, option) {
+        match self.handshake_inner(stream, option) {
             Ok(h) => Ok(h),
             Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
             Err(e) => {
@@ -271,7 +270,6 @@ impl Mysql {
     fn handshake_inner(
         &self,
         stream: &mut impl Stream,
-        s: &mut impl crate::Writer,
         option: &mut crate::ResOption,
     ) -> Result<HandShake> {
         log::debug!("+++ recv mysql handshake packet:{:?}", stream.slice());
@@ -281,7 +279,6 @@ impl Mysql {
         match packet.ctx().status {
             HandShakeStatus::Init => {
                 let handshake_rsp = packet.proc_handshake()?;
-                s.write(&handshake_rsp)?;
                 packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
                 Ok(HandShake::Continue)
             }

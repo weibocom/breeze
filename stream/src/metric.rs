@@ -24,7 +24,7 @@ macro_rules! define_metrics {
             #[inline]
             pub fn ops(&self, op:Operation) -> &mut Metric {
                 // Metric操作是原子计数的，因此unsafe不会导致UB。
-                assert!(op.id() < self.ops.len());
+                debug_assert!(op.id() < self.ops.len());
                 unsafe{self.ops.get_unchecked(op.id()).as_mut()}
             }
             // 所有命令所有业务的加权平均耗时

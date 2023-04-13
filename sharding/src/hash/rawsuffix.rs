@@ -1,11 +1,12 @@
 // 对分隔符后缀之后的部分进行long型转换，当前按业务要求，强制分隔符个数为1 fishermen
 
+use super::DebugName;
 use std::fmt::Display;
 
 #[derive(Clone, Default, Debug)]
 pub struct RawSuffix {
     delimiter: u8,
-    name: String,
+    name: DebugName,
 }
 
 impl RawSuffix {
@@ -17,7 +18,7 @@ impl RawSuffix {
         let delimiter = super::key_delimiter_name_2u8(alg, alg_parts[1]);
         Self {
             delimiter,
-            name: alg.to_string(),
+            name: alg.into(),
         }
     }
 }
@@ -49,6 +50,6 @@ impl super::Hash for RawSuffix {
 
 impl Display for RawSuffix {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{:?}", self.name)
     }
 }

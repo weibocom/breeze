@@ -6,15 +6,241 @@ use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::mysql::Mysql;
 use crate::redis::Redis;
-use crate::{Error, Flag, Request, Result, Writer};
+use crate::{Error, Flag, Result, Stream, Writer};
 
-#[enum_dispatch(Proto)]
 #[derive(Clone)]
 pub enum Parser {
     McBin(MemcacheBinary),
     Redis(Redis),
     MsgQue(MsgQue),
     Mysql(Mysql),
+}
+impl Proto for Parser {
+    #[inline]
+    fn handshake(
+        &self,
+        __enum_dispatch_arg_0: &mut impl Stream,
+        __enum_dispatch_arg_1: &mut impl Writer,
+        __enum_dispatch_arg_2: &mut ResOption,
+    ) -> Result<HandShake> {
+        match self {
+            Parser::McBin(inner) => Proto::handshake(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::Redis(inner) => Proto::handshake(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::MsgQue(inner) => Proto::handshake(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::Mysql(inner) => Proto::handshake(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+        }
+    }
+    #[inline]
+    fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
+        &self,
+        __enum_dispatch_arg_0: &mut S,
+        __enum_dispatch_arg_1: &H,
+        __enum_dispatch_arg_2: &mut P,
+    ) -> Result<()> {
+        match self {
+            Parser::McBin(inner) => Proto::parse_request::<S, H, P>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::Redis(inner) => Proto::parse_request::<S, H, P>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::MsgQue(inner) => Proto::parse_request::<S, H, P>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::Mysql(inner) => Proto::parse_request::<S, H, P>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+        }
+    }
+    #[inline]
+    fn build_request(
+        &self,
+        __enum_dispatch_arg_0: &mut HashedCommand,
+        __enum_dispatch_arg_1: String,
+    ) {
+        match self {
+            Parser::McBin(inner) => {
+                Proto::build_request(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+            Parser::Redis(inner) => {
+                Proto::build_request(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+            Parser::MsgQue(inner) => {
+                Proto::build_request(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+            Parser::Mysql(inner) => {
+                Proto::build_request(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+        }
+    }
+    #[inline]
+    fn before_send<S: Stream, Req: Request>(
+        &self,
+        __enum_dispatch_arg_0: &mut S,
+        __enum_dispatch_arg_1: &mut Req,
+    ) {
+        match self {
+            Parser::McBin(inner) => {
+                Proto::before_send::<S, Req>(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+            Parser::Redis(inner) => {
+                Proto::before_send::<S, Req>(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+            Parser::MsgQue(inner) => {
+                Proto::before_send::<S, Req>(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+            Parser::Mysql(inner) => {
+                Proto::before_send::<S, Req>(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+        }
+    }
+    #[inline]
+    fn parse_response<S: Stream>(&self, __enum_dispatch_arg_0: &mut S) -> Result<Option<Command>> {
+        match self {
+            Parser::McBin(inner) => Proto::parse_response::<S>(inner, __enum_dispatch_arg_0),
+            Parser::Redis(inner) => Proto::parse_response::<S>(inner, __enum_dispatch_arg_0),
+            Parser::MsgQue(inner) => Proto::parse_response::<S>(inner, __enum_dispatch_arg_0),
+            Parser::Mysql(inner) => Proto::parse_response::<S>(inner, __enum_dispatch_arg_0),
+        }
+    }
+    #[inline]
+    fn write_response<C, W, M, I>(
+        &self,
+        __enum_dispatch_arg_0: &mut C,
+        __enum_dispatch_arg_1: Option<&mut Command>,
+        __enum_dispatch_arg_2: &mut W,
+    ) -> Result<()>
+    where
+        W: Writer,
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
+        match self {
+            Parser::McBin(inner) => Proto::write_response::<C, W, M, I>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::Redis(inner) => Proto::write_response::<C, W, M, I>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::MsgQue(inner) => Proto::write_response::<C, W, M, I>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::Mysql(inner) => Proto::write_response::<C, W, M, I>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+        }
+    }
+    #[inline]
+    #[inline]
+    fn check(&self, __enum_dispatch_arg_0: &HashedCommand, __enum_dispatch_arg_1: &Command) {
+        match self {
+            Parser::McBin(inner) => {
+                Proto::check(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+            Parser::Redis(inner) => {
+                Proto::check(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+            Parser::MsgQue(inner) => {
+                Proto::check(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+            Parser::Mysql(inner) => {
+                Proto::check(inner, __enum_dispatch_arg_0, __enum_dispatch_arg_1)
+            }
+        }
+    }
+    #[inline]
+    fn build_writeback_request<C, M, I>(
+        &self,
+        __enum_dispatch_arg_0: &mut C,
+        __enum_dispatch_arg_1: &Command,
+        __enum_dispatch_arg_2: u32,
+    ) -> Option<HashedCommand>
+    where
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
+        match self {
+            Parser::McBin(inner) => Proto::build_writeback_request::<C, M, I>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::Redis(inner) => Proto::build_writeback_request::<C, M, I>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::MsgQue(inner) => Proto::build_writeback_request::<C, M, I>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+            Parser::Mysql(inner) => Proto::build_writeback_request::<C, M, I>(
+                inner,
+                __enum_dispatch_arg_0,
+                __enum_dispatch_arg_1,
+                __enum_dispatch_arg_2,
+            ),
+        }
+    }
+    #[inline]
+    fn need_auth(&self) -> bool {
+        match self {
+            Parser::McBin(inner) => Proto::need_auth(inner),
+            Parser::Redis(inner) => Proto::need_auth(inner),
+            Parser::MsgQue(inner) => Proto::need_auth(inner),
+            Parser::Mysql(inner) => Proto::need_auth(inner),
+        }
+    }
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
@@ -57,12 +283,7 @@ pub enum HandShake {
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     //todo, Stream和Writer合并，ResOption用一个字段？
-    fn handshake(
-        &self,
-        _stream: &mut impl Stream,
-        _s: &mut impl Writer,
-        _option: &mut ResOption,
-    ) -> Result<HandShake> {
+    fn handshake(&self, _stream: &mut impl Stream, _option: &mut ResOption) -> Result<HandShake> {
         Ok(HandShake::Success)
     }
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
@@ -72,7 +293,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         process: &mut P,
     ) -> Result<()>;
     fn build_request(&self, _req: &mut HashedCommand, _new_req: String) {}
-    fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
+    // fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
 
     // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
@@ -121,27 +342,6 @@ pub trait RequestProcessor {
     // 2. 请求被拆分成了多个子请求；
     // 3. 当前子请求为最后一个；
     fn process(&mut self, req: HashedCommand, last: bool);
-}
-
-pub trait StreamWithWriter: Stream {
-    fn write(&mut self, data: &[u8]) -> Result<()>;
-}
-
-pub trait Stream {
-    fn len(&self) -> usize;
-    //fn at(&self, idx: usize) -> u8;
-    fn slice(&self) -> ds::RingSlice;
-    //fn update(&mut self, idx: usize, val: u8);
-    fn take(&mut self, n: usize) -> ds::MemGuard;
-    #[inline]
-    fn ignore(&mut self, n: usize) {
-        let _ = self.take(n);
-    }
-    // 在解析一个流的不同的req/response时，有时候需要共享数据。
-    fn context(&mut self) -> &mut u64;
-    // 用于保存下一个cmd需要使用的hash
-    fn reserved_hash(&mut self) -> &mut i64;
-    fn reserve(&mut self, r: usize);
 }
 
 pub struct Command {

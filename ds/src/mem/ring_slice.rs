@@ -2,25 +2,27 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
+//从不拥有数据，是对ptr+start的引用
 #[derive(Default)]
 pub struct RingSlice {
     ptr: usize,
-    cap: usize,
-    start: usize,
-    len: usize,
+    cap: u32,
+    start: u32,
+    len: u32,
+    mask: u32,
 }
 
 // 将ring_slice拆分成2个seg。分别调用
 macro_rules! with_segment_oft {
     ($self:expr, $oft:expr, $noseg:expr, $seg:expr) => {{
-        debug_assert!($oft <= $self.len);
-        let oft_start = $self.mask($self.start + $oft);
-        let len = $self.len - $oft;
+        debug_assert!($oft <= $self.len());
+        let oft_start = $self.mask($self.start() + $oft);
+        let len = $self.len() - $oft;
 
-        if oft_start + len <= $self.cap {
+        if oft_start + len <= $self.cap() {
             unsafe { $noseg($self.ptr().add(oft_start), len) }
         } else {
-            let seg1 = $self.cap - oft_start;
+            let seg1 = $self.cap() - oft_start;
             let seg2 = len - seg1;
             unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
         }
@@ -33,6 +35,7 @@ impl RingSlice {
         cap: 0,
         start: 0,
         len: 0,
+        mask: 0,
     };
     #[inline]
     pub fn empty() -> Self {
@@ -41,14 +44,25 @@ impl RingSlice {
     //从不拥有数据
     #[inline]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
-        assert!(cap.is_power_of_two() || cap == 0, "not valid cap:{}", cap);
+        debug_assert!(cap < u32::MAX as usize);
+        debug_assert!(cap.is_power_of_two() || cap == 0, "not valid cap:{}", cap);
         debug_assert!(end >= start && end - start <= cap);
+        // cap为0是mask为:u32::MAX，也是合法的
+        let mask = cap.wrapping_sub(1) as u32;
         Self {
             ptr: ptr as usize,
-            cap,
-            start: start & (cap.wrapping_sub(1)),
-            len: end - start,
+            cap: cap as u32,
+            start: (start & mask as usize) as u32,
+            len: (end - start) as u32,
+            mask,
         }
+    }
+    #[inline(always)]
+    pub fn from_vec(data: &Vec<u8>) -> Self {
+        let mut mem: RingSlice = data.as_slice().into();
+        // 这里面的cap是真实的cap
+        mem.cap = data.capacity() as u32;
+        mem
     }
     #[inline(always)]
     pub fn slice(&self, offset: usize, len: usize) -> RingSlice {
@@ -61,18 +75,11 @@ impl RingSlice {
         Self {
             ptr: self.ptr,
             cap: self.cap,
-            start: self.mask(self.start + offset),
-            len,
+            start: self.mask(self.start() + offset) as u32,
+            len: len as u32,
+            mask: self.mask,
         }
     }
-    // 读取数据. 可能只读取可读数据的一部分。
-    //#[inline]
-    //pub fn read(&self, offset: usize) -> &[u8] {
-    //    assert!(offset < self.len());
-    //    let oft = self.mask(self.start + offset);
-    //    let l = (self.cap - oft).min(self.len() - offset);
-    //    unsafe { from_raw_parts(self.ptr().offset(oft as isize), l) }
-    //}
     #[inline(always)]
     pub(super) fn visit_segment_oft(&self, oft: usize, mut v: impl FnMut(*mut u8, usize)) {
         with_segment_oft!(self, oft, |p, l| v(p, l), |p0, l0, p1, l1| {
@@ -93,6 +100,12 @@ impl RingSlice {
     #[inline(always)]
     pub fn data(&self) -> (&[u8], &[u8]) {
         self.data_oft(0)
+    }
+
+    // 特殊情况下，打印合法字节，以及buff中全部的字节
+    pub unsafe fn data_dump(&self) -> &[u8] {
+        let oft_start = self.mask(self.start());
+        from_raw_parts(self.ptr().sub(oft_start), self.cap())
     }
     #[inline(always)]
     pub fn fold<I>(&self, mut init: I, mut v: impl FnMut(&mut I, u8)) -> I {
@@ -162,16 +175,23 @@ impl RingSlice {
             v.set_len(v.len() + l);
         });
     }
+    #[inline(always)]
+    pub(super) fn cap(&self) -> usize {
+        self.cap as usize
+    }
+    #[inline(always)]
+    fn start(&self) -> usize {
+        self.start as usize
+    }
 
     #[inline(always)]
     fn mask(&self, oft: usize) -> usize {
-        //// 兼容cap是0的场景
-        self.cap.wrapping_sub(1) & oft
+        (self.mask & oft as u32) as usize
     }
 
     #[inline(always)]
     pub fn len(&self) -> usize {
-        self.len
+        self.len as usize
     }
     #[inline(always)]
     pub fn at(&self, idx: usize) -> u8 {
@@ -185,12 +205,6 @@ impl RingSlice {
     pub(super) fn ptr(&self) -> *mut u8 {
         self.ptr as *mut u8
     }
-    //#[inline(always)]
-    //unsafe fn oft_ptr(&self, idx: usize) -> *mut u8 {
-    //    debug_assert!(idx < self.len());
-    //    let oft = self.mask(self.start + idx);
-    //    self.ptr().offset(oft as isize)
-    //}
 
     #[inline]
     pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
@@ -233,11 +247,6 @@ impl RingSlice {
         }
     }
 
-    #[inline]
-    fn end(&self) -> usize {
-        self.start + self.len
-    }
-
     #[inline(always)]
     pub fn read_num_be(&self, oft: usize) -> u64 {
         const SIZE: usize = std::mem::size_of::<u64>();
@@ -267,32 +276,27 @@ use std::convert::TryInto;
 macro_rules! define_read_number {
     ($fn_name:ident, $type_name:tt) => {
         #[inline]
-        pub fn $fn_name(&self, offset: usize) -> $type_name {
+        pub fn $fn_name(&self, oft: usize) -> $type_name {
             const SIZE: usize = std::mem::size_of::<$type_name>();
-            assert!(self.len() >= offset + SIZE);
-            unsafe {
-                let oft_start = (self.start + offset) & (self.cap - 1);
-                let oft_end = self.end() & (self.cap - 1);
-                if oft_end > oft_start || self.cap >= oft_start + SIZE {
-                    let b = from_raw_parts(self.ptr().offset(oft_start as isize), SIZE);
-                    $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
-                } else {
-                    // start索引更高
-                    // 拐弯了
-                    let mut b = [0u8; SIZE];
-                    let n = self.cap - oft_start;
-                    copy_nonoverlapping(self.ptr().offset(oft_start as isize), b.as_mut_ptr(), n);
-                    copy_nonoverlapping(self.ptr(), b.as_mut_ptr().offset(n as isize), SIZE - n);
-                    $type_name::from_be_bytes(b)
-                }
+            debug_assert!(self.len() >= oft + SIZE);
+            let oft_start = self.mask(oft + self.start());
+            let len = self.cap() - oft_start; // 从oft_start到cap的长度
+            if len >= SIZE {
+                let b = unsafe { from_raw_parts(self.ptr().add(oft_start), SIZE) };
+                $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
+            } else {
+                // 分段读取
+                let mut b = [0u8; SIZE];
+                use copy_nonoverlapping as copy;
+                unsafe { copy(self.ptr().add(oft_start), b.as_mut_ptr(), len) };
+                unsafe { copy(self.ptr(), b.as_mut_ptr().add(len), SIZE - len) };
+                $type_name::from_be_bytes(b)
             }
         }
     };
 }
 
 impl RingSlice {
-    // big endian
-    //define_read_number!(read_u8, u8);
     define_read_number!(read_u16, u16);
     define_read_number!(read_u32, u32);
     define_read_number!(read_u64, u64);
@@ -343,7 +347,7 @@ impl std::ops::Index<usize> for RingSlice {
     #[inline(always)]
     fn index(&self, idx: usize) -> &Self::Output {
         debug_assert!(idx < self.len());
-        unsafe { &*self.ptr().add(self.mask(self.start + idx)) }
+        unsafe { &*self.ptr().add(self.mask(self.start() + idx)) }
     }
 }
 impl std::ops::IndexMut<usize> for RingSlice {
@@ -351,7 +355,7 @@ impl std::ops::IndexMut<usize> for RingSlice {
     #[inline(always)]
     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
         debug_assert!(idx < self.len());
-        unsafe { &mut *self.ptr().add(self.mask(self.start + idx)) }
+        unsafe { &mut *self.ptr().add(self.mask(self.start() + idx)) }
     }
 }
 

@@ -48,10 +48,9 @@ impl<T> Receiver<T> {
             t
         })
     }
-    #[inline]
-    pub fn size_hint(&mut self) -> usize {
-        let tx = self.tx.load(Acquire);
-        tx - tx.min(self.rx)
+    #[inline(always)]
+    pub fn has_multi(&mut self) -> bool {
+        self.tx.load(Acquire) >= self.rx + 2
     }
     pub fn enable(&mut self) {
         self.rx = 0;
@@ -67,11 +66,14 @@ impl<T> Sender<T> {
     #[inline]
     pub fn try_send(&self, message: T) -> Result<(), TrySendError<T>> {
         if self.switcher.get() {
-            self.inner.try_send(message).map_err(|e| match e {
-                tokio::sync::mpsc::error::TrySendError::Full(t) => TrySendError::Full(t),
-                tokio::sync::mpsc::error::TrySendError::Closed(t) => TrySendError::Closed(t),
-            })?;
             self.tx.fetch_add(1, AcqRel);
+            self.inner.try_send(message).map_err(|e| {
+                self.tx.fetch_sub(1, AcqRel);
+                match e {
+                    tokio::sync::mpsc::error::TrySendError::Full(t) => TrySendError::Full(t),
+                    tokio::sync::mpsc::error::TrySendError::Closed(t) => TrySendError::Closed(t),
+                }
+            })?;
             Ok(())
         } else {
             Err(TrySendError::Disabled(message))

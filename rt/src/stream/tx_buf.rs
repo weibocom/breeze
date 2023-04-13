@@ -6,10 +6,12 @@ use std::{
     ptr::{copy_nonoverlapping as copy, NonNull},
 };
 // 最大支持u32::MAX大小的buffer。
+#[derive(Debug)]
 pub struct TxBuffer {
     read: u32,
     write: u32,
     cap: u32,
+    pub(super) enable: bool,
     data: NonNull<u8>,
     policy: MemPolicy,
 }
@@ -18,6 +20,7 @@ impl TxBuffer {
     #[inline]
     pub fn new() -> Self {
         Self {
+            enable: false,
             read: 0,
             write: 0,
             cap: 0,

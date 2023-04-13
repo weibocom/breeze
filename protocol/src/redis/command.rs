@@ -1,20 +1,61 @@
-use crate::{HashedCommand, OpCode, Operation, Result};
+use crate::{Flag, HashedCommand, OpCode, Operation, Result};
 use ds::{MemGuard, RingSlice};
-use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
+//use sharding::hash::{Bkdr, Hash, HashKey, UppercaseHashKey};
 
 #[derive(Default, Debug, PartialEq, Clone, Copy)]
 pub(crate) enum CommandType {
     #[default]
     Other,
     //============== 吞噬指令 ==============//
+    SwallowedMaster,
     SwallowedCmdHashkeyq,
     SwallowedCmdHashrandomq,
 
+    CmdSendToAll,
+    CmdSendToAllq,
     //============== 需要本地构建特殊响应的cmd ==============//
     // 指示下一个cmd的用于计算分片hash的key
     SpecLocalCmdHashkey,
     // 计算批量key的分片索引
     SpecLocalCmdKeyshard,
+}
+
+#[derive(Default)]
+pub(super) struct CommandHasher(i32);
+impl CommandHasher {
+    #[inline(always)]
+    fn hash(&mut self, mut b: u8) {
+        if b.is_ascii_lowercase() {
+            // 转换大写  32 = 'a' - 'A'
+            b -= b'a' - b'A';
+        }
+        // 31作为seed
+        self.0 = self.0.wrapping_mul(31).wrapping_add(b as i32);
+    }
+    #[inline(always)]
+    fn finish(self) -> u16 {
+        // +1 避免0
+        1 + (self.0.abs() as usize & (Commands::MAPPING_RANGE - 1)) as u16
+    }
+    fn hash_bytes(data: &[u8]) -> u16 {
+        let mut h = CommandHasher::default();
+        for b in data {
+            h.hash(*b);
+        }
+        h.finish()
+    }
+    // oft: 指向'\r'的位置
+    #[inline(always)]
+    pub(super) fn hash_slice(slice: &RingSlice, oft: usize) -> Result<(u16, usize)> {
+        let mut h = CommandHasher::default();
+        for i in oft..slice.len() {
+            if slice[i] == b'\r' {
+                return Ok((h.finish(), i));
+            }
+            h.hash(slice[i]);
+        }
+        Err(crate::Error::ProtocolIncomplete)
+    }
 }
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
@@ -53,6 +94,7 @@ pub(crate) struct CommandProperties {
     pub(crate) master_next: bool,        // 是否需要将下一个cmd发送到master
     pub(crate) quit: bool,               // 是否需要quit掉连接
     pub(crate) cmd_type: CommandType,    //用来标识自身，opcode非静态可知
+    pub(crate) effect_on_next_req: bool, //对下一条指令有影响
 }
 
 // 默认响应
@@ -107,7 +149,8 @@ impl CommandProperties {
             return Ok(());
         }
 
-        Err(crate::Error::RequestProtocolInvalid("bulk num invalied"))
+        use super::error::RedisError;
+        Err(RedisError::ReqInvalidBulkNum.into())
     }
 
     // #[inline]
@@ -146,7 +189,7 @@ impl CommandProperties {
         hash: i64,
         bulk_num: u16,
         first: bool,
-        master_only: bool,
+        mut flag: Flag,
         data: &RingSlice,
     ) -> HashedCommand {
         use ds::Buffer;
@@ -163,7 +206,6 @@ impl CommandProperties {
         cmd.write("\r\n");
         cmd.write_slice(data);
         //data.copy_to_vec(&mut cmd);
-        let mut flag = self.flag();
         use super::flag::RedisFlager;
         if first {
             flag.set_mkey_first();
@@ -180,9 +222,6 @@ impl CommandProperties {
             }
             flag.set_key_count(key_num);
         }
-        if master_only {
-            flag.set_master_only();
-        }
         let cmd: MemGuard = MemGuard::from_vec(cmd);
         HashedCommand::new(cmd, hash, flag)
     }
@@ -193,7 +232,7 @@ impl CommandProperties {
 pub(super) struct Commands {
     supported: [CommandProperties; Self::MAPPING_RANGE],
     // hash: Crc32,
-    hash: Bkdr,
+    //hash: Bkdr,
 }
 impl Commands {
     const MAPPING_RANGE: usize = 2048;
@@ -201,18 +240,18 @@ impl Commands {
         Self {
             supported: array_init::array_init(|_| Default::default()),
             // hash: Crc32::default(),
-            hash: Bkdr::default(),
+            //hash: Bkdr::default(),
         }
     }
-    #[inline]
-    pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
-        let uppercase = UppercaseHashKey::new(name);
-        // let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
-        let idx = self.inner_hash(&uppercase);
-        // op_code 0表示未定义,不存在
-        assert_ne!(idx, 0);
-        idx as u16
-    }
+    //#[inline]
+    //pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
+    //    let uppercase = UppercaseHashKey::new(name);
+    //    // let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
+    //    let idx = self.inner_hash(&uppercase);
+    //    // op_code 0表示未定义,不存在
+    //    assert_ne!(idx, 0);
+    //    idx as u16
+    //}
 
     #[inline]
     pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
@@ -233,22 +272,23 @@ impl Commands {
     //    self.get_by_op(idx as u16)
     //}
 
-    #[inline]
-    fn inner_hash<K: HashKey>(&self, key: &K) -> usize {
-        let idx = self.hash.hash(key) as usize & (Self::MAPPING_RANGE - 1);
-        // 由于op_code 0表示未定义,不存在,故对于0需要进行转换为1
-        if idx == 0 {
-            return 1;
-        }
-        idx
-    }
+    //#[inline]
+    //fn inner_hash<K: HashKey>(&self, key: &K) -> usize {
+    //    let idx = self.hash.hash(key) as usize & (Self::MAPPING_RANGE - 1);
+    //    // 由于op_code 0表示未定义,不存在,故对于0需要进行转换为1
+    //    if idx == 0 {
+    //        return 1;
+    //    }
+    //    idx
+    //}
 
     #[inline]
     fn add_support(&mut self, mut c: CommandProperties) {
-        let uppercase = c.name.to_uppercase();
-        // let idx = self.hash.hash(&uppercase.as_bytes()) as usize & (mut self::MAPPING_RANGE - 1);
-        let idx = self.inner_hash(&uppercase.as_bytes());
-        assert!(idx < self.supported.len(), "idx:{}", idx);
+        //use sharding::hash::Hash;
+        //let old_idx = sharding::hash::Bkdr.hash(&c.name.to_uppercase().as_bytes()) as usize
+        //    & (Self::MAPPING_RANGE - 1);
+        let idx = CommandHasher::hash_bytes(c.name.as_bytes()) as usize;
+        assert!(idx > 0 && idx < self.supported.len(), "idx:{}", idx);
         // 之前没有添加过。
         assert!(!self.supported[idx].supported);
         c.supported = true;
@@ -265,11 +305,11 @@ impl Commands {
     }
 }
 
-#[inline]
-pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
-    SUPPORTED.get_op_code(cmd)
-}
-#[inline]
+//#[inline]
+//pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
+//    SUPPORTED.get_op_code(cmd)
+//}
+#[inline(always)]
 pub(crate) fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties> {
     SUPPORTED.get_by_op(op_code)
 }
@@ -299,7 +339,7 @@ pub(super) static SUPPORTED: Commands = {
         // quit、master的指令token数/arity应该都是1,quit 的padding设为1 
         // TODO quit 的padding设为1，需要验证后删除本注释 fishermen
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
-        Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow(),
+        Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::SwallowedMaster).effect_on_next_req(),
 
         //("get" , "get",            2, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("get").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
@@ -551,9 +591,12 @@ pub(super) static SUPPORTED: Commands = {
         //("hashkeyq", "hashkeyq",                   2,  Meta,  1, 1, 1, 5, false, true, true, false, false),
         //("hashrandomq", "hashrandomq",             1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
         Cmd::new("hashkeyq").arity(2).op(Meta).first(1).last(1).step(1).padding(pt[5]).
-        nofwd().key().resv_hash().swallow().cmd_type(CommandType::SwallowedCmdHashkeyq),
+        nofwd().key().resv_hash().swallow().cmd_type(CommandType::SwallowedCmdHashkeyq).effect_on_next_req(),
         Cmd::new("hashrandomq").arity(1).op(Meta).padding(pt[5]).nofwd().resv_hash().swallow().
-        cmd_type(CommandType::SwallowedCmdHashrandomq),
+        cmd_type(CommandType::SwallowedCmdHashrandomq).effect_on_next_req(),
+        
+        Cmd::new("sendtoall").arity(1).op(Meta).padding(pt[1]).nofwd().cmd_type(CommandType::CmdSendToAll).effect_on_next_req(),
+        Cmd::new("sendtoallq").arity(1).op(Meta).padding(pt[1]).nofwd().swallow().cmd_type(CommandType::CmdSendToAllq).effect_on_next_req(),
 
         // swallowed扩展指令对应的有返回值的指令，去掉q即可
         //("hashkey", "hashkey",                     2,  Get,  1, 1, 1, 5, false, true, true, false, false),
@@ -561,10 +604,10 @@ pub(super) static SUPPORTED: Commands = {
         // 这个指令暂无需求，先不支持
         // ("hashrandom", "hashrandom",               1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
         // hashkey、keyshard 改为meta，确保构建rsp时的status管理
-        Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(pt[5]).nofwd().key().resv_hash().
-        cmd_type(CommandType::SpecLocalCmdHashkey),
+        Cmd::new("hashkey").arity(2).op(Meta).first(1).last(1).step(1).padding(pt[1]).nofwd().key().resv_hash().
+        cmd_type(CommandType::SpecLocalCmdHashkey).effect_on_next_req(),
         Cmd::new("keyshard").arity(-2).op(Meta).first(1).last(-1).step(1).padding(pt[5]).multi().
-        nofwd().key().bulk().resv_hash().cmd_type(CommandType::SpecLocalCmdKeyshard),
+        nofwd().key().bulk().cmd_type(CommandType::SpecLocalCmdKeyshard),
 
         // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
         //("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false),
@@ -768,6 +811,10 @@ impl CommandProperties {
     // }
     pub(crate) fn master(mut self) -> Self {
         self.master_next = true;
+        self
+    }
+    pub(crate) fn effect_on_next_req(mut self) -> Self {
+        self.effect_on_next_req = true;
         self
     }
     pub(crate) fn quit(mut self) -> Self {

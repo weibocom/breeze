@@ -52,6 +52,7 @@ where
         let period = Duration::from_secs(1);
         let cycle = (self.tick.as_secs_f64() / period.as_secs_f64()).ceil() as usize;
         let mut cycle_i = 0usize;
+        let mut first_cycle = true;
         let mut tick = interval(period);
         self.cb.with_discovery(self.discovery.inner()).await;
         let mut services = HashMap::new();
@@ -84,11 +85,18 @@ where
                 t.try_load();
             }
             cycle_i += 1;
-            if cycle_i == cycle {
+            if cycle_i == cycle || first_cycle {
+                // 第一个循环处于冷启动期，需要加快固定任务的加载频率，避免请求失败导致其他问题(如socks)
                 self.cb.with_discovery(self.discovery.inner()).await;
-                cycle_i = 0;
-                // 清空缓存
-                self.discovery.clear();
+                if cycle_i == cycle {
+                    cycle_i = 0;
+                    // 清空缓存
+                    self.discovery.clear();
+                    // 重置first cycle
+                    if first_cycle {
+                        first_cycle = false;
+                    }
+                }
             }
             tick.tick().await;
         }

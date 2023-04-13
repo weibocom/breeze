@@ -13,13 +13,13 @@ use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
 use sharding::distribution::Distribute;
-use sharding::hash::Hasher;
-use sharding::ReplicaSelect;
+use sharding::hash::{Hash, HashKey};
+use sharding::Distance;
 use sharding::Selector;
 
 use crate::Builder;
 use crate::Single;
-use crate::TimeoutAdjust;
+use crate::Timeout;
 use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
@@ -43,8 +43,8 @@ pub struct MysqlService<B, E, Req, P> {
     updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
     service: String,
-    timeout_master: Duration,
-    timeout_slave: Duration,
+    timeout_master: Timeout,
+    timeout_slave: Timeout,
     _mark: std::marker::PhantomData<(B, Req)>,
     user: String,
     password: String,
@@ -81,8 +81,9 @@ where
     P: Protocol,
     B: Send + Sync,
 {
-    fn hasher(&self) -> &sharding::hash::Hasher {
-        self.strategy.hasher()
+    #[inline]
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        self.strategy.hasher().hash(k)
     }
 }
 
@@ -286,7 +287,7 @@ where
         &self,
         old: &mut HashMap<String, Vec<E>>,
         addr: &str,
-        timeout: Duration,
+        timeout: Timeout,
         res: ResOption,
     ) -> E {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
@@ -493,7 +494,6 @@ impl<E: discovery::Inited> Shard<E> {
             && self.has_slave()
             && self
                 .slaves
-                .as_ref()
                 .iter()
                 .fold(true, |inited, (_, e)| inited && e.inited())
     }
@@ -504,7 +504,7 @@ impl<E> Shard<E> {
     fn selector(s: Selector, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
-            slaves: ReplicaSelect::from(s, replicas),
+            slaves: Distance::with_local(replicas, false),
         }
     }
     #[inline]
@@ -529,5 +529,5 @@ impl<E> Shard<E> {
 #[derive(Clone)]
 struct Shard<E> {
     master: (String, E),
-    slaves: ReplicaSelect<(String, E)>,
+    slaves: Distance<(String, E)>,
 }

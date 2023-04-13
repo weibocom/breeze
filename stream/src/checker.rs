@@ -11,11 +11,12 @@ use tokio::time::timeout;
 
 use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream, Writer};
 
-use crate::buffer::StreamGuard;
 use crate::handler::Handler;
 use ds::chan::mpsc::Receiver;
 use ds::Switcher;
 use metrics::Path;
+
+use rt::{Entry, Timeout};
 
 pub struct BackendChecker<P, Req> {
     rx: Receiver<Req>,
@@ -23,7 +24,7 @@ pub struct BackendChecker<P, Req> {
     init: Switcher,
     parser: P,
     addr: String,
-    timeout: Duration,
+    timeout: endpoint::Timeout,
     path: Path,
     option: ResOption,
 }
@@ -36,7 +37,7 @@ impl<P, Req> BackendChecker<P, Req> {
         init: Switcher,
         parser: P,
         path: Path,
-        timeout: Duration,
+        timeout: endpoint::Timeout,
         option: ResOption,
     ) -> Self {
         Self {
@@ -84,12 +85,10 @@ impl<P, Req> BackendChecker<P, Req> {
             let mut stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
 
-            let mut buf = StreamGuard::new();
             if self.parser.need_auth() {
                 log::debug!("+++ will auth when connect:{}", self.addr);
                 //todo 处理认证结果
                 let auth = Auth {
-                    buf: &mut buf,
                     option: &mut self.option,
                     s: &mut stream,
                     parser: self.parser.clone(),
@@ -107,8 +106,8 @@ impl<P, Req> BackendChecker<P, Req> {
             self.init.on();
             log::debug!("handler started:{:?}", self.path);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, &mut buf, stream, p, rtt);
-            let handler = rt::Entry::timeout(handler, rt::Timeout::from(self.timeout));
+            let handler = Handler::from(rx, stream, p, rtt);
+            let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             if let Err(e) = handler.await {
                 log::info!("backend error {:?} => {:?}", path_addr, e);
                 match e {
@@ -140,13 +139,12 @@ impl<P, Req> BackendChecker<P, Req> {
 struct Auth<'a, P, S> {
     pub option: &'a mut ResOption,
     pub s: &'a mut S,
-    pub buf: &'a mut StreamGuard,
     pub parser: P,
 }
 
 impl<'a, P, S> Future for Auth<'a, P, S>
 where
-    S: AsyncRead + AsyncWrite + Writer + Unpin,
+    S: Stream + Unpin + AsyncWrite,
     P: Protocol + Unpin,
 {
     type Output = Result<()>;
@@ -171,16 +169,10 @@ where
         //     log::debug!("+++ in 222.111 read size:{}", me.buf.slice().len());
         //     reader = crate::buffer::Reader::from(&mut me.s, cx);
         // }
-        loop {
-            let mut reader = crate::buffer::Reader::from(&mut me.s, cx);
-            let poll_read = me.buf.write(&mut reader)?;
-            match poll_read {
-                Poll::Ready(_) => reader.check()?,
-                Poll::Pending => break,
-            }
-        }
+        //todo为啥需要loop？
+        while let Poll::Ready(_) = me.s.poll_recv(cx)? {}
 
-        let result = match me.parser.handshake(me.buf, me.s, me.option) {
+        let result = match me.parser.handshake(me.s, me.option) {
             Err(e) => Poll::Ready(Err(e)),
             Ok(HandShake::Failed) => Poll::Ready(Err(Error::AuthFailed)),
             Ok(HandShake::Continue) => Poll::Pending,
@@ -193,11 +185,11 @@ where
 
         log::debug!("+++ after handshake rs:{:?}, will flush...", result);
         //todo 成功失败后可能会有数据flush pending，单后续handle会flush，问题应该不大
-        let _ = Pin::new(&mut me.s).poll_flush(cx);
+        let _ = Pin::new(&mut *me.s).as_mut().poll_flush(cx);
         log::debug!("++++++++ flushed!!!");
 
         if result.is_ready() {
-            self.buf.try_gc();
+            me.s.try_gc();
         }
 
         result

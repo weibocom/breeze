@@ -1,13 +1,12 @@
 use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
-use ds::time::Duration;
 use protocol::{Protocol, Request, Resource, TryNextType};
-use sharding::hash::Hasher;
+use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
 use std::collections::HashMap;
 
 use crate::shards::Shards;
-use crate::TimeoutAdjust;
+use crate::Timeout;
 
 #[derive(Clone)]
 pub struct CacheService<B, E, Req, P> {
@@ -58,8 +57,8 @@ where
     B: Send + Sync,
 {
     #[inline]
-    fn hasher(&self) -> &Hasher {
-        &self.hasher
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        self.hasher.hash(k)
     }
     #[inline]
     fn exp_sec(&self) -> u32 {
@@ -197,7 +196,7 @@ where
 
             use discovery::distance::{Balance, ByDistance};
             let master = ns.master.clone();
-            let local = ns.local_affinity;
+            let local = ns.is_local();
             let (mut local_len, mut backends) = ns.take_backends();
             //let local = true;
             if local && local_len > 1 {
@@ -240,7 +239,7 @@ where
         addrs: Vec<String>,
         dist: &str,
         name: &str,
-        timeout: Duration,
+        timeout: Timeout,
     ) -> Shards<E, Req> {
         Shards::from(dist, addrs, |addr| {
             old.remove(addr).map(|e| e).unwrap_or_else(|| {

@@ -77,24 +77,24 @@ impl crate::Request for Request {
     }
     #[inline]
     fn mut_context(&mut self) -> &mut Context {
-        self.ctx().ctx.as_mut_flag()
+        &mut self.ctx().flag
     }
     #[inline]
     fn write_back(&mut self, wb: bool) {
-        self.ctx().ctx.write_back(wb);
+        self.ctx().write_back = wb;
     }
     #[inline]
     fn try_next(&mut self, goon: bool) {
-        self.ctx().ctx.try_next(goon);
+        self.ctx().try_next = goon;
     }
     // #[inline]
     // fn ignore_rsp(&self) -> bool {
     //     self.req().ignore_rsp()
     // }
-    #[inline]
-    fn update_hash(&mut self, idx_hash: i64) {
-        self.req_mut().update_hash(idx_hash)
-    }
+    // #[inline]
+    // fn update_hash(&mut self, idx_hash: i64) {
+    //     self.req_mut().update_hash(idx_hash)
+    // }
 }
 impl Request {
     #[inline]
@@ -137,3 +137,18 @@ impl Debug for Request {
 
 unsafe impl Send for Request {}
 unsafe impl Sync for Request {}
+
+use std::ops::{Deref, DerefMut};
+impl Deref for Request {
+    type Target = HashedCommand;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.ctx().request()
+    }
+}
+impl DerefMut for Request {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.ctx().request_mut()
+    }
+}

@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use super::{
     crc32::{self, CRC32TAB, CRC_SEED},
-    Hash,
+    DebugName, Hash,
 };
 
 #[derive(Default, Clone, Debug)]
@@ -30,7 +30,7 @@ impl Hash for Crc32local {
 pub struct Crc32localDelimiter {
     start_pos: usize,
     delimiter: u8,
-    name: String,
+    name: DebugName,
 }
 
 impl Crc32localDelimiter {
@@ -46,7 +46,7 @@ impl Crc32localDelimiter {
             return Self {
                 start_pos: 0,
                 delimiter,
-                name: alg.to_string(),
+                name: alg.into(),
             };
         }
 
@@ -55,14 +55,14 @@ impl Crc32localDelimiter {
             return Self {
                 start_pos: prefix_len,
                 delimiter,
-                name: alg.to_string(),
+                name: alg.into(),
             };
         } else {
             log::debug!("unknown crc32local hash/{}, ignore prefix instead", alg);
             return Self {
                 start_pos: 0,
                 delimiter,
-                name: alg.to_string(),
+                name: alg.into(),
             };
         }
     }
@@ -92,7 +92,7 @@ impl super::Hash for Crc32localDelimiter {
 
 impl Display for Crc32localDelimiter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{:?}", self.name)
     }
 }
 

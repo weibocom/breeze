@@ -64,7 +64,7 @@ impl MySqlError {
     pub(crate) fn error(&self) -> crate::error::Error {
         let msg = format!("mysql Error: %{}", self);
         match self {
-            _ => crate::error::Error::IO(std::io::Error::new(ErrorKind::Other, msg)),
+            _ => crate::error::Error::IO(ErrorKind::Other),
         }
     }
 }
@@ -108,7 +108,7 @@ impl Error {
     pub(crate) fn error(&self) -> crate::error::Error {
         let msg = format!("mysql Error: %{}", self);
         match self {
-            _ => crate::error::Error::IO(std::io::Error::new(ErrorKind::Other, msg)),
+            _ => crate::error::Error::IO(ErrorKind::Other),
         }
     }
 }
@@ -254,7 +254,7 @@ impl DriverError {
     pub(crate) fn error(&self) -> crate::error::Error {
         let msg = format!("mysql Error: %{}", self);
         match self {
-            _ => crate::error::Error::IO(std::io::Error::new(ErrorKind::Other, msg)),
+            _ => crate::error::Error::IO(ErrorKind::Other),
         }
     }
 }

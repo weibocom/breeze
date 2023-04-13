@@ -189,7 +189,7 @@ impl MetricRegister {
                 .cache
                 .get_or_insert_with(|| HashMap::with_capacity(128))
                 .entry(id)
-                .or_insert(cache) += cache;
+                .or_insert(0) += cache;
         }
     }
 }

@@ -142,7 +142,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                         RspType::ClientError | RspType::ServerError => {
                             state = RspPacketState::RunToCRLF;
                         }
-                        RspType::Unknown => return Err(McqError::RspInvalid.error()),
+                        RspType::Unknown => return Err(McqError::RspInvalid.into()),
                     }
                     self.skip_back(1)?;
                 }
@@ -161,7 +161,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                 RspPacketState::SpacesBeforeFlags => {
                     if self.current() != b' ' {
                         if !self.current().is_ascii_digit() {
-                            return Err(McqError::RspInvalid.error());
+                            return Err(McqError::RspInvalid.into());
                         }
                         state = RspPacketState::Flags;
                         self.skip_back(1)?;
@@ -183,7 +183,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                 RspPacketState::SpacesBeforeVlen => {
                     if self.current() != b' ' {
                         if !self.current().is_ascii_digit() {
-                            return Err(McqError::RspInvalid.error());
+                            return Err(McqError::RspInvalid.into());
                         }
                         self.skip_back(1)?;
                         state = RspPacketState::Vlen;
@@ -196,14 +196,14 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                         self.skip_back(1)?;
                         state = RspPacketState::RunToCRLF;
                     } else {
-                        return Err(McqError::RspInvalid.error());
+                        return Err(McqError::RspInvalid.into());
                     }
                 }
                 RspPacketState::RunToVal => {
                     if self.current() == LF {
                         state = RspPacketState::Val;
                     } else {
-                        return Err(McqError::RspInvalid.error());
+                        return Err(McqError::RspInvalid.into());
                     }
                 }
                 RspPacketState::Val => {
@@ -216,7 +216,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                         CR => {
                             state = RspPacketState::ValLF;
                         }
-                        _ => return Err(McqError::RspInvalid.error()),
+                        _ => return Err(McqError::RspInvalid.into()),
                     }
                 }
                 RspPacketState::ValLF => {
@@ -224,13 +224,13 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                         token = 0;
                         state = RspPacketState::End;
                     } else {
-                        return Err(McqError::RspInvalid.error());
+                        return Err(McqError::RspInvalid.into());
                     }
                 }
                 RspPacketState::End => {
                     assert!(token == 0, "token:{}, rsp:{:?}", token, self.data);
                     if self.current() != b'E' {
-                        return Err(McqError::RspInvalid.error());
+                        return Err(McqError::RspInvalid.into());
                     }
                     // 当前只有VAL后的END这种场景，此时oft肯定大于0
                     token = self.oft;
@@ -243,11 +243,11 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                                 state = RspPacketState::AlmostDone;
                             }
                         } else {
-                            return Err(McqError::RspInvalid.error());
+                            return Err(McqError::RspInvalid.into());
                         }
                     } else if self.current() == b' ' {
                         // 目前不支持多个value
-                        return Err(McqError::RspInvalid.error());
+                        return Err(McqError::RspInvalid.into());
                     }
                 }
                 RspPacketState::RunToCRLF => {
@@ -263,14 +263,14 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                         // do nothing, just skip
                     }
                     CR => state = RspPacketState::AlmostDone,
-                    _ => return Err(McqError::RspInvalid.error()),
+                    _ => return Err(McqError::RspInvalid.into()),
                 },
                 RspPacketState::AlmostDone => {
                     if self.current() == LF {
                         self.skip(1)?;
                         return Ok(());
                     }
-                    return Err(McqError::RspInvalid.error());
+                    return Err(McqError::RspInvalid.into());
                 }
             }
 
@@ -343,7 +343,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         if self.oft >= self.oft_last {
             return Ok(());
         }
-        Err(McqError::ReqInvalid.error())
+        Err(McqError::ReqInvalid.into())
     }
 
     #[inline]

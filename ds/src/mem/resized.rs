@@ -1,4 +1,4 @@
-use super::{MemPolicy, RingBuffer, RingSlice};
+use super::{MemPolicy, RingBuffer};
 
 // 支持自动扩缩容的ring buffer。
 // 扩容时机：在reserve_bytes_mut时触发扩容判断。如果当前容量满，或者超过4ms时间处理过的内存未通过reset释放。
@@ -6,10 +6,9 @@ use super::{MemPolicy, RingBuffer, RingSlice};
 pub struct ResizedRingBuffer {
     // 在resize之后，不能立即释放ringbuffer，因为有可能还有外部引用。
     // 需要在所有的processed的字节都被ack之后（通过reset_read）才能释放
-    max_processed: usize,
-    old: Vec<RingBuffer>,
     inner: RingBuffer,
     policy: MemPolicy,
+    dropping: Dropping, // 存储已经resize的ringbuffer，等待被释放
 }
 
 use std::ops::{Deref, DerefMut};
@@ -34,8 +33,7 @@ impl ResizedRingBuffer {
         assert!(min <= max && init <= max);
         let buf = RingBuffer::with_capacity(init);
         Self {
-            max_processed: std::usize::MAX,
-            old: Vec::new(),
+            dropping: Default::default(),
             inner: buf,
             policy: MemPolicy::rx(min, max),
         }
@@ -55,44 +53,16 @@ impl ResizedRingBuffer {
             // 否则说明buffer已经满了，需要再次读取
         }
     }
-    // 需要写入数据时，判断是否需要扩容
-    //#[inline]
-    //fn as_mut_bytes(&mut self) -> &mut [u8] {
-    //    self.grow(512);
-    //    self.inner.as_mut_bytes()
-    //}
-    // 有数写入时，判断是否需要缩容
-    //#[inline]
-    //fn advance_write(&mut self, n: usize) {
-    //    if n > 0 {
-    //        self.inner.advance_write(n);
-    //        self.policy.check_shrink(self.len(), self.cap());
-    //    }
-    //    // 判断是否需要缩容
-    //}
     #[inline]
     fn resize(&mut self, cap: usize) {
         let new = self.inner.resize(cap);
         let old = std::mem::replace(&mut self.inner, new);
-        self.max_processed = old.writtened();
-        self.old.push(old);
+        self.dropping.push(old);
     }
     #[inline]
     pub fn advance_read(&mut self, n: usize) {
+        self.policy.check_shrink(self.len(), self.cap());
         self.inner.advance_read(n);
-        if self.read() >= self.max_processed {
-            self.old.clear();
-            self.max_processed = std::usize::MAX;
-        }
-    }
-    // 写入数据。返回是否写入成功。
-    // 当buffer无法再扩容以容纳data时，写入失败，其他写入成功
-    #[inline]
-    pub fn write(&mut self, data: &RingSlice) -> usize {
-        self.grow(data.len());
-        //self.inner.write(data)
-        unsafe { self.inner.write_all(data) };
-        data.len()
     }
     #[inline]
     pub fn grow(&mut self, reserve: usize) {
@@ -105,6 +75,9 @@ impl ResizedRingBuffer {
     #[inline]
     pub fn shrink(&mut self) {
         let len = self.len();
+        if len == 0 {
+            self.dropping.clear();
+        }
         if self.policy.need_shrink(len, self.cap()) {
             let new = self.policy.shrink(len, self.cap());
             self.resize(new);
@@ -117,11 +90,66 @@ impl Display for ResizedRingBuffer {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "rrb:(inner:{}, old:{:?}) policy:{}",
-            self.inner, self.old, self.policy
+            "buf:{:?}, dropping:{:?} policy:{}",
+            self.inner, self.dropping, self.policy
         )
     }
 }
+impl fmt::Debug for ResizedRingBuffer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
 
-unsafe impl Send for ResizedRingBuffer {}
-unsafe impl Sync for ResizedRingBuffer {}
+#[derive(Default)]
+struct Dropping {
+    ptr: usize,
+}
+
+impl Dropping {
+    fn as_ref(&self) -> &Vec<RingBuffer> {
+        debug_assert!(self.ptr != 0);
+        unsafe { &*(self.ptr as *mut Vec<RingBuffer>) }
+    }
+    fn as_mut(&mut self) -> &mut Vec<RingBuffer> {
+        debug_assert!(self.ptr != 0);
+        unsafe { &mut *(self.ptr as *mut Vec<RingBuffer>) }
+    }
+    fn push(&mut self, buf: RingBuffer) {
+        if buf.writtened() == 0 || buf.writtened() == buf.read() {
+            // 如果没有写入过数据，或者已经读取完毕，直接释放
+            return;
+        }
+        if self.ptr == 0 {
+            let v = Box::leak(Box::new(Vec::<RingBuffer>::new()));
+            self.ptr = v as *mut _ as usize;
+        }
+        self.as_mut().push(buf);
+    }
+    fn clear(&mut self) {
+        if self.ptr != 0 {
+            let rbs = self.as_mut();
+            if rbs.len() > 0 {
+                rbs.clear();
+            }
+        }
+    }
+}
+impl Drop for Dropping {
+    fn drop(&mut self) {
+        if self.ptr > 0 {
+            let ptr = self.ptr as *mut Vec<RingBuffer>;
+            let _dropped = unsafe { Box::from_raw(ptr) };
+            self.ptr = 0;
+        }
+    }
+}
+impl fmt::Debug for Dropping {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.ptr == 0 {
+            write!(f, "[]")
+        } else {
+            write!(f, "{:?}", self.as_ref())
+        }
+    }
+}

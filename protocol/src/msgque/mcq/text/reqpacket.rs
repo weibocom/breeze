@@ -62,7 +62,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.oft >= self.oft_last {
             return Ok(());
         }
-        Err(McqError::ReqInvalid.error())
+        Err(McqError::ReqInvalid.into())
     }
 
     // 进入flags 解析阶段且current byte 满足协议要求，才更新flags 相关信息
@@ -117,7 +117,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 ReqPacketState::Start => {
                     // mc 协议中cmd字符需要是小写
                     if !self.current().is_ascii_lowercase() {
-                        return Err(McqError::ReqInvalid.error());
+                        return Err(McqError::ReqInvalid.into());
                     }
                     if self.current() != b' ' {
                         token = self.oft;
@@ -137,7 +137,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     match req_type {
                         RequestType::Set => {
                             if self.current() == CR {
-                                return Err(McqError::ReqInvalid.error());
+                                return Err(McqError::ReqInvalid.into());
                             }
                             state = ReqPacketState::SpacesBeforeKey;
                         }
@@ -164,13 +164,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     self.data.token(&mut self.oft, MAX_KEY_LEN)?;
                     state = ReqPacketState::SpacesBeforeFlags;
                     if self.current() == CR {
-                        return Err(McqError::ReqInvalid.error());
+                        return Err(McqError::ReqInvalid.into());
                     }
                 }
                 ReqPacketState::SpacesBeforeFlags => {
                     if self.current() != b' ' {
                         if !self.current().is_ascii_digit() {
-                            return Err(McqError::ReqInvalid.error());
+                            return Err(McqError::ReqInvalid.into());
                         }
                         self.skip_back(1)?;
                         state = ReqPacketState::Flags;
@@ -183,7 +183,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeExpire;
                     } else {
-                        return Err(McqError::ReqInvalid.error());
+                        return Err(McqError::ReqInvalid.into());
                     }
                 }
                 ReqPacketState::SpacesBeforeExpire => {
@@ -197,13 +197,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     } else if self.current() == b' ' {
                         state = ReqPacketState::SpacesBeforeVlen;
                     } else {
-                        return Err(McqError::ReqInvalid.error());
+                        return Err(McqError::ReqInvalid.into());
                     }
                 }
                 ReqPacketState::SpacesBeforeVlen => {
                     if self.current() != b' ' {
                         if !self.current().is_ascii_digit() {
-                            return Err(McqError::ReqInvalid.error());
+                            return Err(McqError::ReqInvalid.into());
                         }
                         token = self.oft;
                         vlen = (self.current() - b'0') as usize;
@@ -216,14 +216,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     } else if self.current() == CR {
                         state = ReqPacketState::RunToVal;
                     } else {
-                        return Err(McqError::ReqInvalid.error());
+                        return Err(McqError::ReqInvalid.into());
                     }
                 }
                 ReqPacketState::RunToVal => {
                     if self.current() == LF {
                         state = ReqPacketState::Val;
                     } else {
-                        return Err(McqError::ReqInvalid.error());
+                        return Err(McqError::ReqInvalid.into());
                     }
                 }
                 ReqPacketState::Val => {
@@ -235,7 +235,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         self.skip(vlen)?;
                         state = ReqPacketState::AlmostDone;
                     } else {
-                        return Err(McqError::ReqInvalid.error());
+                        return Err(McqError::ReqInvalid.into());
                     }
                 }
                 ReqPacketState::AlmostDone => {
@@ -244,7 +244,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                         self.skip(1)?;
                         return Ok(());
                     }
-                    return Err(McqError::ReqInvalid.error());
+                    return Err(McqError::ReqInvalid.into());
                 }
             }
 
@@ -342,7 +342,7 @@ impl Packet for RingSlice {
                 // token的长度不能为0
                 let len = i - *oft;
                 if len == 0 || (max_len > 0 && len >= max_len) {
-                    return Err(error::McqError::ReqInvalid.error());
+                    return Err(error::McqError::ReqInvalid.into());
                 }
 
                 // 更新oft
