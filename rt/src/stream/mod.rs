@@ -62,17 +62,11 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         // 1. buf.len()必须为0；
         // 2. 如果没有显示要求写入到buf, 或者数据量大，则直接写入
         if self.buf.len() == 0 && (!self.write_to_buf || data.len() >= LARGE_SIZE) {
-            log::debug!(
-                "++ direct write to stream:{}/{}",
-                data.len(),
-                self.write_to_buf,
-            );
             let _ = Pin::new(&mut self.s).poll_write(cx, data)?.map(|n| oft = n);
         }
         // 未写完的数据写入到buf。
         if oft < data.len() {
             self.buf.write(&data[oft..]);
-            log::debug!("++ write to stream buffer:{}/{}", oft, data.len());
         }
         Poll::Ready(Ok(data.len()))
     }
@@ -84,7 +78,6 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
             loop {
                 let data = buf.data();
                 let n = ready!(w.as_mut().poll_write(cx, data))?;
-                log::debug!("+++ poll real write in flush count:{}", n);
                 if buf.take(n) {
                     break;
                 }
