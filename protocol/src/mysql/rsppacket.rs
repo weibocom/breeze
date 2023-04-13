@@ -225,7 +225,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // 读一个完整的响应包，如果数据不完整，返回ProtocolIncomplete
     fn next_packet(&mut self) -> Result<()> {
         // mysql packet至少需要4个字节来读取sequence id
-        if self.data.len() <= HEADER_LEN {
+        if self.left_len() <= HEADER_LEN {
             return Err(Error::ProtocolIncomplete);
         }
 
