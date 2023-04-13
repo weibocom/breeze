@@ -161,6 +161,31 @@ impl Protocol for Mysql {
         }
     }
 
+    fn parse_response_debug<S: crate::Stream>(
+        &self,
+        req: &HashedCommand,
+        data: &mut S,
+    ) -> Result<Option<Command>> {
+        log::debug!(
+            "+++ recv mysql response for  req:{:?} =>{:?}",
+            req.data(),
+            data.slice()
+        );
+        let mut rsp_packet = ResponsePacket::new(data, None);
+        match self.parse_response_inner_debug(req, &mut rsp_packet) {
+            Ok(cmd) => Ok(cmd),
+            Err(Error::ProtocolIncomplete) => {
+                // rsp_packet.reserve();
+                log::info!("+++ not complte rsp for req:{:?}", req);
+                Ok(None)
+            }
+            Err(e) => {
+                log::warn!("+++ [req:{:?}] err when parse mysql response: {:?}", req, e);
+                Err(e)
+            }
+        }
+    }
+
     fn write_response<C, W, M, I>(
         &self,
         ctx: &mut C,
@@ -318,6 +343,37 @@ impl Mysql {
     //修改req，seq +1
     fn before_send<S: Stream, Req: crate::Request>(&self, _stream: &mut S, _req: &mut Req) {
         todo!()
+    }
+
+    // 包比较复杂，不能随意take，得等到最复杂场景解析完毕后，才能统一take走
+    fn parse_response_inner_debug<'a, S: crate::Stream>(
+        &self,
+        req: &HashedCommand,
+        rsp_packet: &'a mut ResponsePacket<'a, S>,
+    ) -> Result<Option<Command>> {
+        let mut result_set = self.parse_result_set(rsp_packet, Vec::new(), |mut acc, row| {
+            acc.push(from_row(row));
+            acc
+        })?;
+
+        log::debug!("+++ req:{:?} parsed response:{:?}", req.data(), result_set);
+        // 返回mysql响应，在write response处进行协议转换
+        // TODO 这里临时打通，需要进一步完善修改 fishermen
+        let mut row: Vec<u8> = match result_set.len() > 0 {
+            true => result_set.remove(0),
+            false => Vec::with_capacity(10),
+        };
+
+        let mut flag = Flag::from_op(OP_CODE_GET as u16, crate::Operation::Get);
+        if row.len() == 0 {
+            row.extend("not found data".as_bytes());
+        } else {
+            flag.set_status_ok(true);
+        }
+
+        let mem = MemGuard::from_vec(row);
+        let cmd = Command::new(flag, mem);
+        Ok(Some(cmd))
     }
 
     // 包比较复杂，不能随意take，得等到最复杂场景解析完毕后，才能统一take走

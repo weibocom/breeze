@@ -102,7 +102,10 @@ where
             let poll_read = self.buf.write(&mut reader)?;
 
             while self.buf.len() > 0 {
-                match self.parser.parse_response(self.buf)? {
+                // TODO just for debug
+                let req = self.pending.front().expect("take response for test");
+
+                match self.parser.parse_response_debug(req.cmd(), self.buf)? {
                     None => break,
                     Some(cmd) => {
                         let req = self.pending.pop_front().expect("take response");
