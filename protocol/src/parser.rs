@@ -174,13 +174,13 @@ impl Command {
     // pub fn cmd(&mut self) -> &mut MemGuard {
     //     &mut self.cmd
     // }
-    pub fn origin_data(&self) -> &ds::RingSlice {
+    // 获取origin data，调用方必须确保其存在
+    #[inline]
+    pub(crate) fn origin_data(&self) -> &ds::RingSlice {
         if let Some(origin) = &self.origin_cmd {
             origin.data()
         } else {
-            // panic!("error: origin cmd is none, cmd:{:?}", self.cmd)
-            log::warn!("+++ mysql request not changed:{:?}", self.data());
-            self.cmd.data()
+            panic!("origin is null, req:{:?}", self.cmd.data())
         }
     }
     #[inline]

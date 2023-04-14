@@ -299,10 +299,7 @@ where
             let mut ctx = self.pending.pop_front().expect("empty");
 
             // TODO: 临时加日志，check mysql req被清理的key
-            let req = ctx.request().origin_data();
-            if req.key_len() > 0 {
-                log::warn!("+++ will clear req for mysql key:{:?}", req.key());
-            }
+            log::warn!("+++ will clear req:{:?}", ctx.request().data());
 
             // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
             let _dropped = ctx.take_response();
