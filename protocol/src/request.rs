@@ -2,7 +2,6 @@ use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand, O
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
-    time::Duration,
 };
 
 pub struct Request {
@@ -14,15 +13,6 @@ impl crate::Request for Request {
     fn start_at(&self) -> ds::time::Instant {
         self.ctx().start_at()
     }
-    #[inline]
-    fn last_start_at(&self) -> ds::time::Instant {
-        self.ctx().last_start()
-    }
-
-    fn elapsed_current_req(&self) -> Duration {
-        self.ctx().elapsed_current_req()
-    }
-
     #[inline]
     fn len(&self) -> usize {
         self.req().len()

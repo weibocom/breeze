@@ -5,7 +5,6 @@ use std::{
         atomic::{AtomicBool, AtomicU8, Ordering::*},
         Arc,
     },
-    time::Duration,
 };
 
 use ds::{time::Instant, AtomicWaker};
@@ -41,8 +40,7 @@ pub struct CallbackContext {
     tries: AtomicU8,
     request: HashedCommand,
     response: MaybeUninit<Command>,
-    start: Instant,      // 请求的开始时间
-    last_start: Instant, // 本次资源请求的开始时间(一次请求可能触发多次资源请求)
+    start: Instant, // 请求的开始时间
     waker: *const AtomicWaker,
     callback: CallbackPtr,
 }
@@ -71,7 +69,6 @@ impl CallbackContext {
             response: MaybeUninit::uninit(),
             callback: cb,
             start: now,
-            last_start: now,
             tries: 0.into(),
             waker,
         }
@@ -139,7 +136,6 @@ impl CallbackContext {
 
         if goon {
             // 需要重试或回写
-            self.last_start = Instant::now();
             return self.goon();
         }
         self.mark_done();
@@ -208,16 +204,6 @@ impl CallbackContext {
     #[inline]
     pub fn start_at(&self) -> Instant {
         self.start
-    }
-
-    // 计算当前请求消耗的时间，更新
-    #[inline(always)]
-    pub fn elapsed_current_req(&self) -> Duration {
-        self.last_start.elapsed()
-    }
-    #[inline(always)]
-    pub fn last_start(&self) -> Instant {
-        self.last_start
     }
 
     #[inline]
