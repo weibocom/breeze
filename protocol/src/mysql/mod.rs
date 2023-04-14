@@ -168,14 +168,13 @@ impl Protocol for Mysql {
         log::debug!(
             "+++ recv mysql response for  req:{:?} =>{:?}",
             req.data(),
-            data.slice()
+            data.slice().len()
         );
         let mut rsp_packet = ResponsePacket::new(data, None);
         match self.parse_response_inner_debug(req, &mut rsp_packet) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => {
                 // rsp_packet.reserve();
-                log::info!("+++ not complte rsp for req:{:?}", req);
                 Ok(None)
             }
             Err(e) => {
@@ -198,12 +197,6 @@ impl Protocol for Mysql {
         I: crate::MetricItem,
     {
         let origin_req = ctx.request().origin_data();
-        log::debug!(
-            "+++ will write rsp for key:{:?}, response: {:?}",
-            origin_req.key(),
-            response
-        );
-
         // sendonly 直接返回
         if ctx.request().sentonly() {
             assert!(response.is_none(), "req:{:?}", ctx.request());
@@ -219,18 +212,22 @@ impl Protocol for Mysql {
             // mysql 请求到正确的数据，才会转换并write
             if rsp.ok() {
                 assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
-                log::debug!("+++ will write mysql/mc rsp:{:?}", rsp.data());
                 self.write_mc_packet(ctx.request(), rsp, w)?;
-
+                log::debug!(
+                    "+++ already sent req:{:?}, rsp:{}",
+                    ctx.request().data(),
+                    rsp.data().len()
+                );
                 return Ok(());
-            } else {
-                log::warn!("not found response for req:{:?}", ctx.request());
             }
         }
 
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
-        log::debug!("+++ in write_response old op code:{}", old_op_code);
+        log::warn!(
+            "+++ mysql will send padding rsp, req:{:?}",
+            ctx.request().data(),
+        );
         match old_op_code {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_CODE_NOOP => {
@@ -267,7 +264,7 @@ impl Protocol for Mysql {
             // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
             _ => {
                 log::warn!(
-                    "+++ mc NoResponseFound req: {}/{:?}",
+                    "+++ mysql NoResponseFound req: {}/{:?}",
                     old_op_code,
                     ctx.request()
                 );
@@ -353,7 +350,7 @@ impl Mysql {
             acc
         })?;
 
-        log::debug!("+++ req:{:?} parsed response:{:?}", req.data(), result_set);
+        log::debug!("+++ req:{:?} response:{:?}", req.data(), result_set.len());
         // 返回mysql响应，在write response处进行协议转换
         // TODO 这里临时打通，需要进一步完善修改 fishermen
         let mut row: Vec<u8> = match result_set.len() > 0 {
@@ -383,7 +380,6 @@ impl Mysql {
             acc
         })?;
 
-        log::debug!("+++ parsed response:{:?}", result_set);
         // 返回mysql响应，在write response处进行协议转换
         // TODO 这里临时打通，需要进一步完善修改 fishermen
         let mut row: Vec<u8> = match result_set.len() > 0 {
@@ -415,7 +411,6 @@ impl Mysql {
         S: crate::Stream,
     {
         let meta = rsp_packet.parse_result_set_meta()?;
-        log::debug!("+++===== parsed columns:{:?}", meta);
         let mut result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
         result.scan_rows(init, f)
     }

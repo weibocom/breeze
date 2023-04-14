@@ -67,26 +67,20 @@ impl<P, Req> BackendChecker<P, Req> {
             let stream = self.reconnect().await;
             if stream.is_none() {
                 // 连接失败，按策略sleep
+                log::debug!("+++ connected failed to:{}", self.addr);
                 reconn.conn_failed().await;
                 self.init.on();
                 continue;
             }
-            log::debug!("+++ will connect to:{}", self.addr);
             // 连接成功
             // reconn.success();
             reconn.connected();
-            log::debug!(
-                "+++ after tcp connected to:{}, need-auth:{}",
-                self.addr,
-                self.parser.need_auth()
-            );
 
             let rtt = path_addr.rtt("req");
             let mut stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
 
             if self.parser.need_auth() {
-                log::debug!("+++ will auth when connect:{}", self.addr);
                 //todo 处理认证结果
                 let auth = Auth {
                     option: &mut self.option,
@@ -95,7 +89,7 @@ impl<P, Req> BackendChecker<P, Req> {
                 };
                 if let Err(e) = auth.await {
                     //todo 需要减一吗，listen_failed好像没有减
-                    log::debug!("+++ auth err {}", e);
+                    log::warn!("+++ auth err {} to: {}", e, self.addr);
                     auth_failed += 1;
                     stream.cancel();
                     continue;
@@ -183,10 +177,8 @@ where
             }
         };
 
-        log::debug!("+++ after handshake rs:{:?}, will flush...", result);
         //todo 成功失败后可能会有数据flush pending，单后续handle会flush，问题应该不大
         let _ = Pin::new(&mut *me.s).as_mut().poll_flush(cx);
-        log::debug!("++++++++ flushed!!!");
 
         if result.is_ready() {
             me.s.try_gc();

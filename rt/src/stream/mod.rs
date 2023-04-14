@@ -78,7 +78,6 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         // 未写完的数据写入到buf。
         if oft < data.len() {
             self.buf.write(&data[oft..]);
-            log::debug!("++ write to stream buffer:{}/{}", oft, data.len());
         }
         Poll::Ready(Ok(data.len()))
     }
@@ -90,7 +89,6 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
             loop {
                 let data = buf.data();
                 let n = ready!(w.as_mut().poll_write(cx, data))?;
-                log::debug!("+++ poll real write in flush count:{}", n);
                 if buf.take(n) {
                     break;
                 }
