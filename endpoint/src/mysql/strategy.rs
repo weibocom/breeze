@@ -227,7 +227,6 @@ fn replace_one(raw_sql: &String, from: &'static str, to: &RingSlice) -> Result<S
 }
 
 fn to_i64(key: &RingSlice) -> i64 {
-    log::debug!("+++ key: {:?}", key);
     let mut id = 0_i64;
     const ZERO: i64 = '0' as i64;
     for i in 0..key.len() {
