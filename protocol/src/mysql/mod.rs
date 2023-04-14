@@ -115,6 +115,10 @@ impl Protocol for Mysql {
                 break;
             }
 
+            if req.key_len() > 0 {
+                log::info!("+++ recv mysql-mc packet for key:{:?}", req.key());
+            }
+
             let last = !req.quiet_get(); // 须在map_op之前获取
             let cmd = req.operation();
             let op_code = req.map_op(); // 把quite get请求，转换成单个的get请求s
@@ -197,7 +201,6 @@ impl Protocol for Mysql {
         M: crate::Metric<I>,
         I: crate::MetricItem,
     {
-        let origin_req = ctx.request().origin_data();
         // sendonly 直接返回
         if ctx.request().sentonly() {
             assert!(response.is_none(), "req:{:?}", ctx.request());
@@ -214,8 +217,8 @@ impl Protocol for Mysql {
             if rsp.ok() {
                 assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
                 self.write_mc_packet(ctx.request(), rsp, w)?;
-                log::debug!(
-                    "+++ already sent req:{:?}, rsp:{}",
+                log::info!(
+                    "+++ sent to client for req:{:?}, rsp:{}",
                     ctx.request().data(),
                     rsp.data().len()
                 );
@@ -226,7 +229,7 @@ impl Protocol for Mysql {
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
         log::warn!(
-            "+++ mysql will send padding rsp, req:{:?}",
+            "+++ send to client padding rsp, req:{:?}",
             ctx.request().data(),
         );
         match old_op_code {
@@ -353,7 +356,11 @@ impl Mysql {
             acc
         })?;
 
-        log::debug!("+++ req:{:?} response:{:?}", req.data(), result_set.len());
+        log::debug!(
+            "+++ parsed rsp:{:?} for req req:{:?} ",
+            req.data(),
+            result_set.len()
+        );
         // 返回mysql响应，在write response处进行协议转换
         // TODO 这里临时打通，需要进一步完善修改 fishermen
         let mut row: Vec<u8> = match result_set.len() > 0 {
