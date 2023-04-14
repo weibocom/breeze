@@ -109,13 +109,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     }
 
     pub(super) fn parse_result_set_meta(&mut self) -> Result<Or<Vec<Column>, OkPacket<'static>>> {
-        log::debug!("+++ in handle result set");
         // 全部解析完毕前，不对数据进行take
         let payload = self.next_packet_data(false)?;
-        log::debug!("+++ column hdr packet data:{:?}", payload);
         match payload[0] {
             HEADER_FLAG_OK => {
-                log::debug!("+++ parsed ok rs data:{:?}", payload);
                 let ok = self.handle_ok::<CommonOkPacket>(&payload)?;
                 self.take();
                 Ok(Or::B(ok.into_owned()))
@@ -128,23 +125,15 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             _ => {
                 let mut reader = &payload[..];
                 let column_count = reader.read_lenenc_int()?;
-                log::debug!("+++ parsed result set column count:{:?}", column_count);
                 let mut columns: Vec<Column> = Vec::with_capacity(column_count as usize);
-                for i in 0..column_count {
+                for _i in 0..column_count {
                     let pld = self.next_packet_data(false)?;
                     let column = ParseBuf(&*pld).parse(())?;
-                    log::debug!("+++ parsed column-{} :{:?}", i, pld);
                     columns.push(column);
                 }
                 // skip eof packet
-                log::debug!("+++ will drop eof ");
                 self.drop_packet()?;
                 self.has_results = column_count > 0;
-                log::debug!(
-                    "+++ parsed columns succeed! left data:{:?}, columns: {:?}",
-                    self.data.sub_slice(self.oft, self.left_len()),
-                    columns
-                );
                 Ok(Or::A(columns))
             }
         }
@@ -181,10 +170,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             return Ok(None);
         }
 
-        log::debug!("+++ will parse next row...");
         // TODO 这个可以通过row count来确定最后一行记录，然后进行一次性take fishermen
         let pld = self.next_packet_data(false)?;
-        log::debug!("+++ read next row data succeed!");
 
         if self.has_capability(CapabilityFlags::CLIENT_DEPRECATE_EOF) {
             if pld[0] == 0xfe && pld.len() < MAX_PAYLOAD_LEN {
@@ -201,7 +188,6 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             }
         }
 
-        log::debug!("+++ parsed next row succeed!");
         let buff = Buffer::new(pld);
         Ok(Some(buff))
     }
@@ -266,7 +252,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             }
 
             // self.seq_id = self.seq_id.wrapping_add(1);
-            log::warn!("mysql sucess rsp:{:?}", data);
+            // log::warn!("mysql sucess rsp:{:?}", data);
             return Ok(());
         }
 
@@ -278,8 +264,6 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         // 读取完整packet，并解析为HandshakePacket
         let packet_data = self.next_packet_data(true)?;
         let handshake = ParseBuf(&packet_data[0..]).parse::<HandshakePacket>(())?;
-
-        log::debug!("+++ mysql capabilities:{:?}", handshake.capabilities());
 
         // 3.21.0 之后handshake是v10版本，不支持更古老的版本
         if handshake.protocol_version() != 10u8 {
@@ -460,7 +444,6 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             .parse::<OkPacketDeserializer<T>>(self.capability_flags)?
             .into_inner();
         self.status_flags = ok.status_flags();
-        log::debug!("+++ mysql ok packet:{:?}", ok);
         Ok(ok)
     }
 
