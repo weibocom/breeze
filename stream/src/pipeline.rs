@@ -10,9 +10,13 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use ds::{time::Instant, AtomicWaker};
 use endpoint::{Topology, TopologyCheck};
+<<<<<<< HEAD
 use protocol::{HashedCommand, Protocol, Result, Stream};
 
 use sharding::hash::Hash;
+=======
+use protocol::{mysql::mcpacket::Binary, HashedCommand, Protocol, Result, Stream, Writer};
+>>>>>>> 0b26b817... log for mysql missing key
 
 use crate::{
     arena::CallbackContextArena,
@@ -296,8 +300,14 @@ where
                 break;
             }
             let mut ctx = self.pending.pop_front().expect("empty");
+            
+            // TODO: 临时加日志，check mysql req被清理的key
+            let req = ctx.request().origin_data();
+            log::info!("+++ will clear req for mysql key:{}", req.key());
+
             // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
             let _dropped = ctx.take_response();
+
         }
         // 处理异步请求
         self.process_async_pending();
