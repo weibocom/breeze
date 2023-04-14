@@ -172,7 +172,12 @@ impl Protocol for Mysql {
         M: crate::Metric<I>,
         I: crate::MetricItem,
     {
-        log::debug!("+++ will write response: {:?}", response);
+        let origin_req = ctx.request().origin_data();
+        log::debug!(
+            "+++ will write rsp for key:{}, response: {:?}",
+            origin_req.key(),
+            response
+        );
 
         // sendonly 直接返回
         if ctx.request().sentonly() {

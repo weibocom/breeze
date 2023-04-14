@@ -166,7 +166,9 @@ impl Command {
         if let Some(origin) = &self.origin_cmd {
             origin.data()
         } else {
-            panic!("error: origin cmd is none, cmd:{:?}", self.cmd)
+            // panic!("error: origin cmd is none, cmd:{:?}", self.cmd)
+            log::warn!("+++ mysql request not changed:{:?}", self.data());
+            self.cmd.data()
         }
     }
     #[inline]
