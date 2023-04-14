@@ -67,7 +67,19 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         process: &mut P,
     ) -> Result<()>;
     fn build_request(&self, _req: &mut HashedCommand, _new_req: String) {}
+
     // fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
+
+    // TODO: debug完毕，清理掉Request
+    fn parse_response_debug<S: Stream>(
+        &self,
+        req: &HashedCommand,
+        data: &mut S,
+    ) -> Result<Option<Command>> {
+        // TODO: just for debug
+        Err(Error::NotInit)
+    }
+
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
 
     // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
