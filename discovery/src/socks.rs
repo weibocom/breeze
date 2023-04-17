@@ -7,6 +7,7 @@ use std::{
 
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Socks {
@@ -21,20 +22,17 @@ pub struct Socks {
     refreshed: bool,
 }
 
-pub static mut SOCKS: OnceCell<Socks> = OnceCell::new();
+static SOCKS: OnceCell<Mutex<Socks>> = OnceCell::new();
 
 pub fn build_refresh_socks(socks_path: String) -> impl Fn(&str) {
-    //todo delete socks dir
-    unsafe {
-        SOCKS.set(Socks::from(socks_path)).unwrap();
-    }
+    SOCKS.set(Mutex::new(Socks::from(socks_path))).unwrap();
     refresh_socks
 }
 
-//同时只有一个refresh_socks在运行
 fn refresh_socks(cfg: &str) {
-    unsafe {
-        SOCKS.get_mut().unwrap().refresh(cfg);
+    if let Some(s) = SOCKS.get() {
+        //同时只有一个refresh_socks在运行, 从不会加锁失败，所以相当于一个acq_rel操作，只用来同步缓存
+        s.try_lock().expect("refresh_socks lock faild").refresh(cfg);
     }
 }
 
