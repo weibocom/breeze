@@ -101,6 +101,7 @@ where
                     log::error!("unexpected data from server:{:?} => {:?}", self, data);
                     Err(Error::UnexpectedData)
                 } else {
+                    log::warn!("+++ found Eof when check");
                     // 读到了EOF，连接已经断开。
                     Err(Error::Eof)
                 }
