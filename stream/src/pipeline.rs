@@ -10,12 +10,9 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use ds::{time::Instant, AtomicWaker};
 use endpoint::{Topology, TopologyCheck};
-<<<<<<< HEAD
 
 use sharding::hash::Hash;
 
-=======
->>>>>>> cc7c45b6abd448b575d51ed8ae8562bad50e7fb5
 use protocol::{mysql::mcpacket::Binary, HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::{
@@ -303,7 +300,7 @@ where
 
             // TODO: 临时加日志，check mysql req被清理的key
             log::warn!("+++ will clear req:{:?}", ctx.request().data());
-    
+
             // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
             let _dropped = ctx.take_response();
         }

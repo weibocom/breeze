@@ -171,6 +171,7 @@ impl<'c, T: crate::mysql::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         // if status_flags.contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS) {}
 
         if self.rsp_packet.more_results_exists() {
+            log::warn!("++++++ should check if really has more result set exists? ");
             match self.rsp_packet.parse_result_set_meta() {
                 Ok(meta) => self.state = meta.into(),
                 Err(err) => self.state = err.into(),
@@ -266,6 +267,7 @@ impl<'c, T: crate::mysql::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         R: FromRow,
         F: FnMut(U, R) -> U,
     {
+        // TODO: 改为每次只处理本次的响应
         loop {
             match self.scan_row()? {
                 Some(row) => {

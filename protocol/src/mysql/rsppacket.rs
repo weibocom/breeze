@@ -164,13 +164,11 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         self.capability_flags.contains(flag)
     }
 
-    // TODO 先在此处take，后续需要改为最后解析完毕后，只take一次  fishermen
     pub(super) fn next_row_packet(&mut self) -> Result<Option<Buffer>> {
         if !self.has_results {
             return Ok(None);
         }
 
-        // TODO 这个可以通过row count来确定最后一行记录，然后进行一次性take fishermen
         let pld = self.next_packet_data(false)?;
 
         if self.has_capability(CapabilityFlags::CLIENT_DEPRECATE_EOF) {
