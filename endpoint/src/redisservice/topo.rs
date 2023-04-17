@@ -199,15 +199,12 @@ where
                 return false;
             }
             let master_url = &shard[0];
-            let masters = dns::lookup_ips(master_url.host());
-            if masters.len() == 0 {
-                log::warn!("{} master not looked up", master_url);
-                return false;
-            }
-            if masters.len() > 1 {
-                log::warn!("multi master ip parsed. {} => {:?}", master_url, masters);
-            }
-            let master = String::from(&masters[0]) + ":" + master_url.port();
+            let mut master = String::new();
+            dns::lookup_ips(master_url.host(), |ips| {
+                if ips.len() > 0 {
+                    master = ips[0].to_string() + ":" + master_url.port();
+                }
+            });
             let mut slaves = Vec::with_capacity(8);
             if self.cfg.basic.master_read {
                 slaves.push(master.clone());
@@ -215,15 +212,21 @@ where
             for url_port in &shard[1..] {
                 let url = url_port.host();
                 let port = url_port.port();
-                for slave_ip in dns::lookup_ips(url) {
-                    let addr = slave_ip + ":" + port;
-                    if !slaves.contains(&addr) {
-                        slaves.push(addr);
+                use ds::vec::Add;
+                dns::lookup_ips(url, |ips| {
+                    for ip in ips {
+                        slaves.add(ip.to_string() + ":" + port);
                     }
-                }
+                });
             }
-            if slaves.len() == 0 {
-                log::warn!("{:?} slave not looked up", &shard[1..]);
+            if master.len() == 0 || slaves.len() == 0 {
+                log::warn!(
+                    "master:({}=>{}) or slave ({:?}=>{:?}) not looked up",
+                    master_url,
+                    master,
+                    &shard[1..],
+                    slaves
+                );
                 return false;
             }
             addrs.push((master, slaves));

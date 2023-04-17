@@ -39,13 +39,12 @@ pub struct DnsResolver {
     resolver: Resolver,
 }
 
-pub fn register(host: &str) -> Arc<AtomicBool> {
-    DNSCACHE.get().watch(host)
+pub fn register(host: &str, notify: Arc<AtomicBool>) {
+    DNSCACHE.get().watch(host, notify)
 }
-
-pub fn lookup_ips(host: &str) -> Vec<String> {
+pub fn lookup_ips<'a>(host: &str, mut f: impl FnMut(&[IpAddr])) {
     // log::debug!("++++ lookup ips:{:?}", DNSCACHE.get().hosts);
-    DNSCACHE.get().lookup(host)
+    f(DNSCACHE.get().lookup(host));
 }
 
 fn system_resolver() -> Resolver {
@@ -54,62 +53,53 @@ fn system_resolver() -> Resolver {
 
 #[derive(Default, Clone, Debug)]
 struct Record {
-    stale: Arc<AtomicBool>,
+    host: String,
     subscribers: Vec<Arc<AtomicBool>>,
     ips: Vec<IpAddr>,
     id: usize,
+    md5: u64, // 使用所有ip的和作为md5
 }
 impl Record {
-    fn first_watch(&self) -> Arc<AtomicBool> {
-        assert_ne!(self.subscribers.len(), 0);
-        self.subscribers[0].clone()
-    }
     fn watch(&mut self, s: Arc<AtomicBool>) {
         self.subscribers.push(s);
     }
-    fn update(&mut self, addr: Vec<IpAddr>) {
-        self.ips = addr;
-        self.stale.store(true, Ordering::Release);
-    }
-    fn stale(&self) -> bool {
-        self.stale.load(Ordering::Acquire)
+    fn update(&mut self, addr_md5: (Vec<IpAddr>, u64)) {
+        if self.md5 != 0 {
+            log::info!("update dns record: {:?} => {:?}", self, addr_md5);
+        }
+        debug_assert_ne!(self.ips, addr_md5.0);
+        debug_assert_ne!(self.md5, addr_md5.1);
+        self.ips = addr_md5.0;
+        self.md5 = addr_md5.1;
+        self.notify();
     }
     fn notify(&self) {
-        if self.stale() {
-            for update in self.subscribers.iter() {
-                update.store(true, Ordering::Release);
-            }
-            self.stale.store(false, Ordering::Release);
+        for update in self.subscribers.iter() {
+            update.store(true, Ordering::Release);
         }
     }
     // 如果有更新，则返回lookup的ip。
     // 无更新则返回None
-    async fn check_refresh(&self, host: &str, resolver: &mut Resolver) -> Option<Vec<IpAddr>> {
-        match resolver.lookup_ip(host).await {
+    async fn check_refresh(&self, host: &str, r: &mut Resolver) -> Option<(Vec<IpAddr>, u64)> {
+        match r.lookup_ip(host).await {
             Ok(ips) => {
-                // 必须有IP。
-                let mut exists = 0;
+                let mut md5 = 0u64;
                 let mut cnt = 0;
                 for ip in ips.iter() {
                     log::debug!("{} resolved ip {}", host, ip);
-                    cnt += 1;
-                    if self.ips.contains(&ip) {
-                        exists += 1;
+                    if let IpAddr::V4(v4) = ip {
+                        cnt += 1;
+                        let bits: u32 = v4.into();
+                        md5 += bits as u64;
                     }
                 }
-                if cnt == 0 {
-                    log::info!("no ip resolved: {}", host);
-                    return None;
-                }
-                if exists != self.ips.len() || exists != cnt {
+                log::debug!("{} resolved ips:{:?}, md5:{}", host, ips, md5);
+                if cnt > 0 && (cnt != self.ips.len() || self.md5 != md5) {
                     let mut addrs = Vec::with_capacity(cnt);
                     for ip in ips.iter() {
                         addrs.push(ip);
                     }
-                    if self.ips.len() > 0 {
-                        log::info!("host {} refreshed from {:?} to {:?}", host, self.ips, addrs);
-                    }
-                    return Some(addrs);
+                    return Some((addrs, md5));
                 }
             }
             Err(_e) => {
@@ -119,8 +109,8 @@ impl Record {
         None
     }
     async fn refresh(&mut self, host: &str, resolver: &mut Resolver) {
-        if let Some(addrs) = self.check_refresh(host, resolver).await {
-            self.ips = addrs;
+        if let Some((addrs, md5)) = self.check_refresh(host, resolver).await {
+            self.update((addrs, md5));
         }
     }
 }
@@ -173,6 +163,9 @@ pub async fn start_dns_resolver_refresher() {
     loop {
         let mut regs = Vec::new();
         while let Ok(reg) = rx.try_recv() {
+            if regs.capacity() == 0 {
+                regs.reserve(16);
+            }
             regs.push(reg);
         }
         if regs.len() > 0 {
@@ -182,7 +175,6 @@ pub async fn start_dns_resolver_refresher() {
                 w_cache.refresh_one(&reg.0, &mut resolver).await;
             }
             cache.update(w_cache);
-            cache.get().notify();
             // 再次快速尝试读取新注册的数据
             continue;
         }
@@ -213,7 +205,6 @@ pub async fn start_dns_resolver_refresher() {
                     .update(addrs);
             }
             cache.update(new);
-            cache.get().notify();
         }
         //last = Instant::now();
 
@@ -233,47 +224,27 @@ impl DnsCache {
             hosts: Default::default(),
         }
     }
-    fn notify(&self) {
-        for (_host, record) in &self.hosts {
-            if record.stale() {
-                record.notify();
-                log::debug!("host {} refreshed and notified {:?}", _host, record.ips);
-            }
-        }
-    }
-    fn watch(&self, addr: &str) -> Arc<AtomicBool> {
-        match self.hosts.get(addr) {
-            Some(record) => record.first_watch(),
-            None => {
-                log::debug!("{} watching", addr);
-                let watcher = Arc::new(AtomicBool::new(false));
-                if let Err(_e) = self.tx.send((addr.to_string(), watcher.clone())) {
-                    log::info!("watcher failed to {} => {:?}", addr, _e);
-                }
-                watcher
-            }
+    fn watch(&self, addr: &str, notify: Arc<AtomicBool>) {
+        log::debug!("{} watching", addr);
+        if let Err(_e) = self.tx.send((addr.to_string(), notify)) {
+            log::error!("watcher failed to {} => {:?}", addr, _e);
         }
     }
     fn register(&mut self, host: String, notify: Arc<AtomicBool>) {
         log::debug!("host {} registered to cache", host);
         static SEQ: AtomicUsize = AtomicUsize::new(0);
         let id = SEQ.fetch_add(1, Ordering::Relaxed);
-        let r = self.hosts.entry(host).or_default();
+        let r = self.hosts.entry(host.clone()).or_default();
         r.id = id;
+        r.host = host;
         r.watch(notify);
     }
-    fn lookup(&self, host: &str) -> Vec<String> {
-        let mut addrs = Vec::new();
-        if let Some(record) = self.hosts.get(host) {
-            addrs.reserve(record.ips.len());
-            for addr in record.ips.iter() {
-                match addr {
-                    IpAddr::V4(ip) => addrs.push(ip.to_string()),
-                    _ => {}
-                }
-            }
-        }
-        addrs
+    fn lookup(&self, host: &str) -> &[IpAddr] {
+        static EMPTY: Vec<IpAddr> = Vec::new();
+        self.hosts
+            .get(host)
+            .map(|r| &r.ips)
+            .unwrap_or_else(|| &EMPTY)
     }
     async fn refresh_one(&mut self, host: &str, resolver: &mut Resolver) {
         self.hosts
