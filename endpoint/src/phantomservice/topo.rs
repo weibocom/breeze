@@ -158,13 +158,14 @@ where
             let mut shard_ips = Vec::with_capacity(shard.len());
             for url_port in shard.iter() {
                 let host = url_port.host();
-                let ips = dns::lookup_ips(host);
-                if ips.len() == 0 {
+                dns::lookup_ips(host, |ips| {
+                    for ip in ips {
+                        shard_ips.push(ip.to_string() + ":" + url_port.port());
+                    }
+                });
+                if shard_ips.len() == 0 {
                     log::warn!("phantom dns looked up failed for {} => {:?}", host, self);
                     return false;
-                }
-                for ip in ips {
-                    shard_ips.push(ip + ":" + url_port.port());
                 }
             }
             assert!(!shard_ips.is_empty());

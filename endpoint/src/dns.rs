@@ -4,12 +4,13 @@ use std::sync::Arc;
 
 use discovery::dns::{self, IPPort};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct DnsConfig<T> {
     pub(crate) config: T,
     pub(crate) shards_url: Vec<Vec<String>>,
     pub(crate) service: String,
-    pub(crate) updated: HashMap<String, Arc<AtomicBool>>,
+    pub(crate) updated: Arc<AtomicBool>,
+    registered: HashMap<String, ()>,
 }
 impl<T: Backends> DnsConfig<T> {
     fn build_shards_url(&mut self) {
@@ -29,37 +30,33 @@ impl<T: Backends> DnsConfig<T> {
         // 注册通知
 
         // 配置更新完毕，如果watcher确认配置update了，各个topo就重新进行load
-        self.updated
-            .get_mut(CONFIG_UPDATED_KEY)
-            .expect("config updated key not found")
-            .store(true, Release);
+        self.updated.store(true, Relaxed);
     }
     fn register(&mut self) {
         self.shards_url.iter().for_each(|replicas| {
             replicas.iter().for_each(|url_port| {
                 let host = url_port.host();
-                if !self.updated.contains_key(host) {
-                    let watcher = dns::register(host);
-                    self.updated.insert(host.to_string(), watcher);
+                if !self.registered.contains_key(host) {
+                    dns::register(host, self.updated.clone());
+                    self.registered.insert(host.to_string(), ());
                 }
             })
         });
     }
     pub fn need_load(&self) -> bool {
-        self.updated
-            .iter()
-            .fold(false, |acc, (_k, v)| acc || v.load(Acquire))
+        self.updated.load(Relaxed)
     }
+    // 把updated设置为false，这样topo就不会重新load
     pub fn clear_status(&mut self) {
-        for (_, updated) in self.updated.iter() {
-            updated.store(false, Release);
+        if let Err(_e) = self.updated.compare_exchange(true, false, AcqRel, Relaxed) {
+            log::warn!("{} clear_status failed", self.service,);
         }
     }
+    // 把updated设置为true，这样topo就会重新load
     pub fn enable_notified(&mut self) {
-        self.updated
-            .get_mut(CONFIG_UPDATED_KEY)
-            .expect("config state missed")
-            .store(true, Release);
+        if let Err(_e) = self.updated.compare_exchange(false, true, AcqRel, Relaxed) {
+            log::warn!("{} clear_status failed", self.service,);
+        }
     }
 }
 
@@ -75,23 +72,6 @@ impl Backends for crate::redisservice::config::RedisNamespace {
 impl Backends for crate::phantomservice::config::PhantomNamespace {
     fn get_backends(&self) -> &Vec<String> {
         &self.backends
-    }
-}
-
-const CONFIG_UPDATED_KEY: &str = "__config__";
-impl<T: Default> Default for DnsConfig<T> {
-    fn default() -> Self {
-        let mut me = DnsConfig {
-            config: T::default(),
-            shards_url: Vec::new(),
-            service: String::new(),
-            updated: HashMap::new(),
-        };
-        me.updated.insert(
-            CONFIG_UPDATED_KEY.to_string(),
-            Arc::new(AtomicBool::new(false)),
-        );
-        me
     }
 }
 
