@@ -68,27 +68,28 @@ impl<T: Topology + Clone + 'static + Endpoint<Item = Request>> CheckedTopology<T
     // 3. conn_cycle: CheckedTopology.cycle，当前conn持有的top，如果conn_cycle <
     //    reader_cycle，则需要触发更新SharedTop，并发更新时需要加锁。
     #[inline]
-    fn check(&mut self) -> Option<Self> {
+    fn update(&mut self) -> Option<()> {
         let reader_cycle = self.inner.reader.cycle();
         if self.top.cycle() >= reader_cycle {
             // 当前connection持有的top是最新的。
             return None;
         }
-        self.top.cycle = reader_cycle;
-        // 更新
         let shared_top = self.inner.top.try_read()?;
         if shared_top.cycle() >= reader_cycle {
             // 说明别的conn已经触发了更新，直接获取即可
-            let shared = shared_top.clone();
-            return Some(Self::new(shared, self.inner.clone()));
+            self.top = shared_top.clone();
+            return Some(());
         }
         // 释放读锁
         drop(shared_top);
-        let new = SharedTop::new(&self.inner.reader);
         let mut top = self.inner.top.try_write()?;
-        *top = new;
-        let shared = top.clone();
-        Some(Self::new(shared, self.inner.clone()))
+        // 更新所有conn共享的top
+        *top = SharedTop::new(&self.inner.reader);
+        // 更新当前conn持有的top
+        self.top = top.clone();
+        // 释放写锁
+        drop(top);
+        Some(())
     }
 }
 impl<T: Topology + Clone + 'static + Endpoint<Item = Request>> TopologyCheck
@@ -96,7 +97,12 @@ impl<T: Topology + Clone + 'static + Endpoint<Item = Request>> TopologyCheck
 {
     #[inline]
     fn refresh(&mut self) -> bool {
-        self.check().is_some()
+        let _conn_cycle = self.top.cycle();
+        self.update()
+            .map(|_| {
+                log::info!("topology refreshed {} => {}", _conn_cycle, self.top);
+            })
+            .is_some()
     }
     #[inline(always)]
     fn callback(&self) -> CallbackPtr {
@@ -112,14 +118,14 @@ impl<T: Topology + Clone + 'static> Hash for CheckedTopology<T> {
 
 #[derive(Clone)]
 struct SharedTop<T> {
-    t: Arc<Box<T>>,
+    t: Arc<T>,
     callback: CallbackPtr,
     cycle: usize,
 }
 impl<T: Clone + Endpoint<Item = Request> + 'static> SharedTop<T> {
     fn new(reader: &TopologyReadGuard<T>) -> Self {
         let cycle = reader.cycle();
-        let top = Box::new(reader.do_with(|t| t.clone()));
+        let top = reader.do_with(|t| t.clone());
         let t = Arc::new(top);
         let cb_top = t.clone();
         let send = Box::new(move |req| cb_top.send(req));
@@ -136,5 +142,12 @@ impl<T> Deref for SharedTop<T> {
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.t
+    }
+}
+
+use std::fmt::Display;
+impl<T> Display for SharedTop<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "cycle:{} ptr:{:p}", self.cycle, self.t.as_ref())
     }
 }

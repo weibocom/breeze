@@ -261,15 +261,10 @@ where
             self.shards.push(shard);
         }
         assert_eq!(self.shards.len(), self.cfg.shards_url.len());
-        log::info!(
-            "{} load complete. {} dropping:{:?}",
-            self.cfg.service,
-            self.shards.len(),
-            {
-                old.retain(|_k, v| v.len() > 0);
-                old.keys()
-            }
-        );
+        log::info!("{} load complete. dropping:{:?}", self.cfg.service, {
+            old.retain(|_k, v| v.len() > 0);
+            old.keys()
+        });
 
         true
     }
