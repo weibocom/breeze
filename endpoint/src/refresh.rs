@@ -30,11 +30,11 @@ impl<T: Clone + 'static + Endpoint<Item = Request>> RefreshTopology<T> {
 // 每个connection持有一个CheckedTopology，在refresh时调用check检查是否有更新
 pub struct CheckedTopology<T> {
     top: SharedTop<T>,
-    inner: Arc<RefreshTopology<T>>,
+    global: Arc<RefreshTopology<T>>,
 }
 impl<T> CheckedTopology<T> {
     fn new(top: SharedTop<T>, inner: Arc<RefreshTopology<T>>) -> Self {
-        Self { top, inner }
+        Self { top, global: inner }
     }
 }
 impl<T: Endpoint + Clone + 'static> Endpoint for CheckedTopology<T> {
@@ -69,12 +69,12 @@ impl<T: Topology + Clone + 'static + Endpoint<Item = Request>> CheckedTopology<T
     //    reader_cycle，则需要触发更新SharedTop，并发更新时需要加锁。
     #[inline]
     fn update(&mut self) -> Option<()> {
-        let reader_cycle = self.inner.reader.cycle();
+        let reader_cycle = self.global.reader.cycle();
         if self.top.cycle() >= reader_cycle {
             // 当前connection持有的top是最新的。
             return None;
         }
-        let shared_top = self.inner.top.try_read()?;
+        let shared_top = self.global.top.try_read()?;
         if shared_top.cycle() >= reader_cycle {
             // 说明别的conn已经触发了更新，直接获取即可
             self.top = shared_top.clone();
@@ -82,9 +82,9 @@ impl<T: Topology + Clone + 'static + Endpoint<Item = Request>> CheckedTopology<T
         }
         // 释放读锁
         drop(shared_top);
-        let mut top = self.inner.top.try_write()?;
+        let mut top = self.global.top.try_write()?;
         // 更新所有conn共享的top
-        *top = SharedTop::new(&self.inner.reader);
+        *top = SharedTop::new(&self.global.reader);
         // 更新当前conn持有的top
         self.top = top.clone();
         // 释放写锁
