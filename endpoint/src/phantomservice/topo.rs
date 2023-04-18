@@ -164,7 +164,7 @@ where
                     }
                 });
                 if shard_ips.len() == 0 {
-                    log::warn!("phantom dns looked up failed for {} => {:?}", host, self);
+                    log::info!("dns not inited => {}", url_port);
                     return false;
                 }
             }
