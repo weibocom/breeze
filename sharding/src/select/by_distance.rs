@@ -1,32 +1,57 @@
 use discovery::distance::{Addr, ByDistance};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::sync::Arc;
+
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct BackendQuota {
+    used_us: Arc<AtomicUsize>, // 所有副本累计使用的时间
+}
+impl BackendQuota {
+    #[inline]
+    pub fn incr(&self, d: ds::time::Duration) {
+        self.used_us.fetch_add(d.as_micros() as usize, Relaxed);
+    }
+    #[inline]
+    fn idx(&self) -> usize {
+        // 2*1024*1024 us 换backend
+        self.used_us.load(Relaxed) >> 21
+    }
+    #[inline]
+    fn val(&self) -> usize {
+        self.used_us.load(Relaxed)
+    }
+}
+
 // 按机器之间的距离来选择replica。
 // 1. B类地址相同的最近与同一个zone的是近距离，优先访问。
 // 2. 其他的只做错误处理时访问。
 #[derive(Clone)]
 pub struct Distance<T> {
-    // batch: 至少在一个T上连续连续多少次
-    batch_shift: u8,
     len_local: u16,
-    seq: Arc<AtomicUsize>,
+    quota: BackendQuota, // 所有副本累计使用的时间
     pub(super) replicas: Vec<T>,
 }
 impl<T: Addr> Distance<T> {
     pub fn new() -> Self {
         Self {
-            batch_shift: 0,
             len_local: 0,
-            seq: Arc::new(AtomicUsize::new(0)),
+            quota: BackendQuota {
+                used_us: Arc::new(AtomicUsize::new(0)),
+            },
             replicas: Vec::new(),
         }
+    }
+    pub fn quota(&self) -> BackendQuota {
+        self.quota.clone()
     }
     pub fn with_local(replicas: Vec<T>, local: bool) -> Self {
         assert_ne!(replicas.len(), 0);
         let mut me = Self {
-            batch_shift: 0,
             len_local: 0,
-            seq: Arc::new(AtomicUsize::new(0)),
+            quota: BackendQuota {
+                used_us: Arc::new(AtomicUsize::new(0)),
+            },
             replicas,
         };
         if local {
@@ -47,11 +72,6 @@ impl<T: Addr> Distance<T> {
     pub fn topn(&mut self, n: usize) {
         assert!(n > 0 && n <= self.len(), "n: {}, len:{}", n, self.len());
         self.len_local = n as u16;
-        let batch = 1024usize;
-        // 最小是1，最大是65536
-        let batch_shift = batch.max(1).next_power_of_two().min(65536).trailing_zeros() as u8;
-        self.seq.store(rand::random::<u16>() as usize, Relaxed);
-        self.batch_shift = batch_shift;
     }
     // 前freeze个是local的，不参与排序
     fn local(&mut self) {
@@ -80,7 +100,7 @@ impl<T: Addr> Distance<T> {
         let idx = if self.len() == 1 {
             0
         } else {
-            (self.seq.fetch_add(1, Relaxed) >> self.batch_shift as usize) % self.local_len()
+            (self.quota.idx()) % self.local_len()
         };
         assert!(idx < self.len(), "{} >= {}", idx, self.len());
         idx
@@ -105,7 +125,7 @@ impl<T: Addr> Distance<T> {
             assert_ne!(self.local_len(), self.len(), "{} {} {:?}", idx, runs, self);
             if idx < self.local_len() {
                 // 第一次使用remote，为避免热点，从[idx_local..idx_remote)随机取一个
-                self.seq.fetch_add(1, Relaxed) % self.remote_len() + self.local_len()
+                self.quota.val() % self.remote_len() + self.local_len()
             } else {
                 // 按顺序从remote中取. 走到最后一个时，从local_len开始
                 ((idx + 1) % self.len()).max(self.local_len())
