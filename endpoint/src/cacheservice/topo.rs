@@ -81,7 +81,7 @@ where
         if !req.operation().master_only() {
             let mut ctx = super::Context::from(*req.mut_context());
             let (i, try_next, write_back) = if req.operation().is_store() {
-                self.context_store(&mut ctx, req.cmd().try_next_type())
+                self.context_store(&mut ctx, req.try_next_type())
             } else {
                 if !ctx.inited() {
                     // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：

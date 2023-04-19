@@ -263,7 +263,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
         self.pending.push_back(ctx);
 
         use protocol::req::Request as RequestTrait;
-        if req.cmd().noforward() {
+        if req.noforward() {
             req.on_noforward();
         } else {
             self.top.send(req);
