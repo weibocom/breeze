@@ -27,10 +27,11 @@ impl<'a, 'b, C> Reader<'a, 'b, C> {
         if self.n > 0 {
             Ok(())
         } else {
-            log::warn!("+++ in reader.check, n:{}, b:{}", self.n, self.b);
             if self.b == 0 {
+                log::warn!("+++ in reader.check BufferFull, n:{}, b:{}", self.n, self.b);
                 Err(Error::BufferFull)
             } else {
+                log::warn!("+++ in reader.check Eof, n:{}, b:{}", self.n, self.b);
                 Err(Error::Eof)
             }
         }
