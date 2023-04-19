@@ -83,6 +83,12 @@ where
             let (i, try_next, write_back) = if req.operation().is_store() {
                 self.context_store(&mut ctx, req.cmd().try_next_type())
             } else {
+                if !ctx.inited() {
+                    // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
+                    // 第一次读一般访问L1，miss之后再读master；
+                    // 读quota的更新根据第一次的请求时间更合理
+                    req.quota(self.streams.quota());
+                }
                 self.context_get(&mut ctx)
             };
             req.try_next(try_next);

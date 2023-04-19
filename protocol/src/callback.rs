@@ -8,6 +8,7 @@ use std::{
 };
 
 use ds::{time::Instant, AtomicWaker};
+use sharding::BackendQuota;
 
 use crate::{request::Request, Command, Error, HashedCommand};
 
@@ -43,6 +44,7 @@ pub struct CallbackContext {
     start: Instant, // 请求的开始时间
     waker: *const AtomicWaker,
     callback: CallbackPtr,
+    quota: Option<BackendQuota>,
 }
 
 impl CallbackContext {
@@ -71,6 +73,7 @@ impl CallbackContext {
             start: now,
             tries: 0.into(),
             waker,
+            quota: None,
         }
     }
 
@@ -133,6 +136,9 @@ impl CallbackContext {
             // write back请求
             self.write_back
         };
+
+        // 更新backend使用的时间
+        self.quota.take().map(|q| q.incr(self.start_at().elapsed()));
 
         if goon {
             // 需要重试或回写
@@ -245,6 +251,10 @@ impl CallbackContext {
     #[inline]
     pub fn last(&self) -> bool {
         self.last
+    }
+    #[inline]
+    pub fn quota(&mut self, quota: BackendQuota) {
+        self.quota = Some(quota);
     }
 }
 

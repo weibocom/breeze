@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
 };
+use sharding::BackendQuota;
 
 pub struct Request {
     ctx: NonNull<CallbackContext>,
@@ -72,6 +73,10 @@ impl crate::Request for Request {
     #[inline]
     fn try_next(&mut self, goon: bool) {
         self.ctx().try_next = goon;
+    }
+    #[inline]
+    fn quota(&mut self, quota: BackendQuota) {
+        self.ctx().quota(quota);
     }
     // #[inline]
     // fn ignore_rsp(&self) -> bool {
