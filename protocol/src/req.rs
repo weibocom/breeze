@@ -2,9 +2,7 @@ use ds::time::Instant;
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
-use ds::RingSlice;
-
-use crate::{Command, HashedCommand, Operation};
+use crate::{Command, HashedCommand};
 
 pub type Context = u64;
 
@@ -19,16 +17,16 @@ pub trait Request:
     + Deref<Target = HashedCommand>
     + DerefMut<Target = HashedCommand>
 {
-    fn cmd(&self) -> &HashedCommand;
+    //fn cmd(&self) -> &HashedCommand;
     fn start_at(&self) -> Instant;
-    fn operation(&self) -> Operation;
-    fn len(&self) -> usize;
-    fn hash(&self) -> i64;
+    //fn operation(&self) -> Operation;
+    //fn len(&self) -> usize;
+    //fn hash(&self) -> i64;
     // fn update_hash(&mut self, idx_hash: i64);
     fn on_noforward(&mut self);
     fn on_sent(self) -> Option<Self>;
-    fn sentonly(&self) -> bool;
-    fn data(&self) -> &RingSlice;
+    //fn sentonly(&self) -> bool;
+    //fn data(&self) -> &RingSlice;
     //fn read(&self, oft: usize) -> &[u8];
     fn on_complete(self, resp: Command);
     fn on_err(self, err: crate::Error);
