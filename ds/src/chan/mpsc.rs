@@ -1,3 +1,5 @@
+use core::fmt;
+use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -62,6 +64,21 @@ impl<T> Receiver<T> {
     }
     pub fn disable(&mut self) {
         self.switcher.off();
+    }
+    pub fn is_empty_hint(&mut self) -> bool {
+        self.rx == self.tx.load(Acquire)
+    }
+}
+impl<T> Debug for Receiver<T> {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "mpsc Receiver rx/tx:({},{}) switcher:{}  ",
+            self.rx,
+            self.tx.load(Acquire),
+            self.switcher.get()
+        )
     }
 }
 
