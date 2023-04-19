@@ -71,4 +71,8 @@ impl Context {
     fn index(&self) -> u16 {
         self.ctx as u16
     }
+    #[inline]
+    fn inited(&self) -> bool {
+        self.ctx != 0
+    }
 }

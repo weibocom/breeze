@@ -42,4 +42,6 @@ pub trait Request:
     //fn is_write_back(&self) -> bool;
     // 请求失败后，是否需要进行重试
     fn try_next(&mut self, goon: bool);
+    // 初始化quota
+    fn quota(&mut self, quota: sharding::BackendQuota);
 }
