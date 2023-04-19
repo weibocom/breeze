@@ -1,10 +1,10 @@
 use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand, Operation};
+use sharding::BackendQuota;
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
     time::Duration,
 };
-
 pub struct Request {
     ctx: NonNull<CallbackContext>,
 }
@@ -82,6 +82,10 @@ impl crate::Request for Request {
     #[inline]
     fn try_next(&mut self, goon: bool) {
         self.ctx().ctx.try_next(goon);
+    }
+    #[inline]
+    fn quota(&mut self, quota: BackendQuota) {
+        self.ctx().quota(quota);
     }
     // #[inline]
     // fn ignore_rsp(&self) -> bool {
