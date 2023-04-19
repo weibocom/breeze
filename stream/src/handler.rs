@@ -14,7 +14,7 @@ use metrics::Metric;
 pub struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
     pending: VecDeque<Req>,
-
+    backend_addr: &'r str,
     s: S,
     parser: P,
     rtt: Metric,
@@ -53,11 +53,18 @@ where
     S: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
 {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, rtt: Metric) -> Self {
+    pub(crate) fn from(
+        data: &'r mut Receiver<Req>,
+        s: S,
+        parser: P,
+        rtt: Metric,
+        addr: &'r str,
+    ) -> Self {
         data.enable();
         Self {
             data,
             pending: VecDeque::with_capacity(31),
+            backend_addr: addr,
             s,
             parser,
             rtt,
@@ -101,7 +108,7 @@ where
                     log::error!("unexpected data from server:{:?} => {:?}", self, data);
                     Err(Error::UnexpectedData)
                 } else {
-                    log::warn!("+++ found Eof when check");
+                    log::warn!("+++ found Eof when check: {}", self.backend_addr);
                     // 读到了EOF，连接已经断开。
                     Err(Error::Eof)
                 }
