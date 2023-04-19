@@ -322,10 +322,11 @@ impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} => pending:({},{}) flush:{}  => {:?}",
+            "{} => pending:({},{}) frist => {:?} flush:{}  => {:?}",
             self.metrics.biz(),
             self.pending.len(),
             self.async_pending.len(),
+            self.pending.get(0).map(|r| &**r),
             self.flush,
             self.client,
         )
