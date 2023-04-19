@@ -1,7 +1,7 @@
 // TODO 解析mysql协议， 转换为mc vs redis 协议
 
 use crate::mysql::constants::DEFAULT_MAX_ALLOWED_PACKET;
-use crate::{ResOption, StreamContext};
+use crate::StreamContext;
 
 use super::buffer_pool::Buffer;
 use super::proto::codec::PacketCodec;
@@ -28,8 +28,8 @@ use ds::RingSlice;
 use crate::mysql::error::Error::MySqlError;
 use crate::mysql::io::ReadMysqlExt;
 use crate::mysql::proto::MySerialize;
+use crate::Error;
 use crate::{mysql::packets::ErrPacket, Result};
-use crate::{Command, Error};
 
 const HEADER_LEN: usize = 4;
 pub(super) const HEADER_FLAG_OK: u8 = 0x00;
@@ -323,10 +323,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         }
     }
 
-    // TODO speed up
-    pub(super) fn proc_cmd(&mut self) -> Result<Option<Command>> {
-        Ok(None)
-    }
+    // // TODO speed up
+    // pub(super) fn proc_cmd(&mut self) -> Result<Option<Command>> {
+    //     Ok(None)
+    // }
 
     pub(super) fn more_results_exists(&self) -> bool {
         self.status_flags
@@ -453,37 +453,37 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         self.stream.take(data.len())
     }
 
-    //解析initial_handshake，暂定解析成功会take走stream，协议未完成返回incomplete
-    //如果这样会copy，可返回引用，外部take，但问题不大
-    pub(super) fn take_initial_handshake(&mut self) -> Result<InitialHandshake> {
-        // let packet = self.parse_packet()?;
-        // let packet: InitialHandshake = packet.parse();
-        // //为了take走还有效
-        // let packet = packet.clone();
-        // self.take();
-        // Ok(packet)
-        todo!()
-    }
-    //构建采用Native Authentication快速认证的handshake response，seq+1
-    pub(super) fn build_handshake_response(
-        &mut self,
-        option: &ResOption,
-        auth_data: &[u8],
-    ) -> Result<Vec<u8>> {
-        todo!()
-    }
-    //take走一个packet，如果是err packet 返回错误类型，set+1
-    pub(super) fn take_and_ok(&mut self) -> Result<()> {
-        todo!();
-    }
+    // //解析initial_handshake，暂定解析成功会take走stream，协议未完成返回incomplete
+    // //如果这样会copy，可返回引用，外部take，但问题不大
+    // pub(super) fn take_initial_handshake(&mut self) -> Result<InitialHandshake> {
+    //     // let packet = self.parse_packet()?;
+    //     // let packet: InitialHandshake = packet.parse();
+    //     // //为了take走还有效
+    //     // let packet = packet.clone();
+    //     // self.take();
+    //     // Ok(packet)
+    //     todo!()
+    // }
+    // //构建采用Native Authentication快速认证的handshake response，seq+1
+    // pub(super) fn build_handshake_response(
+    //     &mut self,
+    //     option: &ResOption,
+    //     auth_data: &[u8],
+    // ) -> Result<Vec<u8>> {
+    //     todo!()
+    // }
+    // //take走一个packet，如果是err packet 返回错误类型，set+1
+    // pub(super) fn take_and_ok(&mut self) -> Result<()> {
+    //     todo!();
+    // }
 
     pub(super) fn ctx(&mut self) -> &mut ResponseContext {
         self.ctx
     }
 
-    pub(crate) fn parse_packet(&mut self) -> Result<RingSlice> {
-        todo!()
-    }
+    // pub(crate) fn parse_packet(&mut self) -> Result<RingSlice> {
+    //     todo!()
+    // }
 
     #[inline]
     pub(super) fn reserve(&mut self) {

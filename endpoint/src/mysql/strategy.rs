@@ -228,11 +228,14 @@ fn replace_one(raw_sql: &String, from: &'static str, to: &RingSlice) -> Result<S
 
 fn to_i64(key: &RingSlice) -> i64 {
     let mut id = 0_i64;
-    const ZERO: i64 = '0' as i64;
+    const ZERO: u8 = '0' as u8;
     for i in 0..key.len() {
         let c = key.at(i);
-        assert!(c.is_ascii_digit());
-        id = id * 10 + (c as i64) - ZERO;
+        assert!(c.is_ascii_digit(), "malformed key:{:?}", key);
+        // id = id * 10 + (c - ZERO) as i64;
+        id = id
+            .wrapping_mul(10_i64)
+            .wrapping_add(c.wrapping_sub(ZERO) as i64);
     }
     id
 }

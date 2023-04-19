@@ -101,9 +101,6 @@ impl Protocol for Mysql {
         assert!(stream.len() > 0, "mc req: {:?}", stream.slice());
         log::debug!("+++ recv mysql-mc req:{:?}", stream.slice());
 
-        // TODO: 这个需要把encode、decode抽出来，然后去掉mut，提升为Mysql结构体的字段 fishermen
-        // let mut req_packet = RequestPacket::new();
-
         // TODO request的解析部分待抽到reqpacket中
         while stream.len() >= mcpacket::HEADER_LEN {
             let mut req = stream.slice();
@@ -210,7 +207,6 @@ impl Protocol for Mysql {
         let old_op_code = ctx.request().op_code() as u8;
 
         // 如果原始请求是quite_get请求，并且not found，则不回写。
-        // if let Some(rsp) = ctx.response_mut() {
         if let Some(rsp) = response {
             // mysql 请求到正确的数据，才会转换并write
             if rsp.ok() {
@@ -308,7 +304,7 @@ impl Mysql {
 
         match packet.ctx().status {
             HandShakeStatus::Init => {
-                let handshake_rsp = packet.proc_handshake()?;
+                packet.proc_handshake()?;
                 packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
                 Ok(HandShake::Continue)
             }
