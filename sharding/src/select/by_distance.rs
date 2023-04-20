@@ -15,18 +15,10 @@ impl BackendQuota {
     }
     #[inline]
     pub fn err_incr(&self, d: ds::time::Duration) {
+        // 一次错误请求，消耗500ms
         self.used_us
             .fetch_add(d.as_micros().max(500_000) as usize, Relaxed);
     }
-    //#[inline]
-    //fn idx(&self) -> usize {
-    //    // 2*1024*1024 us 换backend
-    //    self.used_us.load(Relaxed) >> 21
-    //}
-    //#[inline]
-    //fn val(&self) -> usize {
-    //    self.used_us.load(Relaxed)
-    //}
     // 配置时间的微秒计数
     #[inline]
     fn us(&self) -> usize {
@@ -41,8 +33,7 @@ impl BackendQuota {
 pub struct Distance<T> {
     len_local: u16,
     idx: Arc<AtomicUsize>,
-    replicas: Vec<T>,
-    quota: Vec<BackendQuota>,
+    replicas: Vec<(T, BackendQuota)>,
 }
 impl<T: Addr> Distance<T> {
     pub fn new() -> Self {
@@ -50,7 +41,6 @@ impl<T: Addr> Distance<T> {
             len_local: 0,
             idx: Default::default(),
             replicas: Vec::new(),
-            quota: Vec::new(),
         }
     }
     #[inline]
@@ -60,8 +50,8 @@ impl<T: Addr> Distance<T> {
     #[inline]
     pub fn quota(&self) -> BackendQuota {
         let idx = self.idx();
-        debug_assert!(idx < self.quota.len(), "{} < {}", idx, self.quota.len());
-        unsafe { self.quota.get_unchecked(idx).clone() }
+        debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
+        unsafe { self.replicas.get_unchecked(idx).1.clone() }
     }
     pub fn with_local(replicas: Vec<T>, local: bool) -> Self {
         assert_ne!(replicas.len(), 0);
@@ -83,14 +73,10 @@ impl<T: Addr> Distance<T> {
     }
     // 同时更新配额
     fn refresh(&mut self, replicas: Vec<T>) {
-        self.replicas = replicas;
-        self.quota =
-            self.replicas
-                .iter()
-                .fold(Vec::with_capacity(self.replicas.capacity()), |mut r, _| {
-                    r.push(BackendQuota::default());
-                    r
-                });
+        self.replicas = replicas
+            .into_iter()
+            .map(|r| (r, BackendQuota::default()))
+            .collect();
     }
     pub fn update(&mut self, replicas: Vec<T>, topn: usize) {
         self.refresh(replicas);
@@ -103,7 +89,6 @@ impl<T: Addr> Distance<T> {
         // 初始节点随机选择，避免第一个节点成为热点
         let idx: usize = rand::thread_rng().gen_range(0..n);
         self.idx.store(idx, Relaxed);
-        assert_eq!(self.replicas.len(), self.quota.len());
     }
     // 前freeze个是local的，不参与排序
     fn local(&mut self) {
@@ -112,8 +97,11 @@ impl<T: Addr> Distance<T> {
     }
     #[inline]
     pub fn take(&mut self) -> Vec<T> {
-        self.quota.clear();
-        self.replicas.split_off(0)
+        self.replicas
+            .split_off(0)
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect()
     }
     #[inline]
     pub fn len(&self) -> usize {
@@ -129,8 +117,8 @@ impl<T: Addr> Distance<T> {
     #[inline]
     fn check_quota_get_idx(&self) -> usize {
         let mut idx = self.idx();
-        debug_assert!(idx < self.quota.len());
-        let quota = unsafe { self.quota.get_unchecked(idx) };
+        debug_assert!(idx < self.len());
+        let quota = unsafe { &self.replicas.get_unchecked(idx).1 };
         // 每个backend的配置为2秒
         if quota.us() >= 2_000_000 {
             let new = (idx + 1) % self.local_len();
@@ -143,6 +131,12 @@ impl<T: Addr> Distance<T> {
         idx
     }
     #[inline]
+    pub unsafe fn get_unchecked(&self, idx: usize) -> &T {
+        debug_assert!(idx < self.len());
+        &self.replicas.get_unchecked(idx).0
+    }
+    // 从local选择一个实例
+    #[inline]
     pub fn select_idx(&self) -> usize {
         assert_ne!(self.len(), 0);
         let idx = if self.len() == 1 {
@@ -150,14 +144,14 @@ impl<T: Addr> Distance<T> {
         } else {
             self.check_quota_get_idx()
         };
-        assert!(idx < self.len(), "{} >= {}", idx, self.len());
+        debug_assert!(idx < self.local_len(), "idx:{} overflow {:?}", idx, self);
         idx
     }
     // 只从local获取
     #[inline]
     pub fn unsafe_select(&self) -> (usize, &T) {
         let idx = self.select_idx();
-        (idx, unsafe { self.replicas.get_unchecked(idx) })
+        (idx, unsafe { &self.replicas.get_unchecked(idx).0 })
     }
     // idx: 上一次获取到的idx
     // runs: 已经连续获取到的次数
@@ -185,26 +179,39 @@ impl<T: Addr> Distance<T> {
     #[inline]
     pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T) {
         let idx = self.select_next_idx(idx, runs);
-        (idx, self.replicas.get_unchecked(idx))
+        (idx, &self.replicas.get_unchecked(idx).0)
     }
     pub fn into_inner(self) -> Vec<T> {
-        self.replicas
+        self.replicas.into_iter().map(|(r, _)| r).collect()
+    }
+    #[inline]
+    pub fn iter(&self) -> Iter<'_, T> {
+        Iter {
+            start: unsafe { NonNull::new_unchecked(self.replicas.as_ptr() as *mut _) },
+            end: unsafe { self.replicas.as_ptr().add(self.replicas.len()) },
+            _marker: std::marker::PhantomData,
+        }
     }
 }
 
-impl<T> std::ops::Deref for Distance<T> {
-    type Target = Vec<T>;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.replicas
+use std::ptr::NonNull;
+pub struct Iter<'a, T> {
+    start: NonNull<(T, BackendQuota)>,
+    end: *const (T, BackendQuota),
+    _marker: std::marker::PhantomData<&'a T>,
+}
+impl<'a, T> std::iter::Iterator for Iter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.start.as_ptr() as *const _ == self.end {
+            None
+        } else {
+            let ret = unsafe { &self.start.as_ref().0 };
+            self.start = unsafe { NonNull::new_unchecked(self.start.as_ptr().add(1)) };
+            Some(ret)
+        }
     }
 }
-//impl<T> std::ops::DerefMut for Distance<T> {
-//    #[inline]
-//    fn deref_mut(&mut self) -> &mut Self::Target {
-//        &mut self.replicas
-//    }
-//}
 
 impl<T: Addr> std::fmt::Debug for Distance<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

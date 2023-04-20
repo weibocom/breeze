@@ -205,10 +205,14 @@ pub trait Addr {
         s
     }
 }
-
-impl<T> Addr for (String, T) {
+impl<T: Addr, O> Addr for (T, O) {
     fn addr(&self) -> &str {
-        &self.0
+        self.0.addr()
+    }
+}
+impl Addr for String {
+    fn addr(&self) -> &str {
+        self.as_str()
     }
 }
 
