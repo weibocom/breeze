@@ -23,10 +23,11 @@ impl Fixed {
                         *sig = new_sig;
                         cb(&cfg);
                     }
-                    _e @ Ok(Config::NotFound) => {
+                    Ok(Config::NotFound) => {
                         use_name = true;
-                        log::warn!("get service {} err {:?}, without {}", name, _e, name_ext);
+                        log::warn!("service not found {} {}", name, name_ext);
                     }
+                    Ok(Config::NotChanged) => {}
                     //其余情况不能判定应使用name配置
                     _e => log::warn!("get service {} err {:?}", name, _e),
                 }
@@ -37,6 +38,7 @@ impl Fixed {
                         *sig = new_sig;
                         cb(&cfg);
                     }
+                    Ok(Config::NotChanged) => {}
                     _e => log::warn!("get service {} err {:?}", name, _e),
                 }
             }
