@@ -55,6 +55,12 @@ impl<T: Inited> Inited for std::sync::Arc<T> {
         (&**self).inited()
     }
 }
+impl<T: Inited, O> Inited for (T, O) {
+    #[inline]
+    fn inited(&self) -> bool {
+        self.0.inited()
+    }
+}
 
 unsafe impl<T> Send for TopologyReadGuard<T> {}
 unsafe impl<T> Sync for TopologyReadGuard<T> {}
