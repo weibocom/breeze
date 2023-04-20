@@ -203,7 +203,7 @@ where
             use discovery::distance::{Balance, ByDistance};
             let master = ns.master.clone();
             let local = ns.is_local();
-            let backend_quota = ns.backend_quota;
+            let backend_quota = ns.is_backend_quota();
             let (mut local_len, mut backends) = ns.take_backends();
             //let local = true;
             if local && local_len > 1 {

@@ -33,16 +33,26 @@ pub struct Namespace {
     pub timeout_ms_master: u32,
     #[serde(default)]
     pub timeout_ms_slave: u32,
-    #[serde(default)]
-    pub local_affinity: bool,
+    // #[serde(default)]
+    // pub local_affinity: bool,
     // 同分片副本后端资源是否按quota轮询
-    #[serde(default)]
-    pub(crate) backend_quota: bool,
+    #[serde(default, alias="local_affinity")]
+    backend_quota: bool,
 }
 
 impl Namespace {
     pub(crate) fn is_local(&self) -> bool {
-        self.local_affinity || match std::env::var("BREEZE_LOCAL")
+        false
+        // self.local_affinity || match std::env::var("BREEZE_LOCAL")
+        //         .unwrap_or("".to_string())
+        //         .as_str()
+        //     {
+        //         "distance" => true,
+        //         _ => false,
+        //     }
+    }
+    pub(crate) fn is_backend_quota(&self) -> bool {
+        self.backend_quota || match std::env::var("BREEZE_LOCAL")
                 .unwrap_or("".to_string())
                 .as_str()
             {

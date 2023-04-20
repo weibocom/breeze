@@ -32,13 +32,21 @@ pub struct Basic {
     // master是否参与读
     #[serde(default)]
     pub(crate) master_read: bool,
-    // 同分片副本后端资源是否按quota轮询
-    #[serde(default)]
-    pub(crate) backend_quota: bool,
+    pub backend_quota: bool,
 }
 
 impl RedisNamespace {
     pub(super) fn is_local(&self) -> bool {
+        // match std::env::var("BREEZE_LOCAL")
+        //     .unwrap_or("".to_string())
+        //     .as_str()
+        // {
+        //     "distance" => true,
+        //     _ => self.basic.selector.as_str() == "distance",
+        // }
+        false
+    }
+    pub(super) fn is_backend_quota(&self) -> bool {
         match std::env::var("BREEZE_LOCAL")
             .unwrap_or("".to_string())
             .as_str()
@@ -49,7 +57,7 @@ impl RedisNamespace {
     }
 
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
-        let ns = serde_yaml::from_str::<RedisNamespace>(cfg)
+        let mut ns = serde_yaml::from_str::<RedisNamespace>(cfg)
             .map_err(|e| {
                 log::info!("failed to parse redis config:{}", cfg);
                 e
@@ -71,6 +79,7 @@ impl RedisNamespace {
                 return None;
             }
         }
+        ns.basic.backend_quota = ns.is_backend_quota();
         Some(ns)
     }
     pub(super) fn timeout_master(&self) -> Timeout {

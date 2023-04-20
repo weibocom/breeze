@@ -33,7 +33,6 @@ impl BackendQuota {
 pub struct Distance<T> {
     len_local: u16,
     backend_quota: bool,
-    seq: Arc<AtomicUsize>,
     idx: Arc<AtomicUsize>,
     replicas: Vec<(T, BackendQuota)>,
 }
@@ -42,8 +41,7 @@ impl<T: Addr> Distance<T> {
         Self {
             len_local: 0,
             backend_quota: false,
-            seq: Arc::new(AtomicUsize::new(0)),
-            idx: Default::default(),
+            idx: Arc::new(AtomicUsize::new(0)),
             replicas: Vec::new(),
         }
     }
@@ -123,7 +121,7 @@ impl<T: Addr> Distance<T> {
     #[inline]
     fn check_quota_get_idx(&self) -> usize {
         if !self.backend_quota {
-            return (self.seq.fetch_add(1, Relaxed) >> 10) % self.local_len();
+            return (self.idx.fetch_add(1, Relaxed) >> 10) % self.local_len();
         }
 
         let mut idx = self.idx();
@@ -137,7 +135,7 @@ impl<T: Addr> Distance<T> {
             if let Ok(_) = self.idx.compare_exchange(idx, new, AcqRel, Relaxed) {
                 quota.used_us.store(0, Relaxed);
             }
-            log::info!(
+            log::debug!(
                 "quota:{} idx changed {}->{}; backend changed {}->{}",
                 q,
                 idx,
