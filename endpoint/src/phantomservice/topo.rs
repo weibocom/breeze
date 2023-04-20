@@ -189,7 +189,7 @@ where
                 shard_streams.push((addr.clone(), shard));
             }
 
-            let shard = Distance::from(shard_streams);
+            let shard = Distance::from(shard_streams, false);
 
             self.streams.push(shard);
         }

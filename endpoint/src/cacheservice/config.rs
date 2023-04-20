@@ -35,6 +35,9 @@ pub struct Namespace {
     pub timeout_ms_slave: u32,
     #[serde(default)]
     pub local_affinity: bool,
+    // 同分片副本后端资源是否按quota轮询
+    #[serde(default)]
+    pub(crate) backend_quota: bool,
 }
 
 impl Namespace {

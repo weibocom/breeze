@@ -260,7 +260,13 @@ where
                 slave.disable_single();
                 replicas.push((addr, slave));
             }
-            let shard = Shard::selector(self.cfg.is_local(), master_addr, master, replicas);
+            let shard = Shard::selector(
+                self.cfg.is_local(),
+                master_addr,
+                master,
+                replicas,
+                self.cfg.basic.backend_quota,
+            );
             self.shards.push(shard);
         }
         assert_eq!(self.shards.len(), self.cfg.shards_url.len());
@@ -279,10 +285,16 @@ struct Shard<E> {
 }
 impl<E> Shard<E> {
     #[inline]
-    fn selector(local: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(
+        local: bool,
+        master_host: String,
+        master: E,
+        replicas: Vec<(String, E)>,
+        backend_quota: bool,
+    ) -> Self {
         Self {
             master: (master_host, master),
-            slaves: Distance::with_local(replicas, local),
+            slaves: Distance::with_local(replicas, local, backend_quota),
         }
     }
     #[inline]

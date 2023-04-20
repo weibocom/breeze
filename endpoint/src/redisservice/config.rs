@@ -32,6 +32,9 @@ pub struct Basic {
     // master是否参与读
     #[serde(default)]
     pub(crate) master_read: bool,
+    // 同分片副本后端资源是否按quota轮询
+    #[serde(default)]
+    pub(crate) backend_quota: bool,
 }
 
 impl RedisNamespace {

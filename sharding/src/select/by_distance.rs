@@ -32,6 +32,8 @@ impl BackendQuota {
 #[derive(Clone)]
 pub struct Distance<T> {
     len_local: u16,
+    backend_quota: bool,
+    seq: Arc<AtomicUsize>,
     idx: Arc<AtomicUsize>,
     replicas: Vec<(T, BackendQuota)>,
 }
@@ -39,6 +41,8 @@ impl<T: Addr> Distance<T> {
     pub fn new() -> Self {
         Self {
             len_local: 0,
+            backend_quota: false,
+            seq: Arc::new(AtomicUsize::new(0)),
             idx: Default::default(),
             replicas: Vec::new(),
         }
@@ -53,7 +57,7 @@ impl<T: Addr> Distance<T> {
         debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
         unsafe { self.replicas.get_unchecked(idx).1.clone() }
     }
-    pub fn with_local(replicas: Vec<T>, local: bool) -> Self {
+    pub fn with_local(replicas: Vec<T>, local: bool, backend_quota: bool) -> Self {
         assert_ne!(replicas.len(), 0);
         let mut me = Self::new();
         me.refresh(replicas);
@@ -65,11 +69,12 @@ impl<T: Addr> Distance<T> {
             me.replicas.shuffle(&mut thread_rng());
             me.topn(me.len());
         }
+        me.backend_quota = backend_quota;
         me
     }
     #[inline]
-    pub fn from(replicas: Vec<T>) -> Self {
-        Self::with_local(replicas, true)
+    pub fn from(replicas: Vec<T>, backend_quota: bool) -> Self {
+        Self::with_local(replicas, true, backend_quota)
     }
     // 同时更新配额
     fn refresh(&mut self, replicas: Vec<T>) {
@@ -78,9 +83,10 @@ impl<T: Addr> Distance<T> {
             .map(|r| (r, BackendQuota::default()))
             .collect();
     }
-    pub fn update(&mut self, replicas: Vec<T>, topn: usize) {
+    pub fn update(&mut self, replicas: Vec<T>, topn: usize, backend_quota: bool) {
         self.refresh(replicas);
         self.topn(topn);
+        self.backend_quota = backend_quota;
     }
     // 只取前n个进行批量随机访问
     fn topn(&mut self, n: usize) {
@@ -116,16 +122,29 @@ impl<T: Addr> Distance<T> {
     // 返回idx
     #[inline]
     fn check_quota_get_idx(&self) -> usize {
+        if !self.backend_quota {
+            return (self.seq.fetch_add(1, Relaxed) >> 10) % self.local_len();
+        }
+
         let mut idx = self.idx();
         debug_assert!(idx < self.len());
         let quota = unsafe { &self.replicas.get_unchecked(idx).1 };
         // 每个backend的配置为2秒
-        if quota.us() >= 2_000_000 {
+        let q = quota.us();
+        if q >= 2_000_000 {
             let new = (idx + 1) % self.local_len();
             // 超过配额，则idx+1
             if let Ok(_) = self.idx.compare_exchange(idx, new, AcqRel, Relaxed) {
                 quota.used_us.store(0, Relaxed);
             }
+            log::info!(
+                "quota:{} idx changed {}->{}; backend changed {}->{}",
+                q,
+                idx,
+                new,
+                (unsafe { self.replicas.get_unchecked(idx) }).addr(),
+                (unsafe { self.replicas.get_unchecked(new) }).addr()
+            );
             idx = new;
         }
         idx
