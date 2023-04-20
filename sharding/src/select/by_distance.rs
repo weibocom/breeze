@@ -1,9 +1,10 @@
 use discovery::distance::{Addr, ByDistance};
-use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+use rand::Rng;
+use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
 
 #[repr(transparent)]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct BackendQuota {
     used_us: Arc<AtomicUsize>, // 所有副本累计使用的时间
 }
@@ -13,12 +14,22 @@ impl BackendQuota {
         self.used_us.fetch_add(d.as_micros() as usize, Relaxed);
     }
     #[inline]
-    fn idx(&self) -> usize {
-        // 2*1024*1024 us 换backend
-        self.used_us.load(Relaxed) >> 21
+    pub fn err_incr(&self, d: ds::time::Duration) {
+        self.used_us
+            .fetch_add(d.as_micros().max(500_000) as usize, Relaxed);
     }
+    //#[inline]
+    //fn idx(&self) -> usize {
+    //    // 2*1024*1024 us 换backend
+    //    self.used_us.load(Relaxed) >> 21
+    //}
+    //#[inline]
+    //fn val(&self) -> usize {
+    //    self.used_us.load(Relaxed)
+    //}
+    // 配置时间的微秒计数
     #[inline]
-    fn val(&self) -> usize {
+    fn us(&self) -> usize {
         self.used_us.load(Relaxed)
     }
 }
@@ -29,31 +40,33 @@ impl BackendQuota {
 #[derive(Clone)]
 pub struct Distance<T> {
     len_local: u16,
-    quota: BackendQuota, // 所有副本累计使用的时间
-    pub(super) replicas: Vec<T>,
+    idx: Arc<AtomicUsize>,
+    replicas: Vec<T>,
+    quota: Vec<BackendQuota>,
 }
 impl<T: Addr> Distance<T> {
     pub fn new() -> Self {
         Self {
             len_local: 0,
-            quota: BackendQuota {
-                used_us: Arc::new(AtomicUsize::new(0)),
-            },
+            idx: Default::default(),
             replicas: Vec::new(),
+            quota: Vec::new(),
         }
     }
+    #[inline]
+    fn idx(&self) -> usize {
+        self.idx.load(Relaxed)
+    }
+    #[inline]
     pub fn quota(&self) -> BackendQuota {
-        self.quota.clone()
+        let idx = self.idx();
+        debug_assert!(idx < self.quota.len(), "{} < {}", idx, self.quota.len());
+        unsafe { self.quota.get_unchecked(idx).clone() }
     }
     pub fn with_local(replicas: Vec<T>, local: bool) -> Self {
         assert_ne!(replicas.len(), 0);
-        let mut me = Self {
-            len_local: 0,
-            quota: BackendQuota {
-                used_us: Arc::new(AtomicUsize::new(0)),
-            },
-            replicas,
-        };
+        let mut me = Self::new();
+        me.refresh(replicas);
         if local {
             me.local();
         } else {
@@ -68,10 +81,29 @@ impl<T: Addr> Distance<T> {
     pub fn from(replicas: Vec<T>) -> Self {
         Self::with_local(replicas, true)
     }
+    // 同时更新配额
+    fn refresh(&mut self, replicas: Vec<T>) {
+        self.replicas = replicas;
+        self.quota =
+            self.replicas
+                .iter()
+                .fold(Vec::with_capacity(self.replicas.capacity()), |mut r, _| {
+                    r.push(BackendQuota::default());
+                    r
+                });
+    }
+    pub fn update(&mut self, replicas: Vec<T>, topn: usize) {
+        self.refresh(replicas);
+        self.topn(topn);
+    }
     // 只取前n个进行批量随机访问
-    pub fn topn(&mut self, n: usize) {
+    fn topn(&mut self, n: usize) {
         assert!(n > 0 && n <= self.len(), "n: {}, len:{}", n, self.len());
         self.len_local = n as u16;
+        // 初始节点随机选择，避免第一个节点成为热点
+        let idx: usize = rand::thread_rng().gen_range(0..n);
+        self.idx.store(idx, Relaxed);
+        assert_eq!(self.replicas.len(), self.quota.len());
     }
     // 前freeze个是local的，不参与排序
     fn local(&mut self) {
@@ -80,6 +112,7 @@ impl<T: Addr> Distance<T> {
     }
     #[inline]
     pub fn take(&mut self) -> Vec<T> {
+        self.quota.clear();
         self.replicas.split_off(0)
     }
     #[inline]
@@ -90,9 +123,24 @@ impl<T: Addr> Distance<T> {
     pub fn local_len(&self) -> usize {
         self.len_local as usize
     }
+    // 检查当前节点的配额
+    // 如果配额用完，则idx+1
+    // 返回idx
     #[inline]
-    fn remote_len(&self) -> usize {
-        self.len() - self.local_len()
+    fn check_quota_get_idx(&self) -> usize {
+        let mut idx = self.idx();
+        debug_assert!(idx < self.quota.len());
+        let quota = unsafe { self.quota.get_unchecked(idx) };
+        // 每个backend的配置为2秒
+        if quota.us() >= 2_000_000 {
+            let new = (idx + 1) % self.local_len();
+            // 超过配额，则idx+1
+            if let Ok(_) = self.idx.compare_exchange(idx, new, AcqRel, Relaxed) {
+                quota.used_us.store(0, Relaxed);
+            }
+            idx = new;
+        }
+        idx
     }
     #[inline]
     pub fn select_idx(&self) -> usize {
@@ -100,7 +148,7 @@ impl<T: Addr> Distance<T> {
         let idx = if self.len() == 1 {
             0
         } else {
-            (self.quota.idx()) % self.local_len()
+            self.check_quota_get_idx()
         };
         assert!(idx < self.len(), "{} >= {}", idx, self.len());
         idx
@@ -124,8 +172,8 @@ impl<T: Addr> Distance<T> {
             // 从remote中取. remote_len > 0
             assert_ne!(self.local_len(), self.len(), "{} {} {:?}", idx, runs, self);
             if idx < self.local_len() {
-                // 第一次使用remote，为避免热点，从[idx_local..idx_remote)随机取一个
-                self.quota.val() % self.remote_len() + self.local_len()
+                // 第一次使用remote，为避免热点，从[len_local..len)随机取一个
+                rand::thread_rng().gen_range(self.local_len()..self.len())
             } else {
                 // 按顺序从remote中取. 走到最后一个时，从local_len开始
                 ((idx + 1) % self.len()).max(self.local_len())
@@ -151,12 +199,12 @@ impl<T> std::ops::Deref for Distance<T> {
         &self.replicas
     }
 }
-impl<T> std::ops::DerefMut for Distance<T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.replicas
-    }
-}
+//impl<T> std::ops::DerefMut for Distance<T> {
+//    #[inline]
+//    fn deref_mut(&mut self) -> &mut Self::Target {
+//        &mut self.replicas
+//    }
+//}
 
 impl<T: Addr> std::fmt::Debug for Distance<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

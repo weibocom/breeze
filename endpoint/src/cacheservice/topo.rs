@@ -186,7 +186,7 @@ where
             let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();
-            self.streams.reserve(old_streams.len());
+            //self.streams.reserve(old_streams.len());
             // 把streams按address进行flatten
             let mut streams = HashMap::with_capacity(old_streams.len() * 8);
             let old = &mut streams;
@@ -210,13 +210,14 @@ where
                 local_len = backends.sort(master);
             }
 
+            let mut new = Vec::with_capacity(backends.len());
             for (i, group) in backends.into_iter().enumerate() {
                 // 第一组是master
                 let to = if i == 0 { mto } else { rto };
                 let e = self.build(old, group, dist, namespace, to);
-                self.streams.push(e);
+                new.push(e);
             }
-            self.streams.topn(local_len);
+            self.streams.update(new, local_len);
         }
         // old 会被dopped
     }
