@@ -1,18 +1,14 @@
-use metrics::{Metric, Path};
-use std::sync::atomic::{AtomicBool, Ordering::Acquire};
-use std::sync::Arc;
 use ds::time::Duration;
+use metrics::{Metric, Path};
 pub(crate) struct ReconnPolicy {
-    single: Arc<AtomicBool>,
     conns: usize,
     metric: Metric,
     continue_fails: usize,
 }
 
 impl ReconnPolicy {
-    pub(crate) fn new(path: &Path, single: Arc<AtomicBool>) -> Self {
+    pub(crate) fn new(path: &Path) -> Self {
         Self {
-            single,
             metric: path.status("reconn"),
             conns: 0,
             continue_fails: 0,
@@ -20,38 +16,24 @@ impl ReconnPolicy {
     }
 
     // 连接失败，为下一次连接做准备：sleep一段时间，避免无意义的重连
+    // 第一次快速重连
     pub async fn conn_failed(&mut self) {
         self.conns += 1;
         self.metric += 1;
+
+        // 第一次失败的时候，continue_fails为0，因此不会sleep
+        let sleep_mills = (self.continue_fails * 500).min(3000);
+        log::info!(
+            "{}-th conn {} sleep:{} => {}",
+            self.conns,
+            self.continue_fails,
+            sleep_mills,
+            self.metric
+        );
         self.continue_fails += 1;
-
-        static MAX_FAILED: usize = 1;
-        let mut sleep_mills = 0;
-        if self.continue_fails >= MAX_FAILED {
-            // 连续失败超过$MAX_FAILED次，master sleep 100ms，slave sleep 3000
-            if self.single.load(Acquire) {
-                sleep_mills = 100;
-            } else {
-                sleep_mills = 3 * 1000;
-            }
-        };
-
-        if self.continue_fails == 1 {
-            log::info!(
-                "{}-th conn {} sleep:{} ",
-                self.conns,
-                self.continue_fails,
-                sleep_mills
-            );
-        } else {
-            log::debug!(
-                "{}-th conn {} sleep:{} ",
-                self.conns,
-                self.continue_fails,
-                sleep_mills
-            );
+        if sleep_mills > 0 {
+            tokio::time::sleep(Duration::from_millis(sleep_mills as u64)).await;
         }
-        tokio::time::sleep(Duration::from_millis(sleep_mills)).await;
     }
 
     // 连接创建成功，连接次数加1，重置持续失败次数
