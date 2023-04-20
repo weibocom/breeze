@@ -41,11 +41,13 @@ pub struct Sender<T> {
 }
 
 impl<T> Receiver<T> {
-    #[inline]
+    #[inline(always)]
     pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
         self.inner.poll_recv(cx).map(|t| {
-            self.rx += 1;
-            t
+            t.map(|v| {
+                self.rx += 1;
+                v
+            })
         })
     }
     #[inline(always)]
@@ -53,6 +55,7 @@ impl<T> Receiver<T> {
         self.tx.load(Acquire) >= self.rx + 2
     }
     pub fn enable(&mut self) {
+        assert_eq!(self.tx.load(Acquire), self.rx, "not empty after disable");
         self.rx = 0;
         self.tx.store(0, Release);
         self.switcher.on();

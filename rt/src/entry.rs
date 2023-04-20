@@ -106,7 +106,7 @@ impl<T: TimeoutCheck + Unpin, F: Future<Output = Result<()>> + ReEnter + Debug +
         // close
         while !self.inner.close() {
             ready!(self.refresh_tick.poll_tick(cx));
-            self.closing = self.closing.wrapping_add(1);
+            self.closing = self.closing.wrapping_add(1).max(1);
             // 一次tick是200ms，10秒钟统计一次
             if self.closing % (10 * 5) == 0 {
                 println!("closing=>{} {:?} {:?}", self.closing, self.inner, self.out);

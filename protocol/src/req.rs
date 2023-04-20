@@ -1,4 +1,4 @@
-use ds::time::{Duration, Instant};
+use ds::time::Instant;
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
@@ -21,8 +21,6 @@ pub trait Request:
 {
     fn cmd(&self) -> &HashedCommand;
     fn start_at(&self) -> Instant;
-    fn last_start_at(&self) -> ds::time::Instant;
-    fn elapsed_current_req(&self) -> Duration;
     fn operation(&self) -> Operation;
     fn len(&self) -> usize;
     fn hash(&self) -> i64;
