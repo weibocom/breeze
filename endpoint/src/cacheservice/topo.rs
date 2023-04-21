@@ -87,7 +87,9 @@ where
                     // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
                     // 第一次读一般访问L1，miss之后再读master；
                     // 读quota的更新根据第一次的请求时间更合理
-                    req.quota(self.streams.quota());
+                    if let Some(quota) = self.streams.quota(){
+                        req.quota(quota);
+                    }
                 }
                 self.context_get(&mut ctx)
             };
@@ -204,8 +206,8 @@ where
             let master = ns.master.clone();
             let local = ns.is_local();
             let (mut local_len, mut backends) = ns.take_backends();
-            //let local = true;
-            if local && local_len > 1 {
+            //let local = true; 开启local，则local_len可能会变小，与按quota预期不符
+            if false && local && local_len > 1 {
                 backends.balance(&master);
                 local_len = backends.sort(master);
             }
@@ -217,7 +219,7 @@ where
                 let e = self.build(old, group, dist, namespace, to);
                 new.push(e);
             }
-            self.streams.update(new, local_len);
+            self.streams.update(new, local_len, local);
         }
         // old 会被dopped
     }

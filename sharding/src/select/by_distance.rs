@@ -50,10 +50,13 @@ impl<T: Addr> Distance<T> {
         self.idx.load(Relaxed)
     }
     #[inline]
-    pub fn quota(&self) -> BackendQuota {
+    pub fn quota(&self) -> Option<BackendQuota> {
+        if !self.backend_quota {
+            return None;
+        }
         let idx = self.idx();
         debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
-        unsafe { self.replicas.get_unchecked(idx).1.clone() }
+        Some(unsafe { self.replicas.get_unchecked(idx).1.clone() })
     }
     pub fn with_local(replicas: Vec<T>, local: bool) -> Self {
         assert_ne!(replicas.len(), 0);
@@ -62,6 +65,10 @@ impl<T: Addr> Distance<T> {
 
         // 开启local，即开启后端使用quota
         me.backend_quota = local;
+
+        use rand::seq::SliceRandom;
+        use rand::thread_rng;
+        me.replicas.shuffle(&mut thread_rng());
         me.topn(me.len());
 
         me
@@ -77,27 +84,17 @@ impl<T: Addr> Distance<T> {
             .map(|r| (r, BackendQuota::default()))
             .collect();
     }
-    pub fn update(&mut self, replicas: Vec<T>, topn: usize) {
+    pub fn update(&mut self, replicas: Vec<T>, topn: usize, local: bool) {
+        self.backend_quota = local;
         self.refresh(replicas);
         self.topn(topn);
     }
     // 只取前n个进行批量随机访问
     fn topn(&mut self, n: usize) {
         assert!(n > 0 && n <= self.len(), "n: {}, len:{}", n, self.len());
-
-        // 开启local，即开启后端使用quota；
-        if !self.backend_quota {
-            self.backend_quota = n < self.len();
-        }
-
-        self.len_local = self.len() as u16;
-
-        use rand::seq::SliceRandom;
-        use rand::thread_rng;
-        self.replicas.shuffle(&mut thread_rng());
-
-        // 初始节点随机选择，避免第一个节点成为热点；使用quota所有后端均访问
-        let idx: usize = rand::thread_rng().gen_range(0..self.len());
+        self.len_local = n as u16;
+        // 初始节点随机选择，避免第一个节点成为热点
+        let idx: usize = rand::thread_rng().gen_range(0..n);
         self.idx.store(idx, Relaxed);
     }
     // // 前freeze个是local的，不参与排序
@@ -126,6 +123,10 @@ impl<T: Addr> Distance<T> {
     // 返回idx
     #[inline]
     fn check_quota_get_idx(&self) -> usize {
+        if !self.backend_quota {
+            return (self.idx.fetch_add(1, Relaxed) >> 10) % self.local_len();
+        }
+
         let mut idx = self.idx();
         debug_assert!(idx < self.len());
         let quota = unsafe { &self.replicas.get_unchecked(idx).1 };
