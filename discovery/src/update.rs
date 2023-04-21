@@ -85,18 +85,16 @@ where
                 t.try_load();
             }
             cycle_i += 1;
-            if cycle_i == cycle || first_cycle {
-                // 第一个循环处于冷启动期，需要加快固定任务的加载频率，避免请求失败导致其他问题(如socks)
+            if cycle_i == cycle {
                 self.cb.with_discovery(self.discovery.inner()).await;
-                if cycle_i == cycle {
-                    cycle_i = 0;
-                    // 清空缓存
-                    self.discovery.clear();
-                    // 重置first cycle
-                    if first_cycle {
-                        first_cycle = false;
-                    }
-                }
+                cycle_i = 0;
+                // 清空缓存
+                self.discovery.clear();
+            }
+            // 第一个循环处于冷启动期，需要加快固定任务的加载频率，避免请求失败导致其他问题(如socks)
+            if first_cycle && !self.cb.inited() {
+                self.cb.with_discovery(self.discovery.inner()).await;
+                first_cycle = false;
             }
             tick.tick().await;
         }

@@ -2,10 +2,10 @@ use crate::Config;
 // 提供一个除了topology之外的，定期使用discovery的策略
 #[derive(Default)]
 pub struct Fixed {
+    inited: bool,
     // name, idc, sig, callback
     cbs: Vec<(
-        String,
-        &'static str,
+        Vec<String>, // 支持从多个path获取数据
         String,
         Box<dyn Fn(&str) + 'static + Send + Sync>,
     )>,
@@ -13,35 +13,29 @@ pub struct Fixed {
 
 impl Fixed {
     pub(crate) async fn with_discovery<D: crate::Discover>(&mut self, discovery: &D) {
-        for (name, name_ext, sig, cb) in self.cbs.iter_mut() {
-            let mut use_name = false;
-            //优先使用name_ext配置
-            if !name_ext.is_empty() {
-                let name = format!("{}/{}", name, name_ext);
-                match discovery.get_service::<String>(&name, sig).await {
+        let mut success = 0;
+        for (paths, sig, cb) in self.cbs.iter_mut() {
+            for path in paths {
+                match discovery.get_service::<String>(&path, sig).await {
                     Ok(Config::Config(new_sig, cfg)) => {
                         *sig = new_sig;
                         cb(&cfg);
+                        success += 1;
+                        break;
+                    }
+                    Ok(Config::NotChanged) => {
+                        break;
                     }
                     Ok(Config::NotFound) => {
-                        use_name = true;
-                        log::warn!("service not found {} {}", name, name_ext);
+                        log::warn!("service not found: {}", path);
                     }
-                    Ok(Config::NotChanged) => {}
                     //其余情况不能判定应使用name配置
-                    _e => log::warn!("get service {} err {:?}", name, _e),
+                    _e => log::warn!("get service {} err {:?}", path, _e),
                 }
             }
-            if name_ext.is_empty() || use_name {
-                match discovery.get_service::<String>(name, sig).await {
-                    Ok(Config::Config(new_sig, cfg)) => {
-                        *sig = new_sig;
-                        cb(&cfg);
-                    }
-                    Ok(Config::NotChanged) => {}
-                    _e => log::warn!("get service {} err {:?}", name, _e),
-                }
-            }
+        }
+        if !self.inited {
+            self.inited = success == self.cbs.len();
         }
     }
     pub fn register(
@@ -50,8 +44,16 @@ impl Fixed {
         name_ext: &'static str,
         cb: impl Fn(&str) + 'static + Send + Sync,
     ) {
+        let mut available_paths = Vec::new();
+        if !name_ext.is_empty() {
+            available_paths.push(format!("{}/{}", path, name_ext));
+        }
+        available_paths.push(path);
         self.cbs
-            .push((path, name_ext, "".to_string(), Box::new(cb)));
+            .push((available_paths, "".to_string(), Box::new(cb)));
+    }
+    pub(crate) fn inited(&self) -> bool {
+        self.inited
     }
 }
 
