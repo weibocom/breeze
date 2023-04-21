@@ -206,8 +206,8 @@ where
             let master = ns.master.clone();
             let local = ns.is_local();
             let (mut local_len, mut backends) = ns.take_backends();
-            //let local = true;
-            if local && local_len > 1 {
+            //let local = true; 开启local，则local_len可能会变小，与按quota预期不符
+            if false && local && local_len > 1 {
                 backends.balance(&master);
                 local_len = backends.sort(master);
             }
