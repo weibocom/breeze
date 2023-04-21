@@ -1,4 +1,4 @@
-use discovery::distance::{Addr, ByDistance};
+use discovery::distance::Addr;
 use rand::Rng;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
@@ -32,6 +32,7 @@ impl BackendQuota {
 #[derive(Clone)]
 pub struct Distance<T> {
     len_local: u16,
+    backend_quota: bool,
     idx: Arc<AtomicUsize>,
     replicas: Vec<(T, BackendQuota)>,
 }
@@ -39,6 +40,7 @@ impl<T: Addr> Distance<T> {
     pub fn new() -> Self {
         Self {
             len_local: 0,
+            backend_quota: false,
             idx: Default::default(),
             replicas: Vec::new(),
         }
@@ -57,14 +59,11 @@ impl<T: Addr> Distance<T> {
         assert_ne!(replicas.len(), 0);
         let mut me = Self::new();
         me.refresh(replicas);
-        if local {
-            me.local();
-        } else {
-            use rand::seq::SliceRandom;
-            use rand::thread_rng;
-            me.replicas.shuffle(&mut thread_rng());
-            me.topn(me.len());
-        }
+
+        // 开启local，即开启后端使用quota
+        me.backend_quota = local;
+        me.topn(me.len());
+
         me
     }
     #[inline]
@@ -85,16 +84,27 @@ impl<T: Addr> Distance<T> {
     // 只取前n个进行批量随机访问
     fn topn(&mut self, n: usize) {
         assert!(n > 0 && n <= self.len(), "n: {}, len:{}", n, self.len());
-        self.len_local = n as u16;
-        // 初始节点随机选择，避免第一个节点成为热点
-        let idx: usize = rand::thread_rng().gen_range(0..n);
+
+        // 开启local，即开启后端使用quota；
+        if !self.backend_quota {
+            self.backend_quota = n < self.len();
+        }
+
+        self.len_local = self.len() as u16;
+
+        use rand::seq::SliceRandom;
+        use rand::thread_rng;
+        self.replicas.shuffle(&mut thread_rng());
+
+        // 初始节点随机选择，避免第一个节点成为热点；使用quota所有后端均访问
+        let idx: usize = rand::thread_rng().gen_range(0..self.len());
         self.idx.store(idx, Relaxed);
     }
-    // 前freeze个是local的，不参与排序
-    fn local(&mut self) {
-        let local = self.replicas.sort(Vec::new());
-        self.topn(local);
-    }
+    // // 前freeze个是local的，不参与排序
+    // fn local(&mut self) {
+    //     let local = self.replicas.sort(Vec::new());
+    //     self.topn(local);
+    // }
     #[inline]
     pub fn take(&mut self) -> Vec<T> {
         self.replicas
