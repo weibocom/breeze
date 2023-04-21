@@ -265,7 +265,7 @@ where
                 master_addr,
                 master,
                 replicas,
-                self.cfg.basic.backend_quota,
+                self.cfg.is_backend_quota(),
             );
             self.shards.push(shard);
         }

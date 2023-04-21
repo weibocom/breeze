@@ -71,8 +71,8 @@ impl<T: Addr> Distance<T> {
         me
     }
     #[inline]
-    pub fn from(replicas: Vec<T>, backend_quota: bool) -> Self {
-        Self::with_local(replicas, true, backend_quota)
+    pub fn from(replicas: Vec<T>) -> Self {
+        Self::with_local(replicas, true, true)
     }
     // 同时更新配额
     fn refresh(&mut self, replicas: Vec<T>) {
