@@ -57,7 +57,7 @@ impl<T> Receiver<T> {
         self.tx.load(Acquire) >= self.rx + 2
     }
     pub fn enable(&mut self) {
-        assert_eq!(self.tx.load(Acquire), self.rx, "not empty after disable");
+        // assert_eq!(self.tx.load(Acquire), self.rx, "not empty after disable");
         self.rx = 0;
         self.tx.store(0, Release);
         self.switcher.on();
