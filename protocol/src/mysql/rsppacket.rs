@@ -110,7 +110,22 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     pub(super) fn parse_result_set_meta(&mut self) -> Result<Or<Vec<Column>, OkPacket<'static>>> {
         // 全部解析完毕前，不对数据进行take
-        let payload = self.next_packet_data(false)?;
+        let payload = match self.next_packet_data(false) {
+            Ok(pld) => pld,
+            Err(Error::ProtocolIncomplete) => {
+                return Err(Error::ProtocolIncomplete);
+            }
+            Err(Error::MysqlError) => {
+                // TODO 解析发现sql异常
+                log::warn!("+++ found mysql error");
+                self.take();
+                return Err(Error::MysqlError);
+            }
+            Err(e) => {
+                panic!("mysql response found unknow err: {:?}", e);
+            }
+        };
+
         match payload[0] {
             HEADER_FLAG_OK => {
                 let ok = self.handle_ok::<CommonOkPacket>(&payload)?;
@@ -235,6 +250,9 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         if data.len() >= HEADER_LEN + raw_chunk_len {
             // 0xFF ERR packet header
             if self.current() == 0xFF {
+                // TODO 发现异常数据，先读走所有
+                self.oft += raw_chunk_len;
+
                 match ParseBuf(&data[HEADER_LEN..]).parse(self.capability_flags)? {
                     // TODO Error process 异常响应稍后处理 fishermen
                     ErrPacket::Error(server_error) => {

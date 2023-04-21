@@ -40,6 +40,7 @@ where
         let request = me.poll_request(cx)?;
         let flush = me.poll_flush(cx)?;
         let response = me.poll_response(cx)?;
+
         // 必须要先flush，否则可能有请求未发送导致超时。
         ready!(flush);
         ready!(response);
@@ -148,7 +149,12 @@ where
                 let req = self.pending.front().expect("take response for test");
 
                 match self.parser.parse_response_debug(req.cmd(), &mut self.s) {
-                    Ok(None) => break,
+                    Ok(None) => {
+                        if let Poll::Ready(Err(protocol::Error::Eof)) = poll_read {
+                            log::warn!("+++ found Eof for req:{:?} and rsp is none", req);
+                        }
+                        break;
+                    }
                     Ok(Some(cmd)) => {
                         let req = self.pending.pop_front().expect("take response");
                         self.num.rx();
@@ -168,11 +174,15 @@ where
                             );
                         }
                         _ => {
-                            return Poll::Ready(Err(e.into()));
+                            let err: protocol::Error = e.into();
+                            log::warn!("found may Eof: {:?}", err);
+                            return Poll::Ready(Err(err));
+                            // return Poll::Ready(Err(e.into()));
                         }
                     },
                 }
             }
+
             ready!(poll_read)?;
         }
         Poll::Ready(Ok(()))
