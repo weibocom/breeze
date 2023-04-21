@@ -6,7 +6,7 @@ pub(crate) mod packet;
 //mod token;
 
 use crate::{
-    redis::command::CommandType, redis::packet::RequestPacket, Command, Commander, Error, Flag,
+    redis::command::CommandType, redis::packet::RequestPacket, Command, Commander, Error,
     HashedCommand, Metric, MetricItem, MetricName, Protocol, RequestProcessor, Result, Stream,
     Writer,
 };
@@ -42,7 +42,7 @@ impl Redis {
                     // take会将first变为false, 需要在take之前调用。
                     let bulk = packet.bulk();
                     let first = packet.first();
-                    assert!(cfg.has_key, "cfg:{}", cfg.name);
+                    debug_assert!(cfg.has_key, "cfg:{}", cfg.name);
 
                     let flag = packet.flag(cfg);
                     let hash = packet.hash(cfg, alg)?;
@@ -156,11 +156,11 @@ impl Redis {
         }
 
         if *oft <= data.len() {
-            let mem = s.take(*oft);
-            let mut flag = Flag::new();
+            //let mem = s.take(*oft);
+            //let mut flag = Flag::new();
             // TODO 这次需要测试err场景 fishermen
-            flag.set_status_ok(true);
-            return Ok(Some(Command::new(flag, mem)));
+            //flag.set_status_ok(true);
+            return Ok(Some(Command::from_ok(s.take(*oft))));
         }
         Ok(None)
     }
