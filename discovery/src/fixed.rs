@@ -24,6 +24,7 @@ impl Fixed {
                         break;
                     }
                     Ok(Config::NotChanged) => {
+                        success += 1;
                         break;
                     }
                     Ok(Config::NotFound) => {
