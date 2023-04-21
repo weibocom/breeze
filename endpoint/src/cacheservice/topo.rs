@@ -217,7 +217,7 @@ where
                 let e = self.build(old, group, dist, namespace, to);
                 new.push(e);
             }
-            self.streams.update(new, local_len);
+            self.streams.update(new, local_len, local);
         }
         // old 会被dopped
     }
