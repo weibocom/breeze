@@ -51,7 +51,7 @@ impl<P, Req> BackendChecker<P, Req> {
         let path_addr = self.path.clone().push(&self.addr);
         let mut m_timeout = path_addr.qps("timeout");
         let mut timeout = Path::base().qps("timeout");
-        let mut reconn = crate::reconn::ReconnPolicy::new(&self.path);
+        let mut reconn = crate::reconn::ReconnPolicy::new(&path_addr);
         metrics::incr_task();
         while !self.finish.get() {
             // reconn.check().await;
