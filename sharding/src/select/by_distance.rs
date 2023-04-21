@@ -126,6 +126,10 @@ impl<T: Addr> Distance<T> {
     // 返回idx
     #[inline]
     fn check_quota_get_idx(&self) -> usize {
+        if !self.backend_quota {
+            return (self.idx.fetch_add(1, Relaxed) >> 10) % self.local_len();
+        }
+
         let mut idx = self.idx();
         debug_assert!(idx < self.len());
         let quota = unsafe { &self.replicas.get_unchecked(idx).1 };
