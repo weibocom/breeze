@@ -77,27 +77,22 @@ impl<T: Addr> Distance<T> {
             .map(|r| (r, BackendQuota::default()))
             .collect();
     }
-    pub fn update(&mut self, replicas: Vec<T>, topn: usize) {
+    pub fn update(&mut self, replicas: Vec<T>, topn: usize, local: bool) {
+        self.backend_quota = local;
         self.refresh(replicas);
         self.topn(topn);
     }
     // 只取前n个进行批量随机访问
     fn topn(&mut self, n: usize) {
         assert!(n > 0 && n <= self.len(), "n: {}, len:{}", n, self.len());
-
-        // 开启local，即开启后端使用quota；
-        if !self.backend_quota {
-            self.backend_quota = n < self.len();
-        }
-
-        self.len_local = self.len() as u16;
+        self.len_local = n as u16;
 
         use rand::seq::SliceRandom;
         use rand::thread_rng;
         self.replicas.shuffle(&mut thread_rng());
 
         // 初始节点随机选择，避免第一个节点成为热点；使用quota所有后端均访问
-        let idx: usize = rand::thread_rng().gen_range(0..self.len());
+        let idx: usize = rand::thread_rng().gen_range(0..n);
         self.idx.store(idx, Relaxed);
     }
     // // 前freeze个是local的，不参与排序
