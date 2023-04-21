@@ -87,7 +87,9 @@ where
                     // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
                     // 第一次读一般访问L1，miss之后再读master；
                     // 读quota的更新根据第一次的请求时间更合理
-                    req.quota(self.streams.quota());
+                    if let Some(quota) = self.streams.quota(){
+                        req.quota(quota);
+                    }
                 }
                 self.context_get(&mut ctx)
             };

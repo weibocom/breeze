@@ -50,10 +50,13 @@ impl<T: Addr> Distance<T> {
         self.idx.load(Relaxed)
     }
     #[inline]
-    pub fn quota(&self) -> BackendQuota {
+    pub fn quota(&self) -> Option<BackendQuota> {
+        if !self.backend_quota {
+            return None;
+        }
         let idx = self.idx();
         debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
-        unsafe { self.replicas.get_unchecked(idx).1.clone() }
+        Some(unsafe { self.replicas.get_unchecked(idx).1.clone() })
     }
     pub fn with_local(replicas: Vec<T>, local: bool) -> Self {
         assert_ne!(replicas.len(), 0);
