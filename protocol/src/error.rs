@@ -4,6 +4,8 @@ use crate::{msgque::mcq::text::error::McqError, redis::error::RedisError};
 pub enum Error {
     Redis(RedisError),
     Mcq(McqError),
+    // TODO: 先临时用这个打通，后续优化
+    MysqlError,
     Eof,
     UnexpectedData,
     QueueClosed,

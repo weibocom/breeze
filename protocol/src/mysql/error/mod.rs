@@ -108,7 +108,7 @@ impl Error {
     pub(crate) fn error(&self) -> crate::error::Error {
         let msg = format!("mysql Error: %{}", self);
         match self {
-            _ => crate::error::Error::IO(ErrorKind::Other),
+            _ => crate::error::Error::MysqlError,
         }
     }
 }
@@ -254,7 +254,7 @@ impl DriverError {
     pub(crate) fn error(&self) -> crate::error::Error {
         let msg = format!("mysql Error: %{}", self);
         match self {
-            _ => crate::error::Error::IO(ErrorKind::Other),
+            _ => crate::error::Error::MysqlError,
         }
     }
 }

@@ -169,8 +169,9 @@ impl Protocol for Mysql {
         log::debug!(
             "+++ recv mysql response for  req:{:?} =>{:?}",
             req.data(),
-            data.slice().len()
+            data.slice()
         );
+
         let mut rsp_packet = ResponsePacket::new(data, None);
         match self.parse_response_inner_debug(req, &mut rsp_packet) {
             Ok(cmd) => Ok(cmd),
@@ -344,10 +345,16 @@ impl Mysql {
         req: &HashedCommand,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
     ) -> Result<Option<Command>> {
-        let mut result_set = self.parse_result_set(rsp_packet, Vec::new(), |mut acc, row| {
+        // TODO: 是否需要把异常信息返回给client？（用mc协议？） fishermen
+        let mut result_set = match self.parse_result_set(rsp_packet, Vec::new(), |mut acc, row| {
             acc.push(from_row(row));
             acc
-        })?;
+        }) {
+            Ok(rs) => rs,
+            Err(Error::ProtocolIncomplete) => return Err(Error::ProtocolIncomplete),
+            Err(Error::MysqlError) => Vec::with_capacity(0),
+            Err(e) => panic!("mysql unkonw err: {:?}", e),
+        };
 
         log::debug!(
             "+++ parsed rsp:{:?} for req req:{:?} ",
