@@ -31,7 +31,10 @@ impl Fixed {
                         log::warn!("service not found: {}", path);
                     }
                     //其余情况不能判定应使用name配置
-                    _e => log::warn!("get service {} err {:?}", path, _e),
+                    _e => {
+                        log::warn!("get service {} err {:?}", path, _e);
+                        break;
+                    }
                 }
             }
         }
