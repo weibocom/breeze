@@ -192,6 +192,10 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
         while let Poll::Ready(Some(req)) = self.data.poll_recv(&mut ctx) {
             req.on_err(Error::Pending);
         }
+        if !self.data.is_empty_hint() {
+            println!("pipeline disable=> {:?}", self.data);
+            log::warn!("pipeline disable=> {:?}", self.data);
+        }
         // 2. 有请求已经发送，但response未获取到
         while let Some((req, _)) = self.pending.pop_front() {
             req.on_err(Error::Waiting);
@@ -200,7 +204,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
         use rt::Cancel;
         self.s.cancel();
 
-        self.s.try_gc()
+        self.s.try_gc() && self.data.is_empty_hint()
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
