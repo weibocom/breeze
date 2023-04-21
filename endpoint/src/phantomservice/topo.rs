@@ -116,14 +116,7 @@ where
     #[inline]
     fn load(&mut self) {
         // 先改通知状态，再load，如果失败改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        self.cfg.clear_status();
-
-        // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
-        let succeed = self.load_inner();
-        if !succeed {
-            self.cfg.enable_notified();
-            log::warn!("phantom will reload topo later...");
-        }
+        self.cfg.load_guard().check_load(|| self.load_inner());
     }
 }
 
