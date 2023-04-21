@@ -107,6 +107,10 @@ impl Command {
         Self { ok: flag.ok(), cmd }
     }
     #[inline]
+    pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
+        Self { ok, cmd }
+    }
+    #[inline]
     pub fn from_ok(cmd: ds::MemGuard) -> Self {
         Self { ok: true, cmd }
     }
