@@ -289,12 +289,11 @@ impl Protocol for Redis {
         } else {
             // multi请求，如果需要bulk num，对第一个key先返回bulk head；
             // 对第一个key的响应都要返回，但对不需要bulk num的其他key响应，不需要返回，直接吞噬
-            let ext = request.ext();
-            let first = ext.mkey_first();
+            let first = request.mkey_first();
             if first || cfg.need_bulk_num {
                 if first && cfg.need_bulk_num {
                     w.write_u8(b'*')?;
-                    w.write_s_u16(ext.key_count())?;
+                    w.write_s_u16(request.key_count())?;
                     w.write(b"\r\n")?;
                 }
 

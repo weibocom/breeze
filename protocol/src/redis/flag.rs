@@ -1,5 +1,5 @@
 // 0~15 bit : op_code
-const OP_CODE_BIT: u8 = 16;
+const OP_CODE_BIT: u8 = 0;
 // 15~31: 16bit key count
 const KEY_COUNT_SHIFT: u8 = 0 + OP_CODE_BIT;
 const KEY_COUNT_BITS: u8 = 16;
@@ -37,8 +37,8 @@ pub trait RedisFlager {
     // fn token_count(&self) -> u8;
 }
 
-use crate::Bit;
-impl RedisFlager for u64 {
+use crate::{Bit, Ext};
+impl<T: Ext> RedisFlager for T {
     #[inline]
     fn set_key_count(&mut self, cnt: u16) {
         self.mask_set(KEY_COUNT_SHIFT, KEY_COUNT_MASK, cnt as u64)
@@ -49,9 +49,10 @@ impl RedisFlager for u64 {
     }
     #[inline]
     fn set_mkey_first(&mut self) {
-        assert!(!self.mkey_first());
-        *self |= 1 << MKEY_FIRST_SHIFT;
-        assert!(self.mkey_first());
+        debug_assert!(!self.mkey_first());
+        self.set(MKEY_FIRST_SHIFT);
+        //*self.ext_mut() |= 1 << MKEY_FIRST_SHIFT;
+        debug_assert!(self.mkey_first());
     }
     #[inline]
     fn mkey_first(&self) -> bool {
