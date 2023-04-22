@@ -5,7 +5,7 @@ use sharding::hash::Hash;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
-use crate::{Error, Flag, Result, Stream, Writer};
+use crate::{Error, Flag, OpCode, Operation, Result, Stream, TryNextType, Writer};
 
 #[enum_dispatch(Proto)]
 #[derive(Clone)]
@@ -152,16 +152,16 @@ impl std::ops::DerefMut for Command {
 }
 
 impl std::ops::Deref for HashedCommand {
-    type Target = Flag;
+    type Target = MemGuard;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.flag
+        &self.cmd
     }
 }
 impl std::ops::DerefMut for HashedCommand {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.flag
+        &mut self.cmd
     }
 }
 use ds::MemGuard;
@@ -169,6 +169,10 @@ impl HashedCommand {
     #[inline]
     pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {
         Self { hash, flag, cmd }
+    }
+    #[inline]
+    pub fn reset_flag(&mut self, op_code: u16, op: Operation) {
+        self.flag.reset_flag(op_code, op);
     }
     #[inline]
     pub fn hash(&self) -> i64 {
@@ -189,6 +193,34 @@ impl HashedCommand {
     #[inline]
     pub fn len(&self) -> usize {
         self.cmd.len()
+    }
+    #[inline]
+    pub fn sentonly(&self) -> bool {
+        self.flag.sentonly()
+    }
+    #[inline]
+    pub fn set_sentonly(&mut self, v: bool) {
+        self.flag.set_sentonly(v);
+    }
+    #[inline]
+    pub fn operation(&self) -> Operation {
+        self.flag.operation()
+    }
+    #[inline]
+    pub fn op_code(&self) -> OpCode {
+        self.flag.op_code()
+    }
+    #[inline]
+    pub fn noforward(&self) -> bool {
+        self.flag.noforward()
+    }
+    #[inline]
+    pub fn ext(&self) -> u64 {
+        self.flag.ext()
+    }
+    #[inline]
+    pub fn try_next_type(&self) -> TryNextType {
+        self.flag.try_next_type()
     }
 }
 //impl AsRef<Command> for HashedCommand {
