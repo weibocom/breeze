@@ -182,18 +182,18 @@ impl HashedCommand {
     pub fn update_hash(&mut self, idx_hash: i64) {
         self.hash = idx_hash;
     }
-    #[inline]
-    pub fn data(&self) -> &ds::RingSlice {
-        self.cmd.data()
-    }
-    #[inline]
-    pub fn data_mut(&mut self) -> &mut ds::RingSlice {
-        self.cmd.data_mut()
-    }
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.cmd.len()
-    }
+    //#[inline]
+    //pub fn data(&self) -> &ds::RingSlice {
+    //    self.cmd.data()
+    //}
+    //#[inline]
+    //pub fn data_mut(&mut self) -> &mut ds::RingSlice {
+    //    self.cmd.data_mut()
+    //}
+    //#[inline]
+    //pub fn len(&self) -> usize {
+    //    self.cmd.len()
+    //}
     #[inline]
     pub fn sentonly(&self) -> bool {
         self.flag.sentonly()
