@@ -51,7 +51,7 @@ impl Redis {
                         packet.ignore_one_bulk()?;
                     }
                     let kv = packet.take();
-                    let req = cfg.build_request(hash, bulk, first, flag, kv.data());
+                    let req = cfg.build_request(hash, bulk, first, flag, &kv);
                     process.process(req, packet.complete());
                 }
             } else {
@@ -265,7 +265,7 @@ impl Protocol for Redis {
         if !cfg.multi {
             // 非multi请求,有响应直接返回client，否则构建
             if let Some(rsp) = response {
-                w.write_slice(rsp.data(), 0)?;
+                w.write_slice(rsp, 0)?;
             } else {
                 // 无响应，则根据cmd name构建对应响应
                 match cfg.cmd_type {
@@ -301,7 +301,7 @@ impl Protocol for Redis {
                 // 如果rsp是ok，或者不需要bulk num，直接发送；否则构建rsp or padding rsp
                 if let Some(rsp) = response {
                     if rsp.ok() || !cfg.need_bulk_num {
-                        w.write_slice(rsp.data(), 0)?;
+                        w.write_slice(rsp, 0)?;
                         return Ok(());
                     }
                 }
@@ -437,7 +437,7 @@ impl Protocol for Redis {
     }
     #[inline(always)]
     fn check(&self, _req: &HashedCommand, _resp: &Command) {
-        if _resp.data()[0] == b'-' {
+        if _resp[0] == b'-' {
             log::error!("+++ check failed for req:{:?}, resp:{:?}", _req, _resp);
         }
     }

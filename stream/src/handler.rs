@@ -115,7 +115,7 @@ where
         self.s.cache(self.data.has_multi());
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
             self.num.tx();
-            self.s.write_slice(req.data(), 0)?;
+            self.s.write_slice(&*req, 0)?;
             match req.on_sent() {
                 Some(r) => self.pending.push_back((r, Instant::now())),
                 None => {

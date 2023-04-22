@@ -190,7 +190,7 @@ impl CommandProperties {
         bulk_num: u16,
         first: bool,
         mut flag: Flag,
-        data: &RingSlice,
+        data: &MemGuard,
     ) -> HashedCommand {
         use ds::Buffer;
         //assert!(self.name.len() < 10, "name:{}", self.name);
