@@ -215,8 +215,12 @@ impl HashedCommand {
         self.flag.noforward()
     }
     #[inline]
-    pub fn ext(&self) -> u64 {
-        self.flag.ext()
+    pub fn flag(&self) -> &Flag {
+        &self.flag
+    }
+    #[inline]
+    pub fn flag_mut(&mut self) -> &mut Flag {
+        &mut self.flag
     }
     #[inline]
     pub fn try_next_type(&self) -> TryNextType {
