@@ -5,9 +5,9 @@ pub struct Flag {
     op: Operation,
     try_next_type: TryNextType,
     sentonly: bool,
-    status_ok: bool,
+    //status_ok: bool,
     noforward: bool,
-    nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
+    //nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
     v: u64,
 }
 
@@ -51,16 +51,16 @@ impl Flag {
     pub fn new() -> Self {
         Self::default()
     }
-    #[inline]
-    pub fn set_status_ok(&mut self, ok: bool) -> &mut Self {
-        debug_assert_eq!(self.ok(), false);
-        self.status_ok = ok;
-        self
-    }
-    #[inline]
-    pub fn ok(&self) -> bool {
-        self.status_ok
-    }
+    //#[inline]
+    //pub fn set_status_ok(&mut self, ok: bool) -> &mut Self {
+    //    debug_assert_eq!(self.ok(), false);
+    //    self.status_ok = ok;
+    //    self
+    //}
+    //#[inline]
+    //pub fn ok(&self) -> bool {
+    //    self.status_ok
+    //}
     #[inline]
     pub fn set_sentonly(&mut self, sentonly: bool) -> &mut Self {
         self.sentonly = sentonly;
@@ -115,15 +115,15 @@ impl Flag {
     pub fn ext_mut(&mut self) -> &mut u64 {
         &mut self.v
     }
-    #[inline]
-    pub fn set_nil_convert(&mut self) -> &mut Self {
-        self.nil_converted = true;
-        self
-    }
-    #[inline]
-    pub fn nil_converted(&self) -> bool {
-        self.nil_converted
-    }
+    //#[inline]
+    //pub fn set_nil_convert(&mut self) -> &mut Self {
+    //    self.nil_converted = true;
+    //    self
+    //}
+    //#[inline]
+    //pub fn nil_converted(&self) -> bool {
+    //    self.nil_converted
+    //}
 }
 
 #[derive(Debug, Clone)]

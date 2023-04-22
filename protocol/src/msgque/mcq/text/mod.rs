@@ -58,13 +58,13 @@ impl McqText {
         let mut packet = RspPacket::new(s);
         packet.parse()?;
 
-        let mut flag = Flag::new();
-        if packet.is_succeed() {
-            flag.set_status_ok(true);
-        }
+        //let mut flag = Flag::new();
+        //if packet.is_succeed() {
+        //    flag.set_status_ok(true);
+        //}
         let mem = packet.take();
         let _ = packet.delay_metric();
-        return Ok(Some(Command::new(flag, mem)));
+        return Ok(Some(Command::from(packet.is_succeed(), mem)));
     }
 
     // 协议内部的metric统计，全部放置于此

@@ -102,10 +102,10 @@ pub struct HashedCommand {
 }
 
 impl Command {
-    #[inline]
-    pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
-        Self { ok: flag.ok(), cmd }
-    }
+    //#[inline]
+    //pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
+    //    Self { ok: flag.ok(), cmd }
+    //}
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
         Self { ok, cmd }
