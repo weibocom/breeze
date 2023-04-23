@@ -66,7 +66,7 @@ impl<T> Receiver<T> {
         self.switcher.off();
     }
     pub fn is_empty_hint(&mut self) -> bool {
-        self.rx == self.tx.load(Acquire)
+        self.rx >= self.tx.load(Acquire)
     }
 }
 impl<T> Debug for Receiver<T> {
@@ -74,10 +74,11 @@ impl<T> Debug for Receiver<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "mpsc Receiver rx/tx:({},{}) switcher:{}  ",
+            "mpsc Receiver rx/tx:({},{}) switcher:{}  inner:{:?}",
             self.rx,
             self.tx.load(Acquire),
-            self.switcher.get()
+            self.switcher.get(),
+            self.inner
         )
     }
 }
