@@ -89,7 +89,7 @@ pub trait RequestProcessor {
 }
 
 pub struct Command {
-    flag: Flag,
+    ok: bool,
     cmd: ds::MemGuard,
 }
 
@@ -97,67 +97,78 @@ pub const MAX_DIRECT_HASH: i64 = i64::MAX;
 
 pub struct HashedCommand {
     hash: i64,
-    cmd: Command,
+    flag: Flag,
+    cmd: ds::MemGuard,
 }
 
 impl Command {
     #[inline]
     pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
-        Self { flag, cmd }
+        Self { ok: flag.ok(), cmd }
+    }
+    #[inline]
+    pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
+        Self { ok, cmd }
+    }
+    #[inline]
+    pub fn from_ok(cmd: ds::MemGuard) -> Self {
+        Self { ok: true, cmd }
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
-        self.cmd.len()
+    pub fn ok(&self) -> bool {
+        self.ok
     }
+
+    //#[inline]
+    //pub fn len(&self) -> usize {
+    //    self.cmd.len()
+    //}
     //#[inline]
     //pub fn read(&self, oft: usize) -> &[u8] {
     //    self.cmd.read(oft)
     //}
-    #[inline]
-    pub fn data(&self) -> &ds::RingSlice {
-        self.cmd.data()
-    }
-    #[inline]
-    pub fn data_mut(&mut self) -> &mut ds::RingSlice {
-        self.cmd.data_mut()
-    }
+    //#[inline]
+    //pub fn data(&self) -> &ds::RingSlice {
+    //    self.cmd.data()
+    //}
+    //#[inline]
+    //pub fn data_mut(&mut self) -> &mut ds::RingSlice {
+    //    self.cmd.data_mut()
+    //}
 }
 impl std::ops::Deref for Command {
+    type Target = MemGuard;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.cmd
+    }
+}
+impl std::ops::DerefMut for Command {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cmd
+    }
+}
+
+impl std::ops::Deref for HashedCommand {
     type Target = Flag;
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.flag
     }
 }
-impl std::ops::DerefMut for Command {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.flag
-    }
-}
-
-impl std::ops::Deref for HashedCommand {
-    type Target = Command;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.cmd
-    }
-}
 impl std::ops::DerefMut for HashedCommand {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.cmd
+        &mut self.flag
     }
 }
 use ds::MemGuard;
 impl HashedCommand {
     #[inline]
     pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {
-        Self {
-            hash,
-            cmd: Command { flag, cmd },
-        }
+        Self { hash, flag, cmd }
     }
     #[inline]
     pub fn hash(&self) -> i64 {
@@ -167,13 +178,25 @@ impl HashedCommand {
     pub fn update_hash(&mut self, idx_hash: i64) {
         self.hash = idx_hash;
     }
-}
-impl AsRef<Command> for HashedCommand {
     #[inline]
-    fn as_ref(&self) -> &Command {
-        &self.cmd
+    pub fn data(&self) -> &ds::RingSlice {
+        self.cmd.data()
+    }
+    #[inline]
+    pub fn data_mut(&mut self) -> &mut ds::RingSlice {
+        self.cmd.data_mut()
+    }
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.cmd.len()
     }
 }
+//impl AsRef<Command> for HashedCommand {
+//    #[inline]
+//    fn as_ref(&self) -> &Command {
+//        &self.cmd
+//    }
+//}
 
 use std::fmt::{self, Debug, Display, Formatter};
 impl Display for HashedCommand {
@@ -190,34 +213,13 @@ impl Debug for HashedCommand {
 impl Display for Command {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "flag:{:?} len:{} sentonly:{} {} ok:{} op:{}/{:?}",
-            self.flag,
-            self.len(),
-            self.sentonly(),
-            self.cmd,
-            self.ok(),
-            self.op_code(),
-            self.operation()
-        )
+        write!(f, "ok:{} {}", self.ok, self.cmd)
     }
 }
 impl Debug for Command {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "flag:{:?} len:{} sentonly:{} {} ok:{} op:{}/{:?} data:{:?}",
-            self.flag,
-            self.len(),
-            self.sentonly(),
-            self.cmd,
-            self.ok(),
-            self.op_code(),
-            self.operation(),
-            self.data()
-        )
+        write!(f, "ok:{} {:?}", self.ok, self.cmd)
     }
 }
 

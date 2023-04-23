@@ -1,4 +1,5 @@
-use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand, Operation};
+use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand};
+use sharding::BackendQuota;
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
@@ -13,34 +14,34 @@ impl crate::Request for Request {
     fn start_at(&self) -> ds::time::Instant {
         self.ctx().start_at()
     }
-    #[inline]
-    fn len(&self) -> usize {
-        self.req().len()
-    }
-    #[inline]
-    fn cmd(&self) -> &HashedCommand {
-        self.req()
-    }
-    #[inline]
-    fn data(&self) -> &ds::RingSlice {
-        self.req().data()
-    }
+    //#[inline]
+    //fn len(&self) -> usize {
+    //    self.req().len()
+    //}
+    //#[inline]
+    //fn cmd(&self) -> &HashedCommand {
+    //    self.req()
+    //}
+    //#[inline]
+    //fn data(&self) -> &ds::RingSlice {
+    //    self.req().data()
+    //}
     //#[inline]
     //fn read(&self, oft: usize) -> &[u8] {
     //    self.req().read(oft)
     //}
-    #[inline]
-    fn operation(&self) -> Operation {
-        self.req().operation()
-    }
-    #[inline]
-    fn hash(&self) -> i64 {
-        self.req().hash()
-    }
-    #[inline]
-    fn sentonly(&self) -> bool {
-        self.req().sentonly()
-    }
+    //#[inline]
+    //fn operation(&self) -> Operation {
+    //    self.req().operation()
+    //}
+    //#[inline]
+    //fn hash(&self) -> i64 {
+    //    self.req().hash()
+    //}
+    //#[inline]
+    //fn sentonly(&self) -> bool {
+    //    self.req().sentonly()
+    //}
     #[inline]
     fn on_noforward(&mut self) {
         self.ctx().on_noforward();
@@ -73,6 +74,10 @@ impl crate::Request for Request {
     fn try_next(&mut self, goon: bool) {
         self.ctx().try_next = goon;
     }
+    #[inline]
+    fn quota(&mut self, quota: BackendQuota) {
+        self.ctx().quota(quota);
+    }
     // #[inline]
     // fn ignore_rsp(&self) -> bool {
     //     self.req().ignore_rsp()
@@ -88,10 +93,10 @@ impl Request {
         Self { ctx }
     }
 
-    #[inline]
-    fn req(&self) -> &HashedCommand {
-        self.ctx().request()
-    }
+    //#[inline]
+    //fn req(&self) -> &HashedCommand {
+    //    self.ctx().request()
+    //}
 
     // #[inline]
     // fn req_mut(&self) -> &mut HashedCommand {

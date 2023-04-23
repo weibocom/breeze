@@ -8,6 +8,7 @@ use std::{
 };
 
 use ds::{time::Instant, AtomicWaker};
+use sharding::BackendQuota;
 
 use crate::{request::Request, Command, Error, HashedCommand};
 
@@ -43,6 +44,7 @@ pub struct CallbackContext {
     start: Instant, // 请求的开始时间
     waker: *const AtomicWaker,
     callback: CallbackPtr,
+    quota: Option<BackendQuota>,
 }
 
 impl CallbackContext {
@@ -71,6 +73,7 @@ impl CallbackContext {
             start: now,
             tries: 0.into(),
             waker,
+            quota: None,
         }
     }
 
@@ -126,6 +129,8 @@ impl CallbackContext {
     fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
         let goon = if !self.async_mode {
+            // 更新backend使用的时间
+            self.quota.take().map(|q| q.incr(self.start_at().elapsed()));
             // 正常访问请求。
             // old: 除非出现了error，否则最多只尝试一次;
             !self.response_ok() && self.try_next && self.tries.fetch_add(1, Release) < 1
@@ -164,6 +169,10 @@ impl CallbackContext {
             Closed | ChanDisabled | Waiting | Pending => {}
             _err => log::warn!("on-err:{} {:?}", self, _err),
         }
+        // 一次错误至少消耗500ms的配额
+        self.quota
+            .take()
+            .map(|q| q.err_incr(self.start_at().elapsed()));
         self.on_done();
     }
     #[inline]
@@ -245,6 +254,10 @@ impl CallbackContext {
     #[inline]
     pub fn last(&self) -> bool {
         self.last
+    }
+    #[inline]
+    pub fn quota(&mut self, quota: BackendQuota) {
+        self.quota = Some(quota);
     }
 }
 
