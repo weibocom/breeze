@@ -1,16 +1,15 @@
-// 0~15 bit : op_code
-const OP_CODE_BIT: u8 = 0;
-// 15~31: 16bit key count
-const KEY_COUNT_SHIFT: u8 = 0 + OP_CODE_BIT;
+// [0..16]: 16bit key count
+const KEY_COUNT_SHIFT: u8 = 0;
 const KEY_COUNT_BITS: u8 = 16;
 const KEY_COUNT_MASK: u64 = (1 << KEY_COUNT_BITS) - 1;
-// 32: 标识是否是第一个key
+// [16]: 标识是否是第一个key
 const MKEY_FIRST_SHIFT: u8 = KEY_COUNT_SHIFT + KEY_COUNT_BITS;
 const MKEY_FIRST_BIT: u8 = 1; // 这个先保留，后续增加字段时需要
-                              // 33: master_only
+
+// [17]: master_only
 const MASTER_ONLY_SHIFT: u8 = MKEY_FIRST_SHIFT + MKEY_FIRST_BIT;
 const MASTER_ONLY_BIT: u8 = 1;
-// 34: sendto_all
+// [18]: sendto_all
 const SENDTO_ALL_SHIFT: u8 = MASTER_ONLY_SHIFT + MASTER_ONLY_BIT;
 const _SENDTO_ALL_BIT: u8 = 1;
 
