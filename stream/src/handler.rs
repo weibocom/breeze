@@ -141,7 +141,7 @@ where
                         self.num.rx();
                         // 统计请求耗时。
                         self.rtt += start.elapsed();
-                        self.parser.check(req.cmd(), &cmd);
+                        self.parser.check(&*req, &cmd);
                         req.on_complete(cmd);
                     }
                     Err(e) => match e {
@@ -200,7 +200,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
         use rt::Cancel;
         self.s.cancel();
 
-        self.s.try_gc()
+        self.s.try_gc() && self.data.is_empty_hint()
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
@@ -220,11 +220,12 @@ impl<'r, Req, P, S: Debug> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler num:{:?}  p_req:{} {} buf:{:?}",
+            "handler num:{:?}  p_req:{} {} buf:{:?} data:{:?}",
             self.num,
             self.pending.len(),
             self.rtt,
             self.s,
+            self.data
         )
     }
 }

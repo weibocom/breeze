@@ -46,18 +46,24 @@ impl<T: Backends> DnsConfig<T> {
     pub fn need_load(&self) -> bool {
         self.updated.load(Relaxed)
     }
+    pub fn load_guard(&self) -> LoadGuard {
+        LoadGuard {
+            _service: self.service.to_string(),
+            guard: self.updated.clone(),
+        }
+    }
     // 把updated设置为false，这样topo就不会重新load
-    pub fn clear_status(&mut self) {
-        if let Err(_e) = self.updated.compare_exchange(true, false, AcqRel, Relaxed) {
-            log::warn!("{} clear_status failed", self.service,);
-        }
-    }
-    // 把updated设置为true，这样topo就会重新load
-    pub fn enable_notified(&mut self) {
-        if let Err(_e) = self.updated.compare_exchange(false, true, AcqRel, Relaxed) {
-            log::warn!("{} clear_status failed", self.service,);
-        }
-    }
+    //pub fn clear_status(&mut self) {
+    //    if let Err(_e) = self.updated.compare_exchange(true, false, AcqRel, Relaxed) {
+    //        log::warn!("{} clear_status failed", self.service,);
+    //    }
+    //}
+    //// 把updated设置为true，这样topo就会重新load
+    //pub fn enable_notified(&mut self) {
+    //    if let Err(_e) = self.updated.compare_exchange(false, true, AcqRel, Relaxed) {
+    //        log::warn!("{} clear_status failed", self.service,);
+    //    }
+    //}
 }
 
 pub(crate) trait Backends {
@@ -84,5 +90,25 @@ impl<T> std::ops::Deref for DnsConfig<T> {
 impl<T> std::ops::DerefMut for DnsConfig<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.config
+    }
+}
+
+pub struct LoadGuard {
+    _service: String,
+    guard: Arc<AtomicBool>,
+}
+
+impl LoadGuard {
+    pub fn check_load(&self, mut f: impl FnMut() -> bool) {
+        // load之前，先把guard设置为false，这样避免在load的过程中，又有新的配置更新，导致丢失更新。
+        if let Err(_e) = self.guard.compare_exchange(true, false, AcqRel, Relaxed) {
+            log::warn!("{} clear_status failed", self._service);
+        }
+        if !f() {
+            log::info!("{} load failed", self._service);
+            if let Err(_e) = self.guard.compare_exchange(false, true, AcqRel, Relaxed) {
+                log::warn!("{} renotified failed => {}", self._service, _e);
+            }
+        }
     }
 }

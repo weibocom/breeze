@@ -57,18 +57,20 @@ impl Protocol for MemcacheBinary {
             let r = data.slice();
             r.check_response()?;
             let pl = r.packet_len();
-            assert!(!r.quiet_get(), "rsp: {:?}", r);
+            debug_assert!(!r.quiet_get(), "rsp: {:?}", r);
             if len >= pl {
-                if !r.is_quiet() {
-                    let mut flag = Flag::from_op(r.op() as u16, r.operation());
-                    flag.set_status_ok(r.status_ok());
-                    return Ok(Some(Command::new(flag, data.take(pl))));
+                return if !r.is_quiet() {
+                    //let mut flag = Flag::from_op(r.op() as u16, r.operation());
+                    //flag.set_status_ok(r.status_ok());
+                    Ok(Some(Command::from(r.status_ok(), data.take(pl))))
                 } else {
                     // response返回quite请求只有一种情况：出错了。
                     // quite请求是异步处理，直接忽略即可。
-                    assert!(!r.status_ok(), "rsp: {:?}", r);
-                    data.ignore(pl);
-                }
+                    //assert!(!r.status_ok(), "rsp: {:?}", r);
+                    //data.ignore(pl);
+                    println!("mc response quiete: {:?}", r);
+                    Err(Error::ResponseQuiet)
+                };
             } else {
                 data.reserve(pl - len);
             }
