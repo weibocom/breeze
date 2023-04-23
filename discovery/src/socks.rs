@@ -3,12 +3,11 @@
 use std::{
     collections::HashSet,
     fs::{self, OpenOptions},
-    sync::Mutex,
 };
 
-use ds::{CowReadHandle, CowWriteHandle};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Socks {
@@ -23,23 +22,17 @@ pub struct Socks {
     refreshed: bool,
 }
 
-pub static SOCKS: OnceCell<CowReadHandle<Socks>> = OnceCell::new();
-static SOCKS_W: OnceCell<Mutex<CowWriteHandle<Socks>>> = OnceCell::new();
+static SOCKS: OnceCell<Mutex<Socks>> = OnceCell::new();
 
 pub fn build_refresh_socks(socks_path: String) -> impl Fn(&str) {
-    let (w, r) = ds::cow(Socks::from(socks_path));
-    if let Err(_) = SOCKS.set(r) {
-        panic!("duplicate init socks");
-    }
-    if let Err(_) = SOCKS_W.set(Mutex::from(w)) {
-        panic!("duplicate init socks for writing");
-    }
+    SOCKS.set(Mutex::new(Socks::from(socks_path))).unwrap();
     refresh_socks
 }
 
 fn refresh_socks(cfg: &str) {
-    if let Ok(mut socks) = SOCKS_W.get().expect("not init w socks").try_lock() {
-        socks.write(|s| s.refresh(cfg));
+    if let Some(s) = SOCKS.get() {
+        //同时只有一个refresh_socks在运行, 从不会加锁失败，所以相当于一个acq_rel操作，只用来同步缓存
+        s.try_lock().expect("refresh_socks lock faild").refresh(cfg);
     }
 }
 
