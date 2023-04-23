@@ -5,7 +5,7 @@ use sharding::hash::Hash;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
-use crate::{Error, Flag, OpCode, Operation, Result, Stream, TryNextType, Writer};
+use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
 #[enum_dispatch(Proto)]
 #[derive(Clone)]
@@ -222,10 +222,10 @@ impl HashedCommand {
     pub fn flag_mut(&mut self) -> &mut Flag {
         &mut self.flag
     }
-    #[inline]
-    pub fn try_next_type(&self) -> TryNextType {
-        self.flag.try_next_type()
-    }
+    //#[inline]
+    //pub fn try_next_type(&self) -> TryNextType {
+    //    self.flag.try_next_type()
+    //}
 }
 //impl AsRef<Command> for HashedCommand {
 //    #[inline]

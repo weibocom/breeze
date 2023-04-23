@@ -3,7 +3,7 @@ use crate::{HashedCommand, OpCode, Operation};
 pub struct Flag {
     op_code: OpCode,
     op: Operation,
-    try_next_type: TryNextType,
+    //try_next_type: TryNextType,
     sentonly: bool,
     //status_ok: bool,
     noforward: bool,
@@ -68,15 +68,15 @@ impl Flag {
         }
     }
 
-    #[inline]
-    pub fn set_try_next_type(&mut self, try_type: TryNextType) {
-        self.try_next_type = try_type
-    }
+    //#[inline]
+    //pub fn set_try_next_type(&mut self, try_type: TryNextType) {
+    //    self.try_next_type = try_type
+    //}
 
-    #[inline]
-    pub fn try_next_type(&self) -> TryNextType {
-        self.try_next_type.clone()
-    }
+    //#[inline]
+    //pub fn try_next_type(&self) -> TryNextType {
+    //    self.try_next_type.clone()
+    //}
 
     #[inline]
     pub fn new() -> Self {

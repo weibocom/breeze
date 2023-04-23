@@ -32,7 +32,7 @@ impl McqText {
             let mut flag = Flag::from_op(cfg.op_code(), cfg.operation().clone());
 
             // mcq 总是需要重试，确保所有消息读写成功
-            flag.set_try_next_type(crate::TryNextType::TryNext);
+            //flag.set_try_next_type(crate::TryNextType::TryNext);
             // mcq 只需要写一次成功即可，不存在noreply(即只sent) req
             flag.set_sentonly(false);
             // 是否内部请求,不发往后端，如quit
