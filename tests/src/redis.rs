@@ -52,7 +52,7 @@ mod redis_test {
         cmd.set_mkey_first();
         assert!(cmd.mkey_first());
         //mkey_first所在位
-        cmd.clear(32);
+        cmd.clear(16);
         assert!(!cmd.mkey_first());
         //对前面设置的flag没有影响
         assert!(cmd.master_only());
