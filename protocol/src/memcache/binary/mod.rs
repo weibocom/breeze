@@ -4,6 +4,8 @@ mod packet;
 use packet::RespStatus::*;
 use packet::*;
 
+pub use packet::Binary;
+
 #[derive(Clone, Default)]
 pub struct MemcacheBinary;
 
@@ -37,7 +39,8 @@ impl Protocol for MemcacheBinary {
             let cmd = req.operation();
             let op_code = req.map_op(); // 把quite get请求，转换成单个的get请求
             let mut flag = Flag::from_op(op_code as u16, cmd);
-            flag.set_try_next_type(req.try_next_type());
+            // try_next_type在需要的时候直接通过Request读取即可。
+            //flag.set_try_next_type(req.try_next_type());
             flag.set_sentonly(req.sentonly());
             flag.set_noforward(req.noforward());
             let guard = data.take(packet_len);
