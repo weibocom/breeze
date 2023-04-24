@@ -1,4 +1,5 @@
 use crate::{HashedCommand, OpCode, Operation};
+pub type FlagExt = u64;
 #[derive(Debug, Default)]
 pub struct Flag {
     op_code: OpCode,
@@ -8,7 +9,7 @@ pub struct Flag {
     //status_ok: bool,
     noforward: bool,
     //nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
-    v: u64,
+    v: FlagExt,
 }
 
 //impl std::ops::Deref for Flag {
@@ -27,31 +28,31 @@ pub struct Flag {
 
 impl Ext for Flag {
     #[inline]
-    fn ext(&self) -> u64 {
+    fn ext(&self) -> FlagExt {
         self.v
     }
     #[inline]
-    fn ext_mut(&mut self) -> &mut u64 {
+    fn ext_mut(&mut self) -> &mut FlagExt {
         &mut self.v
     }
 }
 impl Ext for HashedCommand {
     #[inline]
-    fn ext(&self) -> u64 {
+    fn ext(&self) -> FlagExt {
         self.flag().ext()
     }
     #[inline]
-    fn ext_mut(&mut self) -> &mut u64 {
+    fn ext_mut(&mut self) -> &mut FlagExt {
         self.flag_mut().ext_mut()
     }
 }
-impl Ext for u64 {
+impl Ext for FlagExt {
     #[inline]
-    fn ext(&self) -> u64 {
+    fn ext(&self) -> Self {
         *self
     }
     #[inline]
-    fn ext_mut(&mut self) -> &mut u64 {
+    fn ext_mut(&mut self) -> &mut Self {
         self
     }
 }
@@ -200,24 +201,29 @@ impl<T: Ext> Bit for T {
     #[inline]
     fn mask_set(&mut self, shift: u8, mask: u64, val: u64) {
         debug_assert!(val <= mask);
+        debug_assert!(shift as u32 + mask.trailing_ones() <= FlagExt::BITS);
         debug_assert_eq!(self.mask_get(shift, mask), 0);
         *self.ext_mut() |= val << shift;
         debug_assert_eq!(val, self.mask_get(shift, mask));
     }
     #[inline]
     fn mask_get(&self, shift: u8, mask: u64) -> u64 {
+        debug_assert!(shift as u32 + mask.trailing_ones() <= FlagExt::BITS);
         (self.ext() >> shift) & mask
     }
     #[inline]
     fn set(&mut self, shift: u8) {
+        debug_assert!(shift as u32 <= FlagExt::BITS);
         *self.ext_mut() |= 1 << shift;
     }
     #[inline]
     fn clear(&mut self, shift: u8) {
+        debug_assert!(shift as u32 <= FlagExt::BITS);
         *self.ext_mut() &= !(1 << (shift));
     }
     #[inline]
     fn get(&self, shift: u8) -> bool {
+        debug_assert!(shift as u32 <= FlagExt::BITS);
         self.ext() & (1 << shift) != 0
     }
 }
