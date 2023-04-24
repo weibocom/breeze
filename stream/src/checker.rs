@@ -51,7 +51,7 @@ impl<P, Req> BackendChecker<P, Req> {
             option,
         }
     }
-    pub(crate) async fn start_check(&mut self, single: Arc<AtomicBool>)
+    pub(crate) async fn start_check(&mut self, _single: Arc<AtomicBool>)
     where
         P: Protocol,
         Req: Request,
@@ -60,7 +60,7 @@ impl<P, Req> BackendChecker<P, Req> {
         let mut m_timeout = path_addr.qps("timeout");
         let mut auth_failed = path_addr.status("auth_failed");
         let mut timeout = Path::base().qps("timeout");
-        let mut reconn = crate::reconn::ReconnPolicy::new(&self.path, single);
+        let mut reconn = crate::reconn::ReconnPolicy::new(&path_addr);
         metrics::incr_task();
         while !self.finish.get() {
             // reconn.check().await;

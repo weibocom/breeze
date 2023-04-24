@@ -1,4 +1,7 @@
 use byteorder::{BigEndian, LittleEndian, WriteBytesExt};
+use ds::MemGuard;
+use std::ops::Deref;
+
 pub trait AsyncBufRead {
     fn poll_recv(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<crate::Result<()>>;
 }
@@ -60,8 +63,8 @@ pub trait Writer: ds::BufWriter + Sized {
     fn cache(&mut self, hint: bool);
 
     #[inline]
-    fn write_slice(&mut self, data: &ds::RingSlice, oft: usize) -> Result<()> {
-        data.copy_to(oft, self)?;
+    fn write_slice<S: Deref<Target = MemGuard>>(&mut self, data: &S, oft: usize) -> Result<()> {
+        (&*data).copy_to(oft, self)?;
         Ok(())
     }
     fn shrink(&mut self);

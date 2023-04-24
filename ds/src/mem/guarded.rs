@@ -82,6 +82,20 @@ pub struct MemGuard {
     guard: Option<Guard>, //  当前guard是否拥有mem。如果拥有，则在drop时需要手工销毁内存
 }
 
+impl Deref for MemGuard {
+    type Target = RingSlice;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.mem
+    }
+}
+impl DerefMut for MemGuard {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.mem
+    }
+}
+
 impl MemGuard {
     #[inline]
     fn new(data: RingSlice, guard: Guard) -> Self {
@@ -99,18 +113,18 @@ impl MemGuard {
         Self { mem, guard: None }
     }
 
-    #[inline]
-    pub fn data(&self) -> &RingSlice {
-        &self.mem
-    }
-    #[inline]
-    pub fn data_mut(&mut self) -> &mut RingSlice {
-        &mut self.mem
-    }
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.mem.len()
-    }
+    //#[inline]
+    //pub fn data(&self) -> &RingSlice {
+    //    &self.mem
+    //}
+    //#[inline]
+    //pub fn data_mut(&mut self) -> &mut RingSlice {
+    //    &mut self.mem
+    //}
+    //#[inline]
+    //pub fn len(&self) -> usize {
+    //    self.mem.len()
+    //}
 }
 impl Drop for MemGuard {
     #[inline]

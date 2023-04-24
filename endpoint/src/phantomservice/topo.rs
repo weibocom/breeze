@@ -116,14 +116,7 @@ where
     #[inline]
     fn load(&mut self) {
         // 先改通知状态，再load，如果失败改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        self.cfg.clear_status();
-
-        // 根据最新配置更新topo，如果更新失败，将CONFIG_UPDATED_KEY设为true，强制下次重新加载
-        let succeed = self.load_inner();
-        if !succeed {
-            self.cfg.enable_notified();
-            log::warn!("phantom will reload topo later...");
-        }
+        self.cfg.load_guard().check_load(|| self.load_inner());
     }
 }
 
@@ -159,13 +152,14 @@ where
             let mut shard_ips = Vec::with_capacity(shard.len());
             for url_port in shard.iter() {
                 let host = url_port.host();
-                let ips = dns::lookup_ips(host);
-                if ips.len() == 0 {
-                    log::warn!("phantom dns looked up failed for {} => {:?}", host, self);
+                dns::lookup_ips(host, |ips| {
+                    for ip in ips {
+                        shard_ips.push(ip.to_string() + ":" + url_port.port());
+                    }
+                });
+                if shard_ips.len() == 0 {
+                    log::info!("dns not inited => {}", url_port);
                     return false;
-                }
-                for ip in ips {
-                    shard_ips.push(ip + ":" + url_port.port());
                 }
             }
             assert!(!shard_ips.is_empty());

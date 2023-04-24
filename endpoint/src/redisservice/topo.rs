@@ -58,7 +58,7 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert_ne!(self.shards.len(), 0);
 
-        let shard_idx = if req.cmd().sendto_all() {
+        let shard_idx = if req.sendto_all() {
             //全节点分发请求
             let ctx = super::transmute(req.context_mut());
             let idx = ctx.shard_idx as usize;
@@ -75,7 +75,12 @@ where
         log::debug!("+++ {} send {} => {:?}", self.cfg.service, shard_idx, req);
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
-        if shard.has_slave() && !req.operation().is_store() && !req.cmd().master_only() {
+        if shard.has_slave() && !req.operation().is_store() && !req.master_only() {
+            if *req.context_mut() == 0 {
+                if let Some(quota) = shard.slaves.quota() {
+                    req.quota(quota);
+                }
+            }
             let ctx = super::transmute(req.context_mut());
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
@@ -133,13 +138,7 @@ where
     #[inline]
     fn load(&mut self) {
         // TODO: 先改通知状态，再load，如果失败，改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        self.cfg.clear_status();
-
-        let succeed = self.load_inner();
-        if !succeed {
-            self.cfg.enable_notified();
-            log::warn!("redis will reload topo later...");
-        }
+        self.cfg.load_guard().check_load(|| self.load_inner());
     }
 }
 impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
@@ -200,15 +199,12 @@ where
                 return false;
             }
             let master_url = &shard[0];
-            let masters = dns::lookup_ips(master_url.host());
-            if masters.len() == 0 {
-                log::warn!("{} master not looked up", master_url);
-                return false;
-            }
-            if masters.len() > 1 {
-                log::warn!("multi master ip parsed. {} => {:?}", master_url, masters);
-            }
-            let master = String::from(&masters[0]) + ":" + master_url.port();
+            let mut master = String::new();
+            dns::lookup_ips(master_url.host(), |ips| {
+                if ips.len() > 0 {
+                    master = ips[0].to_string() + ":" + master_url.port();
+                }
+            });
             let mut slaves = Vec::with_capacity(8);
             if self.cfg.basic.master_read {
                 slaves.push(master.clone());
@@ -216,15 +212,21 @@ where
             for url_port in &shard[1..] {
                 let url = url_port.host();
                 let port = url_port.port();
-                for slave_ip in dns::lookup_ips(url) {
-                    let addr = slave_ip + ":" + port;
-                    if !slaves.contains(&addr) {
-                        slaves.push(addr);
+                use ds::vec::Add;
+                dns::lookup_ips(url, |ips| {
+                    for ip in ips {
+                        slaves.add(ip.to_string() + ":" + port);
                     }
-                }
+                });
             }
-            if slaves.len() == 0 {
-                log::warn!("{:?} slave not looked up", &shard[1..]);
+            if master.len() == 0 || slaves.len() == 0 {
+                log::warn!(
+                    "master:({}=>{}) or slave ({:?}=>{:?}) not looked up",
+                    master_url,
+                    master,
+                    &shard[1..],
+                    slaves
+                );
                 return false;
             }
             addrs.push((master, slaves));
@@ -259,15 +261,10 @@ where
             self.shards.push(shard);
         }
         assert_eq!(self.shards.len(), self.cfg.shards_url.len());
-        log::info!(
-            "{} load complete. {} dropping:{:?}",
-            self.cfg.service,
-            self.shards.len(),
-            {
-                old.retain(|_k, v| v.len() > 0);
-                old.keys()
-            }
-        );
+        log::info!("{} load complete. dropping:{:?}", self.cfg.service, {
+            old.retain(|_k, v| v.len() > 0);
+            old.keys()
+        });
 
         true
     }

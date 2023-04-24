@@ -1,27 +1,59 @@
-use crate::{OpCode, Operation};
+use crate::{HashedCommand, OpCode, Operation};
+pub type FlagExt = u64;
 #[derive(Debug, Default)]
 pub struct Flag {
     op_code: OpCode,
     op: Operation,
-    try_next_type: TryNextType,
+    //try_next_type: TryNextType,
     sentonly: bool,
-    status_ok: bool,
+    //status_ok: bool,
     noforward: bool,
-    nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
-    v: u64,
+    //nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
+    v: FlagExt,
 }
 
-impl std::ops::Deref for Flag {
-    type Target = u64;
+//impl std::ops::Deref for Flag {
+//    type Target = u64;
+//    #[inline]
+//    fn deref(&self) -> &Self::Target {
+//        &self.v
+//    }
+//}
+//impl std::ops::DerefMut for Flag {
+//    #[inline]
+//    fn deref_mut(&mut self) -> &mut Self::Target {
+//        &mut self.v
+//    }
+//}
+
+impl Ext for Flag {
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.v
+    fn ext(&self) -> FlagExt {
+        self.v
+    }
+    #[inline]
+    fn ext_mut(&mut self) -> &mut FlagExt {
+        &mut self.v
     }
 }
-impl std::ops::DerefMut for Flag {
+impl Ext for HashedCommand {
     #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.v
+    fn ext(&self) -> FlagExt {
+        self.flag().ext()
+    }
+    #[inline]
+    fn ext_mut(&mut self) -> &mut FlagExt {
+        self.flag_mut().ext_mut()
+    }
+}
+impl Ext for FlagExt {
+    #[inline]
+    fn ext(&self) -> Self {
+        *self
+    }
+    #[inline]
+    fn ext_mut(&mut self) -> &mut Self {
+        self
     }
 }
 
@@ -37,30 +69,30 @@ impl Flag {
         }
     }
 
-    #[inline]
-    pub fn set_try_next_type(&mut self, try_type: TryNextType) {
-        self.try_next_type = try_type
-    }
+    //#[inline]
+    //pub fn set_try_next_type(&mut self, try_type: TryNextType) {
+    //    self.try_next_type = try_type
+    //}
 
-    #[inline]
-    pub fn try_next_type(&self) -> TryNextType {
-        self.try_next_type.clone()
-    }
+    //#[inline]
+    //pub fn try_next_type(&self) -> TryNextType {
+    //    self.try_next_type.clone()
+    //}
 
     #[inline]
     pub fn new() -> Self {
         Self::default()
     }
-    #[inline]
-    pub fn set_status_ok(&mut self, ok: bool) -> &mut Self {
-        debug_assert_eq!(self.ok(), false);
-        self.status_ok = ok;
-        self
-    }
-    #[inline]
-    pub fn ok(&self) -> bool {
-        self.status_ok
-    }
+    //#[inline]
+    //pub fn set_status_ok(&mut self, ok: bool) -> &mut Self {
+    //    debug_assert_eq!(self.ok(), false);
+    //    self.status_ok = ok;
+    //    self
+    //}
+    //#[inline]
+    //pub fn ok(&self) -> bool {
+    //    self.status_ok
+    //}
     #[inline]
     pub fn set_sentonly(&mut self, sentonly: bool) -> &mut Self {
         self.sentonly = sentonly;
@@ -115,15 +147,15 @@ impl Flag {
     pub fn ext_mut(&mut self) -> &mut u64 {
         &mut self.v
     }
-    #[inline]
-    pub fn set_nil_convert(&mut self) -> &mut Self {
-        self.nil_converted = true;
-        self
-    }
-    #[inline]
-    pub fn nil_converted(&self) -> bool {
-        self.nil_converted
-    }
+    //#[inline]
+    //pub fn set_nil_convert(&mut self) -> &mut Self {
+    //    self.nil_converted = true;
+    //    self
+    //}
+    //#[inline]
+    //pub fn nil_converted(&self) -> bool {
+    //    self.nil_converted
+    //}
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +183,11 @@ impl Default for TryNextType {
     }
 }
 
+pub trait Ext {
+    fn ext(&self) -> u64;
+    fn ext_mut(&mut self) -> &mut u64;
+}
+
 pub trait Bit {
     fn mask_set(&mut self, shift: u8, mask: u64, val: u64);
     fn mask_get(&self, shift: u8, mask: u64) -> u64;
@@ -159,29 +196,34 @@ pub trait Bit {
     fn get(&self, shift: u8) -> bool;
 }
 
-impl Bit for u64 {
+impl<T: Ext> Bit for T {
     //mask决定val中要set的位数
     #[inline]
     fn mask_set(&mut self, shift: u8, mask: u64, val: u64) {
-        assert!(val <= mask);
-        assert_eq!(self.mask_get(shift, mask), 0);
-        *self |= val << shift;
-        assert_eq!(val, self.mask_get(shift, mask));
+        debug_assert!(val <= mask);
+        debug_assert!(shift as u32 + mask.trailing_ones() <= FlagExt::BITS);
+        debug_assert_eq!(self.mask_get(shift, mask), 0);
+        *self.ext_mut() |= val << shift;
+        debug_assert_eq!(val, self.mask_get(shift, mask));
     }
     #[inline]
     fn mask_get(&self, shift: u8, mask: u64) -> u64 {
-        (*self >> shift) & mask
+        debug_assert!(shift as u32 + mask.trailing_ones() <= FlagExt::BITS);
+        (self.ext() >> shift) & mask
     }
     #[inline]
     fn set(&mut self, shift: u8) {
-        *self |= 1 << shift;
+        debug_assert!(shift as u32 <= FlagExt::BITS);
+        *self.ext_mut() |= 1 << shift;
     }
     #[inline]
     fn clear(&mut self, shift: u8) {
-        *self &= !(1 << (shift));
+        debug_assert!(shift as u32 <= FlagExt::BITS);
+        *self.ext_mut() &= !(1 << (shift));
     }
     #[inline]
     fn get(&self, shift: u8) -> bool {
-        self & (1 << shift) != 0
+        debug_assert!(shift as u32 <= FlagExt::BITS);
+        self.ext() & (1 << shift) != 0
     }
 }

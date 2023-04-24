@@ -290,10 +290,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             .unwrap()
             .as_secs()
             .to_string();
-        let mut req_data: Vec<u8> = Vec::with_capacity(req_cmd.data().len() + time_sec.len());
+        let mut req_data: Vec<u8> = Vec::with_capacity(req_cmd.len() + time_sec.len());
 
         //前: flags前半部分
-        let pref_slice = req_cmd.data().sub_slice(0, self.flags_start - 0);
+        let pref_slice = req_cmd.sub_slice(0, self.flags_start - 0);
         pref_slice.copy_to_vec(&mut req_data);
 
         //中: 时间戳
@@ -301,7 +301,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
         // 后：flags 后半部分
         let oft = self.flags_start + self.flags_len;
-        let suffix_slice = req_cmd.data().sub_slice(oft, self.data.len() - oft);
+        let suffix_slice = req_cmd.sub_slice(oft, self.data.len() - oft);
         suffix_slice.copy_to_vec(&mut req_data);
 
         let marked_cmd = ds::MemGuard::from_vec(req_data);
