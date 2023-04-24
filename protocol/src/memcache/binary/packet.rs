@@ -92,12 +92,12 @@ pub(super) const NOREPLY_MAPPING: [u8; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 // 哪些请求是不需要转发的. 比如noop请求，version, status, quit等请求。这些请求可以直接计算出response。
-pub(super) const NO_FORWARD_OPS: [u8; 128] = [
-    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+//pub(super) const NO_FORWARD_OPS: [u8; 128] = [
+//    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+//    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//];
 
 // 请求完毕后，不考虑layer及其他配置，如果cmd失败,是否继续try_next:
 // (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对set生效，注意提前考虑cas)
@@ -122,37 +122,45 @@ pub(super) const OP_SET: u8 = 0x01;
 pub(super) const OP_DEL: u8 = 0x04;
 pub(super) const OP_ADD: u8 = 0x02;
 
-//pub(super) const OP_CODE_GETK: u8 = 0x0c;
+pub(super) const OP_GETK: u8 = 0x0c;
 
 // 这个专门为gets扩展
 pub(super) const OP_GETS: u8 = 0x48;
 // 这个没有业务使用，先注销掉
-// pub(super) const OP_CODE_GETSQ: u8 = 0x49;
+pub(super) const OP_GETSQ: u8 = 0x49;
 
 // 0x09: getq
 // 0x0d: getkq
 // 0x49: getsq
-pub(super) const QUITE_GET_TABLE: [u8; 128] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+//pub(super) const QUITE_GET_TABLE: [u8; 128] = [
+//    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//];
+#[inline(always)]
+pub(super) fn is_quiet_get(op_code: u8) -> bool {
+    match op_code {
+        OP_GETQ | OP_GETKQ | OP_GETSQ => true,
+        _ => false,
+    }
+    //QUITE_GET_TABLE[op_code as usize] == 1
+}
 
 // 在请求时，部分场景下把op_code进行一次映射。
 // 1. quite get请求映射成 non-quite get请求。
 //      getq(0x09) => get(0x00); getkq(0x0d) => getk(0x0c); 以实现multiget的pipeline
 // 2. 把gets(0x48), getsq(0x49) => get(0x00)请求。 // 支持gets请求只发送给master
-pub(super) const OPS_MAPPING_TABLE: [u8; 128] = [
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x0a, 0x0b, 0x0c, 0x0c, 0x0e, 0x0f,
-    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
-    0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
-    0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x00, 0x00, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
-    0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f,
-    0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f,
-    0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f,
-];
+//pub(super) const OPS_MAPPING_TABLE: [u8; 128] = [
+//    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x0a, 0x0b, 0x0c, 0x0c, 0x0e, 0x0f,
+//    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+//    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+//    0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
+//    0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x00, 0x00, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
+//    0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f,
+//    0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f,
+//    0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f,
+//];
 
 pub trait Binary<T> {
     fn op(&self) -> u8;
@@ -203,7 +211,7 @@ impl Binary<RingSlice> for RingSlice {
     }
     #[inline(always)]
     fn extra_len(&self) -> u8 {
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         self.at(PacketPos::ExtrasLength as usize)
     }
     #[inline(always)]
@@ -230,7 +238,7 @@ impl Binary<RingSlice> for RingSlice {
     }
     #[inline(always)]
     fn packet_len(&self) -> usize {
-        assert!(self.len() >= HEADER_LEN);
+        debug_assert!(self.len() >= HEADER_LEN);
         self.total_body_len() as usize + HEADER_LEN
     }
     #[inline(always)]
@@ -275,7 +283,8 @@ impl Binary<RingSlice> for RingSlice {
     // 需要应对gek个各种姿势： getkq...getkq + noop, getkq...getkq + getk，对于quite cmd，肯定是multiget的非结尾请求
     #[inline(always)]
     fn quiet_get(&self) -> bool {
-        QUITE_GET_TABLE[self.op() as usize] == 1
+        is_quiet_get(self.op())
+        //QUITE_GET_TABLE[self.op() as usize] == 1
     }
     #[inline(always)]
     fn clear_cas(&mut self) {
@@ -289,10 +298,19 @@ impl Binary<RingSlice> for RingSlice {
         let op = self.op();
         NOREPLY_MAPPING[op as usize] == op
     }
+    // 在请求时，部分场景下把op_code进行一次映射。
+    // 1. quite get请求映射成 non-quite get请求。
+    //      getq(0x09) => get(0x00); getkq(0x0d) => getk(0x0c); 以实现multiget的pipeline
+    // 2. 把gets(0x48), getsq(0x49) => get(0x00)请求。 // 支持gets请求只发送给master
     #[inline(always)]
     fn map_op(&mut self) -> u8 {
         let old = self.op();
-        let new = OPS_MAPPING_TABLE[old as usize];
+        //let new = OPS_MAPPING_TABLE[old as usize];
+        let new = match old {
+            OP_GETQ | OP_GETS | OP_GETSQ => OP_GET,
+            OP_GETKQ => OP_GETK,
+            o => o,
+        };
         if new != old {
             self.update(PacketPos::Opcode as usize, new);
         }
@@ -317,7 +335,7 @@ impl Binary<RingSlice> for RingSlice {
             alg.hash(&key)
         } else {
             // 这些请求都是noforward请求，不会发送到backend
-            assert!(self.operation().is_meta() || self.noop());
+            debug_assert!(self.operation().is_meta() || self.noop());
             0
         }
     }
@@ -365,6 +383,10 @@ impl Binary<RingSlice> for RingSlice {
     }
     #[inline(always)]
     fn noforward(&self) -> bool {
-        NO_FORWARD_OPS[self.op() as usize] == 1
+        //NO_FORWARD_OPS[self.op() as usize] == 1
+        match self.op() {
+            OP_NOOP | OP_QUIT | OP_QUITQ | OP_VERSION | OP_STAT => true,
+            _ => false,
+        }
     }
 }

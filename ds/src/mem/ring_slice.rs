@@ -266,10 +266,16 @@ impl RingSlice {
             }
         )
     }
+    // 读取一个u16的数字，大端
+    #[inline(always)]
+    pub fn read_u16(&self, oft: usize) -> u16 {
+        debug_assert!(self.len() >= oft + 2);
+        (self[oft] as u16) << 8 | self[oft + 1] as u16
+    }
 }
 
-unsafe impl Send for RingSlice {}
-unsafe impl Sync for RingSlice {}
+//unsafe impl Send for RingSlice {}
+//unsafe impl Sync for RingSlice {}
 
 use std::convert::TryInto;
 macro_rules! define_read_number {
@@ -296,7 +302,6 @@ macro_rules! define_read_number {
 }
 
 impl RingSlice {
-    define_read_number!(read_u16, u16);
     define_read_number!(read_u32, u32);
     define_read_number!(read_u64, u64);
 }
