@@ -161,30 +161,32 @@ impl Protocol for Mysql {
         }
     }
 
-    fn parse_response_debug<S: crate::Stream>(
-        &self,
-        req: &HashedCommand,
-        data: &mut S,
-    ) -> Result<Option<Command>> {
-        log::debug!(
-            "+++ recv mysql response for  req:{:?} =>{:?}",
-            req.data(),
-            data.slice()
-        );
+    // TODO 用于跟踪request和rsp解析过程的匹配，2023.7后清理 fishermen
+    // fn parse_response_debug<S: crate::Stream>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     data: &mut S,
+    // ) -> Result<Option<Command>> {
+    //     log::debug!(
+    //         "+++ recv mysql response for  req:{:?} =>{:?} with stream: {:?}",
+    //         req.data(),
+    //         data.slice(),
+    //         data,
+    //     );
 
-        let mut rsp_packet = ResponsePacket::new(data, None);
-        match self.parse_response_inner_debug(req, &mut rsp_packet) {
-            Ok(cmd) => Ok(cmd),
-            Err(Error::ProtocolIncomplete) => {
-                // rsp_packet.reserve();
-                Ok(None)
-            }
-            Err(e) => {
-                log::warn!("+++ [req:{:?}] err when parse mysql response: {:?}", req, e);
-                Err(e)
-            }
-        }
-    }
+    //     let mut rsp_packet = ResponsePacket::new(data, None);
+    //     match self.parse_response_inner_debug(req, &mut rsp_packet) {
+    //         Ok(cmd) => Ok(cmd),
+    //         Err(Error::ProtocolIncomplete) => {
+    //             // rsp_packet.reserve();
+    //             Ok(None)
+    //         }
+    //         Err(e) => {
+    //             log::warn!("+++ [req:{:?}] err when parse mysql response: {:?}", req, e);
+    //             Err(e)
+    //         }
+    //     }
+    // }
 
     fn write_response<C, W, M, I>(
         &self,

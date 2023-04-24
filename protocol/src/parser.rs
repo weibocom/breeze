@@ -70,15 +70,15 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
 
     // fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
 
-    // TODO: debug完毕，清理掉Request
-    fn parse_response_debug<S: Stream>(
-        &self,
-        _req: &HashedCommand,
-        _data: &mut S,
-    ) -> Result<Option<Command>> {
-        // TODO: just for debug
-        Err(Error::NotInit)
-    }
+    // TODO: mysql debug专用，2023.7后可以清理 fishermen
+    // fn parse_response_debug<S: Stream>(
+    //     &self,
+    //     _req: &HashedCommand,
+    //     _data: &mut S,
+    // ) -> Result<Option<Command>> {
+    //     // TODO: just for debug
+    //     Err(Error::NotInit)
+    // }
 
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
 
