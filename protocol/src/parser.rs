@@ -6,7 +6,7 @@ use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::mysql::Mysql;
 use crate::redis::Redis;
-use crate::{Error, Flag, Result, Stream, Writer};
+use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
 #[derive(Clone)]
 #[enum_dispatch(Proto)]
@@ -140,10 +140,19 @@ pub const MAX_DIRECT_HASH: i64 = i64::MAX;
 
 pub struct HashedCommand {
     hash: i64,
-    cmd: Command,
+    flag: Flag,
+    cmd: ds::MemGuard,
 }
 
 impl Command {
+    //#[inline]
+    //pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
+    //    Self { ok: flag.ok(), cmd }
+    //}
+    #[inline]
+    pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
+        Self { ok, cmd }
+    }
     #[inline]
     pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
         Self {
@@ -152,23 +161,24 @@ impl Command {
             origin_cmd: None,
         }
     }
+    pub fn from_ok(cmd: ds::MemGuard) -> Self {
+        Self { ok: true, cmd }
+    }
 
     #[inline]
-    pub fn len(&self) -> usize {
-        self.cmd.len()
+    pub fn ok(&self) -> bool {
+        self.ok
     }
+
+    //#[inline]
+    //pub fn len(&self) -> usize {
+    //    self.cmd.len()
+    //}
     //#[inline]
     //pub fn read(&self, oft: usize) -> &[u8] {
     //    self.cmd.read(oft)
     //}
-    #[inline]
-    pub fn data(&self) -> &ds::RingSlice {
-        self.cmd.data()
-    }
-    #[inline]
-    pub fn data_mut(&mut self) -> &mut ds::RingSlice {
-        self.cmd.data_mut()
-    }
+
     // 不再暴露cmd，需要保存原有的cmd
     // #[inline]
     // pub fn cmd(&mut self) -> &mut MemGuard {
@@ -194,23 +204,32 @@ impl Command {
         mem::swap(&mut self.cmd, &mut dest_cmd);
         self.origin_cmd = Some(dest_cmd);
     }
+
+    //#[inline]
+    //pub fn data(&self) -> &ds::RingSlice {
+    //    self.cmd.data()
+    //}
+    //#[inline]
+    //pub fn data_mut(&mut self) -> &mut ds::RingSlice {
+    //    self.cmd.data_mut()
+    //}
 }
 impl std::ops::Deref for Command {
-    type Target = Flag;
+    type Target = MemGuard;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.flag
+        &self.cmd
     }
 }
 impl std::ops::DerefMut for Command {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.flag
+        &mut self.cmd
     }
 }
 
 impl std::ops::Deref for HashedCommand {
-    type Target = Command;
+    type Target = MemGuard;
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.cmd
@@ -236,6 +255,10 @@ impl HashedCommand {
         }
     }
     #[inline]
+    pub fn reset_flag(&mut self, op_code: u16, op: Operation) {
+        self.flag.reset_flag(op_code, op);
+    }
+    #[inline]
     pub fn hash(&self) -> i64 {
         self.hash
     }
@@ -243,13 +266,57 @@ impl HashedCommand {
     pub fn update_hash(&mut self, idx_hash: i64) {
         self.hash = idx_hash;
     }
-}
-impl AsRef<Command> for HashedCommand {
+    //#[inline]
+    //pub fn data(&self) -> &ds::RingSlice {
+    //    self.cmd.data()
+    //}
+    //#[inline]
+    //pub fn data_mut(&mut self) -> &mut ds::RingSlice {
+    //    self.cmd.data_mut()
+    //}
+    //#[inline]
+    //pub fn len(&self) -> usize {
+    //    self.cmd.len()
+    //}
     #[inline]
-    fn as_ref(&self) -> &Command {
-        &self.cmd
+    pub fn sentonly(&self) -> bool {
+        self.flag.sentonly()
     }
+    #[inline]
+    pub fn set_sentonly(&mut self, v: bool) {
+        self.flag.set_sentonly(v);
+    }
+    #[inline]
+    pub fn operation(&self) -> Operation {
+        self.flag.operation()
+    }
+    #[inline]
+    pub fn op_code(&self) -> OpCode {
+        self.flag.op_code()
+    }
+    #[inline]
+    pub fn noforward(&self) -> bool {
+        self.flag.noforward()
+    }
+    #[inline]
+    pub fn flag(&self) -> &Flag {
+        &self.flag
+    }
+    #[inline]
+    pub fn flag_mut(&mut self) -> &mut Flag {
+        &mut self.flag
+    }
+    //#[inline]
+    //pub fn try_next_type(&self) -> TryNextType {
+    //    self.flag.try_next_type()
+    //}
 }
+//impl AsRef<Command> for HashedCommand {
+//    #[inline]
+//    fn as_ref(&self) -> &Command {
+//        &self.cmd
+//    }
+//}
 
 use std::fmt::{self, Debug, Display, Formatter};
 use std::mem;
@@ -267,34 +334,13 @@ impl Debug for HashedCommand {
 impl Display for Command {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "flag:{:?} len:{} sentonly:{} {} ok:{} op:{}/{:?}",
-            self.flag,
-            self.len(),
-            self.sentonly(),
-            self.cmd,
-            self.ok(),
-            self.op_code(),
-            self.operation()
-        )
+        write!(f, "ok:{} {}", self.ok, self.cmd)
     }
 }
 impl Debug for Command {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "flag:{:?} len:{} sentonly:{} {} ok:{} op:{}/{:?} data:{:?}",
-            self.flag,
-            self.len(),
-            self.sentonly(),
-            self.cmd,
-            self.ok(),
-            self.op_code(),
-            self.operation(),
-            self.data()
-        )
+        write!(f, "ok:{} {:?}", self.ok, self.cmd)
     }
 }
 

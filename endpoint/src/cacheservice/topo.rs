@@ -81,8 +81,16 @@ where
         if !req.operation().master_only() {
             let mut ctx = super::Context::from(*req.mut_context());
             let (i, try_next, write_back) = if req.operation().is_store() {
-                self.context_store(&mut ctx, req.cmd().try_next_type())
+                self.context_store(&mut ctx, &req)
             } else {
+                if !ctx.inited() {
+                    // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
+                    // 第一次读一般访问L1，miss之后再读master；
+                    // 读quota的更新根据第一次的请求时间更合理
+                    if let Some(quota) = self.streams.quota() {
+                        req.quota(quota);
+                    }
+                }
                 self.context_get(&mut ctx)
             };
             req.try_next(try_next);
@@ -105,11 +113,7 @@ where
     E: Endpoint<Item = Req>,
 {
     #[inline]
-    fn context_store(
-        &self,
-        ctx: &mut super::Context,
-        try_next_type: TryNextType,
-    ) -> (usize, bool, bool) {
+    fn context_store(&self, ctx: &mut super::Context, req: &Req) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
@@ -122,7 +126,8 @@ where
             try_next = if idx + 1 >= self.streams.len() {
                 false
             } else {
-                match try_next_type {
+                use protocol::memcache::Binary;
+                match req.try_next_type() {
                     TryNextType::NotTryNext => false,
                     TryNextType::TryNext => true,
                     TryNextType::Unkown => self.force_write_all,
@@ -180,7 +185,7 @@ where
             let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();
-            self.streams.reserve(old_streams.len());
+            //self.streams.reserve(old_streams.len());
             // 把streams按address进行flatten
             let mut streams = HashMap::with_capacity(old_streams.len() * 8);
             let old = &mut streams;
@@ -198,19 +203,20 @@ where
             let master = ns.master.clone();
             let local = ns.is_local();
             let (mut local_len, mut backends) = ns.take_backends();
-            //let local = true;
-            if local && local_len > 1 {
+            //let local = true; 开启local，则local_len可能会变小，与按quota预期不符
+            if false && local && local_len > 1 {
                 backends.balance(&master);
                 local_len = backends.sort(master);
             }
 
+            let mut new = Vec::with_capacity(backends.len());
             for (i, group) in backends.into_iter().enumerate() {
                 // 第一组是master
                 let to = if i == 0 { mto } else { rto };
                 let e = self.build(old, group, dist, namespace, to);
-                self.streams.push(e);
+                new.push(e);
             }
-            self.streams.topn(local_len);
+            self.streams.update(new, local_len, local);
         }
         // old 会被dopped
     }

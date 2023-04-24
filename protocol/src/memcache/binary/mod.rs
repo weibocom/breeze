@@ -4,6 +4,8 @@ mod packet;
 use packet::RespStatus::*;
 use packet::*;
 
+pub use packet::Binary;
+
 #[derive(Clone, Default)]
 pub struct MemcacheBinary;
 
@@ -38,13 +40,14 @@ impl Protocol for MemcacheBinary {
             let cmd = req.operation();
             let op_code = req.map_op(); // 把quite get请求，转换成单个的get请求
             let mut flag = Flag::from_op(op_code as u16, cmd);
-            flag.set_try_next_type(req.try_next_type());
+            // try_next_type在需要的时候直接通过Request读取即可。
+            //flag.set_try_next_type(req.try_next_type());
             flag.set_sentonly(req.sentonly());
             flag.set_noforward(req.noforward());
             let guard = data.take(packet_len);
             let hash = req.hash(alg);
             let cmd = HashedCommand::new(guard, hash, flag);
-            debug_assert!(!cmd.data().quiet_get());
+            debug_assert!(!cmd.quiet_get());
             process.process(cmd, last);
         }
         Ok(())
@@ -52,24 +55,26 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         log::debug!("+++ mc will parse rsp: {:?}", data.slice());
-        assert!(data.len() > 0, "rsp: {:?}", data.slice());
+        debug_assert!(data.len() > 0, "rsp: {:?}", data.slice());
         let len = data.len();
         if len >= HEADER_LEN {
             let r = data.slice();
             r.check_response()?;
             let pl = r.packet_len();
-            assert!(!r.quiet_get(), "rsp: {:?}", r);
+            debug_assert!(!r.quiet_get(), "rsp: {:?}", r);
             if len >= pl {
-                if !r.is_quiet() {
-                    let mut flag = Flag::from_op(r.op() as u16, r.operation());
-                    flag.set_status_ok(r.status_ok());
-                    return Ok(Some(Command::new(flag, data.take(pl))));
+                return if !r.is_quiet() {
+                    //let mut flag = Flag::from_op(r.op() as u16, r.operation());
+                    //flag.set_status_ok(r.status_ok());
+                    Ok(Some(Command::from(r.status_ok(), data.take(pl))))
                 } else {
                     // response返回quite请求只有一种情况：出错了。
                     // quite请求是异步处理，直接忽略即可。
-                    assert!(!r.status_ok(), "rsp: {:?}", r);
-                    data.ignore(pl);
-                }
+                    //assert!(!r.status_ok(), "rsp: {:?}", r);
+                    //data.ignore(pl);
+                    println!("mc response quiete: {:?}", r);
+                    Err(Error::ResponseQuiet)
+                };
             } else {
                 data.reserve(pl - len);
             }
@@ -79,9 +84,7 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn check(&self, req: &HashedCommand, resp: &Command) {
         assert!(
-            !resp.data().is_quiet()
-                && req.data().op() == resp.data().op()
-                && req.data().opaque() == resp.data().opaque(),
+            !resp.is_quiet() && req.op() == resp.op() && req.opaque() == resp.opaque(),
             "{:?} => {:?}",
             req,
             resp,
@@ -118,21 +121,22 @@ impl Protocol for MemcacheBinary {
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         // if let Some(rsp) = ctx.response_mut() {
         if let Some(rsp) = response {
-            assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
+            assert!(rsp.len() > 0, "empty rsp:{:?}", rsp);
 
             // 验证Opaque是否相同. 不相同说明数据不一致
-            if ctx.request().data().opaque() != rsp.data().opaque() {
+            if ctx.request().opaque() != rsp.opaque() {
                 ctx.metric().inconsist(1);
             }
 
             // 如果quite 请求没拿到数据，直接忽略
-            if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
+            //if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
+            if is_quiet_get(old_op_code as u8) && !rsp.ok() {
                 return Ok(());
             }
             log::debug!("+++ will write mc rsp:{:?}", rsp.data());
-            let data = rsp.data_mut();
-            data.restore_op(old_op_code as u8);
-            w.write_slice(data, 0)?;
+            //let data = rsp.data_mut();
+            rsp.restore_op(old_op_code as u8);
+            w.write_slice(rsp, 0)?;
 
             return Ok(());
         }
@@ -144,7 +148,7 @@ impl Protocol for MemcacheBinary {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_NOOP => {
                 w.write_u8(RESPONSE_MAGIC)?;
-                w.write_slice(ctx.request().data(), 1)
+                w.write_slice(ctx.request(), 1)
             }
 
             OP_VERSION => w.write(&VERSION_RESPONSE),
@@ -186,31 +190,30 @@ impl MemcacheBinary {
     // 根据req构建response，status为mc协议status，共11种
     #[inline]
     fn build_empty_response(&self, status: RespStatus, req: &HashedCommand) -> [u8; HEADER_LEN] {
-        let req_slice = req.data();
+        //let req_slice = req.data();
         let mut response = [0; HEADER_LEN];
         response[PacketPos::Magic as usize] = RESPONSE_MAGIC;
-        response[PacketPos::Opcode as usize] = req_slice.op();
+        response[PacketPos::Opcode as usize] = req.op();
         response[PacketPos::Status as usize + 1] = status as u8;
         //复制 Opaque
         for i in PacketPos::Opaque as usize..PacketPos::Opaque as usize + 4 {
-            response[i] = req_slice.at(i);
+            response[i] = req.at(i);
         }
         response
     }
     #[inline]
     fn build_write_back_inplace(&self, req: &mut HashedCommand) {
-        let data = req.data_mut();
-        assert!(data.len() >= HEADER_LEN, "req: {:?}", data);
+        assert!(req.len() >= HEADER_LEN, "req: {:?}", req);
         // 把cas请求转换成非cas请求: cas值设置为0
-        data.clear_cas();
-        let op = data.map_op_noreply();
-        let cmd = data.operation();
-        assert!(data.is_quiet(), "rqe:{:?}", data);
+        req.clear_cas();
+        let op = req.map_op_noreply();
+        let cmd = req.operation();
+        assert!(req.is_quiet(), "rqe:{:?}", req);
         req.reset_flag(op as u16, cmd);
         // 设置只发送标签，发送完成即请求完成。
         req.set_sentonly(true);
-        assert!(req.operation().is_store(), "req: {:?}", req.data());
-        assert!(req.sentonly(), "req: {:?}", req.data());
+        assert!(req.operation().is_store(), "req: {:?}", req);
+        assert!(req.sentonly(), "req: {:?}", req);
     }
     #[inline]
     fn build_write_back_get(
@@ -222,8 +225,8 @@ impl MemcacheBinary {
         // 轮询response的cmds，构建回写request
         // 只为status为ok的resp构建回种req
         assert!(resp.ok(), "resp: {:?}", resp.data());
-        let rsp_cmd = resp.data();
-        let r_data = req.data();
+        let rsp_cmd = resp;
+        let r_data = req;
         let key_len = r_data.key_len();
         // 4 为expire flag的长度。
         // 先用rsp的精确长度预分配，避免频繁分配内存

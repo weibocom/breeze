@@ -1,11 +1,11 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 
 use ds::chan::mpsc::Receiver;
+use ds::time::Instant;
 use protocol::{Error, Protocol, Request, Result, Stream};
-use std::task::ready;
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -13,8 +13,9 @@ use metrics::Metric;
 
 pub struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
-    pending: VecDeque<Req>,
+    pending: VecDeque<(Req, Instant)>,
     backend_addr: &'r str,
+
     s: S,
     parser: P,
     rtt: Metric,
@@ -35,6 +36,7 @@ where
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        debug_assert!(self.num.check_pending(self.pending.len()), "{:?}", self);
         let me = &mut *self;
 
         let request = me.poll_request(cx)?;
@@ -125,10 +127,12 @@ where
         self.s.cache(self.data.has_multi());
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
             self.num.tx();
-            self.s.write_slice(req.data(), 0)?;
+
+            self.s.write_slice(&*req, 0)?;
             //此处paser需要插钩子，设置seqid
+
             match req.on_sent() {
-                Some(r) => self.pending.push_back(r),
+                Some(r) => self.pending.push_back((r, Instant::now())),
                 None => {
                     self.num.rx();
                 }
@@ -146,24 +150,27 @@ where
 
             while self.s.len() > 0 {
                 match self.parser.parse_response(&mut self.s) {
-                    Ok(None) => {
-                        break;
-                    }
+                    Ok(None) => break,
+
                     Ok(Some(cmd)) => {
-                        let req = self.pending.pop_front().expect("take response");
+                        let (req, start) = self.pending.pop_front().expect("take response");
                         self.num.rx();
                         // 统计请求耗时。
-                        self.rtt += req.elapsed_current_req();
-                        self.parser.check(req.cmd(), &cmd);
+                        self.rtt += start.elapsed();
+                        self.parser.check(&*req, &cmd);
                         req.on_complete(cmd);
                     }
                     Err(e) => match e {
                         Error::UnexpectedData => {
-                            let req = self.pending.iter().map(|r| r.data()).collect::<Vec<_>>();
+                            let req = self
+                                .pending
+                                .iter()
+                                .map(|(r, _)| r.data())
+                                .collect::<Vec<_>>();
                             let rsp_data = self.s.slice();
                             let rsp_buf = unsafe { rsp_data.data_dump() };
                             panic!(
-                                "unexpected handler:{:?} rsp data:[{:?}] buff:{:?} pending req:[{:?}] ",
+                                "unexpected:{:?} rsp:{:?} buff:{:?} pending req:[{:?}] ",
                                 self, rsp_data, rsp_buf, req
                             );
                         }
@@ -191,12 +198,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
 {
     #[inline]
     fn last(&self) -> Option<ds::time::Instant> {
-        if self.pending.len() > 0 {
-            self.num.check_pending();
-            Some(self.pending.front().expect("empty").last_start_at())
-        } else {
-            None
-        }
+        self.pending.front().map(|(_, t)| *t)
     }
     #[inline]
     fn close(&mut self) -> bool {
@@ -208,14 +210,14 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
             req.on_err(Error::Pending);
         }
         // 2. 有请求已经发送，但response未获取到
-        while let Some(req) = self.pending.pop_front() {
+        while let Some((req, _)) = self.pending.pop_front() {
             req.on_err(Error::Waiting);
         }
         // 3. cancel
         use rt::Cancel;
         self.s.cancel();
 
-        self.s.try_gc()
+        self.s.try_gc() && self.data.is_empty_hint()
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
@@ -235,11 +237,12 @@ impl<'r, Req, P, S: Debug> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler num:{:?}  p_req:{} {} buf:{:?}",
+            "handler num:{:?}  p_req:{} {} buf:{:?} data:{:?}",
             self.num,
             self.pending.len(),
             self.rtt,
             self.s,
+            self.data
         )
     }
 }
@@ -262,8 +265,8 @@ impl Number {
         self.tx += 1;
     }
     #[inline(always)]
-    fn check_pending(&self) {
-        debug_assert!(self.tx > self.rx, "tx:{} rx:{}", self.tx, self.rx);
+    fn check_pending(&self, len: usize) -> bool {
+        len == self.tx - self.rx
     }
 }
 #[cfg(not(debug_assertions))]
@@ -273,5 +276,7 @@ impl Number {
     #[inline(always)]
     fn tx(&mut self) {}
     #[inline(always)]
-    fn check_pending(&self) {}
+    fn check_pending(&self, _len: usize) -> bool {
+        true
+    }
 }

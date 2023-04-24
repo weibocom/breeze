@@ -8,6 +8,7 @@ edition = "2021"
 
 [dependencies]
 elog = { package = "log", version = "0.4.17" }
+#[cfg(feature = "enable-log")]
 log4rs = { version = "1.0.0", features = ["gzip"] }
 
 [features]

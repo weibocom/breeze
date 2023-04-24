@@ -30,8 +30,6 @@ impl CallbackContextPtr {
         exp: u32,
         metric: &mut Arc<M>,
     ) {
-        // 在异步处理之前，必须要先处理完response
-        assert!(!self.inited() && self.complete(), "cbptr:{:?}", &**self);
         self.async_mode();
         let mut rsp_ctx = ResponseContext::new(self, metric, |_h| {
             assert!(false, "write back"); // 此处的dist_fn逻辑上暂时不会用

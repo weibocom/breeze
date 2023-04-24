@@ -19,6 +19,7 @@ pub enum Error {
     RequestInvalidMagic,
     ResponseInvalidMagic,
     RequestProtocolInvalid,
+    ResponseQuiet, // mc的response返回了quite请求
     //RequestProtocolInvalidNumber(&'static str),
     //RequestProtocolInvalidStar(&'static str),
     //RequestProtocolInvalidNumberZero(&'static str),

@@ -1,6 +1,7 @@
 mod binary;
 //mod text;
 
+pub use binary::Binary;
 pub use binary::MemcacheBinary as MemcacheBin;
 pub use binary::MemcacheBinary;
 //pub use text::MemcacheText;

@@ -1,10 +1,8 @@
-use ds::time::{Duration, Instant};
+use ds::time::Instant;
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
-use ds::RingSlice;
-
-use crate::{Command, HashedCommand, Operation};
+use crate::{Command, HashedCommand};
 
 pub type Context = u64;
 
@@ -19,19 +17,18 @@ pub trait Request:
     + Deref<Target = HashedCommand>
     + DerefMut<Target = HashedCommand>
 {
-    fn cmd(&self) -> &HashedCommand;
+    // fn cmd(&self) -> &HashedCommand;
     fn cmd_mut(&mut self) -> &mut HashedCommand;
+
     fn start_at(&self) -> Instant;
-    fn last_start_at(&self) -> ds::time::Instant;
-    fn elapsed_current_req(&self) -> Duration;
-    fn operation(&self) -> Operation;
-    fn len(&self) -> usize;
-    fn hash(&self) -> i64;
+    //fn operation(&self) -> Operation;
+    //fn len(&self) -> usize;
+    //fn hash(&self) -> i64;
     // fn update_hash(&mut self, idx_hash: i64);
     fn on_noforward(&mut self);
     fn on_sent(self) -> Option<Self>;
-    fn sentonly(&self) -> bool;
-    fn data(&self) -> &RingSlice;
+    //fn sentonly(&self) -> bool;
+    //fn data(&self) -> &RingSlice;
     //fn read(&self, oft: usize) -> &[u8];
     fn on_complete(self, resp: Command);
     fn on_err(self, err: crate::Error);
@@ -45,4 +42,6 @@ pub trait Request:
     //fn is_write_back(&self) -> bool;
     // 请求失败后，是否需要进行重试
     fn try_next(&mut self, goon: bool);
+    // 初始化quota
+    fn quota(&mut self, quota: sharding::BackendQuota);
 }

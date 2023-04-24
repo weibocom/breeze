@@ -32,7 +32,7 @@ impl McqText {
             let mut flag = Flag::from_op(cfg.op_code(), cfg.operation().clone());
 
             // mcq 总是需要重试，确保所有消息读写成功
-            flag.set_try_next_type(crate::TryNextType::TryNext);
+            //flag.set_try_next_type(crate::TryNextType::TryNext);
             // mcq 只需要写一次成功即可，不存在noreply(即只sent) req
             flag.set_sentonly(false);
             // 是否内部请求,不发往后端，如quit
@@ -58,13 +58,13 @@ impl McqText {
         let mut packet = RspPacket::new(s);
         packet.parse()?;
 
-        let mut flag = Flag::new();
-        if packet.is_succeed() {
-            flag.set_status_ok(true);
-        }
+        //let mut flag = Flag::new();
+        //if packet.is_succeed() {
+        //    flag.set_status_ok(true);
+        //}
         let mem = packet.take();
         let _ = packet.delay_metric();
-        return Ok(Some(Command::new(flag, mem)));
+        return Ok(Some(Command::from(packet.is_succeed(), mem)));
     }
 
     // 协议内部的metric统计，全部放置于此
@@ -148,7 +148,7 @@ impl Protocol for McqText {
         if let Some(rsp) = response {
             // 不再创建local rsp，所有server响应的rsp data长度应该大于0
             debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
-            w.write_slice(rsp.data(), 0)?;
+            w.write_slice(rsp, 0)?;
             self.metrics(request, rsp, ctx);
         } else {
             let padding = cfg.get_padding_rsp();

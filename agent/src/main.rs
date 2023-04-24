@@ -1,4 +1,4 @@
-use ds::BrzMalloc;
+use ds::{chan::Receiver, BrzMalloc};
 #[global_allocator]
 static GLOBAL: BrzMalloc = BrzMalloc {};
 
@@ -9,6 +9,7 @@ mod console;
 mod http;
 mod prometheus;
 mod service;
+use context::Context;
 use discovery::*;
 mod init;
 
@@ -33,34 +34,12 @@ async fn run() -> Result<()> {
     let ctx = context::get();
     init::init(ctx);
 
-    // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
-    let discovery = discovery::Discovery::from_url(&ctx.discovery);
     let (tx, rx) = ds::chan::bounded(128);
-    let snapshot = ctx.snapshot_path.to_string();
-    let tick = ctx.tick();
-    let mut fix = discovery::Fixed::default();
+    discovery_init(ctx, rx).await?;
 
-    // 首先从vintage获取socks
-    if ctx.service_pool_socks_url().len() > 1 {
-        fix.register(
-            ctx.service_pool_socks_url(),
-            &ctx.idc,
-            discovery::socks::build_refresh_socks(ctx.service_path.clone()),
-        );
-    }
-
-    // 优先获取socks，再做其他操作，确保socks文件尽快构建
-    fix.register(
-        ctx.idc_path_url(),
-        "",
-        discovery::distance::build_refresh_idc(),
-    );
-
-    rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
     log::info!("server inited {:?}", ctx);
 
     let mut listeners = ctx.listeners();
-    listeners.remove_unix_sock().await?;
     loop {
         let (quards, failed) = listeners.scan().await;
         if failed > 0 {
@@ -77,4 +56,54 @@ async fn run() -> Result<()> {
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
+}
+
+use protocol::Parser;
+use std::sync::Arc;
+use stream::{Backend, Builder, Request};
+type Endpoint = Arc<Backend<Request>>;
+type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
+async fn discovery_init(
+    ctx: &'static Context,
+    rx: Receiver<TopologyWriteGuard<Topology>>,
+) -> Result<()> {
+    // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
+    let discovery = discovery::Discovery::from_url(&ctx.discovery);
+    let snapshot = ctx.snapshot_path.to_string();
+    let tick = ctx.tick();
+    let mut fix = discovery::Fixed::default();
+
+    // 首先从vintage获取socks
+    let service_pool_socks_url = ctx.service_pool_socks_url();
+
+    //watch_discovery之前执行清理sock
+    let mut dir = tokio::fs::read_dir(&ctx.service_path).await?;
+    while let Some(child) = dir.next_entry().await? {
+        let path = child.path();
+        //从vintage获取socklist，或者存在unixsock，需要事先清理
+        if service_pool_socks_url.len() > 1
+            || path.to_str().map(|s| s.ends_with(".sock")).unwrap_or(false)
+        {
+            log::info!("{:?} exists. deleting", path);
+            let _ = tokio::fs::remove_file(path).await;
+        }
+    }
+
+    if service_pool_socks_url.len() > 1 {
+        fix.register(
+            service_pool_socks_url,
+            &ctx.idc,
+            discovery::socks::build_refresh_socks(ctx.service_path.clone()),
+        );
+    }
+
+    // 优先获取socks，再做其他操作，确保socks文件尽快构建
+    fix.register(
+        ctx.idc_path_url(),
+        "",
+        discovery::distance::build_refresh_idc(),
+    );
+
+    rt::spawn(watch_discovery(snapshot, discovery, rx, tick, fix));
+    Ok(())
 }
