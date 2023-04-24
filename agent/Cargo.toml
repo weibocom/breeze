@@ -37,4 +37,6 @@ reqwest = { version = "0.11.4", default-features = false }
 
 
 [features]
-console-api = []
+default = ["http"]
+http = []
+console-api = ["http"]
