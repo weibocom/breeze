@@ -145,14 +145,8 @@ where
             let poll_read = self.s.poll_recv(cx);
 
             while self.s.len() > 0 {
-                // TODO just for debug
-                let req = self.pending.front().expect("take response for test");
-
-                match self.parser.parse_response_debug(req.cmd(), &mut self.s) {
+                match self.parser.parse_response(&mut self.s) {
                     Ok(None) => {
-                        if let Poll::Ready(Err(protocol::Error::Eof)) = poll_read {
-                            log::warn!("+++ found Eof for req:{:?} and rsp is none", req);
-                        }
                         break;
                     }
                     Ok(Some(cmd)) => {
@@ -174,10 +168,7 @@ where
                             );
                         }
                         _ => {
-                            let err: protocol::Error = e.into();
-                            log::warn!("found may Eof: {:?}", err);
-                            return Poll::Ready(Err(err));
-                            // return Poll::Ready(Err(e.into()));
+                            return Poll::Ready(Err(e.into()));
                         }
                     },
                 }

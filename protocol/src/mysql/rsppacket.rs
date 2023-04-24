@@ -250,7 +250,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         if data.len() >= HEADER_LEN + raw_chunk_len {
             // 0xFF ERR packet header
             if self.current() == 0xFF {
-                // TODO 发现异常数据，先读走所有
+                // TODO 发现异常数据，先修改oft读走所有
                 self.oft += raw_chunk_len;
 
                 match ParseBuf(&data[HEADER_LEN..]).parse(self.capability_flags)? {
