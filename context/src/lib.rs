@@ -330,6 +330,9 @@ impl From<ContextOption> for Context {
         if option.cpu == "v3" {
             version.push('3');
         }
+        if std::env::var("BREEZE_LOCAL") == Ok("distance".to_string()) {
+            version.push('t');
+        }
         let host_v3 = option.cpu == "v3";
         // 1. 如果宿主机的支持模式与编译器的编译方式不一致。
         if cfg!(target_feature = "avx") != host_v3 {
