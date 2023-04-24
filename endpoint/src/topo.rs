@@ -102,7 +102,15 @@ where
 }
 
 pub trait Builder<P, R, E> {
-    fn build(
+    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E
+    where
+        E: Endpoint<Item = R>,
+    {
+        Self::option_build(addr, parser, rsrc, service, timeout, Default::defalut())
+    }
+
+    // TODO: update
+    fn option_build(
         addr: &str,
         parser: P,
         rsrc: Resource,
@@ -111,7 +119,10 @@ pub trait Builder<P, R, E> {
         option: ResOption,
     ) -> E
     where
-        E: Endpoint<Item = R>;
+        E: Endpoint<Item = R>,
+    {
+        todo!("speed up!")
+    }
 }
 
 macro_rules! define_topology {
