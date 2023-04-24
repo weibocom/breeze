@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.4"
-rust-crypto = "0.2.36"
+#rust-crypto = "0.2.36"
 byteorder = "1.4.3"
 memcache = "0.16.0"
 assert-panic = "1.0.1"
