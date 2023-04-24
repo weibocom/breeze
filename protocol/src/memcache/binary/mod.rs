@@ -54,7 +54,7 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         log::debug!("+++ mc will parse rsp: {:?}", data.slice());
-        assert!(data.len() > 0, "rsp: {:?}", data.slice());
+        debug_assert!(data.len() > 0, "rsp: {:?}", data.slice());
         let len = data.len();
         if len >= HEADER_LEN {
             let r = data.slice();
@@ -128,7 +128,8 @@ impl Protocol for MemcacheBinary {
             }
 
             // 如果quite 请求没拿到数据，直接忽略
-            if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
+            //if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
+            if is_quiet_get(old_op_code as u8) && !rsp.ok() {
                 return Ok(());
             }
             log::debug!("+++ will write mc rsp:{:?}", rsp.data());
