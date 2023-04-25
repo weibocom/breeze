@@ -1,5 +1,6 @@
 use enum_dispatch::enum_dispatch;
 
+use lazy_static::__Deref;
 use sharding::hash::Hash;
 
 use crate::memcache::MemcacheBinary;
@@ -131,9 +132,8 @@ pub trait RequestProcessor {
 }
 
 pub struct Command {
-    flag: Flag,
+    ok: bool,
     cmd: MemGuard,
-    origin_cmd: Option<MemGuard>,
 }
 
 pub const MAX_DIRECT_HASH: i64 = i64::MAX;
@@ -142,6 +142,7 @@ pub struct HashedCommand {
     hash: i64,
     flag: Flag,
     cmd: ds::MemGuard,
+    origin_cmd: Option<MemGuard>,
 }
 
 impl Command {
@@ -153,16 +154,16 @@ impl Command {
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
         Self { ok, cmd }
     }
-    #[inline]
-    pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
-        Self {
-            flag,
-            cmd,
-            origin_cmd: None,
-        }
-    }
+    // #[inline]
+    // pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
+    //     Self {
+    //         ok: Ok(flag),
+    //         cmd,
+    //         origin_cmd: None,
+    //     }
+    // }
     pub fn from_ok(cmd: ds::MemGuard) -> Self {
-        Self { ok: true, cmd }
+        Self::from(true, cmd)
     }
 
     #[inline]
@@ -185,25 +186,6 @@ impl Command {
     //     &mut self.cmd
     // }
     // 获取origin data，调用方必须确保其存在
-    #[inline]
-    pub(crate) fn origin_data(&self) -> &ds::RingSlice {
-        if let Some(origin) = &self.origin_cmd {
-            origin.data()
-        } else {
-            panic!("origin is null, req:{:?}", self.cmd.data())
-        }
-    }
-    #[inline]
-    pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
-        assert!(
-            self.origin_cmd.is_none(),
-            "origin cmd should be nnone: {:?}",
-            self.origin_cmd
-        );
-        // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
-        mem::swap(&mut self.cmd, &mut dest_cmd);
-        self.origin_cmd = Some(dest_cmd);
-    }
 
     //#[inline]
     //pub fn data(&self) -> &ds::RingSlice {
@@ -247,11 +229,9 @@ impl HashedCommand {
     pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {
         Self {
             hash,
-            cmd: Command {
-                flag,
-                cmd,
-                origin_cmd: None,
-            },
+            flag,
+            cmd,
+            origin_cmd: None,
         }
     }
     #[inline]
@@ -305,6 +285,25 @@ impl HashedCommand {
     #[inline]
     pub fn flag_mut(&mut self) -> &mut Flag {
         &mut self.flag
+    }
+    #[inline]
+    pub(crate) fn origin_data(&self) -> &MemGuard {
+        if let Some(origin) = &self.origin_cmd {
+            origin
+        } else {
+            panic!("origin is null, req:{:?}", self.cmd.data())
+        }
+    }
+    #[inline]
+    pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
+        assert!(
+            self.origin_cmd.is_none(),
+            "origin cmd should be nnone: {:?}",
+            self.origin_cmd
+        );
+        // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
+        mem::swap(&mut self.cmd, &mut dest_cmd);
+        self.origin_cmd = Some(dest_cmd);
     }
     //#[inline]
     //pub fn try_next_type(&self) -> TryNextType {

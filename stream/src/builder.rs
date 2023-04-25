@@ -19,7 +19,7 @@ pub struct BackendBuilder<P, R> {
 }
 
 impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
-    fn option_build(
+    fn build(
         addr: &str,
         parser: P,
         rsrc: Resource,

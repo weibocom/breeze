@@ -21,6 +21,7 @@ pub trait Request:
     fn cmd_mut(&mut self) -> &mut HashedCommand;
 
     fn start_at(&self) -> Instant;
+    // fn elapsed_current_req(&self) -> Duration;
     //fn operation(&self) -> Operation;
     //fn len(&self) -> usize;
     //fn hash(&self) -> i64;
