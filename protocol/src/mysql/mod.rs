@@ -119,14 +119,14 @@ impl Protocol for Mysql {
             let cmd = req.operation();
             let op_code = req.map_op(); // 把quite get请求，转换成单个的get请求s
             let mut flag = Flag::from_op(op_code as u16, cmd);
-            flag.set_try_next_type(req.try_next_type());
+            // flag.set_try_next_type(req.try_next_type());
             flag.set_sentonly(req.sentonly());
             flag.set_noforward(req.noforward());
 
             let guard = stream.take(packet_len);
             let hash = req.hash(alg);
             let cmd = HashedCommand::new(guard, hash, flag);
-            assert!(!cmd.data().quiet_get());
+            assert!(!cmd.quiet_get());
             process.process(cmd, last);
         }
 
@@ -134,8 +134,7 @@ impl Protocol for Mysql {
     }
 
     fn build_request(&self, req: &mut HashedCommand, new_req: String) {
-        let data = req.data();
-        let mysql_cmd = data.mysql_cmd();
+        let mysql_cmd = req.mysql_cmd();
         let new_req = RequestPacket::new()
             .build_request(mysql_cmd, &new_req)
             .unwrap();
@@ -213,12 +212,12 @@ impl Protocol for Mysql {
         if let Some(rsp) = response {
             // mysql 请求到正确的数据，才会转换并write
             if rsp.ok() {
-                assert!(rsp.data().len() > 0, "empty rsp:{:?}", rsp);
+                assert!(rsp.len() > 0, "empty rsp:{:?}", rsp);
                 self.write_mc_packet(ctx.request(), rsp, w)?;
                 log::info!(
                     "+++ sent to client for req:{:?}, rsp:{}",
-                    ctx.request().data(),
-                    rsp.data().len()
+                    ctx.request(),
+                    rsp.len()
                 );
                 return Ok(());
             }
@@ -226,15 +225,12 @@ impl Protocol for Mysql {
 
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
-        log::warn!(
-            "+++ send to client padding rsp, req:{:?}",
-            ctx.request().data(),
-        );
+        log::warn!("+++ send to client padding rsp, req:{:?}", ctx.request(),);
         match old_op_code {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_CODE_NOOP => {
                 w.write_u8(RESPONSE_MAGIC)?;
-                w.write_slice(ctx.request().data(), 1)?;
+                w.write_slice(ctx.request(), 1)?;
             }
 
             //version: 返回固定rsp
@@ -324,14 +320,13 @@ impl Mysql {
     // 根据req构建response，status为mc协议status，共11种
     #[inline]
     fn build_empty_response(&self, status: RespStatus, req: &HashedCommand) -> [u8; HEADER_LEN] {
-        let req_slice = req.data();
         let mut response = [0; HEADER_LEN];
         response[PacketPos::Magic as usize] = RESPONSE_MAGIC;
-        response[PacketPos::Opcode as usize] = req_slice.op();
+        response[PacketPos::Opcode as usize] = req.op();
         response[PacketPos::Status as usize + 1] = status as u8;
         //复制 Opaque
         for i in PacketPos::Opaque as usize..PacketPos::Opaque as usize + 4 {
-            response[i] = req_slice.at(i);
+            response[i] = req.at(i);
         }
         response
     }
@@ -360,7 +355,7 @@ impl Mysql {
 
         log::debug!(
             "+++ parsed rsp:{:?} for req req:{:?} ",
-            req.data(),
+            req,
             result_set.len()
         );
         // 返回mysql响应，在write response处进行协议转换
@@ -370,15 +365,13 @@ impl Mysql {
             false => Vec::with_capacity(10),
         };
 
-        let mut flag = Flag::from_op(OP_CODE_GET as u16, crate::Operation::Get);
-        if row.len() == 0 {
-            row.extend("not found data".as_bytes());
-        } else {
-            flag.set_status_ok(true);
-        }
+        let status = match row.len() {
+            0 => false,
+            _ => true,
+        };
 
         let mem = MemGuard::from_vec(row);
-        let cmd = Command::new(flag, mem);
+        let cmd = Command::from(status, mem);
         Ok(Some(cmd))
     }
 
@@ -399,15 +392,13 @@ impl Mysql {
             false => Vec::with_capacity(10),
         };
 
-        let mut flag = Flag::from_op(OP_CODE_GET as u16, crate::Operation::Get);
-        if row.len() == 0 {
-            row.extend("not found data".as_bytes());
-        } else {
-            flag.set_status_ok(true);
-        }
+        let status = match row.len() {
+            0 => false,
+            _ => true,
+        };
 
         let mem = MemGuard::from_vec(row);
-        let cmd = Command::new(flag, mem);
+        let cmd = Command::from(status, mem);
         Ok(Some(cmd))
     }
 
@@ -447,7 +438,7 @@ impl Mysql {
         w.write_u8(extra_len)?; //extras length 1byte
         w.write_u8(0_u8)?; //data type 1byte
         w.write_u16(mcpacket::RespStatus::NoError as u16)?; // Status 2byte
-        let total_body_len = extra_len as u32 + key_len as u32 + response.data().len() as u32;
+        let total_body_len = extra_len as u32 + key_len as u32 + response.len() as u32;
         w.write_u32(total_body_len)?; // total body len: 4 bytes
         w.write_u32(0)?; //opaque: 4bytes
         w.write_u64(0)?; //cas: 8 bytes
@@ -459,9 +450,10 @@ impl Mysql {
         w.write_u32(FLAG_BYTEARR_JAVA)?;
 
         // 返回key
-        w.write_slice(&origin_req.key(), 0)?;
+        // TODO write_slice 实际是write的MemGuard，需要统一调整？ fishermen
+        w.write_slice2(&origin_req.key(), 0)?;
 
-        w.write_slice(response.data(), 0) // value
+        w.write_slice(response, 0) // value
     }
 }
 

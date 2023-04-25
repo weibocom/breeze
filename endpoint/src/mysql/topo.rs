@@ -97,8 +97,8 @@ where
 
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-        let raw_req = req.data();
-        let mid = raw_req.key();
+        // let raw_req = req.data();
+        let mid = req.key();
         let sql = self
             .strategy
             .build_sql("SQL_SELECT", &mid, &mid)
@@ -213,8 +213,9 @@ where
                     let url_port_trimed = url_port.trim();
                     let host = url_port_trimed.host();
                     if !self.updated.contains_key(host) {
-                        let watcher = dns::register(host);
-                        self.updated.insert(host.to_string(), watcher);
+                        // TODO cfg要调整，这里先注释掉
+                        // let watcher = dns::register(host);
+                        // self.updated.insert(host.to_string(), watcher);
                     }
                     shard_url.push(url_port_trimed.to_string());
                 }
@@ -242,8 +243,9 @@ where
                         let url_port_trimed = url_port.trim();
                         let host = url_port_trimed.host();
                         if !self.updated.contains_key(host) {
-                            let watcher = dns::register(host);
-                            self.updated.insert(host.to_string(), watcher);
+                            // TODO cfg要调整，这里先注释掉
+                            // let watcher = dns::register(host);
+                            // self.updated.insert(host.to_string(), watcher);
                         }
                         shard_url.push(url_port_trimed.to_string());
                     }
@@ -293,7 +295,7 @@ where
     ) -> E {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
-            _ => B::option_build(
+            _ => B::build(
                 &addr,
                 self.parser.clone(),
                 Resource::Mysql,
@@ -305,149 +307,151 @@ where
     }
     #[inline]
     fn load_inner(&mut self) -> bool {
-        self.archive_shards_url.insert(
-            ARCHIVE_SHARDS_KEY.to_string(),
-            self.direct_shards_url.clone(),
-        );
-        for i in self.archive_shards_url.iter() {
-            // 所有的ip要都能解析出主从域名
-            let mut addrs = Vec::with_capacity(i.1.len());
-            for shard in i.1.iter() {
-                if shard.len() < 2 {
-                    log::warn!("{} both master and slave required.", self.service);
-                    return false;
-                }
-                let master_url = &shard[0];
-                let masters = dns::lookup_ips(master_url.host());
-                if masters.len() == 0 {
-                    log::warn!("{} master not looked up", master_url);
-                    return false;
-                }
-                if masters.len() > 1 {
-                    log::warn!("multi master ip parsed. {} => {:?}", master_url, masters);
-                }
-                let master = String::from(&masters[0]) + ":" + master_url.port();
-                let mut slaves = Vec::with_capacity(8);
-                for url_port in &shard[1..] {
-                    let url = url_port.host();
-                    let port = url_port.port();
-                    for slave_ip in dns::lookup_ips(url) {
-                        let addr = slave_ip + ":" + port;
-                        if !slaves.contains(&addr) {
-                            slaves.push(addr);
-                        }
-                    }
-                }
-                if slaves.len() == 0 {
-                    log::warn!("{:?} slave not looked up", &shard[1..]);
-                    return false;
-                }
-                addrs.push((master, slaves));
-            }
-            // 到这之后，所有的shard都能解析出ip
-            let mut old = HashMap::with_capacity(i.1.len());
-            if i.0.to_string() == ARCHIVE_SHARDS_KEY {
-                for shard in self.direct_shards.split_off(0) {
-                    old.entry(shard.master.0)
-                        .or_insert(Vec::new())
-                        .push(shard.master.1);
-                    for (addr, endpoint) in shard.slaves.into_inner() {
-                        // 一个ip可能存在于多个域名中。
-                        old.entry(addr).or_insert(Vec::new()).push(endpoint);
-                    }
-                }
-            } else {
-                for shard in self
-                    .archive_shards
-                    .entry(i.0.to_string())
-                    .or_default()
-                    .split_off(0)
-                {
-                    old.entry(shard.master.0)
-                        .or_insert(Vec::new())
-                        .push(shard.master.1);
-                    for (addr, endpoint) in shard.slaves.into_inner() {
-                        // 一个ip可能存在于多个域名中。
-                        old.entry(addr).or_insert(Vec::new()).push(endpoint);
-                    }
-                }
-            }
-
-            // 用户名和密码
-            let mut res_option = ResOption::default();
-            res_option.token = self.password.clone();
-            res_option.username = self.user.clone();
-
-            // 遍历所有的shards_url
-            for (master_addr, slaves) in addrs {
-                assert_ne!(master_addr.len(), 0);
-                assert_ne!(slaves.len(), 0);
-                let master = self.take_or_build(
-                    &mut old,
-                    &master_addr,
-                    self.timeout_master,
-                    res_option.clone(),
-                );
-                master.enable_single();
-
-                // slave
-                let mut replicas = Vec::with_capacity(8);
-                for addr in slaves {
-                    let slave =
-                        self.take_or_build(&mut old, &addr, self.timeout_slave, res_option.clone());
-                    slave.disable_single();
-                    replicas.push((addr, slave));
-                }
-                let shard = Shard::selector(self.selector, master_addr, master, replicas);
-                if i.0.to_string() == ARCHIVE_SHARDS_KEY {
-                    self.direct_shards.push(shard);
-                } else {
-                    self.archive_shards
-                        .entry(i.0.to_string())
-                        .or_default()
-                        .push(shard);
-                }
-            }
-            if i.0.to_string() == ARCHIVE_SHARDS_KEY {
-                assert_eq!(
-                    self.direct_shards.len(),
-                    self.direct_shards_url.len(),
-                    "direct_shards/urs: {}/{}",
-                    self.direct_shards.len(),
-                    self.direct_shards_url.len()
-                );
-                log::info!(
-                    "{} direct_shards load complete. {} dropping:{:?}",
-                    self.service,
-                    self.direct_shards.len(),
-                    {
-                        old.retain(|_k, v| v.len() > 0);
-                        old.keys()
-                    }
-                );
-            } else {
-                assert_eq!(
-                    self.archive_shards.get(i.0).unwrap().len(),
-                    i.1.len(),
-                    "archive_key/archive_shard/urs: {}/{}/{}",
-                    i.0,
-                    self.archive_shards.get(i.0).unwrap().len(),
-                    i.1.len()
-                );
-                log::info!(
-                    "{} archive_shards {} load complete. {} dropping:{:?}",
-                    self.service,
-                    i.0,
-                    self.archive_shards.get(i.0).unwrap().len(),
-                    {
-                        old.retain(|_k, v| v.len() > 0);
-                        old.keys()
-                    }
-                );
-            }
-        }
-        self.archive_shards_url.remove(ARCHIVE_SHARDS_KEY);
         true
+        // TODO 先注释掉，避免重复修改
+        // self.archive_shards_url.insert(
+        //     ARCHIVE_SHARDS_KEY.to_string(),
+        //     self.direct_shards_url.clone(),
+        // );
+        // for i in self.archive_shards_url.iter() {
+        //     // 所有的ip要都能解析出主从域名
+        //     let mut addrs = Vec::with_capacity(i.1.len());
+        //     for shard in i.1.iter() {
+        //         if shard.len() < 2 {
+        //             log::warn!("{} both master and slave required.", self.service);
+        //             return false;
+        //         }
+        //         let master_url = &shard[0];
+        //         let masters = dns::lookup_ips(master_url.host());
+        //         if masters.len() == 0 {
+        //             log::warn!("{} master not looked up", master_url);
+        //             return false;
+        //         }
+        //         if masters.len() > 1 {
+        //             log::warn!("multi master ip parsed. {} => {:?}", master_url, masters);
+        //         }
+        //         let master = String::from(&masters[0]) + ":" + master_url.port();
+        //         let mut slaves = Vec::with_capacity(8);
+        //         for url_port in &shard[1..] {
+        //             let url = url_port.host();
+        //             let port = url_port.port();
+        //             for slave_ip in dns::lookup_ips(url) {
+        //                 let addr = slave_ip + ":" + port;
+        //                 if !slaves.contains(&addr) {
+        //                     slaves.push(addr);
+        //                 }
+        //             }
+        //         }
+        //         if slaves.len() == 0 {
+        //             log::warn!("{:?} slave not looked up", &shard[1..]);
+        //             return false;
+        //         }
+        //         addrs.push((master, slaves));
+        //     }
+        //     // 到这之后，所有的shard都能解析出ip
+        //     let mut old = HashMap::with_capacity(i.1.len());
+        //     if i.0.to_string() == ARCHIVE_SHARDS_KEY {
+        //         for shard in self.direct_shards.split_off(0) {
+        //             old.entry(shard.master.0)
+        //                 .or_insert(Vec::new())
+        //                 .push(shard.master.1);
+        //             for (addr, endpoint) in shard.slaves.into_inner() {
+        //                 // 一个ip可能存在于多个域名中。
+        //                 old.entry(addr).or_insert(Vec::new()).push(endpoint);
+        //             }
+        //         }
+        //     } else {
+        //         for shard in self
+        //             .archive_shards
+        //             .entry(i.0.to_string())
+        //             .or_default()
+        //             .split_off(0)
+        //         {
+        //             old.entry(shard.master.0)
+        //                 .or_insert(Vec::new())
+        //                 .push(shard.master.1);
+        //             for (addr, endpoint) in shard.slaves.into_inner() {
+        //                 // 一个ip可能存在于多个域名中。
+        //                 old.entry(addr).or_insert(Vec::new()).push(endpoint);
+        //             }
+        //         }
+        //     }
+
+        //     // 用户名和密码
+        //     let mut res_option = ResOption::default();
+        //     res_option.token = self.password.clone();
+        //     res_option.username = self.user.clone();
+
+        //     // 遍历所有的shards_url
+        //     for (master_addr, slaves) in addrs {
+        //         assert_ne!(master_addr.len(), 0);
+        //         assert_ne!(slaves.len(), 0);
+        //         let master = self.take_or_build(
+        //             &mut old,
+        //             &master_addr,
+        //             self.timeout_master,
+        //             res_option.clone(),
+        //         );
+        //         master.enable_single();
+
+        //         // slave
+        //         let mut replicas = Vec::with_capacity(8);
+        //         for addr in slaves {
+        //             let slave =
+        //                 self.take_or_build(&mut old, &addr, self.timeout_slave, res_option.clone());
+        //             slave.disable_single();
+        //             replicas.push((addr, slave));
+        //         }
+        //         let shard = Shard::selector(self.selector, master_addr, master, replicas);
+        //         if i.0.to_string() == ARCHIVE_SHARDS_KEY {
+        //             self.direct_shards.push(shard);
+        //         } else {
+        //             self.archive_shards
+        //                 .entry(i.0.to_string())
+        //                 .or_default()
+        //                 .push(shard);
+        //         }
+        //     }
+        //     if i.0.to_string() == ARCHIVE_SHARDS_KEY {
+        //         assert_eq!(
+        //             self.direct_shards.len(),
+        //             self.direct_shards_url.len(),
+        //             "direct_shards/urs: {}/{}",
+        //             self.direct_shards.len(),
+        //             self.direct_shards_url.len()
+        //         );
+        //         log::info!(
+        //             "{} direct_shards load complete. {} dropping:{:?}",
+        //             self.service,
+        //             self.direct_shards.len(),
+        //             {
+        //                 old.retain(|_k, v| v.len() > 0);
+        //                 old.keys()
+        //             }
+        //         );
+        //     } else {
+        //         assert_eq!(
+        //             self.archive_shards.get(i.0).unwrap().len(),
+        //             i.1.len(),
+        //             "archive_key/archive_shard/urs: {}/{}/{}",
+        //             i.0,
+        //             self.archive_shards.get(i.0).unwrap().len(),
+        //             i.1.len()
+        //         );
+        //         log::info!(
+        //             "{} archive_shards {} load complete. {} dropping:{:?}",
+        //             self.service,
+        //             i.0,
+        //             self.archive_shards.get(i.0).unwrap().len(),
+        //             {
+        //                 old.retain(|_k, v| v.len() > 0);
+        //                 old.keys()
+        //             }
+        //         );
+        //     }
+        // }
+        // self.archive_shards_url.remove(ARCHIVE_SHARDS_KEY);
+        // true
     }
 }
 impl<B, E, Req, P> discovery::Inited for MysqlService<B, E, Req, P>

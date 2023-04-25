@@ -1,5 +1,6 @@
-use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand};
 use sharding::BackendQuota;
+
+use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
@@ -15,14 +16,14 @@ impl crate::Request for Request {
         self.ctx().start_at()
     }
 
-    #[inline]
-    fn last_start_at(&self) -> ds::time::Instant {
-        self.ctx().last_start()
-    }
+    // #[inline]
+    // fn last_start_at(&self) -> ds::time::Instant {
+    //     self.ctx().last_start()
+    // }
 
-    fn elapsed_current_req(&self) -> Duration {
-        self.ctx().elapsed_current_req()
-    }
+    // fn elapsed_current_req(&self) -> Duration {
+    //     self.ctx().elapsed_current_req()
+    // }
 
     #[inline]
     fn cmd_mut(&mut self) -> &mut HashedCommand {

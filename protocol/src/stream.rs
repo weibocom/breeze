@@ -1,5 +1,5 @@
 use byteorder::{BigEndian, LittleEndian, WriteBytesExt};
-use ds::MemGuard;
+use ds::{MemGuard, RingSlice};
 use std::ops::Deref;
 
 pub trait AsyncBufRead {
@@ -67,6 +67,14 @@ pub trait Writer: ds::BufWriter + Sized {
         (&*data).copy_to(oft, self)?;
         Ok(())
     }
+
+    // TODO 先打通，后续改名重构 fishermen
+    #[inline]
+    fn write_slice2(&mut self, data: &RingSlice, oft: usize) -> Result<()> {
+        data.copy_to(oft, self)?;
+        Ok(())
+    }
+
     fn shrink(&mut self);
     fn try_gc(&mut self) -> bool;
 }
