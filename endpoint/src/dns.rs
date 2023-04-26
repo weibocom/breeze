@@ -81,6 +81,12 @@ impl Backends for crate::phantomservice::config::PhantomNamespace {
     }
 }
 
+impl Backends for crate::mysql::config::MysqlNamespace {
+    fn get_backends(&self) -> &Vec<String> {
+        &self.backends
+    }
+}
+
 impl<T> std::ops::Deref for DnsConfig<T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
