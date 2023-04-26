@@ -49,8 +49,13 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) user: String,
 }
+pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
 impl MysqlNamespace {
+    pub(super) fn get_backends(&self) -> &Vec<String> {
+        &self.backends
+    }
+
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
             .map_err(|e| {
@@ -58,7 +63,39 @@ impl MysqlNamespace {
                 e
             })
             .ok();
-        if let Some(ns) = nso {
+
+        if let Some(mut ns) = nso {
+            // archive shard 处理
+            // 2009-2012 ,[111xxx.com:111,222xxx.com:222]
+            // 2013 ,[112xxx.com:112,223xxx.com:223]
+            let mut archive: HashMap<String, Vec<String>> = HashMap::new();
+            for (key, val) in ns.archive.iter() {
+                //处理当前库
+                if ARCHIVE_DEFAULT_KEY == key {
+                    archive.insert(key.to_string(), val.to_vec());
+                    continue;
+                }
+                //适配N年共用一个组shard情况，例如2009-2012共用
+                let years: Vec<&str> = key.split("-").collect();
+                let min: u16 = years[0].parse().unwrap();
+                if years.len() > 1 {
+                    // 2009-2012 包括2012,故max需要加1
+                    let max = years[1].parse::<u16>().expect("malformed mysql cfg") + 1_u16;
+                    for i in min..max {
+                        archive.insert(i.to_string(), val.to_vec());
+                    }
+                } else {
+                    archive.insert(min.to_string(), val.to_vec());
+                }
+            }
+            ns.archive = archive;
+
+            //todo: 重复转化问题,待修改
+            let mut backends: Vec<String> = Vec::new();
+            for vec in ns.archive.values() {
+                backends.extend(vec.iter().cloned());
+            }
+            ns.backends = backends;
             return Some(ns);
         }
         nso

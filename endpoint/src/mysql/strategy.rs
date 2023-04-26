@@ -1,4 +1,4 @@
-use super::config::MysqlNamespace;
+use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY};
 use super::uuid::UuidHelper;
 use chrono::{TimeZone, Utc};
 use chrono_tz::Asia::Shanghai;
@@ -80,7 +80,7 @@ impl Strategy {
             distribution: DBRange::new(
                 item.basic.db_count as usize,
                 item.basic.table_count as usize,
-                item.backends.len() as usize,
+                item.archive.get(ARCHIVE_DEFAULT_KEY).unwrap().len() as usize,
             ),
             hasher: Hasher::from(item.basic.hash.as_str()),
         }
