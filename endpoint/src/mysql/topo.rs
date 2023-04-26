@@ -17,6 +17,7 @@ use sharding::hash::{Hash, HashKey};
 use sharding::Distance;
 use sharding::Selector;
 
+use crate::dns::DnsConfig;
 use crate::Builder;
 use crate::Single;
 use crate::Timeout;
@@ -24,23 +25,23 @@ use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
 use super::strategy::Strategy;
+use super::strategy::Strategyer;
 const CONFIG_UPDATED_KEY: &str = "__mysql_config__";
-const ARCHIVE_SHARDS_KEY: &str = "__direct__";
 
 #[derive(Clone)]
 pub struct MysqlService<B, E, Req, P> {
     // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
-    direct_shards: Vec<Shard<E>>,
+    // direct_shards: Vec<Shard<E>>,
     // 默认不同sharding的url。第0个是master
-    direct_shards_url: Vec<Vec<String>>,
+    // direct_shards_url: Vec<Vec<String>>,
     // 按时间维度分库分表
     archive_shards: HashMap<String, Vec<Shard<E>>>,
-    archive_shards_url: HashMap<String, Vec<Vec<String>>>,
-    sql: HashMap<String, String>,
+    // archive_shards_url: HashMap<String, Vec<Vec<String>>>,
+    // sql: HashMap<String, String>,
     // hasher: Hasher,
     // distribute: Distribute,
     selector: Selector, // 从的选择策略。
-    updated: HashMap<String, Arc<AtomicBool>>,
+    // updated: HashMap<String, Arc<AtomicBool>>,
     parser: P,
     service: String,
     timeout_master: Timeout,
@@ -48,7 +49,8 @@ pub struct MysqlService<B, E, Req, P> {
     _mark: std::marker::PhantomData<(B, Req)>,
     user: String,
     password: String,
-    strategy: Strategy,
+    strategy: Strategyer,
+    cfgs: HashMap<String, Box<DnsConfig<MysqlNamespace>>>,
 }
 
 impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
@@ -56,11 +58,11 @@ impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
     fn from(parser: P) -> Self {
         Self {
             parser,
-            direct_shards: Default::default(),
-            direct_shards_url: Default::default(),
+            // direct_shards: Default::default(),
+            // direct_shards_url: Default::default(),
             archive_shards: Default::default(),
-            archive_shards_url: Default::default(),
-            updated: Default::default(),
+            // archive_shards_url: Default::default(),
+            // updated: Default::default(),
             service: Default::default(),
             selector: Selector::Random,
             timeout_master: crate::TO_MYSQL_M,
@@ -68,8 +70,9 @@ impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
             _mark: Default::default(),
             user: Default::default(),
             password: Default::default(),
-            sql: Default::default(),
+            // sql: Default::default(),
             strategy: Default::default(),
+            cfgs: Default::default(),
         }
     }
 }
@@ -99,19 +102,11 @@ where
         // req 是mc binary协议，需要展出字段，转换成sql
         let raw_req = req.data();
         let mid = raw_req.key();
-        let sql = self
-            .strategy
-            .build_sql("SQL_SELECT", &mid, &mid)
-            .expect("malformed sql");
+        let sql = self.strategy.build_sql(&mid).expect("malformed sql");
 
         //定位年库
-        let year = self.strategy.get_year(&mid);
-        let shards = if self.strategy.hierarchy && self.archive_shards.get(&year).is_some() {
-            self.archive_shards.get(&year).unwrap()
-        } else {
-            &self.direct_shards
-            // self.archive_shards.get(ARCHIVE_SHARDS_KEY).unwrap()
-        };
+        let year = self.strategy.get_key(&mid);
+        let shards = self.archive_shards.get(&year).unwrap();
 
         debug_assert_ne!(shards.len(), 0);
         assert!(shards.len() > 0);
@@ -167,7 +162,7 @@ where
         let archive = self.archive_shards.iter().fold(true, |acc, (_k, v)| {
             acc || v.len() != self.archive_shards_url.get(_k).unwrap().len()
         });
-        let direct = self.direct_shards.len() != self.direct_shards_url.len();
+        // let direct = self.direct_shards.len() != self.direct_shards_url.len();
         // let direct = if self.archive_shards.get(ARCHIVE_SHARDS_KEY).is_some() {
         //     self.archive_shards.get(ARCHIVE_SHARDS_KEY).unwrap().len()
         //         != self.direct_shards_url.len()
@@ -175,8 +170,7 @@ where
         //     false
         // };
 
-        direct
-            || archive
+        archive
             || self
                 .updated
                 .iter()
@@ -204,36 +198,39 @@ where
             self.selector = ns.basic.selector.as_str().into();
             self.user = ns.basic.user.as_str().into();
             self.password = ns.basic.password.as_str().into();
-            self.sql = ns.sql.clone();
-            let mut shards_url = Vec::new();
-            for shard in ns.backends.iter() {
-                let mut shard_url = Vec::new();
-                for url_port in shard.split(",") {
-                    // 注册域名。后续可以通常lookup进行查询。
-                    let url_port_trimed = url_port.trim();
-                    let host = url_port_trimed.host();
-                    if !self.updated.contains_key(host) {
-                        let watcher = dns::register(host);
-                        self.updated.insert(host.to_string(), watcher);
-                    }
-                    shard_url.push(url_port_trimed.to_string());
-                }
-                shards_url.push(shard_url);
-            }
-            if self.direct_shards_url.len() > 0 {
-                log::debug!(
-                    "top updated from {:?} to {:?}",
-                    self.direct_shards_url,
-                    shards_url
-                );
-            }
-            self.direct_shards_url = shards_url;
-            self.strategy = Strategy::try_from(&ns);
+            self.service = namespace.to_string();
+
+            // self.sql = ns.sql.clone();
+            // let mut shards_url = Vec::new();
+            // for shard in ns.backends.iter() {
+            //     let mut shard_url = Vec::new();
+            //     for url_port in shard.split(",") {
+            //         // 注册域名。后续可以通常lookup进行查询。
+            //         let url_port_trimed = url_port.trim();
+            //         let host = url_port_trimed.host();
+            //         if !self.updated.contains_key(host) {
+            //             let watcher = dns::register(host);
+            //             self.updated.insert(host.to_string(), watcher);
+            //         }
+            //         shard_url.push(url_port_trimed.to_string());
+            //     }
+            //     shards_url.push(shard_url);
+            // }
+            // if self.direct_shards_url.len() > 0 {
+            //     log::debug!(
+            //         "top updated from {:?} to {:?}",
+            //         self.direct_shards_url,
+            //         shards_url
+            //     );
+            // }
+            // self.direct_shards_url = shards_url;
+            self.strategy = Strategyer::try_from(&ns);
 
             // archive shard 处理
             // 2009-2012 ,[111xxx.com:111,222xxx.com:222]
             // 2013 ,[112xxx.com:112,223xxx.com:223]
-            for (key, val) in ns.archive.iter() {
+            // default, [112xxx.com:112,223xxx.com:223]
+            for (key, val) in ns.backends.iter() {
                 let mut shards_url = Vec::new();
                 for shard in val.iter() {
                     let mut shard_url = Vec::new();
@@ -249,18 +246,24 @@ where
                     }
                     shards_url.push(shard_url);
                 }
-                //适配N年共用一个组shard情况，例如2009-2012共用
-                let years: Vec<&str> = key.split("-").collect();
-                let min: u16 = years[0].parse().unwrap();
-                if years.len() > 1 {
-                    // 2009-2012 包括2012,故max需要加1
-                    let max = years[1].parse::<u16>().expect("malformed mysql cfg") + 1_u16;
-                    for i in min..max {
-                        self.archive_shards_url
-                            .insert(i.to_string(), shards_url.clone());
-                    }
+                if key == ARCHIVE_SHARDS_KEY {
+                    //适配default 库
+                    self.archive_shards_url
+                        .insert( Strategyer::.to_string(), shards_url);
                 } else {
-                    self.archive_shards_url.insert(min.to_string(), shards_url);
+                    //适配N年共用一个组shard情况，例如2009-2012共用
+                    let years: Vec<&str> = key.split("-").collect();
+                    let min: u16 = years[0].parse().unwrap();
+                    if years.len() > 1 {
+                        // 2009-2012 包括2012,故max需要加1
+                        let max = years[1].parse::<u16>().expect("malformed mysql cfg") + 1_u16;
+                        for i in min..max {
+                            self.archive_shards_url
+                                .insert(i.to_string(), shards_url.clone());
+                        }
+                    } else {
+                        self.archive_shards_url.insert(min.to_string(), shards_url);
+                    }
                 }
             }
 
@@ -274,7 +277,6 @@ where
                 .or_insert(Arc::new(AtomicBool::new(true)))
                 .store(true, Ordering::Release);
         }
-        self.service = namespace.to_string();
     }
 }
 impl<B, E, Req, P> MysqlService<B, E, Req, P>
@@ -305,10 +307,10 @@ where
     }
     #[inline]
     fn load_inner(&mut self) -> bool {
-        self.archive_shards_url.insert(
-            ARCHIVE_SHARDS_KEY.to_string(),
-            self.direct_shards_url.clone(),
-        );
+        // self.archive_shards_url.insert(
+        //     ARCHIVE_SHARDS_KEY.to_string(),
+        //     self.direct_shards_url.clone(),
+        // );
         for i in self.archive_shards_url.iter() {
             // 所有的ip要都能解析出主从域名
             let mut addrs = Vec::with_capacity(i.1.len());
@@ -346,31 +348,31 @@ where
             }
             // 到这之后，所有的shard都能解析出ip
             let mut old = HashMap::with_capacity(i.1.len());
-            if i.0.to_string() == ARCHIVE_SHARDS_KEY {
-                for shard in self.direct_shards.split_off(0) {
-                    old.entry(shard.master.0)
-                        .or_insert(Vec::new())
-                        .push(shard.master.1);
-                    for (addr, endpoint) in shard.slaves.into_inner() {
-                        // 一个ip可能存在于多个域名中。
-                        old.entry(addr).or_insert(Vec::new()).push(endpoint);
-                    }
+            // if i.0.to_string() == ARCHIVE_SHARDS_KEY {
+            //     for shard in self.direct_shards.split_off(0) {
+            //         old.entry(shard.master.0)
+            //             .or_insert(Vec::new())
+            //             .push(shard.master.1);
+            //         for (addr, endpoint) in shard.slaves.into_inner() {
+            //             // 一个ip可能存在于多个域名中。
+            //             old.entry(addr).or_insert(Vec::new()).push(endpoint);
+            //         }
+            //     }
+            // } else {
+            for shard in self
+                .archive_shards
+                .entry(i.0.to_string())
+                .or_default()
+                .split_off(0)
+            {
+                old.entry(shard.master.0)
+                    .or_insert(Vec::new())
+                    .push(shard.master.1);
+                for (addr, endpoint) in shard.slaves.into_inner() {
+                    // 一个ip可能存在于多个域名中。
+                    old.entry(addr).or_insert(Vec::new()).push(endpoint);
                 }
-            } else {
-                for shard in self
-                    .archive_shards
-                    .entry(i.0.to_string())
-                    .or_default()
-                    .split_off(0)
-                {
-                    old.entry(shard.master.0)
-                        .or_insert(Vec::new())
-                        .push(shard.master.1);
-                    for (addr, endpoint) in shard.slaves.into_inner() {
-                        // 一个ip可能存在于多个域名中。
-                        old.entry(addr).or_insert(Vec::new()).push(endpoint);
-                    }
-                }
+                // }
             }
 
             // 用户名和密码
@@ -399,54 +401,54 @@ where
                     replicas.push((addr, slave));
                 }
                 let shard = Shard::selector(self.selector, master_addr, master, replicas);
-                if i.0.to_string() == ARCHIVE_SHARDS_KEY {
-                    self.direct_shards.push(shard);
-                } else {
-                    self.archive_shards
-                        .entry(i.0.to_string())
-                        .or_default()
-                        .push(shard);
+                // if i.0.to_string() == ARCHIVE_SHARDS_KEY {
+                //     self.direct_shards.push(shard);
+                // } else {
+                self.archive_shards
+                    .entry(i.0.to_string())
+                    .or_default()
+                    .push(shard);
+                // }
+            }
+            // if i.0.to_string() == ARCHIVE_SHARDS_KEY {
+            //     assert_eq!(
+            //         self.direct_shards.len(),
+            //         self.direct_shards_url.len(),
+            //         "direct_shards/urs: {}/{}",
+            //         self.direct_shards.len(),
+            //         self.direct_shards_url.len()
+            //     );
+            //     log::info!(
+            //         "{} direct_shards load complete. {} dropping:{:?}",
+            //         self.service,
+            //         self.direct_shards.len(),
+            //         {
+            //             old.retain(|_k, v| v.len() > 0);
+            //             old.keys()
+            //         }
+            //     );
+            // } else {
+            assert_eq!(
+                self.archive_shards.get(i.0).unwrap().len(),
+                i.1.len(),
+                "archive_key/archive_shard/urs: {}/{}/{}",
+                i.0,
+                self.archive_shards.get(i.0).unwrap().len(),
+                i.1.len()
+            );
+            log::info!(
+                "{} archive_shards {} load complete. {} dropping:{:?}",
+                self.service,
+                i.0,
+                self.archive_shards.get(i.0).unwrap().len(),
+                {
+                    old.retain(|_k, v| v.len() > 0);
+                    old.keys()
                 }
-            }
-            if i.0.to_string() == ARCHIVE_SHARDS_KEY {
-                assert_eq!(
-                    self.direct_shards.len(),
-                    self.direct_shards_url.len(),
-                    "direct_shards/urs: {}/{}",
-                    self.direct_shards.len(),
-                    self.direct_shards_url.len()
-                );
-                log::info!(
-                    "{} direct_shards load complete. {} dropping:{:?}",
-                    self.service,
-                    self.direct_shards.len(),
-                    {
-                        old.retain(|_k, v| v.len() > 0);
-                        old.keys()
-                    }
-                );
-            } else {
-                assert_eq!(
-                    self.archive_shards.get(i.0).unwrap().len(),
-                    i.1.len(),
-                    "archive_key/archive_shard/urs: {}/{}/{}",
-                    i.0,
-                    self.archive_shards.get(i.0).unwrap().len(),
-                    i.1.len()
-                );
-                log::info!(
-                    "{} archive_shards {} load complete. {} dropping:{:?}",
-                    self.service,
-                    i.0,
-                    self.archive_shards.get(i.0).unwrap().len(),
-                    {
-                        old.retain(|_k, v| v.len() > 0);
-                        old.keys()
-                    }
-                );
-            }
+            );
+            // }
         }
-        self.archive_shards_url.remove(ARCHIVE_SHARDS_KEY);
+        // self.archive_shards_url.remove(ARCHIVE_SHARDS_KEY);
         true
     }
 }
@@ -470,16 +472,16 @@ where
             }
         }
 
-        // 处理direct_shards
-        if !(self.direct_shards.len() > 0
-            && self.direct_shards.len() == self.direct_shards_url.len()
-            && self
-                .direct_shards
-                .iter()
-                .fold(true, |inited, shards| inited && shards.inited()))
-        {
-            return false;
-        }
+        // // 处理direct_shards
+        // if !(self.direct_shards.len() > 0
+        //     && self.direct_shards.len() == self.direct_shards_url.len()
+        //     && self
+        //         .direct_shards
+        //         .iter()
+        //         .fold(true, |inited, shards| inited && shards.inited()))
+        // {
+        //     return false;
+        // }
         return default;
     }
 }
