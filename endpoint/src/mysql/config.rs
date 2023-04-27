@@ -52,10 +52,6 @@ pub struct Basic {
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
 impl MysqlNamespace {
-    pub(super) fn get_backends(&self) -> &Vec<String> {
-        &self.backends
-    }
-
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
             .map_err(|e| {
