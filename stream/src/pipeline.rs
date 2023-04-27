@@ -6,11 +6,12 @@ use std::{
     task::{ready, Context, Poll},
 };
 
+use discovery::RefreshTop;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use ds::{time::Instant, AtomicWaker};
-use endpoint::{Topology, TopologyCheck};
-use protocol::{HashedCommand, Protocol, Result, Stream};
+use endpoint::Topology;
+use protocol::{callback::Callback, HashedCommand, Protocol, Result, Stream};
 
 use sharding::hash::Hash;
 
@@ -20,7 +21,7 @@ use crate::{
     CallbackContext, Request, StreamMetrics,
 };
 
-pub async fn copy_bidirectional<C, P, T>(
+pub async fn copy_bidirectional<C, P, T, Top>(
     top: T,
     metrics: Arc<StreamMetrics>,
     client: C,
@@ -30,13 +31,18 @@ pub async fn copy_bidirectional<C, P, T>(
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: RefreshTop<Top> + Unpin,
+    Top: Topology<Item = Request> + Unpin + Hash,
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
+    let cb_top = top.get();
+    let send = Box::new(move |req| cb_top.send(req));
+    let callback = Callback::new(send).into();
     let pipeline = CopyBidirectional {
         pipeline,
         top,
+        cb: callback,
         metrics,
         client,
         parser,
@@ -49,12 +55,14 @@ where
         async_pending: VecDeque::new(),
 
         arena: CallbackContextArena::with_cache(32),
+        _t: Default::default(),
     };
     rt::Entry::timeout(pipeline, rt::DisableTimeout).await
 }
 
-pub struct CopyBidirectional<C, P, T> {
+pub struct CopyBidirectional<C, P, T, Top> {
     top: T,
+    cb: Callback,
     client: C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
@@ -72,12 +80,14 @@ pub struct CopyBidirectional<C, P, T> {
     async_pending: VecDeque<CallbackContextPtr>, // 异步请求中的数量。
 
     arena: CallbackContextArena,
+    _t: std::marker::PhantomData<Top>,
 }
-impl<C, P, T> Future for CopyBidirectional<C, P, T>
+impl<C, P, T, Top> Future for CopyBidirectional<C, P, T, Top>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: RefreshTop<Top>,
+    Top: Topology<Item = Request> + Unpin + Hash,
 {
     type Output = Result<()>;
 
@@ -106,11 +116,12 @@ where
         }
     }
 }
-impl<C, P, T> CopyBidirectional<C, P, T>
+impl<C, P, T, Top> CopyBidirectional<C, P, T, Top>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: RefreshTop<Top>,
+    Top: Topology<Item = Request> + Unpin + Hash,
 {
     // 解析buffer，并且发送请求.
     #[inline]
@@ -132,14 +143,14 @@ where
         let mut processor = Visitor {
             pending,
             waker,
-            top,
+            top: top.as_ref(),
             // parser,
             first,
             arena,
         };
 
         parser
-            .parse_request(client, top, &mut processor)
+            .parse_request(client, top.as_ref(), &mut processor)
             .map_err(|e| {
                 log::info!("parse request error: {:?} {:?}", e, self);
                 e
@@ -182,7 +193,9 @@ where
             let mut response = ctx.take_response();
 
             parser.write_response(
-                &mut ResponseContext::new(&mut ctx, metrics, |hash| self.top.shard_idx(hash)),
+                &mut ResponseContext::new(&mut ctx, metrics, |hash| {
+                    self.top.as_ref().shard_idx(hash)
+                }),
                 response.as_mut(),
                 client,
             )?;
@@ -190,7 +203,7 @@ where
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
-                    ctx.async_write_back(parser, rsp, self.top.exp_sec(), metrics);
+                    ctx.async_write_back(parser, rsp, self.top.as_ref().exp_sec(), metrics);
                     self.async_pending.push_back(ctx);
                 }
             }
@@ -243,9 +256,7 @@ struct Visitor<'a, T> {
 // impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
 // where
 //     P: Protocol + Unpin,
-impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
-    for Visitor<'a, T>
-{
+impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
         let first = *self.first;
@@ -270,7 +281,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
         }
     }
 }
-impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
+impl<C, P, T, Top> Drop for CopyBidirectional<C, P, T, Top> {
     #[inline]
     fn drop(&mut self) {
         *self.metrics.conn_num() -= 1;
@@ -278,11 +289,12 @@ impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
+impl<C, P, T, Top> rt::ReEnter for CopyBidirectional<C, P, T, Top>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: RefreshTop<Top> + Unpin,
+    Top: Topology<Item = Request> + Unpin + Hash,
 {
     #[inline]
     fn close(&mut self) -> bool {
@@ -317,7 +329,7 @@ where
         //Ok(self.client.cap() >= crate::REFRESH_THREASHOLD || self.async_pending.len() > 0)
     }
 }
-impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
+impl<C: Debug, P, T, Top> Debug for CopyBidirectional<C, P, T, Top> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
