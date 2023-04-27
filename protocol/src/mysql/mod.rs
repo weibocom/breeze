@@ -332,48 +332,48 @@ impl Mysql {
     }
 
     //修改req，seq +1
-    fn before_send<S: Stream, Req: crate::Request>(&self, _stream: &mut S, _req: &mut Req) {
-        todo!()
-    }
+    // fn before_send<S: Stream, Req: crate::Request>(&self, _stream: &mut S, _req: &mut Req) {
+    //     todo!()
+    // }
 
     // 包比较复杂，不能随意take，得等到最复杂场景解析完毕后，才能统一take走
-    fn parse_response_inner_debug<'a, S: crate::Stream>(
-        &self,
-        req: &HashedCommand,
-        rsp_packet: &'a mut ResponsePacket<'a, S>,
-    ) -> Result<Option<Command>> {
-        // TODO: 是否需要把异常信息返回给client？（用mc协议？） fishermen
-        let mut result_set = match self.parse_result_set(rsp_packet, Vec::new(), |mut acc, row| {
-            acc.push(from_row(row));
-            acc
-        }) {
-            Ok(rs) => rs,
-            Err(Error::ProtocolIncomplete) => return Err(Error::ProtocolIncomplete),
-            Err(Error::MysqlError) => Vec::with_capacity(0),
-            Err(e) => panic!("mysql unkonw err: {:?}", e),
-        };
+    // fn parse_response_inner_debug<'a, S: crate::Stream>(
+    //     &self,
+    //     req: &HashedCommand,
+    //     rsp_packet: &'a mut ResponsePacket<'a, S>,
+    // ) -> Result<Option<Command>> {
+    //     // TODO: 是否需要把异常信息返回给client？（用mc协议？） fishermen
+    //     let mut result_set = match self.parse_result_set(rsp_packet, Vec::new(), |mut acc, row| {
+    //         acc.push(from_row(row));
+    //         acc
+    //     }) {
+    //         Ok(rs) => rs,
+    //         Err(Error::ProtocolIncomplete) => return Err(Error::ProtocolIncomplete),
+    //         Err(Error::MysqlError) => Vec::with_capacity(0),
+    //         Err(e) => panic!("mysql unkonw err: {:?}", e),
+    //     };
 
-        log::debug!(
-            "+++ parsed rsp:{:?} for req req:{:?} ",
-            req,
-            result_set.len()
-        );
-        // 返回mysql响应，在write response处进行协议转换
-        // TODO 这里临时打通，需要进一步完善修改 fishermen
-        let mut row: Vec<u8> = match result_set.len() > 0 {
-            true => result_set.remove(0),
-            false => Vec::with_capacity(10),
-        };
+    //     log::debug!(
+    //         "+++ parsed rsp:{:?} for req req:{:?} ",
+    //         req,
+    //         result_set.len()
+    //     );
+    //     // 返回mysql响应，在write response处进行协议转换
+    //     // TODO 这里临时打通，需要进一步完善修改 fishermen
+    //     let mut row: Vec<u8> = match result_set.len() > 0 {
+    //         true => result_set.remove(0),
+    //         false => Vec::with_capacity(10),
+    //     };
 
-        let status = match row.len() {
-            0 => false,
-            _ => true,
-        };
+    //     let status = match row.len() {
+    //         0 => false,
+    //         _ => true,
+    //     };
 
-        let mem = MemGuard::from_vec(row);
-        let cmd = Command::from(status, mem);
-        Ok(Some(cmd))
-    }
+    //     let mem = MemGuard::from_vec(row);
+    //     let cmd = Command::from(status, mem);
+    //     Ok(Some(cmd))
+    // }
 
     // 包比较复杂，不能随意take，得等到最复杂场景解析完毕后，才能统一take走
     fn parse_response_inner<'a, S: crate::Stream>(
@@ -387,7 +387,7 @@ impl Mysql {
 
         // 返回mysql响应，在write response处进行协议转换
         // TODO 这里临时打通，需要进一步完善修改 fishermen
-        let mut row: Vec<u8> = match result_set.len() > 0 {
+        let row: Vec<u8> = match result_set.len() > 0 {
             true => result_set.remove(0),
             false => Vec::with_capacity(10),
         };

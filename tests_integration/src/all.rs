@@ -1,6 +1,7 @@
 mod api;
 mod ci;
 mod counterservice;
+mod hasher;
 mod mc;
 mod mc_helper;
 mod mysql;
