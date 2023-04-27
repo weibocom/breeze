@@ -387,14 +387,16 @@ impl Mysql {
 
         // 返回mysql响应，在write response处进行协议转换
         // TODO 这里临时打通，需要进一步完善修改 fishermen
+        let status = result_set.len() > 0;
+
         let row: Vec<u8> = match result_set.len() > 0 {
             true => result_set.remove(0),
-            false => Vec::with_capacity(10),
-        };
-
-        let status = match row.len() {
-            0 => false,
-            _ => true,
+            false => {
+                const NOT_FOUND: &[u8] = "not found".as_bytes();
+                let mut padding = Vec::with_capacity(10);
+                padding.extend(NOT_FOUND);
+                padding
+            }
         };
 
         let mem = MemGuard::from_vec(row);
