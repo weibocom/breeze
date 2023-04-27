@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct MysqlNamespace {
     // TODO speed up, ref: https://git/platform/resportal/-/issues/548
     pub(crate) basic: Basic,
@@ -55,7 +55,7 @@ impl MysqlNamespace {
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
             .map_err(|e| {
-                log::info!("failed to parse mysql config:{}", cfg);
+                log::info!("failed to parse mysql  e:{} config:{}", e, cfg);
                 e
             })
             .ok();
