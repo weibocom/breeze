@@ -112,7 +112,7 @@ impl Protocol for Mysql {
             }
 
             if req.key_len() > 0 {
-                log::info!("+++ recv mysql-mc packet for key:{:?}", req.key());
+                log::debug!("+++ recv mysql-mc packet for key:{:?}", req.key());
             }
 
             let last = !req.quiet_get(); // 须在map_op之前获取
@@ -214,7 +214,7 @@ impl Protocol for Mysql {
             if rsp.ok() {
                 assert!(rsp.len() > 0, "empty rsp:{:?}", rsp);
                 self.write_mc_packet(ctx.request(), rsp, w)?;
-                log::info!(
+                log::debug!(
                     "+++ sent to client for req:{:?}, rsp:{}",
                     ctx.request(),
                     rsp.len()
@@ -225,7 +225,7 @@ impl Protocol for Mysql {
 
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
-        log::warn!("+++ send to client padding rsp, req:{:?}", ctx.request(),);
+        log::debug!("+++ send to client padding rsp, req:{:?}", ctx.request(),);
         match old_op_code {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_CODE_NOOP => {
