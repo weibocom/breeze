@@ -165,7 +165,7 @@ where
         let a: usize = self.archive_shards.values().map(|s| s.len()).sum();
         let b: usize = self.archive_shards_url.values().map(|s| s.len()).sum();
 
-        log::debug!("+++ cfg need: {} archive:{}/{}", self.cfg.need_load(), a, b);
+        // log::debug!("+++ cfg need: {} archive:{}/{}", self.cfg.need_load(), a, b);
         a != b || self.cfg.need_load()
     }
     fn load(&mut self) {
