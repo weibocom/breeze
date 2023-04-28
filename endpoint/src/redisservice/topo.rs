@@ -141,6 +141,10 @@ where
             self.cfg.update(namespace, ns);
         }
     }
+    //for test
+    fn get_backends(&self) -> Vec<String> {
+        self.cfg.backends.clone()
+    }
     // 满足以下两个条件之一，则需要更新：
     // 1. 存在某dns未成功解析，并且dns数据准备就绪
     // 2. 近期有dns更新。

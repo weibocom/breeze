@@ -15,6 +15,10 @@ use std::sync::{
 
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
+    // for test
+    fn get_backends(&self) -> Vec<String> {
+        Vec::new()
+    }
     #[inline]
     fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
         vec![("", cfg)]
