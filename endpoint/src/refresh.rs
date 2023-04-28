@@ -1,7 +1,7 @@
-// use std::{ops::Deref, sync::Arc};
+// use std::sync::Arc;
 
 // use crate::{Endpoint, Topology, TopologyCheck};
-// use discovery::{Inited, TopologyReadGuard};
+// use discovery::{TopologyRead, TopologyReadGuard};
 // use sharding::hash::{Hash, HashKey};
 
 // use protocol::{
@@ -9,41 +9,25 @@
 //     request::Request,
 // };
 
-// pub struct RefreshTopology<'a, T> {
+// // 支持刷新
+// pub struct RefreshTopology<T> {
 //     reader: TopologyReadGuard<T>,
-//     top: Arc<T>,
-//     _r: std::marker::PhantomData<&'a T>,
+//     top: spin::RwLock<SharedTop<T>>,
 // }
-
-// impl<T: Clone + 'static + Endpoint<Item = Request> + Inited> RefreshTopology<'_, T> {
+// impl<T: Clone + 'static + Endpoint<Item = Request>> RefreshTopology<T> {
 //     // reader一定是已经初始化过的，否则会UB
 //     #[inline]
 //     pub fn from(reader: TopologyReadGuard<T>) -> Self {
-//         let top = reader.get();
-//         Self {
-//             top,
-//             reader,
-//             _r: Default::default(),
-//         }
+//         let top = SharedTop::new(&reader).into();
+//         Self { top, reader }
 //     }
-//     pub fn refresh(&mut self) {
-//         self.top = self.reader.get();
+//     pub fn build(self: &Arc<Self>) -> Option<CheckedTopology<T>> {
+//         let shared = self.top.try_read()?.clone();
+//         return Some(CheckedTopology::new(shared, self.clone()));
 //     }
 // }
 
-// // impl<'a, T> Deref for RefreshTopology<'a, T> {
-// //     type Target = T;
-// //     fn deref(&self) -> &Self::Target {
-// //         self.top.as_ref()
-// //     }
-// // }
-
-// impl<T> AsRef<T> for RefreshTopology<'_, T> {
-//     fn as_ref(&self) -> &T {
-//         &self.top
-//     }
-// }
-// 每个connection持有一个CheckedTopology，在refresh时调用check检查是否有更新
+// // 每个connection持有一个CheckedTopology，在refresh时调用check检查是否有更新
 // pub struct CheckedTopology<T> {
 //     top: SharedTop<T>,
 //     global: Arc<RefreshTopology<T>>,
