@@ -6,12 +6,15 @@ use std::{
     task::{ready, Context, Poll},
 };
 
-use discovery::RefreshTop;
+use discovery::{Inited, RefreshTopology, TopologyReadGuard};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use ds::{time::Instant, AtomicWaker};
 use endpoint::Topology;
-use protocol::{callback::Callback, HashedCommand, Protocol, Result, Stream};
+use protocol::{
+    callback::{Callback, CallbackPtr},
+    HashedCommand, Protocol, Result, Stream,
+};
 
 use sharding::hash::Hash;
 
@@ -21,8 +24,8 @@ use crate::{
     CallbackContext, Request, StreamMetrics,
 };
 
-pub async fn copy_bidirectional<C, P, T, Top>(
-    top: T,
+pub async fn copy_bidirectional<C, P, T>(
+    top: TopologyReadGuard<T>,
     metrics: Arc<StreamMetrics>,
     client: C,
     parser: P,
@@ -31,14 +34,17 @@ pub async fn copy_bidirectional<C, P, T, Top>(
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: RefreshTop<Top> + Unpin,
-    Top: Topology<Item = Request> + Unpin + Hash,
+    T: Topology<Item = Request> + Unpin + Clone + Inited + 'static,
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
+    let top = RefreshTopology::from(top.clone());
+
+    //todo 待优化，别的地方也用到这段代码
     let cb_top = top.get();
     let send = Box::new(move |req| cb_top.send(req));
     let callback = Callback::new(send).into();
+
     let pipeline = CopyBidirectional {
         pipeline,
         top,
@@ -55,14 +61,13 @@ where
         async_pending: VecDeque::new(),
 
         arena: CallbackContextArena::with_cache(32),
-        _t: Default::default(),
     };
     rt::Entry::timeout(pipeline, rt::DisableTimeout).await
 }
 
-pub struct CopyBidirectional<C, P, T, Top> {
-    top: T,
-    cb: Callback,
+pub struct CopyBidirectional<C, P, T> {
+    top: RefreshTopology<T>,
+    cb: CallbackPtr,
     client: C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
@@ -80,14 +85,12 @@ pub struct CopyBidirectional<C, P, T, Top> {
     async_pending: VecDeque<CallbackContextPtr>, // 异步请求中的数量。
 
     arena: CallbackContextArena,
-    _t: std::marker::PhantomData<Top>,
 }
-impl<C, P, T, Top> Future for CopyBidirectional<C, P, T, Top>
+impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: RefreshTop<Top>,
-    Top: Topology<Item = Request> + Unpin + Hash,
+    T: Topology<Item = Request> + Unpin + Hash + Clone + Inited,
 {
     type Output = Result<()>;
 
@@ -116,12 +119,11 @@ where
         }
     }
 }
-impl<C, P, T, Top> CopyBidirectional<C, P, T, Top>
+impl<C, P, T> CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: RefreshTop<Top>,
-    Top: Topology<Item = Request> + Unpin + Hash,
+    T: Topology<Item = Request> + Unpin + Hash + Clone + Inited,
 {
     // 解析buffer，并且发送请求.
     #[inline]
@@ -143,14 +145,15 @@ where
         let mut processor = Visitor {
             pending,
             waker,
-            top: top.as_ref(),
+            top: top.get_inner(),
+            cb: self.cb.clone(),
             // parser,
             first,
             arena,
         };
 
         parser
-            .parse_request(client, top.as_ref(), &mut processor)
+            .parse_request(client, top.get_inner(), &mut processor)
             .map_err(|e| {
                 log::info!("parse request error: {:?} {:?}", e, self);
                 e
@@ -194,7 +197,7 @@ where
 
             parser.write_response(
                 &mut ResponseContext::new(&mut ctx, metrics, |hash| {
-                    self.top.as_ref().shard_idx(hash)
+                    self.top.get_inner().shard_idx(hash)
                 }),
                 response.as_mut(),
                 client,
@@ -203,7 +206,7 @@ where
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
-                    ctx.async_write_back(parser, rsp, self.top.as_ref().exp_sec(), metrics);
+                    ctx.async_write_back(parser, rsp, self.top.get_inner().exp_sec(), metrics);
                     self.async_pending.push_back(ctx);
                 }
             }
@@ -248,6 +251,7 @@ struct Visitor<'a, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
     top: &'a T,
+    cb: CallbackPtr,
     // parser: &'a P,
     first: &'a mut bool,
     arena: &'a mut CallbackContextArena,
@@ -263,7 +267,7 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         // 如果当前是最后一个子请求，那下一个请求就是一个全新的请求。
         // 否则下一个请求是子请求。
         *self.first = last;
-        let cb = self.top.callback();
+        let cb = self.cb.clone();
         let ctx = self
             .arena
             .alloc(CallbackContext::new(cmd, &self.waker, cb, first, last));
@@ -281,7 +285,7 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         }
     }
 }
-impl<C, P, T, Top> Drop for CopyBidirectional<C, P, T, Top> {
+impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
     #[inline]
     fn drop(&mut self) {
         *self.metrics.conn_num() -= 1;
@@ -289,12 +293,11 @@ impl<C, P, T, Top> Drop for CopyBidirectional<C, P, T, Top> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<C, P, T, Top> rt::ReEnter for CopyBidirectional<C, P, T, Top>
+impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: RefreshTop<Top> + Unpin,
-    Top: Topology<Item = Request> + Unpin + Hash,
+    T: Topology<Item = Request> + Unpin + Hash + Clone + Inited + 'static,
 {
     #[inline]
     fn close(&mut self) -> bool {
@@ -317,9 +320,16 @@ where
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
-        if self.top.refresh() {
-            log::info!("topology refreshed: {:?}", self);
-        }
+        self.top.refresh();
+
+        //todo 待优化，别的地方也用到这段代码
+        let cb_top = self.top.get();
+        let send = Box::new(move |req| cb_top.send(req));
+        let callback = Callback::new(send).into();
+        self.cb = callback;
+        // if self.top.refresh() {
+        //     log::info!("topology refreshed: {:?}", self);
+        // }
         //self.process_async_pending();
         self.client.try_gc();
         self.client.shrink();
@@ -329,7 +339,7 @@ where
         //Ok(self.client.cap() >= crate::REFRESH_THREASHOLD || self.async_pending.len() > 0)
     }
 }
-impl<C: Debug, P, T, Top> Debug for CopyBidirectional<C, P, T, Top> {
+impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(

@@ -1,5 +1,4 @@
 use ds::{cow, CowReadHandle, CowWriteHandle};
-use url::form_urlencoded::Target;
 
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -162,22 +161,26 @@ where
 //     }
 // }
 
-pub struct RefreshTopology<'a, T> {
+pub struct RefreshTopology<T> {
     reader: TopologyReadGuard<T>,
     top: Arc<T>,
-    _r: std::marker::PhantomData<&'a T>,
 }
 
-impl<T: Clone + Send + Sync + Inited> RefreshTopology<'_, T> {
+impl<T: Clone + Send + Sync + Inited> RefreshTopology<T> {
     // reader一定是已经初始化过的，否则会UB
     #[inline]
     pub fn from(reader: TopologyReadGuard<T>) -> Self {
         let top = reader.get();
-        Self {
-            top,
-            reader,
-            _r: Default::default(),
-        }
+        Self { top, reader }
+    }
+    pub fn get(&self) -> Arc<T> {
+        self.top.clone()
+    }
+    pub fn refresh(&mut self) {
+        self.top = self.reader.get();
+    }
+    pub fn get_inner(&self) -> &T {
+        &self.top
     }
 }
 
@@ -188,20 +191,20 @@ impl<T: Clone + Send + Sync + Inited> RefreshTopology<'_, T> {
 //     }
 // }
 
-pub trait RefreshTop<T> {
-    fn get(&self) -> Arc<T>;
-    fn get_inner(&self) -> &T;
-    fn refresh(&mut self);
-}
+// pub trait RefreshTop<T> {
+//     fn get(&self) -> Arc<T>;
+//     fn get_inner(&self) -> &T;
+//     fn refresh(&mut self);
+// }
 
-impl<T: Clone + Send + Sync + Inited> RefreshTop<T> for RefreshTopology<'_, T> {
-    fn get(&self) -> Arc<T> {
-        self.top.clone()
-    }
-    fn refresh(&mut self) {
-        self.top = self.reader.get();
-    }
-    fn get_inner(&self) -> &T {
-        &self.top
-    }
-}
+// impl<T: Clone + Send + Sync + Inited> RefreshTop<T> for RefreshTopology<'_, T> {
+//     fn get(&self) -> Arc<T> {
+//         self.top.clone()
+//     }
+//     fn refresh(&mut self) {
+//         self.top = self.reader.get();
+//     }
+//     fn get_inner(&self) -> &T {
+//         &self.top
+//     }
+// }

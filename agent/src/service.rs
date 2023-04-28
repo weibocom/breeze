@@ -64,7 +64,6 @@ pub(super) async fn process_one(
     Ok(())
 }
 
-use discovery::RefreshTopology;
 async fn _process_one(
     quard: &Quadruple,
     p: &Parser,
@@ -92,7 +91,8 @@ async fn _process_one(
         //     log::info!("build top failed, try later:{}", quard.service());
         //     tokio::time::sleep(Duration::from_millis(10)).await;
         // }
-        let ctop = RefreshTopology::from(top.clone());
+        // let ctop = RefreshTopology::from(top.clone());
+        let ctop = top.clone();
         let metrics = metrics.clone();
         spawn(async move {
             if let Err(e) = copy_bidirectional(ctop, metrics.clone(), client, p, pipeline).await {
