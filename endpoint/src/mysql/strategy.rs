@@ -12,8 +12,6 @@ use sharding::hash::{Hash, Hasher};
 use std::collections::HashMap;
 use std::fmt::Display;
 
-pub const ARCHIVE_SHARDS_KEY: &str = "__default__";
-
 #[derive(Debug, Clone)]
 pub enum Postfix {
     YYMM,
@@ -63,7 +61,7 @@ impl Strategyer {
         Self::KVTime(KVTime::new(
             item.basic.db_name.clone(),
             item.basic.db_count,
-            item.backends.get(ARCHIVE_SHARDS_KEY).unwrap().len() as u32,
+            item.backends.get(ARCHIVE_DEFAULT_KEY).unwrap().len() as u32,
         ))
     }
 }
