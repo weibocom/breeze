@@ -190,7 +190,7 @@ pub trait Binary<T> {
 
 use ds::RingSlice;
 
-use super::constants::Command;
+use super::common::constants::Command;
 impl Binary<RingSlice> for RingSlice {
     #[inline(always)]
     fn op(&self) -> u8 {
