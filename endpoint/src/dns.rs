@@ -83,7 +83,7 @@ impl Backends for crate::phantomservice::config::PhantomNamespace {
 
 impl Backends for crate::mysql::config::MysqlNamespace {
     fn get_backends(&self) -> &Vec<String> {
-        &self.backends
+        &self.get_backends()
     }
 }
 
