@@ -1,11 +1,10 @@
 // TODO 解析mysql协议， 转换为mc vs redis 协议
 
-use crate::mysql::constants::DEFAULT_MAX_ALLOWED_PACKET;
+use crate::mysql::common::constants::DEFAULT_MAX_ALLOWED_PACKET;
 use crate::StreamContext;
 
-use super::buffer_pool::Buffer;
-use super::proto::codec::PacketCodec;
-use super::query_result::Or;
+use super::common::{buffer_pool::Buffer, proto::codec::PacketCodec, query_result::Or};
+
 use super::HandShakeStatus;
 
 use byteorder::{ByteOrder, LittleEndian};
@@ -15,21 +14,21 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::process;
 
-use super::constants::{StatusFlags, MAX_PAYLOAD_LEN};
-use super::error::DriverError;
-use super::opts::Opts;
-use super::packets::{
+use super::common::constants::{StatusFlags, MAX_PAYLOAD_LEN};
+use super::common::error::DriverError;
+use super::common::opts::Opts;
+use super::common::packets::{
     AuthPlugin, Column, CommonOkPacket, HandshakeResponse, OkPacket, OkPacketDeserializer,
     OkPacketKind, OldEofPacket, ResultSetTerminator,
 };
-use super::{constants::CapabilityFlags, io::ParseBuf, packets::HandshakePacket};
+use super::common::{constants::CapabilityFlags, io::ParseBuf, packets::HandshakePacket};
 use ds::RingSlice;
 
-use crate::mysql::error::Error::MySqlError;
-use crate::mysql::io::ReadMysqlExt;
-use crate::mysql::proto::MySerialize;
+use crate::mysql::common::error::Error::MySqlError;
+use crate::mysql::common::io::ReadMysqlExt;
+use crate::mysql::common::proto::MySerialize;
 use crate::Error;
-use crate::{mysql::packets::ErrPacket, Result};
+use crate::{mysql::common::packets::ErrPacket, Result};
 
 const HEADER_LEN: usize = 4;
 pub(super) const HEADER_FLAG_OK: u8 = 0x00;
@@ -38,7 +37,7 @@ pub(super) const HEADER_FLAG_CONTINUE: u8 = 0xFE;
 // local infile 的response data
 pub(super) const HEADER_FLAG_LOCAL_INFILE: u8 = 0xFB;
 
-pub(super) struct ResponsePacket<'a, S> {
+pub(crate) struct ResponsePacket<'a, S> {
     stream: &'a mut S,
     data: RingSlice,
 

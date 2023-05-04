@@ -5,13 +5,12 @@ use std::ops::Index;
 use bytes::{Buf, BufMut, BytesMut};
 use ds::RingSlice;
 
-use crate::{Error, Result};
-
-use super::{
+use super::common::{
     constants::{Command, DEFAULT_MAX_ALLOWED_PACKET},
-    mcpacket::Binary,
     proto::codec::PacketCodec,
 };
+use super::mcpacket::Binary;
+use crate::{Error, Result};
 
 // mc          vs           mysql
 // get                      select
@@ -93,5 +92,3 @@ impl TypeConvert for RingSlice {
         unsafe { std::mem::transmute(SQL_TYPE_IDX[op_code]) }
     }
 }
-
-

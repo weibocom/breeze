@@ -1,38 +1,44 @@
-#[macro_use]
-pub mod bitflags_ext;
+// #[macro_use]
+// pub mod bitflags_ext;
 mod auth;
-mod buffer_pool;
-pub mod constants;
-mod error;
-mod io;
+// mod buffer_pool;
+// mod common;
+// pub mod constants;
+// mod error;
+// mod io;
+// pub mod mcpacket;
+// mod misc;
+// mod named_params;
+// mod opts;
+// mod packets;
+// mod params;
+// mod proto;
+// mod query_result;
+// mod reqpacket;
+// mod row;
+mod common;
 pub mod mcpacket;
-mod misc;
-mod named_params;
-mod opts;
-mod packets;
-mod params;
-mod proto;
-mod query_result;
 mod reqpacket;
-mod row;
 mod rsppacket;
-mod scramble;
-mod strategy;
-mod value;
+// mod scramble;
+// mod value;
 
+use self::common::proto::Text;
+use self::common::row::convert::from_row;
 use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
 use self::mcpacket::*;
-use self::opts::Opts;
-use self::proto::Text;
-use self::query_result::QueryResult;
+// use self::opts::Opts;
+// use self::proto::Text;
+use self::common::query_result::QueryResult;
 use self::reqpacket::RequestPacket;
-use self::row::convert::from_row;
+// use self::row::convert::from_row;
 use self::rsppacket::ResponsePacket;
 
 use super::Flag;
 use super::Protocol;
 use super::Result;
+use crate::mysql::common::opts::Opts;
 use crate::Command;
 use crate::Error;
 use crate::HandShake;
@@ -47,17 +53,17 @@ use sharding::hash::Hash;
 pub mod prelude {
 
     #[doc(inline)]
-    pub use crate::mysql::row::convert::FromRow;
+    pub use crate::mysql::common::row::convert::FromRow;
     #[doc(inline)]
-    pub use crate::mysql::row::ColumnIndex;
+    pub use crate::mysql::common::row::ColumnIndex;
     #[doc(inline)]
-    pub use crate::mysql::value::convert::{ConvIr, FromValue, ToValue};
+    pub use crate::mysql::common::value::convert::{ConvIr, FromValue, ToValue};
 
     /// Trait for protocol markers [`crate::Binary`] and [`crate::Text`].
-    pub(super) trait Protocol: crate::mysql::query_result::Protocol {}
+    pub(crate) trait Protocol: crate::mysql::common::query_result::Protocol {}
 
-    impl Protocol for crate::mysql::proto::Binary {}
-    impl Protocol for crate::mysql::proto::Text {}
+    impl Protocol for crate::mysql::common::proto::Binary {}
+    impl Protocol for crate::mysql::common::proto::Text {}
 }
 
 #[derive(Clone, Default)]
