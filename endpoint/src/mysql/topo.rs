@@ -19,13 +19,14 @@ use sharding::Selector;
 
 use crate::dns::DnsConfig;
 use crate::mysql::config::ARCHIVE_DEFAULT_KEY;
+use crate::mysql::strategy::Strategy;
 use crate::Builder;
 use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
-use super::strategy::Strategy;
+use super::strategy::Strategyer;
 #[derive(Clone)]
 pub struct MysqlService<B, E, Req, P> {
     // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -35,7 +36,7 @@ pub struct MysqlService<B, E, Req, P> {
     // 按时间维度分库分表
     archive_shards: HashMap<String, Vec<Shard<E>>>,
     archive_shards_url: HashMap<String, Vec<Vec<String>>>,
-    sql: HashMap<String, String>,
+    // sql: HashMap<String, String>,
     // hasher: Hasher,
     // distribute: Distribute,
     selector: Selector, // 从的选择策略。
@@ -46,7 +47,7 @@ pub struct MysqlService<B, E, Req, P> {
     _mark: std::marker::PhantomData<(B, Req)>,
     user: String,
     password: String,
-    strategy: Strategy,
+    strategyer: Strategyer,
     cfg: Box<DnsConfig<MysqlNamespace>>,
 }
 
@@ -66,8 +67,7 @@ impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
             _mark: Default::default(),
             user: Default::default(),
             password: Default::default(),
-            sql: Default::default(),
-            strategy: Default::default(),
+            strategyer: Default::default(),
             cfg: Default::default(),
         }
     }
@@ -82,7 +82,7 @@ where
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
-        self.strategy.hasher().hash(k)
+        self.strategyer.hasher().hash(k)
     }
 }
 
@@ -98,18 +98,11 @@ where
         // req 是mc binary协议，需要展出字段，转换成sql
         // let raw_req = req.data();
         let mid = req.key();
-        let sql = self
-            .strategy
-            .build_sql("SQL_SELECT", &mid, &mid)
-            .expect("malformed sql");
+        let sql = self.strategyer.build_ksql(&mid).expect("malformed sql");
 
         //定位年库
-        let year = self.strategy.get_year(&mid);
-        let shards = if self.strategy.hierarchy && self.archive_shards.get(&year).is_some() {
-            self.archive_shards.get(&year).unwrap()
-        } else {
-            self.archive_shards.get(ARCHIVE_DEFAULT_KEY).unwrap()
-        };
+        let year = self.strategyer.get_key(&mid);
+        let shards = self.archive_shards.get(&year).unwrap();
 
         debug_assert_ne!(shards.len(), 0);
         assert!(shards.len() > 0);
@@ -151,7 +144,7 @@ where
     }
 
     fn shard_idx(&self, hash: i64) -> usize {
-        self.strategy.distribution.index(hash)
+        self.strategyer.distribution().index(hash)
     }
 }
 
@@ -178,10 +171,9 @@ where
             self.selector = ns.basic.selector.as_str().into();
             self.user = ns.basic.user.as_str().into();
             self.password = ns.basic.password.as_str().into();
-            self.sql = ns.sql.clone();
-            self.strategy = Strategy::try_from(&ns);
+            self.strategyer = Strategyer::try_from(&ns);
             // todo: 过多clone ，先跑通
-            for i in ns.archive.iter() {
+            for i in ns.backends.iter() {
                 self.archive_shards_url.insert(
                     i.0.clone().to_string(),
                     i.1.clone()
