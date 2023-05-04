@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct MysqlNamespace {
@@ -11,27 +11,27 @@ pub struct MysqlNamespace {
     pub(crate) archive: HashMap<String, Vec<String>>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct Basic {
     #[serde(default)]
     pub(crate) hash: String,
     #[serde(default)]
     pub(crate) distribution: String,
-    #[serde(default)]
-    pub(crate) listen: String,
-    #[serde(default)]
-    resource_type: String,
+    // #[serde(default)]
+    // pub(crate) listen: String,
+    // #[serde(default)]
+    // resource_type: String,
     #[serde(default)]
     pub(crate) selector: String,
     #[serde(default)]
     pub(crate) timeout_ms_master: u32,
     #[serde(default)]
     pub(crate) timeout_ms_slave: u32,
-    #[serde(default)]
-    pub(crate) min_pool_size: u16,
+    // #[serde(default)]
+    // pub(crate) min_pool_size: u16,
 
-    #[serde(default)]
-    pub(crate) max_idle_time: u32,
+    // #[serde(default)]
+    // pub(crate) max_idle_time: u32,
     #[serde(default)]
     pub(crate) db_prefix: String,
     #[serde(default)]
@@ -44,10 +44,10 @@ pub struct Basic {
     pub(crate) table_count: u32,
     #[serde(default)]
     pub(crate) hierarchy: bool,
-    #[serde(default)]
-    pub(crate) password: String,
-    #[serde(default)]
-    pub(crate) user: String,
+    // #[serde(default)]
+    // pub(crate) password: String,
+    // #[serde(default)]
+    // pub(crate) user: String,
 }
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
