@@ -7,7 +7,7 @@ use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::time::Duration;
-use protocol::mysql::mcpacket::Binary;
+use protocol::mysql::Binary;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
