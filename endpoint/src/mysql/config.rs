@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct MysqlNamespace {
     // TODO speed up, ref: https://git/platform/resportal/-/issues/548
     pub(crate) basic: Basic,
-    pub(crate) sql: HashMap<String, String>,
+    // pub(crate) sql: HashMap<String, String>,
     // pub(crate) backends: Vec<String>,
     pub(crate) backends: HashMap<String, Vec<String>>,
 }
