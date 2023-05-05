@@ -23,7 +23,6 @@ pub struct KVTime {
     table_postfix: Postfix,
     db_count: u32,
     table_count: u32,
-    sql: HashMap<String, String>,
     hasher: Hasher,
     distribution: DBRange,
 }
@@ -36,7 +35,6 @@ impl KVTime {
             table_postfix: Postfix::YYMMDD,
             db_count: db_count,
             table_count: 1,
-            sql: HashMap::new(),
             distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
             hasher: Hasher::from("crc32"),
         }
