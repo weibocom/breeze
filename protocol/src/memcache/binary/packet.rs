@@ -47,7 +47,7 @@ pub enum RespStatus {
 
 use crate::Operation;
 #[allow(dead_code)]
-pub(super) enum PacketPos {
+pub(crate) enum PacketPos {
     Magic = 0,
     Opcode = 1,
     Key = 2,
@@ -58,22 +58,22 @@ pub(super) enum PacketPos {
     Opaque = 12,
     Cas = 16,
 }
-pub(super) const HEADER_LEN: usize = 24;
+pub(crate) const HEADER_LEN: usize = 24;
 
 // 对应版本号为: 0.0.1
-pub(super) const VERSION_RESPONSE: [u8; 29] = [
+pub(crate) const VERSION_RESPONSE: [u8; 29] = [
     0x81, 0x0b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x2e, 0x30, 0x2e, 0x31,
 ];
 // EMPTY Response
-pub(super) const STAT_RESPONSE: [u8; 24] = [
+pub(crate) const STAT_RESPONSE: [u8; 24] = [
     129, 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
 // https://github.com/memcached/memcached/wiki/BinaryProtocolRevamped#command-opcodes
 // MC包含Get, MGet, Gets, Store, Meta四类命令，索引分别是0-4
 // 0x48 是Gets请求
-pub(super) const COMMAND_IDX: [u8; 128] = [
+pub(crate) const COMMAND_IDX: [u8; 128] = [
     0, 3, 3, 3, 3, 3, 3, 4, 4, 1, 1, 4, 0, 1, 0, 0, 4, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -82,7 +82,7 @@ pub(super) const COMMAND_IDX: [u8; 128] = [
 // OP_CODE对应的noreply code。
 // 注意：根据业务逻辑，add会转换成setq
 // cas 变更为setq
-pub(super) const NOREPLY_MAPPING: [u8; 128] = [
+pub(crate) const NOREPLY_MAPPING: [u8; 128] = [
     0x09, 0x11, 0x11, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x09, 0x00, 0x00, 0x0d, 0x0d, 0x19, 0x1a,
     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
     0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
@@ -92,7 +92,7 @@ pub(super) const NOREPLY_MAPPING: [u8; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 // 哪些请求是不需要转发的. 比如noop请求，version, status, quit等请求。这些请求可以直接计算出response。
-//pub(super) const NO_FORWARD_OPS: [u8; 128] = [
+//pub(crate) const NO_FORWARD_OPS: [u8; 128] = [
 //    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
 //    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 //    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -108,38 +108,38 @@ const TRY_NEXT_TABLE: [u8; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
-pub(super) const REQUEST_MAGIC: u8 = 0x80;
-pub(super) const RESPONSE_MAGIC: u8 = 0x81;
-pub(super) const OP_GET: u8 = 0x00;
-pub(super) const OP_NOOP: u8 = 0x0a;
-pub(super) const OP_VERSION: u8 = 0x0b;
-pub(super) const OP_STAT: u8 = 0x10;
-pub(super) const OP_QUIT: u8 = 0x07;
-pub(super) const OP_QUITQ: u8 = 0x17;
-pub(super) const OP_GETKQ: u8 = 0x0d;
-pub(super) const OP_GETQ: u8 = 0x09;
-pub(super) const OP_SET: u8 = 0x01;
-pub(super) const OP_DEL: u8 = 0x04;
-pub(super) const OP_ADD: u8 = 0x02;
+pub(crate) const REQUEST_MAGIC: u8 = 0x80;
+pub(crate) const RESPONSE_MAGIC: u8 = 0x81;
+pub(crate) const OP_GET: u8 = 0x00;
+pub(crate) const OP_NOOP: u8 = 0x0a;
+pub(crate) const OP_VERSION: u8 = 0x0b;
+pub(crate) const OP_STAT: u8 = 0x10;
+pub(crate) const OP_QUIT: u8 = 0x07;
+pub(crate) const OP_QUITQ: u8 = 0x17;
+pub(crate) const OP_GETKQ: u8 = 0x0d;
+pub(crate) const OP_GETQ: u8 = 0x09;
+pub(crate) const OP_SET: u8 = 0x01;
+pub(crate) const OP_DEL: u8 = 0x04;
+pub(crate) const OP_ADD: u8 = 0x02;
 
-pub(super) const OP_GETK: u8 = 0x0c;
+pub(crate) const OP_GETK: u8 = 0x0c;
 
 // 这个专门为gets扩展
-pub(super) const OP_GETS: u8 = 0x48;
+pub(crate) const OP_GETS: u8 = 0x48;
 // 这个没有业务使用，先注销掉
-pub(super) const OP_GETSQ: u8 = 0x49;
+pub(crate) const OP_GETSQ: u8 = 0x49;
 
 // 0x09: getq
 // 0x0d: getkq
 // 0x49: getsq
-//pub(super) const QUITE_GET_TABLE: [u8; 128] = [
+//pub(crate) const QUITE_GET_TABLE: [u8; 128] = [
 //    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 //    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 //    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 //    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 //];
 #[inline(always)]
-pub(super) fn is_quiet_get(op_code: u8) -> bool {
+pub(crate) fn is_quiet_get(op_code: u8) -> bool {
     match op_code {
         OP_GETQ | OP_GETKQ | OP_GETSQ => true,
         _ => false,
@@ -151,7 +151,7 @@ pub(super) fn is_quiet_get(op_code: u8) -> bool {
 // 1. quite get请求映射成 non-quite get请求。
 //      getq(0x09) => get(0x00); getkq(0x0d) => getk(0x0c); 以实现multiget的pipeline
 // 2. 把gets(0x48), getsq(0x49) => get(0x00)请求。 // 支持gets请求只发送给master
-//pub(super) const OPS_MAPPING_TABLE: [u8; 128] = [
+//pub(crate) const OPS_MAPPING_TABLE: [u8; 128] = [
 //    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x0a, 0x0b, 0x0c, 0x0c, 0x0e, 0x0f,
 //    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
 //    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
