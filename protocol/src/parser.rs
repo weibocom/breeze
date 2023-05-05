@@ -5,7 +5,7 @@ use sharding::hash::Hash;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
-use crate::{Error, Flag, Result, Stream, Writer};
+use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
 #[enum_dispatch(Proto)]
 #[derive(Clone)]
@@ -102,10 +102,10 @@ pub struct HashedCommand {
 }
 
 impl Command {
-    #[inline]
-    pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
-        Self { ok: flag.ok(), cmd }
-    }
+    //#[inline]
+    //pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
+    //    Self { ok: flag.ok(), cmd }
+    //}
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
         Self { ok, cmd }
@@ -152,16 +152,16 @@ impl std::ops::DerefMut for Command {
 }
 
 impl std::ops::Deref for HashedCommand {
-    type Target = Flag;
+    type Target = MemGuard;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.flag
+        &self.cmd
     }
 }
 impl std::ops::DerefMut for HashedCommand {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.flag
+        &mut self.cmd
     }
 }
 use ds::MemGuard;
@@ -171,6 +171,10 @@ impl HashedCommand {
         Self { hash, flag, cmd }
     }
     #[inline]
+    pub fn reset_flag(&mut self, op_code: u16, op: Operation) {
+        self.flag.reset_flag(op_code, op);
+    }
+    #[inline]
     pub fn hash(&self) -> i64 {
         self.hash
     }
@@ -178,18 +182,50 @@ impl HashedCommand {
     pub fn update_hash(&mut self, idx_hash: i64) {
         self.hash = idx_hash;
     }
+    //#[inline]
+    //pub fn data(&self) -> &ds::RingSlice {
+    //    self.cmd.data()
+    //}
+    //#[inline]
+    //pub fn data_mut(&mut self) -> &mut ds::RingSlice {
+    //    self.cmd.data_mut()
+    //}
+    //#[inline]
+    //pub fn len(&self) -> usize {
+    //    self.cmd.len()
+    //}
     #[inline]
-    pub fn data(&self) -> &ds::RingSlice {
-        self.cmd.data()
+    pub fn sentonly(&self) -> bool {
+        self.flag.sentonly()
     }
     #[inline]
-    pub fn data_mut(&mut self) -> &mut ds::RingSlice {
-        self.cmd.data_mut()
+    pub fn set_sentonly(&mut self, v: bool) {
+        self.flag.set_sentonly(v);
     }
     #[inline]
-    pub fn len(&self) -> usize {
-        self.cmd.len()
+    pub fn operation(&self) -> Operation {
+        self.flag.operation()
     }
+    #[inline]
+    pub fn op_code(&self) -> OpCode {
+        self.flag.op_code()
+    }
+    #[inline]
+    pub fn noforward(&self) -> bool {
+        self.flag.noforward()
+    }
+    #[inline]
+    pub fn flag(&self) -> &Flag {
+        &self.flag
+    }
+    #[inline]
+    pub fn flag_mut(&mut self) -> &mut Flag {
+        &mut self.flag
+    }
+    //#[inline]
+    //pub fn try_next_type(&self) -> TryNextType {
+    //    self.flag.try_next_type()
+    //}
 }
 //impl AsRef<Command> for HashedCommand {
 //    #[inline]

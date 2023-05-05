@@ -19,6 +19,7 @@ stream = { path = "../stream" }
 metrics = { path = "../metrics" }
 rt = { path = "../rt" }
 ds = { path = "../ds" }
+#[cfg(feature = "console-api")]
 api = { path = "../api" }
 
 backtrace = "0.3.63"
@@ -30,14 +31,12 @@ once_cell = "*"
 rlimit = "0.8.3"
 
 # rocket for restful api
-rocket = { version = "0.5.0-rc.2", features = ["json"], default-features = false }
+rocket = { version = "0.5.0-rc.3", features = [], default-features = false }
 #rocket_async_compression = "0.1.2"
 reqwest = { version = "0.11.4", default-features = false }
 
 
 [features]
-default = ["prometheus"]
+default = ["http"]
 http = []
 console-api = ["http"]
-graphite = []
-prometheus = ["http"]

@@ -81,13 +81,13 @@ where
         if !req.operation().master_only() {
             let mut ctx = super::Context::from(*req.mut_context());
             let (i, try_next, write_back) = if req.operation().is_store() {
-                self.context_store(&mut ctx, req.try_next_type())
+                self.context_store(&mut ctx, &req)
             } else {
                 if !ctx.inited() {
                     // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
                     // 第一次读一般访问L1，miss之后再读master；
                     // 读quota的更新根据第一次的请求时间更合理
-                    if let Some(quota) = self.streams.quota(){
+                    if let Some(quota) = self.streams.quota() {
                         req.quota(quota);
                     }
                 }
@@ -113,11 +113,7 @@ where
     E: Endpoint<Item = Req>,
 {
     #[inline]
-    fn context_store(
-        &self,
-        ctx: &mut super::Context,
-        try_next_type: TryNextType,
-    ) -> (usize, bool, bool) {
+    fn context_store(&self, ctx: &mut super::Context, req: &Req) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
@@ -130,7 +126,8 @@ where
             try_next = if idx + 1 >= self.streams.len() {
                 false
             } else {
-                match try_next_type {
+                use protocol::memcache::Binary;
+                match req.try_next_type() {
                     TryNextType::NotTryNext => false,
                     TryNextType::TryNext => true,
                     TryNextType::Unkown => self.force_write_all,
