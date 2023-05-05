@@ -125,7 +125,7 @@ impl Strategy for KVTime {
 
     //todo: sql_name 枚举
     fn build_ksql(&self, key: &RingSlice) -> Option<String> {
-        let mut sql_name = "select content from $db$.$tb$ where id=$k$";
+        let mut sql = "select content from $db$.$tb$ where id=$k$".to_string();
         let tname = match self.build_tname(key) {
             Some(tname) => tname,
             None => return None,
@@ -134,14 +134,13 @@ impl Strategy for KVTime {
             Some(dname) => dname,
             None => return None,
         };
-        let mut sql = self.sql.get(sql_name).unwrap_or(&String::new()).clone();
         if !sql.is_empty() {
             sql = sql.replace(DB_NAME_EXPRESSION, &dname);
             sql = sql.replace(TABLE_NAME_EXPRESSION, &tname);
             // TODO 先走通，再优化 fishermen
             sql = replace_one(&sql, KEY_EXPRESSION, key).expect("malformed sql");
         } else {
-            log::error!("find the sql by name {} is empty or null", sql_name);
+            log::error!("find the sql by name {} is empty or null", sql);
         }
         log::debug!("{}", sql);
         Some(sql)
