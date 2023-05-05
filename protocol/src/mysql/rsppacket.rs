@@ -1,8 +1,11 @@
-// TODO 解析mysql协议， 转换为mc vs redis 协议
+// 解析mysql协议， 转换为mc协议
 
 use crate::mysql::common::constants::DEFAULT_MAX_ALLOWED_PACKET;
 use crate::StreamContext;
 
+use super::common::proto::Text;
+use super::common::query_result::QueryResult;
+use super::common::row::convert::from_row;
 use super::common::{buffer_pool::Buffer, proto::codec::PacketCodec, query_result::Or};
 
 use super::HandShakeStatus;
@@ -156,21 +159,14 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     /// TODO 解析一个完整的packet，并copy出待解析的数据，注意copy只是临时动作，待优化  fishermen
     pub(super) fn next_packet_data(&mut self, take_data: bool) -> Result<Vec<u8>> {
         // 先确认解析出一个完整的packet
-        self.next_packet()?;
+        let packet_data = self.next_packet()?;
 
-        // TODO：将对应的payload copy出，供类型转换使用，后续这一步骤需要优化掉 fishermen
-        let mut payload = Vec::with_capacity(self.payload_len);
-        self.data
-            .sub_slice(self.oft, self.payload_len)
-            .copy_to_vec(&mut payload);
-
-        // 对stream中已经copy出来的数据进行take掉
-        self.oft += self.payload_len;
+        // 对stream中已经copy出来的数据进行take掉，目前只有简单的auth、Ok解析才会take
         if take_data {
             self.take();
         }
 
-        Ok(payload)
+        Ok(packet_data)
     }
 
     /// Must not be called before handle_handshake.
@@ -221,13 +217,13 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     }
 
     // 读一个完整的响应包，如果数据不完整，返回ProtocolIncomplete
-    fn next_packet(&mut self) -> Result<()> {
+    fn next_packet(&mut self) -> Result<Vec<u8>> {
         // mysql packet至少需要4个字节来读取sequence id
         if self.left_len() <= HEADER_LEN {
             return Err(Error::ProtocolIncomplete);
         }
 
-        // 解析mysql packet header
+        // TODO: 解析mysql packet header，这一次copy，后续需要优化掉 fishermen
         let mut data: Vec<u8> = Vec::with_capacity(HEADER_LEN);
         self.copy_left_to_vec(&mut data);
         let raw_chunk_len = LittleEndian::read_u24(&data) as usize;
@@ -241,17 +237,17 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
                 self.codec.set_seq_id(seq_id.wrapping_add(1));
             }
             None => {
-                return Err(Error::ProtocolIncomplete);
+                // TODO 当前mysql协议，不应该存在payload长度为0的packet？fishermen
+                assert!(false, "malformed mysql: {}/{}", self.oft, self.data)
             }
         };
 
         // 4 字节之后是各种实际的packet payload
-        if data.len() >= HEADER_LEN + raw_chunk_len {
+        let packet_len = HEADER_LEN + raw_chunk_len;
+        if data.len() >= packet_len {
             // 0xFF ERR packet header
             if self.current() == 0xFF {
-                // TODO 发现异常数据，先修改oft读走所有
                 self.oft += raw_chunk_len;
-
                 match ParseBuf(&data[HEADER_LEN..]).parse(self.capability_flags)? {
                     // TODO Error process 异常响应稍后处理 fishermen
                     ErrPacket::Error(server_error) => {
@@ -268,9 +264,20 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
             // self.seq_id = self.seq_id.wrapping_add(1);
             // log::warn!("mysql sucess rsp:{:?}", data);
-            return Ok(());
+
+            // TODO：将对应的payload copy出，供类型转换使用，后续这一步骤需要优化掉 fishermen
+            // let mut payload = Vec::with_capacity(self.payload_len);
+            // self.data
+            //     .sub_slice(self.oft, raw_chunk_len)
+            //     .copy_to_vec(&mut payload);
+
+            self.oft += raw_chunk_len;
+
+            return Ok(data[HEADER_LEN..packet_len].to_vec());
         }
 
+        // 数据没有读完，reserve可读取空间，返回Incomplete异常
+        self.reserve();
         Err(Error::ProtocolIncomplete)
     }
 
@@ -504,8 +511,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     #[inline]
     pub(super) fn reserve(&mut self) {
-        if self.oft > self.data.len() {
-            self.stream.reserve(self.oft)
+        if self.oft > self.stream.len() {
+            self.stream.reserve(self.oft - self.stream.len())
         }
     }
 }
