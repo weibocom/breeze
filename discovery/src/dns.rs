@@ -6,8 +6,9 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::mpsc::{
-    unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender,
+use tokio::{
+    sync::mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
+    time::MissedTickBehavior,
 };
 
 use trust_dns_resolver::{AsyncResolver, TokioConnection, TokioConnectionProvider, TokioHandle};
@@ -158,6 +159,8 @@ pub async fn start_dns_resolver_refresher() {
     use ds::time::{Duration, Instant};
     const BATCH_CNT: usize = 128;
     let mut tick = tokio::time::interval(Duration::from_secs(1));
+    tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
     //let mut last = Instant::now(); // 上一次刷新的时间
     let mut idx = 0;
     loop {
