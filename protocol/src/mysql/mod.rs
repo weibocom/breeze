@@ -27,9 +27,6 @@ use crate::RequestProcessor;
 use crate::Stream;
 use ds::MemGuard;
 
-use mcpacket::Binary;
-use prelude::FromRow;
-
 use sharding::hash::Hash;
 
 pub mod prelude {
