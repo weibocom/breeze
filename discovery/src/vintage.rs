@@ -2,6 +2,7 @@ extern crate json;
 
 use std::io::{Error, ErrorKind};
 
+use ds::time::Duration;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -34,7 +35,10 @@ impl Vintage {
     pub fn from_url(url: Url) -> Self {
         Self {
             base_url: url,
-            client: Client::new(),
+            client: Client::builder()
+                .tcp_keepalive(Duration::from_secs(60))
+                .build()
+                .expect("Client::new()"),
         }
     }
 
