@@ -1,38 +1,16 @@
-// #[macro_use]
-// pub mod bitflags_ext;
 mod auth;
-// mod buffer_pool;
-// mod common;
-// pub mod constants;
-// mod error;
-// mod io;
-// pub mod mcpacket;
-// mod misc;
-// mod named_params;
-// mod opts;
-// mod packets;
-// mod params;
-// mod proto;
-// mod query_result;
-// mod reqpacket;
-// mod row;
 mod common;
 pub mod mcpacket;
 mod reqpacket;
 mod rsppacket;
-// mod scramble;
-// mod value;
 
 use self::common::proto::Text;
+use self::common::query_result::QueryResult;
 use self::common::row::convert::from_row;
 use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
 use self::mcpacket::*;
-// use self::opts::Opts;
-// use self::proto::Text;
-use self::common::query_result::QueryResult;
 use self::reqpacket::RequestPacket;
-// use self::row::convert::from_row;
 use self::rsppacket::ResponsePacket;
 
 use super::Flag;
@@ -47,7 +25,6 @@ use crate::RequestProcessor;
 use crate::Stream;
 use ds::MemGuard;
 use mcpacket::Binary;
-use prelude::FromRow;
 use sharding::hash::Hash;
 
 pub mod prelude {
@@ -381,15 +358,13 @@ impl Mysql {
     //     Ok(Some(cmd))
     // }
 
-    // 包比较复杂，不能随意take，得等到最复杂场景解析完毕后，才能统一take走
+    // mysql协议比较复杂，不能随意take，得等到最终解析完毕后，才能统一take走
+    // TODO：后续可以统一记录解析位置及状态，从而减少重复解析 fishermen
     fn parse_response_inner<'a, S: crate::Stream>(
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
     ) -> Result<Option<Command>> {
-        let mut result_set = self.parse_result_set(rsp_packet, Vec::new(), |mut acc, row| {
-            acc.push(from_row(row));
-            acc
-        })?;
+        let mut result_set = self.parse_result_set(rsp_packet)?;
 
         // 返回mysql响应，在write response处进行协议转换
         // TODO 这里临时打通，需要进一步完善修改 fishermen
@@ -410,20 +385,21 @@ impl Mysql {
         Ok(Some(cmd))
     }
 
-    fn parse_result_set<'a, T, F, U, S>(
+    fn parse_result_set<'a, S>(
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
-        init: U,
-        f: F,
-    ) -> Result<U>
+    ) -> Result<Vec<Vec<u8>>>
     where
-        T: FromRow,
-        F: FnMut(U, T) -> U,
         S: crate::Stream,
     {
         let meta = rsp_packet.parse_result_set_meta()?;
-        let mut result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
-        result.scan_rows(init, f)
+        let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
+        let collector = |mut acc: Vec<Vec<u8>>, row| {
+            acc.push(from_row(row));
+            acc
+        };
+        let result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
+        Ok(result_set)
     }
 
     #[inline]

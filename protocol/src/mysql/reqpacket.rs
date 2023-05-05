@@ -1,15 +1,11 @@
-// TODO 解析的 mc vs redis协议，转换为mysql req 请求
+// 解析的mc协议，转换为mysql req 请求
 
-use std::ops::Index;
-
-use bytes::{Buf, BufMut, BytesMut};
-use ds::RingSlice;
+use bytes::{BufMut, BytesMut};
 
 use super::common::{
     constants::{Command, DEFAULT_MAX_ALLOWED_PACKET},
     proto::codec::PacketCodec,
 };
-use super::mcpacket::Binary;
 use crate::{Error, Result};
 
 // mc          vs           mysql
@@ -65,30 +61,30 @@ impl Default for RequestPacket {
 }
 
 // mysql sql 语句类型
-#[repr(u8)]
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
-pub(super) enum SqlType {
-    Select = 0,
-    Insert = 1,
-    Update = 2,
-    Delete = 3,
-    Quit = 4,
+// #[repr(u8)]
+// #[derive(PartialEq, Eq, Hash, Clone, Debug)]
+// pub(super) enum SqlType {
+//     Select = 0,
+//     Insert = 1,
+//     Update = 2,
+//     Delete = 3,
+//     Quit = 4,
 
-    Version = 8,
-    Unknown = 9, //用于区分set、cas
-}
+//     Version = 8,
+//     Unknown = 9, //用于区分set、cas
+// }
 
-pub(super) trait TypeConvert {
-    fn sql_type(&self) -> SqlType;
-}
+// pub(super) trait TypeConvert {
+//     fn sql_type(&self) -> SqlType;
+// }
 
-impl TypeConvert for RingSlice {
-    fn sql_type(&self) -> SqlType {
-        let op_code = self.op() as usize;
-        if op_code >= SQL_TYPE_IDX.len() {
-            log::warn!("found malformed mysql req:{:?}", self);
-            return SqlType::Unknown;
-        }
-        unsafe { std::mem::transmute(SQL_TYPE_IDX[op_code]) }
-    }
-}
+// impl TypeConvert for RingSlice {
+//     fn sql_type(&self) -> SqlType {
+//         let op_code = self.op() as usize;
+//         if op_code >= SQL_TYPE_IDX.len() {
+//             log::warn!("found malformed mysql req:{:?}", self);
+//             return SqlType::Unknown;
+//         }
+//         unsafe { std::mem::transmute(SQL_TYPE_IDX[op_code]) }
+//     }
+// }
