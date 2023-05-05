@@ -1,6 +1,8 @@
 mod auth;
 mod common;
-pub mod mcpacket;
+mod mcpacket;
+pub use mcpacket::Binary;
+
 mod reqpacket;
 mod rsppacket;
 
@@ -24,7 +26,10 @@ use crate::HashedCommand;
 use crate::RequestProcessor;
 use crate::Stream;
 use ds::MemGuard;
+
 use mcpacket::Binary;
+use prelude::FromRow;
+
 use sharding::hash::Hash;
 
 pub mod prelude {
@@ -211,34 +216,30 @@ impl Protocol for Mysql {
         log::debug!("+++ send to client padding rsp, req:{:?}", ctx.request(),);
         match old_op_code {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
-            OP_CODE_NOOP => {
+            OP_NOOP => {
                 w.write_u8(RESPONSE_MAGIC)?;
                 w.write_slice(ctx.request(), 1)?;
             }
 
             //version: 返回固定rsp
-            OP_CODE_VERSION => w.write(&VERSION_RESPONSE)?,
+            OP_VERSION => w.write(&VERSION_RESPONSE)?,
 
             // stat：返回固定rsp
-            OP_CODE_STAT => w.write(&STAT_RESPONSE)?,
+            OP_STAT => w.write(&STAT_RESPONSE)?,
 
             // quit/quitq 无需返回rsp
-            OP_CODE_QUIT | OP_CODE_QUITQ => return Err(Error::Quit),
+            OP_QUIT | OP_QUITQ => return Err(Error::Quit),
 
             // quite get 请求，无需返回任何rsp，但没实际发送，rsp_ok设为false
-            OP_CODE_GETQ | OP_CODE_GETKQ => return Ok(()),
+            OP_GETQ | OP_GETKQ => return Ok(()),
             // 0x09 | 0x0d => return Ok(()),
 
             // set: mc status设为 Item Not Stored,status设为false
-            OP_CODE_SET => {
-                w.write(&self.build_empty_response(RespStatus::NotStored, ctx.request()))?
-            }
+            OP_SET => w.write(&self.build_empty_response(RespStatus::NotStored, ctx.request()))?,
             // self.build_empty_response(RespStatus::NotStored, req)
 
             // get/gets，返回key not found 对应的0x1
-            OP_CODE_GET => {
-                w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?
-            }
+            OP_GET => w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?,
 
             // self.build_empty_response(RespStatus::NotFound, req)
 

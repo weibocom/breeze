@@ -1,5 +1,5 @@
 mod error;
-mod packet;
+pub(crate) mod packet;
 
 use packet::RespStatus::*;
 use packet::*;

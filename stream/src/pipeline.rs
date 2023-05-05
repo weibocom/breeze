@@ -13,7 +13,7 @@ use endpoint::{Topology, TopologyCheck};
 
 use sharding::hash::Hash;
 
-use protocol::{mysql::mcpacket::Binary, HashedCommand, Protocol, Result, Stream, Writer};
+use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
 
 use crate::{
     arena::CallbackContextArena,
