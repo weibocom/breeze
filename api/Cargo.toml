@@ -15,7 +15,7 @@ tokio.workspace = true
 trust-dns-resolver = "0.22.0"
 
 # rocket for restful api
-rocket = { version = "0.5.0-rc.2", features = ["json"], default-features = false }
+rocket = { version = "0.5.0-rc.3", features = ["json"], default-features = false }
 lazy_static = "1.4.0"
 
 # for serde json
