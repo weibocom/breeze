@@ -64,6 +64,9 @@ impl Strategyer {
             item.backends.get(ARCHIVE_DEFAULT_KEY).unwrap().len() as u32,
         ))
     }
+    pub fn new(db_name: String, db_count: u32, shards: u32) -> Self {
+        Self::KVTime(KVTime::new(db_name, db_count, shards))
+    }
 }
 
 pub fn replace_one(raw_sql: &String, from: &'static str, to: &RingSlice) -> Result<String> {
