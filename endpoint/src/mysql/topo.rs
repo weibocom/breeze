@@ -26,7 +26,7 @@ use crate::Timeout;
 use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
-use super::strategy::Strategyer;
+use super::strategy::Strategist;
 #[derive(Clone)]
 pub struct MysqlService<B, E, Req, P> {
     // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -47,7 +47,7 @@ pub struct MysqlService<B, E, Req, P> {
     _mark: std::marker::PhantomData<(B, Req)>,
     user: String,
     password: String,
-    strategyer: Strategyer,
+    strategist: Strategist,
     cfg: Box<DnsConfig<MysqlNamespace>>,
 }
 
@@ -67,7 +67,7 @@ impl<B, E, Req, P> From<P> for MysqlService<B, E, Req, P> {
             _mark: Default::default(),
             user: Default::default(),
             password: Default::default(),
-            strategyer: Default::default(),
+            strategist: Default::default(),
             cfg: Default::default(),
         }
     }
@@ -82,7 +82,7 @@ where
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
-        self.strategyer.hasher().hash(k)
+        self.strategist.hasher().hash(k)
     }
 }
 
@@ -98,14 +98,18 @@ where
         // req 是mc binary协议，需要展出字段，转换成sql
         // let raw_req = req.data();
         let mid = req.key();
-        let sql = self.strategyer.build_ksql(&mid).expect("malformed sql");
+        let sql = self.strategist.build_kvsql(&mid).expect("malformed sql");
 
         //定位年库
-        let year = self.strategyer.get_key(&mid);
+        let year = self.strategist.get_key(&mid).expect("key not found");
         let shards = if self.archive_shards.get(&year).is_some() {
-            self.archive_shards.get(&year).unwrap()
+            self.archive_shards
+                .get(&year)
+                .expect("archive_shards year not found")
         } else {
-            self.archive_shards.get(ARCHIVE_DEFAULT_KEY).unwrap()
+            self.archive_shards
+                .get(ARCHIVE_DEFAULT_KEY)
+                .expect("archive_shards ARCHIVE_DEFAULT_KEY not found")
         };
 
         debug_assert_ne!(shards.len(), 0);
@@ -148,7 +152,7 @@ where
     }
 
     fn shard_idx(&self, hash: i64) -> usize {
-        self.strategyer.distribution().index(hash)
+        self.strategist.distribution().index(hash)
     }
 }
 
@@ -175,7 +179,7 @@ where
             self.selector = ns.basic.selector.as_str().into();
             self.user = ns.basic.user.as_str().into();
             self.password = ns.basic.password.as_str().into();
-            self.strategyer = Strategyer::try_from(&ns);
+            self.strategist = Strategist::try_from(&ns);
             // todo: 过多clone ，先跑通
             for i in ns.backends.iter() {
                 self.archive_shards_url.insert(

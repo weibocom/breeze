@@ -21,8 +21,6 @@ pub struct KVTime {
     db_prefix: String,
     table_prefix: String,
     table_postfix: Postfix,
-    db_count: u32,
-    table_count: u32,
     hasher: Hasher,
     distribution: DBRange,
 }
@@ -33,8 +31,6 @@ impl KVTime {
             db_prefix: name.clone(),
             table_prefix: name.clone(),
             table_postfix: Postfix::YYMMDD,
-            db_count: db_count,
-            table_count: 1,
             distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
             hasher: Hasher::from("crc32"),
         }
@@ -46,14 +42,14 @@ impl KVTime {
                 let tname = self.build_date_tname(table_prefix, key, false);
                 tname
             }
-            Postfix::YYMMDD => {
+            //Postfix::YYMMDD
+            _ => {
                 let tname = self.build_date_tname(table_prefix, key, true);
                 tname
-            }
-            Postfix::INDEX => {
-                let tname = self.build_idx_tname(key);
-                tname
-            }
+            } // Postfix::INDEX => {
+              //     let tname = self.build_idx_tname(key);
+              //     tname
+              // }
         }
     }
 
@@ -85,22 +81,20 @@ impl KVTime {
     }
 
     fn build_dname(&self, key: &RingSlice) -> Option<String> {
-        let dname_prefix = self.db_prefix.clone();
-        let mut db_idx = 0;
-        db_idx = self.distribution.db_idx(self.hasher.hash(key));
-        return Some(format!("{}_{}", dname_prefix, db_idx));
+        let db_idx: usize = self.distribution.db_idx(self.hasher.hash(key));
+        return Some(format!("{}_{}", self.db_prefix, db_idx));
     }
-    fn build_idx_tname(&self, key: &RingSlice) -> Option<String> {
-        let table_prefix = self.table_prefix.clone();
-        if self.table_count > 0 && self.db_count > 0 {
-            let mut tbl_index = 0;
-            tbl_index = self.distribution.table_idx(self.hasher.hash(key));
-            return Some(format!("{}_{}", table_prefix, tbl_index));
-        } else {
-            log::error!("id is null");
-        }
-        None
-    }
+    // fn build_idx_tname(&self, key: &RingSlice) -> Option<String> {
+    //     let table_prefix = self.table_prefix.clone();
+    //     if self.table_count > 0 && self.db_count > 0 {
+    //         let mut tbl_index = 0;
+    //         tbl_index = self.distribution.table_idx(self.hasher.hash(key));
+    //         return Some(format!("{}_{}", table_prefix, tbl_index));
+    //     } else {
+    //         log::error!("id is null");
+    //     }
+    //     None
+    // }
 }
 
 impl Strategy for KVTime {
@@ -111,18 +105,20 @@ impl Strategy for KVTime {
         &self.hasher
     }
 
-    fn get_key(&self, key: &RingSlice) -> String {
+    fn get_key(&self, key: &RingSlice) -> Option<String> {
         let id = to_i64(key);
         let milliseconds = UuidHelper::get_time(id) * 1000;
-        chrono::Utc
-            .timestamp_millis(milliseconds)
-            .with_timezone(&Shanghai)
-            .format("%Y")
-            .to_string()
+        Some(
+            chrono::Utc
+                .timestamp_millis(milliseconds)
+                .with_timezone(&Shanghai)
+                .format("%Y")
+                .to_string(),
+        )
     }
 
     //todo: sql_name 枚举
-    fn build_ksql(&self, key: &RingSlice) -> Option<String> {
+    fn build_kvsql(&self, key: &RingSlice) -> Option<String> {
         let mut sql = "select content from $db$.$tb$ where id=$k$".to_string();
         let tname = match self.build_tname(key) {
             Some(tname) => tname,
@@ -132,14 +128,10 @@ impl Strategy for KVTime {
             Some(dname) => dname,
             None => return None,
         };
-        if !sql.is_empty() {
-            sql = sql.replace(DB_NAME_EXPRESSION, &dname);
-            sql = sql.replace(TABLE_NAME_EXPRESSION, &tname);
-            // TODO 先走通，再优化 fishermen
-            sql = replace_one(&sql, KEY_EXPRESSION, key).expect("malformed sql");
-        } else {
-            log::error!("find the sql by name {} is empty or null", sql);
-        }
+        sql = sql.replace(DB_NAME_EXPRESSION, &dname);
+        sql = sql.replace(TABLE_NAME_EXPRESSION, &tname);
+        // TODO 先走通，再优化 fishermen
+        sql = replace_one(&sql, KEY_EXPRESSION, key).expect("malformed sql");
         log::debug!("{}", sql);
         Some(sql)
     }

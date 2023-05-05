@@ -39,29 +39,32 @@ impl Postfix {
 pub trait Strategy {
     fn distribution(&self) -> &DBRange;
     fn hasher(&self) -> &Hasher;
-    fn get_key(&self, key: &RingSlice) -> String;
-    fn build_ksql(&self, key: &RingSlice) -> Option<String>;
+    fn get_key(&self, key: &RingSlice) -> Option<String>;
+    fn build_kvsql(&self, key: &RingSlice) -> Option<String>;
 }
 
 #[enum_dispatch(Strategy)]
 #[derive(Debug, Clone)]
-pub enum Strategyer {
+pub enum Strategist {
     KVTime(KVTime),
 }
 
-impl Default for Strategyer {
+impl Default for Strategist {
     #[inline]
     fn default() -> Self {
         Self::KVTime(KVTime::new("status".to_string(), 32u32, 8u32))
     }
 }
 
-impl Strategyer {
+impl Strategist {
     pub fn try_from(item: &MysqlNamespace) -> Self {
         Self::KVTime(KVTime::new(
             item.basic.db_name.clone(),
             item.basic.db_count,
-            item.backends.get(ARCHIVE_DEFAULT_KEY).unwrap().len() as u32,
+            item.backends
+                .get(ARCHIVE_DEFAULT_KEY)
+                .expect("ARCHIVE_DEFAULT_KEY null")
+                .len() as u32,
         ))
     }
     pub fn new(db_name: String, db_count: u32, shards: u32) -> Self {
