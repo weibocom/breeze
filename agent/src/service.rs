@@ -51,7 +51,7 @@ pub(super) async fn process_one(
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
 
     // 服务注册完成，侦听端口直到成功。
-    while let Err(_e) = _process_one(quard, &p, rx.clone(), &path).await {
+    while let Err(_e) = _process_one(quard, &p, &rx, &path).await {
         // 监听失败或accept连接失败，对监听失败数+1
         listen_failed += 1;
         log::warn!("service process failed. {}, err:{:?}", quard, _e);
@@ -67,7 +67,7 @@ pub(super) async fn process_one(
 async fn _process_one(
     quard: &Quadruple,
     p: &Parser,
-    top: TopologyReadGuard<Topology>,
+    top: &TopologyReadGuard<Topology>,
     path: &Path,
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
