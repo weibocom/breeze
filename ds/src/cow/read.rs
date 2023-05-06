@@ -1,18 +1,21 @@
-use std::sync::atomic::{
-    AtomicBool, AtomicPtr,
-    Ordering::{Acquire, Release},
-};
 use std::sync::Arc;
+use std::sync::{
+    atomic::{
+        AtomicBool,
+        Ordering::{Acquire, Release},
+    },
+    Mutex,
+};
 #[derive(Clone)]
 pub struct CowReadHandle<T> {
     inner: Arc<CowReadHandleInner<T>>,
 }
 impl<T> From<T> for CowReadHandle<T> {
     fn from(t: T) -> Self {
-        let t = Box::into_raw(Box::new(Arc::new(t)));
+        let t = Arc::new(t);
         Self {
             inner: Arc::new(CowReadHandleInner {
-                inner: AtomicPtr::from(t),
+                inner: Mutex::from(t),
                 // enters: AtomicUsize::new(0),
                 epoch: AtomicBool::new(false),
                 // dropping: AtomicPtr::default(),
@@ -37,7 +40,7 @@ impl<T> std::ops::Deref for CowReadHandle<T> {
 /// 也就是多个线程获取的T是同一个T，行为本质上和多个线程操作Arc<T>没有区别，不是线程安全的，因此为做出提示，T必须是Send和Sync的
 /// 为什么要暴露Arc的实现呢？因为想不到copy on write有单线程使用场景
 pub struct CowReadHandleInner<T> {
-    inner: AtomicPtr<Arc<T>>,
+    inner: Mutex<Arc<T>>,
     // enters: AtomicUsize,
     pub(super) epoch: AtomicBool,
     // 先次更新完之后，会把正在处理中的数据存储到dropping中。所有的reader的读请求都迁移到inner之后，就可以安全的删除
@@ -79,24 +82,11 @@ impl<T: Send + Sync + Clone> CowReadHandleInner<T> {
     }
     #[inline]
     pub fn get(&self) -> Arc<T> {
-        unsafe {
-            self.inner
-                .load(Acquire)
-                .as_ref()
-                .expect("pointer is nil")
-                .clone()
-        }
+        self.inner.lock().unwrap().clone()
     }
     #[inline]
     pub fn copy(&self) -> T {
-        unsafe {
-            self.inner
-                .load(Acquire)
-                .as_ref()
-                .expect("pointer is nil")
-                .as_ref()
-                .clone()
-        }
+        self.inner.lock().unwrap().as_ref().clone()
     }
     // fn enter(&self) -> ReadGuard<'_, T> {
     //     self.enters.fetch_add(1, AcqRel);
@@ -107,9 +97,9 @@ impl<T: Send + Sync + Clone> CowReadHandleInner<T> {
     pub(super) fn update(&self, t: T) {
         assert!(self.epoch.load(Acquire));
         // 确保安全, 确保在epoch设置为false之前，不会调用purge
-        let w_handle = Box::into_raw(Box::new(Arc::new(t)));
-        let old = self.inner.swap(w_handle, Release);
-        unsafe { Box::from_raw(old) };
+        let t = Arc::new(t);
+        let mut_t = self.inner.lock().unwrap();
+        *mut_t = t;
     }
     // 用swap来解决并发问题。
     // 1. 先用0把pre swap出来；
