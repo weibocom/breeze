@@ -52,7 +52,12 @@ pub enum Strategist {
 impl Default for Strategist {
     #[inline]
     fn default() -> Self {
-        Self::KVTime(KVTime::new("status".to_string(), 32u32, 8u32))
+        Self::KVTime(KVTime::new(
+            "status".to_string(),
+            32u32,
+            8u32,
+            vec![ARCHIVE_DEFAULT_KEY.to_string()],
+        ))
     }
 }
 
@@ -65,25 +70,11 @@ impl Strategist {
                 .get(ARCHIVE_DEFAULT_KEY)
                 .expect("ARCHIVE_DEFAULT_KEY null")
                 .len() as u32,
+            item.backends.keys().cloned().collect(),
         ))
     }
-    pub fn new(db_name: String, db_count: u32, shards: u32) -> Self {
-        Self::KVTime(KVTime::new(db_name, db_count, shards))
-    }
-}
-
-pub fn replace_one(raw_sql: &String, from: &'static str, to: &RingSlice) -> Result<String> {
-    match raw_sql.find(from) {
-        Some(start) => {
-            let end = start + from.len();
-            Ok(format!(
-                "{}{}{}",
-                raw_sql.get(0..start).unwrap(),
-                to_i64(to),
-                raw_sql.get(end..).unwrap()
-            ))
-        }
-        None => Err(protocol::Error::ResponseProtocolInvalid),
+    pub fn new(db_name: String, db_count: u32, shards: u32, years: Vec<String>) -> Self {
+        Self::KVTime(KVTime::new(db_name, db_count, shards, years))
     }
 }
 

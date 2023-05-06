@@ -26,8 +26,8 @@ mod mysql_strategy {
         let mut sqls = HashMap::with_capacity(4);
         sqls.insert("SQL_SELECT".to_string(), SQL_SELECT.to_string());
 
-        let s = Strategist::new("status".to_string(), 32, 8);
-        let sql_cmd = s.build_ksql(&id_slice);
+        let s = Strategist::new("status".to_string(), 32, 8, vec!["__default__".to_string()]);
+        let sql_cmd = s.build_kvsql(&id_slice);
         if sql_cmd != None {
             println!("id: {}, sql: {}", id, sql_cmd.unwrap());
         }

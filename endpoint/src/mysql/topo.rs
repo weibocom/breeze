@@ -102,15 +102,10 @@ where
 
         //定位年库
         let year = self.strategist.get_key(&mid).expect("key not found");
-        let shards = if self.archive_shards.get(&year).is_some() {
-            self.archive_shards
-                .get(&year)
-                .expect("archive_shards year not found")
-        } else {
-            self.archive_shards
-                .get(ARCHIVE_DEFAULT_KEY)
-                .expect("archive_shards ARCHIVE_DEFAULT_KEY not found")
-        };
+        let shards = self
+            .archive_shards
+            .get(&year)
+            .expect("archive_shards year not found");
 
         debug_assert_ne!(shards.len(), 0);
         assert!(shards.len() > 0);
