@@ -1,17 +1,14 @@
-use std::collections::HashMap;
-
+use super::config::ARCHIVE_DEFAULT_KEY;
+use super::{
+    strategy::{to_i64, Postfix, Strategy},
+    uuid::UuidHelper,
+};
 use chrono::{TimeZone, Utc};
 use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
 use sharding::hash::Hash;
 use sharding::{distribution::DBRange, hash::Hasher};
 
-use crate::mysql::strategy::replace_one;
-
-use super::{
-    strategy::{to_i64, Postfix, Strategy},
-    uuid::UuidHelper,
-};
 const DB_NAME_EXPRESSION: &str = "$db$";
 const TABLE_NAME_EXPRESSION: &str = "$tb$";
 const KEY_EXPRESSION: &str = "$k$";
@@ -23,64 +20,55 @@ pub struct KVTime {
     table_postfix: Postfix,
     hasher: Hasher,
     distribution: DBRange,
+    years: Vec<String>,
 }
 
 impl KVTime {
-    pub fn new(name: String, db_count: u32, shards: u32) -> Self {
+    pub fn new(name: String, db_count: u32, shards: u32, years: Vec<String>) -> Self {
         Self {
             db_prefix: name.clone(),
             table_prefix: name.clone(),
             table_postfix: Postfix::YYMMDD,
             distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
             hasher: Hasher::from("crc32"),
+            years: years,
         }
     }
-    fn build_tname(&self, key: &RingSlice) -> Option<String> {
+    fn build_tname(&self, uuid: i64) -> Option<String> {
         let table_prefix = self.table_prefix.as_str();
         match self.table_postfix {
             Postfix::YYMM => {
-                let tname = self.build_date_tname(table_prefix, key, false);
+                let tname = self.build_date_tname(table_prefix, uuid, false);
                 tname
             }
             //Postfix::YYMMDD
             _ => {
-                let tname = self.build_date_tname(table_prefix, key, true);
+                let tname = self.build_date_tname(table_prefix, uuid, true);
                 tname
-            } // Postfix::INDEX => {
-              //     let tname = self.build_idx_tname(key);
-              //     tname
-              // }
+            }
         }
     }
 
     fn build_date_tname(
         &self,
         tbl_prefix: &str,
-        key: &RingSlice,
+        uuid: i64,
         is_display_day: bool,
     ) -> Option<String> {
-        // TODO key 转位i64，后面整合到类型parse的专门类中 fishermen
-        let id = to_i64(key);
-
-        let milliseconds = UuidHelper::get_time(id) * 1000;
-        let yy_mm_dd = if is_display_day {
-            chrono::Utc
-                .timestamp_millis(milliseconds)
-                .with_timezone(&Shanghai)
-                .format("%y%m%d")
-                .to_string()
-        } else {
-            chrono::Utc
-                .timestamp_millis(milliseconds)
-                .with_timezone(&Shanghai)
-                .format("%y%m")
-                .to_string()
-        };
-        log::debug!("with shanghai timezone:{} {}", key, yy_mm_dd);
-        Some(format!("{}_{}", tbl_prefix, yy_mm_dd))
+        //todo uuid后面调整
+        let milliseconds = UuidHelper::get_time(uuid) * 1000;
+        let yy_mm_dd = if is_display_day { "%y%m%d" } else { "%y%m" };
+        let s = chrono::Utc
+            .timestamp_millis(milliseconds)
+            .with_timezone(&Shanghai)
+            .format(yy_mm_dd)
+            .to_string();
+        log::debug!("with shanghai timezone:{} {}", uuid, s);
+        Some(format!("{}_{}", tbl_prefix, s))
     }
 
     fn build_dname(&self, key: &RingSlice) -> Option<String> {
+        //
         let db_idx: usize = self.distribution.db_idx(self.hasher.hash(key));
         return Some(format!("{}_{}", self.db_prefix, db_idx));
     }
@@ -96,7 +84,6 @@ impl KVTime {
     //     None
     // }
 }
-
 impl Strategy for KVTime {
     fn distribution(&self) -> &DBRange {
         &self.distribution
@@ -104,23 +91,25 @@ impl Strategy for KVTime {
     fn hasher(&self) -> &Hasher {
         &self.hasher
     }
-
     fn get_key(&self, key: &RingSlice) -> Option<String> {
-        let id = to_i64(key);
-        let milliseconds = UuidHelper::get_time(id) * 1000;
-        Some(
-            chrono::Utc
-                .timestamp_millis(milliseconds)
-                .with_timezone(&Shanghai)
-                .format("%Y")
-                .to_string(),
-        )
+        let uuid = to_i64(key);
+        let milliseconds = UuidHelper::get_time(uuid) * 1000;
+        let year = chrono::Utc
+            .timestamp_millis(milliseconds)
+            .with_timezone(&Shanghai)
+            .format("%Y")
+            .to_string();
+        if self.years.contains(&year) {
+            Some(year)
+        } else {
+            Some(ARCHIVE_DEFAULT_KEY.to_string())
+        }
     }
-
     //todo: sql_name 枚举
     fn build_kvsql(&self, key: &RingSlice) -> Option<String> {
+        let uuid = to_i64(key);
         let mut sql = "select content from $db$.$tb$ where id=$k$".to_string();
-        let tname = match self.build_tname(key) {
+        let tname = match self.build_tname(uuid) {
             Some(tname) => tname,
             None => return None,
         };
@@ -130,8 +119,7 @@ impl Strategy for KVTime {
         };
         sql = sql.replace(DB_NAME_EXPRESSION, &dname);
         sql = sql.replace(TABLE_NAME_EXPRESSION, &tname);
-        // TODO 先走通，再优化 fishermen
-        sql = replace_one(&sql, KEY_EXPRESSION, key).expect("malformed sql");
+        sql = sql.replace(KEY_EXPRESSION, uuid.to_string().as_str());
         log::debug!("{}", sql);
         Some(sql)
     }
