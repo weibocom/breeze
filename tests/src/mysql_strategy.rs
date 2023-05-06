@@ -2,7 +2,7 @@
 mod mysql_strategy {
     use chrono::{DateTime, TimeZone, Utc};
     use ds::RingSlice;
-    use endpoint::mysql::strategy::Strategy;
+    use endpoint::mysql::strategy::{Strategist, Strategy};
     use endpoint::mysql::uuid::{UuidHelper, UuidSimulator};
     use std::collections::HashMap;
 
@@ -26,19 +26,8 @@ mod mysql_strategy {
         let mut sqls = HashMap::with_capacity(4);
         sqls.insert("SQL_SELECT".to_string(), SQL_SELECT.to_string());
 
-        let s = Strategy::new(
-            "status".to_string(),
-            "status".to_string(),
-            "yymmdd".to_string(),
-            32,
-            1,
-            8,
-            false,
-            sqls,
-            "crc32".to_string(),
-            "modula".to_string(),
-        );
-        let sql_cmd = s.build_sql("SQL_SELECT", &id_slice, &id_slice);
+        let s = Strategist::new("status".to_string(), 32, 8, vec!["__default__".to_string()]);
+        let sql_cmd = s.build_kvsql(&id_slice);
         if sql_cmd != None {
             println!("id: {}, sql: {}", id, sql_cmd.unwrap());
         }

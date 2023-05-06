@@ -5,20 +5,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct MysqlNamespace {
     // TODO speed up, ref: https://git/platform/resportal/-/issues/548
+    #[serde(default)]
     pub(crate) basic: Basic,
-    pub(crate) sql: HashMap<String, String>,
-    pub(crate) backends: Vec<String>,
-    pub(crate) archive: HashMap<String, Vec<String>>,
+    //backends_url 处理dns解析用
+    #[serde(skip)]
+    pub(crate) backends_url: Vec<String>,
+    #[serde(default)]
+    pub(crate) backends: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Basic {
     #[serde(default)]
-    pub(crate) hash: String,
-    #[serde(default)]
-    pub(crate) distribution: String,
-    #[serde(default)]
-    pub(crate) listen: String,
+    listen: String,
     #[serde(default)]
     resource_type: String,
     #[serde(default)]
@@ -28,22 +27,11 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) timeout_ms_slave: u32,
     #[serde(default)]
-    pub(crate) min_pool_size: u16,
-
-    #[serde(default)]
-    pub(crate) max_idle_time: u32,
-    #[serde(default)]
-    pub(crate) db_prefix: String,
-    #[serde(default)]
-    pub(crate) table_prefix: String,
-    #[serde(default)]
-    pub(crate) table_postfix: String,
+    pub(crate) db_name: String,
     #[serde(default)]
     pub(crate) db_count: u32,
     #[serde(default)]
-    pub(crate) table_count: u32,
-    #[serde(default)]
-    pub(crate) hierarchy: bool,
+    pub(crate) strategy: String,
     #[serde(default)]
     pub(crate) password: String,
     #[serde(default)]
@@ -52,6 +40,7 @@ pub struct Basic {
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
 impl MysqlNamespace {
+    #[inline]
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
             .map_err(|e| {
@@ -65,7 +54,7 @@ impl MysqlNamespace {
             // 2009-2012 ,[111xxx.com:111,222xxx.com:222]
             // 2013 ,[112xxx.com:112,223xxx.com:223]
             let mut archive: HashMap<String, Vec<String>> = HashMap::new();
-            for (key, val) in ns.archive.iter() {
+            for (key, mut val) in ns.backends.iter() {
                 //处理当前库
                 if ARCHIVE_DEFAULT_KEY == key {
                     archive.insert(key.to_string(), val.to_vec());
@@ -84,14 +73,11 @@ impl MysqlNamespace {
                     archive.insert(min.to_string(), val.to_vec());
                 }
             }
-            ns.archive = archive;
-
+            ns.backends = archive;
             //todo: 重复转化问题,待修改
-            let mut backends: Vec<String> = Vec::new();
-            for vec in ns.archive.values() {
-                backends.extend(vec.iter().cloned());
+            for vec in ns.backends.values() {
+                ns.backends_url.extend(vec.iter().cloned());
             }
-            ns.backends = backends;
             return Some(ns);
         }
         nso
