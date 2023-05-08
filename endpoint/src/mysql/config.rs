@@ -40,6 +40,16 @@ pub struct Basic {
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
 impl MysqlNamespace {
+    pub(super) fn is_local(&self) -> bool {
+        match std::env::var("BREEZE_LOCAL")
+            .unwrap_or("".to_string())
+            .as_str()
+        {
+            "distance" => true,
+            _ => self.basic.selector.as_str() == "distance",
+        }
+    }
+
     #[inline]
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
