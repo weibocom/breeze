@@ -45,11 +45,11 @@ jobs:
           mkdir -p /home/runner/work/breeze/logs
           mkdir -p /home/runner/work/breeze/snapshot
           mkdir -p /home/runner/work/breeze/socks
-          touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
-          touch /home/runner/work/breeze/socks/config+cloud+redis+testbreeze+redismeshtestm@redis:56812@rs
-          touch /home/runner/work/breeze/socks/config+v1+cache.service.testbreeze.pool.yf+all:meshtest@mc:9301@cs 
-          touch /home/runner/work/breeze/socks/config+cloud+counterservice+testbreeze+meshtest@redis:9302@rs
-          touch /home/runner/work/breeze/socks/config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+redis+testbreeze+redismeshtest@redis:56810@rs
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+redis+testbreeze+redismeshtestm@redis:56812@rs
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+v1+cache.service.testbreeze.pool.yf+all:meshtest@mc:9301@cs 
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+counterservice+testbreeze+meshtest@redis:9302@rs
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs

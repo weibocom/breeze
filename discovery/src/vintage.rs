@@ -61,7 +61,7 @@ impl Vintage {
     {
         // 设置config的path
         let gurl = self.get_url(path);
-        log::debug!("lookup: path:{} index:{}", path, index);
+        log::debug!("lookup: path:{} index:{}", gurl, index);
 
         let resp = self
             .client
