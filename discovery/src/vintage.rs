@@ -6,10 +6,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Vintage {
     client: Client,
-    base_url: Url,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -31,11 +30,29 @@ impl Response {
 }
 
 impl Vintage {
-    pub fn from_url(url: Url) -> Self {
-        Self {
-            base_url: url,
-            client: Client::new(),
+    // pub fn from_url(url: Url) -> Self {
+    //     Self {
+    //         base_url: url,
+    //         client: Client::new(),
+    //     }
+    // }
+    fn get_url(&self, mut host_path: &str) -> Url {
+        //idcpath会以/开头
+        if host_path.starts_with('/') {
+            host_path = &host_path[1..];
         }
+        // (host, path) = path.split_once(delimiter).unwrap();
+        // for url in &self.base_urls {
+        //     if url.host_str().unwrap() == host {
+        //         return url.clone().set_path(path);
+        //     }
+        // }
+
+        //直接parse吧，感觉set_path并不会快
+        // let base = Url::parse(&format!("http://{host_path}"));
+        // self.base_urls.push(base.clone());
+        // base
+        Url::parse(&format!("http://{host_path}")).unwrap()
     }
 
     async fn lookup<C>(&self, path: &str, index: &str) -> std::io::Result<Config<C>>
@@ -43,8 +60,7 @@ impl Vintage {
         C: From<String>,
     {
         // 设置config的path
-        let mut gurl = self.base_url.clone();
-        gurl.set_path(path);
+        let gurl = self.get_url(path);
         log::debug!("lookup: path:{} index:{}", path, index);
 
         let resp = self
