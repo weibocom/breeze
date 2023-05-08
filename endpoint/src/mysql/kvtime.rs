@@ -1,9 +1,9 @@
 use super::config::ARCHIVE_DEFAULT_KEY;
 use super::{
     strategy::{to_i64, Postfix, Strategy},
-    uuid::UuidHelper,
+    uuid::Uuid,
 };
-use chrono::{TimeZone, Utc};
+use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
 use sharding::hash::Hash;
@@ -56,10 +56,11 @@ impl KVTime {
         is_display_day: bool,
     ) -> Option<String> {
         //todo uuid后面调整
-        let milliseconds = UuidHelper::get_time(uuid) * 1000;
+        let secs = uuid.unix_secs();
         let yy_mm_dd = if is_display_day { "%y%m%d" } else { "%y%m" };
         let s = chrono::Utc
-            .timestamp_millis(milliseconds)
+            .timestamp_opt(secs, 0)
+            .unwrap()
             .with_timezone(&Shanghai)
             .format(yy_mm_dd)
             .to_string();
@@ -93,9 +94,10 @@ impl Strategy for KVTime {
     }
     fn get_key(&self, key: &RingSlice) -> Option<String> {
         let uuid = to_i64(key);
-        let milliseconds = UuidHelper::get_time(uuid) * 1000;
+        let s = uuid.unix_secs();
         let year = chrono::Utc
-            .timestamp_millis(milliseconds)
+            .timestamp_opt(s, 0)
+            .unwrap()
             .with_timezone(&Shanghai)
             .format("%Y")
             .to_string();

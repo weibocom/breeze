@@ -1,16 +1,10 @@
 use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY};
 use super::kvtime::KVTime;
-use super::uuid::UuidHelper;
-use chrono::{TimeZone, Utc};
-use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
-use protocol::Result;
 
 use enum_dispatch::enum_dispatch;
 use sharding::distribution::DBRange;
-use sharding::hash::{Hash, Hasher};
-use std::collections::HashMap;
-use std::fmt::Display;
+use sharding::hash::Hasher;
 
 #[derive(Debug, Clone)]
 pub enum Postfix {
@@ -73,6 +67,7 @@ impl Strategist {
             item.backends.keys().cloned().collect(),
         ))
     }
+
     pub fn new(db_name: String, db_count: u32, shards: u32, years: Vec<String>) -> Self {
         Self::KVTime(KVTime::new(db_name, db_count, shards, years))
     }
