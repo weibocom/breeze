@@ -18,7 +18,11 @@ impl<T: ToString> ToPath for T {
         }
         // 去掉namespace。
         let idx = path.rfind(':').unwrap_or(path.len());
-        path.truncate(idx);
+        let last_path_idx = path.rfind('/').unwrap_or(path.len());
+        //':'如果在前面可能代表端口
+        if last_path_idx < idx {
+            path.truncate(idx);
+        }
         path
     }
 }
