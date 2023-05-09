@@ -206,7 +206,7 @@ where
     ) -> E {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
-            _ => B::build(
+            _ => B::option_build(
                 &addr,
                 self.parser.clone(),
                 Resource::Mysql,

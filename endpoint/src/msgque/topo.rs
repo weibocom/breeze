@@ -262,7 +262,6 @@ where
                         Resource::MsgQue,
                         name,
                         self.timeout_read,
-                        Default::default(),
                     ),
                 ));
             }
@@ -304,7 +303,6 @@ where
                         Resource::MsgQue,
                         name,
                         timeout,
-                        Default::default(),
                     )),
                     *size,
                 )
@@ -347,7 +345,6 @@ where
                                 Resource::MsgQue,
                                 name,
                                 timeout,
-                                Default::default(),
                             )),
                         )
                     })

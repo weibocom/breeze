@@ -255,7 +255,6 @@ where
                     Resource::Memcache,
                     name,
                     timeout,
-                    Default::default(),
                 )
             })
         })
