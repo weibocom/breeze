@@ -1,12 +1,15 @@
 extern crate json;
 
-use std::io::{Error, ErrorKind};
+use std::{
+    io::{Error, ErrorKind},
+    time::Duration,
+};
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Vintage {
     client: Client,
 }
@@ -29,6 +32,17 @@ impl Response {
     }
 }
 
+impl Default for Vintage {
+    fn default() -> Self {
+        Vintage {
+            client: Client::builder()
+                .timeout(Duration::from_secs(3))
+                .build()
+                .unwrap(),
+        }
+    }
+}
+
 impl Vintage {
     // pub fn from_url(url: Url) -> Self {
     //     Self {
@@ -37,7 +51,7 @@ impl Vintage {
     //     }
     // }
     fn get_url(&self, mut host_path: &str) -> Url {
-        //idcpath会以/开头
+        //idcpath会以/开头，兼容以后可以去掉
         if host_path.starts_with('/') {
             host_path = &host_path[1..];
         }

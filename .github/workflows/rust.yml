@@ -55,7 +55,7 @@ jobs:
           ls -all /home/runner/work/breeze/logs
           ls -all ./target/debug/agent
       - name: Run
-        run: nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info  > /home/runner/work/breeze/logs/log.file  2>&1 &
+        run: nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info --idc-path 127.0.0.1:8080/3/config/breeze/idc_region  > /home/runner/work/breeze/logs/log.file  2>&1 &
       - name: Check Status
         run: |
           sleep 6s
