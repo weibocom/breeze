@@ -35,6 +35,7 @@ impl Response {
 impl Default for Vintage {
     fn default() -> Self {
         Vintage {
+            //多个域名也会连接复用
             client: Client::builder()
                 .timeout(Duration::from_secs(3))
                 .build()
@@ -50,11 +51,7 @@ impl Vintage {
     //         client: Client::new(),
     //     }
     // }
-    fn get_url(&self, mut host_path: &str) -> Url {
-        //idcpath会以/开头，兼容以后可以去掉
-        if host_path.starts_with('/') {
-            host_path = &host_path[1..];
-        }
+    fn get_url(&self, host_path: &str) -> Url {
         // (host, path) = path.split_once(delimiter).unwrap();
         // for url in &self.base_urls {
         //     if url.host_str().unwrap() == host {

@@ -19,7 +19,7 @@ impl<T: ToString> ToPath for T {
         // 去掉namespace。
         let idx = path.rfind(':').unwrap_or(path.len());
         let last_path_idx = path.rfind('/').unwrap_or(path.len());
-        //':'如果在前面可能代表端口
+        //配置可能是127.0.0.1:8080/config/to/config，这种情况不截断
         if last_path_idx < idx {
             path.truncate(idx);
         }
