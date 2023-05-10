@@ -35,6 +35,8 @@ pub struct Namespace {
     pub timeout_ms_slave: u32,
     #[serde(default)]
     pub local_affinity: bool,
+    #[serde(default)]
+    pub with_storage: bool,
 }
 
 impl Namespace {
@@ -46,6 +48,9 @@ impl Namespace {
                 "distance" => true,
                 _ => false,
             }
+    }
+    pub(crate) fn read_slave(&self) -> bool {
+        !self.with_storage
     }
     //pub(crate) fn local_len(&self) -> usize {
     //    1 + self.master_l1.len()
