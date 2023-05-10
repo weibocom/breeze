@@ -48,6 +48,8 @@ pub struct CowReadHandleInner<T> {
     // 此处有疑问？
     _t: std::marker::PhantomData<Arc<T>>,
 }
+
+// pub type ReadGuard<T> = Arc<T>;
 // pub struct ReadGuard<'rh, T> {
 //     inner: &'rh CowReadHandleInner<T>,
 // }
@@ -76,9 +78,16 @@ pub struct CowReadHandleInner<T> {
 //     }
 // }
 
-impl<T: Send + Sync + Clone> CowReadHandleInner<T> {
-    pub fn read<F: Fn(Arc<T>) -> R, R>(&self, f: F) -> R {
-        f(self.get())
+impl<T: Clone> CowReadHandleInner<T> {
+    // pub fn read<F: Fn(Arc<T>) -> R, R>(&self, f: F) -> R {
+    //     f(self.get())
+    // }
+    ///此引用会失效，不可保留，fn一定要轻量级，否则会阻塞更新，重量操作请用get
+    pub fn do_with<F: Fn(&T) -> R, R>(&self, f: F) -> R {
+        self.enter(|| {
+            let t = unsafe { self.inner.load(Acquire).as_ref().unwrap() };
+            f(t)
+        })
     }
     #[inline]
     pub fn get(&self) -> Arc<T> {

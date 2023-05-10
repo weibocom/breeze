@@ -78,12 +78,12 @@ where
     updates: Arc<AtomicUsize>,
 }
 
-impl<T> TopologyRead<T> for TopologyReadGuard<T> {
+impl<T: Clone> TopologyRead<T> for TopologyReadGuard<T> {
     fn do_with<F, O>(&self, f: F) -> O
     where
         F: Fn(&T) -> O,
     {
-        self.inner.read(|t| f(t))
+        self.inner.do_with(|t| f(t))
     }
 }
 
@@ -138,7 +138,7 @@ where
     }
 }
 
-impl<T> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
+impl<T: Clone> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
     #[inline]
     fn do_with<F, O>(&self, f: F) -> O
     where

@@ -116,7 +116,7 @@ impl Metrics {
 }
 
 #[inline]
-pub(crate) fn get_metrics<'a>() -> ReadGuard<'a, Metrics> {
+pub(crate) fn get_metrics() -> Arc<Metrics> {
     assert!(METRICS.get().is_some());
     unsafe { METRICS.get_unchecked().get() }
 }
@@ -136,7 +136,6 @@ pub(crate) fn get_metric(id: &Arc<Id>) -> Option<*const Item> {
     get_metrics().check_and_get_item(id)
 }
 
-use ds::ReadGuard;
 use once_cell::sync::OnceCell;
 static METRICS: OnceCell<CowReadHandle<Metrics>> = OnceCell::new();
 
@@ -182,7 +181,7 @@ impl MetricRegister {
         if cache == 0 {
             // 说明是初始化
             self.metrics_r
-                .get_or_insert_with(|| self.metrics.get().clone())
+                .get_or_insert_with(|| self.metrics.copy())
                 .init(id);
         } else {
             *self

@@ -6,7 +6,7 @@ use std::sync::{
 pub struct CowWriteHandle<T> {
     r_handle: CowReadHandle<T>,
 }
-impl<T: Clone + Send + Sync> CowWriteHandle<T> {
+impl<T: Clone> CowWriteHandle<T> {
     pub(crate) fn from(r_handle: CowReadHandle<T>) -> Self {
         Self { r_handle }
     }
