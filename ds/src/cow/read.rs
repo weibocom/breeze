@@ -120,7 +120,7 @@ impl<T: Clone> CowReadHandleInner<T> {
         while self.enters.load(Acquire) > 0 {
             hint::spin_loop();
         }
-        unsafe { Box::from_raw(old) };
+        unsafe { Arc::from_raw(old) };
     }
     // 用swap来解决并发问题。
     // 1. 先用0把pre swap出来；
