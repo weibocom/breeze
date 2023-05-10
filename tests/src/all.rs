@@ -15,6 +15,7 @@ mod size;
 //mod slice;
 mod arena;
 mod asserts;
+mod discovery;
 mod layout;
 mod ring_buffer;
 mod tx_buffer;
