@@ -3,13 +3,13 @@ use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{atomic::AtomicBool, Arc};
-use std::task::{Context, Poll};
+use std::task::Poll;
 
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream, Writer};
+use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream};
 
 use crate::handler::Handler;
 use ds::chan::mpsc::Receiver;
