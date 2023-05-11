@@ -1,6 +1,9 @@
 extern crate json;
 
-use std::io::{Error, ErrorKind};
+use std::{
+    io::{Error, ErrorKind},
+    time::Duration,
+};
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -9,7 +12,6 @@ use url::Url;
 #[derive(Clone)]
 pub struct Vintage {
     client: Client,
-    base_url: Url,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -30,12 +32,38 @@ impl Response {
     }
 }
 
-impl Vintage {
-    pub fn from_url(url: Url) -> Self {
-        Self {
-            base_url: url,
-            client: Client::new(),
+impl Default for Vintage {
+    fn default() -> Self {
+        Vintage {
+            //多个域名也会连接复用
+            client: Client::builder()
+                .timeout(Duration::from_secs(3))
+                .build()
+                .unwrap(),
         }
+    }
+}
+
+impl Vintage {
+    // pub fn from_url(url: Url) -> Self {
+    //     Self {
+    //         base_url: url,
+    //         client: Client::new(),
+    //     }
+    // }
+    fn get_url(&self, host_path: &str) -> Url {
+        // (host, path) = path.split_once(delimiter).unwrap();
+        // for url in &self.base_urls {
+        //     if url.host_str().unwrap() == host {
+        //         return url.clone().set_path(path);
+        //     }
+        // }
+
+        //直接parse吧，感觉set_path并不会快
+        // let base = Url::parse(&format!("http://{host_path}"));
+        // self.base_urls.push(base.clone());
+        // base
+        Url::parse(&format!("http://{host_path}")).unwrap()
     }
 
     async fn lookup<C>(&self, path: &str, index: &str) -> std::io::Result<Config<C>>
@@ -43,9 +71,8 @@ impl Vintage {
         C: From<String>,
     {
         // 设置config的path
-        let mut gurl = self.base_url.clone();
-        gurl.set_path(path);
-        log::debug!("lookup: path:{} index:{}", path, index);
+        let gurl = self.get_url(path);
+        log::debug!("lookup: path:{} index:{}", gurl, index);
 
         let resp = self
             .client
