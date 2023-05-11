@@ -12,7 +12,7 @@ pub struct CowReadHandle<T> {
 }
 impl<T> From<T> for CowReadHandle<T> {
     fn from(t: T) -> Self {
-        let t = Arc::into_raw(Arc::new(t)).cast_mut();
+        let t = Arc::into_raw(Arc::new(t)) as *mut T;
         Self {
             inner: Arc::new(CowReadHandleInner {
                 inner: AtomicPtr::new(t),
@@ -119,7 +119,7 @@ impl<T: Clone> CowReadHandleInner<T> {
     // 只在WriteHandler中调用。
     pub(super) fn update(&self, t: T) {
         assert!(self.epoch.load(Acquire));
-        let w_handle = Arc::into_raw(Arc::new(t)).cast_mut();
+        let w_handle = Arc::into_raw(Arc::new(t)) as *mut T;
         let old = self.inner.swap(w_handle, Release);
         //old有可能被enter load了，这时候释放会有问题，需要等到一次读为0后释放，后续再有读也会是对new的引用，释放old不会再有问题
         while self.enters.load(Acquire) > 0 {
