@@ -54,7 +54,7 @@ impl MysqlNamespace {
             // 2009-2012 ,[111xxx.com:111,222xxx.com:222]
             // 2013 ,[112xxx.com:112,223xxx.com:223]
             let mut archive: HashMap<String, Vec<String>> = HashMap::new();
-            for (key, mut val) in ns.backends.iter() {
+            for (key, val) in ns.backends.iter() {
                 //处理当前库
                 if ARCHIVE_DEFAULT_KEY == key {
                     archive.insert(key.to_string(), val.to_vec());

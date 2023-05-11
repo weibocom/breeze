@@ -1,24 +1,18 @@
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
-use ds::time::Duration;
 use protocol::kv::Binary;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
-use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey};
 use sharding::Distance;
 use sharding::Selector;
 
 use crate::dns::DnsConfig;
-use crate::mysql::config::ARCHIVE_DEFAULT_KEY;
 use crate::mysql::strategy::Strategy;
 use crate::Builder;
 use crate::Single;
@@ -362,7 +356,7 @@ impl<E: discovery::Inited> Shard<E> {
 // todo: 这一段跟redis是一样的，这段可以提到外面去
 impl<E> Shard<E> {
     #[inline]
-    fn selector(s: Selector, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(_s: Selector, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
             slaves: Distance::with_local(replicas, false),
@@ -376,14 +370,14 @@ impl<E> Shard<E> {
     fn master(&self) -> &E {
         &self.master.1
     }
-    #[inline]
-    fn select(&self) -> (usize, &(String, E)) {
-        unsafe { self.slaves.unsafe_select() }
-    }
-    #[inline]
-    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
-        unsafe { self.slaves.unsafe_next(idx, runs) }
-    }
+    // #[inline]
+    // fn select(&self) -> (usize, &(String, E)) {
+    //     unsafe { self.slaves.unsafe_select() }
+    // }
+    // #[inline]
+    // fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+    //     unsafe { self.slaves.unsafe_next(idx, runs) }
+    // }
 }
 
 // todo: 这一段跟redis是一样的，这段可以提到外面去
