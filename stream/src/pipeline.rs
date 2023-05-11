@@ -13,7 +13,7 @@ use endpoint::{Topology, TopologyCheck};
 
 use sharding::hash::Hash;
 
-use protocol::{HashedCommand, Protocol, Result, Stream, Writer};
+use protocol::{HashedCommand, Protocol, Result, Stream};
 
 use crate::{
     arena::CallbackContextArena,

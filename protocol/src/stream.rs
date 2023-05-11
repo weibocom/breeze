@@ -1,4 +1,4 @@
-use byteorder::{BigEndian, LittleEndian, WriteBytesExt};
+use byteorder::{BigEndian, WriteBytesExt};
 use ds::{MemGuard, RingSlice};
 use std::ops::Deref;
 

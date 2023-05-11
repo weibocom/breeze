@@ -1,11 +1,10 @@
 use enum_dispatch::enum_dispatch;
 
-use lazy_static::__Deref;
 use sharding::hash::Hash;
 
+use crate::kv::Mysql;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
-use crate::mysql::Mysql;
 use crate::redis::Redis;
 use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
@@ -298,7 +297,7 @@ impl HashedCommand {
     pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
         assert!(
             self.origin_cmd.is_none(),
-            "origin cmd should be nnone: {:?}",
+            "origin cmd should be none: {:?}",
             self.origin_cmd
         );
         // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中

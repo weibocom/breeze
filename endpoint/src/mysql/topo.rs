@@ -7,7 +7,7 @@ use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::time::Duration;
-use protocol::mysql::Binary;
+use protocol::kv::Binary;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -123,20 +123,11 @@ where
         );
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
-        log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
-
-        log::debug!(
-            "+++ {} send sql[{}] after build_request {}/{}/{} => {:?}",
-            self.service,
-            sql,
-            shards.len(),
-            req.hash(),
-            shard_idx,
-            req
-        );
 
         // let mysql_cmd = raw_req.mysql_cmd();
         self.parser.build_request(req.cmd_mut(), sql);
+
+        log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 
         if shard.has_slave() && !req.operation().is_store() {
             //todo: 访问slave
