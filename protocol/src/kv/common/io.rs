@@ -219,7 +219,7 @@ impl<'a> ParseBuf<'a> {
     // eat_num!(eat_u16_be, checked_eat_u16_be, u16::from_be_bytes);
     // eat_num!(eat_i16_be, checked_eat_i16_be, i16::from_be_bytes);
     eat_num!(eat_u24_le, checked_eat_u24_le, 3, 0, u32::from_le);
-    eat_num!(eat_i24_le, checked_eat_i24_le, 3, 0, i32::from_le);
+    eat_num!(eat_i24_le, _checked_eat_i24_le, 3, 0, i32::from_le);
     // eat_num!(eat_u24_be, checked_eat_u24_be, 3, 1, u32::from_be);
     // eat_num!(eat_i24_be, checked_eat_i24_be, 3, 1, i32::from_be);
     eat_num!(eat_u32_le, checked_eat_u32_le, u32::from_le_bytes);
@@ -230,12 +230,12 @@ impl<'a> ParseBuf<'a> {
     // eat_num!(eat_i40_le, checked_eat_i40_le, 5, 0, i64::from_le);
     // eat_num!(eat_u40_be, checked_eat_u40_be, 5, 3, u64::from_be);
     // eat_num!(eat_i40_be, checked_eat_i40_be, 5, 3, i64::from_be);
-    eat_num!(eat_u48_le, checked_eat_u48_le, 6, 0, u64::from_le);
+    eat_num!(eat_u48_le, _checked_eat_u48_le, 6, 0, u64::from_le);
     // eat_num!(eat_i48_le, checked_eat_i48_le, 6, 0, i64::from_le);
     // eat_num!(eat_u48_be, checked_eat_u48_be, 6, 2, u64::from_be);
     // eat_num!(eat_i48_be, checked_eat_i48_be, 6, 2, i64::from_be);
-    eat_num!(eat_u56_le, checked_eat_u56_le, 7, 0, u64::from_le);
-    eat_num!(eat_i56_le, checked_eat_i56_le, 7, 0, i64::from_le);
+    eat_num!(eat_u56_le, _checked_eat_u56_le, 7, 0, u64::from_le);
+    eat_num!(eat_i56_le, _checked_eat_i56_le, 7, 0, i64::from_le);
     // eat_num!(eat_u56_be, checked_eat_u56_be, 7, 1, u64::from_be);
     // eat_num!(eat_i56_be, checked_eat_i56_be, 7, 1, i64::from_be);
     eat_num!(eat_u64_le, checked_eat_u64_le, u64::from_le_bytes);

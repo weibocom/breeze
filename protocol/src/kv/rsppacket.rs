@@ -331,7 +331,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         // Ok packet header 是 0x00 或者0xFE
         match payload[0] {
             HEADER_FLAG_OK => {
-                log::info!("found ok packet for mysql");
+                log::debug!("found ok packet for mysql");
                 self.handle_ok::<CommonOkPacket>(&payload).map(drop)?;
                 return Ok(());
             }

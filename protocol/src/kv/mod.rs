@@ -291,7 +291,7 @@ impl Mysql {
             HandShakeStatus::InitialhHandshakeResponse => {
                 packet.proc_auth()?;
                 packet.ctx().status = HandShakeStatus::AuthSucceed;
-                log::info!("+++ proc auth succeed!");
+                log::debug!("+++ proc auth succeed!");
                 Ok(HandShake::Success)
             }
 
