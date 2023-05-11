@@ -161,11 +161,16 @@ impl ContextOption {
 
     // 兼容策略：如果idc不包含url_prefix加上该前缀；否则直接返回;
     pub fn idc_path_url(&self) -> String {
-        // idc-path参数
-        if self.url_prefix.len() > 0 && !self.idc_path.contains(&self.url_prefix.to_string()) {
-            return format!("{}/{}", self.url_prefix, self.idc_path);
+        let mut path: &str = &self.idc_path;
+        //idcpath会以/开头，兼容以后可以去掉
+        if path.starts_with('/') {
+            path = &path[1..];
         }
-        self.idc_path.clone()
+        // idc-path参数
+        if self.url_prefix.len() > 0 && !path.contains(&self.url_prefix.to_string()) {
+            return format!("{}/{}", self.url_prefix, path);
+        }
+        path.to_string()
     }
 
     // 根据url_prefix和service_pool 构建 服务池socks url
