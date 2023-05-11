@@ -91,7 +91,12 @@ impl<T: Clone> CowReadHandleInner<T> {
     }
     #[inline]
     pub fn get(&self) -> Arc<T> {
-        self.enter(|| unsafe { Arc::from_raw(self.inner.load(Acquire)).clone() })
+        self.enter(|| unsafe {
+            let t = Arc::from_raw(self.inner.load(Acquire));
+            let new = t.clone();
+            let _ = Arc::into_raw(t);
+            new
+        })
     }
     #[inline]
     pub fn copy(&self) -> T {
