@@ -177,8 +177,7 @@ impl<T: Clone> CowReadHandleInner<T> {
 impl<T> Drop for CowReadHandleInner<T> {
     fn drop(&mut self) {
         unsafe {
-            let _dropping = Box::from_raw(self.inner.load(Acquire));
-            drop(_dropping);
+            let _dropping = Arc::from_raw(self.inner.load(Acquire));
         }
     }
 }
