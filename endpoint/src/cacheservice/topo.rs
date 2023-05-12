@@ -18,7 +18,7 @@ pub struct CacheService<B, E, Req, P> {
     parser: P,
     exp_sec: u32,
     force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
-    try_read_slave: bool,  // mc后面没有存储场景，读master miss是否重试读slave
+    read_twice: bool,  // true：mc后面没有存储且无L1场景，读Master miss之后需要多读一次
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -32,7 +32,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
             _marker: Default::default(),
-            try_read_slave: false,
+            read_twice: false,
         }
     }
 }
@@ -156,7 +156,7 @@ where
             idx = self.streams.select_idx();
             // 第一次访问，没有取到master，则下一次一定可以取到master
             // 如果取到了master，有slave也可以继续访问
-            try_next = (self.streams.local_len() > 1) || self.try_read_slave && (self.streams.len() > 1);
+            try_next = (self.streams.local_len() > 1) || self.read_twice && (self.streams.len() > 1);
             write_back = false;
         } else {
             let last_idx = ctx.index();
@@ -188,7 +188,7 @@ where
             self.hasher = Hasher::from(&ns.hash);
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
             self.force_write_all = ns.force_write_all;
-            self.try_read_slave = ns.read_slave();
+            self.read_twice = ns.is_read_twice();
             let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();
