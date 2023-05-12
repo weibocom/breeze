@@ -16,6 +16,7 @@ impl<T> From<T> for CowReadHandle<T> {
         Self {
             inner: Arc::new(CowReadHandleInner {
                 inner: AtomicPtr::new(t),
+                released: AtomicBool::new(false),
                 enters: AtomicUsize::new(0),
                 epoch: AtomicBool::new(false),
                 // dropping: AtomicPtr::default(),
@@ -42,6 +43,7 @@ impl<T> std::ops::Deref for CowReadHandle<T> {
 pub struct CowReadHandleInner<T> {
     inner: AtomicPtr<T>,
     enters: AtomicUsize,
+    released: AtomicBool,
     pub(super) epoch: AtomicBool,
     // 先次更新完之后，会把正在处理中的数据存储到dropping中。所有的reader的读请求都迁移到inner之后，就可以安全的删除
     // dropping: AtomicPtr<Vec<*mut T>>,
@@ -112,7 +114,11 @@ impl<T: Clone> CowReadHandleInner<T> {
     fn enter<F: Fn() -> R, R>(&self, f: F) -> R {
         self.enters.fetch_add(1, AcqRel);
         let r = f();
-        self.enters.fetch_sub(1, AcqRel);
+        let old = self.enters.fetch_sub(1, AcqRel);
+        //读者数量达到过一次0
+        if old == 1 {
+            self.released.store(true, Release);
+        }
         r
     }
     // 先把原有的数据swap出来，存储到dropping中。所有的reader请求都迁移到inner之后，将dropping中的数据删除。
@@ -122,7 +128,9 @@ impl<T: Clone> CowReadHandleInner<T> {
         let w_handle = Arc::into_raw(Arc::new(t)) as *mut T;
         let old = self.inner.swap(w_handle, Release);
         //old有可能被enter load了，这时候释放会有问题，需要等到一次读为0后释放，后续再有读也会是对new的引用，释放old不会再有问题
-        while self.enters.load(Acquire) > 0 {
+        //released用来标识当enters不等于0时，可能也在swap后达到过一次0，可能对短链接场景有优化
+        self.released.store(false, Release);
+        while self.enters.load(Acquire) > 0 && !self.released.load(Acquire) {
             hint::spin_loop();
         }
         unsafe { Arc::from_raw(old) };
