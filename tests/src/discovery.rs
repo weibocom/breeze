@@ -1,6 +1,6 @@
 use std::{sync::Arc, thread};
 
-use discovery::{TopologyRead, TopologyWrite};
+use discovery::TopologyWrite;
 use protocol::Parser;
 
 #[test]
@@ -37,18 +37,13 @@ basic:
     let (mut tx, rx) = discovery::topology(top, service);
     tx.update(service, cfg);
     let t_rx = rx.clone();
+    //一下两个线程并不能保证立马执行，但是没遇到过
     thread::spawn(move || {
-        assert_eq!(
-            t_rx.do_with(|t| { t.get_backends() }),
-            vec!["1.1.1.1:1111,1.1.1.1:1111"]
-        );
+        assert_eq!(t_rx.get().get_backends(), vec!["1.1.1.1:1111,1.1.1.1:1111"]);
     });
     tx.update(service, cfgnew);
     let t_rx = rx.clone();
     thread::spawn(move || {
-        assert_eq!(
-            t_rx.do_with(|t| { t.get_backends() }),
-            vec!["1.1.1.1:2222,1.1.1.1:2222"]
-        );
+        assert_eq!(t_rx.get().get_backends(), vec!["1.1.1.1:2222,1.1.1.1:2222"]);
     });
 }

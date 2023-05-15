@@ -1,8 +1,7 @@
+use crate::ReadGuard;
+
 use super::CowReadHandle;
-use std::sync::{
-    atomic::Ordering::{AcqRel, Acquire},
-    Arc,
-};
+use std::sync::atomic::Ordering::{AcqRel, Acquire};
 pub struct CowWriteHandle<T> {
     r_handle: CowReadHandle<T>,
 }
@@ -40,7 +39,7 @@ impl<T: Clone> CowWriteHandle<T> {
         self.r_handle.copy()
     }
     #[inline]
-    pub fn get(&self) -> Arc<T> {
+    pub fn get(&self) -> ReadGuard<T> {
         self.r_handle.get()
     }
 }

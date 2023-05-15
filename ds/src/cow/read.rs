@@ -35,11 +35,9 @@ impl<T> std::ops::Deref for CowReadHandle<T> {
 }
 
 /// 效果相当于一个Mutex<Cow<Acr<T>>>, 但是
-/// - 锁非阻塞，而是会panic
 /// - Cow通过AtomicPtr实现，每次更新T，都会在堆上创建一个Arc<T>，阻塞等到没有读后drop旧Arc<T>
 /// - 读取会获取一个对当前堆上Arc<T>的一个clone，否则我们drop后，T将会失效
-/// 也就是多个线程获取的T是同一个T，行为本质上和多个线程操作Arc<T>没有区别，不是线程安全的，因此为做出提示，T必须是Send和Sync的
-/// 为什么要暴露Arc的实现呢？因为想不到copy on write有单线程使用场景
+/// 也就是多个线程获取的T是同一个T，行为本质上和多个线程操作Arc<T>没有区别，不是线程安全的
 pub struct CowReadHandleInner<T> {
     inner: AtomicPtr<T>,
     enters: AtomicUsize,
@@ -51,89 +49,48 @@ pub struct CowReadHandleInner<T> {
     _t: std::marker::PhantomData<Arc<T>>,
 }
 
-// pub type ReadGuard<T> = Arc<T>;
-// pub struct ReadGuard<'rh, T> {
-//     inner: &'rh CowReadHandleInner<T>,
-// }
-// impl<'rh, T> std::ops::Deref for ReadGuard<'rh, T> {
-//     type Target = T;
-//     #[inline]
-//     fn deref(&self) -> &Self::Target {
-//         unsafe {
-//             &self
-//                 .inner
-//                 .inner
-//                 .load(Acquire)
-//                 .as_ref()
-//                 .expect("pointer is nil")
-//         }
-//     }
-// }
-
-// impl<'rh, T> Drop for ReadGuard<'rh, T> {
-//     fn drop(&mut self) {
-//         // 删除dropping
-//         //println!("drop read guard");
-//         if self.inner.enters.fetch_sub(1, AcqRel) == 1 {
-//             self.inner.purge();
-//         }
-//     }
-// }
+pub struct ReadGuard<T>(Arc<T>);
+impl<T> std::ops::Deref for ReadGuard<T> {
+    type Target = T;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
 
 impl<T: Clone> CowReadHandleInner<T> {
     // pub fn read<F: Fn(Arc<T>) -> R, R>(&self, f: F) -> R {
     //     f(self.get())
     // }
-    ///此引用会失效，不可保留，fn一定要轻量级，否则会阻塞更新，重量操作请用get
-    pub fn do_with<F: Fn(&T) -> R, R>(&self, f: F) -> R {
-        self.enter(|| {
-            let t = unsafe { self.inner.load(Acquire).as_ref().unwrap() };
-            f(t)
-        })
-    }
     #[inline]
-    pub fn get(&self) -> Arc<T> {
-        self.enter(|| unsafe {
-            let t = Arc::from_raw(self.inner.load(Acquire));
-            let new = t.clone();
-            let _ = Arc::into_raw(t);
-            new
-        })
-    }
-    #[inline]
-    pub fn copy(&self) -> T {
-        self.enter(|| unsafe {
-            self.inner
-                .load(Acquire)
-                .as_ref()
-                .expect("pointer is nil")
-                .clone()
-        })
-    }
-
-    fn enter<F: Fn() -> R, R>(&self, f: F) -> R {
+    pub fn get(&self) -> ReadGuard<T> {
         self.enters.fetch_add(1, AcqRel);
-        let r = f();
+        let t = unsafe { Arc::from_raw(self.inner.load(Acquire)) };
+        let new = t.clone();
         let old = self.enters.fetch_sub(1, AcqRel);
         //读者数量达到过一次0
         if old == 1 {
             self.released.store(true, Release);
         }
-        r
+        //自身持有的不能释放
+        let _ = Arc::into_raw(t);
+        ReadGuard(new)
     }
-    // 先把原有的数据swap出来，存储到dropping中。所有的reader请求都迁移到inner之后，将dropping中的数据删除。
-    // 只在WriteHandler中调用。
+    pub fn copy(&self) -> T {
+        self.get().clone()
+    }
+
     pub(super) fn update(&self, t: T) {
         assert!(self.epoch.load(Acquire));
         let w_handle = Arc::into_raw(Arc::new(t)) as *mut T;
         let old = self.inner.swap(w_handle, Release);
+        let _drop = unsafe { Arc::from_raw(old) };
         //old有可能被enter load了，这时候释放会有问题，需要等到一次读为0后释放，后续再有读也会是对new的引用，释放old不会再有问题
         //released用来标识当enters不等于0时，可能也在swap后达到过一次0，可能对短链接场景有优化
         self.released.store(false, Release);
         while self.enters.load(Acquire) > 0 && !self.released.load(Acquire) {
             hint::spin_loop();
         }
-        unsafe { Arc::from_raw(old) };
     }
     // 用swap来解决并发问题。
     // 1. 先用0把pre swap出来；

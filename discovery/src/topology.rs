@@ -1,4 +1,4 @@
-use ds::{cow, CowReadHandle, CowWriteHandle};
+use ds::{cow, CowReadHandle, CowWriteHandle, ReadGuard};
 
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -7,11 +7,11 @@ use std::sync::{
 
 pub trait TopologyGroup {}
 
-pub trait TopologyRead<T> {
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O;
-}
+// pub trait TopologyRead<T> {
+//     fn do_with<F, O>(&self, f: F) -> O
+//     where
+//         F: Fn(&T) -> O;
+// }
 
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
@@ -82,22 +82,35 @@ where
     updates: Arc<AtomicUsize>,
 }
 
-impl<T: Clone> TopologyRead<T> for TopologyReadGuard<T> {
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O,
-    {
-        self.inner.do_with(|t| f(t))
+// impl<T: Clone> TopologyRead<T> for TopologyReadGuard<T> {
+//     fn do_with<F, O>(&self, f: F) -> O
+//     where
+//         F: Fn(&T) -> O,
+//     {
+//         self.inner.do_with(|t| f(t))
+//     }
+// }
+
+impl<T> TopologyReadGuard<T>
+where
+    T: Clone,
+{
+    #[inline]
+    pub fn copy(&self) -> T {
+        self.inner.copy()
+    }
+    #[inline]
+    pub fn get(&self) -> ReadGuard<T> {
+        self.inner.get()
     }
 }
-
 impl<T> TopologyReadGuard<T>
 where
     T: Clone + Inited,
 {
     #[inline]
     pub fn inited(&self) -> bool {
-        self.updates.load(Ordering::Relaxed) > 0 && self.do_with(|t| t.inited())
+        self.updates.load(Ordering::Relaxed) > 0 && self.inner.get().inited()
     }
 }
 
@@ -142,15 +155,15 @@ where
     }
 }
 
-impl<T: Clone> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
-    #[inline]
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O,
-    {
-        (**self).do_with(f)
-    }
-}
+// impl<T: Clone> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
+//     #[inline]
+//     fn do_with<F, O>(&self, f: F) -> O
+//     where
+//         F: Fn(&T) -> O,
+//     {
+//         (**self).do_with(f)
+//     }
+// }
 
 impl<T> TopologyReadGuard<T> {
     #[inline]

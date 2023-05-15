@@ -116,7 +116,7 @@ impl Metrics {
 }
 
 #[inline]
-pub(crate) fn get_metrics() -> Arc<Metrics> {
+pub(crate) fn get_metrics() -> ReadGuard<Metrics> {
     assert!(METRICS.get().is_some());
     unsafe { METRICS.get_unchecked().get() }
 }
@@ -139,7 +139,7 @@ pub(crate) fn get_metric(id: &Arc<Id>) -> Option<*const Item> {
 use once_cell::sync::OnceCell;
 static METRICS: OnceCell<CowReadHandle<Metrics>> = OnceCell::new();
 
-use ds::{CowReadHandle, CowWriteHandle};
+use ds::{CowReadHandle, CowWriteHandle, ReadGuard};
 
 unsafe impl Sync for Metrics {}
 unsafe impl Send for Metrics {}
