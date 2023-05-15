@@ -34,7 +34,8 @@ impl<T> std::ops::Deref for CowReadHandle<T> {
     }
 }
 
-/// 效果相当于一个Mutex<Cow<Acr<T>>>, 但是
+/// 效果相当于一个Mutex<Cow<Arc<T>>>, 但是
+/// - 实际上不会并发更新
 /// - Cow通过AtomicPtr实现，每次更新T，都会在堆上创建一个Arc<T>，阻塞等到没有读后drop旧Arc<T>
 /// - 读取会获取一个对当前堆上Arc<T>的一个clone，否则我们drop后，T将会失效
 /// 也就是多个线程获取的T是同一个T，行为本质上和多个线程操作Arc<T>没有区别，不是线程安全的
@@ -84,7 +85,7 @@ impl<T: Clone> CowReadHandleInner<T> {
         assert!(self.epoch.load(Acquire));
         let w_handle = Arc::into_raw(Arc::new(t)) as *mut T;
         let old = self.inner.swap(w_handle, Release);
-        let _drop = unsafe { Arc::from_raw(old) };
+        let _dropping = unsafe { Arc::from_raw(old) };
         //old有可能被enter load了，这时候释放会有问题，需要等到一次读为0后释放，后续再有读也会是对new的引用，释放old不会再有问题
         //released用来标识当enters不等于0时，可能也在swap后达到过一次0，可能对短链接场景有优化
         self.released.store(false, Release);

@@ -1,8 +1,11 @@
-use ds::{cow, CowReadHandle, CowWriteHandle, ReadGuard};
+use ds::{cow, CowReadHandle, CowWriteHandle};
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    ops::Deref,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 pub trait TopologyGroup {}
@@ -91,19 +94,14 @@ where
 //     }
 // }
 
-impl<T> TopologyReadGuard<T>
-where
-    T: Clone,
-{
+impl<T> Deref for TopologyReadGuard<T> {
+    type Target = CowReadHandle<T>;
     #[inline]
-    pub fn copy(&self) -> T {
-        self.inner.copy()
-    }
-    #[inline]
-    pub fn get(&self) -> ReadGuard<T> {
-        self.inner.get()
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
+
 impl<T> TopologyReadGuard<T>
 where
     T: Clone + Inited,

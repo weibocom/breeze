@@ -1,7 +1,8 @@
-use crate::ReadGuard;
-
 use super::CowReadHandle;
-use std::sync::atomic::Ordering::{AcqRel, Acquire};
+use std::{
+    ops::Deref,
+    sync::atomic::Ordering::{AcqRel, Acquire},
+};
 pub struct CowWriteHandle<T> {
     r_handle: CowReadHandle<T>,
 }
@@ -9,8 +10,7 @@ impl<T: Clone> CowWriteHandle<T> {
     pub(crate) fn from(r_handle: CowReadHandle<T>) -> Self {
         Self { r_handle }
     }
-    // 如果上一次write请求还未结束，则进入spin状态.
-    pub fn write<F: FnOnce(&mut T)>(&mut self, f: F) {
+    pub fn write<F: FnMut(&mut T)>(&mut self, mut f: F) {
         let mut t: T = self.r_handle.copy();
         f(&mut t);
         self.update(t);
@@ -34,12 +34,12 @@ impl<T: Clone> CowWriteHandle<T> {
 
         // drop(guard);
     }
+}
+
+impl<T> Deref for CowWriteHandle<T> {
+    type Target = CowReadHandle<T>;
     #[inline]
-    pub fn copy(&self) -> T {
-        self.r_handle.copy()
-    }
-    #[inline]
-    pub fn get(&self) -> ReadGuard<T> {
-        self.r_handle.get()
+    fn deref(&self) -> &Self::Target {
+        &self.r_handle
     }
 }
