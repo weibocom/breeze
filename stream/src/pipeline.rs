@@ -6,11 +6,15 @@ use std::{
     task::{ready, Context, Poll},
 };
 
+use discovery::{Inited, TopologyReadGuard};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use ds::{time::Instant, AtomicWaker};
-use endpoint::{Topology, TopologyCheck};
-use protocol::{HashedCommand, Protocol, Result, Stream};
+use ds::{time::Instant, AtomicWaker, ReadGuard};
+use endpoint::Topology;
+use protocol::{
+    callback::{Callback, CallbackPtr},
+    HashedCommand, Protocol, Result, Stream,
+};
 
 use sharding::hash::Hash;
 
@@ -20,8 +24,40 @@ use crate::{
     CallbackContext, Request, StreamMetrics,
 };
 
+struct RefreshTopology<T> {
+    reader: TopologyReadGuard<T>,
+    //快照，定时刷新
+    top: ReadGuard<T>,
+    cb: CallbackPtr,
+}
+
+impl<T: Clone + Inited + Topology<Item = Request> + 'static> RefreshTopology<T> {
+    // reader一定是已经初始化过的，否则会UB
+    #[inline]
+    fn from(reader: TopologyReadGuard<T>) -> Self {
+        let (top, cb) = Self::refresh_inner(&reader);
+        Self { top, reader, cb }
+    }
+    fn get_inner(&self) -> &T {
+        &self.top
+    }
+    fn callback(&self) -> CallbackPtr {
+        self.cb.clone()
+    }
+    fn refresh_inner(reader: &TopologyReadGuard<T>) -> (ReadGuard<T>, CallbackPtr) {
+        let top = reader.get();
+        let cb_top = top.clone();
+        let send = Box::new(move |req| cb_top.send(req));
+        let cb = Callback::new(send).into();
+        (top, cb)
+    }
+    fn refresh(&mut self) {
+        (self.top, self.cb) = Self::refresh_inner(&self.reader);
+    }
+}
+
 pub async fn copy_bidirectional<C, P, T>(
-    top: T,
+    top: TopologyReadGuard<T>,
     metrics: Arc<StreamMetrics>,
     client: C,
     parser: P,
@@ -30,10 +66,12 @@ pub async fn copy_bidirectional<C, P, T>(
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + Clone + Inited + 'static,
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
+    let top = RefreshTopology::from(top.clone());
+
     let pipeline = CopyBidirectional {
         pipeline,
         top,
@@ -54,7 +92,7 @@ where
 }
 
 pub struct CopyBidirectional<C, P, T> {
-    top: T,
+    top: RefreshTopology<T>,
     client: C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
@@ -77,7 +115,7 @@ impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + Hash + Clone + Inited + 'static,
 {
     type Output = Result<()>;
 
@@ -110,7 +148,7 @@ impl<C, P, T> CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + Hash + Clone + Inited + 'static,
 {
     // 解析buffer，并且发送请求.
     #[inline]
@@ -132,14 +170,15 @@ where
         let mut processor = Visitor {
             pending,
             waker,
-            top,
+            top: top.get_inner(),
+            cb: top.callback(),
             // parser,
             first,
             arena,
         };
 
         parser
-            .parse_request(client, top, &mut processor)
+            .parse_request(client, top.get_inner(), &mut processor)
             .map_err(|e| {
                 log::info!("parse request error: {:?} {:?}", e, self);
                 e
@@ -182,7 +221,9 @@ where
             let mut response = ctx.take_response();
 
             parser.write_response(
-                &mut ResponseContext::new(&mut ctx, metrics, |hash| self.top.shard_idx(hash)),
+                &mut ResponseContext::new(&mut ctx, metrics, |hash| {
+                    self.top.get_inner().shard_idx(hash)
+                }),
                 response.as_mut(),
                 client,
             )?;
@@ -190,7 +231,7 @@ where
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
-                    ctx.async_write_back(parser, rsp, self.top.exp_sec(), metrics);
+                    ctx.async_write_back(parser, rsp, self.top.get_inner().exp_sec(), metrics);
                     self.async_pending.push_back(ctx);
                 }
             }
@@ -235,6 +276,7 @@ struct Visitor<'a, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
     top: &'a T,
+    cb: CallbackPtr,
     // parser: &'a P,
     first: &'a mut bool,
     arena: &'a mut CallbackContextArena,
@@ -243,16 +285,14 @@ struct Visitor<'a, T> {
 // impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
 // where
 //     P: Protocol + Unpin,
-impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
-    for Visitor<'a, T>
-{
+impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
         let first = *self.first;
         // 如果当前是最后一个子请求，那下一个请求就是一个全新的请求。
         // 否则下一个请求是子请求。
         *self.first = last;
-        let cb = self.top.callback();
+        let cb = self.cb.clone();
         let ctx = self
             .arena
             .alloc(CallbackContext::new(cmd, &self.waker, cb, first, last));
@@ -282,7 +322,7 @@ impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + Hash + Clone + Inited + 'static,
 {
     #[inline]
     fn close(&mut self) -> bool {
@@ -305,9 +345,10 @@ where
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
-        if self.top.refresh() {
-            log::info!("topology refreshed: {:?}", self);
-        }
+        self.top.refresh();
+        // if self.top.refresh() {
+        //     log::info!("topology refreshed: {:?}", self);
+        // }
         //self.process_async_pending();
         self.client.try_gc();
         self.client.shrink();
