@@ -69,8 +69,8 @@ impl<T: Clone> CowReadHandleInner<T> {
         let t = unsafe { Arc::from_raw(self.inner.load(Acquire)) };
         let new = t.clone();
         let old = self.enters.fetch_sub(1, AcqRel);
-        //读者数量达到过一次0
-        if old == 1 {
+        //读者数量达到过一次0， 大部分情况下release都是true，没必要store
+        if old == 1 && !self.released.load(Acquire) {
             self.released.store(true, Release);
         }
         //自身持有的不能释放
