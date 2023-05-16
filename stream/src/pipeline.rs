@@ -16,8 +16,6 @@ use protocol::{
     HashedCommand, Protocol, Result, Stream,
 };
 
-use sharding::hash::Hash;
-
 use crate::{
     arena::CallbackContextArena,
     context::{CallbackContextPtr, ResponseContext},
@@ -31,7 +29,7 @@ struct RefreshTopology<T> {
     cb: CallbackPtr,
 }
 
-impl<T: Clone + Inited + Topology<Item = Request> + 'static> RefreshTopology<T> {
+impl<T: Clone + Topology<Item = Request> + 'static> RefreshTopology<T> {
     // reader一定是已经初始化过的，否则会UB
     #[inline]
     fn from(reader: TopologyReadGuard<T>) -> Self {
@@ -115,7 +113,7 @@ impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + Hash + Clone + Inited + 'static,
+    T: Topology<Item = Request> + Unpin + Clone + Inited + 'static,
 {
     type Output = Result<()>;
 
@@ -148,7 +146,7 @@ impl<C, P, T> CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + Hash + Clone + Inited + 'static,
+    T: Topology<Item = Request> + Unpin + Clone + Inited + 'static,
 {
     // 解析buffer，并且发送请求.
     #[inline]
@@ -170,8 +168,7 @@ where
         let mut processor = Visitor {
             pending,
             waker,
-            top: top.get_inner(),
-            cb: top.callback(),
+            top: top,
             // parser,
             first,
             arena,
@@ -275,8 +272,7 @@ where
 struct Visitor<'a, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a AtomicWaker,
-    top: &'a T,
-    cb: CallbackPtr,
+    top: &'a RefreshTopology<T>,
     // parser: &'a P,
     first: &'a mut bool,
     arena: &'a mut CallbackContextArena,
@@ -285,14 +281,16 @@ struct Visitor<'a, T> {
 // impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
 // where
 //     P: Protocol + Unpin,
-impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, T> {
+impl<'a, T: Topology<Item = Request> + Clone + 'static> protocol::RequestProcessor
+    for Visitor<'a, T>
+{
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
         let first = *self.first;
         // 如果当前是最后一个子请求，那下一个请求就是一个全新的请求。
         // 否则下一个请求是子请求。
         *self.first = last;
-        let cb = self.cb.clone();
+        let cb = self.top.callback();
         let ctx = self
             .arena
             .alloc(CallbackContext::new(cmd, &self.waker, cb, first, last));
@@ -306,7 +304,7 @@ impl<'a, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a,
         if req.noforward() {
             req.on_noforward();
         } else {
-            self.top.send(req);
+            self.top.get_inner().send(req);
         }
     }
 }
@@ -322,7 +320,7 @@ impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + Hash + Clone + Inited + 'static,
+    T: Topology<Item = Request> + Unpin + Clone + Inited + 'static,
 {
     #[inline]
     fn close(&mut self) -> bool {
