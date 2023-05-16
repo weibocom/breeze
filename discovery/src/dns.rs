@@ -169,7 +169,7 @@ pub async fn start_dns_resolver_refresher() {
             regs.push(reg);
         }
         if regs.len() > 0 {
-            let mut w_cache = cache.get().clone();
+            let mut w_cache = cache.copy();
             for reg in regs {
                 w_cache.register(reg.0.clone(), reg.1.clone());
                 w_cache.refresh_one(&reg.0, &mut resolver).await;
@@ -197,7 +197,7 @@ pub async fn start_dns_resolver_refresher() {
         idx = (idx + 1) % BATCH_CNT;
         drop(r_cache);
         if updated.len() > 0 {
-            let mut new = cache.get().clone();
+            let mut new = cache.copy();
             for (host, addrs) in updated.into_iter() {
                 new.hosts
                     .get_mut(&host)
