@@ -12,7 +12,6 @@ rt = { path = "../rt", default-features = false, features = [] }
 sharding = { path = "../sharding" }
 stream = { path = "../stream" }
 protocol = { path = "../protocol" }
-discovery = { path = "../discovery" }
 rand = "0.8.4"
 md5 = "*"
 byteorder = "1.4.3"

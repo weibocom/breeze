@@ -142,12 +142,6 @@ impl<B, E, R, P> discovery::TopologyWrite for TopologyProtocol<B, E, R, P> where
         }
     }
     #[inline]
-    fn get_backends(&self) -> Vec<String> {
-        match self {
-             $(Self::$item(s) => discovery::TopologyWrite::get_backends(s),)+
-        }
-    }
-    #[inline]
     fn disgroup<'a>(&self, path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
         match self {
              $(Self::$item(s) => discovery::TopologyWrite::disgroup(s, path, cfg),)+
