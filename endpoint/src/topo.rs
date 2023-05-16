@@ -109,11 +109,11 @@ pub trait Builder<P, R, E> {
         service: &str,
         timeout: Timeout,
     ) -> E{
-        Self::option_build(addr, parser, rsrc, service, timeout, Default::default())
+        Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
     }
 
     // TODO: update
-    fn option_build(
+    fn auth_option_build(
         addr: &str,
         parser: P,
         rsrc: Resource,
