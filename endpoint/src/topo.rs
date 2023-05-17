@@ -72,10 +72,6 @@ pub trait Topology: Endpoint + Hash {
 //         (**self).hash(k)
 //     }
 // }
-// pub trait TopologyCheck: Sized {
-//     fn refresh(&mut self) -> bool;
-//     fn callback(&self) -> CallbackPtr;
-// }
 
 pub trait Single {
     fn single(&self) -> bool;

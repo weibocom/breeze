@@ -26,6 +26,8 @@ pub use metric::StreamMetrics;
 
 mod arena;
 
+mod topology;
+
 // 最小2K，至少容纳一个MTU
 //pub(crate) const MIN_BUFFER_SIZE: usize = 1024 * 2;
 //pub(crate) const MAX_BUFFER_SIZE: usize = 64 << 20;
