@@ -35,14 +35,17 @@ pub struct Basic {
 }
 
 impl RedisNamespace {
-    pub(super) fn is_local(&self) -> bool {
-        match std::env::var("BREEZE_LOCAL")
-            .unwrap_or("".to_string())
-            .as_str()
-        {
-            "distance" => true,
-            _ => self.basic.selector.as_str() == "distance",
-        }
+    // BREEZE_LOCAL有三种取值：空、random、其他；空按照random处理
+    // 非random，即为timeslice策略
+    pub(super) fn is_timeslice(&self) -> bool {
+        (!self.basic.selector.is_empty() && self.basic.selector.as_str() != "random")
+            || match std::env::var("BREEZE_LOCAL")
+                .unwrap_or("random".to_string())
+                .as_str()
+            {
+                "random" => false,
+                _ => true,
+            }
     }
 
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
