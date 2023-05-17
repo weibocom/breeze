@@ -28,6 +28,7 @@ export mc=localhost:9301
 export phantom=localhost:9303
 export min_key=1
 export max_key=10000
+export socks_dir=$brz_home/socks
 
 cargo test -p tests
 

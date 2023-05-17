@@ -371,12 +371,3 @@ impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
         )
     }
 }
-
-//unsafe fn callback<T: Topology<Item = Request>>(top: &T) -> Callback {
-//    let receiver = top as *const T as usize;
-//    let send = Box::new(move |req| {
-//        let t = &*(receiver as *const T);
-//        t.send(req)
-//    });
-//    Callback::new(send)
-//}
