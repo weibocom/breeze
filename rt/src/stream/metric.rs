@@ -46,7 +46,6 @@ mod inner {
         ) -> Poll<Result<usize>> {
             POLL_WRITE.incr();
             let r = Pin::new(&mut self.s).poll_write(cx, buf);
-            log::debug!("+++ stream write rs:{:?}, ", r);
             if r.is_pending() {
                 POLL_PENDING_W.incr();
             }
