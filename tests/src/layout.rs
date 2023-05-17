@@ -10,9 +10,9 @@ type Endpoint = Arc<Backend<Request>>;
 type Topology = endpoint::TopologyProtocol<Builder, Endpoint, Request, Parser>;
 //type RefreshTopology = endpoint::RefreshTopology<Topology>;
 
-// type CheckedTopology = endpoint::CheckedTopology<Topology>;
+type CheckedTopology = stream::CheckedTopology<Topology>;
 
-type CopyBidirectional = stream::pipeline::CopyBidirectional<Stream, Parser, Topology>;
+type CopyBidirectional = stream::pipeline::CopyBidirectional<Stream, Parser, CheckedTopology>;
 
 type Stream = rt::Stream<tokio::net::TcpStream>;
 type Handler<'r> = stream::handler::Handler<'r, Request, Parser, Stream>;
@@ -44,7 +44,7 @@ fn checkout_basic() {
     assert_eq!(1, size_of::<Parser>());
     assert_eq!(48, size_of::<Backend<Request>>());
     assert_eq!(0, size_of::<Builder>());
-    // assert_eq!(32, size_of::<CheckedTopology>());
+    assert_eq!(32, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
 }
