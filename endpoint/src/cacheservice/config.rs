@@ -44,17 +44,20 @@ impl Flag {
     // 通过bit位，设置不同的策略/属性；从低位开始依次排列
 
     // 默认值0: 此mc后端对应有存储(例如MySQL)
-    pub const BACKEND_NO_STORAGE_BIT_LEN : u32 = 1;
+    pub const BACKEND_NO_STORAGE_BIT_LEN: u32 = 1;
 }
 
 impl Namespace {
-    pub(crate) fn is_local(&self) -> bool {
-        self.local_affinity || match std::env::var("BREEZE_LOCAL")
-                .unwrap_or("".to_string())
+    pub(crate) fn is_timeslice(&self) -> bool {
+        // BREEZE_LOCAL有三种取值：空、random、其他；空按照random处理
+        // 非random，即为timeslice策略
+        self.local_affinity
+            || match std::env::var("BREEZE_LOCAL")
+                .unwrap_or("random".to_string())
                 .as_str()
             {
-                "distance" => true,
-                _ => false,
+                "random" => false,
+                _ => true,
             }
     }
     #[inline]

@@ -26,9 +26,9 @@ impl BackendQuota {
     }
 }
 
-// 按机器之间的距离来选择replica。
-// 1. B类地址相同的最近与同一个zone的是近距离，优先访问。
-// 2. 其他的只做错误处理时访问。
+// 选择replica策略，len_local指示的是优先访问的replicas。
+// 1. cacheservice因存在跨机房同步、优先访问本地机房，当前机房的replicas为local
+// 2. 其他资源，replicas长度与len_local相同
 #[derive(Clone)]
 pub struct Distance<T> {
     len_local: u16,
@@ -58,13 +58,13 @@ impl<T: Addr> Distance<T> {
         debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
         Some(unsafe { self.replicas.get_unchecked(idx).1.clone() })
     }
-    pub fn with_local(replicas: Vec<T>, local: bool) -> Self {
+    pub fn with_timeslice(replicas: Vec<T>, timeslice: bool) -> Self {
         assert_ne!(replicas.len(), 0);
         let mut me = Self::new();
         me.refresh(replicas);
 
-        // 开启local，即开启后端使用quota
-        me.backend_quota = local;
+        // 开启timeslice，即开启后端使用quota
+        me.backend_quota = timeslice;
 
         use rand::seq::SliceRandom;
         use rand::thread_rng;
@@ -75,7 +75,7 @@ impl<T: Addr> Distance<T> {
     }
     #[inline]
     pub fn from(replicas: Vec<T>) -> Self {
-        Self::with_local(replicas, true)
+        Self::with_timeslice(replicas, true)
     }
     // 同时更新配额
     fn refresh(&mut self, replicas: Vec<T>) {
@@ -84,8 +84,8 @@ impl<T: Addr> Distance<T> {
             .map(|r| (r, BackendQuota::default()))
             .collect();
     }
-    pub fn update(&mut self, replicas: Vec<T>, topn: usize, local: bool) {
-        self.backend_quota = local;
+    pub fn update(&mut self, replicas: Vec<T>, topn: usize, timeslice: bool) {
+        self.backend_quota = timeslice;
         self.refresh(replicas);
         self.topn(topn);
     }
