@@ -2,10 +2,7 @@
 
 use bytes::{BufMut, BytesMut};
 
-use super::common::{
-    constants::{Command, DEFAULT_MAX_ALLOWED_PACKET},
-    proto::codec::PacketCodec,
-};
+use super::common::{constants::Command, proto::codec::PacketCodec};
 use crate::{Error, Result};
 
 // mc          vs           mysql
@@ -35,11 +32,17 @@ impl RequestPacket {
 
     // TODO 先实现功能，待优化
     pub(super) fn build_request(&mut self, my_cmd: Command, sql: &String) -> Result<Vec<u8>> {
-        let mut req_data = BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET);
+        // let mut req_data = BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET);
+        // TODO: 按需分配内存，避免过大，同时需要警惕内存不够导致异常的情况 fishermen
+        let req_len = sql.len() + 1;
+        let mut req_data = BytesMut::with_capacity(req_len);
         req_data.put_u8(my_cmd as u8);
         req_data.put_slice(sql.as_bytes());
 
-        let mut encoded_raw = BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET);
+        // TODO: 按需分配内存，避免过大，同时需要警惕内存不够导致异常的情况 fishermen
+        // let mut encoded_raw = BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET);
+        let encoed_len = req_len + 32;
+        let mut encoded_raw = BytesMut::with_capacity(encoed_len);
         match self.codec.encode(&mut req_data, &mut encoded_raw) {
             Ok(_) => {
                 let mut encoded = Vec::with_capacity(encoded_raw.len());
