@@ -6,15 +6,12 @@ use std::{
     task::{ready, Context, Poll},
 };
 
-use discovery::TopologyReadGuard;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::topology::{CheckedTopology, TopologyCheck};
+use crate::topology::TopologyCheck;
 use ds::{time::Instant, AtomicWaker};
 use endpoint::Topology;
 use protocol::{HashedCommand, Protocol, Result, Stream};
-
-use sharding::hash::Hash;
 
 use crate::{
     arena::CallbackContextArena,
@@ -23,7 +20,7 @@ use crate::{
 };
 
 pub async fn copy_bidirectional<C, P, T>(
-    top: TopologyReadGuard<T>,
+    top: T,
     metrics: Arc<StreamMetrics>,
     client: C,
     parser: P,
@@ -32,11 +29,10 @@ pub async fn copy_bidirectional<C, P, T>(
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + Hash + Clone + 'static,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
-    let top = CheckedTopology::from(top);
     let pipeline = CopyBidirectional {
         pipeline,
         top,
@@ -80,7 +76,7 @@ impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     type Output = Result<()>;
 
@@ -113,7 +109,7 @@ impl<C, P, T> CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     // 解析buffer，并且发送请求.
     #[inline]
@@ -285,7 +281,7 @@ impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     #[inline]
     fn close(&mut self) -> bool {

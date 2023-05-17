@@ -7,7 +7,7 @@ docker ps -a | grep "$container_name" && docker rm -f "$container_name"
 
 docker run --rm -d -v $brz_home:/data1/resource/breeze  --net="host"  --name "$container_name" xinxin111/breeze:githubci106
 
-rm -rf $brz_home/*
+# rm -rf $brz_home/*
 mkdir -p $brz_home/logs
 mkdir -p $brz_home/snapshot
 mkdir -p $brz_home/socks

@@ -19,22 +19,27 @@ pub struct CheckedTopology<T> {
     cb: CallbackPtr,
 }
 
-impl<T: Clone + Topology<Item = Request> + 'static> CheckedTopology<T> {
-    // reader一定是已经初始化过的，否则会UB
-    #[inline]
-    pub fn from(reader: TopologyReadGuard<T>) -> Self {
-        let (top, cb) = Self::refresh_inner(&reader);
-        Self { top, reader, cb }
-    }
-    fn refresh_inner(reader: &TopologyReadGuard<T>) -> (ReadGuard<T>, CallbackPtr) {
+impl<T: Clone + Topology<Item = Request> + 'static> From<TopologyReadGuard<T>>
+    for CheckedTopology<T>
+{
+    fn from(reader: TopologyReadGuard<T>) -> Self {
+        // reader一定是已经初始化过的，否则会UB
         let top = reader.get();
         let cb_top = top.clone();
         let send = Box::new(move |req| cb_top.send(req));
         let cb = Callback::new(send).into();
-        (top, cb)
+        Self { top, reader, cb }
     }
+}
+
+impl<T: Clone + Topology<Item = Request> + 'static> CheckedTopology<T> {
     fn refresh(&mut self) {
-        (self.top, self.cb) = Self::refresh_inner(&self.reader);
+        let top = self.reader.get();
+        let cb_top = top.clone();
+        let send = Box::new(move |req| cb_top.send(req));
+        let cb = Callback::new(send).into();
+        self.top = top;
+        self.cb = cb;
     }
 }
 

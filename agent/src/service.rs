@@ -9,7 +9,7 @@ use ds::chan::Sender;
 use metrics::Path;
 use protocol::{Parser, Result};
 use stream::pipeline::copy_bidirectional;
-use stream::{Backend, Builder, Request, StreamMetrics};
+use stream::{Backend, Builder, CheckedTopology, Request, StreamMetrics};
 
 type Endpoint = Arc<Backend<Request>>;
 type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
@@ -95,7 +95,15 @@ async fn _process_one(
         let ctop = top.clone();
         let metrics = metrics.clone();
         spawn(async move {
-            if let Err(e) = copy_bidirectional(ctop, metrics.clone(), client, p, pipeline).await {
+            if let Err(e) = copy_bidirectional(
+                CheckedTopology::from(ctop),
+                metrics.clone(),
+                client,
+                p,
+                pipeline,
+            )
+            .await
+            {
                 use protocol::Error::*;
                 match e {
                     Quit | Eof | IO(_) => {} // client发送quit协议退出
