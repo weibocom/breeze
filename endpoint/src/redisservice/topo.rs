@@ -181,7 +181,6 @@ where
                 Resource::Redis,
                 service,
                 timeout,
-                Default::default(),
             ),
         }
     }

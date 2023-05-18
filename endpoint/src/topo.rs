@@ -108,23 +108,19 @@ pub trait Builder<P, R, E> {
         rsrc: Resource,
         service: &str,
         timeout: Timeout,
-        option: ResOption,
-    ) -> E;
+    ) -> E{
+        Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
+    }
 
     // TODO: update
-    // fn option_build(
-    //     addr: &str,
-    //     parser: P,
-    //     rsrc: Resource,
-    //     service: &str,
-    //     timeout: Timeout,
-    //     option: ResOption,
-    // ) -> E
-    // where
-    //     E: Endpoint<Item = R>,
-    // {
-    //     todo!("speed up!")
-    // }
+    fn auth_option_build(
+        addr: &str,
+        parser: P,
+        rsrc: Resource,
+        service: &str,
+        timeout: Timeout,
+        option: ResOption,
+    ) -> E;
 }
 
 macro_rules! define_topology {

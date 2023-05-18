@@ -136,7 +136,6 @@ where
                 Resource::Redis,
                 &self.cfg.service,
                 timeout,
-                Default::default(),
             ),
         }
     }

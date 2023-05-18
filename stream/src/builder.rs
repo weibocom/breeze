@@ -19,7 +19,7 @@ pub struct BackendBuilder<P, R> {
 }
 
 impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
-    fn build(
+    fn auth_option_build(
         addr: &str,
         parser: P,
         rsrc: Resource,
