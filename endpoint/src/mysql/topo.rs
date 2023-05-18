@@ -118,14 +118,33 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
-        // let mysql_cmd = raw_req.mysql_cmd();
+      
         self.parser.build_request(req.cmd_mut(), sql);
-
         log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 
         if shard.has_slave() && !req.operation().is_store() {
-            //todo: 访问slave
-            shard.master().send(req);
+            if *req.context_mut() == 0 {
+                if let Some(quota) = shard.slaves.quota() {
+                    req.quota(quota);
+                }
+            }
+            let ctx = super::transmute(req.context_mut());
+            let (idx, endpoint) = if ctx.runs == 0 {
+                shard.select()
+            } else {
+                if (ctx.runs as usize) < shard.slaves.len() {
+                    shard.next(ctx.idx as usize, ctx.runs as usize)
+                } else {
+                    // 说明只有一个从，并且从访问失败了，会通过主访问。
+                    (ctx.idx as usize, &shard.master)
+                }
+            };
+            ctx.idx = idx as u16;
+            ctx.runs += 1;
+            // todo: 目前没有重试逻辑
+            // let try_next = ctx.runs == 1;
+            // req.try_next(try_next);
+            endpoint.1.send(req)
         } else {
             shard.master().send(req);
         }
@@ -157,6 +176,7 @@ where
             self.timeout_master.adjust(ns.basic.timeout_ms_master);
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.selector = ns.basic.selector.as_str().into();
+
             self.user = ns.basic.user.as_str().into();
             self.password = ns.basic.password.as_str().into();
             self.strategist = Strategist::try_from(&ns);
@@ -285,7 +305,7 @@ where
                     slave.disable_single();
                     replicas.push((addr, slave));
                 }
-                let shard = Shard::selector(self.selector, master_addr, master, replicas);
+                let shard = Shard::selector(self.cfg.is_local(), master_addr, master, replicas);
 
                 self.archive_shards
                     .entry(i.0.to_string())
@@ -356,10 +376,10 @@ impl<E: discovery::Inited> Shard<E> {
 // todo: 这一段跟redis是一样的，这段可以提到外面去
 impl<E> Shard<E> {
     #[inline]
-    fn selector(_s: Selector, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(local: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
-            slaves: Distance::with_local(replicas, false),
+            slaves: Distance::with_local(replicas, local),
         }
     }
     #[inline]
@@ -370,14 +390,14 @@ impl<E> Shard<E> {
     fn master(&self) -> &E {
         &self.master.1
     }
-    // #[inline]
-    // fn select(&self) -> (usize, &(String, E)) {
-    //     unsafe { self.slaves.unsafe_select() }
-    // }
-    // #[inline]
-    // fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
-    //     unsafe { self.slaves.unsafe_next(idx, runs) }
-    // }
+    #[inline]
+    fn select(&self) -> (usize, &(String, E)) {
+        self.slaves.unsafe_select()
+    }
+    #[inline]
+    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+        unsafe { self.slaves.unsafe_next(idx, runs) }
+    }
 }
 
 // todo: 这一段跟redis是一样的，这段可以提到外面去
