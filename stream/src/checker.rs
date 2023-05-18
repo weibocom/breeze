@@ -87,9 +87,9 @@ impl<P, Req> BackendChecker<P, Req> {
                     s: &mut stream,
                     parser: self.parser.clone(),
                 };
-                if let Err(e) = auth.await {
+                if let Err(_e) = auth.await {
                     //todo 需要减一吗，listen_failed好像没有减
-                    log::warn!("+++ auth err {} to: {}", e, self.addr);
+                    log::warn!("+++ auth err {} to: {}", _e, self.addr);
                     auth_failed += 1;
                     stream.cancel();
                     continue;

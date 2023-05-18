@@ -27,10 +27,8 @@ impl<'a, C> Reader<'a, C> {
             Ok(())
         } else {
             if self.b == 0 {
-                log::warn!(" found BufferFull n: {}, b:{}", self.n, self.b);
                 Err(Error::BufferFull)
             } else {
-                log::warn!(" found Eof in check n: {}, b:{}", self.n, self.b);
                 Err(Error::Eof)
             }
         }
