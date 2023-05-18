@@ -1,24 +1,18 @@
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
-use ds::time::Duration;
-use protocol::mysql::mcpacket::Binary;
+use protocol::kv::Binary;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
-use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey};
 use sharding::Distance;
 use sharding::Selector;
 
 use crate::dns::DnsConfig;
-use crate::mysql::config::ARCHIVE_DEFAULT_KEY;
 use crate::mysql::strategy::Strategy;
 use crate::Builder;
 use crate::Single;
@@ -123,21 +117,11 @@ where
         );
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
-        log::debug!("+++ {} send {} => {:?}", self.service, shard_idx, req);
-
-        log::debug!(
-            "+++ {} send sql[{}] after build_request {}/{}/{} => {:?}",
-            self.service,
-            sql,
-            shards.len(),
-            req.hash(),
-            shard_idx,
-            req
-        );
 
       
         self.parser.build_request(req.cmd_mut(), sql);
-    
+        log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
+
         if shard.has_slave() && !req.operation().is_store() {
             if *req.context_mut() == 0 {
                 if let Some(quota) = shard.slaves.quota() {

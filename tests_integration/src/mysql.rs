@@ -14,10 +14,11 @@ fn get() {
 
 #[test]
 fn time_testst() {
-    let id = 4839120888922294;
-    let mills = UuidHelper::get_time(id) * 1000;
+    let id = 4839120888922294i64;
+    let s = id.unix_secs();
     let display = chrono::Utc
-        .timestamp_millis(mills)
+        .timestamp_opt(s, 0)
+        .unwrap()
         .with_timezone(&Shanghai)
         .format("%Y/%m/%d %H:%M")
         .to_string();

@@ -3,13 +3,13 @@ use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{atomic::AtomicBool, Arc};
-use std::task::{Context, Poll};
+use std::task::Poll;
 
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream, Writer};
+use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream};
 
 use crate::handler::Handler;
 use ds::chan::mpsc::Receiver;
@@ -87,9 +87,9 @@ impl<P, Req> BackendChecker<P, Req> {
                     s: &mut stream,
                     parser: self.parser.clone(),
                 };
-                if let Err(e) = auth.await {
+                if let Err(_e) = auth.await {
                     //todo 需要减一吗，listen_failed好像没有减
-                    log::warn!("+++ auth err {} to: {}", e, self.addr);
+                    log::warn!("+++ auth err {} to: {}", _e, self.addr);
                     auth_failed += 1;
                     stream.cancel();
                     continue;
@@ -100,7 +100,7 @@ impl<P, Req> BackendChecker<P, Req> {
             self.init.on();
             log::debug!("handler started:{:?} with: {}", self.path, self.addr);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, stream, p, rtt, self.addr.as_str());
+            let handler = Handler::from(rx, stream, p, rtt);
             let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             if let Err(e) = handler.await {
                 log::info!("backend error {:?} => {:?}", path_addr, e);

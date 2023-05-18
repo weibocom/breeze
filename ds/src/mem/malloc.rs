@@ -11,6 +11,7 @@ mod inner {
     use mimalloc::MiMalloc;
     use std::alloc::{GlobalAlloc, Layout};
     use std::sync::atomic::{AtomicU64, Ordering::*};
+
     static ALLOC: CachePadded<AtomicU64> = CachePadded::new(AtomicU64::new(0));
     static FREE: CachePadded<AtomicU64> = CachePadded::new(AtomicU64::new(0));
     static ALLOC_OBJ: CachePadded<AtomicU64> = CachePadded::new(AtomicU64::new(0));
