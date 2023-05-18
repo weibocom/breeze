@@ -1,17 +1,20 @@
 use ds::{cow, CowReadHandle, CowWriteHandle};
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    ops::Deref,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 pub trait TopologyGroup {}
 
-pub trait TopologyRead<T> {
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O;
-}
+// pub trait TopologyRead<T> {
+//     fn do_with<F, O>(&self, f: F) -> O
+//     where
+//         F: Fn(&T) -> O;
+// }
 
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
@@ -78,12 +81,20 @@ where
     updates: Arc<AtomicUsize>,
 }
 
-impl<T> TopologyRead<T> for TopologyReadGuard<T> {
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O,
-    {
-        self.inner.read(|t| f(t))
+// impl<T: Clone> TopologyRead<T> for TopologyReadGuard<T> {
+//     fn do_with<F, O>(&self, f: F) -> O
+//     where
+//         F: Fn(&T) -> O,
+//     {
+//         self.inner.do_with(|t| f(t))
+//     }
+// }
+
+impl<T> Deref for TopologyReadGuard<T> {
+    type Target = CowReadHandle<T>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
@@ -93,7 +104,7 @@ where
 {
     #[inline]
     pub fn inited(&self) -> bool {
-        self.updates.load(Ordering::Relaxed) > 0 && self.do_with(|t| t.inited())
+        self.updates.load(Ordering::Relaxed) > 0 && self.inner.get().inited()
     }
 }
 
@@ -138,15 +149,15 @@ where
     }
 }
 
-impl<T> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
-    #[inline]
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O,
-    {
-        (**self).do_with(f)
-    }
-}
+// impl<T: Clone> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
+//     #[inline]
+//     fn do_with<F, O>(&self, f: F) -> O
+//     where
+//         F: Fn(&T) -> O,
+//     {
+//         (**self).do_with(f)
+//     }
+// }
 
 impl<T> TopologyReadGuard<T> {
     #[inline]

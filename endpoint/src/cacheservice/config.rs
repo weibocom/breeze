@@ -35,6 +35,16 @@ pub struct Namespace {
     pub timeout_ms_slave: u32,
     #[serde(default)]
     pub local_affinity: bool,
+    #[serde(default)]
+    pub flag: u32, // 通过bit位，设置不同的策略/属性，详见下面Flag实现
+}
+
+pub struct Flag;
+impl Flag {
+    // 通过bit位，设置不同的策略/属性；从低位开始依次排列
+
+    // 默认值0: 此mc后端对应有存储(例如MySQL)
+    pub const BACKEND_NO_STORAGE_BIT_LEN : u32 = 1;
 }
 
 impl Namespace {
@@ -46,6 +56,11 @@ impl Namespace {
                 "distance" => true,
                 _ => false,
             }
+    }
+    #[inline]
+    pub(crate) fn is_read_twice(&self) -> bool {
+        // 后端没有存储，第一次访问miss时，需要再尝试一次
+        self.flag & Flag::BACKEND_NO_STORAGE_BIT_LEN == 1
     }
     //pub(crate) fn local_len(&self) -> usize {
     //    1 + self.master_l1.len()

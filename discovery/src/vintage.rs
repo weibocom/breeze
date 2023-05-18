@@ -6,7 +6,7 @@ use std::{
 };
 
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use url::Url;
 
 #[derive(Clone)]
@@ -14,13 +14,13 @@ pub struct Vintage {
     client: Client,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Node {
     index: String,
     data: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Response {
     message: String,
     node: Node,
