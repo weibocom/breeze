@@ -18,6 +18,7 @@ pub struct CacheService<B, E, Req, P> {
     parser: P,
     exp_sec: u32,
     force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
+    read_twice: bool,  // true：mc后面没有存储且无L1场景，读Master miss之后需要多读一次
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -31,6 +32,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
             _marker: Default::default(),
+            read_twice: false,
         }
     }
 }
@@ -141,9 +143,12 @@ where
         };
         (idx, try_next, write_back)
     }
-    // 第一次访问到从，下一次访问主
-    // 第一次访问到主，下一次访问从
+    // 第一次访问到L1，下一次访问M
+    // 第一次访问到M，下一次访问L1
     // 最多访问两次
+    // 对于mc做存储场景，也最多访问两次
+    //   若有L1，则两次访问分布在M、L1
+    //   若无L1，则两次访问分布在M、S；#654
     #[inline]
     fn context_get(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
@@ -151,7 +156,7 @@ where
             idx = self.streams.select_idx();
             // 第一次访问，没有取到master，则下一次一定可以取到master
             // 如果取到了master，有slave也可以继续访问
-            try_next = self.streams.local_len() > 1;
+            try_next = (self.streams.local_len() > 1) || self.read_twice && (self.streams.len() > 1);
             write_back = false;
         } else {
             let last_idx = ctx.index();
@@ -161,6 +166,7 @@ where
             if last_idx != 0 {
                 idx = 0;
             } else {
+                // #654场景，这里idx会选到S
                 idx = self.streams.select_next_idx(0, 1);
             }
             write_back = true;
@@ -182,6 +188,7 @@ where
             self.hasher = Hasher::from(&ns.hash);
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
             self.force_write_all = ns.force_write_all;
+            self.read_twice = ns.is_read_twice();
             let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();

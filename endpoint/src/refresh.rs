@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{Endpoint, Topology, TopologyCheck};
-use discovery::{TopologyRead, TopologyReadGuard};
+use discovery::TopologyReadGuard;
 use sharding::hash::{Hash, HashKey};
 
 use protocol::{
@@ -125,7 +125,7 @@ struct SharedTop<T> {
 impl<T: Clone + Endpoint<Item = Request> + 'static> SharedTop<T> {
     fn new(reader: &TopologyReadGuard<T>) -> Self {
         let cycle = reader.cycle();
-        let top = reader.do_with(|t| t.clone());
+        let top = reader.copy();
         let t = Arc::new(top);
         let cb_top = t.clone();
         let send = Box::new(move |req| cb_top.send(req));
