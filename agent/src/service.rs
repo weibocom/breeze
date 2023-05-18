@@ -92,18 +92,10 @@ async fn _process_one(
         //     tokio::time::sleep(Duration::from_millis(10)).await;
         // }
         // let ctop = RefreshTopology::from(top.clone());
-        let ctop = top.clone();
+        let ctop = CheckedTopology::from(top.clone());
         let metrics = metrics.clone();
         spawn(async move {
-            if let Err(e) = copy_bidirectional(
-                CheckedTopology::from(ctop),
-                metrics.clone(),
-                client,
-                p,
-                pipeline,
-            )
-            .await
-            {
+            if let Err(e) = copy_bidirectional(ctop, metrics.clone(), client, p, pipeline).await {
                 use protocol::Error::*;
                 match e {
                     Quit | Eof | IO(_) => {} // client发送quit协议退出

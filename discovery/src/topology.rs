@@ -98,6 +98,13 @@ impl<T> Deref for TopologyReadGuard<T> {
     }
 }
 
+impl<T> TopologyReadGuard<T> {
+    #[inline]
+    pub fn version(&self) -> usize {
+        self.updates.load(Ordering::Acquire)
+    }
+}
+
 impl<T> TopologyReadGuard<T>
 where
     T: Clone + Inited,
