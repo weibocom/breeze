@@ -118,7 +118,6 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
-      
         self.parser.build_request(req.cmd_mut(), sql);
         log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 
