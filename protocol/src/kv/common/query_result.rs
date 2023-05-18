@@ -423,8 +423,8 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> Iterator for QueryResult<'c
                             self.state = InSet(cols.clone());
                             Some(Ok(row.into()))
                         }
-                        Err(e) => {
-                            log::warn!("+++ parsed row failed: {:?}, data: {:?}", e, pld);
+                        Err(_e) => {
+                            log::warn!("+++ parsed row failed: {:?}, data: {:?}", _e, pld);
                             None
                         }
                     }

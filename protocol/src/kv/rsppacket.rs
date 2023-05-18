@@ -381,8 +381,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
                 encoded.extend(&encoded_raw[0..]);
                 return Ok(encoded);
             }
-            Err(e) => {
-                log::warn!("encode request failed:{:?}", e);
+            Err(_e) => {
+                log::warn!("encode request failed:{:?}", _e);
                 return Err(Error::WriteResponseErr);
             }
         }
