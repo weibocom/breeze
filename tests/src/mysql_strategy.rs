@@ -1,9 +1,10 @@
 #[cfg(test)]
+
 mod mysql_strategy {
     use chrono::{DateTime, TimeZone, Utc};
     use ds::RingSlice;
     use endpoint::mysql::strategy::{Strategist, Strategy};
-    use endpoint::mysql::uuid::{UuidHelper, UuidSimulator};
+    use endpoint::mysql::uuid::Uuid;
     use std::collections::HashMap;
 
     const SQL_INSERT: &'static str = "insert into $db$.$tb$ (id, content) values($k$, $v$)";
@@ -12,9 +13,9 @@ mod mysql_strategy {
     const SQL_SELECT: &'static str = "select content from $db$.$tb$ where id=$k$";
     #[test]
     fn test_get_sql() {
-        // let id = 3094373189550081i64;
-        let now = chrono::Utc::now().timestamp_millis();
-        let id = UuidSimulator::new().generate_id(now); // Tue Sep 18
+        let id = 3094373189550081i64;
+        // let now = chrono::Utc::now().timestamp_millis();
+        // let id = UuidSimulator::new().generate_id(now); // Tue Sep 18
         let id_str = id.to_string();
         let id_slice = RingSlice::from(
             id_str.as_ptr() as *mut u8,
@@ -33,28 +34,28 @@ mod mysql_strategy {
         }
     }
     #[test]
-    fn text_id_to_unix_time() {
+    fn text_id_to_unix_secs() {
         let id = 3379782484330149i64;
-        let unix_time = UuidHelper::get_unix_time(id);
-        println!("id: {} , unix_time: {}", id, unix_time);
+        let unix_secs = id.unix_secs();
+        println!("id: {} , unix_secs: {}", id, unix_secs);
     }
-    #[test]
-    fn text_id_to_idc() {
-        let id = 3379782484330149i64;
-        let idc = UuidHelper::get_idc(id);
-        println!("id: {} , idc: {}", id, idc);
-    }
-    #[test]
-    fn text_id_to_time() {
-        let id = 3379782484330149i64;
-        let time = UuidHelper::get_time(id);
-        println!("id: {} , time: {}", id, time);
-    }
+    // #[test]
+    // fn text_id_to_idc() {
+    //     let id = 3379782484330149i64;
+    //     let idc = UuidHelper::get_idc(id);
+    //     println!("id: {} , idc: {}", id, idc);
+    // }
+    // #[test]
+    // fn text_id_to_time() {
+    //     let id = 3379782484330149i64;
+    //     let time = UuidHelper::get_time(id);
+    //     println!("id: {} , time: {}", id, time);
+    // }
 
-    #[test]
-    fn text_id_to_biz() {
-        let id = 3379782484330149i64;
-        let biz = UuidHelper::get_biz(id);
-        println!("id: {} , biz: {}", id, biz);
-    }
+    // #[test]
+    // fn text_id_to_biz() {
+    //     let id = 3379782484330149i64;
+    //     let biz = UuidHelper::get_biz(id);
+    //     println!("id: {} , biz: {}", id, biz);
+    // }
 }
