@@ -19,6 +19,9 @@ byteorder = "1.4.3"
 bytes = "1.0.1"
 tokio.workspace = true
 
+openssl = "0.10.52"
+base64 = "0.21.0"
+
 enum_dispatch = "0.3.8"
 serde = { version = "1.0.126", features = ["derive"] }
 serde_derive = "1.0.126"
