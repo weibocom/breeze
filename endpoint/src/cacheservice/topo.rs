@@ -221,10 +221,10 @@ where
 
             use discovery::distance::{Balance, ByDistance};
             let master = ns.master.clone();
-            let timeslice = ns.is_timeslice();
+            let is_performance = ns.is_performance();
             let (mut local_len, mut backends) = ns.take_backends();
             //let local = true; 开启local，则local_len可能会变小，与按quota预期不符
-            if false && timeslice && local_len > 1 {
+            if false && is_performance && local_len > 1 {
                 backends.balance(&master);
                 local_len = backends.sort(master);
             }
@@ -236,7 +236,7 @@ where
                 let e = self.build(old, group, dist, namespace, to);
                 new.push(e);
             }
-            self.streams.update(new, local_len, timeslice);
+            self.streams.update(new, local_len, is_performance);
         }
         // old 会被dopped
     }

@@ -232,3 +232,23 @@ define_topology! {
     CacheService<B, E, R, P>, CacheService, "cs";
     PhantomService<B, E, R, P>, PhantomService, "pt"
 }
+
+// "distance"或者"timeslice"，即为开启性能模式
+// 其他按照random处理
+#[inline]
+pub fn is_performance(performance: &str) -> bool {
+    match performance {
+        "distance" | "timeslice" => true,
+        _ => false,
+    }
+}
+
+// 从环境变量BREEZE_LOCAL的值获取是否开启后端资源访问的性能模式
+#[inline]
+pub fn is_performance_from_env() -> bool {
+    is_performance(
+        std::env::var("BREEZE_LOCAL")
+            .unwrap_or("".to_string())
+            .as_str(),
+    )
+}

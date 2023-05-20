@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 //use sharding::distribution::{DIST_ABS_MODULA, DIST_MODULA};
 
+use crate::{is_performance, is_performance_from_env};
 use crate::{Timeout, TO_REDIS_M, TO_REDIS_S};
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -35,17 +36,9 @@ pub struct Basic {
 }
 
 impl RedisNamespace {
-    // BREEZE_LOCAL有三种取值：空、random、其他；空按照random处理
-    // 非random，即为timeslice策略
-    pub(super) fn is_timeslice(&self) -> bool {
-        (!self.basic.selector.is_empty() && self.basic.selector.as_str() != "random")
-            || match std::env::var("BREEZE_LOCAL")
-                .unwrap_or("random".to_string())
-                .as_str()
-            {
-                "random" => false,
-                _ => true,
-            }
+    #[inline]
+    pub(super) fn is_performance(&self) -> bool {
+        is_performance(self.basic.selector.as_str()) || is_performance_from_env()
     }
 
     pub(super) fn try_from(cfg: &str) -> Option<Self> {

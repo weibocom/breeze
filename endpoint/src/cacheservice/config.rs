@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use sharding::hash;
 //use ds::time::Duration;
 
+use crate::is_performance_from_env;
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Hash)]
 pub struct Namespace {
     #[serde(default)]
@@ -48,17 +50,9 @@ impl Flag {
 }
 
 impl Namespace {
-    pub(crate) fn is_timeslice(&self) -> bool {
-        // BREEZE_LOCAL有三种取值：空、random、其他；空按照random处理
-        // 非random，即为timeslice策略
-        self.local_affinity
-            || match std::env::var("BREEZE_LOCAL")
-                .unwrap_or("random".to_string())
-                .as_str()
-            {
-                "random" => false,
-                _ => true,
-            }
+    #[inline]
+    pub(crate) fn is_performance(&self) -> bool {
+        self.local_affinity || is_performance_from_env()
     }
     #[inline]
     pub(crate) fn is_read_twice(&self) -> bool {
