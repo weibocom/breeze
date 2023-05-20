@@ -58,13 +58,13 @@ impl<T: Addr> Distance<T> {
         debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
         Some(unsafe { self.replicas.get_unchecked(idx).1.clone() })
     }
-    pub fn with_timeslice(replicas: Vec<T>, timeslice: bool) -> Self {
+    pub fn with_performance(replicas: Vec<T>, is_performance: bool) -> Self {
         assert_ne!(replicas.len(), 0);
         let mut me = Self::new();
         me.refresh(replicas);
 
-        // 开启timeslice，即开启后端使用quota
-        me.backend_quota = timeslice;
+        // 性能模式当前实现为按时间quota访问后端资源
+        me.backend_quota = is_performance;
 
         use rand::seq::SliceRandom;
         use rand::thread_rng;
@@ -75,7 +75,7 @@ impl<T: Addr> Distance<T> {
     }
     #[inline]
     pub fn from(replicas: Vec<T>) -> Self {
-        Self::with_timeslice(replicas, true)
+        Self::with_performance(replicas, true)
     }
     // 同时更新配额
     fn refresh(&mut self, replicas: Vec<T>) {
@@ -84,8 +84,8 @@ impl<T: Addr> Distance<T> {
             .map(|r| (r, BackendQuota::default()))
             .collect();
     }
-    pub fn update(&mut self, replicas: Vec<T>, topn: usize, timeslice: bool) {
-        self.backend_quota = timeslice;
+    pub fn update(&mut self, replicas: Vec<T>, topn: usize, is_performance: bool) {
+        self.backend_quota = is_performance; // 性能模式当前实现为按时间quota访问后端资源
         self.refresh(replicas);
         self.topn(topn);
     }
