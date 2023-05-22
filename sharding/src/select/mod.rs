@@ -8,28 +8,28 @@ pub use by_distance::*;
 
 //use discovery::distance::*;
 
-// #[derive(Clone, Copy)]
-// pub enum Selector {
-//     Random,
-//     ByDistance,
-// }
-// impl Selector {
-//     pub fn is_local(&self) -> bool {
-//         match self {
-//             Self::Random => false,
-//             Self::ByDistance => true,
-//         }
-//     }
-// }
-// impl From<&str> for Selector {
-//     #[inline]
-//     fn from(selector: &str) -> Self {
-//         match selector {
-//             "random" => Self::Random,
-//             _ => Self::ByDistance,
-//         }
-//     }
-// }
+#[derive(Clone, Copy)]
+pub enum Selector {
+    Random,
+    ByDistance,
+}
+impl Selector {
+    pub fn is_local(&self) -> bool {
+        match self {
+            Self::Random => false,
+            Self::ByDistance => true,
+        }
+    }
+}
+impl From<&str> for Selector {
+    #[inline]
+    fn from(selector: &str) -> Self {
+        match selector {
+            "random" => Self::Random,
+            _ => Self::ByDistance,
+        }
+    }
+}
 
 //#[derive(Clone)]
 //pub enum ReplicaSelect<T> {
