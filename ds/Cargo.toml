@@ -17,6 +17,9 @@ mimalloc = { version = "0.1.34", default-features = false }
 cache-padded = "1.2.0"
 ctor = "*"
 
+openssl = "0.10.52"
+base64 = "0.21.0"
+
 [features]
 default = ["heap-stats", "tsc"]
 heap-stats = []
