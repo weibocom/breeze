@@ -6,8 +6,6 @@ use base64::{
     engine::general_purpose,
     Engine as _,
 };
-use openssl::pkey::{PKey};
-use openssl::rsa::Padding;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct MysqlNamespace {
@@ -87,29 +85,16 @@ impl MysqlNamespace {
             }
 
             // 解密
-            if let Ok(password) = ns.decrypt_password() {
+            let key_pem = std::env::var("MYSQL_PRIVATE_KEY").expect("MISSING_MYSQL_PRIVATE_KEY");
+            let encrypted_data = general_purpose::STANDARD.decode(ns.basic.password.as_bytes()).expect("INVALID_PASSWORD");
+            if let Ok(password) = ds::auth::decrypt_password(key_pem, encrypted_data) {
                 ns.basic.password = password;
             }else {
-                log::error!("failed to decrypt mysql password for {}:{}",ns.basic.user,ns.basic.db_name);
+                log::error!("failed to decrypt mysql password");
+                return None;
             }
             return Some(ns);
         }
         nso
-    }
-
-    #[inline]
-    // 解密密码
-    fn decrypt_password(&self) -> Result<String, Box<dyn std::error::Error>> {
-        let key_pem = std::env::var("MYSQL_PRIVATE_KEY")?;
-        let private_key = PKey::private_key_from_pem(key_pem.as_bytes())?;
-        //将 base64 编码的字符串转换为字节数据
-        let encrypted_data = general_purpose::STANDARD.decode(self.basic.password.as_bytes())?;
-        let rsa = private_key.rsa()?;
-        // 缓冲区大小必须 >= 密钥长度，目前使用2048位的密钥，所以缓冲区大小为256字节
-        let mut decrypted_data = vec![0; rsa.size() as usize];
-        rsa.private_decrypt(&encrypted_data, &mut decrypted_data, Padding::PKCS1)?;
-        // 去除多余的0，只保留原始数据
-        decrypted_data.retain(|&x| x != 0);
-        Ok(String::from_utf8(decrypted_data).unwrap())
     }
 }
