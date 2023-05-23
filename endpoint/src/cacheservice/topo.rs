@@ -1,3 +1,4 @@
+use crate::cacheservice::config::CacheserviceFlager;
 use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource, TryNextType};
@@ -18,7 +19,7 @@ pub struct CacheService<B, E, Req, P> {
     parser: P,
     exp_sec: u32,
     force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
-    backend_no_storage: bool,  // true：mc后面没有存储
+    backend_no_storage: bool, // true：mc后面没有存储
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -170,7 +171,8 @@ where
             // 第一次访问，没有取到master，则下一次一定可以取到master
             // 如果取到了master，有slave也可以继续访问
             // 后端无storage且后端资源不止一组，可以多访问一次
-            try_next = (self.streams.local_len() > 1) || self.backend_no_storage && (self.streams.len() > 1);
+            try_next = (self.streams.local_len() > 1)
+                || self.backend_no_storage && (self.streams.len() > 1);
             write_back = false;
         } else {
             let last_idx = ctx.index();
@@ -201,7 +203,7 @@ where
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
-            self.force_write_all = ns.force_write_all;
+            self.force_write_all = ns.force_write_all || ns.flag.force_write_all();
             self.backend_no_storage = ns.backend_no_storage();
             let dist = &ns.distribution.clone();
 
