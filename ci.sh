@@ -7,6 +7,7 @@ docker ps -a | grep "$container_name" && docker rm -f "$container_name"
 
 docker run --rm -d -v $brz_home:/data1/resource/breeze  --net="host"  --name "$container_name" xinxin111/breeze:githubci106
 
+# rm -rf $brz_home/*
 mkdir -p $brz_home/logs
 mkdir -p $brz_home/snapshot
 mkdir -p $brz_home/socks
@@ -28,6 +29,7 @@ export mc=localhost:9301
 export phantom=localhost:9303
 export min_key=1
 export max_key=10000
+export socks_dir=$brz_home/socks
 
 cargo test -p tests
 

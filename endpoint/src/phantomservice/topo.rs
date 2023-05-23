@@ -38,7 +38,7 @@ impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> Topology for PhantomService<B, E, Req, P>
+impl<B, E, Req, P> Hash for PhantomService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -49,6 +49,19 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.hasher.hash(k)
     }
+}
+
+impl<B, E, Req, P> Topology for PhantomService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+    B: Send + Sync,
+{
+    // #[inline]
+    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
+    //     self.hasher.hash(k)
+    // }
 }
 
 impl<B, E, Req, P> Endpoint for PhantomService<B, E, Req, P>

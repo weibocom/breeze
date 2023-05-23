@@ -10,7 +10,7 @@ impl<T: Clone> CowWriteHandle<T> {
     pub(crate) fn from(r_handle: CowReadHandle<T>) -> Self {
         Self { r_handle }
     }
-    pub fn write<F: FnMut(&mut T)>(&mut self, mut f: F) {
+    pub fn write<F: FnOnce(&mut T)>(&mut self, f: F) {
         let mut t: T = self.r_handle.copy();
         f(&mut t);
         self.update(t);
