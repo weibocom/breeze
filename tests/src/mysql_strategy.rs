@@ -3,8 +3,8 @@
 mod mysql_strategy {
     use chrono::{DateTime, TimeZone, Utc};
     use ds::RingSlice;
-    use endpoint::mysql::strategy::{Strategist, Strategy};
-    use endpoint::mysql::uuid::Uuid;
+    use endpoint::kv::strategy::{Strategist, Strategy};
+    use endpoint::kv::uuid::Uuid;
     use std::collections::HashMap;
 
     const SQL_INSERT: &'static str = "insert into $db$.$tb$ (id, content) values($k$, $v$)";
