@@ -51,7 +51,7 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for CacheService<B, E, Req, P>
+impl<B, E, Req, P> Hash for CacheService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -62,6 +62,19 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.hasher.hash(k)
     }
+}
+
+impl<B, E, Req, P> Topology for CacheService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+    B: Send + Sync,
+{
+    // #[inline]
+    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
+    //     self.hasher.hash(k)
+    // }
     #[inline]
     fn exp_sec(&self) -> u32 {
         self.exp_sec

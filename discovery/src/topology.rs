@@ -8,7 +8,7 @@ use std::{
     },
 };
 
-pub trait TopologyGroup {}
+// pub trait TopologyGroup {}
 
 // pub trait TopologyRead<T> {
 //     fn do_with<F, O>(&self, f: F) -> O
@@ -98,12 +98,20 @@ impl<T> Deref for TopologyReadGuard<T> {
     }
 }
 
+impl<T> TopologyReadGuard<T> {
+    #[inline]
+    pub fn version(&self) -> usize {
+        self.updates.load(Ordering::Acquire)
+    }
+}
+
 impl<T> TopologyReadGuard<T>
 where
     T: Clone + Inited,
 {
     #[inline]
     pub fn inited(&self) -> bool {
+        //这一层是否还有必要，只判断后面条件不行吗？
         self.updates.load(Ordering::Relaxed) > 0 && self.inner.get().inited()
     }
 }
@@ -159,9 +167,34 @@ where
 //     }
 // }
 
-impl<T> TopologyReadGuard<T> {
-    #[inline]
-    pub fn cycle(&self) -> usize {
-        self.updates.load(Ordering::Acquire)
-    }
-}
+// impl<T> TopologyReadGuard<T> {
+//     #[inline]
+//     pub fn cycle(&self) -> usize {
+//         self.updates.load(Ordering::Acquire)
+//     }
+// }
+
+// impl<'a, T> Deref for RefreshTopology<'a, T> {
+//     type Target = T;
+//     fn deref(&self) -> &Self::Target {
+//         self.top.as_ref()
+//     }
+// }
+
+// pub trait RefreshTop<T> {
+//     fn get(&self) -> Arc<T>;
+//     fn get_inner(&self) -> &T;
+//     fn refresh(&mut self);
+// }
+
+// impl<T: Clone  + Inited> RefreshTop<T> for RefreshTopology<'_, T> {
+//     fn get(&self) -> Arc<T> {
+//         self.top.clone()
+//     }
+//     fn refresh(&mut self) {
+//         self.top = self.reader.get();
+//     }
+//     fn get_inner(&self) -> &T {
+//         &self.top
+//     }
+// }

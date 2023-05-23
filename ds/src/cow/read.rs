@@ -50,6 +50,7 @@ pub struct CowReadHandleInner<T> {
     _t: std::marker::PhantomData<Arc<T>>,
 }
 
+#[derive(Clone)]
 pub struct ReadGuard<T>(Arc<T>);
 impl<T> std::ops::Deref for ReadGuard<T> {
     type Target = T;
@@ -78,7 +79,7 @@ impl<T: Clone> CowReadHandleInner<T> {
         ReadGuard(new)
     }
     pub fn copy(&self) -> T {
-        self.get().clone()
+        T::clone(&self.get())
     }
 
     pub(super) fn update(&self, t: T) {
