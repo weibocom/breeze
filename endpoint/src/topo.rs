@@ -102,13 +102,7 @@ where
 }
 
 pub trait Builder<P, R, E> {
-    fn build(
-        addr: &str,
-        parser: P,
-        rsrc: Resource,
-        service: &str,
-        timeout: Timeout,
-    ) -> E{
+    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {
         Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
     }
 
@@ -227,9 +221,9 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
     };
 }
 
+use crate::kv::topo::KvService;
 #[cfg(feature = "mq")]
 use crate::msgque::topo::MsgQue;
-use crate::mysql::topo::MysqlService;
 
 use crate::cacheservice::topo::CacheService;
 use crate::phantomservice::topo::PhantomService;
@@ -240,5 +234,7 @@ define_topology! {
     RedisService<B, E, R, P>, RedisService, "rs";
     CacheService<B, E, R, P>, CacheService, "cs";
     PhantomService<B, E, R, P>, PhantomService, "pt";
-    MysqlService<B, E, R, P>, MysqlService, "mysql"
+    // TODO 待client修改完毕，去掉
+    // MysqlService<B, E, R, P>, MysqlService, "mysql"
+    KvService<B, E, R, P>, KvService, "kv"
 }

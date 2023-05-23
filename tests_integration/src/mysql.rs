@@ -1,7 +1,7 @@
 use crate::mc_helper::*;
 use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
-use endpoint::mysql::uuid::*;
+use endpoint::kv::uuid::*;
 use memcache::MemcacheError;
 
 #[test]

@@ -2,7 +2,7 @@ use enum_dispatch::enum_dispatch;
 
 use sharding::hash::Hash;
 
-use crate::kv::Mysql;
+use crate::kv::Kv;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
@@ -14,7 +14,9 @@ pub enum Parser {
     McBin(MemcacheBinary),
     Redis(Redis),
     MsgQue(MsgQue),
-    Mysql(Mysql),
+    // TODO 暂时保留，待client修改上线完毕后，清理
+    // Mysql(Kv),
+    Kv(Kv),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
@@ -22,7 +24,8 @@ impl Parser {
             "mc" => Ok(Self::McBin(Default::default())),
             "redis" | "phantom" => Ok(Self::Redis(Default::default())),
             "msgque" => Ok(Self::MsgQue(Default::default())),
-            "mysql" => Ok(Self::Mysql(Default::default())),
+            // "mysql" => Ok(Self::Mysql(Default::default())),
+            "kv" => Ok(Self::Kv(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }
@@ -33,7 +36,8 @@ impl Parser {
             Self::Redis(_) => true,
             // Self::Phantom(_) => true,
             Self::MsgQue(_) => false,
-            Self::Mysql(_) => false,
+            // Self::Mysql(_) => false,
+            Self::Kv(_) => false,
         }
     }
 }

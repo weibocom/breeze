@@ -46,7 +46,7 @@ pub mod prelude {
 }
 
 #[derive(Clone, Default)]
-pub struct Mysql {}
+pub struct Kv {}
 
 #[derive(Debug, Clone, Copy)]
 pub(self) enum HandShakeStatus {
@@ -56,7 +56,7 @@ pub(self) enum HandShakeStatus {
     AuthSucceed,
 }
 
-impl Protocol for Mysql {
+impl Protocol for Kv {
     fn handshake(
         &self,
         stream: &mut impl Stream,
@@ -272,7 +272,7 @@ impl Protocol for Mysql {
     }
 }
 
-impl Mysql {
+impl Kv {
     fn handshake_inner(
         &self,
         stream: &mut impl Stream,
