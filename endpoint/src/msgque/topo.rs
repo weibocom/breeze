@@ -109,6 +109,19 @@ where
 
 const PADDING: Hasher = Hasher::Padding(Padding);
 
+impl<B, E, Req, P> Hash for MsgQue<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+    B: Send + Sync,
+{
+    #[inline]
+    fn hash<K: HashKey>(&self, k: &K) -> i64 {
+        PADDING.hash(k)
+    }
+}
+
 impl<B, E, Req, P> Topology for MsgQue<B, E, Req, P>
 where
     B: Send + Sync,
@@ -116,10 +129,10 @@ where
     Req: Request,
     P: Protocol,
 {
-    #[inline]
-    fn hash<K: HashKey>(&self, k: &K) -> i64 {
-        PADDING.hash(k)
-    }
+    // #[inline]
+    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
+    //     PADDING.hash(k)
+    // }
     #[inline]
     fn exp_sec(&self) -> u32 {
         log::error!("msg queue does't support expire");

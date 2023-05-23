@@ -34,7 +34,8 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
         }
     }
 }
-impl<B, E, Req, P> Topology for RedisService<B, E, Req, P>
+
+impl<B, E, Req, P> Hash for RedisService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -45,6 +46,19 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.hasher.hash(k)
     }
+}
+
+impl<B, E, Req, P> Topology for RedisService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+    B: Send + Sync,
+{
+    // #[inline]
+    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
+    //     self.hasher.hash(k)
+    // }
 }
 
 impl<B: Send + Sync, E, Req, P> Endpoint for RedisService<B, E, Req, P>
