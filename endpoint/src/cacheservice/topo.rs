@@ -1,4 +1,3 @@
-use crate::cacheservice::config::CacheserviceFlager;
 use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource, TryNextType};
@@ -203,7 +202,8 @@ where
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
-            self.force_write_all = ns.force_write_all || ns.flag.force_write_all();
+            use protocol::Bit;
+            self.force_write_all = ns.force_write_all || ns.flag.get(super::config::FlagFields::ForceWriteAll as u8);
             self.backend_no_storage = ns.backend_no_storage();
             let dist = &ns.distribution.clone();
 

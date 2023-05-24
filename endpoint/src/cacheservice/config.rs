@@ -40,40 +40,19 @@ pub struct Namespace {
 }
 
 // 通过bit位，设置不同的策略/属性；从低位开始依次排列
-// 默认值0: 此mc后端对应有存储(例如MySQL)
-const BACKEND_NO_STORAGE_BIT_SHIFT: u8 = 0;
-const FORCE_WRITE_ALL_BIT_SHIFT: u8 = 1;
-const UPDATE_SLAVE_L1_BIT_SHIFT: u8 = 2;
-const LOCAL_AFFINITY_BIT_SHIFT: u8 = 3;
-
-pub trait CacheserviceFlager {
-    fn backend_no_storage(&self) -> bool;
-    fn force_write_all(&self) -> bool;
-    fn update_slave_l1(&self) -> bool;
-    fn local_affinity(&self) -> bool;
-}
-
-macro_rules! val_from_bit {
-    ($name:ident, $bit_shift:ident) => {
-        #[inline]
-        fn $name(&self) -> bool {
-            self.get($bit_shift)
-        }
-    };
-}
-
-use protocol::{Bit, Ext};
-impl<T: Ext> CacheserviceFlager for T {
-    val_from_bit!(backend_no_storage, BACKEND_NO_STORAGE_BIT_SHIFT);
-    val_from_bit!(force_write_all, FORCE_WRITE_ALL_BIT_SHIFT);
-    val_from_bit!(update_slave_l1, UPDATE_SLAVE_L1_BIT_SHIFT);
-    val_from_bit!(local_affinity, LOCAL_AFFINITY_BIT_SHIFT);
+#[repr(u8)]
+pub(crate) enum FlagFields {
+    BackendNoStorage = 0,
+    ForceWriteAll = 1,
+    UpdateSlavel1 = 2,
+    LocalAffinity = 3,
 }
 
 impl Namespace {
     pub(crate) fn is_local(&self) -> bool {
+        use protocol::Bit;
         self.local_affinity
-            || self.flag.local_affinity()
+            || self.flag.get(FlagFields::LocalAffinity as u8)
             || match std::env::var("BREEZE_LOCAL")
                 .unwrap_or("".to_string())
                 .as_str()
@@ -85,7 +64,8 @@ impl Namespace {
     #[inline]
     pub(crate) fn backend_no_storage(&self) -> bool {
         // 后端没有存储
-        self.flag.backend_no_storage()
+        use protocol::Bit;
+        self.flag.get(FlagFields::BackendNoStorage as u8)
     }
     //pub(crate) fn local_len(&self) -> usize {
     //    1 + self.master_l1.len()
@@ -119,7 +99,8 @@ impl Namespace {
                     }
 
                     // 如果update_slave_l1为false，去掉slave_l1
-                    if !(ns.update_slave_l1 || ns.flag.update_slave_l1()) {
+                    use protocol::Bit;
+                    if !(ns.update_slave_l1 || ns.flag.get(FlagFields::UpdateSlavel1 as u8)) {
                         ns.slave_l1 = Vec::with_capacity(0);
                         log::info!("{} update slave l1: false", _namespace);
                     }
