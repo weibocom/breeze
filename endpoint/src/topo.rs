@@ -248,13 +248,13 @@ fn is_performance_tuning_from_env() -> bool {
 }
 
 pub(crate) trait PerformanceTuning {
-    fn performance_tuning_mode(&self) -> bool;
+    fn tuning_mode(&self) -> bool;
 }
 
-impl PerformanceTuning for str {
-    fn performance_tuning_mode(&self) -> bool {
+impl PerformanceTuning for String {
+    fn tuning_mode(&self) -> bool {
         is_performance_tuning_from_env()
-            || match self {
+            || match self.as_str() {
                 "distance" | "timeslice" => true,
                 _ => false,
             }
@@ -262,7 +262,7 @@ impl PerformanceTuning for str {
 }
 
 impl PerformanceTuning for bool {
-    fn performance_tuning_mode(&self) -> bool {
+    fn tuning_mode(&self) -> bool {
         is_performance_tuning_from_env() || *self
     }
 }

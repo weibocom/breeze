@@ -5,8 +5,11 @@ use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
 use std::collections::HashMap;
 
+use super::config::Flag;
 use crate::shards::Shards;
+use crate::PerformanceTuning;
 use crate::Timeout;
+use protocol::Bit;
 
 #[derive(Clone)]
 pub struct CacheService<B, E, Req, P> {
@@ -202,9 +205,8 @@ where
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
-            use protocol::Bit;
-            self.force_write_all = ns.flag.get(super::config::FlagFields::ForceWriteAll as u8);
-            self.backend_no_storage = ns.backend_no_storage();
+            self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
+            self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
             let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();
@@ -224,7 +226,7 @@ where
 
             use discovery::distance::{Balance, ByDistance};
             let master = ns.master.clone();
-            let is_performance = ns.performance_tuning_mode();
+            let is_performance = ns.flag.get(Flag::LocalAffinity as u8).tuning_mode();
             let (mut local_len, mut backends) = ns.take_backends();
             //let local = true; 开启local，则local_len可能会变小，与按quota预期不符
             if false && is_performance && local_len > 1 {

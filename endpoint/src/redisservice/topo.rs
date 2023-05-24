@@ -270,7 +270,13 @@ where
                 slave.disable_single();
                 replicas.push((addr, slave));
             }
-            let shard = Shard::selector(self.cfg.performance_tuning_mode(), master_addr, master, replicas);
+            use crate::PerformanceTuning;
+            let shard = Shard::selector(
+                self.cfg.basic.selector.tuning_mode(),
+                master_addr,
+                master,
+                replicas,
+            );
             self.shards.push(shard);
         }
         assert_eq!(self.shards.len(), self.cfg.shards_url.len());
@@ -289,7 +295,12 @@ struct Shard<E> {
 }
 impl<E> Shard<E> {
     #[inline]
-    fn selector(is_performance: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(
+        is_performance: bool,
+        master_host: String,
+        master: E,
+        replicas: Vec<(String, E)>,
+    ) -> Self {
         Self {
             master: (master_host, master),
             slaves: Distance::with_performance_tuning(replicas, is_performance),
