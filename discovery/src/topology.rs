@@ -1,17 +1,20 @@
 use ds::{cow, CowReadHandle, CowWriteHandle};
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    ops::Deref,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
-pub trait TopologyGroup {}
+// pub trait TopologyGroup {}
 
-pub trait TopologyRead<T> {
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O;
-}
+// pub trait TopologyRead<T> {
+//     fn do_with<F, O>(&self, f: F) -> O
+//     where
+//         F: Fn(&T) -> O;
+// }
 
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
@@ -78,12 +81,27 @@ where
     updates: Arc<AtomicUsize>,
 }
 
-impl<T> TopologyRead<T> for TopologyReadGuard<T> {
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O,
-    {
-        self.inner.read(|t| f(t))
+// impl<T: Clone> TopologyRead<T> for TopologyReadGuard<T> {
+//     fn do_with<F, O>(&self, f: F) -> O
+//     where
+//         F: Fn(&T) -> O,
+//     {
+//         self.inner.do_with(|t| f(t))
+//     }
+// }
+
+impl<T> Deref for TopologyReadGuard<T> {
+    type Target = CowReadHandle<T>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T> TopologyReadGuard<T> {
+    #[inline]
+    pub fn version(&self) -> usize {
+        self.updates.load(Ordering::Acquire)
     }
 }
 
@@ -93,7 +111,8 @@ where
 {
     #[inline]
     pub fn inited(&self) -> bool {
-        self.updates.load(Ordering::Relaxed) > 0 && self.do_with(|t| t.inited())
+        //这一层是否还有必要，只判断后面条件不行吗？
+        self.updates.load(Ordering::Relaxed) > 0 && self.inner.get().inited()
     }
 }
 
@@ -138,19 +157,44 @@ where
     }
 }
 
-impl<T> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
-    #[inline]
-    fn do_with<F, O>(&self, f: F) -> O
-    where
-        F: Fn(&T) -> O,
-    {
-        (**self).do_with(f)
-    }
-}
+// impl<T: Clone> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
+//     #[inline]
+//     fn do_with<F, O>(&self, f: F) -> O
+//     where
+//         F: Fn(&T) -> O,
+//     {
+//         (**self).do_with(f)
+//     }
+// }
 
-impl<T> TopologyReadGuard<T> {
-    #[inline]
-    pub fn cycle(&self) -> usize {
-        self.updates.load(Ordering::Acquire)
-    }
-}
+// impl<T> TopologyReadGuard<T> {
+//     #[inline]
+//     pub fn cycle(&self) -> usize {
+//         self.updates.load(Ordering::Acquire)
+//     }
+// }
+
+// impl<'a, T> Deref for RefreshTopology<'a, T> {
+//     type Target = T;
+//     fn deref(&self) -> &Self::Target {
+//         self.top.as_ref()
+//     }
+// }
+
+// pub trait RefreshTop<T> {
+//     fn get(&self) -> Arc<T>;
+//     fn get_inner(&self) -> &T;
+//     fn refresh(&mut self);
+// }
+
+// impl<T: Clone  + Inited> RefreshTop<T> for RefreshTopology<'_, T> {
+//     fn get(&self) -> Arc<T> {
+//         self.top.clone()
+//     }
+//     fn refresh(&mut self) {
+//         self.top = self.reader.get();
+//     }
+//     fn get_inner(&self) -> &T {
+//         &self.top
+//     }
+// }

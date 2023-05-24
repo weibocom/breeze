@@ -35,6 +35,7 @@ pub enum Config<C> {
 #[async_trait]
 #[enum_dispatch]
 pub trait Discover {
+    ///name 格式为domain/path/to/path
     async fn get_service<C>(&self, name: &str, sig: &str) -> Result<Config<C>>
     where
         C: Unpin + Send + From<String>;
@@ -47,18 +48,18 @@ pub enum Discovery {
 impl Discovery {
     pub fn from_url(url: &Url) -> Self {
         let schem = url.scheme();
-        let http = Self::copy_url_to_http(&url);
+        // let http = Self::copy_url_to_http(&url);
         match schem {
-            "vintage" => Self::Vintage(Vintage::from_url(http)),
+            "vintage" => Self::Vintage(Vintage::default()),
             _ => panic!("not supported endpoint name"),
         }
     }
-    fn copy_url_to_http(url: &Url) -> Url {
-        let schem = url.scheme();
-        let mut s = "http".to_owned();
-        s.push_str(&url.as_str()[schem.len()..]);
-        Url::parse(&s).unwrap()
-    }
+    // fn copy_url_to_http(url: &Url) -> Url {
+    //     let schem = url.scheme();
+    //     let mut s = "http".to_owned();
+    //     s.push_str(&url.as_str()[schem.len()..]);
+    //     Url::parse(&s).unwrap()
+    // }
 }
 
 #[async_trait]
