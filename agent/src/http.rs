@@ -17,8 +17,6 @@ pub(crate) fn start(ctx: &context::Context) {
     });
 }
 
-/// This is our service handler. It receives a Request, routes on its
-/// path, and returns a Future of a Response.
 async fn route(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/metrics") => prometheus_metrics().await,

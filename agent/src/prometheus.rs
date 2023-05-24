@@ -11,23 +11,18 @@ lazy_static! {
 }
 
 pub async fn prometheus_metrics() -> Result<Response<Body>, hyper::Error> {
-    let rsp = Response::builder();
+    let mut rsp = Response::default();
     if let Ok(mut last) = LAST.try_lock() {
         let secs = last.elapsed().as_secs_f64();
         if secs >= 8f64 {
             *last = Instant::now();
-            let metrics = ReaderStream::new(Prometheus::new(secs));
-            return Ok(rsp.body(Body::wrap_stream(metrics)).unwrap());
+            *rsp.body_mut() = Body::wrap_stream(ReaderStream::new(Prometheus::new(secs)));
         }
-        return Ok(rsp
-            .status(StatusCode::NOT_MODIFIED)
-            .body(Body::default())
-            .unwrap());
+        *rsp.status_mut() = StatusCode::NOT_MODIFIED;
+    } else {
+        *rsp.status_mut() = StatusCode::PROCESSING;
     }
-    Ok(rsp
-        .status(StatusCode::PROCESSING)
-        .body(Body::default())
-        .unwrap())
+    Ok(rsp)
 }
 
 // 定期发心跳
