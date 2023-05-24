@@ -87,10 +87,11 @@ impl MysqlNamespace {
             // 解密
             let key_pem = std::env::var("MYSQL_PRIVATE_KEY").expect("MISSING_MYSQL_PRIVATE_KEY");
             let encrypted_data = general_purpose::STANDARD.decode(ns.basic.password.as_bytes()).expect("INVALID_PASSWORD");
-            if let Ok(password) = ds::auth::decrypt_password(key_pem, encrypted_data) {
+            let res = ds::auth::decrypt_password(key_pem, encrypted_data);
+            if let Ok(password) = res {
                 ns.basic.password = password;
             }else {
-                log::error!("failed to decrypt mysql password");
+                log::error!("failed to decrypt mysql password,error:{}",res.err().unwrap() );
                 return None;
             }
             return Some(ns);
