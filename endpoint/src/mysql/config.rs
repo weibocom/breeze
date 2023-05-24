@@ -86,6 +86,7 @@ impl MysqlNamespace {
 
             // 解密
             let key_pem = std::env::var("MYSQL_PRIVATE_KEY").expect("MISSING_MYSQL_PRIVATE_KEY");
+            log::info!("mysql private key:{}", key_pem);
             let encrypted_data = general_purpose::STANDARD.decode(ns.basic.password.as_bytes()).expect("INVALID_PASSWORD");
             let res = ds::auth::decrypt_password(key_pem, encrypted_data);
             if let Ok(password) = res {
