@@ -1,6 +1,8 @@
 // 必须运行在tokio的runtime环境中
 #[cfg(feature = "console-api")]
 pub(super) fn start_console(ctx: &context::Context) {
+    log::error!("you should start console-api, this feature not supported now");
+    return;
     use rocket::{
         config::{Config, Sig},
         log::LogLevel,
