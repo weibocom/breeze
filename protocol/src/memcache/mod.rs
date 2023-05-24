@@ -1,4 +1,5 @@
 mod binary;
+pub(crate) use binary::packet;
 //mod text;
 
 pub use binary::Binary;

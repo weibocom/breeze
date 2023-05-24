@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
-use protocol::{Protocol, Resource};
+use protocol::{Protocol, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
 
 // pub use protocol::Endpoint;
@@ -98,9 +98,19 @@ where
 }
 
 pub trait Builder<P, R, E> {
-    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E
-    where
-        E: Endpoint<Item = R>;
+    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {
+        Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
+    }
+
+    // TODO: update
+    fn auth_option_build(
+        addr: &str,
+        parser: P,
+        rsrc: Resource,
+        service: &str,
+        timeout: Timeout,
+        option: ResOption,
+    ) -> E;
 }
 
 macro_rules! define_topology {
@@ -219,6 +229,7 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
     };
 }
 
+use crate::kv::topo::KvService;
 #[cfg(feature = "mq")]
 use crate::msgque::topo::MsgQue;
 
@@ -230,5 +241,8 @@ define_topology! {
     //MsgQue<B, E, R, P>, MsgQue, "mq";
     RedisService<B, E, R, P>, RedisService, "rs";
     CacheService<B, E, R, P>, CacheService, "cs";
-    PhantomService<B, E, R, P>, PhantomService, "pt"
+    PhantomService<B, E, R, P>, PhantomService, "pt";
+    // TODO 待client修改完毕，去掉
+    // MysqlService<B, E, R, P>, MysqlService, "mysql"
+    KvService<B, E, R, P>, KvService, "kv"
 }

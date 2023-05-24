@@ -1,5 +1,6 @@
-use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand};
 use sharding::BackendQuota;
+
+use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
@@ -14,6 +15,21 @@ impl crate::Request for Request {
     fn start_at(&self) -> ds::time::Instant {
         self.ctx().start_at()
     }
+
+    // #[inline]
+    // fn last_start_at(&self) -> ds::time::Instant {
+    //     self.ctx().last_start()
+    // }
+
+    // fn elapsed_current_req(&self) -> Duration {
+    //     self.ctx().elapsed_current_req()
+    // }
+
+    #[inline]
+    fn cmd_mut(&mut self) -> &mut HashedCommand {
+        self.req_mut()
+    }
+
     //#[inline]
     //fn len(&self) -> usize {
     //    self.req().len()
@@ -26,6 +42,7 @@ impl crate::Request for Request {
     //fn data(&self) -> &ds::RingSlice {
     //    self.req().data()
     //}
+
     //#[inline]
     //fn read(&self, oft: usize) -> &[u8] {
     //    self.req().read(oft)
@@ -98,10 +115,10 @@ impl Request {
     //    self.ctx().request()
     //}
 
-    // #[inline]
-    // fn req_mut(&self) -> &mut HashedCommand {
-    //     self.ctx().request_mut()
-    // }
+    #[inline]
+    fn req_mut(&self) -> &mut HashedCommand {
+        self.ctx().request_mut()
+    }
     #[inline]
     fn ctx(&self) -> &mut CallbackContext {
         unsafe { &mut *self.ctx.as_ptr() }

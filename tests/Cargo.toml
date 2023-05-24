@@ -21,6 +21,10 @@ endpoint = { path = "../endpoint" }
 
 tokio.workspace = true
 ctor = "0.1.23"
+mysql_async ="0.31.3"
+chrono = "0.4"
+
+mysql = "*"
 
 [dev-dependencies.criterion]
 version = "0.4"

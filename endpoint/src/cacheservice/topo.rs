@@ -269,7 +269,13 @@ where
     ) -> Shards<E, Req> {
         Shards::from(dist, addrs, |addr| {
             old.remove(addr).map(|e| e).unwrap_or_else(|| {
-                B::build(addr, self.parser.clone(), Resource::Memcache, name, timeout)
+                B::build(
+                    addr,
+                    self.parser.clone(),
+                    Resource::Memcache,
+                    name,
+                    timeout,
+                )
             })
         })
     }
