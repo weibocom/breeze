@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use sharding::hash;
 //use ds::time::Duration;
 
-use crate::is_performance_from_env;
+use crate::Performance;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Hash)]
 pub struct Namespace {
@@ -52,7 +52,7 @@ impl Flag {
 impl Namespace {
     #[inline]
     pub(crate) fn is_performance(&self) -> bool {
-        self.local_affinity || is_performance_from_env()
+        self.local_affinity.is_performance()
     }
     #[inline]
     pub(crate) fn is_read_twice(&self) -> bool {
