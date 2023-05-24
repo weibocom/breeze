@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use sharding::hash;
 //use ds::time::Duration;
 
-use crate::Performance;
+use crate::PerformanceTuning;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Hash)]
 pub struct Namespace {
@@ -38,26 +38,29 @@ pub struct Namespace {
     #[serde(default)]
     pub local_affinity: bool,
     #[serde(default)]
-    pub flag: u32, // 通过bit位，设置不同的策略/属性，详见下面Flag实现
+    pub flag: u64, // 通过bit位，设置不同的策略/属性，详见下面FlagFields定义
 }
 
-pub struct Flag;
-impl Flag {
-    // 通过bit位，设置不同的策略/属性；从低位开始依次排列
-
-    // 默认值0: 此mc后端对应有存储(例如MySQL)
-    pub const BACKEND_NO_STORAGE_BIT_LEN: u32 = 1;
+// 通过bit位，设置不同的策略/属性；从低位开始依次排列
+#[repr(u8)]
+pub(crate) enum FlagFields {
+    BackendNoStorage = 0,
+    ForceWriteAll = 1,
+    UpdateSlavel1 = 2,
+    LocalAffinity = 3,
 }
 
 impl Namespace {
     #[inline]
-    pub(crate) fn is_performance(&self) -> bool {
-        self.local_affinity.is_performance()
+    pub(crate) fn performance_tuning_mode(&self) -> bool {
+        use protocol::Bit;
+        self.flag.get(FlagFields::LocalAffinity as u8).performance_tuning_mode()
     }
     #[inline]
-    pub(crate) fn is_read_twice(&self) -> bool {
-        // 后端没有存储，第一次访问miss时，需要再尝试一次
-        self.flag & Flag::BACKEND_NO_STORAGE_BIT_LEN == 1
+    pub(crate) fn backend_no_storage(&self) -> bool {
+        // 后端没有存储
+        use protocol::Bit;
+        self.flag.get(FlagFields::BackendNoStorage as u8)
     }
     //pub(crate) fn local_len(&self) -> usize {
     //    1 + self.master_l1.len()
@@ -90,8 +93,20 @@ impl Namespace {
                         log::debug!("change mc crc32 to {}", ns.hash);
                     }
 
+                    // refresh flag
+                    use protocol::Bit;
+                    if ns.force_write_all {
+                        ns.flag.set(FlagFields::ForceWriteAll as u8);
+                    }
+                    if ns.update_slave_l1 {
+                        ns.flag.set(FlagFields::UpdateSlavel1 as u8);
+                    }
+                    if ns.local_affinity {
+                        ns.flag.set(FlagFields::LocalAffinity as u8);
+                    }
+
                     // 如果update_slave_l1为false，去掉slave_l1
-                    if !ns.update_slave_l1 {
+                    if !ns.flag.get(FlagFields::UpdateSlavel1 as u8) {
                         ns.slave_l1 = Vec::with_capacity(0);
                         log::info!("{} update slave l1: false", _namespace);
                     }

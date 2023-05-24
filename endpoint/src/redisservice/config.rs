@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 //use sharding::distribution::{DIST_ABS_MODULA, DIST_MODULA};
 
-use crate::Performance;
+use crate::PerformanceTuning;
 use crate::{Timeout, TO_REDIS_M, TO_REDIS_S};
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -37,8 +37,8 @@ pub struct Basic {
 
 impl RedisNamespace {
     #[inline]
-    pub(super) fn is_performance(&self) -> bool {
-        self.basic.selector.as_str().is_performance()
+    pub(super) fn performance_tuning_mode(&self) -> bool {
+        self.basic.selector.as_str().performance_tuning_mode()
     }
 
     pub(super) fn try_from(cfg: &str) -> Option<Self> {

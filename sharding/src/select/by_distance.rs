@@ -58,7 +58,7 @@ impl<T: Addr> Distance<T> {
         debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
         Some(unsafe { self.replicas.get_unchecked(idx).1.clone() })
     }
-    pub fn with_performance(replicas: Vec<T>, is_performance: bool) -> Self {
+    pub fn with_performance_tuning(replicas: Vec<T>, is_performance: bool) -> Self {
         assert_ne!(replicas.len(), 0);
         let mut me = Self::new();
         me.refresh(replicas);
@@ -75,7 +75,7 @@ impl<T: Addr> Distance<T> {
     }
     #[inline]
     pub fn from(replicas: Vec<T>) -> Self {
-        Self::with_performance(replicas, true)
+        Self::with_performance_tuning(replicas, true)
     }
     // 同时更新配额
     fn refresh(&mut self, replicas: Vec<T>) {
