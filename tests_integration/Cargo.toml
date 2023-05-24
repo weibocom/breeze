@@ -16,10 +16,8 @@ memcache = "0.16.0"
 assert-panic = "1.0.1"
 function_name = "0.3.0"
 chrono = "0.4"
+url = "2.2.2"
 
-sharding = { path = "../sharding" }
-
-tokio.workspace = true
 redis = { version = "0.22.0", default-features = false, features = [] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11.4", features = ["json","blocking"], default-features = false }

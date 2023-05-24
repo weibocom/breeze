@@ -18,9 +18,9 @@ rt = { path = "../rt" }
 byteorder = "1.4.3"
 bytes = "1.0.1"
 tokio.workspace = true
+serde.workspace = true
 
 enum_dispatch = "0.3.8"
-serde = { version = "1.0.126", features = ["derive"] }
 serde_derive = "1.0.126"
 serde_yaml = "0.8.17"
 serde_json = "1.0.65"
