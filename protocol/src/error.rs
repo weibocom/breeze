@@ -4,6 +4,8 @@ use crate::{msgque::mcq::text::error::McqError, redis::error::RedisError};
 pub enum Error {
     Redis(RedisError),
     Mcq(McqError),
+    // TODO: 先临时用这个打通，后续优化
+    MysqlError,
     Eof,
     UnexpectedData,
     QueueClosed,
@@ -38,6 +40,7 @@ pub enum Error {
     Pending, // 在连接退出时，仍然有请求在队列中没有发送。
     Waiting, // 连接退出时，有请求已发送，但未接收到response
     IO(std::io::ErrorKind),
+    AuthFailed,
 }
 
 impl From<std::io::Error> for Error {

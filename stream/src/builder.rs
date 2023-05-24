@@ -11,7 +11,7 @@ use ds::Switcher;
 use crate::checker::BackendChecker;
 use endpoint::{Builder, Endpoint, Single, Timeout};
 use metrics::Path;
-use protocol::{Error, Protocol, Request, Resource};
+use protocol::{Error, Protocol, Request, ResOption, Resource};
 
 #[derive(Clone)]
 pub struct BackendBuilder<P, R> {
@@ -19,12 +19,13 @@ pub struct BackendBuilder<P, R> {
 }
 
 impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
-    fn build(
+    fn auth_option_build(
         addr: &str,
         parser: P,
         rsrc: Resource,
         service: &str,
         timeout: Timeout,
+        option: ResOption,
     ) -> Arc<Backend<R>> {
         let (tx, rx) = channel(256);
         let finish: Switcher = false.into();
@@ -32,7 +33,8 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
         let f = finish.clone();
         let path = Path::new(vec![rsrc.name(), service]);
         let single = Arc::new(AtomicBool::new(false));
-        let mut checker = BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout);
+        let mut checker =
+            BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout, option);
         let s = single.clone();
         rt::spawn(async move { checker.start_check(s).await });
 

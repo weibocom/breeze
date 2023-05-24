@@ -77,7 +77,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         }
         // 未写完的数据写入到buf。
         if oft < data.len() {
-            self.buf.write(&data[oft..])
+            self.buf.write(&data[oft..]);
         }
         Poll::Ready(Ok(data.len()))
     }

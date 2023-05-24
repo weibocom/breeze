@@ -1,3 +1,4 @@
+use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -6,16 +7,16 @@ use tokio::io::{AsyncRead, ReadBuf};
 use ds::BuffRead;
 use protocol::{Error, Result, StreamContext};
 
-pub(crate) struct Reader<'a, C> {
+pub(crate) struct Reader<'a, 'b, C> {
     n: usize, // 成功读取的数据
     b: usize, // 可以读取的字节数（即buffer的大小）
     client: &'a mut C,
-    cx: &'a mut Context<'a>,
+    cx: &'a mut Context<'b>,
 }
 
-impl<'a, C> Reader<'a, C> {
+impl<'a, 'b, C> Reader<'a, 'b, C> {
     #[inline]
-    pub(crate) fn from(client: &'a mut C, cx: &'a mut Context<'a>) -> Self {
+    pub(crate) fn from(client: &'a mut C, cx: &'a mut Context<'b>) -> Self {
         let n = 0;
         let b = 0;
         Self { n, client, cx, b }
@@ -27,15 +28,17 @@ impl<'a, C> Reader<'a, C> {
             Ok(())
         } else {
             if self.b == 0 {
+                log::warn!("+++ in reader.check BufferFull, n:{}, b:{}", self.n, self.b);
                 Err(Error::BufferFull)
             } else {
+                log::warn!("+++ in reader.check Eof, n:{}, b:{}", self.n, self.b);
                 Err(Error::Eof)
             }
         }
     }
 }
 
-impl<'a, C> BuffRead for Reader<'a, C>
+impl<'a, 'b, C> BuffRead for Reader<'a, 'b, C>
 where
     C: AsyncRead + Unpin,
 {
@@ -47,9 +50,6 @@ where
         let mut rb = ReadBuf::new(buf);
         let out = Pin::new(&mut **client).poll_read(cx, &mut rb);
         let r = rb.capacity() - rb.remaining();
-        if r > 0 {
-            log::debug!("{} bytes received", r);
-        }
         *n += r;
 
         (r, out)
@@ -157,5 +157,46 @@ impl Debug for StreamGuard {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "ctx:{:?} StreamGuard :{}", self.ctx, self.buf)
+    }
+}
+
+pub struct StreamGuardWithWriter<'a, W> {
+    stream: &'a mut StreamGuard,
+    writer: &'a mut W,
+}
+
+impl<'a, W> Stream for StreamGuardWithWriter<'a, W> {
+    #[inline]
+    fn take(&mut self, n: usize) -> MemGuard {
+        self.stream.take(n)
+    }
+    #[inline]
+    fn len(&self) -> usize {
+        self.stream.len()
+    }
+    #[inline]
+    fn slice(&self) -> RingSlice {
+        self.stream.slice()
+    }
+    #[inline]
+    fn context(&mut self) -> &mut u64 {
+        self.stream.context()
+    }
+    #[inline]
+    fn reserved_hash(&mut self) -> &mut i64 {
+        self.stream.reserved_hash()
+    }
+    #[inline]
+    fn reserve(&mut self, r: usize) {
+        self.stream.reserve(r);
+    }
+}
+
+impl<'a, W> StreamWithWriter for StreamGuardWithWriter<'a, W>
+where
+    W: Writer,
+{
+    fn write(&mut self, data: &[u8]) -> Result<()> {
+        self.writer.write(data)
     }
 }

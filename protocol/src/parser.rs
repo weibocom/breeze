@@ -2,17 +2,21 @@ use enum_dispatch::enum_dispatch;
 
 use sharding::hash::Hash;
 
+use crate::kv::Kv;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
 use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
-#[enum_dispatch(Proto)]
 #[derive(Clone)]
+#[enum_dispatch(Proto)]
 pub enum Parser {
     McBin(MemcacheBinary),
     Redis(Redis),
     MsgQue(MsgQue),
+    // TODO 暂时保留，待client修改上线完毕后，清理
+    // Mysql(Kv),
+    Kv(Kv),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
@@ -20,6 +24,8 @@ impl Parser {
             "mc" => Ok(Self::McBin(Default::default())),
             "redis" | "phantom" => Ok(Self::Redis(Default::default())),
             "msgque" => Ok(Self::MsgQue(Default::default())),
+            // "mysql" => Ok(Self::Mysql(Default::default())),
+            "kv" => Ok(Self::Kv(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }
@@ -30,17 +36,54 @@ impl Parser {
             Self::Redis(_) => true,
             // Self::Phantom(_) => true,
             Self::MsgQue(_) => false,
+            // Self::Mysql(_) => false,
+            Self::Kv(_) => false,
         }
     }
 }
+
+// #[derive(Default)]
+// pub enum AuthMethod {}
+
+#[derive(Default, Clone)]
+pub struct ResOption {
+    // pub method: AuthMethod,
+    pub token: String,
+    pub username: String,
+}
+
+pub enum HandShake {
+    Success,
+    Failed,
+    Continue,
+}
+
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
+    //todo, Stream和Writer合并，ResOption用一个字段？
+    fn handshake(&self, _stream: &mut impl Stream, _option: &mut ResOption) -> Result<HandShake> {
+        Ok(HandShake::Success)
+    }
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
+    fn build_request(&self, _req: &mut HashedCommand, _new_req: String) {}
+
+    // fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
+
+    // TODO: mysql debug专用，2023.7后可以清理 fishermen
+    // fn parse_response_debug<S: Stream>(
+    //     &self,
+    //     _req: &HashedCommand,
+    //     _data: &mut S,
+    // ) -> Result<Option<Command>> {
+    //     // TODO: just for debug
+    //     Err(Error::NotInit)
+    // }
+
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
 
     // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
@@ -77,6 +120,9 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     {
         None
     }
+    fn need_auth(&self) -> bool {
+        false
+    }
 }
 
 pub trait RequestProcessor {
@@ -90,7 +136,7 @@ pub trait RequestProcessor {
 
 pub struct Command {
     ok: bool,
-    cmd: ds::MemGuard,
+    cmd: MemGuard,
 }
 
 pub const MAX_DIRECT_HASH: i64 = i64::MAX;
@@ -99,6 +145,7 @@ pub struct HashedCommand {
     hash: i64,
     flag: Flag,
     cmd: ds::MemGuard,
+    origin_cmd: Option<MemGuard>,
 }
 
 impl Command {
@@ -110,9 +157,16 @@ impl Command {
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
         Self { ok, cmd }
     }
-    #[inline]
+    // #[inline]
+    // pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
+    //     Self {
+    //         ok: Ok(flag),
+    //         cmd,
+    //         origin_cmd: None,
+    //     }
+    // }
     pub fn from_ok(cmd: ds::MemGuard) -> Self {
-        Self { ok: true, cmd }
+        Self::from(true, cmd)
     }
 
     #[inline]
@@ -128,6 +182,14 @@ impl Command {
     //pub fn read(&self, oft: usize) -> &[u8] {
     //    self.cmd.read(oft)
     //}
+
+    // 不再暴露cmd，需要保存原有的cmd
+    // #[inline]
+    // pub fn cmd(&mut self) -> &mut MemGuard {
+    //     &mut self.cmd
+    // }
+    // 获取origin data，调用方必须确保其存在
+
     //#[inline]
     //pub fn data(&self) -> &ds::RingSlice {
     //    self.cmd.data()
@@ -168,7 +230,12 @@ use ds::MemGuard;
 impl HashedCommand {
     #[inline]
     pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {
-        Self { hash, flag, cmd }
+        Self {
+            hash,
+            flag,
+            cmd,
+            origin_cmd: None,
+        }
     }
     #[inline]
     pub fn reset_flag(&mut self, op_code: u16, op: Operation) {
@@ -222,6 +289,25 @@ impl HashedCommand {
     pub fn flag_mut(&mut self) -> &mut Flag {
         &mut self.flag
     }
+    #[inline]
+    pub(crate) fn origin_data(&self) -> &MemGuard {
+        if let Some(origin) = &self.origin_cmd {
+            origin
+        } else {
+            panic!("origin is null, req:{:?}", self.cmd.data())
+        }
+    }
+    #[inline]
+    pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
+        assert!(
+            self.origin_cmd.is_none(),
+            "origin cmd should be none: {:?}",
+            self.origin_cmd
+        );
+        // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
+        mem::swap(&mut self.cmd, &mut dest_cmd);
+        self.origin_cmd = Some(dest_cmd);
+    }
     //#[inline]
     //pub fn try_next_type(&self) -> TryNextType {
     //    self.flag.try_next_type()
@@ -235,6 +321,7 @@ impl HashedCommand {
 //}
 
 use std::fmt::{self, Debug, Display, Formatter};
+use std::mem;
 impl Display for HashedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "hash:{} {}", self.hash, self.cmd)
