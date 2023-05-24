@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
-use protocol::{callback::CallbackPtr, Protocol, ResOption, Resource};
+use protocol::{Protocol, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
 
 // pub use protocol::Endpoint;

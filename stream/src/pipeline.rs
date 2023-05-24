@@ -12,7 +12,6 @@ use crate::topology::TopologyCheck;
 use ds::{time::Instant, AtomicWaker};
 use endpoint::Topology;
 use protocol::{HashedCommand, Protocol, Result, Stream};
-use sharding::hash::Hash;
 
 use crate::{
     arena::CallbackContextArena,
