@@ -7,7 +7,7 @@ pub struct HeapStats {
 pub use inner::*;
 #[cfg(feature = "heap-stats")]
 mod inner {
-    use cache_padded::CachePadded;
+    use crossbeam_utils::CachePadded;
     use mimalloc::MiMalloc;
     use std::alloc::{GlobalAlloc, Layout};
     use std::sync::atomic::{AtomicU64, Ordering::*};
