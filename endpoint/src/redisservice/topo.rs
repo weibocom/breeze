@@ -34,7 +34,8 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
         }
     }
 }
-impl<B, E, Req, P> Topology for RedisService<B, E, Req, P>
+
+impl<B, E, Req, P> Hash for RedisService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -45,6 +46,19 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.hasher.hash(k)
     }
+}
+
+impl<B, E, Req, P> Topology for RedisService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+    B: Send + Sync,
+{
+    // #[inline]
+    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
+    //     self.hasher.hash(k)
+    // }
 }
 
 impl<B: Send + Sync, E, Req, P> Endpoint for RedisService<B, E, Req, P>
@@ -256,7 +270,13 @@ where
                 slave.disable_single();
                 replicas.push((addr, slave));
             }
-            let shard = Shard::selector(self.cfg.is_local(), master_addr, master, replicas);
+            use crate::PerformanceTuning;
+            let shard = Shard::selector(
+                self.cfg.basic.selector.tuning_mode(),
+                master_addr,
+                master,
+                replicas,
+            );
             self.shards.push(shard);
         }
         assert_eq!(self.shards.len(), self.cfg.shards_url.len());
@@ -275,10 +295,10 @@ struct Shard<E> {
 }
 impl<E> Shard<E> {
     #[inline]
-    fn selector(local: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(is_performance: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
-            slaves: Distance::with_local(replicas, local),
+            slaves: Distance::with_performance_tuning(replicas, is_performance),
         }
     }
     #[inline]

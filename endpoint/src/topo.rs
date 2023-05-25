@@ -1,8 +1,8 @@
 use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
-use protocol::{callback::CallbackPtr, Protocol, Resource};
-use sharding::hash::HashKey;
+use protocol::{Protocol, ResOption, Resource};
+use sharding::hash::{Hash, HashKey};
 
 // pub use protocol::Endpoint;
 use crate::Timeout;
@@ -51,31 +51,27 @@ where
 }
 
 #[enum_dispatch]
-pub trait Topology: Endpoint {
+pub trait Topology: Endpoint + Hash {
     #[inline]
     fn exp_sec(&self) -> u32 {
         86400
     }
-    fn hash<K: HashKey>(&self, key: &K) -> i64;
+    // fn hash<K: HashKey>(&self, key: &K) -> i64;
 }
 
-impl<T> Topology for std::sync::Arc<T>
-where
-    T: Topology,
-{
-    #[inline]
-    fn exp_sec(&self) -> u32 {
-        (**self).exp_sec()
-    }
-    #[inline]
-    fn hash<K: HashKey>(&self, k: &K) -> i64 {
-        (**self).hash(k)
-    }
-}
-pub trait TopologyCheck: Sized {
-    fn refresh(&mut self) -> bool;
-    fn callback(&self) -> CallbackPtr;
-}
+// impl<T> Topology for std::sync::Arc<T>
+// where
+//     T: Topology,
+// {
+//     #[inline]
+//     fn exp_sec(&self) -> u32 {
+//         (**self).exp_sec()
+//     }
+//     #[inline]
+//     fn hash<K: HashKey>(&self, k: &K) -> i64 {
+//         (**self).hash(k)
+//     }
+// }
 
 pub trait Single {
     fn single(&self) -> bool;
@@ -102,9 +98,19 @@ where
 }
 
 pub trait Builder<P, R, E> {
-    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E
-    where
-        E: Endpoint<Item = R>;
+    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {
+        Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
+    }
+
+    // TODO: update
+    fn auth_option_build(
+        addr: &str,
+        parser: P,
+        rsrc: Resource,
+        service: &str,
+        timeout: Timeout,
+        option: ResOption,
+    ) -> E;
 }
 
 macro_rules! define_topology {
@@ -161,7 +167,7 @@ impl<B, E, R, P> discovery::TopologyWrite for TopologyProtocol<B, E, R, P> where
     }
 }
 
-impl<B:Send+Sync, E, R, P> Topology for TopologyProtocol<B, E, R, P>
+impl<B:Send+Sync, E, R, P> Hash for TopologyProtocol<B, E, R, P>
 where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
     #[inline]
     fn hash<K:HashKey>(&self, k:&K) -> i64 {
@@ -171,6 +177,18 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
             )+
         }
     }
+}
+
+impl<B:Send+Sync, E, R, P> Topology for TopologyProtocol<B, E, R, P>
+where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
+    // #[inline]
+    // fn hash<K:HashKey>(&self, k:&K) -> i64 {
+    //     match self {
+    //         $(
+    //             Self::$item(p) => p.hash(k),
+    //         )+
+    //     }
+    // }
     #[inline]
     fn exp_sec(&self) -> u32 {
         match self {
@@ -211,6 +229,7 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
     };
 }
 
+use crate::kv::topo::KvService;
 #[cfg(feature = "mq")]
 use crate::msgque::topo::MsgQue;
 
@@ -222,5 +241,42 @@ define_topology! {
     //MsgQue<B, E, R, P>, MsgQue, "mq";
     RedisService<B, E, R, P>, RedisService, "rs";
     CacheService<B, E, R, P>, CacheService, "cs";
-    PhantomService<B, E, R, P>, PhantomService, "pt"
+    PhantomService<B, E, R, P>, PhantomService, "pt";
+    // TODO 待client修改完毕，去掉
+    // MysqlService<B, E, R, P>, MysqlService, "mysql"
+    KvService<B, E, R, P>, KvService, "kv"
+}
+
+// 从环境变量BREEZE_LOCAL的值获取是否开启后端资源访问的性能模式
+// "distance"或者"timeslice"，即为开启性能模式
+// 其他按照random处理
+#[inline]
+fn is_performance_tuning_from_env() -> bool {
+    match std::env::var("BREEZE_LOCAL")
+        .unwrap_or("".to_string())
+        .as_str()
+    {
+        "distance" | "timeslice" => true,
+        _ => false,
+    }
+}
+
+pub(crate) trait PerformanceTuning {
+    fn tuning_mode(&self) -> bool;
+}
+
+impl PerformanceTuning for String {
+    fn tuning_mode(&self) -> bool {
+        is_performance_tuning_from_env()
+            || match self.as_str() {
+                "distance" | "timeslice" => true,
+                _ => false,
+            }
+    }
+}
+
+impl PerformanceTuning for bool {
+    fn tuning_mode(&self) -> bool {
+        is_performance_tuning_from_env() || *self
+    }
 }

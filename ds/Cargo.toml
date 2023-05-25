@@ -14,8 +14,8 @@ byteorder = "1.4.3"
 rand = "0.8.4"
 atomic-waker = "*"
 mimalloc = { version = "0.1.34", default-features = false }
-cache-padded = "1.2.0"
 ctor = "*"
+crossbeam-utils = "*"
 
 [features]
 default = ["heap-stats", "tsc"]

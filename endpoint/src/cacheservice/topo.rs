@@ -5,8 +5,11 @@ use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
 use std::collections::HashMap;
 
+use super::config::Flag;
 use crate::shards::Shards;
+use crate::PerformanceTuning;
 use crate::Timeout;
+use protocol::Bit;
 
 #[derive(Clone)]
 pub struct CacheService<B, E, Req, P> {
@@ -18,7 +21,7 @@ pub struct CacheService<B, E, Req, P> {
     parser: P,
     exp_sec: u32,
     force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
-    read_twice: bool,  // true：mc后面没有存储且无L1场景，读Master miss之后需要多读一次
+    backend_no_storage: bool, // true：mc后面没有存储
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -32,7 +35,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
             _marker: Default::default(),
-            read_twice: false,
+            backend_no_storage: false,
         }
     }
 }
@@ -51,7 +54,7 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for CacheService<B, E, Req, P>
+impl<B, E, Req, P> Hash for CacheService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -62,6 +65,19 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.hasher.hash(k)
     }
+}
+
+impl<B, E, Req, P> Topology for CacheService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+    B: Send + Sync,
+{
+    // #[inline]
+    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
+    //     self.hasher.hash(k)
+    // }
     #[inline]
     fn exp_sec(&self) -> u32 {
         self.exp_sec
@@ -156,7 +172,9 @@ where
             idx = self.streams.select_idx();
             // 第一次访问，没有取到master，则下一次一定可以取到master
             // 如果取到了master，有slave也可以继续访问
-            try_next = (self.streams.local_len() > 1) || self.read_twice && (self.streams.len() > 1);
+            // 后端无storage且后端资源不止一组，可以多访问一次
+            try_next = (self.streams.local_len() > 1)
+                || self.backend_no_storage && (self.streams.len() > 1);
             write_back = false;
         } else {
             let last_idx = ctx.index();
@@ -187,8 +205,8 @@ where
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
-            self.force_write_all = ns.force_write_all;
-            self.read_twice = ns.is_read_twice();
+            self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
+            self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
             let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();
@@ -208,10 +226,10 @@ where
 
             use discovery::distance::{Balance, ByDistance};
             let master = ns.master.clone();
-            let local = ns.is_local();
+            let is_performance = ns.flag.get(Flag::LocalAffinity as u8).tuning_mode();
             let (mut local_len, mut backends) = ns.take_backends();
             //let local = true; 开启local，则local_len可能会变小，与按quota预期不符
-            if false && local && local_len > 1 {
+            if false && is_performance && local_len > 1 {
                 backends.balance(&master);
                 local_len = backends.sort(master);
             }
@@ -223,7 +241,7 @@ where
                 let e = self.build(old, group, dist, namespace, to);
                 new.push(e);
             }
-            self.streams.update(new, local_len, local);
+            self.streams.update(new, local_len, is_performance);
         }
         // old 会被dopped
     }

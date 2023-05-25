@@ -15,6 +15,7 @@ env:
   phantom: localhost:9303
   min_key: 1
   max_key: 10000
+  socks_dir: /home/runner/work/breeze/socks
 
 jobs:
   build:
@@ -30,7 +31,7 @@ jobs:
           toolchain: stable
           override: true
       - name: Build
-        run: cargo build --features=console-api
+        run: cargo build
       - name: Check Vintage
         run: |
           docker ps -a

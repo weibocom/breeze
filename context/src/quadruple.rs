@@ -1,5 +1,5 @@
-use std::path::Path;
 use ds::time::{Duration, Instant};
+use std::path::Path;
 #[derive(Debug, Clone, Eq)]
 pub struct Quadruple {
     parsed_at: Instant,
@@ -46,8 +46,16 @@ impl Quadruple {
                 path.to_string() + "/" + protocol_fields.get(1).unwrap_or(&service) + ".sock",
             )
         };
-        let protocol = protocol_fields[0];
-        let backend = fields[2];
+        let mut protocol = protocol_fields[0];
+        let mut backend = fields[2];
+        // TODO 增加mysql的兼容逻辑，将mysql改为kv，待client修改上线后清理，预计2023.6.15后清理没问题
+        const MYSQL: &str = "mysql";
+        if MYSQL.eq(protocol) {
+            protocol = "kv";
+            backend = "kv";
+            log::warn!("+++ found deprecated protocl: mysql:{}", name);
+        }
+
         Some(Self {
             name: name.to_owned(),
             service: service.to_owned(),

@@ -6,6 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+endpoint = { path = "../endpoint" }
+chrono-tz = { version = "0.5", default-features = false }
+
 rand = "0.8.4"
 #rust-crypto = "0.2.36"
 byteorder = "1.4.3"
@@ -13,13 +16,12 @@ memcache = "0.16.0"
 assert-panic = "1.0.1"
 function_name = "0.3.0"
 chrono = "0.4"
+url = "2.2.2"
 
-sharding = { path = "../sharding" }
-
-tokio.workspace = true
 redis = { version = "0.22.0", default-features = false, features = [] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11.4", features = ["json","blocking"], default-features = false }
+
 
 [[test]]
 name = "test_all"

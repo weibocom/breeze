@@ -2,9 +2,6 @@ use ds::{chan::Receiver, BrzMalloc};
 #[global_allocator]
 static GLOBAL: BrzMalloc = BrzMalloc {};
 
-#[macro_use]
-extern crate rocket;
-
 mod console;
 mod http;
 mod prometheus;

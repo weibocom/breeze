@@ -3,6 +3,7 @@ mod topo;
 pub use topo::*;
 
 pub mod cacheservice;
+pub mod kv;
 pub mod msgque;
 pub mod phantomservice;
 pub mod redisservice;
@@ -10,7 +11,7 @@ pub mod redisservice;
 pub(crate) mod dns;
 
 mod refresh;
-pub use refresh::{CheckedTopology, RefreshTopology};
+// pub use refresh::RefreshTopology;
 
 // 不同资源默认的超时时间
 const TO_PHANTOM_M: Timeout = Timeout::from_millis(200);
@@ -18,6 +19,8 @@ const TO_REDIS_M: Timeout = Timeout::from_millis(500);
 const TO_REDIS_S: Timeout = Timeout::from_millis(200);
 const TO_MC_M: Timeout = Timeout::from_millis(500);
 const TO_MC_S: Timeout = Timeout::from_millis(80);
+const TO_MYSQL_M: Timeout = Timeout::from_millis(1000);
+const TO_MYSQL_S: Timeout = Timeout::from_millis(500);
 
 #[derive(Copy, Clone, Debug)]
 pub struct Timeout {

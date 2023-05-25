@@ -197,14 +197,11 @@ pub async fn start_dns_resolver_refresher() {
         idx = (idx + 1) % BATCH_CNT;
         drop(r_cache);
         if updated.len() > 0 {
-            let mut new = cache.copy();
-            for (host, addrs) in updated.into_iter() {
-                new.hosts
-                    .get_mut(&host)
-                    .expect("insert before")
-                    .update(addrs);
-            }
-            cache.update(new);
+            cache.write(|c| {
+                for (host, addrs) in updated.into_iter() {
+                    c.hosts.get_mut(&host).expect("insert before").update(addrs);
+                }
+            });
         }
         //last = Instant::now();
 

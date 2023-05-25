@@ -41,6 +41,7 @@ impl RingSlice {
     pub fn empty() -> Self {
         Self::EMPTY
     }
+    //从不拥有数据
     #[inline]
     pub fn from(ptr: *const u8, cap: usize, start: usize, end: usize) -> Self {
         debug_assert!(cap < u32::MAX as usize);

@@ -8,11 +8,10 @@ use std::{
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use crate::topology::TopologyCheck;
 use ds::{time::Instant, AtomicWaker};
-use endpoint::{Topology, TopologyCheck};
+use endpoint::Topology;
 use protocol::{HashedCommand, Protocol, Result, Stream};
-
-use sharding::hash::Hash;
 
 use crate::{
     arena::CallbackContextArena,
@@ -30,7 +29,7 @@ pub async fn copy_bidirectional<C, P, T>(
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
@@ -77,7 +76,7 @@ impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     type Output = Result<()>;
 
@@ -110,7 +109,7 @@ impl<C, P, T> CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     // 解析buffer，并且发送请求.
     #[inline]
@@ -282,7 +281,7 @@ impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck + Hash,
+    T: Topology<Item = Request> + Unpin + TopologyCheck,
 {
     #[inline]
     fn close(&mut self) -> bool {
@@ -296,6 +295,10 @@ where
                 break;
             }
             let mut ctx = self.pending.pop_front().expect("empty");
+
+            // TODO: 临时加日志，check mysql req被清理的key
+            log::info!("+++ will clear req:{:?}", ctx.request().data());
+
             // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
             let _dropped = ctx.take_response();
         }

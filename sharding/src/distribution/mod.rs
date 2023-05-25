@@ -1,4 +1,5 @@
 mod consistent;
+mod dbrange;
 mod modrange;
 mod modula;
 //mod padding;
@@ -7,6 +8,7 @@ mod slotmod;
 mod splitmod;
 
 use consistent::Consistent;
+pub use dbrange::DBRange;
 use modrange::ModRange;
 use modula::Modula;
 //use padding::Padding;
@@ -73,6 +75,17 @@ impl Distribute {
             }
         }
     }
+    // 适配mysql 动态shands
+    // pub fn from_num(distribution: &str, num: usize) -> Self {
+    //     let dist = distribution.to_ascii_lowercase();
+    //     match dist.as_str() {
+    //         DIST_MODULA => Self::Modula(Modula::from(num, false)),
+    //         _ => {
+    //             log::warn!("'{}' is not valid , use modula instead", distribution);
+    //             Self::Modula(Modula::from(num, false))
+    //         }
+    //     }
+    // }
     #[inline]
     pub fn index(&self, hash: i64) -> usize {
         match self {

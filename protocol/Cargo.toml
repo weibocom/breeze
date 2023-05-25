@@ -18,3 +18,33 @@ rand = "0.8.4"
 
 ctor = "0.1.23"
 array-init = "2"
+
+#rust-crypto = "0.2.36"
+
+# for mysql
+byteorder = "1"
+bitflags = "1"
+num-bigint = { version = "0.4" }
+num-traits = { version = "0.2", features = ["i128"] }
+thiserror = "1.0"
+bytes = "1.0"
+lexical = "6.0.1"
+regex = "1.5.5"
+smallvec = { version = "1.6.1", features = ["union", "write"] }
+uuid = "1"
+flate2 = { version = "1.0", default-features = false }
+serde = "1"
+serde_json = "1"
+saturating = "0.1"
+sha1 = "0.10.0"
+sha2 = "0.10.0"
+url = "2.1"
+percent-encoding = "2.1.0"
+
+
+[dev-dependencies]
+proptest = "1.0"
+
+
+
+

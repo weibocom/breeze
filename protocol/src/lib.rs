@@ -12,6 +12,7 @@ pub use redis::RedisFlager;
 pub use redis::packet::Packet;
 pub mod req;
 //pub mod resp;
+pub mod kv;
 pub mod msgque;
 
 pub use flag::*;
@@ -36,6 +37,7 @@ pub enum Resource {
     Redis,
     Phantom,
     MsgQue,
+    Mysql,
 }
 
 impl Resource {
@@ -46,6 +48,7 @@ impl Resource {
             Self::Redis => "redis",
             Self::Phantom => "phantom",
             Self::MsgQue => "msgque",
+            Self::Mysql => "mysql",
         }
     }
 }

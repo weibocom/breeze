@@ -1,5 +1,5 @@
 mod error;
-mod packet;
+pub(crate) mod packet;
 
 use packet::RespStatus::*;
 use packet::*;
@@ -15,6 +15,7 @@ use crate::{
 };
 
 use sharding::hash::Hash;
+
 impl Protocol for MemcacheBinary {
     // 解析请求。把所有的multi-get请求转换成单一的n个get请求。
     #[inline]
