@@ -246,3 +246,37 @@ define_topology! {
     // MysqlService<B, E, R, P>, MysqlService, "mysql"
     KvService<B, E, R, P>, KvService, "kv"
 }
+
+// 从环境变量BREEZE_LOCAL的值获取是否开启后端资源访问的性能模式
+// "distance"或者"timeslice"，即为开启性能模式
+// 其他按照random处理
+#[inline]
+fn is_performance_tuning_from_env() -> bool {
+    match std::env::var("BREEZE_LOCAL")
+        .unwrap_or("".to_string())
+        .as_str()
+    {
+        "distance" | "timeslice" => true,
+        _ => false,
+    }
+}
+
+pub(crate) trait PerformanceTuning {
+    fn tuning_mode(&self) -> bool;
+}
+
+impl PerformanceTuning for String {
+    fn tuning_mode(&self) -> bool {
+        is_performance_tuning_from_env()
+            || match self.as_str() {
+                "distance" | "timeslice" => true,
+                _ => false,
+            }
+    }
+}
+
+impl PerformanceTuning for bool {
+    fn tuning_mode(&self) -> bool {
+        is_performance_tuning_from_env() || *self
+    }
+}
