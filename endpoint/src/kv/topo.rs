@@ -4,8 +4,8 @@ use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use protocol::kv::Binary;
+use protocol::request::Request;
 use protocol::Protocol;
-use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
 use sharding::hash::{Hash, HashKey};
@@ -22,7 +22,7 @@ use crate::{Endpoint, Topology};
 use super::config::MysqlNamespace;
 use super::strategy::Strategist;
 #[derive(Clone)]
-pub struct KvService<B, E, Req, P> {
+pub struct KvService<B, E, P> {
     // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
     // direct_shards: Vec<Shard<E>>,
     // 默认不同sharding的url。第0个是master
@@ -38,14 +38,14 @@ pub struct KvService<B, E, Req, P> {
     service: String,
     timeout_master: Timeout,
     timeout_slave: Timeout,
-    _mark: std::marker::PhantomData<(B, Req)>,
+    _mark: std::marker::PhantomData<B>,
     user: String,
     password: String,
     strategist: Strategist,
     cfg: Box<DnsConfig<MysqlNamespace>>,
 }
 
-impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
+impl<B, E, P> From<P> for KvService<B, E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -67,10 +67,9 @@ impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> Hash for KvService<B, E, Req, P>
+impl<B, E, P> Hash for KvService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
     B: Send + Sync,
 {
@@ -80,10 +79,9 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for KvService<B, E, Req, P>
+impl<B, E, P> Topology for KvService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
     B: Send + Sync,
 {
@@ -93,15 +91,12 @@ where
     // }
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for KvService<B, E, Req, P>
+impl<B: Send + Sync, E, P> Endpoint for KvService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
-    type Item = Req;
-
-    fn send(&self, mut req: Self::Item) {
+    fn send(&self, mut req: Request) {
         // req 是mc binary协议，需要展出字段，转换成sql
         // let raw_req = req.data();
         let mid = req.key();
@@ -135,12 +130,12 @@ where
         log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 
         if shard.has_slave() && !req.operation().is_store() {
-            if *req.context_mut() == 0 {
+            if *req.mut_context() == 0 {
                 if let Some(quota) = shard.slaves.quota() {
                     req.quota(quota);
                 }
             }
-            let ctx = super::transmute(req.context_mut());
+            let ctx = super::transmute(req.mut_context());
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
             } else {
@@ -167,11 +162,11 @@ where
     }
 }
 
-impl<B, E, Req, P> TopologyWrite for KvService<B, E, Req, P>
+impl<B, E, P> TopologyWrite for KvService<B, E, P>
 where
-    B: Builder<P, Req, E>,
+    B: Builder<P, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint + Single,
 {
     fn need_load(&self) -> bool {
         let a: usize = self.archive_shards.values().map(|s| s.len()).sum();
@@ -207,11 +202,11 @@ where
         self.service = namespace.to_string();
     }
 }
-impl<B, E, Req, P> KvService<B, E, Req, P>
+impl<B, E, P> KvService<B, E, P>
 where
-    B: Builder<P, Req, E>,
+    B: Builder<P, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint + Single,
 {
     // #[inline]
     fn take_or_build(
@@ -347,7 +342,7 @@ where
         true
     }
 }
-impl<B, E, Req, P> discovery::Inited for KvService<B, E, Req, P>
+impl<B, E, P> discovery::Inited for KvService<B, E, P>
 where
     E: discovery::Inited,
 {

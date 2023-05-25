@@ -31,6 +31,8 @@ pub use operation::*;
 pub mod callback;
 pub mod request;
 
+pub mod endpoint;
+
 #[derive(Copy, Clone)]
 pub enum Resource {
     Memcache,

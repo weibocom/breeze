@@ -10,24 +10,24 @@ use std::{
 use ds::{time::Instant, AtomicWaker};
 use sharding::BackendQuota;
 
-use crate::{request::Request, Command, Error, HashedCommand};
+use crate::{endpoint::Endpoint, request::Request, Command, Error, HashedCommand};
 
 //const REQ_TRY_MAX_COUNT: u8 = 3;
 
-pub struct Callback {
-    cb: Box<dyn Fn(Request)>,
-}
-impl Callback {
-    #[inline]
-    pub fn new(cb: Box<dyn Fn(Request)>) -> Self {
-        Self { cb }
-    }
-    #[inline]
-    pub fn send(&self, req: Request) {
-        log::debug!("request sending:{}", req);
-        (self.cb)(req);
-    }
-}
+// pub struct Callback {
+//     cb: Box<dyn Fn(Request)>,
+// }
+// impl Callback {
+//     #[inline]
+//     pub fn new(cb: Box<dyn Fn(Request)>) -> Self {
+//         Self { cb }
+//     }
+//     #[inline]
+//     pub fn send(&self, req: Request) {
+//         log::debug!("request sending:{}", req);
+//         (self.cb)(req);
+//     }
+// }
 
 pub struct CallbackContext {
     pub(crate) flag: crate::Context,
@@ -43,7 +43,7 @@ pub struct CallbackContext {
     response: MaybeUninit<Command>,
     start: Instant, // 请求的开始时间
     waker: *const AtomicWaker,
-    callback: CallbackPtr,
+    callback: Arc<dyn Endpoint>,
     quota: Option<BackendQuota>,
 }
 
@@ -52,7 +52,7 @@ impl CallbackContext {
     pub fn new(
         req: HashedCommand,
         waker: &AtomicWaker,
-        cb: CallbackPtr,
+        cb: Arc<dyn Endpoint>,
         first: bool,
         last: bool,
     ) -> Self {
@@ -208,7 +208,7 @@ impl CallbackContext {
     #[inline]
     pub fn send(&mut self) {
         let req = Request::new(unsafe { NonNull::new_unchecked(self.as_mut_ptr()) });
-        (*self.callback).send(req);
+        self.callback.send(req);
     }
     #[inline]
     pub fn start_at(&self) -> Instant {
@@ -300,24 +300,24 @@ impl Debug for CallbackContext {
     }
 }
 
-unsafe impl Send for CallbackPtr {}
-unsafe impl Sync for CallbackPtr {}
-unsafe impl Send for Callback {}
-unsafe impl Sync for Callback {}
-#[derive(Clone)]
-pub struct CallbackPtr {
-    ptr: Arc<Callback>,
-}
-impl std::ops::Deref for CallbackPtr {
-    type Target = Callback;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref()
-    }
-}
-impl From<Callback> for CallbackPtr {
-    // 调用方确保CallbackPtr在使用前，指针的有效性。
-    fn from(cb: Callback) -> Self {
-        Self { ptr: Arc::new(cb) }
-    }
-}
+// unsafe impl Send for CallbackPtr {}
+// unsafe impl Sync for CallbackPtr {}
+// unsafe impl Send for Callback {}
+// unsafe impl Sync for Callback {}
+// #[derive(Clone)]
+// pub struct CallbackPtr {
+//     ptr: Arc<Callback>,
+// }
+// impl std::ops::Deref for CallbackPtr {
+//     type Target = Callback;
+//     #[inline]
+//     fn deref(&self) -> &Self::Target {
+//         self.ptr.as_ref()
+//     }
+// }
+// impl From<Callback> for CallbackPtr {
+//     // 调用方确保CallbackPtr在使用前，指针的有效性。
+//     fn from(cb: Callback) -> Self {
+//         Self { ptr: Arc::new(cb) }
+//     }
+// }

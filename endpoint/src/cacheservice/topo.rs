@@ -1,6 +1,6 @@
 use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
-use protocol::{Protocol, Request, Resource, TryNextType};
+use protocol::{request::Request, Protocol, Resource, TryNextType};
 use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
 use std::collections::HashMap;
@@ -12,20 +12,20 @@ use crate::Timeout;
 use protocol::Bit;
 
 #[derive(Clone)]
-pub struct CacheService<B, E, Req, P> {
+pub struct CacheService<B, E, P> {
     // 一共有n组，每组1个连接。
     // 排列顺序： master, master l1, slave, slave l1
-    streams: Distance<Shards<E, Req>>,
+    streams: Distance<Shards<E>>,
     // streams里面的前r_num个数据是提供读的(这个长度不包含slave l1, slave)。
     hasher: Hasher,
     parser: P,
     exp_sec: u32,
     force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
     backend_no_storage: bool, // true：mc后面没有存储
-    _marker: std::marker::PhantomData<(B, Req)>,
+    _marker: std::marker::PhantomData<B>,
 }
 
-impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
+impl<B, E, P> From<P> for CacheService<B, E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -40,7 +40,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> discovery::Inited for CacheService<B, E, Req, P>
+impl<B, E, P> discovery::Inited for CacheService<B, E, P>
 where
     E: discovery::Inited,
 {
@@ -54,10 +54,9 @@ where
     }
 }
 
-impl<B, E, Req, P> Hash for CacheService<B, E, Req, P>
+impl<B, E, P> Hash for CacheService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
     B: Send + Sync,
 {
@@ -67,10 +66,9 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for CacheService<B, E, Req, P>
+impl<B, E, P> Topology for CacheService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
     B: Send + Sync,
 {
@@ -84,15 +82,13 @@ where
     }
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for CacheService<B, E, Req, P>
+impl<B: Send + Sync, E, P> Endpoint for CacheService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
-    type Item = Req;
     #[inline]
-    fn send(&self, mut req: Self::Item) {
+    fn send(&self, mut req: Request) {
         debug_assert!(self.streams.local_len() > 0);
 
         let mut idx: usize = 0; // master
@@ -126,12 +122,12 @@ where
         unsafe { self.streams.get_unchecked(idx).send(req) };
     }
 }
-impl<B: Send + Sync, E, Req: Request, P: Protocol> CacheService<B, E, Req, P>
+impl<B: Send + Sync, E, P: Protocol> CacheService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
-    fn context_store(&self, ctx: &mut super::Context, req: &Req) -> (usize, bool, bool) {
+    fn context_store(&self, ctx: &mut super::Context, req: &Request) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
@@ -194,11 +190,11 @@ where
         (idx, try_next, write_back)
     }
 }
-impl<B, E, Req, P> TopologyWrite for CacheService<B, E, Req, P>
+impl<B, E, P> TopologyWrite for CacheService<B, E, P>
 where
-    B: Builder<P, Req, E>,
+    B: Builder<P, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -258,11 +254,11 @@ where
         v
     }
 }
-impl<B, E, Req, P> CacheService<B, E, Req, P>
+impl<B, E, P> CacheService<B, E, P>
 where
-    B: Builder<P, Req, E>,
+    B: Builder<P, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     fn build(
         &self,
@@ -271,7 +267,7 @@ where
         dist: &str,
         name: &str,
         timeout: Timeout,
-    ) -> Shards<E, Req> {
+    ) -> Shards<E> {
         Shards::from(dist, addrs, |addr| {
             old.remove(addr).map(|e| e).unwrap_or_else(|| {
                 B::build(addr, self.parser.clone(), Resource::Memcache, name, timeout)
@@ -281,7 +277,7 @@ where
 }
 
 use std::fmt::{self, Display, Formatter};
-impl<B, E, Req, P> Display for CacheService<B, E, Req, P> {
+impl<B, E, P> Display for CacheService<B, E, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,

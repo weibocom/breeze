@@ -5,7 +5,7 @@ use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
 };
-use protocol::{Protocol, Request, Resource};
+use protocol::{request::Request, Protocol, Resource};
 use sharding::{
     distribution::Range,
     hash::{Crc32, Hash, HashKey},
@@ -15,17 +15,17 @@ use sharding::{
 use super::config::PhantomNamespace;
 
 #[derive(Clone)]
-pub struct PhantomService<B, E, Req, P> {
+pub struct PhantomService<B, E, P> {
     // 一般有2组，相互做HA，每组是一个域名列表，域名下只有一个ip，但会变化
     streams: Vec<Distance<(String, E)>>,
     hasher: Crc32,
     distribution: Range,
     parser: P,
     cfg: Box<DnsConfig<PhantomNamespace>>,
-    _mark: PhantomData<(B, Req)>,
+    _mark: PhantomData<B>,
 }
 
-impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
+impl<B, E, P> From<P> for PhantomService<B, E, P> {
     fn from(parser: P) -> Self {
         Self {
             parser,
@@ -38,10 +38,9 @@ impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> Hash for PhantomService<B, E, Req, P>
+impl<B, E, P> Hash for PhantomService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
     B: Send + Sync,
 {
@@ -51,10 +50,9 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for PhantomService<B, E, Req, P>
+impl<B, E, P> Topology for PhantomService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
     B: Send + Sync,
 {
@@ -64,16 +62,14 @@ where
     // }
 }
 
-impl<B, E, Req, P> Endpoint for PhantomService<B, E, Req, P>
+impl<B, E, P> Endpoint for PhantomService<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
     B: Send + Sync,
 {
-    type Item = Req;
     #[inline]
-    fn send(&self, mut req: Self::Item) {
+    fn send(&self, mut req: Request) {
         debug_assert_ne!(self.streams.len(), 0);
 
         // 确认分片idx
@@ -81,7 +77,7 @@ where
         debug_assert!(s_idx < self.streams.len(), "{} {:?} {:?}", s_idx, self, req);
         let shard = unsafe { self.streams.get_unchecked(s_idx) };
 
-        let mut ctx = super::Context::from(*req.context_mut());
+        let mut ctx = super::Context::from(*req.mut_context());
         let idx = ctx.fetch_add_idx(); // 按顺序轮询
                                        // 写操作，写所有实例
         req.write_back(req.operation().is_store() && ctx.index() < shard.len());
@@ -91,16 +87,16 @@ where
         assert!(idx < shard.len(), "{} {:?} {:?}", idx, self, req);
         let e = unsafe { shard.get_unchecked(idx) };
         //ctx.check_inited();
-        *req.context_mut() = ctx.ctx;
+        *req.mut_context() = ctx.ctx;
         e.1.send(req)
     }
 }
 
-impl<B, E, Req, P> TopologyWrite for PhantomService<B, E, Req, P>
+impl<B, E, P> TopologyWrite for PhantomService<B, E, P>
 where
-    B: Builder<P, Req, E>,
+    B: Builder<P, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -133,11 +129,11 @@ where
     }
 }
 
-impl<B, E, Req, P> PhantomService<B, E, Req, P>
+impl<B, E, P> PhantomService<B, E, P>
 where
-    B: Builder<P, Req, E>,
+    B: Builder<P, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
@@ -204,7 +200,7 @@ where
     }
 }
 
-impl<B, E, Req, P> discovery::Inited for PhantomService<B, E, Req, P>
+impl<B, E, P> discovery::Inited for PhantomService<B, E, P>
 where
     E: discovery::Inited,
 {
@@ -223,7 +219,7 @@ where
             })
     }
 }
-impl<B, E, Req, P> std::fmt::Debug for PhantomService<B, E, Req, P> {
+impl<B, E, P> std::fmt::Debug for PhantomService<B, E, P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.cfg)
     }

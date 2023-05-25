@@ -5,9 +5,9 @@ use std::{
 };
 
 use protocol::{callback::CallbackContext, Parser};
-use stream::{Backend, Request};
-type Endpoint = Arc<Backend<Request>>;
-type Topology = endpoint::TopologyProtocol<Builder, Endpoint, Request, Parser>;
+use stream::Backend;
+type Endpoint = Arc<Backend>;
+type Topology = endpoint::TopologyProtocol<Builder, Endpoint, Parser>;
 //type RefreshTopology = endpoint::RefreshTopology<Topology>;
 
 type CheckedTopology = stream::CheckedTopology<Topology>;
@@ -15,14 +15,13 @@ type CheckedTopology = stream::CheckedTopology<Topology>;
 type CopyBidirectional = stream::pipeline::CopyBidirectional<Stream, Parser, CheckedTopology>;
 
 type Stream = rt::Stream<tokio::net::TcpStream>;
-type Handler<'r> = stream::handler::Handler<'r, Request, Parser, Stream>;
+type Handler<'r> = stream::handler::Handler<'r, Parser, Stream>;
 
-type Builder = stream::Builder<Parser, Request>;
-type CacheService = endpoint::cacheservice::topo::CacheService<Builder, Endpoint, Request, Parser>;
-type RedisService = endpoint::redisservice::topo::RedisService<Builder, Endpoint, Request, Parser>;
-type PhantomService =
-    endpoint::phantomservice::topo::PhantomService<Builder, Endpoint, Request, Parser>;
-type MsgQue = endpoint::msgque::topo::MsgQue<Builder, Endpoint, Request, Parser>;
+type Builder = stream::Builder<Parser>;
+type CacheService = endpoint::cacheservice::topo::CacheService<Builder, Endpoint, Parser>;
+type RedisService = endpoint::redisservice::topo::RedisService<Builder, Endpoint, Parser>;
+type PhantomService = endpoint::phantomservice::topo::PhantomService<Builder, Endpoint, Parser>;
+type MsgQue = endpoint::msgque::topo::MsgQue<Builder, Endpoint, Parser>;
 
 use rt::Entry;
 
@@ -42,7 +41,7 @@ fn checkout_basic() {
     assert_eq!(16, size_of::<metrics::Metric>());
     assert_eq!(64, size_of::<metrics::Item>());
     assert_eq!(1, size_of::<Parser>());
-    assert_eq!(48, size_of::<Backend<Request>>());
+    assert_eq!(48, size_of::<Backend>());
     assert_eq!(0, size_of::<Builder>());
     assert_eq!(40, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());

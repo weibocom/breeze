@@ -57,9 +57,9 @@ async fn run() -> Result<()> {
 
 use protocol::Parser;
 use std::sync::Arc;
-use stream::{Backend, Builder, Request};
-type Endpoint = Arc<Backend<Request>>;
-type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
+use stream::{Backend, Builder};
+type Endpoint = Arc<Backend>;
+type Topology = endpoint::TopologyProtocol<Builder<Parser>, Endpoint, Parser>;
 async fn discovery_init(
     ctx: &'static Context,
     rx: Receiver<TopologyWriteGuard<Topology>>,

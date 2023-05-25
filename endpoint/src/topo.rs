@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
-use protocol::{Protocol, ResOption, Resource};
+use protocol::{request::Request, Protocol, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
 
 // pub use protocol::Endpoint;
@@ -9,47 +9,7 @@ use crate::Timeout;
 
 use enum_dispatch::enum_dispatch;
 
-pub trait Endpoint: Sized + Send + Sync {
-    type Item;
-    fn send(&self, req: Self::Item);
-    // 返回hash应该发送的分片idx
-    fn shard_idx(&self, _hash: i64) -> usize {
-        log::warn!("+++ should not use defatult shard idx");
-        panic!("should not use defatult shard idx");
-    }
-}
-
-impl<T, R> Endpoint for &T
-where
-    T: Endpoint<Item = R>,
-{
-    type Item = R;
-    #[inline]
-    fn send(&self, req: R) {
-        (*self).send(req)
-    }
-
-    #[inline]
-    fn shard_idx(&self, hash: i64) -> usize {
-        (*self).shard_idx(hash)
-    }
-}
-
-impl<T, R> Endpoint for std::sync::Arc<T>
-where
-    T: Endpoint<Item = R>,
-{
-    type Item = R;
-    #[inline]
-    fn send(&self, req: R) {
-        (**self).send(req)
-    }
-    #[inline]
-    fn shard_idx(&self, hash: i64) -> usize {
-        (**self).shard_idx(hash)
-    }
-}
-
+pub use protocol::endpoint::*;
 #[enum_dispatch]
 pub trait Topology: Endpoint + Hash {
     #[inline]
@@ -97,7 +57,7 @@ where
     }
 }
 
-pub trait Builder<P, R, E> {
+pub trait Builder<P, E> {
     fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {
         Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
     }
@@ -117,11 +77,11 @@ macro_rules! define_topology {
     ($($top:ty, $item:ident, $ep:expr);+) => {
 
  #[derive(Clone)]
- pub enum TopologyProtocol<B, E, R, P> {
+ pub enum TopologyProtocol<B, E, P> {
       $($item($top)),+
  }
 
- impl<B, E, R, P> TopologyProtocol<B, E, R, P>  {
+ impl<B, E, P> TopologyProtocol<B, E, P>  {
      pub fn try_from(parser:P, endpoint:&str) -> Result<Self> {
           match &endpoint[..]{
               $($ep => Ok(Self::$item(parser.into())),)+
@@ -129,7 +89,7 @@ macro_rules! define_topology {
           }
      }
  }
- impl<B, E, R, P> Inited for TopologyProtocol<B, E, R, P> where E:Inited {
+ impl<B, E, P> Inited for TopologyProtocol<B, E, P> where E:Inited {
      #[inline]
      fn inited(&self) -> bool {
           match self {
@@ -140,7 +100,7 @@ macro_rules! define_topology {
      }
  }
 
-impl<B, E, R, P> discovery::TopologyWrite for TopologyProtocol<B, E, R, P> where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>+Single{
+impl<B, E, P> discovery::TopologyWrite for TopologyProtocol<B, E, P> where P:Sync+Send+Protocol, B:Builder<P, E>, E:Endpoint+Single{
     #[inline]
     fn update(&mut self, name: &str, cfg: &str) {
         match self {
@@ -167,8 +127,8 @@ impl<B, E, R, P> discovery::TopologyWrite for TopologyProtocol<B, E, R, P> where
     }
 }
 
-impl<B:Send+Sync, E, R, P> Hash for TopologyProtocol<B, E, R, P>
-where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
+impl<B:Send+Sync, E, P> Hash for TopologyProtocol<B, E, P>
+where P:Sync+Send+Protocol, E:Endpoint{
     #[inline]
     fn hash<K:HashKey>(&self, k:&K) -> i64 {
         match self {
@@ -179,8 +139,8 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
     }
 }
 
-impl<B:Send+Sync, E, R, P> Topology for TopologyProtocol<B, E, R, P>
-where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
+impl<B:Send+Sync, E, P> Topology for TopologyProtocol<B, E, P>
+where P:Sync+Send+Protocol, E:Endpoint{
     // #[inline]
     // fn hash<K:HashKey>(&self, k:&K) -> i64 {
     //     match self {
@@ -199,15 +159,13 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
     }
 }
 
-impl<B, E, R, P> Endpoint for TopologyProtocol<B, E, R, P>
-where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
-    R: protocol::Request,
+impl<B, E, P> Endpoint for TopologyProtocol<B, E, P>
+where P:Sync+Send+Protocol, E:Endpoint,
     P: Protocol,
     B:Send+Sync,
 {
-    type Item = R;
     #[inline]
-    fn send(&self, req:Self::Item) {
+    fn send(&self, req:Request) {
         match self {
             $(
                 Self::$item(p) => p.send(req),
@@ -238,13 +196,13 @@ use crate::phantomservice::topo::PhantomService;
 use crate::redisservice::topo::RedisService;
 
 define_topology! {
-    //MsgQue<B, E, R, P>, MsgQue, "mq";
-    RedisService<B, E, R, P>, RedisService, "rs";
-    CacheService<B, E, R, P>, CacheService, "cs";
-    PhantomService<B, E, R, P>, PhantomService, "pt";
+    //MsgQue<B, E, P>, MsgQue, "mq";
+    RedisService<B, E, P>, RedisService, "rs";
+    CacheService<B, E, P>, CacheService, "cs";
+    PhantomService<B, E, P>, PhantomService, "pt";
     // TODO 待client修改完毕，去掉
     // MysqlService<B, E, R, P>, MysqlService, "mysql"
-    KvService<B, E, R, P>, KvService, "kv"
+    KvService<B, E, P>, KvService, "kv"
 }
 
 // 从环境变量BREEZE_LOCAL的值获取是否开启后端资源访问的性能模式

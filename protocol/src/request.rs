@@ -10,9 +10,9 @@ pub struct Request {
     ctx: NonNull<CallbackContext>,
 }
 
-impl crate::Request for Request {
+impl Request {
     #[inline]
-    fn start_at(&self) -> ds::time::Instant {
+    pub fn start_at(&self) -> ds::time::Instant {
         self.ctx().start_at()
     }
 
@@ -26,45 +26,45 @@ impl crate::Request for Request {
     // }
 
     #[inline]
-    fn cmd_mut(&mut self) -> &mut HashedCommand {
+    pub fn cmd_mut(&mut self) -> &mut HashedCommand {
         self.req_mut()
     }
 
     //#[inline]
-    //fn len(&self) -> usize {
+    //pub fn len(&self) -> usize {
     //    self.req().len()
     //}
     //#[inline]
-    //fn cmd(&self) -> &HashedCommand {
+    //pub fn cmd(&self) -> &HashedCommand {
     //    self.req()
     //}
     //#[inline]
-    //fn data(&self) -> &ds::RingSlice {
+    //pub fn data(&self) -> &ds::RingSlice {
     //    self.req().data()
     //}
 
     //#[inline]
-    //fn read(&self, oft: usize) -> &[u8] {
+    //pub fn read(&self, oft: usize) -> &[u8] {
     //    self.req().read(oft)
     //}
     //#[inline]
-    //fn operation(&self) -> Operation {
+    //pub fn operation(&self) -> Operation {
     //    self.req().operation()
     //}
     //#[inline]
-    //fn hash(&self) -> i64 {
+    //pub fn hash(&self) -> i64 {
     //    self.req().hash()
     //}
     //#[inline]
-    //fn sentonly(&self) -> bool {
+    //pub fn sentonly(&self) -> bool {
     //    self.req().sentonly()
     //}
     #[inline]
-    fn on_noforward(&mut self) {
+    pub fn on_noforward(&mut self) {
         self.ctx().on_noforward();
     }
     #[inline]
-    fn on_sent(self) -> Option<Self> {
+    pub fn on_sent(self) -> Option<Self> {
         if self.ctx().on_sent() {
             Some(self)
         } else {
@@ -72,27 +72,27 @@ impl crate::Request for Request {
         }
     }
     #[inline]
-    fn on_complete(self, resp: Command) {
+    pub fn on_complete(self, resp: Command) {
         self.ctx().on_complete(resp);
     }
     #[inline]
-    fn on_err(self, err: Error) {
+    pub fn on_err(self, err: Error) {
         self.ctx().on_err(err);
     }
     #[inline]
-    fn mut_context(&mut self) -> &mut Context {
+    pub fn mut_context(&mut self) -> &mut Context {
         &mut self.ctx().flag
     }
     #[inline]
-    fn write_back(&mut self, wb: bool) {
+    pub fn write_back(&mut self, wb: bool) {
         self.ctx().write_back = wb;
     }
     #[inline]
-    fn try_next(&mut self, goon: bool) {
+    pub fn try_next(&mut self, goon: bool) {
         self.ctx().try_next = goon;
     }
     #[inline]
-    fn quota(&mut self, quota: BackendQuota) {
+    pub fn quota(&mut self, quota: BackendQuota) {
         self.ctx().quota(quota);
     }
     // #[inline]

@@ -1,5 +1,5 @@
 use discovery::TopologyWrite;
-use protocol::{Protocol, Request, Resource};
+use protocol::{request::Request, Protocol, Resource};
 use std::{
     collections::HashSet,
     sync::{
@@ -31,7 +31,7 @@ const OFFLINE_STOP_READ_SECONDS: u64 = 60 * 20;
 const OFFLINE_CLEAN_SECONDS: u64 = OFFLINE_STOP_READ_SECONDS + 60 * 2;
 
 #[derive(Clone)]
-pub struct MsgQue<B, E, Req, P> {
+pub struct MsgQue<B, E, P> {
     service: String,
 
     // 读写stream需要分开，读会有大量的空读
@@ -51,10 +51,10 @@ pub struct MsgQue<B, E, Req, P> {
 
     timeout_write: Timeout,
     timeout_read: Timeout,
-    _marker: std::marker::PhantomData<(B, Req)>,
+    _marker: std::marker::PhantomData<B>,
 }
 
-impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
+impl<B, E, P> From<P> for MsgQue<B, E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -75,7 +75,7 @@ impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> discovery::Inited for MsgQue<B, E, Req, P>
+impl<B, E, P> discovery::Inited for MsgQue<B, E, P>
 where
     E: discovery::Inited,
 {
@@ -109,10 +109,9 @@ where
 
 const PADDING: Hasher = Hasher::Padding(Padding);
 
-impl<B, E, Req, P> Hash for MsgQue<B, E, Req, P>
+impl<B, E, P> Hash for MsgQue<B, E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
     B: Send + Sync,
 {
@@ -122,11 +121,10 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for MsgQue<B, E, Req, P>
+impl<B, E, P> Topology for MsgQue<B, E, P>
 where
     B: Send + Sync,
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
     // #[inline]
@@ -142,16 +140,14 @@ where
 }
 
 //TODO: 验证的时候需要考虑512字节这种边界msg
-impl<B, E, Req, P> Endpoint for MsgQue<B, E, Req, P>
+impl<B, E, P> Endpoint for MsgQue<B, E, P>
 where
     B: Send + Sync,
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
-    type Item = Req;
     #[inline]
-    fn send(&self, mut req: Self::Item) {
+    fn send(&self, mut req: Request) {
         let mut ctx = super::Context::from(*req.mut_context());
 
         let inited = ctx.check_inited();
@@ -216,11 +212,10 @@ where
 }
 
 //获得待读取的streams和qid，返回的bool指示是否从offline streams中读取，true为都offline stream
-impl<B, E, Req, P> MsgQue<B, E, Req, P>
+impl<B, E, P> MsgQue<B, E, P>
 where
     B: Send + Sync,
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
     fn get_read_idx(&self, ctx: &Context, inited: bool, rw_count: usize) -> (bool, usize) {
@@ -253,10 +248,10 @@ where
     }
 }
 
-impl<B, E, Req, P> MsgQue<B, E, Req, P>
+impl<B, E, P> MsgQue<B, E, P>
 where
-    B: Builder<P, Req, E>,
-    E: Endpoint<Item = Req>,
+    B: Builder<P, E>,
+    E: Endpoint,
     P: Protocol,
 {
     // 构建下线的队列
@@ -389,11 +384,11 @@ where
     // }
 }
 
-impl<B, E, Req, P> TopologyWrite for MsgQue<B, E, Req, P>
+impl<B, E, P> TopologyWrite for MsgQue<B, E, P>
 where
-    B: Builder<P, Req, E>,
+    B: Builder<P, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn update(&mut self, name: &str, cfg: &str) {

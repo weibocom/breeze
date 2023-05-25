@@ -5,15 +5,15 @@ use std::task::{ready, Context, Poll};
 
 use ds::chan::mpsc::Receiver;
 use ds::time::Instant;
-use protocol::{Error, Protocol, Request, Result, Stream};
+use protocol::{request::Request, Error, Protocol, Result, Stream};
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use metrics::Metric;
 
-pub struct Handler<'r, Req, P, S> {
-    data: &'r mut Receiver<Req>,
-    pending: VecDeque<(Req, Instant)>,
+pub struct Handler<'r, P, S> {
+    data: &'r mut Receiver<Request>,
+    pending: VecDeque<(Request, Instant)>,
 
     s: S,
     parser: P,
@@ -25,9 +25,8 @@ pub struct Handler<'r, Req, P, S> {
     // 连续多少个cycle检查到当前没有请求发送，则发送一个ping
     ping_cycle: u16,
 }
-impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
+impl<'r, P, S> Future for Handler<'r, P, S>
 where
-    Req: Request + Unpin,
     S: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
 {
@@ -49,13 +48,12 @@ where
         Poll::Ready(Ok(()))
     }
 }
-impl<'r, Req, P, S> Handler<'r, Req, P, S>
+impl<'r, P, S> Handler<'r, P, S>
 where
-    Req: Request + Unpin,
     S: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
 {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, rtt: Metric) -> Self {
+    pub(crate) fn from(data: &'r mut Receiver<Request>, s: S, parser: P, rtt: Metric) -> Self {
         data.enable();
         Self {
             data,
@@ -182,10 +180,10 @@ where
         Poll::Ready(Ok(()))
     }
 }
-unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
-unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
-impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> rt::ReEnter
-    for Handler<'r, Req, P, S>
+unsafe impl<'r, P, S> Send for Handler<'r, P, S> {}
+unsafe impl<'r, P, S> Sync for Handler<'r, P, S> {}
+impl<'r, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> rt::ReEnter
+    for Handler<'r, P, S>
 {
     #[inline]
     fn last(&self) -> Option<ds::time::Instant> {
@@ -223,7 +221,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<'r, Req, P, S: Debug> Debug for Handler<'r, Req, P, S> {
+impl<'r, P, S: Debug> Debug for Handler<'r, P, S> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(

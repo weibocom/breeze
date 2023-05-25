@@ -1,20 +1,18 @@
 use crate::Endpoint;
+use protocol::request::Request;
 use sharding::distribution::Distribute;
 
 #[derive(Clone)]
-pub(crate) struct Shards<E, Req> {
+pub(crate) struct Shards<E> {
     router: Distribute,
     backends: Vec<(E, String)>,
-    _mark: std::marker::PhantomData<Req>,
 }
-impl<E, Req> Endpoint for Shards<E, Req>
+impl<E> Endpoint for Shards<E>
 where
-    E: Endpoint<Item = Req>,
-    Req: protocol::Request,
+    E: Endpoint,
 {
-    type Item = Req;
     #[inline]
-    fn send(&self, req: Req) {
+    fn send(&self, req: Request) {
         // assert!(self.backends.len() > 0);
         // let idx = if self.backends.len() > 1 {
         //     self.router.index(req.hash())
@@ -39,7 +37,7 @@ where
     }
 }
 
-impl<E, Req> discovery::Inited for Shards<E, Req>
+impl<E> discovery::Inited for Shards<E>
 where
     E: discovery::Inited,
 {
@@ -52,14 +50,14 @@ where
     }
 }
 
-impl<E, Req> Into<Vec<(E, String)>> for Shards<E, Req> {
+impl<E> Into<Vec<(E, String)>> for Shards<E> {
     #[inline]
     fn into(self) -> Vec<(E, String)> {
         self.backends
     }
 }
 
-impl<E, Req> Shards<E, Req> {
+impl<E> Shards<E> {
     #[inline]
     pub fn from<B: FnMut(&str) -> E>(dist: &str, addrs: Vec<String>, mut builder: B) -> Self {
         let router = Distribute::from(dist, &addrs);
@@ -67,16 +65,12 @@ impl<E, Req> Shards<E, Req> {
             .into_iter()
             .map(|addr| (builder(&addr), addr))
             .collect();
-        Self {
-            router,
-            backends,
-            _mark: Default::default(),
-        }
+        Self { router, backends }
     }
 }
 
 use discovery::distance::Addr;
-impl<E, Req> Addr for Shards<E, Req> {
+impl<E> Addr for Shards<E> {
     #[inline]
     fn addr(&self) -> &str {
         self.backends.get(0).map(|b| b.1.as_str()).unwrap_or("")

@@ -29,7 +29,7 @@ pub async fn copy_bidirectional<C, P, T>(
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck,
+    T: Topology + Unpin + TopologyCheck,
 {
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
@@ -76,7 +76,7 @@ impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck,
+    T: Topology + Unpin + TopologyCheck,
 {
     type Output = Result<()>;
 
@@ -109,7 +109,7 @@ impl<C, P, T> CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck,
+    T: Topology + Unpin + TopologyCheck,
 {
     // 解析buffer，并且发送请求.
     #[inline]
@@ -239,12 +239,10 @@ struct Visitor<'a, T> {
     arena: &'a mut CallbackContextArena,
 }
 
-// impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
+// impl<'a, P, T: Topology> protocol::RequestProcessor for Visitor<'a, P, T>
 // where
 //     P: Protocol + Unpin,
-impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
-    for Visitor<'a, T>
-{
+impl<'a, T: Topology + TopologyCheck> protocol::RequestProcessor for Visitor<'a, T> {
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
         let first = *self.first;
@@ -261,7 +259,6 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
         let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
 
-        use protocol::req::Request as RequestTrait;
         if req.noforward() {
             req.on_noforward();
         } else {
@@ -281,7 +278,7 @@ impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
-    T: Topology<Item = Request> + Unpin + TopologyCheck,
+    T: Topology + Unpin + TopologyCheck,
 {
     #[inline]
     fn close(&mut self) -> bool {
@@ -336,7 +333,7 @@ impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
     }
 }
 
-//unsafe fn callback<T: Topology<Item = Request>>(top: &T) -> Callback {
+//unsafe fn callback<T: Topology>(top: &T) -> Callback {
 //    let receiver = top as *const T as usize;
 //    let send = Box::new(move |req| {
 //        let t = &*(receiver as *const T);

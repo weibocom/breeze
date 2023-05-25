@@ -9,7 +9,7 @@ use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream};
+use protocol::{request::Request, Error, HandShake, Protocol, ResOption, Result, Stream};
 
 use crate::handler::Handler;
 use ds::chan::mpsc::Receiver;
@@ -18,8 +18,8 @@ use metrics::Path;
 
 use rt::{Entry, Timeout};
 
-pub struct BackendChecker<P, Req> {
-    rx: Receiver<Req>,
+pub struct BackendChecker<P> {
+    rx: Receiver<Request>,
     finish: Switcher,
     init: Switcher,
     parser: P,
@@ -29,10 +29,10 @@ pub struct BackendChecker<P, Req> {
     option: ResOption,
 }
 
-impl<P, Req> BackendChecker<P, Req> {
+impl<P> BackendChecker<P> {
     pub(crate) fn from(
         addr: &str,
-        rx: Receiver<Req>,
+        rx: Receiver<Request>,
         finish: Switcher,
         init: Switcher,
         parser: P,
@@ -54,7 +54,6 @@ impl<P, Req> BackendChecker<P, Req> {
     pub(crate) async fn start_check(&mut self, _single: Arc<AtomicBool>)
     where
         P: Protocol,
-        Req: Request,
     {
         let path_addr = self.path.clone().push(&self.addr);
         let mut m_timeout = path_addr.qps("timeout");

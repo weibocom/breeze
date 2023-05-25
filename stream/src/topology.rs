@@ -1,15 +1,14 @@
+use std::sync::Arc;
+
 use discovery::TopologyReadGuard;
 use ds::ReadGuard;
 use endpoint::{Endpoint, Topology};
-use protocol::{
-    callback::{Callback, CallbackPtr},
-    request::Request,
-};
+use protocol::request::Request;
 use sharding::hash::{Hash, HashKey};
 
 pub trait TopologyCheck: Sized {
     fn refresh(&mut self) -> bool;
-    fn callback(&self) -> CallbackPtr;
+    fn callback(&self) -> Arc<dyn Endpoint>;
 }
 
 pub struct CheckedTopology<T> {
@@ -18,21 +17,18 @@ pub struct CheckedTopology<T> {
     version: usize,
     //快照，定时刷新
     top: ReadGuard<T>,
-    cb: CallbackPtr,
+    cb: Arc<ReadGuard<T>>,
 }
 
-impl<T: Clone + Topology<Item = Request> + 'static> From<TopologyReadGuard<T>>
-    for CheckedTopology<T>
-{
+impl<T: Clone + Topology + 'static> From<TopologyReadGuard<T>> for CheckedTopology<T> {
     fn from(reader: TopologyReadGuard<T>) -> Self {
         //version 可以小于get出来的版本，所以要先取
         let version = reader.version();
         // reader一定是已经初始化过的，否则会UB
         assert!(version > 0);
         let top = reader.get();
-        let cb_top = top.clone();
-        let send = Box::new(move |req| cb_top.send(req));
-        let cb = Callback::new(send).into();
+        //将数据竞争缩小在一个连接范围内
+        let cb = Arc::new(top.clone());
         Self {
             reader,
             version,
@@ -42,7 +38,7 @@ impl<T: Clone + Topology<Item = Request> + 'static> From<TopologyReadGuard<T>>
     }
 }
 
-impl<T: Clone + Topology<Item = Request> + 'static> TopologyCheck for CheckedTopology<T> {
+impl<T: Clone + Topology + 'static> TopologyCheck for CheckedTopology<T> {
     fn refresh(&mut self) -> bool {
         let version = self.reader.version();
         //大部分情况下都不需要更新
@@ -53,15 +49,14 @@ impl<T: Clone + Topology<Item = Request> + 'static> TopologyCheck for CheckedTop
             false
         }
     }
-    fn callback(&self) -> CallbackPtr {
+    fn callback(&self) -> Arc<dyn Endpoint> {
         self.cb.clone()
     }
 }
 
 impl<T: Endpoint> Endpoint for CheckedTopology<T> {
-    type Item = T::Item;
     #[inline(always)]
-    fn send(&self, req: T::Item) {
+    fn send(&self, req: Request) {
         self.top.send(req);
     }
 

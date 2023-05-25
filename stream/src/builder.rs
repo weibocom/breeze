@@ -11,14 +11,14 @@ use ds::Switcher;
 use crate::checker::BackendChecker;
 use endpoint::{Builder, Endpoint, Single, Timeout};
 use metrics::Path;
-use protocol::{Error, Protocol, Request, ResOption, Resource};
+use protocol::{request::Request, Error, Protocol, ResOption, Resource};
 
 #[derive(Clone)]
-pub struct BackendBuilder<P, R> {
-    _marker: std::marker::PhantomData<(P, R)>,
+pub struct BackendBuilder<P> {
+    _marker: std::marker::PhantomData<P>,
 }
 
-impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
+impl<P: Protocol> Builder<P, Arc<Backend>> for BackendBuilder<P> {
     fn auth_option_build(
         addr: &str,
         parser: P,
@@ -26,7 +26,7 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
         service: &str,
         timeout: Timeout,
         option: ResOption,
-    ) -> Arc<Backend<R>> {
+    ) -> Arc<Backend> {
         let (tx, rx) = channel(256);
         let finish: Switcher = false.into();
         let init: Switcher = false.into();
@@ -48,16 +48,16 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
     }
 }
 
-pub struct Backend<R> {
+pub struct Backend {
     single: Arc<AtomicBool>,
-    tx: Sender<R>,
+    tx: Sender<Request>,
     // 实例销毁时，设置该值，通知checker，会议上check.
     finish: Switcher,
     // 由checker设置，标识是否初始化完成。
     init: Switcher,
 }
 
-impl<R> discovery::Inited for Backend<R> {
+impl discovery::Inited for Backend {
     // 已经连接上或者至少连接了一次
     #[inline]
     fn inited(&self) -> bool {
@@ -65,16 +65,15 @@ impl<R> discovery::Inited for Backend<R> {
     }
 }
 
-impl<R> Drop for Backend<R> {
+impl Drop for Backend {
     fn drop(&mut self) {
         self.finish.on();
     }
 }
 
-impl<R: Request> Endpoint for Backend<R> {
-    type Item = R;
+impl Endpoint for Backend {
     #[inline]
-    fn send(&self, req: R) {
+    fn send(&self, req: Request) {
         if let Err(e) = self.tx.try_send(req) {
             match e {
                 TrySendError::Closed(r) => r.on_err(Error::ChanFull),
@@ -84,7 +83,7 @@ impl<R: Request> Endpoint for Backend<R> {
         }
     }
 }
-impl<R> Single for Backend<R> {
+impl Single for Backend {
     fn single(&self) -> bool {
         self.single.load(Acquire)
     }
