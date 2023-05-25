@@ -19,7 +19,6 @@ psutil = { version = "3.2.1", default-features = false, features = ["cpu", "proc
 futures = "0.3.24"
 tokio.workspace = true
 
-
 [features]
 mock-local-ip = []
 encode-addr = []
