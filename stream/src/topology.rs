@@ -17,7 +17,7 @@ pub struct CheckedTopology<T> {
     version: usize,
     //快照，定时刷新
     top: ReadGuard<T>,
-    cb: Arc<ReadGuard<T>>,
+    cb: Arc<dyn Endpoint>,
 }
 
 impl<T: Clone + Topology + 'static> From<TopologyReadGuard<T>> for CheckedTopology<T> {
@@ -28,7 +28,7 @@ impl<T: Clone + Topology + 'static> From<TopologyReadGuard<T>> for CheckedTopolo
         assert!(version > 0);
         let top = reader.get();
         //将数据竞争缩小在一个连接范围内
-        let cb = Arc::new(top.clone());
+        let cb: Arc<dyn Endpoint> = Arc::new(top.clone());
         Self {
             reader,
             version,

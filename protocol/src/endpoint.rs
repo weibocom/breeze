@@ -11,20 +11,20 @@ pub trait Endpoint: Send + Sync {
     }
 }
 
-impl<T> Endpoint for &T
-where
-    T: Endpoint,
-{
-    #[inline]
-    fn send(&self, req: Request) {
-        (*self).send(req)
-    }
+// impl<T> Endpoint for &T
+// where
+//     T: Endpoint,
+// {
+//     #[inline]
+//     fn send(&self, req: Request) {
+//         (*self).send(req)
+//     }
 
-    #[inline]
-    fn shard_idx(&self, hash: i64) -> usize {
-        (*self).shard_idx(hash)
-    }
-}
+//     #[inline]
+//     fn shard_idx(&self, hash: i64) -> usize {
+//         (*self).shard_idx(hash)
+//     }
+// }
 
 impl<T> Endpoint for std::sync::Arc<T>
 where
@@ -46,10 +46,10 @@ where
 {
     #[inline]
     fn send(&self, req: Request) {
-        (&self).send(req)
+        (**self).send(req)
     }
     #[inline]
     fn shard_idx(&self, hash: i64) -> usize {
-        (&self).shard_idx(hash)
+        (**self).shard_idx(hash)
     }
 }
