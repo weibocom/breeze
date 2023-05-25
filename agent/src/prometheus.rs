@@ -17,8 +17,9 @@ pub async fn prometheus_metrics() -> Result<Response<Body>, hyper::Error> {
         if secs >= 8f64 {
             *last = Instant::now();
             *rsp.body_mut() = Body::wrap_stream(ReaderStream::new(Prometheus::new(secs)));
+        } else {
+            *rsp.status_mut() = StatusCode::NOT_MODIFIED;
         }
-        *rsp.status_mut() = StatusCode::NOT_MODIFIED;
     } else {
         *rsp.status_mut() = StatusCode::PROCESSING;
     }
