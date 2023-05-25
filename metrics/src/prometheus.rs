@@ -1,55 +1,30 @@
 use crate::{ItemWriter, WriteTo};
 use std::sync::{
-    atomic::{
-        AtomicUsize,
-        Ordering::{AcqRel, Acquire},
-    },
+    atomic::{AtomicUsize, Ordering::AcqRel},
     Arc,
 };
 pub struct Prometheus {
     secs: f64,
     idx: Arc<AtomicUsize>,
+    left: Vec<u8>,
 }
 
 impl Prometheus {
     pub fn new(secs: f64) -> Self {
         let idx = Arc::new(AtomicUsize::new(0));
-        Self { idx, secs }
+        Self {
+            idx,
+            secs,
+            left: Default::default(),
+        }
     }
 }
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, ReadBuf};
-impl futures::Stream for Prometheus {
-    type Item = PrometheusItem;
-    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let idx = self.idx.load(Acquire);
-        let len = crate::get_metrics().len();
-        if idx < len {
-            Poll::Ready(Some(PrometheusItem::new(&self.idx, self.secs)))
-        } else {
-            Poll::Ready(None)
-        }
-    }
-}
 
-pub struct PrometheusItem {
-    idx: Arc<AtomicUsize>,
-    left: Vec<u8>,
-    secs: f64,
-}
-impl PrometheusItem {
-    pub fn new(idx: &Arc<AtomicUsize>, secs: f64) -> Self {
-        Self {
-            left: Vec::new(),
-            idx: idx.clone(),
-            secs,
-        }
-    }
-}
-
-impl AsyncRead for PrometheusItem {
+impl AsyncRead for Prometheus {
     fn poll_read(
         mut self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
