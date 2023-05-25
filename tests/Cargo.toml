@@ -25,6 +25,7 @@ mysql_async ="0.31.3"
 chrono = "0.4"
 
 mysql = "*"
+base64 = "0.21.0"
 
 [dev-dependencies.criterion]
 version = "0.4"
