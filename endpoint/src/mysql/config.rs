@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 
 use serde::{Deserialize, Serialize};
 
@@ -6,6 +7,7 @@ use base64::{
     engine::general_purpose,
     Engine as _,
 };
+
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct MysqlNamespace {
@@ -85,8 +87,9 @@ impl MysqlNamespace {
             }
 
             // 解密
-            let key_pem = std::env::var("MYSQL_PRIVATE_KEY").expect("MISSING_MYSQL_PRIVATE_KEY");
-            log::info!("mysql private key:{}", key_pem);
+            let key_pem_file = std::env::var("MYSQL_PRIVATE_KEY_FILE").expect("MISSING_MYSQL_PRIVATE_KEY");
+            log::info!("mysql private key:{}", key_pem_file);
+            let key_pem = fs::read_to_string(key_pem_file).expect("ok");
             let encrypted_data = general_purpose::STANDARD.decode(ns.basic.password.as_bytes()).expect("INVALID_PASSWORD");
             let res = ds::auth::decrypt_password(key_pem, encrypted_data);
             if let Ok(password) = res {
