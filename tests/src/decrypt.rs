@@ -1,8 +1,5 @@
+use base64::{engine::general_purpose, Engine as _};
 use ds::decrypt::decrypt_password;
-use base64::{
-    engine::general_purpose,
-    Engine as _,
-};
 
 /// 测试场景：正常&异常解密密码
 /// 特征：预先通过公钥加密密码，转换为base64编码的字符串，然后通过私钥解密，得到原始密码
@@ -23,11 +20,15 @@ jykCIC+3DEFFLT6jIpFUjwmJERTs8XBytDd4JAx5FPHDJ2YVAiEAjXWHmoICYxYp
 +eD+kleIBcupQQYvTYE7CDra4lTCD8kCIQCSju4GL3WOrN+R0J97IM8ZBbfsGXPL
 R7fqrcMo7Htwzw==
 -----END PRIVATE KEY-----"
-    .to_string();
+        .to_string();
 
     // 正常情况下的加密数据
-    let data = "tKVADH4Nyn+vQFOco1RT3KV9TC4RJj3viGf1VWGaTiBQSpg3+vy/VDhOxb7WEZETha8MIRD0/raYEkNAo4TOXA==".to_string();
-    let encrypted_data = general_purpose::STANDARD.decode(data.as_bytes()).expect("INVALID_PASSWORD");
+    let data =
+        "tKVADH4Nyn+vQFOco1RT3KV9TC4RJj3viGf1VWGaTiBQSpg3+vy/VDhOxb7WEZETha8MIRD0/raYEkNAo4TOXA=="
+            .to_string();
+    let encrypted_data = general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .expect("INVALID_PASSWORD");
 
     let result = decrypt_password(&key_pem, &encrypted_data);
     assert!(result.is_ok());
@@ -40,13 +41,16 @@ R7fqrcMo7Htwzw==
     assert!(encrypted_data.is_err());
 
     // 异常加密数据: base64编码的数据，但不是加密数据
-    let data = "rLZg/70OiukQca4c4O0FQRlI7daa/bEP++wovp375aUi3imp+D/wCMMiQe38a31uBFoRePtqT5alVmR8Ifs2TA==".to_string();
-    let encrypted_data = general_purpose::STANDARD.decode(data.as_bytes()).expect("INVALID_PASSWORD");
+    let data =
+        "rLZg/70OiukQca4c4O0FQRlI7daa/bEP++wovp375aUi3imp+D/wCMMiQe38a31uBFoRePtqT5alVmR8Ifs2TA=="
+            .to_string();
+    let encrypted_data = general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .expect("INVALID_PASSWORD");
 
     let result = decrypt_password(&key_pem, &encrypted_data);
     assert!(result.is_ok());
     assert_ne!(result.expect("ok"), b"xYsA0daSCDAEsmMDA0MDA")
-    
 }
 
 /// 测试场景：无效数据
@@ -68,7 +72,7 @@ jykCIC+3DEFFLT6jIpFUjwmJERTs8XBytDd4JAx5FPHDJ2YVAiEAjXWHmoICYxYp
 +eD+kleIBcupQQYvTYE7CDra4lTCD8kCIQCSju4GL3WOrN+R0J97IM8ZBbfsGXPL
 R7fqrcMo7Htwzw==
 -----END PRIVATE KEY-----"
-    .to_string();
+        .to_string();
 
     // 边界条件 1: 空的加密数据
     let encrypted_data: Vec<u8> = vec![];
