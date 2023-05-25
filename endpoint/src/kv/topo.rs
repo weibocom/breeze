@@ -184,7 +184,7 @@ where
         self.cfg.load_guard().check_load(|| self.load_inner());
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
-        if let Some(ns) = MysqlNamespace::try_from(cfg) {
+        if let Ok(ns) = MysqlNamespace::try_from(cfg) {
             self.timeout_master.adjust(ns.basic.timeout_ms_master);
             self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
             self.selector = ns.basic.selector.as_str().into();

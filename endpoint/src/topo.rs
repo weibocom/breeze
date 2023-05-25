@@ -102,7 +102,7 @@ pub trait Builder<P, R, E> {
         Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
     }
 
-    // TODO: update
+    // TODO: ResOption -> AuthOption
     fn auth_option_build(
         addr: &str,
         parser: P,
