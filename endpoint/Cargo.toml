@@ -14,6 +14,7 @@ protocol = { path = "../protocol" }
 sharding = { path = "../sharding" }
 log = { path = "../log" }
 rt = { path = "../rt" }
+context = { path = "../context" }
 
 byteorder = "1.4.3"
 bytes = "1.0.1"
