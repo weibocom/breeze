@@ -26,7 +26,7 @@ jobs:
         run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci xinxin111/breeze:githubci106
       - uses: actions/checkout@v3
       - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+        uses: ructions/toolchain@v1
         with:
           toolchain: stable
           override: true
