@@ -1,4 +1,3 @@
-use byteorder::{BigEndian, WriteBytesExt};
 use ds::{MemGuard, RingSlice};
 use std::ops::Deref;
 
@@ -37,7 +36,7 @@ pub trait Writer: ds::BufWriter + Sized {
         // let mut data = Vec::with_capacity(2);
         // data.write_u16::<BigEndian>(v)?;
         // self.write(&data[0..])
-        self.write(&v.to_le_bytes())
+        self.write(&v.to_be_bytes())
 
     }
     #[inline]
@@ -45,7 +44,7 @@ pub trait Writer: ds::BufWriter + Sized {
         // let mut data = Vec::with_capacity(4);
         // data.write_u32::<BigEndian>(v)?;
         // self.write(&data[0..])
-        self.write(&v.to_le_bytes())
+        self.write(&v.to_be_bytes())
 
     }
     #[inline]
@@ -53,7 +52,7 @@ pub trait Writer: ds::BufWriter + Sized {
         // let mut data = Vec::with_capacity(8);
         // data.write_u64::<BigEndian>(v)?;
         // self.write(&data[0..])
-        self.write(&v.to_le_bytes())
+        self.write(&v.to_be_bytes())
 
     }
     #[inline]
