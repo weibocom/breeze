@@ -91,8 +91,7 @@ impl MysqlNamespace {
         }
 
         // 解密
-        let key_pem_file = std::env::var("MYSQL_PRIVATE_KEY_FILE")?;
-        let key_pem = fs::read_to_string(key_pem_file)?;
+        let key_pem = fs::read_to_string(&context::get().key_path)?;
         let encrypted_data = general_purpose::STANDARD.decode(ns.basic.password.as_bytes())?;
         let res = ds::decrypt::decrypt_password(&key_pem, &encrypted_data);
         if let Ok(decrypted_data) = res {
