@@ -28,7 +28,7 @@ jobs:
       - name: Install stable toolchain
         uses: ructions/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: 1.69.0
           override: true
       - name: Build
         run: cargo build
