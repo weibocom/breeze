@@ -30,6 +30,8 @@ jobs:
         with:
           toolchain: 1.69.0
           override: true
+      - name: cargo dns
+        run: cargo add trust-dns-proto@0.22.0
       - name: Build
         run: cargo build
       - name: Check Vintage
