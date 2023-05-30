@@ -55,11 +55,12 @@ impl MysqlNamespace {
 
     #[inline]
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
-        let nso = serde_yaml::from_str::<MysqlNamespace>(cfg).map_err(|e| {
-            log::info!("failed to parse mysql  e:{} config:{}", e, cfg);
-            e
-        })
-        .ok();
+        let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
+            .map_err(|e| {
+                log::info!("failed to parse mysql  e:{} config:{}", e, cfg);
+                e
+            })
+            .ok();
 
         if let Some(mut ns) = nso {
             // archive shard 处理
@@ -93,7 +94,7 @@ impl MysqlNamespace {
             let decrypt_password = match ns.decrypt_password() {
                 Ok(decrypt_password) => decrypt_password,
                 Err(e) => {
-                    log::warn!("failed to decrypt password, e:{}",e);
+                    log::warn!("failed to decrypt password, e:{}", e);
                     return None;
                 }
             };
@@ -104,11 +105,11 @@ impl MysqlNamespace {
     }
 
     #[inline]
-    fn decrypt_password(&self) -> Result<String, Box<dyn std::error::Error>>{
+    fn decrypt_password(&self) -> Result<String, Box<dyn std::error::Error>> {
         let key_pem = fs::read_to_string(&context::get().key_path)?;
-        let encrypted_data =  general_purpose::STANDARD.decode(self.basic.password.as_bytes())?;
-        let decrypted_data =  ds::decrypt::decrypt_password(&key_pem, &encrypted_data)?;
-        let decrypted_string =  String::from_utf8(decrypted_data)?;
+        let encrypted_data = general_purpose::STANDARD.decode(self.basic.password.as_bytes())?;
+        let decrypted_data = ds::decrypt::decrypt_password(&key_pem, &encrypted_data)?;
+        let decrypted_string = String::from_utf8(decrypted_data)?;
         Ok(decrypted_string)
     }
 }
