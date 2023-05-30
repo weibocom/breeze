@@ -34,7 +34,7 @@ pub trait Strategy {
     fn distribution(&self) -> &DBRange;
     fn hasher(&self) -> &Hasher;
     fn get_key(&self, key: &RingSlice) -> Option<String>;
-    fn build_kvsql(&self, key: &RingSlice) -> Option<String>;
+    fn build_kvsql(&self, req: &RingSlice, key: &RingSlice) -> Option<String>;
 }
 
 #[enum_dispatch(Strategy)]
