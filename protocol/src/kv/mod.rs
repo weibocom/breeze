@@ -1,6 +1,6 @@
 mod common;
 mod mcpacket;
-pub use mcpacket::Binary;
+pub use mcpacket::{Binary, Opcode};
 
 mod reqpacket;
 mod rsppacket;
