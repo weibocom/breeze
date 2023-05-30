@@ -6,12 +6,9 @@ use super::{
 use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
+use protocol::kv::{Binary, Opcode};
 use sharding::hash::Hash;
 use sharding::{distribution::DBRange, hash::Hasher};
-
-const DB_NAME_EXPRESSION: &str = "$db$";
-const TABLE_NAME_EXPRESSION: &str = "$tb$";
-const KEY_EXPRESSION: &str = "$k$";
 
 #[derive(Default, Clone, Debug)]
 pub struct KVTime {
@@ -84,6 +81,12 @@ impl KVTime {
     //     }
     //     None
     // }
+    fn build_insert_sql(&self, dname: &str, tname: &str, key: &str, val: &str) -> String {
+        format!("insert into {dname}.{tname} (id, content) values ({key}, {val})")
+    }
+    fn build_select_sql(&self, dname: &str, tname: &str, key: &str) -> String {
+        format!("select content from {dname}.{tname} where id={key}")
+    }
 }
 impl Strategy for KVTime {
     fn distribution(&self) -> &DBRange {
@@ -108,9 +111,8 @@ impl Strategy for KVTime {
         }
     }
     //todo: sql_name 枚举
-    fn build_kvsql(&self, key: &RingSlice) -> Option<String> {
+    fn build_kvsql(&self, req: &RingSlice, key: &RingSlice) -> Option<String> {
         let uuid = to_i64(key);
-        let mut sql = "select content from $db$.$tb$ where id=$k$".to_string();
         let tname = match self.build_tname(uuid) {
             Some(tname) => tname,
             None => return None,
@@ -119,9 +121,12 @@ impl Strategy for KVTime {
             Some(dname) => dname,
             None => return None,
         };
-        sql = sql.replace(DB_NAME_EXPRESSION, &dname);
-        sql = sql.replace(TABLE_NAME_EXPRESSION, &tname);
-        sql = sql.replace(KEY_EXPRESSION, uuid.to_string().as_str());
+        let op = req.op();
+        let sql = if op == Opcode::ADD as u8 {
+            self.build_insert_sql(&dname, &tname, key.into(), (&req.value()).into())
+        } else {
+            self.build_select_sql(&dname, &tname, key.into())
+        };
         log::debug!("{}", sql);
         Some(sql)
     }

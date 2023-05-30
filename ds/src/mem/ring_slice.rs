@@ -279,6 +279,7 @@ impl RingSlice {
 //unsafe impl Sync for RingSlice {}
 
 use std::convert::TryInto;
+use std::str::from_utf8_unchecked;
 macro_rules! define_read_number {
     ($fn_name:ident, $type_name:tt) => {
         #[inline]
@@ -314,6 +315,12 @@ impl From<&[u8]> for RingSlice {
         // assert_ne!(s.len(), 0);
         let cap = s.len().next_power_of_two();
         Self::from(s.as_ptr() as *mut u8, cap, 0, s.len())
+    }
+}
+
+impl<'a> Into<&'a str> for &'a RingSlice {
+    fn into(self) -> &'a str {
+        unsafe { from_utf8_unchecked(from_raw_parts(self.ptr().add(self.start()), self.len())) }
     }
 }
 

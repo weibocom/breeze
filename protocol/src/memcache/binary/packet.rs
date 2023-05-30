@@ -10,27 +10,6 @@ pub enum Magic {
 pub const CAS_LEN: usize = 8;
 use crate::{Error, Result, TryNextType};
 
-// 总共有48个opcode，这里先只部分支持
-#[allow(dead_code)]
-pub enum Opcode {
-    Get = 0x00,
-    Set = 0x01,
-    Add = 0x02,
-    Replace = 0x03,
-    Delete = 0x04,
-    Increment = 0x05,
-    Decrement = 0x06,
-    Flush = 0x08,
-    Stat = 0x10,
-    Noop = 0x0a,
-    Version = 0x0b,
-    GetKQ = 0x0d,
-    SetQ = 0x11,
-    Touch = 0x1c,
-    StartAuth = 0x21,
-    GETS = 0x48,
-}
-
 // response status 共11种，协议中占2个字节，当前只有1字节，如果超范围需要在协议处理位置对应修改
 #[allow(dead_code)]
 pub enum RespStatus {
@@ -108,8 +87,30 @@ const TRY_NEXT_TABLE: [u8; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
+// 总共有48个opcode，这里先只部分支持
+#[allow(dead_code)]
+#[repr(u8)]
+pub enum Opcode {
+    GET = OP_GET,
+    NOOP = OP_NOOP,
+    VERSION = OP_VERSION,
+    STAT = OP_STAT,
+    QUIT = OP_QUIT,
+    QUITQ = OP_QUITQ,
+    GETKQ = OP_GETKQ,
+    GETQ = OP_GETQ,
+    SET = OP_SET,
+    DEL = OP_DEL,
+    ADD = OP_ADD,
+    GETK = OP_GETK,
+    GETS = OP_GETS,
+    GETSQ = OP_GETSQ,
+    SETQ = OP_SETQ,
+}
+
 pub(crate) const REQUEST_MAGIC: u8 = 0x80;
 pub(crate) const RESPONSE_MAGIC: u8 = 0x81;
+
 pub(crate) const OP_GET: u8 = 0x00;
 pub(crate) const OP_NOOP: u8 = 0x0a;
 pub(crate) const OP_VERSION: u8 = 0x0b;
@@ -121,13 +122,12 @@ pub(crate) const OP_GETQ: u8 = 0x09;
 pub(crate) const OP_SET: u8 = 0x01;
 pub(crate) const OP_DEL: u8 = 0x04;
 pub(crate) const OP_ADD: u8 = 0x02;
-
 pub(crate) const OP_GETK: u8 = 0x0c;
-
+pub(crate) const OP_SETQ: u8 = 0x11;
 // 这个专门为gets扩展
-pub(crate) const OP_GETS: u8 = 0x48;
+pub const OP_GETS: u8 = 0x48;
 // 这个没有业务使用，先注销掉
-pub(crate) const OP_GETSQ: u8 = 0x49;
+pub const OP_GETSQ: u8 = 0x49;
 
 // 0x09: getq
 // 0x0d: getkq
@@ -162,21 +162,22 @@ pub(crate) fn is_quiet_get(op_code: u8) -> bool {
 //    0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f,
 //];
 
-pub trait Binary<T> {
+pub trait Binary {
+    type Item;
     fn op(&self) -> u8;
     fn operation(&self) -> Operation;
     fn noop(&self) -> bool;
     fn extra_len(&self) -> u8;
-    fn extra_or_flag(&self) -> T;
+    fn extra_or_flag(&self) -> Self::Item;
     fn total_body_len(&self) -> u32;
     fn opaque(&self) -> u32;
     fn cas(&self) -> u64;
     fn status_ok(&self) -> bool;
-    fn key(&self) -> T;
+    fn key(&self) -> Self::Item;
     fn key_len(&self) -> u16;
     // 仅仅用于获取value长度，注意区分total body len
     fn value_len(&self) -> u32;
-    fn value(&self) -> T;
+    fn value(&self) -> Self::Item;
     fn packet_len(&self) -> usize;
     // 是否为quite get请求。
     fn quiet_get(&self) -> bool;
@@ -194,8 +195,11 @@ pub trait Binary<T> {
     fn noforward(&self) -> bool;
 }
 
+pub trait Op {}
+
 use ds::RingSlice;
-impl Binary<RingSlice> for RingSlice {
+impl Binary for RingSlice {
+    type Item = Self;
     #[inline(always)]
     fn op(&self) -> u8 {
         debug_assert!(self.len() >= HEADER_LEN);

@@ -103,12 +103,14 @@ where
 
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-        // let raw_req = req.data();
-        let mid = req.key();
-        let sql = self.strategist.build_kvsql(&mid).expect("malformed sql");
+        let key = req.key();
+        let sql = self
+            .strategist
+            .build_kvsql(&req, &key)
+            .expect("malformed sql");
 
         //定位年库
-        let year = self.strategist.get_key(&mid).expect("key not found");
+        let year = self.strategist.get_key(&key).expect("key not found");
         let shards = self
             .archive_shards
             .get(&year)
