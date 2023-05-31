@@ -190,9 +190,6 @@ impl Protocol for Kv {
         }
 
         // 如果原始请求是quite_get请求，并且not found，则不回写。
-        let old_op_code = ctx.request().op_code() as u8;
-
-        // 如果原始请求是quite_get请求，并且not found，则不回写。
         if let Some(rsp) = response {
             // mysql 请求到正确的数据，才会转换并write
             if rsp.ok() {
@@ -209,6 +206,7 @@ impl Protocol for Kv {
 
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
+        let old_op_code = ctx.request().op_code() as u8;
         log::debug!("+++ send to client padding rsp, req:{:?}", ctx.request(),);
         match old_op_code {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
@@ -231,7 +229,9 @@ impl Protocol for Kv {
             // 0x09 | 0x0d => return Ok(()),
 
             // set: mc status设为 Item Not Stored,status设为false
-            OP_SET => w.write(&self.build_empty_response(RespStatus::NotStored, ctx.request()))?,
+            OP_SET | OP_ADD => {
+                w.write(&self.build_empty_response(RespStatus::NotStored, ctx.request()))?
+            }
             // self.build_empty_response(RespStatus::NotStored, req)
 
             // get/gets，返回key not found 对应的0x1
@@ -449,13 +449,20 @@ impl Kv {
     where
         W: crate::Writer,
     {
+        let origin_req = request.origin_data(); // old request
+        let op_code = origin_req.op();
         // header 24 bytes
         w.write_u8(mcpacket::Magic::Response as u8)?; //magic 1byte
         w.write_u8(request.op_code() as u8)?; // opcode 1 byte
-        let origin_req = request.origin_data(); // old request
         let key_len = origin_req.key_len(); // old key len
         w.write_u16(origin_req.key_len())?; // key len 2 bytes
-        let extra_len = 4_u8; // get 响应必须有extra，用于存放set时设置的flag
+
+        let extra_len = match op_code {
+            // get 响应必须有extra，用于存放set时设置的flag
+            OP_ADD => 0,
+            _ => 4_u8,
+        };
+
         w.write_u8(extra_len)?; //extras length 1byte
         w.write_u8(0_u8)?; //data type 1byte
         w.write_u16(mcpacket::RespStatus::NoError as u16)?; // Status 2byte
@@ -464,17 +471,29 @@ impl Kv {
         w.write_u32(0)?; //opaque: 4bytes
         w.write_u64(0)?; //cas: 8 bytes
 
-        // body： total body len
-        // TODO flag涉及到不同语言的解析问题，需要考虑兼容 fishermen
-        const FLAG_BYTEARR_JAVA: u32 = 4096;
-        //extra, 只传bytearr类型（java为4096，其他语言如何处理？），由client解析
-        w.write_u32(FLAG_BYTEARR_JAVA)?;
+        //write flag
+        match op_code {
+            OP_ADD => {}
+            _ => {
+                // body： total body len
+                // TODO flag涉及到不同语言的解析问题，需要考虑兼容 fishermen
+                const FLAG_BYTEARR_JAVA: u32 = 4096;
+                //extra, 只传bytearr类型（java为4096，其他语言如何处理？），由client解析
+                w.write_u32(FLAG_BYTEARR_JAVA)?;
+            }
+        };
 
         // 返回key
         // TODO write_slice 实际是write的MemGuard，需要统一调整？ fishermen
         w.write_slice2(&origin_req.key(), 0)?;
 
-        w.write_slice(response, 0) // value
+        match op_code {
+            //insert rsp内容为空
+            OP_ADD => Ok(()),
+            _ => {
+                w.write_slice(response, 0) // value
+            }
+        }
     }
 }
 
