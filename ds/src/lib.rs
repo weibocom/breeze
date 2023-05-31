@@ -6,6 +6,7 @@ pub mod queue;
 pub mod rand;
 pub mod utf8;
 pub mod vec;
+pub mod decrypt;
 mod waker;
 
 pub use cow::*;
