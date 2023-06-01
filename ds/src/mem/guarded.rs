@@ -112,6 +112,11 @@ impl MemGuard {
         let mem: RingSlice = RingSlice::from_vec(&*data);
         Self { mem, guard: None }
     }
+    #[inline]
+    pub fn empty() -> Self {
+        let mem: RingSlice = RingSlice::empty();
+        Self { mem, guard: None }
+    }
 
     //#[inline]
     //pub fn data(&self) -> &RingSlice {
