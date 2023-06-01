@@ -392,14 +392,15 @@ impl Kv {
         // let mut result_set = self.parse_result_set(rsp_packet)?;
         match rsp_packet.parse_result_set_meta() {
             Ok(meta) => match meta.clone() {
-                Or::A(cols) => {
+                Or::A(_cols) => {
                     let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
                     let collector = |mut acc: Vec<Vec<u8>>, row| {
                         acc.push(from_row(row));
                         acc
                     };
                     let mut result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
-                    let row: Vec<u8> = match cols.len() > 0 {
+                    let status = result_set.len() > 0;
+                    let row: Vec<u8> = match status {
                         true => result_set.remove(0),
                         false => {
                             const NOT_FOUND: &[u8] = "not found".as_bytes();
@@ -409,7 +410,7 @@ impl Kv {
                         }
                     };
                     let mem = MemGuard::from_vec(row);
-                    let cmd = Command::from(result_set.len()>0, mem);
+                    let cmd = Command::from(status, mem);
                     Ok(Some(cmd))
                 }
                 Or::B(_ok) => {
@@ -422,6 +423,7 @@ impl Kv {
         }
     }
 
+    #[allow(dead_code)]
     fn parse_result_set<'a, S>(
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
