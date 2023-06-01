@@ -1,4 +1,4 @@
-use byteorder::{BigEndian, LittleEndian, WriteBytesExt};
+use byteorder::LittleEndian;
 
 use super::Result;
 pub trait Writer: ds::BufWriter + Sized {
@@ -12,21 +12,24 @@ pub trait Writer: ds::BufWriter + Sized {
     }
     #[inline]
     fn write_u16(&mut self, v: u16) -> Result<()> {
-        let mut data = Vec::with_capacity(2);
-        data.write_u16::<BigEndian>(v)?;
-        self.write(&data[0..])
+        // let mut data = Vec::with_capacity(2);
+        // data.write_u16::<BigEndian>(v)?;
+        // self.write(&data[0..])
+        self.write(&v.to_be_bytes())
     }
     #[inline]
     fn write_u32(&mut self, v: u32) -> Result<()> {
-        let mut data = Vec::with_capacity(4);
-        data.write_u32::<BigEndian>(v)?;
-        self.write(&data[0..])
+        // let mut data = Vec::with_capacity(4);
+        // data.write_u32::<BigEndian>(v)?;
+        // self.write(&data[0..])
+        self.write(&v.to_be_bytes())
     }
     #[inline]
     fn write_u64(&mut self, v: u64) -> Result<()> {
-        let mut data = Vec::with_capacity(8);
-        data.write_u64::<BigEndian>(v)?;
-        self.write(&data[0..])
+        // let mut data = Vec::with_capacity(8);
+        // data.write_u64::<BigEndian>(v)?;
+        // self.write(&data[0..])
+        self.write(&v.to_be_bytes())
     }
     // 按str类型写入数字
     // write(v.to_string().as_bytes())
