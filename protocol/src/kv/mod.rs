@@ -1,4 +1,3 @@
-mod auth;
 mod common;
 mod mcpacket;
 pub use mcpacket::Binary;

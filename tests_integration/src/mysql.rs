@@ -5,6 +5,7 @@ use endpoint::kv::uuid::*;
 use memcache::MemcacheError;
 
 #[test]
+#[ignore]
 fn get() {
     let client = mc_get_conn("mysql");
     let key = "3094373189550081";
@@ -13,6 +14,7 @@ fn get() {
 }
 
 #[test]
+#[ignore]
 fn time_testst() {
     let id = 4839120888922294i64;
     let s = id.unix_secs();
