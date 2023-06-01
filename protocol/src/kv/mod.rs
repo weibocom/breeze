@@ -6,7 +6,7 @@ mod reqpacket;
 mod rsppacket;
 
 use self::common::proto::Text;
-use self::common::query_result::QueryResult;
+use self::common::query_result::{QueryResult, Or};
 use self::common::row::convert::from_row;
 use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
@@ -356,31 +356,70 @@ impl Kv {
     //     Ok(Some(cmd))
     // }
 
+    // // mysql协议比较复杂，不能随意take，得等到最终解析完毕后，才能统一take走
+    // // TODO：后续可以统一记录解析位置及状态，从而减少重复解析 fishermen
+    // fn parse_response_inner<'a, S: crate::Stream>(
+    //     &self,
+    //     rsp_packet: &'a mut ResponsePacket<'a, S>,
+    // ) -> Result<Option<Command>> {
+    //     let mut result_set = self.parse_result_set(rsp_packet)?;
+
+    //     // 返回mysql响应，在write response处进行协议转换
+    //     // TODO 这里临时打通，需要进一步完善修改 fishermen
+    //     let status = result_set.len() > 0;
+
+    //     let row: Vec<u8> = match result_set.len() > 0 {
+    //         true => result_set.remove(0),
+    //         false => {
+    //             const NOT_FOUND: &[u8] = "not found".as_bytes();
+    //             let mut padding = Vec::with_capacity(10);
+    //             padding.extend(NOT_FOUND);
+    //             padding
+    //         }
+    //     };
+
+    //     let mem = MemGuard::from_vec(row);
+    //     let cmd = Command::from(status, mem);
+    //     Ok(Some(cmd))
+    // }
+
     // mysql协议比较复杂，不能随意take，得等到最终解析完毕后，才能统一take走
     // TODO：后续可以统一记录解析位置及状态，从而减少重复解析 fishermen
     fn parse_response_inner<'a, S: crate::Stream>(
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
     ) -> Result<Option<Command>> {
-        let mut result_set = self.parse_result_set(rsp_packet)?;
-
-        // 返回mysql响应，在write response处进行协议转换
-        // TODO 这里临时打通，需要进一步完善修改 fishermen
-        let status = result_set.len() > 0;
-
-        let row: Vec<u8> = match result_set.len() > 0 {
-            true => result_set.remove(0),
-            false => {
-                const NOT_FOUND: &[u8] = "not found".as_bytes();
-                let mut padding = Vec::with_capacity(10);
-                padding.extend(NOT_FOUND);
-                padding
-            }
-        };
-
-        let mem = MemGuard::from_vec(row);
-        let cmd = Command::from(status, mem);
-        Ok(Some(cmd))
+        // let mut result_set = self.parse_result_set(rsp_packet)?;
+        match rsp_packet.parse_result_set_meta() {
+            Ok(meta) => match meta.clone() {
+                Or::A(cols) => {
+                    let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
+                    let collector = |mut acc: Vec<Vec<u8>>, row| {
+                        acc.push(from_row(row));
+                        acc
+                    };
+                    let mut result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
+                    let row: Vec<u8> = match cols.len() > 0 {
+                        true => result_set.remove(0),
+                        false => {
+                            const NOT_FOUND: &[u8] = "not found".as_bytes();
+                            let mut padding = Vec::with_capacity(10);
+                            padding.extend(NOT_FOUND);
+                            padding
+                        }
+                    };
+                    let mem = MemGuard::from_vec(row);
+                    let cmd = Command::from(result_set.len()>0, mem);
+                    Ok(Some(cmd))
+                }
+                Or::B(_ok) => {
+                    let mem = MemGuard::empty();
+                    let cmd = Command::from(true, mem);
+                    Ok(Some(cmd))
+                }
+            },
+            Err(err) => Err(err)
+        }
     }
 
     fn parse_result_set<'a, S>(
