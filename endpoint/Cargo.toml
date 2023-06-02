@@ -14,11 +14,13 @@ protocol = { path = "../protocol" }
 sharding = { path = "../sharding" }
 log = { path = "../log" }
 rt = { path = "../rt" }
+context = { path = "../context" }
 
 byteorder = "1.4.3"
 bytes = "1.0.1"
 tokio.workspace = true
 serde.workspace = true
+base64 = "0.21.0"
 
 enum_dispatch = "0.3.8"
 serde_derive = "1.0.126"
