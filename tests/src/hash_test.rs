@@ -58,4 +58,19 @@ mod hash_test {
 
         println!("u8:{:b}", i);
     }
+
+    #[test]
+    fn bkdrsub() {
+        let hasher = Hasher::from("bkdrsub");
+
+        let key1 = "abc#12345678901234567";
+        let hash1 = hasher.hash(&key1.as_bytes());
+        println!("key:{}, hash:{}", key1, hash1);
+        assert_eq!(hash1, 1108486745);
+
+        let key2 = "abc#12345678901234567_123456";
+        let hash2 = hasher.hash(&key2.as_bytes());
+        println!("key:{}, hash:{}", key2, hash2);
+        assert_eq!(hash2, 1108486745);
+    }
 }
