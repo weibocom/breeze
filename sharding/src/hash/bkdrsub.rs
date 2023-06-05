@@ -1,6 +1,6 @@
-/// <pre>用于支持key中部分字符串做hashkey，且hash算法类似bkdr的hsh算法；
+/// <pre>用于支持key中部分字符串做hashkey，且hash算法类似bkdr的hash算法；
 /// key格式：abc#123_456，hashkey则是‘#’之后、‘_’之前的内容；
-/// 格式注意：'#'必需存在，'_'可能不存在，如果'_'不存在则'#'之后的全部是hashkey</pre>
+/// 格式注意：'#'需要存在，否则hashkey为空；'_'可能不存在，如果'_'不存在，则'#'之后的全部是hashkey</pre>
 #[derive(Clone, Default, Debug)]
 pub struct Bkdrsub;
 
