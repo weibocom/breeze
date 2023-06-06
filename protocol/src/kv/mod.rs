@@ -1,16 +1,15 @@
 mod common;
 mod mcpacket;
-pub use mcpacket::{Binary, Opcode};
 
 mod reqpacket;
 mod rsppacket;
 
 use self::common::proto::Text;
-use self::common::query_result::{QueryResult, Or};
+use self::common::query_result::{Or, QueryResult};
 use self::common::row::convert::from_row;
 use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
-use self::mcpacket::*;
+pub use self::mcpacket::*;
 use self::reqpacket::RequestPacket;
 use self::rsppacket::ResponsePacket;
 
@@ -398,7 +397,8 @@ impl Kv {
                         acc.push(from_row(row));
                         acc
                     };
-                    let mut result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
+                    let mut result_set =
+                        query_result.scan_rows(Vec::with_capacity(4), collector)?;
                     let status = result_set.len() > 0;
                     let row: Vec<u8> = match status {
                         true => result_set.remove(0),
@@ -419,7 +419,7 @@ impl Kv {
                     Ok(Some(cmd))
                 }
             },
-            Err(err) => Err(err)
+            Err(err) => Err(err),
         }
     }
 

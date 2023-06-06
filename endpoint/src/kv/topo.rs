@@ -104,6 +104,7 @@ where
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
         let key = req.key();
+        //todo: 此处不应panic
         let sql = self
             .strategist
             .build_kvsql(&req, &key)
