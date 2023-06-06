@@ -17,6 +17,7 @@ mod arena;
 mod asserts;
 mod layout;
 // mod mysql;
+mod bkdrsub;
 mod decrypt;
 mod mysql_strategy;
 mod ring_buffer;
