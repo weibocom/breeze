@@ -121,7 +121,7 @@ pub(crate) const OP_GETKQ: u8 = 0x0d;
 pub(crate) const OP_GETQ: u8 = 0x09;
 pub(crate) const OP_SET: u8 = 0x01;
 pub(crate) const OP_DEL: u8 = 0x04;
-pub(crate) const OP_ADD: u8 = 0x02;
+pub const OP_ADD: u8 = 0x02;
 pub(crate) const OP_GETK: u8 = 0x0c;
 pub(crate) const OP_SETQ: u8 = 0x11;
 // 这个专门为gets扩展
