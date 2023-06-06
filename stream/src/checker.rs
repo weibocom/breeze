@@ -3,7 +3,7 @@ use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{atomic::AtomicBool, Arc};
-use std::task::Poll;
+use std::task::{ready, Poll};
 
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
@@ -72,9 +72,6 @@ impl<P, Req> BackendChecker<P, Req> {
                 self.init.on();
                 continue;
             }
-            // 连接成功
-            // reconn.success();
-            reconn.connected();
 
             let rtt = path_addr.rtt("req");
             let mut stream = rt::Stream::from(stream.expect("not expected"));
@@ -92,9 +89,16 @@ impl<P, Req> BackendChecker<P, Req> {
                     log::warn!("+++ auth err {} to: {}", _e, self.addr);
                     auth_failed += 1;
                     stream.cancel();
+                    //当作连接失败处理，不立马重试
+                    //todo：可以尝试将等待操作统一提取到循环开头
+                    reconn.conn_failed().await;
                     continue;
                 }
             }
+
+            // auth成功才算连接成功
+            // reconn.success();
+            reconn.connected();
 
             rx.enable();
             self.init.on();
@@ -147,26 +151,9 @@ where
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         let me = &mut *self;
-        //是否auth，parser有状态了，状态机？parser 传进去的是buf，不是client，所以前后还要加异步读写
-        //todo:读buf代码重复了与下面
-        // let mut cx1 = Context::from_waker(cx.waker());
+        let recv_result = me.s.poll_recv(cx)?;
 
-        // let poll_read = me.buf.write(&mut reader)?;
-        // log::debug!("+++ 111 read size:{}", me.buf.slice().len());
-        //有可能出错了，会有未使用的读取，放使用后会有两个mut
-        // if let Poll::Ready(_) = poll_read {
-        //     reader.check()?;
-        // }
-        // while let Poll::Ready(_) = me.buf.write(&mut reader)? {
-        //     log::debug!("+++ in 222 read size:{}", me.buf.slice().len());
-        //     reader.check()?;
-        //     log::debug!("+++ in 222.111 read size:{}", me.buf.slice().len());
-        //     reader = crate::buffer::Reader::from(&mut me.s, cx);
-        // }
-        //todo为啥需要loop？
-        while let Poll::Ready(_) = me.s.poll_recv(cx)? {}
-
-        let result = match me.parser.handshake(me.s, me.option) {
+        let auth_result = match me.parser.handshake(me.s, me.option) {
             Err(e) => Poll::Ready(Err(e)),
             Ok(HandShake::Failed) => Poll::Ready(Err(Error::AuthFailed)),
             Ok(HandShake::Continue) => Poll::Pending,
@@ -177,13 +164,16 @@ where
             }
         };
 
-        //todo 成功失败后可能会有数据flush pending，单后续handle会flush，问题应该不大
-        let _ = Pin::new(&mut *me.s).as_mut().poll_flush(cx);
+        let flush_result = Pin::new(&mut *me.s).as_mut().poll_flush(cx);
 
-        if result.is_ready() {
+        let _ = ready!(flush_result);
+        if auth_result.is_ready() {
             me.s.try_gc();
+            auth_result
+        } else {
+            ready!(recv_result);
+            cx.waker().wake_by_ref();
+            Poll::Pending
         }
-
-        result
     }
 }
