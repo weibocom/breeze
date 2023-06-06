@@ -2,7 +2,7 @@ use ds::RingSlice;
 
 pub(super) use crate::memcache::packet::*;
 
-pub use crate::memcache::packet::{Binary, Opcode};
+pub use crate::memcache::packet::{Binary, OP_ADD};
 
 use super::common::constants::Command;
 

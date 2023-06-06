@@ -318,12 +318,6 @@ impl From<&[u8]> for RingSlice {
     }
 }
 
-impl<'a> Into<&'a str> for &'a RingSlice {
-    fn into(self) -> &'a str {
-        unsafe { from_utf8_unchecked(from_raw_parts(self.ptr().add(self.start()), self.len())) }
-    }
-}
-
 impl Display for RingSlice {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

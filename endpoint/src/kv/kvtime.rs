@@ -6,7 +6,7 @@ use super::{
 use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
-use protocol::kv::{Binary, Opcode};
+use protocol::kv::{Binary, OP_ADD};
 use sharding::hash::Hash;
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -81,11 +81,41 @@ impl KVTime {
     //     }
     //     None
     // }
-    fn build_insert_sql(&self, dname: &str, tname: &str, key: &str, val: &str) -> String {
-        format!("insert into {dname}.{tname} (id, content) values ({key}, {val})")
+    fn extend_string(s: &mut String, r: &RingSlice) {
+        r.visit(|c| s.push(c as char))
     }
-    fn build_select_sql(&self, dname: &str, tname: &str, key: &str) -> String {
-        format!("select content from {dname}.{tname} where id={key}")
+    fn build_insert_sql(
+        &self,
+        dname: &str,
+        tname: &str,
+        req: &RingSlice,
+        key: &RingSlice,
+    ) -> String {
+        // format!("insert into {dname}.{tname} (id, content) values ({key}, {val})")
+        let val = req.value();
+
+        let mut sql = String::with_capacity(128);
+        sql.push_str("insert into ");
+        sql.push_str(dname);
+        sql.push('.');
+        sql.push_str(tname);
+        sql.push_str(" (id,content) values (");
+        Self::extend_string(&mut sql, key);
+        sql.push_str(",");
+        Self::extend_string(&mut sql, &val);
+        sql.push(')');
+        sql
+    }
+    fn build_select_sql(&self, dname: &str, tname: &str, key: &RingSlice) -> String {
+        // format!("select content from {dname}.{tname} where id={key}")
+        let mut sql = String::with_capacity(128);
+        sql.push_str("select content from ");
+        sql.push_str(dname);
+        sql.push('.');
+        sql.push_str(tname);
+        sql.push_str(" where id=");
+        Self::extend_string(&mut sql, key);
+        sql
     }
 }
 impl Strategy for KVTime {
@@ -121,11 +151,11 @@ impl Strategy for KVTime {
             Some(dname) => dname,
             None => return None,
         };
+
         let op = req.op();
-        let sql = if op == Opcode::ADD as u8 {
-            self.build_insert_sql(&dname, &tname, key.into(), (&req.value()).into())
-        } else {
-            self.build_select_sql(&dname, &tname, key.into())
+        let sql = match op {
+            OP_ADD => self.build_insert_sql(&dname, &tname, req, key),
+            _ => self.build_select_sql(&dname, &tname, key),
         };
         log::debug!("{}", sql);
         Some(sql)
