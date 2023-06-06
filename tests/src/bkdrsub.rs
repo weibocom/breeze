@@ -17,7 +17,7 @@ fn bkdrsub_one() {
     println!("key:{}, hash:{}, idx:{}", key1, hash1, hash1 % 180);
 }
 
-// TODO 临时校验测试，按需打开
+// TODO 临时批量文件的hash、dist校验测试，按需打开
 //#[test]
 fn bkdrsub_dist() {
     let path_base = "./redisKey";
