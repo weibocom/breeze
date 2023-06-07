@@ -8,7 +8,7 @@ use memcache::MemcacheError;
 #[ignore]
 fn get() {
     let client = mc_get_conn("mysql");
-    let key = "3094373189550081";
+    let key = "4892225613598471";
     let result: Result<Option<String>, MemcacheError> = client.get(key);
     println!("{:?}", result);
     assert_eq!(true, result.expect("ok").is_none());
@@ -18,11 +18,11 @@ fn get() {
 #[ignore]
 fn set() {
     let client = mc_get_conn("mysql");
-    let key = "4892225613598478";
-    // client.add(key, 1, 10000).unwrap();
+    let key = "4892225613598475";
+    client.add(key, 3, 10000).unwrap();
     let result: Result<Option<String>, MemcacheError> = client.get(key);
     println!("{:?}", result);
-    assert_eq!("1", result.unwrap().unwrap());
+    assert_eq!("3", result.unwrap().unwrap());
 }
 
 // #[test]

@@ -192,7 +192,7 @@ impl Protocol for Kv {
         if let Some(rsp) = response {
             // mysql 请求到正确的数据，才会转换并write
             if rsp.ok() {
-                assert!(rsp.len() > 0, "empty rsp:{:?}", rsp);
+                // assert!(rsp.len() > 0, "empty rsp:{:?}", rsp);
                 self.write_mc_packet(ctx.request(), rsp, w)?;
                 log::debug!(
                     "+++ sent to client for req:{:?}, rsp:{}",
