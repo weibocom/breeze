@@ -279,7 +279,6 @@ impl RingSlice {
 //unsafe impl Sync for RingSlice {}
 
 use std::convert::TryInto;
-use std::str::from_utf8_unchecked;
 macro_rules! define_read_number {
     ($fn_name:ident, $type_name:tt) => {
         #[inline]
