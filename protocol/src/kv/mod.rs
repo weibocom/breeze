@@ -389,38 +389,35 @@ impl Kv {
         rsp_packet: &'a mut ResponsePacket<'a, S>,
     ) -> Result<Option<Command>> {
         // let mut result_set = self.parse_result_set(rsp_packet)?;
-        match rsp_packet.parse_result_set_meta() {
-            Ok(meta) => match meta.clone() {
-                Or::A(_cols) => {
-                    let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
-                    let collector = |mut acc: Vec<Vec<u8>>, row| {
-                        acc.push(from_row(row));
-                        acc
-                    };
-                    let mut result_set =
-                        query_result.scan_rows(Vec::with_capacity(4), collector)?;
-                    let status = result_set.len() > 0;
-                    let row: Vec<u8> = match status {
-                        true => result_set.remove(0),
-                        false => {
-                            const NOT_FOUND: &[u8] = "not found".as_bytes();
-                            let mut padding = Vec::with_capacity(10);
-                            padding.extend(NOT_FOUND);
-                            padding
-                        }
-                    };
-                    let mem = MemGuard::from_vec(row);
-                    let cmd = Command::from(status, mem);
-                    Ok(Some(cmd))
-                }
-                Or::B(_ok) => {
-                    let mem = MemGuard::empty();
-                    let cmd = Command::from(true, mem);
-                    Ok(Some(cmd))
-                }
-            },
-            Err(err) => Err(err),
+        let meta = rsp_packet.parse_result_set_meta()?;
+
+        // 不返回列值的成功操作，如insert/delete/update
+        if let Or::B(_) = meta {
+            let mem = MemGuard::empty();
+            let cmd = Command::from(true, mem);
+            return Ok(Some(cmd));
         }
+
+        // 返回值有列数据的操作，如select
+        let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
+        let collector = |mut acc: Vec<Vec<u8>>, row| {
+            acc.push(from_row(row));
+            acc
+        };
+        let mut result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
+        let status = result_set.len() > 0;
+        let row: Vec<u8> = match status {
+            true => result_set.remove(0),
+            false => {
+                const NOT_FOUND: &[u8] = "not found".as_bytes();
+                let mut padding = Vec::with_capacity(10);
+                padding.extend(NOT_FOUND);
+                padding
+            }
+        };
+        let mem = MemGuard::from_vec(row);
+        let cmd = Command::from(status, mem);
+        Ok(Some(cmd))
     }
 
     #[allow(dead_code)]
