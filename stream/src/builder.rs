@@ -27,7 +27,8 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
         timeout: Timeout,
         option: ResOption,
     ) -> Arc<Backend<R>> {
-        let (tx, rx) = channel(256);
+        //TODO 对于pipeline，单次请求有30-50，这个数字先调大，看效果 fishermen
+        let (tx, rx) = channel(2560);
         let finish: Switcher = false.into();
         let init: Switcher = false.into();
         let f = finish.clone();
