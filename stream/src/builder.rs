@@ -77,7 +77,7 @@ impl<R: Request> Endpoint for Backend<R> {
     fn send(&self, req: R) {
         if let Err(e) = self.tx.try_send(req) {
             match e {
-                TrySendError::Closed(r) => r.on_err(Error::ChanFull),
+                TrySendError::Closed(r) => r.on_err(Error::ChanClosed),
                 TrySendError::Full(r) => r.on_err(Error::ChanFull),
                 TrySendError::Disabled(r) => r.on_err(Error::ChanDisabled),
             }
