@@ -15,11 +15,10 @@ fn get() {
 }
 
 #[test]
-#[ignore]
 fn set() {
     let client = mc_get_conn("mysql");
     let key = "4892225613598475";
-    client.add(key, 3, 10000).unwrap();
+    client.add(key, "3", 10000).unwrap();
     let result: Result<Option<String>, MemcacheError> = client.get(key);
     println!("{:?}", result);
     assert_eq!("3", result.unwrap().unwrap());
