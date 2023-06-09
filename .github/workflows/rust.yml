@@ -13,6 +13,7 @@ env:
   counterservice: localhost:9302
   mc: localhost:9301
   phantom: localhost:9303
+  mysql: localhost:3306
   min_key: 1
   max_key: 10000
   socks_dir: /home/runner/work/breeze/socks
@@ -22,8 +23,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Mysql start and init
+        run: |
+          docker run --rm --name breeze_ci_mysql4623  -p 4623:3306 -d viciousstar/mysqlci_with_schema
+          docker run --rm --name breeze_ci_mysql4624  -p 4624:3306 -d viciousstar/mysqlci_with_schema
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci xinxin111/breeze:githubci106
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci viciousstar/breeze:githubci108
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -40,6 +45,7 @@ jobs:
           curl http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest
           curl http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest
           curl http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest
+          curl http://127.0.0.1:8080/config/cloud/kv/testbreeze/kvmeshtest
       - name: Create Socks
         run: |
           #ps -aux|grep breeze
@@ -51,18 +57,19 @@ jobs:
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+v1+cache.service.testbreeze.pool.yf+all:meshtest@mc:9301@cs 
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+counterservice+testbreeze+meshtest@redis:9302@rs
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
           ls -all ./target/debug/agent
       - name: Run
-        run: nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info --idc-path 127.0.0.1:8080/3/config/breeze/idc_region  > /home/runner/work/breeze/logs/log.file  2>&1 &
+        run: nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot /home/runner/work/breeze/snapshot --service-path /home/runner/work/breeze/socks --log-dir /home/runner/work/breeze/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info --idc-path 127.0.0.1:8080/3/config/breeze/idc_region --key-path=.github/workflows/private_key.pem > /home/runner/work/breeze/logs/log.file  2>&1 &
       - name: Check Status
         run: |
           sleep 6s
           netstat -nat|grep LISTEN
           #ps -aux|grep breeze
-          ls -all /home/runner/work/breeze/snapshot
+          ls -all /home/runner/work/breeze/snapshot 
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
           tail -10 /home/runner/work/breeze/logs/log.file
