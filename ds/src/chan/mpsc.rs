@@ -1,6 +1,9 @@
 use core::fmt;
 use std::fmt::{Debug, Formatter};
-use std::sync::atomic::{AtomicUsize, Ordering::*};
+use std::sync::atomic::{
+    AtomicUsize,
+    Ordering::{self, *},
+};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -87,11 +90,18 @@ impl<T> Sender<T> {
     #[inline]
     pub fn try_send(&self, message: T) -> Result<(), TrySendError<T>> {
         if self.switcher.get() {
-            self.tx.fetch_add(1, AcqRel);
+            let tx = self.tx.fetch_add(1, AcqRel);
+            // TODO 测试完毕清理
+            if tx % 1000 == 0 {
+                log::info!("+++ channel appending count:{}", tx);
+            }
             self.inner.try_send(message).map_err(|e| {
                 self.tx.fetch_sub(1, AcqRel);
                 match e {
-                    tokio::sync::mpsc::error::TrySendError::Full(t) => TrySendError::Full(t),
+                    tokio::sync::mpsc::error::TrySendError::Full(t) => {
+                        log::info!("+++ channel full sender appending count: {}", tx);
+                        TrySendError::Full(t)
+                    }
                     tokio::sync::mpsc::error::TrySendError::Closed(t) => TrySendError::Closed(t),
                 }
             })?;
