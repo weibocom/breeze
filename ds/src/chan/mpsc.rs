@@ -51,6 +51,8 @@ impl<T> Receiver<T> {
         self.inner.poll_recv(cx).map(|t| {
             t.map(|v| {
                 self.rx += 1;
+                // TODO 收到请求后，tx需要减1?
+                self.tx.fetch_sub(1, AcqRel);
                 v
             })
         })
