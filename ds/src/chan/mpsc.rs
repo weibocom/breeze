@@ -1,9 +1,6 @@
 use core::fmt;
 use std::fmt::{Debug, Formatter};
-use std::sync::atomic::{
-    AtomicUsize,
-    Ordering::{self, *},
-};
+use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -94,7 +91,7 @@ impl<T> Sender<T> {
         if self.switcher.get() {
             let tx = self.tx.fetch_add(1, AcqRel);
             // TODO 测试完毕清理
-            if tx % 10000 == 0 {
+            if tx % 1000 == 0 && tx > 0 {
                 log::info!("+++ channel appending count:{}", tx);
             }
             self.inner.try_send(message).map_err(|e| {
