@@ -47,6 +47,9 @@ where
 pub trait ByDistance {
     // 距离相同时，包含addrs的排序靠前
     fn sort(&mut self, first: Vec<String>) -> usize;
+
+    // 距离相同时，包含addrs的排序靠前
+    fn region_sort(&mut self) -> usize;
 }
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct IdcRegionCfg {
@@ -288,6 +291,57 @@ where
             } else {
                 String::new()
             },
+            len_local,
+            self.len(),
+            self.iter()
+                .map(|a| (a.string(), distances[a.addr()]))
+                .collect::<Vec<_>>()
+        );
+        len_local
+    }
+
+    // 前freeze个不参与排序，排序原则：
+    // 1. 距离小于等于4为local、且local占比不能小于1/3
+    // 2. local数量不够，全部为local，此时需推监控触发报警
+    // 3. local做随机排序
+    fn region_sort(&mut self) -> usize {
+        let distances: HashMap<String, u16> = self
+            .iter()
+            .map(|a| {
+                let (_min, max) = a.min_max();
+                (a.addr().to_string(), max)
+            })
+            .collect();
+        self.sort_by(|a, b| {
+            let da = distances[a.addr()];
+            let db = distances[b.addr()];
+            da.cmp(&db)
+                .then_with(|| rand::random::<u16>().cmp(&(u16::MAX / 2)))
+        });
+        let mut len_local = 0;
+        for r in &self[..] {
+            if distances[r.addr()] > 4 {
+                break;
+            }
+            len_local += 1;
+        }
+
+        if len_local < ((self.len() + 2) / 3).max(1) {
+            metrics::incr_replica_shortage();
+
+            log::warn!(
+                "too few instance in region:{} total:{}, {:?}",
+                len_local,
+                self.len(),
+                self.iter()
+                    .map(|a| (a.string(), distances[a.addr()]))
+                    .collect::<Vec<_>>()
+            );
+
+            len_local = self.len();
+        };
+        log::info!(
+            "sort-by-region.len_local:{} total:{}, {:?}",
             len_local,
             self.len(),
             self.iter()
