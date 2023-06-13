@@ -26,6 +26,8 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) selector: String,
     #[serde(default)]
+    pub(crate) region_enabled: bool,
+    #[serde(default)]
     pub(crate) timeout_ms_master: u32,
     #[serde(default)]
     pub(crate) timeout_ms_slave: u32,
