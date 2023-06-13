@@ -81,8 +81,28 @@ impl KVTime {
     //     }
     //     None
     // }
-    fn extend_string(s: &mut String, r: &RingSlice) {
-        r.visit(|c| s.push(c as char))
+    fn escape_mysql_and_push(s: &mut String, c: char) {
+        if c == '\x00' {
+            s.push('\\');
+            s.push('0');
+        } else if c == '\n' {
+            s.push('\\');
+            s.push('n');
+        } else if c == '\r' {
+            s.push('\\');
+            s.push('r');
+        } else if c == '\\' || c == '\'' || c == '"' {
+            s.push('\\');
+            s.push(c);
+        } else if c == '\x1a' {
+            s.push('\\');
+            s.push('Z');
+        } else {
+            s.push(c);
+        }
+    }
+    fn extend_escape_string(s: &mut String, r: &RingSlice) {
+        r.visit(|c| Self::escape_mysql_and_push(s, c as char))
     }
     fn build_insert_sql(
         &self,
@@ -100,10 +120,10 @@ impl KVTime {
         sql.push('.');
         sql.push_str(tname);
         sql.push_str(" (id,content) values (");
-        Self::extend_string(&mut sql, key);
-        sql.push_str(",");
-        Self::extend_string(&mut sql, &val);
-        sql.push(')');
+        Self::extend_escape_string(&mut sql, key);
+        sql.push_str(",'");
+        Self::extend_escape_string(&mut sql, &val);
+        sql.push_str("')");
         sql
     }
     fn build_select_sql(&self, dname: &str, tname: &str, key: &RingSlice) -> String {
@@ -114,7 +134,7 @@ impl KVTime {
         sql.push('.');
         sql.push_str(tname);
         sql.push_str(" where id=");
-        Self::extend_string(&mut sql, key);
+        Self::extend_escape_string(&mut sql, key);
         sql
     }
 }
