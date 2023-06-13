@@ -391,7 +391,7 @@ impl<E> Shard<E> {
     fn selector(local: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
-            slaves: Distance::with_performance_tuning(replicas, local),
+            slaves: Distance::with_performance_tuning(replicas, local, false),
         }
     }
     #[inline]
