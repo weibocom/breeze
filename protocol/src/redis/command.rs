@@ -247,9 +247,9 @@ pub(crate) fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties>
 /// 获得malform cmd的op code，非常规流程，不考虑性能了
 #[inline]
 pub(super) fn cmd_malfrom() -> &'static CommandProperties {
-    const CMD_NAME_MALFORM: &str = "malform";
-    let op_code = CommandHasher::hash_bytes(CMD_NAME_MALFORM.as_bytes());
-    get_cfg(op_code).expect("malform should be exists!")
+    const CMD_NAME_MALFORM: &[u8] = "malform".as_bytes();
+    let op_code = CommandHasher::hash_bytes(CMD_NAME_MALFORM);
+    get_cfg(op_code).expect("cmd[malform] should be existed!")
 }
 
 use Operation::*;
