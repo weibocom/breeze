@@ -287,8 +287,11 @@ impl Protocol for Redis {
             }
 
             // quit指令发送完毕后，返回异常断连接
-            if cfg.quit {
-                return Err(crate::Error::Quit);
+            if let Some(ref quit) = cfg.quit {
+                match quit {
+                    command::Quit::Common => return Err(crate::Error::Quit),
+                    command::Quit::Error => return Err(crate::Error::ProtocolNotSupported),
+                }
             }
         } else {
             // multi请求，如果需要bulk num，对第一个key先返回bulk head；
