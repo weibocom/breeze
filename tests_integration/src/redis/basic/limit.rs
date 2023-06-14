@@ -58,8 +58,8 @@ fn limit_incr_non_positive() {
         Some(44)
     );
 
-    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(argkey).arg::<i32>(0).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
-    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(argkey).arg::<i32>(-1).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
+    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(argkey).arg::<i32>(0).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "malformed command");
+    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(argkey).arg::<i32>(-1).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "malformed command");
 }
 
 /// 设置value大小为512
