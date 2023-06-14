@@ -292,7 +292,7 @@ pub(super) static SUPPORTED: Commands = {
         // multi请求：异常响应需要改为$-1
         Cmd::new("mincr").arity(-2).op(Store).first(1).last(-1).step(1).padding(pt[6]).multi().key().bulk(),
 
-        ////mset、del 是mlti指令，但只返回一个result，即need_bulk_num为false，那就只返回第一个key的响应
+        //// mset、del 是mlti指令，但只返回一个result，即need_bulk_num为false，那就只返回第一个key的响应
         //// del 删除多个key时，返回删除的key数量，先不聚合这个数字，反正client也会忽略？
         //// exists 虽然原生支持多key，但业务client支持单key，故此处只支持单key
         Cmd::new("mset").m("set").arity(-3).op(Store).first(1).last(-1).step(2).padding(pt[3]).multi().key().val(),
