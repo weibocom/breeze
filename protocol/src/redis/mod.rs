@@ -13,11 +13,6 @@ use crate::{
 pub use packet::Packet;
 use sharding::hash::Hash;
 
-// redis 协议最多支持10w个token
-//const MAX_TOKEN_COUNT: usize = 100000;
-//// 最大消息支持1M
-//const MAX_MSG_LEN: usize = 1000000;
-
 #[derive(Clone, Default)]
 pub struct Redis;
 
@@ -182,9 +177,18 @@ impl Protocol for Redis {
                 packet.reserve_stream_buff();
                 Ok(())
             }
-            e => {
-                log::warn!("redis parsed err: {:?}, req: {:?} ", e, packet.inner_data());
-                e
+            Err(_e) => {
+                log::warn!(
+                    "+++ found malformed redis req: {:?}, e: {:?}",
+                    packet.inner_data(),
+                    _e
+                );
+                let padding_req = packet.take_all();
+                let malform = command::cmd_malfrom();
+                let flag = packet.flag(malform);
+                let req = HashedCommand::new(padding_req, 0, flag);
+                process.process(req, true);
+                Ok(())
             }
         }
     }
