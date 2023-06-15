@@ -67,14 +67,14 @@ impl<T: Addr> Distance<T> {
         let mut me = Self::new();
 
         // 开启可用区，local_len是当前可用区资源实例副本长度
-        let len_local = match region_enabled {
-            true => replicas.region_sort(),
-            _ => {
-                use rand::seq::SliceRandom;
-                use rand::thread_rng;
-                replicas.shuffle(&mut thread_rng());
-                replicas.len()
-            }
+        let len_local = if region_enabled {
+            // 预期前1/3为当前可用区
+            replicas.sort(Vec::new(), region_enabled)
+        } else {
+            use rand::seq::SliceRandom;
+            use rand::thread_rng;
+            replicas.shuffle(&mut thread_rng());
+            replicas.len()
         };
 
         me.refresh(replicas);
