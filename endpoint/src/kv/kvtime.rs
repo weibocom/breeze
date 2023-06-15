@@ -81,28 +81,31 @@ impl KVTime {
     //     }
     //     None
     // }
-    fn escape_mysql_and_push(s: &mut String, c: char) {
+    fn escape_mysql_and_push(s: &mut String, c: u8) {
+        //非法char要当成二进制push，否则会变成unicode
+        let s = unsafe { s.as_mut_vec() };
+        let c = c as char;
         if c == '\x00' {
-            s.push('\\');
-            s.push('0');
+            s.push('\\' as u8);
+            s.push('0' as u8);
         } else if c == '\n' {
-            s.push('\\');
-            s.push('n');
+            s.push('\\' as u8);
+            s.push('n' as u8);
         } else if c == '\r' {
-            s.push('\\');
-            s.push('r');
+            s.push('\\' as u8);
+            s.push('r' as u8);
         } else if c == '\\' || c == '\'' || c == '"' {
-            s.push('\\');
-            s.push(c);
+            s.push('\\' as u8);
+            s.push(c as u8);
         } else if c == '\x1a' {
-            s.push('\\');
-            s.push('Z');
+            s.push('\\' as u8);
+            s.push('Z' as u8);
         } else {
-            s.push(c);
+            s.push(c as u8);
         }
     }
     fn extend_escape_string(s: &mut String, r: &RingSlice) {
-        r.visit(|c| Self::escape_mysql_and_push(s, c as char))
+        r.visit(|c| Self::escape_mysql_and_push(s, c))
     }
     fn build_insert_sql(
         &self,
@@ -114,7 +117,12 @@ impl KVTime {
         // format!("insert into {dname}.{tname} (id, content) values ({key}, {val})")
         let val = req.value();
 
-        let mut sql = String::with_capacity(128);
+        let len = "insert into . (id,content) values (,)".len()
+            + dname.len()
+            + tname.len()
+            + key.len()
+            + val.len();
+        let mut sql = String::with_capacity(len);
         sql.push_str("insert into ");
         sql.push_str(dname);
         sql.push('.');
