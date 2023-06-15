@@ -7,7 +7,6 @@ use std::sync::atomic::{AtomicI64, Ordering::*};
 
 static TASK_NUM: AtomicI64 = AtomicI64::new(0);
 static SOCKFILE_FAILED: AtomicI64 = AtomicI64::new(0);
-static REPLICA_SHORTAGE: AtomicI64 = AtomicI64::new(0);
 
 pub struct Host {
     heap: Option<ds::HeapStats>, // 累积分配的堆内存
@@ -44,9 +43,6 @@ impl Host {
 
         let sockfile_failed = SOCKFILE_FAILED.load(Relaxed);
         w.write(BASE_PATH, "sockfile", "failed", sockfile_failed);
-
-        let replica_shortage = REPLICA_SHORTAGE.load(Relaxed);
-        w.write(BASE_PATH, "replica", "shortage", replica_shortage);
 
         self.snapshot_base(w, secs);
     }
@@ -124,8 +120,4 @@ pub fn decr_task() {
 #[inline]
 pub fn set_sockfile_failed(failed_count: usize) {
     SOCKFILE_FAILED.store(failed_count as i64, Relaxed);
-}
-#[inline]
-pub fn incr_replica_shortage() {
-    REPLICA_SHORTAGE.fetch_add(1, Relaxed);
 }

@@ -276,8 +276,6 @@ where
             }
 
             if len_local < ((self.len() + 2) / 3).max(1) {
-                metrics::incr_replica_shortage();
-
                 log::warn!(
                     "too few instance in region:{} total:{}, {:?}",
                     len_local,
