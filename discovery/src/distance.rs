@@ -46,10 +46,7 @@ where
 
 pub trait ByDistance {
     // 距离相同时，包含addrs的排序靠前
-    fn sort(&mut self, first: Vec<String>) -> usize;
-
-    // 距离相同时，包含addrs的排序靠前
-    fn region_sort(&mut self) -> usize;
+    fn sort(&mut self, first: Vec<String>, region_enabled: bool) -> usize;
 }
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct IdcRegionCfg {
@@ -242,8 +239,8 @@ where
     // 前freeze个不参与排序，排序原则：
     // 1. 距离最近的排前面
     // 2. 距离相同的，随机排序。避免可能的热点
-    // 3. 排完充后，取前1/4个元素，以及与前1/4个元素最后一个距离相同的所有元素。
-    fn sort(&mut self, first: Vec<String>) -> usize {
+    // 3. 排完序后，按是否开启可用区模式取local的长度
+    fn sort(&mut self, first: Vec<String>, region_enabled: bool) -> usize {
         let top: HashMap<&str, ()> = first.iter().map(|a| (a.as_str(), ())).collect();
         let distances: HashMap<String, u16> = self
             .iter()
@@ -265,14 +262,46 @@ where
                 // 距离相同时，随机排序。避免可能的热点
                 .then_with(|| rand::random::<u16>().cmp(&(u16::MAX / 2)))
         });
-        let mut len_local = (self.len() / 4).max(1);
-        let farest = distances[self[len_local - 1].addr()];
-        for r in &self[len_local..] {
-            if farest != distances[r.addr()] {
-                break;
+
+        let mut len_local = 0;
+        if region_enabled {
+            // 开启可用区
+            // 1. 距离小于等于4为local、且local占比不能小于1/3
+            // 2. local数量不够，则全部为local，此时需推监控触发报警
+            for r in &self[..] {
+                if distances[r.addr()] > 4 {
+                    break;
+                }
+                len_local += 1;
             }
-            len_local += 1;
+
+            if len_local < ((self.len() + 2) / 3).max(1) {
+                metrics::incr_replica_shortage();
+
+                log::warn!(
+                    "too few instance in region:{} total:{}, {:?}",
+                    len_local,
+                    self.len(),
+                    self.iter()
+                        .map(|a| (a.string(), distances[a.addr()]))
+                        .collect::<Vec<_>>()
+                );
+
+                len_local = self.len();
+            }
+        } else {
+            // 完全按距离的local模式，目前仅mc代码用到
+            // 取前1/4个元素，以及与前1/4个元素最后一个距离相同的所有元素。
+            len_local = (self.len() / 4).max(1);
+            let farest = distances[self[len_local - 1].addr()];
+            for r in &self[len_local..] {
+                if farest != distances[r.addr()] {
+                    break;
+                }
+                len_local += 1;
+            }
         }
+
         log::info!(
             "sort-by-distance.{} len_local:{} total:{}, {:?}",
             if first.len() > 0 {
@@ -291,57 +320,6 @@ where
             } else {
                 String::new()
             },
-            len_local,
-            self.len(),
-            self.iter()
-                .map(|a| (a.string(), distances[a.addr()]))
-                .collect::<Vec<_>>()
-        );
-        len_local
-    }
-
-    // 前freeze个不参与排序，排序原则：
-    // 1. 距离小于等于4为local、且local占比不能小于1/3
-    // 2. local数量不够，全部为local，此时需推监控触发报警
-    // 3. local做随机排序
-    fn region_sort(&mut self) -> usize {
-        let distances: HashMap<String, u16> = self
-            .iter()
-            .map(|a| {
-                let (_min, max) = a.min_max();
-                (a.addr().to_string(), max)
-            })
-            .collect();
-        self.sort_by(|a, b| {
-            let da = distances[a.addr()];
-            let db = distances[b.addr()];
-            da.cmp(&db)
-                .then_with(|| rand::random::<u16>().cmp(&(u16::MAX / 2)))
-        });
-        let mut len_local = 0;
-        for r in &self[..] {
-            if distances[r.addr()] > 4 {
-                break;
-            }
-            len_local += 1;
-        }
-
-        if len_local < ((self.len() + 2) / 3).max(1) {
-            metrics::incr_replica_shortage();
-
-            log::warn!(
-                "too few instance in region:{} total:{}, {:?}",
-                len_local,
-                self.len(),
-                self.iter()
-                    .map(|a| (a.string(), distances[a.addr()]))
-                    .collect::<Vec<_>>()
-            );
-
-            len_local = self.len();
-        };
-        log::info!(
-            "sort-by-region.len_local:{} total:{}, {:?}",
             len_local,
             self.len(),
             self.iter()

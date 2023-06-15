@@ -231,7 +231,8 @@ where
             //let local = true; 开启local，则local_len可能会变小，与按quota预期不符
             if false && is_performance && local_len > 1 {
                 backends.balance(&master);
-                local_len = backends.sort(master);
+                // local 取前1/4
+                local_len = backends.sort(master, false);
             }
 
             let mut new = Vec::with_capacity(backends.len());
