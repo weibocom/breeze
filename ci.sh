@@ -11,7 +11,7 @@ container_name=breeze_github_ci
 docker ps -a | grep "$container_name" && docker rm -f "$container_name"
 
 
-docker run --rm -d -v $brz_home:/data1/resource/breeze  --net="host"  --name "$container_name" xinxin111/breeze:githubci106
+docker run --rm -d -v $brz_home:/data1/resource/breeze  --net="host"  --name "$container_name" viciousstar/breeze:githubci108
 
 # rm -rf $brz_home/*
 mkdir -p $brz_home/logs
@@ -25,7 +25,9 @@ touch $brz_home/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
 
 cargo build
-nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot $brz_home/snapshot --service-path $brz_home/socks --log-dir $brz_home/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info --idc-path 127.0.0.1:8080/3/config/breeze/idc_region --key-path=.github/workflows/private_key.pem > $brz_home/logs/log.file  2>&1 &
+#等待mysql初始化
+sleep 120
+nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot $brz_home/snapshot --service-path $brz_home/socks --log-dir $brz_home/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info --idc-path 127.0.0.1:8080/3/config/breeze/idc_region --key-path .github/workflows/private_key.pem > $brz_home/logs/log.file  2>&1 &
 
 pid=$!
 
