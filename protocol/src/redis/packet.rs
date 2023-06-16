@@ -259,12 +259,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.stream.take(data.len())
     }
 
-    #[inline]
-    pub(super) fn take_all(&mut self) -> ds::MemGuard {
-        self.oft = self.data.len();
-        self.take()
-    }
-
     pub(super) fn flag(&self, cfg: &CommandProperties) -> Flag {
         use super::RedisFlager;
         let mut flag = cfg.flag();

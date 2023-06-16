@@ -1,7 +1,8 @@
 use context::Quadruple;
 use ds::time::Duration;
 use net::Listener;
-use rt::spawn;
+use rt::{spawn, Cancel};
+use tokio::io::AsyncWriteExt;
 use std::sync::Arc;
 
 use discovery::{TopologyReadGuard, TopologyWriteGuard};
@@ -78,7 +79,7 @@ async fn _process_one(
     loop {
         // 等待初始化成功
         let (client, _addr) = l.accept().await?;
-        let client = rt::Stream::from(client);
+        let mut client = rt::Stream::from(client);
         let p = p.clone();
         let _path = format!("{:?}", path);
         log::debug!("connection established:{:?}", _path);
@@ -95,10 +96,16 @@ async fn _process_one(
         let ctop = CheckedTopology::from(top.clone());
         let metrics = metrics.clone();
         spawn(async move {
-            if let Err(e) = copy_bidirectional(ctop, metrics.clone(), client, p, pipeline).await {
+            if let Err(e) = copy_bidirectional(ctop, metrics.clone(), &mut client, p, pipeline).await {
                 use protocol::Error::*;
                 match e {
                     Quit | Eof | IO(_) => {} // client发送quit协议退出
+                    FlushOnClose(emsg) => {
+                        log::warn!("+++ send err:{:?} before close client:{:?}", emsg, client);
+                        let write_rs = client.write_all(emsg.as_slice()).await;
+                        let flush_rs = client.flush().await;
+                        log::warn!("flush err msg rs: {:?}/{:?}", write_rs, flush_rs)
+                    }
                     // 发送异常信息给client
                     _e => {
                         *metrics.unsupport_cmd() += 1;
@@ -106,6 +113,8 @@ async fn _process_one(
                     }
                 }
             }
+            // 对client做回收操作
+            client.cancel();
         });
     }
 }

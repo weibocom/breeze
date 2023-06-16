@@ -272,9 +272,9 @@ impl Protocol for Kv {
 }
 
 impl Kv {
-    fn handshake_inner(
+    fn handshake_inner<S: Stream>(
         &self,
-        stream: &mut impl Stream,
+        stream: &mut S,
         option: &mut crate::ResOption,
     ) -> Result<HandShake> {
         log::debug!("+++ recv mysql handshake packet:{:?}", stream.slice());

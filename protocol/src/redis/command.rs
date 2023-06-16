@@ -58,13 +58,6 @@ impl CommandHasher {
     }
 }
 
-/// quit分两种： 1）普通quit，即quit指令触发的quit连接关闭；2）异常quit，异常指令导致的quit连接关闭；
-#[derive(Debug)]
-pub(crate) enum Quit {
-    Common,
-    Error,
-}
-
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Debug)]
 pub(crate) struct CommandProperties {
@@ -99,8 +92,8 @@ pub(crate) struct CommandProperties {
     pub(crate) reserve_hash: bool, // 是否为下一个cmd指定hash，如果为true，将当前hash存储下来，供下一个cmd使用
     pub(crate) need_reserved_hash: bool, // 是否需要前一个指令明确指定的hash，如果为true，则必须有key或者通过hashkey指定明确的hash
     pub(crate) master_next: bool,        // 是否需要将下一个cmd发送到master
-    pub(crate) quit: Option<Quit>, // 是否需要quit掉连接，以及quit的方式：common quit，异常quit
-    pub(crate) cmd_type: CommandType, //用来标识自身，opcode非静态可知
+    pub(crate) quit: bool,               // 是否需要quit
+    pub(crate) cmd_type: CommandType,    //用来标识自身，opcode非静态可知
     pub(crate) effect_on_next_req: bool, //对下一条指令有影响
 }
 
@@ -251,14 +244,6 @@ pub(crate) fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties>
     SUPPORTED.get_by_op(op_code)
 }
 
-/// 获得malform cmd的op code，非常规流程，不考虑性能了
-#[inline]
-pub(super) fn cmd_malfrom() -> &'static CommandProperties {
-    const CMD_NAME_MALFORM: &[u8] = "malform".as_bytes();
-    let op_code = CommandHasher::hash_bytes(CMD_NAME_MALFORM);
-    get_cfg(op_code).expect("cmd[malform] should be existed!")
-}
-
 use Operation::*;
 type Cmd = CommandProperties;
 #[ctor::ctor]
@@ -271,13 +256,12 @@ pub(super) static SUPPORTED: Commands = {
         //// meta 指令
         //// 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
         //// hello 参数应该是-1，可以不带或者带多个
-        Cmd::new("malform").arity(1).op(Meta).padding(pt[4]).nofwd().quit(Quit::Error),
         Cmd::new("command").arity(-1).op(Meta).padding(pt[1]).nofwd(),
         Cmd::new("ping").arity(-1).op(Meta).padding(pt[2]).nofwd(),
         Cmd::new("select").arity(2).op(Meta).padding(pt[1]).nofwd(),
         Cmd::new("hello").arity(-1).op(Meta).padding(pt[4]).nofwd(),
         // quit、master的指令token数/arity应该都是1,quit 的padding设为1 
-        Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(Quit::Common),
+        Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
         Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::SwallowedMaster).effect_on_next_req(),
 
         Cmd::new("get").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
@@ -633,8 +617,8 @@ impl CommandProperties {
         self.effect_on_next_req = true;
         self
     }
-    pub(crate) fn quit(mut self, quit: Quit) -> Self {
-        self.quit = Some(quit);
+    pub(crate) fn quit(mut self) -> Self {
+        self.quit = true;
         self
     }
     pub(crate) fn cmd_type(mut self, cmd_type: CommandType) -> Self {

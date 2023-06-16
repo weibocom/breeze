@@ -22,7 +22,7 @@ use crate::{
 pub async fn copy_bidirectional<C, P, T>(
     top: T,
     metrics: Arc<StreamMetrics>,
-    client: C,
+    client: &mut C,
     parser: P,
     pipeline: bool,
 ) -> Result<()>
@@ -52,9 +52,9 @@ where
     rt::Entry::timeout(pipeline, rt::DisableTimeout).await
 }
 
-pub struct CopyBidirectional<C, P, T> {
+pub struct CopyBidirectional<'a, C, P, T> {
     top: T,
-    client: C,
+    client: &'a mut C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
     waker: AtomicWaker,
@@ -72,7 +72,7 @@ pub struct CopyBidirectional<C, P, T> {
 
     arena: CallbackContextArena,
 }
-impl<C, P, T> Future for CopyBidirectional<C, P, T>
+impl<'a, C, P, T> Future for CopyBidirectional<'a, C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
@@ -105,7 +105,7 @@ where
         }
     }
 }
-impl<C, P, T> CopyBidirectional<C, P, T>
+impl<'a, C, P, T> CopyBidirectional<'a, C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
@@ -138,7 +138,7 @@ where
         };
 
         parser
-            .parse_request(client, top, &mut processor)
+            .parse_request(*client, top, &mut processor)
             .map_err(|e| {
                 log::info!("parse request error: {:?} {:?}", e, self);
                 e
@@ -183,7 +183,7 @@ where
             parser.write_response(
                 &mut ResponseContext::new(&mut ctx, metrics, |hash| self.top.shard_idx(hash)),
                 response.as_mut(),
-                client,
+                *client,
             )?;
 
             let op = ctx.request().operation();
@@ -269,7 +269,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
         }
     }
 }
-impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
+impl<'a, C, P, T> Drop for CopyBidirectional<'a, C, P, T> {
     #[inline]
     fn drop(&mut self) {
         *self.metrics.conn_num() -= 1;
@@ -277,7 +277,7 @@ impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
+impl<'a, C, P, T> rt::ReEnter for CopyBidirectional<'a, C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
@@ -287,8 +287,11 @@ where
     fn close(&mut self) -> bool {
         // take走，close后不需要再wake。避免Future drop后再次被wake，导致UB
         self.waker.take();
-        use rt::Cancel;
-        self.client.cancel();
+        // use rt::Cancel;
+
+        // TODO 放到最外层去cancel，验证完毕后清理 fishermen
+        // self.client.cancel();
+
         // 剔除已完成的请求
         while let Some(ctx) = self.pending.front_mut() {
             if !ctx.complete() {
@@ -320,7 +323,7 @@ where
         //Ok(self.client.cap() >= crate::REFRESH_THREASHOLD || self.async_pending.len() > 0)
     }
 }
-impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
+impl<'a, C: Debug, P, T> Debug for CopyBidirectional<'a, C, P, T> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(

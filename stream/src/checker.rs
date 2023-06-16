@@ -136,7 +136,7 @@ impl<P, Req> BackendChecker<P, Req> {
 
 struct Auth<'a, P, S> {
     pub option: &'a mut ResOption,
-    pub s: &'a mut S,
+    pub s:  &'a mut S,
     pub parser: P,
 }
 

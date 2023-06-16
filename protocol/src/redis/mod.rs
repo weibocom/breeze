@@ -177,18 +177,9 @@ impl Protocol for Redis {
                 packet.reserve_stream_buff();
                 Ok(())
             }
-            Err(_e) => {
-                log::warn!(
-                    "+++ found malformed redis req: {:?}, e: {:?}",
-                    packet.inner_data(),
-                    _e
-                );
-                let padding_req = packet.take_all();
-                let malform = command::cmd_malfrom();
-                let flag = packet.flag(malform);
-                let req = HashedCommand::new(padding_req, 0, flag);
-                process.process(req, true);
-                Ok(())
+            e => {
+                log::warn!("redis parsed err: {:?}, req: {:?} ", e, packet.inner_data());
+                e
             }
         }
     }
@@ -287,11 +278,8 @@ impl Protocol for Redis {
             }
 
             // quit指令发送完毕后，返回异常断连接
-            if let Some(ref quit) = cfg.quit {
-                match quit {
-                    command::Quit::Common => return Err(crate::Error::Quit),
-                    command::Quit::Error => return Err(crate::Error::ProtocolNotSupported),
-                }
+            if cfg.quit {
+                return Err(crate::Error::Quit);
             }
         } else {
             // multi请求，如果需要bulk num，对第一个key先返回bulk head；
