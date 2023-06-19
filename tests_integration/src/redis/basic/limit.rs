@@ -33,7 +33,7 @@ use function_name::named;
 //     );
 // }
 
-const ERROR_CONTENT: &str = "unexpected end of file";
+const ERROR_CONTENT: &str = "invalid bulk num";
 
 /// incr 0 =>wrong number of arguments for 'incr'
 /// incr -1=>wrong number of arguments for 'incr'
