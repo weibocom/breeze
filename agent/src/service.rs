@@ -96,8 +96,8 @@ async fn _process_one(
         let ctop = CheckedTopology::from(top.clone());
         let metrics = metrics.clone();
         spawn(async move {
-            if let Err(e) =
-                copy_bidirectional(ctop, metrics.clone(), &mut client, p, pipeline).await
+            let metrics_clone = metrics.clone();
+            if let Err(e) = copy_bidirectional(ctop, metrics_clone, &mut client, p, pipeline).await
             {
                 use protocol::Error::*;
                 match e {
@@ -105,7 +105,7 @@ async fn _process_one(
                     FlushOnClose(emsg) => {
                         let _write_rs = client.write_all(emsg.as_slice()).await;
                         let _flush_rs = client.flush().await;
-                        log::warn!("+++ flush emsg[{:?}] on close client:[{:?}]", emsg, client,)
+                        log::warn!("+++ flush emsg[{:?}] on close client:[{:?}]", emsg, client);
                     }
                     // 发送异常信息给client
                     _e => {
