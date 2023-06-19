@@ -23,7 +23,7 @@ use crate::HandShake;
 use crate::HashedCommand;
 use crate::RequestProcessor;
 use crate::Stream;
-use ds::MemGuard;
+use ds::{MemGuard, RingSlice};
 
 use sharding::hash::Hash;
 
@@ -236,6 +236,8 @@ impl Protocol for Kv {
             // get/gets，返回key not found 对应的0x1
             OP_GET => w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?,
 
+            OP_DEL => w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?,
+
             // self.build_empty_response(RespStatus::NotFound, req)
 
             // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
@@ -439,6 +441,50 @@ impl Kv {
     }
 
     #[inline]
+    fn write_mc_response<W>(
+        &self,
+        opcode: u8,
+        status: RespStatus,
+        key: Option<RingSlice>,
+        extra: Option<u32>,
+        response: Option<&crate::Command>,
+        w: &mut W,
+    ) -> Result<()>
+    where
+        W: crate::Writer,
+    {
+        w.write_u8(mcpacket::Magic::Response as u8)?; //magic 1byte
+        w.write_u8(opcode)?; // opcode 1 byte
+
+        let key_len = key.as_ref().map_or(0, |r| r.len());
+        w.write_u16(key_len as u16)?; // key len 2 bytes
+
+        let extra_len = if extra.is_some() { 4 } else { 0 };
+        w.write_u8(extra_len)?; //extras length 1byte
+
+        w.write_u8(0_u8)?; //data type 1byte
+
+        w.write_u16(status as u16)?; // Status 2byte
+
+        let response_len = response.as_ref().map_or(0, |r| r.len());
+        let total_body_len = extra_len as u32 + key_len as u32 + response_len as u32;
+        w.write_u32(total_body_len)?; // total body len: 4 bytes
+        w.write_u32(0)?; //opaque: 4bytes
+        w.write_u64(0)?; //cas: 8 bytes
+
+        if let Some(extra) = extra {
+            w.write_u32(extra)?;
+        }
+        if let Some(key) = &key {
+            w.write_slice2(key, 0)?;
+        }
+        if let Some(response) = response {
+            w.write_slice(response, 0)? // value
+        }
+        Ok(())
+    }
+
+    #[inline]
     fn write_mc_packet<W>(
         &self,
         request: &HashedCommand,
@@ -450,49 +496,23 @@ impl Kv {
     {
         let origin_req = request.origin_data(); // old request
         let op_code = origin_req.op();
-        // header 24 bytes
-        w.write_u8(mcpacket::Magic::Response as u8)?; //magic 1byte
-        w.write_u8(request.op_code() as u8)?; // opcode 1 byte
-        let key_len = origin_req.key_len(); // old key len
-        w.write_u16(origin_req.key_len())?; // key len 2 bytes
-
-        let extra_len = match op_code {
-            // get 响应必须有extra，用于存放set时设置的flag
-            OP_ADD => 0,
-            _ => 4_u8,
-        };
-
-        w.write_u8(extra_len)?; //extras length 1byte
-        w.write_u8(0_u8)?; //data type 1byte
-        w.write_u16(mcpacket::RespStatus::NoError as u16)?; // Status 2byte
-        let total_body_len = extra_len as u32 + key_len as u32 + response.len() as u32;
-        w.write_u32(total_body_len)?; // total body len: 4 bytes
-        w.write_u32(0)?; //opaque: 4bytes
-        w.write_u64(0)?; //cas: 8 bytes
-
-        //write flag
-        match op_code {
-            OP_ADD => {}
+        let (write_key, write_extra, write_response) = match op_code {
+            OP_ADD | OP_SET | OP_DEL => (None, None, None),
             _ => {
                 // body： total body len
                 // TODO flag涉及到不同语言的解析问题，需要考虑兼容 fishermen
-                const FLAG_BYTEARR_JAVA: u32 = 4096;
-                //extra, 只传bytearr类型（java为4096，其他语言如何处理？），由client解析
-                w.write_u32(FLAG_BYTEARR_JAVA)?;
+                (Some(origin_req.key()), Some(4096u32), Some(response))
             }
         };
-
-        // 返回key
-        // TODO write_slice 实际是write的MemGuard，需要统一调整？ fishermen
-        w.write_slice2(&origin_req.key(), 0)?;
-
-        match op_code {
-            //insert rsp内容为空
-            OP_ADD => Ok(()),
-            _ => {
-                w.write_slice(response, 0) // value
-            }
-        }
+        self.write_mc_response(
+            op_code,
+            mcpacket::RespStatus::NoError,
+            write_key,
+            write_extra,
+            write_response,
+            w,
+        )?;
+        Ok(())
     }
 }
 

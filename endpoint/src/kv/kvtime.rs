@@ -6,7 +6,7 @@ use super::{
 use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
-use protocol::kv::{Binary, OP_ADD};
+use protocol::kv::{Binary, OP_ADD, OP_DEL, OP_SET};
 use sharding::hash::Hash;
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -134,6 +134,32 @@ impl KVTime {
         sql.push_str("')");
         sql
     }
+    fn build_update_sql(
+        &self,
+        dname: &str,
+        tname: &str,
+        req: &RingSlice,
+        key: &RingSlice,
+    ) -> String {
+        //update . set content= where key=
+        let val = req.value();
+
+        let len = "update . set content= where key=".len()
+            + dname.len()
+            + tname.len()
+            + key.len()
+            + val.len();
+        let mut sql = String::with_capacity(len);
+        sql.push_str("update ");
+        sql.push_str(dname);
+        sql.push('.');
+        sql.push_str(tname);
+        sql.push_str(" set content='");
+        Self::extend_escape_string(&mut sql, &val);
+        sql.push_str("' where key=");
+        Self::extend_escape_string(&mut sql, key);
+        sql
+    }
     fn build_select_sql(&self, dname: &str, tname: &str, key: &RingSlice) -> String {
         // format!("select content from {dname}.{tname} where id={key}")
         let mut sql = String::with_capacity(128);
@@ -142,6 +168,18 @@ impl KVTime {
         sql.push('.');
         sql.push_str(tname);
         sql.push_str(" where id=");
+        Self::extend_escape_string(&mut sql, key);
+        sql
+    }
+    fn build_delete_sql(&self, dname: &str, tname: &str, key: &RingSlice) -> String {
+        // format!("select content from {dname}.{tname} where id={key}")
+        // delete from . where key=
+        let mut sql = String::with_capacity(64);
+        sql.push_str("delete from ");
+        sql.push_str(dname);
+        sql.push('.');
+        sql.push_str(tname);
+        sql.push_str(" where key=");
         Self::extend_escape_string(&mut sql, key);
         sql
     }
@@ -183,6 +221,8 @@ impl Strategy for KVTime {
         let op = req.op();
         let sql = match op {
             OP_ADD => self.build_insert_sql(&dname, &tname, req, key),
+            OP_SET => self.build_update_sql(&dname, &tname, req, key),
+            OP_DEL => self.build_delete_sql(&dname, &tname, key),
             _ => self.build_select_sql(&dname, &tname, key),
         };
         log::debug!("{}", sql);
