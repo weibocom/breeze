@@ -215,7 +215,7 @@ impl Commands {
         if cmd.supported {
             Ok(cmd)
         } else {
-            Err(crate::Error::ProtocolNotSupported)
+            Err(super::error::RedisError::ReqNotSupported.into())
         }
     }
 

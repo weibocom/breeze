@@ -8,6 +8,8 @@ pub enum RedisError {
     ReqInvalidNum,
     ReqInvalidNoReturn,
     ReqInvalidBulkNum,
+    ReqNotSupported,
+    RespInvalid,
     // ReqInvalidNumZero,
     // ReqInvalidDigit,
 }
@@ -43,6 +45,14 @@ impl Into<Error> for RedisError {
             }
             Self::ReqInvalidBulkNum => {
                 emsg.extend("-ERR invalid bulk num\r\n".as_bytes());
+                Error::FlushOnClose(emsg)
+            }
+            Self::ReqNotSupported => {
+                emsg.extend("-ERR unsupport cmd\r\n".as_bytes());
+                Error::FlushOnClose(emsg)
+            }
+            Self::RespInvalid => {
+                emsg.extend("-ERR response invalid\r\n".as_bytes());
                 Error::FlushOnClose(emsg)
             }
         }
