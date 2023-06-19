@@ -2,8 +2,8 @@ use context::Quadruple;
 use ds::time::Duration;
 use net::Listener;
 use rt::{spawn, Cancel};
-use tokio::io::AsyncWriteExt;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 
 use discovery::{TopologyReadGuard, TopologyWriteGuard};
 use ds::chan::Sender;
@@ -96,15 +96,16 @@ async fn _process_one(
         let ctop = CheckedTopology::from(top.clone());
         let metrics = metrics.clone();
         spawn(async move {
-            if let Err(e) = copy_bidirectional(ctop, metrics.clone(), &mut client, p, pipeline).await {
+            if let Err(e) =
+                copy_bidirectional(ctop, metrics.clone(), &mut client, p, pipeline).await
+            {
                 use protocol::Error::*;
                 match e {
                     Quit | Eof | IO(_) => {} // client发送quit协议退出
                     FlushOnClose(emsg) => {
-                        log::warn!("+++ send err:{:?} before close client:{:?}", emsg, client);
-                        let write_rs = client.write_all(emsg.as_slice()).await;
-                        let flush_rs = client.flush().await;
-                        log::warn!("flush err msg rs: {:?}/{:?}", write_rs, flush_rs)
+                        let _write_rs = client.write_all(emsg.as_slice()).await;
+                        let _flush_rs = client.flush().await;
+                        log::warn!("+++ flush emsg[{:?}] on close client:[{:?}]", emsg, client,)
                     }
                     // 发送异常信息给client
                     _e => {
