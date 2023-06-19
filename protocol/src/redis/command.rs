@@ -92,7 +92,7 @@ pub(crate) struct CommandProperties {
     pub(crate) reserve_hash: bool, // 是否为下一个cmd指定hash，如果为true，将当前hash存储下来，供下一个cmd使用
     pub(crate) need_reserved_hash: bool, // 是否需要前一个指令明确指定的hash，如果为true，则必须有key或者通过hashkey指定明确的hash
     pub(crate) master_next: bool,        // 是否需要将下一个cmd发送到master
-    pub(crate) quit: bool,               // 是否需要quit
+    pub(crate) quit: bool,               // 是否需要quit掉连接
     pub(crate) cmd_type: CommandType,    //用来标识自身，opcode非静态可知
     pub(crate) effect_on_next_req: bool, //对下一条指令有影响
 }

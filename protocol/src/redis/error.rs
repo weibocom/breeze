@@ -1,6 +1,6 @@
 use crate::Error;
 
-/// 用于处理Redis请求解析中的异常，返回特定的异常响应
+/// 用于处理Redis协议解析中的异常，用于在关闭client连接前，返回特定的异常响应
 #[derive(Debug)]
 pub enum RedisError {
     ReqInvalid,
