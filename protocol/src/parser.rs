@@ -1,3 +1,4 @@
+use ds::time::Instant;
 use enum_dispatch::enum_dispatch;
 
 use sharding::hash::Hash;
@@ -146,6 +147,12 @@ pub struct HashedCommand {
     flag: Flag,
     cmd: ds::MemGuard,
     origin_cmd: Option<MemGuard>,
+
+    // TODO just for debug fishermen
+    time_request_parsed: Option<Instant>,
+    time_request_out: Option<Duration>,
+    time_rsp_parsed: Option<Duration>,
+    time_rsp_out: Option<Duration>,
 }
 
 impl Command {
@@ -155,6 +162,8 @@ impl Command {
     //}
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
+        let now = time::Instant::now();
+        let time = now.elapsed();
         Self { ok, cmd }
     }
     // #[inline]
@@ -235,8 +244,33 @@ impl HashedCommand {
             flag,
             cmd,
             origin_cmd: None,
+
+            // TODO just for test,
+            time_request_parsed: Some(Instant::now()),
+            time_request_out: None,
+            time_rsp_parsed: None,
+            time_rsp_out: None,
         }
     }
+
+    // TODO just for test ============== start ====================
+    #[inline]
+    pub fn on_req_out(&mut self) {
+        self.time_request_out = Some(self.time_request_parsed.unwrap().elapsed());
+    }
+
+    #[inline]
+    pub fn on_resp_parsed(&mut self) {
+        self.time_rsp_parsed = Some(self.time_request_parsed.unwrap().elapsed());
+    }
+
+    #[inline]
+    pub fn on_resp_out(&mut self) {
+        self.time_rsp_out = Some(self.time_request_parsed.unwrap().elapsed());
+    }
+
+    // TODO just for test ============== end ====================
+
     #[inline]
     pub fn reset_flag(&mut self, op_code: u16, op: Operation) {
         self.flag.reset_flag(op_code, op);
@@ -321,7 +355,8 @@ impl HashedCommand {
 //}
 
 use std::fmt::{self, Debug, Display, Formatter};
-use std::mem;
+use std::time::Duration;
+use std::{mem, time};
 impl Display for HashedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "hash:{} {}", self.hash, self.cmd)

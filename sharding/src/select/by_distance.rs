@@ -1,9 +1,6 @@
 use discovery::distance::Addr;
 use rand::Rng;
-use std::sync::atomic::{
-    AtomicU64, AtomicUsize,
-    Ordering::{self, *},
-};
+use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
 
 #[repr(transparent)]
