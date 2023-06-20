@@ -1,6 +1,9 @@
 use discovery::distance::Addr;
 use rand::Rng;
-use std::sync::atomic::{AtomicUsize, Ordering::*};
+use std::sync::atomic::{
+    AtomicU64, AtomicUsize,
+    Ordering::{self, *},
+};
 use std::sync::Arc;
 
 #[repr(transparent)]
@@ -123,6 +126,11 @@ impl<T: Addr> Distance<T> {
     // 返回idx
     #[inline]
     fn check_quota_get_idx(&self) -> usize {
+        const GET_COUNT: AtomicU64 = AtomicU64::new(0);
+        let count = GET_COUNT.fetch_add(1, Ordering::AcqRel);
+        if count % 10000 == 0 {
+            log::info!("+++user quota:{}", self.backend_quota);
+        }
         if !self.backend_quota {
             return (self.idx.fetch_add(1, Relaxed) >> 10) % self.local_len();
         }
