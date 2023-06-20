@@ -87,16 +87,13 @@ impl<T> Sender<T> {
     #[inline]
     pub fn try_send(&self, message: T) -> Result<(), TrySendError<T>> {
         if self.switcher.get() {
-            let tx = self.tx.fetch_add(1, AcqRel);
-            // TODO 测试完毕清理
-            if tx > 5000 && tx % 1000 == 0 {
-                log::info!("+++ channel appending count:{}", tx);
-            }
+            self.tx.fetch_add(1, AcqRel);
+
             self.inner.try_send(message).map_err(|e| {
                 self.tx.fetch_sub(1, AcqRel);
                 match e {
                     tokio::sync::mpsc::error::TrySendError::Full(t) => {
-                        log::info!("+++ channel full sender appending count: {}", tx);
+                        log::warn!("+++ found channel full");
                         TrySendError::Full(t)
                     }
                     tokio::sync::mpsc::error::TrySendError::Closed(t) => TrySendError::Closed(t),
