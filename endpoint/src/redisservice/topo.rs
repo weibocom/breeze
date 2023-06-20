@@ -295,7 +295,12 @@ struct Shard<E> {
 }
 impl<E> Shard<E> {
     #[inline]
-    fn selector(is_performance: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(
+        is_performance: bool,
+        master_host: String,
+        master: E,
+        replicas: Vec<(String, E)>,
+    ) -> Self {
         Self {
             master: (master_host, master),
             slaves: Distance::with_performance_tuning(replicas, is_performance),
