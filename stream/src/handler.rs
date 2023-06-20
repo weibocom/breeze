@@ -116,8 +116,11 @@ where
     #[inline]
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         self.s.cache(self.data.has_multi());
-        while let Some(req) = ready!(self.data.poll_recv(cx)) {
+        while let Some(mut req) = ready!(self.data.poll_recv(cx)) {
             self.num.tx();
+
+            // TODO just for test 发出了request fishermen
+            req.on_req_out();
 
             self.s.write_slice(&*req, 0)?;
             //此处paser需要插钩子，设置seqid
@@ -144,11 +147,15 @@ where
                     Ok(None) => break,
 
                     Ok(Some(cmd)) => {
-                        let (req, start) = self.pending.pop_front().expect("take response");
+                        let (mut req, start) = self.pending.pop_front().expect("take response");
                         self.num.rx();
                         // 统计请求耗时。
                         self.rtt += start.elapsed();
                         self.parser.check(&*req, &cmd);
+
+                        // TODO just for test fishermen
+                        req.on_resp_parsed();
+
                         req.on_complete(cmd);
                     }
                     Err(e) => match e {
