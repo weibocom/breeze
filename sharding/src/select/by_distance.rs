@@ -66,10 +66,25 @@ impl<T: Addr> Distance<T> {
         assert_ne!(replicas.len(), 0);
         let mut me = Self::new();
 
-        // 开启可用区，local_len是当前可用区资源实例副本长度
         let len_local = if region_enabled {
-            // 预期前1/3为当前可用区
-            replicas.sort(Vec::new(), region_enabled)
+            // 开启可用区，local_len是当前可用区资源实例副本长度；需求详见#658
+            // 按distance选local
+            // 1. 距离小于等于4为local
+            // 2. local为0，则全部为local
+            let l = replicas.sort(Vec::new(), |d, _| {
+                d <= discovery::distance::DISTANCE_VAL_REGION
+            });
+            if l == 0 {
+                log::warn!(
+                    "too few instance in region:{} total:{}, {:?}",
+                    l,
+                    replicas.len(),
+                    replicas.iter().map(|a| a.string()).collect::<Vec<_>>()
+                );
+                replicas.len()
+            } else {
+                l
+            }
         } else {
             use rand::seq::SliceRandom;
             use rand::thread_rng;

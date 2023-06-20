@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub const DISTANCE_VAL_IDC: u16 = 1;
+pub const DISTANCE_VAL_NEIGHBOR: u16 = 2;
+pub const DISTANCE_VAL_REGION: u16 = 4;
+pub const DISTANCE_VAL_CITY: u16 = 8;
+pub const DISTANCE_VAL_OTHER: u16 = u16::MAX;
+
 trait Distance {
     fn distance(&self) -> u16;
 }
@@ -32,7 +38,7 @@ where
                 max = d;
             }
         });
-        if max - min >= 2 {
+        if max - min >= DISTANCE_VAL_NEIGHBOR {
             log::warn!(
                 "{}-{} >= 2: distance too large => {}",
                 min,
@@ -46,7 +52,7 @@ where
 
 pub trait ByDistance {
     // 距离相同时，包含addrs的排序靠前
-    fn sort(&mut self, first: Vec<String>, region_enabled: bool) -> usize;
+    fn sort<F: Fn(u16, usize) -> bool>(&mut self, first: Vec<String>, f: F) -> usize;
 }
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct IdcRegionCfg {
@@ -115,18 +121,18 @@ impl DistanceCalculator {
     fn distance(&self, addr: &str) -> u16 {
         let (idc, neighbor, region, city) = self.location(addr);
         if self.equal(&idc, &self.local_idc) {
-            return 1;
+            return DISTANCE_VAL_IDC;
         }
         if self.equal(&neighbor, &self.local_neighbor) {
-            return 2;
+            return DISTANCE_VAL_NEIGHBOR;
         }
         if self.equal(&region, &self.local_region) {
-            return 4;
+            return DISTANCE_VAL_REGION;
         }
         if self.equal(&city, &self.local_city) {
-            return 8;
+            return DISTANCE_VAL_CITY;
         }
-        u16::MAX
+        DISTANCE_VAL_OTHER
     }
     fn location(&self, addr: &str) -> (Option<&str>, Option<&str>, Option<&str>, Option<&str>) {
         let idc = self.idc(addr);
@@ -239,8 +245,10 @@ where
     // 前freeze个不参与排序，排序原则：
     // 1. 距离最近的排前面
     // 2. 距离相同的，随机排序。避免可能的热点
-    // 3. 排完序后，按是否开启可用区模式取local的长度
-    fn sort(&mut self, first: Vec<String>, region_enabled: bool) -> usize {
+    // 3. 排完序后，按参数Fn(u16, usize)取local，此函数的功能是按(距离 和/或 实例数)决定当前addr是否入选local，参数说明：
+    //   第1个参数是当前addr的距离
+    //   第2个参数是当前addr在排序后vec里的序号
+    fn sort<F: Fn(u16, usize) -> bool>(&mut self, first: Vec<String>, f: F) -> usize {
         let top: HashMap<&str, ()> = first.iter().map(|a| (a.as_str(), ())).collect();
         let distances: HashMap<String, u16> = self
             .iter()
@@ -264,33 +272,15 @@ where
         });
 
         let mut len_local = 0;
-        if region_enabled {
-            // 开启可用区
-            // 1. 距离小于等于4为local、且local占比不能小于1/3
-            // 2. local数量不够，则全部为local，此时需推监控触发报警
-            for r in &self[..] {
-                if distances[r.addr()] > 4 {
-                    break;
-                }
+        for (i, v) in self.iter().enumerate() {
+            if f(distances[v.addr()], i) {
                 len_local += 1;
+            } else {
+                break;
             }
-
-            if len_local < ((self.len() + 2) / 3).max(1) {
-                log::warn!(
-                    "too few instance in region:{} total:{}, {:?}",
-                    len_local,
-                    self.len(),
-                    self.iter()
-                        .map(|a| (a.string(), distances[a.addr()]))
-                        .collect::<Vec<_>>()
-                );
-
-                len_local = self.len();
-            }
-        } else {
-            // 完全按距离的local模式，目前仅mc代码用到
-            // 取前1/4个元素，以及与前1/4个元素最后一个距离相同的所有元素。
-            len_local = (self.len() / 4).max(1);
+        }
+        if len_local > 0 {
+            // 相同距离的也加到local
             let farest = distances[self[len_local - 1].addr()];
             for r in &self[len_local..] {
                 if farest != distances[r.addr()] {
@@ -299,7 +289,6 @@ where
                 len_local += 1;
             }
         }
-
         log::info!(
             "sort-by-distance.{} len_local:{} total:{}, {:?}",
             if first.len() > 0 {
