@@ -141,10 +141,10 @@ impl KVTime {
         req: &RingSlice,
         key: &RingSlice,
     ) -> String {
-        //update . set content= where key=
+        //update . set content= where id=
         let val = req.value();
 
-        let len = "update . set content= where key=".len()
+        let len = "update . set content= where id=".len()
             + dname.len()
             + tname.len()
             + key.len()
@@ -156,7 +156,7 @@ impl KVTime {
         sql.push_str(tname);
         sql.push_str(" set content='");
         Self::extend_escape_string(&mut sql, &val);
-        sql.push_str("' where key=");
+        sql.push_str("' where id=");
         Self::extend_escape_string(&mut sql, key);
         sql
     }
@@ -173,13 +173,13 @@ impl KVTime {
     }
     fn build_delete_sql(&self, dname: &str, tname: &str, key: &RingSlice) -> String {
         // format!("select content from {dname}.{tname} where id={key}")
-        // delete from . where key=
+        // delete from . where id=
         let mut sql = String::with_capacity(64);
         sql.push_str("delete from ");
         sql.push_str(dname);
         sql.push('.');
         sql.push_str(tname);
-        sql.push_str(" where key=");
+        sql.push_str(" where id=");
         Self::extend_escape_string(&mut sql, key);
         sql
     }
