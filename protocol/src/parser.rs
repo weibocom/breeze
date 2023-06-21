@@ -381,8 +381,8 @@ impl HashedCommand {
 //}
 
 use std::fmt::{self, Debug, Display, Formatter};
+use std::mem;
 use std::time::Duration;
-use std::{mem, time};
 impl Display for HashedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "hash:{} {}", self.hash, self.cmd)
