@@ -6,9 +6,10 @@ pub(crate) mod packet;
 //mod token;
 
 use crate::{
-    redis::command::CommandType, redis::{packet::RequestPacket, error::RedisError}, Command, Commander, Error,
-    HashedCommand, Metric, MetricItem, MetricName, Protocol, RequestProcessor, Result, Stream,
-    Writer,
+    redis::command::CommandType,
+    redis::{error::RedisError, packet::RequestPacket},
+    Command, Commander, Error, HashedCommand, Metric, MetricItem, MetricName, Protocol,
+    RequestProcessor, Result, Stream, Writer,
 };
 pub use packet::Packet;
 use sharding::hash::Hash;

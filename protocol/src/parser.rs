@@ -64,9 +64,9 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn handshake(&self, _stream: &mut impl Stream, _option: &mut ResOption) -> Result<HandShake> {
         Ok(HandShake::Success)
     }
-    fn parse_request<'a, S: Stream, H: Hash, P: RequestProcessor>(
+    fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
-        stream: &'a mut S,
+        stream: &mut S,
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
@@ -90,11 +90,11 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     // fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
     //     -> Command;
 
-    fn write_response<'a, C, W, M, I>(
+    fn write_response<C, W, M, I>(
         &self,
         ctx: &mut C,
         response: Option<&mut Command>,
-        w: &'a mut W,
+        w: &mut W,
     ) -> Result<()>
     where
         W: Writer,

@@ -1,4 +1,4 @@
-use crate::{msgque::mcq::text::error::McqError};
+use crate::msgque::mcq::text::error::McqError;
 #[derive(Debug)]
 #[repr(u8)]
 pub enum Error {
@@ -6,7 +6,7 @@ pub enum Error {
     // Redis(RedisError),
     Mcq(McqError),
     // 关闭连接前需要把异常消息发出去
-    FlushOnClose(Vec<u8>),
+    FlushOnClose(&'static [u8]),
     // TODO: 先临时用这个打通，后续优化
     MysqlError,
     Eof,

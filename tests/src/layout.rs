@@ -12,8 +12,7 @@ type Topology = endpoint::TopologyProtocol<Builder, Endpoint, Request, Parser>;
 
 type CheckedTopology = stream::CheckedTopology<Topology>;
 
-type CopyBidirectional<'a> =
-    stream::pipeline::CopyBidirectional<'a, Stream, Parser, CheckedTopology>;
+type CopyBidirectional = stream::pipeline::CopyBidirectional<Stream, Parser, CheckedTopology>;
 
 type Stream = rt::Stream<tokio::net::TcpStream>;
 type Handler<'r> = stream::handler::Handler<'r, Request, Parser, Stream>;

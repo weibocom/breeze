@@ -6,7 +6,7 @@ use std::{
     task::{ready, Context, Poll},
 };
 
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::topology::TopologyCheck;
 use ds::{time::Instant, AtomicWaker};
@@ -22,7 +22,7 @@ use crate::{
 pub async fn copy_bidirectional<C, P, T>(
     top: T,
     metrics: Arc<StreamMetrics>,
-    client: &mut C,
+    client: C,
     parser: P,
     pipeline: bool,
 ) -> Result<()>
@@ -52,9 +52,9 @@ where
     rt::Entry::timeout(pipeline, rt::DisableTimeout).await
 }
 
-pub struct CopyBidirectional<'a, C, P, T> {
+pub struct CopyBidirectional<C, P, T> {
     top: T,
-    client: &'a mut C,
+    client: C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
     waker: AtomicWaker,
@@ -72,7 +72,7 @@ pub struct CopyBidirectional<'a, C, P, T> {
 
     arena: CallbackContextArena,
 }
-impl<'a, C, P, T> Future for CopyBidirectional<'a, C, P, T>
+impl<C, P, T> Future for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
@@ -105,7 +105,7 @@ where
         }
     }
 }
-impl<'a, C, P, T> CopyBidirectional<'a, C, P, T>
+impl<C, P, T> CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
@@ -138,10 +138,20 @@ where
         };
 
         parser
-            .parse_request(*client, top, &mut processor)
+            .parse_request(client, top, &mut processor)
             .map_err(|e| {
-                log::info!("parse request error: {:?} {:?}", e, self);
-                e
+                log::info!("parse request error: {:?}", e);
+                match e {
+                    protocol::Error::FlushOnClose(ref emsg) => {
+                        // 此处只处理FLushOnClose，用于发送异常给client
+                        let _write_rs = client.write_all(emsg);
+                        let _flush_rs = client.flush();
+                        log::warn!("+++ flush emsg[{:?}] on close client:[{:?}]", emsg, client);
+                        e
+                    }
+                    _ => e,
+                }
+                // e
             })
     }
     // 处理pending中的请求，并且把数据发送到buffer
@@ -183,7 +193,7 @@ where
             parser.write_response(
                 &mut ResponseContext::new(&mut ctx, metrics, |hash| self.top.shard_idx(hash)),
                 response.as_mut(),
-                *client,
+                client,
             )?;
 
             let op = ctx.request().operation();
@@ -269,7 +279,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
         }
     }
 }
-impl<'a, C, P, T> Drop for CopyBidirectional<'a, C, P, T> {
+impl<C, P, T> Drop for CopyBidirectional<C, P, T> {
     #[inline]
     fn drop(&mut self) {
         *self.metrics.conn_num() -= 1;
@@ -277,7 +287,7 @@ impl<'a, C, P, T> Drop for CopyBidirectional<'a, C, P, T> {
 }
 
 use std::fmt::{self, Debug, Formatter};
-impl<'a, C, P, T> rt::ReEnter for CopyBidirectional<'a, C, P, T>
+impl<C, P, T> rt::ReEnter for CopyBidirectional<C, P, T>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
@@ -287,10 +297,9 @@ where
     fn close(&mut self) -> bool {
         // take走，close后不需要再wake。避免Future drop后再次被wake，导致UB
         self.waker.take();
-        // use rt::Cancel;
+        use rt::Cancel;
 
-        // TODO 放到最外层去cancel，验证完毕后清理 fishermen
-        // self.client.cancel();
+        self.client.cancel();
 
         // 剔除已完成的请求
         while let Some(ctx) = self.pending.front_mut() {
@@ -323,7 +332,7 @@ where
         //Ok(self.client.cap() >= crate::REFRESH_THREASHOLD || self.async_pending.len() > 0)
     }
 }
-impl<'a, C: Debug, P, T> Debug for CopyBidirectional<'a, C, P, T> {
+impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
