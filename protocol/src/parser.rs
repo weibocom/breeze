@@ -285,15 +285,14 @@ impl HashedCommand {
             let req_out = self.time_request_out.unwrap().as_millis();
             let rsp_parsed = self.time_rsp_parsed.unwrap().as_millis();
             let rsp_out = self.time_rsp_out.unwrap().as_millis();
-            unsafe {
-                log::info!(
-                    "+++ too slow [{:?}, {:?}, {:?}] req: {:?}",
-                    req_out,
-                    rsp_parsed,
-                    rsp_out,
-                    self.data_dump()
-                );
-            }
+
+            log::info!(
+                "+++ too slow [{:?}, {:?}, {:?}] req: {:?}",
+                req_out,
+                rsp_parsed,
+                rsp_out,
+                self.data()
+            );
         }
     }
 
