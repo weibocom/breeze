@@ -162,7 +162,6 @@ impl Command {
     //}
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
-        let now = time::Instant::now();
         Self { ok, cmd }
     }
     // #[inline]
@@ -266,13 +265,22 @@ impl HashedCommand {
     #[inline]
     pub fn on_resp_out(&mut self) {
         debug_assert!(self.time_rsp_out.is_none());
+
+        // 对于noforward或后端异常的指令，需要在此处设置req_out、rsp_parsed
+        if self.time_request_out.is_none() {
+            self.time_request_out = Some(self.time_request_parsed.unwrap().elapsed());
+        }
+        if self.time_rsp_parsed.is_none() {
+            self.time_rsp_parsed = Some(self.time_request_parsed.unwrap().elapsed());
+        }
+
         self.time_rsp_out = Some(self.time_request_parsed.unwrap().elapsed());
     }
 
     // TODO just for test fishermen
     #[inline]
     pub fn log_slow_cmd(&self, threshold_mills: u128) {
-        let proc_mills = self.time_request_out.unwrap();
+        let proc_mills = self.time_rsp_out.unwrap();
         if proc_mills.as_millis() >= threshold_mills {
             let req_out = self.time_request_out.unwrap().as_millis();
             let rsp_parsed = self.time_rsp_parsed.unwrap().as_millis();
