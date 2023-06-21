@@ -163,7 +163,6 @@ impl Command {
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
         let now = time::Instant::now();
-        let time = now.elapsed();
         Self { ok, cmd }
     }
     // #[inline]
@@ -266,7 +265,26 @@ impl HashedCommand {
 
     #[inline]
     pub fn on_resp_out(&mut self) {
+        debug_assert!(self.time_rsp_out.is_none());
         self.time_rsp_out = Some(self.time_request_parsed.unwrap().elapsed());
+    }
+
+    // TODO just for test fishermen
+    #[inline]
+    pub fn log_slow_cmd(&self, threshold_mills: u128) {
+        let proc_mills = self.time_request_out.unwrap();
+        if proc_mills.as_millis() >= threshold_mills {
+            let req_out = self.time_request_out.unwrap().as_millis();
+            let rsp_parsed = self.time_rsp_parsed.unwrap().as_millis();
+            let rsp_out = self.time_rsp_out.unwrap().as_millis();
+            log::info!(
+                "+++ too slow [{:?}, {:?}, {:?}] req: {:?}",
+                req_out,
+                rsp_parsed,
+                rsp_out,
+                self.data()
+            );
+        }
     }
 
     // TODO just for test ============== end ====================
