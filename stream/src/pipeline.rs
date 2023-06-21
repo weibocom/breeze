@@ -186,6 +186,11 @@ where
                 client,
             )?;
 
+            // TODO just for test 记录send rsp的时间 fishermen
+            ctx.request_mut().on_resp_out();
+            const SLOW_MILLS: u128 = 10_u128;
+            ctx.request().log_slow_cmd(SLOW_MILLS);
+
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
