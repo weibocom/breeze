@@ -104,6 +104,7 @@ async fn _process_one(
                     Eof | IO(_) => {
                         log::warn!("{:?} disconnected. {:?}", _path, e);
                     }
+                    // 发送异常信息给client：request在parse异常位置发送，response暂不发送
                     _e => {
                         *metrics.unsupport_cmd() += 1;
                         log::warn!("{:?} disconnected. {:?}", _path, _e);

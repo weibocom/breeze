@@ -104,7 +104,7 @@ const PADDING_RSP_TABLE: [&str; 8] = [
     "+OK\r\n",
     "+PONG\r\n",
     "-ERR redis no available\r\n",
-    "-ERR malformed command\r\n",
+    "-ERR invalid command\r\n",
     "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
     "$-1\r\n",                           // mget 等指令对应的nil
     ":-10\r\n",                          //phantom -1返回已被服务端占用

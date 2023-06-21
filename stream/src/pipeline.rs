@@ -140,13 +140,13 @@ where
         parser
             .parse_request(client, top, &mut processor)
             .map_err(|e| {
-                log::info!("parse request error: {:?}", e);
+                log::info!("parse request error: {:?} on client:{:?}", e, client);
                 match e {
                     protocol::Error::FlushOnClose(ref emsg) => {
                         // 此处只处理FLushOnClose，用于发送异常给client
                         let _write_rs = client.write_all(emsg);
                         let _flush_rs = client.flush();
-                        log::warn!("+++ flush emsg[{:?}] on close client:[{:?}]", emsg, client);
+                        log::warn!("+++ flush emsg[{:?}], client:[{:?}]", emsg, client);
                         e
                     }
                     _ => e,

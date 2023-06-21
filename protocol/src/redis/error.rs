@@ -14,13 +14,6 @@ pub enum RedisError {
     // ReqInvalidDigit,
 }
 
-// impl Into<Error> for RedisError {
-//     #[inline]
-//     fn into(self) -> Error {
-//         Error::Redis(self)
-//     }
-// }
-
 lazy_static! {
     static ref REQ_INVALID: Vec<u8> = to_vec("-ERR malformed request\r\n");
     static ref REQ_INVALID_STAR: Vec<u8> = to_vec("-ERR invalid star\r\n");
@@ -29,12 +22,6 @@ lazy_static! {
     static ref REQ_INVALID_BULK_NUM: Vec<u8> = to_vec("-ERR invalid bulk num\r\n");
     static ref REQ_NOT_SUPPORTED: Vec<u8> = to_vec("-ERR unsupport cmd\r\n");
     static ref RESP_INVALID: Vec<u8> = to_vec("-ERR  mesh bug for parsing resp\r\n");
-}
-
-fn to_vec(emsg: &str) -> Vec<u8> {
-    let mut msg = Vec::with_capacity(emsg.len());
-    msg.extend(emsg.as_bytes());
-    msg
 }
 
 /// 将Redis error转为通用可flush的Error，保留Error细节
@@ -51,4 +38,10 @@ impl Into<Error> for RedisError {
             Self::RespInvalid => Error::FlushOnClose(&RESP_INVALID),
         }
     }
+}
+
+fn to_vec(emsg: &str) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(emsg.len());
+    msg.extend(emsg.as_bytes());
+    msg
 }
