@@ -81,6 +81,10 @@ impl KVTime {
     //     }
     //     None
     // }
+
+    // https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
+    // Backslash (\) and the quote character used to quote the string must be escaped. In certain client environments, it may also be necessary to escape NUL or Control+Z.
+    // 应该只需要转义上面的
     fn escape_mysql_and_push(s: &mut String, c: u8) {
         //非法char要当成二进制push，否则会变成unicode
         let s = unsafe { s.as_mut_vec() };
