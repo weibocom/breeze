@@ -50,3 +50,19 @@ fn delete() {
     client.delete(key).unwrap();
     assert_eq!(None, client.get::<String>(key).unwrap());
 }
+
+// #[test]
+// fn update_not_exsit() {
+//     let client = mc_get_conn("mysql");
+//     let key = "4892225613598445";
+
+//     client.set(key, "2", 10000).unwrap();
+// }
+
+// #[test]
+// fn delete_not_exsit() {
+//     let client = mc_get_conn("mysql");
+//     let key = "4892225613598446";
+
+//     client.delete(key).unwrap();
+// }
