@@ -15,7 +15,7 @@ pub enum RedisError {
 }
 
 lazy_static! {
-    static ref REQ_INVALID: Vec<u8> = to_vec("-ERR malformed request\r\n");
+    static ref REQ_INVALID: Vec<u8> = to_vec("-ERR invalid request\r\n");
     static ref REQ_INVALID_STAR: Vec<u8> = to_vec("-ERR invalid star\r\n");
     static ref REQ_INVALID_NUM: Vec<u8> = to_vec("-ERR invalid num\r\n");
     static ref REQ_INVALID_NO_RETURN: Vec<u8> = to_vec("-ERR invalid no return char\r\n");
