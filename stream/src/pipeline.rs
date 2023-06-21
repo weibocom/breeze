@@ -298,9 +298,7 @@ where
         // take走，close后不需要再wake。避免Future drop后再次被wake，导致UB
         self.waker.take();
         use rt::Cancel;
-
         self.client.cancel();
-
         // 剔除已完成的请求
         while let Some(ctx) = self.pending.front_mut() {
             if !ctx.complete() {
