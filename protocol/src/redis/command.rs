@@ -112,26 +112,13 @@ const PADDING_RSP_TABLE: [&str; 8] = [
 
 // 调用式确保idx < PADDING_RSP_TABLE.len()
 // 这个idx通常来自于CommandProperties.padding_rsp
-
 impl CommandProperties {
-    // TODO 测试完毕清理 deadcode fishermen
     // 构建一个padding rsp，用于返回默认响应、server不可用响应、nil响应；
     // 响应格式类似：1 pong； 2 -Err redis no available; 3 $-1\r\n
     #[inline(always)]
     pub(crate) fn get_padding_rsp(&self) -> &str {
         self.padding_rsp
     }
-
-    // // 构建hashkey的resp,格式:1\r\n
-    // pub(super) fn get_rsp_hashkey(&self, shard: usize) -> String {
-    //     format!(":{}\r\n", shard)
-    // }
-
-    // // 构建keyshard的resp，注意返回的bulk num，格式:$1\r\n1\r\n
-    // pub(super) fn get_rsp_keyshard(&self, shard: usize) -> String {
-    //     let shard_str = shard.to_string();
-    //     format!("${}\r\n{}\r\n", shard_str.len(), shard_str)
-    // }
 
     // mesh 需要进行validate，避免不必要的异常 甚至 hang住 fishermen
     #[inline]
@@ -153,31 +140,8 @@ impl CommandProperties {
         Err(RedisError::ReqInvalidBulkNum.into())
     }
 
-    // #[inline]
-    // pub fn first_key_index(&self) -> usize {
-    //     self.first_key_index as usize
-    // }
-
-    // 如果last key index为负数，token count加上该负数，即为key的结束idx
-    // #[inline]
-    // pub fn last_key_index(&self, token_count: usize) -> usize {
-    //     assert!(
-    //         token_count as i64 > self.first_key_index as i64
-    //             && token_count as i64 > self.last_key_index as i64
-    //     );
-    //     if self.last_key_index >= 0 {
-    //         return self.last_key_index as usize;
-    //     } else {
-    //         // 最后一个key的idx为负数，
-    //         return (token_count as i64 + self.last_key_index as i64) as usize;
-    //     }
-    // }
-
     pub(crate) fn flag(&self) -> crate::Flag {
         let mut flag = crate::Flag::from_op(self.op_code, self.op);
-        // TODO padding_rsp不再放到flag中，测试完毕后清理 fishermen
-        // use super::flag::RedisFlager;
-        // flag.set_padding_rsp(self.padding_rsp);
         flag.set_noforward(self.noforward);
         flag
     }
@@ -243,15 +207,6 @@ impl Commands {
             //hash: Bkdr::default(),
         }
     }
-    //#[inline]
-    //pub(crate) fn get_op_code(&self, name: &ds::RingSlice) -> u16 {
-    //    let uppercase = UppercaseHashKey::new(name);
-    //    // let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
-    //    let idx = self.inner_hash(&uppercase);
-    //    // op_code 0表示未定义,不存在
-    //    assert_ne!(idx, 0);
-    //    idx as u16
-    //}
 
     #[inline]
     pub(crate) fn get_by_op(&self, op_code: u16) -> crate::Result<&CommandProperties> {
@@ -260,33 +215,12 @@ impl Commands {
         if cmd.supported {
             Ok(cmd)
         } else {
-            Err(crate::Error::ProtocolNotSupported)
+            Err(super::error::RedisError::ReqNotSupported.into())
         }
     }
-    // 不支持会返回协议错误
-    //#[inline]
-    //pub(crate) fn get_by_name(&self, cmd: &ds::RingSlice) -> crate::Result<&CommandProperties> {
-    //    let uppercase = UppercaseHashKey::new(cmd);
-    //    // let idx = self.hash.hash(&uppercase) as usize & (Self::MAPPING_RANGE - 1);
-    //    let idx = self.inner_hash(&uppercase);
-    //    self.get_by_op(idx as u16)
-    //}
-
-    //#[inline]
-    //fn inner_hash<K: HashKey>(&self, key: &K) -> usize {
-    //    let idx = self.hash.hash(key) as usize & (Self::MAPPING_RANGE - 1);
-    //    // 由于op_code 0表示未定义,不存在,故对于0需要进行转换为1
-    //    if idx == 0 {
-    //        return 1;
-    //    }
-    //    idx
-    //}
 
     #[inline]
     fn add_support(&mut self, mut c: CommandProperties) {
-        //use sharding::hash::Hash;
-        //let old_idx = sharding::hash::Bkdr.hash(&c.name.to_uppercase().as_bytes()) as usize
-        //    & (Self::MAPPING_RANGE - 1);
         let idx = CommandHasher::hash_bytes(c.name.as_bytes()) as usize;
         assert!(idx > 0 && idx < self.supported.len(), "idx:{}", idx);
         // 之前没有添加过。
@@ -305,10 +239,6 @@ impl Commands {
     }
 }
 
-//#[inline]
-//pub(super) fn get_op_code(cmd: &ds::RingSlice) -> u16 {
-//    SUPPORTED.get_op_code(cmd)
-//}
 #[inline(always)]
 pub(crate) fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties> {
     SUPPORTED.get_by_op(op_code)
@@ -324,33 +254,19 @@ pub(super) static SUPPORTED: Commands = {
     // TODO：后续增加新指令时，当multi/need_bulk_num 均为true时，需要在add_support中进行nil转换，避免将err返回到client fishermen
     for c in vec![
         //// meta 指令
-        // name, mname, arity, op, first_key_index, last_key_index, key_step, padding_rsp, multi, noforward, has_key, has_val, need_bulk_num
-        //("command", "command" ,   -1, Meta, 0, 0, 0, 1, false, true, false, false, false),
-        //("ping", "ping" ,         -1, Meta, 0, 0, 0, 2, false, true, false, false, false),
         //// 不支持select 0以外的请求。所有的select请求直接返回，默认使用db0
-        //("select", "select" ,      2, Meta, 0, 0, 0, 1, false, true, false, false, false),
-        //("hello", "hello" ,        -1, Meta, 0, 0, 0, 4, false, true, false, false, false),
-        //("quit", "quit" ,          1, Meta, 0, 0, 0, 1, false, true, false, false, false),
-        // hello 参数应该是-1，可以不带或者带多个
+        //// hello 参数应该是-1，可以不带或者带多个
         Cmd::new("command").arity(-1).op(Meta).padding(pt[1]).nofwd(),
         Cmd::new("ping").arity(-1).op(Meta).padding(pt[2]).nofwd(),
         Cmd::new("select").arity(2).op(Meta).padding(pt[1]).nofwd(),
         Cmd::new("hello").arity(-1).op(Meta).padding(pt[4]).nofwd(),
         // quit、master的指令token数/arity应该都是1,quit 的padding设为1 
-        // TODO quit 的padding设为1，需要验证后删除本注释 fishermen
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
         Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::SwallowedMaster).effect_on_next_req(),
 
-        //("get" , "get",            2, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("get").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
 
         // multi请求：异常响应需要改为$-1
-        //("mget", "get",           -2, MGet, 1, -1, 1, 3, true, false, true, false, true),
-
-        //("set" ,"set",             -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("incr" ,"incr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("decr" ,"decr",           2, Store, 1, 1, 1, 3, false, false, true, false, false),
-        // Cmd::new("mget").m("get").arity(-2).op(MGet).first(1).last(-1).step(1).padding(pt[3]).multi().key().bulk().nil_rsp(6),
         Cmd::new("mget").m("get").arity(-2).op(MGet).first(1).last(-1).step(1).padding(pt[6]).multi().key().bulk(),
 
         Cmd::new("set").arity(-3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
@@ -358,25 +274,11 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("decr").arity(2).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
 
         // multi请求：异常响应需要改为$-1
-        //("mincr","mincr",         -2, Store, 1, -1, 1, 3, true, false, true, false, true),
-        // Cmd::new("mincr").arity(-2).op(Store).first(1).last(-1).step(1).padding(pt[3]).multi().key().bulk().nil_rsp(6),
         Cmd::new("mincr").arity(-2).op(Store).first(1).last(-1).step(1).padding(pt[6]).multi().key().bulk(),
 
-        ////mset、del 是mlti指令，但只返回一个result，即need_bulk_num为false，那就只返回第一个key的响应 fishermen
-        //// mset不需要bulk number
-        //("mset", "set",           -3, Store, 1, -1, 2, 3, true, false, true, true, false),
-        //// TODO: del 删除多个key时，返回删除的key数量，先不聚合这个数字，反正client也会忽略？ fishermen
-        //("del", "del",            -2, Store, 1, -1, 1, 3, true, false, true, false, false),
-
-        //// TODO：exists 虽然原生支持多key，但业务client支持单key，故此处只支持单key fishermen
-        //("exists", "exists",       2, Get, 1, 1, 1, 3, false, false, true, false, false),
-
-        //("expire",   "expire",     3, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("expireat", "expireat",   3, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("pexpire",  "pexpire",    3, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("pexpireat", "pexpireat", 3, Store, 1, 1, 1, 3, false, false, true, false, false),
-
-        //("persist", "persist",     2, Store, 1, 1, 1, 3, false, false, true, false, false),
+        //// mset、del 是mlti指令，但只返回一个result，即need_bulk_num为false，那就只返回第一个key的响应
+        //// del 删除多个key时，返回删除的key数量，先不聚合这个数字，反正client也会忽略？
+        //// exists 虽然原生支持多key，但业务client支持单key，故此处只支持单key
         Cmd::new("mset").m("set").arity(-3).op(Store).first(1).last(-1).step(2).padding(pt[3]).multi().key().val(),
         Cmd::new("del").arity(-2).op(Store).first(1).last(-1).step(1).padding(pt[3]).multi().key(),
 
@@ -389,18 +291,6 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("persist").arity(2).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
 
         // zset 相关指令
-        //("zadd", "zadd",                         -4, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("zincrby", "zincrby",                    4, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("zrem", "zrem",                         -3, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("zremrangebyrank", "zremrangebyrank",    4, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("zremrangebyscore", "zremrangebyscore",  4, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("zremrangebylex", "zremrangebylex",      4, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("zrevrange", "zrevrange",               -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-
-        //("zcard" , "zcard",                       2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("zrange", "zrange",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("zrank", "zrank",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("zrangebyscore", "zrangebyscore",       -4, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("zadd").arity(-4).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("zincrby").arity(4).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("zrem").arity(-3).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
@@ -413,16 +303,6 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("zrank").arity(3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("zrangebyscore").arity(-4).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
 
-        // TODO: 验证先不支持这两个，避免在 hash冲突 vs 栈溢出 之间摇摆，或者后续把这个放到堆上？ fishermen
-        //("zrevrank", "zrevrank",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("zrevrangebyscore", "zrevrangebyscore", -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-
-        //("zrangebylex", "zrangebylex",           -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("zrevrangebylex", "zrevrangebylex",     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("zcount", "zcount",                      4, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("zlexcount", "zlexcount",                4, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("zscore", "zscore",                      3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("zscan", "zscan",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("zrevrank").arity(3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("zrevrangebyscore").arity(-4).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("zrangebylex").arity(-4).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
@@ -432,21 +312,6 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("zscore").arity(3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("zscan").arity(-3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
 
-        // hash 相关 multi, noforward, has_key, has_val, need_bulk_num
-        //("hset", "hset",                          -4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("hsetnx", "hsetnx",                      4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("hmset","hmset",                        -4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("hincrby", "hincrby",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("hincrbyfloat", "hincrbyfloat",          4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("hdel", "hdel",                         -3, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("hget", "hget",                          3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("hgetall", "hgetall",                    2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("hlen", "hlen",                          2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("hkeys", "hkeys",                        2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("hmget", "hmget",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("hvals", "hvals",                        2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("hexists", "hexists",                    3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("hscan", "hscan",                        -3, Get, 1, 1, 1, 3, false, false, true, false, false),
         // hset 支持多field、value，hmset后续会被deprecated
         Cmd::new("hset").arity(-4).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("hsetnx").arity(4).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
@@ -463,28 +328,13 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("hexists").arity(3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("hscan").arity(-3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
 
-        // TODO 常规结构指令，测试完毕后，调整位置
-        //("ttl", "ttl",                             2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("pttl", "pttl",                           2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("setnx", "setnx",                         3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("setex", "setex",                         4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("append", "append",                       3, Store, 1, 1, 1, 3, false, false, true, true, false),
         Cmd::new("ttl").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("pttl").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("setnx").arity(3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("setex").arity(4).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("append").arity(3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
 
-        // longset 相关指令
-        //("lsset", "lsset",                         4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("lsdset", "lsdset",                       4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("lsput", "lsput",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("lsdel", "lsdel",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("lsmexists", "lsmexists",                 -3, Get, 1, 1, 1, 3, false, false, true, true, false),
-        //("lsgetall", "lsgetall",                   2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("lsdump", "lsdump",                       2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("lslen", "lslen",                         2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        // 根据eredis 3.1 修改
+        // longset 相关指令,根据eredis 3.1 修改
         Cmd::new("lsset").arity(4).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("lsdset").arity(4).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("lsput").arity(-3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
@@ -495,19 +345,6 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("lslen").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
 
         // list 相关指令
-        //("rpush", "rpush",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("lpush", "lpush",                         -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("rpushx", "rpushx",                       -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("lpushx", "lpushx",                       -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("linsert", "linsert",                      5, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("lset", "lset",                            4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("rpop", "rpop",                            2, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("lpop", "lpop",                            2, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("llen", "llen",                            2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("lindex", "lindex",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("lrange", "lrange",                        4, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("ltrim", "ltrim",                          4, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("lrem", "lrem",                            4, Store, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("rpush").arity(-3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("lpush").arity(-3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("rpushx").arity(-3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
@@ -523,16 +360,6 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("lrem").arity(4).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
 
         // string 相关指令，包括 bit, str
-        //("setbit", "setbit",                        4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("getbit", "getbit",                        3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("bitcount", "bitcount",                   -2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("bitpos", "bitpos",                       -3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("bitfield", "bitfield",                   -2, Store, 1, 1, 1, 3, false, false, true, false, false),
-
-        //("setrange", "setrange",                    4, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("getrange", "getrange",                    4, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("getset", "getset",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("strlen", "strlen",                        2, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("setbit").arity(4).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("getbit").arity(3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("bitcount").arity(-2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
@@ -544,22 +371,11 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("strlen").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
 
         // 测试完毕后规整到incr附近
-        //("incrby", "incrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("decrby", "decrby",                        3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("incrbyfloat", "incrbyfloat",              3, Store, 1, 1, 1, 3, false, false, true, true, false),
         Cmd::new("incrby").arity(3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("decrby").arity(3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("incrbyfloat").arity(3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
 
         // set 相关指令
-        //("sadd", "sadd",                           -3, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("srem", "srem",                           -3, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("sismember", "sismember",                  3, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("scard", "scard",                          2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("spop", "spop",                           -2, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("srandmember", "srandmember",             -2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("smembers", "smembers",                    2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("sscan", "sscan",                         -3, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("sadd").arity(-3).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("srem").arity(-3).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("sismember").arity(3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
@@ -570,12 +386,6 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("sscan").arity(-3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
 
         // geo 相关指令
-        //("geoadd", "geoadd",                       -5, Store, 1, 1, 1, 3, false, false, true, true, false),
-        //("georadius", "georadius",                 -6, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("georadiusbymember", "georadiusbymember", -5, Store, 1, 1, 1, 3, false, false, true, false, false),
-        //("geohash", "geohash",                     -2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("geopos", "geopos",                       -2, Get, 1, 1, 1, 3, false, false, true, false, false),
-        //("geodist", "geodist",                     -4, Get, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("geoadd").arity(-5).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("georadius").arity(-6).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("georadiusbymember").arity(-5).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
@@ -584,12 +394,8 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("geodist").arity(-4).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
 
         // pf相关指令
-        //("pfadd", "pfadd",                         -2, Store, 1, 1, 1, 3, false, false, true, false, false),
         Cmd::new("pfadd").arity(-2).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
 
-        // swallowed扩展指令，属性在add_support方法中增加 fishermen
-        //("hashkeyq", "hashkeyq",                   2,  Meta,  1, 1, 1, 5, false, true, true, false, false),
-        //("hashrandomq", "hashrandomq",             1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
         Cmd::new("hashkeyq").arity(2).op(Meta).first(1).last(1).step(1).padding(pt[5]).
         nofwd().key().resv_hash().swallow().cmd_type(CommandType::SwallowedCmdHashkeyq).effect_on_next_req(),
         Cmd::new("hashrandomq").arity(1).op(Meta).padding(pt[5]).nofwd().resv_hash().swallow().
@@ -598,9 +404,6 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("sendtoall").arity(1).op(Meta).padding(pt[1]).nofwd().cmd_type(CommandType::CmdSendToAll).effect_on_next_req(),
         Cmd::new("sendtoallq").arity(1).op(Meta).padding(pt[1]).nofwd().swallow().cmd_type(CommandType::CmdSendToAllq).effect_on_next_req(),
 
-        // swallowed扩展指令对应的有返回值的指令，去掉q即可
-        //("hashkey", "hashkey",                     2,  Get,  1, 1, 1, 5, false, true, true, false, false),
-        //("keyshard", "keyshard",                  -2,  Get, 1, -1, 1, 5, true,  true, true, false, true),
         // 这个指令暂无需求，先不支持
         // ("hashrandom", "hashrandom",               1,  Meta,  0, 0, 0, 5, false, true, false, false, false),
         // hashkey、keyshard 改为meta，确保构建rsp时的status管理
@@ -609,10 +412,7 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("keyshard").arity(-2).op(Meta).first(1).last(-1).step(1).padding(pt[5]).multi().
         nofwd().key().bulk().cmd_type(CommandType::SpecLocalCmdKeyshard),
 
-        // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen\
-        //("script", "script",                       -2, Store, 0, 0, 0, 3, false, false, false, false, false),
-        //("evalsha", "evalsha",                     -3, Store, 0, 0, 0, 3, false, false, false, false, false),
-        //("eval" , "eval",                          -3, Store, 0, 0, 0, 3, false, false, false, false, false),
+        // lua script 相关指令，不解析相关key，由hashkey提前指定，业务一般在操作check+变更的事务时使用 fishermen
         Cmd::new("script").arity(-2).op(Store).padding(pt[3]).need_resv_hash(),
         Cmd::new("evalsha").arity(-3).op(Store).padding(pt[3]).need_resv_hash(),
         Cmd::new("eval").arity(-3).op(Store).padding(pt[3]).need_resv_hash(),
@@ -620,9 +420,9 @@ pub(super) static SUPPORTED: Commands = {
         //phantom
         Cmd::new("bfget").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("bfset").arity(2).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
-        // bfmget、bfmset，padding改为5， fishermen
         Cmd::new("bfmget").m("bfget").arity(-2).op(MGet).first(1).last(-1).step(1).padding(pt[7]).multi().key().bulk(),
         Cmd::new("bfmset").m("bfset").arity(-2).op(Store).first(1).last(1).step(1).padding(pt[7]).multi().key().bulk(),
+        
         // 待支持
         // {"lsmalloc",lsmallocCommand,3,REDIS_CMD_DENYOOM|REDIS_CMD_WRITE,NULL,1,1,1},
         // {"unlink",unlinkCommand,-2,REDIS_CMD_WRITE,NULL,1,-1,1},

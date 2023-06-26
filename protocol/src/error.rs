@@ -1,9 +1,12 @@
-use crate::{msgque::mcq::text::error::McqError, redis::error::RedisError};
+use crate::msgque::mcq::text::error::McqError;
 #[derive(Debug)]
 #[repr(u8)]
 pub enum Error {
-    Redis(RedisError),
+    // Redis 的扩展Error目前都是FlushOnClose
+    // Redis(RedisError),
     Mcq(McqError),
+    // 关闭连接前需要把异常消息发出去
+    FlushOnClose(&'static [u8]),
     // TODO: 先临时用这个打通，后续优化
     MysqlError,
     Eof,
