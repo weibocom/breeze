@@ -98,8 +98,13 @@ async fn _process_one(
             if let Err(e) = copy_bidirectional(ctop, metrics.clone(), client, p, pipeline).await {
                 use protocol::Error::*;
                 match e {
-                    Quit | Eof | IO(_) => {} // client发送quit协议退出
-                    // 发送异常信息给client
+                    // TODO Eof、IO需要日志？
+                    // Quit | Eof | IO(_) => {}
+                    Quit => {} // client发送quit协议退出
+                    Eof | IO(_) => {
+                        log::warn!("{:?} disconnected. {:?}", _path, e);
+                    }
+                    // 发送异常信息给client：request在parse异常位置发送，response暂不发送
                     _e => {
                         *metrics.unsupport_cmd() += 1;
                         log::warn!("{:?} disconnected. {:?}", _path, _e);

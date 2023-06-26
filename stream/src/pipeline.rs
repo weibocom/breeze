@@ -6,7 +6,7 @@ use std::{
     task::{ready, Context, Poll},
 };
 
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::topology::TopologyCheck;
 use ds::{time::Instant, AtomicWaker};
@@ -140,8 +140,18 @@ where
         parser
             .parse_request(client, top, &mut processor)
             .map_err(|e| {
-                log::info!("parse request error: {:?} {:?}", e, self);
-                e
+                log::info!("parse request error: {:?} on client:{:?}", e, client);
+                match e {
+                    protocol::Error::FlushOnClose(ref emsg) => {
+                        // 此处只处理FLushOnClose，用于发送异常给client
+                        let _write_rs = client.write_all(emsg);
+                        let _flush_rs = client.flush();
+                        log::warn!("+++ flush emsg[{:?}], client:[{:?}]", emsg, client);
+                        e
+                    }
+                    _ => e,
+                }
+                // e
             })
     }
     // 处理pending中的请求，并且把数据发送到buffer

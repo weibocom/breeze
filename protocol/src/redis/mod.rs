@@ -6,17 +6,13 @@ pub(crate) mod packet;
 //mod token;
 
 use crate::{
-    redis::command::CommandType, redis::packet::RequestPacket, Command, Commander, Error,
-    HashedCommand, Metric, MetricItem, MetricName, Protocol, RequestProcessor, Result, Stream,
-    Writer,
+    redis::command::CommandType,
+    redis::{error::RedisError, packet::RequestPacket},
+    Command, Commander, Error, HashedCommand, Metric, MetricItem, MetricName, Protocol,
+    RequestProcessor, Result, Stream, Writer,
 };
 pub use packet::Packet;
 use sharding::hash::Hash;
-
-// redis 协议最多支持10w个token
-//const MAX_TOKEN_COUNT: usize = 100000;
-//// 最大消息支持1M
-//const MAX_MSG_LEN: usize = 1000000;
 
 #[derive(Clone, Default)]
 pub struct Redis;
@@ -151,7 +147,7 @@ impl Redis {
             b'*' => data.skip_all_bulk(oft)?,
             _ => {
                 log::error!("+++ found malformed redis rsp:{:?}", data);
-                return Err(Error::UnexpectedData);
+                return Err(RedisError::RespInvalid.into());
             } // _ => panic!("not supported:{:?}", data),
         }
 
@@ -334,82 +330,6 @@ impl Protocol for Redis {
         }
         Ok(())
     }
-
-    // TODO 暂时保留，备查及比对，待上线稳定一段时间后再删除（预计 2022.12.30之后可以） fishermen
-    // dist_fn 用于类似hashkey、keyshard等指令，计算指令对应的分片索引
-    // #[inline]
-    // fn write_no_response<W: crate::Writer, F: Fn(i64) -> usize>(
-    //     &self,
-    //     req: &HashedCommand,
-    //     w: &mut W,
-    //     dist_fn: F,
-    // ) -> Result<usize> {
-    //     let rsp_idx = req.ext().padding_rsp();
-
-    //     let mut nil_convert = 0;
-    //     // check cmd需要额外构建rsp，目前只有hashkey、keyshard两种dist指令需要构建
-    //     let cfg = command::get_cfg(req.op_code())?;
-    //     let rsp = match cfg.name {
-    //         command::DIST_CMD_HASHKEY => {
-    //             let shard = dist_fn(req.hash());
-    //             format!(":{}\r\n", shard)
-    //         }
-    //         command::DIST_CMD_KEYSHARD => {
-    //             let mut bulk_str: String = String::from("");
-    //             if cfg.multi && cfg.need_bulk_num {
-    //                 let ext = req.ext();
-    //                 if ext.mkey_first() && cfg.need_bulk_num {
-    //                     bulk_str = format!("*{}\r\n", ext.key_count());
-    //                 }
-    //             }
-
-    //             let shard_str = dist_fn(req.hash()).to_string();
-    //             format!("{}${}\r\n{}\r\n", bulk_str, shard_str.len(), shard_str)
-    //         }
-    //         _ => {
-    //             // 对于multi且需要返回rsp数量的请求，按标准协议返回，并返回nil值
-    //             let mut nil_rsp = false;
-    //             if cfg.multi {
-    //                 let ext = req.ext();
-    //                 let first = ext.mkey_first();
-    //                 if first || cfg.need_bulk_num {
-    //                     if first && cfg.need_bulk_num {
-    //                         w.write_u8(b'*')?;
-    //                         w.write_s_u16(ext.key_count())?;
-    //                         w.write(b"\r\n")?;
-    //                     }
-
-    //                     // 对于每个key均需要响应，且响应是异常的场景，返回nil，否则继续返回原响应
-    //                     if cfg.need_bulk_num && cfg.nil_rsp > 0 {
-    //                         nil_rsp = true;
-    //                     }
-    //                 }
-    //             }
-    //             if nil_rsp {
-    //                 let nil = cfg.get_pad_rsp();
-    //                 // 百分之一的概率打印nil 转换
-    //                 log::info!("+++ write client nil/{} for:{:?}", nil, req);
-    //                 nil_convert = 1;
-    //                 nil.to_string()
-    //             } else {
-    //                 cfg.get_pad_rsp_by(rsp_idx).to_string()
-    //             }
-    //         }
-    //     };
-
-    //     // TODO 先保留到2022.12，用于快速定位协议问题 fishermen
-    //     log::debug!("+++ will write noforward rsp/{:?} for req:{:?}", rsp, req);
-    //     if rsp.len() > 0 {
-    //         w.write(rsp.as_bytes())?;
-    //         Ok(nil_convert)
-    //     } else {
-    //         // quit，先发+OK，再返回err
-    //         assert_eq!(rsp_idx, 0, "rsp_idx:{}", rsp_idx);
-    //         let ok_rs = cfg.get_pad_ok_rsp().as_bytes();
-    //         w.write(ok_rs)?;
-    //         Err(crate::Error::Quit)
-    //     }
-    // }
 
     // redis writeback场景：hashkey -1 时，需要对所有节点进行数据（一般为script）分发
     #[inline]
