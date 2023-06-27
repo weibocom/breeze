@@ -104,8 +104,7 @@ impl RingSlice {
 
     // 特殊情况下，打印合法字节，以及buff中全部的字节
     pub unsafe fn data_dump(&self) -> &[u8] {
-        let oft_start = self.mask(self.start());
-        from_raw_parts(self.ptr().sub(oft_start), self.cap())
+        from_raw_parts(self.ptr(), self.cap())
     }
     #[inline(always)]
     pub fn fold<I>(&self, mut init: I, mut v: impl FnMut(&mut I, u8)) -> I {
