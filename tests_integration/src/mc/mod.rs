@@ -1,7 +1,7 @@
 mod basic;
-use crate::ci::env::{exists_key_iter, Mesh};
+use crate::ci::env::exists_key_iter;
 use crate::mc_helper::*;
-use memcache::{Client, MemcacheError};
+use memcache::MemcacheError;
 use std::collections::HashMap;
 
 /// 测试场景：buffer扩容验证: 同一个连接，同一个key, set不同大小的value
