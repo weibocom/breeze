@@ -1,5 +1,5 @@
 use crate::ci::env::Mesh;
-use memcache::{Client, MemcacheError};
+use memcache::Client;
 
 pub fn mc_get_conn(restype: &str) -> Client {
     let host_ip = restype.get_host();
