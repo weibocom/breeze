@@ -104,12 +104,6 @@ where
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
         let key = req.key();
-        //todo: 此处不应panic
-        let sql = self
-            .strategist
-            .build_kvsql(&req, &key)
-            .expect("malformed sql");
-
         //定位年库
         let year = self.strategist.get_key(&key).expect("key not found");
         let shards = self
@@ -134,7 +128,12 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
-        self.parser.build_request(req.cmd_mut(), sql);
+        //todo: 此处不应panic
+        let builder = self
+            .strategist
+            .build_kvsql(req.slice(0, req.len()), key)
+            .expect("malformed sql");
+        self.parser.build_request(req.cmd_mut(), builder);
         log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 
         if shard.has_slave() && !req.operation().is_store() {

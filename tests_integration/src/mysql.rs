@@ -1,5 +1,6 @@
 use crate::mc_helper::*;
 use memcache::MemcacheError;
+use std::{thread::sleep, time::Duration};
 
 //val中有非assic字符和需要mysql转义的字符
 #[test]
@@ -49,6 +50,33 @@ fn delete() {
 
     client.delete(key).unwrap();
     assert_eq!(None, client.get::<String>(key).unwrap());
+}
+
+const MAX_PAYLOAD_LEN: usize = 16_777_215;
+#[test]
+fn set_max_payload() {
+    //16777299
+    let client = mc_get_conn("mysql");
+    let key = "4892225613598444";
+    let val = vec!['a' as u8; MAX_PAYLOAD_LEN - 1 - 76];
+    client.add(key, val.as_slice(), 10000).unwrap();
+    sleep(Duration::from_secs(3));
+    let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key);
+    let result = result.unwrap().unwrap();
+    assert_eq!(val[..8196], result);
+}
+
+#[test]
+fn set_over_max_payload() {
+    //16777299
+    let client = mc_get_conn("mysql");
+    let key = "4892225613598445";
+    let val = vec!['a' as u8; MAX_PAYLOAD_LEN * 2];
+    client.add(key, val.as_slice(), 10000).unwrap();
+    sleep(Duration::from_secs(3));
+    let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key);
+    let result = result.unwrap().unwrap();
+    assert_eq!(val[..8196], result);
 }
 
 // #[test]
