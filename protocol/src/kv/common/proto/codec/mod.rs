@@ -22,7 +22,13 @@ use std::cmp::min;
 // };
 
 use self::error::PacketCodecError;
-use crate::kv::common::constants::{DEFAULT_MAX_ALLOWED_PACKET, MAX_PAYLOAD_LEN};
+use crate::{
+    kv::common::{
+        constants::{Command, DEFAULT_MAX_ALLOWED_PACKET, MAX_PAYLOAD_LEN},
+        io::BufMutExt,
+    },
+    RequestBuilder,
+};
 pub mod error;
 
 /// Will split given `packet` to MySql packet chunks and write into `dst`.
@@ -353,7 +359,9 @@ pub struct PacketCodec {
     /// Maximum size of a packet for this codec.
     pub max_allowed_packet: usize,
     /// Actual implementation.
-    inner: PacketCodecInner,
+    inner: PlainPacketCodec,
+    len_pos: usize,
+    buf: Vec<u8>,
 }
 
 impl PacketCodec {
@@ -399,6 +407,93 @@ impl PacketCodec {
     ) -> Result<(), PacketCodecError> {
         self.inner.encode(src, dst, self.max_allowed_packet)
     }
+
+    pub fn push_str(&mut self, string: &str) {
+        let mut string = string.as_bytes();
+        while string.len() > 0 {
+            let cap = MAX_PAYLOAD_LEN - self.payload_len();
+            let writed = min(cap, string.len());
+            self.buf.extend_from_slice(&string[..writed]);
+            self.is_full();
+            string = &string[writed..];
+        }
+    }
+    pub fn push(&mut self, c: u8) {
+        self.buf.push(c);
+        self.is_full();
+    }
+    pub fn reserve(&mut self, additional: usize) {
+        self.buf.reserve(additional);
+    }
+    fn payload_len(&self) -> usize {
+        //header 长度为4
+        self.buf.len() - self.len_pos - 4
+    }
+    fn is_full(&mut self) {
+        if self.payload_len() == MAX_PAYLOAD_LEN {
+            self.finish_and_write_next_packet_header();
+        }
+    }
+    fn finish_current_packet(&mut self) {
+        let len = self.payload_len();
+        let mut buf = &mut self.buf[self.len_pos..];
+        assert!(
+            len <= MAX_PAYLOAD_LEN,
+            "mysql packet len {len} should < {MAX_PAYLOAD_LEN}"
+        );
+        buf.put_u24_le(len as u32);
+
+        self.inner.seq_id = self.inner.seq_id.wrapping_add(1);
+    }
+    fn write_next_packet_header(&mut self) {
+        self.len_pos = self.buf.len();
+        self.buf
+            .put_u32_le(0u32 | (u32::from(self.inner.seq_id) << 24));
+    }
+    fn finish_and_write_next_packet_header(&mut self) {
+        self.finish_current_packet();
+        self.write_next_packet_header();
+    }
+    pub fn encode_with_builder(
+        mut self,
+        my_cmd: Command,
+        builder: RequestBuilder,
+    ) -> Result<Vec<u8>, PacketCodecError> {
+        // let extra_packet = packet.remaining() % MAX_PAYLOAD_LEN == 0;
+        // dst.reserve(packet.remaining() + (packet.remaining() / MAX_PAYLOAD_LEN) * 4 + 4);
+
+        // while packet.has_remaining() {
+        //     let mut chunk_len = min(packet.remaining(), MAX_PAYLOAD_LEN);
+        //     dst.put_u32_le(chunk_len as u32 | (u32::from(seq_id) << 24));
+        //     while chunk_len > 0 {
+        //         let chunk = packet.chunk();
+        //         let count = min(chunk.len(), chunk_len);
+        //         dst.put(&chunk[..count]);
+        //         chunk_len -= count;
+        //         packet.advance(count);
+        //     }
+        //     seq_id = seq_id.wrapping_add(1);
+        // }
+
+        // if extra_packet {
+        //     dst.put_u32_le(u32::from(seq_id) << 24);
+        //     seq_id = seq_id.wrapping_add(1);
+        // }
+
+        // seq_id
+        self.write_next_packet_header();
+        self.buf.push(my_cmd as u8);
+        let RequestBuilder {
+            f,
+            dname,
+            tname,
+            req,
+            key,
+        } = builder;
+        f(&mut self, &dname, &tname, &req, &key);
+        self.finish_current_packet();
+        Ok(self.buf)
+    }
 }
 
 impl Default for PacketCodec {
@@ -406,99 +501,101 @@ impl Default for PacketCodec {
         Self {
             max_allowed_packet: DEFAULT_MAX_ALLOWED_PACKET,
             inner: Default::default(),
+            buf: Default::default(),
+            len_pos: 0usize,
         }
     }
 }
 
 /// Packet codec implementation.
-#[derive(Debug, Clone)]
-enum PacketCodecInner {
-    /// Plain packet codec.
-    Plain(PlainPacketCodec),
-    // /// Compressed packet codec.
-    // Comp(CompPacketCodec),
-}
+// #[derive(Debug, Clone)]
+// enum PacketCodecInner {
+//     /// Plain packet codec.
+//     Plain(PlainPacketCodec),
+//     // /// Compressed packet codec.
+//     // Comp(CompPacketCodec),
+// }
 
-impl PacketCodecInner {
-    // /// Sets sequence id to `0`.
-    // fn reset_seq_id(&mut self) {
-    //     match self {
-    //         PacketCodecInner::Plain(c) => c.reset_seq_id(),
-    //         PacketCodecInner::Comp(c) => c.reset_seq_id(),
-    //     }
-    // }
+// impl PacketCodecInner {
+//     // /// Sets sequence id to `0`.
+//     // fn reset_seq_id(&mut self) {
+//     //     match self {
+//     //         PacketCodecInner::Plain(c) => c.reset_seq_id(),
+//     //         PacketCodecInner::Comp(c) => c.reset_seq_id(),
+//     //     }
+//     // }
 
-    // TODO 临时增加设置seq id的方法
-    fn set_seq_id(&mut self, sid: u8) {
-        match self {
-            PacketCodecInner::Plain(c) => c.set_seq_id(sid),
-            // PacketCodecInner::Comp(c) => c.set_seq_id(sid),
-        }
-    }
+//     // TODO 临时增加设置seq id的方法
+//     fn set_seq_id(&mut self, sid: u8) {
+//         match self {
+//             PacketCodecInner::Plain(c) => c.set_seq_id(sid),
+//             // PacketCodecInner::Comp(c) => c.set_seq_id(sid),
+//         }
+//     }
 
-    // /// Overwrites plain sequence id with compressed sequence id.
-    // fn sync_seq_id(&mut self) {
-    //     match self {
-    //         PacketCodecInner::Plain(_) => (),
-    //         PacketCodecInner::Comp(c) => c.sync_seq_id(),
-    //     }
-    // }
+//     // /// Overwrites plain sequence id with compressed sequence id.
+//     // fn sync_seq_id(&mut self) {
+//     //     match self {
+//     //         PacketCodecInner::Plain(_) => (),
+//     //         PacketCodecInner::Comp(c) => c.sync_seq_id(),
+//     //     }
+//     // }
 
-    // /// Turns compression on.
-    // fn compress(&mut self, level: Compression) {
-    //     match self {
-    //         PacketCodecInner::Plain(c) => {
-    //             *self = PacketCodecInner::Comp(CompPacketCodec {
-    //                 level,
-    //                 comp_seq_id: 0,
-    //                 in_buf: BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET),
-    //                 out_buf: BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET),
-    //                 comp_decoder: CompDecoder::Idle,
-    //                 plain_codec: mem::take(c),
-    //             })
-    //         }
-    //         PacketCodecInner::Comp(c) => c.level = level,
-    //     }
-    // }
+//     // /// Turns compression on.
+//     // fn compress(&mut self, level: Compression) {
+//     //     match self {
+//     //         PacketCodecInner::Plain(c) => {
+//     //             *self = PacketCodecInner::Comp(CompPacketCodec {
+//     //                 level,
+//     //                 comp_seq_id: 0,
+//     //                 in_buf: BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET),
+//     //                 out_buf: BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET),
+//     //                 comp_decoder: CompDecoder::Idle,
+//     //                 plain_codec: mem::take(c),
+//     //             })
+//     //         }
+//     //         PacketCodecInner::Comp(c) => c.level = level,
+//     //     }
+//     // }
 
-    // /// Will try to decode packet from `src` into `dst`.
-    // ///
-    // /// If `true` is returned then `dst` contains full packet.
-    // fn decode<T>(
-    //     &mut self,
-    //     src: &mut BytesMut,
-    //     dst: &mut T,
-    //     max_allowed_packet: usize,
-    // ) -> Result<bool, PacketCodecError>
-    // where
-    //     T: AsRef<[u8]>,
-    //     T: BufMut,
-    // {
-    //     match self {
-    //         PacketCodecInner::Plain(codec) => codec.decode(src, dst, max_allowed_packet, None),
-    //         PacketCodecInner::Comp(codec) => codec.decode(src, dst, max_allowed_packet),
-    //     }
-    // }
+//     // /// Will try to decode packet from `src` into `dst`.
+//     // ///
+//     // /// If `true` is returned then `dst` contains full packet.
+//     // fn decode<T>(
+//     //     &mut self,
+//     //     src: &mut BytesMut,
+//     //     dst: &mut T,
+//     //     max_allowed_packet: usize,
+//     // ) -> Result<bool, PacketCodecError>
+//     // where
+//     //     T: AsRef<[u8]>,
+//     //     T: BufMut,
+//     // {
+//     //     match self {
+//     //         PacketCodecInner::Plain(codec) => codec.decode(src, dst, max_allowed_packet, None),
+//     //         PacketCodecInner::Comp(codec) => codec.decode(src, dst, max_allowed_packet),
+//     //     }
+//     // }
 
-    /// Will try to encode packets into `dst`.
-    fn encode<T: Buf>(
-        &mut self,
-        packet: &mut T,
-        dst: &mut BytesMut,
-        max_allowed_packet: usize,
-    ) -> Result<(), PacketCodecError> {
-        match self {
-            PacketCodecInner::Plain(codec) => codec.encode(packet, dst, max_allowed_packet),
-            // PacketCodecInner::Comp(codec) => codec.encode(packet, dst, max_allowed_packet),
-        }
-    }
-}
+//     /// Will try to encode packets into `dst`.
+//     fn encode<T: Buf>(
+//         &mut self,
+//         packet: &mut T,
+//         dst: &mut BytesMut,
+//         max_allowed_packet: usize,
+//     ) -> Result<(), PacketCodecError> {
+//         match self {
+//             PacketCodecInner::Plain(codec) => codec.encode(packet, dst, max_allowed_packet),
+//             // PacketCodecInner::Comp(codec) => codec.encode(packet, dst, max_allowed_packet),
+//         }
+//     }
+// }
 
-impl Default for PacketCodecInner {
-    fn default() -> Self {
-        PacketCodecInner::Plain(Default::default())
-    }
-}
+// impl Default for PacketCodecInner {
+//     fn default() -> Self {
+//         PacketCodecInner::Plain(Default::default())
+//     }
+// }
 
 /// Codec for plain MySql protocol.
 #[derive(Debug, Clone, Eq, PartialEq, Default)]

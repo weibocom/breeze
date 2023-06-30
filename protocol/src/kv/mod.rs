@@ -7,6 +7,8 @@ mod rsppacket;
 use self::common::proto::Text;
 use self::common::query_result::{Or, QueryResult};
 use self::common::row::convert::from_row;
+pub use common::proto::codec::PacketCodec;
+
 use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
 pub use self::mcpacket::*;
@@ -17,12 +19,12 @@ use super::Flag;
 use super::Protocol;
 use super::Result;
 use crate::kv::common::opts::Opts;
-use crate::Command;
 use crate::Error;
 use crate::HandShake;
 use crate::HashedCommand;
 use crate::RequestProcessor;
 use crate::Stream;
+use crate::{Command, RequestBuilder};
 use ds::{MemGuard, RingSlice};
 
 use sharding::hash::Hash;
@@ -116,10 +118,10 @@ impl Protocol for Kv {
         Ok(())
     }
 
-    fn build_request(&self, req: &mut HashedCommand, new_req: String) {
+    fn build_request(&self, req: &mut HashedCommand, new_req: RequestBuilder) {
         let mysql_cmd = req.mysql_cmd();
         let new_req = RequestPacket::new()
-            .build_request(mysql_cmd, &new_req)
+            .build_request(mysql_cmd, new_req)
             .unwrap();
         // *req.cmd() = MemGuard::from_vec(new_req);
         req.reshape(MemGuard::from_vec(new_req));
