@@ -393,10 +393,12 @@ impl Kv {
         // let mut result_set = self.parse_result_set(rsp_packet)?;
         let meta = rsp_packet.parse_result_set_meta()?;
 
-        // 不返回列值的成功操作，如insert/delete/update
-        if let Or::B(_) = meta {
-            let mem = MemGuard::empty();
-            let cmd = Command::from(true, mem);
+        // 返回影响的列数，如insert/delete/update
+        if let Or::B(ok) = meta {
+            let n = ok.affected_rows();
+            let mem = MemGuard::from_vec(n.to_be_bytes().to_vec());
+            let cmd = Command::from_ok(mem);
+            log::debug!("+++ parse_response_inner okpacket respons cmd:{:?}", cmd);
             return Ok(Some(cmd));
         }
 
@@ -497,7 +499,10 @@ impl Kv {
         let origin_req = request.origin_data(); // old request
         let op_code = origin_req.op();
         let (write_key, write_extra, write_response) = match op_code {
-            OP_ADD | OP_SET | OP_DEL => (None, None, None),
+            OP_ADD | OP_SET | OP_DEL => {
+                log::debug!("+++ OP_ADD write_mc_packet:{:?}", response);
+                (None, None, Some(response))
+            }
             _ => {
                 // body： total body len
                 // TODO flag涉及到不同语言的解析问题，需要考虑兼容 fishermen
