@@ -102,9 +102,10 @@ impl Error {
     //TODO 先简单实现，稍后进行整合
     #[inline]
     pub(crate) fn error(&self) -> crate::error::Error {
-        // let msg = format!("mysql Error: %{}", self);
+        let msg = format!("mysql Error: {}", self);
+        // let content = RingSlice::from_vec(&msg.as_bytes().to_vec());
         match self {
-            _ => crate::error::Error::MysqlError,
+            _ => crate::error::Error::MysqlError(msg.as_bytes().to_vec()),
         }
     }
 }
@@ -248,9 +249,10 @@ impl DriverError {
     // TODO 先做一个简单的转换，跑通后，再调整 fishermen
     #[inline]
     pub(crate) fn error(&self) -> crate::error::Error {
-        // let msg = format!("mysql Error: %{}", self);
+        let msg = format!("mysql Driver Error: {}", self);
+        // let content = RingSlice::from_vec(&msg.as_bytes().to_vec());
         match self {
-            _ => crate::error::Error::MysqlError,
+            _ => crate::error::Error::MysqlError(msg.as_bytes().to_vec()),
         }
     }
 }

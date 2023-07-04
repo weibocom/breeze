@@ -138,6 +138,12 @@ impl Protocol for Kv {
                 // rsp_packet.reserve();
                 Ok(None)
             }
+            Err(Error::MysqlError(s)) => {
+                let mem = ds::MemGuard::from_vec(s);
+                let cmd = Command::from(false, mem);
+                log::debug!("+++ parse mysql response err to cmd:{:?}", cmd);
+                Ok(Some(cmd))
+            }
             Err(e) => {
                 log::warn!("+++ err when parse mysql response: {:?}", e);
                 Err(e)
@@ -190,24 +196,38 @@ impl Protocol for Kv {
             return Ok(());
         }
 
+        let old_op_code = ctx.request().op_code() as u8;
+
         // 如果原始请求是quite_get请求，并且not found，则不回写。
         if let Some(rsp) = response {
+            log::debug!(
+                "+++ sent to client for req:{:?}, rsp:{:?}",
+                ctx.request(),
+                rsp
+            );
             // mysql 请求到正确的数据，才会转换并write
             if rsp.ok() {
                 // assert!(rsp.len() > 0, "empty rsp:{:?}", rsp);
                 self.write_mc_packet(ctx.request(), rsp, w)?;
-                log::debug!(
-                    "+++ sent to client for req:{:?}, rsp:{}",
-                    ctx.request(),
-                    rsp.len()
-                );
                 return Ok(());
+            } else {
+                match old_op_code {
+                    // set: mc status设为 Item Not Stored,status设为false
+                    OP_SET | OP_ADD => {
+                        self.write_mc_err_response(RespStatus::NotStored, ctx.request(), rsp, w)?;
+                        return Ok(());
+                    }
+                    OP_GET | OP_DEL => {
+                        self.write_mc_err_response(RespStatus::NotFound, ctx.request(), rsp, w)?;
+                        return Ok(());
+                    }
+                    _ => (),
+                }
             }
         }
 
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
-        let old_op_code = ctx.request().op_code() as u8;
         log::debug!("+++ send to client padding rsp, req:{:?}", ctx.request(),);
         match old_op_code {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
@@ -303,6 +323,7 @@ impl Kv {
 
     // 根据req构建response，status为mc协议status，共11种
     #[inline]
+    #[allow(dead_code)]
     fn build_empty_response(&self, status: RespStatus, req: &HashedCommand) -> [u8; HEADER_LEN] {
         let mut response = [0; HEADER_LEN];
         response[PacketPos::Magic as usize] = RESPONSE_MAGIC;
@@ -520,6 +541,20 @@ impl Kv {
             w,
         )?;
         Ok(())
+    }
+
+    #[inline]
+    fn write_mc_err_response<W>(
+        &self,
+        status: RespStatus,
+        req: &HashedCommand,
+        response: &crate::Command,
+        w: &mut W,
+    ) -> Result<()>
+    where
+        W: crate::Writer,
+    {
+        self.write_mc_response(req.op(), status, None, None, Some(response), w)
     }
 }
 

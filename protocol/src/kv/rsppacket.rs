@@ -114,11 +114,11 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             Err(Error::ProtocolIncomplete) => {
                 return Err(Error::ProtocolIncomplete);
             }
-            Err(Error::MysqlError) => {
+            Err(Error::MysqlError(s)) => {
                 // TODO 解析发现sql异常
                 log::warn!("+++ found mysql error");
                 self.take();
-                return Err(Error::MysqlError);
+                return Err(Error::MysqlError(s));
             }
             Err(e) => {
                 panic!("mysql response found unknow err: {:?}", e);
