@@ -410,16 +410,21 @@ impl PacketCodec {
 
     pub fn push_str(&mut self, string: &str) {
         let mut string = string.as_bytes();
-        while string.len() > 0 {
-            let cap = MAX_PAYLOAD_LEN - self.payload_len();
-            let writed = min(cap, string.len());
-            self.buf.extend_from_slice(&string[..writed]);
-            self.is_full();
-            string = &string[writed..];
+        if cfg!(feature = "max_allowed_packet") {
+            while string.len() > 0 {
+                let cap = MAX_PAYLOAD_LEN - self.payload_len();
+                let writed = min(cap, string.len());
+                self.buf.extend_from_slice(&string[..writed]);
+                self.is_full();
+                string = &string[writed..];
+            }
+        } else {
+            self.buf.extend_from_slice(string);
         }
     }
     pub fn push(&mut self, c: u8) {
         self.buf.push(c);
+        #[cfg(feature = "max_allowed_packet")]
         self.is_full();
     }
     pub fn reserve(&mut self, additional: usize) {
@@ -437,9 +442,13 @@ impl PacketCodec {
     fn finish_current_packet(&mut self) {
         let len = self.payload_len();
         let mut buf = &mut self.buf[self.len_pos..];
+        //目前不允许一个包达到最大，最大后需要写下一个空包
+        let max_payload_len = MAX_PAYLOAD_LEN;
+        #[cfg(feature = "max_allowed_packet")]
+        let max_payload_len = MAX_PAYLOAD_LEN - 1;
         assert!(
-            len <= MAX_PAYLOAD_LEN,
-            "mysql packet len {len} should < {MAX_PAYLOAD_LEN}"
+            len <= max_payload_len,
+            "mysql payload len {len} should < {max_payload_len}"
         );
         buf.put_u24_le(len as u32);
 
