@@ -361,6 +361,7 @@ pub struct PacketCodec {
     /// Actual implementation.
     inner: PlainPacketCodec,
     len_pos: usize,
+    packet_num: usize,
     buf: Vec<u8>,
 }
 
@@ -442,13 +443,9 @@ impl PacketCodec {
     fn finish_current_packet(&mut self) {
         let len = self.payload_len();
         let mut buf = &mut self.buf[self.len_pos..];
-        //目前不允许一个包达到最大，最大后需要写下一个空包
-        let max_payload_len = MAX_PAYLOAD_LEN;
-        #[cfg(feature = "max_allowed_packet")]
-        let max_payload_len = MAX_PAYLOAD_LEN - 1;
         assert!(
-            len <= max_payload_len,
-            "mysql payload len {len} should < {max_payload_len}"
+            len <= MAX_PAYLOAD_LEN,
+            "mysql payload len {len} should < {MAX_PAYLOAD_LEN}"
         );
         buf.put_u24_le(len as u32);
 
@@ -458,6 +455,7 @@ impl PacketCodec {
         self.len_pos = self.buf.len();
         self.buf
             .put_u32_le(0u32 | (u32::from(self.inner.seq_id) << 24));
+        self.packet_num += 1;
     }
     fn finish_and_write_next_packet_header(&mut self) {
         self.finish_current_packet();
@@ -468,28 +466,6 @@ impl PacketCodec {
         my_cmd: Command,
         builder: RequestBuilder,
     ) -> Result<Vec<u8>, PacketCodecError> {
-        // let extra_packet = packet.remaining() % MAX_PAYLOAD_LEN == 0;
-        // dst.reserve(packet.remaining() + (packet.remaining() / MAX_PAYLOAD_LEN) * 4 + 4);
-
-        // while packet.has_remaining() {
-        //     let mut chunk_len = min(packet.remaining(), MAX_PAYLOAD_LEN);
-        //     dst.put_u32_le(chunk_len as u32 | (u32::from(seq_id) << 24));
-        //     while chunk_len > 0 {
-        //         let chunk = packet.chunk();
-        //         let count = min(chunk.len(), chunk_len);
-        //         dst.put(&chunk[..count]);
-        //         chunk_len -= count;
-        //         packet.advance(count);
-        //     }
-        //     seq_id = seq_id.wrapping_add(1);
-        // }
-
-        // if extra_packet {
-        //     dst.put_u32_le(u32::from(seq_id) << 24);
-        //     seq_id = seq_id.wrapping_add(1);
-        // }
-
-        // seq_id
         self.write_next_packet_header();
         self.buf.push(my_cmd as u8);
         let RequestBuilder {
@@ -501,6 +477,9 @@ impl PacketCodec {
         } = builder;
         f(&mut self, &dname, &tname, &req, &key);
         self.finish_current_packet();
+        if self.buf.len() - 4 * self.packet_num > self.max_allowed_packet {
+            return Err(PacketCodecError::PacketTooLarge);
+        }
         Ok(self.buf)
     }
 }
@@ -512,6 +491,7 @@ impl Default for PacketCodec {
             inner: Default::default(),
             buf: Default::default(),
             len_pos: 0usize,
+            packet_num: 0usize,
         }
     }
 }
