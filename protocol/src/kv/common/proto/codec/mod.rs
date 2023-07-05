@@ -410,16 +410,21 @@ impl PacketCodec {
 
     pub fn push_str(&mut self, string: &str) {
         let mut string = string.as_bytes();
-        while string.len() > 0 {
-            let cap = MAX_PAYLOAD_LEN - self.payload_len();
-            let writed = min(cap, string.len());
-            self.buf.extend_from_slice(&string[..writed]);
-            self.is_full();
-            string = &string[writed..];
+        if cfg!(feature = "max_allowed_packet") {
+            while string.len() > 0 {
+                let cap = MAX_PAYLOAD_LEN - self.payload_len();
+                let writed = min(cap, string.len());
+                self.buf.extend_from_slice(&string[..writed]);
+                self.is_full();
+                string = &string[writed..];
+            }
+        } else {
+            self.buf.extend_from_slice(string);
         }
     }
     pub fn push(&mut self, c: u8) {
         self.buf.push(c);
+        #[cfg(feature = "max_allowed_packet")]
         self.is_full();
     }
     pub fn reserve(&mut self, additional: usize) {

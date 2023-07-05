@@ -53,11 +53,13 @@ fn delete() {
 }
 
 const MAX_PAYLOAD_LEN: usize = 16_777_215;
+//构建一个sql长度为MAX_PAYLOAD_LEN的packet
 #[test]
 fn set_max_payload() {
     //16777299
     let client = mc_get_conn("mysql");
     let key = "4892225613598444";
+    //当val长度为MAX_PAYLOAD_LEN - 1 - 76，构建出来的insert语句长度恰好为MAX_PAYLOAD_LEN
     let val = vec!['a' as u8; MAX_PAYLOAD_LEN - 1 - 76];
     client.add(key, val.as_slice(), 10000).unwrap();
     sleep(Duration::from_secs(3));
@@ -66,18 +68,19 @@ fn set_max_payload() {
     assert_eq!(val[..8196], result);
 }
 
-#[test]
-fn set_over_max_payload() {
-    //16777299
-    let client = mc_get_conn("mysql");
-    let key = "4892225613598445";
-    let val = vec!['a' as u8; MAX_PAYLOAD_LEN * 2];
-    client.add(key, val.as_slice(), 10000).unwrap();
-    sleep(Duration::from_secs(3));
-    let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key);
-    let result = result.unwrap().unwrap();
-    assert_eq!(val[..8196], result);
-}
+// 服务端默认的支持的最大sql长度为16MB，基本等同于MAX_PAYLOAD_LEN，所以我们不支持多个packet的sql语句发送
+// #[test]
+// fn set_over_max_payload() {
+//     //16777299
+//     let client = mc_get_conn("mysql");
+//     let key = "4892225613598445";
+//     let val = vec!['a' as u8; MAX_PAYLOAD_LEN * 2];
+//     client.add(key, val.as_slice(), 10000).unwrap();
+//     sleep(Duration::from_secs(3));
+//     let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key);
+//     let result = result.unwrap().unwrap();
+//     assert_eq!(val[..8196], result);
+// }
 
 // #[test]
 // fn update_not_exsit() {
