@@ -1,6 +1,5 @@
 // 解析的mc协议，转换为mysql req 请求
-use super::common::{constants::Command, proto::codec::PacketCodec};
-use crate::{Error, RequestBuilder, Result};
+use super::common::proto::codec::PacketCodec;
 
 // mc          vs           mysql
 // get                      select
@@ -17,30 +16,14 @@ use crate::{Error, RequestBuilder, Result};
 
 #[derive(Clone, Debug)]
 pub struct RequestPacket {
-    codec: PacketCodec,
+    _codec: PacketCodec,
 }
 
 impl RequestPacket {
     pub(super) fn new() -> Self {
         Self {
-            codec: Default::default(),
+            _codec: Default::default(),
         }
-    }
-
-    // TODO 先实现功能，待优化
-    pub(super) fn build_request(self, my_cmd: Command, builder: RequestBuilder) -> Result<Vec<u8>> {
-        // let mut req_data = BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET);
-        // TODO: 按需分配内存，避免过大，同时需要警惕内存不够导致异常的情况 fishermen
-        // let mut req_data = BytesMut::with_capacity(req_len);
-        // req_data.put_u8(my_cmd as u8);
-        // req_data.put_slice(sql.as_bytes());
-
-        self.codec
-            .encode_with_builder(my_cmd, builder)
-            .map_err(|e| {
-                log::warn!("encode request failed:{:?}", e);
-                return Error::WriteResponseErr;
-            })
     }
 }
 

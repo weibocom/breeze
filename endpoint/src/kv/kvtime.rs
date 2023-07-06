@@ -6,9 +6,10 @@ use super::{
 use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
-use protocol::kv::PacketCodec;
-use protocol::kv::{Binary, OP_ADD, OP_DEL, OP_SET};
-use protocol::RequestBuilder;
+use protocol::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_SET};
+use protocol::kv::{MysqlBinary, PacketCodec};
+use protocol::HashedCommand;
+use protocol::{Error::MysqlError, Result};
 use sharding::hash::Hash;
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -87,6 +88,78 @@ impl KVTime {
     // https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
     // Backslash (\) and the quote character used to quote the string must be escaped. In certain client environments, it may also be necessary to escape NUL or Control+Z.
     // 应该只需要转义上面的
+}
+impl Strategy for KVTime {
+    fn distribution(&self) -> &DBRange {
+        &self.distribution
+    }
+    fn hasher(&self) -> &Hasher {
+        &self.hasher
+    }
+    fn get_key(&self, key: &RingSlice) -> Option<String> {
+        let uuid = to_i64(key);
+        let s = uuid.unix_secs();
+        let year = chrono::Utc
+            .timestamp_opt(s, 0)
+            .unwrap()
+            .with_timezone(&Shanghai)
+            .format("%Y")
+            .to_string();
+        if self.years.contains(&year) {
+            Some(year)
+        } else {
+            Some(ARCHIVE_DEFAULT_KEY.to_string())
+        }
+    }
+    //todo: sql_name 枚举
+    fn build_kvcmd(&self, req: &HashedCommand, key: RingSlice) -> Result<Vec<u8>> {
+        let uuid = to_i64(&key);
+        let tname = match self.build_tname(uuid) {
+            Some(tname) => tname,
+            None => return Err(MysqlError("build tname err".to_owned().into_bytes())),
+        };
+        let dname = match self.build_dname(&key) {
+            Some(dname) => dname,
+            None => return Err(MysqlError("build dname err".to_owned().into_bytes())),
+        };
+
+        MysqlBuilder::new(dname, tname, req).build_packets()
+    }
+}
+
+//todo 这一块协议转换可整体移到protocol中，对Strategy的依赖可抽象
+struct MysqlBuilder<'a> {
+    dname: String,
+    tname: String,
+    req: &'a self::HashedCommand,
+}
+
+impl<'a> MysqlBuilder<'a> {
+    fn new(dname: String, tname: String, req: &self::HashedCommand) -> MysqlBuilder {
+        MysqlBuilder { dname, tname, req }
+    }
+    fn build_packets(&self) -> Result<Vec<u8>> {
+        let mut packet = PacketCodec::default();
+        packet.write_next_packet_header();
+        packet.push(self.req.mysql_cmd() as u8);
+
+        let op = self.req.op();
+        let key = self.req.key();
+        match op {
+            OP_ADD => Self::build_insert_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
+            OP_SET => Self::build_update_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
+            OP_DEL => Self::build_delete_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
+            OP_GET => Self::build_select_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
+            //todo 返回原因
+            _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
+        };
+
+        packet.finish_current_packet();
+        packet
+            .check_total_payload_len()
+            .map_err(|_| MysqlError("payload > max_allowed_packet".to_owned().into_bytes()))?;
+        Ok(packet.into())
+    }
     fn escape_mysql_and_push(packet: &mut PacketCodec, c: u8) {
         //非法char要当成二进制push，否则会变成unicode
         let c = c as char;
@@ -195,55 +268,5 @@ impl KVTime {
         packet.push_str(tname);
         packet.push_str(" where id=");
         Self::extend_escape_string(packet, key);
-    }
-}
-impl Strategy for KVTime {
-    fn distribution(&self) -> &DBRange {
-        &self.distribution
-    }
-    fn hasher(&self) -> &Hasher {
-        &self.hasher
-    }
-    fn get_key(&self, key: &RingSlice) -> Option<String> {
-        let uuid = to_i64(key);
-        let s = uuid.unix_secs();
-        let year = chrono::Utc
-            .timestamp_opt(s, 0)
-            .unwrap()
-            .with_timezone(&Shanghai)
-            .format("%Y")
-            .to_string();
-        if self.years.contains(&year) {
-            Some(year)
-        } else {
-            Some(ARCHIVE_DEFAULT_KEY.to_string())
-        }
-    }
-    //todo: sql_name 枚举
-    fn build_kvsql(&self, req: RingSlice, key: RingSlice) -> Option<RequestBuilder> {
-        let uuid = to_i64(&key);
-        let tname = match self.build_tname(uuid) {
-            Some(tname) => tname,
-            None => return None,
-        };
-        let dname = match self.build_dname(&key) {
-            Some(dname) => dname,
-            None => return None,
-        };
-
-        let op = req.op();
-        let sql = match op {
-            OP_ADD => Self::build_insert_sql,
-            OP_SET => Self::build_update_sql,
-            OP_DEL => Self::build_delete_sql,
-            _ => Self::build_select_sql,
-        };
-        Some(RequestBuilder {
-            f: sql,
-            dname,
-            tname,
-            req,
-            key,
-        })
     }
 }

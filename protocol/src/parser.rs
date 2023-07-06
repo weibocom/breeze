@@ -2,7 +2,7 @@ use enum_dispatch::enum_dispatch;
 
 use sharding::hash::Hash;
 
-use crate::kv::{Kv, PacketCodec};
+use crate::kv::Kv;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
@@ -58,14 +58,6 @@ pub enum HandShake {
     Continue,
 }
 
-pub struct RequestBuilder {
-    pub f: fn(packet: &mut PacketCodec, dname: &str, tname: &str, req: &RingSlice, key: &RingSlice),
-    pub dname: String,
-    pub tname: String,
-    pub req: RingSlice,
-    pub key: RingSlice,
-}
-
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     //todo, Stream和Writer合并，ResOption用一个字段？
@@ -78,7 +70,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
-    fn build_request(&self, _req: &mut HashedCommand, _request_builder: RequestBuilder) {}
+    fn build_request(&self, _req: &mut HashedCommand, _request_builder: MemGuard) {}
 
     // fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
 
@@ -234,7 +226,7 @@ impl std::ops::DerefMut for HashedCommand {
         &mut self.cmd
     }
 }
-use ds::{MemGuard, RingSlice};
+use ds::MemGuard;
 impl HashedCommand {
     #[inline]
     pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {

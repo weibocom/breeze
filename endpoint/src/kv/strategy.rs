@@ -3,7 +3,7 @@ use super::kvtime::KVTime;
 use ds::RingSlice;
 
 use enum_dispatch::enum_dispatch;
-use protocol::RequestBuilder;
+use protocol::{HashedCommand, Result};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
@@ -35,7 +35,7 @@ pub trait Strategy {
     fn distribution(&self) -> &DBRange;
     fn hasher(&self) -> &Hasher;
     fn get_key(&self, key: &RingSlice) -> Option<String>;
-    fn build_kvsql<'a>(&self, req: RingSlice, key: RingSlice) -> Option<RequestBuilder>;
+    fn build_kvcmd(&self, req: &HashedCommand, key: RingSlice) -> Result<Vec<u8>>;
 }
 
 #[enum_dispatch(Strategy)]

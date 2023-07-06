@@ -22,12 +22,9 @@ use std::cmp::min;
 // };
 
 use self::error::PacketCodecError;
-use crate::{
-    kv::common::{
-        constants::{Command, DEFAULT_MAX_ALLOWED_PACKET, MAX_PAYLOAD_LEN},
-        io::BufMutExt,
-    },
-    RequestBuilder,
+use crate::kv::common::{
+    constants::{DEFAULT_MAX_ALLOWED_PACKET, MAX_PAYLOAD_LEN},
+    io::BufMutExt,
 };
 pub mod error;
 
@@ -416,7 +413,7 @@ impl PacketCodec {
                 let cap = MAX_PAYLOAD_LEN - self.payload_len();
                 let writed = min(cap, string.len());
                 self.buf.extend_from_slice(&string[..writed]);
-                self.is_full();
+                self.check_full();
                 string = &string[writed..];
             }
         } else {
@@ -426,7 +423,7 @@ impl PacketCodec {
     pub fn push(&mut self, c: u8) {
         self.buf.push(c);
         #[cfg(feature = "max_allowed_packet")]
-        self.is_full();
+        self.check_full();
     }
     pub fn reserve(&mut self, additional: usize) {
         self.buf.reserve(additional);
@@ -435,12 +432,12 @@ impl PacketCodec {
         //header 长度为4
         self.buf.len() - self.len_pos - 4
     }
-    fn is_full(&mut self) {
+    fn check_full(&mut self) {
         if self.payload_len() == MAX_PAYLOAD_LEN {
             self.finish_and_write_next_packet_header();
         }
     }
-    fn finish_current_packet(&mut self) {
+    pub fn finish_current_packet(&mut self) {
         let len = self.payload_len();
         let mut buf = &mut self.buf[self.len_pos..];
         assert!(
@@ -451,7 +448,7 @@ impl PacketCodec {
 
         self.inner.seq_id = self.inner.seq_id.wrapping_add(1);
     }
-    fn write_next_packet_header(&mut self) {
+    pub fn write_next_packet_header(&mut self) {
         self.len_pos = self.buf.len();
         self.buf
             .put_u32_le(0u32 | (u32::from(self.inner.seq_id) << 24));
@@ -461,26 +458,17 @@ impl PacketCodec {
         self.finish_current_packet();
         self.write_next_packet_header();
     }
-    pub fn encode_with_builder(
-        mut self,
-        my_cmd: Command,
-        builder: RequestBuilder,
-    ) -> Result<Vec<u8>, PacketCodecError> {
-        self.write_next_packet_header();
-        self.buf.push(my_cmd as u8);
-        let RequestBuilder {
-            f,
-            dname,
-            tname,
-            req,
-            key,
-        } = builder;
-        f(&mut self, &dname, &tname, &req, &key);
-        self.finish_current_packet();
+    pub fn check_total_payload_len(&self) -> Result<(), PacketCodecError> {
         if self.buf.len() - 4 * self.packet_num > self.max_allowed_packet {
             return Err(PacketCodecError::PacketTooLarge);
         }
-        Ok(self.buf)
+        Ok(())
+    }
+}
+
+impl Into<Vec<u8>> for PacketCodec {
+    fn into(self) -> Vec<u8> {
+        self.buf
     }
 }
 

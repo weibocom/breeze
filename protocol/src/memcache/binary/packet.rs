@@ -111,7 +111,7 @@ pub enum Opcode {
 pub(crate) const REQUEST_MAGIC: u8 = 0x80;
 pub(crate) const RESPONSE_MAGIC: u8 = 0x81;
 
-pub(crate) const OP_GET: u8 = 0x00;
+pub const OP_GET: u8 = 0x00;
 pub(crate) const OP_NOOP: u8 = 0x0a;
 pub(crate) const OP_VERSION: u8 = 0x0b;
 pub(crate) const OP_STAT: u8 = 0x10;
