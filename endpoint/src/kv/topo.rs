@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
+use ds::MemGuard;
 use protocol::kv::Binary;
 use protocol::Protocol;
 use protocol::Request;
@@ -129,11 +130,12 @@ where
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
         //todo: 此处不应panic
-        let builder = self
+        let cmd = self
             .strategist
-            .build_kvsql(req.slice(0, req.len()), key)
+            .build_kvcmd(&req, key)
             .expect("malformed sql");
-        self.parser.build_request(req.cmd_mut(), builder);
+        self.parser
+            .build_request(req.cmd_mut(), MemGuard::from_vec(cmd));
         log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 
         if shard.has_slave() && !req.operation().is_store() {
