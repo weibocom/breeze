@@ -6,6 +6,7 @@ use std::task::{ready, Context, Poll};
 
 use ds::chan::mpsc::Receiver;
 use ds::time::Instant;
+use ds::RingSlice;
 use protocol::{Error, Protocol, Request, Result, Stream};
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -15,6 +16,7 @@ use metrics::Metric;
 pub struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
     pending: VecDeque<(Req, Instant)>,
+    pending_for_log: Vec<RingSlice>,
 
     s: S,
     parser: P,
@@ -59,6 +61,7 @@ where
         Self {
             data,
             pending: VecDeque::with_capacity(31),
+            pending_for_log: Vec::with_capacity(16),
             s,
             parser,
             rtt,
@@ -128,14 +131,17 @@ where
     }
     #[inline]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        // TODO 仅仅用于异常时打印之前的若干条requests，验证完毕后清理 fishermen
+        if self.pending_for_log.len() > 0 {
+            self.pending_for_log.clear();
+        }
+
         while self.pending.len() > 0 {
             let mut cx = Context::from_waker(cx.waker());
             //let mut reader = crate::buffer::Reader::from(&mut self.s, &mut cx);
             //let poll_read = self.buf.write(&mut reader)?;
             let poll_read = self.s.poll_recv(&mut cx);
 
-            // TODO 仅仅用于异常时打印之前的若干条requests，验证完毕后清理 fishermen
-            let mut last_requests = Vec::with_capacity(16);
             while self.s.len() > 0 {
                 match self.parser.parse_response(&mut self.s) {
                     Ok(None) => break,
@@ -147,13 +153,12 @@ where
                             None => {
                                 // 发现异常，panic 同时把前几条request打印出来
                                 let rsp = unsafe { cmd.data_dump() };
-                                panic!(
-                                    "take response failed, pre requests: {:?},\r\n cur rsp: {:?}",
-                                    last_requests, rsp
+                                panic!("take response failed, pre requests: {:?},\r\n cur rsp: {:?} \r\n => {:?}",
+                                    self.pending_for_log, cmd.slice(0, cmd.len()), rsp
                                 );
                             }
                         };
-                        last_requests.push(req.slice(0, req.len()));
+                        self.pending_for_log.push(req.slice(0, req.len()));
 
                         self.num.rx();
                         // 统计请求耗时。
@@ -182,6 +187,11 @@ where
                 }
             }
             ready!(poll_read)?;
+
+            // TODO 测试完毕后清理
+            if self.pending_for_log.len() > 0 {
+                self.pending_for_log.clear();
+            }
         }
         Poll::Ready(Ok(()))
     }
