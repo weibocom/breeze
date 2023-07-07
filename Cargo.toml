@@ -30,6 +30,11 @@ debug = false
 codegen-units = 1
 lto = "fat"
 opt-level = 3
+strip = "none"
+
+
+[profile.release-stable]
+inherits = "release"
 strip = "symbols"
 
 [profile.release-perf]
