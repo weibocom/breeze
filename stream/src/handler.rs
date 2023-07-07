@@ -1,3 +1,4 @@
+use core::panic;
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
@@ -133,11 +134,27 @@ where
             //let poll_read = self.buf.write(&mut reader)?;
             let poll_read = self.s.poll_recv(&mut cx);
 
+            // TODO 仅仅用于异常时打印之前的若干条requests，验证完毕后清理 fishermen
+            let mut last_requests = Vec::with_capacity(16);
             while self.s.len() > 0 {
                 match self.parser.parse_response(&mut self.s) {
                     Ok(None) => break,
                     Ok(Some(cmd)) => {
-                        let (req, start) = self.pending.pop_front().expect("take response");
+                        // let (req, start) = self.pending.pop_front().expect("take response");
+                        // TODO 仅仅为了异常时打印使用，验证完毕后清理
+                        let (req, start) = match self.pending.pop_front() {
+                            Some((r, s)) => (r, s),
+                            None => {
+                                // 发现异常，panic 同时把前几条request打印出来
+                                let rsp = unsafe { cmd.data_dump() };
+                                panic!(
+                                    "take response failed, pre requests: {:?},\r\n cur rsp: {:?}",
+                                    last_requests, rsp
+                                );
+                            }
+                        };
+                        last_requests.push(req.slice(0, req.len()));
+
                         self.num.rx();
                         // 统计请求耗时。
                         self.rtt += start.elapsed();
