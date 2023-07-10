@@ -12,6 +12,6 @@ ds = { path = "../ds" }
 discovery = { path = "../discovery" }
 metrics = { path = "../metrics" }
 log = { path = "../log" }
-
+context = { path = "../context" }
 
 rand = "0.8.4"
