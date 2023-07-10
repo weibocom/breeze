@@ -104,6 +104,9 @@ pub struct ContextOption {
     #[clap(long, help("private key path"), default_value("/var/private_key.pem"))]
     pub key_path: String,
 
+    #[clap(long, help("region"), default_value(""))]
+    pub region: String,
+
     // api参数，目前只有这一个差异参数，先放这里
     #[clap(long, help("api whitelist host"), default_value("localhost"))]
     pub whitelist_host: String,
