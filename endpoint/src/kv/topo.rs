@@ -129,14 +129,17 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
-        //todo: 此处不应panic
-        let cmd = self
-            .strategist
-            .build_kvcmd(&req, key)
-            .expect("malformed sql");
-        self.parser
-            .build_request(req.cmd_mut(), MemGuard::from_vec(cmd));
-        log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
+        let ctx = super::transmute(req.context_mut());
+        if ctx.runs == 0 {
+            //todo: 此处不应panic
+            let cmd = self
+                .strategist
+                .build_kvcmd(&req, key)
+                .expect("malformed sql");
+            self.parser
+                .build_request(req.cmd_mut(), MemGuard::from_vec(cmd));
+            log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
+        }
 
         if shard.has_slave() && !req.operation().is_store() {
             if *req.context_mut() == 0 {
@@ -157,9 +160,9 @@ where
             };
             ctx.idx = idx as u16;
             ctx.runs += 1;
-            // todo: 目前没有重试逻辑
-            // let try_next = ctx.runs == 1;
-            // req.try_next(try_next);
+            // 只重试一次，重试次数过多，可能会导致雪崩。如果不重试，现在的配额策略在当前副本也只会连续发送四次请求，问题也不大
+            let try_next = ctx.runs == 1;
+            req.try_next(try_next);
             endpoint.1.send(req)
         } else {
             shard.master().send(req);
