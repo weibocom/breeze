@@ -102,7 +102,7 @@ impl Error {
     //TODO 先简单实现，稍后进行整合
     #[inline]
     pub(crate) fn error(&self) -> crate::error::Error {
-        let msg = format!("mysql Error: {}", self);
+        let msg = format!("{}", self);
         // let content = RingSlice::from_vec(&msg.as_bytes().to_vec());
         match self {
             _ => crate::error::Error::MysqlError(msg.as_bytes().to_vec()),
@@ -197,8 +197,8 @@ impl fmt::Display for Error {
         match *self {
             Error::IoError(ref err) => write!(f, "IoError {{ {} }}", err),
             Error::CodecError(ref err) => write!(f, "CodecError {{ {} }}", err),
-            Error::MySqlError(ref err) => write!(f, "MySqlError {{ {} }}", err),
-            Error::DriverError(ref err) => write!(f, "DriverError {{ {} }}", err),
+            Error::MySqlError(ref err) => write!(f, "{}", err.message),
+            Error::DriverError(ref err) => write!(f, "{{ {} }}", err),
             Error::UrlError(ref err) => write!(f, "UrlError {{ {} }}", err),
             #[cfg(any(feature = "native-tls", feature = "rustls"))]
             Error::TlsError(ref err) => write!(f, "TlsError {{ {} }}", err),
