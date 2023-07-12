@@ -8,6 +8,7 @@ mod proto;
 mod protocol;
 mod queue;
 // mod redis;
+mod bkdrsub;
 mod hash_test;
 mod redis;
 mod ring_slice;
