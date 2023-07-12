@@ -1,23 +1,12 @@
 use crate::mc_helper::*;
-// use chrono::TimeZone;
-// use chrono_tz::Asia::Shanghai;
-// use endpoint::kv::uuid::*;
 use memcache::MemcacheError;
+use std::{thread::sleep, time::Duration};
 
-#[test]
-#[ignore]
-fn get() {
-    let client = mc_get_conn("mysql");
-    let key = "4892225613598471";
-    let result: Result<Option<String>, MemcacheError> = client.get(key);
-    println!("{:?}", result);
-    assert_eq!(true, result.expect("ok").is_none());
-}
-
+//val中有非assic字符和需要mysql转义的字符
 #[test]
 fn set() {
     let client = mc_get_conn("mysql");
-    let key = "4892225613598464";
+    let key = "4892225613598465";
     let val = [
         -88i8, 6, -108, -120, -112, -119, -115, -90, -40, 8, -78, 6, 4, 50, 98, 98, 50, -32, 6, 0,
         -104, 7, 0, -96, 7, 0, -56, 7, 0, -48, 7, 0, -40, 7, 0, -104, 9, 1, -64, 9, 0, -56, 9, 0,
@@ -37,16 +26,75 @@ fn set() {
     assert_eq!(uval.as_ref(), result.unwrap().unwrap());
 }
 
-// #[test]
-// fn time_testst() {
-//     let id = 4839120888922294i64;
-//     let s = id.unix_secs();
-//     let display = chrono::Utc
-//         .timestamp_opt(s, 0)
-//         .unwrap()
-//         .with_timezone(&Shanghai)
-//         .format("%Y/%m/%d %H:%M")
-//         .to_string();
+#[test]
+fn update() {
+    let client = mc_get_conn("mysql");
+    let key = "4892225613598454";
 
-//     println!("time:{}", display);
+    client.add(key, "1", 10000).unwrap();
+    let result: Result<Option<String>, MemcacheError> = client.get(key);
+    assert_eq!("1", result.unwrap().unwrap());
+
+    client.set(key, "2", 10000).unwrap();
+    let result: Result<Option<String>, MemcacheError> = client.get(key);
+    assert_eq!("2", result.unwrap().unwrap());
+}
+
+#[test]
+fn delete() {
+    let client = mc_get_conn("mysql");
+    let key = "4892225613598453";
+
+    client.add(key, "1", 10000).unwrap();
+    assert_eq!("1", client.get::<String>(key).unwrap().unwrap());
+
+    client.delete(key).unwrap();
+    assert_eq!(None, client.get::<String>(key).unwrap());
+}
+
+//ci环境的mysql默认的 max_allowed_packet为4194304，content colume 长度为8KB,但针对2<<16-1的MAX_PAYLOAD_LEN也测试过
+const MAX_PAYLOAD_LEN: usize = 8 * 1024;
+//构建一个sql长度为MAX_PAYLOAD_LEN的packet
+#[test]
+fn set_huge_payload() {
+    //16777299
+    let client = mc_get_conn("mysql");
+    let key = "4892225613598444";
+    //当val长度为MAX_PAYLOAD_LEN - 1 - 76，构建出来的insert语句长度恰好为MAX_PAYLOAD_LEN
+    let val = vec!['a' as u8; MAX_PAYLOAD_LEN];
+    client.add(key, val.as_slice(), 10000).unwrap();
+    sleep(Duration::from_secs(3));
+    let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key);
+    let result = result.unwrap().unwrap();
+    assert_eq!(val, result);
+}
+
+// 服务端默认的支持的最大sql长度为16MB，基本等同于MAX_PAYLOAD_LEN，所以我们不支持多个packet的sql语句发送
+// #[test]
+// fn set_over_max_payload() {
+//     //16777299
+//     let client = mc_get_conn("mysql");
+//     let key = "4892225613598445";
+//     let val = vec!['a' as u8; MAX_PAYLOAD_LEN * 2];
+//     client.add(key, val.as_slice(), 10000).unwrap();
+//     sleep(Duration::from_secs(3));
+//     let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key);
+//     let result = result.unwrap().unwrap();
+//     assert_eq!(val[..8196], result);
+// }
+
+// #[test]
+// fn update_not_exsit() {
+//     let client = mc_get_conn("mysql");
+//     let key = "4892225613598445";
+
+//     client.set(key, "2", 10000).unwrap();
+// }
+
+// #[test]
+// fn delete_not_exsit() {
+//     let client = mc_get_conn("mysql");
+//     let key = "4892225613598446";
+
+//     client.delete(key).unwrap();
 // }

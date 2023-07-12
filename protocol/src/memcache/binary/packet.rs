@@ -111,7 +111,7 @@ pub enum Opcode {
 pub(crate) const REQUEST_MAGIC: u8 = 0x80;
 pub(crate) const RESPONSE_MAGIC: u8 = 0x81;
 
-pub(crate) const OP_GET: u8 = 0x00;
+pub const OP_GET: u8 = 0x00;
 pub(crate) const OP_NOOP: u8 = 0x0a;
 pub(crate) const OP_VERSION: u8 = 0x0b;
 pub(crate) const OP_STAT: u8 = 0x10;
@@ -119,8 +119,8 @@ pub(crate) const OP_QUIT: u8 = 0x07;
 pub(crate) const OP_QUITQ: u8 = 0x17;
 pub(crate) const OP_GETKQ: u8 = 0x0d;
 pub(crate) const OP_GETQ: u8 = 0x09;
-pub(crate) const OP_SET: u8 = 0x01;
-pub(crate) const OP_DEL: u8 = 0x04;
+pub const OP_SET: u8 = 0x01;
+pub const OP_DEL: u8 = 0x04;
 pub const OP_ADD: u8 = 0x02;
 pub(crate) const OP_GETK: u8 = 0x0c;
 pub(crate) const OP_SETQ: u8 = 0x11;
