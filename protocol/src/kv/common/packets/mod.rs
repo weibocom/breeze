@@ -611,10 +611,10 @@ impl<'a> OkPacket<'a> {
         }
     }
 
-    // /// Value of the affected_rows field of an Ok packet.
-    // pub fn affected_rows(&self) -> u64 {
-    //     self.affected_rows
-    // }
+    /// Value of the affected_rows field of an Ok packet.
+    pub fn affected_rows(&self) -> u64 {
+        self.affected_rows
+    }
 
     // /// Value of the last_insert_id field of an Ok packet.
     // pub fn last_insert_id(&self) -> Option<u64> {

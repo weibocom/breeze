@@ -6,7 +6,10 @@ use super::{
 use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
-use protocol::kv::{Binary, OP_ADD};
+use protocol::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_SET};
+use protocol::kv::{MysqlBinary, PacketCodec};
+use protocol::HashedCommand;
+use protocol::{Error::MysqlError, Result};
 use sharding::hash::Hash;
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -81,70 +84,10 @@ impl KVTime {
     //     }
     //     None
     // }
-    fn escape_mysql_and_push(s: &mut String, c: u8) {
-        //非法char要当成二进制push，否则会变成unicode
-        let s = unsafe { s.as_mut_vec() };
-        let c = c as char;
-        if c == '\x00' {
-            s.push('\\' as u8);
-            s.push('0' as u8);
-        } else if c == '\n' {
-            s.push('\\' as u8);
-            s.push('n' as u8);
-        } else if c == '\r' {
-            s.push('\\' as u8);
-            s.push('r' as u8);
-        } else if c == '\\' || c == '\'' || c == '"' {
-            s.push('\\' as u8);
-            s.push(c as u8);
-        } else if c == '\x1a' {
-            s.push('\\' as u8);
-            s.push('Z' as u8);
-        } else {
-            s.push(c as u8);
-        }
-    }
-    fn extend_escape_string(s: &mut String, r: &RingSlice) {
-        r.visit(|c| Self::escape_mysql_and_push(s, c))
-    }
-    fn build_insert_sql(
-        &self,
-        dname: &str,
-        tname: &str,
-        req: &RingSlice,
-        key: &RingSlice,
-    ) -> String {
-        // format!("insert into {dname}.{tname} (id, content) values ({key}, {val})")
-        let val = req.value();
 
-        let len = "insert into . (id,content) values (,)".len()
-            + dname.len()
-            + tname.len()
-            + key.len()
-            + val.len();
-        let mut sql = String::with_capacity(len);
-        sql.push_str("insert into ");
-        sql.push_str(dname);
-        sql.push('.');
-        sql.push_str(tname);
-        sql.push_str(" (id,content) values (");
-        Self::extend_escape_string(&mut sql, key);
-        sql.push_str(",'");
-        Self::extend_escape_string(&mut sql, &val);
-        sql.push_str("')");
-        sql
-    }
-    fn build_select_sql(&self, dname: &str, tname: &str, key: &RingSlice) -> String {
-        // format!("select content from {dname}.{tname} where id={key}")
-        let mut sql = String::with_capacity(128);
-        sql.push_str("select content from ");
-        sql.push_str(dname);
-        sql.push('.');
-        sql.push_str(tname);
-        sql.push_str(" where id=");
-        Self::extend_escape_string(&mut sql, key);
-        sql
-    }
+    // https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
+    // Backslash (\) and the quote character used to quote the string must be escaped. In certain client environments, it may also be necessary to escape NUL or Control+Z.
+    // 应该只需要转义上面的
 }
 impl Strategy for KVTime {
     fn distribution(&self) -> &DBRange {
@@ -169,23 +112,161 @@ impl Strategy for KVTime {
         }
     }
     //todo: sql_name 枚举
-    fn build_kvsql(&self, req: &RingSlice, key: &RingSlice) -> Option<String> {
-        let uuid = to_i64(key);
+    fn build_kvcmd(&self, req: &HashedCommand, key: RingSlice) -> Result<Vec<u8>> {
+        let uuid = to_i64(&key);
         let tname = match self.build_tname(uuid) {
             Some(tname) => tname,
-            None => return None,
+            None => return Err(MysqlError("build tname err".to_owned().into_bytes())),
         };
-        let dname = match self.build_dname(key) {
+        let dname = match self.build_dname(&key) {
             Some(dname) => dname,
-            None => return None,
+            None => return Err(MysqlError("build dname err".to_owned().into_bytes())),
         };
 
-        let op = req.op();
-        let sql = match op {
-            OP_ADD => self.build_insert_sql(&dname, &tname, req, key),
-            _ => self.build_select_sql(&dname, &tname, key),
+        MysqlBuilder::new(dname, tname, req).build_packets()
+    }
+}
+
+//todo 这一块协议转换可整体移到protocol中，对Strategy的依赖可抽象
+struct MysqlBuilder<'a> {
+    dname: String,
+    tname: String,
+    req: &'a self::HashedCommand,
+}
+
+impl<'a> MysqlBuilder<'a> {
+    fn new(dname: String, tname: String, req: &self::HashedCommand) -> MysqlBuilder {
+        MysqlBuilder { dname, tname, req }
+    }
+    fn build_packets(&self) -> Result<Vec<u8>> {
+        let mut packet = PacketCodec::default();
+        packet.write_next_packet_header();
+        packet.push(self.req.mysql_cmd() as u8);
+
+        let op = self.req.op();
+        let key = self.req.key();
+        match op {
+            OP_ADD => Self::build_insert_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
+            OP_SET => Self::build_update_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
+            OP_DEL => Self::build_delete_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
+            OP_GET => Self::build_select_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
+            //todo 返回原因
+            _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
         };
-        log::debug!("{}", sql);
-        Some(sql)
+
+        packet.finish_current_packet();
+        packet
+            .check_total_payload_len()
+            .map_err(|_| MysqlError("payload > max_allowed_packet".to_owned().into_bytes()))?;
+        Ok(packet.into())
+    }
+    fn escape_mysql_and_push(packet: &mut PacketCodec, c: u8) {
+        //非法char要当成二进制push，否则会变成unicode
+        let c = c as char;
+        if c == '\x00' {
+            packet.push('\\' as u8);
+            packet.push('0' as u8);
+        } else if c == '\n' {
+            packet.push('\\' as u8);
+            packet.push('n' as u8);
+        } else if c == '\r' {
+            packet.push('\\' as u8);
+            packet.push('r' as u8);
+        } else if c == '\\' || c == '\'' || c == '"' {
+            packet.push('\\' as u8);
+            packet.push(c as u8);
+        } else if c == '\x1a' {
+            packet.push('\\' as u8);
+            packet.push('Z' as u8);
+        } else {
+            packet.push(c as u8);
+        }
+    }
+    fn extend_escape_string(packet: &mut PacketCodec, r: &RingSlice) {
+        r.visit(|c| Self::escape_mysql_and_push(packet, c))
+    }
+    fn build_insert_sql(
+        packet: &mut PacketCodec,
+        dname: &str,
+        tname: &str,
+        req: &RingSlice,
+        key: &RingSlice,
+    ) {
+        // format!("insert into {dname}.{tname} (id, content) values ({key}, {val})")
+        let val = req.value();
+
+        let len = "insert into . (id,content) values (,)".len()
+            + dname.len()
+            + tname.len()
+            + key.len()
+            + val.len();
+        packet.reserve(len);
+        packet.push_str("insert into ");
+        packet.push_str(dname);
+        packet.push('.' as u8);
+        packet.push_str(tname);
+        packet.push_str(" (id,content) values (");
+        Self::extend_escape_string(packet, key);
+        packet.push_str(",'");
+        Self::extend_escape_string(packet, &val);
+        packet.push_str("')");
+    }
+    fn build_update_sql(
+        packet: &mut PacketCodec,
+        dname: &str,
+        tname: &str,
+        req: &RingSlice,
+        key: &RingSlice,
+    ) {
+        //update . set content= where id=
+        let val = req.value();
+
+        let len = "update . set content= where id=".len()
+            + dname.len()
+            + tname.len()
+            + key.len()
+            + val.len();
+        packet.reserve(len);
+        packet.push_str("update ");
+        packet.push_str(dname);
+        packet.push('.' as u8);
+        packet.push_str(tname);
+        packet.push_str(" set content='");
+        Self::extend_escape_string(packet, &val);
+        packet.push_str("' where id=");
+        Self::extend_escape_string(packet, key);
+    }
+    fn build_select_sql(
+        packet: &mut PacketCodec,
+        dname: &str,
+        tname: &str,
+        _req: &RingSlice,
+        key: &RingSlice,
+    ) {
+        // format!("select content from {dname}.{tname} where id={key}")
+        packet.reserve(128);
+        packet.push_str("select content from ");
+        packet.push_str(dname);
+        packet.push('.' as u8);
+        packet.push_str(tname);
+        packet.push_str(" where id=");
+        Self::extend_escape_string(packet, key);
+    }
+    fn build_delete_sql(
+        packet: &mut PacketCodec,
+        dname: &str,
+        tname: &str,
+        _req: &RingSlice,
+        key: &RingSlice,
+    ) {
+        // format!("select content from {dname}.{tname} where id={key}")
+        // delete from . where id=
+        packet.reserve(64);
+        packet.push_str("delete from ");
+        packet.push_str(dname);
+        packet.push('.' as u8);
+        packet.push_str(tname);
+        packet.push_str(" where id=");
+        Self::extend_escape_string(packet, key);
     }
 }
