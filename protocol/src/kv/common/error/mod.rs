@@ -24,7 +24,8 @@ impl<'a> From<packets::ServerError<'a>> for MySqlError {
         MySqlError {
             state: x.sql_state_str().into_owned(),
             code: x.error_code(),
-            message: x.message_str().into_owned(),
+            // message: x.message_str().into_owned(),
+            message: x.message_str(),
         }
     }
 }

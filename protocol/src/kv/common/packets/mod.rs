@@ -7,6 +7,7 @@
 // modified, or distributed except according to those terms.
 
 use bytes::BufMut;
+use ds::RingSlice;
 use lexical::parse;
 use regex::bytes::Regex;
 use smallvec::SmallVec;
@@ -134,7 +135,8 @@ impl<'de> MyDeserialize<'de> for Column {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let catalog = buf.parse(())?;
         let schema = buf.parse_unchecked(())?;
         let table = buf.parse_unchecked(())?;
@@ -366,7 +368,8 @@ impl<'de> MyDeserialize<'de> for SessionStateInfo<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize(_ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize(_ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(_ctx: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(SessionStateInfo {
             data_type: buf.parse(())?,
             data: buf.parse(())?,
@@ -400,7 +403,8 @@ pub trait OkPacketKind {
 
     fn parse_body<'de>(
         capabilities: CapabilityFlags,
-        buf: &mut ParseBuf<'de>,
+        buf: &mut ParseBuf,
+        // buf: &mut ParseBuf<'de>,
     ) -> io::Result<OkPacketBody<'de>>;
 }
 
@@ -413,7 +417,8 @@ impl OkPacketKind for ResultSetTerminator {
 
     fn parse_body<'de>(
         capabilities: CapabilityFlags,
-        buf: &mut ParseBuf<'de>,
+        buf: &mut ParseBuf,
+        // buf: &mut ParseBuf<'de>,
     ) -> io::Result<OkPacketBody<'de>> {
         // We need to skip affected_rows and insert_id here
         // because valid content of EOF packet includes
@@ -467,7 +472,8 @@ impl OkPacketKind for OldEofPacket {
 
     fn parse_body<'de>(
         _: CapabilityFlags,
-        buf: &mut ParseBuf<'de>,
+        buf: &mut ParseBuf,
+        // buf: &mut ParseBuf<'de>,
     ) -> io::Result<OkPacketBody<'de>> {
         // We assume that CLIENT_PROTOCOL_41 was set
         let mut buf: ParseBuf = buf.parse(4)?;
@@ -479,8 +485,11 @@ impl OkPacketKind for OldEofPacket {
             last_insert_id: RawInt::new(0),
             status_flags,
             warnings,
-            info: RawBytes::new(&[][..]),
-            session_state_info: RawBytes::new(&[][..]),
+            // info: RawBytes::new(&[][..]),
+            // session_state_info: RawBytes::new(&[][..]),
+            // TODO 设置一个0长slice
+            info: RawBytes::new(buf.0.sub_slice(0, 0)),
+            session_state_info: RawBytes::new(buf.0.sub_slice(0, 0)),
         })
     }
 }
@@ -494,7 +503,8 @@ impl OkPacketKind for NetworkStreamTerminator {
 
     fn parse_body<'de>(
         flags: CapabilityFlags,
-        buf: &mut ParseBuf<'de>,
+        buf: &mut ParseBuf,
+        // buf: &mut ParseBuf<'de>,
     ) -> io::Result<OkPacketBody<'de>> {
         OldEofPacket::parse_body(flags, buf)
     }
@@ -509,7 +519,8 @@ impl OkPacketKind for CommonOkPacket {
 
     fn parse_body<'de>(
         capabilities: CapabilityFlags,
-        buf: &mut ParseBuf<'de>,
+        // buf: &mut ParseBuf<'de>,
+        buf: &mut ParseBuf,
     ) -> io::Result<OkPacketBody<'de>> {
         let affected_rows = buf.parse(())?;
         let last_insert_id = buf.parse(())?;
@@ -674,7 +685,8 @@ impl<'de, T: OkPacketKind> MyDeserialize<'de> for OkPacketDeserializer<'de, T> {
     const SIZE: Option<usize> = None;
     type Ctx = CapabilityFlags;
 
-    fn deserialize(capabilities: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize(capabilities: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(capabilities: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         if *buf.parse::<RawInt<u8>>(())? == T::HEADER {
             let body = T::parse_body(capabilities, buf)?;
             let ok = OkPacket::try_from(body)?;
@@ -731,8 +743,10 @@ impl<'a> ProgressReport<'a> {
     //     &self.stage_info.as_bytes()
     // }
 
+    // TODO 在最后需要的地方进行转换str，因为涉及到这回slice
     /// Status or state name as a string (lossy converted).
-    pub fn stage_info_str(&self) -> Cow<'_, str> {
+    // pub fn stage_info_str(&self) -> Cow<'_, str> {
+    pub fn stage_info_str(&self) -> String {
         self.stage_info.as_str()
     }
 
@@ -750,7 +764,8 @@ impl<'de> MyDeserialize<'de> for ProgressReport<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut sbuf: ParseBuf = buf.parse(6)?;
 
         sbuf.skip(1); // Ignore number of strings.
@@ -834,7 +849,8 @@ impl<'de> MyDeserialize<'de> for ErrPacket<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = CapabilityFlags;
 
-    fn deserialize(capabilities: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize(capabilities: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(capabilities: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut sbuf: ParseBuf = buf.parse(3)?;
         sbuf.parse_unchecked::<ErrPacketHeader>(())?;
         let code: RawInt<LeU16> = sbuf.parse_unchecked(())?;
@@ -912,8 +928,10 @@ impl<'a> ServerError<'a> {
     //     self.message.as_bytes()
     // }
 
+    // TODO 先返回String，等有更好的方法再改 fishermen
     /// Returns an error message as a string (lossy converted).
-    pub fn message_str(&self) -> Cow<'_, str> {
+    // pub fn message_str(&self) -> Cow<'_, str> {
+    pub fn message_str(&self) -> String {
         self.message.as_str()
     }
 
@@ -931,7 +949,8 @@ impl<'de> MyDeserialize<'de> for ServerError<'de> {
     /// An error packet error code.
     type Ctx = u16;
 
-    fn deserialize(code: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize(code: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(code: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         match buf.0[0] {
             b'#' => {
                 buf.skip(1);
@@ -1013,7 +1032,8 @@ impl<'de> MyDeserialize<'de> for LocalInfilePacket<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(LocalInfilePacket {
             __header: buf.parse(())?,
             file_name: buf.parse(())?,
@@ -1067,6 +1087,7 @@ impl MySerialize for AuthPluginData {
     }
 }
 
+// TODO 生命周期参数在后续修改完毕后，需要统一清理  fishermen
 /// Authentication plugin
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum AuthPlugin<'a> {
@@ -1076,46 +1097,68 @@ pub enum AuthPlugin<'a> {
     MysqlNativePassword,
     /// Default since MySql v8.0.4
     CachingSha2Password,
-    Other(Cow<'a, [u8]>),
+    // Other(Cow<'a, [u8]>),
+    // 统一改造为RingSlice，以方便延迟到最后再copy
+    Other(Cow<'a, RingSlice>),
 }
 
 impl<'de> MyDeserialize<'de> for AuthPlugin<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(Self::from_bytes(buf.eat_all()))
     }
 }
 
 impl MySerialize for AuthPlugin<'_> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        buf.put_slice(self.as_bytes());
+        // buf.put_slice(self.as_bytes());
+        // 调整写入姿势
+        let data = self.as_bytes();
+        data.copy_to_vec(buf);
         buf.put_u8(0);
     }
 }
 
+// TODO 生命周期参数可以去掉，但考虑修改范围限制，等测试完毕后，再统一清理 fishermen
 impl<'a> AuthPlugin<'a> {
-    pub fn from_bytes(name: &'a [u8]) -> AuthPlugin<'a> {
-        let name = if let [name @ .., 0] = name {
-            name
+    // pub fn from_bytes(name: &'a [u8]) -> AuthPlugin<'a> {
+    pub fn from_bytes(name: RingSlice) -> AuthPlugin<'a> {
+        // let name = if let [name @ .., 0] = name {
+        //     name
+        // } else {
+        //     name
+        // };
+        // match name {
+        //     CACHING_SHA2_PASSWORD_PLUGIN_NAME => AuthPlugin::CachingSha2Password,
+        //     MYSQL_NATIVE_PASSWORD_PLUGIN_NAME => AuthPlugin::MysqlNativePassword,
+        //     MYSQL_OLD_PASSWORD_PLUGIN_NAME => AuthPlugin::MysqlOldPassword,
+        //     name => AuthPlugin::Other(Cow::Borrowed(name)),
+        // }
+
+        // TODO 注意参考上面的逻辑，check一致性 fishermen
+        if name.start_with(0, CACHING_SHA2_PASSWORD_PLUGIN_NAME) {
+            AuthPlugin::CachingSha2Password
+        } else if name.start_with(0, MYSQL_NATIVE_PASSWORD_PLUGIN_NAME) {
+            AuthPlugin::MysqlNativePassword
+        } else if name.start_with(0, MYSQL_OLD_PASSWORD_PLUGIN_NAME) {
+            AuthPlugin::MysqlOldPassword
         } else {
-            name
-        };
-        match name {
-            CACHING_SHA2_PASSWORD_PLUGIN_NAME => AuthPlugin::CachingSha2Password,
-            MYSQL_NATIVE_PASSWORD_PLUGIN_NAME => AuthPlugin::MysqlNativePassword,
-            MYSQL_OLD_PASSWORD_PLUGIN_NAME => AuthPlugin::MysqlOldPassword,
-            name => AuthPlugin::Other(Cow::Borrowed(name)),
+            // AuthPlugin::Other(Cow::Borrowed(&name))
+            AuthPlugin::Other(Cow::Owned(name))
         }
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
+    // pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> RingSlice {
         match self {
-            AuthPlugin::CachingSha2Password => CACHING_SHA2_PASSWORD_PLUGIN_NAME,
-            AuthPlugin::MysqlNativePassword => MYSQL_NATIVE_PASSWORD_PLUGIN_NAME,
-            AuthPlugin::MysqlOldPassword => MYSQL_OLD_PASSWORD_PLUGIN_NAME,
-            AuthPlugin::Other(name) => &*name,
+            AuthPlugin::CachingSha2Password => CACHING_SHA2_PASSWORD_PLUGIN_NAME.into(),
+            AuthPlugin::MysqlNativePassword => MYSQL_NATIVE_PASSWORD_PLUGIN_NAME.into(),
+            AuthPlugin::MysqlOldPassword => MYSQL_OLD_PASSWORD_PLUGIN_NAME.into(),
+            // AuthPlugin::Other(name) => &*name,
+            AuthPlugin::Other(name) => **name,
         }
     }
 
@@ -1201,7 +1244,8 @@ impl<'de> MyDeserialize<'de> for AuthMoreData<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(Self {
             __header: buf.parse(())?,
             data: buf.parse(())?,
@@ -1247,7 +1291,8 @@ impl<'de> MyDeserialize<'de> for OldAuthSwitchRequest {
     const SIZE: Option<usize> = Some(1);
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(Self {
             __header: buf.parse(())?,
         })
@@ -1309,7 +1354,8 @@ impl<'de> MyDeserialize<'de> for AuthSwitchRequest<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(Self {
             __header: buf.parse(())?,
             auth_plugin: buf.parse(())?,
@@ -1356,7 +1402,8 @@ impl<'de> MyDeserialize<'de> for HandshakePacket<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let protocol_version = buf.parse(())?;
         let server_version = buf.parse(())?;
 
@@ -1378,11 +1425,24 @@ impl<'de> MyDeserialize<'de> for HandshakePacket<'de> {
         }
         let mut auth_plugin_name = None;
         if capabilities_2.0 & CapabilityFlags::CLIENT_PLUGIN_AUTH.bits() > 0 {
-            auth_plugin_name = match buf.eat_all() {
-                [head @ .., 0] => Some(RawBytes::new(head)),
-                // missing trailing `0` is a known bug in mysql
-                all => Some(RawBytes::new(all)),
-            }
+            // auth_plugin_name = match buf.eat_all() {
+            //     [head @ .., 0] => Some(RawBytes::new(head)),
+            //     // missing trailing `0` is a known bug in mysql
+            //     all => Some(RawBytes::new(all)),
+            // }
+
+            // TODO 上面的实现暂留参考，彻底稳定前不要清理 fishermen
+            // 如果末尾是0，需要trucate掉，否则整个字节是plugin name
+            let pname_data = buf.eat_all();
+            auth_plugin_name = if pname_data.len() > 0 {
+                match pname_data.at(pname_data.len() - 1) {
+                    0 => Some(RawBytes::new(pname_data.sub_slice(0, pname_data.len() - 1))),
+                    _ => Some(RawBytes::new(pname_data)),
+                }
+            } else {
+                // Some(RawBytes::new(Cow::Owned(pname_data)))
+                Some(RawBytes::new(pname_data))
+            };
         }
 
         Ok(Self {
@@ -1515,8 +1575,10 @@ impl<'a> HandshakePacket<'a> {
     }
 
     /// Value of the server_version field of an initial handshake packet as a byte slice.
-    pub fn server_version_ref(&self) -> &[u8] {
-        self.server_version.as_bytes()
+    // pub fn server_version_ref(&self) -> &[u8] {
+    pub fn server_version_ref(&self) -> &RingSlice {
+        // self.server_version.as_bytes()
+        &self.server_version.0
     }
 
     // /// Value of the server_version field of an initial handshake packet as a string
@@ -1529,16 +1591,47 @@ impl<'a> HandshakePacket<'a> {
     ///
     /// Will parse first \d+.\d+.\d+ of a server version string (if any).
     pub fn server_version_parsed(&self) -> Option<(u16, u16, u16)> {
-        VERSION_RE
-            .captures(self.server_version_ref())
-            .map(|captures| {
+        // VERSION_RE
+        //     .captures(self.server_version_ref())
+        //     .map(|captures| {
+        //         // Should not panic because validated with regex
+        //         (
+        //             parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
+        //             parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
+        //             parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
+        //         )
+        //     })
+        // TODO 参考上面的代码，彻底稳定前，暂时不要清理 fishermen
+        let version = self.server_version_ref();
+        match version.try_oneway_slice(0, version.len()) {
+            Some(data) => VERSION_RE.captures(data).map(|captures| {
                 // Should not panic because validated with regex
                 (
                     parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
                     parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
                     parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
                 )
-            })
+            }),
+            None => {
+                let data = version.dump_ring_part(0, version.len());
+                VERSION_RE.captures(&data[..]).map(|captures| {
+                    // Should not panic because validated with regex
+                    (
+                        parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
+                        parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
+                        parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
+                    )
+                })
+            }
+        }
+        // capture.map(|captures| {
+        //     // Should not panic because validated with regex
+        //     (
+        //         parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
+        //         parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
+        //         parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
+        //     )
+        // })
     }
 
     // /// Parsed mariadb server version.
@@ -1568,7 +1661,8 @@ impl<'a> HandshakePacket<'a> {
     /// Value of the scramble_2 field of an initial handshake packet as a byte slice.
     ///
     /// Note that this may include a terminating null character.
-    pub fn scramble_2_ref(&self) -> Option<&[u8]> {
+    // pub fn scramble_2_ref(&self) -> Option<&[u8]> {
+    pub fn scramble_2_ref(&self) -> Option<&RingSlice> {
         self.scramble_2.as_ref().map(|x| x.as_bytes())
     }
 
@@ -1577,7 +1671,10 @@ impl<'a> HandshakePacket<'a> {
     /// Returns concatenated auth plugin nonce.
     pub fn nonce(&self) -> Vec<u8> {
         let mut out = Vec::from(self.scramble_1_ref());
-        out.extend_from_slice(self.scramble_2_ref().unwrap_or(&[][..]));
+        // out.extend_from_slice(self.scramble_2_ref().unwrap_or(&[][..]));
+
+        // TODO 参考上面的代码，彻底稳定前，暂时不要清理 fishermen
+        self.scramble_2_ref().map(|x| x.copy_to_vec(&mut out));
 
         // Trim zero terminator. Fill with zeroes if nonce
         // is somehow smaller than 20 bytes.
@@ -1613,9 +1710,24 @@ impl<'a> HandshakePacket<'a> {
 
     /// Auth plugin of a handshake packet
     pub fn auth_plugin(&self) -> Option<AuthPlugin<'_>> {
-        self.auth_plugin_name.as_ref().map(|x| match x.as_bytes() {
-            [name @ .., 0] => ParseBuf(name).parse_unchecked(()).expect("infallible"),
-            all => ParseBuf(all).parse_unchecked(()).expect("infallible"),
+        // self.auth_plugin_name.as_ref().map(|x| match x.as_bytes() {
+        //     [name @ .., 0] => ParseBuf(name.into())
+        //         .parse_unchecked(())
+        //         .expect("infallible"),
+        //     all => ParseBuf(all.into())
+        //         .parse_unchecked(())
+        //         .expect("infallible"),
+        // })
+        // TODO 参考上面代码实现，彻底稳定前，不要删除 fishermen
+        self.auth_plugin_name.as_ref().map(|x| {
+            let name = x.as_bytes();
+            if name.at(name.len() - 1) == 0 {
+                ParseBuf(name.sub_slice(0, name.len() - 1))
+                    .parse_unchecked(())
+                    .expect("infallible")
+            } else {
+                ParseBuf(*name).parse_unchecked(()).expect("infallible")
+            }
         })
     }
 }
@@ -1650,10 +1762,15 @@ pub struct HandshakeResponse<'a> {
 
 impl<'a> HandshakeResponse<'a> {
     pub fn new(
-        scramble_buf: Option<impl Into<Cow<'a, [u8]>>>,
+        // scramble_buf: Option<impl Into<Cow<'a, [u8]>>>,
+        // server_version: (u16, u16, u16),
+        // user: Option<impl Into<Cow<'a, [u8]>>>,
+        // db_name: Option<impl Into<Cow<'a, [u8]>>>,
+        // auth_plugin: Option<AuthPlugin<'a>>,
+        scramble_buf: Option<RingSlice>,
         server_version: (u16, u16, u16),
-        user: Option<impl Into<Cow<'a, [u8]>>>,
-        db_name: Option<impl Into<Cow<'a, [u8]>>>,
+        user: Option<RingSlice>,
+        db_name: Option<RingSlice>,
         auth_plugin: Option<AuthPlugin<'a>>,
         mut capabilities: CapabilityFlags,
         connect_attributes: Option<HashMap<String, String>>,
@@ -1706,7 +1823,13 @@ impl<'a> HandshakeResponse<'a> {
             connect_attributes: connect_attributes.map(|attrs| {
                 attrs
                     .into_iter()
-                    .map(|(k, v)| (RawBytes::new(k.into_bytes()), RawBytes::new(v.into_bytes())))
+                    // .map(|(k, v)| (RawBytes::new(k.into_bytes()), RawBytes::new(v.into_bytes())))
+                    .map(|(k, v)| {
+                        (
+                            RawBytes::new(RingSlice::from_vec(&k.into_bytes())),
+                            RawBytes::new(RingSlice::from_vec(&v.into_bytes())),
+                        )
+                    })
                     .collect()
             }),
         }
@@ -1757,7 +1880,8 @@ impl<'de> MyDeserialize<'de> for HandshakeResponse<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut sbuf: ParseBuf = buf.parse(4 + 4 + 1 + 23)?;
         let client_flags: RawConst<LeU32, CapabilityFlags> = sbuf.parse_unchecked(())?;
         sbuf.parse_unchecked::<Skip<4>>(())?;
@@ -1888,7 +2012,8 @@ impl<'de> MyDeserialize<'de> for SslRequest {
     const SIZE: Option<usize> = Some(4 + 4 + 1 + 23);
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut buf: ParseBuf = buf.parse(Self::SIZE.unwrap())?;
         let raw_capabilities = buf.parse_unchecked::<RawConst<LeU32, CapabilityFlags>>(())?;
         Ok(Self {
@@ -1928,7 +2053,8 @@ impl<'de> MyDeserialize<'de> for StmtPacket {
     const SIZE: Option<usize> = Some(12);
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut buf: ParseBuf = buf.parse(Self::SIZE.unwrap())?;
         Ok(StmtPacket {
             status: buf.parse_unchecked(())?,
@@ -1978,16 +2104,20 @@ impl MySerialize for StmtPacket {
 ///
 /// http://dev.mysql.com/doc/internals/en/null-bitmap.html
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct NullBitmap<T, U: AsRef<[u8]> = Vec<u8>>(U, PhantomData<T>);
+pub struct NullBitmap<T>(RingSlice, PhantomData<T>);
+// pub struct NullBitmap<T, U: AsRef<[u8]> = Vec<u8>>(U, PhantomData<T>);
 
-impl<'de, T: SerializationSide> MyDeserialize<'de> for NullBitmap<T, Cow<'de, [u8]>> {
+// impl<'de, T: SerializationSide> MyDeserialize<'de> for NullBitmap<T, Cow<'de, [u8]>> {
+impl<'de, T: SerializationSide> MyDeserialize<'de> for NullBitmap<T> {
     const SIZE: Option<usize> = None;
     type Ctx = usize;
 
-    fn deserialize(num_columns: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize(num_columns: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(num_columns: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let bitmap_len = Self::bitmap_len(num_columns);
         let bytes = buf.checked_eat(bitmap_len).ok_or_else(unexpected_buf_eof)?;
-        Ok(Self::from_bytes(Cow::Borrowed(bytes)))
+        // Ok(Self::from_bytes(Cow::Borrowed(bytes)))
+        Ok(Self::from_bytes(bytes))
     }
 }
 
@@ -2009,7 +2139,8 @@ impl<'de, T: SerializationSide> MyDeserialize<'de> for NullBitmap<T, Cow<'de, [u
 //     }
 // }
 
-impl<T: SerializationSide, U: AsRef<[u8]>> NullBitmap<T, U> {
+// impl<T: SerializationSide, U: AsRef<[u8]>> NullBitmap<T, U> {
+impl<T: SerializationSide> NullBitmap<T> {
     pub fn bitmap_len(num_columns: usize) -> usize {
         (num_columns + 7 + T::BIT_OFFSET) / 8
     }
@@ -2019,20 +2150,23 @@ impl<T: SerializationSide, U: AsRef<[u8]>> NullBitmap<T, U> {
         let byte = offset / 8;
         let bit = 1 << (offset % 8) as u8;
 
-        assert!(byte < self.0.as_ref().len());
+        // assert!(byte < self.0.as_ref().len());
+        assert!(byte < self.0.len());
 
         (byte, bit)
     }
 
     /// Creates new null-bitmap from given bytes.
-    pub fn from_bytes(bytes: U) -> Self {
+    // pub fn from_bytes(bytes: U) -> Self {
+    pub fn from_bytes(bytes: RingSlice) -> Self {
         Self(bytes, PhantomData)
     }
 
     /// Returns `true` if given column is `NULL` in this `NullBitmap`.
     pub fn is_null(&self, column_index: usize) -> bool {
         let (byte, bit) = self.byte_and_bit(column_index);
-        self.0.as_ref()[byte] & bit > 0
+        // self.0.as_ref()[byte] & bit > 0
+        self.0.at(byte) & bit > 0
     }
 }
 
@@ -2048,9 +2182,12 @@ impl<T: SerializationSide, U: AsRef<[u8]>> NullBitmap<T, U> {
 //     }
 // }
 
-impl<T, U: AsRef<[u8]>> AsRef<[u8]> for NullBitmap<T, U> {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
+// impl<T, U: AsRef<[u8]>> AsRef<[u8]> for NullBitmap<T, U> {
+impl<T> AsRef<RingSlice> for NullBitmap<T> {
+    // fn as_ref(&self) -> &[u8] {
+    fn as_ref(&self) -> &RingSlice {
+        // self.0.as_ref()
+        &self.0
     }
 }
 
@@ -2442,7 +2579,8 @@ impl<'de> MyDeserialize<'de> for ComRegisterSlave<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut sbuf: ParseBuf = buf.parse(5)?;
         let header = sbuf.parse_unchecked(())?;
         let server_id = sbuf.parse_unchecked(())?;
@@ -2536,7 +2674,8 @@ impl<'de> MyDeserialize<'de> for ComTableDump<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(Self {
             header: buf.parse(())?,
             database: buf.parse(())?,
@@ -2655,7 +2794,8 @@ impl<'de> MyDeserialize<'de> for ComBinlogDump<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut sbuf: ParseBuf = buf.parse(11)?;
         Ok(Self {
             header: sbuf.parse_unchecked(())?,
@@ -2711,7 +2851,8 @@ impl<'de> MyDeserialize<'de> for GnoInterval {
     const SIZE: Option<usize> = Some(16);
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(Self {
             start: buf.parse_unchecked(())?,
             end: buf.parse_unchecked(())?,
@@ -2783,7 +2924,8 @@ impl<'de> MyDeserialize<'de> for Sid<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(Self {
             uuid: buf.parse(())?,
             intervals: buf.parse(())?,
@@ -2993,7 +3135,8 @@ impl<'de> MyDeserialize<'de> for ComBinlogDumpGtid<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut sbuf: ParseBuf = buf.parse(7)?;
         let header = sbuf.parse_unchecked(())?;
         let flags: Const<BinlogDumpFlags, LeU16> = sbuf.parse_unchecked(())?;
@@ -3081,7 +3224,8 @@ impl<'de> MyDeserialize<'de> for SemiSyncAckPacket<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut sbuf: ParseBuf = buf.parse(9)?;
         Ok(Self {
             header: sbuf.parse_unchecked(())?,

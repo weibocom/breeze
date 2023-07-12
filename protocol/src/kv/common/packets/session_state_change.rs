@@ -55,7 +55,8 @@ impl<'de> MyDeserialize<'de> for SessionStateChange<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = SessionStateType;
 
-    fn deserialize(ty: SessionStateType, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize(ty: SessionStateType, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(ty: SessionStateType, buf: &mut ParseBuf) -> io::Result<Self> {
         match ty {
             SessionStateType::SESSION_TRACK_SYSTEM_VARIABLES => {
                 let mut vars = Vec::new();
@@ -69,7 +70,11 @@ impl<'de> MyDeserialize<'de> for SessionStateChange<'de> {
             }
             SessionStateType::SESSION_TRACK_STATE_CHANGE => {
                 let is_tracked: RawBytes<'_, LenEnc> = buf.parse_unchecked(())?;
-                Ok(SessionStateChange::IsTracked(is_tracked.as_bytes() == b"1"))
+                // Ok(SessionStateChange::IsTracked(is_tracked.as_bytes() == b"1"))
+                // TODO 参考上面的逻辑，彻底稳定前，不要删除 fishermen
+                let data = is_tracked.as_bytes();
+                let tracked = data.len() == 1 && data.at(0) == b'1';
+                Ok(SessionStateChange::IsTracked(tracked))
             }
             // Layout isn't specified in the documentation
             SessionStateType::SESSION_TRACK_GTIDS => {
@@ -140,7 +145,8 @@ impl<'de> MyDeserialize<'de> for Gtids<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         buf.parse_unchecked(()).map(Self)
     }
 }
@@ -182,7 +188,8 @@ impl<'de> MyDeserialize<'de> for Schema<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         buf.parse_unchecked(()).map(Self)
     }
 }
@@ -242,7 +249,8 @@ impl<'de> MyDeserialize<'de> for SystemVariable<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         Ok(Self {
             name: buf.parse_unchecked(())?,
             value: buf.parse_unchecked(())?,
@@ -289,7 +297,8 @@ impl<'de> MyDeserialize<'de> for TransactionCharacteristics<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         buf.parse_unchecked(()).map(Self)
     }
 }
@@ -332,7 +341,8 @@ impl<'de> MyDeserialize<'de> for TransactionState<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         buf.parse_unchecked(()).map(Self)
     }
 }
@@ -372,7 +382,8 @@ impl<'de> MyDeserialize<'de> for Unsupported<'de> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         buf.parse_unchecked(()).map(Self)
     }
 }
