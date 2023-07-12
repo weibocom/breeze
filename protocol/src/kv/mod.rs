@@ -1,6 +1,7 @@
 mod common;
 mod mcpacket;
 
+mod packet;
 mod reqpacket;
 mod rsppacket;
 
@@ -417,6 +418,7 @@ impl Kv {
         };
         let mem = MemGuard::from_vec(row);
         let cmd = Command::from(status, mem);
+        log::debug!("++++ recv kv resp:{:?}", cmd);
         Ok(Some(cmd))
     }
 

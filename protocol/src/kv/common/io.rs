@@ -2,7 +2,9 @@
 
 use byteorder::{LittleEndian as LE, ReadBytesExt, WriteBytesExt};
 use bytes::BufMut;
-use std::{cmp::min, io};
+use ds::RingSlice;
+// use sha1::digest::typenum::Minimum;
+use std::io;
 
 use super::proto::MyDeserialize;
 
@@ -55,30 +57,69 @@ pub trait BufMutExt: BufMut {
     }
 
     /// Writes a string with u8 length prefix. Truncates, if the length is greater that `u8::MAX`.
-    fn put_u8_str(&mut self, s: &[u8]) {
-        let len = std::cmp::min(s.len(), u8::MAX as usize);
-        self.put_u8(len as u8);
-        self.put_slice(&s[..len]);
+    // fn put_u8_str(&mut self, s: &[u8]) {
+    fn put_u8_str(&mut self, s: &RingSlice) {
+        // let len = std::cmp::min(s.len(), u8::MAX as usize);
+        // self.put_u8(len as u8);
+        // self.put_slice(&s[..len]);
+        // TODO 参考上面的代码，注意check一致性 fishermen
+        const U8_MAX: usize = u8::MAX as usize;
+        let min = s.len().min(U8_MAX);
+        self.put_u8(min as u8);
+        // s.copy_to_bufmut(self, U8_MAX);
+        self.copy_from_rslice(s, min);
     }
 
     /// Writes a string with u32 length prefix. Truncates, if the length is greater that `u32::MAX`.
-    fn put_u32_str(&mut self, s: &[u8]) {
-        let len = std::cmp::min(s.len(), u32::MAX as usize);
-        self.put_u32_le(len as u32);
-        self.put_slice(&s[..len]);
+    // fn put_u32_str(&mut self, s: &[u8]) {
+    fn put_u32_str(&mut self, s: &RingSlice) {
+        // let len = std::cmp::min(s.len(), u32::MAX as usize);
+        // self.put_u32_le(len as u32);
+        // self.put_slice(&s[..len]);
+        // TODO 参考上面的代码，注意check一致性 fishermen
+        const U32_MAX: usize = u32::MAX as usize;
+        let min = s.len().min(U32_MAX);
+        self.put_u32_le(min as u32);
+        self.copy_from_rslice(s, min);
+    }
+
+    /// copy 前len个bytes 到 BufMut，注意check len的长度
+    #[inline]
+    fn copy_from_rslice(&mut self, data: &RingSlice, len: usize) {
+        let (l, r) = data.data();
+        if len <= l.len() {
+            self.put_slice(&l[..len]);
+            return;
+        }
+
+        // len大于l.len
+        self.put_slice(l);
+        let rmin = r.len().min(len - l.len());
+        if rmin > 0 {
+            self.put_slice(&r[..rmin]);
+        }
     }
 }
 
 impl<T: BufMut> BufMutExt for T {}
 
+// TODO check RingSlice的折返处理 fishermen
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ParseBuf<'a>(pub &'a [u8]);
+pub struct ParseBuf(pub RingSlice);
+// pub struct ParseBuf<'a>(pub &'a [u8]);
 
-impl io::Read for ParseBuf<'_> {
+// impl io::Read for ParseBuf<'_> {
+// TODO read操作太重，注意check读取的量，过大需要优化 fishermen
+impl io::Read for ParseBuf {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let count = min(self.0.len(), buf.len());
-        (buf[..count]).copy_from_slice(&self.0[..count]);
-        self.0 = &self.0[count..];
+        // let count = min(self.0.len(), buf.len());
+        // (buf[..count]).copy_from_slice(&self.0[..count]);
+        // self.0 = &self.0[count..];
+        // Ok(count)
+
+        // TODO 参考上面的代码，彻底稳定后，再考虑清理 fishermen
+        let count = self.0.copy_to_slice(buf);
+        self.0.eat(count);
         Ok(count)
     }
 }
@@ -88,8 +129,18 @@ macro_rules! eat_num {
         #[doc = "Consumes a number from the head of the buffer."]
         pub fn $name(&mut self) -> $t {
             const SIZE: usize = std::mem::size_of::<$t>();
-            let bytes = self.eat(SIZE);
-            unsafe { $t::$fn(*(bytes as *const _ as *const [_; SIZE])) }
+            // let bytes = self.eat(SIZE);
+            // unsafe { $t::$fn(*(bytes as *const _ as *const [_; SIZE])) }
+
+            // TODO 统一改造为RingSlice来parse，注意对比原有逻辑 fishermen
+            let slice = self.eat(SIZE);
+            match slice.try_oneway_slice(0, SIZE) {
+                Some(bytes) => unsafe { $t::$fn(*(bytes as *const _ as *const [_; SIZE])) },
+                None => {
+                    let data = slice.dump_ring_part(0, SIZE);
+                    unsafe { $t::$fn(*(data.as_ptr() as *const [_; SIZE])) }
+                }
+            }
         }
 
         #[doc = "Consumes a number from the head of the buffer. Returns `None` if buffer is too small."]
@@ -106,9 +157,17 @@ macro_rules! eat_num {
         pub fn $name(&mut self) -> $t {
             const SIZE: usize = $size;
             let mut x: $t = 0;
-            let bytes = self.eat(SIZE);
-            for (i, b) in bytes.iter().enumerate() {
-                x |= (*b as $t) << ((8 * i) + (8 * $offset));
+            // let bytes = self.eat(SIZE);
+            // for (i, b) in bytes.iter().enumerate() {
+            //     x |= (*b as $t) << ((8 * i) + (8 * $offset));
+            // }
+            // $t::$fn(x)
+
+            // TODO 注意对比上面原始代码，check一致性 fishermen
+            let slice = self.eat(SIZE);
+            for i in 0..SIZE {
+                let b = slice.at(i);
+                x |= (b as $t) << ((8 * i) + (8 * $offset));
             }
             $t::$fn(x)
         }
@@ -124,7 +183,13 @@ macro_rules! eat_num {
     };
 }
 
-impl<'a> ParseBuf<'a> {
+// impl<'a> ParseBuf<'a> {
+impl<'a> ParseBuf {
+    // pub fn from(data: &'a [u8]) -> Self {
+    //     let slice = data.into();
+    //     Self(slice)
+    // }
+
     /// Returns `T: MyDeserialize` deserialized from `self`.
     ///
     /// Note, that this may panic if `T::SIZE.is_some()` and less than `self.0.len()`.
@@ -165,7 +230,12 @@ impl<'a> ParseBuf<'a> {
     ///
     /// Afterwards self contains elements `[cnt, len)`.
     pub fn skip(&mut self, cnt: usize) {
-        self.0 = &self.0[cnt..];
+        // self.0 = &self.0[cnt..];
+        if cnt <= self.0.len() {
+            self.0 = self.0.sub_slice(cnt, self.0.len() - cnt);
+        } else {
+            self.0 = self.0.sub_slice(self.0.len(), 0);
+        }
     }
 
     // /// Same as `skip` but returns `false` if buffer is too small.
@@ -185,10 +255,18 @@ impl<'a> ParseBuf<'a> {
     /// # Panic
     ///
     /// Will panic if `n > self.len()`.
-    pub fn eat(&mut self, n: usize) -> &'a [u8] {
-        let (left, right) = self.0.split_at(n);
-        self.0 = right;
-        left
+    // pub fn eat(&mut self, n: usize) -> &'a [u8] {
+    pub fn eat(&mut self, n: usize) -> RingSlice {
+        // let (left, right) = self.0.split_at(n);
+        // self.0 = right;
+        // left
+
+        // TODO 加上长度判断，避免panic，类似场景需要梳理 fishermen
+        // assert!(n < self.len(), "malformed len: {}/{:?}", n, self);
+        // let data = unsafe { self.0.limited_slice(0, n) };
+        // self.0 = self.0.sub_slice(n, self.len() - n);
+        // data
+        self.0.eat(n)
     }
 
     // pub fn eat_buf(&mut self, n: usize) -> Self {
@@ -196,7 +274,8 @@ impl<'a> ParseBuf<'a> {
     // }
 
     /// Same as `eat`. Returns `None` if buffer is too small.
-    pub fn checked_eat(&mut self, n: usize) -> Option<&'a [u8]> {
+    // pub fn checked_eat(&mut self, n: usize) -> Option<&'a [u8]> {
+    pub fn checked_eat(&mut self, n: usize) -> Option<RingSlice> {
         if self.len() >= n {
             Some(self.eat(n))
         } else {
@@ -205,10 +284,18 @@ impl<'a> ParseBuf<'a> {
     }
 
     pub fn checked_eat_buf(&mut self, n: usize) -> Option<Self> {
-        Some(Self(self.checked_eat(n)?))
+        // Some(Self(self.checked_eat(n)?))
+        if self.len() >= n {
+            let data = self.0.sub_slice(0, n);
+            self.0 = self.0.sub_slice(n, self.len() - n);
+            Some(ParseBuf(data))
+        } else {
+            None
+        }
     }
 
-    pub fn eat_all(&mut self) -> &'a [u8] {
+    // pub fn eat_all(&mut self) -> &'a [u8] {
+    pub fn eat_all(&mut self) -> RingSlice {
         self.eat(self.len())
     }
 
@@ -286,7 +373,8 @@ impl<'a> ParseBuf<'a> {
     // }
 
     /// Same as `eat_lenenc_str`. Returns `None` if buffer is too small.
-    pub fn checked_eat_lenenc_str(&mut self) -> Option<&'a [u8]> {
+    // pub fn checked_eat_lenenc_str(&mut self) -> Option<&'a [u8]> {
+    pub fn checked_eat_lenenc_str(&mut self) -> Option<RingSlice> {
         let len = self.checked_eat_lenenc_int()?;
         self.checked_eat(len as usize)
     }
@@ -310,7 +398,8 @@ impl<'a> ParseBuf<'a> {
     // }
 
     /// Same as `eat_u32_str`. Returns `None` if buffer is too small.
-    pub fn checked_eat_u32_str(&mut self) -> Option<&'a [u8]> {
+    // pub fn checked_eat_u32_str(&mut self) -> Option<&'a [u8]> {
+    pub fn checked_eat_u32_str(&mut self) -> Option<RingSlice> {
         let len = self.checked_eat_u32_le()?;
         self.checked_eat(len as usize)
     }
@@ -318,16 +407,46 @@ impl<'a> ParseBuf<'a> {
     /// Consumes null-terminated string from the head of the buffer.
     ///
     /// Consumes whole buffer if there is no `0`-byte.
-    pub fn eat_null_str(&mut self) -> &'a [u8] {
-        let pos = self
-            .0
-            .iter()
-            .position(|x| *x == 0)
-            .map(|x| x + 1)
-            .unwrap_or_else(|| self.len());
-        match self.eat(pos) {
-            [head @ .., 0_u8] => head,
-            x => x,
+    // pub fn eat_null_str(&mut self) -> &'a [u8] {
+    pub fn eat_null_str(&mut self) -> RingSlice {
+        // let pos = self
+        //     .0
+        //     .iter()
+        //     .position(|x| *x == 0)
+        //     .map(|x| x + 1)
+        //     .unwrap_or_else(|| self.len());
+        // match self.eat(pos) {
+        //     [head @ .., 0_u8] => head,
+        //     x => x,
+        // }
+
+        // 找到第一个非0字节，pos为（index + 1）
+        // let pos = match self.0.find(0, 0) {
+        //     Some(p) => p + 1,
+        //     None => self.len(),
+        // };
+        // let data = self.0.sub_slice(0, pos);
+        // self.0 = self.0.sub_slice(pos, self.len() - pos);
+
+        // // 如果结尾是0_u8，去掉，否则直接返回
+        // if data.at(data.len() - 1) == 0 {
+        //     unsafe { data.limited_slice(0, data.len() - 1) }
+        // } else {
+        //     unsafe { data.limited_slice(0, data.len()) }
+        // }
+
+        // TODO 第三版，继续延迟copy，注意对比逻辑的一致性 fishermen
+        let pos = match self.0.find(0, 0) {
+            Some(p) => p + 1,
+            None => self.len(),
+        };
+        // 如果结尾是0_u8，去掉，否则直接返回
+        if self.0.at(pos - 1) == 0 {
+            let data = self.0.eat(pos - 1);
+            self.0.skip(1);
+            data
+        } else {
+            self.0.eat(pos)
         }
     }
 }
@@ -390,6 +509,13 @@ pub trait WriteMysqlExt: WriteBytesExt {
     }
 }
 
+// impl From<RingSlice> for ParseBuf {
+//     #[inline(always)]
+//     fn from(data: RingSlice) -> Self {
+//         Self { inner: data }
+//     }
+// }
+
 impl<T> ReadMysqlExt for T where T: ReadBytesExt {}
 impl<T> WriteMysqlExt for T where T: WriteBytesExt {}
 
@@ -399,7 +525,10 @@ mod tests {
 
     #[test]
     fn be_le() {
-        let buf = ParseBuf(&[0, 1, 2]);
+        // let buf = ParseBuf(&[0, 1, 2]);
+        let data = vec![0, 1, 2];
+        let slice = RingSlice::from_vec(&data);
+        let buf = ParseBuf(slice);
         assert_eq!(buf.clone().eat_u24_le(), 0x00020100);
         // assert_eq!(buf.clone().eat_u24_be(), 0x00000102);
         // let buf = ParseBuf(&[0, 1, 2, 3, 4]);
