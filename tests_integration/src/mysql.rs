@@ -83,18 +83,55 @@ fn set_huge_payload() {
 //     assert_eq!(val[..8196], result);
 // }
 
-// #[test]
-// fn update_not_exsit() {
-//     let client = mc_get_conn("mysql");
-//     let key = "4892225613598445";
+#[test]
+fn update_not_exsit() {
+    let client = mc_get_conn("mysql");
+    let key = "4892225613598445";
+    client.delete(key).unwrap(); // 确保key不存在
+    client.set(key, "2", 10000).unwrap();
+    let result: Result<Option<String>, MemcacheError> = client.get(key);
+    assert_eq!(None, result.unwrap());
+}
 
-//     client.set(key, "2", 10000).unwrap();
-// }
+#[test]
+fn delete_not_exsit() {
+    let client = mc_get_conn("mysql");
+    let key = "4892225613598446";
+    let result = client.delete(key).unwrap();
+    assert!(result, "delete not exsit result {:?}", result)
+}
 
-// #[test]
-// fn delete_not_exsit() {
-//     let client = mc_get_conn("mysql");
-//     let key = "4892225613598446";
+#[test]
+fn get_invalid_key() {
+    let client = mc_get_conn("mysql");
+    let key = "9527";
+    let result: Result<Option<String>, MemcacheError> = client.get(key);
+    assert_eq!(None, result.unwrap());
+}
 
-//     client.delete(key).unwrap();
-// }
+#[test]
+#[should_panic]
+fn insert_invalid_key() {
+    let client = mc_get_conn("mysql");
+    let key = "9527";
+    let val: [u8; 16] = [
+        138, 6, 245, 231, 216, 187, 165, 139, 129, 8, 133, 6, 4, 50, 98, 98,
+    ];
+    client.add(key, val.as_ref(), 10000).unwrap();
+}
+
+#[test]
+#[should_panic]
+fn update_invalid_key() {
+    let client = mc_get_conn("mysql");
+    let key = "9527";
+    client.set(key, "val", 10000).unwrap();
+}
+
+#[test]
+fn delete_invalid_key() {
+    let client = mc_get_conn("mysql");
+    let key = "9527";
+    let r = client.delete(key).unwrap();
+    assert!(!r, "delete invalid key result: {:?}", r);
+}
