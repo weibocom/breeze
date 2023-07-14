@@ -621,10 +621,10 @@ impl<'a> OkPacket<'a> {
     //     self.last_insert_id
     // }
 
-    /// Value of the status_flags field of an Ok packet.
-    pub fn status_flags(&self) -> StatusFlags {
-        self.status_flags
-    }
+    // /// Value of the status_flags field of an Ok packet.
+    // pub fn status_flags(&self) -> StatusFlags {
+    //     self.status_flags
+    // }
 
     // /// Value of the warnings field of an Ok packet.
     // pub fn warnings(&self) -> u16 {
