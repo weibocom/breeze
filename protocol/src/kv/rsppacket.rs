@@ -3,6 +3,7 @@
 use crate::kv::common::constants::DEFAULT_MAX_ALLOWED_PACKET;
 use crate::StreamContext;
 
+use super::client::Client;
 use super::common::{buffer_pool::Buffer, proto::codec::PacketCodec, query_result::Or};
 
 use super::packet::PacketData;
@@ -10,13 +11,10 @@ use super::HandShakeStatus;
 
 use bytes::BytesMut;
 use core::num::NonZeroUsize;
-use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter};
-use std::process;
 
 use super::common::constants::{StatusFlags, MAX_PAYLOAD_LEN};
 use super::common::error::DriverError;
-use super::common::opts::Opts;
 use super::common::packets::{
     AuthPlugin, Column, CommonOkPacket, HandshakeResponse, OkPacket, OkPacketDeserializer,
     OkPacketKind, OldEofPacket, ResultSetTerminator,
@@ -43,6 +41,7 @@ pub(crate) struct ResponsePacket<'a, S> {
     data: PacketData,
 
     ctx: &'a mut ResponseContext,
+    client: Option<Client>,
 
     codec: PacketCodec,
 
@@ -50,18 +49,9 @@ pub(crate) struct ResponsePacket<'a, S> {
     payload_len: usize,
     // packet的第四个字节
     // seq_id: u8,
-    // TODO：这些需要整合到connection中，handshake 中获取的字段
-    capability_flags: CapabilityFlags,
-    connection_id: u32,
-    status_flags: StatusFlags,
-    character_set: u8,
-
-    // TODO：这些需要整合到connection中 fishermen
-    opts: Opts,
     // last_command: u8,
     // connected: bool,
     has_results: bool,
-    server_version: Option<(u16, u16, u16)>,
     /// Last Ok packet, if any.
     // ok_packet: Option<OkPacket<'static>>,
     // TODO：如果只用一次性take，可以去掉？fishermen
@@ -71,29 +61,21 @@ pub(crate) struct ResponsePacket<'a, S> {
 }
 
 impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
-    pub(super) fn new(stream: &'a mut S, opts_op: Option<Opts>) -> Self {
+    //todo, Client应该来自于stream context，如果将来有必要
+    pub(super) fn new(stream: &'a mut S, client: Option<Client>) -> Self {
         let data = stream.slice().into();
-        let opts = match opts_op {
-            Some(opt) => opt,
-            None => Default::default(),
-        };
         let ctx = stream.context().into();
         Self {
             stream,
             data,
             ctx,
+            client,
             codec: PacketCodec::default(),
             payload_len: 0,
             // seq_id: 0,
-            capability_flags: Default::default(),
-            connection_id: Default::default(),
-            status_flags: Default::default(),
-            character_set: Default::default(),
-            opts,
             // last_command: Default::default(),
             // connected: Default::default(),
             has_results: Default::default(),
-            server_version: Default::default(),
             // ok_packet: None,
             oft_last: 0,
             oft: 0,
@@ -173,7 +155,11 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     /// Must not be called before handle_handshake.
     const fn has_capability(&self, flag: CapabilityFlags) -> bool {
-        self.capability_flags.contains(flag)
+        if let Some(client) = &self.client {
+            client.capability_flags.contains(flag)
+        } else {
+            false
+        }
     }
 
     pub(super) fn next_row_packet(&mut self) -> Result<Option<Buffer>> {
@@ -217,6 +203,14 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     //     self.data.len() - self.oft
     // }
 
+    fn capability_flags(&self) -> CapabilityFlags {
+        if let Some(client) = &self.client {
+            client.capability_flags
+        } else {
+            CapabilityFlags::empty()
+        }
+    }
+
     // 读下一个packet的payload，如果数据不完整，返回ProtocolIncomplete
     fn next_packet(&mut self) -> Result<RingSlice> {
         // mysql packet至少需要4个字节来读取sequence id
@@ -256,7 +250,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             if self.current() == 0xFF {
                 // self.oft += header.payload_len;
                 match ParseBuf(self.data.sub_slice(self.oft, left_len))
-                    .parse(self.capability_flags)?
+                    .parse(self.capability_flags())?
                 {
                     // TODO Error process 异常响应稍后处理 fishermen
                     ErrPacket::Error(server_error) => {
@@ -314,9 +308,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             return Err(DriverError::Protocol41NotSet.error());
         }
 
-        self.handle_handshake(&handshake);
-
         // TODO 当前先不支持ssl，后续再考虑 fishermen
+        self.handle_handshake(&handshake);
 
         // 处理nonce，即scramble的2个部分:scramble_1 8bytes，scramble_2最多13bytes
         // Handshake scramble is always 21 bytes length (20 + zero terminator)
@@ -341,7 +334,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
         // let auth_data = auth_plugin.gen_data(self.opts.get_pass(), &*nonce);
         let auth_data = auth_plugin
-            .gen_data(self.opts.get_pass(), &*nonce)
+            .gen_data(self.client.as_ref().unwrap().get_pass(), &*nonce)
             .as_deref()
             .unwrap_or_default()
             .to_vec();
@@ -381,8 +374,13 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // }
 
     pub(super) fn more_results_exists(&self) -> bool {
-        self.status_flags
-            .contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS)
+        if let Some(ref client) = self.client {
+            client
+                .status_flags
+                .contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS)
+        } else {
+            false
+        }
     }
 
     // 根据auth plugin、scramble及connection 属性，构建shakehandRsp packet
@@ -392,24 +390,20 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         // scramble_buf: Option<&[u8]>,
         scramble_buf: Option<RingSlice>,
     ) -> Result<Vec<u8>> {
-        let user = self.opts.get_user().unwrap_or_default().as_bytes().to_vec();
-        let db_name = self
-            .opts
-            .get_db_name()
-            .unwrap_or_default()
-            .as_bytes()
-            .to_vec();
+        let client = self.client.as_ref().unwrap();
+        let user = client.get_user().unwrap_or_default().as_bytes().to_vec();
+        let db_name = client.get_db_name().unwrap_or_default().as_bytes().to_vec();
 
         let handshake_response = HandshakeResponse::new(
             scramble_buf,
-            self.server_version.unwrap_or((0, 0, 0)),
+            client.server_version.unwrap_or((0, 0, 0)),
             // self.opts.get_user().map(str::as_bytes),
             // self.opts.get_db_name().map(str::as_bytes),
             Some(RingSlice::from_vec(&user)),
             Some(RingSlice::from_vec(&db_name)),
             Some(auth_plugin.clone()),
-            self.capability_flags,
-            Some(self.connect_attrs().clone()),
+            client.capability_flags,
+            Some(client.connect_attrs()),
         );
         let mut buf: Vec<u8> = Vec::with_capacity(256);
         handshake_response.serialize(&mut buf);
@@ -432,69 +426,13 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     // TODO ======= handle_handshake、get_client_flags 都需要移到conn关联的逻辑中 fishermen
     fn handle_handshake(&mut self, hp: &HandshakePacket<'_>) {
-        self.capability_flags = hp.capabilities() & self.get_client_flags();
-        self.status_flags = hp.status_flags();
-        self.connection_id = hp.connection_id();
-        self.character_set = hp.default_collation();
-        self.server_version = hp.server_version_parsed();
+        let client = self.client.as_mut().unwrap();
+        client.capability_flags = hp.capabilities() & client.get_flags();
+        client.status_flags = hp.status_flags();
+        client.connection_id = hp.connection_id();
+        client.character_set = hp.default_collation();
+        client.server_version = hp.server_version_parsed();
         // self.mariadb_server_version = hp.maria_db_server_version_parsed();
-    }
-
-    fn get_client_flags(&self) -> CapabilityFlags {
-        let client_flags = CapabilityFlags::CLIENT_PROTOCOL_41
-            | CapabilityFlags::CLIENT_SECURE_CONNECTION
-            | CapabilityFlags::CLIENT_LONG_PASSWORD
-            | CapabilityFlags::CLIENT_TRANSACTIONS
-            | CapabilityFlags::CLIENT_LOCAL_FILES
-            | CapabilityFlags::CLIENT_MULTI_STATEMENTS
-            | CapabilityFlags::CLIENT_MULTI_RESULTS
-            | CapabilityFlags::CLIENT_PS_MULTI_RESULTS
-            | CapabilityFlags::CLIENT_PLUGIN_AUTH
-            | CapabilityFlags::CLIENT_CONNECT_ATTRS
-            | (self.capability_flags & CapabilityFlags::CLIENT_LONG_FLAG);
-        // if self.0.opts.get_compress().is_some() {
-        //     client_flags.insert(CapabilityFlags::CLIENT_COMPRESS);
-        // }
-
-        // TODO 默认dbname 需要从config获取 fishermen
-        // if let Some(db_name) = self.opts.get_db_name() {
-        //     if !db_name.is_empty() {
-        //         client_flags.insert(CapabilityFlags::CLIENT_CONNECT_WITH_DB);
-        //     }
-        // }
-
-        // TODO 暂时不支持ssl fishermen
-        // if self.is_insecure() && self.0.opts.get_ssl_opts().is_some() {
-        //     client_flags.insert(CapabilityFlags::CLIENT_SSL);
-        // }
-
-        client_flags | self.opts.get_additional_capabilities()
-    }
-
-    fn connect_attrs(&self) -> HashMap<String, String> {
-        let program_name = match self.opts.get_connect_attrs().get("program_name") {
-            Some(program_name) => program_name.clone(),
-            None => {
-                let arg0 = std::env::args_os().next();
-                let arg0 = arg0.as_ref().map(|x| x.to_string_lossy());
-                arg0.unwrap_or_else(|| "".into()).to_owned().to_string()
-            }
-        };
-
-        let mut attrs = HashMap::new();
-
-        attrs.insert("_client_name".into(), "mesh-mysql".into());
-        attrs.insert("_client_version".into(), env!("CARGO_PKG_VERSION").into());
-        // attrs.insert("_os".into(), env!("CARGO_CFG_TARGET_OS").into());
-        attrs.insert("_pid".into(), process::id().to_string());
-        // attrs.insert("_platform".into(), env!("CARGO_CFG_TARGET_ARCH").into());
-        attrs.insert("program_name".into(), program_name);
-
-        for (name, value) in self.opts.get_connect_attrs().clone() {
-            attrs.insert(name, value);
-        }
-
-        attrs
     }
 
     pub(super) fn handle_ok<'t, T: OkPacketKind>(
@@ -502,9 +440,9 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         payload: RingSlice,
     ) -> crate::Result<OkPacket<'t>> {
         let ok = ParseBuf(payload)
-            .parse::<OkPacketDeserializer<T>>(self.capability_flags)?
+            .parse::<OkPacketDeserializer<T>>(self.capability_flags())?
             .into_inner();
-        self.status_flags = ok.status_flags();
+        // self.status_flags = ok.status_flags();
         Ok(ok)
     }
 
