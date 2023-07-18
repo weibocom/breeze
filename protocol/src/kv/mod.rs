@@ -1,3 +1,4 @@
+mod client;
 mod common;
 mod mcpacket;
 
@@ -18,7 +19,7 @@ use self::rsppacket::ResponsePacket;
 use super::Flag;
 use super::Protocol;
 use super::Result;
-use crate::kv::common::opts::Opts;
+use crate::kv::client::Client;
 use crate::Command;
 use crate::Error;
 use crate::HandShake;
@@ -296,8 +297,8 @@ impl Kv {
         option: &mut crate::ResOption,
     ) -> Result<HandShake> {
         log::debug!("+++ recv mysql handshake packet:{:?}", stream.slice());
-        let opt = Opts::from_user_pwd(option.username.clone(), option.token.clone());
-        let mut packet = ResponsePacket::new(stream, Some(opt));
+        let client = Client::from_user_pwd(option.username.clone(), option.token.clone());
+        let mut packet = ResponsePacket::new(stream, Some(client));
 
         match packet.ctx().status {
             HandShakeStatus::Init => {
