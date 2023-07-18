@@ -111,7 +111,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         self.data.at(self.oft)
     }
 
-    pub(super) fn parse_result_set_meta(&mut self) -> Result<Or<Vec<Column>, OkPacket<'static>>> {
+    pub(super) fn parse_result_set_meta(&mut self) -> Result<Or<Vec<Column>, OkPacket>> {
         // 全部解析完毕前，不对数据进行take
         let payload = match self.next_packet() {
             Ok(pld) => pld,
@@ -388,7 +388,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // 根据auth plugin、scramble及connection 属性，构建shakehandRsp packet
     fn build_handshake_response_packet(
         &mut self,
-        auth_plugin: &AuthPlugin<'_>,
+        auth_plugin: &AuthPlugin,
         // scramble_buf: Option<&[u8]>,
         scramble_buf: Option<RingSlice>,
     ) -> Result<Vec<u8>> {
@@ -431,7 +431,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     }
 
     // TODO ======= handle_handshake、get_client_flags 都需要移到conn关联的逻辑中 fishermen
-    fn handle_handshake(&mut self, hp: &HandshakePacket<'_>) {
+    fn handle_handshake(&mut self, hp: &HandshakePacket) {
         self.capability_flags = hp.capabilities() & self.get_client_flags();
         self.status_flags = hp.status_flags();
         self.connection_id = hp.connection_id();
@@ -497,10 +497,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         attrs
     }
 
-    pub(super) fn handle_ok<'t, T: OkPacketKind>(
+    pub(super) fn handle_ok<T: OkPacketKind>(
         &mut self,
         payload: RingSlice,
-    ) -> crate::Result<OkPacket<'t>> {
+    ) -> crate::Result<OkPacket> {
         let ok = ParseBuf(payload)
             .parse::<OkPacketDeserializer<T>>(self.capability_flags)?
             .into_inner();

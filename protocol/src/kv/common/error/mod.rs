@@ -19,8 +19,8 @@ use crate::kv::common::{row::Row, value::Value};
 
 pub mod tls;
 
-impl<'a> From<packets::ServerError<'a>> for MySqlError {
-    fn from(x: packets::ServerError<'a>) -> MySqlError {
+impl From<packets::ServerError> for MySqlError {
+    fn from(x: packets::ServerError) -> MySqlError {
         MySqlError {
             state: x.sql_state_str().into_owned(),
             code: x.error_code(),

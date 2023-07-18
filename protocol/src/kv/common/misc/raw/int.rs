@@ -55,7 +55,7 @@ impl<T: IntRepr> DerefMut for RawInt<T> {
     }
 }
 
-impl<'de, T: IntRepr> MyDeserialize<'de> for RawInt<T> {
+impl<T: IntRepr> MyDeserialize for RawInt<T> {
     const SIZE: Option<usize> = T::SIZE;
     type Ctx = ();
 
@@ -240,7 +240,7 @@ impl<T, const N: u8> ConstU8<T, N> {
     // }
 }
 
-impl<'de, T, const N: u8> MyDeserialize<'de> for ConstU8<T, N>
+impl<T, const N: u8> MyDeserialize for ConstU8<T, N>
 where
     T: std::error::Error + Send + Sync + 'static,
     T: Default,
@@ -276,7 +276,7 @@ pub struct ConstU32<T, const N: u32>(PhantomData<T>);
 //     }
 // }
 
-impl<'de, T, const N: u32> MyDeserialize<'de> for ConstU32<T, N>
+impl<T, const N: u32> MyDeserialize for ConstU32<T, N>
 where
     T: std::error::Error + Send + Sync + 'static,
     T: Default,

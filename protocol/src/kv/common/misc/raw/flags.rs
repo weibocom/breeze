@@ -57,7 +57,7 @@ where
     }
 }
 
-impl<'de, T: Bitflags, U> MyDeserialize<'de> for RawFlags<T, U>
+impl<T: Bitflags, U> MyDeserialize for RawFlags<T, U>
 where
     U: IntRepr<Primitive = T::Repr>,
 {

@@ -243,7 +243,7 @@ impl<S, P> From<RowDeserializer<S, P>> for Row {
     }
 }
 
-impl<'de, T> MyDeserialize<'de> for RowDeserializer<T, Text> {
+impl<T> MyDeserialize for RowDeserializer<T, Text> {
     const SIZE: Option<usize> = None;
     type Ctx = Arc<[Column]>;
 
@@ -261,7 +261,7 @@ impl<'de, T> MyDeserialize<'de> for RowDeserializer<T, Text> {
     }
 }
 
-impl<'de, S: SerializationSide> MyDeserialize<'de> for RowDeserializer<S, Binary> {
+impl<S: SerializationSide> MyDeserialize for RowDeserializer<S, Binary> {
     const SIZE: Option<usize> = None;
     type Ctx = Arc<[Column]>;
 

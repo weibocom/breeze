@@ -20,6 +20,7 @@ use super::{
     RawInt,
 };
 
+// TODO 序列号的values，不确定能否转为RingSlice，且试试，最后再改 fishermen
 /// Sequence of serialized values (length serialized as `U`).
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(transparent)]
@@ -85,9 +86,9 @@ where
     }
 }
 
-impl<'de, T, U> MyDeserialize<'de> for Seq<'de, T, U>
+impl<'de, T, U> MyDeserialize for Seq<'de, T, U>
 where
-    T: Clone + MyDeserialize<'de, Ctx = ()>,
+    T: Clone + MyDeserialize<Ctx = ()>,
     U: SeqRepr,
 {
     const SIZE: Option<usize> = None;
@@ -111,7 +112,7 @@ pub trait SeqRepr {
     fn deserialize<'de, T>(ctx: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<'de, [T]>>
     where
         T: Clone,
-        T: MyDeserialize<'de, Ctx = ()>;
+        T: MyDeserialize<Ctx = ()>;
 }
 
 macro_rules! impl_seq_repr {
@@ -129,14 +130,10 @@ macro_rules! impl_seq_repr {
                 }
             }
 
-            fn deserialize<'de, T>(
-                (): Self::Ctx,
-                // buf: &mut ParseBuf<'de>,
-                buf: &mut ParseBuf,
-            ) -> io::Result<Cow<'de, [T]>>
+            fn deserialize<'de, T>((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<'de, [T]>>
             where
                 T: Clone,
-                T: MyDeserialize<'de, Ctx = ()>,
+                T: MyDeserialize<Ctx = ()>,
             {
                 let len = *buf.parse::<RawInt<$name>>(())? as usize;
                 let mut seq = Vec::with_capacity(len);
@@ -166,18 +163,18 @@ impl_seq_repr!(u32, LeU32);
 /// Same as `RawCons` but for a sequence of values.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(transparent)]
-pub struct RawSeq<'a, U>(pub Cow<'a, RingSlice>, PhantomData<U>);
+pub struct RawSeq<U>(pub RingSlice, PhantomData<U>);
 // pub struct RawSeq<'a, T: IntRepr, U>(pub Cow<'a, [T::Primitive]>, PhantomData<U>);
 
 // TODO 生命周期参数先保留，等测试完毕后统一清理 fishermen
 // impl<'a, T: IntRepr, U> RawSeq<'a, T, U> {
-impl<'a, U> RawSeq<'a, U> {
+impl<U> RawSeq<U> {
     /// Creates a new wrapper.
     // pub fn new(t: impl Into<Cow<'a, [T::Primitive]>>) -> Self {
     //     Self(t.into(), PhantomData)
     // }
-    pub fn new(t: impl Into<Cow<'a, RingSlice>>) -> Self {
-        Self(t.into(), PhantomData)
+    pub fn new(t: RingSlice) -> Self {
+        Self(t, PhantomData)
     }
 
     // /// Returns a length of this sequence.
@@ -204,7 +201,7 @@ impl<'a, U> RawSeq<'a, U> {
 
 // TODO 注意观察影响 fishermen
 // impl<'de, T: IntRepr<Primitive = u8>, U> MyDeserialize<'de> for RawSeq<'de, T, U> {
-impl<'de, U> MyDeserialize<'de> for RawSeq<'de, U> {
+impl<U> MyDeserialize for RawSeq<U> {
     const SIZE: Option<usize> = None;
     type Ctx = usize;
 
@@ -215,7 +212,7 @@ impl<'de, U> MyDeserialize<'de> for RawSeq<'de, U> {
 
         // TODO 将切片尽可能转为RingSlice，注意check一致性 fishermen
         let slice: RingSlice = buf.parse(length)?;
-        Ok(Self::new(Cow::Owned(slice)))
+        Ok(Self::new(slice))
         // if let Some(data) = slice.try_oneway_slice(0, slice.len()) {
         //     Ok(Self::new(Cow::Owned(data)))
         // } else {
@@ -227,7 +224,7 @@ impl<'de, U> MyDeserialize<'de> for RawSeq<'de, U> {
 }
 
 // impl<T: IntRepr<Primitive = u8>, U> MySerialize for RawSeq<'_, T, U> {
-impl<U> MySerialize for RawSeq<'_, U> {
+impl<U> MySerialize for RawSeq<U> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         // buf.put_slice(self.0.as_ref());
         self.0.copy_to_vec(buf);
@@ -239,7 +236,7 @@ impl<U> MySerialize for RawSeq<'_, U> {
 //     T: fmt::Debug,
 //     U: TryFrom<T::Primitive>,
 //     U::Error: fmt::Debug,
-impl<U: fmt::Debug> fmt::Debug for RawSeq<'_, U>
+impl<U: fmt::Debug> fmt::Debug for RawSeq<U>
 where
     // T: fmt::Debug,
     // U: TryFrom<T::Primitive>,

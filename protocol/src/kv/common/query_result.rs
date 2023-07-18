@@ -64,7 +64,7 @@ enum SetIteratorState {
     /// Iterator is in a non-empty set.
     InSet(Arc<[Column]>),
     /// Iterator is in an empty set.
-    InEmptySet(OkPacket<'static>),
+    InEmptySet(OkPacket),
     /// Iterator is in an errored result set.
     Errored(Error),
     /// Next result set isn't handled.
@@ -97,8 +97,8 @@ impl From<Vec<Column>> for SetIteratorState {
     }
 }
 
-impl From<OkPacket<'static>> for SetIteratorState {
-    fn from(ok_packet: OkPacket<'static>) -> Self {
+impl From<OkPacket> for SetIteratorState {
+    fn from(ok_packet: OkPacket) -> Self {
         Self::InEmptySet(ok_packet)
     }
 }
@@ -109,8 +109,8 @@ impl From<Error> for SetIteratorState {
     }
 }
 
-impl From<Or<Vec<Column>, OkPacket<'static>>> for SetIteratorState {
-    fn from(or: Or<Vec<Column>, OkPacket<'static>>) -> Self {
+impl From<Or<Vec<Column>, OkPacket>> for SetIteratorState {
+    fn from(or: Or<Vec<Column>, OkPacket>) -> Self {
         match or {
             Or::A(cols) => Self::from(cols),
             Or::B(ok) => Self::from(ok),
@@ -150,7 +150,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
 
     pub(crate) fn new(
         rsp_packet: &'c mut ResponsePacket<'c, S>,
-        meta: Or<Vec<Column>, OkPacket<'static>>,
+        meta: Or<Vec<Column>, OkPacket>,
     ) -> QueryResult<'c, T, S> {
         Self::from_state(rsp_packet, meta.into())
     }
