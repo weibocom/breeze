@@ -121,14 +121,28 @@ impl RingSlice {
         });
     }
     #[inline(always)]
-    pub fn data_oft(&self, oft: usize) -> (&[u8], &[u8]) {
+    pub fn data_oft_len(&self, oft: usize, len: usize) -> (&[u8], &[u8]) {
+        assert!(oft + len <= self.len(), "{}/{} =>{:?}", oft, len, self);
+
         static EMPTY: &[u8] = &[];
-        with_segment_oft!(
+        with_segment_oft_len!(
             self,
             oft,
+            len,
             |ptr, len| (from_raw_parts(ptr, len), EMPTY),
             |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
         )
+    }
+    #[inline(always)]
+    pub fn data_oft(&self, oft: usize) -> (&[u8], &[u8]) {
+        // static EMPTY: &[u8] = &[];
+        // with_segment_oft!(
+        //     self,
+        //     oft,
+        //     |ptr, len| (from_raw_parts(ptr, len), EMPTY),
+        //     |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
+        // )
+        self.data_oft_len(oft, self.len() - oft)
     }
     #[inline(always)]
     pub fn data(&self) -> (&[u8], &[u8]) {
@@ -362,11 +376,12 @@ impl RingSlice {
     /// 尝试低成本获取一个单向的切片，如果有折返，则返回None
     #[inline]
     pub fn try_oneway_slice(&self, oft: usize, len: usize) -> Option<&[u8]> {
-        assert!(oft + len <= self.len(), "{}/{} =>{:?}", oft, len, self);
+        // 根据oft、len拿到两段数据，第二段可能为空
+        let (l, r) = self.data_oft_len(oft, len);
 
-        let start_mask = self.mask(self.start() + oft);
-        if len <= (self.cap() - start_mask) {
-            unsafe { Some(from_raw_parts(self.ptr().add(start_mask), len)) }
+        // 如果第二段长度为0，说明是单向slice
+        if r.len() == 0 {
+            Some(l)
         } else {
             None
         }
