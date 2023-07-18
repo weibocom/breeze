@@ -195,32 +195,16 @@ impl Protocol for Kv {
         let old_op_code = ctx.request().op_code() as u8;
 
         // 如果原始请求是quite_get请求，并且not found，则不回写。
-        if let Some(rsp) = response {
-            log::debug!(
-                "+++ sent to client for req:{:?}, rsp:{:?}",
-                ctx.request(),
-                rsp
-            );
-            // mysql 请求到正确的数据，才会转换并write
-            if rsp.ok() {
-                // assert!(rsp.len() > 0, "empty rsp:{:?}", rsp);
-                self.write_mc_packet(ctx.request(), rsp, w)?;
-                return Ok(());
-            } else {
-                match old_op_code {
-                    // set: mc status设为 Item Not Stored,status设为false
-                    OP_SET | OP_ADD => {
-                        self.write_mc_err_response(RespStatus::NotStored, ctx.request(), rsp, w)?;
-                        return Ok(());
-                    }
-                    OP_GET | OP_DEL => {
-                        self.write_mc_err_response(RespStatus::NotFound, ctx.request(), rsp, w)?;
-                        return Ok(());
-                    }
-                    _ => (),
-                }
-            }
-        }
+        // if let Some(rsp) = response {
+        //     log::debug!(
+        //         "+++ sent to client for req:{:?}, rsp:{:?}",
+        //         ctx.request(),
+        //         rsp
+        //     );
+        //     // mysql 请求到正确的数据，才会转换并write
+        //     self.write_mc_packet(ctx.request(), Some(rsp), w)?;
+        //     return Ok(());
+        // }
 
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
@@ -242,19 +226,23 @@ impl Protocol for Kv {
             OP_QUIT | OP_QUITQ => return Err(Error::Quit),
 
             // quite get 请求，无需返回任何rsp，但没实际发送，rsp_ok设为false
-            OP_GETQ | OP_GETKQ => return Ok(()),
+            // OP_GETQ | OP_GETKQ => return Ok(()),
             // 0x09 | 0x0d => return Ok(()),
 
             // set: mc status设为 Item Not Stored,status设为false
-            OP_SET | OP_ADD => {
-                w.write(&self.build_empty_response(RespStatus::NotStored, ctx.request()))?
+            OP_SET | OP_ADD | OP_GET | OP_GETK | OP_DEL => {
+                log::debug!(
+                    "+++ sent to client for req:{:?}, rsp:{:?}",
+                    ctx.request(),
+                    response
+                );
+                self.write_mc_packet(ctx.request(), response.map(|r| &*r), w)?
             }
             // self.build_empty_response(RespStatus::NotStored, req)
 
             // get/gets，返回key not found 对应的0x1
-            OP_GET => w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?,
-
-            OP_DEL => w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?,
+            // OP_GET => w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?,
+            // OP_DEL => w.write(&self.build_empty_response(RespStatus::NotFound, ctx.request()))?,
 
             // self.build_empty_response(RespStatus::NotFound, req)
 
@@ -510,7 +498,7 @@ impl Kv {
     fn write_mc_packet<W>(
         &self,
         request: &HashedCommand,
-        response: &crate::Command,
+        response: Option<&crate::Command>,
         w: &mut W,
     ) -> Result<()>
     where
@@ -518,40 +506,31 @@ impl Kv {
     {
         let origin_req = request.origin_data(); // old request
         let op_code = origin_req.op();
-        let (write_key, write_extra, write_response) = match op_code {
+        let (write_key, write_extra) = match op_code {
             OP_ADD | OP_SET | OP_DEL => {
                 log::debug!("+++ OP_ADD write_mc_packet:{:?}", response);
-                (None, None, Some(response))
+                (None, None)
             }
-            _ => {
+            OP_GETK => {
                 // body： total body len
                 // TODO flag涉及到不同语言的解析问题，需要考虑兼容 fishermen
-                (Some(origin_req.key()), Some(4096u32), Some(response))
+                (Some(origin_req.key()), Some(4096u32))
+            }
+            OP_GET => (None, Some(4096u32)),
+            _ => (None, None),
+        };
+        let status = if response.is_some() && response.unwrap().ok() {
+            RespStatus::NoError
+        } else {
+            match op_code {
+                OP_SET | OP_ADD => RespStatus::NotStored,
+                OP_GET | OP_GETK | OP_DEL => RespStatus::NotFound,
+                _ => RespStatus::UnkownCmd,
             }
         };
-        self.write_mc_response(
-            op_code,
-            mcpacket::RespStatus::NoError,
-            write_key,
-            write_extra,
-            write_response,
-            w,
-        )?;
+        //协议与标准协议不一样了，add等也返回response了
+        self.write_mc_response(op_code, status, write_key, write_extra, response, w)?;
         Ok(())
-    }
-
-    #[inline]
-    fn write_mc_err_response<W>(
-        &self,
-        status: RespStatus,
-        req: &HashedCommand,
-        response: &crate::Command,
-        w: &mut W,
-    ) -> Result<()>
-    where
-        W: crate::Writer,
-    {
-        self.write_mc_response(req.op(), status, None, None, Some(response), w)
     }
 }
 
