@@ -509,7 +509,7 @@ impl Kv {
             return Ok(());
         }
 
-        let status = if response.is_some() && response.unwrap().ok() {
+        let status = if response.is_some() && response.as_ref().unwrap().ok() {
             RespStatus::NoError
         } else {
             match old_op_code {
