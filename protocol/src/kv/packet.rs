@@ -42,9 +42,14 @@ impl PacketData {
                 (LittleEndian::read_u24(&bytes) as usize, bytes[3])
             }
         };
+        if payload_len == 0 {
+            log::warn!(
+                "+++ found 0-length packet:{:?}",
+                self.inner.sub_slice(*oft, self.len() - *oft)
+            );
+        }
 
         *oft = *oft + HEADER_LEN;
-        log::debug!("+++ payload_len: {}, seq: {}", payload_len, seq);
 
         Ok(PacketHeader { payload_len, seq })
     }
