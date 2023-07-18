@@ -218,14 +218,14 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to_vec_with_len(&self, v: &mut Vec<u8>, len: usize) {
-        // 一般copy完整的slice到vector
         if len == self.len() {
+            // 一般场景，都是copy完整的slice到vector
             self.copy_to_vec(v);
         } else if len < self.len() {
-            // len较小，只copy部分slice到vector
+            // 小概率场景，len较小，只copy部分slice到vector
             self.sub_slice(0, len).copy_to_vec(v);
         } else {
-            // 代码基本不会走到这里，除非调用出现bug
+            // 基本不会走到这里，除非调用出现bug
             assert!(false, "too big len:{} => {:?}", len, self);
         }
     }
