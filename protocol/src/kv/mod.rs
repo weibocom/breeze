@@ -230,7 +230,7 @@ impl Protocol for Kv {
             // 0x09 | 0x0d => return Ok(()),
 
             // set: mc status设为 Item Not Stored,status设为false
-            OP_SET | OP_ADD | OP_GET | OP_GETK | OP_DEL => {
+            OP_SET | OP_ADD | OP_GET | OP_GETK | OP_DEL | OP_GETQ | OP_GETKQ => {
                 log::debug!(
                     "+++ sent to client for req:{:?}, rsp:{:?}",
                     ctx.request(),
@@ -504,32 +504,38 @@ impl Kv {
     where
         W: crate::Writer,
     {
-        let origin_req = request.origin_data(); // old request
-        let op_code = origin_req.op();
-        let (write_key, write_extra) = match op_code {
-            OP_ADD | OP_SET | OP_DEL => {
-                log::debug!("+++ OP_ADD write_mc_packet:{:?}", response);
-                (None, None)
-            }
-            OP_GETK => {
-                // body： total body len
-                // TODO flag涉及到不同语言的解析问题，需要考虑兼容 fishermen
-                (Some(origin_req.key()), Some(4096u32))
-            }
-            OP_GET => (None, Some(4096u32)),
-            _ => (None, None),
-        };
+        let old_op_code = request.op_code() as u8;
+        if response.is_none() && (old_op_code == OP_GETQ || old_op_code == OP_GETKQ) {
+            return Ok(());
+        }
+
         let status = if response.is_some() && response.unwrap().ok() {
             RespStatus::NoError
         } else {
-            match op_code {
+            match old_op_code {
                 OP_SET | OP_ADD => RespStatus::NotStored,
                 OP_GET | OP_GETK | OP_DEL => RespStatus::NotFound,
                 _ => RespStatus::UnkownCmd,
             }
         };
+
+        let (write_key, write_extra) = match old_op_code {
+            OP_ADD | OP_SET | OP_DEL => {
+                log::debug!("+++ OP_ADD write_mc_packet:{:?}", response);
+                (None, None)
+            }
+            OP_GETK | OP_GETKQ => {
+                let origin_req = request.origin_data();
+                // old request
+                // body： total body len
+                // TODO flag涉及到不同语言的解析问题，需要考虑兼容 fishermen
+                (Some(origin_req.key()), Some(4096u32))
+            }
+            OP_GET | OP_GETQ => (None, Some(4096u32)),
+            _ => (None, None),
+        };
         //协议与标准协议不一样了，add等也返回response了
-        self.write_mc_response(op_code, status, write_key, write_extra, response, w)?;
+        self.write_mc_response(old_op_code, status, write_key, write_extra, response, w)?;
         Ok(())
     }
 }
