@@ -6,7 +6,7 @@ use super::{
 use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
-use protocol::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_SET};
+use protocol::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use protocol::kv::{MysqlBinary, PacketCodec};
 use protocol::HashedCommand;
 use protocol::{Error::MysqlError, Result};
@@ -149,7 +149,9 @@ impl<'a> MysqlBuilder<'a> {
             OP_ADD => Self::build_insert_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
             OP_SET => Self::build_update_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
             OP_DEL => Self::build_delete_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
-            OP_GET => Self::build_select_sql(&mut packet, &self.dname, &self.tname, self.req, &key),
+            OP_GET | OP_GETK => {
+                Self::build_select_sql(&mut packet, &self.dname, &self.tname, self.req, &key)
+            }
             //todo 返回原因
             _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
         };
