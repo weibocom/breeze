@@ -119,6 +119,27 @@ fn insert_invalid_key() {
     ];
     client.add(key, val.as_ref(), 10000).unwrap();
 }
+#[test]
+#[should_panic]
+fn insert_null_key() {
+    let client = mc_get_conn("mysql");
+    let key = "";
+    client.add(key, "abcd", 10000).unwrap();
+}
+#[test]
+#[should_panic]
+fn insert_char_key() {
+    let client = mc_get_conn("mysql");
+    let key = "48922256135984cc";
+    client.add(key, "abcd", 10000).unwrap();
+}
+#[test]
+#[should_panic]
+fn insert_long_key() {
+    let client = mc_get_conn("mysql");
+    let key = std::iter::repeat('5').take(1024).collect::<String>();
+    client.add(key.as_str(), "abcd", 10000).unwrap();
+}
 
 #[test]
 #[should_panic]
@@ -127,6 +148,27 @@ fn update_invalid_key() {
     let key = "9527";
     client.set(key, "val", 10000).unwrap();
 }
+#[test]
+#[should_panic]
+fn update_null_key() {
+    let client = mc_get_conn("mysql");
+    let key = "";
+    client.add(key, "abcd", 10000).unwrap();
+}
+#[test]
+#[should_panic]
+fn update_char_key() {
+    let client = mc_get_conn("mysql");
+    let key = "48922256135984cc";
+    client.set(key, "abcd", 10000).unwrap();
+}
+#[test]
+#[should_panic]
+fn update_long_key() {
+    let client = mc_get_conn("mysql");
+    let key = std::iter::repeat('5').take(1024).collect::<String>();
+    client.set(key.as_str(), "abcd", 10000).unwrap();
+}
 
 #[test]
 fn delete_invalid_key() {
@@ -134,4 +176,37 @@ fn delete_invalid_key() {
     let key = "9527";
     let r = client.delete(key).unwrap();
     assert!(!r, "delete invalid key result: {:?}", r);
+}
+#[test]
+#[should_panic]
+fn delete_null_key() {
+    let client = mc_get_conn("mysql");
+    let key = "";
+    client.delete(key).unwrap();
+}
+#[test]
+#[should_panic]
+fn delete_char_key() {
+    let client = mc_get_conn("mysql");
+    let key = "48922256135984cc";
+    client.delete(key).unwrap();
+}
+#[test]
+#[should_panic]
+fn delete_long_key() {
+    let client = mc_get_conn("mysql");
+    let key = std::iter::repeat('5').take(1024).collect::<String>();
+    client.delete(key.as_str()).unwrap();
+}
+#[test]
+#[should_panic]
+fn sql_inject_get() {
+    let client = mc_get_conn("mysql");
+    let key = "4892225613598465";
+    let _ = client.delete(key); // 确保key不存在
+    let _ = client.add(key, "abcd", 10000);
+
+    let key_inject = "4892225613598465 or 1=1 --";
+    let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key_inject);
+    result.unwrap();
 }
