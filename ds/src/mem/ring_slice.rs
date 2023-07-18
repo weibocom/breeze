@@ -27,7 +27,8 @@ macro_rules! with_segment_oft {
         //     let seg2 = len - seg1;
         //     unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
         // }
-        with_segment_oft_len!($self, $oft, $self.len(), $noseg, $seg)
+        let len = $self.len() - $oft;
+        with_segment_oft_len!($self, $oft, len, $noseg, $seg)
     }};
 }
 
