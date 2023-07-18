@@ -118,13 +118,15 @@ impl io::Read for ParseBuf {
         // Ok(count)
 
         // TODO 参考上面的代码，彻底稳定后，再考虑清理 fishermen
-        let count = self.0.copy_to_slice(buf);
+        let count = self.0.len().min(buf.len());
+        self.0.copy_to_slice(&mut buf[..count]);
         self.0.eat(count);
         Ok(count)
     }
 }
 
 macro_rules! eat_num {
+    // eat_num!(eat_u32_le, checked_eat_u32_le, u32::from_le_bytes);
     ($name:ident, $checked:ident, $t:ident::$fn:ident) => {
         #[doc = "Consumes a number from the head of the buffer."]
         pub fn $name(&mut self) -> $t {
@@ -196,7 +198,7 @@ impl<'a> ParseBuf {
     #[inline(always)]
     pub fn parse_unchecked<T>(&mut self, ctx: T::Ctx) -> io::Result<T>
     where
-        T: MyDeserialize<'a>,
+        T: MyDeserialize,
     {
         T::deserialize(ctx, self)
     }
@@ -205,7 +207,7 @@ impl<'a> ParseBuf {
     #[inline(always)]
     pub fn parse<T>(&mut self, ctx: T::Ctx) -> io::Result<T>
     where
-        T: MyDeserialize<'a>,
+        T: MyDeserialize,
     {
         match T::SIZE {
             Some(size) => {

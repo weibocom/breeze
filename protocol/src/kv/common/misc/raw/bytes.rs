@@ -8,7 +8,7 @@
 
 pub use super::int::LenEnc;
 
-use std::{borrow::Cow, cmp::min, fmt, io, marker::PhantomData};
+use std::{cmp::min, fmt, io, marker::PhantomData};
 
 use bytes::BufMut;
 use ds::RingSlice;
@@ -27,21 +27,21 @@ use super::{int::VarLen, RawInt};
 /// `T` encodes the serialized representation.
 #[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(transparent)]
-pub struct RawBytes<'a, T: BytesRepr>(pub Cow<'a, RingSlice>, PhantomData<T>);
+pub struct RawBytes<T: BytesRepr>(pub RingSlice, PhantomData<T>);
 // pub struct RawBytes<'a, T: BytesRepr>(pub Cow<'a, [u8]>, PhantomData<T>);
 
 // TODO 生命周期参数后面同一清理 fishermen
-impl<'a, T: BytesRepr> RawBytes<'a, T> {
+impl<T: BytesRepr> RawBytes<T> {
     /// Wraps the given value.
     // pub fn new(text: impl Into<Cow<'a, [u8]>>) -> Self {
     pub fn new(text: RingSlice) -> Self {
         // Self(text.into(), PhantomData)
-        Self(Cow::Owned(text), PhantomData)
+        Self(text, PhantomData)
     }
 
     /// Converts self to a 'static version.
-    pub fn into_owned(self) -> RawBytes<'static, T> {
-        RawBytes(Cow::Owned(self.0.into_owned()), PhantomData)
+    pub fn into_owned(self) -> RawBytes<T> {
+        RawBytes(self.0, PhantomData)
     }
 
     /// Returns `true` if bytes is empty.
@@ -51,7 +51,8 @@ impl<'a, T: BytesRepr> RawBytes<'a, T> {
 
     /// Returns the _effective_ length of a string, which is no more than `T::MAX_LEN`.
     pub fn len(&self) -> usize {
-        min(self.0.as_ref().len(), T::MAX_LEN)
+        // min(self.0.as_ref().len(), T::MAX_LEN)
+        min(self.0.len(), T::MAX_LEN)
     }
 
     // TODO 先返回折返slice，不轻易copy，方法名先不修改，等后面重构 fishermen
@@ -65,7 +66,7 @@ impl<'a, T: BytesRepr> RawBytes<'a, T> {
     // TODO 先改为返回String，会存在copy，同时方法的语义有变，使用的场景有限，后续再优化 fishermen
     /// Returns the value as a UTF-8 string (lossy contverted).
     // pub fn as_str(&'a self) -> Cow<'a, str> {
-    pub fn as_str(&'a self) -> String {
+    pub fn as_str(&self) -> String {
         // String::from_utf8_lossy(self.as_bytes())
         if let Some(data) = self.0.try_oneway_slice(0, self.0.len()) {
             String::from_utf8_lossy(data).into_owned()
@@ -83,27 +84,28 @@ impl<'a, T: BytesRepr> RawBytes<'a, T> {
 //         RawBytes::new(bytes)
 //     }
 // }
-impl<'a, T: Into<Cow<'a, RingSlice>>, U: BytesRepr> From<T> for RawBytes<'a, U> {
-    fn from(bytes: T) -> RawBytes<'a, U> {
+impl<T: Into<RingSlice>, U: BytesRepr> From<T> for RawBytes<U> {
+    fn from(bytes: T) -> RawBytes<U> {
         // RawBytes::new(bytes)
-        RawBytes::new(**&bytes.into())
+        RawBytes::new(bytes.into())
     }
 }
 
-impl<T: BytesRepr> PartialEq<[u8]> for RawBytes<'_, T> {
+impl<T: BytesRepr> PartialEq<[u8]> for RawBytes<T> {
     fn eq(&self, other: &[u8]) -> bool {
-        self.0.as_ref().eq(other)
+        // self.0.as_ref().eq(other)
+        self.0.eq(other)
     }
 }
 
-impl<T: BytesRepr> MySerialize for RawBytes<'_, T> {
+impl<T: BytesRepr> MySerialize for RawBytes<T> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         // T::serialize(self.0.as_ref(), buf)
-        T::serialize(self.0.as_ref(), buf)
+        T::serialize(&self.0, buf)
     }
 }
 
-impl<'de, T: BytesRepr> MyDeserialize<'de> for RawBytes<'de, T> {
+impl<T: BytesRepr> MyDeserialize for RawBytes<T> {
     const SIZE: Option<usize> = T::SIZE;
     type Ctx = T::Ctx;
 
@@ -112,11 +114,11 @@ impl<'de, T: BytesRepr> MyDeserialize<'de> for RawBytes<'de, T> {
     fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         // Ok(Self(T::deserialize(ctx, buf)?, PhantomData))
         let t = T::deserialize(ctx, buf)?;
-        Ok(Self(Cow::Owned(*t), PhantomData))
+        Ok(Self(t, PhantomData))
     }
 }
 
-impl<T: BytesRepr> fmt::Debug for RawBytes<'_, T> {
+impl<T: BytesRepr> fmt::Debug for RawBytes<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // let value_data = self.as_str();
         // let value = match value_data.try_oneway_slice(0, value_data.len()) {
@@ -155,7 +157,7 @@ pub trait BytesRepr {
 
     /// Implementation must check the length of the buffer if `Self::SIZE.is_none()`.
     // fn deserialize<'de>(ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>>;
-    fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<RingSlice>>;
+    fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice>;
 }
 
 impl BytesRepr for LenEnc {
@@ -172,13 +174,12 @@ impl BytesRepr for LenEnc {
     }
 
     // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<RingSlice>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         let len = buf.parse::<RawInt<LenEnc>>(())?;
         // buf.checked_eat(len.0 as usize)
         //     .map(Cow::Borrowed)
         //     .ok_or_else(unexpected_buf_eof)
         buf.checked_eat(len.0 as usize)
-            .map(Cow::Owned)
             .ok_or_else(unexpected_buf_eof)
     }
 }
@@ -200,14 +201,13 @@ impl BytesRepr for U8Bytes {
     }
 
     // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<RingSlice>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         let len: RawInt<u8> = buf.parse(())?;
         // buf.checked_eat(len.0 as usize)
         //     .map(Cow::Borrowed)
         //     .ok_or_else(unexpected_buf_eof)
         // TODO 参考代码，注意check fishermen
         buf.checked_eat(len.0 as usize)
-            .map(Cow::Owned)
             .ok_or_else(unexpected_buf_eof)
     }
 }
@@ -229,14 +229,12 @@ impl BytesRepr for U32Bytes {
     }
 
     // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<RingSlice>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         // buf.checked_eat_u32_str()
         //     .map(Cow::Borrowed)
         //     .ok_or_else(unexpected_buf_eof)
         // TODO 参考什么代码，注意check一致性 fishermen
-        buf.checked_eat_u32_str()
-            .map(Cow::Owned)
-            .ok_or_else(unexpected_buf_eof)
+        buf.checked_eat_u32_str().ok_or_else(unexpected_buf_eof)
     }
 }
 
@@ -269,7 +267,7 @@ impl BytesRepr for NullBytes {
     }
 
     // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<RingSlice>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         // match buf.0.iter().position(|x| *x == 0) {
         //     Some(i) => {
         //         let out = buf.eat(i);
@@ -288,7 +286,7 @@ impl BytesRepr for NullBytes {
             Some(i) => {
                 let out = buf.eat(i);
                 buf.skip(1);
-                Ok(Cow::Owned(out))
+                Ok(out)
             }
             None => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -314,9 +312,9 @@ impl BytesRepr for EofBytes {
     }
 
     // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<RingSlice>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         // Ok(Cow::Borrowed(buf.eat_all()))
-        Ok(Cow::Owned(buf.eat_all()))
+        Ok(buf.eat_all())
     }
 }
 
@@ -340,13 +338,11 @@ impl<const MAX_LEN: usize> BytesRepr for BareBytes<MAX_LEN> {
     }
 
     // fn deserialize<'de>(len: usize, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-    fn deserialize(len: usize, buf: &mut ParseBuf) -> io::Result<Cow<RingSlice>> {
+    fn deserialize(len: usize, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         // buf.checked_eat(len)
         //     .ok_or_else(unexpected_buf_eof)
         //     .map(Cow::Borrowed)
-        buf.checked_eat(len)
-            .ok_or_else(unexpected_buf_eof)
-            .map(Cow::Owned)
+        buf.checked_eat(len).ok_or_else(unexpected_buf_eof)
     }
 }
 
@@ -378,18 +374,15 @@ impl<const LEN: usize> BytesRepr for FixedLengthText<LEN> {
     }
 
     // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<RingSlice>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         match Self::SIZE {
             // Some(len) => Ok(Cow::Borrowed(buf.eat(len))),
             // None => buf
             //     .checked_eat(LEN)
             //     .map(Cow::Borrowed)
             //     .ok_or_else(unexpected_buf_eof),
-            Some(len) => Ok(Cow::Owned(buf.eat(len))),
-            None => buf
-                .checked_eat(LEN)
-                .map(Cow::Owned)
-                .ok_or_else(unexpected_buf_eof),
+            Some(len) => Ok(buf.eat(len)),
+            None => buf.checked_eat(LEN).ok_or_else(unexpected_buf_eof),
         }
     }
 }
@@ -407,13 +400,12 @@ impl BytesRepr for VarLen {
     }
 
     // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<RingSlice>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         let len = buf.parse::<RawInt<VarLen>>(())?;
         // buf.checked_eat(len.0 as usize)
         //     .map(Cow::Borrowed)
         //     .ok_or_else(unexpected_buf_eof)
         buf.checked_eat(len.0 as usize)
-            .map(Cow::Owned)
             .ok_or_else(unexpected_buf_eof)
     }
 }
@@ -427,7 +419,7 @@ pub trait ConstBytesValue<const LEN: usize> {
     type Error: Default + std::error::Error + Send + Sync + 'static;
 }
 
-impl<'de, T, const LEN: usize> MyDeserialize<'de> for ConstBytes<T, LEN>
+impl<T, const LEN: usize> MyDeserialize for ConstBytes<T, LEN>
 where
     T: Default,
     T: ConstBytesValue<LEN>,

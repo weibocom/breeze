@@ -147,7 +147,7 @@ impl MySerialize for Value {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueDeserializer<T>(pub Value, PhantomData<T>);
 
-impl<'de> MyDeserialize<'de> for ValueDeserializer<TextValue> {
+impl MyDeserialize for ValueDeserializer<TextValue> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
@@ -158,7 +158,7 @@ impl<'de> MyDeserialize<'de> for ValueDeserializer<TextValue> {
     }
 }
 
-impl<'de> MyDeserialize<'de> for ValueDeserializer<BinValue> {
+impl MyDeserialize for ValueDeserializer<BinValue> {
     const SIZE: Option<usize> = None;
     type Ctx = (ColumnType, ColumnFlags);
 

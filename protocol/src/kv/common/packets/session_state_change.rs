@@ -21,13 +21,13 @@ use crate::kv::common::{
 ///
 /// [1]: https://dev.mysql.com/doc/c-api/5.7/en/mysql-session-track-get-first.html
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub enum SessionStateChange<'a> {
+pub enum SessionStateChange {
     IsTracked(bool),
-    Schema(Schema<'a>),
-    SystemVariables(Vec<SystemVariable<'a>>),
-    Gtids(Gtids<'a>),
-    TransactionCharacteristics(TransactionCharacteristics<'a>),
-    TransactionState(TransactionState<'a>),
+    Schema(Schema),
+    SystemVariables(Vec<SystemVariable>),
+    Gtids(Gtids),
+    TransactionCharacteristics(TransactionCharacteristics),
+    TransactionState(TransactionState),
     // Unsupported(Unsupported<'a>),
 }
 
@@ -51,7 +51,7 @@ pub enum SessionStateChange<'a> {
 //     }
 // }
 
-impl<'de> MyDeserialize<'de> for SessionStateChange<'de> {
+impl MyDeserialize for SessionStateChange {
     const SIZE: Option<usize> = None;
     type Ctx = SessionStateType;
 
@@ -69,7 +69,7 @@ impl<'de> MyDeserialize<'de> for SessionStateChange<'de> {
                 buf.parse_unchecked(()).map(SessionStateChange::Schema)
             }
             SessionStateType::SESSION_TRACK_STATE_CHANGE => {
-                let is_tracked: RawBytes<'_, LenEnc> = buf.parse_unchecked(())?;
+                let is_tracked: RawBytes<LenEnc> = buf.parse_unchecked(())?;
                 // Ok(SessionStateChange::IsTracked(is_tracked.as_bytes() == b"1"))
                 // TODO 参考上面的逻辑，彻底稳定前，不要删除 fishermen
                 let data = is_tracked.as_bytes();
@@ -90,7 +90,7 @@ impl<'de> MyDeserialize<'de> for SessionStateChange<'de> {
     }
 }
 
-impl MySerialize for SessionStateChange<'_> {
+impl MySerialize for SessionStateChange {
     fn serialize(&self, buf: &mut Vec<u8>) {
         match self {
             SessionStateChange::SystemVariables(vars) => {
@@ -118,7 +118,7 @@ impl MySerialize for SessionStateChange<'_> {
 ///
 /// The GTID string is in the standard format for specifying a set of GTID values.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Gtids<'a>(RawBytes<'a, EofBytes>);
+pub struct Gtids(RawBytes<EofBytes>);
 
 // impl<'a> Gtids<'a> {
 //     pub fn new(gtid_set: impl Into<Cow<'a, [u8]>>) -> Self {
@@ -141,7 +141,7 @@ pub struct Gtids<'a>(RawBytes<'a, EofBytes>);
 //     }
 // }
 
-impl<'de> MyDeserialize<'de> for Gtids<'de> {
+impl MyDeserialize for Gtids {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
@@ -151,7 +151,7 @@ impl<'de> MyDeserialize<'de> for Gtids<'de> {
     }
 }
 
-impl MySerialize for Gtids<'_> {
+impl MySerialize for Gtids {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.0.serialize(buf);
     }
@@ -161,7 +161,7 @@ impl MySerialize for Gtids<'_> {
 ///
 /// The value contains the new default schema name.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Schema<'a>(RawBytes<'a, LenEnc>);
+pub struct Schema(RawBytes<LenEnc>);
 
 // impl<'a> Schema<'a> {
 //     pub fn new(schema_name: impl Into<Cow<'a, [u8]>>) -> Self {
@@ -184,7 +184,7 @@ pub struct Schema<'a>(RawBytes<'a, LenEnc>);
 //     }
 // }
 
-impl<'de> MyDeserialize<'de> for Schema<'de> {
+impl MyDeserialize for Schema {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
@@ -194,7 +194,7 @@ impl<'de> MyDeserialize<'de> for Schema<'de> {
     }
 }
 
-impl MySerialize for Schema<'_> {
+impl MySerialize for Schema {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.0.serialize(buf);
     }
@@ -203,9 +203,9 @@ impl MySerialize for Schema<'_> {
 /// This tracker type indicates that one or more tracked session
 /// system variables have been assigned a value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SystemVariable<'a> {
-    name: RawBytes<'a, LenEnc>,
-    value: RawBytes<'a, LenEnc>,
+pub struct SystemVariable {
+    name: RawBytes<LenEnc>,
+    value: RawBytes<LenEnc>,
 }
 
 // impl<'a> SystemVariable<'a> {
@@ -245,7 +245,7 @@ pub struct SystemVariable<'a> {
 //     }
 // }
 
-impl<'de> MyDeserialize<'de> for SystemVariable<'de> {
+impl MyDeserialize for SystemVariable {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
@@ -258,7 +258,7 @@ impl<'de> MyDeserialize<'de> for SystemVariable<'de> {
     }
 }
 
-impl MySerialize for SystemVariable<'_> {
+impl MySerialize for SystemVariable {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(&mut *buf);
         self.value.serialize(buf);
@@ -270,7 +270,7 @@ impl MySerialize for SystemVariable<'_> {
 /// The characteristics tracker data string may be empty,
 /// or it may contain one or more SQL statements, each terminated by a semicolon.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TransactionCharacteristics<'a>(RawBytes<'a, LenEnc>);
+pub struct TransactionCharacteristics(RawBytes<LenEnc>);
 
 // impl<'a> TransactionCharacteristics<'a> {
 //     pub fn new(value: impl Into<Cow<'a, [u8]>>) -> Self {
@@ -293,7 +293,7 @@ pub struct TransactionCharacteristics<'a>(RawBytes<'a, LenEnc>);
 //     }
 // }
 
-impl<'de> MyDeserialize<'de> for TransactionCharacteristics<'de> {
+impl MyDeserialize for TransactionCharacteristics {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
@@ -303,7 +303,7 @@ impl<'de> MyDeserialize<'de> for TransactionCharacteristics<'de> {
     }
 }
 
-impl MySerialize for TransactionCharacteristics<'_> {
+impl MySerialize for TransactionCharacteristics {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.0.serialize(buf);
     }
@@ -314,7 +314,7 @@ impl MySerialize for TransactionCharacteristics<'_> {
 /// Value is a string containing ASCII characters, each of which indicates some aspect
 /// of the transaction state.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TransactionState<'a>(RawBytes<'a, LenEnc>);
+pub struct TransactionState(RawBytes<LenEnc>);
 
 // impl<'a> TransactionState<'a> {
 //     pub fn new(value: impl Into<Cow<'a, [u8]>>) -> Self {
@@ -337,7 +337,7 @@ pub struct TransactionState<'a>(RawBytes<'a, LenEnc>);
 //     }
 // }
 
-impl<'de> MyDeserialize<'de> for TransactionState<'de> {
+impl MyDeserialize for TransactionState {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
@@ -347,7 +347,7 @@ impl<'de> MyDeserialize<'de> for TransactionState<'de> {
     }
 }
 
-impl MySerialize for TransactionState<'_> {
+impl MySerialize for TransactionState {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.0.serialize(buf);
     }
@@ -355,7 +355,7 @@ impl MySerialize for TransactionState<'_> {
 
 /// This tracker type is unknown/unsupported.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Unsupported<'a>(RawBytes<'a, LenEnc>);
+pub struct Unsupported(RawBytes<LenEnc>);
 
 // impl<'a> Unsupported<'a> {
 //     pub fn new(value: impl Into<Cow<'a, [u8]>>) -> Self {
@@ -378,7 +378,7 @@ pub struct Unsupported<'a>(RawBytes<'a, LenEnc>);
 //     }
 // }
 
-impl<'de> MyDeserialize<'de> for Unsupported<'de> {
+impl MyDeserialize for Unsupported {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
@@ -388,7 +388,7 @@ impl<'de> MyDeserialize<'de> for Unsupported<'de> {
     }
 }
 
-impl MySerialize for Unsupported<'_> {
+impl MySerialize for Unsupported {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.0.serialize(buf);
     }

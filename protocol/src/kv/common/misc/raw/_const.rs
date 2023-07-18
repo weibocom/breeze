@@ -49,7 +49,7 @@ impl<T, U> DerefMut for Const<T, U> {
     }
 }
 
-impl<'de, T, U> MyDeserialize<'de> for Const<T, U>
+impl<T, U> MyDeserialize for Const<T, U>
 where
     U: IntRepr,
     T: TryFrom<U::Primitive>,
@@ -138,7 +138,7 @@ where
     }
 }
 
-impl<'de, T: IntRepr, U> MyDeserialize<'de> for RawConst<T, U> {
+impl<T: IntRepr, U> MyDeserialize for RawConst<T, U> {
     const SIZE: Option<usize> = T::SIZE;
     type Ctx = ();
 

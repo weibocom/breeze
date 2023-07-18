@@ -16,9 +16,27 @@ pub struct RingSlice {
 // 将ring_slice拆分成2个seg。分别调用
 macro_rules! with_segment_oft {
     ($self:expr, $oft:expr, $noseg:expr, $seg:expr) => {{
-        debug_assert!($oft <= $self.len());
+        // debug_assert!($oft <= $self.len());
+        // let oft_start = $self.mask($self.start() + $oft);
+        // let len = $self.len() - $oft;
+
+        // if oft_start + len <= $self.cap() {
+        //     unsafe { $noseg($self.ptr().add(oft_start), len) }
+        // } else {
+        //     let seg1 = $self.cap() - oft_start;
+        //     let seg2 = len - seg1;
+        //     unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
+        // }
+        with_segment_oft_len!($self, $oft, $self.len(), $noseg, $seg)
+    }};
+}
+
+// 基于oft、len对slice的2个seg进行调用
+macro_rules! with_segment_oft_len {
+    ($self:expr, $oft:expr, $len:expr, $noseg:expr, $seg:expr) => {{
+        debug_assert!($oft + $len <= $self.len());
         let oft_start = $self.mask($self.start() + $oft);
-        let len = $self.len() - $oft;
+        let len = ($self.len() - $oft).min($len);
 
         if oft_start + len <= $self.cap() {
             unsafe { $noseg($self.ptr().add(oft_start), len) }
@@ -82,8 +100,21 @@ impl RingSlice {
         }
     }
     #[inline(always)]
-    pub(super) fn visit_segment_oft(&self, oft: usize, mut v: impl FnMut(*mut u8, usize)) {
-        with_segment_oft!(self, oft, |p, l| v(p, l), |p0, l0, p1, l1| {
+    pub(super) fn visit_segment_oft(&self, oft: usize, v: impl FnMut(*mut u8, usize)) {
+        // with_segment_oft!(self, oft, |p, l| v(p, l), |p0, l0, p1, l1| {
+        //     v(p0, l0);
+        //     v(p1, l1);
+        // });
+        self.visit_segment_oft_len(oft, self.len(), v);
+    }
+    #[inline(always)]
+    pub(super) fn visit_segment_oft_len(
+        &self,
+        oft: usize,
+        len: usize,
+        mut v: impl FnMut(*mut u8, usize),
+    ) {
+        with_segment_oft_len!(self, oft, len, |p, l| v(p, l), |p0, l0, p1, l1| {
             v(p0, l0);
             v(p1, l1);
         });
@@ -169,44 +200,50 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
+        // v.reserve(self.len());
+        // self.visit_segment_oft(0, |p, l| unsafe {
+        //     copy_nonoverlapping(p, v.as_mut_ptr().add(v.len()), l);
+        //     v.set_len(v.len() + l);
+        // });
+
+        // TODO 参考上面的逻辑，测试稳定前暂不清理 fishermen
         v.reserve(self.len());
-        self.visit_segment_oft(0, |p, l| unsafe {
-            copy_nonoverlapping(p, v.as_mut_ptr().add(v.len()), l);
-            v.set_len(v.len() + l);
-        });
-        return;
+        let len = v.len();
+        let len_final = len + self.len();
+        // 先设置长度，再用切片方式调用，避免越界
+        unsafe {
+            v.set_len(len_final);
+        }
+        self.copy_to_slice(&mut v[len..len_final]);
     }
     #[inline]
     pub fn copy_to_vec_with_len(&self, v: &mut Vec<u8>, len: usize) {
         // 一般copy完整的slice到vector
-        if len >= self.len() {
+        if len == self.len() {
             self.copy_to_vec(v);
-        } else {
+        } else if len < self.len() {
             // len较小，只copy部分slice到vector
             self.sub_slice(0, len).copy_to_vec(v);
+        } else {
+            // 代码基本不会走到这里，除非调用出现bug
+            assert!(false, "too big len:{} => {:?}", len, self);
         }
     }
     /// copy 数据到切片/数组中，目前暂时不需要oft，有需求后再加
     #[inline]
-    pub fn copy_to_slice(&self, s: &mut [u8]) -> usize {
-        let (l, r) = self.data();
-        let slen = s.len();
-        // 只用copy left
-        if slen <= l.len() {
-            s[..slen].copy_from_slice(&l[..slen]);
-            return slen;
-        }
-
-        // 需要copy left、right
-        s[..l.len()].copy_from_slice(l);
-        if r.len() > 0 {
-            let min = r.len().min(s.len() - l.len());
-            let total = l.len() + min;
-            s[l.len()..total].copy_from_slice(&r[..min]);
-            return total;
-        }
-
-        return l.len();
+    pub fn copy_to_slice(&self, s: &mut [u8]) {
+        with_segment_oft_len!(
+            self,
+            0,
+            s.len(),
+            |p, l| {
+                copy_nonoverlapping(p, s.as_mut_ptr(), l);
+            },
+            |p0, l0, p1, l1| {
+                copy_nonoverlapping(p0, s.as_mut_ptr(), l0);
+                copy_nonoverlapping(p1, s.as_mut_ptr().add(l0), l1);
+            }
+        )
     }
     // /// copy 前len个bytes 到 BufMut，注意check len的长度
     // #[inline]
