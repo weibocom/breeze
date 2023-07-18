@@ -322,6 +322,7 @@ impl fmt::Debug for DriverError {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Eq, PartialEq, Clone)]
 pub enum UrlError {
     ParseError(ParseError),
