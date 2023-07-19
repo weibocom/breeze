@@ -233,16 +233,12 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to_vec_with_len(&self, v: &mut Vec<u8>, len: usize) {
-        if len == self.len() {
-            // 一般场景，都是copy完整的slice到vector
-            self.copy_to_vec(v);
-        } else if len < self.len() {
-            // 小概率场景，len较小，只copy部分slice到vector
-            self.sub_slice(0, len).copy_to_vec(v);
-        } else {
-            // 基本不会走到这里，除非调用出现bug
-            assert!(false, "too big len:{} => {:?}", len, self);
-        }
+        self.copy_to_vec_with_oft_len(0, len, v)
+    }
+    // TODO 会多生成一个RingSlice，优化的空间有多大？ fishermen
+    #[inline]
+    pub fn copy_to_vec_with_oft_len(&self, oft: usize, len: usize, v: &mut Vec<u8>) {
+        self.sub_slice(oft, len).copy_to_vec(v)
     }
     /// copy 数据到切片/数组中，目前暂时不需要oft，有需求后再加
     #[inline]
@@ -392,22 +388,24 @@ impl RingSlice {
     /// 使用姿势：先使用try_oneway_slice尝试获取单向切片数据，失败后，再使用本方法；
     #[inline]
     pub fn dump_ring_part(&self, oft: usize, len: usize) -> Vec<u8> {
-        let start_mask = self.mask(self.start() + oft);
-        assert!(start_mask + len > self.cap(), "{}/{}=>{:?}", oft, len, self);
+        // let start_mask = self.mask(self.start() + oft);
+        // assert!(start_mask + len > self.cap(), "{}/{}=>{:?}", oft, len, self);
 
-        // copy 2 段到一个vec中
+        // // copy 2 段到一个vec中
+        // let mut dest = Vec::with_capacity(len);
+        // let len_first = self.cap() - start_mask;
+        // unsafe { copy_nonoverlapping(self.ptr().add(oft), dest.as_mut_ptr(), len_first) };
+        // unsafe {
+        //     copy_nonoverlapping(
+        //         self.ptr(),
+        //         dest.as_mut_ptr().add(len_first),
+        //         len - len_first,
+        //     );
+        // }
+        // // dest原始长度为0，所以此处直接设为len即可
+        // unsafe { dest.set_len(len) };
         let mut dest = Vec::with_capacity(len);
-        let len_first = self.cap() - start_mask;
-        unsafe { copy_nonoverlapping(self.ptr().add(oft), dest.as_mut_ptr(), len_first) };
-        unsafe {
-            copy_nonoverlapping(
-                self.ptr(),
-                dest.as_mut_ptr().add(len_first),
-                len - len_first,
-            );
-        }
-        // dest原始长度为0，所以此处直接设为len即可
-        unsafe { dest.set_len(len) };
+        self.copy_to_vec_with_oft_len(oft, len, &mut dest);
         log::debug!("+++ copy ring part data to vec: {:?}", dest);
 
         dest
