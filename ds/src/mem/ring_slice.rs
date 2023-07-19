@@ -372,14 +372,11 @@ impl RingSlice {
     /// 尝试低成本获取一个单向的切片，如果有折返，则返回None
     #[inline]
     pub fn try_oneway_slice(&self, oft: usize, len: usize) -> Option<&[u8]> {
-        // 根据oft、len拿到两段数据，第二段可能为空
+        // 根据oft、len拿到两段数据，如果第二段长度为0，说明是单向slice
         let (l, r) = self.data_oft_len(oft, len);
-
-        // 如果第二段长度为0，说明是单向slice
-        if r.len() == 0 {
-            Some(l)
-        } else {
-            None
+        match r.len() {
+            0 => Some(l),
+            _ => None,
         }
     }
 
@@ -388,58 +385,12 @@ impl RingSlice {
     /// 使用姿势：先使用try_oneway_slice尝试获取单向切片数据，失败后，再使用本方法；
     #[inline]
     pub fn dump_ring_part(&self, oft: usize, len: usize) -> Vec<u8> {
-        // let start_mask = self.mask(self.start() + oft);
-        // assert!(start_mask + len > self.cap(), "{}/{}=>{:?}", oft, len, self);
-
-        // // copy 2 段到一个vec中
-        // let mut dest = Vec::with_capacity(len);
-        // let len_first = self.cap() - start_mask;
-        // unsafe { copy_nonoverlapping(self.ptr().add(oft), dest.as_mut_ptr(), len_first) };
-        // unsafe {
-        //     copy_nonoverlapping(
-        //         self.ptr(),
-        //         dest.as_mut_ptr().add(len_first),
-        //         len - len_first,
-        //     );
-        // }
-        // // dest原始长度为0，所以此处直接设为len即可
-        // unsafe { dest.set_len(len) };
         let mut dest = Vec::with_capacity(len);
         self.copy_to_vec_with_oft_len(oft, len, &mut dest);
         log::debug!("+++ copy ring part data to vec: {:?}", dest);
 
         dest
     }
-
-    // 先注释掉，换条路，进一步延迟copy的时机 fishermen
-    // /// <pre>获取有限制长度的slice，最大长度暂定为32字节，超过就panic;
-    // /// 前置条件：
-    // ///     1 len不可以超过32；
-    // ///     2 oft+len不可超过本slice的最大长度[slice的基本要求] </pre>
-    // #[inline(always)]
-    // pub unsafe fn limited_slice(&self, oft: usize, len: usize) -> &[u8] {
-    //     const MAX_LEN: usize = 32;
-    //     if oft + len > self.len() || len > MAX_LEN {
-    //         panic!("may out boundary: {}/{} =>{:?}", oft, len, self.data_dump());
-    //     }
-
-    //     // oft、end是相对位置，需要进行mask修正
-    //     let oft_start = self.mask(self.start() + oft);
-    //     if oft_start + len <= self.cap() {
-    //         return from_raw_parts(self.ptr().add(oft_start), len);
-    //     } else {
-    //         // 有折返，需要组装
-    //         static mut TMP_BUFF: [u8; 16] = [0_u8; 16];
-    //         let len_first = self.cap() - oft_start;
-    //         copy_nonoverlapping(self.ptr().add(oft_start), TMP_BUFF.as_mut_ptr(), len_first);
-    //         copy_nonoverlapping(
-    //             self.ptr(),
-    //             TMP_BUFF[len_first..].as_mut_ptr(),
-    //             len - len_first,
-    //         );
-    //         return &TMP_BUFF;
-    //     }
-    // }
 
     /// 以指定的位置将slice分拆为2部分，返回[0, n）
     #[inline]
