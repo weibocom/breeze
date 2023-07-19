@@ -45,7 +45,7 @@ impl PacketData {
             }
             None => {
                 let bytes = self.inner.dump_ring_part(*oft, HEADER_LEN);
-                let len = LittleEndian::read_u24(&bytes) as usize;
+                let len = LittleEndian::read_u24(bytes.as_slice()) as usize;
                 if len == 0 {
                     log::warn!("+++ found ring packet 0-length packet: {:?}", bytes);
                 }
