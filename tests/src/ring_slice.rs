@@ -1,3 +1,6 @@
+use std::num::NonZeroUsize;
+
+use byteorder::LittleEndian;
 use ds::RingSlice;
 use rand::Rng;
 #[test]
@@ -114,4 +117,22 @@ fn copy_to_slice() {
     let mut slice_long = [0_u8; 6];
     slice.copy_to_slice(&mut slice_long[3..6]);
     assert_eq!(slice_long, [0, 0, 0, 0, 1, 2]);
+}
+
+use byteorder::ByteOrder;
+#[test]
+fn check_header() {
+    let header = [1, 0, 0, 1, 1];
+    let len = LittleEndian::read_u24(&header) as usize;
+    println!("header len: {}", len);
+
+    match NonZeroUsize::new(len) {
+        Some(_chunk_len) => {
+            println!("ok!")
+        }
+        None => {
+            println!("malformed len: {}", len);
+            assert!(false);
+        }
+    };
 }

@@ -36,9 +36,19 @@ impl PacketData {
 
         // TODO RingSlice 解析的标准用法，原则：最大限度减少copy，能否进一步优化？ fishermen
         let (payload_len, seq) = match self.inner.try_oneway_slice(*oft, HEADER_LEN) {
-            Some(data) => (LittleEndian::read_u24(data) as usize, data[3]),
+            Some(data) => {
+                let len = LittleEndian::read_u24(data) as usize;
+                if len == 0 {
+                    log::warn!("+++ found slice 0-length packet: {:?}", data);
+                }
+                (LittleEndian::read_u24(data) as usize, data[3])
+            }
             None => {
                 let bytes = self.inner.dump_ring_part(*oft, HEADER_LEN);
+                let len = LittleEndian::read_u24(&bytes) as usize;
+                if len == 0 {
+                    log::warn!("+++ found ring packet 0-length packet: {:?}", bytes);
+                }
                 (LittleEndian::read_u24(&bytes) as usize, bytes[3])
             }
         };
