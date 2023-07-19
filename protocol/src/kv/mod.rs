@@ -417,14 +417,11 @@ impl Kv {
         };
         let mut result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
         let status = result_set.len() > 0;
-        let row: Vec<u8> = match status {
-            true => result_set.remove(0),
-            false => {
-                const NOT_FOUND: &[u8] = "not found".as_bytes();
-                let mut padding = Vec::with_capacity(10);
-                padding.extend(NOT_FOUND);
-                padding
-            }
+        let row: Vec<u8> = if status {
+            //现在只支持单key，remove也不影响
+            result_set.remove(0)
+        } else {
+            b"not found".to_vec()
         };
         let mem = MemGuard::from_vec(row);
         let cmd = Command::from(status, mem);
