@@ -145,19 +145,19 @@ where
                         req.on_complete(cmd);
                     }
                     Err(e) => match e {
-                        Error::UnexpectedData => {
-                            let req = self
-                                .pending
-                                .iter()
-                                .map(|(r, _)| r.data())
-                                .collect::<Vec<_>>();
-                            let rsp_data = self.s.slice();
-                            let rsp_buf = unsafe { rsp_data.data_dump() };
-                            panic!(
-                                "unexpected:{:?} rsp:{:?} buff:{:?} pending req:[{:?}] ",
-                                self, rsp_data, rsp_buf, req
-                            );
-                        }
+                        // Error::UnexpectedData => {
+                        //     let req = self
+                        //         .pending
+                        //         .iter()
+                        //         .map(|(r, _)| r.data())
+                        //         .collect::<Vec<_>>();
+                        //     let rsp_data = self.s.slice();
+                        //     let rsp_buf = unsafe { rsp_data.data_dump() };
+                        //     panic!(
+                        //         "unexpected:{:?} rsp:{:?} buff:{:?} pending req:[{:?}] ",
+                        //         self, rsp_data, rsp_buf, req
+                        //     );
+                        // }
                         _ => {
                             return Poll::Ready(Err(e.into()));
                         }
