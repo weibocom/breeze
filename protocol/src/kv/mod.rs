@@ -236,7 +236,7 @@ impl Protocol for Kv {
                     ctx.request(),
                     response
                 );
-                self.write_mc_packet(ctx.request(), response.map(|r| &*r), w)?
+                self.write_mc_response(ctx.request(), response.map(|r| &*r), w)?
             }
             // self.build_empty_response(RespStatus::NotStored, req)
 
@@ -448,7 +448,7 @@ impl Kv {
     }
 
     #[inline]
-    fn write_mc_response<W>(
+    fn write_mc_packet<W>(
         &self,
         opcode: u8,
         status: RespStatus,
@@ -492,7 +492,7 @@ impl Kv {
     }
 
     #[inline]
-    fn write_mc_packet<W>(
+    fn write_mc_response<W>(
         &self,
         request: &HashedCommand,
         response: Option<&crate::Command>,
@@ -502,9 +502,6 @@ impl Kv {
         W: crate::Writer,
     {
         let old_op_code = request.op_code() as u8;
-        if response.is_none() && (old_op_code == OP_GETQ || old_op_code == OP_GETKQ) {
-            return Ok(());
-        }
 
         let status = if response.is_some() && response.as_ref().unwrap().ok() {
             RespStatus::NoError
@@ -512,6 +509,8 @@ impl Kv {
             match old_op_code {
                 OP_SET | OP_ADD => RespStatus::NotStored,
                 OP_GET | OP_GETK | OP_DEL => RespStatus::NotFound,
+                //对于所有的!rsp.ok都不返回，应该是只有not found不返回，其他错误返回
+                OP_GETQ | OP_GETKQ => return Ok(()),
                 _ => RespStatus::UnkownCmd,
             }
         };
@@ -532,7 +531,7 @@ impl Kv {
             _ => (None, None),
         };
         //协议与标准协议不一样了，add等也返回response了
-        self.write_mc_response(old_op_code, status, write_key, write_extra, response, w)?;
+        self.write_mc_packet(old_op_code, status, write_key, write_extra, response, w)?;
         Ok(())
     }
 }
