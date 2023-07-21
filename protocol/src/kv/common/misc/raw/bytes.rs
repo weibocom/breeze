@@ -8,9 +8,10 @@
 
 pub use super::int::LenEnc;
 
-use std::{borrow::Cow, cmp::min, fmt, io, marker::PhantomData};
+use std::{cmp::min, fmt, io, marker::PhantomData};
 
 use bytes::BufMut;
+use ds::RingSlice;
 
 use crate::kv::common::{
     io::{BufMutExt, ParseBuf},
@@ -20,22 +21,27 @@ use crate::kv::common::{
 
 use super::{int::VarLen, RawInt};
 
+// TODO 生命周期参数后面测试完毕后统一清理  fishermen
 /// Wrapper for a raw byte sequence, that came from a server.
 ///
 /// `T` encodes the serialized representation.
 #[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(transparent)]
-pub struct RawBytes<'a, T: BytesRepr>(pub Cow<'a, [u8]>, PhantomData<T>);
+pub struct RawBytes<T: BytesRepr>(pub RingSlice, PhantomData<T>);
+// pub struct RawBytes<'a, T: BytesRepr>(pub Cow<'a, [u8]>, PhantomData<T>);
 
-impl<'a, T: BytesRepr> RawBytes<'a, T> {
+// TODO 生命周期参数后面同一清理 fishermen
+impl<T: BytesRepr> RawBytes<T> {
     /// Wraps the given value.
-    pub fn new(text: impl Into<Cow<'a, [u8]>>) -> Self {
-        Self(text.into(), PhantomData)
+    // pub fn new(text: impl Into<Cow<'a, [u8]>>) -> Self {
+    pub fn new(text: RingSlice) -> Self {
+        // Self(text.into(), PhantomData)
+        Self(text, PhantomData)
     }
 
     /// Converts self to a 'static version.
-    pub fn into_owned(self) -> RawBytes<'static, T> {
-        RawBytes(Cow::Owned(self.0.into_owned()), PhantomData)
+    pub fn into_owned(self) -> RawBytes<T> {
+        RawBytes(self.0, PhantomData)
     }
 
     /// Returns `true` if bytes is empty.
@@ -45,52 +51,87 @@ impl<'a, T: BytesRepr> RawBytes<'a, T> {
 
     /// Returns the _effective_ length of a string, which is no more than `T::MAX_LEN`.
     pub fn len(&self) -> usize {
-        min(self.0.as_ref().len(), T::MAX_LEN)
+        // min(self.0.as_ref().len(), T::MAX_LEN)
+        min(self.0.len(), T::MAX_LEN)
     }
 
-    /// Returns the _effective_ bytes (see `RawBytes::len`).
-    pub fn as_bytes(&'a self) -> &'a [u8] {
-        &self.0.as_ref()[..self.len()]
+    // TODO 先返回折返slice，不轻易copy，方法名先不修改，等后面重构 fishermen
+    // /// Returns the _effective_ bytes (see `RawBytes::len`).
+    // pub fn as_bytes(&'a self) -> &'a [u8] {
+    pub fn as_bytes(&self) -> &RingSlice {
+        // &self.0.as_ref()[..self.len()]
+        &self.0
     }
 
+    // TODO 先改为返回String，会存在copy，同时方法的语义有变，使用的场景有限，后续再优化 fishermen
     /// Returns the value as a UTF-8 string (lossy contverted).
-    pub fn as_str(&'a self) -> Cow<'a, str> {
-        String::from_utf8_lossy(self.as_bytes())
+    // pub fn as_str(&'a self) -> Cow<'a, str> {
+    pub fn as_str(&self) -> String {
+        // String::from_utf8_lossy(self.as_bytes())
+        if let Some(data) = self.0.try_oneway_slice(0, self.0.len()) {
+            String::from_utf8_lossy(data).into_owned()
+        } else {
+            let data = self.0.dump_ring_part(0, self.0.len());
+            String::from_utf8_lossy(data.as_slice()).into_owned()
+        }
+        // &self.0
     }
 }
 
-impl<'a, T: Into<Cow<'a, [u8]>>, U: BytesRepr> From<T> for RawBytes<'a, U> {
-    fn from(bytes: T) -> RawBytes<'a, U> {
-        RawBytes::new(bytes)
+// TODO 转为RingSlice，需要check影响 fishermen
+// impl<'a, T: Into<Cow<'a, [u8]>>, U: BytesRepr> From<T> for RawBytes<'a, U> {
+//     fn from(bytes: T) -> RawBytes<'a, U> {
+//         RawBytes::new(bytes)
+//     }
+// }
+impl<T: Into<RingSlice>, U: BytesRepr> From<T> for RawBytes<U> {
+    fn from(bytes: T) -> RawBytes<U> {
+        // RawBytes::new(bytes)
+        RawBytes::new(bytes.into())
     }
 }
 
-impl<T: BytesRepr> PartialEq<[u8]> for RawBytes<'_, T> {
+impl<T: BytesRepr> PartialEq<[u8]> for RawBytes<T> {
     fn eq(&self, other: &[u8]) -> bool {
-        self.0.as_ref().eq(other)
+        // self.0.as_ref().eq(other)
+        self.0.eq(other)
     }
 }
 
-impl<T: BytesRepr> MySerialize for RawBytes<'_, T> {
+impl<T: BytesRepr> MySerialize for RawBytes<T> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        T::serialize(self.0.as_ref(), buf)
+        // T::serialize(self.0.as_ref(), buf)
+        T::serialize(&self.0, buf)
     }
 }
 
-impl<'de, T: BytesRepr> MyDeserialize<'de> for RawBytes<'de, T> {
+impl<T: BytesRepr> MyDeserialize for RawBytes<T> {
     const SIZE: Option<usize> = T::SIZE;
     type Ctx = T::Ctx;
 
     #[inline(always)]
-    fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
-        Ok(Self(T::deserialize(ctx, buf)?, PhantomData))
+    // fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
+        // Ok(Self(T::deserialize(ctx, buf)?, PhantomData))
+        let t = T::deserialize(ctx, buf)?;
+        Ok(Self(t, PhantomData))
     }
 }
 
-impl<T: BytesRepr> fmt::Debug for RawBytes<'_, T> {
+impl<T: BytesRepr> fmt::Debug for RawBytes<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // let value_data = self.as_str();
+        // let value = match value_data.try_oneway_slice(0, value_data.len()) {
+        //     Some(d) => String::from_utf8_lossy(d),
+        //     None => {
+        //         let data = value_data.dump_ring_part(0, value_data.len());
+        //         String::from_utf8_lossy(&data[..])
+        //     }
+        // };
+
         f.debug_struct("RawBytes")
             .field("value", &self.as_str())
+            // .field("value", &value)
             .field(
                 "max_len",
                 &(if self.0.len() <= T::MAX_LEN {
@@ -110,10 +151,13 @@ pub trait BytesRepr {
     const SIZE: Option<usize>;
     type Ctx;
 
-    fn serialize(text: &[u8], buf: &mut Vec<u8>);
+    // TODO 修改切片为RingSlice，所有实现均需修改 fishermen
+    // fn serialize(text: &[u8], buf: &mut Vec<u8>);
+    fn serialize(text: &RingSlice, buf: &mut Vec<u8>);
 
     /// Implementation must check the length of the buffer if `Self::SIZE.is_none()`.
-    fn deserialize<'de>(ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>>;
+    // fn deserialize<'de>(ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>>;
+    fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice>;
 }
 
 impl BytesRepr for LenEnc {
@@ -121,15 +165,21 @@ impl BytesRepr for LenEnc {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    // fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
         buf.put_lenenc_int(text.len() as u64);
-        buf.put_slice(text);
+        // buf.put_slice(text);
+        // TODO 测试时，注意check一致性 fishermen
+        text.copy_to_vec(buf);
     }
 
-    fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         let len = buf.parse::<RawInt<LenEnc>>(())?;
+        // buf.checked_eat(len.0 as usize)
+        //     .map(Cow::Borrowed)
+        //     .ok_or_else(unexpected_buf_eof)
         buf.checked_eat(len.0 as usize)
-            .map(Cow::Borrowed)
             .ok_or_else(unexpected_buf_eof)
     }
 }
@@ -145,14 +195,19 @@ impl BytesRepr for U8Bytes {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    // fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
         buf.put_u8_str(text);
     }
 
-    fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         let len: RawInt<u8> = buf.parse(())?;
+        // buf.checked_eat(len.0 as usize)
+        //     .map(Cow::Borrowed)
+        //     .ok_or_else(unexpected_buf_eof)
+        // TODO 参考代码，注意check fishermen
         buf.checked_eat(len.0 as usize)
-            .map(Cow::Borrowed)
             .ok_or_else(unexpected_buf_eof)
     }
 }
@@ -168,14 +223,18 @@ impl BytesRepr for U32Bytes {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    // fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
         buf.put_u32_str(text);
     }
 
-    fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-        buf.checked_eat_u32_str()
-            .map(Cow::Borrowed)
-            .ok_or_else(unexpected_buf_eof)
+    // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
+        // buf.checked_eat_u32_str()
+        //     .map(Cow::Borrowed)
+        //     .ok_or_else(unexpected_buf_eof)
+        // TODO 参考什么代码，注意check一致性 fishermen
+        buf.checked_eat_u32_str().ok_or_else(unexpected_buf_eof)
     }
 }
 
@@ -190,21 +249,44 @@ impl BytesRepr for NullBytes {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn serialize(text: &[u8], buf: &mut Vec<u8>) {
-        let last = text
-            .iter()
-            .position(|x| *x == 0)
-            .unwrap_or_else(|| text.len());
-        buf.put_slice(&text[..last]);
+    // fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
+        // let last = text
+        //     .iter()
+        //     .position(|x| *x == 0)
+        //     .unwrap_or_else(|| text.len());
+        // buf.put_slice(&text[..last]);
+        // buf.put_u8(0);
+        // TODO 参考上面的逻辑，check一致性，暂时不要清理 fishermen
+        let last = match text.find(0, 0) {
+            Some(p) => p,
+            None => text.len(),
+        };
+        text.copy_to_vec_with_len(buf, last);
         buf.put_u8(0);
     }
 
-    fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-        match buf.0.iter().position(|x| *x == 0) {
+    // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
+        // match buf.0.iter().position(|x| *x == 0) {
+        //     Some(i) => {
+        //         let out = buf.eat(i);
+        //         buf.skip(1);
+        //         Ok(Cow::Borrowed(out))
+        //     }
+        //     None => Err(io::Error::new(
+        //         io::ErrorKind::InvalidData,
+        //         "no null terminator for null-terminated string",
+        //     )),
+        // }
+        // let s = vec![0, 1];
+        // s.iter();
+        // TODO 参考上面的逻辑，check一致性，暂时不要清理 fishermen
+        match buf.0.find(0, 0) {
             Some(i) => {
                 let out = buf.eat(i);
                 buf.skip(1);
-                Ok(Cow::Borrowed(out))
+                Ok(out)
             }
             None => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -223,12 +305,16 @@ impl BytesRepr for EofBytes {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn serialize(text: &[u8], buf: &mut Vec<u8>) {
-        buf.put_slice(text);
+    // fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
+        // buf.put_slice(text);
+        text.copy_to_vec(buf)
     }
 
-    fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-        Ok(Cow::Borrowed(buf.eat_all()))
+    // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
+        // Ok(Cow::Borrowed(buf.eat_all()))
+        Ok(buf.eat_all())
     }
 }
 
@@ -243,15 +329,20 @@ impl<const MAX_LEN: usize> BytesRepr for BareBytes<MAX_LEN> {
     const SIZE: Option<usize> = None;
     type Ctx = usize;
 
-    fn serialize(text: &[u8], buf: &mut Vec<u8>) {
-        let len = min(text.len(), MAX_LEN);
-        buf.put_slice(&text[..len]);
+    // fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
+        // let len = min(text.len(), MAX_LEN);
+        // buf.put_slice(&text[..len]);
+        // TODO 参考上面的逻辑，check一致性，暂时不要清理 fishermen
+        text.copy_to_vec_with_len(buf, MAX_LEN);
     }
 
-    fn deserialize<'de>(len: usize, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
-        buf.checked_eat(len)
-            .ok_or_else(unexpected_buf_eof)
-            .map(Cow::Borrowed)
+    // fn deserialize<'de>(len: usize, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    fn deserialize(len: usize, buf: &mut ParseBuf) -> io::Result<RingSlice> {
+        // buf.checked_eat(len)
+        //     .ok_or_else(unexpected_buf_eof)
+        //     .map(Cow::Borrowed)
+        buf.checked_eat(len).ok_or_else(unexpected_buf_eof)
     }
 }
 
@@ -272,21 +363,26 @@ impl<const LEN: usize> BytesRepr for FixedLengthText<LEN> {
     const SIZE: Option<usize> = Some(LEN);
     type Ctx = ();
 
-    fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    // fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
         let len = min(LEN, text.len());
-        buf.put_slice(&text[..len]);
+        // buf.put_slice(&text[..len]);
+        text.copy_to_vec_with_len(buf, len);
         for _ in 0..(LEN - len) {
             buf.put_u8(0);
         }
     }
 
-    fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         match Self::SIZE {
-            Some(len) => Ok(Cow::Borrowed(buf.eat(len))),
-            None => buf
-                .checked_eat(LEN)
-                .map(Cow::Borrowed)
-                .ok_or_else(unexpected_buf_eof),
+            // Some(len) => Ok(Cow::Borrowed(buf.eat(len))),
+            // None => buf
+            //     .checked_eat(LEN)
+            //     .map(Cow::Borrowed)
+            //     .ok_or_else(unexpected_buf_eof),
+            Some(len) => Ok(buf.eat(len)),
+            None => buf.checked_eat(LEN).ok_or_else(unexpected_buf_eof),
         }
     }
 }
@@ -296,15 +392,20 @@ impl BytesRepr for VarLen {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    // fn serialize(text: &[u8], buf: &mut Vec<u8>) {
+    fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
         buf.put_lenenc_int(text.len() as u64);
-        buf.put_slice(text);
+        // buf.put_slice(text);
+        text.copy_to_vec(buf);
     }
 
-    fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    // fn deserialize<'de>((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [u8]>> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<RingSlice> {
         let len = buf.parse::<RawInt<VarLen>>(())?;
+        // buf.checked_eat(len.0 as usize)
+        //     .map(Cow::Borrowed)
+        //     .ok_or_else(unexpected_buf_eof)
         buf.checked_eat(len.0 as usize)
-            .map(Cow::Borrowed)
             .ok_or_else(unexpected_buf_eof)
     }
 }
@@ -318,7 +419,7 @@ pub trait ConstBytesValue<const LEN: usize> {
     type Error: Default + std::error::Error + Send + Sync + 'static;
 }
 
-impl<'de, T, const LEN: usize> MyDeserialize<'de> for ConstBytes<T, LEN>
+impl<T, const LEN: usize> MyDeserialize for ConstBytes<T, LEN>
 where
     T: Default,
     T: ConstBytesValue<LEN>,
@@ -326,7 +427,8 @@ where
     const SIZE: Option<usize> = Some(LEN);
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let bytes: [u8; LEN] = buf.parse_unchecked(())?;
         if bytes == T::VALUE {
             Ok(Default::default())

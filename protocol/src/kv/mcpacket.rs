@@ -2,11 +2,11 @@ use ds::RingSlice;
 
 pub(super) use crate::memcache::packet::*;
 
-pub use crate::memcache::packet::{Binary, OP_ADD};
+pub use crate::memcache::packet::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 
 use super::common::constants::Command;
 
-pub(super) trait MysqlBinary {
+pub trait MysqlBinary {
     fn mysql_cmd(&self) -> Command;
 }
 

@@ -49,7 +49,7 @@ impl<T, U> DerefMut for Const<T, U> {
     }
 }
 
-impl<'de, T, U> MyDeserialize<'de> for Const<T, U>
+impl<T, U> MyDeserialize for Const<T, U>
 where
     U: IntRepr,
     T: TryFrom<U::Primitive>,
@@ -58,7 +58,8 @@ where
     const SIZE: Option<usize> = U::SIZE;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let raw_val = buf.parse_unchecked::<RawInt<U>>(())?;
         T::try_from(*raw_val)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
@@ -137,11 +138,12 @@ where
     }
 }
 
-impl<'de, T: IntRepr, U> MyDeserialize<'de> for RawConst<T, U> {
+impl<T: IntRepr, U> MyDeserialize for RawConst<T, U> {
     const SIZE: Option<usize> = T::SIZE;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let value = buf.parse_unchecked::<RawInt<T>>(())?.0;
         Ok(Self::new(value))
     }

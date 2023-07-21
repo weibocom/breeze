@@ -16,7 +16,7 @@ use crate::kv::common::{
         BinValue, SerializationSide, TextValue, Value, ValueDeserializer,
     },
 };
-use std::{borrow::Cow, fmt, io, marker::PhantomData, ops::Index, sync::Arc};
+use std::{fmt, io, marker::PhantomData, ops::Index, sync::Arc};
 
 pub mod convert;
 
@@ -243,11 +243,12 @@ impl<S, P> From<RowDeserializer<S, P>> for Row {
     }
 }
 
-impl<'de, T> MyDeserialize<'de> for RowDeserializer<T, Text> {
+impl<T> MyDeserialize for RowDeserializer<T, Text> {
     const SIZE: Option<usize> = None;
     type Ctx = Arc<[Column]>;
 
-    fn deserialize(columns: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize(columns: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(columns: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let mut values = Vec::with_capacity(columns.len());
 
         for _ in 0..columns.len() {
@@ -260,16 +261,18 @@ impl<'de, T> MyDeserialize<'de> for RowDeserializer<T, Text> {
     }
 }
 
-impl<'de, S: SerializationSide> MyDeserialize<'de> for RowDeserializer<S, Binary> {
+impl<S: SerializationSide> MyDeserialize for RowDeserializer<S, Binary> {
     const SIZE: Option<usize> = None;
     type Ctx = Arc<[Column]>;
 
-    fn deserialize(columns: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize(columns: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(columns: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         use Value::*;
 
         buf.checked_eat_u8().ok_or_else(unexpected_buf_eof)?;
 
-        let bitmap = NullBitmap::<S, Cow<'de, [u8]>>::deserialize(columns.len(), &mut *buf)?;
+        // let bitmap = NullBitmap::<S, Cow<'de, [u8]>>::deserialize(columns.len(), &mut *buf)?;
+        let bitmap = NullBitmap::<S>::deserialize(columns.len(), &mut *buf)?;
         let mut values = Vec::with_capacity(columns.len());
 
         for (i, column) in columns.iter().enumerate() {

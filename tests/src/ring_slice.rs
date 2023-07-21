@@ -1,3 +1,6 @@
+use std::num::NonZeroUsize;
+
+use byteorder::LittleEndian;
 use ds::RingSlice;
 use rand::Rng;
 #[test]
@@ -90,4 +93,46 @@ fn test_read_number() {
         assert_eq!(rs.read_u64(oft), rs.read_num_be(oft));
     }
     let _ = unsafe { Vec::from_raw_parts(ptr, 0, cap) };
+}
+
+#[test]
+fn copy_to_vec() {
+    let mut data = vec![0, 1, 2];
+    let slice = RingSlice::from_vec(&data);
+
+    slice.copy_to_vec(&mut data);
+    assert_eq!(data, vec![0, 1, 2, 0, 1, 2]);
+    println!("new data:{:?}", data);
+}
+
+#[test]
+fn copy_to_slice() {
+    let data = vec![0, 1, 2];
+    let slice = RingSlice::from_vec(&data);
+
+    let mut slice_short = [0_u8; 2];
+    slice.copy_to_slice(&mut slice_short);
+    assert_eq!(slice_short, [0, 1]);
+
+    let mut slice_long = [0_u8; 6];
+    slice.copy_to_slice(&mut slice_long[3..6]);
+    assert_eq!(slice_long, [0, 0, 0, 0, 1, 2]);
+}
+
+use byteorder::ByteOrder;
+#[test]
+fn check_header() {
+    let header = [1, 0, 0, 1, 1];
+    let len = LittleEndian::read_u24(&header) as usize;
+    println!("header len: {}", len);
+
+    match NonZeroUsize::new(len) {
+        Some(_chunk_len) => {
+            println!("ok!")
+        }
+        None => {
+            println!("malformed len: {}", len);
+            assert!(false);
+        }
+    };
 }

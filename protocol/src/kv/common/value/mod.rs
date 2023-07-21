@@ -7,6 +7,7 @@
 // modified, or distributed except according to those terms.
 
 use bytes::BufMut;
+use ds::RingSlice;
 
 use std::{convert::TryFrom, fmt, io, marker::PhantomData, str::from_utf8};
 
@@ -146,21 +147,23 @@ impl MySerialize for Value {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueDeserializer<T>(pub Value, PhantomData<T>);
 
-impl<'de> MyDeserialize<'de> for ValueDeserializer<TextValue> {
+impl MyDeserialize for ValueDeserializer<TextValue> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let value = Value::deserialize_text(buf)?;
         Ok(Self(value, PhantomData))
     }
 }
 
-impl<'de> MyDeserialize<'de> for ValueDeserializer<BinValue> {
+impl MyDeserialize for ValueDeserializer<BinValue> {
     const SIZE: Option<usize> = None;
     type Ctx = (ColumnType, ColumnFlags);
 
-    fn deserialize((col_type, col_flags): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((col_type, col_flags): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((col_type, col_flags): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let value = Value::deserialize_bin((col_type, col_flags), buf)?;
         Ok(Self(value, PhantomData))
     }
@@ -207,7 +210,8 @@ fn escaped(input: &str, no_backslash_escape: bool) -> String {
 
 macro_rules! de_num {
     ($name:ident, $i:ident, $u:ident) => {
-        fn $name(unsigned: bool, buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+        // fn $name(unsigned: bool, buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+        fn $name(unsigned: bool, buf: &mut ParseBuf) -> io::Result<Self> {
             if unsigned {
                 buf.$u()
                     .ok_or_else(unexpected_buf_eof)
@@ -226,7 +230,8 @@ impl Value {
     pub fn bin_len(&self) -> u64 {
         match self {
             Value::NULL => 0,
-            Value::Bytes(x) => lenenc_str_len(&*x),
+            // Value::Bytes(x) => lenenc_str_len(&*x),
+            Value::Bytes(x) => lenenc_str_len(&RingSlice::from_vec(x)),
             Value::Int(_) => 8,
             Value::UInt(_) => 8,
             Value::Float(_) => 4,
@@ -296,7 +301,8 @@ impl Value {
         }
     }
 
-    fn deserialize_text(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    // fn deserialize_text(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    fn deserialize_text(buf: &mut ParseBuf) -> io::Result<Self> {
         if buf.is_empty() {
             return Err(unexpected_buf_eof());
         }
@@ -308,7 +314,11 @@ impl Value {
             }
             _ => {
                 let bytes: RawBytes<LenEnc> = buf.parse(())?;
-                Ok(Value::Bytes(bytes.0.into_owned()))
+                // Ok(Value::Bytes(bytes.0.into_owned()))
+                log::debug!("+++ careful will dump for value len:{}", bytes.len());
+                let mut data = Vec::with_capacity(bytes.len());
+                bytes.0.copy_to_vec(&mut data);
+                Ok(Value::Bytes(data))
             }
         }
     }
@@ -317,7 +327,8 @@ impl Value {
     de_num!(deserialize_short, checked_eat_i16_le, checked_eat_u16_le);
     de_num!(deserialize_long, checked_eat_i32_le, checked_eat_u32_le);
 
-    fn deserialize_longlong(unsigned: bool, buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    // fn deserialize_longlong(unsigned: bool, buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    fn deserialize_longlong(unsigned: bool, buf: &mut ParseBuf) -> io::Result<Self> {
         if unsigned {
             buf.checked_eat_u64_le()
                 .ok_or_else(unexpected_buf_eof)
@@ -329,7 +340,8 @@ impl Value {
         }
     }
 
-    fn deserialize_datetime(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    // fn deserialize_datetime(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    fn deserialize_datetime(buf: &mut ParseBuf) -> io::Result<Self> {
         let len = buf.checked_eat_u8().ok_or_else(unexpected_buf_eof)?;
 
         let mut year = 0u16;
@@ -361,7 +373,8 @@ impl Value {
         Ok(Date(year, month, day, hour, minute, second, micro_second))
     }
 
-    fn deserialize_time(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    // fn deserialize_time(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    fn deserialize_time(buf: &mut ParseBuf) -> io::Result<Self> {
         let len = buf.checked_eat_u8().ok_or_else(unexpected_buf_eof)?;
 
         let mut is_negative = false;
@@ -398,7 +411,8 @@ impl Value {
 
     pub(crate) fn deserialize_bin(
         (column_type, column_flags): (ColumnType, ColumnFlags),
-        buf: &mut ParseBuf<'_>,
+        buf: &mut ParseBuf,
+        // buf: &mut ParseBuf<'_>,
     ) -> io::Result<Self> {
         match column_type {
             ColumnType::MYSQL_TYPE_STRING
@@ -414,11 +428,21 @@ impl Value {
             | ColumnType::MYSQL_TYPE_BIT
             | ColumnType::MYSQL_TYPE_NEWDECIMAL
             | ColumnType::MYSQL_TYPE_GEOMETRY
-            | ColumnType::MYSQL_TYPE_JSON => Ok(Bytes(
-                buf.checked_eat_lenenc_str()
-                    .ok_or_else(unexpected_buf_eof)?
-                    .to_vec(),
-            )),
+            | ColumnType::MYSQL_TYPE_JSON => {
+                // Ok(Bytes(
+                //     buf.checked_eat_lenenc_str()
+                //         .ok_or_else(unexpected_buf_eof)?
+                //         .to_vec(),
+                // ))
+                // TODO 注意参考上面的逻辑，check一致性 fishermen
+                let slice = buf
+                    .checked_eat_lenenc_str()
+                    .ok_or_else(unexpected_buf_eof)?;
+                match slice.try_oneway_slice(0, slice.len()) {
+                    Some(bytes) => Ok(Bytes(bytes.to_vec())),
+                    None => Ok(Bytes(slice.dump_ring_part(0, slice.len()))),
+                }
+            }
             ColumnType::MYSQL_TYPE_TINY => {
                 Self::deserialize_tiny(column_flags.contains(ColumnFlags::UNSIGNED_FLAG), buf)
             }
@@ -659,9 +683,12 @@ mod test {
 
     #[test]
     fn mysql_simple_issue_284() -> io::Result<()> {
+        use ds::RingSlice;
         use Value::*;
 
-        let mut buf = ParseBuf(&[1, 49, 1, 50, 1, 51, 251, 1, 52, 1, 53, 251, 1, 55][..]);
+        let data = vec![1, 49, 1, 50, 1, 51, 251, 1, 52, 1, 53, 251, 1, 55];
+        let slice = RingSlice::from_vec(&data);
+        let mut buf = ParseBuf(slice);
         assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"1".to_vec()));
         assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"2".to_vec()));
         assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"3".to_vec()));
