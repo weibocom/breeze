@@ -3,7 +3,8 @@ use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
 //从不拥有数据，是对ptr+start的引用
-#[derive(Default)]
+// #[derive(Default, Copy, Clone, Eq, Ord, Hash)]
+#[derive(Default, Clone, Copy, Eq, Hash)]
 pub struct RingSlice {
     ptr: usize,
     cap: u32,
@@ -15,9 +16,28 @@ pub struct RingSlice {
 // 将ring_slice拆分成2个seg。分别调用
 macro_rules! with_segment_oft {
     ($self:expr, $oft:expr, $noseg:expr, $seg:expr) => {{
-        debug_assert!($oft <= $self.len());
-        let oft_start = $self.mask($self.start() + $oft);
+        // debug_assert!($oft <= $self.len());
+        // let oft_start = $self.mask($self.start() + $oft);
+        // let len = $self.len() - $oft;
+
+        // if oft_start + len <= $self.cap() {
+        //     unsafe { $noseg($self.ptr().add(oft_start), len) }
+        // } else {
+        //     let seg1 = $self.cap() - oft_start;
+        //     let seg2 = len - seg1;
+        //     unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
+        // }
         let len = $self.len() - $oft;
+        with_segment_oft_len!($self, $oft, len, $noseg, $seg)
+    }};
+}
+
+// 基于oft、len对slice的2个seg进行调用
+macro_rules! with_segment_oft_len {
+    ($self:expr, $oft:expr, $len:expr, $noseg:expr, $seg:expr) => {{
+        debug_assert!($oft + $len <= $self.len());
+        let oft_start = $self.mask($self.start() + $oft);
+        let len = ($self.len() - $oft).min($len);
 
         if oft_start + len <= $self.cap() {
             unsafe { $noseg($self.ptr().add(oft_start), len) }
@@ -81,21 +101,48 @@ impl RingSlice {
         }
     }
     #[inline(always)]
-    pub(super) fn visit_segment_oft(&self, oft: usize, mut v: impl FnMut(*mut u8, usize)) {
-        with_segment_oft!(self, oft, |p, l| v(p, l), |p0, l0, p1, l1| {
+    pub(super) fn visit_segment_oft(&self, oft: usize, v: impl FnMut(*mut u8, usize)) {
+        // with_segment_oft!(self, oft, |p, l| v(p, l), |p0, l0, p1, l1| {
+        //     v(p0, l0);
+        //     v(p1, l1);
+        // });
+        self.visit_segment_oft_len(oft, self.len(), v);
+    }
+    #[inline(always)]
+    pub(super) fn visit_segment_oft_len(
+        &self,
+        oft: usize,
+        len: usize,
+        mut v: impl FnMut(*mut u8, usize),
+    ) {
+        with_segment_oft_len!(self, oft, len, |p, l| v(p, l), |p0, l0, p1, l1| {
             v(p0, l0);
             v(p1, l1);
         });
     }
     #[inline(always)]
-    pub fn data_oft(&self, oft: usize) -> (&[u8], &[u8]) {
+    pub fn data_oft_len(&self, oft: usize, len: usize) -> (&[u8], &[u8]) {
+        assert!(oft + len <= self.len(), "{}/{} =>{:?}", oft, len, self);
+
         static EMPTY: &[u8] = &[];
-        with_segment_oft!(
+        with_segment_oft_len!(
             self,
             oft,
+            len,
             |ptr, len| (from_raw_parts(ptr, len), EMPTY),
             |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
         )
+    }
+    #[inline(always)]
+    pub fn data_oft(&self, oft: usize) -> (&[u8], &[u8]) {
+        // static EMPTY: &[u8] = &[];
+        // with_segment_oft!(
+        //     self,
+        //     oft,
+        //     |ptr, len| (from_raw_parts(ptr, len), EMPTY),
+        //     |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
+        // )
+        self.data_oft_len(oft, self.len() - oft)
     }
     #[inline(always)]
     pub fn data(&self) -> (&[u8], &[u8]) {
@@ -168,12 +215,61 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
+        // v.reserve(self.len());
+        // self.visit_segment_oft(0, |p, l| unsafe {
+        //     copy_nonoverlapping(p, v.as_mut_ptr().add(v.len()), l);
+        //     v.set_len(v.len() + l);
+        // });
+
+        // TODO 参考上面的逻辑，测试稳定前暂不清理 fishermen
         v.reserve(self.len());
-        self.visit_segment_oft(0, |p, l| unsafe {
-            copy_nonoverlapping(p, v.as_mut_ptr().add(v.len()), l);
-            v.set_len(v.len() + l);
-        });
+        let len = v.len();
+        let len_final = len + self.len();
+        // 先设置长度，再用切片方式调用，避免越界
+        unsafe {
+            v.set_len(len_final);
+        }
+        self.copy_to_slice(&mut v[len..len_final]);
     }
+    #[inline]
+    pub fn copy_to_vec_with_len(&self, v: &mut Vec<u8>, len: usize) {
+        self.copy_to_vec_with_oft_len(0, len, v)
+    }
+    // TODO 会多生成一个RingSlice，优化的空间有多大？ fishermen
+    #[inline]
+    pub fn copy_to_vec_with_oft_len(&self, oft: usize, len: usize, v: &mut Vec<u8>) {
+        self.sub_slice(oft, len).copy_to_vec(v)
+    }
+    /// copy 数据到切片/数组中，目前暂时不需要oft，有需求后再加
+    #[inline]
+    pub fn copy_to_slice(&self, s: &mut [u8]) {
+        with_segment_oft_len!(
+            self,
+            0,
+            s.len(),
+            |p, l| {
+                copy_nonoverlapping(p, s.as_mut_ptr(), l);
+            },
+            |p0, l0, p1, l1| {
+                copy_nonoverlapping(p0, s.as_mut_ptr(), l0);
+                copy_nonoverlapping(p1, s.as_mut_ptr().add(l0), l1);
+            }
+        )
+    }
+    // /// copy 前len个bytes 到 BufMut，注意check len的长度
+    // #[inline]
+    // pub fn copy_to_bufmut(&self, buf: &mut dyn BufMut, len: usize) {
+    //     let (l, r) = self.data();
+    //     if len <= l.len() {
+    //         buf.put_slice(&l[..len]);
+    //         return;
+    //     }
+
+    //     // len大于l.len
+    //     buf.put_slice(l);
+    //     let rmin = r.len().min(len - l.len());
+    //     buf.put_slice(&r[..rmin]);
+    // }
     #[inline(always)]
     pub(super) fn cap(&self) -> usize {
         self.cap as usize
@@ -271,6 +367,47 @@ impl RingSlice {
     pub fn read_u16(&self, oft: usize) -> u16 {
         debug_assert!(self.len() >= oft + 2);
         (self[oft] as u16) << 8 | self[oft + 1] as u16
+    }
+
+    /// 尝试低成本获取一个单向的切片，如果有折返，则返回None
+    #[inline]
+    pub fn try_oneway_slice(&self, oft: usize, len: usize) -> Option<&[u8]> {
+        // 根据oft、len拿到两段数据，如果第二段长度为0，说明是单向slice
+        let (l, r) = self.data_oft_len(oft, len);
+        match r.len() {
+            0 => Some(l),
+            _ => None,
+        }
+    }
+
+    /// dump折返字节【必须包含折返】到目标dest vec中
+    /// 注意：目标数据必须有折返，否则assert失败；
+    /// 使用姿势：先使用try_oneway_slice尝试获取单向切片数据，失败后，再使用本方法；
+    #[inline]
+    pub fn dump_ring_part(&self, oft: usize, len: usize) -> Vec<u8> {
+        let mut dest = Vec::with_capacity(len);
+        self.copy_to_vec_with_oft_len(oft, len, &mut dest);
+        log::debug!("+++ copy ring part data to vec: {:?}", dest);
+
+        dest
+    }
+
+    /// 以指定的位置将slice分拆为2部分，返回[0, n）
+    #[inline]
+    pub fn eat(&mut self, n: usize) -> Self {
+        let eaten = self.sub_slice(0, n);
+        self.skip(n);
+
+        eaten
+    }
+
+    #[inline]
+    pub fn skip(&mut self, n: usize) {
+        assert!(n <= self.len(), "too big to skip: {}/{:?}", n, self);
+
+        // 如果RingSlice的结构变化，注意审视这里是否需要调整 fishermen
+        self.start = self.mask(self.start() + n) as u32;
+        self.len = self.len - n as u32;
     }
 }
 
@@ -384,3 +521,31 @@ impl PartialEq<(&[u8], &[u8])> for super::RingSlice {
         f == other.0 && s == other.1
     }
 }
+// TODO Ord 对RingSlice怪怪的，目前只是为了满足kv需要，需要考虑统一去掉？fishermen
+impl Ord for RingSlice {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.len().cmp(&other.len())
+    }
+}
+impl PartialOrd for RingSlice {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+// / RingSlice增加对Iterator的支持
+// / 注意：当前只需更新start、len，如果后续RingSlice结构变化，注意审视该方法是否需要变化 fishermen
+// impl Iterator for RingSlice {
+//     type Item = u8;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if self.len() > 0 {
+//             let val = self.at(0);
+//             self.start = self.mask(self.start() + 1) as u32;
+//             self.len = self.len - 1;
+
+//             Some(val)
+//         } else {
+//             None
+//         }
+//     }
+// }

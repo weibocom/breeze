@@ -41,6 +41,8 @@ sha2 = "0.10.0"
 url = "2.1"
 percent-encoding = "2.1.0"
 
+[features]
+max_allowed_packet = []
 
 [dev-dependencies]
 proptest = "1.0"
