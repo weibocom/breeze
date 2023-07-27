@@ -41,7 +41,7 @@ where
         client,
         parser,
         pending: VecDeque::with_capacity(15),
-        waker: AtomicWaker::default(),
+        waker: Arc::new(AtomicWaker::default()),
         flush: false,
         start: Instant::now(),
         start_init: false,
@@ -58,7 +58,7 @@ pub struct CopyBidirectional<C, P, T> {
     client: C,
     parser: P,
     pending: VecDeque<CallbackContextPtr>,
-    waker: AtomicWaker,
+    waker: Arc<AtomicWaker>,
 
     metrics: Arc<StreamMetrics>,
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
@@ -233,7 +233,7 @@ where
 // struct Visitor<'a, P, T> {
 struct Visitor<'a, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
-    waker: &'a AtomicWaker,
+    waker: &'a Arc<AtomicWaker>,
     top: &'a T,
     // parser: &'a P,
     first: &'a mut bool,
@@ -255,7 +255,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
         let cb = self.top.callback();
         let ctx = self
             .arena
-            .alloc(CallbackContext::new(cmd, &self.waker, cb, first, last));
+            .alloc(CallbackContext::new(cmd, self.waker, cb, first, last));
         let mut ctx = CallbackContextPtr::from(ctx, self.arena);
 
         // pendding 会move走ctx，所以提前把req给封装好
