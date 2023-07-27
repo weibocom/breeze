@@ -290,7 +290,7 @@ impl HashedCommand {
         &mut self.flag
     }
     #[inline]
-    pub(crate) fn origin_data(&self) -> &MemGuard {
+    pub fn origin_data(&self) -> &MemGuard {
         if let Some(origin) = &self.origin_cmd {
             origin
         } else {
