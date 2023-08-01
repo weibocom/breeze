@@ -1604,8 +1604,9 @@ impl HandshakePacket {
         //     })
         // TODO 参考上面的代码，彻底稳定前，暂时不要清理 fishermen
         let version = self.server_version_ref();
-        match version.try_oneway_slice(0, version.len()) {
-            Some(data) => VERSION_RE.captures(data).map(|captures| {
+        let (l, r) = version.data();
+        match r.len() {
+            0 => VERSION_RE.captures(l).map(|captures| {
                 // Should not panic because validated with regex
                 (
                     parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
@@ -1613,8 +1614,9 @@ impl HandshakePacket {
                     parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
                 )
             }),
-            None => {
-                let data = version.dump_ring_part(0, version.len());
+            _ => {
+                let mut data = Vec::with_capacity(version.len());
+                version.copy_to_vec(&mut data);
                 VERSION_RE.captures(&data[..]).map(|captures| {
                     // Should not panic because validated with regex
                     (
@@ -1625,14 +1627,6 @@ impl HandshakePacket {
                 })
             }
         }
-        // capture.map(|captures| {
-        //     // Should not panic because validated with regex
-        //     (
-        //         parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
-        //         parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
-        //         parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
-        //     )
-        // })
     }
 
     // /// Parsed mariadb server version.

@@ -52,9 +52,9 @@ fn test_ring_slice() {
         std::ptr::copy_nonoverlapping(bytes.as_ptr().offset(1), ptr, 3);
     }
     let num_range = RingSlice::from(ptr, cap, 1000, 1064);
-    assert_eq!(u32_num, num_range.read_u32(32));
+    assert_eq!(u32_num, num_range.read_u32_be(32));
 
-    assert_eq!(u32_num, num_range.read_u32(23));
+    assert_eq!(u32_num, num_range.read_u32_be(23));
 
     // 验证查找\r\n
     let mut lines = RingSlice::from(ptr, cap, cap - 32, cap + 32);
@@ -90,7 +90,7 @@ fn test_read_number() {
         let end = start + len;
         let rs = RingSlice::from(ptr, cap, start, end);
         let oft: usize = rand::thread_rng().gen_range(0..len - 8);
-        assert_eq!(rs.read_u64(oft), rs.read_num_be(oft));
+        assert_eq!(rs.read_u64_be(oft), rs.read_num_be(oft));
     }
     let _ = unsafe { Vec::from_raw_parts(ptr, 0, cap) };
 }

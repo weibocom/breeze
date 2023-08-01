@@ -228,17 +228,17 @@ impl Binary for RingSlice {
     #[inline(always)]
     fn total_body_len(&self) -> u32 {
         debug_assert!(self.len() >= HEADER_LEN);
-        self.read_u32(PacketPos::TotalBodyLength as usize)
+        self.read_u32_be(PacketPos::TotalBodyLength as usize)
     }
     #[inline(always)]
     fn opaque(&self) -> u32 {
         debug_assert!(self.len() >= HEADER_LEN);
-        self.read_u32(PacketPos::Opaque as usize)
+        self.read_u32_be(PacketPos::Opaque as usize)
     }
     #[inline(always)]
     fn cas(&self) -> u64 {
         debug_assert!(self.len() >= HEADER_LEN);
-        self.read_u64(PacketPos::Cas as usize)
+        self.read_u64_be(PacketPos::Cas as usize)
     }
     #[inline(always)]
     fn packet_len(&self) -> usize {

@@ -60,6 +60,7 @@ pub struct BinValue;
 pub enum Value {
     NULL,
     Bytes(Vec<u8>),
+    // Bytes(RingSlice),
     Int(i64),
     UInt(u64),
     Float(f32),
@@ -438,10 +439,19 @@ impl Value {
                 let slice = buf
                     .checked_eat_lenenc_str()
                     .ok_or_else(unexpected_buf_eof)?;
-                match slice.try_oneway_slice(0, slice.len()) {
-                    Some(bytes) => Ok(Bytes(bytes.to_vec())),
-                    None => Ok(Bytes(slice.dump_ring_part(0, slice.len()))),
+                let (l, r) = slice.data();
+                match r.len() {
+                    0 => Ok(Bytes(l.into())),
+                    _ => {
+                        let mut bytes = Vec::with_capacity(slice.len());
+                        slice.copy_to_vec(&mut bytes);
+                        Ok(Bytes(bytes))
+                    }
                 }
+                // match slice.try_oneway_slice(0, slice.len()) {
+                //     Some(bytes) => Ok(Bytes(bytes.to_vec())),
+                //     None => Ok(Bytes(slice.dump_ring_part(0, slice.len()))),
+                // }
             }
             ColumnType::MYSQL_TYPE_TINY => {
                 Self::deserialize_tiny(column_flags.contains(ColumnFlags::UNSIGNED_FLAG), buf)
