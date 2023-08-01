@@ -369,28 +369,29 @@ impl RingSlice {
         (self[oft] as u16) << 8 | self[oft + 1] as u16
     }
 
-    /// 尝试低成本获取一个单向的切片，如果有折返，则返回None
-    #[inline]
-    pub fn try_oneway_slice(&self, oft: usize, len: usize) -> Option<&[u8]> {
-        // 根据oft、len拿到两段数据，如果第二段长度为0，说明是单向slice
-        let (l, r) = self.data_oft_len(oft, len);
-        match r.len() {
-            0 => Some(l),
-            _ => None,
-        }
-    }
+    // TODO 测试完毕后，清理dead code
+    // /// 尝试低成本获取一个单向的切片，如果有折返，则返回None
+    // #[inline]
+    // pub fn try_oneway_slice(&self, oft: usize, len: usize) -> Option<&[u8]> {
+    //     // 根据oft、len拿到两段数据，如果第二段长度为0，说明是单向slice
+    //     let (l, r) = self.data_oft_len(oft, len);
+    //     match r.len() {
+    //         0 => Some(l),
+    //         _ => None,
+    //     }
+    // }
 
-    /// dump折返字节【必须包含折返】到目标dest vec中
-    /// 注意：目标数据必须有折返，否则assert失败；
-    /// 使用姿势：先使用try_oneway_slice尝试获取单向切片数据，失败后，再使用本方法；
-    #[inline]
-    pub fn dump_ring_part(&self, oft: usize, len: usize) -> Vec<u8> {
-        let mut dest = Vec::with_capacity(len);
-        self.copy_to_vec_with_oft_len(oft, len, &mut dest);
-        log::debug!("+++ copy ring part data to vec: {:?}", dest);
+    // /// dump折返字节【必须包含折返】到目标dest vec中
+    // /// 注意：目标数据必须有折返，否则assert失败；
+    // /// 使用姿势：先使用try_oneway_slice尝试获取单向切片数据，失败后，再使用本方法；
+    // #[inline]
+    // pub fn dump_ring_part(&self, oft: usize, len: usize) -> Vec<u8> {
+    //     let mut dest = Vec::with_capacity(len);
+    //     self.copy_to_vec_with_oft_len(oft, len, &mut dest);
+    //     log::debug!("+++ copy ring part data to vec: {:?}", dest);
 
-        dest
-    }
+    //     dest
+    // }
 
     /// 以指定的位置将slice分拆为2部分，返回[0, n）
     #[inline]
@@ -409,6 +410,33 @@ impl RingSlice {
         self.start = self.mask(self.start() + n) as u32;
         self.len = self.len - n as u32;
     }
+
+    /// 展示所有内容，仅用于长度比较小的场景 fishermen
+    #[inline]
+    pub fn as_string_lossy(&self) -> String {
+        debug_assert!(self.len() < 512);
+
+        let (l, r) = self.data();
+        match r.len() {
+            0 => String::from_utf8_lossy(l).into(),
+            _ => {
+                let mut data = Vec::with_capacity(self.len());
+                self.copy_to_vec(&mut data);
+                String::from_utf8_lossy(data.as_slice()).into()
+            }
+        }
+    }
+
+    // Value 改造成RingSlice，影响范围太大，且受益看似不大，先撤回 fishermen
+    // /// 检测档期slice自oft开始，是否全部是合法的utf字节序
+    // #[inline]
+    // pub fn utf8_check(&self, oft: usize) -> bool {
+    //     let (valid, pos) = self.utf8_validation(oft);
+    //     if !valid {
+    //         log::info!("found invalid utf8 bytes: {}/{:?}", pos, self);
+    //     }
+    //     valid
+    // }
 }
 
 //unsafe impl Send for RingSlice {}
@@ -416,7 +444,7 @@ impl RingSlice {
 
 use std::convert::TryInto;
 macro_rules! define_read_number {
-    ($fn_name:ident, $type_name:tt) => {
+    ($fn_name:ident, $type_name:tt::$type_fn:ident) => {
         #[inline]
         pub fn $fn_name(&self, oft: usize) -> $type_name {
             const SIZE: usize = std::mem::size_of::<$type_name>();
@@ -425,22 +453,67 @@ macro_rules! define_read_number {
             let len = self.cap() - oft_start; // 从oft_start到cap的长度
             if len >= SIZE {
                 let b = unsafe { from_raw_parts(self.ptr().add(oft_start), SIZE) };
-                $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
+                // $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
+                $type_name::$type_fn(b[..SIZE].try_into().unwrap())
             } else {
                 // 分段读取
                 let mut b = [0u8; SIZE];
                 use copy_nonoverlapping as copy;
                 unsafe { copy(self.ptr().add(oft_start), b.as_mut_ptr(), len) };
                 unsafe { copy(self.ptr(), b.as_mut_ptr().add(len), SIZE - len) };
-                $type_name::from_be_bytes(b)
+                // $type_name::from_be_bytes(b)
+                $type_name::$type_fn(b)
             }
+        }
+    };
+
+    // 注意这里的offset，是转成目标类型时，在目标类型字节中的偏移
+    ($name:ident, $size:literal, $offset:literal, $t:tt::$fn:ident) => {
+        #[inline]
+        #[doc = "读取指定偏移、字节的数字，仅仅支持小端"]
+        pub fn $name(&self, oft: usize) -> $t {
+            // pub fn $name(&mut self, oft: usize) -> $t {
+            const SIZE: usize = $size;
+            debug_assert!(self.len() >= (oft + SIZE));
+            let mut x: $t = 0;
+            // let bytes = self.eat(SIZE);
+            // for (i, b) in bytes.iter().enumerate() {
+            //     x |= (*b as $t) << ((8 * i) + (8 * $offset));
+            // }
+            // $t::$fn(x)
+
+            // eat 放到外层去处理，ringslice后续改为静态类型？ fishermen
+            // let slice = self.eat(SIZE);
+            for i in 0..SIZE {
+                let b = self.at(oft + i);
+                x |= (b as $t) << ((8 * i) + (8 * $offset));
+            }
+            $t::$fn(x)
         }
     };
 }
 
 impl RingSlice {
-    define_read_number!(read_u32, u32);
-    define_read_number!(read_u64, u64);
+    // little endian
+    define_read_number!(read_u8_le, u8::from_le_bytes);
+    define_read_number!(read_i8_le, i8::from_le_bytes);
+    define_read_number!(read_u16_le, u16::from_le_bytes);
+    define_read_number!(read_i16_le, i16::from_le_bytes);
+    define_read_number!(read_u24_le, 3, 0, u32::from_le);
+    define_read_number!(read_i24_le, 3, 0, i32::from_le);
+    define_read_number!(read_u32_le, u32::from_le_bytes);
+    define_read_number!(read_i32_le, i32::from_le_bytes);
+    define_read_number!(read_u48_le, 6, 0, u64::from_le);
+    define_read_number!(read_u56_le, 7, 0, u64::from_le);
+    define_read_number!(read_i56_le, 7, 0, i64::from_le);
+    define_read_number!(read_u64_le, u64::from_le_bytes);
+    define_read_number!(read_i64_le, i64::from_le_bytes);
+    define_read_number!(read_f32_le, f32::from_le_bytes);
+    define_read_number!(read_f64_le, f64::from_le_bytes);
+
+    // big endian
+    define_read_number!(read_u32_be, u32::from_be_bytes);
+    define_read_number!(read_u64_be, u64::from_be_bytes);
 }
 
 impl From<&[u8]> for RingSlice {
@@ -548,4 +621,188 @@ impl PartialOrd for RingSlice {
 //             None
 //         }
 //     }
+// }
+
+// impl RingSlice {
+//     // utf8 校验，不想做内存copy，所以搬出来实现 fishermen
+//     // #[rustc_const_unstable(feature = "str_internals", issue = "none")]
+//     #[inline(always)]
+//     // pub(super) const fn run_utf8_validation(v: &[u8]) -> Result<(), Utf8Error> {
+//     fn utf8_validation(&self, oft: usize) -> (bool, usize) {
+//         let mut index = oft;
+//         let len = self.len();
+
+//         let usize_bytes = std::mem::size_of::<usize>();
+//         let ascii_block_size = 2 * usize_bytes;
+//         let blocks_end = if len >= ascii_block_size {
+//             len - ascii_block_size + 1
+//         } else {
+//             0
+//         };
+//         let start_mask = self.mask(self.start() + oft);
+//         // let align = v.as_ptr().align_offset(usize_bytes);
+//         let align = unsafe { self.ptr().add(start_mask).align_offset(usize_bytes) };
+
+//         while index < len {
+//             let old_offset = index;
+//             macro_rules! err {
+//                 ($error_len: expr) => {
+//                     // return Err(Utf8Error {
+//                     //     old_offset,
+//                     //     $error_len,
+//                     // })
+//                     return (false, old_offset);
+//                 };
+//             }
+
+//             macro_rules! next {
+//                 () => {{
+//                     index += 1;
+//                     // we needed data, but there was none: error!
+//                     if index >= len {
+//                         err!(None)
+//                     }
+//                     // self[index]
+//                     self.at(index)
+//                 }};
+//             }
+
+//             // 不用[]来取，方便代码跟踪
+//             // let first = v[index];
+//             let first = self.at(index);
+//             if first >= 128 {
+//                 let w = utf8_char_width(first);
+//                 // 2-byte encoding is for codepoints  \u{0080} to  \u{07ff}
+//                 //        first  C2 80        last DF BF
+//                 // 3-byte encoding is for codepoints  \u{0800} to  \u{ffff}
+//                 //        first  E0 A0 80     last EF BF BF
+//                 //   excluding surrogates codepoints  \u{d800} to  \u{dfff}
+//                 //               ED A0 80 to       ED BF BF
+//                 // 4-byte encoding is for codepoints \u{1000}0 to \u{10ff}ff
+//                 //        first  F0 90 80 80  last F4 8F BF BF
+//                 //
+//                 // Use the UTF-8 syntax from the RFC
+//                 //
+//                 // https://tools.ietf.org/html/rfc3629
+//                 // UTF8-1      = %x00-7F
+//                 // UTF8-2      = %xC2-DF UTF8-tail
+//                 // UTF8-3      = %xE0 %xA0-BF UTF8-tail / %xE1-EC 2( UTF8-tail ) /
+//                 //               %xED %x80-9F UTF8-tail / %xEE-EF 2( UTF8-tail )
+//                 // UTF8-4      = %xF0 %x90-BF 2( UTF8-tail ) / %xF1-F3 3( UTF8-tail ) /
+//                 //               %xF4 %x80-8F 2( UTF8-tail )
+//                 match w {
+//                     2 => {
+//                         if next!() as i8 >= -64 {
+//                             err!(Some(1))
+//                         }
+//                     }
+//                     3 => {
+//                         match (first, next!()) {
+//                             (0xE0, 0xA0..=0xBF)
+//                             | (0xE1..=0xEC, 0x80..=0xBF)
+//                             | (0xED, 0x80..=0x9F)
+//                             | (0xEE..=0xEF, 0x80..=0xBF) => {}
+//                             _ => err!(Some(1)),
+//                         }
+//                         if next!() as i8 >= -64 {
+//                             err!(Some(2))
+//                         }
+//                     }
+//                     4 => {
+//                         match (first, next!()) {
+//                             (0xF0, 0x90..=0xBF)
+//                             | (0xF1..=0xF3, 0x80..=0xBF)
+//                             | (0xF4, 0x80..=0x8F) => {}
+//                             _ => err!(Some(1)),
+//                         }
+//                         if next!() as i8 >= -64 {
+//                             err!(Some(2))
+//                         }
+//                         if next!() as i8 >= -64 {
+//                             err!(Some(3))
+//                         }
+//                     }
+//                     _ => err!(Some(1)),
+//                 }
+//                 index += 1;
+//             } else {
+//                 // Ascii case, try to skip forward quickly.
+//                 // When the pointer is aligned, read 2 words of data per iteration
+//                 // until we find a word containing a non-ascii byte.
+//                 if align != usize::MAX && align.wrapping_sub(index) % usize_bytes == 0 {
+//                     // let ptr = v.as_ptr();
+//                     let ptr = self.ptr();
+//                     while index < blocks_end {
+//                         // SAFETY: since `align - index` and `ascii_block_size` are
+//                         // multiples of `usize_bytes`, `block = ptr.add(index)` is
+//                         // always aligned with a `usize` so it's safe to dereference
+//                         // both `block` and `block.add(1)`.
+//                         unsafe {
+//                             let block = ptr.add(index) as *const usize;
+//                             // break if there is a nonascii byte
+//                             let zu = contains_nonascii(*block);
+//                             let zv = contains_nonascii(*block.add(1));
+//                             if zu || zv {
+//                                 break;
+//                             }
+//                         }
+//                         index += ascii_block_size;
+//                     }
+//                     // step from the point where the wordwise loop stopped
+//                     // while index < len && v[index] < 128 {
+//                     while index < len && self.at(index) < 128 {
+//                         index += 1;
+//                     }
+//                 } else {
+//                     index += 1;
+//                 }
+//             }
+//         }
+
+//         (true, 0)
+//         // Ok(())
+//     }
+// }
+
+// // https://tools.ietf.org/html/rfc3629
+// const UTF8_CHAR_WIDTH: &[u8; 256] = &[
+//     // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0
+//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 1
+//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 2
+//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 3
+//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
+//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
+//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 6
+//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 7
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
+//     0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // C
+//     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // D
+//     3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, // E
+//     4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
+// ];
+
+// /// Given a first byte, determines how many bytes are in this UTF-8 character.
+// //#[unstable(feature = "str_internals", issue = "none")]
+// #[must_use]
+// #[inline]
+// const fn utf8_char_width(b: u8) -> usize {
+//     UTF8_CHAR_WIDTH[b as usize] as usize
+// }
+
+// const NONASCII_MASK: usize = repeat_u8(0x80);
+
+// /// Returns `true` if any byte in the word `x` is nonascii (>= 128).
+// #[inline]
+// const fn contains_nonascii(x: usize) -> bool {
+//     (x & NONASCII_MASK) != 0
+// }
+
+// /// Returns an `usize` where every byte is equal to `x`.
+// #[inline]
+// const fn repeat_u8(x: u8) -> usize {
+//     usize::from_ne_bytes([x; std::mem::size_of::<usize>()])
 // }

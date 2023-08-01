@@ -108,7 +108,7 @@ impl From<BigUint> for Value {
         if let Some(x) = x.to_u64() {
             Value::UInt(x)
         } else {
-            Value::Bytes(x.to_string().into())
+            Value::Bytes(x.to_string().into_bytes().into())
         }
     }
 }
