@@ -73,10 +73,12 @@ impl Protocol for Kv {
         }
     }
 
-    fn need_auth(&self) -> bool {
-        true
+    fn config(&self) -> crate::Config {
+        crate::Config {
+            need_auth: true,
+            ..Default::default()
+        }
     }
-
     // 解析mc binary协议，在发送端进行协议转换
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
