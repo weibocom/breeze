@@ -35,6 +35,7 @@ pub struct CallbackContext {
     done: AtomicBool,            // 当前模式请求是否完成
     inited: AtomicBool,          // response是否已经初始化
     pub(crate) try_next: bool,   // 请求失败是否需要重试
+    retry_on_rsp_notok: bool,    //有响应且响应不ok时，是否需要重试
     pub(crate) write_back: bool, // 请求结束后，是否需要回写。
     first: bool,                 // 当前请求是否是所有子请求的第一个
     last: bool,                  // 当前请求是否是所有子请求的最后一个
@@ -55,6 +56,7 @@ impl CallbackContext {
         cb: CallbackPtr,
         first: bool,
         last: bool,
+        retry_on_rsp_notok: bool,
     ) -> Self {
         log::debug!("request prepared:{}", req);
         let now = Instant::now();
@@ -66,6 +68,7 @@ impl CallbackContext {
             inited: AtomicBool::new(false),
             async_mode: false,
             try_next: false,
+            retry_on_rsp_notok,
             write_back: false,
             request: req,
             response: MaybeUninit::uninit(),
@@ -124,22 +127,38 @@ impl CallbackContext {
         }
     }
 
+    #[inline]
+    fn need_gone(&self) -> bool {
+        if !self.async_mode {
+            // 当前重试条件为 rsp == None || ("mc" && !rsp.ok())
+            if self.inited() {
+                // 优先筛出正常的请求，便于理解
+                // rsp.ok 不需要重试
+                if unsafe { self.unchecked_response().ok() } {
+                    return false;
+                }
+                //有响应并且!ok，配置了!retry_on_rsp_notok，不需要重试，比如mysql
+                if !self.retry_on_rsp_notok {
+                    return false;
+                }
+            }
+            self.try_next && self.tries.fetch_add(1, Release) < 1
+        } else {
+            // write back请求
+            self.write_back
+        }
+    }
+
     // 只有在构建了response，该request才可以设置completed为true
     #[inline]
     fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
-        let goon = if !self.async_mode {
+        if !self.async_mode {
             // 更新backend使用的时间
             self.quota.take().map(|q| q.incr(self.start_at().elapsed()));
-            // 正常访问请求。
-            // old: 除非出现了error，否则最多只尝试一次;
-            !self.response_ok() && self.try_next && self.tries.fetch_add(1, Release) < 1
-        } else {
-            // write back请求
-            self.write_back
-        };
+        }
 
-        if goon {
+        if self.need_gone() {
             // 需要重试或回写
             return self.goon();
         }
@@ -156,10 +175,10 @@ impl CallbackContext {
         self.done.load(Acquire)
     }
 
-    #[inline]
-    fn response_ok(&self) -> bool {
-        unsafe { self.inited() && self.unchecked_response().ok() }
-    }
+    // #[inline]
+    // fn response_ok(&self) -> bool {
+    //     unsafe { self.inited() && self.unchecked_response().ok() }
+    // }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
         // 正常err场景，仅仅在debug时check

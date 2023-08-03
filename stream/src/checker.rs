@@ -77,7 +77,7 @@ impl<P, Req> BackendChecker<P, Req> {
             let mut stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
 
-            if self.parser.need_auth() {
+            if self.parser.config().need_auth {
                 //todo 处理认证结果
                 let auth = Auth {
                     option: &mut self.option,
