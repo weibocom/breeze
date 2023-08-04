@@ -303,6 +303,9 @@ impl RingSlice {
 
     #[inline]
     pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
+        // TODO 先加上assert，安全第一 fishermen
+        assert!(offset <= self.len(), "offset:{}, self:{:?}", offset, self);
+
         for i in offset..self.len() {
             if self[i] == b {
                 return Some(i);
@@ -393,23 +396,24 @@ impl RingSlice {
     //     dest
     // }
 
-    /// 以指定的位置将slice分拆为2部分，返回[0, n）
-    #[inline]
-    pub fn eat(&mut self, n: usize) -> Self {
-        let eaten = self.sub_slice(0, n);
-        self.skip(n);
+    // TODO 保持ringslice的不可变特性，把位置变化，移到外部解析的parsebuf中
+    // /// 以指定的位置将slice分拆为2部分，返回[0, n）
+    // #[inline]
+    // pub fn eat(&mut self, n: usize) -> Self {
+    //     let eaten = self.sub_slice(0, n);
+    //     self.skip(n);
 
-        eaten
-    }
+    //     eaten
+    // }
 
-    #[inline]
-    pub fn skip(&mut self, n: usize) {
-        assert!(n <= self.len(), "too big to skip: {}/{:?}", n, self);
+    // #[inline]
+    // pub fn skip(&mut self, n: usize) {
+    //     assert!(n <= self.len(), "too big to skip: {}/{:?}", n, self);
 
-        // 如果RingSlice的结构变化，注意审视这里是否需要调整 fishermen
-        self.start = self.mask(self.start() + n) as u32;
-        self.len = self.len - n as u32;
-    }
+    //     // 如果RingSlice的结构变化，注意审视这里是否需要调整 fishermen
+    //     self.start = self.mask(self.start() + n) as u32;
+    //     self.len = self.len - n as u32;
+    // }
 
     /// 展示所有内容，仅用于长度比较小的场景 fishermen
     #[inline]
@@ -453,6 +457,7 @@ macro_rules! define_read_number {
             let len = self.cap() - oft_start; // 从oft_start到cap的长度
             if len >= SIZE {
                 let b = unsafe { from_raw_parts(self.ptr().add(oft_start), SIZE) };
+
                 // $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
                 $type_name::$type_fn(b[..SIZE].try_into().unwrap())
             } else {
@@ -461,7 +466,9 @@ macro_rules! define_read_number {
                 use copy_nonoverlapping as copy;
                 unsafe { copy(self.ptr().add(oft_start), b.as_mut_ptr(), len) };
                 unsafe { copy(self.ptr(), b.as_mut_ptr().add(len), SIZE - len) };
+
                 // $type_name::from_be_bytes(b)
+
                 $type_name::$type_fn(b)
             }
         }
@@ -605,23 +612,6 @@ impl PartialOrd for RingSlice {
         Some(self.cmp(other))
     }
 }
-
-// / RingSlice增加对Iterator的支持
-// / 注意：当前只需更新start、len，如果后续RingSlice结构变化，注意审视该方法是否需要变化 fishermen
-// impl Iterator for RingSlice {
-//     type Item = u8;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.len() > 0 {
-//             let val = self.at(0);
-//             self.start = self.mask(self.start() + 1) as u32;
-//             self.len = self.len - 1;
-
-//             Some(val)
-//         } else {
-//             None
-//         }
-//     }
-// }
 
 // impl RingSlice {
 //     // utf8 校验，不想做内存copy，所以搬出来实现 fishermen

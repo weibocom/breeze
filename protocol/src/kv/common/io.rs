@@ -4,7 +4,7 @@ use byteorder::{LittleEndian as LE, ReadBytesExt, WriteBytesExt};
 use bytes::BufMut;
 use ds::RingSlice;
 // use sha1::digest::typenum::Minimum;
-use std::io;
+use std::{fmt::Display, io};
 
 use super::proto::MyDeserialize;
 
@@ -67,7 +67,7 @@ pub trait BufMutExt: BufMut {
         let min = s.len().min(U8_MAX);
         self.put_u8(min as u8);
         // s.copy_to_bufmut(self, U8_MAX);
-        self.copy_from_rslice(s, min);
+        self.copy_from_slice(s, min);
     }
 
     /// Writes a string with u32 length prefix. Truncates, if the length is greater that `u32::MAX`.
@@ -80,12 +80,12 @@ pub trait BufMutExt: BufMut {
         const U32_MAX: usize = u32::MAX as usize;
         let min = s.len().min(U32_MAX);
         self.put_u32_le(min as u32);
-        self.copy_from_rslice(s, min);
+        self.copy_from_slice(s, min);
     }
 
     /// copy 前len个bytes 到 BufMut，注意check len的长度
     #[inline]
-    fn copy_from_rslice(&mut self, data: &RingSlice, len: usize) {
+    fn copy_from_slice(&mut self, data: &RingSlice, len: usize) {
         let (l, r) = data.data();
         if len <= l.len() {
             self.put_slice(&l[..len]);
@@ -103,9 +103,13 @@ pub trait BufMutExt: BufMut {
 
 impl<T: BufMut> BufMutExt for T {}
 
-// TODO check RingSlice的折返处理 fishermen
+// oft在此处统一管理，保持ringslice的不变性；
+// 所有对data的访问，需要进行统一封装，避免oft的误操作 fishermen
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ParseBuf(pub RingSlice);
+pub struct ParseBuf {
+    oft: usize,
+    data: RingSlice,
+}
 // pub struct ParseBuf<'a>(pub &'a [u8]);
 
 // impl io::Read for ParseBuf<'_> {
@@ -118,9 +122,13 @@ impl io::Read for ParseBuf {
         // Ok(count)
 
         // TODO 参考上面的代码，彻底稳定后，再考虑清理 fishermen
-        let count = self.0.len().min(buf.len());
-        self.0.copy_to_slice(&mut buf[..count]);
-        self.0.eat(count);
+        // let count = self.0.len().min(buf.len());
+        // self.0.copy_to_slice(&mut buf[..count]);
+        // self.0.eat(count);
+        // Ok(count)
+        let count = self.len().min(buf.len());
+        let data = self.eat(count);
+        data.copy_to_slice(&mut buf[..count]);
         Ok(count)
     }
 }
@@ -193,6 +201,23 @@ macro_rules! eat_num {
 
 // impl<'a> ParseBuf<'a> {
 impl<'a> ParseBuf {
+    #[inline(always)]
+    pub fn new(oft: usize, data: RingSlice) -> Self {
+        Self { oft, data }
+    }
+
+    // TODO 逻辑统一到len()中，但需要注意len的调用姿势是否需要同步修改  fishermen
+    // #[inline(always)]
+    // pub fn left_len(&self) -> usize {
+    //     // TODO 测试稳定后，此assert可以去掉？ fishermen
+    //     assert!(
+    //         self.oft <= self.data.len(),
+    //         "oft/len: {}/{}",
+    //         self.oft,
+    //         self.data.len()
+    //     );
+    //     self.data.len() - self.oft
+    // }
     // pub fn from(data: &'a [u8]) -> Self {
     //     let slice = data.into();
     //     Self(slice)
@@ -229,9 +254,36 @@ impl<'a> ParseBuf {
         self.len() == 0
     }
 
-    /// Returns the number of bytes in the buffer.
+    /// 返回尚未解析的字节长度，注意会去掉oft的长度.
     pub fn len(&self) -> usize {
-        self.0.len()
+        // self.0.len()
+
+        // TODO 语义变了，此处应该是返回剩余长度，即oft到data.len()的长度，而非data.len()本身 fishermen
+        assert!(self.oft <= self.data.len(), "Parsebuf: {:?}", self);
+        self.data.len() - self.oft
+    }
+
+    /// 代理data的at访问，转换原有语义
+    #[inline(always)]
+    pub(super) fn at(&self, idx: usize) -> u8 {
+        self.data.at(self.oft + idx)
+    }
+
+    /// 代理ringslice中的find，避免oft的困扰；
+    /// 返回值：基于当前oft的位置（保持parbuf的语义）
+    #[inline]
+    pub(super) fn find(&self, offset: usize, b: u8) -> Option<usize> {
+        if let Some(pos) = self.data.find(self.oft + offset, b) {
+            Some(pos - self.oft)
+        } else {
+            None
+        }
+    }
+
+    /// 代理ringslice中的sub_slice，避免oft的困扰
+    #[inline(always)]
+    pub(super) fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
+        self.data.sub_slice(self.oft + offset, len)
     }
 
     /// Skips the given number of bytes.
@@ -239,10 +291,21 @@ impl<'a> ParseBuf {
     /// Afterwards self contains elements `[cnt, len)`.
     pub fn skip(&mut self, cnt: usize) {
         // self.0 = &self.0[cnt..];
-        if cnt <= self.0.len() {
-            self.0 = self.0.sub_slice(cnt, self.0.len() - cnt);
+
+        // TODO 参考逻辑2，测试稳定后清理 fishermen
+        // if cnt <= self.0.len() {
+        //     self.0 = self.0.sub_slice(cnt, self.0.len() - cnt);
+        // } else {
+        //     self.0 = self.0.sub_slice(self.0.len(), 0);
+        // }
+        if cnt <= self.len() {
+            // TODO 直接偏移，跟原逻辑差异比较大，会埋坑里，所以还是保持原逻辑吧 fishermen
+            // self.oft += cnt;
+            self.data = self.sub_slice(cnt, self.len() - cnt);
+            self.oft = 0;
         } else {
-            self.0 = self.0.sub_slice(self.0.len(), 0);
+            log::error!("+++ skip overflow:{}/{:?}", cnt, self);
+            assert!(false, "{}/{}", cnt, self.len());
         }
     }
 
@@ -274,7 +337,12 @@ impl<'a> ParseBuf {
         // let data = unsafe { self.0.limited_slice(0, n) };
         // self.0 = self.0.sub_slice(n, self.len() - n);
         // data
-        self.0.eat(n)
+        // TODO 参考代码2 稳定后清理
+        // self.0.eat(n)
+
+        let data = self.sub_slice(0, n);
+        self.skip(n);
+        data
     }
 
     // pub fn eat_buf(&mut self, n: usize) -> Self {
@@ -293,11 +361,22 @@ impl<'a> ParseBuf {
 
     pub fn checked_eat_buf(&mut self, n: usize) -> Option<Self> {
         // Some(Self(self.checked_eat(n)?))
+
+        // TODO 暂时保留做参考2，稳定后清理 fishermen
+        // if self.len() >= n {
+        //     let data = self.0.sub_slice(0, n);
+        //     self.0 = self.0.sub_slice(n, self.len() - n);
+        //     Some(ParseBuf(data))
+        // } else {
+        //     None
+        // }
+
         if self.len() >= n {
-            let data = self.0.sub_slice(0, n);
-            self.0 = self.0.sub_slice(n, self.len() - n);
-            Some(ParseBuf(data))
+            // self.0 = self.0.sub_slice(n, self.len() - n);
+            let data = self.eat(n);
+            Some(ParseBuf::new(0, data))
         } else {
+            log::error!("buf overflow: {:?}", self);
             None
         }
     }
@@ -462,18 +541,28 @@ impl<'a> ParseBuf {
         // }
 
         // TODO 第三版，继续延迟copy，注意对比逻辑的一致性 fishermen
-        let pos = match self.0.find(0, 0) {
+        let pos = match self.find(0, 0) {
             Some(p) => p + 1,
             None => self.len(),
         };
         // 如果结尾是0_u8，去掉，否则直接返回
-        if self.0.at(pos - 1) == 0 {
-            let data = self.0.eat(pos - 1);
-            self.0.skip(1);
+        // TODO 对于基于data的操作特别要注意，当前parsebuf的语义都是基于oft来操作的，如果基于源data操作，需要加上oft
+        // 当前data直接使用还
+        if self.at(pos - 1) == 0 {
+            let data = self.eat(pos - 1);
+            // skip 掉一个字节：0
+            self.skip(1);
             data
         } else {
-            self.0.eat(pos)
+            self.eat(pos)
         }
+    }
+}
+
+impl From<RingSlice> for ParseBuf {
+    #[inline(always)]
+    fn from(data: RingSlice) -> Self {
+        Self::new(0, data)
     }
 }
 
@@ -535,12 +624,17 @@ pub trait WriteMysqlExt: WriteBytesExt {
     }
 }
 
-// impl From<RingSlice> for ParseBuf {
-//     #[inline(always)]
-//     fn from(data: RingSlice) -> Self {
-//         Self { inner: data }
-//     }
-// }
+impl Display for ParseBuf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ParseBuf [oft: {}, len: {}, data: {}]",
+            self.oft,
+            self.len(),
+            self.data
+        )
+    }
+}
 
 impl<T> ReadMysqlExt for T where T: ReadBytesExt {}
 impl<T> WriteMysqlExt for T where T: WriteBytesExt {}
@@ -554,7 +648,7 @@ mod tests {
         // let buf = ParseBuf(&[0, 1, 2]);
         let data = vec![0, 1, 2];
         let slice = RingSlice::from_vec(&data);
-        let buf = ParseBuf(slice);
+        let buf = ParseBuf::new(0, slice);
         assert_eq!(buf.clone().eat_u24_le(), 0x00020100);
         // assert_eq!(buf.clone().eat_u24_be(), 0x00000102);
         // let buf = ParseBuf(&[0, 1, 2, 3, 4]);

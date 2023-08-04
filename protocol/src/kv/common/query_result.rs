@@ -35,7 +35,7 @@ impl Protocol for Text {
     ) -> Result<Option<Row>> {
         match rsp_packet.next_row_packet()? {
             Some(pld) => {
-                let row = ParseBuf(*pld).parse::<RowDeserializer<(), Text>>(columns)?;
+                let row = ParseBuf::from(*pld).parse::<RowDeserializer<(), Text>>(columns)?;
                 Ok(Some(row.into()))
             }
             None => Ok(None),
@@ -50,7 +50,8 @@ impl Protocol for Binary {
     ) -> Result<Option<Row>> {
         match rsp_packet.next_row_packet()? {
             Some(pld) => {
-                let row = ParseBuf(*pld).parse::<RowDeserializer<ServerSide, Binary>>(columns)?;
+                let row =
+                    ParseBuf::from(*pld).parse::<RowDeserializer<ServerSide, Binary>>(columns)?;
                 Ok(Some(row.into()))
             }
             None => Ok(None),
@@ -288,7 +289,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
             InSet(cols) => match self.rsp_packet.next_row_packet()? {
                 Some(pld) => {
                     let row_data =
-                        ParseBuf(*pld).parse::<RowDeserializer<(), Text>>(cols.clone())?;
+                        ParseBuf::new(0, *pld).parse::<RowDeserializer<(), Text>>(cols.clone())?;
                     self.state = InSet(cols.clone());
                     return Ok(Some(row_data.into()));
                 }
@@ -417,7 +418,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> Iterator for QueryResult<'c
             InSet(cols) => match self.rsp_packet.next_row_packet() {
                 Ok(Some(pld)) => {
                     log::debug!("+++ read row data: {:?}", pld);
-                    match ParseBuf(*pld).parse::<RowDeserializer<(), Text>>(cols.clone()) {
+                    match ParseBuf::from(*pld).parse::<RowDeserializer<(), Text>>(cols.clone()) {
                         Ok(row) => {
                             log::debug!("+++ parsed row: {:?}", row);
                             self.state = InSet(cols.clone());
