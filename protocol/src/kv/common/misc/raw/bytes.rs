@@ -285,7 +285,7 @@ impl BytesRepr for NullBytes {
         // let s = vec![0, 1];
         // s.iter();
         // TODO 参考上面的逻辑，check一致性，暂时不要清理 fishermen
-        match buf.0.find(0, 0) {
+        match buf.find(0, 0) {
             Some(i) => {
                 let out = buf.eat(i);
                 buf.skip(1);

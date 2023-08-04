@@ -308,7 +308,8 @@ impl Value {
             return Err(unexpected_buf_eof());
         }
 
-        match buf.0[0] {
+        // match buf.0[0] {
+        match buf.at(0) {
             0xfb => {
                 buf.skip(1);
                 Ok(Value::NULL)
@@ -698,7 +699,7 @@ mod test {
 
         let data = vec![1, 49, 1, 50, 1, 51, 251, 1, 52, 1, 53, 251, 1, 55];
         let slice = RingSlice::from_vec(&data);
-        let mut buf = ParseBuf(slice);
+        let mut buf = ParseBuf::from(slice);
         assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"1".to_vec()));
         assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"2".to_vec()));
         assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"3".to_vec()));
