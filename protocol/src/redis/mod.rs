@@ -164,6 +164,13 @@ impl Redis {
 
 impl Protocol for Redis {
     #[inline]
+    fn config(&self) -> crate::Config {
+        crate::Config {
+            pipeline: true,
+            ..Default::default()
+        }
+    }
+    #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,

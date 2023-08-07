@@ -29,17 +29,17 @@ impl Parser {
             _ => Err(Error::ProtocolNotSupported),
         }
     }
-    #[inline]
-    pub fn pipeline(&self) -> bool {
-        match self {
-            Self::McBin(_) => false,
-            Self::Redis(_) => true,
-            // Self::Phantom(_) => true,
-            Self::MsgQue(_) => false,
-            // Self::Mysql(_) => false,
-            Self::Kv(_) => false,
-        }
-    }
+    // #[inline]
+    // pub fn pipeline(&self) -> bool {
+    //     match self {
+    //         Self::McBin(_) => false,
+    //         Self::Redis(_) => true,
+    //         // Self::Phantom(_) => true,
+    //         Self::MsgQue(_) => false,
+    //         // Self::Mysql(_) => false,
+    //         Self::Kv(_) => false,
+    //     }
+    // }
 }
 
 // #[derive(Default)]
@@ -50,6 +50,13 @@ pub struct ResOption {
     // pub method: AuthMethod,
     pub token: String,
     pub username: String,
+}
+
+#[derive(Default, Clone)]
+pub struct Config {
+    pub need_auth: bool,
+    pub pipeline: bool,
+    pub retry_on_rsp_notok: bool,
 }
 
 pub enum HandShake {
@@ -120,8 +127,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     {
         None
     }
-    fn need_auth(&self) -> bool {
-        false
+    fn config(&self) -> Config {
+        Config::default()
     }
 }
 
@@ -290,7 +297,7 @@ impl HashedCommand {
         &mut self.flag
     }
     #[inline]
-    pub(crate) fn origin_data(&self) -> &MemGuard {
+    pub fn origin_data(&self) -> &MemGuard {
         if let Some(origin) = &self.origin_cmd {
             origin
         } else {
