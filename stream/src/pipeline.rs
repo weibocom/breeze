@@ -24,7 +24,6 @@ pub async fn copy_bidirectional<C, P, T>(
     metrics: Arc<StreamMetrics>,
     client: C,
     parser: P,
-    pipeline: bool,
 ) -> Result<()>
 where
     C: AsyncRead + AsyncWrite + Stream + Unpin,
@@ -34,7 +33,6 @@ where
     *metrics.conn() += 1; // cps
     *metrics.conn_num() += 1;
     let pipeline = CopyBidirectional {
-        pipeline,
         top,
         metrics,
         client,
@@ -63,7 +61,6 @@ pub struct CopyBidirectional<C, P, T> {
     // 上一次请求的开始时间。用在multiget时计算整体耗时。
     // 如果一个multiget被拆分成多个请求，则start存储的是第一个请求的时间。
     start: Instant,
-    pipeline: bool, // 请求是否需要以pipeline方式进行
     flush: bool,
     start_init: bool,
     first: bool, // 当前解析的请求是否是第一个。
@@ -94,7 +91,7 @@ where
             self.process_pending()?;
             let flush = self.poll_flush(cx)?;
 
-            if self.pending.len() > 0 && !self.pipeline {
+            if self.pending.len() > 0 && !self.parser.config().pipeline {
                 // CallbackContext::on_done负责唤醒
                 // 非pipeline请求（即ping-pong），已经有ping了，因此等待pong即可。
                 return Poll::Pending;
@@ -135,6 +132,7 @@ where
             // parser,
             first,
             arena,
+            retry_on_rsp_notok: parser.config().retry_on_rsp_notok,
         };
 
         parser
@@ -247,6 +245,7 @@ struct Visitor<'a, T> {
     // parser: &'a P,
     first: &'a mut bool,
     arena: &'a mut CallbackContextArena,
+    retry_on_rsp_notok: bool,
 }
 
 // impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
@@ -262,9 +261,14 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
         // 否则下一个请求是子请求。
         *self.first = last;
         let cb = self.top.callback();
-        let ctx = self
-            .arena
-            .alloc(CallbackContext::new(cmd, &self.waker, cb, first, last));
+        let ctx = self.arena.alloc(CallbackContext::new(
+            cmd,
+            &self.waker,
+            cb,
+            first,
+            last,
+            self.retry_on_rsp_notok,
+        ));
         let mut ctx = CallbackContextPtr::from(ctx, self.arena);
 
         // pendding 会move走ctx，所以提前把req给封装好

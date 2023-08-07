@@ -103,8 +103,13 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
+        let runs = super::transmute(req.context_mut()).runs;
         // req 是mc binary协议，需要展出字段，转换成sql
-        let key = req.key();
+        let key = if runs == 0 {
+            req.key()
+        } else {
+            req.origin_data().key()
+        };
         //定位年库
         let year = self.strategist.get_key(&key).expect("key not found");
         let shards = self
@@ -138,8 +143,8 @@ where
                 .expect("malformed sql");
             self.parser
                 .build_request(req.cmd_mut(), MemGuard::from_vec(cmd));
-            log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
         }
+        log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 
         if shard.has_slave() && !req.operation().is_store() {
             if *req.context_mut() == 0 {
