@@ -1,6 +1,7 @@
 use context::Context;
 pub(super) fn init(ctx: &Context) {
     init_panic_hook();
+    init_signal();
     init_limit(&ctx);
     init_log(&ctx);
     init_local_ip(&ctx);
@@ -63,4 +64,23 @@ pub(crate) fn init_local_ip(ctx: &Context) {
 
 pub(crate) fn start_metrics_register_task(_ctx: &Context) {
     rt::spawn(metrics::MetricRegister::default());
+}
+
+use tokio::signal::unix::{signal, SignalKind};
+fn init_signal() {
+    let stream = signal(SignalKind::terminate());
+    match stream {
+        Ok(mut stream) => {
+            rt::spawn(async move {
+                loop {
+                    stream.recv().await;
+                    println!("got signal terminate");
+                }
+            });
+        }
+        Err(e) => {
+            println!("init signal failed: {:?}", e);
+            return;
+        }
+    }
 }
