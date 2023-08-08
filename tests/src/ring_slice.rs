@@ -1,4 +1,6 @@
-use std::num::NonZeroUsize;
+use std::{mem::size_of, num::NonZeroUsize};
+
+use bytes::BufMut;
 
 use byteorder::LittleEndian;
 use ds::RingSlice;
@@ -135,4 +137,85 @@ fn check_header() {
             assert!(false);
         }
     };
+}
+
+#[test]
+fn check_read_num_le() {
+    let mut data = Vec::with_capacity(1024);
+    let num1 = 123456789012345_u64;
+    let num2 = 12345678_u32;
+    let num3 = 12345_u16;
+    let num4 = 129_u8;
+    let num5 = 6618611909121;
+    let num5_bytes = [1, 2, 3, 4, 5, 6];
+    let num6 = 1976943448883713;
+    let num6_bytes = [1, 2, 3, 4, 5, 6, 7];
+    let num7 = 12345678_i32;
+
+    data.put_u64_le(num1);
+    data.put_u32_le(num2);
+    data.put_u16_le(num3);
+    data.put_u8(num4);
+    data.extend(num5_bytes);
+    data.extend(num6_bytes);
+    data.put_i32_le(num7);
+
+    let slice = RingSlice::from_vec(&data);
+
+    assert_eq!(num1, slice.read_u64_le(0));
+    assert_eq!(num2, slice.read_u32_le(size_of::<u64>()));
+    assert_eq!(num3, slice.read_u16_le(size_of::<u64>() + size_of::<u32>()));
+    assert_eq!(
+        num4,
+        slice.read_u8(size_of::<u64>() + size_of::<u32>() + size_of::<u16>())
+    );
+    assert_eq!(
+        num5,
+        slice.read_u48_le(size_of::<u64>() + size_of::<u32>() + size_of::<u16>() + size_of::<u8>())
+    );
+    assert_eq!(
+        num6,
+        slice.read_u56_le(
+            size_of::<u64>()
+                + size_of::<u32>()
+                + size_of::<u16>()
+                + size_of::<u8>()
+                + num5_bytes.len()
+        )
+    );
+    assert_eq!(
+        num7,
+        slice.read_i32_le(
+            size_of::<u64>()
+                + size_of::<u32>()
+                + size_of::<u16>()
+                + size_of::<u8>()
+                + num5_bytes.len()
+                + num6_bytes.len()
+        )
+    );
+}
+
+#[test]
+fn check_read_num_be() {
+    let mut data = Vec::with_capacity(1024);
+    let num1 = 123456789012345_u64;
+    let num2 = 12345678_u32;
+    let num3 = 12345_u16;
+    let num4 = 129_u8;
+
+    data.put_u64(num1);
+    data.put_u32(num2);
+    data.put_u16(num3);
+    data.put_u8(num4);
+
+    let slice = RingSlice::from_vec(&data);
+
+    assert_eq!(num1, slice.read_u64_be(0));
+    assert_eq!(num2, slice.read_u32_be(size_of::<u64>()));
+    assert_eq!(num3, slice.read_u16_be(size_of::<u64>() + size_of::<u32>()));
+    assert_eq!(
+        num4,
+        slice.read_u8(size_of::<u64>() + size_of::<u32>() + size_of::<u16>())
+    );
 }
