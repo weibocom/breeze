@@ -321,16 +321,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             .unwrap_or(AuthPlugin::MysqlNativePassword);
         if let AuthPlugin::Other(ref name) = auth_plugin {
             // let plugin_name = String::from_utf8_lossy(name).into();
-            // TODO 最小化字节copy，有没有更简洁的做法？ fishermen
-            // let plugin_name = if let Some(name_data) = name.try_oneway_slice(0, name.len()) {
-            //     String::from_utf8_lossy(name_data).into()
-            // } else {
-            //     let name_data = name.dump_ring_part(0, name.len());
-            //     String::from_utf8_lossy(name_data.as_slice()).into()
-            // };
 
             // TODO 将ring逻辑封装到ringslice，测试稳定后，清理上面的dead code fishermen
-            let plugin_name = name.to_string();
+            debug_assert!(name.len() < 256, "auth plugin name too long: {:?}", name);
+            let plugin_name = name.as_string_lossy();
             return Err(DriverError::UnknownAuthPlugin(plugin_name).error());
         }
 

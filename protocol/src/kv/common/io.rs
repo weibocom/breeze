@@ -391,8 +391,8 @@ impl<'a> ParseBuf {
     // eat_num!(eat_u16_le, checked_eat_u16_le, u16::from_le_bytes);
     // eat_num!(eat_i16_le, checked_eat_i16_le, i16::from_le_bytes);
 
-    eat_num!(eat_u8, checked_eat_u8, u8, read_u8_le);
-    eat_num!(eat_i8, checked_eat_i8, i8, read_i8_le);
+    eat_num!(eat_u8, checked_eat_u8, u8, read_u8);
+    eat_num!(eat_i8, checked_eat_i8, i8, read_i8);
     eat_num!(eat_u16_le, checked_eat_u16_le, u16, read_u16_le);
     eat_num!(eat_i16_le, checked_eat_i16_le, i16, read_i16_le);
     eat_num!(eat_u24_le, checked_eat_u24_le, 3, 0, u32, read_u24_le);

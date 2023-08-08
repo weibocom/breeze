@@ -418,7 +418,11 @@ impl RingSlice {
     /// 展示所有内容，仅用于长度比较小的场景 fishermen
     #[inline]
     pub fn as_string_lossy(&self) -> String {
-        debug_assert!(self.len() < 512);
+        // 可能存在大内存copy，调用处增加assert，避免长度过大场景
+        // debug_assert!(self.len() < 512);
+        if self.len() >= 512 {
+            log::warn!("as_string_lossy: data too long: {:?}", self);
+        }
 
         let (l, r) = self.data();
         match r.len() {
@@ -502,8 +506,8 @@ macro_rules! define_read_number {
 
 impl RingSlice {
     // little endian
-    define_read_number!(read_u8_le, u8::from_le_bytes);
-    define_read_number!(read_i8_le, i8::from_le_bytes);
+    define_read_number!(read_u8, u8::from_le_bytes);
+    define_read_number!(read_i8, i8::from_le_bytes);
     define_read_number!(read_u16_le, u16::from_le_bytes);
     define_read_number!(read_i16_le, i16::from_le_bytes);
     define_read_number!(read_u24_le, 3, 0, u32::from_le);
@@ -519,6 +523,7 @@ impl RingSlice {
     define_read_number!(read_f64_le, f64::from_le_bytes);
 
     // big endian
+    define_read_number!(read_u16_be, u16::from_be_bytes);
     define_read_number!(read_u32_be, u32::from_be_bytes);
     define_read_number!(read_u64_be, u64::from_be_bytes);
 }
