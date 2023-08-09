@@ -17,14 +17,17 @@ use protocol::Result;
 
 // 默认支持
 fn main() -> Result<()> {
-    tokio::runtime::Builder::new_multi_thread()
+    let result = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(context::get().thread_num as usize)
         .thread_name("breeze-w")
         .thread_stack_size(2 * 1024 * 1024)
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async { run().await })
+        .block_on(async { run().await });
+
+    println!("exit {:?}", result);
+    result
 }
 
 async fn run() -> Result<()> {
