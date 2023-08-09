@@ -60,6 +60,7 @@ pub struct BinValue;
 pub enum Value {
     NULL,
     Bytes(Vec<u8>),
+    // Bytes(RingSlice),
     Int(i64),
     UInt(u64),
     Float(f32),
@@ -307,7 +308,8 @@ impl Value {
             return Err(unexpected_buf_eof());
         }
 
-        match buf.0[0] {
+        // match buf.0[0] {
+        match buf.at(0) {
             0xfb => {
                 buf.skip(1);
                 Ok(Value::NULL)
@@ -438,10 +440,19 @@ impl Value {
                 let slice = buf
                     .checked_eat_lenenc_str()
                     .ok_or_else(unexpected_buf_eof)?;
-                match slice.try_oneway_slice(0, slice.len()) {
-                    Some(bytes) => Ok(Bytes(bytes.to_vec())),
-                    None => Ok(Bytes(slice.dump_ring_part(0, slice.len()))),
+                let (l, r) = slice.data();
+                match r.len() {
+                    0 => Ok(Bytes(l.into())),
+                    _ => {
+                        let mut bytes = Vec::with_capacity(slice.len());
+                        slice.copy_to_vec(&mut bytes);
+                        Ok(Bytes(bytes))
+                    }
                 }
+                // match slice.try_oneway_slice(0, slice.len()) {
+                //     Some(bytes) => Ok(Bytes(bytes.to_vec())),
+                //     None => Ok(Bytes(slice.dump_ring_part(0, slice.len()))),
+                // }
             }
             ColumnType::MYSQL_TYPE_TINY => {
                 Self::deserialize_tiny(column_flags.contains(ColumnFlags::UNSIGNED_FLAG), buf)
@@ -688,7 +699,7 @@ mod test {
 
         let data = vec![1, 49, 1, 50, 1, 51, 251, 1, 52, 1, 53, 251, 1, 55];
         let slice = RingSlice::from_vec(&data);
-        let mut buf = ParseBuf(slice);
+        let mut buf = ParseBuf::from(slice);
         assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"1".to_vec()));
         assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"2".to_vec()));
         assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"3".to_vec()));

@@ -68,12 +68,11 @@ impl<T: BytesRepr> RawBytes<T> {
     // pub fn as_str(&'a self) -> Cow<'a, str> {
     pub fn as_str(&self) -> String {
         // String::from_utf8_lossy(self.as_bytes())
-        if let Some(data) = self.0.try_oneway_slice(0, self.0.len()) {
-            String::from_utf8_lossy(data).into_owned()
-        } else {
-            let data = self.0.dump_ring_part(0, self.0.len());
-            String::from_utf8_lossy(data.as_slice()).into_owned()
-        }
+
+        // TODO 封装ring到ringslice内部，待测试稳定后，清理上面的dead code fishermen
+        debug_assert!(self.0.len() <= 512, "slice too big:{:?}", self.0);
+        self.0.as_string_lossy()
+
         // &self.0
     }
 }
@@ -282,7 +281,7 @@ impl BytesRepr for NullBytes {
         // let s = vec![0, 1];
         // s.iter();
         // TODO 参考上面的逻辑，check一致性，暂时不要清理 fishermen
-        match buf.0.find(0, 0) {
+        match buf.find(0, 0) {
             Some(i) => {
                 let out = buf.eat(i);
                 buf.skip(1);

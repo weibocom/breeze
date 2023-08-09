@@ -442,7 +442,8 @@ impl OkPacketKind for ResultSetTerminator {
                         RawBytes::default()
                     };
                 (info, session_state_info)
-            } else if !buf.is_empty() && buf.0[0] > 0 {
+            // } else if !buf.is_empty() && buf.0[0] > 0 {
+            } else if !buf.is_empty() && buf.at(0) > 0 {
                 // The `info` field is a `string<EOF>` according to the MySQL Internals
                 // Manual, but actually it's a `string<lenenc>`.
                 // SEE: sql/protocol_classics.cc `net_send_ok`
@@ -488,8 +489,8 @@ impl OkPacketKind for OldEofPacket {
             // info: RawBytes::new(&[][..]),
             // session_state_info: RawBytes::new(&[][..]),
             // TODO 设置一个0长slice
-            info: RawBytes::new(buf.0.sub_slice(0, 0)),
-            session_state_info: RawBytes::new(buf.0.sub_slice(0, 0)),
+            info: RawBytes::new(buf.sub_slice(0, 0)),
+            session_state_info: RawBytes::new(buf.sub_slice(0, 0)),
         })
     }
 }
@@ -540,7 +541,8 @@ impl OkPacketKind for CommonOkPacket {
                         RawBytes::default()
                     };
                 (info, session_state_info)
-            } else if !buf.is_empty() && buf.0[0] > 0 {
+            // } else if !buf.is_empty() && buf.0[0] > 0 {
+            } else if !buf.is_empty() && buf.at(0) > 0 {
                 // The `info` field is a `string<EOF>` according to the MySQL Internals
                 // Manual, but actually it's a `string<lenenc>`.
                 // SEE: sql/protocol_classics.cc `net_send_ok`
@@ -951,7 +953,8 @@ impl<'de> MyDeserialize for ServerError {
 
     // fn deserialize(code: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
     fn deserialize(code: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
-        match buf.0[0] {
+        // match buf.0[0] {
+        match buf.at(0) {
             b'#' => {
                 buf.skip(1);
                 Ok(ServerError {
@@ -1604,8 +1607,9 @@ impl HandshakePacket {
         //     })
         // TODO 参考上面的代码，彻底稳定前，暂时不要清理 fishermen
         let version = self.server_version_ref();
-        match version.try_oneway_slice(0, version.len()) {
-            Some(data) => VERSION_RE.captures(data).map(|captures| {
+        let (l, r) = version.data();
+        match r.len() {
+            0 => VERSION_RE.captures(l).map(|captures| {
                 // Should not panic because validated with regex
                 (
                     parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
@@ -1613,8 +1617,9 @@ impl HandshakePacket {
                     parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
                 )
             }),
-            None => {
-                let data = version.dump_ring_part(0, version.len());
+            _ => {
+                let mut data = Vec::with_capacity(version.len());
+                version.copy_to_vec(&mut data);
                 VERSION_RE.captures(&data[..]).map(|captures| {
                     // Should not panic because validated with regex
                     (
@@ -1625,14 +1630,6 @@ impl HandshakePacket {
                 })
             }
         }
-        // capture.map(|captures| {
-        //     // Should not panic because validated with regex
-        //     (
-        //         parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
-        //         parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
-        //         parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
-        //     )
-        // })
     }
 
     // /// Parsed mariadb server version.
@@ -1723,11 +1720,13 @@ impl HandshakePacket {
         self.auth_plugin_name.as_ref().map(|x| {
             let name = x.as_bytes();
             if name.at(name.len() - 1) == 0 {
-                ParseBuf(name.sub_slice(0, name.len() - 1))
+                ParseBuf::from(name.sub_slice(0, name.len() - 1))
                     .parse_unchecked(())
                     .expect("infallible")
             } else {
-                ParseBuf(*name).parse_unchecked(()).expect("infallible")
+                ParseBuf::from(*name)
+                    .parse_unchecked(())
+                    .expect("infallible")
             }
         })
     }

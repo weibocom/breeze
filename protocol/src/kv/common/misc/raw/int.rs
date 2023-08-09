@@ -110,6 +110,7 @@ impl IntRepr for i8 {
 }
 
 macro_rules! def_end_repr {
+    //LeU16, u16, Some(2), put_u16_le, eat_u16_le;
     ($( $(#[$m:meta])* $name:ident, $t:ty, $size:expr, $ser:ident, $de:ident; )+) => {
         $(
             $(#[$m])*

@@ -126,7 +126,7 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
             black_box({
                 let mut t = 0u64;
                 for i in 0..runs {
-                    t = t.wrapping_add(rs.read_u64(i) as u64);
+                    t = t.wrapping_add(rs.read_u64_be(i) as u64);
                 }
                 t
             });
