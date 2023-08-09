@@ -124,12 +124,12 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             }
             _ => {
                 // let mut reader = &payload[..];
-                let mut reader = ParseBuf(payload);
+                let mut reader = ParseBuf::from(payload);
                 let column_count = reader.read_lenenc_int()?;
                 let mut columns: Vec<Column> = Vec::with_capacity(column_count as usize);
                 for _i in 0..column_count {
                     let pld = self.next_packet()?;
-                    let column = ParseBuf(pld).parse(())?;
+                    let column = ParseBuf::from(pld).parse(())?;
                     columns.push(column);
                 }
                 // skip eof packet
@@ -249,7 +249,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             // 0xFF ERR packet header
             if self.current() == 0xFF {
                 // self.oft += header.payload_len;
-                match ParseBuf(self.data.sub_slice(self.oft, left_len))
+                match ParseBuf::from(self.data.sub_slice(self.oft, left_len))
                     .parse(self.capability_flags())?
                 {
                     // TODO Error process 异常响应稍后处理 fishermen
@@ -293,7 +293,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         // let packet_data = self.next_packet_data(true)?;
         let payload = self.next_packet()?;
         self.take();
-        let handshake = ParseBuf(payload).parse::<HandshakePacket>(())?;
+        let handshake = ParseBuf::from(payload).parse::<HandshakePacket>(())?;
 
         // 3.21.0 之后handshake是v10版本，不支持更古老的版本
         if handshake.protocol_version() != 10u8 {
@@ -321,14 +321,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             .unwrap_or(AuthPlugin::MysqlNativePassword);
         if let AuthPlugin::Other(ref name) = auth_plugin {
             // let plugin_name = String::from_utf8_lossy(name).into();
-            // TODO 最小化字节copy，有没有更简洁的做法？ fishermen
-            let plugin_name = if let Some(name_data) = name.try_oneway_slice(0, name.len()) {
-                String::from_utf8_lossy(name_data).into()
-            } else {
-                let name_data = name.dump_ring_part(0, name.len());
-                String::from_utf8_lossy(name_data.as_slice()).into()
-            };
 
+            // TODO 将ring逻辑封装到ringslice，测试稳定后，清理上面的dead code fishermen
+            debug_assert!(name.len() < 256, "auth plugin name too long: {:?}", name);
+            let plugin_name = name.as_string_lossy();
             return Err(DriverError::UnknownAuthPlugin(plugin_name).error());
         }
 
@@ -506,7 +502,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         &mut self,
         payload: RingSlice,
     ) -> crate::Result<OkPacket> {
-        let ok = ParseBuf(payload)
+        let ok = ParseBuf::from(payload)
             .parse::<OkPacketDeserializer<T>>(self.capability_flags())?
             .into_inner();
         // self.status_flags = ok.status_flags();
