@@ -1,9 +1,10 @@
+use std::fmt::Write;
+
 use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY};
 use super::kvtime::KVTime;
 use ds::RingSlice;
 
 use enum_dispatch::enum_dispatch;
-use protocol::{HashedCommand, Result};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
@@ -35,7 +36,8 @@ pub trait Strategy {
     fn distribution(&self) -> &DBRange;
     fn hasher(&self) -> &Hasher;
     fn get_key(&self, key: &RingSlice) -> Option<String>;
-    fn build_kvcmd(&self, req: &HashedCommand, key: RingSlice) -> Result<Vec<u8>>;
+    fn tablename_len(&self) -> usize;
+    fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice);
 }
 
 #[enum_dispatch(Strategy)]
