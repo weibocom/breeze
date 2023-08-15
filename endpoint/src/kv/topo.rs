@@ -14,6 +14,7 @@ use sharding::Distance;
 use sharding::Selector;
 
 use crate::dns::DnsConfig;
+use crate::kv::kvtime::MysqlBuilder;
 use crate::kv::strategy::Strategy;
 use crate::Builder;
 use crate::Single;
@@ -137,9 +138,8 @@ where
         let ctx = super::transmute(req.context_mut());
         if ctx.runs == 0 {
             //todo: 此处不应panic
-            let cmd = self
-                .strategist
-                .build_kvcmd(&req, key)
+            let cmd = MysqlBuilder {}
+                .build_packets(&self.strategist, &req, &key)
                 .expect("malformed sql");
             self.parser
                 .build_request(req.cmd_mut(), MemGuard::from_vec(cmd));
