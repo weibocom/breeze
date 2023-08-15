@@ -33,7 +33,7 @@ lazy_static = "1.4.0"
 
 spin = "*"
 cfg-if = "1.0.0"
-
+ahash = "0.8.3"
 
 
 [features]

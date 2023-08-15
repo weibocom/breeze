@@ -2,9 +2,9 @@
 use crate::ci::env::*;
 use crate::redis::RESTYPE;
 use crate::redis_helper::*;
+use ahash::{HashMap, HashMapExt};
 use function_name::named;
 use redis::{Commands, RedisError};
-use std::collections::HashSet;
 use std::vec;
 
 ///list基本操作:

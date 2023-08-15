@@ -1,6 +1,6 @@
+use ahash::{HashMap, HashMapExt};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 
 #[derive(Debug, Clone, Default, Deserialize)]

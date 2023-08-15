@@ -1,6 +1,6 @@
 // 使用env来存储kv属性变量
-
-use std::collections::{HashMap, HashSet};
+use ahash::{HashMap, HashMapExt};
+use std::collections::HashSet;
 use std::env;
 use std::sync::RwLock;
 

@@ -1,6 +1,7 @@
+use ahash::{HashMap, HashMapExt};
 use rand::{seq::SliceRandom, thread_rng};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     fmt::{Debug, Display},
     sync::{
         atomic::{AtomicU32, AtomicUsize, Ordering},

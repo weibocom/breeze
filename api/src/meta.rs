@@ -1,7 +1,7 @@
+use ahash::{HashMap, HashMapExt};
 use rocket::serde::json::Json;
 use rocket::serde::Serialize;
 use rocket::{Build, Rocket};
-use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::net::IpAddr;
 use std::{io::Result, path::PathBuf};

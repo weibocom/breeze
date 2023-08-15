@@ -9,9 +9,8 @@
 // use percent_encoding::percent_decode;
 // use url::Url;
 
-use std::{
-    borrow::Cow, collections::HashMap, hash::Hash, net::SocketAddr, path::Path, time::Duration,
-};
+use ahash::{HashMap, HashMapExt};
+use std::{borrow::Cow, hash::Hash, net::SocketAddr, path::Path, time::Duration};
 
 use crate::kv::common::constants::CapabilityFlags;
 

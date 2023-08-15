@@ -1,5 +1,5 @@
+use ahash::{HashMap, HashMapExt};
 use std::{
-    collections::HashMap,
     net::IpAddr,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},

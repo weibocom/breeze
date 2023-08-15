@@ -10,11 +10,11 @@
 //!  - set 1 1, ..., set 10000 10000等一万个key已由java sdk预先写入,
 //! 从mesh读取, 验证业务写入与mesh读取之间的一致性
 use crate::ci::env::Mesh;
+use ahash::{HashMap, HashMapExt};
 use assert_panic::assert_panic;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection};
-use std::collections::HashMap;
 use std::vec;
 
 use crate::ci::env::exists_key_iter;

@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod redis_test {
-    use std::collections::{HashMap, HashSet};
+    use ahash::{HashMap, HashMapExt};
+    use std::collections::HashSet;
 
     use ds::MemGuard;
     use protocol::Flag;

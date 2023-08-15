@@ -1,9 +1,9 @@
 use crate::{Builder, Endpoint, Topology};
+use ahash::{HashMap, HashMapExt};
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource, TryNextType};
 use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
-use std::collections::HashMap;
 
 use super::config::Flag;
 use crate::shards::Shards;

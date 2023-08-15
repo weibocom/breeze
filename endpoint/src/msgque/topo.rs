@@ -9,7 +9,8 @@ use std::{
 };
 use tokio::time::Instant;
 
-use std::collections::{BTreeMap, HashMap};
+use ahash::{HashMap, HashMapExt};
+use std::collections::BTreeMap;
 
 use crate::{Builder, Endpoint, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};

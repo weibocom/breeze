@@ -2,8 +2,8 @@ use super::common::{
     constants::{CapabilityFlags, StatusFlags},
     opts::Opts,
 };
-use std::{collections::HashMap, ops::Deref, process};
-
+use ahash::{HashMap, HashMapExt};
+use std::{ops::Deref, process};
 #[derive(Default)]
 pub struct Client {
     opts: Opts,

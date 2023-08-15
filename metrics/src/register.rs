@@ -156,7 +156,7 @@ impl Display for Metrics {
     }
 }
 
-use std::collections::HashMap;
+use ahash::{HashMap, HashMapExt};
 pub struct MetricRegister {
     rx: Receiver<(Arc<Id>, i64)>,
     metrics: CowWriteHandle<Metrics>,

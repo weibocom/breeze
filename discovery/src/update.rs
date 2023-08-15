@@ -6,7 +6,7 @@ use tokio::time::{interval, MissedTickBehavior};
 
 use crate::cache::DiscoveryCache;
 use crate::path::ToName;
-use std::collections::HashMap;
+use ahash::{HashMap, HashMapExt};
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 
 pub async fn watch_discovery<D, T>(

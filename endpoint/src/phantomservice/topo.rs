@@ -1,4 +1,5 @@
-use std::{collections::HashMap, marker::PhantomData};
+use ahash::{HashMap, HashMapExt};
+use std::marker::PhantomData;
 
 use crate::{dns::DnsConfig, Builder, Endpoint, Timeout, Topology};
 use discovery::{

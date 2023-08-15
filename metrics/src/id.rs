@@ -13,7 +13,7 @@ impl Id {
 }
 pub(crate) const BASE_PATH: &str = "base";
 
-use std::collections::HashMap;
+use ahash::HashMap;
 use std::sync::Arc;
 #[derive(Default, Clone)]
 pub(crate) struct IdSequence {

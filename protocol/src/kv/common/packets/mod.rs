@@ -14,10 +14,9 @@ use smallvec::SmallVec;
 use uuid::Uuid;
 
 // use std::fmt::{write, Display};
+use ahash::{HashMap, HashMapExt};
 use std::str::FromStr;
-use std::{
-    borrow::Cow, cmp::max, collections::HashMap, convert::TryFrom, fmt, io, marker::PhantomData,
-};
+use std::{borrow::Cow, cmp::max, convert::TryFrom, fmt, io, marker::PhantomData};
 
 // use crate::kv::common::error::DriverError;
 use crate::kv::common::{

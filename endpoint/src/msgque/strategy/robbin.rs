@@ -1,5 +1,6 @@
+use ahash::{HashMap, HashMapExt};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     ops::Bound::{Included, Unbounded},
     sync::{
         atomic::{AtomicUsize, Ordering},

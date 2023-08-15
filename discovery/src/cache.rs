@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use ahash::HashMap;
 
 use crate::path::{GetNamespace, ToName, ToPath};
 use crate::sig::Sig;

@@ -1,5 +1,5 @@
+use ahash::{HashMap, HashMapExt};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 pub const DISTANCE_VAL_IDC: u16 = 1;
 pub const DISTANCE_VAL_NEIGHBOR: u16 = 2;
@@ -380,7 +380,7 @@ impl Balance for Vec<Vec<String>> {
         }
 
         balancing.sort_by(|a, b| a.len().cmp(&b.len()));
-        let mut by_len = std::collections::HashMap::new();
+        let mut by_len = HashMap::new();
         for group in balancing {
             let one = by_len
                 .entry(group.len())

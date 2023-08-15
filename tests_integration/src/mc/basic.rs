@@ -1,5 +1,4 @@
 use crate::mc_helper::*;
-use memcache::MemcacheError;
 /// # 已测试场景：
 /// - 验证 mesh buffer 扩容，同一个连接，同一个key，set 8次不同大小的String value
 ///     key: "fooset"  value: 每个字符内容为 ‘A’
@@ -14,7 +13,8 @@ use memcache::MemcacheError;
 ///     set命令未单独测试；
 ///
 /// -
-use std::collections::HashMap;
+use ahash::{HashMap, HashMapExt};
+use memcache::MemcacheError;
 /// 测试场景：基本的mc add 命令验证
 #[test]
 fn mc_max_key() {

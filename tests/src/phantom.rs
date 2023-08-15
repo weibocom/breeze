@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod phantom_test {
+    use ahash::{HashMap, HashMapExt};
     use std::{
-        collections::{HashMap, HashSet},
+        collections::HashSet,
         io::{Error, ErrorKind, Result},
     };
 
