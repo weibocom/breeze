@@ -234,21 +234,21 @@ pub struct MysqlBuilder {}
 fn escape_mysql_and_push(packet: &mut PacketCodec, c: u8) {
     //非法char要当成二进制push，否则会变成unicode
     let c = c as char;
-    if c == '\x00' {
-        packet.push('\\' as u8);
-        packet.push('0' as u8);
-    } else if c == '\n' {
-        packet.push('\\' as u8);
-        packet.push('n' as u8);
-    } else if c == '\r' {
-        packet.push('\\' as u8);
-        packet.push('r' as u8);
-    } else if c == '\\' || c == '\'' || c == '"' {
+    if c == '\\' || c == '\'' || c == '"' {
         packet.push('\\' as u8);
         packet.push(c as u8);
-    } else if c == '\x1a' {
-        packet.push('\\' as u8);
-        packet.push('Z' as u8);
+    // } else if c == '\x00' {
+    //     packet.push('\\' as u8);
+    //     packet.push('0' as u8);
+    // } else if c == '\n' {
+    //     packet.push('\\' as u8);
+    //     packet.push('n' as u8);
+    // } else if c == '\r' {
+    //     packet.push('\\' as u8);
+    //     packet.push('r' as u8);
+    // } else if c == '\x1a' {
+    //     packet.push('\\' as u8);
+    //     packet.push('Z' as u8);
     } else {
         packet.push(c as u8);
     }
