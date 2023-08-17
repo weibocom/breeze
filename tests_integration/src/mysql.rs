@@ -4,26 +4,22 @@ use std::{thread::sleep, time::Duration};
 
 //val中有非assic字符和需要mysql转义的字符
 #[test]
+#[rustfmt::skip]
 fn set() {
     let client = mc_get_conn("mysql");
     let key = "4892225613598465";
-    let val = [
-        -88i8, 6, -108, -120, -112, -119, -115, -90, -40, 8, -78, 6, 4, 50, 98, 98, 50, -32, 6, 0,
-        -104, 7, 0, -96, 7, 0, -56, 7, 0, -48, 7, 0, -40, 7, 0, -104, 9, 1, -64, 9, 0, -56, 9, 0,
-        -40, 9, 0, -32, 9, 3, -24, 9, 0, -16, 9, 0, -8, 9, 0, -128, 10, 0, -120, 10, 0, -104, 10,
-        0, -14, 10, 24, 123, 34, 105, 115, 95, 115, 109, 97, 108, 108, 95, 118, 105, 100, 101, 111,
-        34, 58, 102, 97, 108, 115, 101, 125, -104, 11, 0, -56, 11,
+    let val =[24, 6, 0, 152, 7, 0, 160, 7, 0, 200, 7, 0, 208, 7, 0, 216, 7, 0, 152, 9, 1, 192, 9, 0, 200, 9, 0, 216, 9, 0, 224, 9, 3, 232, 9, 0, 240, 9, 0, 248, 9, 0, 128, 10, 0, 136, 10, 0, 152, 10, 0, 242, 10, 24, 123, 34, 105, 115, 95, 115, 109, 97, 108, 108, 95, 118, 105, 100, 101, 111, 34, 58, 102, 97, 108, 115, 101, 125, 152, 11, 0, 200, 11,
+        '\x1a' as u8,
+        '\r' as u8,
+        '\n' as u8,
+        '\x00' as u8,
+        '\'' as u8,
+        '\\' as u8,
+        '"' as u8,
     ];
-    let mut uval = [0u8; 100];
-    let mut j = 0;
-    for i in val {
-        uval[j] = i as u8;
-        j += 1;
-    }
-    // let val = r#"{"created_at":"","id":3503157055392381,"text":"","favorited":false,"truncated":false,"in_reply_to_status_id":"","in_reply_to_user_id":"","in_reply_to_screen_name":"","pic_ids":[],"geo":null,"mid":null,"is_show_bulletin":0,"state":0,"api_state":3,"flag":0,"list_id":0,"weiboState":0,"ip":null}"#;
-    client.add(key, uval.as_ref(), 10000).unwrap();
+    client.add(key, val.as_ref(), 10000).unwrap();
     let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key);
-    assert_eq!(uval.as_ref(), result.unwrap().unwrap());
+    assert_eq!(val.as_ref(), result.unwrap().unwrap());
 }
 
 #[test]
