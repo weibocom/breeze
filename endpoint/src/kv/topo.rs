@@ -120,23 +120,30 @@ where
 
         debug_assert_ne!(shards.len(), 0);
         assert!(shards.len() > 0);
-        let shard_idx = if shards.len() > 1 {
-            self.shard_idx(req.hash())
+
+        let shard_idx = if runs == 0 {
+            let idx = if shards.len() > 1 {
+                self.shard_idx(req.hash())
+            } else {
+                0
+            };
+            debug_assert!(
+                idx < shards.len(),
+                "mysql: {}/{} req:{:?}",
+                idx,
+                shards.len(),
+                req
+            );
+            idx
         } else {
-            0
+            super::transmute(req.context_mut()).shard_idx as usize
         };
-        debug_assert!(
-            shard_idx < shards.len(),
-            "mysql: {}/{} req:{:?}",
-            shard_idx,
-            shards.len(),
-            req
-        );
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
         let ctx = super::transmute(req.context_mut());
         if ctx.runs == 0 {
+            ctx.shard_idx = shard_idx as u16;
             //todo: 此处不应panic
             let cmd = self
                 .strategist
