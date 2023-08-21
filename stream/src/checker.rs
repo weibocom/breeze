@@ -78,7 +78,6 @@ impl<P, Req> BackendChecker<P, Req> {
             let rx = &mut self.rx;
 
             if self.parser.config().need_auth {
-                //todo 处理认证结果
                 let auth = Auth {
                     option: &mut self.option,
                     s: &mut stream,
