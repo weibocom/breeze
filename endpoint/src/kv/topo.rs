@@ -120,10 +120,15 @@ where
 
         debug_assert_ne!(shards.len(), 0);
         assert!(shards.len() > 0);
-        let shard_idx = if shards.len() > 1 {
-            self.shard_idx(req.hash())
+
+        let shard_idx = if runs == 0 {
+            if shards.len() > 1 {
+                self.shard_idx(req.hash())
+            } else {
+                0
+            }
         } else {
-            0
+            super::transmute(req.context_mut()).shard_idx as usize
         };
         debug_assert!(
             shard_idx < shards.len(),
@@ -137,6 +142,7 @@ where
 
         let ctx = super::transmute(req.context_mut());
         if ctx.runs == 0 {
+            ctx.shard_idx = shard_idx as u16;
             //todo: 此处不应panic
             let cmd = self
                 .strategist
