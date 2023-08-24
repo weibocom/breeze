@@ -99,8 +99,8 @@ impl Strategy for KVTime {
         }
     }
     fn tablename_len(&self) -> usize {
-        // status_6.status_030926, 8代表除去前缀后的长度
-        self.db_prefix.len() + self.table_prefix.len() + 10
+        // status_6.status_030926, 11代表除去前缀后的长度
+        self.db_prefix.len() + self.table_prefix.len() + 11
     }
     fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice) {
         self.write_dname(buf, key);
