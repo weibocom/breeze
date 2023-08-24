@@ -6,7 +6,6 @@ use super::{
 use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
-use lazy_static::lazy_static;
 use protocol::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use protocol::kv::{MysqlBinary, PacketCodec};
 use protocol::HashedCommand;
@@ -91,14 +90,6 @@ impl KVTime {
     // 应该只需要转义上面的
 }
 
-lazy_static! {
-    // 1970-01-01 00:00:00 UTC == 1970-01-01 08:00:00 CST
-    static ref DATE_BASE: chrono::DateTime<chrono_tz::Tz> = chrono::Utc
-    .timestamp_opt(-28800, 0) // 1970-01-01 00:00:00 CST
-    .unwrap()
-    .with_timezone(&Shanghai);
-}
-
 impl Strategy for KVTime {
     fn distribution(&self) -> &DBRange {
         &self.distribution
@@ -106,17 +97,10 @@ impl Strategy for KVTime {
     fn hasher(&self) -> &Hasher {
         &self.hasher
     }
-    fn get_key(&self, key: &RingSlice) -> u16 {
+    fn year(&self, key: &RingSlice) -> u16 {
         let uuid = to_i64(key);
-        let s = uuid.unix_secs(); // since 1970-01-01 00:00:00 CST
-        let year = chrono::Utc
-            .timestamp_opt(s, 0)
-            .unwrap()
-            .with_timezone(&Shanghai)
-            .years_since(*DATE_BASE)
-            .unwrap() as u16
-            + 1970;
-        log::debug!("unix seconds {}, year {}", s, year);
+        let year = uuid.year();
+
         if self.years.contains(&year) {
             year
         } else {

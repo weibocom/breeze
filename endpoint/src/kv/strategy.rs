@@ -34,7 +34,7 @@ impl Postfix {
 pub trait Strategy {
     fn distribution(&self) -> &DBRange;
     fn hasher(&self) -> &Hasher;
-    fn get_key(&self, key: &RingSlice) -> u16;
+    fn year(&self, key: &RingSlice) -> u16;
     fn build_kvcmd(&self, req: &HashedCommand, key: RingSlice) -> Result<Vec<u8>>;
 }
 

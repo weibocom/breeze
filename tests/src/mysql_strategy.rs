@@ -42,7 +42,7 @@ mod mysql_strategy {
         println!("id: {} , unix_secs: {}", id, unix_secs);
     }
     #[test]
-    fn test_get_key() {
+    fn test_year() {
         use endpoint::kv::kvtime::KVTime;
         use endpoint::kv::strategy::Strategy;
         let kv_time = KVTime::new(
@@ -63,7 +63,7 @@ mod mysql_strategy {
             0,
             id_str.len(),
         );
-        let key = kv_time.get_key(&id_slice);
+        let key = kv_time.year(&id_slice);
         assert_eq!(key, 2011);
 
         let id_str = "3396814711554048"; // Tue Jan  1 00:00:00 CST 2012
@@ -73,7 +73,7 @@ mod mysql_strategy {
             0,
             id_str.len(),
         );
-        let key = kv_time.get_key(&id_slice);
+        let key = kv_time.year(&id_slice);
         assert_eq!(key, 2012);
 
         let id_str = "4323440483893248"; // Tue Jan  1 00:00:00 CST 2019
@@ -83,7 +83,7 @@ mod mysql_strategy {
             0,
             id_str.len(),
         );
-        let key = kv_time.get_key(&id_slice);
+        let key = kv_time.year(&id_slice);
         assert_eq!(key, 2019);
 
         let id_str = "1808468696629248"; // Sat Jan  1 00:00:00 CST 2000
@@ -93,7 +93,7 @@ mod mysql_strategy {
             0,
             id_str.len(),
         );
-        let key = kv_time.get_key(&id_slice);
+        let key = kv_time.year(&id_slice);
         assert_eq!(key, 65535);
 
         let id_str = "4852889155534848"; // Sun Jan  1 00:00:00 CST 2023
@@ -103,7 +103,7 @@ mod mysql_strategy {
             0,
             id_str.len(),
         );
-        let key = kv_time.get_key(&id_slice);
+        let key = kv_time.year(&id_slice);
         assert_eq!(key, 65535);
     }
     // #[test]
