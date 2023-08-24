@@ -5,6 +5,8 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::Binary;
+use protocol::kv::MysqlBuilder;
+use protocol::kv::Strategy;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -14,8 +16,6 @@ use sharding::Distance;
 use sharding::Selector;
 
 use crate::dns::DnsConfig;
-use crate::kv::kvtime::MysqlBuilder;
-use crate::kv::strategy::Strategy;
 use crate::Builder;
 use crate::Single;
 use crate::Timeout;
