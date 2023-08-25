@@ -1,9 +1,10 @@
+use std::fmt::Write;
+
 use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY};
 use super::kvtime::KVTime;
 use ds::RingSlice;
 
-use enum_dispatch::enum_dispatch;
-use protocol::{HashedCommand, Result};
+use protocol::kv::Strategy;
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
@@ -30,18 +31,42 @@ impl Postfix {
     }
 }
 
-#[enum_dispatch]
-pub trait Strategy {
-    fn distribution(&self) -> &DBRange;
-    fn hasher(&self) -> &Hasher;
-    fn get_key(&self, key: &RingSlice) -> Option<String>;
-    fn build_kvcmd(&self, req: &HashedCommand, key: RingSlice) -> Result<Vec<u8>>;
-}
-
-#[enum_dispatch(Strategy)]
 #[derive(Debug, Clone)]
 pub enum Strategist {
     KVTime(KVTime),
+}
+
+impl Strategy for Strategist {
+    #[inline]
+    fn distribution(&self) -> &DBRange {
+        match self {
+            Strategist::KVTime(inner) => Strategy::distribution(inner),
+        }
+    }
+    #[inline]
+    fn hasher(&self) -> &Hasher {
+        match self {
+            Strategist::KVTime(inner) => Strategy::hasher(inner),
+        }
+    }
+    #[inline]
+    fn get_key(&self, key: &RingSlice) -> Option<String> {
+        match self {
+            Strategist::KVTime(inner) => Strategy::get_key(inner, key),
+        }
+    }
+    #[inline]
+    fn tablename_len(&self) -> usize {
+        match self {
+            Strategist::KVTime(inner) => Strategy::tablename_len(inner),
+        }
+    }
+    #[inline]
+    fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice) {
+        match self {
+            Strategist::KVTime(inner) => Strategy::write_database_table(inner, buf, key),
+        }
+    }
 }
 
 impl Default for Strategist {
