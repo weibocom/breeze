@@ -121,9 +121,9 @@ impl Protocol for Kv {
         Ok(())
     }
 
-    fn build_request(&self, req: &mut HashedCommand, new_req: MemGuard) {
-        req.reshape(new_req);
-    }
+    //fn build_request(&self, req: &mut HashedCommand, new_req: MemGuard) {
+    //    req.reshape(new_req);
+    //}
 
     // TODO in: mysql, out: mc vs redis
     //  1 解析mysql response； 2 转换为mc响应
