@@ -141,8 +141,7 @@ where
             let cmd = MysqlBuilder {}
                 .build_packets(&self.strategist, &req, &key)
                 .expect("malformed sql");
-            self.parser
-                .build_request(req.cmd_mut(), MemGuard::from_vec(cmd));
+            req.reshape(MemGuard::from_vec(cmd));
         }
         log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 

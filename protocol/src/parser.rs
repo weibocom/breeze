@@ -77,7 +77,6 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
-    fn build_request(&self, _req: &mut HashedCommand, _request_builder: MemGuard) {}
 
     // fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
 
