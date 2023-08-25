@@ -6,10 +6,12 @@ mod packet;
 mod reqpacket;
 mod rsppacket;
 
+mod mc2mysql;
+pub use mc2mysql::{MysqlBuilder, Strategy};
+
 use self::common::proto::Text;
 use self::common::query_result::{Or, QueryResult};
 use self::common::row::convert::from_row;
-pub use common::proto::codec::PacketCodec;
 
 use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
