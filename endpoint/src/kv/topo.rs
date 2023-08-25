@@ -5,6 +5,8 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::Binary;
+use protocol::kv::MysqlBuilder;
+use protocol::kv::Strategy;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -14,7 +16,6 @@ use sharding::Distance;
 use sharding::Selector;
 
 use crate::dns::DnsConfig;
-use crate::kv::strategy::Strategy;
 use crate::Builder;
 use crate::Single;
 use crate::Timeout;
@@ -137,9 +138,8 @@ where
         let ctx = super::transmute(req.context_mut());
         if ctx.runs == 0 {
             //todo: 此处不应panic
-            let cmd = self
-                .strategist
-                .build_kvcmd(&req, key)
+            let cmd = MysqlBuilder {}
+                .build_packets(&self.strategist, &req, &key)
                 .expect("malformed sql");
             req.reshape(MemGuard::from_vec(cmd));
             //self.parser
