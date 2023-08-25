@@ -21,7 +21,7 @@ rt = { path = "../rt" }
 ds = { path = "../ds" }
 api = { path = "../api", optional = true}
 
-backtrace = "0.3.63"
+backtrace = { version = "0.3.63", optional = true }
 lazy_static = "1.4.0"
 
 tokio.workspace = true
@@ -42,3 +42,4 @@ hyper = { version = "0.14",  features = ["server", "stream"]}
 default = ["http"]
 http = []
 console-api = ["dep:rocket", "dep:api"]
+panic-hook = ["dep:backtrace"]

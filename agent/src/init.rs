@@ -1,5 +1,6 @@
 use context::Context;
 pub(super) fn init(ctx: &Context) {
+    #[cfg(feature = "panic-hook")]
     init_panic_hook();
     init_signal();
     init_limit(&ctx);
@@ -23,6 +24,7 @@ fn set_rlimit(no: u64) {
         log::info!("set rlimit to {} failed:{:?}", no, _e);
     }
 }
+#[cfg(feature = "panic-hook")]
 pub(crate) fn init_panic_hook() {
     use std::ops::Deref;
     std::panic::set_hook(Box::new(|panic_info| {
