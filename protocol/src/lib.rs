@@ -39,6 +39,7 @@ pub enum Resource {
     Phantom,
     MsgQue,
     Mysql,
+    Uuid,
 }
 
 impl Resource {
@@ -50,6 +51,7 @@ impl Resource {
             Self::Phantom => "phantom",
             Self::MsgQue => "msgque",
             Self::Mysql => "mysql",
+            Self::Uuid => "uuid",
         }
     }
 }
