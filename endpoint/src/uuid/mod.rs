@@ -4,7 +4,7 @@ pub mod topo;
 struct Context {
     runs: u16, // 运行的次数
     idx: u16,  //最多有65535个主从
-    shard_idx: u16,
+    _shard_idx: u16,
     _ignore: u16,
 }
 
