@@ -119,7 +119,7 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
         .collect::<Vec<u8>>();
     let len = slice.len();
     let runs = 24;
-    let mut group = c.benchmark_group("bench_read_num");
+    let mut group = c.benchmark_group("ring_slice_read_num");
     let rs = RingSlice::from(slice.as_ptr(), slice.len(), 0, len);
     group.bench_function("read_u64", |b| {
         b.iter(|| {
