@@ -1,8 +1,8 @@
 use discovery::distance::{Addr, ByDistance};
+use ds::time::{Anchor, Instant};
 use rand::Rng;
-use std::sync::atomic::{AtomicUsize, Ordering::*};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering::*};
 use std::sync::Arc;
-
 #[repr(transparent)]
 #[derive(Clone, Default)]
 pub struct BackendQuota {
@@ -26,6 +26,65 @@ impl BackendQuota {
     }
 }
 
+use lazy_static::lazy_static;
+lazy_static! {
+    static ref INSTANT_ANCHOR: Anchor = Anchor::new();
+}
+
+#[derive(Clone, Default)]
+pub struct SendErr {
+    count: Arc<AtomicUsize>, // 每个后端实例从最近一次发送成功之后，累计的错误数
+    start: Arc<AtomicU64>,   // 最近一次错误开始的开始时间
+}
+
+impl SendErr {
+    // 当前累计的错误数
+    #[inline]
+    fn count(&self) -> usize {
+        self.count.load(Relaxed)
+    }
+    #[inline]
+    fn _reset(&self) {
+        self.count.store(0, Relaxed);
+        self.start
+            .store(Instant::now().as_unix_nanos(&INSTANT_ANCHOR), Relaxed);
+    }
+    #[inline]
+    pub fn incr(&self) {
+        if self.count() == 0 {
+            self._reset();
+        }
+        self.count.fetch_add(1, Relaxed);
+    }
+    #[inline]
+    pub fn reset(&self) {
+        // 满5分钟可复位为0
+        if self.count() > 0
+            && Instant::now().as_unix_nanos(&INSTANT_ANCHOR) - self.start.load(Relaxed)
+                > 300_000_000
+        {
+            self.count.store(0, Relaxed);
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct BackendQos {
+    send_err: SendErr,
+    quota: BackendQuota, // 当前backend的quota
+}
+
+impl BackendQos {
+    #[inline]
+    fn send_err(&self) -> &SendErr {
+        &self.send_err
+    }
+    #[inline]
+    fn quota(&self) -> BackendQuota {
+        self.quota.clone()
+    }
+}
+
 // 选择replica策略，len_local指示的是优先访问的replicas。
 // 1. cacheservice因存在跨机房同步、优先访问本地机房，当前机房的replicas为local
 // 2. 其他资源，replicas长度与len_local相同
@@ -34,7 +93,7 @@ pub struct Distance<T> {
     len_local: u16,
     backend_quota: bool,
     idx: Arc<AtomicUsize>,
-    replicas: Vec<(T, BackendQuota)>,
+    replicas: Vec<(T, BackendQos)>,
 }
 impl<T: Addr> Distance<T> {
     pub fn new() -> Self {
@@ -56,7 +115,8 @@ impl<T: Addr> Distance<T> {
         }
         let idx = self.idx();
         debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
-        Some(unsafe { self.replicas.get_unchecked(idx).1.clone() })
+        let backend_qos = unsafe { &self.replicas.get_unchecked(idx).1 };
+        Some(backend_qos.quota())
     }
     pub fn with_performance_tuning(
         mut replicas: Vec<T>,
@@ -115,7 +175,7 @@ impl<T: Addr> Distance<T> {
     fn refresh(&mut self, replicas: Vec<T>) {
         self.replicas = replicas
             .into_iter()
-            .map(|r| (r, BackendQuota::default()))
+            .map(|r| (r, BackendQos::default()))
             .collect();
     }
     pub fn update(&mut self, replicas: Vec<T>, topn: usize, is_performance: bool) {
@@ -163,7 +223,8 @@ impl<T: Addr> Distance<T> {
 
         let mut idx = self.idx();
         debug_assert!(idx < self.len());
-        let quota = unsafe { &self.replicas.get_unchecked(idx).1 };
+        let backend_qos = unsafe { &self.replicas.get_unchecked(idx).1 };
+        let quota = backend_qos.quota();
         // 每个backend的配置为2秒
         if quota.us() >= 2_000_000 {
             let new = (idx + 1) % self.local_len();
@@ -226,6 +287,56 @@ impl<T: Addr> Distance<T> {
         let idx = self.select_next_idx(idx, runs);
         (idx, &self.replicas.get_unchecked(idx).0)
     }
+    // 开启可用区重试时，后端资源选择策略
+    #[inline]
+    pub fn select_region_next_idx(&self, idx: usize, runs: usize) -> usize {
+        assert!(runs < self.len(), "{} {} {:?}", idx, runs, self);
+        let backend_qos = unsafe { &self.replicas.get_unchecked(idx).1 };
+        let send_err = backend_qos.send_err();
+        send_err.incr();
+        send_err.reset();
+
+        // 首先从local里没有报错的实例里取，local在初始化的时候已做随机化处理
+        for s_idx in 0..self.local_len() {
+            if s_idx != idx {
+                let backend_qos = unsafe { &self.replicas.get_unchecked(s_idx).1 };
+                let send_err = backend_qos.send_err();
+                if send_err.count() == 0 {
+                    return s_idx;
+                }
+            }
+        }
+
+        // 从没有报错的remote里取
+        // 没有remote
+        if self.local_len() == self.len() {
+            return idx;
+        }
+        // 第一次使用remote，为避免热点，从[len_local..len)随机取一个
+        let m = rand::thread_rng().gen_range(self.local_len()..self.len());
+        for s_idx in self.local_len()..m {
+            let backend_qos = unsafe { &self.replicas.get_unchecked(s_idx).1 };
+            let send_err = backend_qos.send_err();
+            if send_err.count() == 0 {
+                return s_idx;
+            }
+        }
+        for s_idx in m..self.len() {
+            let backend_qos = unsafe { &self.replicas.get_unchecked(s_idx).1 };
+            let send_err = backend_qos.send_err();
+            if send_err.count() == 0 {
+                return s_idx;
+            }
+        }
+
+        // 都没取到，在自己这里重试
+        idx
+    }
+    #[inline]
+    pub unsafe fn unsafe_region_next(&self, idx: usize, runs: usize) -> (usize, &T) {
+        let idx = self.select_region_next_idx(idx, runs);
+        (idx, &self.replicas.get_unchecked(idx).0)
+    }
     pub fn into_inner(self) -> Vec<T> {
         self.replicas.into_iter().map(|(r, _)| r).collect()
     }
@@ -241,8 +352,8 @@ impl<T: Addr> Distance<T> {
 
 use std::ptr::NonNull;
 pub struct Iter<'a, T> {
-    start: NonNull<(T, BackendQuota)>,
-    end: *const (T, BackendQuota),
+    start: NonNull<(T, BackendQos)>,
+    end: *const (T, BackendQos),
     _marker: std::marker::PhantomData<&'a T>,
 }
 impl<'a, T> std::iter::Iterator for Iter<'a, T> {

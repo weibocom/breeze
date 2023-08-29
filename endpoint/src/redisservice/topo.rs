@@ -100,7 +100,11 @@ where
                 shard.select()
             } else {
                 if (ctx.runs as usize) < shard.slaves.len() {
-                    shard.next(ctx.idx as usize, ctx.runs as usize)
+                    if self.cfg.basic.region_enabled {
+                        shard.region_next(ctx.idx as usize, ctx.runs as usize)
+                    } else {
+                        shard.next(ctx.idx as usize, ctx.runs as usize)
+                    }
                 } else {
                     // 说明只有一个从，并且从访问失败了，会通过主访问。
                     (ctx.idx as usize, &shard.master)
@@ -324,6 +328,10 @@ impl<E> Shard<E> {
     #[inline]
     fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
         unsafe { self.slaves.unsafe_next(idx, runs) }
+    }
+    #[inline]
+    fn region_next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+        unsafe { self.slaves.unsafe_region_next(idx, runs) }
     }
 }
 impl<E: discovery::Inited> Shard<E> {
