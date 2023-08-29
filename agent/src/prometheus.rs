@@ -1,9 +1,10 @@
 use metrics::prometheus::Prometheus;
 
 use ds::lock::Lock;
-use ds::time::Instant;
-use hyper::{Body, Response, StatusCode};
+use ds::time::{Duration, Instant};
+use hyper::{header::CONTENT_TYPE, Body, Client, Request, Response, StatusCode};
 use lazy_static::lazy_static;
+use tokio::time::timeout;
 use tokio_util::io::ReaderStream;
 
 lazy_static! {
@@ -40,34 +41,31 @@ pub(crate) fn register_target(ctx: &context::Context) {
     };
     let port = ctx.port;
     let pool = ctx.service_pool.to_string();
+    let local_ip = metrics::local_ip();
     rt::spawn(async move {
         let body = format!(
             r#"
 {{
   "labels": {{
-    "pool": "{}",
+    "pool": "{pool}",
     "job": "datamesh-agent"
   }},
-  "target": "{}:{}"
-}}"#,
-            pool,
-            metrics::local_ip(),
-            port
+  "target": "{local_ip}:{port}"
+}}"#
         );
-        let client = reqwest::Client::new();
+        let client = Client::new();
         let mut interval = tokio::time::interval(ds::time::Duration::from_secs(60));
-        let mut q = vec![("refresh", true)];
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             let body = body.clone();
-            match client.put(&url).query(&q).body(body).send().await {
-                Err(_e) => log::error!("register metrics target failed: {:?} {}", _e, url),
-                Ok(r) => {
-                    if r.status() != 200 {
-                        log::debug!("register metrics target failed: {} {}", url, r.status());
-                    }
-                    q[0].1 = false
-                }
-            }
+            let req = Request::builder()
+                .method("PUT")
+                .uri(&url)
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .expect("build request");
+            let _r = timeout(Duration::from_secs(2), client.request(req)).await;
+            log::debug!("target registered: {_r:?}");
             interval.tick().await;
         }
     });
