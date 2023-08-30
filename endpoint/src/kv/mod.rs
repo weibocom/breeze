@@ -17,3 +17,14 @@ fn transmute(ctx: &mut u64) -> &mut Context {
     //assert_eq!(std::mem::size_of::<Context>(), 8);
     unsafe { std::mem::transmute(ctx) }
 }
+
+trait KVCtx {
+    fn ctx(&mut self) -> &mut Context;
+}
+
+impl<T: protocol::Request> KVCtx for T {
+    #[inline(always)]
+    fn ctx(&mut self) -> &mut Context {
+        unsafe { std::mem::transmute(self.context_mut()) }
+    }
+}
