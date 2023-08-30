@@ -79,6 +79,13 @@ where
                     .unsafe_next(ctx.idx as usize, ctx.runs as usize)
             }
         };
+        log::debug!(
+            "+++ {} send =>, idx:{}, addr:{}",
+            self.cfg.service,
+            idx,
+            endpoint.0,
+        );
+
         ctx.idx = idx as u16;
         ctx.runs += 1;
 
@@ -186,10 +193,15 @@ where
             self.cfg.basic.region_enabled,
         );
 
-        log::info!("{} load complete. dropping:{:?}", self.cfg.service, {
-            old.retain(|_k, v| v.len() > 0);
-            old.keys()
-        });
+        log::info!(
+            "{} load complete, backends:{:?} . dropping:{:?}",
+            self.cfg.service,
+            self.backends,
+            {
+                old.retain(|_k, v| v.len() > 0);
+                old.keys()
+            }
+        );
 
         true
     }

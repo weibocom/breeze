@@ -265,7 +265,7 @@ impl<T: Addr> std::fmt::Debug for Distance<T> {
             "len: {}, local: {} backends:{:?}",
             self.len(),
             self.len_local,
-            self.replicas.first().map(|s| s.addr())
+            self.replicas.iter().map(|s| s.addr()).collect::<Vec<_>>()
         )
     }
 }
