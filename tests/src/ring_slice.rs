@@ -92,7 +92,19 @@ fn test_read_number() {
         let end = start + len;
         let rs = RingSlice::from(ptr, cap, start, end);
         let oft: usize = rand::thread_rng().gen_range(0..len - 8);
-        assert_eq!(rs.read_u64_be(oft), rs.read_num_be(oft));
+
+        let num_be_bytes = [
+            rs[oft + 7],
+            rs[oft + 6],
+            rs[oft + 5],
+            rs[oft + 4],
+            rs[oft + 3],
+            rs[oft + 2],
+            rs[oft + 1],
+            rs[oft],
+        ];
+        let num_be: u64 = unsafe { std::mem::transmute(num_be_bytes) };
+        assert_eq!(rs.read_u64_be(oft), num_be);
     }
     let _ = unsafe { Vec::from_raw_parts(ptr, 0, cap) };
 }
