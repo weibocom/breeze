@@ -106,7 +106,8 @@ where
 
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-        let key = if req.ctx().runs == 0 {
+        let runs = req.ctx().runs;
+        let key = if runs == 0 {
             req.key()
         } else {
             req.origin_data().key()
@@ -120,11 +121,11 @@ where
 
         debug_assert_ne!(shards.len(), 0);
         assert!(shards.len() > 0);
-        let shard_idx = if shards.len() > 1 {
-            self.shard_idx(req.hash())
-        } else {
-            0
-        };
+        let mut shard_idx = req.ctx().shard_idx as usize;
+        if runs == 0 && shards.len() > 1 {
+            shard_idx = self.shard_idx(req.hash());
+            req.ctx().shard_idx = shard_idx as u16;
+        }
         debug_assert!(
             shard_idx < shards.len(),
             "mysql: {}/{} req:{:?}",
@@ -135,7 +136,7 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
-        if req.ctx().runs == 0 {
+        if runs == 0 {
             //todo: 此处不应panic
             let cmd =
                 MysqlBuilder::build_packets(&self.strategist, &req, &key).expect("malformed sql");
@@ -151,8 +152,8 @@ where
                     req.quota(quota);
                 }
             }
-            let ctx = super::transmute(req.context_mut());
-            let (idx, endpoint) = if ctx.runs == 0 {
+            let ctx = req.ctx();
+            let (idx, endpoint) = if runs == 0 {
                 shard.select()
             } else {
                 if (ctx.runs as usize) < shard.slaves.len() {
