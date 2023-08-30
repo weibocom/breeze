@@ -132,16 +132,5 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
             });
         });
     });
-    group.bench_function("read_u64_data", |b| {
-        b.iter(|| {
-            black_box({
-                let mut t = 0u64;
-                for i in 0..runs {
-                    t = t.wrapping_add(rs.read_num_be(i) as u64);
-                }
-                t
-            });
-        });
-    });
     group.finish();
 }
