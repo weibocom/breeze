@@ -23,6 +23,7 @@ use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
 use super::strategy::Strategist;
+use super::KVCtx;
 #[derive(Clone)]
 pub struct KvService<B, E, Req, P> {
     // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -104,9 +105,8 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
-        let runs = super::transmute(req.context_mut()).runs;
         // req 是mc binary协议，需要展出字段，转换成sql
-        let key = if runs == 0 {
+        let key = if req.ctx().runs == 0 {
             req.key()
         } else {
             req.origin_data().key()
@@ -135,8 +135,7 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
-        let ctx = super::transmute(req.context_mut());
-        if ctx.runs == 0 {
+        if req.ctx().runs == 0 {
             //todo: 此处不应panic
             let cmd = MysqlBuilder {}
                 .build_packets(&self.strategist, &req, &key)
