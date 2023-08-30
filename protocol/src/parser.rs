@@ -58,6 +58,7 @@ pub struct ResOption {
 pub struct Config {
     pub need_auth: bool,
     pub pipeline: bool,
+    pub backend_pipeline: bool,
     pub retry_on_rsp_notok: bool,
 }
 
@@ -114,7 +115,10 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         None
     }
     fn config(&self) -> Config {
-        Config::default()
+        Config {
+            backend_pipeline: true,
+            ..Default::default()
+        }
     }
 }
 
