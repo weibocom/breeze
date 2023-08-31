@@ -2,7 +2,7 @@ use std::{mem::size_of, num::NonZeroUsize};
 
 use bytes::BufMut;
 
-use byteorder::LittleEndian;
+use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use ds::RingSlice;
 use rand::Rng;
 #[test]
@@ -79,34 +79,29 @@ fn test_ring_slice() {
 
 #[test]
 fn test_read_number() {
-    let cap = 1024;
-    let mut data: Vec<u8> = (0..cap)
-        .map(|_| rand::random::<u8>().max(b'a').min(b'z'))
-        .collect();
+    let cap = 128;
+    let mut data: Vec<u8> = (0..cap).map(|_| rand::random::<u8>()).collect();
     let ptr = data.as_mut_ptr();
-    std::mem::forget(data);
-    // 运行1000次，随机写入一个数
-    for _ in 0..1000 {
-        let start = rand::random::<u32>() as usize;
-        let len = (rand::random::<usize>() % cap).max(16);
-        let end = start + len;
-        let rs = RingSlice::from(ptr, cap, start, end);
-        let oft: usize = rand::thread_rng().gen_range(0..len - 8);
+    for _ in 0..100 {
+        let start = rand::thread_rng().gen_range(0..cap);
+        let rs = RingSlice::from(ptr, cap, start, start + cap);
+        let mut c = Vec::with_capacity(cap);
+        c.extend_from_slice(&data[start..]);
+        c.extend_from_slice(&data[..start]);
 
-        let num_be_bytes = [
-            rs[oft + 7],
-            rs[oft + 6],
-            rs[oft + 5],
-            rs[oft + 4],
-            rs[oft + 3],
-            rs[oft + 2],
-            rs[oft + 1],
-            rs[oft],
-        ];
-        let num_be: u64 = unsafe { std::mem::transmute(num_be_bytes) };
-        assert_eq!(rs.read_u64_be(oft), num_be);
+        for i in 0..cap - 8 {
+            let slice = &c[i..];
+            assert_eq!(BigEndian::read_u16(slice), rs.read_u16_be(i));
+            assert_eq!(LittleEndian::read_i16(slice), rs.read_i16_le(i));
+            assert_eq!(BigEndian::read_u32(slice), rs.read_u32_be(i));
+            assert_eq!(LittleEndian::read_i32(slice), rs.read_i32_le(i));
+            assert_eq!(BigEndian::read_u64(slice), rs.read_u64_be(i));
+            assert_eq!(LittleEndian::read_i64(slice), rs.read_i64_le(i));
+
+            assert_eq!(LittleEndian::read_i24(slice), rs.read_i24_le(i));
+            assert_eq!(LittleEndian::read_u48(slice), rs.read_u48_le(i));
+        }
     }
-    let _ = unsafe { Vec::from_raw_parts(ptr, 0, cap) };
 }
 
 #[test]
@@ -133,7 +128,6 @@ fn copy_to_slice() {
     assert_eq!(slice_long, [0, 0, 0, 0, 1, 2]);
 }
 
-use byteorder::ByteOrder;
 #[test]
 fn check_header() {
     let header = [1, 0, 0, 1, 1];
