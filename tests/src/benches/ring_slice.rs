@@ -121,12 +121,34 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
     let runs = 24;
     let mut group = c.benchmark_group("ring_slice_read_num");
     let rs = RingSlice::from(slice.as_ptr(), slice.len(), 0, len);
-    group.bench_function("read_u64", |b| {
+    group.bench_function("u64_le", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                for i in 0..runs {
+                    t = t.wrapping_add(rs.read_u64_le(i) as u64);
+                }
+                t
+            });
+        });
+    });
+    group.bench_function("u64_be", |b| {
         b.iter(|| {
             black_box({
                 let mut t = 0u64;
                 for i in 0..runs {
                     t = t.wrapping_add(rs.read_u64_be(i) as u64);
+                }
+                t
+            });
+        });
+    });
+    group.bench_function("u56_le", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                for i in 0..runs {
+                    t = t.wrapping_add(rs.read_u56_le(i) as u64);
                 }
                 t
             });
