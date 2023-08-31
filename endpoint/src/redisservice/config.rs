@@ -1,5 +1,7 @@
 //use ds::time::Duration;
 
+use std::fmt::Debug;
+
 use serde::{Deserialize, Serialize};
 //use sharding::distribution::{DIST_ABS_MODULA, DIST_MODULA};
 
@@ -19,6 +21,8 @@ pub struct Basic {
     pub(crate) hash: String,
     #[serde(default)]
     pub(crate) distribution: String,
+    #[serde(default = "Basic::default_dist_check")]
+    pub(crate) dist_check: bool, // 默认需要根据dist进行后端数量检测：如 range、modrange 的后端数量需要是2^n
     //#[serde(default)]
     //pub(crate) listen: String,
     #[serde(default)]
@@ -48,20 +52,16 @@ impl RedisNamespace {
             log::warn!("cfg invalid:{:?}", ns);
             return None;
         }
-        // check backend size，对于range/modrange类型的dist需要限制后端数量为2^n
-        let dist = &ns.basic.distribution;
-        if dist.starts_with(sharding::distribution::DIST_RANGE)
-            || dist.starts_with(sharding::distribution::DIST_MOD_RANGE)
-        {
-            let len = ns.backends.len();
-            let power_two = len > 0 && ((len & len - 1) == 0);
-            if !power_two {
-                log::error!("shard num {} is not power of two: {}", len, cfg);
-                return None;
-            }
+
+        if !ns.validate() {
+            log::error!("shards {} is not power of two: {}", ns.backends.len(), cfg);
+            return None;
         }
-        Some(ns)
+
+        return Some(ns);
     }
+
+    #[inline]
     pub(super) fn timeout_master(&self) -> Timeout {
         let mut to = TO_REDIS_M;
         if self.basic.timeout_ms_master > 0 {
@@ -69,11 +69,40 @@ impl RedisNamespace {
         }
         to
     }
+
+    #[inline]
     pub(super) fn timeout_slave(&self) -> Timeout {
         let mut to = TO_REDIS_S;
         if self.basic.timeout_ms_slave > 0 {
             to.adjust(self.basic.timeout_ms_master);
         }
         to
+    }
+
+    /// 对配置进行合法性校验，当前只检验部分dist的后端数量
+    #[inline(always)]
+    fn validate(&self) -> bool {
+        let dist = &self.basic.distribution;
+        // 需要检测dist时（默认场景），对于range/modrange类型的dist需要限制后端数量为2^n
+        if self.basic.dist_check {
+            if dist.starts_with(sharding::distribution::DIST_RANGE)
+                || dist.starts_with(sharding::distribution::DIST_MOD_RANGE)
+            {
+                let len = self.backends.len();
+                let power_two = len > 0 && ((len & len - 1) == 0);
+                if !power_two {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+}
+
+impl Basic {
+    #[inline(always)]
+    pub(super) fn default_dist_check() -> bool {
+        true
     }
 }
