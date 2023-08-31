@@ -53,10 +53,10 @@ impl Protocol for Uuid {
     {
         if let Some(rsp) = response {
             w.write_slice(rsp, 0)?;
-            Ok(())
         } else {
-            Err(crate::Error::Quit)
+            w.write(b"SERVER_ERROR uuid no available\r\n")?;
         }
+        Ok(())
     }
     fn config(&self) -> crate::Config {
         crate::Config {
