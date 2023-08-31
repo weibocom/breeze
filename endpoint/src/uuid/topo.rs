@@ -113,7 +113,7 @@ where
     }
     #[inline]
     fn need_load(&self) -> bool {
-        self.cfg.need_load()
+        self.cfg.need_load() || self.backends.len() == 0
     }
 
     #[inline]
