@@ -8,8 +8,9 @@ use chrono_tz::Asia::Shanghai;
 use ds::RingSlice;
 use protocol::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use protocol::kv::{MysqlBinary, PacketCodec};
+use protocol::Error::FlushDynOnClose;
 use protocol::HashedCommand;
-use protocol::{Error::MysqlError, Result};
+use protocol::Result;
 use sharding::hash::Hash;
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -116,11 +117,11 @@ impl Strategy for KVTime {
         let uuid = to_i64(&key);
         let tname = match self.build_tname(uuid) {
             Some(tname) => tname,
-            None => return Err(MysqlError("build tname err".to_owned().into_bytes())),
+            None => return Err(FlushDynOnClose("build tname err".to_owned().into_bytes())),
         };
         let dname = match self.build_dname(&key) {
             Some(dname) => dname,
-            None => return Err(MysqlError("build dname err".to_owned().into_bytes())),
+            None => return Err(FlushDynOnClose("build dname err".to_owned().into_bytes())),
         };
 
         MysqlBuilder::new(dname, tname, req).build_packets()
@@ -153,13 +154,13 @@ impl<'a> MysqlBuilder<'a> {
                 Self::build_select_sql(&mut packet, &self.dname, &self.tname, self.req, &key)
             }
             //todo 返回原因
-            _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
+            _ => return Err(FlushDynOnClose(format!("not support op:{op}").into_bytes())),
         };
 
         packet.finish_current_packet();
         packet
             .check_total_payload_len()
-            .map_err(|_| MysqlError("payload > max_allowed_packet".to_owned().into_bytes()))?;
+            .map_err(|_| FlushDynOnClose("payload > max_allowed_packet".to_owned().into_bytes()))?;
         Ok(packet.into())
     }
     fn escape_mysql_and_push(packet: &mut PacketCodec, c: u8) {

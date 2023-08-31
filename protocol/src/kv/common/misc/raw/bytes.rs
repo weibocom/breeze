@@ -21,7 +21,6 @@ use crate::kv::common::{
 
 use super::{int::VarLen, RawInt};
 
-// TODO 生命周期参数后面测试完毕后统一清理  fishermen
 /// Wrapper for a raw byte sequence, that came from a server.
 ///
 /// `T` encodes the serialized representation.
@@ -30,7 +29,6 @@ use super::{int::VarLen, RawInt};
 pub struct RawBytes<T: BytesRepr>(pub RingSlice, PhantomData<T>);
 // pub struct RawBytes<'a, T: BytesRepr>(pub Cow<'a, [u8]>, PhantomData<T>);
 
-// TODO 生命周期参数后面同一清理 fishermen
 impl<T: BytesRepr> RawBytes<T> {
     /// Wraps the given value.
     // pub fn new(text: impl Into<Cow<'a, [u8]>>) -> Self {
@@ -63,13 +61,12 @@ impl<T: BytesRepr> RawBytes<T> {
         &self.0
     }
 
-    // TODO 先改为返回String，会存在copy，同时方法的语义有变，使用的场景有限，后续再优化 fishermen
+    // 先改为返回String，会存在copy，理论上最大长度很小，不会超过512
     /// Returns the value as a UTF-8 string (lossy contverted).
     // pub fn as_str(&'a self) -> Cow<'a, str> {
     pub fn as_str(&self) -> String {
         // String::from_utf8_lossy(self.as_bytes())
 
-        // TODO 封装ring到ringslice内部，待测试稳定后，清理上面的dead code fishermen
         debug_assert!(self.0.len() <= 512, "slice too big:{:?}", self.0);
         self.0.as_string_lossy()
 
@@ -77,12 +74,6 @@ impl<T: BytesRepr> RawBytes<T> {
     }
 }
 
-// TODO 转为RingSlice，需要check影响 fishermen
-// impl<'a, T: Into<Cow<'a, [u8]>>, U: BytesRepr> From<T> for RawBytes<'a, U> {
-//     fn from(bytes: T) -> RawBytes<'a, U> {
-//         RawBytes::new(bytes)
-//     }
-// }
 impl<T: Into<RingSlice>, U: BytesRepr> From<T> for RawBytes<U> {
     fn from(bytes: T) -> RawBytes<U> {
         // RawBytes::new(bytes)
@@ -150,8 +141,6 @@ pub trait BytesRepr {
     const SIZE: Option<usize>;
     type Ctx;
 
-    // TODO 修改切片为RingSlice，所有实现均需修改 fishermen
-    // fn serialize(text: &[u8], buf: &mut Vec<u8>);
     fn serialize(text: &RingSlice, buf: &mut Vec<u8>);
 
     /// Implementation must check the length of the buffer if `Self::SIZE.is_none()`.
@@ -168,7 +157,6 @@ impl BytesRepr for LenEnc {
     fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
         buf.put_lenenc_int(text.len() as u64);
         // buf.put_slice(text);
-        // TODO 测试时，注意check一致性 fishermen
         text.copy_to_vec(buf);
     }
 
@@ -205,7 +193,6 @@ impl BytesRepr for U8Bytes {
         // buf.checked_eat(len.0 as usize)
         //     .map(Cow::Borrowed)
         //     .ok_or_else(unexpected_buf_eof)
-        // TODO 参考代码，注意check fishermen
         buf.checked_eat(len.0 as usize)
             .ok_or_else(unexpected_buf_eof)
     }
@@ -232,7 +219,7 @@ impl BytesRepr for U32Bytes {
         // buf.checked_eat_u32_str()
         //     .map(Cow::Borrowed)
         //     .ok_or_else(unexpected_buf_eof)
-        // TODO 参考什么代码，注意check一致性 fishermen
+        // 参考什么代码，注意check一致性 fishermen
         buf.checked_eat_u32_str().ok_or_else(unexpected_buf_eof)
     }
 }
@@ -256,7 +243,7 @@ impl BytesRepr for NullBytes {
         //     .unwrap_or_else(|| text.len());
         // buf.put_slice(&text[..last]);
         // buf.put_u8(0);
-        // TODO 参考上面的逻辑，check一致性，暂时不要清理 fishermen
+        // 参考上面的逻辑，check一致性，暂时不要清理 fishermen
         let last = match text.find(0, 0) {
             Some(p) => p,
             None => text.len(),
@@ -278,9 +265,7 @@ impl BytesRepr for NullBytes {
         //         "no null terminator for null-terminated string",
         //     )),
         // }
-        // let s = vec![0, 1];
-        // s.iter();
-        // TODO 参考上面的逻辑，check一致性，暂时不要清理 fishermen
+        // 参考上面的逻辑，check一致性，暂时不要清理 fishermen
         match buf.find(0, 0) {
             Some(i) => {
                 let out = buf.eat(i);
@@ -332,7 +317,7 @@ impl<const MAX_LEN: usize> BytesRepr for BareBytes<MAX_LEN> {
     fn serialize(text: &RingSlice, buf: &mut Vec<u8>) {
         // let len = min(text.len(), MAX_LEN);
         // buf.put_slice(&text[..len]);
-        // TODO 参考上面的逻辑，check一致性，暂时不要清理 fishermen
+        // 参考上面的逻辑，check一致性，暂时不要清理 fishermen
         text.copy_to_vec_with_len(buf, MAX_LEN);
     }
 

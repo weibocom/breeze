@@ -1,5 +1,3 @@
-// TODO 后面统一整合
-
 /// Trait for types generated using `bitflags::bitflags!` macro.
 pub trait Bitflags: Copy {
     type Repr: Copy + num_traits::PrimInt;

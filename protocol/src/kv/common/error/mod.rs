@@ -15,7 +15,10 @@ use url::ParseError;
 
 use std::{error, fmt, io, sync};
 
-use crate::kv::common::{row::Row, value::Value};
+use crate::kv::{
+    common::{row::Row, value::Value},
+    error::KVError,
+};
 
 pub mod tls;
 
@@ -55,17 +58,6 @@ impl error::Error for MySqlError {
     }
 }
 
-//TODO 先简单实现，稍后进行整合
-// impl MySqlError {
-//     #[inline]
-//     pub(crate) fn error(&self) -> crate::error::Error {
-//         // let msg = format!("mysql Error: %{}", self);
-//         match self {
-//             _ => crate::error::Error::IO(ErrorKind::Other),
-//         }
-//     }
-// }
-
 pub enum Error {
     IoError(io::Error),
     CodecError(super::proto::codec::error::PacketCodecError),
@@ -100,13 +92,16 @@ impl Error {
     //     ))
     // }
 
-    //TODO 先简单实现，稍后进行整合
+    /// TODO 将mysql内部解析、编码的Error映射到KVError，目前仅根据当前使用情况进行转换，
+    /// 后续如果Error发生变动，需要关注这里是否需要调整
     #[inline]
-    pub(crate) fn error(&self) -> crate::error::Error {
-        let msg = format!("{}", self);
+    pub(crate) fn error(&self) -> KVError {
+        let msg = format!("{}", self).as_bytes().to_vec();
         // let content = RingSlice::from_vec(&msg.as_bytes().to_vec());
         match self {
-            _ => crate::error::Error::MysqlError(msg.as_bytes().to_vec()),
+            Error::DriverError(e) => e.error(),
+            Error::CodecError(_) => KVError::RequestInvalid(msg),
+            _ => KVError::ResponseCommonError(msg),
         }
     }
 }
@@ -247,13 +242,13 @@ impl error::Error for DriverError {
 }
 
 impl DriverError {
-    // TODO 先做一个简单的转换，跑通后，再调整 fishermen
+    // Driver error 用于处理auth中的异常，目前全部转为kv中的AuthInvalid fishermen
     #[inline]
-    pub(crate) fn error(&self) -> crate::error::Error {
+    pub(crate) fn error(&self) -> KVError {
         let msg = format!("mysql Driver Error: {}", self);
         // let content = RingSlice::from_vec(&msg.as_bytes().to_vec());
         match self {
-            _ => crate::error::Error::MysqlError(msg.as_bytes().to_vec()),
+            _ => KVError::AuthInvalid(msg.as_bytes().to_vec()),
         }
     }
 }

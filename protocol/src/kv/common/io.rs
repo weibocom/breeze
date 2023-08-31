@@ -1,5 +1,3 @@
-// TODO 后面统一整合
-
 use byteorder::{LittleEndian as LE, ReadBytesExt, WriteBytesExt};
 use bytes::BufMut;
 use ds::RingSlice;
@@ -59,10 +57,6 @@ pub trait BufMutExt: BufMut {
     /// Writes a string with u8 length prefix. Truncates, if the length is greater that `u8::MAX`.
     // fn put_u8_str(&mut self, s: &[u8]) {
     fn put_u8_str(&mut self, s: &RingSlice) {
-        // let len = std::cmp::min(s.len(), u8::MAX as usize);
-        // self.put_u8(len as u8);
-        // self.put_slice(&s[..len]);
-        // TODO 参考上面的代码，注意check一致性 fishermen
         const U8_MAX: usize = u8::MAX as usize;
         let min = s.len().min(U8_MAX);
         self.put_u8(min as u8);
@@ -76,7 +70,7 @@ pub trait BufMutExt: BufMut {
         // let len = std::cmp::min(s.len(), u32::MAX as usize);
         // self.put_u32_le(len as u32);
         // self.put_slice(&s[..len]);
-        // TODO 参考上面的代码，注意check一致性 fishermen
+        // 参考上面的代码，注意check一致性 fishermen
         const U32_MAX: usize = u32::MAX as usize;
         let min = s.len().min(U32_MAX);
         self.put_u32_le(min as u32);
@@ -103,8 +97,9 @@ pub trait BufMutExt: BufMut {
 
 impl<T: BufMut> BufMutExt for T {}
 
-// oft在此处统一管理，保持ringslice的不变性；
-// 所有对data的访问，需要进行统一封装，避免oft的误操作 fishermen
+/// 对ringslice进行动态解析，当前的解析位置是oft，所有数据来自ringslice类型的data；
+/// oft在此处统一管理，保持ringslice的不变性；
+/// 所有对data的访问，需要进行统一封装，避免oft的误操作 fishermen
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ParseBuf {
     oft: usize,
@@ -121,11 +116,6 @@ impl io::Read for ParseBuf {
         // self.0 = &self.0[count..];
         // Ok(count)
 
-        // TODO 参考上面的代码，彻底稳定后，再考虑清理 fishermen
-        // let count = self.0.len().min(buf.len());
-        // self.0.copy_to_slice(&mut buf[..count]);
-        // self.0.eat(count);
-        // Ok(count)
         let count = self.len().min(buf.len());
         let data = self.eat(count);
         data.copy_to_slice(&mut buf[..count]);
@@ -142,16 +132,9 @@ macro_rules! eat_num {
             // let bytes = self.eat(SIZE);
             // unsafe { $t::$fn(*(bytes as *const _ as *const [_; SIZE])) }
 
-            // TODO 统一改造为RingSlice来parse，注意对比原有逻辑 fishermen
+            // 统一改造为RingSlice来parse，注意对比原有逻辑 fishermen
             let slice = self.eat(SIZE);
             slice.$fn(0)
-            // match slice.try_oneway_slice(0, SIZE) {
-            //     Some(bytes) => unsafe { $t::$fn(*(bytes as *const _ as *const [_; SIZE])) },
-            //     None => {
-            //         let data = slice.dump_ring_part(0, SIZE);
-            //         unsafe { $t::$fn(*(data.as_ptr() as *const [_; SIZE])) }
-            //     }
-            // }
         }
 
         #[doc = "Consumes a number from the head of the buffer. Returns `None` if buffer is too small."]
@@ -179,13 +162,6 @@ macro_rules! eat_num {
             // 封装到RingSlice中处理，注意check一致性
             let slice = self.eat(SIZE);
             slice.$fn(0)
-
-            // TODO 注意对比上面原始代码，check一致性 fishermen
-            // for i in 0..SIZE {
-            //     let b = slice.at(i);
-            //     x |= (b as $t) << ((8 * i) + (8 * $offset));
-            // }
-            // $t::$fn(x)
         }
 
         #[doc = "Consumes a number from the head of the buffer. Returns `None` if buffer is too small."]
@@ -205,23 +181,6 @@ impl<'a> ParseBuf {
     pub fn new(oft: usize, data: RingSlice) -> Self {
         Self { oft, data }
     }
-
-    // TODO 逻辑统一到len()中，但需要注意len的调用姿势是否需要同步修改  fishermen
-    // #[inline(always)]
-    // pub fn left_len(&self) -> usize {
-    //     // TODO 测试稳定后，此assert可以去掉？ fishermen
-    //     assert!(
-    //         self.oft <= self.data.len(),
-    //         "oft/len: {}/{}",
-    //         self.oft,
-    //         self.data.len()
-    //     );
-    //     self.data.len() - self.oft
-    // }
-    // pub fn from(data: &'a [u8]) -> Self {
-    //     let slice = data.into();
-    //     Self(slice)
-    // }
 
     /// Returns `T: MyDeserialize` deserialized from `self`.
     ///
@@ -254,11 +213,11 @@ impl<'a> ParseBuf {
         self.len() == 0
     }
 
-    /// 返回尚未解析的字节长度，注意会去掉oft的长度.
+    /// parseBuf改为一个动态buf，len是自oft到结束位置的长度，即返回尚剩余未解析的字节长度
     pub fn len(&self) -> usize {
         // self.0.len()
 
-        // TODO 语义变了，此处应该是返回剩余长度，即oft到data.len()的长度，而非data.len()本身 fishermen
+        // 语义变了，此处应该是返回剩余长度，即oft到data.len()的长度，而非data.len()本身 fishermen
         assert!(self.oft <= self.data.len(), "Parsebuf: {:?}", self);
         self.data.len() - self.oft
     }
@@ -292,20 +251,14 @@ impl<'a> ParseBuf {
     pub fn skip(&mut self, cnt: usize) {
         // self.0 = &self.0[cnt..];
 
-        // TODO 参考逻辑2，测试稳定后清理 fishermen
-        // if cnt <= self.0.len() {
-        //     self.0 = self.0.sub_slice(cnt, self.0.len() - cnt);
-        // } else {
-        //     self.0 = self.0.sub_slice(self.0.len(), 0);
-        // }
         if cnt <= self.len() {
-            // TODO 直接偏移，跟原逻辑差异比较大，会埋坑里，所以还是保持原逻辑吧 fishermen
+            // 直接偏移，跟原逻辑差异比较大，会埋坑里，所以还是保持原逻辑吧 fishermen
             // self.oft += cnt;
             self.data = self.sub_slice(cnt, self.len() - cnt);
             self.oft = 0;
         } else {
             log::error!("+++ skip overflow:{}/{:?}", cnt, self);
-            assert!(false, "{}/{}", cnt, self.len());
+            assert!(false, "{}/{:?}", cnt, self);
         }
     }
 
@@ -332,14 +285,6 @@ impl<'a> ParseBuf {
         // self.0 = right;
         // left
 
-        // TODO 加上长度判断，避免panic，类似场景需要梳理 fishermen
-        // assert!(n < self.len(), "malformed len: {}/{:?}", n, self);
-        // let data = unsafe { self.0.limited_slice(0, n) };
-        // self.0 = self.0.sub_slice(n, self.len() - n);
-        // data
-        // TODO 参考代码2 稳定后清理
-        // self.0.eat(n)
-
         let data = self.sub_slice(0, n);
         self.skip(n);
         data
@@ -362,21 +307,12 @@ impl<'a> ParseBuf {
     pub fn checked_eat_buf(&mut self, n: usize) -> Option<Self> {
         // Some(Self(self.checked_eat(n)?))
 
-        // TODO 暂时保留做参考2，稳定后清理 fishermen
-        // if self.len() >= n {
-        //     let data = self.0.sub_slice(0, n);
-        //     self.0 = self.0.sub_slice(n, self.len() - n);
-        //     Some(ParseBuf(data))
-        // } else {
-        //     None
-        // }
-
         if self.len() >= n {
             // self.0 = self.0.sub_slice(n, self.len() - n);
             let data = self.eat(n);
             Some(ParseBuf::new(0, data))
         } else {
-            log::error!("buf overflow: {:?}", self);
+            log::error!("buf overflow: {}/{:?}", n, self);
             None
         }
     }
@@ -525,28 +461,13 @@ impl<'a> ParseBuf {
         //     x => x,
         // }
 
-        // 找到第一个非0字节，pos为（index + 1）
-        // let pos = match self.0.find(0, 0) {
-        //     Some(p) => p + 1,
-        //     None => self.len(),
-        // };
-        // let data = self.0.sub_slice(0, pos);
-        // self.0 = self.0.sub_slice(pos, self.len() - pos);
-
-        // // 如果结尾是0_u8，去掉，否则直接返回
-        // if data.at(data.len() - 1) == 0 {
-        //     unsafe { data.limited_slice(0, data.len() - 1) }
-        // } else {
-        //     unsafe { data.limited_slice(0, data.len()) }
-        // }
-
-        // TODO 第三版，继续延迟copy，注意对比逻辑的一致性 fishermen
+        // 基于封装的find，返回的pos是基于当前oft的位置
         let pos = match self.find(0, 0) {
             Some(p) => p + 1,
             None => self.len(),
         };
         // 如果结尾是0_u8，去掉，否则直接返回
-        // TODO 对于基于data的操作特别要注意，当前parsebuf的语义都是基于oft来操作的，如果基于源data操作，需要加上oft
+        // 注意：语义都是基于oft来操作的，如果基于源data操作，需要加上oft
         // 当前data直接使用还
         if self.at(pos - 1) == 0 {
             let data = self.eat(pos - 1);

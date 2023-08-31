@@ -1,5 +1,3 @@
-// TODO：传入数据进行parse，后续进一步按需改造
-
 use crate::{Error, Result, Stream};
 
 pub use crate::kv::common::proto::{Binary, Text};
@@ -267,7 +265,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         R: FromRow,
         F: FnMut(U, R) -> U,
     {
-        // TODO: 改为每次只处理本次的响应
+        // 改为每次只处理本次的响应
         loop {
             match self.scan_row()? {
                 Some(row) => {

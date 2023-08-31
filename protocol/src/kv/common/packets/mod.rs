@@ -488,7 +488,7 @@ impl OkPacketKind for OldEofPacket {
             warnings,
             // info: RawBytes::new(&[][..]),
             // session_state_info: RawBytes::new(&[][..]),
-            // TODO 设置一个0长slice
+            // 设置一个0长slice
             info: RawBytes::new(buf.sub_slice(0, 0)),
             session_state_info: RawBytes::new(buf.sub_slice(0, 0)),
         })
@@ -745,7 +745,6 @@ impl ProgressReport {
     //     &self.stage_info.as_bytes()
     // }
 
-    // TODO 在最后需要的地方进行转换str，因为涉及到这回slice
     /// Status or state name as a string (lossy converted).
     // pub fn stage_info_str(&self) -> Cow<'_, str> {
     pub fn stage_info_str(&self) -> String {
@@ -1090,7 +1089,6 @@ impl MySerialize for AuthPluginData {
     }
 }
 
-// TODO 生命周期参数在后续修改完毕后，需要统一清理  fishermen
 /// Authentication plugin
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum AuthPlugin {
@@ -1125,7 +1123,6 @@ impl MySerialize for AuthPlugin {
     }
 }
 
-// TODO 生命周期参数可以去掉，但考虑修改范围限制，等测试完毕后，再统一清理 fishermen
 // impl<'a> AuthPlugin<'a> {
 impl AuthPlugin {
     // pub fn from_bytes(name: &'a [u8]) -> AuthPlugin<'a> {
@@ -1142,7 +1139,7 @@ impl AuthPlugin {
         //     name => AuthPlugin::Other(Cow::Borrowed(name)),
         // }
 
-        // TODO 注意参考上面的逻辑，check一致性 fishermen
+        // 注意参考上面的逻辑，check一致性 fishermen
         if name.start_with(0, CACHING_SHA2_PASSWORD_PLUGIN_NAME) {
             AuthPlugin::CachingSha2Password
         } else if name.start_with(0, MYSQL_NATIVE_PASSWORD_PLUGIN_NAME) {
@@ -1435,7 +1432,7 @@ impl<'de> MyDeserialize for HandshakePacket {
             //     all => Some(RawBytes::new(all)),
             // }
 
-            // TODO 上面的实现暂留参考，彻底稳定前不要清理 fishermen
+            // 上面的实现暂留参考，彻底稳定前不要清理 fishermen
             // 如果末尾是0，需要trucate掉，否则整个字节是plugin name
             let pname_data = buf.eat_all();
             auth_plugin_name = if pname_data.len() > 0 {
@@ -1605,7 +1602,7 @@ impl HandshakePacket {
         //             parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
         //         )
         //     })
-        // TODO 参考上面的代码，彻底稳定前，暂时不要清理 fishermen
+        // 参考上面的代码，彻底稳定前，暂时不要清理 fishermen
         let version = self.server_version_ref();
         let (l, r) = version.data();
         match r.len() {
@@ -1670,8 +1667,6 @@ impl HandshakePacket {
     pub fn nonce(&self) -> Vec<u8> {
         let mut out = Vec::from(self.scramble_1_ref());
         // out.extend_from_slice(self.scramble_2_ref().unwrap_or(&[][..]));
-
-        // TODO 参考上面的代码，彻底稳定前，暂时不要清理 fishermen
         self.scramble_2_ref().map(|x| x.copy_to_vec(&mut out));
 
         // Trim zero terminator. Fill with zeroes if nonce
