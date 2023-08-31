@@ -48,6 +48,7 @@ impl RedisNamespace {
         }
         // check backend size，对于range/modrange类型的dist需要限制后端数量为2^n
         let dist = &ns.basic.distribution;
+
         if dist.starts_with(sharding::distribution::DIST_RANGE)
             || dist.starts_with(sharding::distribution::DIST_MOD_RANGE)
         {
@@ -55,7 +56,8 @@ impl RedisNamespace {
             let power_two = len > 0 && ((len & len - 1) == 0);
             if !power_two {
                 log::error!("shard num {} is not power of two: {}", len, cfg);
-                return None;
+                // TODO 临时为业务关闭，真正merge时，需要打开下面的return，进行check
+                // return None;
             }
         }
         Some(ns)
