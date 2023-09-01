@@ -38,22 +38,15 @@ where
         debug_assert!(self.num.check_pending(self.pending.len()), "{:?}", self);
         let me = &mut *self;
 
-        loop {
-            let request = me.poll_request(cx)?;
-            let flush = me.poll_flush(cx)?;
-            let response = me.poll_response(cx)?;
-            //request.is_ready()说明发送完一个请求有以下两种情况：
-            //1. 收到了响应，这可能在当前poll或者后续poll轮次
-            //2. 没收到响应，这可能在当前poll或者后续poll轮次
-            //在没收到响应时，后续只会被poll_response唤醒，无需处理；否则应该继续loop，以pending在poll_request
-            if !me.parser.config().backend_pipeline && request.is_ready() && me.pending.len() == 0 {
-                continue;
-            }
-            ready!(flush);
-            ready!(response);
-            ready!(request);
-            return Poll::Ready(Ok(()));
-        }
+        let request = me.poll_request(cx)?;
+        let flush = me.poll_flush(cx)?;
+        let response = me.poll_response(cx)?;
+
+        // 必须要先flush，否则可能有请求未发送导致超时。
+        ready!(flush);
+        ready!(response);
+        ready!(request);
+        Poll::Ready(Ok(()))
     }
 }
 impl<'r, Req, P, S> Handler<'r, Req, P, S>
@@ -122,12 +115,7 @@ where
     // 发送request. 读空所有的request，并且发送。直到pending或者error
     #[inline]
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        //丧失了ready!(self.data.poll_recv(cx))的唤醒，只能从response唤醒
-        let backend_pipeline = self.parser.config().backend_pipeline;
-        if !backend_pipeline && self.pending.len() > 0 {
-            return Poll::Ready(Ok(()));
-        }
-        self.s.cache(self.data.has_multi() && backend_pipeline);
+        self.s.cache(self.data.has_multi());
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
             self.num.tx();
 
@@ -139,9 +127,6 @@ where
                 None => {
                     self.num.rx();
                 }
-            }
-            if !self.parser.config().backend_pipeline {
-                return Poll::Ready(Ok(()));
             }
         }
         Poll::Ready(Err(Error::QueueClosed))
