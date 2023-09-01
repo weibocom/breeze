@@ -1,5 +1,6 @@
 use core::fmt::Write;
 use enum_dispatch::enum_dispatch;
+use std::fmt::Display;
 
 use super::common::proto::codec::PacketCodec;
 use crate::kv::MysqlBinary;
@@ -16,6 +17,32 @@ pub trait Strategy {
     fn get_key(&self, key: &RingSlice) -> Option<String>;
     fn tablename_len(&self) -> usize;
     fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice);
+}
+
+struct TableDisplay<'a, S> {
+    strategy: &'a S,
+    key: &'a RingSlice,
+}
+
+impl<'a, S: Strategy> Display for TableDisplay<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.strategy.write_database_table(f, self.key);
+        Ok(())
+    }
+}
+
+impl<'a, S> TableDisplay<'a, S> {
+    fn wrap_strategy(strategy: &'a S, key: &'a RingSlice) -> Self {
+        Self { strategy, key }
+    }
+}
+
+struct KeyValDisplay<'a>(&'a RingSlice);
+impl<'a> Display for KeyValDisplay<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.visit(|c| escape_mysql_and_push(f, c));
+        Ok(())
+    }
 }
 
 struct Insert<'a, S> {
@@ -40,8 +67,7 @@ struct Delete<'a, S> {
 const ESCAPED_GROW_LEN: usize = 8;
 impl<'a, S: Strategy> Insert<'a, S> {
     fn len(&self) -> usize {
-        // format!("insert into {dname}.{tname} (id, content) values ({key}, {val})")
-        "insert into  (id,content) values (,)".len()
+        "insert into  (id,content) values (,'')".len()
             + self.strategy.tablename_len()
             + self.key.len()
             + self.val.len()
@@ -49,19 +75,18 @@ impl<'a, S: Strategy> Insert<'a, S> {
     }
     fn build(&self, packet: &mut PacketCodec) {
         let &Self { strategy, key, val } = self;
-        packet.push_str("insert into ");
-        strategy.write_database_table(packet, key);
-        packet.push_str(" (id,content) values (");
-        extend_escape_string(packet, key);
-        packet.push_str(",'");
-        extend_escape_string(packet, &val);
-        packet.push_str("')")
+        let _ = write!(
+            packet,
+            "insert into {} (id,content) values ({},'{}')",
+            TableDisplay::wrap_strategy(strategy, key),
+            KeyValDisplay(key),
+            KeyValDisplay(&val)
+        );
     }
 }
 impl<'a, S: Strategy> Update<'a, S> {
     fn len(&self) -> usize {
-        //update  set content= where id=
-        "update  set content= where id=".len()
+        "update  set content='' where id=".len()
             + self.strategy.tablename_len()
             + self.key.len()
             + self.val.len()
@@ -69,13 +94,13 @@ impl<'a, S: Strategy> Update<'a, S> {
     }
     fn build(&self, packet: &mut PacketCodec) {
         let &Self { strategy, key, val } = self;
-        //update  set content= where id=
-        packet.push_str("update ");
-        strategy.write_database_table(packet, key);
-        packet.push_str(" set content='");
-        extend_escape_string(packet, &val);
-        packet.push_str("' where id=");
-        extend_escape_string(packet, key);
+        let _ = write!(
+            packet,
+            "update {} set content='{}' where id={}",
+            TableDisplay::wrap_strategy(strategy, key),
+            KeyValDisplay(&val),
+            KeyValDisplay(key)
+        );
     }
 }
 impl<'a, S: Strategy> Select<'a, S> {
@@ -85,23 +110,26 @@ impl<'a, S: Strategy> Select<'a, S> {
     }
     fn build(&self, packet: &mut PacketCodec) {
         let &Self { strategy, key } = self;
-        packet.push_str("select content from ");
-        strategy.write_database_table(packet, key);
-        packet.push_str(" where id=");
-        extend_escape_string(packet, key);
+        let _ = write!(
+            packet,
+            "select content from {} where id={}",
+            TableDisplay::wrap_strategy(strategy, key),
+            KeyValDisplay(key)
+        );
     }
 }
 impl<'a, S: Strategy> Delete<'a, S> {
     fn len(&self) -> usize {
-        // delete from  where id=
         "delete from  where id=".len() + self.strategy.tablename_len() + self.key.len()
     }
     fn build(&self, packet: &mut PacketCodec) {
         let &Self { strategy, key } = self;
-        packet.push_str("delete from ");
-        strategy.write_database_table(packet, key);
-        packet.push_str(" where id=");
-        extend_escape_string(packet, key);
+        let _ = write!(
+            packet,
+            "delete from {} where id={}",
+            TableDisplay::wrap_strategy(strategy, key),
+            KeyValDisplay(key)
+        );
     }
 }
 
@@ -135,31 +163,28 @@ pub struct MysqlBuilder {}
 
 // https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
 // Backslash (\) and the quote character used to quote the string must be escaped. In certain client environments, it may also be necessary to escape NUL or Control+Z.
-// 应该只需要转义上面的
-fn escape_mysql_and_push(packet: &mut PacketCodec, c: u8) {
+// 应该只需要转义上面的，我们使用单引号，所以双引号也不转义了
+fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
     //非法char要当成二进制push，否则会变成unicode
     let c = c as char;
-    if c == '\\' || c == '\'' || c == '"' {
-        packet.push('\\' as u8);
-        packet.push(c as u8);
+    if c == '\\' || c == '\'' {
+        let _ = packet.write_char('\\');
+        let _ = packet.write_char(c);
     // } else if c == '\x00' {
-    //     packet.push('\\' as u8);
-    //     packet.push('0' as u8);
+    //     let _ = packet.write_char('\\');
+    //     let _ = packet.write_char('0');
     // } else if c == '\n' {
-    //     packet.push('\\' as u8);
-    //     packet.push('n' as u8);
+    //     let _ = packet.write_char('\\');
+    //     let _ = packet.write_char('n');
     // } else if c == '\r' {
-    //     packet.push('\\' as u8);
-    //     packet.push('r' as u8);
+    //     let _ = packet.write_char('\\');
+    //     let _ = packet.write_char('r');
     // } else if c == '\x1a' {
-    //     packet.push('\\' as u8);
-    //     packet.push('Z' as u8);
+    //     let _ = packet.write_char('\\');
+    //     let _ = packet.write_char('Z');
     } else {
-        packet.push(c as u8);
+        let _ = packet.write_char(c);
     }
-}
-fn extend_escape_string(packet: &mut PacketCodec, r: &RingSlice) {
-    r.visit(|c| escape_mysql_and_push(packet, c))
 }
 
 impl MysqlBuilder {
