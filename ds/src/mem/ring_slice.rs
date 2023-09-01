@@ -339,6 +339,55 @@ impl RingSlice {
 
 use std::convert::TryInto;
 macro_rules! define_read_number {
+    (le $($ty:ty)+) => {
+        $(paste::paste! {
+            define_read_number!([<read_ $ty _le_cmp>], std::mem::size_of::<$ty>(), 0, $ty, $ty, from_le_bytes);
+        })+
+    };
+    (be $($ty:ty)+) => {
+        $(paste::paste! {
+            define_read_number!([<read_ $ty _be_cmp>], std::mem::size_of::<$ty>(), 0, $ty, $ty, from_be_bytes);
+        })+
+    };
+    ($($ty:ty)+) => {
+        define_read_number!(le $($ty)+);
+        define_read_number!(be $($ty)+);
+    };
+    (ole $($actual_ty:ty, $ty:ty, $name:ident, $bits:literal);+) => {
+        $(paste::paste! {
+            define_read_number!([<read_ $name _le_cmp>], $bits / 8, 0, $actual_ty, $ty, from_le_bytes);
+        })+
+    };
+    (obe $($actual_ty:ty, $ty:ty, $name:ident, $bits:literal);+) => {
+        $(paste::paste! {
+            define_read_number!([<read_ $name _be_cmp>], $bits / 8, std::mem::size_of::<$ty>() * 8 - $bits, $actual_ty, $ty, from_be_bytes);
+        })+
+    };
+    ($fn:ident, $bytes:expr, $rshift:expr, $actual_ty:tt, $ty:tt, $which:ident) => {
+        #[inline]
+        pub fn $fn(&self, oft: usize) -> $actual_ty {
+            debug_assert!(oft + $bytes <= self.len());
+            let start = oft + self.start();
+            const SIZE: usize = std::mem::size_of::<$ty>();
+            let v = if start + SIZE <= self.cap() {
+                let b = unsafe { from_raw_parts(self.ptr().add(start), SIZE) };
+                $ty::$which(b.try_into().unwrap()) >> $rshift
+            } else {
+                use copy_nonoverlapping as copy;
+                // 分段读取
+                let mut b = [0u8; SIZE];
+                let start = self.mask(start);
+                const OFT:usize = $rshift / 8;
+                let len = (self.cap() - start).min($bytes);
+                unsafe { copy(self.ptr().add(start), b.as_mut_ptr().add(OFT), len) };
+                unsafe { copy(self.ptr(), b.as_mut_ptr().add(len + OFT), $bytes - len) };
+                $ty::$which(b)
+            };
+            const SHIFT: usize = std::mem::size_of::<$actual_ty>() * 8 - $bytes * 8;
+            // 保留符号位
+            (v << SHIFT) as $actual_ty >> SHIFT
+        }
+    };
     ($fn_name:ident, $type_name:tt::$type_fn:ident) => {
         #[inline]
         pub fn $fn_name(&self, oft: usize) -> $type_name {
@@ -392,6 +441,23 @@ macro_rules! define_read_number {
 }
 
 impl RingSlice {
+    define_read_number!(u16 u32 u64);
+    define_read_number!(le i16 i32 i64);
+    define_read_number!(
+        ole  u32, u32, u24, 24;
+             i32, u32, i24, 24;
+             u64, u64, u48, 48;
+             u64, u64, u56, 56;
+             i64, u64, i56, 56
+    );
+    define_read_number!(
+        obe  u32, u32, u24, 24;
+             i32, u32, i24, 24;
+             u64, u64, u48, 48;
+             u64, u64, u56, 56;
+             i64, u64, i56, 56
+    );
+
     // little endian
     define_read_number!(read_u8, u8::from_le_bytes);
     define_read_number!(read_i8, i8::from_le_bytes);
