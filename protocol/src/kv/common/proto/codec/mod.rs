@@ -367,6 +367,11 @@ impl core::fmt::Write for PacketCodec {
         self.push_str(s);
         Ok(())
     }
+
+    fn write_char(&mut self, c: char) -> std::fmt::Result {
+        self.push(c as u8);
+        Ok(())
+    }
 }
 
 impl PacketCodec {
