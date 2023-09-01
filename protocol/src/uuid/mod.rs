@@ -15,12 +15,17 @@ impl Protocol for Uuid {
         process: &mut P,
     ) -> Result<()> {
         let data = stream.slice();
-        if let Some(lfcr) = data.find_lf_cr(0) {
-            let cmd = stream.take(lfcr + 2);
-            let req = HashedCommand::new(cmd, 0, Flag::new());
-            process.process(req, true);
+        let mut start = 0usize;
+        loop {
+            if let Some(lfcr) = data.find_lf_cr(start) {
+                let cmd = stream.take(lfcr + 2 - start);
+                start = lfcr + 2;
+                let req = HashedCommand::new(cmd, 0, Flag::new());
+                process.process(req, true);
+            } else {
+                return Ok(());
+            }
         }
-        return Ok(());
     }
 
     fn parse_response<S: Stream>(&self, stream: &mut S) -> Result<Option<Command>> {
@@ -60,7 +65,7 @@ impl Protocol for Uuid {
     }
     fn config(&self) -> crate::Config {
         crate::Config {
-            backend_pipeline: false,
+            pipeline: true,
             ..Default::default()
         }
     }
