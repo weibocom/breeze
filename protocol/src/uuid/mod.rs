@@ -1,5 +1,5 @@
 use crate::{
-    Command, Commander, Flag, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
+    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
     Result, Stream, Writer,
 };
 use sharding::hash::Hash;
@@ -16,32 +16,30 @@ impl Protocol for Uuid {
     ) -> Result<()> {
         let data = stream.slice();
         let mut start = 0usize;
-        loop {
-            if let Some(lfcr) = data.find_lf_cr(start) {
-                let cmd = stream.take(lfcr + 2 - start);
-                start = lfcr + 2;
-                let req = HashedCommand::new(cmd, 0, Flag::new());
-                process.process(req, true);
-            } else {
-                return Ok(());
-            }
+        while let Some(lfcr) = data.find_lf_cr(start) {
+            let cmd = stream.take(lfcr + 2 - start);
+            start = lfcr + 2;
+            let req = HashedCommand::new(cmd, 0, Flag::new());
+            process.process(req, true);
         }
+        Ok(())
     }
 
     fn parse_response<S: Stream>(&self, stream: &mut S) -> Result<Option<Command>> {
         let data = stream.slice();
-        if let Some(lfcr1) = data.find_lf_cr(0) {
-            if data.start_with(0, b"VALUE") {
-                if let Some(lfcr2) = data.find_lf_cr(lfcr1 + 2) {
-                    if let Some(lfcr3) = data.find_lf_cr(lfcr2 + 2) {
-                        return Ok(Some(Command::from_ok(stream.take(lfcr3 + 2))));
-                    }
-                }
+        let mut oft = 0usize;
+        //正常响应就是三行
+        for _ in 0..3 {
+            if let Some(lfcr) = data.find_lf_cr(oft) {
+                oft = lfcr + 2
             } else {
-                return Err(crate::Error::UnexpectedData);
+                return Ok(None);
             }
         }
-        return Ok(None);
+        if !data.start_with(0, b"VALUE") {
+            return Err(crate::Error::UnexpectedData);
+        }
+        return Ok(Some(Command::from_ok(stream.take(oft))));
     }
 
     fn write_response<C, W, M, I>(
@@ -58,15 +56,9 @@ impl Protocol for Uuid {
     {
         if let Some(rsp) = response {
             w.write_slice(rsp, 0)?;
+            Ok(())
         } else {
-            w.write(b"SERVER_ERROR uuid no available\r\n")?;
-        }
-        Ok(())
-    }
-    fn config(&self) -> crate::Config {
-        crate::Config {
-            pipeline: true,
-            ..Default::default()
+            Err(Error::FlushOnClose(b"SERVER_ERROR uuid no available\r\n"))
         }
     }
 }
