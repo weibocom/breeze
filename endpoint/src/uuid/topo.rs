@@ -14,7 +14,7 @@ use discovery::dns::{self, IPPort};
 
 #[derive(Clone)]
 pub struct UuidService<B, E, Req, P> {
-    backends: Distance<(String, E)>,
+    shard: Distance<(String, E)>,
     parser: P,
     cfg: Box<DnsConfig<UuidNamespace>>,
     _mark: std::marker::PhantomData<(B, Req)>,
@@ -23,7 +23,7 @@ impl<B, E, Req, P> From<P> for UuidService<B, E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
-            backends: Distance::new(),
+            shard: Distance::new(),
             parser,
             cfg: Default::default(),
             _mark: Default::default(),
@@ -65,19 +65,16 @@ where
         log::debug!("+++ {} send => {:?}", self.cfg.service, req);
 
         if *req.context_mut() == 0 {
-            if let Some(quota) = self.backends.quota() {
+            if let Some(quota) = self.shard.quota() {
                 req.quota(quota);
             }
         }
 
         let ctx = super::transmute(req.context_mut());
         let (idx, endpoint) = if ctx.runs == 0 {
-            self.backends.unsafe_select()
+            self.shard.unsafe_select()
         } else {
-            unsafe {
-                self.backends
-                    .unsafe_next(ctx.idx as usize, ctx.runs as usize)
-            }
+            unsafe { self.shard.unsafe_next(ctx.idx as usize, ctx.runs as usize) }
         };
         log::debug!(
             "+++ {} send =>, idx:{}, addr:{}",
@@ -113,7 +110,7 @@ where
     }
     #[inline]
     fn need_load(&self) -> bool {
-        self.cfg.need_load() || self.backends.len() == 0
+        self.cfg.need_load() || self.shard.len() == 0
     }
 
     #[inline]
@@ -127,9 +124,9 @@ where
 {
     #[inline]
     fn inited(&self) -> bool {
-        self.backends.len() > 0
+        self.shard.len() > 0
             && self
-                .backends
+                .shard
                 .iter()
                 .fold(true, |inited, (_, e)| inited && e.inited())
     }
@@ -158,36 +155,30 @@ where
                 let url = url_port.host();
                 let port = url_port.port();
                 use ds::vec::Add;
-                let mut notlookup = false;
                 dns::lookup_ips(url, |ips| {
                     for ip in ips {
                         addrs.add(ip.to_string() + ":" + port);
                     }
-                    if ips.len() == 0 {
-                        notlookup = true;
-                    }
                 });
-                if notlookup {
-                    log::warn!("addr {url} not looked up");
-                    return false;
-                }
             }
         }
-
+        if addrs.len() == 0 {
+            log::warn!("addr {:?} not looked up", self.cfg.shards_url);
+            return false;
+        }
         // 到这之后，所有的shard都能解析出ip
-        let mut old = HashMap::with_capacity(self.backends.len());
-        for backend in self.backends.take() {
+        let mut old = HashMap::with_capacity(self.shard.len());
+        for backend in self.shard.take() {
             old.entry(backend.0).or_insert(Vec::new()).push(backend.1);
         }
         let mut backends = Vec::with_capacity(addrs.len());
         for addr in addrs {
             assert_ne!(addr.len(), 0);
             let backend = self.take_or_build(&mut old, &addr, self.cfg.timeout());
-            // backend.enable_single();
             backends.push((addr, backend));
         }
         use crate::PerformanceTuning;
-        self.backends = Distance::with_performance_tuning(
+        self.shard = Distance::with_performance_tuning(
             backends,
             self.cfg.basic.selector.tuning_mode(),
             self.cfg.basic.region_enabled,
@@ -196,7 +187,7 @@ where
         log::info!(
             "{} load complete, backends:{:?} . dropping:{:?}",
             self.cfg.service,
-            self.backends,
+            self.shard,
             {
                 old.retain(|_k, v| v.len() > 0);
                 old.keys()
@@ -216,7 +207,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UuidService")
             .field("cfg", &self.cfg)
-            .field("backends", &self.backends.len())
+            .field("backends", &self.shard.len())
             .finish()
     }
 }
