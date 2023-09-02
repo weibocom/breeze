@@ -1,8 +1,18 @@
+use protocol::kv::common::value::convert::duration::MyDuration;
 use protocol::kv::common::value::convert::regex::parse_mysql_time_string;
 use protocol::kv::common::value::convert::{from_value, from_value_opt, FromValue};
 use protocol::kv::common::value::Value;
 
 use proptest::proptest;
+
+#[test]
+fn test_my_duration() {
+    let d: MyDuration = "123:45:56.789012".as_bytes().try_into().unwrap();
+    assert_eq!(d, (123u32, 45u32, 56u32, 789012u32));
+
+    let d: MyDuration = "123:45:56".as_bytes().try_into().unwrap();
+    assert_eq!(d, (123, 45, 56, 0));
+}
 
 macro_rules! signed_primitive_roundtrip {
     ($t:ty, $name:ident) => {
@@ -58,6 +68,12 @@ proptest! {
         s in r"-?[0-8][0-9][0-9]:[0-5][0-9]:[0-5][0-9](\.[0-9]{1,6})?"
     ) {
         parse_mysql_time_string(s.as_bytes()).unwrap();
+
+        if s.as_bytes()[0] != b'-'{
+        let d:Result<MyDuration, String> = s.as_bytes().try_into();
+            assert!(d.is_ok(), "{:?}", s);
+        }
+
         // Don't test `parse_mysql_time_string_with_time` here,
         // as this tests valid MySQL TIME values, not valid time ranges within a day.
         // Due to that, `time::parse` will return an Err for invalid time strings.
@@ -84,6 +100,11 @@ proptest! {
         );
         let time = parse_mysql_time_string(time_string.as_bytes()).unwrap();
         assert_eq!(time, (sign == 1, h, m, s, if have_us == 1 { us } else { 0 }));
+
+        if sign == 0 {
+            let d:MyDuration = time_string.as_bytes().try_into().unwrap();
+            assert_eq!(d, (h, m, s, if have_us == 1 { us } else { 0 }));
+        }
 
         // Don't test `parse_mysql_time_string_with_time` here,
         // as this tests valid MySQL TIME values, not valid time ranges within a day.

@@ -33,7 +33,7 @@ pub mod uuid;
 
 pub mod regex;
 
-//mod duration;
+pub mod duration;
 
 /// `FromValue` conversion error.
 #[derive(Debug, Clone, PartialEq)]
