@@ -1,4 +1,10 @@
 use std::time::Duration;
+
+pub fn parse_duration(s: &[u8]) -> Option<Duration> {
+    let mut inner = InnerDuration::new(s);
+    inner.parse().ok()
+}
+
 #[derive(Debug)]
 pub struct MyDuration(pub Duration);
 

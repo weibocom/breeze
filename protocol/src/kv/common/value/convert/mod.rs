@@ -12,7 +12,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use std::{any::type_name, error::Error, fmt, str::from_utf8, time::Duration};
 
 use crate::kv::common::value::Value;
-use regex::parse_duration;
+use duration::parse_duration;
 
 macro_rules! impl_from_value {
     ($ty:ty, $ir:ty) => {
