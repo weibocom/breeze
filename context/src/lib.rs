@@ -1,5 +1,5 @@
 extern crate lazy_static;
-use clap::{FromArgMatches, IntoApp, Parser};
+use clap::{CommandFactory, FromArgMatches, Parser};
 use lazy_static::lazy_static;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -135,7 +135,7 @@ lazy_static! {
 impl ContextOption {
     #[inline]
     pub fn from_os_args() -> Self {
-        let app = <Self as IntoApp>::command().version(&SHORT_VERSION[..]);
+        let app = <Self as CommandFactory>::command().version(&SHORT_VERSION[..]);
         let matches = app.get_matches();
         <Self as FromArgMatches>::from_arg_matches(&matches).expect("parse args failed")
     }
