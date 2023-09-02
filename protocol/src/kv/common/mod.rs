@@ -3,7 +3,7 @@
 
 #[macro_use]
 pub(crate) mod bitflags_ext;
-pub(crate) mod value;
+pub mod value;
 
 pub(crate) mod buffer_pool;
 pub(crate) mod constants;

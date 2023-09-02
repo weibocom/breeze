@@ -1,5 +1,5 @@
 mod client;
-mod common;
+pub mod common;
 mod mcpacket;
 
 mod packet;
