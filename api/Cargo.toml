@@ -12,7 +12,7 @@ log = { path = "../log"  }
 #log = "0.4.14"
 tokio.workspace = true
 
-trust-dns-resolver = "0.22.0"
+trust-dns-resolver = "0.23.0"
 
 # rocket for restful api
 rocket = { version = "0.5.0-rc.3", features = ["json"], default-features = false }
