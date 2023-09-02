@@ -1,3 +1,5 @@
+#![cfg(feature = "regex")]
+
 use lexical::parse;
 use regex::bytes::Regex;
 use std::time::Duration;

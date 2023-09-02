@@ -46,6 +46,7 @@ path = "src/benches/criterion.rs"
 harness = false
 
 [features]
-default = ["layout-max"]
+default = ["layout-max", "regex"]
 layout-min = ["ds/tsc"]
 layout-max = ["rt/poll-io-metrics"]
+regex = ["protocol/regex"]
