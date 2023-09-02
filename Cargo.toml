@@ -45,6 +45,6 @@ codegen-units = 256
 
 
 [workspace.dependencies]
-tokio = { version = "1.28.1", features = ["rt", "fs", "net", "rt-multi-thread", "time"], default-features = false }
+tokio = { version = "1.32", features = ["rt", "fs", "net", "rt-multi-thread", "time", "sync"], default-features = false }
 serde = { version = "1.0.126", features = ["derive"], default-features = false }
 async-trait = "0.1.68"
