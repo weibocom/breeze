@@ -42,53 +42,17 @@ pub enum Params {
     Positional(Vec<Value>),
 }
 
-// impl Params {
-/// Will convert named parameters into positional assuming order passed in `named_params`
-/// attribute.
-// pub fn into_positional(
-//     self,
-//     named_params: &[Vec<u8>],
-// ) -> Result<Params, MissingNamedParameterError> {
-//     match self {
-//         Params::Named(mut map) => {
-//             let mut params: Vec<Value> = Vec::new();
-//             'params: for (i, name) in named_params.iter().enumerate() {
-//                 match map.entry(name.clone()) {
-//                     Occupied(entry) => {
-//                         let mut x = named_params.len() - 1;
-//                         while x > i {
-//                             if *name == named_params[x] {
-//                                 params.push(entry.get().clone());
-//                                 continue 'params;
-//                             }
-//                             x -= 1;
-//                         }
-//                         params.push(entry.remove());
-//                     }
-//                     _ => return Err(MissingNamedParameterError(name.clone())),
-//                 }
-//             }
-//             Ok(Params::Positional(params))
-//         }
-//         params => Ok(params),
-//     }
-// }
-// }
-
 impl<'a, T: Into<Params> + Clone> From<&'a T> for Params {
     fn from(x: &'a T) -> Params {
         x.clone().into()
     }
 }
 
-impl<T> From<Vec<T>> for Params
-where
-    Value: From<T>,
-{
+impl<T: Into<Value>> From<Vec<T>> for Params {
     fn from(x: Vec<T>) -> Params {
-        let mut raw_params: Vec<Value> = Vec::new();
-        for v in x.into_iter() {
-            raw_params.push(Value::from(v));
+        let mut raw_params: Vec<Value> = Vec::with_capacity(x.len());
+        for v in x {
+            raw_params.push(v.into());
         }
         if raw_params.is_empty() {
             Params::Empty
@@ -100,15 +64,15 @@ where
 
 impl<N, V> From<Vec<(N, V)>> for Params
 where
-    Vec<u8>: From<N>,
-    Value: From<V>,
+    N: Into<Vec<u8>>,
+    V: Into<Value>,
 {
     fn from(x: Vec<(N, V)>) -> Params {
         let mut map = HashMap::default();
-        for (name, value) in x.into_iter() {
+        for (name, value) in x {
             let name: Vec<u8> = name.into();
             match map.entry(name) {
-                Entry::Vacant(entry) => entry.insert(Value::from(value)),
+                Entry::Vacant(entry) => entry.insert(value.into()),
                 Entry::Occupied(entry) => {
                     panic!(
                         "Redefinition of named parameter `{}'",
@@ -141,83 +105,22 @@ impl From<()> for Params {
     }
 }
 
-macro_rules! into_params_impl {
-    ($([$A:ident,$a:ident]),*) => (
-        impl<$($A: Into<Value>,)*> From<($($A,)*)> for Params {
-            fn from(x: ($($A,)*)) -> Params {
-                let ($($a,)*) = x;
-                Params::Positional(vec![
-                    $($a.into(),)*
-                ])
+use seq_macro::seq;
+// This macro generates `From<(T0, T1, ...)> for Params` impls for tuples of size 1..=12.
+macro_rules! tuple_into_params {
+    ($count:literal) => {
+        seq!(N in 0..$count {
+            impl<#(T~N:Into<Value>,)*> From<(#(T~N,)*)> for Params {
+                fn from(x: (#(T~N,)*)) -> Params {
+                    Params::Positional(vec![
+                        #(x.N.into(),)*
+                    ])
+                }
             }
-        }
-    );
+        });
+    }
 }
 
-into_params_impl!([A, a]);
-into_params_impl!([A, a], [B, b]);
-into_params_impl!([A, a], [B, b], [C, c]);
-into_params_impl!([A, a], [B, b], [C, c], [D, d]);
-into_params_impl!([A, a], [B, b], [C, c], [D, d], [E, e]);
-into_params_impl!([A, a], [B, b], [C, c], [D, d], [E, e], [F, f]);
-into_params_impl!([A, a], [B, b], [C, c], [D, d], [E, e], [F, f], [G, g]);
-into_params_impl!(
-    [A, a],
-    [B, b],
-    [C, c],
-    [D, d],
-    [E, e],
-    [F, f],
-    [G, g],
-    [H, h]
-);
-into_params_impl!(
-    [A, a],
-    [B, b],
-    [C, c],
-    [D, d],
-    [E, e],
-    [F, f],
-    [G, g],
-    [H, h],
-    [I, i]
-);
-into_params_impl!(
-    [A, a],
-    [B, b],
-    [C, c],
-    [D, d],
-    [E, e],
-    [F, f],
-    [G, g],
-    [H, h],
-    [I, i],
-    [J, j]
-);
-into_params_impl!(
-    [A, a],
-    [B, b],
-    [C, c],
-    [D, d],
-    [E, e],
-    [F, f],
-    [G, g],
-    [H, h],
-    [I, i],
-    [J, j],
-    [K, k]
-);
-into_params_impl!(
-    [A, a],
-    [B, b],
-    [C, c],
-    [D, d],
-    [E, e],
-    [F, f],
-    [G, g],
-    [H, h],
-    [I, i],
-    [J, j],
-    [K, k],
-    [L, l]
-);
+seq!(N in 1..=12 {
+    tuple_into_params!(N);
+});
