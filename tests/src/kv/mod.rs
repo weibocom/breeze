@@ -5,6 +5,8 @@ use protocol::kv::common::value::Value;
 
 use proptest::proptest;
 
+mod value;
+
 #[test]
 fn test_my_duration() {
     let d: MyDuration = "123:45:56.789012".as_bytes().try_into().unwrap();

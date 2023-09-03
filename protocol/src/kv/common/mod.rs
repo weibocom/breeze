@@ -18,3 +18,5 @@ pub(crate) mod proto;
 pub(crate) mod query_result;
 pub(crate) mod row;
 pub(crate) mod scramble;
+
+pub use io::ParseBuf;
