@@ -39,7 +39,10 @@ fn update() {
 #[test]
 fn delete() {
     let client = mc_get_conn("mysql");
-    let key = "4892225613598465";
+    let key = "4892225613598453";
+
+    client.add(key, "1", 10000).unwrap();
+    assert_eq!("1", client.get::<String>(key).unwrap().unwrap());
 
     client.delete(key).unwrap();
     assert_eq!(None, client.get::<String>(key).unwrap());

@@ -1,5 +1,6 @@
 use core::fmt::Write;
 use enum_dispatch::enum_dispatch;
+use std::fmt::Display;
 
 use super::common::proto::codec::PacketCodec;
 use crate::kv::MysqlBinary;
@@ -18,182 +19,164 @@ pub trait Strategy {
     fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice);
 }
 
-struct Insert<'a, S> {
-    strategy: &'a S,
-    key: &'a RingSlice,
-    val: RingSlice,
-}
-struct Update<'a, S> {
-    strategy: &'a S,
-    key: &'a RingSlice,
-    val: RingSlice,
-}
-struct Select<'a, S> {
+struct Table<'a, S> {
     strategy: &'a S,
     key: &'a RingSlice,
 }
-struct Delete<'a, S> {
-    strategy: &'a S,
-    key: &'a RingSlice,
-}
-//提前预留的转义后可能增长的长度，通常对于业务来说如果使用json格式，那么引号出现概率还是挺大的
-const ESCAPED_GROW_LEN: usize = 8;
-impl<'a, S: Strategy> Insert<'a, S> {
-    fn len(&self) -> usize {
-        // format!("insert into {dname}.{tname} (id, content) values ({key}, {val})")
-        "insert into  (id,content) values (,)".len()
-            + self.strategy.tablename_len()
-            + self.key.len()
-            + self.val.len()
-            + ESCAPED_GROW_LEN
-    }
-    fn build(&self, packet: &mut PacketCodec) {
-        let &Self { strategy, key, val } = self;
-        packet.push_str("insert into ");
-        strategy.write_database_table(packet, key);
-        packet.push_str(" (id,content) values (");
-        extend_escape_string(packet, key);
-        packet.push_str(",'");
-        extend_escape_string(packet, &val);
-        packet.push_str("')")
-    }
-}
-impl<'a, S: Strategy> Update<'a, S> {
-    fn len(&self) -> usize {
-        //update  set content= where id=
-        "update  set content= where id=".len()
-            + self.strategy.tablename_len()
-            + self.key.len()
-            + self.val.len()
-            + ESCAPED_GROW_LEN
-    }
-    fn build(&self, packet: &mut PacketCodec) {
-        let &Self { strategy, key, val } = self;
-        //update  set content= where id=
-        packet.push_str("update ");
-        strategy.write_database_table(packet, key);
-        packet.push_str(" set content='");
-        extend_escape_string(packet, &val);
-        packet.push_str("' where id=");
-        extend_escape_string(packet, key);
-    }
-}
-impl<'a, S: Strategy> Select<'a, S> {
-    fn len(&self) -> usize {
-        // format!("select content from {dname}.{tname} where id={key}")
-        "select content from  where id=".len() + self.strategy.tablename_len() + self.key.len()
-    }
-    fn build(&self, packet: &mut PacketCodec) {
-        let &Self { strategy, key } = self;
-        packet.push_str("select content from ");
-        strategy.write_database_table(packet, key);
-        packet.push_str(" where id=");
-        extend_escape_string(packet, key);
-    }
-}
-impl<'a, S: Strategy> Delete<'a, S> {
-    fn len(&self) -> usize {
-        // delete from  where id=
-        "delete from  where id=".len() + self.strategy.tablename_len() + self.key.len()
-    }
-    fn build(&self, packet: &mut PacketCodec) {
-        let &Self { strategy, key } = self;
-        packet.push_str("delete from ");
-        strategy.write_database_table(packet, key);
-        packet.push_str(" where id=");
-        extend_escape_string(packet, key);
+
+impl<'a, S: Strategy> Display for Table<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.strategy.write_database_table(f, self.key);
+        Ok(())
     }
 }
 
-enum SqlBuilder<'a, S> {
-    Insert(Insert<'a, S>),
-    Update(Update<'a, S>),
-    Select(Select<'a, S>),
-    Delete(Delete<'a, S>),
+impl<'a, S> Table<'a, S> {
+    fn wrap_strategy(strategy: &'a S, key: &'a RingSlice) -> Self {
+        Self { strategy, key }
+    }
+}
+
+struct KeyVal<'a>(&'a RingSlice);
+impl<'a> Display for KeyVal<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.visit(|c| escape_mysql_and_push(f, c));
+        Ok(())
+    }
+}
+
+struct SqlBuilder<'a, S> {
+    op: u8,
+    strategy: &'a S,
+    key: &'a RingSlice,
+    val: Option<RingSlice>,
 }
 impl<'a, S: Strategy> SqlBuilder<'a, S> {
+    fn new(op: u8, strategy: &'a S, req: &HashedCommand, key: &'a RingSlice) -> Result<Self> {
+        let val = match op {
+            OP_ADD | OP_SET => Some(req.value()),
+            OP_GET | OP_GETK | OP_DEL => None,
+            _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
+        };
+        Ok(Self {
+            op,
+            strategy,
+            key,
+            val,
+        })
+    }
     fn len(&self) -> usize {
-        match self {
-            Self::Insert(i) => i.len(),
-            Self::Update(i) => i.len(),
-            Self::Select(i) => i.len(),
-            Self::Delete(i) => i.len(),
+        let &Self {
+            strategy,
+            key,
+            val,
+            op,
+        } = self;
+        let (table_len, key_len) = (strategy.tablename_len(), key.len());
+        match op {
+            OP_ADD => {
+                "insert into  (id,content) values (,'')".len()
+                    + table_len
+                    + key_len
+                    + val.as_ref().unwrap().len()
+                    + ESCAPED_GROW_LEN
+            }
+            OP_SET => {
+                "update  set content='' where id=".len()
+                    + table_len
+                    + key_len
+                    + val.as_ref().unwrap().len()
+                    + ESCAPED_GROW_LEN
+            }
+            OP_DEL => "delete from  where id=".len() + table_len + key_len,
+            OP_GET | OP_GETK => "select content from  where id=".len() + table_len + key_len,
+            _ => panic!("not support op:{op}"),
         }
     }
-    fn build(&self, packet: &mut PacketCodec) {
-        match self {
-            Self::Insert(i) => i.build(packet),
-            Self::Update(i) => i.build(packet),
-            Self::Select(i) => i.build(packet),
-            Self::Delete(i) => i.build(packet),
-        }
+    fn write_sql(&self, packet: &mut PacketCodec) {
+        let &Self {
+            strategy,
+            key,
+            val,
+            op,
+        } = self;
+        let (table, key) = (Table::wrap_strategy(strategy, key), KeyVal(key));
+        match op {
+            OP_ADD => {
+                let _ = write!(
+                    packet,
+                    "insert into {} (id,content) values ({},'{}')",
+                    table,
+                    key,
+                    KeyVal(val.as_ref().unwrap())
+                );
+            }
+            OP_SET => {
+                let _ = write!(
+                    packet,
+                    "update {} set content='{}' where id={}",
+                    table,
+                    KeyVal(val.as_ref().unwrap()),
+                    key
+                );
+            }
+            OP_DEL => {
+                let _ = write!(packet, "delete from {} where id={}", table, key);
+            }
+            OP_GET | OP_GETK => {
+                let _ = write!(packet, "select content from {} where id={}", table, key);
+            }
+            _ => panic!("not support op:{op}"),
+        };
     }
 }
 
-//todo 这一块协议转换可整体移到protocol中，对Strategy的依赖可抽象
-pub struct MysqlBuilder {}
+const ESCAPED_GROW_LEN: usize = 8;
+pub struct MysqlBuilder;
 
 // https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
 // Backslash (\) and the quote character used to quote the string must be escaped. In certain client environments, it may also be necessary to escape NUL or Control+Z.
-// 应该只需要转义上面的
-fn escape_mysql_and_push(packet: &mut PacketCodec, c: u8) {
+// 应该只需要转义上面的，我们使用单引号，所以双引号也不转义了
+fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
     //非法char要当成二进制push，否则会变成unicode
     let c = c as char;
-    if c == '\\' || c == '\'' || c == '"' {
-        packet.push('\\' as u8);
-        packet.push(c as u8);
+    if c == '\\' || c == '\'' {
+        let _ = packet.write_char('\\');
+        let _ = packet.write_char(c);
     // } else if c == '\x00' {
-    //     packet.push('\\' as u8);
-    //     packet.push('0' as u8);
+    //     let _ = packet.write_char('\\');
+    //     let _ = packet.write_char('0');
     // } else if c == '\n' {
-    //     packet.push('\\' as u8);
-    //     packet.push('n' as u8);
+    //     let _ = packet.write_char('\\');
+    //     let _ = packet.write_char('n');
     // } else if c == '\r' {
-    //     packet.push('\\' as u8);
-    //     packet.push('r' as u8);
+    //     let _ = packet.write_char('\\');
+    //     let _ = packet.write_char('r');
     // } else if c == '\x1a' {
-    //     packet.push('\\' as u8);
-    //     packet.push('Z' as u8);
+    //     let _ = packet.write_char('\\');
+    //     let _ = packet.write_char('Z');
     } else {
-        packet.push(c as u8);
+        let _ = packet.write_char(c);
     }
-}
-fn extend_escape_string(packet: &mut PacketCodec, r: &RingSlice) {
-    r.visit(|c| escape_mysql_and_push(packet, c))
 }
 
 impl MysqlBuilder {
     pub fn build_packets(
-        &self,
         strategy: &impl Strategy,
         req: &HashedCommand,
         key: &RingSlice,
     ) -> Result<Vec<u8>> {
         let op = req.op();
-        let sql_builder = match op {
-            OP_ADD => SqlBuilder::Insert(Insert {
-                strategy,
-                key,
-                val: req.value(),
-            }),
-            OP_SET => SqlBuilder::Update(Update {
-                strategy,
-                key,
-                val: req.value(),
-            }),
-            OP_DEL => SqlBuilder::Delete(Delete { strategy, key }),
-            OP_GET | OP_GETK => SqlBuilder::Select(Select { strategy, key }),
-            //todo 返回原因
-            _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
-        };
+        let sql_builder = SqlBuilder::new(op, strategy, req, key)?;
+        let sql_len = sql_builder.len();
 
         let mut packet = PacketCodec::default();
-        packet.reserve(sql_builder.len() + 5);
+        packet.reserve(sql_len + 5);
         //5即下面两行包头长度
         packet.write_next_packet_header();
         packet.push(req.mysql_cmd() as u8);
 
-        sql_builder.build(&mut packet);
+        sql_builder.write_sql(&mut packet);
 
         packet.finish_current_packet();
         packet

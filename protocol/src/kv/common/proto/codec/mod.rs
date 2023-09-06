@@ -367,6 +367,12 @@ impl core::fmt::Write for PacketCodec {
         self.push_str(s);
         Ok(())
     }
+
+    fn write_char(&mut self, c: char) -> std::fmt::Result {
+        debug_assert!(c as u32 <= u8::MAX as u32);
+        self.push(c as u8);
+        Ok(())
+    }
 }
 
 impl PacketCodec {
