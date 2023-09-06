@@ -19,29 +19,123 @@ pub trait Strategy {
     fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice);
 }
 
-struct TableDisplay<'a, S> {
+struct Table<'a, S> {
     strategy: &'a S,
     key: &'a RingSlice,
 }
 
-impl<'a, S: Strategy> Display for TableDisplay<'a, S> {
+impl<'a, S: Strategy> Display for Table<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.strategy.write_database_table(f, self.key);
         Ok(())
     }
 }
 
-impl<'a, S> TableDisplay<'a, S> {
+impl<'a, S> Table<'a, S> {
     fn wrap_strategy(strategy: &'a S, key: &'a RingSlice) -> Self {
         Self { strategy, key }
     }
 }
 
-struct KeyValDisplay<'a>(&'a RingSlice);
-impl<'a> Display for KeyValDisplay<'a> {
+struct KeyVal<'a>(&'a RingSlice);
+impl<'a> Display for KeyVal<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.visit(|c| escape_mysql_and_push(f, c));
         Ok(())
+    }
+}
+
+struct SqlBuilder<'a, S> {
+    op: u8,
+    strategy: &'a S,
+    key: &'a RingSlice,
+    val: Option<RingSlice>,
+}
+impl<'a, S: Strategy> SqlBuilder<'a, S> {
+    fn new(op: u8, strategy: &'a S, req: &HashedCommand, key: &'a RingSlice) -> Result<Self> {
+        let val = match op {
+            OP_ADD | OP_SET => Some(req.value()),
+            OP_GET | OP_GETK | OP_DEL => None,
+            _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
+        };
+        Ok(Self {
+            op,
+            strategy,
+            key,
+            val,
+        })
+    }
+    fn len(&self) -> usize {
+        let &Self {
+            strategy,
+            key,
+            val,
+            op,
+        } = self;
+        let (table_len, key_len) = (strategy.tablename_len(), key.len());
+        match op {
+            OP_ADD => {
+                "insert into  (id,content) values (,'')".len()
+                    + table_len
+                    + key_len
+                    + val.as_ref().unwrap().len()
+                    + ESCAPED_GROW_LEN
+            }
+            OP_SET => {
+                "update  set content='' where id=".len()
+                    + table_len
+                    + key_len
+                    + val.as_ref().unwrap().len()
+                    + ESCAPED_GROW_LEN
+            }
+            OP_DEL => "delete from  where id=".len() + table_len + key_len,
+            OP_GET | OP_GETK => "select content from  where id=".len() + table_len + key_len,
+            _ => panic!("not support op:{op}"),
+        }
+    }
+    fn write_sql(&self, packet: &mut PacketCodec) {
+        let &Self {
+            strategy,
+            key,
+            val,
+            op,
+        } = self;
+        let (table_display, key_display) = (Table::wrap_strategy(strategy, key), KeyVal(key));
+        match op {
+            OP_ADD => {
+                let _ = write!(
+                    packet,
+                    "insert into {} (id,content) values ({},'{}')",
+                    table_display,
+                    key_display,
+                    KeyVal(val.as_ref().unwrap())
+                );
+            }
+            OP_SET => {
+                let _ = write!(
+                    packet,
+                    "update {} set content='{}' where id={}",
+                    table_display,
+                    KeyVal(val.as_ref().unwrap()),
+                    key_display
+                );
+            }
+            OP_DEL => {
+                let _ = write!(
+                    packet,
+                    "delete from {} where id={}",
+                    table_display, key_display
+                );
+            }
+            OP_GET | OP_GETK => {
+                let _ = write!(
+                    packet,
+                    "select content from {} where id={}",
+                    table_display, key_display
+                );
+            }
+            _ => panic!("not support op:{op}"),
+        };
     }
 }
 
@@ -77,34 +171,13 @@ fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
 
 impl MysqlBuilder {
     pub fn build_packets(
-        &self,
         strategy: &impl Strategy,
         req: &HashedCommand,
         key: &RingSlice,
     ) -> Result<Vec<u8>> {
         let op = req.op();
-        let sql_len = match op {
-            OP_ADD => {
-                "insert into  (id,content) values (,'')".len()
-                    + strategy.tablename_len()
-                    + key.len()
-                    + req.value().len()
-                    + ESCAPED_GROW_LEN
-            }
-            OP_SET => {
-                "update  set content='' where id=".len()
-                    + strategy.tablename_len()
-                    + key.len()
-                    + req.value().len()
-                    + ESCAPED_GROW_LEN
-            }
-            OP_DEL => "delete from  where id=".len() + strategy.tablename_len() + key.len(),
-            OP_GET | OP_GETK => {
-                "select content from  where id=".len() + strategy.tablename_len() + key.len()
-            }
-            //todo 返回原因
-            _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
-        };
+        let sql_builder = SqlBuilder::new(op, strategy, req, key)?;
+        let sql_len = sql_builder.len();
 
         let mut packet = PacketCodec::default();
         packet.reserve(sql_len + 5);
@@ -112,44 +185,7 @@ impl MysqlBuilder {
         packet.write_next_packet_header();
         packet.push(req.mysql_cmd() as u8);
 
-        match op {
-            OP_ADD => {
-                let _ = write!(
-                    packet,
-                    "insert into {} (id,content) values ({},'{}')",
-                    TableDisplay::wrap_strategy(strategy, key),
-                    KeyValDisplay(key),
-                    KeyValDisplay(&req.value())
-                );
-            }
-            OP_SET => {
-                let _ = write!(
-                    packet,
-                    "update {} set content='{}' where id={}",
-                    TableDisplay::wrap_strategy(strategy, key),
-                    KeyValDisplay(&req.value()),
-                    KeyValDisplay(key)
-                );
-            }
-            OP_DEL => {
-                let _ = write!(
-                    packet,
-                    "delete from {} where id={}",
-                    TableDisplay::wrap_strategy(strategy, key),
-                    KeyValDisplay(key)
-                );
-            }
-            OP_GET | OP_GETK => {
-                let _ = write!(
-                    packet,
-                    "select content from {} where id={}",
-                    TableDisplay::wrap_strategy(strategy, key),
-                    KeyValDisplay(key)
-                );
-            }
-            //todo 返回原因
-            _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
-        };
+        sql_builder.write_sql(&mut packet);
 
         packet.finish_current_packet();
         packet
