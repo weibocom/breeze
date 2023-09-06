@@ -137,9 +137,8 @@ where
 
         if req.ctx().runs == 0 {
             //todo: 此处不应panic
-            let cmd = MysqlBuilder {}
-                .build_packets(&self.strategist, &req, &key)
-                .expect("malformed sql");
+            let cmd =
+                MysqlBuilder::build_packets(&self.strategist, &req, &key).expect("malformed sql");
             req.reshape(MemGuard::from_vec(cmd));
             //self.parser
             //    .build_request(&mut *req, MemGuard::from_vec(cmd));
