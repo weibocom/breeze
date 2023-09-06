@@ -6,15 +6,10 @@ pub enum Error {
     // Redis 的扩展Error目前都是FlushOnClose
     // Redis(RedisError),
     Mcq(McqError),
-    // 关闭连接前需要把（固定的）异常消息发出去
-    FlushOnClose(&'static [u8]),
-    // 关闭连接前需要把（动态的）异常消息发出去
-    FlushDynOnClose(Vec<u8>),
-    // 目前用这个表示预期内的异常响应，KV对这种异常会直接返回sdk
-    ResponseCommonError(Vec<u8>),
-    // 用这个异常表示不知如何处理的响应，通常处理方式：关闭后端连接
-    ResponseUnexpected(Vec<u8>),
-
+    // 关闭连接前需要把（静态/动态）异常消息发出去
+    FlushOnClose(Vec<u8>),
+    // // KV内部的Error传递
+    // KVError(Vec<u8>),
     Eof,
     UnexpectedData,
     QueueClosed,
@@ -95,12 +90,4 @@ impl Error {
             _ => false,
         }
     }
-}
-
-/// 将str转为vec，方便Error内部信息的转换
-#[inline(always)]
-pub(crate) fn str_to_vec(s: &str) -> Vec<u8> {
-    let mut msg = Vec::with_capacity(s.len());
-    msg.extend(s.as_bytes());
-    msg
 }

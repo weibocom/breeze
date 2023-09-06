@@ -1,4 +1,5 @@
-use crate::{Error, Result, Stream};
+use crate::kv::error::{KVError, KVResult};
+use crate::Stream;
 
 pub use crate::kv::common::proto::{Binary, Text};
 
@@ -23,14 +24,14 @@ pub(crate) trait Protocol: 'static + Send + Sync {
     fn next<'a, S: Stream>(
         rsp_packet: &'a mut ResponsePacket<'a, S>,
         columns: Arc<[Column]>,
-    ) -> Result<Option<Row>>;
+    ) -> KVResult<Option<Row>>;
 }
 
 impl Protocol for Text {
     fn next<'a, S: Stream>(
         rsp_packet: &'a mut ResponsePacket<'a, S>,
         columns: Arc<[Column]>,
-    ) -> Result<Option<Row>> {
+    ) -> KVResult<Option<Row>> {
         match rsp_packet.next_row_packet()? {
             Some(pld) => {
                 let row = ParseBuf::from(*pld).parse::<RowDeserializer<(), Text>>(columns)?;
@@ -45,7 +46,7 @@ impl Protocol for Binary {
     fn next<'a, S: Stream>(
         rsp_packet: &'a mut ResponsePacket<'a, S>,
         columns: Arc<[Column]>,
-    ) -> Result<Option<Row>> {
+    ) -> KVResult<Option<Row>> {
         match rsp_packet.next_row_packet()? {
             Some(pld) => {
                 let row =
@@ -65,7 +66,7 @@ enum SetIteratorState {
     /// Iterator is in an empty set.
     InEmptySet(OkPacket),
     /// Iterator is in an errored result set.
-    Errored(Error),
+    Errored(KVError),
     /// Next result set isn't handled.
     OnBoundary,
     /// No more result sets.
@@ -102,8 +103,8 @@ impl From<OkPacket> for SetIteratorState {
     }
 }
 
-impl From<Error> for SetIteratorState {
-    fn from(err: Error) -> Self {
+impl From<KVError> for SetIteratorState {
+    fn from(err: KVError) -> Self {
         Self::Errored(err)
     }
 }
@@ -169,7 +170,8 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         // if status_flags.contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS) {}
 
         if self.rsp_packet.more_results_exists() {
-            log::warn!("++++++ should check if really has more result set exists? ");
+            // TODO 等支持多行，再处理此处
+            log::error!("+++ should not come here:{:?}", self.rsp_packet);
             match self.rsp_packet.parse_result_set_meta() {
                 Ok(meta) => self.state = meta.into(),
                 Err(err) => self.state = err.into(),
@@ -260,7 +262,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         }
     }
 
-    pub(crate) fn scan_rows<R, F, U>(&mut self, mut init: U, mut f: F) -> Result<U>
+    pub(crate) fn scan_rows<R, F, U>(&mut self, mut init: U, mut f: F) -> KVResult<U>
     where
         R: FromRow,
         F: FnMut(U, R) -> U,
@@ -280,7 +282,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         }
     }
 
-    fn scan_row(&mut self) -> Result<Option<Row>> {
+    fn scan_row(&mut self) -> KVResult<Option<Row>> {
         use SetIteratorState::*;
         let state = std::mem::replace(&mut self.state, OnBoundary);
         match state {
@@ -394,7 +396,7 @@ impl<'a, 'b, 'c, T: crate::kv::prelude::Protocol, S: Stream> std::ops::Deref
 }
 
 impl<T: crate::kv::prelude::Protocol, S: Stream> Iterator for ResultSet<'_, '_, T, S> {
-    type Item = Result<Row>;
+    type Item = KVResult<Row>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.set_index == self.inner.set_index {
@@ -406,7 +408,7 @@ impl<T: crate::kv::prelude::Protocol, S: Stream> Iterator for ResultSet<'_, '_, 
 }
 
 impl<'c, T: crate::kv::prelude::Protocol, S: Stream> Iterator for QueryResult<'c, T, S> {
-    type Item = Result<Row>;
+    type Item = KVResult<Row>;
 
     fn next(&mut self) -> Option<Self::Item> {
         use SetIteratorState::*;

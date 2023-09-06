@@ -11,7 +11,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use crate::topology::TopologyCheck;
 use ds::{time::Instant, AtomicWaker};
 use endpoint::Topology;
-use protocol::Error::{FlushDynOnClose, FlushOnClose};
+use protocol::Error::FlushOnClose;
 use protocol::{HashedCommand, Protocol, Result, Stream};
 
 use crate::{
@@ -136,24 +136,16 @@ where
             retry_on_rsp_notok: parser.config().retry_on_rsp_notok,
         };
 
-        // 对FlushOnClose、FlushDynOnClose异常进行处理后，再返回
-        let flush_rsp = |client: &mut C, emsg: &[u8]| {
-            // 此处只处理FLushOnClose/FlushDynOnClose，用于发送异常给client
-            log::warn!("+++ flush emsg[{:?}], client:[{:?}]", emsg, client);
-            let _write_rs = client.write_all(emsg);
-            let _flush_rs = client.flush();
-        };
         parser
             .parse_request(client, top, &mut processor)
             .map_err(|e| {
                 log::info!("+++ parse request error: {:?} on client:{:?}", e, client);
                 match e {
                     FlushOnClose(ref emsg) => {
-                        flush_rsp(client, emsg);
-                        e
-                    }
-                    FlushDynOnClose(ref emsg) => {
-                        flush_rsp(client, emsg);
+                        // 此处只处理FLushOnClose，用于发送异常给client
+                        let _write_rs = client.write_all(emsg);
+                        let _flush_rs = client.flush();
+                        log::warn!("+++ flush emsg[{:?}], client:[{:?}]", emsg, client);
                         e
                     }
                     _ => e,

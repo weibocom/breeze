@@ -92,16 +92,18 @@ impl Error {
     //     ))
     // }
 
-    /// TODO 将mysql内部解析、编码的Error映射到KVError，目前仅根据当前使用情况进行转换，
+    /// 将mysql内部解析、编码的Error映射到KVError，目前仅根据当前使用情况进行转换，
     /// 后续如果Error发生变动，需要关注这里是否需要调整
     #[inline]
     pub(crate) fn error(&self) -> KVError {
         let msg = format!("{}", self).as_bytes().to_vec();
         // let content = RingSlice::from_vec(&msg.as_bytes().to_vec());
+        log::error!("kv found error: {:?}", self);
         match self {
-            Error::DriverError(e) => e.error(),
-            Error::CodecError(_) => KVError::RequestInvalid(msg),
-            _ => KVError::ResponseCommonError(msg),
+            Error::IoError(_e) => KVError::RequestInvalid(msg), // io异常
+            Error::DriverError(_e) => KVError::AuthInvalid(msg), // driver 异常，意味着无法正常完成连接
+            Error::CodecError(_e) => KVError::RequestInvalid(msg), // codec 异常，一般为请求异常
+            _ => KVError::UnhandleResponseError(msg),            // 其他mysql异常，直接返回给调用房
         }
     }
 }

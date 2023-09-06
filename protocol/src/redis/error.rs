@@ -1,4 +1,4 @@
-use crate::{error::str_to_vec, Error};
+use crate::Error;
 
 /// 用于处理Redis协议解析中的异常，用于在关闭client连接前，返回特定的异常响应
 #[derive(Debug)]
@@ -29,13 +29,21 @@ impl Into<Error> for RedisError {
     #[inline]
     fn into(self) -> Error {
         match self {
-            Self::ReqInvalid => Error::FlushOnClose(&REQ_INVALID),
-            Self::ReqInvalidStar => Error::FlushOnClose(&REQ_INVALID_STAR),
-            Self::ReqInvalidNum => Error::FlushOnClose(&REQ_INVALID_NUM),
-            Self::ReqInvalidNoReturn => Error::FlushOnClose(&REQ_INVALID_NO_RETURN),
-            Self::ReqInvalidBulkNum => Error::FlushOnClose(&REQ_INVALID_BULK_NUM),
-            Self::ReqNotSupported => Error::FlushOnClose(&REQ_NOT_SUPPORTED),
-            Self::RespInvalid => Error::FlushOnClose(&RESP_INVALID),
+            Self::ReqInvalid => Error::FlushOnClose(REQ_INVALID.clone()),
+            Self::ReqInvalidStar => Error::FlushOnClose(REQ_INVALID_STAR.clone()),
+            Self::ReqInvalidNum => Error::FlushOnClose(REQ_INVALID_NUM.clone()),
+            Self::ReqInvalidNoReturn => Error::FlushOnClose(REQ_INVALID_NO_RETURN.clone()),
+            Self::ReqInvalidBulkNum => Error::FlushOnClose(REQ_INVALID_BULK_NUM.clone()),
+            Self::ReqNotSupported => Error::FlushOnClose(REQ_NOT_SUPPORTED.clone()),
+            Self::RespInvalid => Error::FlushOnClose(RESP_INVALID.clone()),
         }
     }
+}
+
+/// 将str转为vec，方便Error内部信息的转换
+#[inline(always)]
+pub(crate) fn str_to_vec(s: &str) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(s.len());
+    msg.extend(s.as_bytes());
+    msg
 }

@@ -929,7 +929,6 @@ impl ServerError {
     //     self.message.as_bytes()
     // }
 
-    // TODO 先返回String，等有更好的方法再改 fishermen
     /// Returns an error message as a string (lossy converted).
     // pub fn message_str(&self) -> Cow<'_, str> {
     pub fn message_str(&self) -> String {
@@ -1711,7 +1710,7 @@ impl HandshakePacket {
         //         .parse_unchecked(())
         //         .expect("infallible"),
         // })
-        // TODO 参考上面代码实现，彻底稳定前，不要删除 fishermen
+        // 参考上面代码实现，彻底稳定前，不要删除 fishermen
         self.auth_plugin_name.as_ref().map(|x| {
             let name = x.as_bytes();
             if name.at(name.len() - 1) == 0 {
@@ -1934,18 +1933,9 @@ impl MySerialize for HandshakeResponse {
         self.collation.serialize(&mut *buf);
         buf.put_slice(&[0; 23]);
         self.user.serialize(&mut *buf);
-
-        log::debug!("+++ scrable_buf:{:?}", self.scramble_buf);
         self.scramble_buf.serialize(&mut *buf);
-
-        //TODO test
         let mut sbuf = Vec::with_capacity(64);
         self.scramble_buf.serialize(&mut sbuf);
-        log::debug!(
-            "+++ scrable_buf:{:?}, serialize:{:?}",
-            self.scramble_buf,
-            sbuf
-        );
 
         if let Some(db_name) = &self.db_name {
             db_name.serialize(&mut *buf);
