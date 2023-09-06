@@ -100,14 +100,14 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
             val,
             op,
         } = self;
-        let (table_display, key_display) = (Table::wrap_strategy(strategy, key), KeyVal(key));
+        let (table, key) = (Table::wrap_strategy(strategy, key), KeyVal(key));
         match op {
             OP_ADD => {
                 let _ = write!(
                     packet,
                     "insert into {} (id,content) values ({},'{}')",
-                    table_display,
-                    key_display,
+                    table,
+                    key,
                     KeyVal(val.as_ref().unwrap())
                 );
             }
@@ -115,24 +115,16 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
                 let _ = write!(
                     packet,
                     "update {} set content='{}' where id={}",
-                    table_display,
+                    table,
                     KeyVal(val.as_ref().unwrap()),
-                    key_display
+                    key
                 );
             }
             OP_DEL => {
-                let _ = write!(
-                    packet,
-                    "delete from {} where id={}",
-                    table_display, key_display
-                );
+                let _ = write!(packet, "delete from {} where id={}", table, key);
             }
             OP_GET | OP_GETK => {
-                let _ = write!(
-                    packet,
-                    "select content from {} where id={}",
-                    table_display, key_display
-                );
+                let _ = write!(packet, "select content from {} where id={}", table, key);
             }
             _ => panic!("not support op:{op}"),
         };
@@ -140,8 +132,7 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
 }
 
 const ESCAPED_GROW_LEN: usize = 8;
-//todo 这一块协议转换可整体移到protocol中，对Strategy的依赖可抽象
-pub struct MysqlBuilder {}
+pub struct MysqlBuilder;
 
 // https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
 // Backslash (\) and the quote character used to quote the string must be escaped. In certain client environments, it may also be necessary to escape NUL or Control+Z.
