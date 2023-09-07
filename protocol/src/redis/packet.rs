@@ -294,7 +294,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     ) -> Result<(Flag, i64)> {
         let hash = 0;
         match cfg.cmd_type {
-            CommandType::SwallowedMaster | CommandType::Master => self.set_master_only(),
+            CommandType::Master => self.set_master_only(),
             // cmd: hashkeyq $key
             // 流程放到计算hash中处理
             CommandType::SwallowedCmdHashkeyq | CommandType::SpecLocalCmdHashkey => {
