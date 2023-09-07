@@ -14,6 +14,8 @@ pub(crate) enum CommandType {
     CmdSendToAll,
     CmdSendToAllq,
     //============== 需要本地构建特殊响应的cmd ==============//
+    // 指示下一个cmd只请求master
+    Master,
     // 指示下一个cmd的用于计算分片hash的key
     SpecLocalCmdHashkey,
     // 计算批量key的分片索引
@@ -262,7 +264,11 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("hello").arity(-1).op(Meta).padding(pt[4]).nofwd(),
         // quit、master的指令token数/arity应该都是1,quit 的padding设为1 
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
+
+        // masterq 不返回任何响应，masterx 必须返回响应，master当前同masterq，待sdk全部切换后，再考虑统一
         Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::SwallowedMaster).effect_on_next_req(),
+        Cmd::new("masterq").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::SwallowedMaster).effect_on_next_req(),
+        Cmd::new("masterx").arity(1).op(Meta).padding(pt[1]).nofwd().master().cmd_type(CommandType::Master).effect_on_next_req(),
 
         Cmd::new("get").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
 
@@ -384,7 +390,14 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("srandmember").arity(-2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("smembers").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("sscan").arity(-3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
-
+        // set 多个key相关的指令
+        Cmd::new("sinter").arity(-2).op(Get).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
+        Cmd::new("sunion").arity(-2).op(Get).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
+        Cmd::new("sdiff").arity(-2).op(Get).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
+        Cmd::new("sunionstore").arity(-3).op(Store).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
+        Cmd::new("sinterstore").arity(-3).op(Store).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
+        Cmd::new("sdiffstore").arity(-3).op(Store).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
+       
         // geo 相关指令
         Cmd::new("geoadd").arity(-5).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
         Cmd::new("georadius").arity(-6).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
@@ -486,12 +499,6 @@ pub(super) static SUPPORTED: Commands = {
 
         // 涉及多个key的操作，暂不支持
         // "bitop" => (-4, Operation::Store, 2, -1, 1),
-        // "sinter" => (-2, Operation::Get, 1, -1, 1),
-        // "sinterstore" => (-3, Operation::Store, 1, -1, 1),
-        // "sunion" => (-2, Operation::Get, 1, -1, 1),
-        // "sunionstore" => (-3, Operation::Store, 1, -1, 1),
-        // "sdiff" => (-2, Operation::Get, 1, -1, 1),
-        // "sdiffstore" => (-3, Operation::Store, 1, -1, 1),
         // "smove" => (4, Operation::Store, 1, 2, 1),
         // "zunionstore" => (-4, Operation::Store, 0, 0, 0),
         // "zinterstore" => (-4, Operation::Store, 0, 0, 0),
