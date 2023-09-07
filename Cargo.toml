@@ -17,6 +17,7 @@ members = [
   "tests",
   "tests_integration",
 ]
+default-members = ["agent"]
 
 exclude = ["api", "tests", "tests_integration"]
 
@@ -45,6 +46,6 @@ codegen-units = 256
 
 
 [workspace.dependencies]
-tokio = { version = "1.32", features = ["rt", "fs", "net", "rt-multi-thread", "time", "sync"], default-features = false }
+tokio = { version = "1.32", features = ["rt", "fs", "net", "rt-multi-thread", "time", "sync", "signal"], default-features = false }
 serde = { version = "1.0.126", features = ["derive"], default-features = false }
 async-trait = "0.1.68"
