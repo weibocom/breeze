@@ -559,14 +559,3 @@ impl PartialEq<(&[u8], &[u8])> for super::RingSlice {
         f == other.0 && s == other.1
     }
 }
-// TODO Ord 对RingSlice怪怪的，目前只是为了满足kv需要，需要考虑统一去掉？fishermen
-impl Ord for RingSlice {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.len().cmp(&other.len())
-    }
-}
-impl PartialOrd for RingSlice {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
