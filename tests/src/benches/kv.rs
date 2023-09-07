@@ -1,4 +1,4 @@
-use criterion::{black_box, Criterion};
+use criterion::Criterion;
 pub(super) fn bench_parse_mysql(c: &mut Criterion) {
     //let text = "1234-12-12 12:12:12.123456";
     let group = c.benchmark_group("parse_mysql");
