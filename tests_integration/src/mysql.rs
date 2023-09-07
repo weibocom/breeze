@@ -105,8 +105,9 @@ fn get_invalid_key() {
     assert_eq!(None, result.unwrap());
 }
 
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn insert_invalid_key() {
     let client = mc_get_conn("mysql");
     let key = "9527";
@@ -115,51 +116,58 @@ fn insert_invalid_key() {
     ];
     client.add(key, val.as_ref(), 10000).unwrap();
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn insert_null_key() {
     let client = mc_get_conn("mysql");
     let key = "";
     client.add(key, "abcd", 10000).unwrap();
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn insert_char_key() {
     let client = mc_get_conn("mysql");
     let key = "48922256135984cc";
     client.add(key, "abcd", 10000).unwrap();
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn insert_long_key() {
     let client = mc_get_conn("mysql");
     let key = std::iter::repeat('5').take(1024).collect::<String>();
     client.add(key.as_str(), "abcd", 10000).unwrap();
 }
 
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn update_invalid_key() {
     let client = mc_get_conn("mysql");
     let key = "9527";
     client.set(key, "val", 10000).unwrap();
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn update_null_key() {
     let client = mc_get_conn("mysql");
     let key = "";
     client.add(key, "abcd", 10000).unwrap();
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn update_char_key() {
     let client = mc_get_conn("mysql");
     let key = "48922256135984cc";
     client.set(key, "abcd", 10000).unwrap();
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn update_long_key() {
     let client = mc_get_conn("mysql");
     let key = std::iter::repeat('5').take(1024).collect::<String>();
@@ -173,29 +181,33 @@ fn delete_invalid_key() {
     let r = client.delete(key).unwrap();
     assert!(!r, "delete invalid key result: {:?}", r);
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn delete_null_key() {
     let client = mc_get_conn("mysql");
     let key = "";
     client.delete(key).unwrap();
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn delete_char_key() {
     let client = mc_get_conn("mysql");
     let key = "48922256135984cc";
     client.delete(key).unwrap();
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn delete_long_key() {
     let client = mc_get_conn("mysql");
     let key = std::iter::repeat('5').take(1024).collect::<String>();
     client.delete(key.as_str()).unwrap();
 }
-// #[test]
-// #[should_panic]
+#[test]
+#[should_panic]
+#[ignore]
 fn sql_inject_get() {
     let client = mc_get_conn("mysql");
     let key = "4892225613598465";
