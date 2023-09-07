@@ -7,14 +7,14 @@ pub(crate) enum CommandType {
     #[default]
     Other,
     //============== 吞噬指令 ==============//
-    SwallowedMaster,
+    // SwallowedMaster,
     SwallowedCmdHashkeyq,
     SwallowedCmdHashrandomq,
 
     CmdSendToAll,
     CmdSendToAllq,
     //============== 需要本地构建特殊响应的cmd ==============//
-    // 指示下一个cmd只请求master
+    // 指示下一个cmd只请求master节点，可能会/不会返回响应
     Master,
     // 指示下一个cmd的用于计算分片hash的key
     SpecLocalCmdHashkey,
@@ -266,8 +266,8 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
 
         // masterq 不返回任何响应，masterx 必须返回响应，master当前同masterq，待sdk全部切换后，再考虑统一
-        Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::SwallowedMaster).effect_on_next_req(),
-        Cmd::new("masterq").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::SwallowedMaster).effect_on_next_req(),
+        Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::Master).effect_on_next_req(),
+        Cmd::new("masterq").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::Master).effect_on_next_req(),
         Cmd::new("masterx").arity(1).op(Meta).padding(pt[1]).nofwd().master().cmd_type(CommandType::Master).effect_on_next_req(),
 
         Cmd::new("get").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
