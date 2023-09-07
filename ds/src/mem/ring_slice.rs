@@ -435,7 +435,10 @@ macro_rules! define_read_number {
                 let b = self.at(oft + i);
                 x |= (b as $t) << ((8 * i) + (8 * $offset));
             }
-            $t::$fn(x)
+            let v = $t::$fn(x);
+            const SHIFT: usize = std::mem::size_of::<$t>() * 8 - SIZE * 8;
+            // 保留符号位
+            (v << SHIFT) as $t >> SHIFT
         }
     };
 }

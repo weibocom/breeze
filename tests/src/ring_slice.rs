@@ -97,8 +97,8 @@ fn test_read_number() {
             assert_eq!(LittleEndian::read_i32(slice), rs.read_i32_le(i));
             assert_eq!(BigEndian::read_u64(slice), rs.read_u64_be(i));
             assert_eq!(LittleEndian::read_i64(slice), rs.read_i64_le(i));
-            //assert_eq!(LittleEndian::read_i24(slice), rs.read_i24_le(i));
-            //assert_eq!(LittleEndian::read_u48(slice), rs.read_u48_le(i));
+            assert_eq!(LittleEndian::read_i24(slice), rs.read_i24_le(i));
+            assert_eq!(LittleEndian::read_u48(slice), rs.read_u48_le(i));
 
             assert_eq!(LittleEndian::read_i24(slice), rs.read_i24_le_cmp(i));
             assert_eq!(LittleEndian::read_u48(slice), rs.read_u48_le_cmp(i));
