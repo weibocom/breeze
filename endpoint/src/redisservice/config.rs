@@ -48,7 +48,6 @@ impl RedisNamespace {
         }
         // check backend size，对于range/modrange类型的dist需要限制后端数量为2^n
         let dist = &ns.basic.distribution;
-
         if dist.starts_with(sharding::distribution::DIST_RANGE)
             || dist.starts_with(sharding::distribution::DIST_MOD_RANGE)
         {
