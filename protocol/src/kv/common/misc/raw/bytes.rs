@@ -25,7 +25,7 @@ use super::{int::VarLen, RawInt};
 /// Wrapper for a raw byte sequence, that came from a server.
 ///
 /// `T` encodes the serialized representation.
-#[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Default, Eq, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct RawBytes<T: BytesRepr>(pub RingSlice, PhantomData<T>);
 // pub struct RawBytes<'a, T: BytesRepr>(pub Cow<'a, [u8]>, PhantomData<T>);
