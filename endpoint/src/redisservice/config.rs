@@ -56,8 +56,7 @@ impl RedisNamespace {
             let power_two = len > 0 && ((len & len - 1) == 0);
             if !power_two {
                 log::error!("shard num {} is not power of two: {}", len, cfg);
-                // TODO 临时为业务关闭，真正merge时，需要打开下面的return，进行check
-                // return None;
+                return None;
             }
         }
         Some(ns)
