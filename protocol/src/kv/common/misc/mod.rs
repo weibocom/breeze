@@ -8,6 +8,8 @@
 
 use std::io::{self};
 
+use ds::RingSlice;
+
 pub mod raw;
 
 /// Returns length of length-encoded-integer representation of `x`.
@@ -24,7 +26,8 @@ pub fn lenenc_int_len(x: u64) -> u64 {
 }
 
 /// Returns length of lenght-encoded-string representation of `s`.
-pub fn lenenc_str_len(s: &[u8]) -> u64 {
+// pub fn lenenc_str_len(s: &[u8]) -> u64 {
+pub fn lenenc_str_len(s: &RingSlice) -> u64 {
     let len = s.len() as u64;
     lenenc_int_len(len) + len
 }

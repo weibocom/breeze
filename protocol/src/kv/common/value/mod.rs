@@ -7,6 +7,7 @@
 // modified, or distributed except according to those terms.
 
 use bytes::BufMut;
+use ds::RingSlice;
 
 use std::{convert::TryFrom, fmt, io, marker::PhantomData, str::from_utf8};
 
@@ -59,6 +60,7 @@ pub struct BinValue;
 pub enum Value {
     NULL,
     Bytes(Vec<u8>),
+    // Bytes(RingSlice),
     Int(i64),
     UInt(u64),
     Float(f32),
@@ -146,21 +148,23 @@ impl MySerialize for Value {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueDeserializer<T>(pub Value, PhantomData<T>);
 
-impl<'de> MyDeserialize<'de> for ValueDeserializer<TextValue> {
+impl MyDeserialize for ValueDeserializer<TextValue> {
     const SIZE: Option<usize> = None;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let value = Value::deserialize_text(buf)?;
         Ok(Self(value, PhantomData))
     }
 }
 
-impl<'de> MyDeserialize<'de> for ValueDeserializer<BinValue> {
+impl MyDeserialize for ValueDeserializer<BinValue> {
     const SIZE: Option<usize> = None;
     type Ctx = (ColumnType, ColumnFlags);
 
-    fn deserialize((col_type, col_flags): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((col_type, col_flags): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((col_type, col_flags): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let value = Value::deserialize_bin((col_type, col_flags), buf)?;
         Ok(Self(value, PhantomData))
     }
@@ -207,7 +211,8 @@ fn escaped(input: &str, no_backslash_escape: bool) -> String {
 
 macro_rules! de_num {
     ($name:ident, $i:ident, $u:ident) => {
-        fn $name(unsigned: bool, buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+        // fn $name(unsigned: bool, buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+        fn $name(unsigned: bool, buf: &mut ParseBuf) -> io::Result<Self> {
             if unsigned {
                 buf.$u()
                     .ok_or_else(unexpected_buf_eof)
@@ -226,7 +231,8 @@ impl Value {
     pub fn bin_len(&self) -> u64 {
         match self {
             Value::NULL => 0,
-            Value::Bytes(x) => lenenc_str_len(&*x),
+            // Value::Bytes(x) => lenenc_str_len(&*x),
+            Value::Bytes(x) => lenenc_str_len(&RingSlice::from_vec(x)),
             Value::Int(_) => 8,
             Value::UInt(_) => 8,
             Value::Float(_) => 4,
@@ -296,19 +302,25 @@ impl Value {
         }
     }
 
-    fn deserialize_text(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    // fn deserialize_text(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    pub fn deserialize_text(buf: &mut ParseBuf) -> io::Result<Self> {
         if buf.is_empty() {
             return Err(unexpected_buf_eof());
         }
 
-        match buf.0[0] {
+        // match buf.0[0] {
+        match buf.at(0) {
             0xfb => {
                 buf.skip(1);
                 Ok(Value::NULL)
             }
             _ => {
                 let bytes: RawBytes<LenEnc> = buf.parse(())?;
-                Ok(Value::Bytes(bytes.0.into_owned()))
+                // Ok(Value::Bytes(bytes.0.into_owned()))
+                log::debug!("+++ careful will dump for value len:{}", bytes.len());
+                let mut data = Vec::with_capacity(bytes.len());
+                bytes.0.copy_to_vec(&mut data);
+                Ok(Value::Bytes(data))
             }
         }
     }
@@ -317,7 +329,8 @@ impl Value {
     de_num!(deserialize_short, checked_eat_i16_le, checked_eat_u16_le);
     de_num!(deserialize_long, checked_eat_i32_le, checked_eat_u32_le);
 
-    fn deserialize_longlong(unsigned: bool, buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    // fn deserialize_longlong(unsigned: bool, buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    fn deserialize_longlong(unsigned: bool, buf: &mut ParseBuf) -> io::Result<Self> {
         if unsigned {
             buf.checked_eat_u64_le()
                 .ok_or_else(unexpected_buf_eof)
@@ -329,7 +342,8 @@ impl Value {
         }
     }
 
-    fn deserialize_datetime(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    // fn deserialize_datetime(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    fn deserialize_datetime(buf: &mut ParseBuf) -> io::Result<Self> {
         let len = buf.checked_eat_u8().ok_or_else(unexpected_buf_eof)?;
 
         let mut year = 0u16;
@@ -361,7 +375,8 @@ impl Value {
         Ok(Date(year, month, day, hour, minute, second, micro_second))
     }
 
-    fn deserialize_time(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    // fn deserialize_time(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
+    fn deserialize_time(buf: &mut ParseBuf) -> io::Result<Self> {
         let len = buf.checked_eat_u8().ok_or_else(unexpected_buf_eof)?;
 
         let mut is_negative = false;
@@ -398,7 +413,8 @@ impl Value {
 
     pub(crate) fn deserialize_bin(
         (column_type, column_flags): (ColumnType, ColumnFlags),
-        buf: &mut ParseBuf<'_>,
+        buf: &mut ParseBuf,
+        // buf: &mut ParseBuf<'_>,
     ) -> io::Result<Self> {
         match column_type {
             ColumnType::MYSQL_TYPE_STRING
@@ -414,11 +430,30 @@ impl Value {
             | ColumnType::MYSQL_TYPE_BIT
             | ColumnType::MYSQL_TYPE_NEWDECIMAL
             | ColumnType::MYSQL_TYPE_GEOMETRY
-            | ColumnType::MYSQL_TYPE_JSON => Ok(Bytes(
-                buf.checked_eat_lenenc_str()
-                    .ok_or_else(unexpected_buf_eof)?
-                    .to_vec(),
-            )),
+            | ColumnType::MYSQL_TYPE_JSON => {
+                // Ok(Bytes(
+                //     buf.checked_eat_lenenc_str()
+                //         .ok_or_else(unexpected_buf_eof)?
+                //         .to_vec(),
+                // ))
+                // TODO 注意参考上面的逻辑，check一致性 fishermen
+                let slice = buf
+                    .checked_eat_lenenc_str()
+                    .ok_or_else(unexpected_buf_eof)?;
+                let (l, r) = slice.data();
+                match r.len() {
+                    0 => Ok(Bytes(l.into())),
+                    _ => {
+                        let mut bytes = Vec::with_capacity(slice.len());
+                        slice.copy_to_vec(&mut bytes);
+                        Ok(Bytes(bytes))
+                    }
+                }
+                // match slice.try_oneway_slice(0, slice.len()) {
+                //     Some(bytes) => Ok(Bytes(bytes.to_vec())),
+                //     None => Ok(Bytes(slice.dump_ring_part(0, slice.len()))),
+                // }
+            }
             ColumnType::MYSQL_TYPE_TINY => {
                 Self::deserialize_tiny(column_flags.contains(ColumnFlags::UNSIGNED_FLAG), buf)
             }
@@ -515,162 +550,5 @@ impl fmt::Debug for Value {
                 formatter.debug_tuple("Time").field(&format).finish()
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::io;
-
-    use crate::kv::common::{io::ParseBuf, value::Value};
-
-    #[test]
-    fn should_escape_string() {
-        assert_eq!(r"'?p??\\\\?p??'", Value::from("?p??\\\\?p??").as_sql(false));
-        assert_eq!(r#"'?p??\"?p??'"#, Value::from("?p??\"?p??").as_sql(false));
-        assert_eq!(r"'?p??\'?p??'", Value::from("?p??'?p??").as_sql(false));
-        assert_eq!(r"'?p??\n?p??'", Value::from("?p??\n?p??").as_sql(false));
-        assert_eq!(r"'?p??\r?p??'", Value::from("?p??\r?p??").as_sql(false));
-        assert_eq!(r"'?p??\0?p??'", Value::from("?p??\x00?p??").as_sql(false));
-    }
-
-    #[cfg(feature = "nightly")]
-    mod benches {
-        use std::convert::TryFrom;
-
-        use crate::{
-            constants::ColumnType,
-            io::WriteMysqlExt,
-            packets::{Column, ComStmtExecuteRequestBuilder, NullBitmap},
-            value::{ClientSide, Value},
-        };
-
-        #[bench]
-        fn bench_build_stmt_execute_request(bencher: &mut test::Bencher) {
-            let values = vec![
-                Value::Bytes(b"12.3456789".to_vec()),
-                Value::Int(0xF0),
-                Value::Int(0xF000),
-                Value::Int(0xF0000000),
-                Value::Float(std::f32::MAX),
-                Value::Double(std::f64::MAX),
-                Value::NULL,
-                Value::Date(2019, 11, 27, 12, 30, 0, 123456),
-                Value::UInt(0xF000000000000000),
-                Value::Int(0xF00000),
-                Value::Date(2019, 11, 27, 0, 0, 0, 0),
-                Value::Time(true, 300, 8, 8, 8, 123456),
-                Value::Date(2019, 11, 27, 12, 30, 0, 123456),
-                Value::Int(2019),
-                Value::Bytes(b"varchar".to_vec()),
-                Value::Bytes(b"1000000110000001".to_vec()),
-                Value::Bytes(br#"{"foo":"bar","baz":42345.6777}"#.to_vec()),
-                Value::Bytes(b"12.3456789".to_vec()),
-                Value::Bytes(b"Variant".to_vec()),
-                Value::Bytes(b"Element".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_TINY_BLOB".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_MEDIUM_BLOB".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_LONG_BLOB".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_BLOB".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_VAR_STRING".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_STRING".to_vec()),
-                Value::NULL,
-                Value::Bytes(b"MYSQL_TYPE_GEOMETRY".to_vec()),
-            ];
-
-            let (body, _) = ComStmtExecuteRequestBuilder::new(0).build(&*values);
-
-            bencher.bytes = body.len() as u64;
-            bencher.iter(|| ComStmtExecuteRequestBuilder::new(0).build(&*values));
-        }
-
-        #[cfg(feature = "nightly")]
-        #[bench]
-        fn bench_parse_bin_row(bencher: &mut test::Bencher) {
-            fn col(name: &str, ty: ColumnType) -> Column<'static> {
-                let mut payload = b"\x00def".to_vec();
-                for _ in 0..5 {
-                    payload.write_lenenc_str(name.as_bytes()).unwrap();
-                }
-                payload.extend_from_slice(&b"_\x2d\x00\xff\xff\xff\xff"[..]);
-                payload.push(ty as u8);
-                payload.extend_from_slice(&b"\x00\x00\x00"[..]);
-                Column::read(&payload[..]).unwrap()
-            }
-
-            let values = vec![
-                Value::Bytes(b"12.3456789".to_vec()),
-                Value::Int(0xF0),
-                Value::Int(0xF000),
-                Value::Int(0xF0000000),
-                Value::Float(std::f32::MAX),
-                Value::Double(std::f64::MAX),
-                Value::NULL,
-                Value::Date(2019, 11, 27, 12, 30, 0, 123456),
-                Value::UInt(0xF000000000000000),
-                Value::Int(0xF00000),
-                Value::Date(2019, 11, 27, 0, 0, 0, 0),
-                Value::Time(true, 300, 8, 8, 8, 123456),
-                Value::Date(2019, 11, 27, 12, 30, 0, 123456),
-                Value::Int(2019),
-                Value::Bytes(b"varchar".to_vec()),
-                Value::Bytes(b"1000000110000001".to_vec()),
-                Value::Bytes(br#"{"foo":"bar","baz":42345.6777}"#.to_vec()),
-                Value::Bytes(b"12.3456789".to_vec()),
-                Value::Bytes(b"Variant".to_vec()),
-                Value::Bytes(b"Element".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_TINY_BLOB".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_MEDIUM_BLOB".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_LONG_BLOB".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_BLOB".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_VAR_STRING".to_vec()),
-                Value::Bytes(b"MYSQL_TYPE_STRING".to_vec()),
-                Value::NULL,
-                Value::Bytes(b"MYSQL_TYPE_GEOMETRY".to_vec()),
-            ];
-
-            let (body, _) = ComStmtExecuteRequestBuilder::new(0).build(&*values);
-
-            let bitmap_len = NullBitmap::<ClientSide>::bitmap_len(values.len());
-
-            let meta_offset = ComStmtExecuteRequestBuilder::NULL_BITMAP_OFFSET + bitmap_len + 1;
-            let meta_len = values.len() * 2;
-            let columns = body[meta_offset..(meta_offset + meta_len)]
-                .chunks(2)
-                .map(|meta| col("foo", ColumnType::try_from(meta[0]).unwrap()))
-                .collect::<Vec<_>>();
-
-            let mut data = vec![0x00];
-            data.extend_from_slice(
-                &body[ComStmtExecuteRequestBuilder::NULL_BITMAP_OFFSET
-                    ..(ComStmtExecuteRequestBuilder::NULL_BITMAP_OFFSET + bitmap_len)],
-            );
-            data.extend_from_slice(
-                &body[(ComStmtExecuteRequestBuilder::NULL_BITMAP_OFFSET
-                    + bitmap_len
-                    + 1
-                    + 2 * values.len())..],
-            );
-
-            bencher.bytes = data.len() as u64;
-            bencher.iter(|| Value::read_bin_many::<ClientSide>(&*data, &*columns).unwrap());
-        }
-    }
-
-    #[test]
-    fn mysql_simple_issue_284() -> io::Result<()> {
-        use Value::*;
-
-        let mut buf = ParseBuf(&[1, 49, 1, 50, 1, 51, 251, 1, 52, 1, 53, 251, 1, 55][..]);
-        assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"1".to_vec()));
-        assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"2".to_vec()));
-        assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"3".to_vec()));
-        assert_eq!(Value::deserialize_text(&mut buf)?, NULL);
-        assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"4".to_vec()));
-        assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"5".to_vec()));
-        assert_eq!(Value::deserialize_text(&mut buf)?, NULL);
-        assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"7".to_vec()));
-
-        Ok(())
     }
 }

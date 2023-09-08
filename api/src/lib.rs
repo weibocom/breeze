@@ -4,8 +4,8 @@ mod protocol;
 
 use std::{collections::HashSet, time::Duration};
 
-use trust_dns_resolver::{AsyncResolver, TokioConnection, TokioConnectionProvider, TokioHandle};
-type Resolver = AsyncResolver<TokioConnection, TokioConnectionProvider>;
+use trust_dns_resolver::TokioAsyncResolver;
+type Resolver = TokioAsyncResolver;
 
 use rocket::{Build, Rocket};
 
@@ -31,7 +31,7 @@ pub fn routes(rocket: Rocket<Build>) -> Rocket<Build> {
 // 定期刷新白名单域名
 pub async fn start_whitelist_refresh(host: String) {
     let resolver: Resolver =
-        AsyncResolver::from_system_conf(TokioHandle).expect("crate api dns resolver");
+        TokioAsyncResolver::tokio_from_system_conf().expect("crate api dns resolver");
 
     // 每10分钟刷新一次
     let mut tick = tokio::time::interval(Duration::from_secs(10 * 60));

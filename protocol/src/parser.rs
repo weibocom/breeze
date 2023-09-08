@@ -29,17 +29,17 @@ impl Parser {
             _ => Err(Error::ProtocolNotSupported),
         }
     }
-    #[inline]
-    pub fn pipeline(&self) -> bool {
-        match self {
-            Self::McBin(_) => false,
-            Self::Redis(_) => true,
-            // Self::Phantom(_) => true,
-            Self::MsgQue(_) => false,
-            // Self::Mysql(_) => false,
-            Self::Kv(_) => false,
-        }
-    }
+    // #[inline]
+    // pub fn pipeline(&self) -> bool {
+    //     match self {
+    //         Self::McBin(_) => false,
+    //         Self::Redis(_) => true,
+    //         // Self::Phantom(_) => true,
+    //         Self::MsgQue(_) => false,
+    //         // Self::Mysql(_) => false,
+    //         Self::Kv(_) => false,
+    //     }
+    // }
 }
 
 // #[derive(Default)]
@@ -50,6 +50,13 @@ pub struct ResOption {
     // pub method: AuthMethod,
     pub token: String,
     pub username: String,
+}
+
+#[derive(Default, Clone)]
+pub struct Config {
+    pub need_auth: bool,
+    pub pipeline: bool,
+    pub retry_on_rsp_notok: bool,
 }
 
 pub enum HandShake {
@@ -70,25 +77,9 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
-    fn build_request(&self, _req: &mut HashedCommand, _new_req: String) {}
-
-    // fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
-
-    // TODO: mysql debug专用，2023.7后可以清理 fishermen
-    // fn parse_response_debug<S: Stream>(
-    //     &self,
-    //     _req: &HashedCommand,
-    //     _data: &mut S,
-    // ) -> Result<Option<Command>> {
-    //     // TODO: just for debug
-    //     Err(Error::NotInit)
-    // }
+    //fn build_request(&self, _req: &mut HashedCommand, _request_builder: MemGuard) {}
 
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
-
-    // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
-    // fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
-    //     -> Command;
 
     fn write_response<C, W, M, I>(
         &self,
@@ -120,8 +111,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     {
         None
     }
-    fn need_auth(&self) -> bool {
-        false
+    fn config(&self) -> Config {
+        Config::default()
     }
 }
 
@@ -290,7 +281,7 @@ impl HashedCommand {
         &mut self.flag
     }
     #[inline]
-    pub(crate) fn origin_data(&self) -> &MemGuard {
+    pub fn origin_data(&self) -> &MemGuard {
         if let Some(origin) = &self.origin_cmd {
             origin
         } else {

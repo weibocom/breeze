@@ -1,17 +1,14 @@
-extern crate json;
+//extern crate json;
 
-use std::{
-    io::{Error, ErrorKind},
-    time::Duration,
-};
+use std::io::{Error, ErrorKind::Other};
 
-use reqwest::Client;
+use ds::time::Duration;
+use hyper::{client::HttpConnector, Client, Uri};
 use serde::Deserialize;
-use url::Url;
+use tokio::time::timeout;
 
-#[derive(Clone)]
 pub struct Vintage {
-    client: Client,
+    client: Client<HttpConnector>,
 }
 
 #[derive(Deserialize)]
@@ -34,12 +31,9 @@ impl Response {
 
 impl Default for Vintage {
     fn default() -> Self {
+        //多个域名也会连接复用
         Vintage {
-            //多个域名也会连接复用
-            client: Client::builder()
-                .timeout(Duration::from_secs(3))
-                .build()
-                .unwrap(),
+            client: Client::new(),
         }
     }
 }
@@ -51,61 +45,55 @@ impl Vintage {
     //         client: Client::new(),
     //     }
     // }
-    fn get_url(&self, host_path: &str) -> Url {
-        // (host, path) = path.split_once(delimiter).unwrap();
-        // for url in &self.base_urls {
-        //     if url.host_str().unwrap() == host {
-        //         return url.clone().set_path(path);
-        //     }
-        // }
+    //fn get_url(&self, host_path: &str) -> Url {
+    // (host, path) = path.split_once(delimiter).unwrap();
+    // for url in &self.base_urls {
+    //     if url.host_str().unwrap() == host {
+    //         return url.clone().set_path(path);
+    //     }
+    // }
 
-        //直接parse吧，感觉set_path并不会快
-        // let base = Url::parse(&format!("http://{host_path}"));
-        // self.base_urls.push(base.clone());
-        // base
-        Url::parse(&format!("http://{host_path}")).unwrap()
-    }
+    //直接parse吧，感觉set_path并不会快
+    // let base = Url::parse(&format!("http://{host_path}"));
+    // self.base_urls.push(base.clone());
+    // base
+    //Url::parse(&format!("http://{host_path}")).unwrap()
+    //}
 
-    async fn lookup<C>(&self, path: &str, index: &str) -> std::io::Result<Config<C>>
+    async fn lookup<C>(
+        &self,
+        path: &str,
+        index: &str,
+    ) -> Result<Config<C>, Box<dyn std::error::Error>>
     where
         C: From<String>,
     {
         // 设置config的path
-        let gurl = self.get_url(path);
-        log::debug!("lookup: path:{} index:{}", gurl, index);
+        //let gurl = self.get_url(path);
+        let uri: Uri = format!("http://{path}?index={index}").parse()?;
+        log::debug!("lookup: {}", uri);
 
-        let resp = self
-            .client
-            .get(gurl)
-            .query(&[("index", index)])
-            .send()
-            .await
-            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-        match resp.status().as_u16() {
-            // not modified
-            304 => Ok(Config::NotChanged),
+        let resp = timeout(Duration::from_secs(3), self.client.get(uri)).await??;
+        let status = resp.status().as_u16();
+        match status {
             404 => Ok(Config::NotFound),
+            304 => Ok(Config::NotChanged),
             200 => {
-                let resp: Response = resp
-                    .json()
-                    .await
-                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-                if resp.message != "ok" {
-                    Err(Error::new(ErrorKind::Other, resp.message))
-                } else {
+                let b = hyper::body::to_bytes(resp.into_body()).await?;
+                let resp: Response = serde_json::from_slice(&b)?;
+                if resp.message == "ok" {
                     let (t_index, data) = resp.into();
                     if t_index == index {
-                        Ok(Config::NotChanged)
+                        return Ok(Config::NotChanged);
                     } else {
                         log::info!("{} '{}' => '{}' len:{}", path, index, t_index, data.len());
-                        Ok(Config::Config(t_index, C::from(data)))
-                    }
+                        return Ok(Config::Config(t_index, C::from(data)));
+                    };
+                } else {
+                    return Err(Box::new(Error::new(Other, resp.message)));
                 }
             }
-            status => {
-                let msg = format!("{} not a valid vintage status.", status);
-                Err(Error::new(ErrorKind::Other, msg))
-            }
+            status => Err(Box::new(Error::new(Other, status.to_string()))),
         }
     }
 }
@@ -120,6 +108,8 @@ impl super::Discover for Vintage {
     where
         C: Unpin + Send + From<String>,
     {
-        self.lookup(name, sig).await
+        self.lookup(name, sig)
+            .await
+            .map_err(|e| Error::new(Other, e.to_string()))
     }
 }

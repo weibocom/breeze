@@ -22,7 +22,10 @@ use std::cmp::min;
 // };
 
 use self::error::PacketCodecError;
-use crate::kv::common::constants::{DEFAULT_MAX_ALLOWED_PACKET, MAX_PAYLOAD_LEN};
+use crate::kv::common::{
+    constants::{DEFAULT_MAX_ALLOWED_PACKET, MAX_PAYLOAD_LEN},
+    io::BufMutExt,
+};
 pub mod error;
 
 /// Will split given `packet` to MySql packet chunks and write into `dst`.
@@ -353,7 +356,23 @@ pub struct PacketCodec {
     /// Maximum size of a packet for this codec.
     pub max_allowed_packet: usize,
     /// Actual implementation.
-    inner: PacketCodecInner,
+    inner: PlainPacketCodec,
+    len_pos: usize,
+    packet_num: usize,
+    buf: Vec<u8>,
+}
+
+impl core::fmt::Write for PacketCodec {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        self.push_str(s);
+        Ok(())
+    }
+
+    fn write_char(&mut self, c: char) -> std::fmt::Result {
+        debug_assert!(c as u32 <= u8::MAX as u32);
+        self.push(c as u8);
+        Ok(())
+    }
 }
 
 impl PacketCodec {
@@ -399,6 +418,71 @@ impl PacketCodec {
     ) -> Result<(), PacketCodecError> {
         self.inner.encode(src, dst, self.max_allowed_packet)
     }
+
+    pub fn push_str(&mut self, string: &str) {
+        let mut string = string.as_bytes();
+        if cfg!(feature = "max_allowed_packet") {
+            while string.len() > 0 {
+                let cap = MAX_PAYLOAD_LEN - self.payload_len();
+                let writed = min(cap, string.len());
+                self.buf.extend_from_slice(&string[..writed]);
+                self.check_full();
+                string = &string[writed..];
+            }
+        } else {
+            self.buf.extend_from_slice(string);
+        }
+    }
+    pub fn push(&mut self, c: u8) {
+        self.buf.push(c);
+        #[cfg(feature = "max_allowed_packet")]
+        self.check_full();
+    }
+    pub fn reserve(&mut self, additional: usize) {
+        self.buf.reserve(additional);
+    }
+    fn payload_len(&self) -> usize {
+        //header 长度为4
+        self.buf.len() - self.len_pos - 4
+    }
+    fn check_full(&mut self) {
+        if self.payload_len() == MAX_PAYLOAD_LEN {
+            self.finish_and_write_next_packet_header();
+        }
+    }
+    pub fn finish_current_packet(&mut self) {
+        let len = self.payload_len();
+        let mut buf = &mut self.buf[self.len_pos..];
+        assert!(
+            len <= MAX_PAYLOAD_LEN,
+            "mysql payload len {len} should < {MAX_PAYLOAD_LEN}"
+        );
+        buf.put_u24_le(len as u32);
+
+        self.inner.seq_id = self.inner.seq_id.wrapping_add(1);
+    }
+    pub fn write_next_packet_header(&mut self) {
+        self.len_pos = self.buf.len();
+        self.buf
+            .put_u32_le(0u32 | (u32::from(self.inner.seq_id) << 24));
+        self.packet_num += 1;
+    }
+    fn finish_and_write_next_packet_header(&mut self) {
+        self.finish_current_packet();
+        self.write_next_packet_header();
+    }
+    pub fn check_total_payload_len(&self) -> Result<(), PacketCodecError> {
+        if self.buf.len() - 4 * self.packet_num > self.max_allowed_packet {
+            return Err(PacketCodecError::PacketTooLarge);
+        }
+        Ok(())
+    }
+}
+
+impl Into<Vec<u8>> for PacketCodec {
+    fn into(self) -> Vec<u8> {
+        self.buf
+    }
 }
 
 impl Default for PacketCodec {
@@ -406,99 +490,102 @@ impl Default for PacketCodec {
         Self {
             max_allowed_packet: DEFAULT_MAX_ALLOWED_PACKET,
             inner: Default::default(),
+            buf: Default::default(),
+            len_pos: 0usize,
+            packet_num: 0usize,
         }
     }
 }
 
 /// Packet codec implementation.
-#[derive(Debug, Clone)]
-enum PacketCodecInner {
-    /// Plain packet codec.
-    Plain(PlainPacketCodec),
-    // /// Compressed packet codec.
-    // Comp(CompPacketCodec),
-}
+// #[derive(Debug, Clone)]
+// enum PacketCodecInner {
+//     /// Plain packet codec.
+//     Plain(PlainPacketCodec),
+//     // /// Compressed packet codec.
+//     // Comp(CompPacketCodec),
+// }
 
-impl PacketCodecInner {
-    // /// Sets sequence id to `0`.
-    // fn reset_seq_id(&mut self) {
-    //     match self {
-    //         PacketCodecInner::Plain(c) => c.reset_seq_id(),
-    //         PacketCodecInner::Comp(c) => c.reset_seq_id(),
-    //     }
-    // }
+// impl PacketCodecInner {
+//     // /// Sets sequence id to `0`.
+//     // fn reset_seq_id(&mut self) {
+//     //     match self {
+//     //         PacketCodecInner::Plain(c) => c.reset_seq_id(),
+//     //         PacketCodecInner::Comp(c) => c.reset_seq_id(),
+//     //     }
+//     // }
 
-    // TODO 临时增加设置seq id的方法
-    fn set_seq_id(&mut self, sid: u8) {
-        match self {
-            PacketCodecInner::Plain(c) => c.set_seq_id(sid),
-            // PacketCodecInner::Comp(c) => c.set_seq_id(sid),
-        }
-    }
+//     // TODO 临时增加设置seq id的方法
+//     fn set_seq_id(&mut self, sid: u8) {
+//         match self {
+//             PacketCodecInner::Plain(c) => c.set_seq_id(sid),
+//             // PacketCodecInner::Comp(c) => c.set_seq_id(sid),
+//         }
+//     }
 
-    // /// Overwrites plain sequence id with compressed sequence id.
-    // fn sync_seq_id(&mut self) {
-    //     match self {
-    //         PacketCodecInner::Plain(_) => (),
-    //         PacketCodecInner::Comp(c) => c.sync_seq_id(),
-    //     }
-    // }
+//     // /// Overwrites plain sequence id with compressed sequence id.
+//     // fn sync_seq_id(&mut self) {
+//     //     match self {
+//     //         PacketCodecInner::Plain(_) => (),
+//     //         PacketCodecInner::Comp(c) => c.sync_seq_id(),
+//     //     }
+//     // }
 
-    // /// Turns compression on.
-    // fn compress(&mut self, level: Compression) {
-    //     match self {
-    //         PacketCodecInner::Plain(c) => {
-    //             *self = PacketCodecInner::Comp(CompPacketCodec {
-    //                 level,
-    //                 comp_seq_id: 0,
-    //                 in_buf: BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET),
-    //                 out_buf: BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET),
-    //                 comp_decoder: CompDecoder::Idle,
-    //                 plain_codec: mem::take(c),
-    //             })
-    //         }
-    //         PacketCodecInner::Comp(c) => c.level = level,
-    //     }
-    // }
+//     // /// Turns compression on.
+//     // fn compress(&mut self, level: Compression) {
+//     //     match self {
+//     //         PacketCodecInner::Plain(c) => {
+//     //             *self = PacketCodecInner::Comp(CompPacketCodec {
+//     //                 level,
+//     //                 comp_seq_id: 0,
+//     //                 in_buf: BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET),
+//     //                 out_buf: BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET),
+//     //                 comp_decoder: CompDecoder::Idle,
+//     //                 plain_codec: mem::take(c),
+//     //             })
+//     //         }
+//     //         PacketCodecInner::Comp(c) => c.level = level,
+//     //     }
+//     // }
 
-    // /// Will try to decode packet from `src` into `dst`.
-    // ///
-    // /// If `true` is returned then `dst` contains full packet.
-    // fn decode<T>(
-    //     &mut self,
-    //     src: &mut BytesMut,
-    //     dst: &mut T,
-    //     max_allowed_packet: usize,
-    // ) -> Result<bool, PacketCodecError>
-    // where
-    //     T: AsRef<[u8]>,
-    //     T: BufMut,
-    // {
-    //     match self {
-    //         PacketCodecInner::Plain(codec) => codec.decode(src, dst, max_allowed_packet, None),
-    //         PacketCodecInner::Comp(codec) => codec.decode(src, dst, max_allowed_packet),
-    //     }
-    // }
+//     // /// Will try to decode packet from `src` into `dst`.
+//     // ///
+//     // /// If `true` is returned then `dst` contains full packet.
+//     // fn decode<T>(
+//     //     &mut self,
+//     //     src: &mut BytesMut,
+//     //     dst: &mut T,
+//     //     max_allowed_packet: usize,
+//     // ) -> Result<bool, PacketCodecError>
+//     // where
+//     //     T: AsRef<[u8]>,
+//     //     T: BufMut,
+//     // {
+//     //     match self {
+//     //         PacketCodecInner::Plain(codec) => codec.decode(src, dst, max_allowed_packet, None),
+//     //         PacketCodecInner::Comp(codec) => codec.decode(src, dst, max_allowed_packet),
+//     //     }
+//     // }
 
-    /// Will try to encode packets into `dst`.
-    fn encode<T: Buf>(
-        &mut self,
-        packet: &mut T,
-        dst: &mut BytesMut,
-        max_allowed_packet: usize,
-    ) -> Result<(), PacketCodecError> {
-        match self {
-            PacketCodecInner::Plain(codec) => codec.encode(packet, dst, max_allowed_packet),
-            // PacketCodecInner::Comp(codec) => codec.encode(packet, dst, max_allowed_packet),
-        }
-    }
-}
+//     /// Will try to encode packets into `dst`.
+//     fn encode<T: Buf>(
+//         &mut self,
+//         packet: &mut T,
+//         dst: &mut BytesMut,
+//         max_allowed_packet: usize,
+//     ) -> Result<(), PacketCodecError> {
+//         match self {
+//             PacketCodecInner::Plain(codec) => codec.encode(packet, dst, max_allowed_packet),
+//             // PacketCodecInner::Comp(codec) => codec.encode(packet, dst, max_allowed_packet),
+//         }
+//     }
+// }
 
-impl Default for PacketCodecInner {
-    fn default() -> Self {
-        PacketCodecInner::Plain(Default::default())
-    }
-}
+// impl Default for PacketCodecInner {
+//     fn default() -> Self {
+//         PacketCodecInner::Plain(Default::default())
+//     }
+// }
 
 /// Codec for plain MySql protocol.
 #[derive(Debug, Clone, Eq, PartialEq, Default)]

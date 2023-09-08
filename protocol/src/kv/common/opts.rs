@@ -6,8 +6,8 @@
 // option. All files in the project carrying such notice may not be copied,
 // modified, or distributed except according to those terms.
 
-use percent_encoding::percent_decode;
-use url::Url;
+// use percent_encoding::percent_decode;
+// use url::Url;
 
 use std::{
     borrow::Cow, collections::HashMap, hash::Hash, net::SocketAddr, path::Path, time::Duration,
@@ -26,7 +26,7 @@ pub use native_tls_opts::ClientIdentity;
 #[cfg(feature = "rustls-tls")]
 pub use rustls_opts::ClientIdentity;
 
-use super::error::UrlError;
+// use super::error::UrlError;
 
 /// Ssl Options.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Default)]
@@ -256,19 +256,19 @@ impl Default for InnerOpts {
     }
 }
 
-impl TryFrom<&'_ str> for Opts {
-    type Error = UrlError;
+// impl TryFrom<&'_ str> for Opts {
+//     type Error = UrlError;
 
-    fn try_from(url: &'_ str) -> Result<Self, Self::Error> {
-        Opts::from_url(url)
-    }
-}
+//     fn try_from(url: &'_ str) -> Result<Self, Self::Error> {
+//         Opts::from_url(url)
+//     }
+// }
 
 /// Mysql connection options.
 ///
 /// Build one with [`OptsBuilder`](struct.OptsBuilder.html).
 #[derive(Clone, Eq, PartialEq, Debug, Default)]
-pub struct Opts(pub(crate) Box<InnerOpts>);
+pub struct Opts(pub(crate) InnerOpts);
 
 impl Opts {
     // #[doc(hidden)]
@@ -280,9 +280,9 @@ impl Opts {
     //     }
     // }
 
-    pub fn from_url(url: &str) -> Result<Opts, UrlError> {
-        from_url(url)
-    }
+    // pub fn from_url(url: &str) -> Result<Opts, UrlError> {
+    //     from_url(url)
+    // }
 
     // TODO 先用最简洁的方式构建，按需扩展
     pub fn from_user_pwd(user: String, pwd: String) -> Opts {
@@ -290,7 +290,7 @@ impl Opts {
         opt.user = Some(user);
         opt.pass = Some(pwd);
 
-        Self(Box::new(opt))
+        Self(opt)
     }
 
     // pub(crate) fn get_host(&self) -> url::Host {
@@ -479,558 +479,558 @@ impl Opts {
     // }
 }
 
-/// Provides a way to build [`Opts`](struct.Opts.html).
-///
-/// ```ignore
-/// let mut ssl_opts = SslOpts::default();
-/// ssl_opts = ssl_opts.with_pkcs12_path(Some(Path::new("/foo/cert.p12")))
-///         .with_root_ca_path(Some(Path::new("/foo/root_ca.der")));
-///
-/// // You can create new default builder
-/// let mut builder = OptsBuilder::new();
-/// builder = builder.ip_or_hostname(Some("foo"))
-///        .db_name(Some("bar"))
-///        .ssl_opts(Some(ssl_opts));
-///
-/// // Or use existing T: Into<Opts>
-/// let builder = OptsBuilder::from_opts(existing_opts)
-///        .ip_or_hostname(Some("foo"))
-///        .db_name(Some("bar"));
-/// ```
-///
-/// ## Connection URL
-///
-/// `Opts` also could be constructed using connection URL. See docs on `OptsBuilder`'s methods for
-/// the list of options available via URL.
-///
-/// Example:
-///
-/// ```ignore
-/// let connection_opts = mysql::Opts::from_url("mysql://root:password@localhost:3307/mysql?prefer_socket=false").unwrap();
-/// let pool = mysql::Pool::new(connection_opts).unwrap();
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct OptsBuilder {
-    opts: Opts,
-}
+// /// Provides a way to build [`Opts`](struct.Opts.html).
+// ///
+// /// ```ignore
+// /// let mut ssl_opts = SslOpts::default();
+// /// ssl_opts = ssl_opts.with_pkcs12_path(Some(Path::new("/foo/cert.p12")))
+// ///         .with_root_ca_path(Some(Path::new("/foo/root_ca.der")));
+// ///
+// /// // You can create new default builder
+// /// let mut builder = OptsBuilder::new();
+// /// builder = builder.ip_or_hostname(Some("foo"))
+// ///        .db_name(Some("bar"))
+// ///        .ssl_opts(Some(ssl_opts));
+// ///
+// /// // Or use existing T: Into<Opts>
+// /// let builder = OptsBuilder::from_opts(existing_opts)
+// ///        .ip_or_hostname(Some("foo"))
+// ///        .db_name(Some("bar"));
+// /// ```
+// ///
+// /// ## Connection URL
+// ///
+// /// `Opts` also could be constructed using connection URL. See docs on `OptsBuilder`'s methods for
+// /// the list of options available via URL.
+// ///
+// /// Example:
+// ///
+// /// ```ignore
+// /// let connection_opts = mysql::Opts::from_url("mysql://root:password@localhost:3307/mysql?prefer_socket=false").unwrap();
+// /// let pool = mysql::Pool::new(connection_opts).unwrap();
+// /// ```
+// #[derive(Debug, Clone, PartialEq)]
+// pub struct OptsBuilder {
+//     opts: Opts,
+// }
 
-impl OptsBuilder {
-    // pub fn new() -> Self {
-    //     OptsBuilder::default()
-    // }
+// impl OptsBuilder {
+//     // pub fn new() -> Self {
+//     //     OptsBuilder::default()
+//     // }
 
-    pub fn from_opts<T: Into<Opts>>(opts: T) -> Self {
-        OptsBuilder { opts: opts.into() }
-    }
+//     pub fn from_opts<T: Into<Opts>>(opts: T) -> Self {
+//         OptsBuilder { opts: opts.into() }
+//     }
 
-    /// Use a HashMap for creating an OptsBuilder instance:
-    /// ```ignore
-    /// OptsBuilder::new().from_hash_map(client);
-    /// ```
-    /// `HashMap` key,value pairs:
-    /// - user = Username
-    /// - password = Password
-    /// - host = Host name or ip address
-    /// - port = Port, default is 3306
-    /// - socket = Unix socket or pipe name(on windows) defaults to `None`
-    /// - db_name = Database name (defaults to `None`).
-    /// - prefer_socket = Prefer socket connection (defaults to `true`)
-    /// - tcp_keepalive_time_ms = TCP keep alive time for mysql connection (defaults to `None`)
-    /// - tcp_keepalive_probe_interval_secs = TCP keep alive interval between probes for mysql connection (defaults to `None`)
-    /// - tcp_keepalive_probe_count = TCP keep alive probe count for mysql connection (defaults to `None`)
-    /// - tcp_user_timeout_ms = TCP_USER_TIMEOUT time for mysql connection (defaults to `None`)
-    /// - compress = Compression level(defaults to `None`)
-    /// - tcp_connect_timeout_ms = Tcp connect timeout (defaults to `None`)
-    /// - stmt_cache_size = Number of prepared statements cached on the client side (per connection)
-    /// - secure_auth = Disable `mysql_old_password` auth plugin
-    ///
-    /// Login .cnf file parsing lib <https://github.com/rjcortese/myloginrs> returns a HashMap for client configs
-    ///
-    /// **Note:** You do **not** have to use myloginrs lib.
-    pub fn from_hash_map(mut self, client: &HashMap<String, String>) -> Result<Self, UrlError> {
-        for (key, value) in client.iter() {
-            match key.as_str() {
-                "user" => self.opts.0.user = Some(value.to_string()),
-                "password" => self.opts.0.pass = Some(value.to_string()),
-                "host" => {
-                    let host = url::Host::parse(value)
-                        .unwrap_or_else(|_| url::Host::Domain(value.to_owned()));
-                    self.opts.0.ip_or_hostname = host;
-                }
-                "port" => match value.parse::<u16>() {
-                    Ok(parsed) => self.opts.0.tcp_port = parsed,
-                    Err(_) => {
-                        return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
-                    }
-                },
-                "socket" => self.opts.0.socket = Some(value.to_string()),
-                "db_name" => self.opts.0.db_name = Some(value.to_string()),
-                "prefer_socket" => {
-                    //default to true like standard opts builder method
-                    match value.parse::<bool>() {
-                        Ok(parsed) => self.opts.0.prefer_socket = parsed,
-                        Err(_) => {
-                            return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
-                        }
-                    }
-                }
-                "secure_auth" => match value.parse::<bool>() {
-                    Ok(parsed) => self.opts.0.secure_auth = parsed,
-                    Err(_) => {
-                        return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
-                    }
-                },
-                "tcp_keepalive_time_ms" => {
-                    //if cannot parse, default to none
-                    self.opts.0.tcp_keepalive_time = match value.parse::<u32>() {
-                        Ok(val) => Some(val),
-                        _ => {
-                            return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
-                        }
-                    }
-                }
-                #[cfg(any(target_os = "linux", target_os = "macos",))]
-                "tcp_keepalive_probe_interval_secs" => {
-                    //if cannot parse, default to none
-                    self.opts.0.tcp_keepalive_probe_interval_secs = match value.parse::<u32>() {
-                        Ok(val) => Some(val),
-                        _ => {
-                            return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
-                        }
-                    }
-                }
-                #[cfg(any(target_os = "linux", target_os = "macos",))]
-                "tcp_keepalive_probe_count" => {
-                    //if cannot parse, default to none
-                    self.opts.0.tcp_keepalive_probe_count = match value.parse::<u32>() {
-                        Ok(val) => Some(val),
-                        _ => {
-                            return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
-                        }
-                    }
-                }
-                #[cfg(target_os = "linux")]
-                "tcp_user_timeout_ms" => {
-                    self.opts.0.tcp_user_timeout = match value.parse::<u32>() {
-                        Ok(val) => Some(val),
-                        _ => {
-                            return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
-                        }
-                    }
-                }
-                "compress" => match value.parse::<u32>() {
-                    Ok(val) => self.opts.0.compress = Some(Compression::new(val)),
-                    Err(_) => {
-                        //not an int
-                        match value.as_str() {
-                            "fast" => self.opts.0.compress = Some(Compression::fast()),
-                            "best" => self.opts.0.compress = Some(Compression::best()),
-                            "true" => self.opts.0.compress = Some(Compression::default()),
-                            _ => {
-                                return Err(UrlError::InvalidValue(
-                                    key.to_string(),
-                                    value.to_string(),
-                                )); //should not go below this due to catch all
-                            }
-                        }
-                    }
-                },
-                "tcp_connect_timeout_ms" => {
-                    self.opts.0.tcp_connect_timeout = match value.parse::<u64>() {
-                        Ok(val) => Some(Duration::from_millis(val)),
-                        _ => {
-                            return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
-                        }
-                    }
-                }
-                "stmt_cache_size" => match value.parse::<usize>() {
-                    Ok(parsed) => self.opts.0.stmt_cache_size = parsed,
-                    Err(_) => {
-                        return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
-                    }
-                },
-                _ => {
-                    //throw an error if there is an unrecognized param
-                    return Err(UrlError::UnknownParameter(key.to_string()));
-                }
-            }
-        }
-        Ok(self)
-    }
+//     /// Use a HashMap for creating an OptsBuilder instance:
+//     /// ```ignore
+//     /// OptsBuilder::new().from_hash_map(client);
+//     /// ```
+//     /// `HashMap` key,value pairs:
+//     /// - user = Username
+//     /// - password = Password
+//     /// - host = Host name or ip address
+//     /// - port = Port, default is 3306
+//     /// - socket = Unix socket or pipe name(on windows) defaults to `None`
+//     /// - db_name = Database name (defaults to `None`).
+//     /// - prefer_socket = Prefer socket connection (defaults to `true`)
+//     /// - tcp_keepalive_time_ms = TCP keep alive time for mysql connection (defaults to `None`)
+//     /// - tcp_keepalive_probe_interval_secs = TCP keep alive interval between probes for mysql connection (defaults to `None`)
+//     /// - tcp_keepalive_probe_count = TCP keep alive probe count for mysql connection (defaults to `None`)
+//     /// - tcp_user_timeout_ms = TCP_USER_TIMEOUT time for mysql connection (defaults to `None`)
+//     /// - compress = Compression level(defaults to `None`)
+//     /// - tcp_connect_timeout_ms = Tcp connect timeout (defaults to `None`)
+//     /// - stmt_cache_size = Number of prepared statements cached on the client side (per connection)
+//     /// - secure_auth = Disable `mysql_old_password` auth plugin
+//     ///
+//     /// Login .cnf file parsing lib <https://github.com/rjcortese/myloginrs> returns a HashMap for client configs
+//     ///
+//     /// **Note:** You do **not** have to use myloginrs lib.
+//     pub fn from_hash_map(mut self, client: &HashMap<String, String>) -> Result<Self, UrlError> {
+//         for (key, value) in client.iter() {
+//             match key.as_str() {
+//                 "user" => self.opts.0.user = Some(value.to_string()),
+//                 "password" => self.opts.0.pass = Some(value.to_string()),
+//                 "host" => {
+//                     let host = url::Host::parse(value)
+//                         .unwrap_or_else(|_| url::Host::Domain(value.to_owned()));
+//                     self.opts.0.ip_or_hostname = host;
+//                 }
+//                 "port" => match value.parse::<u16>() {
+//                     Ok(parsed) => self.opts.0.tcp_port = parsed,
+//                     Err(_) => {
+//                         return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
+//                     }
+//                 },
+//                 "socket" => self.opts.0.socket = Some(value.to_string()),
+//                 "db_name" => self.opts.0.db_name = Some(value.to_string()),
+//                 "prefer_socket" => {
+//                     //default to true like standard opts builder method
+//                     match value.parse::<bool>() {
+//                         Ok(parsed) => self.opts.0.prefer_socket = parsed,
+//                         Err(_) => {
+//                             return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
+//                         }
+//                     }
+//                 }
+//                 "secure_auth" => match value.parse::<bool>() {
+//                     Ok(parsed) => self.opts.0.secure_auth = parsed,
+//                     Err(_) => {
+//                         return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
+//                     }
+//                 },
+//                 "tcp_keepalive_time_ms" => {
+//                     //if cannot parse, default to none
+//                     self.opts.0.tcp_keepalive_time = match value.parse::<u32>() {
+//                         Ok(val) => Some(val),
+//                         _ => {
+//                             return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
+//                         }
+//                     }
+//                 }
+//                 #[cfg(any(target_os = "linux", target_os = "macos",))]
+//                 "tcp_keepalive_probe_interval_secs" => {
+//                     //if cannot parse, default to none
+//                     self.opts.0.tcp_keepalive_probe_interval_secs = match value.parse::<u32>() {
+//                         Ok(val) => Some(val),
+//                         _ => {
+//                             return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
+//                         }
+//                     }
+//                 }
+//                 #[cfg(any(target_os = "linux", target_os = "macos",))]
+//                 "tcp_keepalive_probe_count" => {
+//                     //if cannot parse, default to none
+//                     self.opts.0.tcp_keepalive_probe_count = match value.parse::<u32>() {
+//                         Ok(val) => Some(val),
+//                         _ => {
+//                             return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
+//                         }
+//                     }
+//                 }
+//                 #[cfg(target_os = "linux")]
+//                 "tcp_user_timeout_ms" => {
+//                     self.opts.0.tcp_user_timeout = match value.parse::<u32>() {
+//                         Ok(val) => Some(val),
+//                         _ => {
+//                             return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
+//                         }
+//                     }
+//                 }
+//                 "compress" => match value.parse::<u32>() {
+//                     Ok(val) => self.opts.0.compress = Some(Compression::new(val)),
+//                     Err(_) => {
+//                         //not an int
+//                         match value.as_str() {
+//                             "fast" => self.opts.0.compress = Some(Compression::fast()),
+//                             "best" => self.opts.0.compress = Some(Compression::best()),
+//                             "true" => self.opts.0.compress = Some(Compression::default()),
+//                             _ => {
+//                                 return Err(UrlError::InvalidValue(
+//                                     key.to_string(),
+//                                     value.to_string(),
+//                                 )); //should not go below this due to catch all
+//                             }
+//                         }
+//                     }
+//                 },
+//                 "tcp_connect_timeout_ms" => {
+//                     self.opts.0.tcp_connect_timeout = match value.parse::<u64>() {
+//                         Ok(val) => Some(Duration::from_millis(val)),
+//                         _ => {
+//                             return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
+//                         }
+//                     }
+//                 }
+//                 "stmt_cache_size" => match value.parse::<usize>() {
+//                     Ok(parsed) => self.opts.0.stmt_cache_size = parsed,
+//                     Err(_) => {
+//                         return Err(UrlError::InvalidValue(key.to_string(), value.to_string()))
+//                     }
+//                 },
+//                 _ => {
+//                     //throw an error if there is an unrecognized param
+//                     return Err(UrlError::UnknownParameter(key.to_string()));
+//                 }
+//             }
+//         }
+//         Ok(self)
+//     }
 
-    // /// Address of mysql server (defaults to `127.0.0.1`). Hostnames should also work.
-    // ///
-    // /// **Note:** IPv6 addresses must be given in square brackets, e.g. `[::1]`.
-    // pub fn ip_or_hostname<T: Into<String>>(mut self, ip_or_hostname: Option<T>) -> Self {
-    //     let new = ip_or_hostname
-    //         .map(Into::into)
-    //         .unwrap_or_else(|| "127.0.0.1".into());
-    //     self.opts.0.ip_or_hostname =
-    //         url::Host::parse(&new).unwrap_or_else(|_| url::Host::Domain(new.to_owned()));
-    //     self
-    // }
+//     // /// Address of mysql server (defaults to `127.0.0.1`). Hostnames should also work.
+//     // ///
+//     // /// **Note:** IPv6 addresses must be given in square brackets, e.g. `[::1]`.
+//     // pub fn ip_or_hostname<T: Into<String>>(mut self, ip_or_hostname: Option<T>) -> Self {
+//     //     let new = ip_or_hostname
+//     //         .map(Into::into)
+//     //         .unwrap_or_else(|| "127.0.0.1".into());
+//     //     self.opts.0.ip_or_hostname =
+//     //         url::Host::parse(&new).unwrap_or_else(|_| url::Host::Domain(new.to_owned()));
+//     //     self
+//     // }
 
-    // /// TCP port of mysql server (defaults to `3306`).
-    // pub fn tcp_port(mut self, tcp_port: u16) -> Self {
-    //     self.opts.0.tcp_port = tcp_port;
-    //     self
-    // }
+//     // /// TCP port of mysql server (defaults to `3306`).
+//     // pub fn tcp_port(mut self, tcp_port: u16) -> Self {
+//     //     self.opts.0.tcp_port = tcp_port;
+//     //     self
+//     // }
 
-    // /// Socket path on unix or pipe name on windows (defaults to `None`).
-    // ///
-    // /// Can be defined using `socket` connection url parameter.
-    // pub fn socket<T: Into<String>>(mut self, socket: Option<T>) -> Self {
-    //     self.opts.0.socket = socket.map(Into::into);
-    //     self
-    // }
+//     // /// Socket path on unix or pipe name on windows (defaults to `None`).
+//     // ///
+//     // /// Can be defined using `socket` connection url parameter.
+//     // pub fn socket<T: Into<String>>(mut self, socket: Option<T>) -> Self {
+//     //     self.opts.0.socket = socket.map(Into::into);
+//     //     self
+//     // }
 
-    // /// User (defaults to `None`).
-    // pub fn user<T: Into<String>>(mut self, user: Option<T>) -> Self {
-    //     self.opts.0.user = user.map(Into::into);
-    //     self
-    // }
+//     // /// User (defaults to `None`).
+//     // pub fn user<T: Into<String>>(mut self, user: Option<T>) -> Self {
+//     //     self.opts.0.user = user.map(Into::into);
+//     //     self
+//     // }
 
-    // /// Password (defaults to `None`).
-    // pub fn pass<T: Into<String>>(mut self, pass: Option<T>) -> Self {
-    //     self.opts.0.pass = pass.map(Into::into);
-    //     self
-    // }
+//     // /// Password (defaults to `None`).
+//     // pub fn pass<T: Into<String>>(mut self, pass: Option<T>) -> Self {
+//     //     self.opts.0.pass = pass.map(Into::into);
+//     //     self
+//     // }
 
-    // /// Database name (defaults to `None`).
-    // pub fn db_name<T: Into<String>>(mut self, db_name: Option<T>) -> Self {
-    //     self.opts.0.db_name = db_name.map(Into::into);
-    //     self
-    // }
+//     // /// Database name (defaults to `None`).
+//     // pub fn db_name<T: Into<String>>(mut self, db_name: Option<T>) -> Self {
+//     //     self.opts.0.db_name = db_name.map(Into::into);
+//     //     self
+//     // }
 
-    // /// The timeout for each attempt to read from the server (defaults to `None`).
-    // ///
-    // /// Note that named pipe connection will ignore duration's `nanos`, and also note that
-    // /// it is an error to pass the zero `Duration` to this method.
-    // pub fn read_timeout(mut self, read_timeout: Option<Duration>) -> Self {
-    //     self.opts.0.read_timeout = read_timeout;
-    //     self
-    // }
+//     // /// The timeout for each attempt to read from the server (defaults to `None`).
+//     // ///
+//     // /// Note that named pipe connection will ignore duration's `nanos`, and also note that
+//     // /// it is an error to pass the zero `Duration` to this method.
+//     // pub fn read_timeout(mut self, read_timeout: Option<Duration>) -> Self {
+//     //     self.opts.0.read_timeout = read_timeout;
+//     //     self
+//     // }
 
-    // /// The timeout for each attempt to write to the server (defaults to `None`).
-    // ///
-    // /// Note that named pipe connection will ignore duration's `nanos`, and also note that
-    // /// it is likely error to pass the zero `Duration` to this method.
-    // pub fn write_timeout(mut self, write_timeout: Option<Duration>) -> Self {
-    //     self.opts.0.write_timeout = write_timeout;
-    //     self
-    // }
+//     // /// The timeout for each attempt to write to the server (defaults to `None`).
+//     // ///
+//     // /// Note that named pipe connection will ignore duration's `nanos`, and also note that
+//     // /// it is likely error to pass the zero `Duration` to this method.
+//     // pub fn write_timeout(mut self, write_timeout: Option<Duration>) -> Self {
+//     //     self.opts.0.write_timeout = write_timeout;
+//     //     self
+//     // }
 
-    // /// TCP keep alive time for mysql connection (defaults to `None`). Available as
-    // /// `tcp_keepalive_time_ms` url parameter.
-    // ///
-    // /// Can be defined using `tcp_keepalive_time_ms` connection url parameter.
-    // pub fn tcp_keepalive_time_ms(mut self, tcp_keepalive_time_ms: Option<u32>) -> Self {
-    //     self.opts.0.tcp_keepalive_time = tcp_keepalive_time_ms;
-    //     self
-    // }
+//     // /// TCP keep alive time for mysql connection (defaults to `None`). Available as
+//     // /// `tcp_keepalive_time_ms` url parameter.
+//     // ///
+//     // /// Can be defined using `tcp_keepalive_time_ms` connection url parameter.
+//     // pub fn tcp_keepalive_time_ms(mut self, tcp_keepalive_time_ms: Option<u32>) -> Self {
+//     //     self.opts.0.tcp_keepalive_time = tcp_keepalive_time_ms;
+//     //     self
+//     // }
 
-    // /// TCP keep alive interval between probes for mysql connection (defaults to `None`). Available as
-    // /// `tcp_keepalive_probe_interval_secs` url parameter.
-    // ///
-    // /// Can be defined using `tcp_keepalive_probe_interval_secs` connection url parameter.
-    // #[cfg(any(target_os = "linux", target_os = "macos",))]
-    // pub fn tcp_keepalive_probe_interval_secs(
-    //     mut self,
-    //     tcp_keepalive_probe_interval_secs: Option<u32>,
-    // ) -> Self {
-    //     self.opts.0.tcp_keepalive_probe_interval_secs = tcp_keepalive_probe_interval_secs;
-    //     self
-    // }
+//     // /// TCP keep alive interval between probes for mysql connection (defaults to `None`). Available as
+//     // /// `tcp_keepalive_probe_interval_secs` url parameter.
+//     // ///
+//     // /// Can be defined using `tcp_keepalive_probe_interval_secs` connection url parameter.
+//     // #[cfg(any(target_os = "linux", target_os = "macos",))]
+//     // pub fn tcp_keepalive_probe_interval_secs(
+//     //     mut self,
+//     //     tcp_keepalive_probe_interval_secs: Option<u32>,
+//     // ) -> Self {
+//     //     self.opts.0.tcp_keepalive_probe_interval_secs = tcp_keepalive_probe_interval_secs;
+//     //     self
+//     // }
 
-    // /// TCP keep alive probe count for mysql connection (defaults to `None`). Available as
-    // /// `tcp_keepalive_probe_count` url parameter.
-    // ///
-    // /// Can be defined using `tcp_keepalive_probe_count` connection url parameter.
-    // #[cfg(any(target_os = "linux", target_os = "macos",))]
-    // pub fn tcp_keepalive_probe_count(mut self, tcp_keepalive_probe_count: Option<u32>) -> Self {
-    //     self.opts.0.tcp_keepalive_probe_count = tcp_keepalive_probe_count;
-    //     self
-    // }
+//     // /// TCP keep alive probe count for mysql connection (defaults to `None`). Available as
+//     // /// `tcp_keepalive_probe_count` url parameter.
+//     // ///
+//     // /// Can be defined using `tcp_keepalive_probe_count` connection url parameter.
+//     // #[cfg(any(target_os = "linux", target_os = "macos",))]
+//     // pub fn tcp_keepalive_probe_count(mut self, tcp_keepalive_probe_count: Option<u32>) -> Self {
+//     //     self.opts.0.tcp_keepalive_probe_count = tcp_keepalive_probe_count;
+//     //     self
+//     // }
 
-    // /// TCP_USER_TIMEOUT for mysql connection (defaults to `None`). Available as
-    // /// `tcp_user_timeout_ms` url parameter.
-    // ///
-    // /// Can be defined using `tcp_user_timeout_ms` connection url parameter.
-    // #[cfg(target_os = "linux")]
-    // pub fn tcp_user_timeout_ms(mut self, tcp_user_timeout_ms: Option<u32>) -> Self {
-    //     self.opts.0.tcp_user_timeout = tcp_user_timeout_ms;
-    //     self
-    // }
+//     // /// TCP_USER_TIMEOUT for mysql connection (defaults to `None`). Available as
+//     // /// `tcp_user_timeout_ms` url parameter.
+//     // ///
+//     // /// Can be defined using `tcp_user_timeout_ms` connection url parameter.
+//     // #[cfg(target_os = "linux")]
+//     // pub fn tcp_user_timeout_ms(mut self, tcp_user_timeout_ms: Option<u32>) -> Self {
+//     //     self.opts.0.tcp_user_timeout = tcp_user_timeout_ms;
+//     //     self
+//     // }
 
-    // /// Set the `TCP_NODELAY` option for the mysql connection (defaults to `true`).
-    // ///
-    // /// Setting this option to false re-enables Nagle's algorithm, which can cause unusually high
-    // /// latency (~40ms) but may increase maximum throughput. See #132.
-    // pub fn tcp_nodelay(mut self, nodelay: bool) -> Self {
-    //     self.opts.0.tcp_nodelay = nodelay;
-    //     self
-    // }
+//     // /// Set the `TCP_NODELAY` option for the mysql connection (defaults to `true`).
+//     // ///
+//     // /// Setting this option to false re-enables Nagle's algorithm, which can cause unusually high
+//     // /// latency (~40ms) but may increase maximum throughput. See #132.
+//     // pub fn tcp_nodelay(mut self, nodelay: bool) -> Self {
+//     //     self.opts.0.tcp_nodelay = nodelay;
+//     //     self
+//     // }
 
-    // /// Prefer socket connection (defaults to `true`). Available as `prefer_socket` url parameter
-    // /// with value `true` or `false`.
-    // ///
-    // /// Will reconnect via socket (on named pipe on windows) after TCP connection
-    // /// to `127.0.0.1` if `true`.
-    // ///
-    // /// Will fall back to TCP on error. Use `socket` option to enforce socket connection.
-    // ///
-    // /// Can be defined using `prefer_socket` connection url parameter.
-    // pub fn prefer_socket(mut self, prefer_socket: bool) -> Self {
-    //     self.opts.0.prefer_socket = prefer_socket;
-    //     self
-    // }
+//     // /// Prefer socket connection (defaults to `true`). Available as `prefer_socket` url parameter
+//     // /// with value `true` or `false`.
+//     // ///
+//     // /// Will reconnect via socket (on named pipe on windows) after TCP connection
+//     // /// to `127.0.0.1` if `true`.
+//     // ///
+//     // /// Will fall back to TCP on error. Use `socket` option to enforce socket connection.
+//     // ///
+//     // /// Can be defined using `prefer_socket` connection url parameter.
+//     // pub fn prefer_socket(mut self, prefer_socket: bool) -> Self {
+//     //     self.opts.0.prefer_socket = prefer_socket;
+//     //     self
+//     // }
 
-    // /// Commands to execute on each new database connection.
-    // pub fn init<T: Into<String>>(mut self, init: Vec<T>) -> Self {
-    //     self.opts.0.init = init.into_iter().map(Into::into).collect();
-    //     self
-    // }
+//     // /// Commands to execute on each new database connection.
+//     // pub fn init<T: Into<String>>(mut self, init: Vec<T>) -> Self {
+//     //     self.opts.0.init = init.into_iter().map(Into::into).collect();
+//     //     self
+//     // }
 
-    // /// Driver will require SSL connection if this option isn't `None` (default to `None`).
-    // pub fn ssl_opts<T: Into<Option<SslOpts>>>(mut self, ssl_opts: T) -> Self {
-    //     self.opts.0.ssl_opts = ssl_opts.into();
-    //     self
-    // }
+//     // /// Driver will require SSL connection if this option isn't `None` (default to `None`).
+//     // pub fn ssl_opts<T: Into<Option<SslOpts>>>(mut self, ssl_opts: T) -> Self {
+//     //     self.opts.0.ssl_opts = ssl_opts.into();
+//     //     self
+//     // }
 
-    // /// Callback to handle requests for local files. These are
-    // /// caused by using `LOAD DATA LOCAL INFILE` queries. The
-    // /// callback is passed the filename, and a `Write`able object
-    // /// to receive the contents of that file.
-    // /// If unset, the default callback will read files relative to
-    // /// the current directory.
-    // // pub fn local_infile_handler(mut self, handler: Option<LocalInfileHandler>) -> Self {
-    // //     self.opts.0.local_infile_handler = handler;
-    // //     self
-    // // }
+//     // /// Callback to handle requests for local files. These are
+//     // /// caused by using `LOAD DATA LOCAL INFILE` queries. The
+//     // /// callback is passed the filename, and a `Write`able object
+//     // /// to receive the contents of that file.
+//     // /// If unset, the default callback will read files relative to
+//     // /// the current directory.
+//     // // pub fn local_infile_handler(mut self, handler: Option<LocalInfileHandler>) -> Self {
+//     // //     self.opts.0.local_infile_handler = handler;
+//     // //     self
+//     // // }
 
-    // /// Tcp connect timeout (defaults to `None`). Available as `tcp_connect_timeout_ms`
-    // /// url parameter.
-    // ///
-    // /// Can be defined using `tcp_connect_timeout_ms` connection url parameter.
-    // pub fn tcp_connect_timeout(mut self, timeout: Option<Duration>) -> Self {
-    //     self.opts.0.tcp_connect_timeout = timeout;
-    //     self
-    // }
+//     // /// Tcp connect timeout (defaults to `None`). Available as `tcp_connect_timeout_ms`
+//     // /// url parameter.
+//     // ///
+//     // /// Can be defined using `tcp_connect_timeout_ms` connection url parameter.
+//     // pub fn tcp_connect_timeout(mut self, timeout: Option<Duration>) -> Self {
+//     //     self.opts.0.tcp_connect_timeout = timeout;
+//     //     self
+//     // }
 
-    // /// Bind address for a client (defaults to `None`).
-    // ///
-    // /// Use carefully. Will probably make pool unusable because of *address already in use*
-    // /// errors.
-    // pub fn bind_address<T>(mut self, bind_address: Option<T>) -> Self
-    // where
-    //     T: Into<SocketAddr>,
-    // {
-    //     self.opts.0.bind_address = bind_address.map(Into::into);
-    //     self
-    // }
+//     // /// Bind address for a client (defaults to `None`).
+//     // ///
+//     // /// Use carefully. Will probably make pool unusable because of *address already in use*
+//     // /// errors.
+//     // pub fn bind_address<T>(mut self, bind_address: Option<T>) -> Self
+//     // where
+//     //     T: Into<SocketAddr>,
+//     // {
+//     //     self.opts.0.bind_address = bind_address.map(Into::into);
+//     //     self
+//     // }
 
-    // /// Number of prepared statements cached on the client side (per connection).
-    // /// Defaults to [`DEFAULT_STMT_CACHE_SIZE`].
-    // ///
-    // /// Can be defined using `stmt_cache_size` connection url parameter.
-    // ///
-    // /// Call with `None` to reset to default.
-    // pub fn stmt_cache_size<T>(mut self, cache_size: T) -> Self
-    // where
-    //     T: Into<Option<usize>>,
-    // {
-    //     self.opts.0.stmt_cache_size = cache_size.into().unwrap_or(128);
-    //     self
-    // }
+//     // /// Number of prepared statements cached on the client side (per connection).
+//     // /// Defaults to [`DEFAULT_STMT_CACHE_SIZE`].
+//     // ///
+//     // /// Can be defined using `stmt_cache_size` connection url parameter.
+//     // ///
+//     // /// Call with `None` to reset to default.
+//     // pub fn stmt_cache_size<T>(mut self, cache_size: T) -> Self
+//     // where
+//     //     T: Into<Option<usize>>,
+//     // {
+//     //     self.opts.0.stmt_cache_size = cache_size.into().unwrap_or(128);
+//     //     self
+//     // }
 
-    // /// If not `None`, then client will ask for compression if server supports it
-    // /// (defaults to `None`).
-    // ///
-    // /// Can be defined using `compress` connection url parameter with values:
-    // /// * `true` - library defined default compression level;
-    // /// * `fast` - library defined fast compression level;
-    // /// * `best` - library defined best compression level;
-    // /// * `0`, `1`, ..., `9` - explicitly defined compression level where `0` stands for
-    // ///   "no compression";
-    // ///
-    // /// Note that compression level defined here will affect only outgoing packets.
-    // pub fn compress(mut self, compress: Option<Compression>) -> Self {
-    //     self.opts.0.compress = compress;
-    //     self
-    // }
+//     // /// If not `None`, then client will ask for compression if server supports it
+//     // /// (defaults to `None`).
+//     // ///
+//     // /// Can be defined using `compress` connection url parameter with values:
+//     // /// * `true` - library defined default compression level;
+//     // /// * `fast` - library defined fast compression level;
+//     // /// * `best` - library defined best compression level;
+//     // /// * `0`, `1`, ..., `9` - explicitly defined compression level where `0` stands for
+//     // ///   "no compression";
+//     // ///
+//     // /// Note that compression level defined here will affect only outgoing packets.
+//     // pub fn compress(mut self, compress: Option<Compression>) -> Self {
+//     //     self.opts.0.compress = compress;
+//     //     self
+//     // }
 
-    // /// Additional client capabilities to set (defaults to empty).
-    // ///
-    // /// This value will be OR'ed with other client capabilities during connection initialisation.
-    // ///
-    // /// ### Note
-    // ///
-    // /// It is a good way to set something like `CLIENT_FOUND_ROWS` but you should note that it
-    // /// won't let you to interfere with capabilities managed by other options (like
-    // /// `CLIENT_SSL` or `CLIENT_COMPRESS`). Also note that some capabilities are reserved,
-    // /// pointless or may broke the connection, so this option should be used with caution.
-    // pub fn additional_capabilities(mut self, additional_capabilities: CapabilityFlags) -> Self {
-    //     let forbidden_flags: CapabilityFlags = CapabilityFlags::CLIENT_PROTOCOL_41
-    //         | CapabilityFlags::CLIENT_SSL
-    //         | CapabilityFlags::CLIENT_COMPRESS
-    //         | CapabilityFlags::CLIENT_SECURE_CONNECTION
-    //         | CapabilityFlags::CLIENT_LONG_PASSWORD
-    //         | CapabilityFlags::CLIENT_TRANSACTIONS
-    //         | CapabilityFlags::CLIENT_LOCAL_FILES
-    //         | CapabilityFlags::CLIENT_MULTI_STATEMENTS
-    //         | CapabilityFlags::CLIENT_MULTI_RESULTS
-    //         | CapabilityFlags::CLIENT_PS_MULTI_RESULTS;
+//     // /// Additional client capabilities to set (defaults to empty).
+//     // ///
+//     // /// This value will be OR'ed with other client capabilities during connection initialisation.
+//     // ///
+//     // /// ### Note
+//     // ///
+//     // /// It is a good way to set something like `CLIENT_FOUND_ROWS` but you should note that it
+//     // /// won't let you to interfere with capabilities managed by other options (like
+//     // /// `CLIENT_SSL` or `CLIENT_COMPRESS`). Also note that some capabilities are reserved,
+//     // /// pointless or may broke the connection, so this option should be used with caution.
+//     // pub fn additional_capabilities(mut self, additional_capabilities: CapabilityFlags) -> Self {
+//     //     let forbidden_flags: CapabilityFlags = CapabilityFlags::CLIENT_PROTOCOL_41
+//     //         | CapabilityFlags::CLIENT_SSL
+//     //         | CapabilityFlags::CLIENT_COMPRESS
+//     //         | CapabilityFlags::CLIENT_SECURE_CONNECTION
+//     //         | CapabilityFlags::CLIENT_LONG_PASSWORD
+//     //         | CapabilityFlags::CLIENT_TRANSACTIONS
+//     //         | CapabilityFlags::CLIENT_LOCAL_FILES
+//     //         | CapabilityFlags::CLIENT_MULTI_STATEMENTS
+//     //         | CapabilityFlags::CLIENT_MULTI_RESULTS
+//     //         | CapabilityFlags::CLIENT_PS_MULTI_RESULTS;
 
-    //     self.opts.0.additional_capabilities = additional_capabilities & !forbidden_flags;
-    //     self
-    // }
+//     //     self.opts.0.additional_capabilities = additional_capabilities & !forbidden_flags;
+//     //     self
+//     // }
 
-    // /// Connect attributes
-    // ///
-    // /// This value is sent to the server as custom name-value attributes.
-    // /// You can see them from performance_schema tables: [`session_account_connect_attrs`
-    // /// and `session_connect_attrs`][attr_tables] when all of the following conditions
-    // /// are met.
-    // ///
-    // /// * The server is MySQL 5.6 or later, or MariaDB 10.0 or later.
-    // /// * [`performance_schema`] is on.
-    // /// * [`performance_schema_session_connect_attrs_size`] is -1 or big enough
-    // ///   to store specified attributes.
-    // ///
-    // /// ### Note
-    // ///
-    // /// Attribute names that begin with an underscore (`_`) are not set by
-    // /// application programs because they are reserved for internal use.
-    // ///
-    // /// The following attributes are sent in addition to ones set by programs.
-    // ///
-    // /// name            | value
-    // /// ----------------|--------------------------
-    // /// _client_name    | The client library name (`rust-mysql-simple`)
-    // /// _client_version | The client library version
-    // /// _os             | The operation system (`target_os` cfg feature)
-    // /// _pid            | The client process ID
-    // /// _platform       | The machine platform (`target_arch` cfg feature)
-    // /// program_name    | The first element of `std::env::args` if program_name isn't set by programs.
-    // ///
-    // /// [attr_tables]: https://dev.mysql.com/doc/refman/en/performance-schema-connection-attribute-tables.html
-    // /// [`performance_schema`]: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-system-variables.html#sysvar_performance_schema
-    // /// [`performance_schema_session_connect_attrs_size`]: https://dev.mysql.com/doc/refman/en/performance-schema-system-variables.html#sysvar_performance_schema_session_connect_attrs_size
-    // ///
-    // pub fn connect_attrs<T1: Into<String> + Eq + Hash, T2: Into<String>>(
-    //     mut self,
-    //     connect_attrs: HashMap<T1, T2>,
-    // ) -> Self {
-    //     self.opts.0.connect_attrs = HashMap::with_capacity(connect_attrs.len());
-    //     for (name, value) in connect_attrs {
-    //         let name = name.into();
-    //         if !name.starts_with('_') {
-    //             self.opts.0.connect_attrs.insert(name, value.into());
-    //         }
-    //     }
-    //     self
-    // }
+//     // /// Connect attributes
+//     // ///
+//     // /// This value is sent to the server as custom name-value attributes.
+//     // /// You can see them from performance_schema tables: [`session_account_connect_attrs`
+//     // /// and `session_connect_attrs`][attr_tables] when all of the following conditions
+//     // /// are met.
+//     // ///
+//     // /// * The server is MySQL 5.6 or later, or MariaDB 10.0 or later.
+//     // /// * [`performance_schema`] is on.
+//     // /// * [`performance_schema_session_connect_attrs_size`] is -1 or big enough
+//     // ///   to store specified attributes.
+//     // ///
+//     // /// ### Note
+//     // ///
+//     // /// Attribute names that begin with an underscore (`_`) are not set by
+//     // /// application programs because they are reserved for internal use.
+//     // ///
+//     // /// The following attributes are sent in addition to ones set by programs.
+//     // ///
+//     // /// name            | value
+//     // /// ----------------|--------------------------
+//     // /// _client_name    | The client library name (`rust-mysql-simple`)
+//     // /// _client_version | The client library version
+//     // /// _os             | The operation system (`target_os` cfg feature)
+//     // /// _pid            | The client process ID
+//     // /// _platform       | The machine platform (`target_arch` cfg feature)
+//     // /// program_name    | The first element of `std::env::args` if program_name isn't set by programs.
+//     // ///
+//     // /// [attr_tables]: https://dev.mysql.com/doc/refman/en/performance-schema-connection-attribute-tables.html
+//     // /// [`performance_schema`]: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-system-variables.html#sysvar_performance_schema
+//     // /// [`performance_schema_session_connect_attrs_size`]: https://dev.mysql.com/doc/refman/en/performance-schema-system-variables.html#sysvar_performance_schema_session_connect_attrs_size
+//     // ///
+//     // pub fn connect_attrs<T1: Into<String> + Eq + Hash, T2: Into<String>>(
+//     //     mut self,
+//     //     connect_attrs: HashMap<T1, T2>,
+//     // ) -> Self {
+//     //     self.opts.0.connect_attrs = HashMap::with_capacity(connect_attrs.len());
+//     //     for (name, value) in connect_attrs {
+//     //         let name = name.into();
+//     //         if !name.starts_with('_') {
+//     //             self.opts.0.connect_attrs.insert(name, value.into());
+//     //         }
+//     //     }
+//     //     self
+//     // }
 
-    // /// Disables `mysql_old_password` plugin (defaults to `true`).
-    // ///
-    // /// Available via `secure_auth` connection url parameter.
-    // pub fn secure_auth(mut self, secure_auth: bool) -> Self {
-    //     self.opts.0.secure_auth = secure_auth;
-    //     self
-    // }
-}
+//     // /// Disables `mysql_old_password` plugin (defaults to `true`).
+//     // ///
+//     // /// Available via `secure_auth` connection url parameter.
+//     // pub fn secure_auth(mut self, secure_auth: bool) -> Self {
+//     //     self.opts.0.secure_auth = secure_auth;
+//     //     self
+//     // }
+// }
 
-impl From<OptsBuilder> for Opts {
-    fn from(builder: OptsBuilder) -> Opts {
-        builder.opts
-    }
-}
+// impl From<OptsBuilder> for Opts {
+//     fn from(builder: OptsBuilder) -> Opts {
+//         builder.opts
+//     }
+// }
 
-impl Default for OptsBuilder {
-    fn default() -> OptsBuilder {
-        OptsBuilder {
-            opts: Opts::default(),
-        }
-    }
-}
+// impl Default for OptsBuilder {
+//     fn default() -> OptsBuilder {
+//         OptsBuilder {
+//             opts: Opts::default(),
+//         }
+//     }
+// }
 
-fn get_opts_user_from_url(url: &Url) -> Option<String> {
-    let user = url.username();
-    if user != "" {
-        Some(
-            percent_decode(user.as_ref())
-                .decode_utf8_lossy()
-                .into_owned(),
-        )
-    } else {
-        None
-    }
-}
+// fn get_opts_user_from_url(url: &Url) -> Option<String> {
+//     let user = url.username();
+//     if user != "" {
+//         Some(
+//             percent_decode(user.as_ref())
+//                 .decode_utf8_lossy()
+//                 .into_owned(),
+//         )
+//     } else {
+//         None
+//     }
+// }
 
-fn get_opts_pass_from_url(url: &Url) -> Option<String> {
-    if let Some(pass) = url.password() {
-        Some(
-            percent_decode(pass.as_ref())
-                .decode_utf8_lossy()
-                .into_owned(),
-        )
-    } else {
-        None
-    }
-}
+// fn get_opts_pass_from_url(url: &Url) -> Option<String> {
+//     if let Some(pass) = url.password() {
+//         Some(
+//             percent_decode(pass.as_ref())
+//                 .decode_utf8_lossy()
+//                 .into_owned(),
+//         )
+//     } else {
+//         None
+//     }
+// }
 
-fn get_opts_db_name_from_url(url: &Url) -> Option<String> {
-    if let Some(mut segments) = url.path_segments() {
-        segments
-            .next()
-            .filter(|&db_name| !db_name.is_empty())
-            .map(|db_name| {
-                percent_decode(db_name.as_ref())
-                    .decode_utf8_lossy()
-                    .into_owned()
-            })
-    } else {
-        None
-    }
-}
+// fn get_opts_db_name_from_url(url: &Url) -> Option<String> {
+//     if let Some(mut segments) = url.path_segments() {
+//         segments
+//             .next()
+//             .filter(|&db_name| !db_name.is_empty())
+//             .map(|db_name| {
+//                 percent_decode(db_name.as_ref())
+//                     .decode_utf8_lossy()
+//                     .into_owned()
+//             })
+//     } else {
+//         None
+//     }
+// }
 
-fn from_url_basic(url_str: &str) -> Result<(Opts, Vec<(String, String)>), UrlError> {
-    let url = Url::parse(url_str)?;
-    if url.scheme() != "mysql" {
-        return Err(UrlError::UnsupportedScheme(url.scheme().to_string()));
-    }
-    if url.cannot_be_a_base() {
-        return Err(UrlError::BadUrl);
-    }
-    let user = get_opts_user_from_url(&url);
-    let pass = get_opts_pass_from_url(&url);
-    let ip_or_hostname = url
-        .host()
-        .ok_or(UrlError::BadUrl)
-        .and_then(|host| url::Host::parse(&host.to_string()).map_err(|_| UrlError::BadUrl))?;
-    let tcp_port = url.port().unwrap_or(3306);
-    let db_name = get_opts_db_name_from_url(&url);
+// fn from_url_basic(url_str: &str) -> Result<(Opts, Vec<(String, String)>), UrlError> {
+//     let url = Url::parse(url_str)?;
+//     if url.scheme() != "mysql" {
+//         return Err(UrlError::UnsupportedScheme(url.scheme().to_string()));
+//     }
+//     if url.cannot_be_a_base() {
+//         return Err(UrlError::BadUrl);
+//     }
+//     let user = get_opts_user_from_url(&url);
+//     let pass = get_opts_pass_from_url(&url);
+//     let ip_or_hostname = url
+//         .host()
+//         .ok_or(UrlError::BadUrl)
+//         .and_then(|host| url::Host::parse(&host.to_string()).map_err(|_| UrlError::BadUrl))?;
+//     let tcp_port = url.port().unwrap_or(3306);
+//     let db_name = get_opts_db_name_from_url(&url);
 
-    let query_pairs = url.query_pairs().into_owned().collect();
-    let opts = Opts(Box::new(InnerOpts {
-        user,
-        pass,
-        ip_or_hostname,
-        tcp_port,
-        db_name,
-        ..InnerOpts::default()
-    }));
+//     let query_pairs = url.query_pairs().into_owned().collect();
+//     let opts = Opts(Box::new(InnerOpts {
+//         user,
+//         pass,
+//         ip_or_hostname,
+//         tcp_port,
+//         db_name,
+//         ..InnerOpts::default()
+//     }));
 
-    Ok((opts, query_pairs))
-}
+//     Ok((opts, query_pairs))
+// }
 
-fn from_url(url: &str) -> Result<Opts, UrlError> {
-    let (opts, query_pairs) = from_url_basic(url)?;
-    let hash_map = query_pairs.into_iter().collect::<HashMap<String, String>>();
-    OptsBuilder::from_opts(opts)
-        .from_hash_map(&hash_map)
-        .map(Into::into)
-}
+// fn from_url(url: &str) -> Result<Opts, UrlError> {
+//     let (opts, query_pairs) = from_url_basic(url)?;
+//     let hash_map = query_pairs.into_iter().collect::<HashMap<String, String>>();
+//     OptsBuilder::from_opts(opts)
+//         .from_hash_map(&hash_map)
+//         .map(Into::into)
+// }
 
 // #[cfg(test)]
 // mod test {

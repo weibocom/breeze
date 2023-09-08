@@ -16,7 +16,6 @@ local-ip-address = "0.4.2"
 lazy_static = "1.4.0"
 array-init = "2"
 psutil = { version = "3.2.1", default-features = false, features = ["cpu", "process"] }
-futures = "0.3.24"
 tokio.workspace = true
 
 [features]

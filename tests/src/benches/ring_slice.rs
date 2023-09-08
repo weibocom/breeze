@@ -119,25 +119,58 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
         .collect::<Vec<u8>>();
     let len = slice.len();
     let runs = 24;
-    let mut group = c.benchmark_group("bench_read_num");
+    let mut group = c.benchmark_group("ring_slice_read_num");
     let rs = RingSlice::from(slice.as_ptr(), slice.len(), 0, len);
-    group.bench_function("read_u64", |b| {
+    group.bench_function("u64_le", |b| {
         b.iter(|| {
             black_box({
                 let mut t = 0u64;
                 for i in 0..runs {
-                    t = t.wrapping_add(rs.read_u64(i) as u64);
+                    t = t.wrapping_add(rs.read_u64_le(i) as u64);
                 }
                 t
             });
         });
     });
-    group.bench_function("read_u64_data", |b| {
+    group.bench_function("u64_be", |b| {
         b.iter(|| {
             black_box({
                 let mut t = 0u64;
                 for i in 0..runs {
-                    t = t.wrapping_add(rs.read_num_be(i) as u64);
+                    t = t.wrapping_add(rs.read_u64_be(i) as u64);
+                }
+                t
+            });
+        });
+    });
+    group.bench_function("u64_be_cmp", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                for i in 0..runs {
+                    t = t.wrapping_add(rs.read_u64_be_cmp(i) as u64);
+                }
+                t
+            });
+        });
+    });
+    group.bench_function("u56_le", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                for i in 0..runs {
+                    t = t.wrapping_add(rs.read_u56_le(i) as u64);
+                }
+                t
+            });
+        });
+    });
+    group.bench_function("u56_le_cmp", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                for i in 0..runs {
+                    t = t.wrapping_add(rs.read_u56_le_cmp(i) as u64);
                 }
                 t
             });

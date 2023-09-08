@@ -8,6 +8,8 @@
 
 //! This module implements conversion from/to `Value` for `BigInt` and `BigUint` types.
 
+#![cfg(feature = "bigdecimal")]
+
 use num_bigint::{BigInt, BigUint};
 use num_traits::{FromPrimitive, ToPrimitive};
 
@@ -108,7 +110,7 @@ impl From<BigUint> for Value {
         if let Some(x) = x.to_u64() {
             Value::UInt(x)
         } else {
-            Value::Bytes(x.to_string().into())
+            Value::Bytes(x.to_string().into_bytes().into())
         }
     }
 }
