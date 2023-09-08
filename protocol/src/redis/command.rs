@@ -106,7 +106,7 @@ const PADDING_RSP_TABLE: [&str; 8] = [
     "+OK\r\n",
     "+PONG\r\n",
     "-ERR redis no available\r\n",
-    "-ERR invalid command\r\n",
+    "-ERR invalid command(try hashkeyq)\r\n",
     "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
     "$-1\r\n",                           // mget 等指令对应的nil
     ":-10\r\n",                          //phantom -1返回已被服务端占用
@@ -391,12 +391,12 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("smembers").arity(2).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("sscan").arity(-3).op(Get).first(1).last(1).step(1).padding(pt[3]).key(),
         // set 多个key相关的指令
-        Cmd::new("sinter").arity(-2).op(Get).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
-        Cmd::new("sunion").arity(-2).op(Get).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
-        Cmd::new("sdiff").arity(-2).op(Get).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
-        Cmd::new("sunionstore").arity(-3).op(Store).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
-        Cmd::new("sinterstore").arity(-3).op(Store).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
-        Cmd::new("sdiffstore").arity(-3).op(Store).first(1).last(-1).step(1).padding(pt[3]).need_resv_hash().key(),
+        Cmd::new("sinter").arity(-2).op(Get).first(1).last(-1).step(1).padding(pt[4]).need_resv_hash().key(),
+        Cmd::new("sunion").arity(-2).op(Get).first(1).last(-1).step(1).padding(pt[4]).need_resv_hash().key(),
+        Cmd::new("sdiff").arity(-2).op(Get).first(1).last(-1).step(1).padding(pt[4]).need_resv_hash().key(),
+        Cmd::new("sunionstore").arity(-3).op(Store).first(1).last(-1).step(1).padding(pt[4]).need_resv_hash().key(),
+        Cmd::new("sinterstore").arity(-3).op(Store).first(1).last(-1).step(1).padding(pt[4]).need_resv_hash().key(),
+        Cmd::new("sdiffstore").arity(-3).op(Store).first(1).last(-1).step(1).padding(pt[4]).need_resv_hash().key(),
        
         // geo 相关指令
         Cmd::new("geoadd").arity(-5).op(Store).first(1).last(1).step(1).padding(pt[3]).key().val(),
