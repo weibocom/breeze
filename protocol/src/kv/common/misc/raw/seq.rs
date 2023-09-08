@@ -8,7 +8,7 @@
 
 use std::{borrow::Cow, convert::TryFrom, fmt, io, marker::PhantomData, ops::Deref};
 
-use bytes::BufMut;
+use ds::RingSlice;
 
 use crate::kv::common::{
     io::ParseBuf,
@@ -17,13 +17,15 @@ use crate::kv::common::{
 
 use super::{
     int::{IntRepr, LeU32, LeU64},
-    RawConst, RawInt,
+    RawInt,
 };
 
+// TODO 序列号的values，不确定能否转为RingSlice，且试试，最后再改 fishermen
 /// Sequence of serialized values (length serialized as `U`).
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(transparent)]
 pub struct Seq<'a, T: Clone, U>(pub Cow<'a, [T]>, PhantomData<U>);
+// pub struct Seq<'a, T: Clone, U>(pub Cow<'a, [T]>, PhantomData<U>);
 
 impl<'a, T: Clone, U> Deref for Seq<'a, T, U> {
     type Target = [T];
@@ -84,15 +86,16 @@ where
     }
 }
 
-impl<'de, T, U> MyDeserialize<'de> for Seq<'de, T, U>
+impl<'de, T, U> MyDeserialize for Seq<'de, T, U>
 where
-    T: Clone + MyDeserialize<'de, Ctx = ()>,
+    T: Clone + MyDeserialize<Ctx = ()>,
     U: SeqRepr,
 {
     const SIZE: Option<usize> = None;
     type Ctx = U::Ctx;
 
-    fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(ctx: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         U::deserialize(ctx, &mut *buf).map(Self::new)
     }
 }
@@ -105,10 +108,11 @@ pub trait SeqRepr {
     type Ctx;
 
     fn serialize<T: MySerialize>(seq: &[T], buf: &mut Vec<u8>);
-    fn deserialize<'de, T>(ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [T]>>
+    // fn deserialize<'de, T>(ctx: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Cow<'de, [T]>>
+    fn deserialize<'de, T>(ctx: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<'de, [T]>>
     where
         T: Clone,
-        T: MyDeserialize<'de, Ctx = ()>;
+        T: MyDeserialize<Ctx = ()>;
 }
 
 macro_rules! impl_seq_repr {
@@ -126,13 +130,10 @@ macro_rules! impl_seq_repr {
                 }
             }
 
-            fn deserialize<'de, T>(
-                (): Self::Ctx,
-                buf: &mut ParseBuf<'de>,
-            ) -> io::Result<Cow<'de, [T]>>
+            fn deserialize<'de, T>((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Cow<'de, [T]>>
             where
                 T: Clone,
-                T: MyDeserialize<'de, Ctx = ()>,
+                T: MyDeserialize<Ctx = ()>,
             {
                 let len = *buf.parse::<RawInt<$name>>(())? as usize;
                 let mut seq = Vec::with_capacity(len);
@@ -158,15 +159,22 @@ macro_rules! impl_seq_repr {
 impl_seq_repr!(u64, LeU64);
 impl_seq_repr!(u32, LeU32);
 
+// 生命周期参数后续统一清理 fishermen
 /// Same as `RawCons` but for a sequence of values.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 #[repr(transparent)]
-pub struct RawSeq<'a, T: IntRepr, U>(pub Cow<'a, [T::Primitive]>, PhantomData<U>);
+pub struct RawSeq<U>(pub RingSlice, PhantomData<U>);
+// pub struct RawSeq<'a, T: IntRepr, U>(pub Cow<'a, [T::Primitive]>, PhantomData<U>);
 
-impl<'a, T: IntRepr, U> RawSeq<'a, T, U> {
+// TODO 生命周期参数先保留，等测试完毕后统一清理 fishermen
+// impl<'a, T: IntRepr, U> RawSeq<'a, T, U> {
+impl<U> RawSeq<U> {
     /// Creates a new wrapper.
-    pub fn new(t: impl Into<Cow<'a, [T::Primitive]>>) -> Self {
-        Self(t.into(), PhantomData)
+    // pub fn new(t: impl Into<Cow<'a, [T::Primitive]>>) -> Self {
+    //     Self(t.into(), PhantomData)
+    // }
+    pub fn new(t: RingSlice) -> Self {
+        Self(t, PhantomData)
     }
 
     // /// Returns a length of this sequence.
@@ -191,34 +199,59 @@ impl<'a, T: IntRepr, U> RawSeq<'a, T, U> {
 //     }
 // }
 
-impl<'de, T: IntRepr<Primitive = u8>, U> MyDeserialize<'de> for RawSeq<'de, T, U> {
+// TODO 注意观察影响 fishermen
+// impl<'de, T: IntRepr<Primitive = u8>, U> MyDeserialize<'de> for RawSeq<'de, T, U> {
+impl<U> MyDeserialize for RawSeq<U> {
     const SIZE: Option<usize> = None;
     type Ctx = usize;
 
-    fn deserialize(length: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
-        let bytes: &[u8] = buf.parse(length)?;
-        Ok(Self::new(bytes))
+    // fn deserialize(length: Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize(length: Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
+        // let bytes: &[u8] = buf.parse(length)?;
+        // Ok(Self::new(Cow::Owned(bytes)))
+
+        // TODO 将切片尽可能转为RingSlice，注意check一致性 fishermen
+        let slice: RingSlice = buf.parse(length)?;
+        Ok(Self::new(slice))
+        // if let Some(data) = slice.try_oneway_slice(0, slice.len()) {
+        //     Ok(Self::new(Cow::Owned(data)))
+        // } else {
+        //     let data = slice.dump_ring_part(0, slice.len());
+        //     Ok(Self::new(Cow::Owned(data)))
+        // }
+        // Ok(Self::new(Cow::Owned(bytes)))
     }
 }
 
-impl<T: IntRepr<Primitive = u8>, U> MySerialize for RawSeq<'_, T, U> {
+// impl<T: IntRepr<Primitive = u8>, U> MySerialize for RawSeq<'_, T, U> {
+impl<U> MySerialize for RawSeq<U> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        buf.put_slice(self.0.as_ref());
+        // buf.put_slice(self.0.as_ref());
+        self.0.copy_to_vec(buf);
     }
 }
 
-impl<T: IntRepr, U: fmt::Debug> fmt::Debug for RawSeq<'_, T, U>
+// impl<T: IntRepr, U: fmt::Debug> fmt::Debug for RawSeq<'_, T, U>
+// where
+//     T: fmt::Debug,
+//     U: TryFrom<T::Primitive>,
+//     U::Error: fmt::Debug,
+impl<U: fmt::Debug> fmt::Debug for RawSeq<U>
 where
-    T: fmt::Debug,
-    U: TryFrom<T::Primitive>,
+    // T: fmt::Debug,
+    // U: TryFrom<T::Primitive>,
+    U: TryFrom<RingSlice>,
     U::Error: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0
-            .iter()
-            .copied()
-            .map(RawConst::<T, U>::new)
-            .collect::<Vec<_>>()
-            .fmt(f)
+        // self.0
+        //     .iter()
+        //     .copied()
+        //     .map(RawConst::<T, U>::new)
+        //     .collect::<Vec<_>>()
+        //     .fmt(f)
+        let mut data = Vec::with_capacity(self.0.len());
+        self.0.copy_to_vec(&mut data);
+        write!(f, "{:?}", data)
     }
 }

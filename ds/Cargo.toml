@@ -18,6 +18,9 @@ ctor = "*"
 crossbeam-utils = "*"
 openssl = "0.10.52"
 
+bytes = "1.0"
+paste = "*"
+
 [features]
 default = ["heap-stats", "tsc"]
 heap-stats = []

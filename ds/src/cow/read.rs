@@ -44,9 +44,6 @@ pub struct CowReadHandleInner<T> {
     enters: AtomicUsize,
     released: AtomicBool,
     pub(super) epoch: AtomicBool,
-    // 先次更新完之后，会把正在处理中的数据存储到dropping中。所有的reader的读请求都迁移到inner之后，就可以安全的删除
-    // dropping: AtomicPtr<Vec<*mut T>>,
-    // 此处有疑问？
     _t: std::marker::PhantomData<Arc<T>>,
 }
 
@@ -61,9 +58,6 @@ impl<T> std::ops::Deref for ReadGuard<T> {
 }
 
 impl<T: Clone> CowReadHandleInner<T> {
-    // pub fn read<F: Fn(Arc<T>) -> R, R>(&self, f: F) -> R {
-    //     f(self.get())
-    // }
     #[inline]
     pub fn get(&self) -> ReadGuard<T> {
         self.enters.fetch_add(1, AcqRel);
@@ -94,51 +88,6 @@ impl<T: Clone> CowReadHandleInner<T> {
             hint::spin_loop();
         }
     }
-    // 用swap来解决并发问题。
-    // 1. 先用0把pre swap出来；
-    // 2. 把new 与 pre进行合并
-    // 3. 再次进行swap，如果swap出来的数据如果不是zero，说明有并发问题。则继续
-    // unsafe fn dropping(&self, old: *mut T) {
-    //     let mut new = Box::new(vec![old]);
-    //     loop {
-    //         //println!("dropping old:{:?}", old);
-    //         let pre = self.dropping.swap(0 as _, Release);
-    //         if !pre.is_null() {
-    //             let v: Vec<_> = *Box::from_raw(pre);
-    //             for d in v {
-    //                 if !new.contains(&d) {
-    //                     new.push(d);
-    //                 }
-    //             }
-    //         }
-    //         let zero = self.dropping.swap(Box::leak(new) as _, Release);
-    //         if zero.is_null() {
-    //             break;
-    //         }
-    //         //println!("dropping zero:{:?}", zero);
-    //         new = Box::from_raw(zero);
-    //         std::hint::spin_loop();
-    //     }
-    // }
-    // 把dropping的数据转换出来，并且删除
-    // fn purge(&self) {
-    //     //println!("purge");
-    //     let old = self.dropping.swap(0 as _, Release);
-    //     if !old.is_null() {
-    //         let v: Vec<_> = unsafe { *Box::from_raw(old) };
-    //         for dropping in v {
-    //             self.drop_old(dropping);
-    //         }
-    //     }
-    // }
-    // fn drop_old(&self, p: *mut T) {
-    //     if !p.is_null() {
-    //         //println!("drop old");
-    //         let dropping = { unsafe { Box::from_raw(p) } };
-    //         let t: T = *dropping;
-    //         drop(t);
-    //     }
-    // }
 }
 
 impl<T> Drop for CowReadHandleInner<T> {

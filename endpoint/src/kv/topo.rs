@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
+use ds::MemGuard;
 use protocol::kv::Binary;
+use protocol::kv::MysqlBuilder;
+use protocol::kv::Strategy;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -13,7 +16,6 @@ use sharding::Distance;
 use sharding::Selector;
 
 use crate::dns::DnsConfig;
-use crate::kv::strategy::Strategy;
 use crate::Builder;
 use crate::Single;
 use crate::Timeout;
@@ -21,6 +23,7 @@ use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
 use super::strategy::Strategist;
+use super::KVCtx;
 #[derive(Clone)]
 pub struct KvService<B, E, Req, P> {
     // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -103,12 +106,14 @@ where
 
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-        // let raw_req = req.data();
-        let mid = req.key();
-        let sql = self.strategist.build_kvsql(&mid).expect("malformed sql");
-
+        let runs = req.ctx().runs;
+        let key = if runs == 0 {
+            req.key()
+        } else {
+            req.origin_data().key()
+        };
         //定位年库
-        let year = self.strategist.get_key(&mid).expect("key not found");
+        let year = self.strategist.get_key(&key).expect("key not found");
         let shards = self
             .archive_shards
             .get(&year)
@@ -116,11 +121,11 @@ where
 
         debug_assert_ne!(shards.len(), 0);
         assert!(shards.len() > 0);
-        let shard_idx = if shards.len() > 1 {
-            self.shard_idx(req.hash())
-        } else {
-            0
-        };
+        let mut shard_idx = req.ctx().shard_idx as usize;
+        if runs == 0 && shards.len() > 1 {
+            shard_idx = self.shard_idx(req.hash());
+            req.ctx().shard_idx = shard_idx as u16;
+        }
         debug_assert!(
             shard_idx < shards.len(),
             "mysql: {}/{} req:{:?}",
@@ -131,7 +136,14 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
-        self.parser.build_request(req.cmd_mut(), sql);
+        if runs == 0 {
+            //todo: 此处不应panic
+            let cmd =
+                MysqlBuilder::build_packets(&self.strategist, &req, &key).expect("malformed sql");
+            req.reshape(MemGuard::from_vec(cmd));
+            //self.parser
+            //    .build_request(&mut *req, MemGuard::from_vec(cmd));
+        }
         log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 
         if shard.has_slave() && !req.operation().is_store() {
@@ -140,8 +152,8 @@ where
                     req.quota(quota);
                 }
             }
-            let ctx = super::transmute(req.context_mut());
-            let (idx, endpoint) = if ctx.runs == 0 {
+            let ctx = req.ctx();
+            let (idx, endpoint) = if runs == 0 {
                 shard.select()
             } else {
                 if (ctx.runs as usize) < shard.slaves.len() {
@@ -153,9 +165,9 @@ where
             };
             ctx.idx = idx as u16;
             ctx.runs += 1;
-            // todo: 目前没有重试逻辑
-            // let try_next = ctx.runs == 1;
-            // req.try_next(try_next);
+            // 只重试一次，重试次数过多，可能会导致雪崩。如果不重试，现在的配额策略在当前副本也只会连续发送四次请求，问题也不大
+            let try_next = ctx.runs == 1;
+            req.try_next(try_next);
             endpoint.1.send(req)
         } else {
             shard.master().send(req);
@@ -391,7 +403,7 @@ impl<E> Shard<E> {
     fn selector(local: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
         Self {
             master: (master_host, master),
-            slaves: Distance::with_performance_tuning(replicas, local),
+            slaves: Distance::with_performance_tuning(replicas, local, false),
         }
     }
     #[inline]

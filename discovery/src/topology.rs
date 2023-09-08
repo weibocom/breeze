@@ -8,14 +8,6 @@ use std::{
     },
 };
 
-// pub trait TopologyGroup {}
-
-// pub trait TopologyRead<T> {
-//     fn do_with<F, O>(&self, f: F) -> O
-//     where
-//         F: Fn(&T) -> O;
-// }
-
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
     #[inline]
@@ -80,15 +72,6 @@ where
     service: String,
     updates: Arc<AtomicUsize>,
 }
-
-// impl<T: Clone> TopologyRead<T> for TopologyReadGuard<T> {
-//     fn do_with<F, O>(&self, f: F) -> O
-//     where
-//         F: Fn(&T) -> O,
-//     {
-//         self.inner.do_with(|t| f(t))
-//     }
-// }
 
 impl<T> Deref for TopologyReadGuard<T> {
     type Target = CowReadHandle<T>;
@@ -156,45 +139,3 @@ where
         &self.service
     }
 }
-
-// impl<T: Clone> TopologyRead<T> for Arc<TopologyReadGuard<T>> {
-//     #[inline]
-//     fn do_with<F, O>(&self, f: F) -> O
-//     where
-//         F: Fn(&T) -> O,
-//     {
-//         (**self).do_with(f)
-//     }
-// }
-
-// impl<T> TopologyReadGuard<T> {
-//     #[inline]
-//     pub fn cycle(&self) -> usize {
-//         self.updates.load(Ordering::Acquire)
-//     }
-// }
-
-// impl<'a, T> Deref for RefreshTopology<'a, T> {
-//     type Target = T;
-//     fn deref(&self) -> &Self::Target {
-//         self.top.as_ref()
-//     }
-// }
-
-// pub trait RefreshTop<T> {
-//     fn get(&self) -> Arc<T>;
-//     fn get_inner(&self) -> &T;
-//     fn refresh(&mut self);
-// }
-
-// impl<T: Clone  + Inited> RefreshTop<T> for RefreshTopology<'_, T> {
-//     fn get(&self) -> Arc<T> {
-//         self.top.clone()
-//     }
-//     fn refresh(&mut self) {
-//         self.top = self.reader.get();
-//     }
-//     fn get_inner(&self) -> &T {
-//         &self.top
-//     }
-// }

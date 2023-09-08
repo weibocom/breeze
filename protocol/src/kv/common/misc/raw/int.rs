@@ -55,11 +55,12 @@ impl<T: IntRepr> DerefMut for RawInt<T> {
     }
 }
 
-impl<'de, T: IntRepr> MyDeserialize<'de> for RawInt<T> {
+impl<T: IntRepr> MyDeserialize for RawInt<T> {
     const SIZE: Option<usize> = T::SIZE;
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         T::deserialize(buf).map(Self::new)
     }
 }
@@ -76,7 +77,8 @@ pub trait IntRepr {
     type Primitive: fmt::Debug + Default + Copy + Eq + Ord + Hash;
 
     fn serialize(val: Self::Primitive, buf: &mut Vec<u8>);
-    fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive>;
+    // fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive>;
+    fn deserialize(buf: &mut ParseBuf) -> io::Result<Self::Primitive>;
 }
 
 impl IntRepr for u8 {
@@ -87,7 +89,8 @@ impl IntRepr for u8 {
         buf.put_u8(val)
     }
 
-    fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    // fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    fn deserialize(buf: &mut ParseBuf) -> io::Result<Self::Primitive> {
         Ok(buf.eat_u8())
     }
 }
@@ -100,12 +103,14 @@ impl IntRepr for i8 {
         buf.put_i8(val)
     }
 
-    fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    // fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    fn deserialize(buf: &mut ParseBuf) -> io::Result<Self::Primitive> {
         Ok(buf.eat_i8())
     }
 }
 
 macro_rules! def_end_repr {
+    //LeU16, u16, Some(2), put_u16_le, eat_u16_le;
     ($( $(#[$m:meta])* $name:ident, $t:ty, $size:expr, $ser:ident, $de:ident; )+) => {
         $(
             $(#[$m])*
@@ -124,7 +129,8 @@ macro_rules! def_end_repr {
                     buf.$ser(val)
                 }
 
-                fn deserialize<'de>(buf: &mut ParseBuf<'de>) -> io::Result<Self::Primitive> {
+                // fn deserialize<'de>(buf: &mut ParseBuf<'de>) -> io::Result<Self::Primitive> {
+                fn deserialize<'de>(buf: &mut ParseBuf) -> io::Result<Self::Primitive> {
                     Ok(buf.$de())
                 }
             }
@@ -144,7 +150,8 @@ macro_rules! def_end_repr {
                     buf.$ser(val)
                 }
 
-                fn deserialize<'de>(buf: &mut ParseBuf<'de>) -> io::Result<Self::Primitive> {
+                // fn deserialize<'de>(buf: &mut ParseBuf<'de>) -> io::Result<Self::Primitive> {
+                fn deserialize<'de>(buf: &mut ParseBuf) -> io::Result<Self::Primitive> {
                     buf.$de().ok_or_else(crate::kv::common::misc::unexpected_buf_eof)
                 }
             }
@@ -194,7 +201,8 @@ impl IntRepr for LeU32LowerHalf {
         LeU16::serialize((val & 0x0000_FFFF) as u16, buf);
     }
 
-    fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    // fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    fn deserialize(buf: &mut ParseBuf) -> io::Result<Self::Primitive> {
         LeU16::deserialize(buf).map(|x| x as u32)
     }
 }
@@ -211,7 +219,8 @@ impl IntRepr for LeU32UpperHalf {
         LeU16::serialize((val >> 16) as u16, buf);
     }
 
-    fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    // fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    fn deserialize(buf: &mut ParseBuf) -> io::Result<Self::Primitive> {
         LeU16::deserialize(buf).map(|x| (x as u32) << 16)
     }
 }
@@ -232,7 +241,7 @@ impl<T, const N: u8> ConstU8<T, N> {
     // }
 }
 
-impl<'de, T, const N: u8> MyDeserialize<'de> for ConstU8<T, N>
+impl<T, const N: u8> MyDeserialize for ConstU8<T, N>
 where
     T: std::error::Error + Send + Sync + 'static,
     T: Default,
@@ -240,7 +249,8 @@ where
     const SIZE: Option<usize> = Some(1);
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         if buf.eat_u8() == N {
             Ok(Self(PhantomData))
         } else {
@@ -267,7 +277,7 @@ pub struct ConstU32<T, const N: u32>(PhantomData<T>);
 //     }
 // }
 
-impl<'de, T, const N: u32> MyDeserialize<'de> for ConstU32<T, N>
+impl<T, const N: u32> MyDeserialize for ConstU32<T, N>
 where
     T: std::error::Error + Send + Sync + 'static,
     T: Default,
@@ -275,7 +285,8 @@ where
     const SIZE: Option<usize> = Some(4);
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         if buf.eat_u32_le() == N {
             Ok(Self(PhantomData))
         } else {
@@ -312,7 +323,8 @@ impl IntRepr for VarLen {
         }
     }
 
-    fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    // fn deserialize(buf: &mut ParseBuf<'_>) -> io::Result<Self::Primitive> {
+    fn deserialize(buf: &mut ParseBuf) -> io::Result<Self::Primitive> {
         // variable-length integer should take up to 5 bytes
         const MAX_REPR_LEN: usize = 5;
 

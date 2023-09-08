@@ -10,9 +10,6 @@ pub mod redisservice;
 
 pub(crate) mod dns;
 
-mod refresh;
-// pub use refresh::RefreshTopology;
-
 // 不同资源默认的超时时间
 const TO_PHANTOM_M: Timeout = Timeout::from_millis(200);
 const TO_REDIS_M: Timeout = Timeout::from_millis(500);

@@ -33,6 +33,8 @@ use function_name::named;
 //     );
 // }
 
+const ERROR_CONTENT: &str = "invalid bulk num";
+
 /// incr 0 =>wrong number of arguments for 'incr'
 /// incr -1=>wrong number of arguments for 'incr'
 #[named]
@@ -58,8 +60,8 @@ fn limit_incr_non_positive() {
         Some(44)
     );
 
-    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(argkey).arg::<i32>(0).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
-    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(argkey).arg::<i32>(-1).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
+    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(argkey).arg::<i32>(0).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains ERROR_CONTENT);
+    assert_panic!(panic!( "{:?}", redis::cmd("INCR").arg::<&str>(argkey).arg::<i32>(-1).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains ERROR_CONTENT);
 }
 
 /// 设置value大小为512
@@ -102,8 +104,8 @@ fn limit_par_num() {
     let mut con = get_conn(&RESTYPE.get_host());
     redis::cmd("DEL").arg(argkey).execute(&mut con);
 
-    assert_panic!(panic!( "{:?}", redis::cmd("SET").arg::<&str>(argkey).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
-    assert_panic!(panic!( "{:?}", redis::cmd("GET").query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains "unexpected end of file");
+    assert_panic!(panic!( "{:?}", redis::cmd("SET").arg::<&str>(argkey).query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains ERROR_CONTENT);
+    assert_panic!(panic!( "{:?}", redis::cmd("GET").query::<String>(&mut get_conn(&RESTYPE.get_host()))), String, contains ERROR_CONTENT);
     //会直接crash退出程序
     // let _: () = redis::cmd("MSET")
     //     .arg(argkey)

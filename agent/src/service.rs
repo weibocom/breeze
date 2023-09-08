@@ -47,7 +47,6 @@ pub(super) async fn process_one(
 
     log::info!("service inited. {} ", quard);
     let switcher = ds::Switcher::from(true);
-    // let top = Arc::new(RefreshTopology::from(rx));
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
 
     // 服务注册完成，侦听端口直到成功。
@@ -73,7 +72,6 @@ async fn _process_one(
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("started. {}", quard);
     let metrics = Arc::new(StreamMetrics::new(path));
-    let pipeline = p.pipeline();
 
     loop {
         // 等待初始化成功
@@ -82,24 +80,19 @@ async fn _process_one(
         let p = p.clone();
         let _path = format!("{:?}", path);
         log::debug!("connection established:{:?}", _path);
-        // let ctop;
-        // loop {
-        //     if let Some(t) = top.build() {
-        //         ctop = Some(t);
-        //         break;
-        //     }
-        //     log::info!("build top failed, try later:{}", quard.service());
-        //     tokio::time::sleep(Duration::from_millis(10)).await;
-        // }
-        // let ctop = RefreshTopology::from(top.clone());
         let ctop = CheckedTopology::from(top.clone());
         let metrics = metrics.clone();
         spawn(async move {
-            if let Err(e) = copy_bidirectional(ctop, metrics.clone(), client, p, pipeline).await {
+            if let Err(e) = copy_bidirectional(ctop, metrics.clone(), client, p).await {
                 use protocol::Error::*;
                 match e {
-                    Quit | Eof | IO(_) => {} // client发送quit协议退出
-                    // 发送异常信息给client
+                    // TODO Eof、IO需要日志？
+                    // Quit | Eof | IO(_) => {}
+                    Quit => {} // client发送quit协议退出
+                    Eof | IO(_) => {
+                        log::warn!("{:?} disconnected. {:?}", _path, e);
+                    }
+                    // 发送异常信息给client：request在parse异常位置发送，response暂不发送
                     _e => {
                         *metrics.unsupport_cmd() += 1;
                         log::warn!("{:?} disconnected. {:?}", _path, _e);

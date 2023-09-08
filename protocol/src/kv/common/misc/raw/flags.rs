@@ -57,14 +57,15 @@ where
     }
 }
 
-impl<'de, T: Bitflags, U> MyDeserialize<'de> for RawFlags<T, U>
+impl<T: Bitflags, U> MyDeserialize for RawFlags<T, U>
 where
     U: IntRepr<Primitive = T::Repr>,
 {
     const SIZE: Option<usize> = Some(size_of::<T::Repr>());
     type Ctx = ();
 
-    fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    // fn deserialize((): Self::Ctx, buf: &mut ParseBuf<'de>) -> io::Result<Self> {
+    fn deserialize((): Self::Ctx, buf: &mut ParseBuf) -> io::Result<Self> {
         let value = buf.parse_unchecked::<RawInt<U>>(())?;
         Ok(Self::new(*value))
     }

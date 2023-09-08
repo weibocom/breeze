@@ -17,6 +17,13 @@ use crate::{
 use sharding::hash::Hash;
 
 impl Protocol for MemcacheBinary {
+    #[inline]
+    fn config(&self) -> crate::Config {
+        crate::Config {
+            retry_on_rsp_notok: true,
+            ..Default::default()
+        }
+    }
     // 解析请求。把所有的multi-get请求转换成单一的n个get请求。
     #[inline]
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
@@ -236,7 +243,7 @@ impl MemcacheBinary {
 
         /*============= 构建request header =============*/
         req_cmd.push(Magic::Request as u8); // magic: [0]
-        let op = Opcode::SetQ as u8;
+        let op = Opcode::SETQ as u8;
         req_cmd.push(op); // opcode: [1]
         req_cmd.write_u16(key_len); // key len: [2,3]
         let extra_len = rsp_cmd.extra_len() + 4 as u8; // get response中的extra 应该是4字节，作为set的 flag，另外4字节是set的expire
