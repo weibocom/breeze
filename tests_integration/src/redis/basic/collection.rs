@@ -3,7 +3,7 @@ use crate::ci::env::*;
 use crate::redis::RESTYPE;
 use crate::redis_helper::*;
 use function_name::named;
-use redis::{Commands, RedisError};
+use redis::{Commands, Connection, RedisError};
 use std::collections::HashSet;
 use std::vec;
 
@@ -524,4 +524,158 @@ fn bit_basic() {
         .query(&mut con);
     assert!(res.is_ok());
     assert_eq!(res.expect("ok"), &[0u8]);
+}
+
+#[test]
+fn sdiff_cmds() {
+    let skey1 = "test_set_key1";
+    let skey2 = "test_set_key2";
+    let skey3 = "test_set_key3";
+    let sval1 = vec!["0", "1", "2"];
+    let sval2 = vec!["1", "2", "3"];
+
+    // prepare data
+    // clear old data
+    let mut conn = get_conn(&RESTYPE.get_host());
+    redis::cmd("DEL").arg(skey1).arg(skey2).execute(&mut conn);
+
+    // sadd values
+    sadd(&mut conn, skey1, &sval1);
+    sadd(&mut conn, skey2, &sval2);
+
+    // sdiff with hashkey
+    redis::cmd("HASHKEY").arg(skey1).execute(&mut conn);
+    let diff_vals = redis::cmd("SDIFF")
+        .arg(skey1)
+        .arg(skey2)
+        .query::<Vec<String>>(&mut conn)
+        .unwrap();
+    let diff_vals_real = vec!["0".to_string()];
+    assert_eq!(diff_vals, diff_vals_real);
+
+    // sdiffstore with hashkey
+    redis::cmd("HASHKEY").arg(skey1).execute(&mut conn);
+    let diff_count = redis::cmd("SDIFFSTORE")
+        .arg(skey3)
+        .arg(skey1)
+        .arg(skey2)
+        .query::<usize>(&mut conn)
+        .unwrap();
+    assert_eq!(diff_count, diff_vals.len(), "sdiffstore failed");
+
+    // sdiff without hashkeyq
+    let should_err = redis::cmd("SDIFF")
+        .arg(skey1)
+        .arg(skey2)
+        .query::<Vec<String>>(&mut conn)
+        .is_err();
+    assert_eq!(should_err, true, "sdiff without hashkeyq will failed");
+}
+
+#[test]
+fn sinter_cmds() {
+    let skey1 = "test_set_key1";
+    let skey2 = "test_set_key2";
+    let skey3 = "test_set_key3";
+    let sval1 = vec!["0", "1", "2"];
+    let sval2 = vec!["1", "2", "3"];
+
+    // prepare data
+    // clear old data
+    let mut conn = get_conn(&RESTYPE.get_host());
+    redis::cmd("DEL").arg(skey1).arg(skey2).execute(&mut conn);
+
+    // sadd values
+    sadd(&mut conn, skey1, &sval1);
+    sadd(&mut conn, skey2, &sval2);
+
+    // sinter with hashkey
+    redis::cmd("HASHKEY").arg(skey1).execute(&mut conn);
+    let sinter_vals = redis::cmd("SINTER")
+        .arg(skey1)
+        .arg(skey2)
+        .query::<Vec<String>>(&mut conn)
+        .unwrap();
+    let sinter_vals_real = vec!["1".to_string(), "2".to_string()];
+    assert_eq!(sinter_vals, sinter_vals_real);
+
+    // sinterstore with hashkey
+    redis::cmd("HASHKEY").arg(skey1).execute(&mut conn);
+    let inter_count = redis::cmd("SINTERSTORE")
+        .arg(skey3)
+        .arg(skey1)
+        .arg(skey2)
+        .query::<usize>(&mut conn)
+        .unwrap();
+    assert_eq!(inter_count, sinter_vals.len(), "sunionstore failed");
+
+    // sinter without hashkeyq
+    let should_err = redis::cmd("SINTER")
+        .arg(skey3)
+        .arg(skey1)
+        .arg(skey2)
+        .query::<Vec<String>>(&mut conn)
+        .is_err();
+    assert_eq!(should_err, true, "sinter without hashkeyq will failed");
+}
+
+#[test]
+fn sunion_cmds() {
+    let skey1 = "test_set_key1";
+    let skey2 = "test_set_key2";
+    let skey3 = "test_set_key3";
+    let sval1 = vec!["0", "1", "2"];
+    let sval2 = vec!["1", "2", "3"];
+
+    // prepare data
+    // clear old data
+    let mut conn = get_conn(&RESTYPE.get_host());
+    redis::cmd("DEL").arg(skey1).arg(skey2).execute(&mut conn);
+
+    // sadd values
+    sadd(&mut conn, skey1, &sval1);
+    sadd(&mut conn, skey2, &sval2);
+
+    // sunion with hashkey
+    redis::cmd("HASHKEY").arg(skey1).execute(&mut conn);
+    let sunion_vals = redis::cmd("SUNION")
+        .arg(skey1)
+        .arg(skey2)
+        .query::<Vec<String>>(&mut conn)
+        .unwrap();
+    let sunion_vals_real = vec![
+        "0".to_string(),
+        "1".to_string(),
+        "2".to_string(),
+        "3".to_string(),
+    ];
+    assert_eq!(sunion_vals, sunion_vals_real);
+
+    // sunionstore with hashkey
+    redis::cmd("HASHKEY").arg(skey1).execute(&mut conn);
+    let inter_count = redis::cmd("SUNIONSTORE")
+        .arg(skey3)
+        .arg(skey1)
+        .arg(skey2)
+        .query::<usize>(&mut conn)
+        .unwrap();
+    assert_eq!(inter_count, sunion_vals.len(), "sunionstore failed");
+
+    // sunion without hashkeyq
+    let should_err = redis::cmd("SUNION")
+        .arg(skey3)
+        .arg(skey1)
+        .arg(skey2)
+        .query::<Vec<String>>(&mut conn)
+        .is_err();
+    assert!(should_err, "sdiff without hashkeyq will failed");
+}
+
+fn sadd(conn: &mut Connection, key: &str, members: &Vec<&str>) {
+    let mut cmd_add = redis::cmd("SADD");
+    let mut cmd_add = cmd_add.arg(key);
+    for v in members.iter() {
+        cmd_add = cmd_add.arg(v);
+    }
+    cmd_add.execute(conn);
 }
