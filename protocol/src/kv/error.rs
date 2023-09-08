@@ -32,10 +32,6 @@ impl Into<Error> for KVError {
                 panic!("kv unhanlde rsp err: {:?}", packet);
             }
             Self::ProtocolIncomplete => Error::ProtocolIncomplete,
-            // Self::ResponseUnexpectedError(packet) => {
-            //     log::warn!("found kv unexpected err: {:?}", packet);
-            //     Error::ResponseProtocolInvalid
-            // }
         }
     }
 }

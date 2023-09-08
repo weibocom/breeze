@@ -8,8 +8,6 @@ pub enum Error {
     Mcq(McqError),
     // 关闭连接前需要把（静态/动态）异常消息发出去
     FlushOnClose(Vec<u8>),
-    // // KV内部的Error传递
-    // KVError(Vec<u8>),
     Eof,
     UnexpectedData,
     QueueClosed,
