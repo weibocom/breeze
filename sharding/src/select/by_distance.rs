@@ -118,6 +118,7 @@ impl<T: Addr> Distance<T> {
             .map(|r| (r, BackendQuota::default()))
             .collect();
     }
+    //和新建不等价，谨慎使用
     pub fn update(&mut self, replicas: Vec<T>, topn: usize, is_performance: bool) {
         self.backend_quota = is_performance; // 性能模式当前实现为按时间quota访问后端资源
         self.refresh(replicas);
@@ -265,7 +266,7 @@ impl<T: Addr> std::fmt::Debug for Distance<T> {
             "len: {}, local: {} backends:{:?}",
             self.len(),
             self.len_local,
-            self.replicas.first().map(|s| s.addr())
+            self.replicas.iter().map(|s| s.addr()).collect::<Vec<_>>()
         )
     }
 }

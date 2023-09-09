@@ -7,6 +7,7 @@ pub mod kv;
 pub mod msgque;
 pub mod phantomservice;
 pub mod redisservice;
+pub mod uuid;
 
 pub(crate) mod dns;
 
@@ -18,6 +19,7 @@ const TO_MC_M: Timeout = Timeout::from_millis(500);
 const TO_MC_S: Timeout = Timeout::from_millis(80);
 const TO_MYSQL_M: Timeout = Timeout::from_millis(1000);
 const TO_MYSQL_S: Timeout = Timeout::from_millis(500);
+const TO_UUID: Timeout = Timeout::from_millis(100);
 
 #[derive(Copy, Clone, Debug)]
 pub struct Timeout {

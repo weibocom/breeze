@@ -9,4 +9,5 @@ mod mysql;
 mod phantom;
 mod redis;
 mod redis_helper;
+mod uuid;
 mod vintage;

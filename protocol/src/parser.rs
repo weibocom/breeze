@@ -6,6 +6,7 @@ use crate::kv::Kv;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
+use crate::uuid::Uuid;
 use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
 #[derive(Clone)]
@@ -17,6 +18,7 @@ pub enum Parser {
     // TODO 暂时保留，待client修改上线完毕后，清理
     // Mysql(Kv),
     Kv(Kv),
+    Uuid(Uuid),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
@@ -24,8 +26,8 @@ impl Parser {
             "mc" => Ok(Self::McBin(Default::default())),
             "redis" | "phantom" => Ok(Self::Redis(Default::default())),
             "msgque" => Ok(Self::MsgQue(Default::default())),
-            // "mysql" => Ok(Self::Mysql(Default::default())),
             "kv" => Ok(Self::Kv(Default::default())),
+            "uuid" => Ok(Self::Uuid(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }
