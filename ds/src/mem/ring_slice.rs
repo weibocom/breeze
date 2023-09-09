@@ -376,6 +376,11 @@ impl RingSlice {
             }
         }
     }
+
+    #[inline(always)]
+    pub fn reader(&self) -> RingSliceRead<'_> {
+        RingSliceRead { oft: 0, rs: self }
+    }
 }
 
 use std::convert::TryInto;
@@ -552,15 +557,7 @@ impl Debug for RingSlice {
         let slice = self.sub_slice(0, 512.min(self.len()));
         let mut data = Vec::with_capacity(slice.len());
         slice.copy_to_vec(&mut data);
-        write!(
-            f,
-            "ptr:{} start:{} len:{} cap:{} => {:?}",
-            self.ptr,
-            self.start,
-            self.len,
-            self.cap,
-            data.utf8()
-        )
+        write!(f, "{} => {:?}", self, data.utf8())
     }
 }
 
@@ -601,5 +598,28 @@ impl PartialEq<(&[u8], &[u8])> for super::RingSlice {
     fn eq(&self, other: &(&[u8], &[u8])) -> bool {
         let (f, s) = self.data_oft(0);
         f == other.0 && s == other.1
+    }
+}
+
+pub struct RingSliceRead<'a> {
+    oft: usize,
+    rs: &'a RingSlice,
+}
+
+impl<'a> crate::BuffRead for RingSliceRead<'a> {
+    type Out = usize;
+    #[inline(always)]
+    fn read(&mut self, b: &mut [u8]) -> (usize, Self::Out) {
+        let len = b.len().min(self.rs.len() - self.oft);
+        self.rs.copy_to_r(b, self.oft..len);
+        (len, len)
+    }
+}
+
+impl<'a> std::io::Read for RingSliceRead<'a> {
+    #[inline(always)]
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let (size, _) = crate::BuffRead::read(self, buf);
+        Ok(size)
     }
 }
