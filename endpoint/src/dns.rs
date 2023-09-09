@@ -75,6 +75,11 @@ impl Backends for crate::redisservice::config::RedisNamespace {
         &self.backends
     }
 }
+impl Backends for crate::uuid::config::UuidNamespace {
+    fn get_backends(&self) -> &Vec<String> {
+        &self.backends
+    }
+}
 impl Backends for crate::phantomservice::config::PhantomNamespace {
     fn get_backends(&self) -> &Vec<String> {
         &self.backends
