@@ -154,6 +154,57 @@ fn copy_to_slice() {
     let mut slice_long = [0_u8; 6];
     slice.copy_to_slice(&mut slice_long[3..6]);
     assert_eq!(slice_long, [0, 0, 0, 0, 1, 2]);
+
+    let cap = 1024;
+    let mask = cap - 1;
+    let raw: Vec<u8> = (0..cap).map(|_| rand::random::<u8>()).collect();
+    let ptr = raw.as_ptr();
+    let mut rng = rand::thread_rng();
+    let mut dst = Vec::with_capacity(cap);
+    unsafe { dst.set_len(cap) };
+    for _i in 0..100 {
+        let (start, end) = match rng.gen_range(0..10) {
+            0 => (0, cap),
+            1 => (cap, cap * 2),
+            2 => {
+                let start = rng.gen::<usize>() & mask;
+                (start, start + cap)
+            }
+            _ => {
+                let start = rng.gen::<usize>() & mask;
+                let end = start + rng.gen_range(0..cap);
+                (start, end)
+            }
+        };
+        let rs = RingSlice::from(ptr, cap, start, end);
+        let mut slice = Vec::with_capacity(end - start);
+        // 把从start..end的内容复制到slice中
+        if end <= cap {
+            slice.extend_from_slice(&raw[start..end]);
+        } else {
+            slice.extend_from_slice(&raw[start..cap]);
+            let left = end - cap;
+            slice.extend_from_slice(&raw[0..left]);
+        }
+
+        // 验证64次
+        for _ in 0..64 {
+            // 随机选一个oft与len
+            let (r_start, r_len) = match rng.gen_bool(0.5) {
+                true => (0, rs.len()),
+                false => {
+                    let r_start = rng.gen_range(0..rs.len());
+                    let r_len = rng.gen_range(0..rs.len() - r_start);
+                    (r_start, r_len)
+                }
+            };
+            rs.copy_to_cmp(&mut dst[..], r_start, r_len);
+            assert_eq!(&dst[0..r_len], &slice[r_start..r_start + r_len]);
+            dst.fill(0);
+            rs.copy_to_r(&mut dst, r_start..r_start + r_len);
+            assert_eq!(&dst[0..r_len], &slice[r_start..r_start + r_len]);
+        }
+    }
 }
 
 #[test]

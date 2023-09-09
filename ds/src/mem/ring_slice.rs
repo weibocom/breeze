@@ -1,6 +1,12 @@
-use std::fmt::{Debug, Display, Formatter};
-use std::ptr::copy_nonoverlapping;
-use std::slice::from_raw_parts;
+use std::{
+    fmt::{Debug, Display, Formatter},
+    ops::{
+        Bound::{Excluded, Included, Unbounded},
+        RangeBounds,
+    },
+    ptr::copy_nonoverlapping,
+    slice::from_raw_parts,
+};
 
 //从不拥有数据，是对ptr+start的引用
 // #[derive(Default, Copy, Clone, Eq, Ord, Hash)]
@@ -193,21 +199,12 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
-        // v.reserve(self.len());
-        // self.visit_segment_oft(0, |p, l| unsafe {
-        //     copy_nonoverlapping(p, v.as_mut_ptr().add(v.len()), l);
-        //     v.set_len(v.len() + l);
-        // });
-
-        // TODO 参考上面的逻辑，测试稳定前暂不清理 fishermen
         v.reserve(self.len());
-        let len = v.len();
-        let len_final = len + self.len();
+        let start = v.len();
+        let end = start + self.len();
         // 先设置长度，再用切片方式调用，避免越界
-        unsafe {
-            v.set_len(len_final);
-        }
-        self.copy_to_slice(&mut v[len..len_final]);
+        unsafe { v.set_len(end) };
+        self.copy_to_slice(&mut v[start..end]);
     }
     #[inline]
     pub fn copy_to_vec_with_len(&self, v: &mut Vec<u8>, len: usize) {
@@ -233,6 +230,50 @@ impl RingSlice {
                 copy_nonoverlapping(p1, s.as_mut_ptr().add(l0), l1);
             }
         )
+    }
+    #[inline]
+    pub fn copy_to_cmp(&self, s: &mut [u8], oft: usize, len: usize) {
+        with_segment_oft_len!(
+            self,
+            oft,
+            len,
+            |p, l| {
+                copy_nonoverlapping(p, s.as_mut_ptr(), l);
+            },
+            |p0, l0, p1, l1| {
+                copy_nonoverlapping(p0, s.as_mut_ptr(), l0);
+                copy_nonoverlapping(p1, s.as_mut_ptr().add(l0), l1);
+            }
+        )
+    }
+    // 调用方确保 r.len() <= s.len()
+    #[inline]
+    pub fn copy_to_r<R: RangeBounds<usize>>(&self, s: &mut [u8], r: R) {
+        let start = match r.start_bound() {
+            Included(&s) => s,
+            Excluded(&s) => s + 1,
+            Unbounded => 0,
+        };
+        let end = match r.end_bound() {
+            Included(&e) => e + 1,
+            Excluded(&e) => e,
+            Unbounded => self.len(),
+        };
+        assert!(start <= end && end <= s.len());
+        assert!(end - start <= s.len());
+        if start == end {
+            return;
+        }
+        let oft_start = self.mask(self.start() + start);
+        let oft_end = self.mask(self.start() + end);
+        use copy_nonoverlapping as copy;
+        if oft_start < oft_end {
+            unsafe { copy(self.ptr().add(oft_start), s.as_mut_ptr(), end - start) };
+        } else {
+            let seg1 = self.cap() - oft_start;
+            unsafe { copy(self.ptr().add(oft_start), s.as_mut_ptr(), seg1) };
+            unsafe { copy(self.ptr(), s.as_mut_ptr().add(seg1), oft_end) };
+        }
     }
     #[inline(always)]
     pub(super) fn cap(&self) -> usize {

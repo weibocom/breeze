@@ -18,6 +18,7 @@ criterion_group!(kv, kv::bench_parse_mysql);
 criterion_group!(
     ring_slice,
     ring_slice::bench_iter,
+    ring_slice::bench_copy,
     ring_slice::bench_read_num
 );
 criterion_group!(arena, arena::bench_alloc);
