@@ -37,7 +37,6 @@ pub trait Writer: ds::BufWriter + Sized {
         // data.write_u16::<BigEndian>(v)?;
         // self.write(&data[0..])
         self.write(&v.to_be_bytes())
-
     }
     #[inline]
     fn write_u32(&mut self, v: u32) -> Result<()> {
@@ -45,7 +44,6 @@ pub trait Writer: ds::BufWriter + Sized {
         // data.write_u32::<BigEndian>(v)?;
         // self.write(&data[0..])
         self.write(&v.to_be_bytes())
-
     }
     #[inline]
     fn write_u64(&mut self, v: u64) -> Result<()> {
@@ -53,15 +51,11 @@ pub trait Writer: ds::BufWriter + Sized {
         // data.write_u64::<BigEndian>(v)?;
         // self.write(&data[0..])
         self.write(&v.to_be_bytes())
-
     }
-    #[inline]
-    fn write_s_u16(&mut self, v: u16) -> Result<()> {
-        if v < ds::NUM_STR_TBL.len() as u16 {
-            self.write(ds::NUM_STR_TBL[v as usize].as_bytes())
-        } else {
-            self.write(v.to_string().as_bytes())
-        }
+    #[inline(always)]
+    fn write_str_num(&mut self, v: usize) -> Result<()> {
+        use ds::NumStr;
+        v.with_str(|b| self.write(b))
     }
 
     // hint: 提示可能优先写入到cache

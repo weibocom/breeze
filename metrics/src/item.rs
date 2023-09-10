@@ -19,11 +19,8 @@ impl WriteTo for i64 {
         } else {
             *self as usize
         };
-        if v < ds::NUM_STR_TBL.len() {
-            w.put_slice(ds::NUM_STR_TBL[v]);
-        } else {
-            w.put_slice(self.to_string());
-        }
+        use ds::NumStr;
+        v.with_str(|s| w.put_slice(s));
     }
 }
 impl WriteTo for f64 {

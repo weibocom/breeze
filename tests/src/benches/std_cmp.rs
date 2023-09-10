@@ -30,7 +30,7 @@ pub(super) fn bench_num_to_str(c: &mut Criterion) {
             black_box({
                 let mut len = 0;
                 for i in 0..=end {
-                    ds::with_str(i, |s| len += s.len());
+                    with_str(i, |s| len += s.len());
                 }
                 len
             });
@@ -93,4 +93,16 @@ pub(super) fn bench_mod(c: &mut Criterion) {
         });
     });
     group.finish();
+}
+
+#[inline]
+pub fn with_str(n: usize, mut f: impl FnMut(&[u8])) {
+    let mut buf = [0u8; 32];
+    let mut left = n;
+    let idx = buf.len() - 1;
+    while left > 0 {
+        buf[idx] = b'0' + (left % 10) as u8;
+        left /= 10;
+    }
+    f(&buf[idx..]);
 }
