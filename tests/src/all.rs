@@ -19,5 +19,6 @@ mod layout;
 mod decrypt;
 mod kv;
 mod mysql_strategy;
+mod number;
 mod ring_buffer;
 mod tx_buffer;

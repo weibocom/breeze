@@ -296,7 +296,7 @@ impl Protocol for Redis {
             if first || cfg.need_bulk_num {
                 if first && cfg.need_bulk_num {
                     w.write_u8(b'*')?;
-                    w.write_s_u16(request.key_count())?;
+                    w.write_str_num(request.key_count() as usize)?;
                     w.write(b"\r\n")?;
                 }
 
