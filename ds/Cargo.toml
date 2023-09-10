@@ -11,7 +11,7 @@ minstant = "*"
 tokio.workspace = true
 
 byteorder = "1.4.3"
-rand = "0.8.4"
+rand = "0.8.5"
 atomic-waker = "*"
 mimalloc = { version = "0.1.34", default-features = false }
 ctor = "*"
