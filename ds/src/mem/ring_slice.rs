@@ -85,7 +85,7 @@ impl RingSlice {
     }
     #[inline]
     pub fn str_num<R: RangeBounds<usize>>(&self, r: R) -> usize {
-        let (start, end) = self.start_end(r);
+        let (start, end) = self.range(r);
         let mut num = 0;
         for i in start..end {
             num = num * 10 + (self[i] - b'0') as usize;
@@ -256,7 +256,7 @@ impl RingSlice {
         )
     }
     #[inline(always)]
-    fn start_end<R: RangeBounds<usize>>(&self, r: R) -> (usize, usize) {
+    fn range<R: RangeBounds<usize>>(&self, r: R) -> (usize, usize) {
         let start = match r.start_bound() {
             Included(&s) => s,
             Excluded(&s) => s + 1,
@@ -274,7 +274,7 @@ impl RingSlice {
     // 调用方确保 r.len() <= s.len()
     #[inline]
     pub fn copy_to_r<R: RangeBounds<usize>>(&self, s: &mut [u8], r: R) {
-        let (start, end) = self.start_end(r);
+        let (start, end) = self.range(r);
         assert!(start <= end && end <= s.len());
         assert!(end - start <= s.len());
         if start == end {
