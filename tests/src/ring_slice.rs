@@ -172,7 +172,7 @@ fn copy_to_slice() {
             }
             _ => {
                 let start = rng.gen::<usize>() & mask;
-                let end = start + rng.gen_range(0..cap);
+                let end = start + rng.gen_range(1..cap);
                 (start, end)
             }
         };
