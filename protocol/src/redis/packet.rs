@@ -137,16 +137,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     return Err(RedisError::ReqInvalid.into());
                 }
                 // check 命令长度
-                debug_assert_eq!(
-                    cfg.name.len(),
-                    self.data
-                        .slice(self.oft + 1, first_r - self.oft - 1)
-                        .fold(0usize, |c, b| {
-                            *c = *c * 10 + (b - b'0') as usize;
-                        }),
-                    "{:?}",
-                    self
-                );
+                debug_assert_eq!(cfg.name.len(), self.data.str_num(self.oft + 1..first_r));
 
                 // cmd name 解析完毕，bulk 减 1
                 self.oft = idx + CRLF_LEN;
