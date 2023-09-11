@@ -3,9 +3,12 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
+use crate::{Timeout, TO_MYSQL_M, TO_MYSQL_S};
+
 //时间间隔，闭区间, 可以是2010, 或者2010-2015
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Interval(u16, u16);
+pub struct Interval(pub u16, pub u16);
+
 impl<'de> Deserialize<'de> for Interval {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -64,20 +67,10 @@ pub struct Basic {
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
 impl MysqlNamespace {
-    pub(super) fn is_local(&self) -> bool {
-        match std::env::var("BREEZE_LOCAL")
-            .unwrap_or("".to_string())
-            .as_str()
-        {
-            "distance" => true,
-            _ => self.basic.selector.as_str() == "distance",
-        }
-    }
-
     #[inline]
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         match serde_yaml::from_str::<MysqlNamespace>(cfg) {
-            Ok(ns) => {
+            Ok(mut ns) => {
                 match ns.decrypt_password() {
                     Ok(password) => ns.basic.password = password,
                     Err(e) => {
@@ -85,7 +78,7 @@ impl MysqlNamespace {
                         return None;
                     }
                 }
-                ns.backends_flaten = ns.backends.iter().fold(Vec::new(), |init, b| {
+                ns.backends_flaten = ns.backends.iter().fold(Vec::new(), |mut init, b| {
                     init.extend_from_slice(b.1);
                     init
                 });
@@ -105,5 +98,19 @@ impl MysqlNamespace {
         let decrypted_data = ds::decrypt::decrypt_password(&key_pem, &encrypted_data)?;
         let decrypted_string = String::from_utf8(decrypted_data)?;
         Ok(decrypted_string)
+    }
+    pub(super) fn timeout_master(&self) -> Timeout {
+        let mut to = TO_MYSQL_M;
+        if self.basic.timeout_ms_master > 0 {
+            to.adjust(self.basic.timeout_ms_master);
+        }
+        to
+    }
+    pub(super) fn timeout_slave(&self) -> Timeout {
+        let mut to = TO_MYSQL_S;
+        if self.basic.timeout_ms_slave > 0 {
+            to.adjust(self.basic.timeout_ms_master);
+        }
+        to
     }
 }

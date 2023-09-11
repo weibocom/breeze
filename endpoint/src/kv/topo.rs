@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 use discovery::dns;
 use discovery::dns::IPPort;
@@ -13,7 +14,6 @@ use protocol::ResOption;
 use protocol::Resource;
 use sharding::hash::{Hash, HashKey};
 use sharding::Distance;
-use sharding::Selector;
 
 use crate::dns::DnsConfig;
 use crate::Builder;
@@ -21,23 +21,18 @@ use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
 
+use super::config::Interval;
 use super::config::MysqlNamespace;
 use super::strategy::Strategist;
 use super::KVCtx;
 #[derive(Clone)]
 pub struct KvService<B, E, Req, P> {
-    archive_shards: HashMap<String, Vec<Shard<E>>>,
-    archive_shards_url: HashMap<String, Vec<Vec<String>>>,
-    selector: Selector,
-    parser: P,
-    service: String,
-    timeout_master: Timeout,
-    timeout_slave: Timeout,
-    _mark: std::marker::PhantomData<(B, Req)>,
-    user: String,
-    password: String,
+    shards: Shards<E>,
+    // selector: Selector,
     strategist: Strategist,
+    parser: P,
     cfg: Box<DnsConfig<MysqlNamespace>>,
+    _mark: std::marker::PhantomData<(B, Req)>,
 }
 
 impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
@@ -45,19 +40,11 @@ impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
     fn from(parser: P) -> Self {
         Self {
             parser,
-            // direct_shards: Default::default(),
-            // direct_shards_url: Default::default(),
-            archive_shards: Default::default(),
-            archive_shards_url: Default::default(),
-            service: Default::default(),
-            selector: Selector::Random,
-            timeout_master: crate::TO_MYSQL_M,
-            timeout_slave: crate::TO_MYSQL_S,
-            _mark: Default::default(),
-            user: Default::default(),
-            password: Default::default(),
+            shards: Default::default(),
             strategist: Default::default(),
             cfg: Default::default(),
+            _mark: std::marker::PhantomData,
+            // selector: Selector::Random,
         }
     }
 }
@@ -82,10 +69,6 @@ where
     P: Protocol,
     B: Send + Sync,
 {
-    // #[inline]
-    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
-    //     self.strategist.hasher().hash(k)
-    // }
 }
 
 impl<B: Send + Sync, E, Req, P> Endpoint for KvService<B, E, Req, P>
@@ -106,12 +89,14 @@ where
         };
         //定位年库
         let year = self.strategist.get_key(&key).expect("key not found");
-        let shards = self
-            .archive_shards
-            .get(&year)
-            .expect("archive_shards year not found");
+        let intyear: u16 = year.parse().unwrap();
+        let shards = self.shards.get(intyear);
+        if shards.len() == 0 {
+            //todo
+            req.on_err(protocol::Error::TopChanged);
+            return;
+        }
 
-        debug_assert_ne!(shards.len(), 0);
         assert!(shards.len() > 0);
         let mut shard_idx = req.ctx().shard_idx as usize;
         if runs == 0 && shards.len() > 1 {
@@ -136,7 +121,13 @@ where
             //self.parser
             //    .build_request(&mut *req, MemGuard::from_vec(cmd));
         }
-        log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
+        log::debug!(
+            "+++ mysql {} send {} shards {:?} => {:?}",
+            self.cfg.service,
+            shard_idx,
+            shards,
+            req
+        );
 
         if shard.has_slave() && !req.operation().is_store() {
             if *req.context_mut() == 0 {
@@ -178,37 +169,16 @@ where
     E: Endpoint<Item = Req> + Single,
 {
     fn need_load(&self) -> bool {
-        let a: usize = self.archive_shards.values().map(|s| s.len()).sum();
-        let b: usize = self.archive_shards_url.values().map(|s| s.len()).sum();
-
-        // log::debug!("+++ cfg need: {} archive:{}/{}", self.cfg.need_load(), a, b);
-        a != b || self.cfg.need_load()
+        self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
     }
     fn load(&mut self) {
         self.cfg.load_guard().check_load(|| self.load_inner());
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = MysqlNamespace::try_from(cfg) {
-            self.timeout_master.adjust(ns.basic.timeout_ms_master);
-            self.timeout_slave.adjust(ns.basic.timeout_ms_slave);
-            self.selector = ns.basic.selector.as_str().into();
-
-            self.user = ns.basic.user.as_str().into();
-            self.password = ns.basic.password.as_str().into();
             self.strategist = Strategist::try_from(&ns);
-            // todo: 过多clone ，先跑通
-            for i in ns.backends.iter() {
-                self.archive_shards_url.insert(
-                    i.0.clone().to_string(),
-                    i.1.clone()
-                        .iter()
-                        .map(|shard| shard.split(",").map(|s| s.to_string()).collect())
-                        .collect(),
-                );
-            }
             self.cfg.update(namespace, ns);
         }
-        self.service = namespace.to_string();
     }
 }
 impl<B, E, Req, P> KvService<B, E, Req, P>
@@ -231,7 +201,7 @@ where
                 &addr,
                 self.parser.clone(),
                 Resource::Mysql,
-                &self.service,
+                &self.cfg.service,
                 timeout,
                 res,
             ),
@@ -239,17 +209,18 @@ where
     }
     #[inline]
     fn load_inner(&mut self) -> bool {
-        for i in self.archive_shards_url.iter() {
-            // 所有的ip要都能解析出主从域名
-            let mut addrs = Vec::with_capacity(i.1.len());
-            for shard in i.1.iter() {
+        // 所有的ip要都能解析出主从域名
+        let mut addrs = Vec::with_capacity(self.cfg.backends.len());
+        for (interval, shard) in &self.cfg.backends {
+            let mut addrs_per_interval = Vec::with_capacity(shard.len());
+            for shard in shard.iter() {
+                let shard: Vec<&str> = shard.split(",").collect();
                 if shard.len() < 2 {
-                    log::warn!("{} both master and slave required.", self.service);
+                    log::warn!("{} both master and slave required.", self.cfg.service);
                     return false;
                 }
                 let master_url = &shard[0];
                 let mut master = String::new();
-
                 dns::lookup_ips(master_url.host(), |ips| {
                     if ips.len() > 0 {
                         master = ips[0].to_string() + ":" + master_url.port();
@@ -276,39 +247,38 @@ where
                     );
                     return false;
                 }
-                addrs.push((master, slaves));
+                addrs_per_interval.push((master, slaves));
             }
-            // 到这之后，所有的shard都能解析出ip
-            let mut old = HashMap::with_capacity(i.1.len());
+            addrs.push((interval, addrs_per_interval));
+        }
 
-            for shard in self
-                .archive_shards
-                .entry(i.0.to_string())
-                .or_default()
-                .split_off(0)
-            {
-                old.entry(shard.master.0)
-                    .or_insert(Vec::new())
-                    .push(shard.master.1);
-                for (addr, endpoint) in shard.slaves.into_inner() {
-                    // 一个ip可能存在于多个域名中。
-                    old.entry(addr).or_insert(Vec::new()).push(endpoint);
-                }
+        // 到这之后，所有的shard都能解析出ip
+        let mut old = HashMap::with_capacity(self.shards.len());
+        for shard in self.shards.take() {
+            old.entry(shard.master.0)
+                .or_insert(Vec::new())
+                .push(shard.master.1);
+            for (addr, endpoint) in shard.slaves.into_inner() {
+                // 一个ip可能存在于多个域名中。
+                old.entry(addr).or_insert(Vec::new()).push(endpoint);
             }
+        }
 
-            // 用户名和密码
-            let mut res_option = ResOption::default();
-            res_option.token = self.password.clone();
-            res_option.username = self.user.clone();
-
+        for (interval, addrs_per_interval) in addrs {
+            let mut shards_per_interval = Vec::with_capacity(addrs_per_interval.len());
             // 遍历所有的shards_url
-            for (master_addr, slaves) in addrs {
+            for (master_addr, slaves) in addrs_per_interval {
                 assert_ne!(master_addr.len(), 0);
                 assert_ne!(slaves.len(), 0);
+                // 用户名和密码
+                let res_option = ResOption {
+                    token: self.cfg.basic.password.clone(),
+                    username: self.cfg.basic.user.clone(),
+                };
                 let master = self.take_or_build(
                     &mut old,
                     &master_addr,
-                    self.timeout_master,
+                    self.cfg.timeout_master(),
                     res_option.clone(),
                 );
                 master.enable_single();
@@ -316,38 +286,33 @@ where
                 // slave
                 let mut replicas = Vec::with_capacity(8);
                 for addr in slaves {
-                    let slave =
-                        self.take_or_build(&mut old, &addr, self.timeout_slave, res_option.clone());
+                    let slave = self.take_or_build(
+                        &mut old,
+                        &addr,
+                        self.cfg.timeout_slave(),
+                        res_option.clone(),
+                    );
                     slave.disable_single();
                     replicas.push((addr, slave));
                 }
-                let shard = Shard::selector(self.cfg.is_local(), master_addr, master, replicas);
 
-                self.archive_shards
-                    .entry(i.0.to_string())
-                    .or_default()
-                    .push(shard);
+                use crate::PerformanceTuning;
+                let shard = Shard::selector(
+                    self.cfg.basic.selector.tuning_mode(),
+                    master_addr,
+                    master,
+                    replicas,
+                    false,
+                );
+                shards_per_interval.push(shard);
             }
-
-            assert_eq!(
-                self.archive_shards.get(i.0).unwrap().len(),
-                i.1.len(),
-                "archive_key/archive_shard/urs: {}/{}/{}",
-                i.0,
-                self.archive_shards.get(i.0).unwrap().len(),
-                i.1.len()
-            );
-            log::info!(
-                "{} archive_shards {} load complete. {} dropping:{:?}",
-                self.service,
-                i.0,
-                self.archive_shards.get(i.0).unwrap().len(),
-                {
-                    old.retain(|_k, v| v.len() > 0);
-                    old.keys()
-                }
-            );
+            self.shards.push((interval, shards_per_interval));
         }
+        assert_eq!(self.shards.len(), self.cfg.shards_url.len());
+        log::info!("{} load complete. dropping:{:?}", self.cfg.service, {
+            old.retain(|_k, v| v.len() > 0);
+            old.keys()
+        });
         true
     }
 }
@@ -359,18 +324,9 @@ where
     #[inline]
     fn inited(&self) -> bool {
         // 每一个分片都有初始, 并且至少有一主一从。
-        let b: usize = self.archive_shards.values().map(|s| s.len()).sum();
-        let a = self.cfg.shards_url.len();
-        let c = self.archive_shards.iter().fold(true, |inited, shard| {
-            inited
-                && shard
-                    .1
-                    .iter()
-                    .fold(true, |inited, shard| inited && shard.inited())
-        });
-        log::debug!("{} MysqlService inited {} {} {}", self.service, a, b, c);
-
-        a > 0 && a == b && c
+        self.shards.len() > 0
+            && self.shards.len() == self.cfg.shards_url.len()
+            && self.shards.inited()
     }
 }
 
@@ -392,10 +348,16 @@ impl<E: discovery::Inited> Shard<E> {
 // todo: 这一段跟redis是一样的，这段可以提到外面去
 impl<E> Shard<E> {
     #[inline]
-    fn selector(local: bool, master_host: String, master: E, replicas: Vec<(String, E)>) -> Self {
+    fn selector(
+        is_performance: bool,
+        master_host: String,
+        master: E,
+        replicas: Vec<(String, E)>,
+        region_enabled: bool,
+    ) -> Self {
         Self {
             master: (master_host, master),
-            slaves: Distance::with_performance_tuning(replicas, local, false),
+            slaves: Distance::with_performance_tuning(replicas, is_performance, region_enabled),
         }
     }
     #[inline]
@@ -421,4 +383,73 @@ impl<E> Shard<E> {
 struct Shard<E> {
     master: (String, E),
     slaves: Distance<(String, E)>,
+}
+
+impl<E> Debug for Shard<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "shard(master: {}, slaves: {:?})",
+            self.master.0, self.slaves
+        )
+    }
+}
+
+const INTERVAL_START: u16 = 2000;
+const INTERVAL_END: u16 = 2099;
+const INTERVAL_LEN: usize = (INTERVAL_END - INTERVAL_START) as usize + 1;
+#[derive(Clone)]
+struct Shards<E> {
+    shards: Vec<Shard<E>>,
+    //2000~2099年的分片索引范围，如index[0].0 = (0, 5)表示2000年的shards为shards[0:5]
+    index: [(usize, usize); INTERVAL_LEN],
+}
+
+impl<E> Default for Shards<E> {
+    fn default() -> Self {
+        Self {
+            shards: Default::default(),
+            index: [(0, 0); INTERVAL_LEN],
+        }
+    }
+}
+impl<E> Shards<E> {
+    fn len(&self) -> usize {
+        self.shards.len()
+    }
+    //会重新初始化
+    fn take(&mut self) -> Vec<Shard<E>> {
+        self.index = [(0, 0); INTERVAL_LEN];
+        self.shards.split_off(0)
+    }
+
+    fn push(&mut self, shards_per_interval: (&Interval, Vec<Shard<E>>)) {
+        let (interval, shards_per_interval) = shards_per_interval;
+        let start = self.shards.len();
+        let end = start + shards_per_interval.len() as usize;
+        self.shards.extend(shards_per_interval);
+        let (start_index, end_index) = (
+            (interval.0 - INTERVAL_START) as usize,
+            (interval.1 - INTERVAL_START) as usize,
+        );
+        for i in &mut self.index[start_index..=end_index] {
+            assert_eq!(*i, (0, 0));
+            *i = (start, end)
+        }
+    }
+    //push 进来的shard是否init了
+    fn inited(&self) -> bool
+    where
+        E: discovery::Inited,
+    {
+        self.shards
+            .iter()
+            .fold(true, |inited, shard| inited && shard.inited())
+    }
+
+    fn get(&self, intyear: u16) -> &[Shard<E>] {
+        assert!(2099 >= intyear && intyear >= INTERVAL_START);
+        &self.shards[self.index[(intyear - INTERVAL_START) as usize].0
+            ..self.index[(intyear - INTERVAL_START) as usize].1]
+    }
 }
