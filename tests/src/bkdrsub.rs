@@ -18,9 +18,9 @@ fn bkdrsub_one() {
 }
 
 // TODO 临时批量文件的hash、dist校验测试，按需打开
-//#[test]
+#[test]
 fn bkdrsub_dist() {
-    let path_base = "./redisKey";
+    let path_base = "./bkdirsubKey";
     let port_start = 59152;
     let port_end = 59211;
     let shards = 180;
@@ -38,16 +38,21 @@ fn bkdrsub_dist() {
 }
 
 /// 从文件中读取所有key，进行hash、dist后，check这些key是否都落在该idx上
-fn check_file(idx: usize, file: &str, hasher: Hasher, dist: Distribute) {
-    let f = File::open(file).expect(format!("bkdrsub file [{}] not exists!", file).as_str());
-    let mut reader = BufReader::new(f);
+fn check_file(idx: usize, fname: &str, hasher: Hasher, dist: Distribute) {
+    let open_rs = File::open(fname);
+    if open_rs.is_err() {
+        println!("opend file/{} failed: {:?}", fname, open_rs);
+        return;
+    }
+    let file = open_rs.expect(format!("bkdrsub file [{}] not exists!", fname).as_str());
+    let mut reader = BufReader::new(file);
     let mut count = 0;
     loop {
         let mut line = String::with_capacity(128);
         if let Ok(bytes) = reader.read_line(&mut line) {
             if bytes == 0 {
                 // read EOF
-                println!("bkdrsub file/{} processed {} lines", file, count);
+                println!("bkdrsub file/{} processed {} lines", fname, count);
                 break;
             }
             // TODO 这些key的hash不配套
