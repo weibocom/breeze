@@ -224,6 +224,16 @@ impl RingSlice {
     pub fn copy_to_vec_with_oft_len(&self, oft: usize, len: usize, v: &mut Vec<u8>) {
         self.sub_slice(oft, len).copy_to_vec(v)
     }
+    #[inline]
+    pub fn copy_to_vec_r<R: RangeBounds<usize>>(&self, v: &mut Vec<u8>, r: R) {
+        let (start, end) = self.range(r);
+        let len = end - start;
+        let org_len = v.len();
+        v.reserve(len);
+        let total_len = org_len + len;
+        unsafe { v.set_len(total_len) };
+        self.copy_to_r(&mut v[org_len..total_len], start..end);
+    }
     /// copy 数据到切片/数组中，目前暂时不需要oft，有需求后再加
     #[inline]
     pub fn copy_to_slice(&self, s: &mut [u8]) {
@@ -289,6 +299,42 @@ impl RingSlice {
             let seg1 = self.cap() - oft_start;
             unsafe { copy(self.ptr().add(oft_start), s.as_mut_ptr(), seg1) };
             unsafe { copy(self.ptr(), s.as_mut_ptr().add(seg1), oft_end) };
+        }
+    }
+    #[inline]
+    pub fn copy_to_range<R: RangeBounds<usize>>(&self, s: &mut [u8], r: R) {
+        let mut oft = 0;
+        self.visit_seg(r, |p, l| {
+            debug_assert!(oft + l <= s.len());
+            unsafe { copy_nonoverlapping(p, s.as_mut_ptr().add(oft), l) };
+            oft += l;
+        });
+    }
+    #[inline(always)]
+    fn visit_seg<R: RangeBounds<usize>>(&self, r: R, mut f: impl FnMut(*const u8, usize)) {
+        let start = match r.start_bound() {
+            Included(&s) => s,
+            Excluded(&s) => s + 1,
+            Unbounded => 0,
+        };
+        let end = match r.end_bound() {
+            Included(&e) => e + 1,
+            Excluded(&e) => e,
+            Unbounded => self.len(),
+        };
+        debug_assert!(end <= self.len());
+        assert!(start <= end);
+
+        if start == end {
+            return;
+        }
+        let oft_start = self.mask(self.start() + start);
+        let oft_end = self.mask(self.start() + end);
+        if oft_start < oft_end {
+            f(unsafe { self.ptr().add(oft_start) }, end - start);
+        } else {
+            f(unsafe { self.ptr().add(oft_start) }, self.cap() - oft_start);
+            f(self.ptr(), oft_end);
         }
     }
     #[inline(always)]
