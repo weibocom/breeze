@@ -5,7 +5,7 @@ use std::fs;
 
 //时间间隔，闭区间, 可以是2010, 或者2010-2015
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-struct Interval(u16, u16);
+pub struct Interval(u16, u16);
 impl<'de> Deserialize<'de> for Interval {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
