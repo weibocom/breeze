@@ -1,18 +1,41 @@
 use base64::{engine::general_purpose, Engine as _};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
+//时间间隔，闭区间, 可以是2010, 或者2010-2015
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+struct Interval(u16, u16);
+impl<'de> Deserialize<'de> for Interval {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Deserialize::deserialize(deserializer).map(|interval: String| {
+            if interval == ARCHIVE_DEFAULT_KEY {
+                return Interval(0, 0);
+            }
+            let mut interval = interval.split("-");
+            let start = interval.next().unwrap().parse().unwrap();
+            let end = interval.next();
+            let end = if end.is_none() {
+                start
+            } else {
+                end.unwrap().parse().unwrap()
+            };
+            Interval(start, end)
+        })
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct MysqlNamespace {
-    // TODO speed up, ref: https://git/platform/resportal/-/issues/548
     #[serde(default)]
     pub(crate) basic: Basic,
-    //backends_url 处理dns解析用
     #[serde(skip)]
-    pub(crate) backends_url: Vec<String>,
+    pub(crate) backends_flaten: Vec<String>,
     #[serde(default)]
-    pub(crate) backends: HashMap<String, Vec<String>>,
+    pub(crate) backends: HashMap<Interval, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -53,52 +76,26 @@ impl MysqlNamespace {
 
     #[inline]
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
-        let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
-            .map_err(|e| {
-                log::info!("failed to parse mysql  e:{} config:{}", e, cfg);
-                e
-            })
-            .ok();
-
-        if let Some(mut ns) = nso {
-            // archive shard 处理
-            // 2009-2012 ,[111xxx.com:111,222xxx.com:222]
-            // 2013 ,[112xxx.com:112,223xxx.com:223]
-            let mut archive: HashMap<String, Vec<String>> = HashMap::new();
-            for (key, val) in ns.backends.iter() {
-                //处理当前库
-                if ARCHIVE_DEFAULT_KEY == key {
-                    archive.insert(key.to_string(), val.to_vec());
-                    continue;
-                }
-                //适配N年共用一个组shard情况，例如2009-2012共用
-                let years: Vec<&str> = key.split("-").collect();
-                let min: u16 = years[0].parse().unwrap();
-                if years.len() > 1 {
-                    // 2009-2012 包括2012,故max需要加1
-                    let max = years[1].parse::<u16>().expect("malformed mysql cfg") + 1_u16;
-                    for i in min..max {
-                        archive.insert(i.to_string(), val.to_vec());
+        match serde_yaml::from_str::<MysqlNamespace>(cfg) {
+            Ok(ns) => {
+                match ns.decrypt_password() {
+                    Ok(password) => ns.basic.password = password,
+                    Err(e) => {
+                        log::warn!("failed to decrypt password, e:{}", e);
+                        return None;
                     }
-                } else {
-                    archive.insert(min.to_string(), val.to_vec());
                 }
+                ns.backends_flaten = ns.backends.iter().fold(Vec::new(), |init, b| {
+                    init.extend_from_slice(b.1);
+                    init
+                });
+                Some(ns)
             }
-            ns.backends = archive;
-            //todo: 重复转化问题,待修改
-            for vec in ns.backends.values() {
-                ns.backends_url.extend(vec.iter().cloned());
+            Err(e) => {
+                log::info!("failed to parse mysql  e:{} config:{}", e, cfg);
+                None
             }
-            ns.basic.password = ns
-                .decrypt_password()
-                .map_err(|e| {
-                    log::warn!("failed to decrypt password, e:{}", e);
-                    e
-                })
-                .ok()?;
-            return Some(ns);
         }
-        nso
     }
 
     #[inline]

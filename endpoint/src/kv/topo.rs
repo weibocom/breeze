@@ -26,17 +26,9 @@ use super::strategy::Strategist;
 use super::KVCtx;
 #[derive(Clone)]
 pub struct KvService<B, E, Req, P> {
-    // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
-    // direct_shards: Vec<Shard<E>>,
-    // 默认不同sharding的url。第0个是master
-    // direct_shards_url: Vec<Vec<String>>,
-    // 按时间维度分库分表
     archive_shards: HashMap<String, Vec<Shard<E>>>,
     archive_shards_url: HashMap<String, Vec<Vec<String>>>,
-    // sql: HashMap<String, String>,
-    // hasher: Hasher,
-    // distribute: Distribute,
-    selector: Selector, // 从的选择策略。
+    selector: Selector,
     parser: P,
     service: String,
     timeout_master: Timeout,
