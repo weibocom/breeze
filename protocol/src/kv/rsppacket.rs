@@ -1,13 +1,13 @@
 // 解析mysql协议， 转换为mc协议
 
 use crate::kv::common::constants::DEFAULT_MAX_ALLOWED_PACKET;
-use crate::kv::error::KVError;
 use crate::StreamContext;
 
 use super::client::Client;
 use super::common::{buffer_pool::Buffer, proto::codec::PacketCodec, query_result::Or};
 
-use super::error::KVResult;
+use super::error::Error;
+use super::error::Result;
 use super::packet::PacketData;
 use super::HandShakeStatus;
 
@@ -26,8 +26,8 @@ use ds::RingSlice;
 
 use crate::kv::common::error::Error::MySqlError;
 use crate::kv::common::io::ReadMysqlExt;
+use crate::kv::common::packets::ErrPacket;
 use crate::kv::common::proto::MySerialize;
-use crate::{kv::common::packets::ErrPacket, Result};
 
 // const HEADER_LEN: usize = 4;
 pub(super) const HEADER_FLAG_OK: u8 = 0x00;
@@ -95,7 +95,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     /// 解析mysql的rs meta，如果解析出非incomplete类型的error，说明包解析完毕，需要进行take
     #[inline]
-    pub(super) fn parse_result_set_meta(&mut self) -> KVResult<Or<Vec<Column>, OkPacket>> {
+    pub(super) fn parse_result_set_meta(&mut self) -> Result<Or<Vec<Column>, OkPacket>> {
         // 一个packet全部解析完毕前，不对数据进行take; 反之，必须进行take；
         let payload = self.next_packet()?;
 
@@ -138,7 +138,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         }
     }
 
-    pub(super) fn next_row_packet(&mut self) -> KVResult<Option<Buffer>> {
+    pub(super) fn next_row_packet(&mut self) -> Result<Option<Buffer>> {
         if !self.has_results {
             return Ok(None);
         }
@@ -164,7 +164,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         Ok(Some(buff))
     }
 
-    pub(super) fn drop_packet(&mut self) -> KVResult<()> {
+    pub(super) fn drop_packet(&mut self) -> Result<()> {
         self.next_packet().map(drop)
     }
 
@@ -180,10 +180,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // ///     1 遇到数据不够，直接返回ProtocolIncomplete
     // ///     2 遇到其他异常，先take掉err data，再返回Err
     // ///     3 正常情况下，返回payload，等后续全部处理后，再统一take
-    // fn _next_packet(&mut self) -> KVResult<RingSlice> {
+    // fn _next_packet(&mut self) -> Result<RingSlice> {
     //     match self.try_next_packet() {
     //         Ok(pld) => Ok(pld),
-    //         Err(KVError::ProtocolIncomplete) => Err(KVError::ProtocolIncomplete),
+    //         Err(Error::ProtocolIncomplete) => Err(crate::Error::ProtocolIncomplete),
     //         Err(e) => {
     //             // 发现异常，说明异常数据已读完，此处统一take
     //             self.take();
@@ -193,7 +193,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // }
 
     // 尝试读下一个packet的payload，如果数据不完整，返回ProtocolIncomplete
-    fn next_packet(&mut self) -> KVResult<RingSlice> {
+    fn next_packet(&mut self) -> Result<RingSlice> {
         // self.oft_packet = self.oft;
         // self.payload_len = header.payload_len;
 
@@ -207,7 +207,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
                 // 当前mysql协议，不应该存在payload长度为0的packet fishermen
                 let emsg: Vec<u8> = "zero len response".as_bytes().to_vec();
                 log::error!("malformed mysql rsp: {}/{}", self.oft, self.data);
-                return Err(KVError::UnhandleResponseError(emsg));
+                return Err(Error::UnhandleResponseError(emsg));
             }
         };
 
@@ -247,11 +247,11 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
         // 数据没有读完，reserve可读取空间，返回Incomplete异常
         self.reserve();
-        Err(KVError::ProtocolIncomplete)
+        Err(Error::ProtocolIncomplete)
     }
 
     // 解析Handshake packet，构建HandshakeResponse packet
-    pub(super) fn proc_handshake(&mut self) -> Result<()> {
+    pub(super) fn proc_handshake(&mut self) -> crate::Result<()> {
         let reply = match self.proc_handshake_inner() {
             Ok(r) => r,
             Err(e) => return Err(e.into()),
@@ -262,7 +262,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     }
 
     #[inline]
-    fn proc_handshake_inner(&mut self) -> KVResult<Vec<u8>> {
+    fn proc_handshake_inner(&mut self) -> Result<Vec<u8>> {
         // 读取完整packet，并解析为HandshakePacket
         let payload = self.next_packet()?;
         // handshake 只有一个packet，所以读完后可以立即take
@@ -318,7 +318,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     /// 处理handshakeresponse的mysql响应，默认是ok即auth
     #[inline]
-    pub(super) fn proc_auth(&mut self) -> Result<()> {
+    pub(super) fn proc_auth(&mut self) -> crate::Result<()> {
         match self.proc_auth_inner() {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
@@ -327,7 +327,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     /// parse并check auth 包，注意数据不进行take
     #[inline]
-    fn proc_auth_inner(&mut self) -> KVResult<()> {
+    fn proc_auth_inner(&mut self) -> Result<()> {
         // 先读取一个OK/Err packet
         let payload = self.next_packet()?;
         // auth 只有一个回包，拿到后可以立即take
@@ -365,7 +365,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         auth_plugin: &AuthPlugin,
         // scramble_buf: Option<&[u8]>,
         scramble_buf: Option<RingSlice>,
-    ) -> KVResult<Vec<u8>> {
+    ) -> Result<Vec<u8>> {
         let client = self.client.as_ref().unwrap();
         let user = client.get_user().unwrap_or_default().as_bytes().to_vec();
         let db_name = client.get_db_name().unwrap_or_default().as_bytes().to_vec();
@@ -396,7 +396,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             Err(_e) => {
                 let emsg = format!("encode request failed:{:?}", _e);
                 log::warn!("{}", emsg);
-                return Err(KVError::AuthInvalid(emsg.into()));
+                return Err(Error::AuthInvalid(emsg.into()));
             }
         }
     }
@@ -415,7 +415,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     pub(super) fn handle_ok<T: OkPacketKind>(
         &mut self,
         payload: RingSlice,
-    ) -> super::error::KVResult<OkPacket> {
+    ) -> super::error::Result<OkPacket> {
         let ok = ParseBuf::from(payload)
             .parse::<OkPacketDeserializer<T>>(self.capability_flags())?
             .into_inner();

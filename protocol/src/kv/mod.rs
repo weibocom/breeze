@@ -10,7 +10,7 @@ mod rsppacket;
 use self::common::proto::Text;
 use self::common::query_result::{Or, QueryResult};
 use self::common::row::convert::from_row;
-use self::error::KVResult;
+use self::error::Result;
 use bytes::BufMut;
 pub use common::proto::codec::PacketCodec;
 
@@ -21,11 +21,9 @@ use self::rsppacket::ResponsePacket;
 
 use super::Flag;
 use super::Protocol;
-use super::Result;
 use crate::kv::client::Client;
-use crate::kv::error::KVError;
+use crate::kv::error::Error;
 use crate::Command;
-use crate::Error;
 use crate::HandShake;
 use crate::HashedCommand;
 use crate::RequestProcessor;
@@ -66,10 +64,10 @@ impl Protocol for Kv {
         &self,
         stream: &mut impl Stream,
         option: &mut crate::ResOption,
-    ) -> Result<HandShake> {
+    ) -> crate::Result<HandShake> {
         match self.handshake_inner(stream, option) {
             Ok(h) => Ok(h),
-            Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+            Err(crate::Error::ProtocolIncomplete) => Ok(HandShake::Continue),
             Err(e) => {
                 log::warn!("+++ found err when shake hand:{:?}", e);
                 Err(e)
@@ -89,7 +87,7 @@ impl Protocol for Kv {
         stream: &mut S,
         alg: &H,
         process: &mut P,
-    ) -> Result<()> {
+    ) -> crate::Result<()> {
         assert!(stream.len() > 0, "mc req: {:?}", stream.slice());
         log::debug!("+++ recv mysql-mc req:{:?}", stream.slice());
 
@@ -131,7 +129,7 @@ impl Protocol for Kv {
     }
 
     // 解析mysql response；在write response的时候，再进行协议格式转换
-    fn parse_response<S: crate::Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+    fn parse_response<S: crate::Stream>(&self, data: &mut S) -> crate::Result<Option<Command>> {
         log::debug!("+++ recv mysql response:{:?}", data.slice());
         let mut rsp_packet = ResponsePacket::new(data, None);
 
@@ -139,8 +137,8 @@ impl Protocol for Kv {
         match self.parse_response_inner(&mut rsp_packet) {
             Ok(cmd) => Ok(cmd),
 
-            Err(KVError::ProtocolIncomplete) => Ok(None),
-            Err(KVError::UnhandleResponseError(s)) => {
+            Err(Error::ProtocolIncomplete) => Ok(None),
+            Err(Error::UnhandleResponseError(s)) => {
                 // 异常响应通过标准处理流程，所以此处不需要进行协议包转换
                 let mem = ds::MemGuard::from_vec(s);
                 let cmd = Command::from(false, mem);
@@ -160,7 +158,7 @@ impl Protocol for Kv {
         ctx: &mut C,
         response: Option<&mut crate::Command>,
         w: &mut W,
-    ) -> Result<()>
+    ) -> crate::Result<()>
     where
         W: crate::Writer,
         C: crate::Commander<M, I>,
@@ -204,7 +202,7 @@ impl Protocol for Kv {
             OP_STAT => w.write(&STAT_RESPONSE)?,
 
             // quit/quitq 无需返回rsp
-            OP_QUIT | OP_QUITQ => return Err(Error::Quit),
+            OP_QUIT | OP_QUITQ => return Err(crate::Error::Quit),
 
             // quite get 请求，无需返回任何rsp，但没实际发送，rsp_ok设为false
             // OP_GETQ | OP_GETKQ => return Ok(()),
@@ -234,7 +232,7 @@ impl Protocol for Kv {
                     old_op_code,
                     ctx.request()
                 );
-                return Err(Error::OpCodeNotSupported(old_op_code as u16));
+                return Err(crate::Error::OpCodeNotSupported(old_op_code as u16));
             }
         }
         Ok(())
@@ -260,7 +258,7 @@ impl Kv {
         &self,
         stream: &mut S,
         option: &mut crate::ResOption,
-    ) -> Result<HandShake> {
+    ) -> crate::Result<HandShake> {
         log::debug!("+++ recv mysql handshake packet:{:?}", stream.slice());
         let client = Client::from_user_pwd(option.username.clone(), option.token.clone());
         let mut packet = ResponsePacket::new(stream, Some(client));
@@ -299,14 +297,14 @@ impl Kv {
 
     /// 对request进行校验
     #[inline(always)]
-    fn validate_request(&self, request: &RingSlice) -> Result<()> {
+    fn validate_request(&self, request: &RingSlice) -> crate::Result<()> {
         // 当前只检查key，后续需要增加逻辑在此处加
         let key = request.key();
         for i in 0..key.len() {
             if !key.at(i).is_ascii_digit() {
                 log::warn!("+++ found malformed mysql-mc packet:{:?}", request);
                 let err_packet = self.build_error_rsp(request, error::REQ_INVALID_KEY);
-                return Err(KVError::RequestInvalidKey(err_packet).into());
+                return Err(Error::RequestInvalidKey(err_packet).into());
             }
         }
         Ok(())
@@ -317,7 +315,7 @@ impl Kv {
     fn parse_response_inner<'a, S: crate::Stream>(
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
-    ) -> KVResult<Option<Command>> {
+    ) -> Result<Option<Command>> {
         // let mut result_set = self.parse_result_set(rsp_packet)?;
         let meta = rsp_packet.parse_result_set_meta()?;
 
@@ -356,7 +354,7 @@ impl Kv {
     // fn parse_result_set<'a, S>(
     //     &self,
     //     rsp_packet: &'a mut ResponsePacket<'a, S>,
-    // ) -> KVResult<Vec<Vec<u8>>>
+    // ) -> Result<Vec<Vec<u8>>>
     // where
     //     S: crate::Stream,
     // {
@@ -379,7 +377,7 @@ impl Kv {
         extra: Option<u32>,
         response: Option<&crate::Command>,
         w: &mut W,
-    ) -> Result<()>
+    ) -> crate::Result<()>
     where
         W: crate::Writer,
     {
@@ -420,7 +418,7 @@ impl Kv {
         request: &HashedCommand,
         response: Option<&crate::Command>,
         w: &mut W,
-    ) -> Result<()>
+    ) -> crate::Result<()>
     where
         W: crate::Writer,
     {

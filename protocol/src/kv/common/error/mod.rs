@@ -15,10 +15,7 @@ use url::ParseError;
 
 use std::{error, fmt, io, sync};
 
-use crate::kv::{
-    common::{row::Row, value::Value},
-    error::KVError,
-};
+use crate::kv::common::{row::Row, value::Value};
 
 pub mod tls;
 
@@ -92,18 +89,18 @@ impl Error {
     //     ))
     // }
 
-    /// 将mysql内部解析、编码的Error映射到KVError，目前仅根据当前使用情况进行转换，
+    /// 将mysql内部解析、编码的Error映射到Error，目前仅根据当前使用情况进行转换，
     /// 后续如果Error发生变动，需要关注这里是否需要调整
     #[inline]
-    pub(crate) fn error(&self) -> KVError {
+    pub(crate) fn error(&self) -> crate::kv::Error {
         let msg = format!("{}", self).as_bytes().to_vec();
         // let content = RingSlice::from_vec(&msg.as_bytes().to_vec());
         log::error!("kv found error: {:?}", self);
         match self {
-            Error::IoError(_e) => KVError::RequestInvalid(msg), // io异常
-            Error::DriverError(_e) => KVError::AuthInvalid(msg), // driver 异常，意味着无法正常完成连接
-            Error::CodecError(_e) => KVError::RequestInvalid(msg), // codec 异常，一般为请求异常
-            _ => KVError::UnhandleResponseError(msg),            // 其他mysql异常，直接返回给调用房
+            Error::IoError(_e) => crate::kv::Error::RequestInvalid(msg), // io异常
+            Error::DriverError(_e) => crate::kv::Error::AuthInvalid(msg), // driver 异常，意味着无法正常完成连接
+            Error::CodecError(_e) => crate::kv::Error::RequestInvalid(msg), // codec 异常，一般为请求异常
+            _ => crate::kv::Error::UnhandleResponseError(msg), // 其他mysql异常，直接返回给调用房
         }
     }
 }
@@ -246,11 +243,11 @@ impl error::Error for DriverError {
 impl DriverError {
     // Driver error 用于处理auth中的异常，目前全部转为kv中的AuthInvalid fishermen
     #[inline]
-    pub(crate) fn error(&self) -> KVError {
+    pub(crate) fn error(&self) -> crate::kv::Error {
         let msg = format!("mysql Driver Error: {}", self);
         // let content = RingSlice::from_vec(&msg.as_bytes().to_vec());
         match self {
-            _ => KVError::AuthInvalid(msg.as_bytes().to_vec()),
+            _ => crate::kv::Error::AuthInvalid(msg.as_bytes().to_vec()),
         }
     }
 }

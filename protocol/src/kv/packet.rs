@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use ds::RingSlice;
 
-use super::error::{KVError, KVResult};
+use super::error::{Error, Result};
 
 const HEADER_LEN: usize = 4;
 
@@ -23,10 +23,10 @@ impl From<RingSlice> for PacketData {
 /// 基于RingSlice解析mysql协议
 impl PacketData {
     /// 解析packet header，
-    pub(super) fn parse_header(&self, oft: &mut usize) -> KVResult<PacketHeader> {
+    pub(super) fn parse_header(&self, oft: &mut usize) -> Result<PacketHeader> {
         // mysql packet至少需要4个字节来读取sequence id
         if self.left_len(*oft) <= HEADER_LEN {
-            return Err(KVError::ProtocolIncomplete);
+            return Err(Error::ProtocolIncomplete);
         }
 
         // 前三个字节是payload len
