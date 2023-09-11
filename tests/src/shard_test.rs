@@ -70,7 +70,7 @@ fn root_path() -> &'static str {
 
 #[test]
 fn shards_check() {
-    let root_path = "./records";
+    let root_path = "./sharding_datas/records";
     // will check crc32
     let shard_count = 8;
     let mut servers = Vec::with_capacity(shard_count);
