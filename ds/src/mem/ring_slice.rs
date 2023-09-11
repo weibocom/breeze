@@ -9,7 +9,6 @@ use std::{
 };
 
 //从不拥有数据，是对ptr+start的引用
-// #[derive(Default, Copy, Clone, Eq, Ord, Hash)]
 #[derive(Default, Clone, Copy, Eq, Hash)]
 pub struct RingSlice {
     ptr: usize,
@@ -19,17 +18,8 @@ pub struct RingSlice {
     mask: u32,
 }
 
-// 将ring_slice拆分成2个seg。分别调用
-macro_rules! with_segment_oft {
-    ($self:expr, $oft:expr, $noseg:expr, $seg:expr) => {{
-        let len = $self.len() - $oft;
-        with_segment_oft_len!($self, $oft, len, $noseg, $seg)
-    }};
-}
-
-// 基于oft、len对slice的2个seg进行调用
-macro_rules! with_segment_oft_len {
-    ($self:expr, $oft:expr, $len:expr, $noseg:expr, $seg:expr) => {{
+macro_rules! with_segment {
+    ($self:ident, $oft:expr, $len:expr, $noseg:expr, $seg:expr) => {{
         debug_assert!($oft + $len <= $self.len());
         let oft_start = $self.mask($self.start() + $oft);
         let len = ($self.len() - $oft).min($len);
@@ -42,6 +32,12 @@ macro_rules! with_segment_oft_len {
             unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
         }
     }};
+    ($self:ident, $oft:expr, $noseg:expr, $seg:expr) => {
+        with_segment!($self, $oft, $self.len() - $oft, $noseg, $seg)
+    };
+    ($self:ident, $noseg:expr, $seg:expr) => {
+        with_segment!($self, 0, $self.len(), $noseg, $seg)
+    };
 }
 
 impl RingSlice {
@@ -115,7 +111,7 @@ impl RingSlice {
         len: usize,
         mut v: impl FnMut(*mut u8, usize),
     ) {
-        with_segment_oft_len!(self, oft, len, |p, l| v(p, l), |p0, l0, p1, l1| {
+        with_segment!(self, oft, len, |p, l| v(p, l), |p0, l0, p1, l1| {
             v(p0, l0);
             v(p1, l1);
         });
@@ -125,7 +121,7 @@ impl RingSlice {
         assert!(oft + len <= self.len(), "{}/{} =>{:?}", oft, len, self);
 
         static EMPTY: &[u8] = &[];
-        with_segment_oft_len!(
+        with_segment!(
             self,
             oft,
             len,
@@ -175,7 +171,7 @@ impl RingSlice {
             }
             true
         };
-        with_segment_oft!(
+        with_segment!(
             self,
             oft,
             |p, l| {
@@ -199,7 +195,7 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to<W: crate::BufWriter>(&self, oft: usize, w: &mut W) -> std::io::Result<()> {
-        with_segment_oft!(
+        with_segment!(
             self,
             oft,
             |p, l| w.write_all(from_raw_parts(p, l)),
@@ -237,10 +233,8 @@ impl RingSlice {
     /// copy 数据到切片/数组中，目前暂时不需要oft，有需求后再加
     #[inline]
     pub fn copy_to_slice(&self, s: &mut [u8]) {
-        with_segment_oft_len!(
+        with_segment!(
             self,
-            0,
-            s.len(),
             |p, l| {
                 copy_nonoverlapping(p, s.as_mut_ptr(), l);
             },
@@ -252,7 +246,7 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to_cmp(&self, s: &mut [u8], oft: usize, len: usize) {
-        with_segment_oft_len!(
+        with_segment!(
             self,
             oft,
             len,
@@ -394,7 +388,7 @@ impl RingSlice {
     #[inline]
     pub fn start_with(&self, oft: usize, s: &[u8]) -> bool {
         if oft + s.len() <= self.len() {
-            with_segment_oft!(
+            with_segment!(
                 self,
                 oft,
                 |p, _l| { from_raw_parts(p, s.len()) == s },
