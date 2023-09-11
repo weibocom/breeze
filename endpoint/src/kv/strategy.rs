@@ -86,10 +86,8 @@ impl Strategist {
         Self::KVTime(KVTime::new(
             item.basic.db_name.clone(),
             item.basic.db_count,
-            item.backends
-                .get(ARCHIVE_DEFAULT_KEY)
-                .expect("ARCHIVE_DEFAULT_KEY null")
-                .len() as u32,
+            //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
+            item.backends.iter().next().unwrap().1.len() as u32,
             item.backends.keys().cloned().collect(),
         ))
     }
