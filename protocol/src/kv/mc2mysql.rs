@@ -6,7 +6,7 @@ use super::common::proto::codec::PacketCodec;
 use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use crate::HashedCommand;
-use crate::{Error::MysqlError, Result};
+use crate::{Error::FlushOnClose, Result};
 use ds::RingSlice;
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -56,7 +56,7 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
         let val = match op {
             OP_ADD | OP_SET => Some(req.value()),
             OP_GET | OP_GETK | OP_DEL => None,
-            _ => return Err(MysqlError(format!("not support op:{op}").into_bytes())),
+            _ => return Err(FlushOnClose(format!("not support op:{op}").into_bytes())),
         };
         Ok(Self {
             op,
@@ -181,7 +181,7 @@ impl MysqlBuilder {
         packet.finish_current_packet();
         packet
             .check_total_payload_len()
-            .map_err(|_| MysqlError("payload > max_allowed_packet".to_owned().into_bytes()))?;
+            .map_err(|_| FlushOnClose("payload > max_allowed_packet".to_owned().into_bytes()))?;
         let packet: Vec<u8> = packet.into();
         log::debug!(
             "build mysql packet:{}",
