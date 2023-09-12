@@ -1,13 +1,42 @@
 use crate::msgque::mcq::text::error::McqError;
 
 #[derive(Debug)]
+pub struct ToVec(either::Either<&'static [u8], Vec<u8>>);
+
+impl From<&'static [u8]> for ToVec {
+    #[inline]
+    fn from(s: &'static [u8]) -> Self {
+        Self(either::Either::Left(s))
+    }
+}
+impl From<Vec<u8>> for ToVec {
+    #[inline]
+    fn from(v: Vec<u8>) -> Self {
+        Self(either::Either::Right(v))
+    }
+}
+use std::ops::Deref;
+impl Deref for ToVec {
+    type Target = [u8];
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        match &self.0 {
+            either::Either::Left(s) => s,
+            either::Either::Right(v) => v.as_slice(),
+        }
+    }
+}
+
+#[derive(Debug)]
 #[repr(u8)]
 pub enum Error {
     // Redis 的扩展Error目前都是FlushOnClose
     // Redis(RedisError),
     Mcq(McqError),
     // 关闭连接前需要把（静态/动态）异常消息发出去
-    FlushOnClose(Vec<u8>),
+    FlushOnClose(ToVec),
+    // TODO: 暂时保留，等endpoint merge完毕后再清理，避免merge冲突导致的ci测试问题
+    MysqlError(Vec<u8>),
     Eof,
     UnexpectedData,
     QueueClosed,

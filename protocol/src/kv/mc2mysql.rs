@@ -56,7 +56,11 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
         let val = match op {
             OP_ADD | OP_SET => Some(req.value()),
             OP_GET | OP_GETK | OP_DEL => None,
-            _ => return Err(FlushOnClose(format!("not support op:{op}").into_bytes())),
+            _ => {
+                return Err(FlushOnClose(
+                    format!("not support op:{op}").into_bytes().into(),
+                ))
+            }
         };
         Ok(Self {
             op,
@@ -181,7 +185,7 @@ impl MysqlBuilder {
         packet.finish_current_packet();
         packet
             .check_total_payload_len()
-            .map_err(|_| FlushOnClose("payload > max_allowed_packet".to_owned().into_bytes()))?;
+            .map_err(|_| FlushOnClose(b"payload > max_allowed_packet"[..].into()))?;
         let packet: Vec<u8> = packet.into();
         log::debug!(
             "build mysql packet:{}",

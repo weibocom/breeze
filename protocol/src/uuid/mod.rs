@@ -59,7 +59,7 @@ impl Protocol for Uuid {
             Ok(())
         } else {
             Err(Error::FlushOnClose(
-                b"SERVER_ERROR uuid no available\r\n".to_vec(),
+                b"SERVER_ERROR uuid no available\r\n"[..].into(),
             ))
         }
     }

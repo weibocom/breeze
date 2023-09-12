@@ -41,6 +41,7 @@ sha2 = "0.10.0"
 url = "2.1"
 percent-encoding = "2.1.0"
 seq-macro = "*"
+either = "1.6.1"
 
 [features]
 max_allowed_packet = []
