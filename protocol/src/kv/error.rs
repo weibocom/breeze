@@ -24,8 +24,8 @@ impl Into<crate::Error> for Error {
         match self {
             Self::IO(e) => crate::Error::IO(e),
             Self::AuthInvalid(_) => crate::Error::AuthFailed,
-            Self::RequestInvalid(packet) => crate::Error::FlushOnClose(packet),
-            Self::RequestInvalidKey(packet) => crate::Error::FlushOnClose(packet),
+            Self::RequestInvalid(packet) => crate::Error::FlushOnClose(packet.into()),
+            Self::RequestInvalidKey(packet) => crate::Error::FlushOnClose(packet.into()),
             Self::UnhandleResponseError(packet) => {
                 // 该异常需要构建成response，不能转为error传出
                 panic!("kv unhanlde rsp err: {:?}", packet);
