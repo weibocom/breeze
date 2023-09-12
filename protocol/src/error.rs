@@ -1,37 +1,8 @@
 use crate::msgque::mcq::text::error::McqError;
 
 #[derive(Debug)]
-pub struct ToVec(either::Either<&'static [u8], Vec<u8>>);
-
-impl From<&'static [u8]> for ToVec {
-    #[inline]
-    fn from(s: &'static [u8]) -> Self {
-        Self(either::Either::Left(s))
-    }
-}
-impl From<Vec<u8>> for ToVec {
-    #[inline]
-    fn from(v: Vec<u8>) -> Self {
-        Self(either::Either::Right(v))
-    }
-}
-use std::ops::Deref;
-impl Deref for ToVec {
-    type Target = [u8];
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        match &self.0 {
-            either::Either::Left(s) => s,
-            either::Either::Right(v) => v.as_slice(),
-        }
-    }
-}
-
-#[derive(Debug)]
 #[repr(u8)]
 pub enum Error {
-    // Redis 的扩展Error目前都是FlushOnClose
-    // Redis(RedisError),
     Mcq(McqError),
     // 关闭连接前需要把（静态/动态）异常消息发出去
     FlushOnClose(ToVec),
@@ -51,20 +22,12 @@ pub enum Error {
     ResponseInvalidMagic,
     RequestProtocolInvalid,
     ResponseQuiet, // mc的response返回了quite请求
-    //RequestProtocolInvalidNumber(&'static str),
-    //RequestProtocolInvalidStar(&'static str),
-    //RequestProtocolInvalidNumberZero(&'static str),
-    //RequestProtocolInvalidDigit(&'static str),
-    //RequestProtocolInvalidNoReturn(&'static str),
     ResponseProtocolInvalid,
     ProtocolNotSupported,
-    //IndexOutofBound,
-    //Inner,
     TopChanged,
     WriteResponseErr,
     NoResponseFound,
     OpCodeNotSupported(u16),
-    // CommandNotSupported,
     BufferFull,
     Quit,
     Timeout(u16),
@@ -91,30 +54,36 @@ impl std::error::Error for Error {}
 use std::fmt::{self, Display, Formatter};
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            //Error::RequestProtocolInvalid(desc) => write!(f, "{}", desc),
-            //Error::RequestProtocolInvalidNumber(desc) => write!(f, "{}", desc),
-            //Error::RequestProtocolInvalidStar(desc) => write!(f, "{}", desc),
-            // Error::RequestProtocolInvalidNumberZero(desc) => write!(f, "{}", desc),
-            //// Error::RequestProtocolInvalidDigit(desc) => write!(f, "{}", desc),
-            //Error::RequestProtocolInvalidNoReturn(desc) => write!(f, "{}", desc),
-            _ => write!(f, "error: {:?}", self),
-        }
+        write!(f, "{:?}", self)
     }
 }
 
-#[allow(dead_code)]
-pub enum ProtocolType {
-    Request,
-    Response,
+#[derive(Debug)]
+pub enum ToVec {
+    Slice(&'static [u8]),
+    Vec(Vec<u8>),
 }
 
-impl Error {
+impl From<&'static [u8]> for ToVec {
     #[inline]
-    pub fn proto_not_support(&self) -> bool {
-        match self {
-            Self::ProtocolNotSupported => true,
-            _ => false,
+    fn from(s: &'static [u8]) -> Self {
+        Self::Slice(s)
+    }
+}
+impl From<Vec<u8>> for ToVec {
+    #[inline]
+    fn from(v: Vec<u8>) -> Self {
+        Self::Vec(v)
+    }
+}
+use std::ops::Deref;
+impl Deref for ToVec {
+    type Target = [u8];
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        match &self {
+            Self::Slice(s) => s,
+            Self::Vec(v) => v.as_slice(),
         }
     }
 }
