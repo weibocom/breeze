@@ -4,27 +4,10 @@ pub type FlagExt = u64;
 pub struct Flag {
     op_code: OpCode,
     op: Operation,
-    //try_next_type: TryNextType,
     sentonly: bool,
-    //status_ok: bool,
     noforward: bool,
-    //nil_converted: bool, //是否进行了nil转换，用于设置req的rsp是否进行了nil convert【部分multi请求需要】
     v: FlagExt,
 }
-
-//impl std::ops::Deref for Flag {
-//    type Target = u64;
-//    #[inline]
-//    fn deref(&self) -> &Self::Target {
-//        &self.v
-//    }
-//}
-//impl std::ops::DerefMut for Flag {
-//    #[inline]
-//    fn deref_mut(&mut self) -> &mut Self::Target {
-//        &mut self.v
-//    }
-//}
 
 impl Ext for Flag {
     #[inline]
@@ -58,8 +41,6 @@ impl Ext for FlagExt {
 }
 
 impl Flag {
-    // first = true 满足所有条件1. 当前请求是multiget；2. 拆分了多个子请求；3. 是`第一`个子请求；
-    // last  = true 满足所有条件1. 当前请求是multiget；2. 拆分了多个子请求；3. 是`最后`一个子请求；
     #[inline]
     pub fn from_op(op_code: OpCode, op: Operation) -> Self {
         Self {
@@ -69,30 +50,10 @@ impl Flag {
         }
     }
 
-    //#[inline]
-    //pub fn set_try_next_type(&mut self, try_type: TryNextType) {
-    //    self.try_next_type = try_type
-    //}
-
-    //#[inline]
-    //pub fn try_next_type(&self) -> TryNextType {
-    //    self.try_next_type.clone()
-    //}
-
     #[inline]
     pub fn new() -> Self {
         Self::default()
     }
-    //#[inline]
-    //pub fn set_status_ok(&mut self, ok: bool) -> &mut Self {
-    //    debug_assert_eq!(self.ok(), false);
-    //    self.status_ok = ok;
-    //    self
-    //}
-    //#[inline]
-    //pub fn ok(&self) -> bool {
-    //    self.status_ok
-    //}
     #[inline]
     pub fn set_sentonly(&mut self, sentonly: bool) -> &mut Self {
         self.sentonly = sentonly;
@@ -147,15 +108,6 @@ impl Flag {
     pub fn ext_mut(&mut self) -> &mut u64 {
         &mut self.v
     }
-    //#[inline]
-    //pub fn set_nil_convert(&mut self) -> &mut Self {
-    //    self.nil_converted = true;
-    //    self
-    //}
-    //#[inline]
-    //pub fn nil_converted(&self) -> bool {
-    //    self.nil_converted
-    //}
 }
 
 #[derive(Debug, Clone)]

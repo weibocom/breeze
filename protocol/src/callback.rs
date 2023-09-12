@@ -176,10 +176,6 @@ impl CallbackContext {
         self.done.load(Acquire)
     }
 
-    // #[inline]
-    // fn response_ok(&self) -> bool {
-    //     unsafe { self.inited() && self.unchecked_response().ok() }
-    // }
     #[inline]
     pub fn on_err(&mut self, err: Error) {
         // 正常err场景，仅仅在debug时check

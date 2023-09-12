@@ -5,7 +5,7 @@ mod shard_test;
 //mod memcached_text;
 //mod mem;
 mod protocols;
-mod queue;
+//mod queue;
 // mod redis;
 mod hash_test;
 mod redis;
