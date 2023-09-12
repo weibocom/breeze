@@ -24,22 +24,11 @@ impl UuidConst {
 pub trait Uuid {
     // return UNIX timestamp
     fn unix_secs(self) -> i64;
-    fn year(self) -> u16;
 }
 
 impl Uuid for i64 {
     fn unix_secs(self) -> i64 {
         (self >> UuidConst::IDC_SEQ_BIT_LENGTH) + UuidConst::ID_OFFSET
-    }
-    fn year(self) -> u16 {
-        use chrono::{Datelike, TimeZone};
-        use chrono_tz::Asia::Shanghai;
-        let s = self.unix_secs();
-        chrono::Utc
-            .timestamp_opt(s, 0)
-            .unwrap()
-            .with_timezone(&Shanghai)
-            .year() as u16
     }
 }
 

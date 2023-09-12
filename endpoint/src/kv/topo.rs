@@ -20,9 +20,8 @@ use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
 
-use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY_U16};
+use super::config::MysqlNamespace;
 use super::strategy::Strategist;
-
 #[derive(Clone)]
 pub struct KvService<B, E, Req, P> {
     // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -30,8 +29,8 @@ pub struct KvService<B, E, Req, P> {
     // 默认不同sharding的url。第0个是master
     // direct_shards_url: Vec<Vec<String>>,
     // 按时间维度分库分表
-    archive_shards: HashMap<u16, Vec<Shard<E>>>,
-    archive_shards_url: HashMap<u16, Vec<Vec<String>>>,
+    archive_shards: HashMap<String, Vec<Shard<E>>>,
+    archive_shards_url: HashMap<String, Vec<Vec<String>>>,
     // sql: HashMap<String, String>,
     // hasher: Hasher,
     // distribute: Distribute,
@@ -112,7 +111,7 @@ where
             req.origin_data().key()
         };
         //定位年库
-        let year = self.strategist.year(&key);
+        let year = self.strategist.get_key(&key).expect("key not found");
         let shards = self
             .archive_shards
             .get(&year)
@@ -208,7 +207,7 @@ where
             // todo: 过多clone ，先跑通
             for i in ns.backends.iter() {
                 self.archive_shards_url.insert(
-                    i.0.parse::<u16>().unwrap_or(ARCHIVE_DEFAULT_KEY_U16),
+                    i.0.clone().to_string(),
                     i.1.clone()
                         .iter()
                         .map(|shard| shard.split(",").map(|s| s.to_string()).collect())
@@ -290,7 +289,12 @@ where
             // 到这之后，所有的shard都能解析出ip
             let mut old = HashMap::with_capacity(i.1.len());
 
-            for shard in self.archive_shards.entry(*i.0).or_default().split_off(0) {
+            for shard in self
+                .archive_shards
+                .entry(i.0.to_string())
+                .or_default()
+                .split_off(0)
+            {
                 old.entry(shard.master.0)
                     .or_insert(Vec::new())
                     .push(shard.master.1);
@@ -327,7 +331,10 @@ where
                 }
                 let shard = Shard::selector(self.cfg.is_local(), master_addr, master, replicas);
 
-                self.archive_shards.entry(*i.0).or_default().push(shard);
+                self.archive_shards
+                    .entry(i.0.to_string())
+                    .or_default()
+                    .push(shard);
             }
 
             assert_eq!(

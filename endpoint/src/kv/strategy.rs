@@ -1,4 +1,4 @@
-use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY, ARCHIVE_DEFAULT_KEY_U16};
+use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY};
 use super::kvtime::KVTime;
 use ds::RingSlice;
 
@@ -34,7 +34,7 @@ impl Postfix {
 pub trait Strategy {
     fn distribution(&self) -> &DBRange;
     fn hasher(&self) -> &Hasher;
-    fn year(&self, key: &RingSlice) -> u16;
+    fn get_key(&self, key: &RingSlice) -> Option<String>;
     fn build_kvcmd(&self, req: &HashedCommand, key: RingSlice) -> Result<Vec<u8>>;
 }
 
@@ -51,7 +51,7 @@ impl Default for Strategist {
             "status".to_string(),
             32u32,
             8u32,
-            vec![ARCHIVE_DEFAULT_KEY_U16],
+            vec![ARCHIVE_DEFAULT_KEY.to_string()],
         ))
     }
 }
@@ -65,14 +65,11 @@ impl Strategist {
                 .get(ARCHIVE_DEFAULT_KEY)
                 .expect("ARCHIVE_DEFAULT_KEY null")
                 .len() as u32,
-            item.backends
-                .keys()
-                .map(|x| x.parse::<u16>().unwrap_or(ARCHIVE_DEFAULT_KEY_U16))
-                .collect(),
+            item.backends.keys().cloned().collect(),
         ))
     }
 
-    pub fn new(db_name: String, db_count: u32, shards: u32, years: Vec<u16>) -> Self {
+    pub fn new(db_name: String, db_count: u32, shards: u32, years: Vec<String>) -> Self {
         Self::KVTime(KVTime::new(db_name, db_count, shards, years))
     }
 }

@@ -1,4 +1,4 @@
-use super::config::ARCHIVE_DEFAULT_KEY_U16;
+use super::config::ARCHIVE_DEFAULT_KEY;
 use super::{
     strategy::{to_i64, Postfix, Strategy},
     uuid::Uuid,
@@ -21,11 +21,11 @@ pub struct KVTime {
     table_postfix: Postfix,
     hasher: Hasher,
     distribution: DBRange,
-    years: Vec<u16>,
+    years: Vec<String>,
 }
 
 impl KVTime {
-    pub fn new(name: String, db_count: u32, shards: u32, years: Vec<u16>) -> Self {
+    pub fn new(name: String, db_count: u32, shards: u32, years: Vec<String>) -> Self {
         Self {
             db_prefix: name.clone(),
             table_prefix: name.clone(),
@@ -90,7 +90,6 @@ impl KVTime {
     // Backslash (\) and the quote character used to quote the string must be escaped. In certain client environments, it may also be necessary to escape NUL or Control+Z.
     // 应该只需要转义上面的
 }
-
 impl Strategy for KVTime {
     fn distribution(&self) -> &DBRange {
         &self.distribution
@@ -98,14 +97,19 @@ impl Strategy for KVTime {
     fn hasher(&self) -> &Hasher {
         &self.hasher
     }
-    fn year(&self, key: &RingSlice) -> u16 {
+    fn get_key(&self, key: &RingSlice) -> Option<String> {
         let uuid = to_i64(key);
-        let year = uuid.year();
-
+        let s = uuid.unix_secs();
+        let year = chrono::Utc
+            .timestamp_opt(s, 0)
+            .unwrap()
+            .with_timezone(&Shanghai)
+            .format("%Y")
+            .to_string();
         if self.years.contains(&year) {
-            year
+            Some(year)
         } else {
-            ARCHIVE_DEFAULT_KEY_U16
+            Some(ARCHIVE_DEFAULT_KEY.to_string())
         }
     }
     //todo: sql_name 枚举
