@@ -23,7 +23,6 @@ impl<T: Clone> CowWriteHandle<T> {
             .compare_exchange(false, true, AcqRel, Acquire)
             .expect("lock failed");
 
-        // let guard = self.get();
         // 在r_handle.update中更新epoch为false.
         self.r_handle.update(t);
 
@@ -31,8 +30,6 @@ impl<T: Clone> CowWriteHandle<T> {
             .epoch
             .compare_exchange(true, false, AcqRel, Acquire)
             .expect("unlock failed");
-
-        // drop(guard);
     }
 }
 

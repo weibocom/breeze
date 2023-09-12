@@ -66,14 +66,21 @@ impl<T: Addr> Distance<T> {
         assert_ne!(replicas.len(), 0);
         let mut me = Self::new();
 
+        // 资源启用可用区
         let len_local = if region_enabled {
             // 开启可用区，local_len是当前可用区资源实例副本长度；需求详见#658
             // 按distance选local
             // 1. 距离小于等于4为local
             // 2. local为0，则全部为local
-            let l = replicas.sort(Vec::new(), |d, _| {
-                d <= discovery::distance::DISTANCE_VAL_REGION
-            });
+            let l = replicas.sort_by_region(
+                Vec::new(),
+                context::get()
+                    .region
+                    .is_empty()
+                    .then(|| None)
+                    .unwrap_or_else(|| Some(context::get().region.as_str())),
+                |d, _| d <= discovery::distance::DISTANCE_VAL_REGION,
+            );
             if l == 0 {
                 log::warn!(
                     "too few instance in region:{} total:{}, {:?}",
@@ -111,6 +118,7 @@ impl<T: Addr> Distance<T> {
             .map(|r| (r, BackendQuota::default()))
             .collect();
     }
+    //和新建不等价，谨慎使用
     pub fn update(&mut self, replicas: Vec<T>, topn: usize, is_performance: bool) {
         self.backend_quota = is_performance; // 性能模式当前实现为按时间quota访问后端资源
         self.refresh(replicas);
@@ -258,7 +266,7 @@ impl<T: Addr> std::fmt::Debug for Distance<T> {
             "len: {}, local: {} backends:{:?}",
             self.len(),
             self.len_local,
-            self.replicas.first().map(|s| s.addr())
+            self.replicas.iter().map(|s| s.addr()).collect::<Vec<_>>()
         )
     }
 }

@@ -47,7 +47,6 @@ pub(super) async fn process_one(
 
     log::info!("service inited. {} ", quard);
     let switcher = ds::Switcher::from(true);
-    // let top = Arc::new(RefreshTopology::from(rx));
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
 
     // 服务注册完成，侦听端口直到成功。
@@ -81,16 +80,6 @@ async fn _process_one(
         let p = p.clone();
         let _path = format!("{:?}", path);
         log::debug!("connection established:{:?}", _path);
-        // let ctop;
-        // loop {
-        //     if let Some(t) = top.build() {
-        //         ctop = Some(t);
-        //         break;
-        //     }
-        //     log::info!("build top failed, try later:{}", quard.service());
-        //     tokio::time::sleep(Duration::from_millis(10)).await;
-        // }
-        // let ctop = RefreshTopology::from(top.clone());
         let ctop = CheckedTopology::from(top.clone());
         let metrics = metrics.clone();
         spawn(async move {

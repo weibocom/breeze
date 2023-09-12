@@ -1,5 +1,5 @@
 extern crate lazy_static;
-use clap::{FromArgMatches, IntoApp, Parser};
+use clap::{CommandFactory, FromArgMatches, Parser};
 use lazy_static::lazy_static;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -104,6 +104,9 @@ pub struct ContextOption {
     #[clap(long, help("private key path"), default_value("/var/private_key.pem"))]
     pub key_path: String,
 
+    #[clap(long, help("region"), default_value(""))]
+    pub region: String,
+
     // api参数，目前只有这一个差异参数，先放这里
     #[clap(long, help("api whitelist host"), default_value("localhost"))]
     pub whitelist_host: String,
@@ -132,7 +135,7 @@ lazy_static! {
 impl ContextOption {
     #[inline]
     pub fn from_os_args() -> Self {
-        let app = <Self as IntoApp>::command().version(&SHORT_VERSION[..]);
+        let app = <Self as CommandFactory>::command().version(&SHORT_VERSION[..]);
         let matches = app.get_matches();
         <Self as FromArgMatches>::from_arg_matches(&matches).expect("parse args failed")
     }

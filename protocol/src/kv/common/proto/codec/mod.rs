@@ -362,6 +362,19 @@ pub struct PacketCodec {
     buf: Vec<u8>,
 }
 
+impl core::fmt::Write for PacketCodec {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        self.push_str(s);
+        Ok(())
+    }
+
+    fn write_char(&mut self, c: char) -> std::fmt::Result {
+        debug_assert!(c as u32 <= u8::MAX as u32);
+        self.push(c as u8);
+        Ok(())
+    }
+}
+
 impl PacketCodec {
     // /// Sets sequence id to `0`.
     // pub fn reset_seq_id(&mut self) {

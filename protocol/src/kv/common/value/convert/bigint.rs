@@ -8,6 +8,8 @@
 
 //! This module implements conversion from/to `Value` for `BigInt` and `BigUint` types.
 
+#![cfg(feature = "bigdecimal")]
+
 use num_bigint::{BigInt, BigUint};
 use num_traits::{FromPrimitive, ToPrimitive};
 

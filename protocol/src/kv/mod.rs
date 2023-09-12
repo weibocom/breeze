@@ -1,5 +1,5 @@
 mod client;
-mod common;
+pub mod common;
 mod mcpacket;
 
 mod error;
@@ -7,9 +7,13 @@ mod packet;
 mod reqpacket;
 mod rsppacket;
 
+mod mc2mysql;
+pub use mc2mysql::{MysqlBuilder, Strategy};
+
 use self::common::proto::Text;
 use self::common::query_result::{Or, QueryResult};
 use self::common::row::convert::from_row;
+
 use self::error::Result;
 use bytes::BufMut;
 pub use common::proto::codec::PacketCodec;
@@ -124,9 +128,9 @@ impl Protocol for Kv {
         Ok(())
     }
 
-    fn build_request(&self, req: &mut HashedCommand, new_req: MemGuard) {
-        req.reshape(new_req);
-    }
+    //fn build_request(&self, req: &mut HashedCommand, new_req: MemGuard) {
+    //    req.reshape(new_req);
+    //}
 
     // 解析mysql response；在write response的时候，再进行协议格式转换
     fn parse_response<S: crate::Stream>(&self, data: &mut S) -> crate::Result<Option<Command>> {

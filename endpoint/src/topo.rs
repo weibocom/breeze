@@ -236,15 +236,15 @@ use crate::msgque::topo::MsgQue;
 use crate::cacheservice::topo::CacheService;
 use crate::phantomservice::topo::PhantomService;
 use crate::redisservice::topo::RedisService;
+use crate::uuid::topo::UuidService;
 
 define_topology! {
     //MsgQue<B, E, R, P>, MsgQue, "mq";
     RedisService<B, E, R, P>, RedisService, "rs";
     CacheService<B, E, R, P>, CacheService, "cs";
     PhantomService<B, E, R, P>, PhantomService, "pt";
-    // TODO 待client修改完毕，去掉
-    // MysqlService<B, E, R, P>, MysqlService, "mysql"
-    KvService<B, E, R, P>, KvService, "kv"
+    KvService<B, E, R, P>, KvService, "kv";
+    UuidService<B, E, R, P>, UuidService, "uuid"
 }
 
 // 从环境变量BREEZE_LOCAL的值获取是否开启后端资源访问的性能模式

@@ -18,6 +18,7 @@
 //!     zcount、zlexcount、zscore、zscan
 //! - set基本操作:
 //!     sadd、smembers、srem、sismember、scard、spop、sscan
+//!     sinter、sunion、sdiff、sinterstore、sunionstore、sdiffstore
 //! - list基本操作, rpush, llen, lpop, lrange, lset
 //! - 单个zset基本操作, zadd, zrangebyscore withscore
 //! - 单个long set基本操作, lsset, lsdump, lsput, lsgetall, lsdel, lslen, lsmexists, lsdset

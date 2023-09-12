@@ -161,7 +161,7 @@ impl_seq_repr!(u32, LeU32);
 
 // 生命周期参数后续统一清理 fishermen
 /// Same as `RawCons` but for a sequence of values.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct RawSeq<U>(pub RingSlice, PhantomData<U>);
 // pub struct RawSeq<'a, T: IntRepr, U>(pub Cow<'a, [T::Primitive]>, PhantomData<U>);

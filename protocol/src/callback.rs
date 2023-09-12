@@ -43,7 +43,7 @@ pub struct CallbackContext {
     request: HashedCommand,
     response: MaybeUninit<Command>,
     start: Instant, // 请求的开始时间
-    waker: *const AtomicWaker,
+    waker: *const Arc<AtomicWaker>,
     callback: CallbackPtr,
     quota: Option<BackendQuota>,
 }
@@ -52,7 +52,7 @@ impl CallbackContext {
     #[inline]
     pub fn new(
         req: HashedCommand,
-        waker: &AtomicWaker,
+        waker: *const Arc<AtomicWaker>,
         cb: CallbackPtr,
         first: bool,
         last: bool,
@@ -162,10 +162,11 @@ impl CallbackContext {
             // 需要重试或回写
             return self.goon();
         }
+        //防止markdone后，在pipeline中req被释放，req和waker被覆写
+        let waker = unsafe { self.waker.as_ref().unwrap().clone() };
         self.mark_done();
         if !self.async_mode {
-            // 说明有请求在pending
-            unsafe { (&*self.waker).wake() }
+            waker.wake()
         }
     }
 

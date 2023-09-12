@@ -2,7 +2,7 @@ use std::{mem::size_of, num::NonZeroUsize};
 
 use bytes::BufMut;
 
-use byteorder::LittleEndian;
+use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use ds::RingSlice;
 use rand::Rng;
 #[test]
@@ -79,22 +79,57 @@ fn test_ring_slice() {
 
 #[test]
 fn test_read_number() {
-    let cap = 1024;
-    let mut data: Vec<u8> = (0..cap)
-        .map(|_| rand::random::<u8>().max(b'a').min(b'z'))
-        .collect();
+    let cap = 128;
+    let mut data: Vec<u8> = (0..cap).map(|_| rand::random::<u8>()).collect();
     let ptr = data.as_mut_ptr();
-    std::mem::forget(data);
-    // 运行1000次，随机写入一个数
-    for _ in 0..1000 {
-        let start = rand::random::<u32>() as usize;
-        let len = (rand::random::<usize>() % cap).max(16);
-        let end = start + len;
-        let rs = RingSlice::from(ptr, cap, start, end);
-        let oft: usize = rand::thread_rng().gen_range(0..len - 8);
-        assert_eq!(rs.read_u64_be(oft), rs.read_num_be(oft));
+    for _ in 0..100 {
+        let start = rand::thread_rng().gen_range(0..cap);
+        let rs = RingSlice::from(ptr, cap, start, start + cap);
+        let mut c = Vec::with_capacity(cap);
+        c.extend_from_slice(&data[start..]);
+        c.extend_from_slice(&data[..start]);
+
+        for i in 0..cap - 8 {
+            let slice = &c[i..];
+            assert_eq!(BigEndian::read_u16(slice), rs.read_u16_be(i));
+            assert_eq!(LittleEndian::read_i16(slice), rs.read_i16_le(i));
+            assert_eq!(BigEndian::read_u32(slice), rs.read_u32_be(i));
+            assert_eq!(LittleEndian::read_i32(slice), rs.read_i32_le(i));
+            assert_eq!(BigEndian::read_u64(slice), rs.read_u64_be(i));
+            assert_eq!(LittleEndian::read_i64(slice), rs.read_i64_le(i));
+            assert_eq!(LittleEndian::read_i24(slice), rs.read_i24_le(i));
+            assert_eq!(LittleEndian::read_u48(slice), rs.read_u48_le(i));
+
+            assert_eq!(LittleEndian::read_i24(slice), rs.read_i24_le_cmp(i));
+            assert_eq!(LittleEndian::read_u48(slice), rs.read_u48_le_cmp(i));
+
+            assert_eq!(BigEndian::read_i24(slice), rs.read_i24_be_cmp(i),);
+            assert_eq!(BigEndian::read_u48(slice), rs.read_u48_be_cmp(i));
+
+            assert_eq!(BigEndian::read_u16(slice), rs.read_u16_be_cmp(i));
+            assert_eq!(LittleEndian::read_i16(slice), rs.read_i16_le_cmp(i));
+            assert_eq!(BigEndian::read_u32(slice), rs.read_u32_be_cmp(i));
+            assert_eq!(LittleEndian::read_i32(slice), rs.read_i32_le_cmp(i));
+            assert_eq!(BigEndian::read_u64(slice), rs.read_u64_be_cmp(i));
+            assert_eq!(LittleEndian::read_i64(slice), rs.read_i64_le_cmp(i));
+        }
     }
-    let _ = unsafe { Vec::from_raw_parts(ptr, 0, cap) };
+}
+
+#[test]
+fn read_number_one() {
+    let v = vec![
+        250, 63, 209, 177, 238, 67, 85, 116, 95, 81, 12, 62, 104, 150, 17, 43, 119, 187, 244, 129,
+        17, 7, 205, 211, 229, 132, 223, 237, 172, 21, 157, 168, 78, 37, 10, 84, 195, 177, 70, 98,
+        201, 244, 157, 98, 105, 69, 32, 80, 149, 122, 2, 89, 138, 133, 219, 72, 67, 248, 86, 146,
+        233, 124, 31, 162, 137, 56, 81, 59, 11, 160, 158, 51, 226, 200, 242, 14, 36, 254, 39, 243,
+        27, 168, 67, 184, 100, 175, 209, 131, 217, 229, 175, 66, 191, 74, 61, 72, 183, 36, 98, 68,
+        240, 42, 77, 225, 67, 208, 203, 151, 240, 154, 105, 127, 237, 27, 10, 213, 48, 54, 13, 22,
+        69, 171, 0, 223, 68, 219, 84, 149,
+    ];
+    let rs = RingSlice::from_vec(&v);
+    assert_eq!(rs.read_i24_le_cmp(0), LittleEndian::read_i24(&v));
+    assert_eq!(rs.read_i24_be_cmp(0), BigEndian::read_i24(&v));
 }
 
 #[test]
@@ -119,9 +154,59 @@ fn copy_to_slice() {
     let mut slice_long = [0_u8; 6];
     slice.copy_to_slice(&mut slice_long[3..6]);
     assert_eq!(slice_long, [0, 0, 0, 0, 1, 2]);
+
+    let cap = 1024;
+    let mask = cap - 1;
+    let raw: Vec<u8> = (0..cap).map(|_| rand::random::<u8>()).collect();
+    let ptr = raw.as_ptr();
+    let mut rng = rand::thread_rng();
+    let mut dst = Vec::with_capacity(cap);
+    unsafe { dst.set_len(cap) };
+    for _i in 0..100 {
+        let (start, end) = match rng.gen_range(0..10) {
+            0 => (0, cap),
+            1 => (cap, cap * 2),
+            2 => {
+                let start = rng.gen::<usize>() & mask;
+                (start, start + cap)
+            }
+            _ => {
+                let start = rng.gen::<usize>() & mask;
+                let end = start + rng.gen_range(1..cap);
+                (start, end)
+            }
+        };
+        let rs = RingSlice::from(ptr, cap, start, end);
+        let mut slice = Vec::with_capacity(end - start);
+        // 把从start..end的内容复制到slice中
+        if end <= cap {
+            slice.extend_from_slice(&raw[start..end]);
+        } else {
+            slice.extend_from_slice(&raw[start..cap]);
+            let left = end - cap;
+            slice.extend_from_slice(&raw[0..left]);
+        }
+
+        // 验证64次
+        for _ in 0..64 {
+            // 随机选一个oft与len
+            let (r_start, r_len) = match rng.gen_bool(0.5) {
+                true => (0, rs.len()),
+                false => {
+                    let r_start = rng.gen_range(0..rs.len());
+                    let r_len = rng.gen_range(0..rs.len() - r_start);
+                    (r_start, r_len)
+                }
+            };
+            rs.copy_to_cmp(&mut dst[..], r_start, r_len);
+            assert_eq!(&dst[0..r_len], &slice[r_start..r_start + r_len]);
+            dst.fill(0);
+            rs.copy_to_r(&mut dst, r_start..r_start + r_len);
+            assert_eq!(&dst[0..r_len], &slice[r_start..r_start + r_len]);
+        }
+    }
 }
 
-use byteorder::ByteOrder;
 #[test]
 fn check_header() {
     let header = [1, 0, 0, 1, 1];

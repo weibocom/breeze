@@ -21,7 +21,7 @@ rt = { path = "../rt" }
 ds = { path = "../ds" }
 api = { path = "../api", optional = true}
 
-backtrace = "0.3.63"
+backtrace = { version = "0.3.63", optional = true }
 lazy_static = "1.4.0"
 
 tokio.workspace = true
@@ -33,12 +33,13 @@ rlimit = "0.8.3"
 # rocket for restful api
 rocket = { version = "0.5.0-rc.3", features = [], default-features = false , optional = true}
 #rocket_async_compression = "0.1.2"
-reqwest = { version = "0.11.4", default-features = false }
+#reqwest = { version = "0.11.4", default-features = false }
 
-hyper = { version = "0.14",  features = ["server", "stream"]}
+hyper = { version = "0.14",  features = ["server", "stream", "tcp", "client"]}
 
 
 [features]
 default = ["http"]
 http = []
 console-api = ["dep:rocket", "dep:api"]
+panic-hook = ["dep:backtrace"]

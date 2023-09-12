@@ -9,7 +9,7 @@
 use bytes::BufMut;
 use ds::RingSlice;
 use lexical::parse;
-use regex::bytes::Regex;
+//use regex::bytes::Regex;
 use smallvec::SmallVec;
 use uuid::Uuid;
 
@@ -46,11 +46,11 @@ use crate::kv::common::{
 
 // use self::session_state_change::SessionStateChange;
 
-lazy_static::lazy_static! {
-    static ref MARIADB_VERSION_RE: Regex =
-        Regex::new(r"^5.5.5-(\d{1,2})\.(\d{1,2})\.(\d{1,3})-MariaDB").unwrap();
-    static ref VERSION_RE: Regex = Regex::new(r"^(\d{1,2})\.(\d{1,2})\.(\d{1,3})(.*)").unwrap();
-}
+//lazy_static::lazy_static! {
+//static ref MARIADB_VERSION_RE: Regex =
+//    Regex::new(r"^5.5.5-(\d{1,2})\.(\d{1,2})\.(\d{1,3})-MariaDB").unwrap();
+//static ref VERSION_RE: Regex = Regex::new(r"^(\d{1,2})\.(\d{1,2})\.(\d{1,3})(.*)").unwrap();
+//}
 
 macro_rules! define_header {
     ($name:ident, $err:ident($msg:literal), $val:literal) => {
@@ -1604,28 +1604,43 @@ impl HandshakePacket {
         // 参考上面的代码，彻底稳定前，暂时不要清理 fishermen
         let version = self.server_version_ref();
         let (l, r) = version.data();
-        match r.len() {
-            0 => VERSION_RE.captures(l).map(|captures| {
-                // Should not panic because validated with regex
-                (
-                    parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
-                    parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
-                    parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
-                )
-            }),
-            _ => {
-                let mut data = Vec::with_capacity(version.len());
-                version.copy_to_vec(&mut data);
-                VERSION_RE.captures(&data[..]).map(|captures| {
-                    // Should not panic because validated with regex
-                    (
-                        parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
-                        parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
-                        parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
-                    )
-                })
-            }
-        }
+        let mut d = Vec::new();
+        let data = if r.len() == 0 {
+            l
+        } else {
+            version.copy_to_vec(&mut d);
+            &d[..]
+        };
+        let splits = data.split(|x| *x == b'.');
+        let mut iter = splits.into_iter();
+        let major = iter.next().and_then(|x| parse::<u16, _>(x).ok())?;
+        let minor = iter.next().and_then(|x| parse::<u16, _>(x).ok())?;
+        let patch = iter.next().and_then(|x| parse::<u16, _>(x).ok())?;
+        // 保证只有3个部分
+        iter.next().is_none().then(|| (major, minor, patch))
+
+        //match r.len() {
+        //    0 => VERSION_RE.captures(l).map(|captures| {
+        //        // Should not panic because validated with regex
+        //        (
+        //            parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
+        //            parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
+        //            parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
+        //        )
+        //    }),
+        //    _ => {
+        //        let mut data = Vec::with_capacity(version.len());
+        //        version.copy_to_vec(&mut data);
+        //        VERSION_RE.captures(&data[..]).map(|captures| {
+        //            // Should not panic because validated with regex
+        //            (
+        //                parse::<u16, _>(captures.get(1).unwrap().as_bytes()).unwrap(),
+        //                parse::<u16, _>(captures.get(2).unwrap().as_bytes()).unwrap(),
+        //                parse::<u16, _>(captures.get(3).unwrap().as_bytes()).unwrap(),
+        //            )
+        //        })
+        //    }
+        //}
     }
 
     // /// Parsed mariadb server version.

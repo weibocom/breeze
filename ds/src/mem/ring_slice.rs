@@ -1,9 +1,14 @@
-use std::fmt::{Debug, Display, Formatter};
-use std::ptr::copy_nonoverlapping;
-use std::slice::from_raw_parts;
+use std::{
+    fmt::{Debug, Display, Formatter},
+    ops::{
+        Bound::{Excluded, Included, Unbounded},
+        RangeBounds,
+    },
+    ptr::copy_nonoverlapping,
+    slice::from_raw_parts,
+};
 
 //从不拥有数据，是对ptr+start的引用
-// #[derive(Default, Copy, Clone, Eq, Ord, Hash)]
 #[derive(Default, Clone, Copy, Eq, Hash)]
 pub struct RingSlice {
     ptr: usize,
@@ -13,28 +18,8 @@ pub struct RingSlice {
     mask: u32,
 }
 
-// 将ring_slice拆分成2个seg。分别调用
-macro_rules! with_segment_oft {
-    ($self:expr, $oft:expr, $noseg:expr, $seg:expr) => {{
-        // debug_assert!($oft <= $self.len());
-        // let oft_start = $self.mask($self.start() + $oft);
-        // let len = $self.len() - $oft;
-
-        // if oft_start + len <= $self.cap() {
-        //     unsafe { $noseg($self.ptr().add(oft_start), len) }
-        // } else {
-        //     let seg1 = $self.cap() - oft_start;
-        //     let seg2 = len - seg1;
-        //     unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
-        // }
-        let len = $self.len() - $oft;
-        with_segment_oft_len!($self, $oft, len, $noseg, $seg)
-    }};
-}
-
-// 基于oft、len对slice的2个seg进行调用
-macro_rules! with_segment_oft_len {
-    ($self:expr, $oft:expr, $len:expr, $noseg:expr, $seg:expr) => {{
+macro_rules! with_segment {
+    ($self:ident, $oft:expr, $len:expr, $noseg:expr, $seg:expr) => {{
         debug_assert!($oft + $len <= $self.len());
         let oft_start = $self.mask($self.start() + $oft);
         let len = ($self.len() - $oft).min($len);
@@ -47,6 +32,12 @@ macro_rules! with_segment_oft_len {
             unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
         }
     }};
+    ($self:ident, $oft:expr, $noseg:expr, $seg:expr) => {
+        with_segment!($self, $oft, $self.len() - $oft, $noseg, $seg)
+    };
+    ($self:ident, $noseg:expr, $seg:expr) => {
+        with_segment!($self, 0, $self.len(), $noseg, $seg)
+    };
 }
 
 impl RingSlice {
@@ -88,6 +79,15 @@ impl RingSlice {
     pub fn slice(&self, offset: usize, len: usize) -> RingSlice {
         self.sub_slice(offset, len)
     }
+    #[inline]
+    pub fn str_num<R: RangeBounds<usize>>(&self, r: R) -> usize {
+        let (start, end) = self.range(r);
+        let mut num = 0;
+        for i in start..end {
+            num = num * 10 + (self[i] - b'0') as usize;
+        }
+        num
+    }
 
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
@@ -102,10 +102,6 @@ impl RingSlice {
     }
     #[inline(always)]
     pub(super) fn visit_segment_oft(&self, oft: usize, v: impl FnMut(*mut u8, usize)) {
-        // with_segment_oft!(self, oft, |p, l| v(p, l), |p0, l0, p1, l1| {
-        //     v(p0, l0);
-        //     v(p1, l1);
-        // });
         self.visit_segment_oft_len(oft, self.len(), v);
     }
     #[inline(always)]
@@ -115,7 +111,7 @@ impl RingSlice {
         len: usize,
         mut v: impl FnMut(*mut u8, usize),
     ) {
-        with_segment_oft_len!(self, oft, len, |p, l| v(p, l), |p0, l0, p1, l1| {
+        with_segment!(self, oft, len, |p, l| v(p, l), |p0, l0, p1, l1| {
             v(p0, l0);
             v(p1, l1);
         });
@@ -125,7 +121,7 @@ impl RingSlice {
         assert!(oft + len <= self.len(), "{}/{} =>{:?}", oft, len, self);
 
         static EMPTY: &[u8] = &[];
-        with_segment_oft_len!(
+        with_segment!(
             self,
             oft,
             len,
@@ -135,13 +131,6 @@ impl RingSlice {
     }
     #[inline(always)]
     pub fn data_oft(&self, oft: usize) -> (&[u8], &[u8]) {
-        // static EMPTY: &[u8] = &[];
-        // with_segment_oft!(
-        //     self,
-        //     oft,
-        //     |ptr, len| (from_raw_parts(ptr, len), EMPTY),
-        //     |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
-        // )
         self.data_oft_len(oft, self.len() - oft)
     }
     #[inline(always)]
@@ -182,7 +171,7 @@ impl RingSlice {
             }
             true
         };
-        with_segment_oft!(
+        with_segment!(
             self,
             oft,
             |p, l| {
@@ -206,7 +195,7 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to<W: crate::BufWriter>(&self, oft: usize, w: &mut W) -> std::io::Result<()> {
-        with_segment_oft!(
+        with_segment!(
             self,
             oft,
             |p, l| w.write_all(from_raw_parts(p, l)),
@@ -215,21 +204,12 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
-        // v.reserve(self.len());
-        // self.visit_segment_oft(0, |p, l| unsafe {
-        //     copy_nonoverlapping(p, v.as_mut_ptr().add(v.len()), l);
-        //     v.set_len(v.len() + l);
-        // });
-
-        // TODO 参考上面的逻辑，测试稳定前暂不清理 fishermen
         v.reserve(self.len());
-        let len = v.len();
-        let len_final = len + self.len();
+        let start = v.len();
+        let end = start + self.len();
         // 先设置长度，再用切片方式调用，避免越界
-        unsafe {
-            v.set_len(len_final);
-        }
-        self.copy_to_slice(&mut v[len..len_final]);
+        unsafe { v.set_len(end) };
+        self.copy_to_slice(&mut v[start..end]);
     }
     #[inline]
     pub fn copy_to_vec_with_len(&self, v: &mut Vec<u8>, len: usize) {
@@ -240,13 +220,21 @@ impl RingSlice {
     pub fn copy_to_vec_with_oft_len(&self, oft: usize, len: usize, v: &mut Vec<u8>) {
         self.sub_slice(oft, len).copy_to_vec(v)
     }
+    #[inline]
+    pub fn copy_to_vec_r<R: RangeBounds<usize>>(&self, v: &mut Vec<u8>, r: R) {
+        let (start, end) = self.range(r);
+        let len = end - start;
+        let org_len = v.len();
+        v.reserve(len);
+        let total_len = org_len + len;
+        unsafe { v.set_len(total_len) };
+        self.copy_to_r(&mut v[org_len..total_len], start..end);
+    }
     /// copy 数据到切片/数组中，目前暂时不需要oft，有需求后再加
     #[inline]
     pub fn copy_to_slice(&self, s: &mut [u8]) {
-        with_segment_oft_len!(
+        with_segment!(
             self,
-            0,
-            s.len(),
             |p, l| {
                 copy_nonoverlapping(p, s.as_mut_ptr(), l);
             },
@@ -256,20 +244,93 @@ impl RingSlice {
             }
         )
     }
-    // /// copy 前len个bytes 到 BufMut，注意check len的长度
-    // #[inline]
-    // pub fn copy_to_bufmut(&self, buf: &mut dyn BufMut, len: usize) {
-    //     let (l, r) = self.data();
-    //     if len <= l.len() {
-    //         buf.put_slice(&l[..len]);
-    //         return;
-    //     }
+    #[inline]
+    pub fn copy_to_cmp(&self, s: &mut [u8], oft: usize, len: usize) {
+        with_segment!(
+            self,
+            oft,
+            len,
+            |p, l| {
+                copy_nonoverlapping(p, s.as_mut_ptr(), l);
+            },
+            |p0, l0, p1, l1| {
+                copy_nonoverlapping(p0, s.as_mut_ptr(), l0);
+                copy_nonoverlapping(p1, s.as_mut_ptr().add(l0), l1);
+            }
+        )
+    }
+    #[inline(always)]
+    fn range<R: RangeBounds<usize>>(&self, r: R) -> (usize, usize) {
+        let start = match r.start_bound() {
+            Included(&s) => s,
+            Excluded(&s) => s + 1,
+            Unbounded => 0,
+        };
+        let end = match r.end_bound() {
+            Included(&e) => e + 1,
+            Excluded(&e) => e,
+            Unbounded => self.len(),
+        };
+        debug_assert!(end <= self.len());
+        debug_assert!(start <= end);
+        (start, end)
+    }
+    // 调用方确保 r.len() <= s.len()
+    #[inline]
+    pub fn copy_to_r<R: RangeBounds<usize>>(&self, s: &mut [u8], r: R) {
+        let (start, end) = self.range(r);
+        assert!(start <= end && end <= s.len());
+        assert!(end - start <= s.len());
+        if start == end {
+            return;
+        }
+        let oft_start = self.mask(self.start() + start);
+        let oft_end = self.mask(self.start() + end);
+        use copy_nonoverlapping as copy;
+        if oft_start < oft_end {
+            unsafe { copy(self.ptr().add(oft_start), s.as_mut_ptr(), end - start) };
+        } else {
+            let seg1 = self.cap() - oft_start;
+            unsafe { copy(self.ptr().add(oft_start), s.as_mut_ptr(), seg1) };
+            unsafe { copy(self.ptr(), s.as_mut_ptr().add(seg1), oft_end) };
+        }
+    }
+    #[inline]
+    pub fn copy_to_range<R: RangeBounds<usize>>(&self, s: &mut [u8], r: R) {
+        let mut oft = 0;
+        self.visit_seg(r, |p, l| {
+            debug_assert!(oft + l <= s.len());
+            unsafe { copy_nonoverlapping(p, s.as_mut_ptr().add(oft), l) };
+            oft += l;
+        });
+    }
+    #[inline(always)]
+    fn visit_seg<R: RangeBounds<usize>>(&self, r: R, mut f: impl FnMut(*const u8, usize)) {
+        let start = match r.start_bound() {
+            Included(&s) => s,
+            Excluded(&s) => s + 1,
+            Unbounded => 0,
+        };
+        let end = match r.end_bound() {
+            Included(&e) => e + 1,
+            Excluded(&e) => e,
+            Unbounded => self.len(),
+        };
+        debug_assert!(end <= self.len());
+        assert!(start <= end);
 
-    //     // len大于l.len
-    //     buf.put_slice(l);
-    //     let rmin = r.len().min(len - l.len());
-    //     buf.put_slice(&r[..rmin]);
-    // }
+        if start == end {
+            return;
+        }
+        let oft_start = self.mask(self.start() + start);
+        let oft_end = self.mask(self.start() + end);
+        if oft_start < oft_end {
+            f(unsafe { self.ptr().add(oft_start) }, end - start);
+        } else {
+            f(unsafe { self.ptr().add(oft_start) }, self.cap() - oft_start);
+            f(self.ptr(), oft_end);
+        }
+    }
     #[inline(always)]
     pub(super) fn cap(&self) -> usize {
         self.cap as usize
@@ -327,7 +388,7 @@ impl RingSlice {
     #[inline]
     pub fn start_with(&self, oft: usize, s: &[u8]) -> bool {
         if oft + s.len() <= self.len() {
-            with_segment_oft!(
+            with_segment!(
                 self,
                 oft,
                 |p, _l| { from_raw_parts(p, s.len()) == s },
@@ -345,75 +406,12 @@ impl RingSlice {
         }
     }
 
-    #[inline(always)]
-    pub fn read_num_be(&self, oft: usize) -> u64 {
-        const SIZE: usize = std::mem::size_of::<u64>();
-        assert!(self.len() >= oft + SIZE);
-        with_segment_oft!(
-            self,
-            oft,
-            |ptr, _len| u64::from_be_bytes(from_raw_parts(ptr, SIZE)[..SIZE].try_into().unwrap()),
-            |ptr0, len0, ptr1, _len1| {
-                if len0 >= SIZE {
-                    u64::from_be_bytes(from_raw_parts(ptr0, SIZE)[..SIZE].try_into().unwrap())
-                } else {
-                    let mut b = [0u8; SIZE];
-                    copy_nonoverlapping(ptr0, b.as_mut_ptr(), len0);
-                    copy_nonoverlapping(ptr1, b.as_mut_ptr().add(len0), SIZE - len0);
-                    u64::from_be_bytes(b)
-                }
-            }
-        )
-    }
     // 读取一个u16的数字，大端
     #[inline(always)]
     pub fn read_u16(&self, oft: usize) -> u16 {
         debug_assert!(self.len() >= oft + 2);
         (self[oft] as u16) << 8 | self[oft + 1] as u16
     }
-
-    // TODO 测试完毕后，清理dead code
-    // /// 尝试低成本获取一个单向的切片，如果有折返，则返回None
-    // #[inline]
-    // pub fn try_oneway_slice(&self, oft: usize, len: usize) -> Option<&[u8]> {
-    //     // 根据oft、len拿到两段数据，如果第二段长度为0，说明是单向slice
-    //     let (l, r) = self.data_oft_len(oft, len);
-    //     match r.len() {
-    //         0 => Some(l),
-    //         _ => None,
-    //     }
-    // }
-
-    // /// dump折返字节【必须包含折返】到目标dest vec中
-    // /// 注意：目标数据必须有折返，否则assert失败；
-    // /// 使用姿势：先使用try_oneway_slice尝试获取单向切片数据，失败后，再使用本方法；
-    // #[inline]
-    // pub fn dump_ring_part(&self, oft: usize, len: usize) -> Vec<u8> {
-    //     let mut dest = Vec::with_capacity(len);
-    //     self.copy_to_vec_with_oft_len(oft, len, &mut dest);
-    //     log::debug!("+++ copy ring part data to vec: {:?}", dest);
-
-    //     dest
-    // }
-
-    // TODO 保持ringslice的不可变特性，把位置变化，移到外部解析的parsebuf中
-    // /// 以指定的位置将slice分拆为2部分，返回[0, n）
-    // #[inline]
-    // pub fn eat(&mut self, n: usize) -> Self {
-    //     let eaten = self.sub_slice(0, n);
-    //     self.skip(n);
-
-    //     eaten
-    // }
-
-    // #[inline]
-    // pub fn skip(&mut self, n: usize) {
-    //     assert!(n <= self.len(), "too big to skip: {}/{:?}", n, self);
-
-    //     // 如果RingSlice的结构变化，注意审视这里是否需要调整 fishermen
-    //     self.start = self.mask(self.start() + n) as u32;
-    //     self.len = self.len - n as u32;
-    // }
 
     /// 展示所有内容，仅用于长度比较小的场景 fishermen
     #[inline]
@@ -435,23 +433,63 @@ impl RingSlice {
         }
     }
 
-    // Value 改造成RingSlice，影响范围太大，且受益看似不大，先撤回 fishermen
-    // /// 检测档期slice自oft开始，是否全部是合法的utf字节序
-    // #[inline]
-    // pub fn utf8_check(&self, oft: usize) -> bool {
-    //     let (valid, pos) = self.utf8_validation(oft);
-    //     if !valid {
-    //         log::info!("found invalid utf8 bytes: {}/{:?}", pos, self);
-    //     }
-    //     valid
-    // }
+    #[inline(always)]
+    pub fn reader(&self) -> RingSliceRead<'_> {
+        RingSliceRead { oft: 0, rs: self }
+    }
 }
-
-//unsafe impl Send for RingSlice {}
-//unsafe impl Sync for RingSlice {}
 
 use std::convert::TryInto;
 macro_rules! define_read_number {
+    (le $($ty:ty)+) => {
+        $(paste::paste! {
+            define_read_number!([<read_ $ty _le_cmp>], std::mem::size_of::<$ty>(), 0, $ty, $ty, from_le_bytes);
+        })+
+    };
+    (be $($ty:ty)+) => {
+        $(paste::paste! {
+            define_read_number!([<read_ $ty _be_cmp>], std::mem::size_of::<$ty>(), 0, $ty, $ty, from_be_bytes);
+        })+
+    };
+    ($($ty:ty)+) => {
+        define_read_number!(le $($ty)+);
+        define_read_number!(be $($ty)+);
+    };
+    (ole $($actual_ty:ty, $ty:ty, $name:ident, $bits:literal);+) => {
+        $(paste::paste! {
+            define_read_number!([<read_ $name _le_cmp>], $bits / 8, 0, $actual_ty, $ty, from_le_bytes);
+        })+
+    };
+    (obe $($actual_ty:ty, $ty:ty, $name:ident, $bits:literal);+) => {
+        $(paste::paste! {
+            define_read_number!([<read_ $name _be_cmp>], $bits / 8, std::mem::size_of::<$ty>() * 8 - $bits, $actual_ty, $ty, from_be_bytes);
+        })+
+    };
+    ($fn:ident, $bytes:expr, $rshift:expr, $actual_ty:tt, $ty:tt, $which:ident) => {
+        #[inline]
+        pub fn $fn(&self, oft: usize) -> $actual_ty {
+            debug_assert!(oft + $bytes <= self.len());
+            let start = oft + self.start();
+            const SIZE: usize = std::mem::size_of::<$ty>();
+            let v = if start + SIZE <= self.cap() {
+                let b = unsafe { from_raw_parts(self.ptr().add(start), SIZE) };
+                $ty::$which(b.try_into().unwrap()) >> $rshift
+            } else {
+                use copy_nonoverlapping as copy;
+                // 分段读取
+                let mut b = [0u8; SIZE];
+                let start = self.mask(start);
+                const OFT:usize = $rshift / 8;
+                let len = (self.cap() - start).min($bytes);
+                unsafe { copy(self.ptr().add(start), b.as_mut_ptr().add(OFT), len) };
+                unsafe { copy(self.ptr(), b.as_mut_ptr().add(len + OFT), $bytes - len) };
+                $ty::$which(b)
+            };
+            const SHIFT: usize = std::mem::size_of::<$actual_ty>() * 8 - $bytes * 8;
+            // 保留符号位
+            (v << SHIFT) as $actual_ty >> SHIFT
+        }
+    };
     ($fn_name:ident, $type_name:tt::$type_fn:ident) => {
         #[inline]
         pub fn $fn_name(&self, oft: usize) -> $type_name {
@@ -499,12 +537,32 @@ macro_rules! define_read_number {
                 let b = self.at(oft + i);
                 x |= (b as $t) << ((8 * i) + (8 * $offset));
             }
-            $t::$fn(x)
+            let v = $t::$fn(x);
+            const SHIFT: usize = std::mem::size_of::<$t>() * 8 - SIZE * 8;
+            // 保留符号位
+            (v << SHIFT) as $t >> SHIFT
         }
     };
 }
 
 impl RingSlice {
+    define_read_number!(u16 u32 u64);
+    define_read_number!(le i16 i32 i64);
+    define_read_number!(
+        ole  u32, u32, u24, 24;
+             i32, u32, i24, 24;
+             u64, u64, u48, 48;
+             u64, u64, u56, 56;
+             i64, u64, i56, 56
+    );
+    define_read_number!(
+        obe  u32, u32, u24, 24;
+             i32, u32, i24, 24;
+             u64, u64, u48, 48;
+             u64, u64, u56, 56;
+             i64, u64, i56, 56
+    );
+
     // little endian
     define_read_number!(read_u8, u8::from_le_bytes);
     define_read_number!(read_i8, i8::from_le_bytes);
@@ -555,15 +613,7 @@ impl Debug for RingSlice {
         let slice = self.sub_slice(0, 512.min(self.len()));
         let mut data = Vec::with_capacity(slice.len());
         slice.copy_to_vec(&mut data);
-        write!(
-            f,
-            "ptr:{} start:{} len:{} cap:{} => {:?}",
-            self.ptr,
-            self.start,
-            self.len,
-            self.cap,
-            data.utf8()
-        )
+        write!(f, "{} => {:?}", self, data.utf8())
     }
 }
 
@@ -606,198 +656,26 @@ impl PartialEq<(&[u8], &[u8])> for super::RingSlice {
         f == other.0 && s == other.1
     }
 }
-// TODO Ord 对RingSlice怪怪的，目前只是为了满足kv需要，需要考虑统一去掉？fishermen
-impl Ord for RingSlice {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.len().cmp(&other.len())
-    }
-}
-impl PartialOrd for RingSlice {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+
+pub struct RingSliceRead<'a> {
+    oft: usize,
+    rs: &'a RingSlice,
 }
 
-// impl RingSlice {
-//     // utf8 校验，不想做内存copy，所以搬出来实现 fishermen
-//     // #[rustc_const_unstable(feature = "str_internals", issue = "none")]
-//     #[inline(always)]
-//     // pub(super) const fn run_utf8_validation(v: &[u8]) -> Result<(), Utf8Error> {
-//     fn utf8_validation(&self, oft: usize) -> (bool, usize) {
-//         let mut index = oft;
-//         let len = self.len();
+impl<'a> crate::BuffRead for RingSliceRead<'a> {
+    type Out = usize;
+    #[inline(always)]
+    fn read(&mut self, b: &mut [u8]) -> (usize, Self::Out) {
+        let len = b.len().min(self.rs.len() - self.oft);
+        self.rs.copy_to_r(b, self.oft..len);
+        (len, len)
+    }
+}
 
-//         let usize_bytes = std::mem::size_of::<usize>();
-//         let ascii_block_size = 2 * usize_bytes;
-//         let blocks_end = if len >= ascii_block_size {
-//             len - ascii_block_size + 1
-//         } else {
-//             0
-//         };
-//         let start_mask = self.mask(self.start() + oft);
-//         // let align = v.as_ptr().align_offset(usize_bytes);
-//         let align = unsafe { self.ptr().add(start_mask).align_offset(usize_bytes) };
-
-//         while index < len {
-//             let old_offset = index;
-//             macro_rules! err {
-//                 ($error_len: expr) => {
-//                     // return Err(Utf8Error {
-//                     //     old_offset,
-//                     //     $error_len,
-//                     // })
-//                     return (false, old_offset);
-//                 };
-//             }
-
-//             macro_rules! next {
-//                 () => {{
-//                     index += 1;
-//                     // we needed data, but there was none: error!
-//                     if index >= len {
-//                         err!(None)
-//                     }
-//                     // self[index]
-//                     self.at(index)
-//                 }};
-//             }
-
-//             // 不用[]来取，方便代码跟踪
-//             // let first = v[index];
-//             let first = self.at(index);
-//             if first >= 128 {
-//                 let w = utf8_char_width(first);
-//                 // 2-byte encoding is for codepoints  \u{0080} to  \u{07ff}
-//                 //        first  C2 80        last DF BF
-//                 // 3-byte encoding is for codepoints  \u{0800} to  \u{ffff}
-//                 //        first  E0 A0 80     last EF BF BF
-//                 //   excluding surrogates codepoints  \u{d800} to  \u{dfff}
-//                 //               ED A0 80 to       ED BF BF
-//                 // 4-byte encoding is for codepoints \u{1000}0 to \u{10ff}ff
-//                 //        first  F0 90 80 80  last F4 8F BF BF
-//                 //
-//                 // Use the UTF-8 syntax from the RFC
-//                 //
-//                 // https://tools.ietf.org/html/rfc3629
-//                 // UTF8-1      = %x00-7F
-//                 // UTF8-2      = %xC2-DF UTF8-tail
-//                 // UTF8-3      = %xE0 %xA0-BF UTF8-tail / %xE1-EC 2( UTF8-tail ) /
-//                 //               %xED %x80-9F UTF8-tail / %xEE-EF 2( UTF8-tail )
-//                 // UTF8-4      = %xF0 %x90-BF 2( UTF8-tail ) / %xF1-F3 3( UTF8-tail ) /
-//                 //               %xF4 %x80-8F 2( UTF8-tail )
-//                 match w {
-//                     2 => {
-//                         if next!() as i8 >= -64 {
-//                             err!(Some(1))
-//                         }
-//                     }
-//                     3 => {
-//                         match (first, next!()) {
-//                             (0xE0, 0xA0..=0xBF)
-//                             | (0xE1..=0xEC, 0x80..=0xBF)
-//                             | (0xED, 0x80..=0x9F)
-//                             | (0xEE..=0xEF, 0x80..=0xBF) => {}
-//                             _ => err!(Some(1)),
-//                         }
-//                         if next!() as i8 >= -64 {
-//                             err!(Some(2))
-//                         }
-//                     }
-//                     4 => {
-//                         match (first, next!()) {
-//                             (0xF0, 0x90..=0xBF)
-//                             | (0xF1..=0xF3, 0x80..=0xBF)
-//                             | (0xF4, 0x80..=0x8F) => {}
-//                             _ => err!(Some(1)),
-//                         }
-//                         if next!() as i8 >= -64 {
-//                             err!(Some(2))
-//                         }
-//                         if next!() as i8 >= -64 {
-//                             err!(Some(3))
-//                         }
-//                     }
-//                     _ => err!(Some(1)),
-//                 }
-//                 index += 1;
-//             } else {
-//                 // Ascii case, try to skip forward quickly.
-//                 // When the pointer is aligned, read 2 words of data per iteration
-//                 // until we find a word containing a non-ascii byte.
-//                 if align != usize::MAX && align.wrapping_sub(index) % usize_bytes == 0 {
-//                     // let ptr = v.as_ptr();
-//                     let ptr = self.ptr();
-//                     while index < blocks_end {
-//                         // SAFETY: since `align - index` and `ascii_block_size` are
-//                         // multiples of `usize_bytes`, `block = ptr.add(index)` is
-//                         // always aligned with a `usize` so it's safe to dereference
-//                         // both `block` and `block.add(1)`.
-//                         unsafe {
-//                             let block = ptr.add(index) as *const usize;
-//                             // break if there is a nonascii byte
-//                             let zu = contains_nonascii(*block);
-//                             let zv = contains_nonascii(*block.add(1));
-//                             if zu || zv {
-//                                 break;
-//                             }
-//                         }
-//                         index += ascii_block_size;
-//                     }
-//                     // step from the point where the wordwise loop stopped
-//                     // while index < len && v[index] < 128 {
-//                     while index < len && self.at(index) < 128 {
-//                         index += 1;
-//                     }
-//                 } else {
-//                     index += 1;
-//                 }
-//             }
-//         }
-
-//         (true, 0)
-//         // Ok(())
-//     }
-// }
-
-// // https://tools.ietf.org/html/rfc3629
-// const UTF8_CHAR_WIDTH: &[u8; 256] = &[
-//     // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
-//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0
-//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 1
-//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 2
-//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 3
-//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
-//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
-//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 6
-//     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 7
-//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
-//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
-//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
-//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
-//     0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // C
-//     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // D
-//     3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, // E
-//     4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
-// ];
-
-// /// Given a first byte, determines how many bytes are in this UTF-8 character.
-// //#[unstable(feature = "str_internals", issue = "none")]
-// #[must_use]
-// #[inline]
-// const fn utf8_char_width(b: u8) -> usize {
-//     UTF8_CHAR_WIDTH[b as usize] as usize
-// }
-
-// const NONASCII_MASK: usize = repeat_u8(0x80);
-
-// /// Returns `true` if any byte in the word `x` is nonascii (>= 128).
-// #[inline]
-// const fn contains_nonascii(x: usize) -> bool {
-//     (x & NONASCII_MASK) != 0
-// }
-
-// /// Returns an `usize` where every byte is equal to `x`.
-// #[inline]
-// const fn repeat_u8(x: u8) -> usize {
-//     usize::from_ne_bytes([x; std::mem::size_of::<usize>()])
-// }
+impl<'a> std::io::Read for RingSliceRead<'a> {
+    #[inline(always)]
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let (size, _) = crate::BuffRead::read(self, buf);
+        Ok(size)
+    }
+}

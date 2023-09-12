@@ -10,12 +10,12 @@ use tokio::sync::mpsc::{
     unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender,
 };
 
-use trust_dns_resolver::{AsyncResolver, TokioConnection, TokioConnectionProvider, TokioHandle};
+use trust_dns_resolver::TokioAsyncResolver;
 
 use ds::{CowReadHandle, CowWriteHandle};
 #[ctor::ctor]
 static DNSCACHE: CowReadHandle<DnsCache> = {
-    let resolver = system_resolver();
+    let resolver = TokioAsyncResolver::tokio_from_system_conf().expect("crate dns resolver");
     let (reg_tx, reg_rx) = unbounded_channel();
     let cache = DnsCache::from(reg_tx);
     let (tx, rx) = ds::cow(cache);
@@ -31,7 +31,7 @@ use std::sync::Mutex;
 static DNS_RESOLVER: Mutex<Option<DnsResolver>> = Mutex::new(None);
 
 type RegisterItem = (String, Arc<AtomicBool>);
-type Resolver = AsyncResolver<TokioConnection, TokioConnectionProvider>;
+type Resolver = TokioAsyncResolver;
 
 pub struct DnsResolver {
     tx: CowWriteHandle<DnsCache>,
@@ -45,10 +45,6 @@ pub fn register(host: &str, notify: Arc<AtomicBool>) {
 pub fn lookup_ips<'a>(host: &str, mut f: impl FnMut(&[IpAddr])) {
     // log::debug!("++++ lookup ips:{:?}", DNSCACHE.get().hosts);
     f(DNSCACHE.get().lookup(host));
-}
-
-fn system_resolver() -> Resolver {
-    AsyncResolver::from_system_conf(TokioHandle).expect("crate dns resolver")
 }
 
 #[derive(Default, Clone, Debug)]

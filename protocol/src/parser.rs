@@ -6,6 +6,7 @@ use crate::kv::Kv;
 use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
+use crate::uuid::Uuid;
 use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
 #[derive(Clone)]
@@ -17,6 +18,7 @@ pub enum Parser {
     // TODO 暂时保留，待client修改上线完毕后，清理
     // Mysql(Kv),
     Kv(Kv),
+    Uuid(Uuid),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
@@ -24,8 +26,8 @@ impl Parser {
             "mc" => Ok(Self::McBin(Default::default())),
             "redis" | "phantom" => Ok(Self::Redis(Default::default())),
             "msgque" => Ok(Self::MsgQue(Default::default())),
-            // "mysql" => Ok(Self::Mysql(Default::default())),
             "kv" => Ok(Self::Kv(Default::default())),
+            "uuid" => Ok(Self::Uuid(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }
@@ -77,25 +79,9 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
-    fn build_request(&self, _req: &mut HashedCommand, _request_builder: MemGuard) {}
-
-    // fn before_send<S: Stream, Req: Request>(&self, _stream: &mut S, _req: &mut Req) {}
-
-    // TODO: mysql debug专用，2023.7后可以清理 fishermen
-    // fn parse_response_debug<S: Stream>(
-    //     &self,
-    //     _req: &HashedCommand,
-    //     _data: &mut S,
-    // ) -> Result<Option<Command>> {
-    //     // TODO: just for debug
-    //     Err(Error::NotInit)
-    // }
+    //fn build_request(&self, _req: &mut HashedCommand, _request_builder: MemGuard) {}
 
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
-
-    // 根据req，构建本地response响应，全部无差别构建resp，具体quit或异常，在wirte response处处理
-    // fn build_local_response<F: Fn(i64) -> usize>(&self, req: &HashedCommand, dist_fn: F)
-    //     -> Command;
 
     fn write_response<C, W, M, I>(
         &self,

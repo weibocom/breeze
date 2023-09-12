@@ -5,6 +5,8 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::Binary;
+use protocol::kv::MysqlBuilder;
+use protocol::kv::Strategy;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -14,7 +16,6 @@ use sharding::Distance;
 use sharding::Selector;
 
 use crate::dns::DnsConfig;
-use crate::kv::strategy::Strategy;
 use crate::Builder;
 use crate::Single;
 use crate::Timeout;
@@ -22,6 +23,7 @@ use crate::{Endpoint, Topology};
 
 use super::config::MysqlNamespace;
 use super::strategy::Strategist;
+use super::KVCtx;
 #[derive(Clone)]
 pub struct KvService<B, E, Req, P> {
     // 默认后端分片，一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
@@ -103,8 +105,8 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
-        let runs = super::transmute(req.context_mut()).runs;
         // req 是mc binary协议，需要展出字段，转换成sql
+        let runs = req.ctx().runs;
         let key = if runs == 0 {
             req.key()
         } else {
@@ -119,11 +121,11 @@ where
 
         debug_assert_ne!(shards.len(), 0);
         assert!(shards.len() > 0);
-        let shard_idx = if shards.len() > 1 {
-            self.shard_idx(req.hash())
-        } else {
-            0
-        };
+        let mut shard_idx = req.ctx().shard_idx as usize;
+        if runs == 0 && shards.len() > 1 {
+            shard_idx = self.shard_idx(req.hash());
+            req.ctx().shard_idx = shard_idx as u16;
+        }
         debug_assert!(
             shard_idx < shards.len(),
             "mysql: {}/{} req:{:?}",
@@ -134,15 +136,13 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
 
-        let ctx = super::transmute(req.context_mut());
-        if ctx.runs == 0 {
+        if runs == 0 {
             //todo: 此处不应panic
-            let cmd = self
-                .strategist
-                .build_kvcmd(&req, key)
-                .expect("malformed sql");
-            self.parser
-                .build_request(req.cmd_mut(), MemGuard::from_vec(cmd));
+            let cmd =
+                MysqlBuilder::build_packets(&self.strategist, &req, &key).expect("malformed sql");
+            req.reshape(MemGuard::from_vec(cmd));
+            //self.parser
+            //    .build_request(&mut *req, MemGuard::from_vec(cmd));
         }
         log::debug!("+++ mysql {} send {} => {:?}", self.service, shard_idx, req);
 
@@ -152,8 +152,8 @@ where
                     req.quota(quota);
                 }
             }
-            let ctx = super::transmute(req.context_mut());
-            let (idx, endpoint) = if ctx.runs == 0 {
+            let ctx = req.ctx();
+            let (idx, endpoint) = if runs == 0 {
                 shard.select()
             } else {
                 if (ctx.runs as usize) < shard.slaves.len() {

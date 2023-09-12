@@ -59,6 +59,7 @@ impl<P, Req> BackendChecker<P, Req> {
         let path_addr = self.path.clone().push(&self.addr);
         let mut m_timeout = path_addr.qps("timeout");
         let mut auth_failed = path_addr.status("auth_failed");
+        let mut unexpected_resp = path_addr.num("unexpected_resp");
         let mut timeout = Path::base().qps("timeout");
         let mut reconn = crate::reconn::ReconnPolicy::new(&path_addr);
         metrics::incr_task();
@@ -78,7 +79,6 @@ impl<P, Req> BackendChecker<P, Req> {
             let rx = &mut self.rx;
 
             if self.parser.config().need_auth {
-                //todo 处理认证结果
                 let auth = Auth {
                     option: &mut self.option,
                     s: &mut stream,
@@ -113,6 +113,7 @@ impl<P, Req> BackendChecker<P, Req> {
                         m_timeout += 1;
                         timeout += 1;
                     }
+                    Error::UnexpectedData => unexpected_resp += 1,
                     _ => {}
                 }
             }

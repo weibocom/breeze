@@ -89,14 +89,13 @@ impl MysqlNamespace {
             for vec in ns.backends.values() {
                 ns.backends_url.extend(vec.iter().cloned());
             }
-            let decrypt_password = match ns.decrypt_password() {
-                Ok(decrypt_password) => decrypt_password,
-                Err(e) => {
+            ns.basic.password = ns
+                .decrypt_password()
+                .map_err(|e| {
                     log::warn!("failed to decrypt password, e:{}", e);
-                    return None;
-                }
-            };
-            ns.basic.password = decrypt_password;
+                    e
+                })
+                .ok()?;
             return Some(ns);
         }
         nso
