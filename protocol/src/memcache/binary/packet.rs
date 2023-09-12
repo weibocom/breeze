@@ -311,8 +311,8 @@ impl Binary for RingSlice {
         let old = self.op();
         //let new = OPS_MAPPING_TABLE[old as usize];
         let new = match old {
-            OP_GETQ | OP_GETS | OP_GETSQ => OP_GET,
-            OP_GETKQ => OP_GETK,
+            OP_GETQ | OP_GETS => OP_GET,
+            OP_GETKQ | OP_GETSQ => OP_GETK,
             o => o,
         };
         if new != old {
