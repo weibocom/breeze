@@ -8,6 +8,8 @@ pub enum Error {
     Mcq(McqError),
     // 关闭连接前需要把（静态/动态）异常消息发出去
     FlushOnClose(Vec<u8>),
+    // TODO: 暂时保留，等endpoint merge完毕后再清理，避免merge冲突导致的ci测试问题
+    MysqlError(Vec<u8>),
     Eof,
     UnexpectedData,
     QueueClosed,
