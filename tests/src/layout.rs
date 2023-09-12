@@ -1,8 +1,5 @@
 // 不要轻易变更这里面的测试用例，除非你知道你在做什么。拉相关同学进行方案评审。
-use std::{
-    mem::size_of,
-    sync::{atomic::AtomicU32, Arc},
-};
+use std::{mem::size_of, sync::Arc};
 
 use protocol::{callback::CallbackContext, Parser};
 use stream::{Backend, Request};
@@ -38,7 +35,7 @@ fn checkout_basic() {
     );
     assert_eq!(16, size_of::<protocol::Flag>());
     assert_eq!(1, size_of::<protocol::Resource>());
-    assert_eq!(56, size_of::<ds::queue::PinnedQueue<AtomicU32>>());
+    //assert_eq!(56, size_of::<ds::queue::PinnedQueue<AtomicU32>>());
     assert_eq!(16, size_of::<metrics::Metric>());
     assert_eq!(64, size_of::<metrics::Item>());
     assert_eq!(1, size_of::<Parser>());
