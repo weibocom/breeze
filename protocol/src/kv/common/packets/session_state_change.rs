@@ -71,7 +71,7 @@ impl MyDeserialize for SessionStateChange {
             SessionStateType::SESSION_TRACK_STATE_CHANGE => {
                 let is_tracked: RawBytes<LenEnc> = buf.parse_unchecked(())?;
                 // Ok(SessionStateChange::IsTracked(is_tracked.as_bytes() == b"1"))
-                // TODO 参考上面的逻辑，彻底稳定前，不要删除 fishermen
+                // 参考上面的逻辑，彻底稳定前，不要删除 fishermen
                 let data = is_tracked.as_bytes();
                 let tracked = data.len() == 1 && data.at(0) == b'1';
                 Ok(SessionStateChange::IsTracked(tracked))

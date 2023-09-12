@@ -36,7 +36,7 @@ pub mod flags;
 pub mod int;
 pub mod seq;
 
-// TODO 先改造为基于RingSlice的反序列化
+// 改造为基于RingSlice的反序列化
 // impl<'de> MyDeserialize<'de> for &'de [u8] {
 //     const SIZE: Option<usize> = None;
 //     type Ctx = usize;
@@ -47,7 +47,7 @@ pub mod seq;
 //     }
 // }
 
-// TODO 注意check一致性 fishermen
+// 注意check一致性 fishermen
 impl MyDeserialize for RingSlice {
     const SIZE: Option<usize> = None;
     type Ctx = usize;
@@ -79,7 +79,7 @@ impl<const LEN: usize> MyDeserialize for [u8; LEN] {
         let value = buf.eat(LEN);
         let mut this = [0_u8; LEN];
         // this.copy_from_slice(value);
-        // TODO 调整写入姿势 fishermen
+
         value.copy_to_slice(&mut this);
 
         Ok(this)
@@ -138,7 +138,6 @@ where
         // small_vec.extend_from_slice(s.as_bytes());
         // Ok(small_vec)
 
-        // TODO 参考上面的实现，在彻底稳定前，先不要清理上面的代码 fishermen
         // SmallVec 目前只有在这里使用，后续有更多，就抽一个方法复用
         let (l, r) = s.as_bytes().data();
         small_vec.extend_from_slice(l);

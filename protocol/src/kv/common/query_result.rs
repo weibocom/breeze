@@ -1,6 +1,5 @@
-// TODO：传入数据进行parse，后续进一步按需改造
-
-use crate::{Error, Result, Stream};
+use crate::kv::error::{Error, Result};
+use crate::Stream;
 
 pub use crate::kv::common::proto::{Binary, Text};
 
@@ -171,7 +170,8 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         // if status_flags.contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS) {}
 
         if self.rsp_packet.more_results_exists() {
-            log::warn!("++++++ should check if really has more result set exists? ");
+            // TODO 等支持多行，再处理此处
+            log::error!("+++ should not come here:{:?}", self.rsp_packet);
             match self.rsp_packet.parse_result_set_meta() {
                 Ok(meta) => self.state = meta.into(),
                 Err(err) => self.state = err.into(),
@@ -267,7 +267,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         R: FromRow,
         F: FnMut(U, R) -> U,
     {
-        // TODO: 改为每次只处理本次的响应
+        // 改为每次只处理本次的响应
         loop {
             match self.scan_row()? {
                 Some(row) => {

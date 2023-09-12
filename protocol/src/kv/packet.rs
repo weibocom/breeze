@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use ds::RingSlice;
 
-use crate::{Error, Result};
+use super::error::{Error, Result};
 
 const HEADER_LEN: usize = 4;
 
@@ -29,21 +29,6 @@ impl PacketData {
             return Err(Error::ProtocolIncomplete);
         }
 
-        // let payload_len = LittleEndian::read_u24(header_bytes) as usize;
-        // self.payload_len = raw_chunk_len;
-        // let seq = header_bytes[3];
-
-        // RingSlice 解析的标准用法，原则：最大限度减少copy，能否进一步优化？ fishermen
-        // let (payload_len, seq) = match self.inner.try_oneway_slice(*oft, HEADER_LEN) {
-        //     Some(data) => (LittleEndian::read_u24(data) as usize, data[3]),
-
-        //     None => {
-        //         let bytes = self.inner.dump_ring_part(*oft, HEADER_LEN);
-        //         (LittleEndian::read_u24(&bytes) as usize, bytes[3])
-        //     }
-        // };
-
-        // TODO 将处理封装到RingSlice中，此处用oft来控制 fishermen
         // 前三个字节是payload len
         let payload_len = self.inner.read_u24_le(*oft) as usize;
         if payload_len == 0 {
@@ -56,7 +41,6 @@ impl PacketData {
         let seq = self.inner.at(*oft + 3);
 
         *oft = *oft + HEADER_LEN;
-
         Ok(PacketHeader { payload_len, seq })
     }
 

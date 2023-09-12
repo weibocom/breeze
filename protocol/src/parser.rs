@@ -95,6 +95,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         M: Metric<I>,
         I: MetricItem;
 
+    // TODO check逻辑，当前分为assert、默认不处理两种方式，协议还需要额外的validate来进行校验；
+    // 更佳的方式是返回Error，通过Error框架，来统一处理异常？从而整合掉check和validate fishermen
     #[inline]
     fn check(&self, _req: &HashedCommand, _resp: &Command) {}
     // 构建回写请求。
