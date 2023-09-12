@@ -11,6 +11,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use crate::topology::TopologyCheck;
 use ds::{time::Instant, AtomicWaker};
 use endpoint::Topology;
+use protocol::Error::FlushOnClose;
 use protocol::{HashedCommand, Protocol, Result, Stream};
 
 use crate::{
@@ -138,9 +139,9 @@ where
         parser
             .parse_request(client, top, &mut processor)
             .map_err(|e| {
-                log::info!("parse request error: {:?} on client:{:?}", e, client);
+                log::info!("+++ parse request error: {:?} on client:{:?}", e, client);
                 match e {
-                    protocol::Error::FlushOnClose(ref emsg) => {
+                    FlushOnClose(ref emsg) => {
                         // 此处只处理FLushOnClose，用于发送异常给client
                         let _write_rs = client.write_all(emsg);
                         let _flush_rs = client.flush();
@@ -149,7 +150,6 @@ where
                     }
                     _ => e,
                 }
-                // e
             })
     }
     // 处理pending中的请求，并且把数据发送到buffer

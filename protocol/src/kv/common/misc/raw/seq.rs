@@ -20,7 +20,7 @@ use super::{
     RawInt,
 };
 
-// TODO 序列号的values，不确定能否转为RingSlice，且试试，最后再改 fishermen
+// 序列号的values，目前不需要，有需要再考虑改为RingSlice fishermen
 /// Sequence of serialized values (length serialized as `U`).
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(transparent)]
@@ -166,7 +166,6 @@ impl_seq_repr!(u32, LeU32);
 pub struct RawSeq<U>(pub RingSlice, PhantomData<U>);
 // pub struct RawSeq<'a, T: IntRepr, U>(pub Cow<'a, [T::Primitive]>, PhantomData<U>);
 
-// TODO 生命周期参数先保留，等测试完毕后统一清理 fishermen
 // impl<'a, T: IntRepr, U> RawSeq<'a, T, U> {
 impl<U> RawSeq<U> {
     /// Creates a new wrapper.
@@ -199,7 +198,6 @@ impl<U> RawSeq<U> {
 //     }
 // }
 
-// TODO 注意观察影响 fishermen
 // impl<'de, T: IntRepr<Primitive = u8>, U> MyDeserialize<'de> for RawSeq<'de, T, U> {
 impl<U> MyDeserialize for RawSeq<U> {
     const SIZE: Option<usize> = None;
@@ -210,16 +208,9 @@ impl<U> MyDeserialize for RawSeq<U> {
         // let bytes: &[u8] = buf.parse(length)?;
         // Ok(Self::new(Cow::Owned(bytes)))
 
-        // TODO 将切片尽可能转为RingSlice，注意check一致性 fishermen
+        // 将切片尽可能转为RingSlice，注意check一致性 fishermen
         let slice: RingSlice = buf.parse(length)?;
         Ok(Self::new(slice))
-        // if let Some(data) = slice.try_oneway_slice(0, slice.len()) {
-        //     Ok(Self::new(Cow::Owned(data)))
-        // } else {
-        //     let data = slice.dump_ring_part(0, slice.len());
-        //     Ok(Self::new(Cow::Owned(data)))
-        // }
-        // Ok(Self::new(Cow::Owned(bytes)))
     }
 }
 

@@ -2,6 +2,7 @@ mod client;
 pub mod common;
 mod mcpacket;
 
+mod error;
 mod packet;
 mod reqpacket;
 mod rsppacket;
@@ -13,6 +14,10 @@ use self::common::proto::Text;
 use self::common::query_result::{Or, QueryResult};
 use self::common::row::convert::from_row;
 
+use self::error::Result;
+use bytes::BufMut;
+pub use common::proto::codec::PacketCodec;
+
 use self::mcpacket::PacketPos;
 use self::mcpacket::RespStatus;
 pub use self::mcpacket::*;
@@ -20,10 +25,9 @@ use self::rsppacket::ResponsePacket;
 
 use super::Flag;
 use super::Protocol;
-use super::Result;
 use crate::kv::client::Client;
+use crate::kv::error::Error;
 use crate::Command;
-use crate::Error;
 use crate::HandShake;
 use crate::HashedCommand;
 use crate::RequestProcessor;
@@ -64,10 +68,10 @@ impl Protocol for Kv {
         &self,
         stream: &mut impl Stream,
         option: &mut crate::ResOption,
-    ) -> Result<HandShake> {
+    ) -> crate::Result<HandShake> {
         match self.handshake_inner(stream, option) {
             Ok(h) => Ok(h),
-            Err(Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+            Err(crate::Error::ProtocolIncomplete) => Ok(HandShake::Continue),
             Err(e) => {
                 log::warn!("+++ found err when shake hand:{:?}", e);
                 Err(e)
@@ -87,13 +91,14 @@ impl Protocol for Kv {
         stream: &mut S,
         alg: &H,
         process: &mut P,
-    ) -> Result<()> {
+    ) -> crate::Result<()> {
         assert!(stream.len() > 0, "mc req: {:?}", stream.slice());
         log::debug!("+++ recv mysql-mc req:{:?}", stream.slice());
 
-        // TODO request的解析部分待抽到reqpacket中
+        // 直接解析mc协议，待有额外逻辑，再考虑封装解析过程
         while stream.len() >= mcpacket::HEADER_LEN {
             let mut req = stream.slice();
+            // 如果magic都不对，先判定为攻击，直接断连接，不返回任何响应
             req.check_request()?;
             let packet_len = req.packet_len();
             if req.len() < packet_len {
@@ -102,7 +107,7 @@ impl Protocol for Kv {
             }
 
             if req.key_len() > 0 {
-                log::debug!("+++ recv mysql-mc packet for key:{:?}", req.key());
+                self.validate_request(&req)?;
             }
 
             let last = !req.quiet_get(); // 须在map_op之前获取
@@ -127,63 +132,37 @@ impl Protocol for Kv {
     //    req.reshape(new_req);
     //}
 
-    // TODO in: mysql, out: mc vs redis
-    //  1 解析mysql response； 2 转换为mc响应
-    fn parse_response<S: crate::Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+    // 解析mysql response；在write response的时候，再进行协议格式转换
+    fn parse_response<S: crate::Stream>(&self, data: &mut S) -> crate::Result<Option<Command>> {
         log::debug!("+++ recv mysql response:{:?}", data.slice());
         let mut rsp_packet = ResponsePacket::new(data, None);
+
+        // 解析完毕rsp后，除了数据未读完的场景，其他不管是否遇到err，都要进行take
         match self.parse_response_inner(&mut rsp_packet) {
             Ok(cmd) => Ok(cmd),
-            Err(Error::ProtocolIncomplete) => {
-                // rsp_packet.reserve();
-                Ok(None)
-            }
-            Err(Error::MysqlError(s)) => {
+
+            Err(Error::ProtocolIncomplete) => Ok(None),
+            Err(Error::UnhandleResponseError(s)) => {
+                // 异常响应通过标准处理流程，所以此处不需要进行协议包转换
                 let mem = ds::MemGuard::from_vec(s);
                 let cmd = Command::from(false, mem);
                 log::debug!("+++ parse mysql response err to cmd:{:?}", cmd);
                 Ok(Some(cmd))
             }
             Err(e) => {
-                log::warn!("+++ err when parse mysql response: {:?}", e);
-                Err(e)
+                // 非MysqlError需要日志并外层断连处理
+                log::error!("+++ err when parse mysql response: {:?}", e);
+                Err(e.into())
             }
         }
     }
-
-    // TODO 用于跟踪request和rsp解析过程的匹配，2023.7后清理 fishermen
-    // fn parse_response_debug<S: crate::Stream>(
-    //     &self,
-    //     req: &HashedCommand,
-    //     data: &mut S,
-    // ) -> Result<Option<Command>> {
-    //     log::debug!(
-    //         "+++ recv mysql response for  req:{:?} =>{:?} with stream: {:?}",
-    //         req.data(),
-    //         data.slice(),
-    //         data,
-    //     );
-
-    //     let mut rsp_packet = ResponsePacket::new(data, None);
-    //     match self.parse_response_inner_debug(req, &mut rsp_packet) {
-    //         Ok(cmd) => Ok(cmd),
-    //         Err(Error::ProtocolIncomplete) => {
-    //             // rsp_packet.reserve();
-    //             Ok(None)
-    //         }
-    //         Err(e) => {
-    //             log::warn!("+++ [req:{:?}] err when parse mysql response: {:?}", req, e);
-    //             Err(e)
-    //         }
-    //     }
-    // }
 
     fn write_response<C, W, M, I>(
         &self,
         ctx: &mut C,
         response: Option<&mut crate::Command>,
         w: &mut W,
-    ) -> Result<()>
+    ) -> crate::Result<()>
     where
         W: crate::Writer,
         C: crate::Commander<M, I>,
@@ -212,7 +191,7 @@ impl Protocol for Kv {
 
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
-        log::debug!("+++ send to client padding rsp, req:{:?}", ctx.request(),);
+        log::debug!("+++ send to client rsp, req:{:?}", ctx.request(),);
         match old_op_code {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_NOOP => {
@@ -227,7 +206,7 @@ impl Protocol for Kv {
             OP_STAT => w.write(&STAT_RESPONSE)?,
 
             // quit/quitq 无需返回rsp
-            OP_QUIT | OP_QUITQ => return Err(Error::Quit),
+            OP_QUIT | OP_QUITQ => return Err(crate::Error::Quit),
 
             // quite get 请求，无需返回任何rsp，但没实际发送，rsp_ok设为false
             // OP_GETQ | OP_GETKQ => return Ok(()),
@@ -250,14 +229,14 @@ impl Protocol for Kv {
 
             // self.build_empty_response(RespStatus::NotFound, req)
 
-            // TODO：之前是直接mesh断连接，现在返回异常rsp，由client决定应对，观察副作用 fishermen
+            // 未知异常，外层直接断连接
             _ => {
                 log::warn!(
                     "+++ mysql NoResponseFound req: {}/{:?}",
                     old_op_code,
                     ctx.request()
                 );
-                return Err(Error::OpCodeNotSupported(old_op_code as u16));
+                return Err(crate::Error::OpCodeNotSupported(old_op_code as u16));
             }
         }
         Ok(())
@@ -276,10 +255,6 @@ impl Protocol for Kv {
     {
         None
     }
-
-    fn check(&self, _req: &crate::HashedCommand, _resp: &crate::Command) {
-        // TODO speed up
-    }
 }
 
 impl Kv {
@@ -287,7 +262,7 @@ impl Kv {
         &self,
         stream: &mut S,
         option: &mut crate::ResOption,
-    ) -> Result<HandShake> {
+    ) -> crate::Result<HandShake> {
         log::debug!("+++ recv mysql handshake packet:{:?}", stream.slice());
         let client = Client::from_user_pwd(option.username.clone(), option.token.clone());
         let mut packet = ResponsePacket::new(stream, Some(client));
@@ -324,79 +299,23 @@ impl Kv {
         response
     }
 
-    //修改req，seq +1
-    // fn before_send<S: Stream, Req: crate::Request>(&self, _stream: &mut S, _req: &mut Req) {
-    //     todo!()
-    // }
+    /// 对request进行校验
+    #[inline(always)]
+    fn validate_request(&self, request: &RingSlice) -> crate::Result<()> {
+        // 当前只检查key，后续需要增加逻辑在此处加
+        let key = request.key();
+        for i in 0..key.len() {
+            if !key.at(i).is_ascii_digit() {
+                log::warn!("+++ found malformed mysql-mc packet:{:?}", request);
+                let err_packet = self.build_error_rsp(request, error::REQ_INVALID_KEY);
+                return Err(Error::RequestInvalidKey(err_packet).into());
+            }
+        }
+        Ok(())
+    }
 
-    // 包比较复杂，不能随意take，得等到最复杂场景解析完毕后，才能统一take走
-    // fn parse_response_inner_debug<'a, S: crate::Stream>(
-    //     &self,
-    //     req: &HashedCommand,
-    //     rsp_packet: &'a mut ResponsePacket<'a, S>,
-    // ) -> Result<Option<Command>> {
-    //     // TODO: 是否需要把异常信息返回给client？（用mc协议？） fishermen
-    //     let mut result_set = match self.parse_result_set(rsp_packet, Vec::new(), |mut acc, row| {
-    //         acc.push(from_row(row));
-    //         acc
-    //     }) {
-    //         Ok(rs) => rs,
-    //         Err(Error::ProtocolIncomplete) => return Err(Error::ProtocolIncomplete),
-    //         Err(Error::MysqlError) => Vec::with_capacity(0),
-    //         Err(e) => panic!("mysql unkonw err: {:?}", e),
-    //     };
-
-    //     log::debug!(
-    //         "+++ parsed rsp:{:?} for req req:{:?} ",
-    //         req,
-    //         result_set.len()
-    //     );
-    //     // 返回mysql响应，在write response处进行协议转换
-    //     // TODO 这里临时打通，需要进一步完善修改 fishermen
-    //     let mut row: Vec<u8> = match result_set.len() > 0 {
-    //         true => result_set.remove(0),
-    //         false => Vec::with_capacity(10),
-    //     };
-
-    //     let status = match row.len() {
-    //         0 => false,
-    //         _ => true,
-    //     };
-
-    //     let mem = MemGuard::from_vec(row);
-    //     let cmd = Command::from(status, mem);
-    //     Ok(Some(cmd))
-    // }
-
-    // // mysql协议比较复杂，不能随意take，得等到最终解析完毕后，才能统一take走
-    // // TODO：后续可以统一记录解析位置及状态，从而减少重复解析 fishermen
-    // fn parse_response_inner<'a, S: crate::Stream>(
-    //     &self,
-    //     rsp_packet: &'a mut ResponsePacket<'a, S>,
-    // ) -> Result<Option<Command>> {
-    //     let mut result_set = self.parse_result_set(rsp_packet)?;
-
-    //     // 返回mysql响应，在write response处进行协议转换
-    //     // TODO 这里临时打通，需要进一步完善修改 fishermen
-    //     let status = result_set.len() > 0;
-
-    //     let row: Vec<u8> = match result_set.len() > 0 {
-    //         true => result_set.remove(0),
-    //         false => {
-    //             const NOT_FOUND: &[u8] = "not found".as_bytes();
-    //             let mut padding = Vec::with_capacity(10);
-    //             padding.extend(NOT_FOUND);
-    //             padding
-    //         }
-    //     };
-
-    //     let mem = MemGuard::from_vec(row);
-    //     let cmd = Command::from(status, mem);
-    //     Ok(Some(cmd))
-    // }
-
-    // mysql协议比较复杂，不能随意take，得等到最终解析完毕后，才能统一take走
-    // TODO：后续可以统一记录解析位置及状态，从而减少重复解析 fishermen
+    /// 解析mysql响应。mysql协议比较复杂，stream不能随意take，得等到最终解析完毕后，才能统一take走；
+    /// 本方法内，不管什么类型的包，返回之前，都得take
     fn parse_response_inner<'a, S: crate::Stream>(
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
@@ -409,6 +328,7 @@ impl Kv {
             let n = ok.affected_rows();
             let mem = MemGuard::from_vec(n.to_be_bytes().to_vec());
             let cmd = Command::from_ok(mem);
+            rsp_packet.take();
             log::debug!("+++ parse_response_inner okpacket respons cmd:{:?}", cmd);
             return Ok(Some(cmd));
         }
@@ -427,29 +347,30 @@ impl Kv {
         } else {
             b"not found".to_vec()
         };
+
         let mem = MemGuard::from_vec(row);
         let cmd = Command::from(status, mem);
         log::debug!("++++ recv kv resp:{:?}", cmd);
         Ok(Some(cmd))
     }
 
-    #[allow(dead_code)]
-    fn parse_result_set<'a, S>(
-        &self,
-        rsp_packet: &'a mut ResponsePacket<'a, S>,
-    ) -> Result<Vec<Vec<u8>>>
-    where
-        S: crate::Stream,
-    {
-        let meta = rsp_packet.parse_result_set_meta()?;
-        let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
-        let collector = |mut acc: Vec<Vec<u8>>, row| {
-            acc.push(from_row(row));
-            acc
-        };
-        let result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
-        Ok(result_set)
-    }
+    // #[allow(dead_code)]
+    // fn parse_result_set<'a, S>(
+    //     &self,
+    //     rsp_packet: &'a mut ResponsePacket<'a, S>,
+    // ) -> Result<Vec<Vec<u8>>>
+    // where
+    //     S: crate::Stream,
+    // {
+    //     let meta = rsp_packet.parse_result_set_meta()?;
+    //     let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
+    //     let collector = |mut acc: Vec<Vec<u8>>, row| {
+    //         acc.push(from_row(row));
+    //         acc
+    //     };
+    //     let result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
+    //     Ok(result_set)
+    // }
 
     #[inline]
     fn write_mc_packet<W>(
@@ -460,7 +381,7 @@ impl Kv {
         extra: Option<u32>,
         response: Option<&crate::Command>,
         w: &mut W,
-    ) -> Result<()>
+    ) -> crate::Result<()>
     where
         W: crate::Writer,
     {
@@ -487,7 +408,7 @@ impl Kv {
             w.write_u32(extra)?;
         }
         if let Some(key) = &key {
-            w.write_slice2(key, 0)?;
+            w.write_ringslice(key, 0)?;
         }
         if let Some(response) = response {
             w.write_slice(response, 0)? // value
@@ -501,7 +422,7 @@ impl Kv {
         request: &HashedCommand,
         response: Option<&crate::Command>,
         w: &mut W,
-    ) -> Result<()>
+    ) -> crate::Result<()>
     where
         W: crate::Writer,
     {
@@ -519,6 +440,8 @@ impl Kv {
             }
         };
 
+        // flag涉及到不同语言的解析问题，需要考虑兼容，4096目前在java是bytearr
+        const MARKER_BYTE_ARR: u32 = 4096u32;
         let (write_key, write_extra) = match old_op_code {
             OP_ADD | OP_SET | OP_DEL => {
                 log::debug!("+++ OP_ADD write_mc_packet:{:?}", response);
@@ -526,17 +449,36 @@ impl Kv {
             }
             OP_GETK | OP_GETKQ => {
                 let origin_req = request.origin_data();
-                // old request
-                // body： total body len
-                // TODO flag涉及到不同语言的解析问题，需要考虑兼容 fishermen
-                (Some(origin_req.key()), Some(4096u32))
+                (Some(origin_req.key()), Some(MARKER_BYTE_ARR))
             }
-            OP_GET | OP_GETQ => (None, Some(4096u32)),
+            OP_GET | OP_GETQ => (None, Some(MARKER_BYTE_ARR)),
             _ => (None, None),
         };
         //协议与标准协议不一样了，add等也返回response了
         self.write_mc_packet(old_op_code, status, write_key, write_extra, response, w)?;
         Ok(())
+    }
+
+    /// 根据异常信息构建mc协议的error packet
+    #[inline]
+    fn build_error_rsp(&self, request: &RingSlice, emsg: &str) -> Vec<u8> {
+        const PACKET_HEADER: usize = 24;
+        let mut packet = Vec::with_capacity(PACKET_HEADER + emsg.len());
+        packet.put_u8(RESPONSE_MAGIC); // magic
+        packet.put_u8(request.op()); // opcode
+        packet.put_u16(request.key_len()); // key len
+        packet.put_u16(0); //extra_len + data_type + reserved
+        packet.put_u16(RespStatus::InvalidArg as u16);
+        let body_len = request.key_len() as u32 + emsg.len() as u32;
+        packet.put_u32(body_len);
+        packet.put_u32(request.opaque());
+        packet.put_u64(0);
+
+        if request.key_len() > 0 {
+            request.key().copy_to_vec(&mut packet);
+        }
+        packet.extend(emsg.as_bytes());
+        packet
     }
 }
 

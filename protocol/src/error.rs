@@ -6,9 +6,9 @@ pub enum Error {
     // Redis 的扩展Error目前都是FlushOnClose
     // Redis(RedisError),
     Mcq(McqError),
-    // 关闭连接前需要把异常消息发出去
-    FlushOnClose(&'static [u8]),
-    // TODO: 先临时用这个打通，后续优化
+    // 关闭连接前需要把（静态/动态）异常消息发出去
+    FlushOnClose(Vec<u8>),
+    // TODO: 暂时保留，等endpoint merge完毕后再清理，避免merge冲突导致的ci测试问题
     MysqlError(Vec<u8>),
     Eof,
     UnexpectedData,

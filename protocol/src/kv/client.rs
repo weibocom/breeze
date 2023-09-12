@@ -34,20 +34,20 @@ impl Client {
             | CapabilityFlags::CLIENT_PLUGIN_AUTH
             | CapabilityFlags::CLIENT_CONNECT_ATTRS
             | CapabilityFlags::CLIENT_FOUND_ROWS;
-        //todo 以下这个flag实际不会开启
+        // 这个flag目前不会开启
         // | (self.capability_flags & CapabilityFlags::CLIENT_LONG_FLAG);
         // if self.0.opts.get_compress().is_some() {
         //     client_flags.insert(CapabilityFlags::CLIENT_COMPRESS);
         // }
 
-        // TODO 默认dbname 需要从config获取 fishermen
+        // 默认dbname 需要从config获取 fishermen
         // if let Some(db_name) = self.opts.get_db_name() {
         //     if !db_name.is_empty() {
         //         client_flags.insert(CapabilityFlags::CLIENT_CONNECT_WITH_DB);
         //     }
         // }
 
-        // TODO 暂时不支持ssl fishermen
+        // 暂时不支持ssl fishermen
         // if self.is_insecure() && self.0.opts.get_ssl_opts().is_some() {
         //     client_flags.insert(CapabilityFlags::CLIENT_SSL);
         // }

@@ -27,7 +27,6 @@ pub trait MySerialize {
     fn serialize(&self, buf: &mut Vec<u8>);
 }
 
-// TODO 为了减少本次改造量，先保留生命周期参数，等测试通过后，再统一去掉，小步快跑 fishermen
 /// Deserialization for various MySql types.
 pub trait MyDeserialize: Sized {
     /// Size hint of a serialized value (in bytes), if it's constant.

@@ -67,9 +67,9 @@ pub trait Writer: ds::BufWriter + Sized {
         Ok(())
     }
 
-    // TODO 先打通，后续改名重构 fishermen
+    // 暂时没发现更好的实现方式，先用这个实现
     #[inline]
-    fn write_slice2(&mut self, data: &RingSlice, oft: usize) -> Result<()> {
+    fn write_ringslice(&mut self, data: &RingSlice, oft: usize) -> Result<()> {
         data.copy_to(oft, self)?;
         Ok(())
     }

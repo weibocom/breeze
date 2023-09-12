@@ -1,5 +1,3 @@
-// TODO 后面统一整合
-
 use std::convert::TryFrom;
 
 pub static MAX_PAYLOAD_LEN: usize = 16_777_215;
