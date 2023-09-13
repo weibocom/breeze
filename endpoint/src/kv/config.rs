@@ -71,6 +71,8 @@ impl MysqlNamespace {
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         match serde_yaml::from_str::<MysqlNamespace>(cfg) {
             Ok(mut ns) => {
+                //移除default分片，兼容老defalut
+                ns.backends.remove(&Interval(0, 0));
                 match ns.decrypt_password() {
                     Ok(password) => ns.basic.password = password,
                     Err(e) => {
