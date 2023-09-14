@@ -1,44 +1,51 @@
 use base64::{engine::general_purpose, Engine as _};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{de::Error, Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
 use crate::{Timeout, TO_MYSQL_M, TO_MYSQL_S};
 
 //时间间隔，闭区间, 可以是2010, 或者2010-2015
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Interval(pub u16, pub u16);
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct Years(pub u16, pub u16);
 
-impl<'de> Deserialize<'de> for Interval {
+impl<'de> Deserialize<'de> for Years {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        Deserialize::deserialize(deserializer).map(|interval: String| {
-            if interval == ARCHIVE_DEFAULT_KEY {
-                return Interval(0, 0);
+        match String::deserialize(deserializer) {
+            Ok(interval) => {
+                //暂时兼容defalut，配置更新后删除
+                if interval == ARCHIVE_DEFAULT_KEY {
+                    return Ok(Years(0, 0));
+                }
+                let mut interval_split = interval.split("-");
+                let start = interval_split
+                    .next()
+                    .ok_or(Error::custom(&format!("interval is empty:{interval}")))?
+                    .parse()
+                    .map_err(Error::custom)?;
+                let end = if let Some(end) = interval_split.next() {
+                    end.parse().map_err(Error::custom)?
+                } else {
+                    start
+                };
+                Ok(Years(start, end))
             }
-            let mut interval = interval.split("-");
-            let start = interval.next().unwrap().parse().unwrap();
-            let end = interval.next();
-            let end = if end.is_none() {
-                start
-            } else {
-                end.unwrap().parse().unwrap()
-            };
-            Interval(start, end)
-        })
+            Err(e) => Err(e),
+        }
     }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct MysqlNamespace {
+pub struct KvNamespace {
     #[serde(default)]
     pub(crate) basic: Basic,
     #[serde(skip)]
     pub(crate) backends_flaten: Vec<String>,
     #[serde(default)]
-    pub(crate) backends: HashMap<Interval, Vec<String>>,
+    pub(crate) backends: HashMap<Years, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -66,13 +73,26 @@ pub struct Basic {
 }
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
-impl MysqlNamespace {
+impl KvNamespace {
     #[inline]
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
-        match serde_yaml::from_str::<MysqlNamespace>(cfg) {
+        match serde_yaml::from_str::<KvNamespace>(cfg) {
             Ok(mut ns) => {
                 //移除default分片，兼容老defalut
-                ns.backends.remove(&Interval(0, 0));
+                ns.backends.remove(&Years(0, 0));
+                //配置的年需要连续，不重叠
+                let mut years: Vec<_> = ns.backends.keys().collect();
+                if years.len() == 0 {
+                    return None;
+                }
+                years.sort();
+                let mut last_year = years[0].0 - 1;
+                for year in years {
+                    if year.0 > year.1 || year.0 != last_year + 1 {
+                        return None;
+                    }
+                    last_year = year.1;
+                }
                 match ns.decrypt_password() {
                     Ok(password) => ns.basic.password = password,
                     Err(e) => {

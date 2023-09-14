@@ -21,8 +21,8 @@ use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
 
-use super::config::Interval;
-use super::config::MysqlNamespace;
+use super::config::KvNamespace;
+use super::config::Years;
 use super::strategy::Strategist;
 use super::KVCtx;
 #[derive(Clone)]
@@ -31,7 +31,7 @@ pub struct KvService<B, E, Req, P> {
     // selector: Selector,
     strategist: Strategist,
     parser: P,
-    cfg: Box<DnsConfig<MysqlNamespace>>,
+    cfg: Box<DnsConfig<KvNamespace>>,
     _mark: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -92,7 +92,7 @@ where
         let intyear: u16 = year.parse().unwrap();
         let shards = self.shards.get(intyear);
         if shards.len() == 0 {
-            //todo
+            //todo 错误类型不合适
             req.on_err(protocol::Error::TopChanged);
             return;
         }
@@ -175,7 +175,7 @@ where
         self.cfg.load_guard().check_load(|| self.load_inner());
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
-        if let Some(ns) = MysqlNamespace::try_from(cfg) {
+        if let Some(ns) = KvNamespace::try_from(cfg) {
             self.strategist = Strategist::try_from(&ns);
             self.cfg.update(namespace, ns);
         }
@@ -281,8 +281,6 @@ where
                     self.cfg.timeout_master(),
                     res_option.clone(),
                 );
-                master.enable_single();
-
                 // slave
                 let mut replicas = Vec::with_capacity(8);
                 for addr in slaves {
@@ -395,47 +393,36 @@ impl<E> Debug for Shard<E> {
     }
 }
 
-const INTERVAL_START: u16 = 2000;
-const INTERVAL_END: u16 = 2099;
-const INTERVAL_LEN: usize = (INTERVAL_END - INTERVAL_START) as usize + 1;
+const YEAR_START: u16 = 2000;
+const YEAR_END: u16 = 2099;
+const YEAR_LEN: usize = (YEAR_END - YEAR_START) as usize + 1;
 #[derive(Clone)]
 struct Shards<E> {
-    shards: Vec<Shard<E>>,
-    //2000~2099年的分片索引范围，如index[0].0 = (0, 5)表示2000年的shards为shards[0:5]
-    index: [(usize, usize); INTERVAL_LEN],
+    shards: Vec<Vec<Shard<E>>>,
+    //2000~2099年的分片索引范围，如index[0] = 2 表示2000年的shards为shards[2]
+    //使用usize::MAX表示未初始化
+    index: [usize; YEAR_LEN],
+    len: usize,
 }
 
 impl<E> Default for Shards<E> {
     fn default() -> Self {
         Self {
             shards: Default::default(),
-            index: [(0, 0); INTERVAL_LEN],
+            index: [usize::MAX; YEAR_LEN],
+            len: 0,
         }
     }
 }
 impl<E> Shards<E> {
     fn len(&self) -> usize {
-        self.shards.len()
+        self.len
     }
     //会重新初始化
     fn take(&mut self) -> Vec<Shard<E>> {
-        self.index = [(0, 0); INTERVAL_LEN];
-        self.shards.split_off(0)
-    }
-
-    fn push(&mut self, shards_per_interval: (&Interval, Vec<Shard<E>>)) {
-        let (interval, shards_per_interval) = shards_per_interval;
-        let start = self.shards.len();
-        let end = start + shards_per_interval.len() as usize;
-        self.shards.extend(shards_per_interval);
-        let (start_index, end_index) = (
-            (interval.0 - INTERVAL_START) as usize,
-            (interval.1 - INTERVAL_START) as usize,
-        );
-        for i in &mut self.index[start_index..=end_index] {
-            assert_eq!(*i, (0, 0));
-            *i = (start, end)
-        }
+        self.index = [usize::MAX; YEAR_LEN];
+        self.len = 0;
+        self.shards.split_off(0).into_iter().flatten().collect()
     }
     //push 进来的shard是否init了
     fn inited(&self) -> bool
@@ -444,12 +431,34 @@ impl<E> Shards<E> {
     {
         self.shards
             .iter()
+            .flatten()
             .fold(true, |inited, shard| inited && shard.inited())
     }
 
+    fn year_index(year: u16) -> usize {
+        (year - YEAR_START) as usize
+    }
+
+    fn push(&mut self, shards_per_interval: (&Years, Vec<Shard<E>>)) {
+        let (interval, shards_per_interval) = shards_per_interval;
+        let index = self.shards.len();
+        self.len += shards_per_interval.len();
+        self.shards.push(shards_per_interval);
+        let (start_year, end_year) = (Self::year_index(interval.0), Self::year_index(interval.1));
+        for i in &mut self.index[start_year..=end_year] {
+            assert_eq!(*i, usize::MAX);
+            *i = index
+        }
+    }
+
     fn get(&self, intyear: u16) -> &[Shard<E>] {
-        assert!(2099 >= intyear && intyear >= INTERVAL_START);
-        &self.shards[self.index[(intyear - INTERVAL_START) as usize].0
-            ..self.index[(intyear - INTERVAL_START) as usize].1]
+        if intyear > YEAR_END || intyear < YEAR_START {
+            return &[];
+        }
+        let index = self.index[Self::year_index(intyear)];
+        if index == usize::MAX {
+            return &[];
+        }
+        &self.shards[index]
     }
 }
