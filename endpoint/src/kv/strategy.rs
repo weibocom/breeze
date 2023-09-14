@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use super::config::MysqlNamespace;
+use super::config::KvNamespace;
 use super::kvtime::KVTime;
 use ds::RingSlice;
 
@@ -77,7 +77,7 @@ impl Default for Strategist {
 }
 
 impl Strategist {
-    pub fn try_from(item: &MysqlNamespace) -> Self {
+    pub fn try_from(item: &KvNamespace) -> Self {
         Self::KVTime(KVTime::new(
             item.basic.db_name.clone(),
             item.basic.db_count,
