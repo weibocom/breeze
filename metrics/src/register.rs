@@ -167,8 +167,8 @@ pub struct MetricRegister {
 
 impl MetricRegister {
     fn new(rx: Receiver<(Arc<Id>, i64)>, metrics: CowWriteHandle<Metrics>) -> Self {
-        let mut tick = interval(ds::time::Duration::from_secs(3));
-        tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut tick = interval(Duration::from_secs(3));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         Self {
             rx,
             metrics,
@@ -207,8 +207,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use ds::time::{interval, Duration, Interval};
 use std::task::ready;
-use tokio::time::{interval, Interval, MissedTickBehavior};
 
 impl Future for MetricRegister {
     type Output = ();

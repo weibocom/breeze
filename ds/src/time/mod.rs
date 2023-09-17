@@ -1,6 +1,12 @@
 #[cfg(feature = "tsc")]
-pub type Instant = minstant::Instant;
+mod tsc;
 #[cfg(not(feature = "tsc"))]
-pub type Instant = std::time::Instant;
+mod tsc {
+    pub type Instant = minstant::Instant;
+    pub type Duration = std::time::Duration;
+}
 
-pub type Duration = std::time::Duration;
+pub use tsc::*;
+
+mod tokio;
+pub use tokio::*;

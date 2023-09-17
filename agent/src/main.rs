@@ -10,7 +10,7 @@ use context::Context;
 use discovery::*;
 mod init;
 
-use ds::time::Duration;
+use ds::time::{sleep, Duration};
 use rt::spawn;
 
 use protocol::Result;
@@ -54,7 +54,7 @@ async fn run() -> Result<()> {
                 }
             });
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(1)).await;
     }
 }
 

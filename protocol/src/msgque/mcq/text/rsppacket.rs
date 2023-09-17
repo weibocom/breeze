@@ -4,7 +4,7 @@ use crate::Result;
 use metrics::Path;
 
 use super::{error::McqError, reqpacket::Packet};
-use std::time::Duration;
+use ds::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 const CR: u8 = 13;
 const LF: u8 = 10;

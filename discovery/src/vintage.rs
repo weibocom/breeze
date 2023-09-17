@@ -2,10 +2,9 @@
 
 use std::io::{Error, ErrorKind::Other};
 
-use ds::time::Duration;
+use ds::time::{timeout, Duration};
 use hyper::{client::HttpConnector, Client, Uri};
 use serde::Deserialize;
-use tokio::time::timeout;
 
 pub struct Vintage {
     client: Client<HttpConnector>,

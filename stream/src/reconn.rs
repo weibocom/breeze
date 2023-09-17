@@ -1,4 +1,4 @@
-use ds::time::Duration;
+use ds::time::{sleep, Duration};
 use metrics::{Metric, Path};
 pub(crate) struct ReconnPolicy {
     conns: usize,
@@ -32,7 +32,7 @@ impl ReconnPolicy {
         );
         self.continue_fails += 1;
         if sleep_mills > 0 {
-            tokio::time::sleep(Duration::from_millis(sleep_mills as u64)).await;
+            sleep(Duration::from_millis(sleep_mills as u64)).await;
         }
     }
 

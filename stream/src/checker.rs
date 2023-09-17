@@ -1,4 +1,4 @@
-use ds::time::Duration;
+use ds::time::{timeout, Duration};
 use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
@@ -7,7 +7,6 @@ use std::task::{ready, Poll};
 
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
-use tokio::time::timeout;
 
 use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream};
 

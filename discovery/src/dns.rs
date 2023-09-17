@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{
 
 use trust_dns_resolver::TokioAsyncResolver;
 
-use ds::{CowReadHandle, CowWriteHandle};
+use ds::{time::interval, CowReadHandle, CowWriteHandle};
 #[ctor::ctor]
 static DNSCACHE: CowReadHandle<DnsCache> = {
     let resolver = TokioAsyncResolver::tokio_from_system_conf().expect("crate dns resolver");
@@ -153,7 +153,7 @@ pub async fn start_dns_resolver_refresher() {
     let mut resolver = dns_resolver.resolver;
     use ds::time::{Duration, Instant};
     const BATCH_CNT: usize = 128;
-    let mut tick = tokio::time::interval(Duration::from_secs(1));
+    let mut tick = interval(Duration::from_secs(1));
     //let mut last = Instant::now(); // 上一次刷新的时间
     let mut idx = 0;
     loop {
