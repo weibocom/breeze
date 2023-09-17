@@ -1,10 +1,9 @@
 use metrics::prometheus::Prometheus;
 
 use ds::lock::Lock;
-use ds::time::{Duration, Instant};
+use ds::time::{interval, timeout, Duration, Instant};
 use hyper::{header::CONTENT_TYPE, Body, Client, Request, Response, StatusCode};
 use lazy_static::lazy_static;
-use tokio::time::timeout;
 use tokio_util::io::ReaderStream;
 
 lazy_static! {
@@ -54,8 +53,7 @@ pub(crate) fn register_target(ctx: &context::Context) {
 }}"#
         );
         let client = Client::new();
-        let mut interval = tokio::time::interval(ds::time::Duration::from_secs(60));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut interval = interval(Duration::from_secs(60));
         loop {
             let body = body.clone();
             let req = Request::builder()

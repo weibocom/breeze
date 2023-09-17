@@ -1,6 +1,6 @@
 use std::task::{ready, Context, Poll};
 
-use tokio::time::{interval, Interval, MissedTickBehavior};
+use ds::time::{interval, Interval};
 
 use ds::time::Duration;
 
@@ -35,8 +35,7 @@ impl TimeoutCheck for Timeout {
 impl From<u16> for Timeout {
     #[inline]
     fn from(timeout_ms: u16) -> Self {
-        let mut tick = interval(Duration::from_millis(timeout_ms.max(50) as u64));
-        tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let tick = interval(Duration::from_millis(timeout_ms.max(50) as u64));
 
         Self { timeout_ms, tick }
     }

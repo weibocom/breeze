@@ -1,5 +1,5 @@
 use context::Quadruple;
-use ds::time::Duration;
+use ds::time::{sleep, Duration};
 use net::Listener;
 use rt::spawn;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ pub(super) async fn process_one(
     let mut tries = 0usize;
     while !rx.inited() {
         tries += 1;
-        let sleep = if tries <= 10 {
+        let s = if tries <= 10 {
             Duration::from_secs(1)
         } else {
             // 拉取配置失败，业务监听失败数+1
@@ -42,7 +42,7 @@ pub(super) async fn process_one(
             let t = (2 * (tries - 10) as u64).min(1024);
             Duration::from_secs(t)
         };
-        tokio::time::sleep(sleep).await;
+        sleep(s).await;
     }
 
     log::info!("service inited. {} ", quard);
@@ -54,12 +54,12 @@ pub(super) async fn process_one(
         // 监听失败或accept连接失败，对监听失败数+1
         listen_failed += 1;
         log::warn!("service process failed. {}, err:{:?}", quard, _e);
-        tokio::time::sleep(Duration::from_secs(6)).await;
+        sleep(Duration::from_secs(6)).await;
     }
     switcher.off();
 
     // 因为回调，有可能在连接释放的时候，还在引用top。
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    sleep(Duration::from_secs(3)).await;
     Ok(())
 }
 

@@ -22,4 +22,5 @@ mod kv;
 mod mysql_strategy;
 mod number;
 mod ring_buffer;
+mod time;
 mod tx_buffer;

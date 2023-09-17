@@ -5,13 +5,10 @@ use std::task::{ready, Context, Poll};
 
 use super::timeout::*;
 
-use ds::time::{Duration, Instant};
+use ds::time::{interval, Duration, Instant, Interval};
 use metrics::base::*;
 
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    time::{interval, Interval, MissedTickBehavior},
-};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 pub trait ReEnter {
     #[inline]
@@ -60,8 +57,7 @@ impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + R
 {
     #[inline]
     pub fn timeout(f: F, timeout: T) -> Self {
-        let mut refresh_tick = interval(Duration::from_secs(30));
-        refresh_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let refresh_tick = interval(Duration::from_secs(30));
 
         Self {
             inner: f,
