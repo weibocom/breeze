@@ -1,7 +1,7 @@
 // 解析mysql协议， 转换为mc协议
 
 use crate::kv::common::constants::DEFAULT_MAX_ALLOWED_PACKET;
-use crate::StreamContext;
+use crate::{Command, StreamContext};
 
 use super::client::Client;
 use super::common::{buffer_pool::Buffer, proto::codec::PacketCodec, query_result::Or};
@@ -127,6 +127,19 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
                 Ok(Or::A(columns))
             }
         }
+    }
+
+    /// 构建最终的响应，并对已解析的内容进行take
+    #[inline(always)]
+    pub(super) fn build_final_rsp_cmd(&mut self, ok: bool, rsp_data: Vec<u8>) -> Command {
+        // 构建最终返回给client的响应内容
+        let mem = ds::MemGuard::from_vec(rsp_data);
+        let cmd = Command::from(ok, mem);
+        log::debug!("+++ build mysql rsp, ok:{} => {:?}", ok, cmd);
+
+        // 返回最终响应前，take走已经解析的数据
+        self.take();
+        return cmd;
     }
 
     /// Must not be called before handle_handshake.
