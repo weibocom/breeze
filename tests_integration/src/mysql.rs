@@ -2,6 +2,7 @@ use crate::mc_helper::*;
 use memcache::MemcacheError;
 use std::{thread::sleep, time::Duration};
 
+const ERR_INVALID_ARG: &str = "Invalid arguments provided";
 //val中有非assic字符和需要mysql转义的字符
 #[test]
 #[rustfmt::skip]
@@ -102,7 +103,7 @@ fn get_invalid_key() {
     let client = mc_get_conn("mysql");
     let key = "9527";
     let result: Result<Option<String>, MemcacheError> = client.get(key);
-    assert_eq!(None, result.unwrap());
+    assert!(result.is_err_and(|e| e.to_string().contains(ERR_INVALID_ARG)));
 }
 
 #[test]
@@ -178,8 +179,9 @@ fn update_long_key() {
 fn delete_invalid_key() {
     let client = mc_get_conn("mysql");
     let key = "9527";
-    let r = client.delete(key).unwrap();
-    assert!(!r, "delete invalid key result: {:?}", r);
+    let r = client.delete(key);
+    assert!(r.is_err_and(|e| { e.to_string().contains(ERR_INVALID_ARG) }));
+    // assert!(!r, "delete invalid key result: {:?}", r);
 }
 #[test]
 #[should_panic]
