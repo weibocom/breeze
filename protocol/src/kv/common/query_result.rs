@@ -271,14 +271,14 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
     /// 解析meta后面的rows
     #[inline(always)]
     pub fn parse_rows(&mut self) -> Result<Command> {
+        // rows 收集器
         let collector = |mut acc: Vec<Vec<u8>>, row| {
             acc.push(from_row(row));
             acc
         };
 
-        let mut result_set = self.scan_rows(Vec::with_capacity(4), collector)?;
-
         // 解析row并构建cmd
+        let mut result_set = self.scan_rows(Vec::with_capacity(4), collector)?;
         let status = result_set.len() > 0;
         let row: Vec<u8> = if status {
             //现在只支持单key，remove也不影响
