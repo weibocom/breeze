@@ -41,9 +41,13 @@ impl KVTime {
             .with_timezone(&Shanghai);
         let (year, month, day) = (s.year() % 100, s.month(), s.day());
         if is_display_day {
-            let _ = write!(buf, "{}_{}{:02}{:02}", &self.table_prefix, year, month, day);
+            let _ = write!(
+                buf,
+                "{}_{:02}{:02}{:02}",
+                &self.table_prefix, year, month, day
+            );
         } else {
-            let _ = write!(buf, "{}_{}{:02}", &self.table_prefix, year, month);
+            let _ = write!(buf, "{}_{:02}{:02}", &self.table_prefix, year, month);
         }
     }
 
