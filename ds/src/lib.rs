@@ -23,6 +23,9 @@ pub mod time;
 mod asserts;
 pub use asserts::*;
 
+mod bits;
+pub use bits::*;
+
 pub trait BufWriter {
     fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()>;
     #[inline]
