@@ -58,9 +58,8 @@ impl Protocol for Uuid {
             w.write_slice(rsp, 0)?;
             Ok(())
         } else {
-            Err(Error::FlushOnClose(
-                b"SERVER_ERROR uuid no available\r\n"[..].into(),
-            ))
+            w.write(b"SERVER_ERROR uuid no available\r\n")?;
+            Err(Error::Quit)
         }
     }
 }
