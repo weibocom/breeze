@@ -73,32 +73,32 @@ impl Flag {
         self.noforward
     }
 
-    #[inline]
-    pub fn mark(&mut self, bit: u8) {
-        self.v |= 1 << bit;
-    }
-    #[inline]
-    pub fn marked(&self, bit: u8) -> bool {
-        let m = 1 << bit;
-        self.v & m == m
-    }
+    //#[inline]
+    //pub fn mark(&mut self, bit: u8) {
+    //    self.v |= 1 << bit;
+    //}
+    //#[inline]
+    //pub fn marked(&self, bit: u8) -> bool {
+    //    let m = 1 << bit;
+    //    self.v & m == m
+    //}
     #[inline]
     pub fn reset_flag(&mut self, op_code: OpCode, op: Operation) {
         self.op_code = op_code;
         self.op = op;
     }
-    #[inline]
-    pub fn set_ext(&mut self, ext: u64) {
-        self.v = ext;
-    }
-    #[inline]
-    pub fn ext(&self) -> u64 {
-        self.v
-    }
-    #[inline]
-    pub fn ext_mut(&mut self) -> &mut u64 {
-        &mut self.v
-    }
+    //#[inline]
+    //pub fn set_ext(&mut self, ext: u64) {
+    //    self.v = ext;
+    //}
+    //#[inline]
+    //pub fn ext(&self) -> u64 {
+    //    self.v
+    //}
+    //#[inline]
+    //pub fn ext_mut(&mut self) -> &mut u64 {
+    //    &mut self.v
+    //}
 }
 
 #[derive(Debug, Clone)]
