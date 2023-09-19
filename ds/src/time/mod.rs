@@ -9,4 +9,4 @@ mod tsc {
 pub use tsc::*;
 
 mod tokio;
-pub use tokio::*;
+pub use self::tokio::*;
