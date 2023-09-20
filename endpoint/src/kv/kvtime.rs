@@ -87,7 +87,7 @@ impl Strategy for KVTime {
     fn hasher(&self) -> &Hasher {
         &self.hasher
     }
-    fn get_key(&self, key: &RingSlice) -> u16 {
+    fn year(&self, key: &RingSlice) -> u16 {
         let uuid = to_i64(key);
         let year = uuid.year();
         if self.years.contains(&year) {

@@ -50,9 +50,9 @@ impl Strategy for Strategist {
         }
     }
     #[inline]
-    fn get_key(&self, key: &RingSlice) -> u16 {
+    fn year(&self, key: &RingSlice) -> u16 {
         match self {
-            Strategist::KVTime(inner) => Strategy::get_key(inner, key),
+            Strategist::KVTime(inner) => Strategy::year(inner, key),
         }
     }
     #[inline]

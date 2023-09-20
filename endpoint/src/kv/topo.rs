@@ -113,7 +113,7 @@ where
             req.origin_data().key()
         };
         //定位年库
-        let year = self.strategist.get_key(&key);
+        let year = self.strategist.year(&key);
         let shards = self
             .archive_shards
             .get(&year)
