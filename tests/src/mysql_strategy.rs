@@ -60,4 +60,70 @@ mod mysql_strategy {
     //     let biz = UuidHelper::get_biz(id);
     //     println!("id: {} , biz: {}", id, biz);
     // }
+
+    #[test]
+    fn test_year() {
+        use endpoint::kv::kvtime::KVTime;
+        use protocol::kv::Strategy;
+        let kv_time = KVTime::new(
+            "db_name".to_string(),
+            16,
+            8,
+            vec![
+                2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
+                2019, 65535,
+            ],
+        );
+
+        use ds::RingSlice;
+        let id_str = "3379782484330149"; // Tue Nov 15 00:00:00 CST 2011
+        let id_slice = RingSlice::from(
+            id_str.as_ptr(),
+            id_str.len().next_power_of_two(),
+            0,
+            id_str.len(),
+        );
+        let key = kv_time.get_key(&id_slice);
+        assert_eq!(key, 2011);
+
+        let id_str = "3396814711554048"; // Tue Jan  1 00:00:00 CST 2012
+        let id_slice = RingSlice::from(
+            id_str.as_ptr(),
+            id_str.len().next_power_of_two(),
+            0,
+            id_str.len(),
+        );
+        let key = kv_time.get_key(&id_slice);
+        assert_eq!(key, 2012);
+
+        let id_str = "4323440483893248"; // Tue Jan  1 00:00:00 CST 2019
+        let id_slice = RingSlice::from(
+            id_str.as_ptr(),
+            id_str.len().next_power_of_two(),
+            0,
+            id_str.len(),
+        );
+        let key = kv_time.get_key(&id_slice);
+        assert_eq!(key, 2019);
+
+        let id_str = "1808468696629248"; // Sat Jan  1 00:00:00 CST 2000
+        let id_slice = RingSlice::from(
+            id_str.as_ptr(),
+            id_str.len().next_power_of_two(),
+            0,
+            id_str.len(),
+        );
+        let key = kv_time.get_key(&id_slice);
+        assert_eq!(key, 65535);
+
+        let id_str = "4852889155534848"; // Sun Jan  1 00:00:00 CST 2023
+        let id_slice = RingSlice::from(
+            id_str.as_ptr(),
+            id_str.len().next_power_of_two(),
+            0,
+            id_str.len(),
+        );
+        let key = kv_time.get_key(&id_slice);
+        assert_eq!(key, 65535);
+    }
 }

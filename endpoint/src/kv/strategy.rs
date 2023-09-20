@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY};
+use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY, ARCHIVE_DEFAULT_KEY_U16};
 use super::kvtime::KVTime;
 use ds::RingSlice;
 
@@ -50,7 +50,7 @@ impl Strategy for Strategist {
         }
     }
     #[inline]
-    fn get_key(&self, key: &RingSlice) -> Option<String> {
+    fn get_key(&self, key: &RingSlice) -> u16 {
         match self {
             Strategist::KVTime(inner) => Strategy::get_key(inner, key),
         }
@@ -76,7 +76,7 @@ impl Default for Strategist {
             "status".to_string(),
             32u32,
             8u32,
-            vec![ARCHIVE_DEFAULT_KEY.to_string()],
+            vec![ARCHIVE_DEFAULT_KEY_U16],
         ))
     }
 }
@@ -90,11 +90,14 @@ impl Strategist {
                 .get(ARCHIVE_DEFAULT_KEY)
                 .expect("ARCHIVE_DEFAULT_KEY null")
                 .len() as u32,
-            item.backends.keys().cloned().collect(),
+            item.backends
+                .keys()
+                .map(|x| x.parse::<u16>().unwrap_or(ARCHIVE_DEFAULT_KEY_U16))
+                .collect(),
         ))
     }
 
-    pub fn new(db_name: String, db_count: u32, shards: u32, years: Vec<String>) -> Self {
+    pub fn new(db_name: String, db_count: u32, shards: u32, years: Vec<u16>) -> Self {
         Self::KVTime(KVTime::new(db_name, db_count, shards, years))
     }
 }

@@ -1,4 +1,4 @@
-use super::config::ARCHIVE_DEFAULT_KEY;
+use super::config::ARCHIVE_DEFAULT_KEY_U16;
 use super::{
     strategy::{to_i64, Postfix},
     uuid::Uuid,
@@ -18,11 +18,11 @@ pub struct KVTime {
     table_postfix: Postfix,
     hasher: Hasher,
     distribution: DBRange,
-    years: Vec<String>,
+    years: Vec<u16>,
 }
 
 impl KVTime {
-    pub fn new(name: String, db_count: u32, shards: u32, years: Vec<String>) -> Self {
+    pub fn new(name: String, db_count: u32, shards: u32, years: Vec<u16>) -> Self {
         Self {
             db_prefix: name.clone(),
             table_prefix: name.clone(),
@@ -87,19 +87,13 @@ impl Strategy for KVTime {
     fn hasher(&self) -> &Hasher {
         &self.hasher
     }
-    fn get_key(&self, key: &RingSlice) -> Option<String> {
+    fn get_key(&self, key: &RingSlice) -> u16 {
         let uuid = to_i64(key);
-        let s = uuid.unix_secs();
-        let year = chrono::Utc
-            .timestamp_opt(s, 0)
-            .unwrap()
-            .with_timezone(&Shanghai)
-            .format("%Y")
-            .to_string();
+        let year = uuid.year();
         if self.years.contains(&year) {
-            Some(year)
+            year
         } else {
-            Some(ARCHIVE_DEFAULT_KEY.to_string())
+            ARCHIVE_DEFAULT_KEY_U16
         }
     }
     fn tablename_len(&self) -> usize {

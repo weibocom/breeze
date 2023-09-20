@@ -39,6 +39,7 @@ pub struct Basic {
     pub(crate) user: String,
 }
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
+pub const ARCHIVE_DEFAULT_KEY_U16: u16 = u16::MAX;
 
 impl MysqlNamespace {
     pub(super) fn is_local(&self) -> bool {
