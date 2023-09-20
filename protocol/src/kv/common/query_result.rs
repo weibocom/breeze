@@ -1,5 +1,5 @@
 use crate::kv::error::{Error, Result};
-use crate::Stream;
+use crate::{Command, Stream};
 
 pub use crate::kv::common::proto::{Binary, Text};
 
@@ -262,6 +262,34 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         }
     }
 
+    /// TODO 代理rsp_packet的同名方法，这两个文件需要进行整合
+    #[inline(always)]
+    pub fn build_final_rsp_cmd(&mut self, ok: bool, rsp_data: Vec<u8>) -> Command {
+        self.rsp_packet.build_final_rsp_cmd(ok, rsp_data)
+    }
+
+    /// 解析meta后面的rows
+    #[inline(always)]
+    pub fn parse_rows(&mut self) -> Result<Command> {
+        // rows 收集器
+        let collector = |mut acc: Vec<Vec<u8>>, row| {
+            acc.push(from_row(row));
+            acc
+        };
+
+        // 解析row并构建cmd
+        let mut result_set = self.scan_rows(Vec::with_capacity(4), collector)?;
+        let status = result_set.len() > 0;
+        let row: Vec<u8> = if status {
+            //现在只支持单key，remove也不影响
+            result_set.remove(0)
+        } else {
+            b"not found".to_vec()
+        };
+        let cmd = self.build_final_rsp_cmd(status, row);
+        Ok(cmd)
+    }
+
     pub(crate) fn scan_rows<R, F, U>(&mut self, mut init: U, mut f: F) -> Result<U>
     where
         R: FromRow,
@@ -275,7 +303,8 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
                 }
 
                 None => {
-                    let _ = self.rsp_packet.take();
+                    // take统一放在构建最终响应的地方进行
+                    // let _ = self.rsp_packet.take();
                     return Ok(init);
                 }
             }
