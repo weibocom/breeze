@@ -430,7 +430,7 @@ impl Kv {
             //现在只支持单key，remove也不影响
             result_set.remove(0)
         } else {
-            NOT_FOUND.clone()
+            b"not found".to_vec()
         };
         let mem = MemGuard::from_vec(row);
         let cmd = Command::from(status, mem);
