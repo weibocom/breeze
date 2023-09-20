@@ -12,9 +12,6 @@ pub use mc2mysql::{MysqlBuilder, Strategy};
 
 use self::common::proto::Text;
 use self::common::query_result::{Or, QueryResult};
-use self::common::row::convert::from_row;
-
-use self::error::Result;
 use bytes::BufMut;
 pub use common::proto::codec::PacketCodec;
 
@@ -32,7 +29,7 @@ use crate::HandShake;
 use crate::HashedCommand;
 use crate::RequestProcessor;
 use crate::Stream;
-use ds::{MemGuard, RingSlice};
+use ds::RingSlice;
 
 use sharding::hash::Hash;
 
@@ -139,16 +136,8 @@ impl Protocol for Kv {
 
         // 解析完毕rsp后，除了数据未读完的场景，其他不管是否遇到err，都要进行take
         match self.parse_response_inner(&mut rsp_packet) {
-            Ok(cmd) => Ok(cmd),
-
-            Err(Error::ProtocolIncomplete) => Ok(None),
-            Err(Error::UnhandleResponseError(s)) => {
-                // 异常响应通过标准处理流程，所以此处不需要进行协议包转换
-                let mem = ds::MemGuard::from_vec(s);
-                let cmd = Command::from(false, mem);
-                log::debug!("+++ parse mysql response err to cmd:{:?}", cmd);
-                Ok(Some(cmd))
-            }
+            Ok(cmd) => Ok(Some(cmd)),
+            Err(crate::Error::ProtocolIncomplete) => Ok(None),
             Err(e) => {
                 // 非MysqlError需要日志并外层断连处理
                 log::error!("+++ err when parse mysql response: {:?}", e);
@@ -315,62 +304,41 @@ impl Kv {
     }
 
     /// 解析mysql响应。mysql协议比较复杂，stream不能随意take，得等到最终解析完毕后，才能统一take走；
-    /// 本方法内，不管什么类型的包，返回之前，都得take
+    /// 本方法内，不管什么类型的包，只要不是Err，在返回响应前都得take
     fn parse_response_inner<'a, S: crate::Stream>(
         &self,
         rsp_packet: &'a mut ResponsePacket<'a, S>,
-    ) -> Result<Option<Command>> {
-        // let mut result_set = self.parse_result_set(rsp_packet)?;
-        let meta = rsp_packet.parse_result_set_meta()?;
+    ) -> crate::Result<Command> {
+        // 首先parse meta，对于UnhandleResponseError异常，需要构建成响应返回
+        let meta = match rsp_packet.parse_result_set_meta() {
+            Ok(meta) => meta,
+            Err(Error::UnhandleResponseError(emsg)) => {
+                // 对于UnhandleResponseError，需要构建rsp，发给client
+                let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
+                return Ok(cmd);
+            }
+            Err(e) => return Err(e.into()),
+        };
 
-        // 返回影响的列数，如insert/delete/update
+        // 如果是只有meta的ok packet，直接返回影响的列数，如insert/delete/update
         if let Or::B(ok) = meta {
             let n = ok.affected_rows();
-            let mem = MemGuard::from_vec(n.to_be_bytes().to_vec());
-            let cmd = Command::from_ok(mem);
-            rsp_packet.take();
-            log::debug!("+++ parse_response_inner okpacket respons cmd:{:?}", cmd);
-            return Ok(Some(cmd));
+            let cmd = rsp_packet.build_final_rsp_cmd(true, n.to_be_bytes().to_vec());
+            return Ok(cmd);
         }
 
-        // 返回值有列数据的操作，如select
+        // 解析meta后面的rows，返回列记录，如select
         let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
-        let collector = |mut acc: Vec<Vec<u8>>, row| {
-            acc.push(from_row(row));
-            acc
-        };
-        let mut result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
-        let status = result_set.len() > 0;
-        let row: Vec<u8> = if status {
-            //现在只支持单key，remove也不影响
-            result_set.remove(0)
-        } else {
-            b"not found".to_vec()
-        };
-
-        let mem = MemGuard::from_vec(row);
-        let cmd = Command::from(status, mem);
-        log::debug!("++++ recv kv resp:{:?}", cmd);
-        Ok(Some(cmd))
+        match query_result.parse_rows() {
+            Ok(cmd) => Ok(cmd),
+            Err(Error::UnhandleResponseError(emsg)) => {
+                // 对于UnhandleResponseError，需要构建rsp，发给client
+                let cmd = query_result.build_final_rsp_cmd(false, emsg);
+                Ok(cmd)
+            }
+            Err(e) => Err(e.into()),
+        }
     }
-
-    // #[allow(dead_code)]
-    // fn parse_result_set<'a, S>(
-    //     &self,
-    //     rsp_packet: &'a mut ResponsePacket<'a, S>,
-    // ) -> Result<Vec<Vec<u8>>>
-    // where
-    //     S: crate::Stream,
-    // {
-    //     let meta = rsp_packet.parse_result_set_meta()?;
-    //     let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
-    //     let collector = |mut acc: Vec<Vec<u8>>, row| {
-    //         acc.push(from_row(row));
-    //         acc
-    //     };
-    //     let result_set = query_result.scan_rows(Vec::with_capacity(4), collector)?;
-    //     Ok(result_set)
-    // }
 
     #[inline]
     fn write_mc_packet<W>(
