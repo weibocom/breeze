@@ -516,8 +516,8 @@ impl Kv {
             RespStatus::NoError
         } else {
             match old_op_code {
-                OP_SET | OP_ADD => RespStatus::NotStored,
-                OP_GET | OP_GETK | OP_DEL => {
+                OP_SET | OP_ADD | OP_DEL => RespStatus::NotStored,
+                OP_GET | OP_GETK => {
                     // 对于mysql返回的error msg，长度肯定大于NOT_FOUND的长度，所以此处简化判断
                     if response.is_some() && response.unwrap().len() == NOT_FOUND.len() {
                         RespStatus::NotFound
