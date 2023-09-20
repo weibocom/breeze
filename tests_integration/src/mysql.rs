@@ -2,7 +2,11 @@ use crate::mc_helper::*;
 use memcache::MemcacheError;
 use std::{thread::sleep, time::Duration};
 
+// Invalid arg异常参数对应的响应
 const ERR_INVALID_ARG: &str = "Invalid arguments provided";
+// NotStored 异常对应的响应，code 5 对应 RespStatus::NotStored
+const ERR_NOT_STORED: &str = "Unknown error occurred with code: 5";
+
 //val中有非assic字符和需要mysql转义的字符
 #[test]
 #[rustfmt::skip]
@@ -180,7 +184,11 @@ fn delete_invalid_key() {
     let client = mc_get_conn("mysql");
     let key = "9527";
     let r = client.delete(key);
-    assert!(r.is_err_and(|e| { e.to_string().contains(ERR_INVALID_ARG) }));
+    assert!(r.is_err_and(|e| {
+        // kv delete 异常，返回 NotStored = 0x0005,
+        println!("kv delete err:{}", e.to_string());
+        e.to_string().contains(ERR_NOT_STORED)
+    }));
     // assert!(!r, "delete invalid key result: {:?}", r);
 }
 #[test]
