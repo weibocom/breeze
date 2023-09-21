@@ -49,6 +49,11 @@ pub mod prelude {
     impl Protocol for crate::kv::common::proto::Text {}
 }
 
+// 如果没有找到value，且无异常，则返回该响应内容
+lazy_static! {
+    static ref NOT_FOUND: Vec<u8> = b"not found".to_vec();
+}
+
 #[derive(Clone, Default)]
 pub struct Kv {}
 
@@ -400,9 +405,16 @@ impl Kv {
             RespStatus::NoError
         } else {
             match old_op_code {
-                OP_SET | OP_ADD => RespStatus::NotStored,
-                OP_GET | OP_GETK | OP_DEL => RespStatus::NotFound,
-                //对于所有的!rsp.ok都不返回，应该是只有not found不返回，其他错误返回
+                OP_SET | OP_ADD | OP_DEL => RespStatus::NotStored,
+                OP_GET | OP_GETK => {
+                    // 对于mysql返回的error msg，长度肯定大于NOT_FOUND的长度，所以此处简化判断
+                    if response.is_some() && response.unwrap().len() == NOT_FOUND.len() {
+                        RespStatus::NotFound
+                    } else {
+                        RespStatus::InvalidArg
+                    }
+                }
+                //对于quite请求，没server响应则不用通知client
                 OP_GETQ | OP_GETKQ => return Ok(()),
                 _ => RespStatus::UnkownCmd,
             }
