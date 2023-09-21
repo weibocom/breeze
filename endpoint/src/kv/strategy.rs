@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY, ARCHIVE_DEFAULT_KEY_U16};
+use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY, ARCHIVE_DEFAULT_YEAR};
 use super::kvtime::KVTime;
 use ds::RingSlice;
 
@@ -72,12 +72,7 @@ impl Strategy for Strategist {
 impl Default for Strategist {
     #[inline]
     fn default() -> Self {
-        Self::KVTime(KVTime::new(
-            "status".to_string(),
-            32u32,
-            8u32,
-            vec![ARCHIVE_DEFAULT_KEY_U16],
-        ))
+        Self::KVTime(KVTime::new("status".to_string(), 32u32, 8u32, vec![]))
     }
 }
 
@@ -92,7 +87,7 @@ impl Strategist {
                 .len() as u32,
             item.backends
                 .keys()
-                .map(|x| x.parse::<u16>().unwrap_or(ARCHIVE_DEFAULT_KEY_U16))
+                .map(|x| x.parse::<u16>().unwrap_or(ARCHIVE_DEFAULT_YEAR))
                 .collect(),
         ))
     }

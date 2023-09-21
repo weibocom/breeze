@@ -39,7 +39,7 @@ pub struct Basic {
     pub(crate) user: String,
 }
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
-pub const ARCHIVE_DEFAULT_KEY_U16: u16 = u16::MAX;
+pub const ARCHIVE_DEFAULT_YEAR: u16 = 9999;
 
 impl MysqlNamespace {
     pub(super) fn is_local(&self) -> bool {
@@ -74,10 +74,22 @@ impl MysqlNamespace {
                 }
                 //适配N年共用一个组shard情况，例如2009-2012共用
                 let years: Vec<&str> = key.split("-").collect();
-                let min: u16 = years[0].parse().unwrap();
+                let min = match years[0].parse::<u16>() {
+                    Ok(n) => n,
+                    Err(e) => {
+                        log::warn!("malformed mysql year:{} e:{}", key, e);
+                        return None;
+                    }
+                };
                 if years.len() > 1 {
                     // 2009-2012 包括2012,故max需要加1
-                    let max = years[1].parse::<u16>().expect("malformed mysql cfg") + 1_u16;
+                    let max = match years[1].parse::<u16>() {
+                        Ok(n) => n + 1_u16,
+                        Err(e) => {
+                            log::warn!("malformed mysql year:{} e:{}", key, e);
+                            return None;
+                        }
+                    };
                     for i in min..max {
                         archive.insert(i.to_string(), val.to_vec());
                     }
@@ -85,6 +97,7 @@ impl MysqlNamespace {
                     archive.insert(min.to_string(), val.to_vec());
                 }
             }
+            // 至此，archive的key只有两种情况：可以转换为u16的string、ARCHIVE_DEFAULT_KEY
             ns.backends = archive;
             //todo: 重复转化问题,待修改
             for vec in ns.backends.values() {

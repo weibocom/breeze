@@ -1,10 +1,9 @@
-use super::config::ARCHIVE_DEFAULT_KEY_U16;
+use super::config::ARCHIVE_DEFAULT_YEAR;
 use super::{
     strategy::{to_i64, Postfix},
     uuid::Uuid,
 };
-use chrono::{Datelike, TimeZone};
-use chrono_tz::Asia::Shanghai;
+use chrono::Datelike;
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
@@ -33,12 +32,7 @@ impl KVTime {
         }
     }
     fn write_date_tname(&self, buf: &mut impl Write, uuid: i64, is_display_day: bool) {
-        //todo uuid后面调整
-        let secs = uuid.unix_secs();
-        let s = chrono::Utc
-            .timestamp_opt(secs, 0)
-            .unwrap()
-            .with_timezone(&Shanghai);
+        let s = uuid.date_time();
         let (year, month, day) = (s.year() % 100, s.month(), s.day());
         if is_display_day {
             let _ = write!(
@@ -68,6 +62,12 @@ impl KVTime {
         let db_idx: usize = self.distribution.db_idx(self.hasher.hash(key));
         let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
     }
+
+    #[inline]
+    fn default_year(&self) -> u16 {
+        // todo 配置里的default到year的映射
+        ARCHIVE_DEFAULT_YEAR
+    }
     // fn build_idx_tname(&self, key: &RingSlice) -> Option<String> {
     //     let table_prefix = self.table_prefix.clone();
     //     if self.table_count > 0 && self.db_count > 0 {
@@ -93,7 +93,7 @@ impl Strategy for KVTime {
         if self.years.contains(&year) {
             year
         } else {
-            ARCHIVE_DEFAULT_KEY_U16
+            self.default_year()
         }
     }
     fn tablename_len(&self) -> usize {

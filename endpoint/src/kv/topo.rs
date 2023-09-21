@@ -21,7 +21,7 @@ use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
 
-use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_KEY_U16};
+use super::config::{MysqlNamespace, ARCHIVE_DEFAULT_YEAR};
 use super::strategy::Strategist;
 use super::KVCtx;
 #[derive(Clone)]
@@ -207,7 +207,7 @@ where
             // todo: 过多clone ，先跑通
             for i in ns.backends.iter() {
                 self.archive_shards_url.insert(
-                    i.0.parse::<u16>().unwrap_or(ARCHIVE_DEFAULT_KEY_U16),
+                    i.0.parse::<u16>().unwrap_or(ARCHIVE_DEFAULT_YEAR),
                     i.1.clone()
                         .iter()
                         .map(|shard| shard.split(",").map(|s| s.to_string()).collect())
