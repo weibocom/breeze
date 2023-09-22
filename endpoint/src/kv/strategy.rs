@@ -72,7 +72,12 @@ impl Strategy for Strategist {
 impl Default for Strategist {
     #[inline]
     fn default() -> Self {
-        Self::KVTime(KVTime::new("status".to_string(), 32u32, 8u32, vec![]))
+        Self::KVTime(KVTime::new(
+            "status".to_string(),
+            32u32,
+            8u32,
+            vec![ARCHIVE_DEFAULT_YEAR],
+        ))
     }
 }
 

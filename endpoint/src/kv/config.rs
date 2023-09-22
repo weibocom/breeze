@@ -54,65 +54,49 @@ impl MysqlNamespace {
 
     #[inline]
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
-        let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
+        let mut ns = serde_yaml::from_str::<MysqlNamespace>(cfg)
             .map_err(|e| {
                 log::info!("failed to parse mysql  e:{} config:{}", e, cfg);
                 e
             })
-            .ok();
+            .ok()?;
 
-        if let Some(mut ns) = nso {
-            // archive shard 处理
-            // 2009-2012 ,[111xxx.com:111,222xxx.com:222]
-            // 2013 ,[112xxx.com:112,223xxx.com:223]
-            let mut archive: HashMap<String, Vec<String>> = HashMap::new();
-            for (key, val) in ns.backends.iter() {
-                //处理当前库
-                if ARCHIVE_DEFAULT_KEY == key {
-                    archive.insert(key.to_string(), val.to_vec());
-                    continue;
-                }
-                //适配N年共用一个组shard情况，例如2009-2012共用
-                let years: Vec<&str> = key.split("-").collect();
-                let min = match years[0].parse::<u16>() {
-                    Ok(n) => n,
-                    Err(e) => {
-                        log::warn!("malformed mysql year:{} e:{}", key, e);
-                        return None;
-                    }
-                };
-                if years.len() > 1 {
-                    // 2009-2012 包括2012,故max需要加1
-                    let max = match years[1].parse::<u16>() {
-                        Ok(n) => n + 1_u16,
-                        Err(e) => {
-                            log::warn!("malformed mysql year:{} e:{}", key, e);
-                            return None;
-                        }
-                    };
-                    for i in min..max {
-                        archive.insert(i.to_string(), val.to_vec());
-                    }
-                } else {
-                    archive.insert(min.to_string(), val.to_vec());
-                }
+        // archive shard 处理
+        // 2009-2012 ,[111xxx.com:111,222xxx.com:222]
+        // 2013 ,[112xxx.com:112,223xxx.com:223]
+        let mut archive: HashMap<String, Vec<String>> = HashMap::new();
+        for (key, val) in ns.backends.iter() {
+            //处理当前库
+            if ARCHIVE_DEFAULT_KEY == key {
+                archive.insert(key.to_string(), val.to_vec());
+                continue;
             }
-            // 至此，archive的key只有两种情况：可以转换为u16的string、ARCHIVE_DEFAULT_KEY
-            ns.backends = archive;
-            //todo: 重复转化问题,待修改
-            for vec in ns.backends.values() {
-                ns.backends_url.extend(vec.iter().cloned());
+            //适配N年共用一个组shard情况，例如2009-2012共用
+            let mut years = key.split("-");
+            let min = years.next().unwrap().parse::<u16>().ok()?;
+            if let Some(m) = years.next() {
+                let max = m.parse::<u16>().ok()?;
+                for i in min..=max {
+                    archive.insert(i.to_string(), val.to_vec());
+                }
+            } else {
+                archive.insert(min.to_string(), val.to_vec());
             }
-            ns.basic.password = ns
-                .decrypt_password()
-                .map_err(|e| {
-                    log::warn!("failed to decrypt password, e:{}", e);
-                    e
-                })
-                .ok()?;
-            return Some(ns);
         }
-        nso
+        // 至此，archive的key只有两种情况：可以转换为u16的string、ARCHIVE_DEFAULT_KEY
+        ns.backends = archive;
+        //todo: 重复转化问题,待修改
+        for vec in ns.backends.values() {
+            ns.backends_url.extend(vec.iter().cloned());
+        }
+        ns.basic.password = ns
+            .decrypt_password()
+            .map_err(|e| {
+                log::warn!("failed to decrypt password, e:{}", e);
+                e
+            })
+            .ok()?;
+        return Some(ns);
     }
 
     #[inline]
