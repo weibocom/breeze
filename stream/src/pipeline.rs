@@ -185,6 +185,12 @@ where
                 client.cache(true);
             }
 
+            // check retry kps
+            let tries = ctx.tries();
+            if tries >= 1 {
+                *metrics.retrykps() += 1;
+            }
+
             *metrics.key() += 1;
             let mut response = ctx.take_response();
 
