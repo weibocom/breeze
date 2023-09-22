@@ -2,7 +2,10 @@ use std::{
     mem::MaybeUninit,
     ptr::{self, NonNull},
     sync::{
-        atomic::{AtomicBool, AtomicU8, Ordering::*},
+        atomic::{
+            AtomicBool, AtomicU8,
+            Ordering::{self, *},
+        },
         Arc,
     },
 };
@@ -125,6 +128,12 @@ impl CallbackContext {
                 None
             }
         }
+    }
+
+    /// 返回该请求被重试的次数，默认是0
+    #[inline(always)]
+    pub fn tries(&self) -> usize {
+        self.tries.load(Ordering::Acquire) as usize
     }
 
     #[inline]
