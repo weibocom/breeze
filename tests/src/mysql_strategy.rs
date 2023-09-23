@@ -114,7 +114,7 @@ mod mysql_strategy {
             id_str.len(),
         );
         let key = kv_time.year(&id_slice);
-        assert_eq!(key, 65535);
+        assert_eq!(key, 9999);
 
         let id_str = "4852889155534848"; // Sun Jan  1 00:00:00 CST 2023
         let id_slice = RingSlice::from(
@@ -124,6 +124,6 @@ mod mysql_strategy {
             id_str.len(),
         );
         let key = kv_time.year(&id_slice);
-        assert_eq!(key, 65535);
+        assert_eq!(key, 9999);
     }
 }
