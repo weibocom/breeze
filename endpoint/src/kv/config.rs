@@ -1,18 +1,51 @@
 use base64::{engine::general_purpose, Engine as _};
-use serde::{Deserialize, Serialize};
+use serde::{de::Error, Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
+use crate::{Timeout, TO_MYSQL_M, TO_MYSQL_S};
+
+//时间间隔，闭区间, 可以是2010, 或者2010-2015
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct Years(pub u16, pub u16);
+
+impl<'de> Deserialize<'de> for Years {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match String::deserialize(deserializer) {
+            Ok(interval) => {
+                //暂时兼容defalut，配置更新后删除
+                if interval == ARCHIVE_DEFAULT_KEY {
+                    return Ok(Years(0, 0));
+                }
+                let mut interval_split = interval.split("-");
+                let start = interval_split
+                    .next()
+                    .ok_or(Error::custom(&format!("interval is empty:{interval}")))?
+                    .parse()
+                    .map_err(Error::custom)?;
+                let end = if let Some(end) = interval_split.next() {
+                    end.parse().map_err(Error::custom)?
+                } else {
+                    start
+                };
+                Ok(Years(start, end))
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct MysqlNamespace {
-    // TODO speed up, ref: https://git/platform/resportal/-/issues/548
+pub struct KvNamespace {
     #[serde(default)]
     pub(crate) basic: Basic,
-    //backends_url 处理dns解析用
     #[serde(skip)]
-    pub(crate) backends_url: Vec<String>,
+    pub(crate) backends_flaten: Vec<String>,
     #[serde(default)]
-    pub(crate) backends: HashMap<String, Vec<String>>,
+    pub(crate) backends: HashMap<Years, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -40,65 +73,44 @@ pub struct Basic {
 }
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
-impl MysqlNamespace {
-    pub(super) fn is_local(&self) -> bool {
-        match std::env::var("BREEZE_LOCAL")
-            .unwrap_or("".to_string())
-            .as_str()
-        {
-            "distance" => true,
-            _ => self.basic.selector.as_str() == "distance",
-        }
-    }
-
+impl KvNamespace {
     #[inline]
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
-        let nso = serde_yaml::from_str::<MysqlNamespace>(cfg)
-            .map_err(|e| {
-                log::info!("failed to parse mysql  e:{} config:{}", e, cfg);
-                e
-            })
-            .ok();
-
-        if let Some(mut ns) = nso {
-            // archive shard 处理
-            // 2009-2012 ,[111xxx.com:111,222xxx.com:222]
-            // 2013 ,[112xxx.com:112,223xxx.com:223]
-            let mut archive: HashMap<String, Vec<String>> = HashMap::new();
-            for (key, val) in ns.backends.iter() {
-                //处理当前库
-                if ARCHIVE_DEFAULT_KEY == key {
-                    archive.insert(key.to_string(), val.to_vec());
-                    continue;
+        match serde_yaml::from_str::<KvNamespace>(cfg) {
+            Ok(mut ns) => {
+                //移除default分片，兼容老defalut
+                ns.backends.remove(&Years(0, 0));
+                //配置的年需要连续，不重叠
+                let mut years: Vec<_> = ns.backends.keys().collect();
+                if years.len() == 0 {
+                    return None;
                 }
-                //适配N年共用一个组shard情况，例如2009-2012共用
-                let years: Vec<&str> = key.split("-").collect();
-                let min: u16 = years[0].parse().unwrap();
-                if years.len() > 1 {
-                    // 2009-2012 包括2012,故max需要加1
-                    let max = years[1].parse::<u16>().expect("malformed mysql cfg") + 1_u16;
-                    for i in min..max {
-                        archive.insert(i.to_string(), val.to_vec());
+                years.sort();
+                let mut last_year = years[0].0 - 1;
+                for year in years {
+                    if year.0 > year.1 || year.0 != last_year + 1 {
+                        return None;
                     }
-                } else {
-                    archive.insert(min.to_string(), val.to_vec());
+                    last_year = year.1;
                 }
+                match ns.decrypt_password() {
+                    Ok(password) => ns.basic.password = password,
+                    Err(e) => {
+                        log::warn!("failed to decrypt password, e:{}", e);
+                        return None;
+                    }
+                }
+                ns.backends_flaten = ns.backends.iter().fold(Vec::new(), |mut init, b| {
+                    init.extend_from_slice(b.1);
+                    init
+                });
+                Some(ns)
             }
-            ns.backends = archive;
-            //todo: 重复转化问题,待修改
-            for vec in ns.backends.values() {
-                ns.backends_url.extend(vec.iter().cloned());
+            Err(e) => {
+                log::info!("failed to parse mysql  e:{} config:{}", e, cfg);
+                None
             }
-            ns.basic.password = ns
-                .decrypt_password()
-                .map_err(|e| {
-                    log::warn!("failed to decrypt password, e:{}", e);
-                    e
-                })
-                .ok()?;
-            return Some(ns);
         }
-        nso
     }
 
     #[inline]
@@ -108,5 +120,19 @@ impl MysqlNamespace {
         let decrypted_data = ds::decrypt::decrypt_password(&key_pem, &encrypted_data)?;
         let decrypted_string = String::from_utf8(decrypted_data)?;
         Ok(decrypted_string)
+    }
+    pub(super) fn timeout_master(&self) -> Timeout {
+        let mut to = TO_MYSQL_M;
+        if self.basic.timeout_ms_master > 0 {
+            to.adjust(self.basic.timeout_ms_master);
+        }
+        to
+    }
+    pub(super) fn timeout_slave(&self) -> Timeout {
+        let mut to = TO_MYSQL_S;
+        if self.basic.timeout_ms_slave > 0 {
+            to.adjust(self.basic.timeout_ms_master);
+        }
+        to
     }
 }
