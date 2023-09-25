@@ -86,9 +86,9 @@ impl Backends for crate::phantomservice::config::PhantomNamespace {
     }
 }
 
-impl Backends for crate::kv::config::MysqlNamespace {
+impl Backends for crate::kv::config::KvNamespace {
     fn get_backends(&self) -> &Vec<String> {
-        &self.backends_url
+        &self.backends_flaten
     }
 }
 
