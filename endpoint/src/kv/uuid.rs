@@ -28,6 +28,8 @@ pub trait Uuid {
     fn year(&self) -> u16;
     // 返回DateTime
     fn date_time(&self) -> DateTime<Tz>;
+    // 返回year month day
+    fn ymd(&self) -> (u16, u8, u8);
 }
 
 impl Uuid for i64 {
@@ -38,6 +40,11 @@ impl Uuid for i64 {
     #[inline]
     fn year(&self) -> u16 {
         self.date_time().year() as u16
+    }
+    #[inline]
+    fn ymd(&self) -> (u16, u8, u8) {
+        let t = self.date_time();
+        (t.year() as u16, t.month() as u8, t.day() as u8)
     }
     #[inline]
     // 返回东八时区的DateTime

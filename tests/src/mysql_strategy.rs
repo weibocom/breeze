@@ -126,4 +126,19 @@ mod mysql_strategy {
         let key = kv_time.year(&id_slice);
         assert_eq!(key, 9999);
     }
+
+    #[test]
+    fn test_ymd() {
+        let uuid = 3379782484330149_i64; // Tue Nov 15 00:00:00 CST 2011
+        let (y, m, d) = uuid.ymd();
+        assert_eq!(y, 2011);
+        assert_eq!(m, 11);
+        assert_eq!(d, 15);
+
+        let uuid = 4852889155534848_i64; // Sun Jan  1 00:00:00 CST 2023
+        let (y, m, d) = uuid.ymd();
+        assert_eq!(y, 2023);
+        assert_eq!(m, 1);
+        assert_eq!(d, 1);
+    }
 }

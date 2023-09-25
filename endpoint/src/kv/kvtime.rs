@@ -3,7 +3,6 @@ use super::{
     strategy::{to_i64, Postfix},
     uuid::Uuid,
 };
-use chrono::Datelike;
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
@@ -32,8 +31,8 @@ impl KVTime {
         }
     }
     fn write_date_tname(&self, buf: &mut impl Write, uuid: i64, is_display_day: bool) {
-        let s = uuid.date_time();
-        let (year, month, day) = (s.year() % 100, s.month(), s.day());
+        let (mut year, month, day) = uuid.ymd();
+        year %= 100;
         if is_display_day {
             let _ = write!(
                 buf,
