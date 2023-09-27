@@ -73,4 +73,12 @@ mod hash_test {
         println!("key:{}, hash:{}", key2, hash2);
         assert_eq!(hash2, 1108486745);
     }
+
+    #[test]
+    fn testmycrc32() {
+        let hasher = Hasher::from("crc32");
+        let key = "abc";
+        let crc = hasher.hash(&key.as_bytes());
+        println!("crc: {}", crc);
+    }
 }
