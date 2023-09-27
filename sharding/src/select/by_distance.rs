@@ -74,11 +74,7 @@ impl<T: Addr> Distance<T> {
             // 2. local为0，则全部为local
             let l = replicas.sort_by_region(
                 Vec::new(),
-                context::get()
-                    .region
-                    .is_empty()
-                    .then(|| None)
-                    .unwrap_or_else(|| Some(context::get().region.as_str())),
+                context::get().region(),
                 |d, _| d <= discovery::distance::DISTANCE_VAL_REGION,
             );
             if l == 0 {
