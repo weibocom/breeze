@@ -88,8 +88,7 @@ where
             req.origin_data().key()
         };
         //定位年库
-        let year = self.strategist.get_key(&key).expect("key not found");
-        let intyear: u16 = year.parse().unwrap();
+        let intyear: u16 = self.strategist.get_key(&key);
         let shards = self.shards.get(intyear);
         if shards.len() == 0 {
             //todo 错误类型不合适
