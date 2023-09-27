@@ -2,8 +2,6 @@ use super::{
     strategy::{to_i64, Postfix},
     uuid::Uuid,
 };
-use chrono::{Datelike, TimeZone};
-use chrono_tz::Asia::Shanghai;
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
@@ -31,13 +29,8 @@ impl KVTime {
         }
     }
     fn write_date_tname(&self, buf: &mut impl Write, uuid: i64, is_display_day: bool) {
-        //todo uuid后面调整
-        let secs = uuid.unix_secs();
-        let s = chrono::Utc
-            .timestamp_opt(secs, 0)
-            .unwrap()
-            .with_timezone(&Shanghai);
-        let (year, month, day) = (s.year() % 100, s.month(), s.day());
+        let (mut year, month, day) = uuid.ymd();
+        year %= 100;
         if is_display_day {
             let _ = write!(
                 buf,
@@ -74,16 +67,9 @@ impl Strategy for KVTime {
     fn hasher(&self) -> &Hasher {
         &self.hasher
     }
-    fn get_key(&self, key: &RingSlice) -> Option<String> {
+    fn get_key(&self, key: &RingSlice) -> u16 {
         let uuid = to_i64(key);
-        let s = uuid.unix_secs();
-        let year = chrono::Utc
-            .timestamp_opt(s, 0)
-            .unwrap()
-            .with_timezone(&Shanghai)
-            .format("%Y")
-            .to_string();
-        Some(year)
+        uuid.year()
     }
     fn tablename_len(&self) -> usize {
         // status_6.status_030926, 11代表除去前缀后的长度
