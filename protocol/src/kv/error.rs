@@ -1,5 +1,7 @@
 use std::{fmt::Display, io::ErrorKind};
 
+use ds::Utf8;
+
 // /// 按照mc标准error进行设置异常内容
 // // pub(super) const REQ_INVALID: &str = "CLIENT_ERROR request is invalid";
 pub(super) const REQ_INVALID_KEY: &str = "CLIENT_ERROR request key is invalid";
@@ -27,8 +29,9 @@ impl Into<crate::Error> for Error {
             Self::RequestInvalid(packet) => crate::Error::FlushOnClose(packet.into()),
             Self::RequestInvalidKey(packet) => crate::Error::FlushOnClose(packet.into()),
             Self::UnhandleResponseError(packet) => {
-                // 该异常需要构建成response，不能转为error传出
-                panic!("kv unhanlde rsp err: {:?}", packet);
+                // auth时，如果有这种异常，需要上抛异常断连接
+                log::warn!("found unhandle response: {}", packet.utf8());
+                crate::Error::ResponseProtocolInvalid
             }
             Self::ProtocolIncomplete => crate::Error::ProtocolIncomplete,
         }
