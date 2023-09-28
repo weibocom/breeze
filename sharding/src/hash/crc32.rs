@@ -350,7 +350,7 @@ impl Hash for Crc32Abs {
         let mut crc = crc as i32;
         if crc <= 0 {
             // 理论上会有大量负数hash
-            log::info!("crc32abs - negative hash/{} for key/{:?}", crc, key);
+            log::debug!("crc32abs - negative hash/{} for key/{:?}", crc, key);
             crc = crc.abs();
         }
         crc as i64
