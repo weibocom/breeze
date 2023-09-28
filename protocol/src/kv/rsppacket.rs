@@ -233,7 +233,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
                 match ParseBuf::from(self.data.sub_slice(self.oft, left_len))
                     .parse(self.capability_flags())?
                 {
-                    // server返回的异常响应转为MysqlError，最终传给client，不用断连接
+                    // server返回的异常响应转为MysqlError，对于client request，最终传给client，不用断连接；
+                    // 对于连接初期的auth，则直接断连接即可；
                     ErrPacket::Error(server_error) => {
                         // self.handle_err();
                         self.oft += header.payload_len;
