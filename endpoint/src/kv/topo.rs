@@ -84,8 +84,7 @@ where
         let (intyear, shard_idx) = if req.ctx().runs == 0 {
             let key = req.key();
             //定位年库
-            let year = self.strategist.get_key(&key).expect("key not found");
-            let intyear: u16 = year.parse().unwrap();
+            let intyear: u16 = self.strategist.get_key(&key);
             let shard_idx = self.shard_idx(req.hash());
             req.ctx().year = intyear;
             req.ctx().shard_idx = shard_idx as u16;
@@ -99,6 +98,7 @@ where
         } else {
             (req.ctx().year, req.ctx().shard_idx as usize)
         };
+
         let shards = self.shards.get(intyear);
         if shards.len() == 0 {
             //todo 错误类型不合适

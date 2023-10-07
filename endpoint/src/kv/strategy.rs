@@ -50,7 +50,7 @@ impl Strategy for Strategist {
         }
     }
     #[inline]
-    fn get_key(&self, key: &RingSlice) -> Option<String> {
+    fn get_key(&self, key: &RingSlice) -> u16 {
         match self {
             Strategist::KVTime(inner) => Strategy::get_key(inner, key),
         }

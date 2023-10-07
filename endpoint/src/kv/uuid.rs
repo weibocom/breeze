@@ -1,4 +1,5 @@
-// use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, TimeZone};
+use chrono_tz::{Asia::Shanghai, Tz};
 // use std::collections::HashMap;
 // use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -24,11 +25,38 @@ impl UuidConst {
 pub trait Uuid {
     // return UNIX timestamp
     fn unix_secs(self) -> i64;
+    // 返回DateTime
+    fn date_time(&self) -> DateTime<Tz>;
+    // 返回year month day
+    fn ymd(&self) -> (u16, u8, u8);
+    // 返回year
+    fn year(&self) -> u16;
 }
 
 impl Uuid for i64 {
+    #[inline]
     fn unix_secs(self) -> i64 {
         (self >> UuidConst::IDC_SEQ_BIT_LENGTH) + UuidConst::ID_OFFSET
+    }
+    #[inline]
+    // 返回东八时区的DateTime
+    fn date_time(&self) -> DateTime<Tz> {
+        let s = self.unix_secs();
+        chrono::Utc
+            .timestamp_opt(s, 0)
+            .unwrap()
+            .with_timezone(&Shanghai)
+    }
+    // 返回year month day
+    #[inline]
+    fn ymd(&self) -> (u16, u8, u8) {
+        let t = self.date_time();
+        (t.year() as u16, t.month() as u8, t.day() as u8)
+    }
+    // 返回year
+    #[inline]
+    fn year(&self) -> u16 {
+        self.date_time().year() as u16
     }
 }
 
