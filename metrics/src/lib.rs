@@ -48,7 +48,10 @@ impl Metric {
     // 所有的基于metrics的操作都是原子的
     #[inline(always)]
     pub fn as_mut(&self) -> &mut Self {
-        unsafe { &mut *(self as *const _ as *mut _) }
+        #[allow(invalid_reference_casting)]
+        unsafe {
+            &mut *(self as *const _ as *mut _)
+        }
     }
 }
 impl<T: MetricData + Debug> AddAssign<T> for Metric {

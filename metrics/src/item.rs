@@ -134,6 +134,7 @@ impl Item {
         self.lock
             .compare_exchange(false, true, AcqRel, Relaxed)
             .map(|_| ItemWriteGuard {
+                #[allow(invalid_reference_casting)]
                 item: unsafe { &mut *(self as *const _ as *mut _) },
             })
             .ok()
