@@ -81,27 +81,29 @@ where
 
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-        let runs = req.ctx().runs;
-        let key = if runs == 0 {
-            req.key()
+        let (intyear, shard_idx) = if req.ctx().runs == 0 {
+            let key = req.key();
+            //定位年库
+            let year = self.strategist.get_key(&key).expect("key not found");
+            let intyear: u16 = year.parse().unwrap();
+            let shard_idx = self.shard_idx(req.hash());
+            req.ctx().year = intyear;
+            req.ctx().shard_idx = shard_idx as u16;
+
+            //todo: 此处不应panic
+            let cmd =
+                MysqlBuilder::build_packets(&self.strategist, &req, &key).expect("malformed sql");
+            req.reshape(MemGuard::from_vec(cmd));
+
+            (intyear, shard_idx)
         } else {
-            req.origin_data().key()
+            (req.ctx().year, req.ctx().shard_idx as usize)
         };
-        //定位年库
-        let year = self.strategist.get_key(&key).expect("key not found");
-        let intyear: u16 = year.parse().unwrap();
         let shards = self.shards.get(intyear);
         if shards.len() == 0 {
             //todo 错误类型不合适
             req.on_err(protocol::Error::TopChanged);
             return;
-        }
-
-        assert!(shards.len() > 0);
-        let mut shard_idx = req.ctx().shard_idx as usize;
-        if runs == 0 && shards.len() > 1 {
-            shard_idx = self.shard_idx(req.hash());
-            req.ctx().shard_idx = shard_idx as u16;
         }
         debug_assert!(
             shard_idx < shards.len(),
@@ -112,19 +114,11 @@ where
         );
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
-
-        if runs == 0 {
-            //todo: 此处不应panic
-            let cmd =
-                MysqlBuilder::build_packets(&self.strategist, &req, &key).expect("malformed sql");
-            req.reshape(MemGuard::from_vec(cmd));
-            //self.parser
-            //    .build_request(&mut *req, MemGuard::from_vec(cmd));
-        }
         log::debug!(
-            "+++ mysql {} send {} shards {:?} => {:?}",
+            "+++ mysql {} send {} year {} shards {:?} => {:?}",
             self.cfg.service,
             shard_idx,
+            intyear,
             shards,
             req
         );
@@ -136,7 +130,7 @@ where
                 }
             }
             let ctx = req.ctx();
-            let (idx, endpoint) = if runs == 0 {
+            let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
             } else {
                 if (ctx.runs as usize) < shard.slaves.len() {
