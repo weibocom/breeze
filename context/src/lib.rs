@@ -319,6 +319,7 @@ impl ListenerIter {
 pub struct Context {
     pub version: String,
     option: ContextOption,
+    envs: EnvOptions,
 }
 
 impl std::ops::Deref for Context {
@@ -341,7 +342,8 @@ impl From<ContextOption> for Context {
         if option.cpu == "v3" {
             version.push('3');
         }
-        if std::env::var("BREEZE_LOCAL") == Ok("distance".to_string()) {
+        let envs = EnvOptions::new();
+        if envs.timeslice {
             version.push('t');
         }
         let host_v3 = option.cpu == "v3";
@@ -352,10 +354,53 @@ impl From<ContextOption> for Context {
         if version.as_bytes().last() == Some(&b'_') {
             version.pop();
         }
-        Self { version, option }
+        Self { version, option, envs }
     }
 }
+
+impl Context {
+    // 可用区信息优先从启动参数获取，若启动参数没有则从环境变量获取
+    pub fn region(&self) -> Option<&str> {
+        if self.region.len() > 0 {
+            return Some(self.region.as_str());
+        }
+
+        if self.envs.region.len() > 0 {
+            return Some(self.envs.region.as_str());
+        }
+
+        None
+    }
+    pub fn timeslice(&self) -> bool {
+        self.envs.timeslice
+    }
+}
+
+
 #[inline(always)]
 pub fn get() -> &'static Context {
     &CONTEXT
+}
+
+#[derive(Debug)]
+pub struct EnvOptions {
+    pub timeslice: bool,
+    pub region: String,
+}
+
+impl EnvOptions {
+    pub fn new() -> Self {
+        let timeslice = match std::env::var("BREEZE_LOCAL")
+            .unwrap_or("".to_string())
+            .as_str()
+        {
+            "distance" | "timeslice" => true,
+            _ => false,
+        };
+        Self {
+            timeslice,
+            // PAAS上通过环境变量CURRENT_CLUSTER传递
+            region: std::env::var("CURRENT_CLUSTER").unwrap_or("".to_string()),
+        }
+    }
 }
