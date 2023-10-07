@@ -240,10 +240,10 @@ impl HashedCommand {
     pub fn hash(&self) -> i64 {
         self.hash
     }
-    #[inline]
-    pub fn update_hash(&mut self, idx_hash: i64) {
-        self.hash = idx_hash;
-    }
+    // #[inline]
+    // pub fn update_hash(&mut self, idx_hash: i64) {
+    //     self.hash = idx_hash;
+    // }
     //#[inline]
     //pub fn data(&self) -> &ds::RingSlice {
     //    self.cmd.data()
