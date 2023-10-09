@@ -1,5 +1,19 @@
-use super::DebugName;
+use super::{DebugName, Hash};
 use std::fmt::Display;
+
+/// 当前crc32相关hash算法目前有两类，基于i64提升的非负crc32，基于i32的crc32abs:：
+///   ================  基于i64版本  ================
+///   1 crc32: java版本的i64/long版本的crc32，对整个key做crc32算法；
+///   2 crc32-num: 对偏移N个字节后的数字进行crc32计算, eg: crc32-num-5, crc32-num；
+///   3 crc32-short: 对crc32计算后，再转为short，适配java mc访问；
+///   4 crc32-delimiter: 目前有3种，crc32-point, crc32-pound, crc32-underscore，表示对特殊字符后的内容做crc32，后面可以再跟一个数字表示偏移；
+///   5 crc32-mixnum:key中所有num拼接成一个字串num做hashkey，like a_123_456_bc的hashkey是123456；
+///   6 crc32-smartnum: 第一串长度大于等于5的数字做为hashkey;
+///   ================  基于i32版本  ================
+///     备注：不取名crc32-abs，是为了区分i32/i63的base，及为后续扩展做准备 fishermen
+///   7 crc32abs: 转为i32，然后进行abs操作
+///   8 后续可能会有crc32abs-xxx，此处先预留语义；
+///
 
 pub(super) const CRC32TAB: [i64; 256] = [
     0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3,
@@ -82,7 +96,8 @@ impl super::Hash for Crc32 {
         crc ^= CRC_SEED;
         crc &= CRC_SEED;
         if crc <= 0 {
-            log::debug!("crc32 - error hash/{} for key/{:?}", crc, key);
+            // 理论上不会有负数hash
+            log::warn!("crc32 - negative hash/{} for key/{:?}", crc, key);
         }
         crc
     }
@@ -313,5 +328,31 @@ impl super::Hash for Crc32MixNum {
             log::warn!("+++ crc32-smartnum key:{:?}, hash:{}", key, crc);
         }
         crc
+    }
+}
+
+/// 遵从i32进行crc32计算，并进行abs操作;
+#[derive(Debug, Clone, Default)]
+pub struct Crc32Abs;
+
+impl Hash for Crc32Abs {
+    fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
+        let mut crc: i64 = CRC_SEED;
+
+        for i in 0..key.len() {
+            let c = key.at(i);
+            crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+        }
+
+        crc ^= CRC_SEED;
+        crc &= CRC_SEED;
+
+        let mut crc = crc as i32;
+        if crc <= 0 {
+            // 理论上会有大量负数hash
+            log::debug!("crc32abs - negative hash/{} for key/{:?}", crc, key);
+            crc = crc.abs();
+        }
+        crc as i64
     }
 }

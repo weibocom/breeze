@@ -76,7 +76,8 @@ pub enum Hasher {
     Crc32localSmartNum(Crc32localSmartNum), //crc32 for key like： xxx + id + xxx，id的长度需要大于等于5
     LBCrc32localDelimiter(LBCrc32localDelimiter), // long bytes crc32local for hash like: 123.a, 124_a, 123#a
     Rawcrc32local(Rawcrc32local),                 // raw or crc32local
-    Random(RandomHash),                           // random hash
+    Crc32Abs(Crc32Abs), // crc32abs: 基于i32转换，然后直接取abs；其他走i64提升为正数
+    Random(RandomHash), // random hash
     RawSuffix(RawSuffix),
 }
 
@@ -118,6 +119,7 @@ impl Hasher {
                 "lbcrc32local" => {
                     Self::LBCrc32localDelimiter(LBCrc32localDelimiter::from(alg_lower.as_str()))
                 }
+                "crc32abs" => Self::Crc32Abs(Default::default()),
                 "random" => Self::Random(Default::default()),
                 _ => {
                     // 默认采用mc的crc32-s hash

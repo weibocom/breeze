@@ -73,4 +73,14 @@ mod hash_test {
         println!("key:{}, hash:{}", key2, hash2);
         assert_eq!(hash2, 1108486745);
     }
+
+    #[test]
+    fn crc32abs() {
+        let hasher = Hasher::from("crc32abs");
+        let key = "h14243dc752b5beac".to_string();
+        let crc = hasher.hash(&key.as_bytes());
+        println!("crc: {}, key:{} ", crc, key);
+        // h14243dc752b5beac 对应i64算法为2461123049，i32算法为-1833844247，abs后为1833844247，
+        assert_eq!(crc, 1833844247);
+    }
 }
