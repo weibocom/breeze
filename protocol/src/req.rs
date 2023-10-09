@@ -17,8 +17,6 @@ pub trait Request:
     + Deref<Target = HashedCommand>
     + DerefMut<Target = HashedCommand>
 {
-    //fn cmd_mut(&mut self) -> &mut HashedCommand;
-
     fn start_at(&self) -> Instant;
     fn on_noforward(&mut self);
     fn on_sent(self) -> Option<Self>;
