@@ -55,10 +55,6 @@ where
     P: Protocol,
     B: Send + Sync,
 {
-    // #[inline]
-    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
-    //     self.hasher.hash(k)
-    // }
 }
 
 impl<B: Send + Sync, E, Req, P> Endpoint for RedisService<B, E, Req, P>
