@@ -63,7 +63,6 @@ impl<P, Req> BackendChecker<P, Req> {
         let mut reconn = crate::reconn::ReconnPolicy::new(&path_addr);
         metrics::incr_task();
         while !self.finish.get() {
-            // reconn.check().await;
             let stream = self.reconnect().await;
             if stream.is_none() {
                 // 连接失败，按策略sleep
@@ -84,7 +83,6 @@ impl<P, Req> BackendChecker<P, Req> {
                     parser: self.parser.clone(),
                 };
                 if let Err(_e) = auth.await {
-                    //todo 需要减一吗，listen_failed好像没有减
                     log::warn!("+++ auth err {} to: {}", _e, self.addr);
                     auth_failed += 1;
                     stream.cancel();
@@ -96,7 +94,6 @@ impl<P, Req> BackendChecker<P, Req> {
             }
 
             // auth成功才算连接成功
-            // reconn.success();
             reconn.connected();
 
             rx.enable();
@@ -157,11 +154,7 @@ where
             Err(e) => Poll::Ready(Err(e)),
             Ok(HandShake::Failed) => Poll::Ready(Err(Error::AuthFailed)),
             Ok(HandShake::Continue) => Poll::Pending,
-            Ok(HandShake::Success) => {
-                // me.init.on();
-                // me.authed = true;
-                Poll::Ready(Ok(()))
-            }
+            Ok(HandShake::Success) => Poll::Ready(Ok(())),
         };
 
         let flush_result = Pin::new(&mut *me.s).as_mut().poll_flush(cx);

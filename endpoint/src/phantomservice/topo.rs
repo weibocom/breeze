@@ -58,10 +58,6 @@ where
     P: Protocol,
     B: Send + Sync,
 {
-    // #[inline]
-    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
-    //     self.hasher.hash(k)
-    // }
 }
 
 impl<B, E, Req, P> Endpoint for PhantomService<B, E, Req, P>
