@@ -68,4 +68,25 @@ mod distribute_test {
         let idx = dist.index(hash);
         println!("key:{}, hash:{}, idx: {}", key, hash, idx);
     }
+
+    #[test]
+    fn secmod() {
+        let hasher = Hasher::from("crc32abs");
+
+        // h14243dc752b5beac 对应i64算法为2461123049，i32算法为-1833844247，abs后为1833844247，
+        let key = "h14243dc752b5beac".to_string();
+        let hash = hasher.hash(&key.as_bytes());
+        println!("hash: {}, key:{} ", hash, key);
+        assert_eq!(hash, 1833844247);
+
+        let shards = vec![
+            "shard_0".to_string(),
+            "shard_1".to_string(),
+            "shard_2".to_string(),
+        ];
+        let dist = Distribute::from("secmod", &shards);
+        let idx = dist.index(hash);
+        println!("idx:{}", idx);
+        assert_eq!(idx, 2);
+    }
 }
