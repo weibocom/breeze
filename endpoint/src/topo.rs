@@ -5,6 +5,7 @@ use protocol::{Protocol, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
 
 // pub use protocol::Endpoint;
+use crate::msgque::topo::MsgQue;
 use crate::Timeout;
 
 use enum_dispatch::enum_dispatch;
@@ -239,7 +240,7 @@ use crate::redisservice::topo::RedisService;
 use crate::uuid::topo::UuidService;
 
 define_topology! {
-    //MsgQue<B, E, R, P>, MsgQue, "mq";
+    MsgQue<B, E, R, P>, MsgQue, "mq";
     RedisService<B, E, R, P>, RedisService, "rs";
     CacheService<B, E, R, P>, CacheService, "cs";
     PhantomService<B, E, R, P>, PhantomService, "pt";
