@@ -19,7 +19,7 @@ impl Protocol for Uuid {
         while let Some(lfcr) = data.find_lf_cr(start) {
             let cmd = stream.take(lfcr + 2 - start);
             start = lfcr + 2;
-            let req = HashedCommand::new(cmd, 0, Flag::new());
+            let req = HashedCommand::new(cmd, 0, Flag::from_op(0, crate::Operation::Get));
             process.process(req, true);
         }
         Ok(())
