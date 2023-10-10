@@ -325,8 +325,14 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             .as_deref()
             .unwrap_or_default()
             .to_vec();
+        log::debug!(
+            "+++auth pwd:{}",
+            self.client.as_ref().unwrap().get_pass().unwrap()
+        );
         let handshake_reply = self
             .build_handshake_response_packet(&auth_plugin, Some(RingSlice::from_vec(&auth_data)))?;
+
+        log::debug!("+++auth handshake_reply:{:?}", handshake_reply);
         Ok(handshake_reply)
     }
 
