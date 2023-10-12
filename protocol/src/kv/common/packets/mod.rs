@@ -13,6 +13,7 @@ use lexical::parse;
 use smallvec::SmallVec;
 use uuid::Uuid;
 
+use std::fmt::Display;
 // use std::fmt::{write, Display};
 use std::str::FromStr;
 use std::{
@@ -1744,7 +1745,9 @@ impl HandshakePacket {
 /// Actual serialization of this field depends on capability flags values.
 type ScrambleBuf = Either<RawBytes<LenEnc>, Either<RawBytes<U8Bytes>, RawBytes<NullBytes>>>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+// TODO connect_attributes 的Debug有问题，先去掉Debug属性 fishermen
+// #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct HandshakeResponse {
     capabilities: Const<CapabilityFlags, LeU32>,
     collation: RawInt<u8>,
@@ -1755,18 +1758,21 @@ pub struct HandshakeResponse {
     connect_attributes: Option<HashMap<RawBytes<LenEnc>, RawBytes<LenEnc>>>,
 }
 
-// impl<'a> Display for HandshakeResponse<'a> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(
-//             f,
-//             "HandshakeResponse[capabilities:{:?}, colloation:{}, user:{}, db_name:{:?}]",
-//             self.capabilities.0,
-//             self.collation.0,
-//             self.user.as_str(),
-//             self.db_name,
-//         )
-//     }
-// }
+impl Display for HandshakeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "HandshakeResponse[capabilities:{:?}, colloation:{}, user:{:?}, db_name:{:?}, scrable_buf:{:?}, auth_plugin:{:?}, connect_attributes:not-print-now]",
+            self.capabilities.0,
+            self.collation.0,
+            self.user.as_str(),
+            self.db_name,
+            self.scramble_buf,
+            self.auth_plugin,
+            // self.connect_attributes,
+        )
+    }
+}
 
 impl HandshakeResponse {
     pub fn new(
