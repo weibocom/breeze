@@ -283,6 +283,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         self.take();
         let handshake = ParseBuf::from(payload).parse::<HandshakePacket>(())?;
 
+        log::debug!("+++ handshake: {:?}", handshake);
         // 3.21.0 之后handshake是v10版本，不支持更古老的版本
         if handshake.protocol_version() != 10u8 {
             log::warn!("unsupport mysql proto version should be 10");
@@ -326,7 +327,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             .unwrap_or_default()
             .to_vec();
         log::debug!(
-            "+++auth pwd:{}",
+            "+++auth pwd:{}/{}",
+            self.client.as_ref().unwrap().get_pass().unwrap().len(),
             self.client.as_ref().unwrap().get_pass().unwrap()
         );
         let handshake_reply = self
@@ -401,6 +403,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             client.capability_flags,
             Some(client.connect_attrs()),
         );
+        log::debug!("+++ handshake rsp: {}", handshake_response);
         let mut buf: Vec<u8> = Vec::with_capacity(256);
         handshake_response.serialize(&mut buf);
         let mut src_buf = BytesMut::with_capacity(buf.len());
