@@ -282,6 +282,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
         // TODO flags 如果业务已特殊设置，则先不予支持，然后根据实际场景确定方案？ fishermen
         if self.flags != 0 {
+            log::warn!("flag in msgque should be 0 but: {}", self.flags);
             return Err(crate::Error::ProtocolNotSupported);
         }
 
