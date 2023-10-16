@@ -395,6 +395,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             client.capability_flags,
             Some(client.connect_attrs()),
         );
+        log::debug!("+++ kv handshake rsp: {}", handshake_response);
         let mut buf: Vec<u8> = Vec::with_capacity(256);
         handshake_response.serialize(&mut buf);
         let mut src_buf = BytesMut::with_capacity(buf.len());
