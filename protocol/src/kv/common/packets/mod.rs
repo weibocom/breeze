@@ -1745,7 +1745,7 @@ impl HandshakePacket {
 /// Actual serialization of this field depends on capability flags values.
 type ScrambleBuf = Either<RawBytes<LenEnc>, Either<RawBytes<U8Bytes>, RawBytes<NullBytes>>>;
 
-// TODO connect_attributes 的Debug有问题，先去掉Debug属性 fishermen
+// TODO connect_attributes 的Debug有问题，先去掉Debug属性，等修复后再打开 fishermen
 // #[derive(Debug, Clone, PartialEq, Eq)]
 #[derive(Clone, PartialEq, Eq)]
 pub struct HandshakeResponse {
