@@ -130,7 +130,6 @@ where
             pending,
             waker,
             top,
-            // parser,
             first,
             arena,
             retry_on_rsp_notok: parser.config().retry_on_rsp_notok,
@@ -157,7 +156,6 @@ where
     fn process_pending(&mut self) -> Result<()> {
         let Self {
             // 修改处理流程后，不再用pedding
-            // top,
             client,
             pending,
             parser,
@@ -242,15 +240,11 @@ struct Visitor<'a, T> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a Arc<AtomicWaker>,
     top: &'a T,
-    // parser: &'a P,
     first: &'a mut bool,
     arena: &'a mut CallbackContextArena,
     retry_on_rsp_notok: bool,
 }
 
-// impl<'a, P, T: Topology<Item = Request>> protocol::RequestProcessor for Visitor<'a, P, T>
-// where
-//     P: Protocol + Unpin,
 impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
     for Visitor<'a, T>
 {
@@ -310,9 +304,6 @@ where
             }
             let mut ctx = self.pending.pop_front().expect("empty");
 
-            // TODO: 临时加日志，check mysql req被清理的key
-            log::info!("+++ will clear req:{:?}", ctx.request().data());
-
             // 如果已经有response记入到ctx，需要take走，保证rsp drop时状态的一致性
             let _dropped = ctx.take_response();
         }
@@ -325,13 +316,9 @@ where
         if self.top.refresh() {
             log::info!("topology refreshed: {:?}", self);
         }
-        //self.process_async_pending();
         self.client.try_gc();
         self.client.shrink();
         Ok(true)
-        // 满足条件之一说明需要刷新
-        // 1. buffer 过大；2. 有异步请求未完成; 3. top 未drop
-        //Ok(self.client.cap() >= crate::REFRESH_THREASHOLD || self.async_pending.len() > 0)
     }
 }
 impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
@@ -349,12 +336,3 @@ impl<C: Debug, P, T> Debug for CopyBidirectional<C, P, T> {
         )
     }
 }
-
-//unsafe fn callback<T: Topology<Item = Request>>(top: &T) -> Callback {
-//    let receiver = top as *const T as usize;
-//    let send = Box::new(move |req| {
-//        let t = &*(receiver as *const T);
-//        t.send(req)
-//    });
-//    Callback::new(send)
-//}

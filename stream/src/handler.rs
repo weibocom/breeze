@@ -120,7 +120,6 @@ where
             self.num.tx();
 
             self.s.write_slice(&*req, 0)?;
-            //此处paser需要插钩子，设置seqid
 
             match req.on_sent() {
                 Some(r) => self.pending.push_back((r, Instant::now())),
@@ -134,9 +133,6 @@ where
     #[inline]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         while self.pending.len() > 0 {
-            // let mut cx = Context::from_waker(cx.waker());
-            //let mut reader = crate::buffer::Reader::from(&mut self.s, cx);
-            //let poll_read = self.buf.write(&mut reader)?;
             let poll_read = self.s.poll_recv(cx);
 
             while self.s.len() > 0 {
@@ -218,7 +214,6 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
 
         self.check_alive()?;
         Ok(true)
-        //self.buf.cap() + self.s.cap() >= crate::REFRESH_THREASHOLD
     }
 }
 

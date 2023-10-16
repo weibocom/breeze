@@ -15,12 +15,6 @@ where
     type Item = Req;
     #[inline]
     fn send(&self, req: Req) {
-        // assert!(self.backends.len() > 0);
-        // let idx = if self.backends.len() > 1 {
-        //     self.router.index(req.hash())
-        // } else {
-        //     0
-        // };
         let idx = self.shard_idx(req.hash());
         unsafe {
             assert!(idx < self.backends.len());

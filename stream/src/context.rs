@@ -80,7 +80,6 @@ unsafe impl Sync for CallbackContextPtr {}
 pub struct ResponseContext<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> {
     // ctx 中的response不可直接用，先封住，按需暴露
     ctx: &'a mut CallbackContextPtr,
-    // pub response: Option<&'a mut Command>,
     metrics: &'a Arc<M>,
     dist_fn: F,
     _mark: PhantomData<T>,
