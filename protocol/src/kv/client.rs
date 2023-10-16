@@ -78,8 +78,6 @@ impl Client {
             attrs.insert(name, value);
         }
 
-        // log::debug!("+++ client attrs:{:?}", attrs);
-
         attrs
     }
 }
