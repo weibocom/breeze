@@ -129,10 +129,6 @@ where
     Req: Request,
     P: Protocol,
 {
-    // #[inline]
-    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
-    //     PADDING.hash(k)
-    // }
     #[inline]
     fn exp_sec(&self) -> u32 {
         log::error!("msg queue does't support expire");

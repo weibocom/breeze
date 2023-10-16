@@ -74,10 +74,6 @@ where
     P: Protocol,
     B: Send + Sync,
 {
-    // #[inline]
-    // fn hash<K: HashKey>(&self, k: &K) -> i64 {
-    //     self.hasher.hash(k)
-    // }
     #[inline]
     fn exp_sec(&self) -> u32 {
         self.exp_sec

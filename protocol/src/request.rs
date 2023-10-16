@@ -15,12 +15,6 @@ impl crate::Request for Request {
     fn start_at(&self) -> ds::time::Instant {
         self.ctx().start_at()
     }
-
-    //#[inline]
-    //fn cmd_mut(&mut self) -> &mut HashedCommand {
-    //    self.req_mut()
-    //}
-
     #[inline]
     fn on_noforward(&mut self) {
         self.ctx().on_noforward();
@@ -63,11 +57,6 @@ impl Request {
     pub fn new(ctx: NonNull<CallbackContext>) -> Self {
         Self { ctx }
     }
-
-    //#[inline]
-    //fn req_mut(&self) -> &mut HashedCommand {
-    //    self.ctx().request_mut()
-    //}
     #[inline]
     fn ctx(&self) -> &mut CallbackContext {
         unsafe { &mut *self.ctx.as_ptr() }

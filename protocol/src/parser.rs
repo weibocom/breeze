@@ -69,7 +69,6 @@ pub enum HandShake {
 
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
-    //todo, Stream和Writer合并，ResOption用一个字段？
     fn handshake(&self, _stream: &mut impl Stream, _option: &mut ResOption) -> Result<HandShake> {
         Ok(HandShake::Success)
     }
@@ -79,10 +78,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         alg: &H,
         process: &mut P,
     ) -> Result<()>;
-    //fn build_request(&self, _req: &mut HashedCommand, _request_builder: MemGuard) {}
-
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>>;
-
     fn write_response<C, W, M, I>(
         &self,
         ctx: &mut C,
@@ -144,55 +140,17 @@ pub struct HashedCommand {
 }
 
 impl Command {
-    //#[inline]
-    //pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
-    //    Self { ok: flag.ok(), cmd }
-    //}
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
         Self { ok, cmd }
     }
-    // #[inline]
-    // pub fn new(flag: Flag, cmd: ds::MemGuard) -> Self {
-    //     Self {
-    //         ok: Ok(flag),
-    //         cmd,
-    //         origin_cmd: None,
-    //     }
-    // }
     pub fn from_ok(cmd: ds::MemGuard) -> Self {
         Self::from(true, cmd)
     }
-
     #[inline]
     pub fn ok(&self) -> bool {
         self.ok
     }
-
-    //#[inline]
-    //pub fn len(&self) -> usize {
-    //    self.cmd.len()
-    //}
-    //#[inline]
-    //pub fn read(&self, oft: usize) -> &[u8] {
-    //    self.cmd.read(oft)
-    //}
-
-    // 不再暴露cmd，需要保存原有的cmd
-    // #[inline]
-    // pub fn cmd(&mut self) -> &mut MemGuard {
-    //     &mut self.cmd
-    // }
-    // 获取origin data，调用方必须确保其存在
-
-    //#[inline]
-    //pub fn data(&self) -> &ds::RingSlice {
-    //    self.cmd.data()
-    //}
-    //#[inline]
-    //pub fn data_mut(&mut self) -> &mut ds::RingSlice {
-    //    self.cmd.data_mut()
-    //}
 }
 impl std::ops::Deref for Command {
     type Target = MemGuard;
@@ -240,22 +198,6 @@ impl HashedCommand {
     pub fn hash(&self) -> i64 {
         self.hash
     }
-    // #[inline]
-    // pub fn update_hash(&mut self, idx_hash: i64) {
-    //     self.hash = idx_hash;
-    // }
-    //#[inline]
-    //pub fn data(&self) -> &ds::RingSlice {
-    //    self.cmd.data()
-    //}
-    //#[inline]
-    //pub fn data_mut(&mut self) -> &mut ds::RingSlice {
-    //    self.cmd.data_mut()
-    //}
-    //#[inline]
-    //pub fn len(&self) -> usize {
-    //    self.cmd.len()
-    //}
     #[inline]
     pub fn sentonly(&self) -> bool {
         self.flag.sentonly()
@@ -303,17 +245,7 @@ impl HashedCommand {
         mem::swap(&mut self.cmd, &mut dest_cmd);
         self.origin_cmd = Some(dest_cmd);
     }
-    //#[inline]
-    //pub fn try_next_type(&self) -> TryNextType {
-    //    self.flag.try_next_type()
-    //}
 }
-//impl AsRef<Command> for HashedCommand {
-//    #[inline]
-//    fn as_ref(&self) -> &Command {
-//        &self.cmd
-//    }
-//}
 
 use std::fmt::{self, Debug, Display, Formatter};
 use std::mem;
@@ -344,9 +276,6 @@ impl Debug for Command {
 pub trait Commander<M: Metric<I>, I: MetricItem> {
     fn request_mut(&mut self) -> &mut HashedCommand;
     fn request(&self) -> &HashedCommand;
-    // response  单独拆除
-    // fn response(&self) -> Option<&Command>;
-    // fn response_mut(&mut self) -> Option<&mut Command>;
     // 请求所在的分片位置
     fn request_shard(&self) -> usize;
     fn metric(&self) -> &M;

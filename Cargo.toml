@@ -19,9 +19,6 @@ members = [
 ]
 default-members = ["agent"]
 
-exclude = ["api", "tests", "tests_integration"]
-
-
 [profile.release-test]
 inherits = "release"
 
