@@ -383,6 +383,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         let client = self.client.as_ref().unwrap();
         let user = client.get_user().unwrap_or_default().as_bytes().to_vec();
         let db_name = client.get_db_name().unwrap_or_default().as_bytes().to_vec();
+        let conn_attrs = client.connect_attrs();
 
         let handshake_response = HandshakeResponse::new(
             scramble_buf,
@@ -393,13 +394,14 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             Some(RingSlice::from_vec(&db_name)),
             Some(auth_plugin.clone()),
             client.capability_flags,
-            Some(client.connect_attrs()),
+            Some(&conn_attrs),
         );
         let mut buf: Vec<u8> = Vec::with_capacity(256);
         handshake_response.serialize(&mut buf);
         let mut src_buf = BytesMut::with_capacity(buf.len());
         src_buf.extend(buf);
 
+        log::debug!("++++ handshake rsp:{:?}", handshake_response);
         let mut encoded_raw = BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET);
         match self.codec.encode(&mut src_buf, &mut encoded_raw) {
             Ok(_) => {

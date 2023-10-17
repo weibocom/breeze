@@ -70,9 +70,18 @@ impl RingSlice {
     }
     #[inline(always)]
     pub fn from_vec(data: &Vec<u8>) -> Self {
-        let mut mem: RingSlice = data.as_slice().into();
+        // let mut mem: RingSlice = data.as_slice().into();
+        // // 这里面的cap是真实的cap
+        // mem.cap = data.capacity() as u32;
+        // mem
+        Self::from_slice(data)
+    }
+    // TODO 找机会，把from_vec统一改为from_slice fishermen
+    #[inline(always)]
+    pub fn from_slice(data: &[u8]) -> Self {
+        let mut mem: RingSlice = data.into();
         // 这里面的cap是真实的cap
-        mem.cap = data.capacity() as u32;
+        mem.cap = data.len() as u32;
         mem
     }
     #[inline(always)]

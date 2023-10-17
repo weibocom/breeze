@@ -1781,7 +1781,7 @@ impl HandshakeResponse {
         db_name: Option<RingSlice>,
         auth_plugin: Option<AuthPlugin>,
         mut capabilities: CapabilityFlags,
-        connect_attributes: Option<HashMap<String, String>>,
+        connect_attributes: Option<&HashMap<String, String>>,
     ) -> Self {
         let scramble_buf =
             if capabilities.contains(CapabilityFlags::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
@@ -1833,8 +1833,8 @@ impl HandshakeResponse {
                     // .map(|(k, v)| (RawBytes::new(k.into_bytes()), RawBytes::new(v.into_bytes())))
                     .map(|(k, v)| {
                         (
-                            RawBytes::new(RingSlice::from_vec(&k.into_bytes())),
-                            RawBytes::new(RingSlice::from_vec(&v.into_bytes())),
+                            RawBytes::new(RingSlice::from_slice(k.as_bytes())),
+                            RawBytes::new(RingSlice::from_slice(v.as_bytes())),
                         )
                     })
                     .collect()
