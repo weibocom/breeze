@@ -127,7 +127,7 @@ fn read_number_one() {
         240, 42, 77, 225, 67, 208, 203, 151, 240, 154, 105, 127, 237, 27, 10, 213, 48, 54, 13, 22,
         69, 171, 0, 223, 68, 219, 84, 149,
     ];
-    let rs = RingSlice::from_vec(&v);
+    let rs = RingSlice::from_slice(&v);
     assert_eq!(rs.read_i24_le_cmp(0), LittleEndian::read_i24(&v));
     assert_eq!(rs.read_i24_be_cmp(0), BigEndian::read_i24(&v));
 }
@@ -135,7 +135,7 @@ fn read_number_one() {
 #[test]
 fn copy_to_vec() {
     let mut data = vec![0, 1, 2];
-    let slice = RingSlice::from_vec(&data);
+    let slice = RingSlice::from_slice(&data);
 
     slice.copy_to_vec(&mut data);
     assert_eq!(data, vec![0, 1, 2, 0, 1, 2]);
@@ -145,7 +145,7 @@ fn copy_to_vec() {
 #[test]
 fn copy_to_slice() {
     let data = vec![0, 1, 2];
-    let slice = RingSlice::from_vec(&data);
+    let slice = RingSlice::from_slice(&data);
 
     let mut slice_short = [0_u8; 2];
     slice.copy_to_slice(&mut slice_short);
@@ -245,7 +245,7 @@ fn check_read_num_le() {
     data.extend(num6_bytes);
     data.put_i32_le(num7);
 
-    let slice = RingSlice::from_vec(&data);
+    let slice = RingSlice::from_slice(&data);
 
     assert_eq!(num1, slice.read_u64_le(0));
     assert_eq!(num2, slice.read_u32_le(size_of::<u64>()));
@@ -294,7 +294,7 @@ fn check_read_num_be() {
     data.put_u16(num3);
     data.put_u8(num4);
 
-    let slice = RingSlice::from_vec(&data);
+    let slice = RingSlice::from_slice(&data);
 
     assert_eq!(num1, slice.read_u64_be(0));
     assert_eq!(num2, slice.read_u32_be(size_of::<u64>()));
