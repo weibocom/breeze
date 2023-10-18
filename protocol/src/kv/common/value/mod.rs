@@ -232,7 +232,7 @@ impl Value {
         match self {
             Value::NULL => 0,
             // Value::Bytes(x) => lenenc_str_len(&*x),
-            Value::Bytes(x) => lenenc_str_len(&RingSlice::from_vec(x)),
+            Value::Bytes(x) => lenenc_str_len(&RingSlice::from_slice(x)),
             Value::Int(_) => 8,
             Value::UInt(_) => 8,
             Value::Float(_) => 4,

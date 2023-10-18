@@ -568,7 +568,7 @@ mod tests {
     fn be_le() {
         // let buf = ParseBuf(&[0, 1, 2]);
         let data = vec![0, 1, 2];
-        let slice = RingSlice::from_vec(&data);
+        let slice = RingSlice::from_slice(&data);
         let buf = ParseBuf::new(0, slice);
         assert_eq!(buf.clone().eat_u24_le(), 0x00020100);
         // assert_eq!(buf.clone().eat_u24_be(), 0x00000102);
