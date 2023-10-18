@@ -17,8 +17,8 @@ pub enum Postfix {
 
 impl Into<Postfix> for &str {
     fn into(self) -> Postfix {
-        match self {
-            "yyMM" => Postfix::YYMM,
+        match self.to_lowercase().as_str() {
+            "yymm" => Postfix::YYMM,
             _ => Postfix::YYMMDD,
         }
     }
