@@ -128,7 +128,7 @@ where
                 }
             }
         }
-        Poll::Ready(Err(Error::QueueClosed))
+        Poll::Ready(Err(Error::ChanReadClosed))
     }
     #[inline]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
