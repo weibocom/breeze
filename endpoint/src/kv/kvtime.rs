@@ -8,22 +8,21 @@ use protocol::kv::Strategy;
 use sharding::hash::Hash;
 use sharding::{distribution::DBRange, hash::Hasher};
 
-#[derive(Default, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct KVTime {
     db_prefix: String,
     table_prefix: String,
     table_postfix: Postfix,
     hasher: Hasher,
     distribution: DBRange,
-    // years: Vec<String>,
 }
 
 impl KVTime {
-    pub fn new(name: String, db_count: u32, shards: u32) -> Self {
+    pub fn new(name: String, db_count: u32, shards: u32, table_postfix: Postfix) -> Self {
         Self {
             db_prefix: name.clone(),
             table_prefix: name.clone(),
-            table_postfix: Postfix::YYMMDD,
+            table_postfix: table_postfix,
             distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
             hasher: Hasher::from("crc32"),
         }
