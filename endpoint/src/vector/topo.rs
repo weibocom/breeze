@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt::Debug;
 
 use discovery::dns;
 use discovery::dns::IPPort;
@@ -13,7 +12,6 @@ use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
 use sharding::hash::{Hash, HashKey};
-use sharding::Distance;
 
 use crate::dns::DnsConfig;
 use crate::Builder;
@@ -22,13 +20,12 @@ use crate::Timeout;
 use crate::{Endpoint, Topology};
 
 use crate::kv::config::KvNamespace;
-use crate::kv::config::Years;
 use crate::kv::strategy::Strategist;
+use crate::kv::topo::{Shard, Shards};
 use crate::kv::KVCtx;
 #[derive(Clone)]
 pub struct VectorService<B, E, Req, P> {
     shards: Shards<E>,
-    // selector: Selector,
     strategist: Strategist,
     parser: P,
     cfg: Box<DnsConfig<KvNamespace>>,
@@ -44,7 +41,6 @@ impl<B, E, Req, P> From<P> for VectorService<B, E, Req, P> {
             strategist: Default::default(),
             cfg: Default::default(),
             _mark: std::marker::PhantomData,
-            // selector: Selector::Random,
         }
     }
 }
@@ -319,140 +315,5 @@ where
         self.shards.len() > 0
             && self.shards.len() == self.cfg.shards_url.len()
             && self.shards.inited()
-    }
-}
-
-// todo: 这一段跟redis是一样的，这段可以提到外面去
-impl<E: discovery::Inited> Shard<E> {
-    // 1. 主已经初始化
-    // 2. 有从
-    // 3. 所有的从已经初始化
-    #[inline]
-    fn inited(&self) -> bool {
-        self.master().inited()
-            && self.has_slave()
-            && self
-                .slaves
-                .iter()
-                .fold(true, |inited, (_, e)| inited && e.inited())
-    }
-}
-// todo: 这一段跟redis是一样的，这段可以提到外面去
-impl<E> Shard<E> {
-    #[inline]
-    fn selector(
-        is_performance: bool,
-        master_host: String,
-        master: E,
-        replicas: Vec<(String, E)>,
-        region_enabled: bool,
-    ) -> Self {
-        Self {
-            master: (master_host, master),
-            slaves: Distance::with_performance_tuning(replicas, is_performance, region_enabled),
-        }
-    }
-    #[inline]
-    fn has_slave(&self) -> bool {
-        self.slaves.len() > 0
-    }
-    #[inline]
-    fn master(&self) -> &E {
-        &self.master.1
-    }
-    #[inline]
-    fn select(&self) -> (usize, &(String, E)) {
-        self.slaves.unsafe_select()
-    }
-    #[inline]
-    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
-        unsafe { self.slaves.unsafe_next(idx, runs) }
-    }
-}
-
-// todo: 这一段跟redis是一样的，这段可以提到外面去
-#[derive(Clone)]
-struct Shard<E> {
-    master: (String, E),
-    slaves: Distance<(String, E)>,
-}
-
-impl<E> Debug for Shard<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "shard(master: {}, slaves: {:?})",
-            self.master.0, self.slaves
-        )
-    }
-}
-
-const YEAR_START: u16 = 2000;
-const YEAR_END: u16 = 2099;
-const YEAR_LEN: usize = (YEAR_END - YEAR_START) as usize + 1;
-#[derive(Clone)]
-struct Shards<E> {
-    shards: Vec<Vec<Shard<E>>>,
-    //2000~2099年的分片索引范围，如index[0] = 2 表示2000年的shards为shards[2]
-    //使用usize::MAX表示未初始化
-    index: [usize; YEAR_LEN],
-    len: usize,
-}
-
-impl<E> Default for Shards<E> {
-    fn default() -> Self {
-        Self {
-            shards: Default::default(),
-            index: [usize::MAX; YEAR_LEN],
-            len: 0,
-        }
-    }
-}
-impl<E> Shards<E> {
-    fn len(&self) -> usize {
-        self.len
-    }
-    //会重新初始化
-    fn take(&mut self) -> Vec<Shard<E>> {
-        self.index = [usize::MAX; YEAR_LEN];
-        self.len = 0;
-        self.shards.split_off(0).into_iter().flatten().collect()
-    }
-    //push 进来的shard是否init了
-    fn inited(&self) -> bool
-    where
-        E: discovery::Inited,
-    {
-        self.shards
-            .iter()
-            .flatten()
-            .fold(true, |inited, shard| inited && shard.inited())
-    }
-
-    fn year_index(year: u16) -> usize {
-        (year - YEAR_START) as usize
-    }
-
-    fn push(&mut self, shards_per_interval: (&Years, Vec<Shard<E>>)) {
-        let (interval, shards_per_interval) = shards_per_interval;
-        let index = self.shards.len();
-        self.len += shards_per_interval.len();
-        self.shards.push(shards_per_interval);
-        let (start_year, end_year) = (Self::year_index(interval.0), Self::year_index(interval.1));
-        for i in &mut self.index[start_year..=end_year] {
-            assert_eq!(*i, usize::MAX);
-            *i = index
-        }
-    }
-
-    fn get(&self, intyear: u16) -> &[Shard<E>] {
-        if intyear > YEAR_END || intyear < YEAR_START {
-            return &[];
-        }
-        let index = self.index[Self::year_index(intyear)];
-        if index == usize::MAX {
-            return &[];
-        }
-        &self.shards[index]
     }
 }
