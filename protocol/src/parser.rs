@@ -7,6 +7,7 @@ use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
 use crate::uuid::Uuid;
+use crate::vector::Vector;
 use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
 #[derive(Clone)]
@@ -19,6 +20,7 @@ pub enum Parser {
     // Mysql(Kv),
     Kv(Kv),
     Uuid(Uuid),
+    Vector(Vector),
 }
 impl Parser {
     pub fn try_from(name: &str) -> Result<Self> {
@@ -28,6 +30,7 @@ impl Parser {
             "msgque" => Ok(Self::MsgQue(Default::default())),
             "kv" => Ok(Self::Kv(Default::default())),
             "uuid" => Ok(Self::Uuid(Default::default())),
+            "vector" => Ok(Self::Vector(Default::default())),
             _ => Err(Error::ProtocolNotSupported),
         }
     }

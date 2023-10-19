@@ -14,6 +14,7 @@ pub mod req;
 pub mod kv;
 pub mod msgque;
 pub mod uuid;
+pub mod vector;
 
 pub use flag::*;
 pub use parser::Proto as Protocol;
@@ -41,6 +42,7 @@ pub enum Resource {
     MsgQue,
     Mysql,
     Uuid,
+    Vector,
 }
 
 impl Resource {
@@ -53,6 +55,7 @@ impl Resource {
             Self::MsgQue => "msgque",
             Self::Mysql => "mysql",
             Self::Uuid => "uuid",
+            Self::Vector => "vector",
         }
     }
 }

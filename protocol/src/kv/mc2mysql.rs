@@ -164,6 +164,48 @@ fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
     }
 }
 
+pub struct RingSliceIter {}
+impl Iterator for RingSliceIter {
+    type Item = RingSlice;
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+pub enum Opcode {}
+
+pub struct Condition {
+    pub field: RingSlice,
+    pub op: RingSlice,
+    pub value: RingSlice,
+}
+pub struct ConditionIter {}
+impl Iterator for ConditionIter {
+    type Item = Condition;
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+pub enum Order {}
+pub struct Orders {
+    pub field: RingSliceIter,
+    pub order: Order,
+}
+
+pub struct Limit {
+    pub offset: usize,
+    pub limit: usize,
+}
+
+pub struct KeylistCmd {
+    pub cmd: Opcode,
+    pub keys: RingSliceIter,
+    pub fields: RingSliceIter,
+    pub wheres: ConditionIter,
+    pub orders: Orders,
+    pub limit: Limit,
+}
+
 impl MysqlBuilder {
     pub fn build_packets(
         strategy: &impl Strategy,
