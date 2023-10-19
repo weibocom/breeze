@@ -157,31 +157,30 @@ pub struct Condition {
     pub value: RingSlice,
 }
 
-pub enum Order {
-    ASC,
-    DESC,
-}
-pub struct Orders {
-    pub field: Vec<RingSlice>,
-    pub order: Order,
-}
+// pub enum Order {
+//     ASC,
+//     DESC,
+// }
+// pub struct Orders {
+//     pub field: Vec<RingSlice>,
+//     pub order: Order,
+// }
 // pub struct Orders {
 //     pub field: RingSliceIter,
 //     pub order: Order,
 // }
 
 pub struct Limit {
-    pub offset: usize,
-    pub limit: usize,
+    pub offset: RingSlice,
+    pub limit: RingSlice,
 }
 
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
 pub struct VectorCmd {
-    pub cmd: Opcode,
     pub keys: Vec<RingSlice>,
-    pub fields: Vec<RingSlice>,
-    pub wheres: Vec<Condition>,
-    pub orders: Option<Orders>,
+    pub fields: RingSlice,
+    pub wheres: Vec<RingSlice>,
+    pub orders: RingSlice,
     pub limit: Option<Limit>,
 }
 
