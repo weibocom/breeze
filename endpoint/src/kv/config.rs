@@ -79,7 +79,7 @@ pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
 impl KvNamespace {
     #[inline]
-    pub(super) fn try_from(cfg: &str) -> Option<Self> {
+    pub(crate) fn try_from(cfg: &str) -> Option<Self> {
         match serde_yaml::from_str::<KvNamespace>(cfg) {
             Ok(mut ns) => {
                 //移除default分片，兼容老defalut
@@ -125,14 +125,14 @@ impl KvNamespace {
         let decrypted_string = String::from_utf8(decrypted_data)?;
         Ok(decrypted_string)
     }
-    pub(super) fn timeout_master(&self) -> Timeout {
+    pub(crate) fn timeout_master(&self) -> Timeout {
         let mut to = TO_MYSQL_M;
         if self.basic.timeout_ms_master > 0 {
             to.adjust(self.basic.timeout_ms_master);
         }
         to
     }
-    pub(super) fn timeout_slave(&self) -> Timeout {
+    pub(crate) fn timeout_slave(&self) -> Timeout {
         let mut to = TO_MYSQL_S;
         if self.basic.timeout_ms_slave > 0 {
             to.adjust(self.basic.timeout_ms_slave);

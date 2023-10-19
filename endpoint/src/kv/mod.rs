@@ -4,11 +4,11 @@ pub mod strategy;
 pub mod topo;
 pub mod uuid;
 
-struct Context {
-    runs: u16, // 运行的次数
-    idx: u16,  //最多有65535个主从
-    shard_idx: u16,
-    year: u16,
+pub(crate) struct Context {
+    pub(crate) runs: u16, // 运行的次数
+    pub(crate) idx: u16,  //最多有65535个主从
+    pub(crate) shard_idx: u16,
+    pub(crate) year: u16,
 }
 
 // #[inline]
@@ -18,7 +18,7 @@ struct Context {
 //     unsafe { std::mem::transmute(ctx) }
 // }
 
-trait KVCtx {
+pub(crate) trait KVCtx {
     fn ctx(&mut self) -> &mut Context;
 }
 
