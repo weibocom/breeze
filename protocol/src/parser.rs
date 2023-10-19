@@ -133,6 +133,58 @@ pub struct Command {
     cmd: MemGuard,
 }
 
+// pub struct RingSliceIter {}
+// impl Iterator for RingSliceIter {
+//     type Item = RingSlice;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         todo!()
+//     }
+// }
+// pub struct ConditionIter {}
+// impl Iterator for ConditionIter {
+//     type Item = Condition;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         todo!()
+//     }
+// }
+
+pub enum Opcode {}
+
+pub enum ConditionOP {}
+pub struct Condition {
+    pub field: RingSlice,
+    pub op: ConditionOP,
+    pub value: RingSlice,
+}
+
+pub enum Order {
+    ASC,
+    DESC,
+}
+pub struct Orders {
+    pub field: Vec<RingSlice>,
+    pub order: Order,
+}
+// pub struct Orders {
+//     pub field: RingSliceIter,
+//     pub order: Order,
+// }
+
+pub struct Limit {
+    pub offset: usize,
+    pub limit: usize,
+}
+
+//非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
+pub struct VectorCmd {
+    pub cmd: Opcode,
+    pub keys: Vec<RingSlice>,
+    pub fields: Vec<RingSlice>,
+    pub wheres: Vec<Condition>,
+    pub orders: Option<Orders>,
+    pub limit: Option<Limit>,
+}
+
 pub const MAX_DIRECT_HASH: i64 = i64::MAX;
 
 pub struct HashedCommand {
@@ -140,6 +192,7 @@ pub struct HashedCommand {
     flag: Flag,
     cmd: ds::MemGuard,
     origin_cmd: Option<MemGuard>,
+    vector_cmd: Option<VectorCmd>,
 }
 
 impl Command {
@@ -182,7 +235,7 @@ impl std::ops::DerefMut for HashedCommand {
         &mut self.cmd
     }
 }
-use ds::MemGuard;
+use ds::{MemGuard, RingSlice};
 impl HashedCommand {
     #[inline]
     pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {
@@ -191,6 +244,7 @@ impl HashedCommand {
             flag,
             cmd,
             origin_cmd: None,
+            vector_cmd: None,
         }
     }
     #[inline]
