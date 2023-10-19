@@ -334,7 +334,7 @@ impl<E: discovery::Inited> Shard<E> {
     // 2. 有从
     // 3. 所有的从已经初始化
     #[inline]
-    fn inited(&self) -> bool {
+    pub(crate) fn inited(&self) -> bool {
         self.master().inited()
             && self.has_slave()
             && self
@@ -346,7 +346,7 @@ impl<E: discovery::Inited> Shard<E> {
 // todo: 这一段跟redis是一样的，这段可以提到外面去
 impl<E> Shard<E> {
     #[inline]
-    fn selector(
+    pub(crate) fn selector(
         is_performance: bool,
         master_host: String,
         master: E,
@@ -359,28 +359,28 @@ impl<E> Shard<E> {
         }
     }
     #[inline]
-    fn has_slave(&self) -> bool {
+    pub(crate) fn has_slave(&self) -> bool {
         self.slaves.len() > 0
     }
     #[inline]
-    fn master(&self) -> &E {
+    pub(crate) fn master(&self) -> &E {
         &self.master.1
     }
     #[inline]
-    fn select(&self) -> (usize, &(String, E)) {
+    pub(crate) fn select(&self) -> (usize, &(String, E)) {
         self.slaves.unsafe_select()
     }
     #[inline]
-    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+    pub(crate) fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
         unsafe { self.slaves.unsafe_next(idx, runs) }
     }
 }
 
 // todo: 这一段跟redis是一样的，这段可以提到外面去
 #[derive(Clone)]
-struct Shard<E> {
-    master: (String, E),
-    slaves: Distance<(String, E)>,
+pub(crate) struct Shard<E> {
+    pub(crate) master: (String, E),
+    pub(crate) slaves: Distance<(String, E)>,
 }
 
 impl<E> Debug for Shard<E> {
@@ -397,7 +397,7 @@ const YEAR_START: u16 = 2000;
 const YEAR_END: u16 = 2099;
 const YEAR_LEN: usize = (YEAR_END - YEAR_START) as usize + 1;
 #[derive(Clone)]
-struct Shards<E> {
+pub(crate) struct Shards<E> {
     shards: Vec<Vec<Shard<E>>>,
     //2000~2099年的分片索引范围，如index[0] = 2 表示2000年的shards为shards[2]
     //使用usize::MAX表示未初始化
@@ -415,17 +415,17 @@ impl<E> Default for Shards<E> {
     }
 }
 impl<E> Shards<E> {
-    fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.len
     }
     //会重新初始化
-    fn take(&mut self) -> Vec<Shard<E>> {
+    pub(crate) fn take(&mut self) -> Vec<Shard<E>> {
         self.index = [usize::MAX; YEAR_LEN];
         self.len = 0;
         self.shards.split_off(0).into_iter().flatten().collect()
     }
     //push 进来的shard是否init了
-    fn inited(&self) -> bool
+    pub(crate) fn inited(&self) -> bool
     where
         E: discovery::Inited,
     {
@@ -439,7 +439,7 @@ impl<E> Shards<E> {
         (year - YEAR_START) as usize
     }
 
-    fn push(&mut self, shards_per_interval: (&Years, Vec<Shard<E>>)) {
+    pub(crate) fn push(&mut self, shards_per_interval: (&Years, Vec<Shard<E>>)) {
         let (interval, shards_per_interval) = shards_per_interval;
         let index = self.shards.len();
         self.len += shards_per_interval.len();
@@ -451,7 +451,7 @@ impl<E> Shards<E> {
         }
     }
 
-    fn get(&self, intyear: u16) -> &[Shard<E>] {
+    pub(crate) fn get(&self, intyear: u16) -> &[Shard<E>] {
         if intyear > YEAR_END || intyear < YEAR_START {
             return &[];
         }
