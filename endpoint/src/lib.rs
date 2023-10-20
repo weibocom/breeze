@@ -20,8 +20,8 @@ const TO_MC_M: Timeout = Timeout::from_millis(500);
 const TO_MC_S: Timeout = Timeout::from_millis(80);
 const TO_MYSQL_M: Timeout = Timeout::from_millis(1000);
 const TO_MYSQL_S: Timeout = Timeout::from_millis(500);
-const TO_Vector_M: Timeout = Timeout::from_millis(1000);
-const TO_Vector_S: Timeout = Timeout::from_millis(500);
+const TO_VECTOR_M: Timeout = Timeout::from_millis(1000);
+const TO_VECTOR_S: Timeout = Timeout::from_millis(500);
 const TO_UUID: Timeout = Timeout::from_millis(100);
 
 #[derive(Copy, Clone, Debug)]
