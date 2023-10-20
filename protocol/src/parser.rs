@@ -301,6 +301,9 @@ impl HashedCommand {
         mem::swap(&mut self.cmd, &mut dest_cmd);
         self.origin_cmd = Some(dest_cmd);
     }
+    pub fn vector_cmd(&mut self) -> Option<VectorCmd> {
+        self.vector_cmd.take()
+    }
 }
 
 use std::fmt::{self, Debug, Display, Formatter};

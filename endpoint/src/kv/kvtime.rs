@@ -18,6 +18,21 @@ pub struct KVTime {
 }
 
 impl KVTime {
+    pub fn new_with_db(
+        db_prefix: String,
+        table_prefix: String,
+        db_count: u32,
+        shards: u32,
+        table_postfix: Postfix,
+    ) -> Self {
+        Self {
+            db_prefix,
+            table_prefix,
+            table_postfix,
+            distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
+            hasher: Hasher::from("crc32"),
+        }
+    }
     pub fn new(name: String, db_count: u32, shards: u32, table_postfix: Postfix) -> Self {
         Self {
             db_prefix: name.clone(),

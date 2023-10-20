@@ -19,8 +19,8 @@ use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
 
-use crate::kv::config::KvNamespace;
-use crate::kv::strategy::Strategist;
+use super::config::VectorNamespace;
+use super::strategy::Strategist;
 use crate::kv::topo::{Shard, Shards};
 use crate::kv::KVCtx;
 #[derive(Clone)]
@@ -28,7 +28,7 @@ pub struct VectorService<B, E, Req, P> {
     shards: Shards<E>,
     strategist: Strategist,
     parser: P,
-    cfg: Box<DnsConfig<KvNamespace>>,
+    cfg: Box<DnsConfig<VectorNamespace>>,
     _mark: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -165,7 +165,7 @@ where
         self.cfg.load_guard().check_load(|| self.load_inner());
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
-        if let Some(ns) = KvNamespace::try_from(cfg) {
+        if let Some(ns) = VectorNamespace::try_from(cfg) {
             self.strategist = Strategist::try_from(&ns);
             self.cfg.update(namespace, ns);
         }
