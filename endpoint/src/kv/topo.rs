@@ -12,6 +12,7 @@ use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
+use rand::seq::SliceRandom;
 use sharding::hash::{Hash, HashKey};
 use sharding::Distance;
 
@@ -258,10 +259,11 @@ where
             }
         }
 
+        let mut rng = rand::thread_rng();
         for (interval, addrs_per_interval) in addrs {
             let mut shards_per_interval = Vec::with_capacity(addrs_per_interval.len());
             // 遍历所有的shards_url
-            for (master_addr, slaves) in addrs_per_interval {
+            for (master_addr, mut slaves) in addrs_per_interval {
                 assert_ne!(master_addr.len(), 0);
                 assert_ne!(slaves.len(), 0);
                 // 用户名和密码
@@ -277,6 +279,10 @@ where
                 );
                 // slave
                 let mut replicas = Vec::with_capacity(8);
+                if self.cfg.basic.max_slave_conns != 0 {
+                    slaves.shuffle(&mut rng);
+                    slaves.truncate(self.cfg.basic.max_slave_conns as usize);
+                }
                 for addr in slaves {
                     let slave = self.take_or_build(
                         &mut old,
