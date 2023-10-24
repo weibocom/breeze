@@ -4,7 +4,6 @@ use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
-use protocol::kv::Binary;
 use protocol::kv::MysqlBuilder;
 use protocol::kv::Strategy;
 use protocol::Protocol;
@@ -14,6 +13,7 @@ use protocol::Resource;
 use sharding::hash::{Hash, HashKey};
 
 use crate::dns::DnsConfig;
+use crate::vector::strategy::VectorBuilder;
 use crate::Builder;
 use crate::Single;
 use crate::Timeout;
@@ -77,25 +77,33 @@ where
 
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-        let (intyear, shard_idx) = if req.ctx().runs == 0 {
-            let key = req.key();
+        let (year, shard_idx) = if req.ctx().runs == 0 {
+            let vcmd = req.vector_cmd().unwrap();
+
             //定位年库
-            let intyear: u16 = self.strategist.get_key(&key);
+            let year = match self.strategist.get_key_for_vector(&vcmd.keys) {
+                Ok(year) => year,
+                Err(e) => {
+                    req.on_err(e);
+                    return;
+                }
+            };
+
             let shard_idx = self.shard_idx(req.hash());
-            req.ctx().year = intyear;
+            req.ctx().year = year;
             req.ctx().shard_idx = shard_idx as u16;
 
             //todo: 此处不应panic
             let cmd =
-                MysqlBuilder::build_packets(&self.strategist, &req, &key).expect("malformed sql");
+                MysqlBuilder::build_packets_for_vector(&VectorBuilder {}).expect("malformed sql");
             req.reshape(MemGuard::from_vec(cmd));
 
-            (intyear, shard_idx)
+            (year, shard_idx)
         } else {
             (req.ctx().year, req.ctx().shard_idx as usize)
         };
 
-        let shards = self.shards.get(intyear);
+        let shards = self.shards.get(year);
         if shards.len() == 0 {
             //todo 错误类型不合适
             req.on_err(protocol::Error::TopChanged);
@@ -114,7 +122,7 @@ where
             "+++ mysql {} send {} year {} shards {:?} => {:?}",
             self.cfg.service,
             shard_idx,
-            intyear,
+            year,
             shards,
             req
         );

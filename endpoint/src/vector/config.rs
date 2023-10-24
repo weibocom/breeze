@@ -43,7 +43,6 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) user: String,
 }
-pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
 impl VectorNamespace {
     #[inline]

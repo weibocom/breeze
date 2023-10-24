@@ -1,9 +1,10 @@
 use crate::kv::kvtime::KVTime;
 
-use super::strategy::Postfix;
+use super::strategy::{to_i64, Postfix};
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
+use protocol::Error;
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
@@ -20,8 +21,12 @@ impl Strategy for VectorTime {
         <KVTime as Strategy>::hasher(&self.kvtime)
     }
 
-    fn get_key(&self, key: &RingSlice) -> u16 {
-        <KVTime as Strategy>::get_key(&self.kvtime, key)
+    fn get_key_for_vector(&self, keys: &[RingSlice]) -> Result<u16, Error> {
+        if keys.len() < 2 {
+            Err(Error::ProtocolIncomplete)
+        } else {
+            Ok(to_i64(&keys[1]) as u16)
+        }
     }
 
     fn tablename_len(&self) -> usize {
