@@ -94,8 +94,12 @@ where
             req.ctx().shard_idx = shard_idx as u16;
 
             //todo: 此处不应panic
-            let cmd =
-                MysqlBuilder::build_packets_for_vector(&VectorBuilder {}).expect("malformed sql");
+            let cmd = MysqlBuilder::build_packets_for_vector(VectorBuilder::new(
+                req.op_code(),
+                &vcmd,
+                &self.strategist,
+            ))
+            .expect("malformed sql");
             req.reshape(MemGuard::from_vec(cmd));
 
             (year, shard_idx)

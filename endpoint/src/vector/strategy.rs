@@ -4,6 +4,7 @@ pub use crate::kv::strategy::{to_i64, Postfix};
 use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, Strategy, VectorSqlBuilder};
+use protocol::{vector::VectorCmd, OpCode};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
@@ -74,20 +75,30 @@ impl Strategy for Strategist {
     }
 }
 
-pub(crate) struct VectorBuilder {}
+pub(crate) struct VectorBuilder<'a, S> {
+    op: OpCode,
+    vcmd: &'a VectorCmd,
+    strategy: &'a S,
+}
 
-impl MysqlBinary for VectorBuilder {
+impl<'a, S: Strategy> VectorBuilder<'a, S> {
+    pub fn new(op: OpCode, vcmd: &'a VectorCmd, strategy: &'a S) -> Self {
+        Self { op, vcmd, strategy }
+    }
+}
+
+impl<'a, S> MysqlBinary for VectorBuilder<'a, S> {
     fn mysql_cmd(&self) -> Command {
         todo!()
     }
 }
 
-impl VectorSqlBuilder for VectorBuilder {
+impl<'a, S> VectorSqlBuilder for VectorBuilder<'a, S> {
     fn len(&self) -> usize {
         todo!()
     }
 
-    fn write_sql(&self, packet: &mut protocol::kv::PacketCodec) {
+    fn write_sql(&self, buf: &mut impl Write) {
         todo!()
     }
 }
