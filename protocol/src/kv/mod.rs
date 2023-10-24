@@ -8,7 +8,7 @@ mod reqpacket;
 mod rsppacket;
 
 mod mc2mysql;
-pub use mc2mysql::{MysqlBuilder, Strategy};
+pub use mc2mysql::{MysqlBuilder, Strategy, VectorSqlBuilder};
 
 use self::common::proto::Text;
 use self::common::query_result::{Or, QueryResult};

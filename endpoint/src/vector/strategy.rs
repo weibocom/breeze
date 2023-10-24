@@ -2,7 +2,8 @@ use std::fmt::Write;
 
 pub use crate::kv::strategy::{to_i64, Postfix};
 use ds::RingSlice;
-use protocol::kv::Strategy;
+use protocol::kv::common::Command;
+use protocol::kv::{MysqlBinary, Strategy, VectorSqlBuilder};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
@@ -54,9 +55,9 @@ impl Strategy for Strategist {
         }
     }
     #[inline]
-    fn get_key(&self, key: &RingSlice) -> u16 {
+    fn get_key_for_vector(&self, keys: &[RingSlice]) -> Result<u16, protocol::Error> {
         match self {
-            Strategist::VectorTime(inner) => Strategy::get_key(inner, key),
+            Strategist::VectorTime(inner) => Strategy::get_key_for_vector(inner, keys),
         }
     }
     #[inline]
@@ -70,5 +71,23 @@ impl Strategy for Strategist {
         match self {
             Strategist::VectorTime(inner) => Strategy::write_database_table(inner, buf, key),
         }
+    }
+}
+
+pub(crate) struct VectorBuilder {}
+
+impl MysqlBinary for VectorBuilder {
+    fn mysql_cmd(&self) -> Command {
+        todo!()
+    }
+}
+
+impl VectorSqlBuilder for VectorBuilder {
+    fn len(&self) -> usize {
+        todo!()
+    }
+
+    fn write_sql(&self, packet: &mut protocol::kv::PacketCodec) {
+        todo!()
     }
 }
