@@ -171,7 +171,7 @@ fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
 
 pub trait VectorSqlBuilder: MysqlBinary {
     fn len(&self) -> usize;
-    fn write_sql(&self, packet: &mut PacketCodec);
+    fn write_sql(&self, buf: &mut impl Write);
 }
 
 impl MysqlBuilder {
@@ -210,7 +210,7 @@ impl MysqlBuilder {
         );
         Ok(packet)
     }
-    pub fn build_packets_for_vector(sql_builder: &impl VectorSqlBuilder) -> Result<Vec<u8>> {
+    pub fn build_packets_for_vector(sql_builder: impl VectorSqlBuilder) -> Result<Vec<u8>> {
         let sql_len = sql_builder.len();
 
         let mut packet = PacketCodec::default();

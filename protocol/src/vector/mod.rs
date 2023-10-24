@@ -2,6 +2,7 @@ use crate::{
     Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
     Result, Stream, Writer,
 };
+use ds::RingSlice;
 use sharding::hash::Hash;
 
 #[derive(Clone, Default)]
@@ -35,4 +36,59 @@ impl Protocol for Vector {
     {
         todo!()
     }
+}
+
+// pub struct RingSliceIter {}
+// impl Iterator for RingSliceIter {
+//     type Item = RingSlice;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         todo!()
+//     }
+// }
+// pub struct ConditionIter {}
+// impl Iterator for ConditionIter {
+//     type Item = Condition;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         todo!()
+//     }
+// }
+
+pub enum Opcode {}
+
+pub enum ConditionOP {}
+pub struct Condition {
+    pub field: RingSlice,
+    pub op: ConditionOP,
+    pub value: RingSlice,
+}
+
+// pub enum Order {
+//     ASC,
+//     DESC,
+// }
+// pub struct Orders {
+//     pub field: Vec<RingSlice>,
+//     pub order: Order,
+// }
+// pub struct Orders {
+//     pub field: RingSliceIter,
+//     pub order: Order,
+// }
+
+pub struct Limit {
+    pub offset: RingSlice,
+    pub limit: RingSlice,
+}
+
+#[repr(u16)]
+pub enum OpCode {
+    Vrange,
+}
+//非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
+pub struct VectorCmd {
+    pub keys: Vec<RingSlice>,
+    pub fields: RingSlice,
+    pub wheres: Vec<RingSlice>,
+    pub orders: RingSlice,
+    pub limit: Option<Limit>,
 }
