@@ -403,7 +403,6 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         let mut src_buf = BytesMut::with_capacity(buf.len());
         src_buf.extend(buf);
 
-        log::debug!("++++ handshake rsp:{:?}", handshake_response);
         let mut encoded_raw = BytesMut::with_capacity(DEFAULT_MAX_ALLOWED_PACKET);
         match self.codec.encode(&mut src_buf, &mut encoded_raw) {
             Ok(_) => {
