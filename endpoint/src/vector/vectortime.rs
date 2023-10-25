@@ -12,29 +12,24 @@ pub struct VectorTime {
     kvtime: KVTime,
 }
 
-impl Strategy for VectorTime {
-    fn distribution(&self) -> &DBRange {
+impl VectorTime {
+    pub fn distribution(&self) -> &DBRange {
         <KVTime as Strategy>::distribution(&self.kvtime)
     }
 
-    fn hasher(&self) -> &Hasher {
+    pub fn hasher(&self) -> &Hasher {
         <KVTime as Strategy>::hasher(&self.kvtime)
     }
 
-    fn get_key_for_vector(&self, keys: &[RingSlice]) -> Result<u16, Error> {
-        if keys.len() < 2 {
-            Err(Error::ProtocolIncomplete)
-        } else {
-            Ok(to_i64(&keys[1]) as u16)
+    pub fn get_year(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<u16, Error> {
+        if keys.len() == keys_name.len() {
+            for (i, key_name) in keys_name.iter().enumerate() {
+                if key_name == "yyyymm" {
+                    return Ok(to_i64(&keys[i].slice(0, 4)) as u16);
+                }
+            }
         }
-    }
-
-    fn tablename_len(&self) -> usize {
-        <KVTime as Strategy>::tablename_len(&self.kvtime)
-    }
-
-    fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice) {
-        <KVTime as Strategy>::write_database_table(&self.kvtime, buf, key)
+        return Err(Error::ProtocolIncomplete);
     }
 }
 
