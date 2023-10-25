@@ -80,7 +80,9 @@ impl<T: Addr> Distance<T> {
                 |d, _| d <= discovery::distance::DISTANCE_VAL_REGION,
             );
             if l == 0 {
-                log::warn!(
+                use metrics::base::*;
+                REGION_RES_MISS.incr();
+                println!(
                     "too few instance in region:{} total:{}, {:?}",
                     l,
                     replicas.len(),

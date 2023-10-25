@@ -68,6 +68,7 @@ impl Host {
         self.snapshot_buf(&BUF_RX, w, "mem_buf_rx", secs);
 
         w.write(BASE_PATH, "leak_conn", "num", LEAKED_CONN.take());
+        w.write(BASE_PATH, "region_res_miss", "num", REGION_RES_MISS.take());
 
         self.qps(w, secs, &P_W_CACHE, "poll_write_cache");
         self.qps(w, secs, &POLL_READ, "poll_read");
