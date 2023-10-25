@@ -13,15 +13,9 @@ use sharding::{distribution::DBRange, hash::Hasher};
 pub trait Strategy {
     fn distribution(&self) -> &DBRange;
     fn hasher(&self) -> &Hasher;
-    fn get_key(&self, _key: &RingSlice) -> u16 {
-        0
-    }
+    fn get_key(&self, _key: &RingSlice) -> u16;
     fn tablename_len(&self) -> usize;
     fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice);
-    //for vector
-    fn get_key_for_vector(&self, _keys: &[RingSlice]) -> Result<u16> {
-        Err(Error::ProtocolIncomplete)
-    }
 }
 
 struct Table<'a, S> {

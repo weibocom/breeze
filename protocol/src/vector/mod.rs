@@ -80,10 +80,7 @@ pub struct Limit {
     pub limit: RingSlice,
 }
 
-#[repr(u16)]
-pub enum OpCode {
-    Vrange,
-}
+pub const OP_VRANGE: u16 = 0;
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
 pub struct VectorCmd {
     pub keys: Vec<RingSlice>,

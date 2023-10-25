@@ -79,9 +79,8 @@ where
         // req 是mc binary协议，需要展出字段，转换成sql
         let (year, shard_idx) = if req.ctx().runs == 0 {
             let vcmd = req.vector_cmd().unwrap();
-
             //定位年库
-            let year = match self.strategist.get_key_for_vector(&vcmd.keys) {
+            let year = match self.strategist.get_year(&vcmd.keys, &self.cfg.basic.keys) {
                 Ok(year) => year,
                 Err(e) => {
                     req.on_err(e);
