@@ -33,6 +33,7 @@ impl BackendQuota {
 pub struct Distance<T> {
     len_local: u16,
     backend_quota: bool,
+    region_enabled: bool,
     idx: Arc<AtomicUsize>,
     replicas: Vec<(T, BackendQuota)>,
 }
@@ -41,6 +42,7 @@ impl<T: Addr> Distance<T> {
         Self {
             len_local: 0,
             backend_quota: false,
+            region_enabled: false,
             idx: Default::default(),
             replicas: Vec::new(),
         }
@@ -99,6 +101,7 @@ impl<T: Addr> Distance<T> {
 
         // 性能模式当前实现为按时间quota访问后端资源
         me.backend_quota = is_performance;
+        me.region_enabled = region_enabled;
         me.topn(len_local);
 
         me
@@ -201,7 +204,7 @@ impl<T: Addr> Distance<T> {
     pub fn select_next_idx(&self, idx: usize, runs: usize) -> usize {
         assert!(runs < self.len(), "{} {} {:?}", idx, runs, self);
         // 还可以从local中取
-        let s_idx = if runs < self.local_len() {
+        let s_idx = if runs < self.local_len() && !self.region_enabled {
             // 在sort时，相关的distance会进行一次random处理，在idx节点宕机时，不会让idx+1个节点成为热点
             (idx + 1) % self.local_len()
         } else {
