@@ -72,6 +72,8 @@ pub struct Basic {
     pub(crate) password: String,
     #[serde(default)]
     pub(crate) user: String,
+    #[serde(default)]
+    pub(crate) max_slave_conns: u16,
 }
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
