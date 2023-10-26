@@ -1,8 +1,8 @@
 use std::fmt::{Display, Write};
 
 pub use crate::kv::strategy::{to_i64, Postfix};
-use chrono::DateTime;
-use chrono_tz::Tz;
+use chrono::{Date, TimeZone};
+use chrono_tz::{Asia::Shanghai, Tz};
 use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, Strategy, VectorSqlBuilder};
@@ -27,6 +27,7 @@ impl Default for Strategist {
             32u32,
             8u32,
             Postfix::YYMMDD,
+            &[],
         ))
     }
 }
@@ -44,6 +45,7 @@ impl Strategist {
             //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
             ns.backends.iter().next().unwrap().1.len() as u32,
             ns.basic.table_postfix.as_str().into(),
+            &ns.basic.keys,
         ))
     }
     #[inline]
@@ -59,18 +61,18 @@ impl Strategist {
         }
     }
     #[inline]
-    pub fn get_year(
+    pub fn get_date(
         &self,
         keys: &[RingSlice],
         keys_name: &[String],
-    ) -> Result<u16, protocol::Error> {
+    ) -> Result<(u16, u16, u16), protocol::Error> {
         match self {
-            Strategist::VectorTime(inner) => inner.get_year(keys, keys_name),
+            Strategist::VectorTime(inner) => inner.get_date(keys, keys_name),
         }
     }
-    fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice, date: DateTime<Tz>) {
+    fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice]) {
         match self {
-            Strategist::VectorTime(inner) => inner.write_database_table(buf, key, date),
+            Strategist::VectorTime(inner) => inner.write_database_table(buf, keys),
         }
     }
 }
@@ -107,16 +109,17 @@ impl<'a> Display for VectorRingSlice<'a> {
     }
 }
 
-struct Table<'a>(&'a Strategist);
+struct Table<'a>(&'a Strategist, &'a [RingSlice]);
 impl<'a> Display for Table<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        self.0.write_database_table(f, self.1);
+        Ok(())
     }
 }
 
 impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     fn len(&self) -> usize {
-        todo!()
+        todo!();
     }
 
     fn write_sql(&self, buf: &mut impl Write) {
@@ -126,7 +129,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     buf,
                     "select {} from {} where ",
                     VectorRingSlice(&self.vcmd.fields),
-                    Table(&self.strategy)
+                    Table(&self.strategy, &self.vcmd.keys)
                 );
             }
             //校验应该在parser_req出
