@@ -1,8 +1,8 @@
 use crate::kv::kvtime::KVTime;
 
 use super::strategy::{to_i64, Postfix};
-use chrono::{Date, TimeZone};
-use chrono_tz::{Asia::Shanghai, Tz};
+use chrono::TimeZone;
+use chrono_tz::Asia::Shanghai;
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;

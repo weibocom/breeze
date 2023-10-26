@@ -5,7 +5,6 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::MysqlBuilder;
-use protocol::kv::Strategy;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;

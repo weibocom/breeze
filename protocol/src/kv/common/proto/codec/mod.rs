@@ -14,7 +14,7 @@ pub use flate2::Compression;
 use bytes::{Buf, BufMut, BytesMut};
 // use flate2::read::ZlibEncoder;
 
-use std::{cmp::min, io::Write};
+use std::cmp::min;
 // use std::{
 //     cmp::{max, min},
 //     io::Read,
