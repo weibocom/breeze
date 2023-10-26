@@ -136,6 +136,7 @@ where
             *req.mut_context() = ctx.ctx;
             if idx >= self.streams.len() {
                 req.on_err(protocol::Error::TopChanged);
+                log::warn!("+++ idx/{} top changed? {},req:{}", idx, self, req);
                 return;
             }
         }
