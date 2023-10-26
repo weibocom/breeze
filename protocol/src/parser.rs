@@ -183,7 +183,7 @@ impl std::ops::DerefMut for HashedCommand {
         &mut self.cmd
     }
 }
-use ds::{MemGuard, RingSlice};
+use ds::MemGuard;
 impl HashedCommand {
     #[inline]
     pub fn new(cmd: MemGuard, hash: i64, flag: Flag) -> Self {

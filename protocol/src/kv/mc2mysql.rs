@@ -1,12 +1,11 @@
 use core::fmt::Write;
-use enum_dispatch::enum_dispatch;
 use std::fmt::Display;
 
 use super::common::proto::codec::PacketCodec;
 use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use crate::HashedCommand;
-use crate::{Error, Error::FlushOnClose, Result};
+use crate::{Error::FlushOnClose, Result};
 use ds::RingSlice;
 use sharding::{distribution::DBRange, hash::Hasher};
 
