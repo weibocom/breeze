@@ -1,6 +1,8 @@
-use std::fmt::Write;
+use std::fmt::{Display, Write};
 
 pub use crate::kv::strategy::{to_i64, Postfix};
+use chrono::DateTime;
+use chrono_tz::Tz;
 use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, Strategy, VectorSqlBuilder};
@@ -66,6 +68,11 @@ impl Strategist {
             Strategist::VectorTime(inner) => inner.get_year(keys, keys_name),
         }
     }
+    fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice, date: DateTime<Tz>) {
+        match self {
+            Strategist::VectorTime(inner) => inner.write_database_table(buf, key, date),
+        }
+    }
 }
 
 pub(crate) struct VectorBuilder<'a> {
@@ -90,12 +97,40 @@ impl<'a> MysqlBinary for VectorBuilder<'a> {
     }
 }
 
+struct VectorRingSlice<'a>(&'a RingSlice);
+impl<'a> Display for VectorRingSlice<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (s1, s2) = self.0.data();
+        f.write_str(unsafe { std::str::from_utf8_unchecked(s1) })?;
+        f.write_str(unsafe { std::str::from_utf8_unchecked(s2) })?;
+        Ok(())
+    }
+}
+
+struct Table<'a>(&'a Strategist);
+impl<'a> Display for Table<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
 impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     fn len(&self) -> usize {
         todo!()
     }
 
     fn write_sql(&self, buf: &mut impl Write) {
-        todo!()
+        match self.op {
+            vector::OP_VRANGE => {
+                let _ = write!(
+                    buf,
+                    "select {} from {} where ",
+                    VectorRingSlice(&self.vcmd.fields),
+                    Table(&self.strategy)
+                );
+            }
+            //校验应该在parser_req出
+            _ => panic!("not support op:{}", self.op),
+        }
     }
 }

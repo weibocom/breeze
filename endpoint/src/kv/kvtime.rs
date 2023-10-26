@@ -2,6 +2,8 @@ use super::{
     strategy::{to_i64, Postfix},
     uuid::Uuid,
 };
+use chrono::{DateTime, Datelike};
+use chrono_tz::Tz;
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
@@ -11,8 +13,8 @@ use sharding::{distribution::DBRange, hash::Hasher};
 #[derive(Clone, Debug)]
 pub struct KVTime {
     db_prefix: String,
-    table_prefix: String,
-    table_postfix: Postfix,
+    pub table_prefix: String,
+    pub table_postfix: Postfix,
     hasher: Hasher,
     distribution: DBRange,
 }
@@ -69,9 +71,27 @@ impl KVTime {
         }
     }
 
-    fn write_dname(&self, buf: &mut impl Write, key: &RingSlice) {
+    pub fn write_dname(&self, buf: &mut impl Write, key: &RingSlice) {
         let db_idx: usize = self.distribution.db_idx(self.hasher.hash(key));
         let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
+    }
+
+    pub fn write_tname_with_date(&self, buf: &mut impl Write, date: DateTime<Tz>) {
+        let (mut year, month, day) = (date.year(), date.month(), date.day());
+        year %= 100;
+        match self.table_postfix {
+            Postfix::YYMM => {
+                let _ = write!(
+                    buf,
+                    "{}_{:02}{:02}{:02}",
+                    &self.table_prefix, year, month, day
+                );
+            }
+            //Postfix::YYMMDD
+            _ => {
+                let _ = write!(buf, "{}_{:02}{:02}", &self.table_prefix, year, month);
+            }
+        }
     }
 }
 impl Strategy for KVTime {
