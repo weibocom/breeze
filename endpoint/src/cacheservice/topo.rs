@@ -1,11 +1,12 @@
 use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
-use protocol::{Protocol, Request, Resource, TryNextType};
+use protocol::{Protocol, Request, Resource};
 use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
 use std::collections::HashMap;
 
 use super::config::Flag;
+use super::Context;
 use crate::shards::Shards;
 use crate::PerformanceTuning;
 use crate::Timeout;
@@ -16,12 +17,18 @@ pub struct CacheService<B, E, Req, P> {
     // 一共有n组，每组1个连接。
     // 排列顺序： master, master l1, slave, slave l1
     streams: Distance<Shards<E, Req>>,
+    // streams 中slave所在的idx
+    slave_idx: usize,
     // streams里面的前r_num个数据是提供读的(这个长度不包含slave l1, slave)。
     hasher: Hasher,
     parser: P,
     exp_sec: u32,
-    force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
-    backend_no_storage: bool, // true：mc后面没有存储
+    /// 兼容已有业务逻辑，set master失败后，是否更新其他layer
+    force_write_all: bool,
+    /// true：mc后面没有存储
+    backend_no_storage: bool,
+    /// false: 以master为准； true：以master+slave为准
+    double_base: bool,
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -31,11 +38,13 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
         Self {
             parser,
             streams: Distance::new(),
+            slave_idx: 0,
             exp_sec: 0,
             force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
             _marker: Default::default(),
             backend_no_storage: false,
+            double_base: false,
         }
     }
 }
@@ -91,11 +100,38 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert!(self.streams.local_len() > 0);
 
-        let mut idx: usize = 0; // master
+        // let idx: usize = 0; // master
+        let mut ctx = super::Context::from(*req.mut_context());
+        // 根据context、request 获取send的策略：mc pool索引，是否try next，是否回写
+        let (idx, try_next, write_back) = self.get_send_strategy(&mut ctx, &mut req);
+        // 设置访问策略
+        if ctx.ctx > 0 {
+            req.try_next(try_next);
+            req.write_back(write_back);
+            *req.mut_context() = ctx.ctx;
+            if idx >= self.streams.len() {
+                req.on_err(protocol::Error::TopChanged);
+                return;
+            }
+        }
+
+        log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
+        debug_assert!(idx < self.streams.len(), "{} {} => {:?}", idx, self, req);
+
+        unsafe { self.streams.get_unchecked(idx).send(req) };
+    }
+}
+
+impl<B: Send + Sync, E, Req: Request, P: Protocol> CacheService<B, E, Req, P>
+where
+    E: Endpoint<Item = Req>,
+{
+    #[inline(always)]
+    fn get_send_strategy(&self, ctx: &mut Context, req: &mut Req) -> (usize, bool, bool) {
         if !req.operation().master_only() {
-            let mut ctx = super::Context::from(*req.mut_context());
-            let (i, try_next, write_back) = if req.operation().is_store() {
-                self.context_store(&mut ctx, &req)
+            // 对于非master_only,根据请求是否store，来确定访问策略
+            if req.operation().is_store() {
+                self.context_store(ctx, &req)
             } else {
                 if !ctx.inited() {
                     // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
@@ -105,47 +141,55 @@ where
                         req.quota(quota);
                     }
                 }
-                self.context_get(&mut ctx)
-            };
-            req.try_next(try_next);
-            req.write_back(write_back);
-            *req.mut_context() = ctx.ctx;
-            idx = i;
-            if idx >= self.streams.len() {
-                req.on_err(protocol::Error::TopChanged);
-                return;
+                self.context_get(ctx)
             }
+        } else if self.double_base {
+            // 对于master only的请求（gets/meta），如果开启doubleBase，master异常，还可以访问slave
+            if !ctx.check_and_inited(false) {
+                let try_next = self.streams.len() > self.slave_idx;
+                (0, try_next, false) // 第一次访问，直接访问master
+            } else {
+                (self.slave_idx, false, false) // 第二次访问，尝试访问slave，gets毋需回写
+            }
+        } else {
+            // master_only，同时非double_base，只访问master
+            (0, false, false)
         }
-        log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
-        debug_assert!(idx < self.streams.len(), "{} {} => {:?}", idx, self, req);
-
-        unsafe { self.streams.get_unchecked(idx).send(req) };
     }
-}
-impl<B: Send + Sync, E, Req: Request, P: Protocol> CacheService<B, E, Req, P>
-where
-    E: Endpoint<Item = Req>,
-{
+
     #[inline]
     fn context_store(&self, ctx: &mut super::Context, req: &Req) -> (usize, bool, bool) {
-        let (idx, try_next, write_back);
-        ctx.check_and_inited(true);
+        use protocol::memcache::Binary;
+
+        let (mut idx, try_next, write_back);
+        let inited = ctx.check_and_inited(true);
         if ctx.is_write() {
-            idx = ctx.take_write_idx() as usize;
+            // 对于cas/casq、add/addq，第一次访问master，失败后第二次需要访问slave，然后再重构成普通set协议回写
+            idx = if self.double_base && inited && req.is_cas_add() {
+                // doubleBase为true时，第二次直接访问slave，同时设置skip slave bit位为1
+                ctx.set_skip_slave_4store();
+                self.slave_idx
+            } else {
+                ctx.take_write_idx() as usize
+            };
+            if idx == self.slave_idx && ctx.need_skip_slave_4store() {
+                // 当更新到slave idx时，如果需要skip，则skip掉slave
+                idx = ctx.take_write_idx() as usize;
+            }
             write_back = idx + 1 < self.streams.len();
 
             // try_next逻辑：
             //  1）如果当前为最后一个layer，设为false;
-            //  2）否则，根据opcode、force_write_all一起确定。
+            //  2）否则，根据double_base、force_write_all、idx一起确定。
             try_next = if idx + 1 >= self.streams.len() {
                 false
             } else {
-                use protocol::memcache::Binary;
-                match req.try_next_type() {
-                    TryNextType::NotTryNext => false,
-                    TryNextType::TryNext => true,
-                    TryNextType::Unkown => self.force_write_all,
-                }
+                req.can_try_next(self.double_base, self.force_write_all, idx)
+                // let try_next_raw = match req.try_next_type() {
+                //     TryNextType::NotTryNext => false,
+                //     TryNextType::TryNext => true,
+                //     TryNextType::Unkown => self.force_write_all,
+                // };
             };
         } else {
             // 是读触发的回种的写请求
@@ -203,6 +247,7 @@ where
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
             self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
             self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
+            self.double_base = ns.flag.get(Flag::DoubleBase as u8);
             let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();
@@ -231,6 +276,9 @@ where
                 let l = (backends.len() / 4).max(1);
                 local_len = backends.sort(master, |_, s| s <= l);
             }
+
+            // 设置slave的索引位置，方便doubleBase策略访问slave
+            self.slave_idx = local_len;
 
             let mut new = Vec::with_capacity(backends.len());
             for (i, group) in backends.into_iter().enumerate() {

@@ -63,7 +63,7 @@ pub(crate) const COMMAND_IDX: [u8; 128] = [
 // cas 变更为setq
 pub(crate) const NOREPLY_MAPPING: [u8; 128] = [
     0x09, 0x11, 0x11, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x09, 0x00, 0x00, 0x0d, 0x0d, 0x19, 0x1a,
-    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+    0x10, 0x11, 0x11, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
     0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
     0x30, 0x32, 0x32, 0x34, 0x34, 0x36, 0x36, 0x38, 0x38, 0x3a, 0x3a, 0x3c, 0x3c, 0x3d, 0x3e, 0x3f,
     0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x49, 0x49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -79,9 +79,9 @@ pub(crate) const NOREPLY_MAPPING: [u8; 128] = [
 //];
 
 // 请求完毕后，不考虑layer及其他配置，如果cmd失败,是否继续try_next:
-// (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对set生效，注意提前考虑cas)
+// (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对cas id 大于0的set/setq、add生效，注意提前考虑cas)
 const TRY_NEXT_TABLE: [u8; 128] = [
-    1, 2, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 2, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0,
+    1, 2, 2, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0,
     1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -124,6 +124,7 @@ pub const OP_DEL: u8 = 0x04;
 pub const OP_ADD: u8 = 0x02;
 pub const OP_GETK: u8 = 0x0c;
 pub(crate) const OP_SETQ: u8 = 0x11;
+pub(super) const OP_ADDQ: u8 = 0x12;
 // 这个专门为gets扩展
 pub const OP_GETS: u8 = 0x48;
 // 这个没有业务使用，先注销掉
@@ -190,9 +191,10 @@ pub trait Binary {
     fn hash<H: sharding::hash::Hash>(&self, alg: &H) -> i64;
     fn check_request(&self) -> Result<()>;
     fn check_response(&self) -> Result<()>;
-    fn try_next_type(&self) -> TryNextType;
+    fn can_try_next(&self, double_base: bool, force_write_all: bool, cur_idx: usize) -> bool;
     fn sentonly(&self) -> bool;
     fn noforward(&self) -> bool;
+    fn is_cas_add(&self) -> bool;
 }
 
 pub trait Op {}
@@ -362,22 +364,39 @@ impl Binary for RingSlice {
         }
     }
 
+    /// 以master为准时，仅仅从协议层面考虑，计算是否重试
     #[inline(always)]
-    fn try_next_type(&self) -> TryNextType {
+    fn can_try_next(&self, double_base: bool, force_write_all: bool, cur_idx: usize) -> bool {
         let op = self.op() as usize;
         assert!(op < TRY_NEXT_TABLE.len());
 
-        let try_next = TRY_NEXT_TABLE[op];
-        if try_next != TryNextType::Unkown as u8 {
-            return TryNextType::from(try_next);
+        let try_next = TRY_NEXT_TABLE[op].into();
+        match try_next {
+            TryNextType::TryNext => true,
+            TryNextType::NotTryNext => false,
+            TryNextType::Unknown => {
+                // Unknown type 对应的cmd只有set/setq、cas/casq以及add/addq
+                if double_base {
+                    // 开启double base后，对于cas、add类型，如果当前idx为master，后面可以再try slave
+                    cur_idx == super::MASTER_IDX || force_write_all
+                } else {
+                    // 如果没开启双基准，对于set(非cas/add)，根据force_write_all 来确定是否try write，而cas/add 不用try
+                    !self.is_cas_add() && force_write_all
+                }
+            }
         }
 
-        // 只有set、setq 才会是unknown，此时只需要对cas再设置为NotTryNext即可
-        if self.cas() > 0 {
-            log::debug!("not try next for cas");
-            return TryNextType::NotTryNext;
-        }
-        return TryNextType::from(try_next);
+        // TODO 待测试稳定后，后清理 fishermen
+        // if try_next != TryNextType::Unkown as u8 {
+        //     return TryNextType::from(try_next);
+        // }
+
+        // // 只有set、setq 才会是unknown，此时只需要对cas再设置为NotTryNext即可
+        // if self.cas() > 0 {
+        //     log::debug!("not try next for cas");
+        //     return TryNextType::NotTryNext;
+        // }
+        // return TryNextType::from(try_next);
     }
 
     #[inline(always)]
@@ -390,6 +409,15 @@ impl Binary for RingSlice {
         //NO_FORWARD_OPS[self.op() as usize] == 1
         match self.op() {
             OP_NOOP | OP_QUIT | OP_QUITQ | OP_VERSION | OP_STAT => true,
+            _ => false,
+        }
+    }
+
+    #[inline(always)]
+    fn is_cas_add(&self) -> bool {
+        match self.op() {
+            OP_ADD | OP_ADDQ => true,
+            OP_SET | OP_SETQ => self.cas() > 0,
             _ => false,
         }
     }

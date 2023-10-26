@@ -16,6 +16,9 @@ use crate::{
 
 use sharding::hash::Hash;
 
+/// mc的master在内部结构存储时，idx为0，结构顺序为： master, master_l1, slave, slave_l1
+pub(crate) const MASTER_IDX: usize = 0;
+
 impl Protocol for MemcacheBinary {
     #[inline]
     fn config(&self) -> crate::Config {
