@@ -39,7 +39,7 @@ pub struct CallbackContext {
     pub(crate) write_back: bool, // 请求结束后，是否需要回写。
     first: bool,                 // 当前请求是否是所有子请求的第一个
     last: bool,                  // 当前请求是否是所有子请求的最后一个
-    tries: AtomicU8,
+    tries: AtomicU8,             // 高4位：成功发送到后端次数；低4位：轮询计数
     request: HashedCommand,
     response: MaybeUninit<Command>,
     start: Instant, // 请求的开始时间
@@ -97,6 +97,10 @@ impl CallbackContext {
     #[inline]
     pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
+        let tries = self.tries.load(Relaxed);
+        let low = tries & 0xF; // 低4bit
+        let high = tries >> 4; // 高4bit
+        self.tries.store((high + 1) << 4 | low, Relaxed);
         if self.request().sentonly() {
             self.on_done();
             false
@@ -142,7 +146,20 @@ impl CallbackContext {
                     return false;
                 }
             }
-            self.try_next && self.tries.fetch_add(1, Release) < 1
+
+            // 若已经有效发送给后端，则不需要再次发送
+            let tries = self.tries.load(Relaxed);
+            if tries >> 4 > 0 {
+                // 已有效发送给后端一次
+                return false;
+            }
+
+            // 未曾有效发送给后端，需要看轮询次数是否超过上限
+            let b = tries & 0xF < 0xF;
+            if b {
+                let _ = self.tries.fetch_add(1, Release);
+            }
+            self.try_next && b // 防止意外死循环
         } else {
             // write back请求
             self.write_back
