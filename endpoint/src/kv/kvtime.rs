@@ -2,7 +2,7 @@ use super::{
     strategy::{to_i64, Postfix},
     uuid::Uuid,
 };
-use chrono::{DateTime, Datelike};
+use chrono::{Date, Datelike};
 use chrono_tz::Tz;
 use core::fmt::Write;
 use ds::RingSlice;
@@ -13,8 +13,8 @@ use sharding::{distribution::DBRange, hash::Hasher};
 #[derive(Clone, Debug)]
 pub struct KVTime {
     db_prefix: String,
-    pub table_prefix: String,
-    pub table_postfix: Postfix,
+    table_prefix: String,
+    table_postfix: Postfix,
     hasher: Hasher,
     distribution: DBRange,
 }
@@ -76,7 +76,7 @@ impl KVTime {
         let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
     }
 
-    pub fn write_tname_with_date(&self, buf: &mut impl Write, date: DateTime<Tz>) {
+    pub fn write_tname_with_date(&self, buf: &mut impl Write, date: &Date<Tz>) {
         let (mut year, month, day) = (date.year(), date.month(), date.day());
         year %= 100;
         match self.table_postfix {

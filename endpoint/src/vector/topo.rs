@@ -80,7 +80,7 @@ where
         let (year, shard_idx) = if req.ctx().runs == 0 {
             let vcmd = req.vector_cmd().unwrap();
             //定位年库
-            let year = match self.strategist.get_year(&vcmd.keys, &self.cfg.basic.keys) {
+            let (year, _, _) = match self.strategist.get_date(&vcmd.keys, &self.cfg.basic.keys) {
                 Ok(year) => year,
                 Err(e) => {
                     req.on_err(e);
