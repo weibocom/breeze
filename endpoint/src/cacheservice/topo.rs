@@ -100,7 +100,32 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert!(self.streams.local_len() > 0);
 
+        // TODO 测试稳定后清理，预计2023.11.30后可清理 fishermen
         // let idx: usize = 0; // master
+        // if !req.operation().master_only() {
+        //     let mut ctx = super::Context::from(*req.mut_context());
+        //     let (i, try_next, write_back) = if req.operation().is_store() {
+        //         self.context_store(&mut ctx, &req)
+        //     } else {
+        //         if !ctx.inited() {
+        //             // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
+        //             // 第一次读一般访问L1，miss之后再读master；
+        //             // 读quota的更新根据第一次的请求时间更合理
+        //             if let Some(quota) = self.streams.quota() {
+        //                 req.quota(quota);
+        //             }
+        //         }
+        //         self.context_get(&mut ctx)
+        //     };
+        //     req.try_next(try_next);
+        //     req.write_back(write_back);
+        //     *req.mut_context() = ctx.ctx;
+        //     idx = i;
+        //     if idx >= self.streams.len() {
+        //         req.on_err(protocol::Error::TopChanged);
+        //         return;
+        //     }
+        // }
         let mut ctx = super::Context::from(*req.mut_context());
         // 根据context、request 获取send的策略：mc pool索引，是否try next，是否回写
         let (idx, try_next, write_back) = self.get_send_strategy(&mut ctx, &mut req);
