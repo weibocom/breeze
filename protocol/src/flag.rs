@@ -101,22 +101,25 @@ impl Flag {
     //}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum TryNextType {
     NotTryNext = 0,
     TryNext = 1,
-    Unkown = 2,
+    Unknown = 2,
 }
+// 方便检索
+const TRY_NEXT_TABLE: [TryNextType; 3] = [
+    TryNextType::NotTryNext,
+    TryNextType::TryNext,
+    TryNextType::Unknown,
+];
 
-// (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对set生效，注意提前考虑cas)
-impl TryNextType {
-    pub fn from(val: u8) -> Self {
-        match val {
-            0 => TryNextType::NotTryNext,
-            1 => TryNextType::TryNext,
-            2 => TryNextType::Unkown,
-            _ => panic!("unknow try next type"),
-        }
+impl From<u8> for TryNextType {
+    fn from(val: u8) -> Self {
+        let idx = val as usize;
+        assert!(idx < TRY_NEXT_TABLE.len(), "malformed tryNextType:{}", idx);
+
+        *TRY_NEXT_TABLE.get(idx).expect("malformed tryNextType")
     }
 }
 

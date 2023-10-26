@@ -35,8 +35,9 @@ pub struct Namespace {
     pub timeout_ms_slave: u32,
     #[serde(default)]
     pub local_affinity: bool,
+    /// TODO 通过bit位，设置不同的策略/属性，详见下面Flag定义，新增bool属性，考虑统一设置到flag，从DoubleBase开始 fishermen
     #[serde(default)]
-    pub flag: u64, // 通过bit位，设置不同的策略/属性，详见下面Flag定义
+    pub flag: u64,
 }
 
 // 通过bit位，设置不同的策略/属性；从低位开始依次排列
@@ -46,6 +47,24 @@ pub(crate) enum Flag {
     ForceWriteAll = 1,
     UpdateSlavel1 = 2,
     LocalAffinity = 3,
+    /// <pre>
+    /// DoubleBase默认为false，以master为准，即write master或gets失败后，即返回失败。
+    /// 若设置为true，则可以将slave也可以作为基准，在key维度，如果master节点异常，就以slave作为基准，目前影响cas/casq、add/addq、gets指令；
+    /// doubleBase设置不同值，对指令的影响：
+    /// 1 cas
+    ///   mcDoubleBase=false： cas master失败，则直接返回；
+    ///   mcDoubleBase=true：  cas master失败，再尝试cas slave，如果master、slave都失败，才返回；
+    ///                        cas slave 成功，说明以slave为准，此时则将master及其他所有层也set一次，并返回成功；
+    /// 2 add
+    ///   mcDoubleBase=false： add master失败，则直接返回；
+    ///   mcDoubleBase=true：  add master失败，如果master状态正常，直接返回；
+    ///   					  如果master、slave都失败，则返回失败；
+    ///   					  如果slave成功，则set master及其他层，并返回成功；
+    /// 3 gets:
+    ///   mcDoubleBase=false： gets master失败，则直接返回；
+    ///   mcDoubleBase=true：  gets master失败，再尝试getes slave，如果master、slave都失败，才返回；
+    /// </pre>
+    DoubleBase = 4,
 }
 
 impl Namespace {
