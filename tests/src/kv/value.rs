@@ -141,7 +141,7 @@ fn mysql_simple_issue_284() -> io::Result<()> {
     use Value::*;
 
     let data = vec![1, 49, 1, 50, 1, 51, 251, 1, 52, 1, 53, 251, 1, 55];
-    let slice = RingSlice::from_slice(&data);
+    let slice = RingSlice::from_vec(&data);
     let mut buf = ParseBuf::from(slice);
     assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"1".to_vec()));
     assert_eq!(Value::deserialize_text(&mut buf)?, Bytes(b"2".to_vec()));

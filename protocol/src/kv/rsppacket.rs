@@ -325,10 +325,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             .as_deref()
             .unwrap_or_default()
             .to_vec();
-        let handshake_reply = self.build_handshake_response_packet(
-            &auth_plugin,
-            Some(RingSlice::from_slice(&auth_data)),
-        )?;
+        let handshake_reply = self
+            .build_handshake_response_packet(&auth_plugin, Some(RingSlice::from_vec(&auth_data)))?;
         Ok(handshake_reply)
     }
 
@@ -392,8 +390,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             client.server_version.unwrap_or((0, 0, 0)),
             // self.opts.get_user().map(str::as_bytes),
             // self.opts.get_db_name().map(str::as_bytes),
-            Some(RingSlice::from_slice(&user)),
-            Some(RingSlice::from_slice(&db_name)),
+            Some(RingSlice::from_vec(&user)),
+            Some(RingSlice::from_vec(&db_name)),
             Some(auth_plugin.clone()),
             client.capability_flags,
             Some(&conn_attrs),

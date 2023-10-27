@@ -68,14 +68,16 @@ impl RingSlice {
             mask,
         }
     }
-    // #[inline(always)]
-    // pub fn from_vec(data: &Vec<u8>) -> Self {
-    //     let mut mem: RingSlice = data.as_slice().into();
-    //     // 这里面的cap是真实的cap
-    //     mem.cap = data.capacity() as u32;
-    //     mem
-    //     Self::from_slice(data)
-    // }
+    /// 注意：本方法用vec的capacity作为cap，方便ManuallyDrop结构的恢复及正确drop
+    #[inline(always)]
+    pub fn from_vec(data: &Vec<u8>) -> Self {
+        let mut mem: RingSlice = data.as_slice().into();
+        // 这里面的cap是真实的cap
+        mem.cap = data.capacity() as u32;
+        mem
+    }
+
+    /// 注意：对于Vec请使用from_vec，本方法直接用slice的长度作为cap，对ManuallyDrop结构无法友好支持
     #[inline(always)]
     pub fn from_slice(data: &[u8]) -> Self {
         let mut mem: RingSlice = data.into();
