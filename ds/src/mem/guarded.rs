@@ -109,7 +109,7 @@ impl MemGuard {
     pub fn from_vec(data: Vec<u8>) -> Self {
         debug_assert_ne!(data.len(), 0);
         let data = std::mem::ManuallyDrop::new(data);
-        let mem: RingSlice = RingSlice::from_slice(&data);
+        let mem: RingSlice = RingSlice::from_vec(&data);
         Self { mem, guard: None }
     }
     #[inline]
