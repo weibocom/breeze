@@ -103,7 +103,7 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = Handler::from(rx, stream, p, rtt);
             let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             if let Err(e) = handler.await {
-                log::info!("backend error {:?} => {:?}", path_addr, e);
+                log::error!("backend error {:?} => {:?}", path_addr, e);
                 match e {
                     Error::Timeout(_t) => {
                         m_timeout += 1;
