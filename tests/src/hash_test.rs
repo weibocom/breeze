@@ -94,12 +94,11 @@ mod hash_test {
         let servers = servers.iter().map(|s| s.to_string()).collect();
 
         let dist = Distribute::from("modula", &servers);
-        // let key = "新浪微博topic_100.abc";
         let key = "hot_band_conf_6041884361";
         let crc: i64 = hasher.hash(&key.as_bytes());
         let idx = dist.index(crc);
 
         println!("key:{}, crc64: {}, dist: {}", key, crc, idx);
-        // assert_eq!(8418485779165287637_i64, crc);
+        assert_eq!(-7536761181773004100_i64, crc);
     }
 }
