@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod hash_test {
 
-    use sharding::hash::{Hash, Hasher};
+    use sharding::{
+        distribution::Distribute,
+        hash::{Hash, Hasher},
+    };
 
     #[test]
     fn crc32_hash() {
@@ -82,5 +85,21 @@ mod hash_test {
         println!("crc: {}, key:{} ", crc, key);
         // h14243dc752b5beac 对应i64算法为2461123049，i32算法为-1833844247，abs后为1833844247，
         assert_eq!(crc, 1833844247);
+    }
+
+    #[test]
+    fn crc64() {
+        let hasher = Hasher::from("crc64");
+        let servers = vec!["0", "1", "2", "3", "4", "5"];
+        let servers = servers.iter().map(|s| s.to_string()).collect();
+
+        let dist = Distribute::from("modula", &servers);
+        // let key = "新浪微博topic_100.abc";
+        let key = "hot_band_conf_6041884361";
+        let crc: i64 = hasher.hash(&key.as_bytes());
+        let idx = dist.index(crc);
+
+        println!("key:{}, crc64: {}, dist: {}", key, crc, idx);
+        // assert_eq!(8418485779165287637_i64, crc);
     }
 }
