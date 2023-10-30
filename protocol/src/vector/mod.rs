@@ -76,6 +76,7 @@ pub struct Condition {
 // }
 
 pub struct Limit {
+    //无需转成int，可直接拼接
     pub offset: RingSlice,
     pub limit: RingSlice,
 }
@@ -85,6 +86,7 @@ pub const OP_VRANGE: u16 = 0;
 pub struct VectorCmd {
     pub keys: Vec<RingSlice>,
     pub fields: RingSlice,
+    //三段式条件无需分割，可直接拼接
     pub wheres: Vec<RingSlice>,
     pub orders: RingSlice,
     pub limit: Option<Limit>,
