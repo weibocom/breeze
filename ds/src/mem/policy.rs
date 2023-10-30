@@ -73,13 +73,16 @@ impl MemPolicy {
     // 1. 最小值为 len + reserve的1.25倍
     // 2. 不小于原来的cap
     // 3. 至少为BUF_MIN
-    // 4. 2的指数倍
+    // 4. 前3条计算出的容量需求小于2GB，则按2的指数倍上取整；否则前3条计算出的容量需求
     #[inline]
     pub fn grow(&mut self, len: usize, cap: usize, reserve: usize) -> usize {
-        let new = ((5 * (len + reserve)) / 4)
-            .max(cap)
-            .max(BUF_MIN)
-            .next_power_of_two();
+        let new_o = ((5 * (len + reserve)) / 4).max(cap).max(BUF_MIN);
+        let new = if new_o < 2 * 1024 * 1024 * 1024 {
+            new_o.next_power_of_two()
+        } else {
+            new_o
+        };
+
         if cap > BUF_MIN {
             log::info!("grow: {}+{}>{} => {} {}", len, reserve, cap, new, self);
         }
