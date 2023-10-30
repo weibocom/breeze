@@ -101,4 +101,16 @@ mod hash_test {
         println!("key:{}, crc64: {}, dist: {}", key, crc, idx);
         assert_eq!(-7536761181773004100_i64, crc);
     }
+
+    #[test]
+    fn bkdrabscrc32() {
+        let hasher = Hasher::from("bkdrabscrc32");
+        let key1 = "1234567890#123";
+        let key2 = "1234567890Abc";
+
+        let hash1 = hasher.hash(&key1.as_bytes());
+        let hash2 = hasher.hash(&key2.as_bytes());
+        println!("bkdrabscrc32: {} : {}", hash1, hash2);
+        assert_eq!(hash1, hash2);
+    }
 }

@@ -1,4 +1,5 @@
 pub mod bkdr;
+pub mod bkdrabscrc32;
 pub mod bkdrsub;
 pub mod crc32;
 pub mod crc32local;
@@ -11,6 +12,7 @@ pub mod rawcrc32local;
 pub mod rawsuffix;
 
 pub use bkdr::Bkdr;
+pub use bkdrabscrc32::BkdrAbsCrc32;
 pub use crc32::*;
 pub use crc32local::*;
 pub use lbcrc32local::LBCrc32localDelimiter;
@@ -66,6 +68,7 @@ pub enum Hasher {
     Raw(Raw), // redis raw, long型字符串直接用数字作为hash
     Bkdr(Bkdr),
     Bkdrsub(Bkdrsub),
+    BkdrAbsCrc32(BkdrAbsCrc32), // 混合三种hash：先bkdr，再abs，最后进行crc32计算
     Crc32(Crc32),
     Crc32Short(Crc32Short),         // mc short crc32
     Crc32Num(Crc32Num),             // crc32 for a hash key whick is a num,
@@ -114,6 +117,7 @@ impl Hasher {
                 HASH_PADDING => Self::Padding(Default::default()),
                 "bkdr" => Self::Bkdr(Default::default()),
                 "bkdrsub" => Self::Bkdrsub(Default::default()),
+                "bkdrabscrc32" => Self::BkdrAbsCrc32(Default::default()),
                 "raw" => Self::Raw(Raw::from(Default::default())),
                 "crc32" => Self::Crc32(Default::default()),
                 "crc32local" => Self::Crc32local(Default::default()),
