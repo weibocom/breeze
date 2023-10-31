@@ -279,7 +279,7 @@ impl RingSlice {
     #[inline]
     pub fn copy_to_r<R: RangeBounds<usize>>(&self, s: &mut [u8], r: R) {
         let (start, end) = self.range(r);
-        assert!(start <= end && end <= s.len());
+        assert!(start <= end && end - start <= s.len());
         assert!(end - start <= s.len());
         if start == end {
             return;
@@ -336,12 +336,12 @@ impl RingSlice {
         self.cap as usize
     }
     #[inline(always)]
-    fn start(&self) -> usize {
+    pub(super) fn start(&self) -> usize {
         self.start as usize
     }
 
     #[inline(always)]
-    fn mask(&self, oft: usize) -> usize {
+    pub(super) fn mask(&self, oft: usize) -> usize {
         (self.mask & oft as u32) as usize
     }
 
