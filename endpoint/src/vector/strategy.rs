@@ -92,6 +92,17 @@ impl<'a> Display for VectorRingSlice<'a> {
     }
 }
 
+struct Select<'a>(&'a RingSlice);
+impl<'a> Display for Select<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.len() == 0 {
+            f.write_char('*')
+        } else {
+            VectorRingSlice(self.0).fmt(f)
+        }
+    }
+}
+
 struct Table<'a>(&'a Strategist, &'a [RingSlice]);
 impl<'a> Display for Table<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -100,17 +111,41 @@ impl<'a> Display for Table<'a> {
     }
 }
 
-struct Keys<'a>(&'a Strategist, &'a [RingSlice]);
-impl<'a> Display for Keys<'a> {
+struct KeysAndCondsAndOrderAndLimit<'a>(&'a Strategist, &'a VectorCmd);
+impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (i, key) in self.0.condition_keys().enumerate() {
+        let &Self(
+            strategy,
+            VectorCmd {
+                keys,
+                fields: _,
+                wheres,
+                orders,
+                limit,
+            },
+        ) = self;
+        for (i, key) in strategy.condition_keys().enumerate() {
             if let Some(key) = key {
                 if i == 0 {
-                    let _ = write!(f, "{}={}", key, VectorRingSlice(&self.1[i]));
+                    let _ = write!(f, "{}={}", key, VectorRingSlice(&keys[i]));
                 } else {
-                    let _ = write!(f, " and {}={}", key, VectorRingSlice(&self.1[i]));
+                    let _ = write!(f, " and {}={}", key, VectorRingSlice(&keys[i]));
                 }
             }
+        }
+        for w in wheres {
+            let _ = write!(f, " and {}", VectorRingSlice(w));
+        }
+        if orders.len() != 0 {
+            let _ = write!(f, " order by {}", VectorRingSlice(orders));
+        }
+        if let Some(limit) = limit {
+            let _ = write!(
+                f,
+                " limit {} offset {}",
+                VectorRingSlice(&limit.limit),
+                VectorRingSlice(&limit.offset)
+            );
         }
         Ok(())
     }
@@ -155,7 +190,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     "select {} from {} where {}",
                     VectorRingSlice(&self.vcmd.fields),
                     Table(&self.strategy, &self.vcmd.keys),
-                    Table(&self.strategy, &self.vcmd.keys),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
             //校验应该在parser_req出
