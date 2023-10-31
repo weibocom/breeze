@@ -22,11 +22,11 @@ impl VectorTime {
         db_count: u32,
         shards: u32,
         table_postfix: Postfix,
-        keys_name: &[String],
+        keys_name: Vec<String>,
     ) -> Self {
         Self {
             kvtime: KVTime::new_with_db(db_prefix, table_prefix, db_count, shards, table_postfix),
-            keys_name: keys_name.to_vec(),
+            keys_name: keys_name,
         }
     }
 
@@ -43,29 +43,28 @@ impl VectorTime {
         keys: &[RingSlice],
         keys_name: &[String],
     ) -> Result<(u16, u16, u16), Error> {
-        if keys.len() == keys_name.len() {
-            for (i, key_name) in keys_name.iter().enumerate() {
-                if key_name.len() != keys[i].len() {
-                    break;
+        // if keys.len() == keys_name.len() {
+        for (i, key_name) in keys_name.iter().enumerate() {
+            if key_name.len() != keys[i].len() {
+                break;
+            }
+            match key_name.as_str() {
+                "yyyymm" => {
+                    return Ok((
+                        to_i64(&keys[i].slice(0, 4)) as u16,
+                        to_i64(&keys[i].slice(4, 2)) as u16,
+                        1,
+                    ))
                 }
-                match key_name.as_str() {
-                    "yyyymm" => {
-                        return Ok((
-                            to_i64(&keys[i].slice(0, 4)) as u16,
-                            to_i64(&keys[i].slice(4, 2)) as u16,
-                            1,
-                        ))
-                    }
-                    "yyyymmdd" => {
-                        return Ok((
-                            to_i64(&keys[i].slice(0, 4)) as u16,
-                            to_i64(&keys[i].slice(4, 2)) as u16,
-                            to_i64(&keys[i].slice(6, 2)) as u16,
-                        ))
-                    }
-                    &_ => {
-                        break;
-                    }
+                "yyyymmdd" => {
+                    return Ok((
+                        to_i64(&keys[i].slice(0, 4)) as u16,
+                        to_i64(&keys[i].slice(4, 2)) as u16,
+                        to_i64(&keys[i].slice(6, 2)) as u16,
+                    ))
+                }
+                &_ => {
+                    break;
                 }
             }
         }
@@ -79,6 +78,10 @@ impl VectorTime {
             buf,
             &Shanghai.ymd(date.0.into(), date.1.into(), date.2.into()),
         )
+    }
+
+    pub(crate) fn keys(&self) -> &[String] {
+        &self.keys_name
     }
 }
 
