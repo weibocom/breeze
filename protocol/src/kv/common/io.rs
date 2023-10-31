@@ -1,10 +1,11 @@
 use byteorder::{LittleEndian as LE, ReadBytesExt, WriteBytesExt};
 use bytes::BufMut;
-use ds::RingSlice;
+use ds::{ByteOrder, RingSlice};
 // use sha1::digest::typenum::Minimum;
 use std::{fmt::Display, io};
 
 use super::proto::MyDeserialize;
+use paste::paste;
 
 pub trait BufMutExt: BufMut {
     /// Writes an unsigned integer to self as MySql length-encoded integer.
@@ -123,51 +124,40 @@ impl io::Read for ParseBuf {
     }
 }
 
+#[rustfmt::skip]
+macro_rules! next {
+    ($sign:ident, 16) => {paste!{[<$sign 16>]}};
+    ($sign:ident, 24) => {paste!{[<$sign 32>]}};
+    ($sign:ident, 40) => {paste!{[<$sign 64>]}};
+    ($sign:ident, 48) => {paste!{[<$sign 64>]}};
+    ($sign:ident, 56) => {paste!{[<$sign 64>]}};
+    ($sign:ident, $bits:literal) => {paste!{[<$sign $bits>]}};
+}
+
 macro_rules! eat_num {
-    // eat_num!(eat_u8, checked_eat_u8, u8, read_u8_le);
-    ($name:ident, $checked:ident, $t:ident, $fn:ident) => {
-        #[doc = "Consumes a number from the head of the buffer."]
-        pub fn $name(&mut self) -> $t {
-            const SIZE: usize = std::mem::size_of::<$t>();
-            // let bytes = self.eat(SIZE);
-            // unsafe { $t::$fn(*(bytes as *const _ as *const [_; SIZE])) }
+    ($($bits:literal) +) => {
+        $(
+        eat_num!(u, $bits, _le);
+        eat_num!(i, $bits, _le);
+        )+
+    };
 
-            // 统一改造为RingSlice来parse，注意对比原有逻辑 fishermen
-            let slice = self.eat(SIZE);
-            slice.$fn(0)
-        }
-
-        #[doc = "Consumes a number from the head of the buffer. Returns `None` if buffer is too small."]
-        pub fn $checked(&mut self) -> Option<$t> {
-            if self.len() >= std::mem::size_of::<$t>() {
-                Some(self.$name())
-            } else {
-                None
-            }
+    ($sign:ident, $bits:literal, $endian:ident) => {
+        paste!{
+            eat_num!([<eat_ $sign $bits $endian>], [<checked_eat_ $sign  $bits $endian>], $bits, [<$sign $bits $endian>], next!($sign, $bits));
         }
     };
-    // TODO 这里的size、offset是kv目标类型相关的，在ringSlice对应类型中实现，此处暂时保留，仅做对比用，后续稳定后清理 fishermen
-    // eat_num!(eat_u24_le, checked_eat_u24_le, 3, 0, u32, read_u24_le);
-    ($name:ident, $checked:ident, $size:literal, $offset:literal, $t:ident, $fn:ident) => {
+    ($fn:ident, $checked_fn:ident, $bits:literal, $num:ident, $t:ty) => {
         #[doc = "Consumes a number from the head of the buffer."]
-        pub fn $name(&mut self) -> $t {
-            const SIZE: usize = $size;
-            // let mut x: $t = 0;
-            // let bytes = self.eat(SIZE);
-            // for (i, b) in bytes.iter().enumerate() {
-            //     x |= (*b as $t) << ((8 * i) + (8 * $offset));
-            // }
-            // $t::$fn(x)
-
-            // 封装到RingSlice中处理，注意check一致性
-            let slice = self.eat(SIZE);
-            slice.$fn(0)
+        pub fn $fn(&mut self) -> $t {
+            let slice = self.eat($bits / 8);
+            slice.$num(0)
         }
 
         #[doc = "Consumes a number from the head of the buffer. Returns `None` if buffer is too small."]
-        pub fn $checked(&mut self) -> Option<$t> {
-            if self.len() >= $size {
-                Some(self.$name())
+        pub fn $checked_fn(&mut self) -> Option<$t> {
+            if self.len() >= std::mem::size_of::<$t>() {
+                Some(self.$fn())
             } else {
                 None
             }
@@ -175,8 +165,7 @@ macro_rules! eat_num {
     };
 }
 
-// impl<'a> ParseBuf<'a> {
-impl<'a> ParseBuf {
+impl ParseBuf {
     #[inline(always)]
     pub fn new(oft: usize, data: RingSlice) -> Self {
         Self { oft, data }
@@ -321,78 +310,11 @@ impl<'a> ParseBuf {
     pub fn eat_all(&mut self) -> RingSlice {
         self.eat(self.len())
     }
-
-    // eat_num!(eat_u8, checked_eat_u8, u8::from_le_bytes);
-    // eat_num!(eat_i8, checked_eat_i8, i8::from_le_bytes);
-    // eat_num!(eat_u16_le, checked_eat_u16_le, u16::from_le_bytes);
-    // eat_num!(eat_i16_le, checked_eat_i16_le, i16::from_le_bytes);
-
-    eat_num!(eat_u8, checked_eat_u8, u8, read_u8);
-    eat_num!(eat_i8, checked_eat_i8, i8, read_i8);
-    eat_num!(eat_u16_le, checked_eat_u16_le, u16, read_u16_le);
-    eat_num!(eat_i16_le, checked_eat_i16_le, i16, read_i16_le);
-    eat_num!(eat_u24_le, checked_eat_u24_le, 3, 0, u32, read_u24_le);
-    eat_num!(eat_i24_le, _checked_eat_i24_le, 3, 0, i32, read_i24_le);
-    eat_num!(eat_u32_le, checked_eat_u32_le, u32, read_u32_le);
-    eat_num!(eat_i32_le, checked_eat_i32_le, i32, read_i32_le);
-    eat_num!(eat_u48_le, _checked_eat_u48_le, 6, 0, u64, read_u48_le);
-    eat_num!(eat_u56_le, _checked_eat_u56_le, 7, 0, u64, read_u56_le);
-    eat_num!(eat_i56_le, _checked_eat_i56_le, 7, 0, i64, read_i56_le);
-    eat_num!(eat_u64_le, checked_eat_u64_le, u64, read_u64_le);
-    eat_num!(eat_i64_le, checked_eat_i64_le, i64, read_i64_le);
-
-    eat_num!(eat_f32_le, checked_eat_f32_le, f32, read_f32_le);
-    eat_num!(eat_f64_le, checked_eat_f64_le, f64, read_f64_le);
-
-    // eat_num!(eat_u16_be, checked_eat_u16_be, u16::from_be_bytes);
-    // eat_num!(eat_i16_be, checked_eat_i16_be, i16::from_be_bytes);
-    // eat_num!(eat_u24_le, checked_eat_u24_le, 3, 0, u32::from_le);
-    // eat_num!(eat_i24_le, _checked_eat_i24_le, 3, 0, i32::from_le);
-    // eat_num!(eat_u24_be, checked_eat_u24_be, 3, 1, u32::from_be);
-    // eat_num!(eat_i24_be, checked_eat_i24_be, 3, 1, i32::from_be);
-    // eat_num!(eat_u32_le, checked_eat_u32_le, u32::from_le_bytes);
-    // eat_num!(eat_i32_le, checked_eat_i32_le, i32::from_le_bytes);
-    // eat_num!(eat_u32_be, checked_eat_u32_be, u32::from_be_bytes);
-    // eat_num!(eat_i32_be, checked_eat_i32_be, i32::from_be_bytes);
-    // eat_num!(eat_u40_le, checked_eat_u40_le, 5, 0, u64::from_le);
-    // eat_num!(eat_i40_le, checked_eat_i40_le, 5, 0, i64::from_le);
-    // eat_num!(eat_u40_be, checked_eat_u40_be, 5, 3, u64::from_be);
-    // eat_num!(eat_i40_be, checked_eat_i40_be, 5, 3, i64::from_be);
-    // eat_num!(eat_u48_le, _checked_eat_u48_le, 6, 0, u64::from_le);
-    // eat_num!(eat_i48_le, checked_eat_i48_le, 6, 0, i64::from_le);
-    // eat_num!(eat_u48_be, checked_eat_u48_be, 6, 2, u64::from_be);
-    // eat_num!(eat_i48_be, checked_eat_i48_be, 6, 2, i64::from_be);
-    // eat_num!(eat_u56_le, _checked_eat_u56_le, 7, 0, u64::from_le);
-    // eat_num!(eat_i56_le, _checked_eat_i56_le, 7, 0, i64::from_le);
-    // eat_num!(eat_u56_be, checked_eat_u56_be, 7, 1, u64::from_be);
-    // eat_num!(eat_i56_be, checked_eat_i56_be, 7, 1, i64::from_be);
-    // eat_num!(eat_u64_le, checked_eat_u64_le, u64::from_le_bytes);
-    // eat_num!(eat_i64_le, checked_eat_i64_le, i64::from_le_bytes);
-    // eat_num!(eat_u64_be, checked_eat_u64_be, u64::from_be_bytes);
-    // eat_num!(eat_i64_be, checked_eat_i64_be, i64::from_be_bytes);
-    // eat_num!(eat_u128_le, checked_eat_u128_le, u128::from_le_bytes);
-    // eat_num!(eat_i128_le, checked_eat_i128_le, i128::from_le_bytes);
-    // eat_num!(eat_u128_be, checked_eat_u128_be, u128::from_be_bytes);
-    // eat_num!(eat_i128_be, checked_eat_i128_be, i128::from_be_bytes);
-
-    // eat_num!(eat_f32_le, checked_eat_f32_le, f32::from_le_bytes);
-    // eat_num!(eat_f32_be, checked_eat_f32_be, f32::from_be_bytes);
-
-    // eat_num!(eat_f64_le, checked_eat_f64_le, f64::from_le_bytes);
-    // eat_num!(eat_f64_be, checked_eat_f64_be, f64::from_be_bytes);
-
-    // /// Consumes MySql length-encoded integer from the head of the buffer.
-    // ///
-    // /// Returns `0` if integer is maliformed (starts with 0xff or 0xfb). First byte will be eaten.
-    // pub fn eat_lenenc_int(&mut self) -> u64 {
-    //     match self.eat_u8() {
-    //         x @ 0..=0xfa => x as u64,
-    //         0xfc => self.eat_u16_le() as u64,
-    //         0xfd => self.eat_u24_le() as u64,
-    //         0xfe => self.eat_u64_le(),
-    //         0xfb | 0xff => 0,
-    //     }
-    // }
+    eat_num!(16 24 32 40 48 56 64);
+    eat_num!(eat_u8, checked_eat_u8, 8, u8, u8);
+    eat_num!(eat_i8, checked_eat_i8, 8, i8, i8);
+    eat_num!(f, 32, _le);
+    eat_num!(f, 64, _le);
 
     /// Same as `eat_lenenc_int`. Returns `None` if buffer is too small.
     pub fn checked_eat_lenenc_int(&mut self) -> Option<u64> {

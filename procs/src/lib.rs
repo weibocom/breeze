@@ -70,11 +70,18 @@ pub fn impl_number_ringslice(args: TokenStream, input: TokenStream) -> TokenStre
             Endianess::Big => ((ty_bits - bits) as usize) / 8,
             Endianess::Little => 0,
         };
-        // 如果是i24_le，则需要处理符号
-        let post = if sign == b'i' && bits < ty_bits {
+        let post = if bits < ty_bits {
             let shift = (ty_bits - bits) as usize;
-            quote! {
-                let v = (v << #shift) as #ty >> #shift;
+            let mask = (!0usize) << shift >> shift;
+            match endianess {
+                // 把高shift位清零
+                Endianess::Big => quote! {
+                    let v = v & #mask;
+                },
+                // 处理符号位
+                Endianess::Little => quote! {
+                    let v = (v << #shift) as #ty >> #shift;
+                },
             }
         } else {
             quote! {}
@@ -95,6 +102,7 @@ pub fn impl_number_ringslice(args: TokenStream, input: TokenStream) -> TokenStre
                 // 分段读取
                 let mut b = [0u8; #size];
                 use std::ptr::copy_nonoverlapping as copy;
+                let len = len.min(#copy_len);
                 unsafe { copy(self.ptr().add(oft_start), b.as_mut_ptr().add(#copy_oft), len) };
                 unsafe { copy(self.ptr(), b.as_mut_ptr().add(len + #copy_oft), #copy_len - len) };
                 #ty::#from_endianess(b)
