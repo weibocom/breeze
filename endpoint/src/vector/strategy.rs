@@ -65,15 +65,54 @@ impl Strategist {
             Strategist::VectorTime(inner) => inner.get_date(keys, keys_name),
         }
     }
-    pub fn keys(&self) -> &[String] {
+    fn keys(&self) -> &[String] {
         match self {
             Strategist::VectorTime(inner) => inner.keys(),
+        }
+    }
+    pub fn condition_keys(&self) -> impl Iterator<Item = Option<&String>> {
+        match self {
+            Strategist::VectorTime(inner) => inner.condition_keys(),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice]) {
         match self {
             Strategist::VectorTime(inner) => inner.write_database_table(buf, keys),
         }
+    }
+}
+
+struct VectorRingSlice<'a>(&'a RingSlice);
+impl<'a> Display for VectorRingSlice<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (s1, s2) = self.0.data();
+        f.write_str(unsafe { std::str::from_utf8_unchecked(s1) })?;
+        f.write_str(unsafe { std::str::from_utf8_unchecked(s2) })?;
+        Ok(())
+    }
+}
+
+struct Table<'a>(&'a Strategist, &'a [RingSlice]);
+impl<'a> Display for Table<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.write_database_table(f, self.1);
+        Ok(())
+    }
+}
+
+struct Keys<'a>(&'a Strategist, &'a [RingSlice]);
+impl<'a> Display for Keys<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, key) in self.0.condition_keys().enumerate() {
+            if let Some(key) = key {
+                if i == 0 {
+                    let _ = write!(f, "{}={}", key, VectorRingSlice(&self.1[i]));
+                } else {
+                    let _ = write!(f, " and {}={}", key, VectorRingSlice(&self.1[i]));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -103,32 +142,6 @@ impl<'a> MysqlBinary for VectorBuilder<'a> {
     }
 }
 
-struct VectorRingSlice<'a>(&'a RingSlice);
-impl<'a> Display for VectorRingSlice<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (s1, s2) = self.0.data();
-        f.write_str(unsafe { std::str::from_utf8_unchecked(s1) })?;
-        f.write_str(unsafe { std::str::from_utf8_unchecked(s2) })?;
-        Ok(())
-    }
-}
-
-struct Table<'a>(&'a Strategist, &'a [RingSlice]);
-impl<'a> Display for Table<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.write_database_table(f, self.1);
-        Ok(())
-    }
-}
-
-struct Keys<'a>(&'a Strategist, &'a [RingSlice]);
-impl<'a> Display for Keys<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.write_database_table(f, self.1);
-        Ok(())
-    }
-}
-
 impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     fn len(&self) -> usize {
         todo!();
@@ -139,9 +152,10 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
             vector::OP_VRANGE => {
                 let _ = write!(
                     buf,
-                    "select {} from {} where ",
+                    "select {} from {} where {}",
                     VectorRingSlice(&self.vcmd.fields),
-                    Table(&self.strategy, &self.vcmd.keys)
+                    Table(&self.strategy, &self.vcmd.keys),
+                    Table(&self.strategy, &self.vcmd.keys),
                 );
             }
             //校验应该在parser_req出

@@ -83,6 +83,15 @@ impl VectorTime {
     pub(crate) fn keys(&self) -> &[String] {
         &self.keys_name
     }
+
+    pub(crate) fn condition_keys(&self) -> impl Iterator<Item = Option<&String>> {
+        self.keys_name
+            .iter()
+            .map(|key_name| match key_name.as_str() {
+                "yyyymm" | "yyyymmdd" => None,
+                &_ => Some(key_name),
+            })
+    }
 }
 
 impl std::ops::Deref for VectorTime {
