@@ -64,7 +64,7 @@ impl TxBuffer {
 
     #[inline]
     pub fn write(&mut self, data: &[u8]) {
-        if data.len() > 50 * 1024 * 1024 {
+        if data.len() > 5 * 1024 * 1024 {
             println!("write data len:{}, head {:?}", data.len(), &data[0..256])
         }
         if self.policy.need_grow(self.len(), self.cap(), data.len()) {
@@ -94,7 +94,8 @@ impl TxBuffer {
     fn resize(&mut self, new: usize) {
         if new > 1024 * 1024 * 1024 {
             println!(
-                "tx_buf read:{:?} write:{} cap:{} MemPolicy:{:?} len:{} head: {:?}",
+                "self: {:p} tx_buf read:{} write:{} cap:{} MemPolicy:{:?} len:{} head: {:?}",
+                &self,
                 self.read,
                 self.write,
                 self.cap,

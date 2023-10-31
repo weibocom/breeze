@@ -69,6 +69,19 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         if self.buf.len() + data.len() >= LARGE_SIZE {
             let _ = self.as_mut().poll_flush(cx)?;
         }
+
+        if self.buf.cap() > 256 * 1024 * 1024 || data.len() > 5 * 1024 * 1024 {
+            println!(
+                "self ptr {:p} metric :{:?}, data len {}, buf {:p} cap:{} len:{}",
+                &self,
+                self.s,
+                data.len(),
+                &self.buf,
+                self.buf.cap(),
+                self.buf.len(),
+            );
+        }
+
         let mut oft = 0;
         // 1. buf.len()必须为0；
         // 2. 如果没有显示要求写入到buf, 或者数据量大，则直接写入
@@ -79,6 +92,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         if oft < data.len() {
             self.buf.write(&data[oft..]);
         }
+
         Poll::Ready(Ok(data.len()))
     }
     #[inline]
