@@ -5,6 +5,7 @@ use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, VectorSqlBuilder};
 use protocol::{vector, vector::VectorCmd, OpCode};
+use protocol::{Error, Result};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
@@ -25,7 +26,7 @@ impl Default for Strategist {
             32u32,
             8u32,
             Postfix::YYMMDD,
-            &[],
+            Vec::new(),
         ))
     }
 }
@@ -43,7 +44,7 @@ impl Strategist {
             //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
             ns.backends.iter().next().unwrap().1.len() as u32,
             ns.basic.table_postfix.as_str().into(),
-            &ns.basic.keys,
+            ns.basic.keys.clone(),
         ))
     }
     #[inline]
@@ -59,13 +60,14 @@ impl Strategist {
         }
     }
     #[inline]
-    pub fn get_date(
-        &self,
-        keys: &[RingSlice],
-        keys_name: &[String],
-    ) -> Result<(u16, u16, u16), protocol::Error> {
+    pub fn get_date(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<(u16, u16, u16)> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys, keys_name),
+        }
+    }
+    pub fn keys(&self) -> &[String] {
+        match self {
+            Strategist::VectorTime(inner) => inner.keys(),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice]) {
@@ -82,8 +84,12 @@ pub(crate) struct VectorBuilder<'a> {
 }
 
 impl<'a> VectorBuilder<'a> {
-    pub fn new(op: OpCode, vcmd: &'a VectorCmd, strategy: &'a Strategist) -> Self {
-        Self { op, vcmd, strategy }
+    pub fn new(op: OpCode, vcmd: &'a VectorCmd, strategy: &'a Strategist) -> Result<Self> {
+        if vcmd.keys.len() != strategy.keys().len() {
+            Err(Error::ProtocolIncomplete)
+        } else {
+            Ok(Self { op, vcmd, strategy })
+        }
     }
 }
 
@@ -109,6 +115,14 @@ impl<'a> Display for VectorRingSlice<'a> {
 
 struct Table<'a>(&'a Strategist, &'a [RingSlice]);
 impl<'a> Display for Table<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.write_database_table(f, self.1);
+        Ok(())
+    }
+}
+
+struct Keys<'a>(&'a Strategist, &'a [RingSlice]);
+impl<'a> Display for Keys<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.write_database_table(f, self.1);
         Ok(())
