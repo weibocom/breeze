@@ -3,7 +3,7 @@ use std::{mem::size_of, num::NonZeroUsize};
 use bytes::BufMut;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
-use ds::RingSlice;
+use ds::{ByteOrder as RingSliceByteOrder, RingSlice};
 use rand::Rng;
 #[test]
 fn test_ring_slice() {
@@ -112,6 +112,16 @@ fn test_read_number() {
             assert_eq!(LittleEndian::read_i32(slice), rs.read_i32_le_cmp(i));
             assert_eq!(BigEndian::read_u64(slice), rs.read_u64_be_cmp(i));
             assert_eq!(LittleEndian::read_i64(slice), rs.read_i64_le_cmp(i));
+
+            // RingSliceByteOrder
+            assert_eq!(BigEndian::read_u16(slice), rs.u16_be(i));
+            assert_eq!(LittleEndian::read_i16(slice), rs.i16_le(i));
+            assert_eq!(BigEndian::read_u32(slice), rs.u32_be(i));
+            assert_eq!(LittleEndian::read_i32(slice), rs.i32_le(i));
+            assert_eq!(BigEndian::read_u64(slice), rs.u64_be(i));
+            assert_eq!(LittleEndian::read_i64(slice), rs.i64_le(i));
+            assert_eq!(LittleEndian::read_i24(slice), rs.i24_le(i));
+            assert_eq!(LittleEndian::read_u48(slice), rs.u48_le(i));
         }
     }
 }
@@ -130,6 +140,8 @@ fn read_number_one() {
     let rs = RingSlice::from_vec(&v);
     assert_eq!(rs.read_i24_le_cmp(0), LittleEndian::read_i24(&v));
     assert_eq!(rs.read_i24_be_cmp(0), BigEndian::read_i24(&v));
+
+    assert_eq!(rs.i24_le(0), LittleEndian::read_i24(&v));
 }
 
 #[test]
