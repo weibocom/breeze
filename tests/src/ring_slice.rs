@@ -121,7 +121,11 @@ fn test_read_number() {
             assert_eq!(BigEndian::read_u64(slice), rs.u64_be(i));
             assert_eq!(LittleEndian::read_i64(slice), rs.i64_le(i));
             assert_eq!(LittleEndian::read_i24(slice), rs.i24_le(i));
-            assert_eq!(LittleEndian::read_u48(slice), rs.u48_le(i));
+            assert_eq!(
+                LittleEndian::read_u48(slice),
+                rs.u48_le(i),
+                "{slice:?} {rs:?} => {i}"
+            );
         }
     }
 }
@@ -142,6 +146,8 @@ fn read_number_one() {
     assert_eq!(rs.read_i24_be_cmp(0), BigEndian::read_i24(&v));
 
     assert_eq!(rs.i24_le(0), LittleEndian::read_i24(&v));
+    assert_eq!(rs.u48_le(0), LittleEndian::read_u48(&v));
+    assert_eq!(rs.i48_le(0), LittleEndian::read_i48(&v));
 }
 
 #[test]

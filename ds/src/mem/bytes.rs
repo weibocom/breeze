@@ -3,6 +3,8 @@ use procs::impl_number_ringslice;
 // 如果方法名中没有包含be或者le，则默认为be
 #[impl_number_ringslice(default = "be")]
 pub trait ByteOrder {
+    fn i8(&self, oft: usize) -> i8;
+    fn u8(&self, oft: usize) -> u8;
     fn u16_le(&self, oft: usize) -> u16;
     fn i16_le(&self, oft: usize) -> i16;
     fn u24_le(&self, oft: usize) -> u32;
@@ -21,4 +23,6 @@ pub trait ByteOrder {
     fn u16_be(&self, oft: usize) -> u16;
     fn u32_be(&self, oft: usize) -> u32;
     fn u64_be(&self, oft: usize) -> u64;
+    fn f32_le(&self, oft: usize) -> f32;
+    fn f64_le(&self, oft: usize) -> f64;
 }
