@@ -78,6 +78,9 @@ impl<T: Addr> Distance<T> {
                 |d, _| d <= discovery::distance::DISTANCE_VAL_REGION,
             );
             if l == 0 {
+                if replicas.len() > 0 {
+                    metrics::add_region_res_miss(replicas.get(0).unwrap().addr());
+                }
                 log::warn!(
                     "too few instance in region:{} total:{}, {:?}",
                     l,
@@ -86,6 +89,7 @@ impl<T: Addr> Distance<T> {
                 );
                 replicas.len()
             } else {
+                metrics::remove_region_res_miss(replicas.get(0).unwrap().addr());
                 l
             }
         } else {

@@ -45,6 +45,10 @@ impl Host {
         w.write(BASE_PATH, "sockfile", "failed", sockfile_failed);
 
         self.snapshot_base(w, secs);
+        REGION_RES_MISS
+            .try_lock()
+            .expect("region res miss lock")
+            .snapshot(w, secs);
     }
     fn snapshot_heap<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
         if let Some(heap_stats) = ds::heap() {
@@ -120,4 +124,92 @@ pub fn decr_task() {
 #[inline]
 pub fn set_sockfile_failed(failed_count: usize) {
     SOCKFILE_FAILED.store(failed_count as i64, Relaxed);
+}
+
+use std::collections::HashMap;
+// 记录资源实例不足，按端口
+pub struct RegionResMiss {
+    resouce: HashMap<u16, String>,
+    region: String,
+}
+
+impl RegionResMiss {
+    fn new() -> Self {
+        // 如果配置了可用区，使用配置的可用区；否则初始化为本机IP
+        let r = match context::get().region() {
+            Some(r) => r.to_string(),
+            None => super::super::local_ip().to_string(), // 本地ip作为region
+        };
+        Self {
+            resouce: HashMap::default(),
+            region: r,
+        }
+    }
+    // 如果region为本机IP，允许更新region
+    fn update_region(&mut self, region: Option<&str>) {
+        if self.region.as_str() == super::super::local_ip() && region.is_some() {
+            self.region = region.unwrap().to_string();
+        }
+    }
+    fn add(&mut self, instance: &str) {
+        let fields: Vec<&str> = instance.split(":").collect();
+        if fields.len() < 2 {
+            return;
+        }
+        let port = fields
+            .get(1)
+            .map(|port_str| port_str.parse::<u16>().unwrap())
+            .unwrap();
+        self.resouce.insert(port, instance.to_string());
+    }
+    fn remove(&mut self, instance: &str) {
+        let fields: Vec<&str> = instance.split(":").collect();
+        if fields.len() < 2 {
+            return;
+        }
+        let port = fields
+            .get(1)
+            .map(|port_str| port_str.parse::<u16>().unwrap())
+            .unwrap();
+        self.resouce.remove(&port);
+    }
+    fn snapshot<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
+        self.resouce.iter().for_each(|(_, v)| {
+            w.write_opts(
+                self.region.as_str(),
+                "region_res_miss",
+                "",
+                1,
+                vec![("ins", v.as_str())],
+            )
+        });
+    }
+}
+
+use ds::lock::Lock;
+use lazy_static::lazy_static;
+lazy_static! {
+    static ref REGION_RES_MISS: Lock<RegionResMiss> = RegionResMiss::new().into();
+}
+
+#[inline]
+pub fn add_region_res_miss(instance: &str) {
+    REGION_RES_MISS
+        .try_lock()
+        .expect("region res miss lock")
+        .add(instance);
+}
+#[inline]
+pub fn remove_region_res_miss(instance: &str) {
+    REGION_RES_MISS
+        .try_lock()
+        .expect("region res miss lock")
+        .remove(instance);
+}
+
+pub fn try_update_metric_region(region: Option<&str>) {
+    REGION_RES_MISS
+        .try_lock()
+        .expect("region res miss lock")
+        .update_region(region);
 }

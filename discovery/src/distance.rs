@@ -195,6 +195,7 @@ impl DistanceCalculator {
                 self.neighbors = cfg.neighbor.flatten();
 
                 let (idc, neighbor, region, city) = self.location(metrics::raw_local_ip());
+                metrics::try_update_metric_region(region);
                 let idc = idc.map(|s| s.to_string());
                 let neighbor = neighbor.map(|s| s.to_string());
                 let region = region.map(|s| s.to_string());
