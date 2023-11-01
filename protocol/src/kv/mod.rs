@@ -434,6 +434,14 @@ impl Kv {
             OP_GET | OP_GETQ => (None, Some(MARKER_BYTE_ARR)),
             _ => (None, None),
         };
+        if status != RespStatus::NoError && status != RespStatus::NotFound {
+            log::error!(
+                "+++ write_mc_packet error req:{:?}, rsp:{:?} status:{:?}",
+                request,
+                response,
+                status
+            );
+        }
         //协议与标准协议不一样了，add等也返回response了
         self.write_mc_packet(old_op_code, status, write_key, write_extra, response, w)?;
         Ok(())
