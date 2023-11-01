@@ -126,17 +126,6 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
             black_box({
                 let mut t = 0u64;
                 for i in 0..runs {
-                    t = t.wrapping_add(rs.read_u64_le(i) as u64);
-                }
-                t
-            });
-        });
-    });
-    group.bench_function("u64_le_procs", |b| {
-        b.iter(|| {
-            black_box({
-                let mut t = 0u64;
-                for i in 0..runs {
                     t = t.wrapping_add(rs.u64_le(i) as u64);
                 }
                 t
@@ -161,7 +150,7 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
             black_box({
                 let mut t = 0u64;
                 for i in 0..runs {
-                    t = t.wrapping_add(rs.read_u64_be(i) as u64);
+                    t = t.wrapping_add(rs.u64_be(i) as u64);
                 }
                 t
             });
@@ -180,34 +169,12 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
             });
         });
     });
-    group.bench_function("u64_be_cmp", |b| {
-        b.iter(|| {
-            black_box({
-                let mut t = 0u64;
-                for i in 0..runs {
-                    t = t.wrapping_add(rs.read_u64_be_cmp(i) as u64);
-                }
-                t
-            });
-        });
-    });
     group.bench_function("u56_le", |b| {
         b.iter(|| {
             black_box({
                 let mut t = 0u64;
                 for i in 0..runs {
-                    t = t.wrapping_add(rs.read_u56_le(i) as u64);
-                }
-                t
-            });
-        });
-    });
-    group.bench_function("u56_le_cmp", |b| {
-        b.iter(|| {
-            black_box({
-                let mut t = 0u64;
-                for i in 0..runs {
-                    t = t.wrapping_add(rs.read_u56_le_cmp(i) as u64);
+                    t = t.wrapping_add(rs.u56_le(i) as u64);
                 }
                 t
             });
