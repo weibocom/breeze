@@ -148,20 +148,19 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
 }
 impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::BufWriter for Stream<S> {
     #[inline]
-    fn write_all(&mut self, data: &[u8]) -> std::io::Result<()> {
+    fn write_all(&mut self, data: &[u8]) {
         if data.len() <= 4 {
             self.buf.write(data);
         } else {
             let mut ctx = Context::from_waker(&NOOP);
             let _ = Pin::new(self).poll_write(&mut ctx, data);
         }
-        Ok(())
     }
     #[inline]
-    fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) -> std::io::Result<()> {
+    fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) {
         self.buf.enable = true;
-        self.write_all(buf0)?;
-        self.write_all(buf1)
+        self.write_all(buf0);
+        self.write_all(buf1);
     }
 }
 impl<S> protocol::BufRead for Stream<S> {

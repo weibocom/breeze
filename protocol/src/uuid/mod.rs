@@ -55,7 +55,7 @@ impl Protocol for Uuid {
         I: MetricItem,
     {
         if let Some(rsp) = response {
-            w.write_slice(rsp, 0)?;
+            w.write_slice(rsp, 0);
             Ok(())
         } else {
             w.write(b"SERVER_ERROR uuid no available\r\n")?;

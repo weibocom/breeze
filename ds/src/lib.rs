@@ -27,11 +27,11 @@ mod bits;
 pub use bits::*;
 
 pub trait BufWriter {
-    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()>;
+    fn write_all(&mut self, buf: &[u8]);
     #[inline]
-    fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) -> std::io::Result<()> {
-        self.write_all(buf0)?;
-        self.write_all(buf1)
+    fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) {
+        self.write_all(buf0);
+        self.write_all(buf1);
     }
 }
 

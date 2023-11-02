@@ -143,7 +143,7 @@ impl Protocol for MemcacheBinary {
             log::debug!("+++ will write mc rsp:{:?}", rsp.data());
             //let data = rsp.data_mut();
             rsp.restore_op(old_op_code);
-            w.write_slice(rsp, 0)?;
+            w.write_slice(rsp, 0);
 
             return Ok(());
         }
@@ -154,7 +154,8 @@ impl Protocol for MemcacheBinary {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_NOOP => {
                 w.write_u8(RESPONSE_MAGIC)?;
-                w.write_slice(ctx.request(), 1)
+                w.write_slice(ctx.request(), 1);
+                Ok(())
             }
 
             OP_VERSION => w.write(&VERSION_RESPONSE),

@@ -62,16 +62,14 @@ pub trait Writer: ds::BufWriter + Sized {
     fn cache(&mut self, hint: bool);
 
     #[inline]
-    fn write_slice<S: Deref<Target = MemGuard>>(&mut self, data: &S, oft: usize) -> Result<()> {
-        (&*data).copy_to(oft, self)?;
-        Ok(())
+    fn write_slice<S: Deref<Target = MemGuard>>(&mut self, data: &S, oft: usize) {
+        (&*data).copy_to(oft, self);
     }
 
     // 暂时没发现更好的实现方式，先用这个实现
     #[inline]
-    fn write_ringslice(&mut self, data: &RingSlice, oft: usize) -> Result<()> {
-        data.copy_to(oft, self)?;
-        Ok(())
+    fn write_ringslice(&mut self, data: &RingSlice, oft: usize) {
+        data.copy_to(oft, self);
     }
 
     fn shrink(&mut self);

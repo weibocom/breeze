@@ -194,13 +194,13 @@ impl RingSlice {
         });
     }
     #[inline]
-    pub fn copy_to<W: crate::BufWriter>(&self, oft: usize, w: &mut W) -> std::io::Result<()> {
+    pub fn copy_to<W: crate::BufWriter>(&self, oft: usize, w: &mut W) {
         with_segment!(
             self,
             oft,
             |p, l| w.write_all(from_raw_parts(p, l)),
             |p0, l0, p1, l1| { w.write_seg_all(from_raw_parts(p0, l0), from_raw_parts(p1, l1)) }
-        )
+        );
     }
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {

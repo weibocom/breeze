@@ -190,7 +190,7 @@ impl Protocol for Kv {
             // noop: 第一个字节变更为Response，其他的与Request保持一致
             OP_NOOP => {
                 w.write_u8(RESPONSE_MAGIC)?;
-                w.write_slice(ctx.request(), 1)?;
+                w.write_slice(ctx.request(), 1);
             }
 
             //version: 返回固定rsp
@@ -381,10 +381,10 @@ impl Kv {
             w.write_u32(extra)?;
         }
         if let Some(key) = &key {
-            w.write_ringslice(key, 0)?;
+            w.write_ringslice(key, 0);
         }
         if let Some(response) = response {
-            w.write_slice(response, 0)? // value
+            w.write_slice(response, 0) // value
         }
         Ok(())
     }

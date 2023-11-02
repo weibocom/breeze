@@ -148,7 +148,7 @@ impl Protocol for McqText {
         if let Some(rsp) = response {
             // 不再创建local rsp，所有server响应的rsp data长度应该大于0
             debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
-            w.write_slice(rsp, 0)?;
+            w.write_slice(rsp, 0);
             self.metrics(request, rsp, ctx);
         } else {
             let padding = cfg.get_padding_rsp();
@@ -160,7 +160,7 @@ impl Protocol for McqText {
         // let rsp = ctx.response().data();
         // // 虽然quit的响应长度为0，但不排除有其他响应长度为0的场景，还是用quit属性来断连更安全
         // if rsp.len() > 0 {
-        //     w.write_slice(rsp, 0)?;
+        //     w.write_slice(rsp, 0);
         // }
 
         Ok(())

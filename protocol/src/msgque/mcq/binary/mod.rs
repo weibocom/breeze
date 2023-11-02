@@ -87,7 +87,7 @@ impl Protocol for McqBinary {
         let resp = ctx.response();
         let data = resp.data();
         // data.restore_op(old_op_code as u8);
-        w.write_slice(data, 0)?;
+        w.write_slice(data, 0);
         Ok(0)
     }
     #[inline]
@@ -123,8 +123,13 @@ impl Protocol for McqBinary {
                 Ok(0)
             } // get: 0x01 NotFound
             _ => {
-                log::warn!("+++ mcq NoResponseFound req: {}/{:?}",  old_op_code, ctx.request());
-                return Err(Error::NoResponseFound); },
+                log::warn!(
+                    "+++ mcq NoResponseFound req: {}/{:?}",
+                    old_op_code,
+                    ctx.request()
+                );
+                return Err(Error::NoResponseFound);
+            }
         }
     }
     #[inline]
