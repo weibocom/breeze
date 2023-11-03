@@ -97,10 +97,7 @@ impl CallbackContext {
     #[inline]
     pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
-        let tries = self.tries.load(Relaxed);
-        let low = tries & 0xF; // 低4bit
-        let high = tries >> 4; // 高4bit
-        self.tries.store((high + 1) << 4 | low, Relaxed);
+        self.tries.fetch_add(0xF, Release);
         if self.request().sentonly() {
             self.on_done();
             false
@@ -147,19 +144,18 @@ impl CallbackContext {
                 }
             }
 
-            // 若已经有效发送给后端，则不需要再次发送
+            // 已有效发送给后端不止一次，则不需要再次发送
             let tries = self.tries.load(Relaxed);
-            if tries >> 4 > 0 {
-                // 已有效发送给后端一次
+            if tries >> 4 > 1 {
                 return false;
             }
 
-            // 未曾有效发送给后端，需要看轮询次数是否超过上限
-            let b = tries & 0xF < 0xF;
+            // 轮询次数是否超过上限
+            let b = tries & 0xF < 2;
             if b {
-                let _ = self.tries.fetch_add(1, Release);
+                self.tries.fetch_add(1, Release);
             }
-            self.try_next && b // 防止意外死循环
+            self.try_next && b
         } else {
             // write back请求
             self.write_back
