@@ -56,6 +56,7 @@ impl<P, Req> BackendChecker<P, Req> {
         Req: Request,
     {
         let path_addr = self.path.clone().push(&self.addr);
+        let mut all_conns = path_addr.qps("conn");
         let mut m_timeout = path_addr.qps("timeout");
         let mut auth_failed = path_addr.status("auth_failed");
         let mut unexpected_resp = path_addr.num("unexpected_resp");
@@ -63,6 +64,7 @@ impl<P, Req> BackendChecker<P, Req> {
         let mut reconn = crate::reconn::ReconnPolicy::new(&path_addr);
         metrics::incr_task();
         while !self.finish.get() {
+            all_conns += 1;
             let stream = self.reconnect().await;
             if stream.is_none() {
                 // 连接失败，按策略sleep
@@ -103,7 +105,7 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = Handler::from(rx, stream, p, rtt);
             let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             if let Err(e) = handler.await {
-                log::info!("backend error {:?} => {:?}", path_addr, e);
+                log::error!("backend error {:?} => {:?}", path_addr, e);
                 match e {
                     Error::Timeout(_t) => {
                         m_timeout += 1;
