@@ -38,7 +38,12 @@ impl Timeout {
         self.ms = ms.max(100).min(6000) as u16;
     }
     pub fn to(mut self, ms: u32) -> Self {
-        self.adjust(ms);
+        if ms > 0 {
+            self.adjust(ms);
+        } else {
+            self.adjust(self.ms.into());
+        }
+
         self
     }
     pub fn ms(&self) -> u16 {
