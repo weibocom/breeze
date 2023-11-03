@@ -1,4 +1,4 @@
-use crate::kv::kvtime::KVTime;
+use crate::kv::{kvtime::KVTime, strategy::to_i64_err};
 
 use super::strategy::{to_i64, Postfix};
 use chrono::TimeZone;
@@ -45,26 +45,23 @@ impl VectorTime {
     ) -> Result<(u16, u16, u16), Error> {
         // if keys.len() == keys_name.len() {
         for (i, key_name) in keys_name.iter().enumerate() {
-            if key_name.len() != keys[i].len() {
-                break;
-            }
             match key_name.as_str() {
                 "yyyymm" => {
                     return Ok((
-                        to_i64(&keys[i].slice(0, 4)) as u16,
-                        to_i64(&keys[i].slice(4, 2)) as u16,
+                        to_i64_err(&keys[i].slice(0, 4))? as u16,
+                        to_i64_err(&keys[i].slice(4, 2))? as u16,
                         1,
                     ))
                 }
                 "yyyymmdd" => {
                     return Ok((
-                        to_i64(&keys[i].slice(0, 4)) as u16,
-                        to_i64(&keys[i].slice(4, 2)) as u16,
-                        to_i64(&keys[i].slice(6, 2)) as u16,
+                        to_i64_err(&keys[i].slice(0, 4))? as u16,
+                        to_i64_err(&keys[i].slice(4, 2))? as u16,
+                        to_i64_err(&keys[i].slice(6, 2))? as u16,
                     ))
                 }
                 &_ => {
-                    break;
+                    continue;
                 }
             }
         }

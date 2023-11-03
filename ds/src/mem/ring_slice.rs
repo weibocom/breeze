@@ -476,7 +476,7 @@ impl Debug for RingSlice {
         let slice = self.sub_slice(0, 512.min(self.len()));
         let mut data = Vec::with_capacity(slice.len());
         slice.copy_to_vec(&mut data);
-        write!(f, "{} => {:?}", self, data.utf8())
+        write!(f, "{} => {}", self, data.utf8())
     }
 }
 
