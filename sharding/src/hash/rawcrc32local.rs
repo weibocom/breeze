@@ -34,7 +34,7 @@ impl Hash for Rawcrc32local {
                     break;
                 }
             }
-            hash = hash * 10 + (key.at(i) - '0' as u8) as i64;
+            hash = hash.wrapping_mul(10) + (key.at(i) - '0' as u8) as i64;
         }
 
         // hash如果为0，进行crc32local
