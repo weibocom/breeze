@@ -223,7 +223,7 @@ define_topology! {
     PhantomService<B, E, R, P>, PhantomService, "pt";
     KvService<B, E, R, P>, KvService, "kv";
     UuidService<B, E, R, P>, UuidService, "uuid";
-    VectorService<B, E, R, P>, VectorService, "Vector"
+    VectorService<B, E, R, P>, VectorService, "vector"
 }
 
 // 从环境变量获取是否开启后端资源访问的性能模式

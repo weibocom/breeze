@@ -5,6 +5,7 @@ use super::kvtime::KVTime;
 use ds::RingSlice;
 
 use protocol::kv::Strategy;
+use protocol::{Error, Result};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
@@ -98,4 +99,20 @@ pub fn to_i64(key: &RingSlice) -> i64 {
             .wrapping_add(c.wrapping_sub(ZERO) as i64);
     }
     id
+}
+
+pub fn to_i64_err(key: &RingSlice) -> Result<i64> {
+    let mut id = 0_i64;
+    const ZERO: u8 = '0' as u8;
+    for i in 0..key.len() {
+        let c = key.at(i);
+        if !c.is_ascii_digit() {
+            return Err(Error::RequestProtocolInvalid);
+        }
+        // id = id * 10 + (c - ZERO) as i64;
+        id = id
+            .wrapping_mul(10_i64)
+            .wrapping_add(c.wrapping_sub(ZERO) as i64);
+    }
+    Ok(id)
 }

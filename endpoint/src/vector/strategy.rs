@@ -179,7 +179,7 @@ impl<'a> MysqlBinary for VectorBuilder<'a> {
 
 impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     fn len(&self) -> usize {
-        todo!();
+        128
     }
 
     fn write_sql(&self, buf: &mut impl Write) {

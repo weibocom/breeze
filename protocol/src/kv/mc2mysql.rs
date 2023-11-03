@@ -6,7 +6,7 @@ use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use crate::HashedCommand;
 use crate::{Error::FlushOnClose, Result};
-use ds::RingSlice;
+use ds::{RingSlice, Utf8};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 pub trait Strategy {
@@ -190,17 +190,7 @@ impl MysqlBuilder {
             .check_total_payload_len()
             .map_err(|_| FlushOnClose(b"payload > max_allowed_packet"[..].into()))?;
         let packet: Vec<u8> = packet.into();
-        log::debug!(
-            "build mysql packet:{}",
-            String::from_utf8(
-                packet
-                    .iter()
-                    .map(|b| std::ascii::escape_default(*b))
-                    .flatten()
-                    .collect()
-            )
-            .unwrap()
-        );
+        log::debug!("build mysql packet:{}", packet.utf8());
         Ok(packet)
     }
     pub fn build_packets_for_vector(sql_builder: impl VectorSqlBuilder) -> Result<Vec<u8>> {
@@ -219,17 +209,7 @@ impl MysqlBuilder {
             .check_total_payload_len()
             .map_err(|_| FlushOnClose(b"payload > max_allowed_packet"[..].into()))?;
         let packet: Vec<u8> = packet.into();
-        log::debug!(
-            "build mysql packet:{}",
-            String::from_utf8(
-                packet
-                    .iter()
-                    .map(|b| std::ascii::escape_default(*b))
-                    .flatten()
-                    .collect()
-            )
-            .unwrap()
-        );
+        log::debug!("build mysql packet:{}", packet.utf8());
         Ok(packet)
     }
 }

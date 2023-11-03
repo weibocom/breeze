@@ -81,15 +81,15 @@ impl KVTime {
         year %= 100;
         match self.table_postfix {
             Postfix::YYMM => {
+                let _ = write!(buf, "{}_{:02}{:02}", &self.table_prefix, year, month);
+            }
+            //Postfix::YYMMDD
+            _ => {
                 let _ = write!(
                     buf,
                     "{}_{:02}{:02}{:02}",
                     &self.table_prefix, year, month, day
                 );
-            }
-            //Postfix::YYMMDD
-            _ => {
-                let _ = write!(buf, "{}_{:02}{:02}", &self.table_prefix, year, month);
             }
         }
     }
