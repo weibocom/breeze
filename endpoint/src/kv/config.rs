@@ -135,7 +135,7 @@ impl KvNamespace {
     pub(super) fn timeout_slave(&self) -> Timeout {
         let mut to = TO_MYSQL_S;
         if self.basic.timeout_ms_slave > 0 {
-            to.adjust(self.basic.timeout_ms_master);
+            to.adjust(self.basic.timeout_ms_slave);
         }
         to
     }
