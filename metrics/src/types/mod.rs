@@ -8,7 +8,6 @@ mod status;
 pub(crate) use host::*;
 pub use host::{
     add_region_res_miss, decr_task, incr_task, remove_region_res_miss, set_sockfile_failed,
-    try_update_metric_region,
 };
 pub(crate) use number::*;
 pub(crate) use qps::*;

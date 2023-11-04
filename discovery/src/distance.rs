@@ -105,6 +105,8 @@ fn refresh_idc(cfg: &str) {
 use ds::{CowReadHandle, CowWriteHandle};
 use once_cell::sync::OnceCell;
 use std::sync::Mutex;
+
+use crate::dns::IPPort;
 static DISTANCE_CALCULATOR: OnceCell<CowReadHandle<DistanceCalculator>> = OnceCell::new();
 static DISTANCE_CALCULATOR_W: OnceCell<Mutex<CowWriteHandle<DistanceCalculator>>> = OnceCell::new();
 #[derive(Clone, Default, Debug)]
@@ -195,7 +197,6 @@ impl DistanceCalculator {
                 self.neighbors = cfg.neighbor.flatten();
 
                 let (idc, neighbor, region, city) = self.location(metrics::raw_local_ip());
-                metrics::try_update_metric_region(region);
                 let idc = idc.map(|s| s.to_string());
                 let neighbor = neighbor.map(|s| s.to_string());
                 let region = region.map(|s| s.to_string());
@@ -208,6 +209,10 @@ impl DistanceCalculator {
                 log::info!("idc region refreshed:{:?}", self);
             }
         }
+    }
+
+    pub fn region(&self) -> &Option<String> {
+        &self.local_region
     }
 }
 
@@ -233,6 +238,11 @@ pub trait Addr {
             s.push_str(",");
         });
         s
+    }
+
+    // 获取端口
+    fn port(&self) -> String {
+        self.addr().port().to_string()
     }
 }
 impl<T: Addr, O> Addr for (T, O) {
@@ -494,4 +504,21 @@ impl BClass for &String {
         }
         b
     }
+}
+
+// 本机的region，优先级：
+// 1. 启动参数/环境变量的region
+// 2. 本机IP对应的region
+// 3. 本机IP
+pub fn region() -> String {
+    if let Some(region) = context::get().region() {
+        return region.to_string();
+    }
+
+    let cal = unsafe { DISTANCE_CALCULATOR.get_unchecked().get() };
+    if let Some(region) = cal.region() {
+        return region.clone();
+    }
+
+    return metrics::raw_local_ip().to_string();
 }

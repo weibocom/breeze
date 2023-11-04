@@ -1,4 +1,4 @@
-use discovery::distance::{Addr, ByDistance};
+use discovery::distance::{self, Addr, ByDistance};
 use rand::Rng;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
@@ -72,14 +72,17 @@ impl<T: Addr> Distance<T> {
             // 按distance选local
             // 1. 距离小于等于4为local
             // 2. local为0，则全部为local
-            let l = replicas.sort_by_region(
-                Vec::new(),
-                context::get().region(),
-                |d, _| d <= discovery::distance::DISTANCE_VAL_REGION,
-            );
+            let l = replicas.sort_by_region(Vec::new(), context::get().region(), |d, _| {
+                d <= discovery::distance::DISTANCE_VAL_REGION
+            });
             if l == 0 {
                 if replicas.len() > 0 {
-                    metrics::add_region_res_miss(replicas.get(0).unwrap().addr());
+                    metrics::add_region_res_miss(
+                        replicas.get(0).unwrap().port(),
+                        distance::region(),
+                        replicas.len() as u16,
+                        0,
+                    );
                 }
                 log::warn!(
                     "too few instance in region:{} total:{}, {:?}",
@@ -89,7 +92,7 @@ impl<T: Addr> Distance<T> {
                 );
                 replicas.len()
             } else {
-                metrics::remove_region_res_miss(replicas.get(0).unwrap().addr());
+                metrics::remove_region_res_miss(replicas.get(0).unwrap().port());
                 l
             }
         } else {
