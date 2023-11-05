@@ -187,12 +187,12 @@ fn crc32_hasher() {
             // crc32 rawlocal
             let crc32_rawlocal = crc32_rawlocal.hash(key);
             let crc32_rawlocal_hasher = crc32_rawlocal_hasher.hash(key);
-            assert_eq!(crc32_rawlocal, crc32_rawlocal_hasher);
+            assert_eq!(crc32_rawlocal, crc32_rawlocal_hasher, "key:{key:?}");
 
             // crc32 rawsuffix
             let crc32_rawsuffix = crc32_rawsuffix.hash(key);
             let crc32_rawsuffix_hasher = crc32_rawsuffix_hasher.hash(key);
-            assert_eq!(crc32_rawsuffix, crc32_rawsuffix_hasher);
+            assert_eq!(crc32_rawsuffix, crc32_rawsuffix_hasher, "key:{key:?}");
         });
     }
 }
