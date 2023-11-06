@@ -96,9 +96,23 @@ impl<'a> Display for VectorRingSlice<'a> {
 struct ConditionDisplay<'a>(&'a Condition);
 impl<'a> Display for ConditionDisplay<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // let (s1, s2) = self.0.data();
-        // f.write_str(unsafe { std::str::from_utf8_unchecked(s1) })?;
-        // f.write_str(unsafe { std::str::from_utf8_unchecked(s2) })?;
+        if self.0.op.equal(b"in") {
+            let _ = write!(
+                f,
+                "{} {} ({})",
+                VectorRingSlice(&self.0.field),
+                VectorRingSlice(&self.0.op),
+                VectorRingSlice(&self.0.value)
+            );
+        } else {
+            let _ = write!(
+                f,
+                "{}{}{}",
+                VectorRingSlice(&self.0.field),
+                VectorRingSlice(&self.0.op),
+                VectorRingSlice(&self.0.value)
+            );
+        }
         Ok(())
     }
 }

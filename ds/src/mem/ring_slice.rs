@@ -396,6 +396,18 @@ impl RingSlice {
         None
     }
     #[inline]
+    pub fn equal(&self, other: &[u8]) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        for i in 0..self.len() {
+            if self[i] != other[i] {
+                return false;
+            }
+        }
+        return true;
+    }
+    #[inline]
     pub fn start_with(&self, oft: usize, s: &[u8]) -> bool {
         // if oft + s.len() <= self.len() {
         //     with_segment!(
