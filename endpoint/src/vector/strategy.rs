@@ -4,6 +4,7 @@ pub use crate::kv::strategy::{to_i64, Postfix};
 use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, VectorSqlBuilder};
+use protocol::vector::Condition;
 use protocol::{vector, vector::VectorCmd, OpCode};
 use protocol::{Error, Result};
 use sharding::distribution::DBRange;
@@ -92,6 +93,16 @@ impl<'a> Display for VectorRingSlice<'a> {
     }
 }
 
+struct ConditionDisplay<'a>(&'a Condition);
+impl<'a> Display for ConditionDisplay<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // let (s1, s2) = self.0.data();
+        // f.write_str(unsafe { std::str::from_utf8_unchecked(s1) })?;
+        // f.write_str(unsafe { std::str::from_utf8_unchecked(s2) })?;
+        Ok(())
+    }
+}
+
 struct Select<'a>(&'a RingSlice);
 impl<'a> Display for Select<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -134,12 +145,12 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
             }
         }
         for w in wheres {
-            let _ = write!(f, " and {}", VectorRingSlice(w));
+            let _ = write!(f, " and {}", ConditionDisplay(w));
         }
         if orders.len() != 0 {
             let _ = write!(f, " order by {}", VectorRingSlice(orders));
         }
-        if let Some(limit) = limit {
+        if limit.offset.len() != 0 {
             let _ = write!(
                 f,
                 " limit {} offset {}",

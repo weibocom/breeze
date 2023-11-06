@@ -97,10 +97,9 @@ impl Vector {
 
 pub enum Opcode {}
 
-pub enum ConditionOP {}
 pub struct Condition {
     pub field: RingSlice,
-    pub op: ConditionOP,
+    pub op: RingSlice,
     pub value: RingSlice,
 }
 
@@ -129,7 +128,7 @@ pub struct VectorCmd {
     pub keys: Vec<RingSlice>,
     pub fields: Vec<(RingSlice, RingSlice)>,
     //三段式条件无需分割，可直接拼接
-    pub wheres: Vec<RingSlice>,
+    pub wheres: Vec<Condition>,
     pub orders: RingSlice,
-    pub limit: Option<Limit>,
+    pub limit: Limit,
 }
