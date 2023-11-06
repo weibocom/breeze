@@ -142,7 +142,6 @@ pub const OP_VRANGE: u16 = 0;
 pub struct VectorCmd {
     pub keys: Vec<RingSlice>,
     pub fields: Vec<(RingSlice, RingSlice)>,
-    //三段式条件无需分割，可直接拼接
     pub wheres: Vec<Condition>,
     pub order: Order,
     pub limit: Limit,
