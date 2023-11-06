@@ -6,7 +6,7 @@ use crate::{error::Error, redis::command, Flag, Result, StreamContext};
 use ds::RingSlice;
 use sharding::hash::Hash;
 
-const CRLF_LEN: usize = b"\r\n".len();
+pub(crate) const CRLF_LEN: usize = b"\r\n".len();
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
 #[repr(C)]
@@ -577,6 +577,12 @@ impl Packet {
     #[inline]
     pub fn num_skip_all(&self, oft: &mut usize) -> Result<()> {
         let mut bulk_count = self.num(oft)?;
+        self.skip_bulks(oft, bulk_count)
+    }
+
+    #[inline]
+    pub fn skip_bulks(&self, oft: &mut usize, bulk_count: usize) -> Result<()> {
+        let mut bulk_count = bulk_count;
         while bulk_count > 0 {
             if *oft >= self.len() {
                 return Err(crate::Error::ProtocolIncomplete);

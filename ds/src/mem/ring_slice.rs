@@ -397,17 +397,62 @@ impl RingSlice {
     }
     #[inline]
     pub fn start_with(&self, oft: usize, s: &[u8]) -> bool {
+        // if oft + s.len() <= self.len() {
+        //     with_segment!(
+        //         self,
+        //         oft,
+        //         |p, _l| { from_raw_parts(p, s.len()) == s },
+        //         |p0, l0, p1, _l1| {
+        //             if l0 < s.len() {
+        //                 from_raw_parts(p0, l0) == &s[..l0]
+        //                     && from_raw_parts(p1, s.len() - l0) == &s[l0..]
+        //             } else {
+        //                 from_raw_parts(p0, s.len()) == s
+        //             }
+        //         }
+        //     )
+        // } else {
+        //     false
+        // }
+        self.start_with_case(oft, s, true)
+    }
+
+    #[inline]
+    pub fn start_with_case(&self, oft: usize, s: &[u8], case_sensitive: bool) -> bool {
         if oft + s.len() <= self.len() {
             with_segment!(
                 self,
                 oft,
-                |p, _l| { from_raw_parts(p, s.len()) == s },
+                |p, _l| {
+                    let origin_data = from_raw_parts(p, s.len());
+                    if case_sensitive {
+                        // 大小写敏感，直接对比
+                        origin_data == s
+                    } else {
+                        // 大小写不敏感，则ignore case
+                        origin_data.eq_ignore_ascii_case(s)
+                    }
+                },
                 |p0, l0, p1, _l1| {
                     if l0 < s.len() {
-                        from_raw_parts(p0, l0) == &s[..l0]
-                            && from_raw_parts(p1, s.len() - l0) == &s[l0..]
+                        let (origin_0, origin_1) =
+                            (from_raw_parts(p0, l0), from_raw_parts(p1, s.len() - l0));
+                        if case_sensitive {
+                            origin_0 == &s[..l0] && origin_1 == &s[l0..]
+                        } else {
+                            origin_0.eq_ignore_ascii_case(&s[..l0])
+                                && origin_1.eq_ignore_ascii_case(&s[l0..])
+                        }
+                        // from_raw_parts(p0, l0) == &s[..l0]
+                        //     && from_raw_parts(p1, s.len() - l0) == &s[l0..]
                     } else {
-                        from_raw_parts(p0, s.len()) == s
+                        let origin = from_raw_parts(p0, s.len());
+                        if case_sensitive {
+                            origin == s
+                        } else {
+                            origin.eq_ignore_ascii_case(s)
+                        }
+                        // from_raw_parts(p0, s.len()) == s
                     }
                 }
             )
