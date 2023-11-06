@@ -1,6 +1,6 @@
 use crate::kv::{kvtime::KVTime, strategy::to_i64_err};
 
-use super::strategy::{to_i64, Postfix};
+use super::strategy::Postfix;
 use chrono::TimeZone;
 use chrono_tz::Asia::Shanghai;
 use core::fmt::Write;
