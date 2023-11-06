@@ -97,25 +97,39 @@ impl Vector {
 
 pub enum Opcode {}
 
+pub(crate) const COND_ORDER: &str = "ORDER";
+pub(crate) const COND_LIMIT: &str = "LIMIT";
+
+#[derive(Debug, Clone, Default)]
 pub struct Condition {
     pub field: RingSlice,
     pub op: RingSlice,
     pub value: RingSlice,
 }
 
+impl Condition {
+    /// 构建一个condition
+    #[inline]
+    pub(crate) fn new(field: RingSlice, op: RingSlice, value: RingSlice) -> Self {
+        Self { field, op, value }
+    }
+}
+
 // pub enum Order {
 //     ASC,
 //     DESC,
 // }
-// pub struct Orders {
-//     pub field: Vec<RingSlice>,
-//     pub order: Order,
-// }
+#[derive(Debug, Clone, Default)]
+pub struct Order {
+    pub field: RingSlice,
+    pub order: RingSlice,
+}
 // pub struct Orders {
 //     pub field: RingSliceIter,
 //     pub order: Order,
 // }
 
+#[derive(Debug, Clone, Default)]
 pub struct Limit {
     //无需转成int，可直接拼接
     pub offset: RingSlice,
@@ -124,11 +138,12 @@ pub struct Limit {
 
 pub const OP_VRANGE: u16 = 0;
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
+#[derive(Debug, Clone, Default)]
 pub struct VectorCmd {
     pub keys: Vec<RingSlice>,
     pub fields: Vec<(RingSlice, RingSlice)>,
     //三段式条件无需分割，可直接拼接
     pub wheres: Vec<Condition>,
-    pub orders: RingSlice,
+    pub order: Order,
     pub limit: Limit,
 }

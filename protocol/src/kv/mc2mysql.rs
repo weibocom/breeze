@@ -4,8 +4,9 @@ use std::fmt::Display;
 use super::common::proto::codec::PacketCodec;
 use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
-use crate::HashedCommand;
+use crate::vector::{Condition, Limit, Order, VectorCmd, COND_LIMIT, COND_ORDER};
 use crate::{Error::FlushOnClose, Result};
+use crate::{HashedCommand, Packet};
 use ds::{RingSlice, Utf8};
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -211,5 +212,64 @@ impl MysqlBuilder {
         let packet: Vec<u8> = packet.into();
         log::debug!("build mysql packet:{}", packet.utf8());
         Ok(packet)
+    }
+
+    // TODO 先用最简单模式打通，稍后优化 fishermen
+    /// 根据parse的结果，此处进一步获得kvector的detail/具体字段信息，以便进行sql构建
+    pub fn parse_vector_detail(cmd: &HashedCommand) -> crate::Result<VectorCmd> {
+        let data = Packet::from(cmd.sub_slice(0, cmd.len()));
+        let mut vcmd: VectorCmd = Default::default();
+
+        use crate::vector::flager::KvFlager;
+        let flag = cmd.flag();
+
+        // 解析key，format: $-1\r\n or $2\r\nab\r\n
+        let mut oft = 0;
+        oft = flag.key_pos() as usize;
+        let key_data = data.bulk_string(&mut oft)?;
+        vcmd.keys = Vec::with_capacity(3);
+        // TODO 增加多key的split
+        vcmd.keys.push(key_data);
+
+        // 解析fields，format: *2\r\n$4\r\nname\r\n$5\r\nvalue\r\n
+        oft = flag.field_pos() as usize;
+        let mut field_pairs = data.num_of_bulks(&mut oft)?;
+        assert!(field_pairs % 2 == 0, "cmd: {}", cmd);
+        vcmd.fields = Vec::with_capacity(field_pairs / 2);
+        while field_pairs > 0 {
+            let name = data.bulk_string(&mut oft)?;
+            let value = data.bulk_string(&mut oft)?;
+            vcmd.fields.push((name, value));
+            field_pairs -= 2;
+        }
+
+        // 解析where condition，format: *4\r\n$5\r\nwhere\r\n$3\r\nsid\r\n$1\r\n<\r\n$3\r\n100\r\n
+        oft = flag.condition_pos() as usize;
+        let mut condition_count = data.num_of_bulks(&mut oft)?;
+        vcmd.wheres = Vec::with_capacity(3);
+        if condition_count > 0 {
+            condition_count -= 1;
+            assert!(condition_count % 3 == 0, "cmd: {}", cmd);
+            while condition_count > 0 {
+                let name = data.bulk_string(&mut oft)?;
+                let op = data.bulk_string(&mut oft)?;
+                let val = data.bulk_string(&mut oft)?;
+                if name.equal(COND_ORDER.as_bytes()) {
+                    vcmd.order = Order {
+                        field: op,
+                        order: val,
+                    };
+                } else if name.equal(COND_LIMIT.as_bytes()) {
+                    vcmd.limit = Limit {
+                        offset: op,
+                        limit: val,
+                    };
+                } else {
+                    vcmd.wheres.push(Condition::new(name, op, val));
+                }
+            }
+        }
+
+        Ok(vcmd)
     }
 }
