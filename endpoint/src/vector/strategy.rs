@@ -145,7 +145,7 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
                 keys,
                 fields: _,
                 wheres,
-                orders,
+                order,
                 limit,
             },
         ) = self;
@@ -161,8 +161,13 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
         for w in wheres {
             let _ = write!(f, " and {}", ConditionDisplay(w));
         }
-        if orders.len() != 0 {
-            let _ = write!(f, " order by {}", VectorRingSlice(orders));
+        if order.field.len() != 0 {
+            let _ = write!(
+                f,
+                " order by {} {}",
+                VectorRingSlice(&order.field),
+                VectorRingSlice(&order.order)
+            );
         }
         if limit.offset.len() != 0 {
             let _ = write!(
