@@ -127,7 +127,7 @@ pub const OP_VRANGE: u16 = 0;
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
 pub struct VectorCmd {
     pub keys: Vec<RingSlice>,
-    pub fields: RingSlice,
+    pub fields: Vec<(RingSlice, RingSlice)>,
     //三段式条件无需分割，可直接拼接
     pub wheres: Vec<RingSlice>,
     pub orders: RingSlice,
