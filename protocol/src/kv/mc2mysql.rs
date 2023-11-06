@@ -228,8 +228,15 @@ impl MysqlBuilder {
         oft = flag.key_pos() as usize;
         let key_data = data.bulk_string(&mut oft)?;
         vcmd.keys = Vec::with_capacity(3);
-        // TODO 增加多key的split
-        vcmd.keys.push(key_data);
+        loop {
+            let idx = key_data.find(oft, ',' as u8).unwrap_or(key_data.len());
+            if idx <= oft {
+                break;
+            }
+            vcmd.keys.push(data.sub_slice(oft, idx - oft));
+            oft = idx;
+            vcmd.keys.push(key_data);
+        }
 
         // 解析fields，format: *2\r\n$4\r\nname\r\n$5\r\nvalue\r\n
         oft = flag.field_pos() as usize;
