@@ -77,7 +77,7 @@ where
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
         let (year, shard_idx) = if req.ctx().runs == 0 {
-            let vcmd = req.vector_cmd().unwrap();
+            let vcmd = MysqlBuilder::parse_vector_detail(&req).unwrap();
             //定位年库
             let (year, _, _) = match self.strategist.get_date(&vcmd.keys, &self.cfg.basic.keys) {
                 Ok(year) => year,
