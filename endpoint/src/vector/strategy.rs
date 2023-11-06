@@ -188,7 +188,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                 let _ = write!(
                     buf,
                     "select {} from {} where {}",
-                    VectorRingSlice(&self.vcmd.fields),
+                    VectorRingSlice(&self.vcmd.fields[0].1),
                     Table(&self.strategy, &self.vcmd.keys),
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
