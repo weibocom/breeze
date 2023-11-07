@@ -31,9 +31,10 @@ impl From<RingSlice> for CommandType {
 impl CommandType {
     #[inline]
     fn to_cmd(name: &RingSlice, cmd: &str, cmd_type: CommandType) -> Self {
+        // 指令开头的 V 和 第二个字符 已经check了
         const CHECKED_LEN: usize = 2;
         if name.len() == cmd.len()
-            && name.start_with_case(CHECKED_LEN, cmd[CHECKED_LEN..].as_bytes(), false)
+            && name.start_ignore_case(CHECKED_LEN, cmd[CHECKED_LEN..].as_bytes())
         {
             cmd_type
         } else {

@@ -1,21 +1,21 @@
-use std::fmt::{self, Debug, Display, Formatter};
-
+use super::flager::KvFlager;
 use ds::RingSlice;
 
-use crate::{
-    redis::{error::RedisError, packet::CRLF_LEN},
-    Error, Flag, Packet, Result,
-};
+use std::fmt::{self, Debug, Display, Formatter};
+
+use crate::{redis::error::RedisError, Error, Flag, Packet, Result};
 
 use super::command::CommandType;
 
 /// key 最大长度限制为200
-const MAX_KEY_LEN: u8 = 200;
+const MAX_KEY_LEN: usize = 200;
 /// 请求消息不能超过16M
-const MAX_REQUEST_LEN: u32 = 1 << super::flager::CONDITION_POS_BITS - 1;
+const MAX_REQUEST_LEN: usize = 1 << super::flager::CONDITION_POS_BITS - 1;
+const WHERE: &str = "WHERE";
 
 pub(crate) struct RequestPacket<'a, S> {
     stream: &'a mut S,
+    // TODO 对data的读写，除了bulks 数量，其他都必须走本地的代理方法，避免本地变量未更新
     data: Packet,
     /// redis协议中bulk的数量，如*4\r\n...，bulk的数量为4
     bulks: u16,
@@ -54,8 +54,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 return Err(RedisError::ReqInvalidStar.into());
             }
             self.bulks = self.data.num_of_bulks(&mut self.oft)? as u16;
-            // 合法的kvector协议只会有2、3、4个对象
-            assert!(2 <= self.bulks && self.bulks <= 4, "packet:{}", self);
+            // 合法的kvector协议至少有2个bulk string
+            assert!(self.bulks >= 2, "packet:{}", self);
         }
         Ok(())
     }
@@ -81,20 +81,56 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     pub(crate) fn parse_cmd(&mut self) -> Result<Flag> {
-        // cmd type如果为Unknow，说明尚未解析过
-        assert_eq!(self.cmd_type, CommandType::Unknown);
+        // 第一个字段是cmd type，根据cmd type构建flag，并在后续解析中设置flag
+        self.parse_cmd_name()?;
+        let mut flag = Flag::from_op(self.cmd_type.clone() as u16, self.cmd_type.operation());
 
+        // 第二个字段是key
+        self.parse_key(&mut flag)?;
+
+        // 解析fields，因为要对比where，所以如果有where，也会消费掉
+        self.parse_fields(&mut flag)?;
+
+        // 解析condition
+        self.parse_condition(&mut flag)?;
+
+        Ok(flag)
+    }
+
+    #[inline]
+    fn parse_cmd_name(&mut self) -> Result<()> {
         // 第一个bulk是bulk-string类型的cmd
-        let cmd_len = self.data.num_of_string(&mut self.oft)?;
-        let cmd = self.data.sub_slice(self.oft, cmd_len);
-        let cmd_type: CommandType = cmd.into();
-        self.oft += cmd_len + CRLF_LEN;
+        let cmd = self.next_bulk_string()?;
+        self.cmd_type = cmd.into();
+        assert_eq!(self.cmd_type, CommandType::Unknown);
+        Ok(())
+    }
 
-        // 初始化flag，接下来的解析，如果成功则持续设置flag
-        use super::flager::KvFlager;
-        let operation = cmd_type.operation();
-        let mut flag = Flag::from_op(cmd_type as u16, operation);
+    /// 读取下一个bulk string，bulks会减1
+    #[inline]
+    fn next_bulk_string(&mut self) -> Result<RingSlice> {
+        if self.bulks == 0 {
+            log::warn!("no more bulk string req:{}", self);
+            return Err(Error::RequestProtocolInvalid);
+        }
+        let next = self.data.bulk_string(&mut self.oft)?;
+        self.bulks -= 1;
+        Ok(next)
+    }
 
+    /// skip 掉n个bulk
+    #[inline]
+    fn skip_bulks(&mut self, count: u16) -> Result<()> {
+        if count > self.bulks {
+            log::warn!("not enough bulks to skip req:{}", self);
+            return Err(Error::RequestProtocolInvalid);
+        }
+        self.bulks -= count;
+        self.data.skip_bulks(&mut self.oft, count as usize)
+    }
+
+    #[inline]
+    fn parse_key(&mut self, flag: &mut Flag) -> Result<()> {
         // 第二个bulk是bulk-string类型的key
         let key_pos = self.cmd_current_pos();
         if key_pos > (MAX_KEY_LEN as usize) {
@@ -102,53 +138,82 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             return Err(Error::RequestProtocolInvalid);
         }
         flag.set_key_pos(key_pos as u8);
-        let key_len = self.data.num_of_string(&mut self.oft)?;
-        self.oft += key_len + CRLF_LEN;
-
-        // 如果有第三个bulk，则是array 类型的$field_name $field_value pair
-        if self.bulks > 2 {
-            // 设置field pos
-            let field_pos = self.cmd_current_pos();
-            if field_pos >= (u8::MAX as usize) {
-                log::warn!("+++ kvector key too long: {}", self);
-                return Err(Error::RequestProtocolInvalid);
-            }
-
-            flag.set_field_pos(field_pos as u8);
-
-            // check field count数量，field count必须是2的倍数，由name和value组成field pair
-            let field_count = self.data.num_of_bulks(&mut self.oft)?;
-            if field_count % 2 == 1 || field_count >= u8::MAX as usize {
-                log::warn!("+++ kvector req fields count malformed: {}", self);
-                return Err(Error::RequestProtocolInvalid);
-            }
-
-            // skip 掉所有的field tokens
-            self.data.skip_bulks(&mut self.oft, field_count as usize)?;
+        let key = self.next_bulk_string()?;
+        if key.len() < MAX_KEY_LEN {
+            return Ok(());
         }
 
-        // 如果有四个bulk，则第四个是array类型 的where condition
-        if self.bulks > 3 {
-            // 设置condition pos
-            let condition_pos = self.cmd_current_pos();
-            if condition_pos >= MAX_REQUEST_LEN as usize {
-                log::warn!("+++ too big request:{}", self);
-                return Err(Error::RequestProtocolInvalid);
-            }
-            flag.set_condition_pos(condition_pos as u32);
+        log::warn!("+++ kvector key too long: {}", self);
+        return Err(Error::RequestProtocolInvalid);
+    }
 
-            // check condition bulk数量
-            let condition_count = self.data.num_of_bulks(&mut self.oft)?;
-            if (condition_count - 1) % 3 != 0 {
-                log::warn!("+++ kvector req condition count malformed: {}", self);
-                return Err(Error::RequestProtocolInvalid);
-            }
+    fn parse_fields(&mut self, flag: &mut Flag) -> Result<()> {
+        // key 后面的字段可能是field，也可能是where conditioncheck
+        let pos = self.cmd_current_pos();
+        let field_or_where = self.next_bulk_string()?;
+        if !field_or_where.equal_ignore_case(WHERE.as_bytes()) {
+            // 不是where，就是field了，设置field的pos
+            flag.set_field_pos(pos as u8);
 
-            // skip 掉where condition bulks
-            self.data.skip_bulks(&mut self.oft, condition_count)?;
+            // skip 掉所有的剩余的所有field tokens
+            let mut field_idx = 1;
+            loop {
+                // field 是key value pair 对，idx从0开始计数，如 [k1 v1 k2 v2] 的idx [0, 1, 2, 3]
+                // 没有bulks时，如果idx正好是奇数位，说明协议非法，少了value;如果idx为偶数，说明解析完毕；
+                if self.bulks == 0 {
+                    if field_idx & 2 == 1 {
+                        log::warn!("+++ invalid field count:{}", self);
+                        return Err(Error::RequestProtocolInvalid);
+                    } else {
+                        return Ok(());
+                    }
+                };
+
+                // 还有bulks，检测奇偶位
+                if field_idx & 2 == 1 {
+                    // 奇数位的value直接skip
+                    self.skip_bulks(1)?;
+                } else {
+                    // 偶数位，可能是where，需要读出来进行check
+                    let next = self.next_bulk_string()?;
+                    if next.equal_ignore_case(WHERE.as_bytes()) {
+                        if self.bulks == 0 {
+                            log::warn!("+++ empty where condition req:{}", self);
+                            return Err(Error::RequestProtocolInvalid);
+                        }
+                        return Ok(());
+                    }
+                    // 当前不是where，则肯定是field，则其后面必须还要有val
+                }
+                field_idx += 1;
+            }
+        }
+        Ok(())
+    }
+
+    fn parse_condition(&mut self, flag: &mut Flag) -> Result<()> {
+        // 如果bulks为0，说明没有condition 了
+        if self.bulks == 0 {
+            return Ok(());
         }
 
-        Ok(flag)
+        // 剩下肯定全部是condition，必须是3的倍数
+        if self.bulks % 3 != 0 {
+            log::warn!("+++ kvector req condition count malformed: {}", self);
+            return Err(Error::RequestProtocolInvalid);
+        }
+        // 设置condition pos
+        let condition_pos = self.cmd_current_pos();
+        if condition_pos >= MAX_REQUEST_LEN as usize {
+            log::warn!("+++ too big request:{}", self);
+            return Err(Error::RequestProtocolInvalid);
+        }
+        flag.set_condition_pos(condition_pos as u32);
+        // skip 掉condition 的 bulks
+        self.skip_bulks(self.bulks)?;
+
+        assert_eq!(self.bulks, 0, "kvector:{}", self);
+        Ok(())
     }
 
     #[inline]
