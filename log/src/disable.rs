@@ -2,7 +2,7 @@
 macro_rules! noop{
     ($($arg:tt)+) => {
         {
-            let _ = &format_args!($($arg)+);
+            let _ = format_args!($($arg)+);
             ()
         }
     };
