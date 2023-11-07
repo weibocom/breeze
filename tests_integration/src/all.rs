@@ -10,4 +10,5 @@ mod phantom;
 mod redis;
 mod redis_helper;
 mod uuid;
+mod vector;
 mod vintage;
