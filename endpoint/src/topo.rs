@@ -19,32 +19,19 @@ pub trait Endpoint: Sized + Send + Sync {
     }
 }
 
-impl<T, R> Endpoint for &T
+use std::ops::Deref;
+impl<T, R, E> Endpoint for E
 where
+    E: Deref<Target = T> + Send + Sync,
     T: Endpoint<Item = R>,
 {
     type Item = R;
-    #[inline]
-    fn send(&self, req: R) {
-        (*self).send(req)
-    }
-
-    #[inline]
-    fn shard_idx(&self, hash: i64) -> usize {
-        (*self).shard_idx(hash)
-    }
-}
-
-impl<T, R> Endpoint for std::sync::Arc<T>
-where
-    T: Endpoint<Item = R>,
-{
-    type Item = R;
-    #[inline]
+    #[inline(always)]
     fn send(&self, req: R) {
         (**self).send(req)
     }
-    #[inline]
+
+    #[inline(always)]
     fn shard_idx(&self, hash: i64) -> usize {
         (**self).shard_idx(hash)
     }
