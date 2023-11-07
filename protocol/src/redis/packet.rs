@@ -533,10 +533,13 @@ impl Packet {
     pub fn bulk_string(&self, oft: &mut usize) -> Result<RingSlice> {
         let len = self.num_of_string(oft)?;
         let start = *oft;
-        if len > 0 {
-            *oft += len + CRLF_LEN;
+        *oft += len + CRLF_LEN;
+
+        if *oft <= self.len() {
+            Ok(self.sub_slice(start, len))
+        } else {
+            Err(crate::Error::ProtocolIncomplete)
         }
-        Ok(self.sub_slice(*oft, len))
     }
     #[inline(always)]
     pub fn check_onetoken(&self, oft: usize) -> Result<()> {

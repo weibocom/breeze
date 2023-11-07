@@ -238,35 +238,33 @@ impl MysqlBuilder {
             vcmd.keys.push(key_data);
         }
 
-        // 解析fields，format: *2\r\n$4\r\nname\r\n$5\r\nvalue\r\n
-        oft = flag.field_pos() as usize;
-        let mut field_pairs = data.num_of_bulks(&mut oft)?;
-        assert!(field_pairs % 2 == 0, "cmd: {}", cmd);
-        vcmd.fields = Vec::with_capacity(field_pairs / 2);
-        while field_pairs > 0 {
-            let name = data.bulk_string(&mut oft)?;
-            let value = data.bulk_string(&mut oft)?;
-            vcmd.fields.push((name, value));
-            field_pairs -= 2;
+        // 解析fields，format: $4\r\nname\r\n$5\r\nvalue\r\n
+        let field_pos = flag.field_pos() as usize;
+        let condition_pos = flag.condition_pos() as usize;
+        if field_pos > 0 {
+            oft = field_pos;
+            vcmd.fields = Vec::with_capacity(5);
+            while oft < condition_pos {
+                let name = data.bulk_string(&mut oft)?;
+                let value = data.bulk_string(&mut oft)?;
+                vcmd.fields.push((name, value));
+            }
         }
 
-        // 解析where condition，format: *4\r\n$5\r\nwhere\r\n$3\r\nsid\r\n$1\r\n<\r\n$3\r\n100\r\n
-        oft = flag.condition_pos() as usize;
-        let mut condition_count = data.num_of_bulks(&mut oft)?;
+        // 解析where condition，必须是三段式format: $5\r\nwhere\r\n$3\r\nsid\r\n$1\r\n<\r\n$3\r\n100\r\n
         vcmd.wheres = Vec::with_capacity(3);
-        if condition_count > 0 {
-            condition_count -= 1;
-            assert!(condition_count % 3 == 0, "cmd: {}", cmd);
-            while condition_count > 0 {
+        if condition_pos > 0 {
+            oft = condition_pos;
+            while oft < data.len() {
                 let name = data.bulk_string(&mut oft)?;
                 let op = data.bulk_string(&mut oft)?;
                 let val = data.bulk_string(&mut oft)?;
-                if name.equal(COND_ORDER.as_bytes()) {
+                if name.equal_ignore_case(COND_ORDER.as_bytes()) {
                     vcmd.order = Order {
                         field: op,
                         order: val,
                     };
-                } else if name.equal(COND_LIMIT.as_bytes()) {
+                } else if name.equal_ignore_case(COND_LIMIT.as_bytes()) {
                     vcmd.limit = Limit {
                         offset: op,
                         limit: val,
