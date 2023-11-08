@@ -4,9 +4,10 @@ use std::fmt::Display;
 use super::common::proto::codec::PacketCodec;
 use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
+use crate::vector::flager::KvFlager;
 use crate::vector::{Condition, Limit, Order, VectorCmd, COND_LIMIT, COND_ORDER};
 use crate::{Error::FlushOnClose, Result};
-use crate::{HashedCommand, Packet};
+use crate::{Flag, HashedCommand, Packet};
 use ds::{RingSlice, Utf8};
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -218,16 +219,29 @@ impl MysqlBuilder {
     /// 根据parse的结果，此处进一步获得kvector的detail/具体字段信息，以便进行sql构建
     pub fn parse_vector_detail(cmd: &HashedCommand) -> crate::Result<VectorCmd> {
         let data = Packet::from(cmd.sub_slice(0, cmd.len()));
-        let mut vcmd: VectorCmd = Default::default();
-
-        use crate::vector::flager::KvFlager;
         let flag = cmd.flag();
 
+        let mut vcmd: VectorCmd = Default::default();
+        // 解析keys
+        Self::parse_vector_key(&data, flag.key_pos() as usize, &mut vcmd)?;
+
+        // 解析fields
+        let field_pos = flag.field_pos() as usize;
+        let condition_pos = flag.condition_pos() as usize;
+        Self::parse_vector_field(&data, field_pos, condition_pos, &mut vcmd)?;
+
+        // 解析conditions
+        Self::parse_vector_condition(&data, condition_pos, &mut vcmd)?;
+
+        Ok(vcmd)
+    }
+
+    #[inline]
+    fn parse_vector_key(data: &Packet, key_pos: usize, vcmd: &mut VectorCmd) -> Result<()> {
         // 解析key，format: $-1\r\n or $2\r\nab\r\n
-        let mut oft = 0;
-        oft = flag.key_pos() as usize;
+        let mut oft = key_pos;
         let key_data = data.bulk_string(&mut oft)?;
-        vcmd.keys = Vec::with_capacity(3);
+        // let mut keys = Vec::with_capacity(3);
         loop {
             let idx = key_data.find(oft, ',' as u8).unwrap_or(key_data.len());
             if idx <= oft {
@@ -235,26 +249,40 @@ impl MysqlBuilder {
             }
             vcmd.keys.push(data.sub_slice(oft, idx - oft));
             oft = idx;
-            vcmd.keys.push(key_data);
         }
+        Ok(())
+    }
 
+    #[inline]
+    fn parse_vector_field(
+        data: &Packet,
+        field_pos: usize,
+        condition_pos: usize,
+        vcmd: &mut VectorCmd,
+    ) -> Result<()> {
         // 解析fields，format: $4\r\nname\r\n$5\r\nvalue\r\n
-        let field_pos = flag.field_pos() as usize;
-        let condition_pos = flag.condition_pos() as usize;
+        // let mut fields = Vec::with_capacity(5);
         if field_pos > 0 {
-            oft = field_pos;
-            vcmd.fields = Vec::with_capacity(5);
+            let mut oft = field_pos;
             while oft < condition_pos {
                 let name = data.bulk_string(&mut oft)?;
                 let value = data.bulk_string(&mut oft)?;
                 vcmd.fields.push((name, value));
             }
+            // 解析完fields，如果有condition，oft应该就是condition pos
+            if condition_pos > 0 {
+                assert_eq!(oft, condition_pos, "packet:{:?}", data);
+            }
         }
 
+        Ok(())
+    }
+
+    fn parse_vector_condition(data: &Packet, cond_pos: usize, vcmd: &mut VectorCmd) -> Result<()> {
         // 解析where condition，必须是三段式format: $5\r\nwhere\r\n$3\r\nsid\r\n$1\r\n<\r\n$3\r\n100\r\n
         vcmd.wheres = Vec::with_capacity(3);
-        if condition_pos > 0 {
-            oft = condition_pos;
+        if cond_pos > 0 {
+            let mut oft = cond_pos;
             while oft < data.len() {
                 let name = data.bulk_string(&mut oft)?;
                 let op = data.bulk_string(&mut oft)?;
@@ -274,7 +302,6 @@ impl MysqlBuilder {
                 }
             }
         }
-
-        Ok(vcmd)
+        Ok(())
     }
 }
