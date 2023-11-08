@@ -65,26 +65,20 @@ pub fn impl_number_ringslice(args: TokenStream, input: TokenStream) -> TokenStre
             Endianess::Big => quote! { from_be_bytes },
             Endianess::Little => quote! { from_le_bytes },
         };
-        // 小端的oft为0，大端为(ty_bits - bits) / 8
-        let copy_oft = match endianess {
-            Endianess::Big => ((ty_bits - bits) as usize) / 8,
-            Endianess::Little => 0,
-        };
         let post = if bits < ty_bits {
             let shift = (ty_bits - bits) as usize;
-            let mask = (!0usize) << shift >> shift;
             match endianess {
-                // 把高shift位清零
+                // 大端字节序，右移
                 Endianess::Big => quote! {
-                    let v = v & #mask;
+                    v >> #shift
                 },
-                // 处理符号位
+                // 小端要处理符号位
                 Endianess::Little => quote! {
-                    let v = (v << #shift) as #ty >> #shift;
+                    (v << #shift) as #ty >> #shift
                 },
             }
         } else {
-            quote! {}
+            quote! {v}
         };
         let copy_len = bits / 8;
         let size = ty_bits / 8;
@@ -103,12 +97,11 @@ pub fn impl_number_ringslice(args: TokenStream, input: TokenStream) -> TokenStre
                 let mut b = [0u8; #size];
                 use std::ptr::copy_nonoverlapping as copy;
                 let len = len.min(#copy_len);
-                unsafe { copy(self.ptr().add(oft_start), b.as_mut_ptr().add(#copy_oft), len) };
-                unsafe { copy(self.ptr(), b.as_mut_ptr().add(len + #copy_oft), #copy_len - len) };
+                unsafe { copy(self.ptr().add(oft_start), b.as_mut_ptr(), len) };
+                unsafe { copy(self.ptr(), b.as_mut_ptr().add(len), #copy_len - len) };
                 #ty::#from_endianess(b)
             };
             #post
-            v
             }
         };
         method_impls.push(method_impl);
