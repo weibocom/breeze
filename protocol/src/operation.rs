@@ -43,10 +43,11 @@ impl Operation {
     pub fn name(&self) -> &'static str {
         OP_NAMES[*self as u8 as usize]
     }
-    #[inline]
-    pub fn master_only(&self) -> bool {
-        *self as usize == Gets as usize || *self as usize == Meta as usize
-    }
+    // TODO 变更gets策略，先注释，线上稳定后清理，预计2024.1 之后可删除 fishermen
+    // #[inline]
+    // pub fn master_only(&self) -> bool {
+    //     *self as usize == Gets as usize || *self as usize == Meta as usize
+    // }
     #[inline]
     pub fn is_retrival(&self) -> bool {
         *self as usize <= Gets as usize
