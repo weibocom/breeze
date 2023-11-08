@@ -40,8 +40,6 @@ impl Timeout {
     pub fn to(mut self, ms: u32) -> Self {
         if ms > 0 {
             self.adjust(ms);
-        } else {
-            self.adjust(self.ms.into());
         }
 
         self
