@@ -39,7 +39,7 @@ pub struct CallbackContext {
     pub(crate) write_back: bool, // 请求结束后，是否需要回写。
     first: bool,                 // 当前请求是否是所有子请求的第一个
     last: bool,                  // 当前请求是否是所有子请求的最后一个
-    tries: AtomicU8,             // 高4位：成功发送到后端次数；低4位：轮询计数
+    tries: AtomicU8,
     request: HashedCommand,
     response: MaybeUninit<Command>,
     start: Instant, // 请求的开始时间
@@ -97,7 +97,6 @@ impl CallbackContext {
     #[inline]
     pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
-        self.tries.fetch_add(0x10, Release);
         if self.request().sentonly() {
             self.on_done();
             false
@@ -143,18 +142,7 @@ impl CallbackContext {
                     return false;
                 }
             }
-
-            // 补充注释：为何分开
-            let tries = self.tries.fetch_add(1, AcqRel);
-            let on_sent_tries = tries >> 4;
-            let on_done_tries = tries & 0xF;
-            // 如果一次也没有发送给后端，需要重试; 这里的on_done_tries < 4目的是保护一下
-            if self.try_next && on_sent_tries == 0 && on_done_tries < 4 {
-                return true;
-            }
-
-            // 调用on_done数不超过2次
-            self.try_next && on_done_tries < 1
+            self.try_next && self.tries.fetch_add(1, Release) < 1
         } else {
             // write back请求
             self.write_back
