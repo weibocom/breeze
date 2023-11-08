@@ -589,7 +589,7 @@ impl Packet {
     //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
     #[inline]
     pub fn num_skip_all(&self, oft: &mut usize) -> Result<()> {
-        let mut bulk_count = self.num(oft)?;
+        let bulk_count = self.num(oft)?;
         self.skip_bulks(oft, bulk_count)
     }
 

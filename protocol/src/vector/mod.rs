@@ -37,15 +37,15 @@ impl Protocol for Vector {
         }
     }
 
-    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
+    fn parse_response<S: Stream>(&self, _data: &mut S) -> Result<Option<Command>> {
         todo!()
     }
 
     fn write_response<C, W, M, I>(
         &self,
-        ctx: &mut C,
-        response: Option<&mut Command>,
-        w: &mut W,
+        _ctx: &mut C,
+        _response: Option<&mut Command>,
+        _w: &mut W,
     ) -> Result<()>
     where
         W: Writer,
