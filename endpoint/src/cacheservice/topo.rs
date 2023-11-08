@@ -91,31 +91,30 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert!(self.streams.local_len() > 0);
 
-        let mut idx: usize = 0; // master
-        if !req.operation().master_only() {
-            let mut ctx = super::Context::from(*req.mut_context());
-            let (i, try_next, write_back) = if req.operation().is_store() {
-                self.context_store(&mut ctx, &req)
-            } else {
-                if !ctx.inited() {
-                    // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
-                    // 第一次读一般访问L1，miss之后再读master；
-                    // 读quota的更新根据第一次的请求时间更合理
-                    if let Some(quota) = self.streams.quota() {
-                        req.quota(quota);
-                    }
+        // let mut idx: usize = 0; // master
+        let mut ctx = super::Context::from(*req.mut_context());
+        // gets及store类指令，都需要先请求master，然后再考虑masterL1
+        let (idx, try_next, write_back) = if req.operation().is_store() {
+            self.context_store(&mut ctx, &req)
+        } else {
+            if !ctx.inited() {
+                // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
+                // 第一次读一般访问L1，miss之后再读master；
+                // 读quota的更新根据第一次的请求时间更合理
+                if let Some(quota) = self.streams.quota() {
+                    req.quota(quota);
                 }
-                self.context_get(&mut ctx)
-            };
-            req.try_next(try_next);
-            req.write_back(write_back);
-            *req.mut_context() = ctx.ctx;
-            idx = i;
-            if idx >= self.streams.len() {
-                req.on_err(protocol::Error::TopChanged);
-                return;
             }
+            self.context_get(&mut ctx)
+        };
+        req.try_next(try_next);
+        req.write_back(write_back);
+        *req.mut_context() = ctx.ctx;
+        if idx >= self.streams.len() {
+            req.on_err(protocol::Error::TopChanged);
+            return;
         }
+
         log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
         debug_assert!(idx < self.streams.len(), "{} {} => {:?}", idx, self, req);
 
