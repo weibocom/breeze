@@ -102,7 +102,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         // 第一个bulk是bulk-string类型的cmd
         let cmd = self.next_bulk_string()?;
         self.cmd_type = cmd.into();
-        assert_eq!(self.cmd_type, CommandType::Unknown);
+        assert_ne!(self.cmd_type, CommandType::Unknown);
         Ok(())
     }
 
