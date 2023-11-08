@@ -15,8 +15,8 @@ pub(crate) mod dns;
 const TO_PHANTOM_M: Timeout = Timeout::from_millis(200);
 const TO_REDIS_M: Timeout = Timeout::from_millis(500);
 const TO_REDIS_S: Timeout = Timeout::from_millis(200);
-const TO_MC_M: Timeout = Timeout::from_millis(500);
-const TO_MC_S: Timeout = Timeout::from_millis(80);
+const TO_MC_M: Timeout = Timeout::from_millis(100); // TODO: 先改成与当前线上实际使用值一致
+const TO_MC_S: Timeout = Timeout::from_millis(100); // TODO: 先改成与当前线上实际使用值一致
 const TO_MYSQL_M: Timeout = Timeout::from_millis(1000);
 const TO_MYSQL_S: Timeout = Timeout::from_millis(500);
 const TO_UUID: Timeout = Timeout::from_millis(100);
