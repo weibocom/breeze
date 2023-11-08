@@ -45,10 +45,8 @@ impl Host {
         w.write(BASE_PATH, "sockfile", "failed", sockfile_failed);
 
         self.snapshot_base(w, secs);
-        REGION_RES_MISS
-            .try_lock()
-            .expect("region res miss lock")
-            .snapshot(w, secs);
+
+        get_region_res_miss().clone().snapshot(w, secs);
     }
     fn snapshot_heap<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
         if let Some(heap_stats) = ds::heap() {
@@ -130,18 +128,23 @@ use std::collections::HashMap;
 // 记录资源实例不足，按端口
 #[derive(Default)]
 pub struct RegionResMiss {
-    resouce: HashMap<String, (String, u16, u16)>, // <port, (region, 端口内replica数量, 可用区内replica数量)>
+    resource: HashMap<String, (String, u16, u16)>, // <port, (region, 端口内replica数量, 可用区内replica数量)>
 }
 
 impl RegionResMiss {
     fn add(&mut self, port: String, region: String, total: u16, available: u16) {
-        self.resouce.insert(port, (region, total, available));
+        self.resource.insert(port, (region, total, available));
     }
     fn remove(&mut self, port: String) {
-        self.resouce.remove(&port);
+        self.resource.remove(&port);
+    }
+    fn clone(&self) -> Self {
+        Self {
+            resource: self.resource.clone(),
+        }
     }
     fn snapshot<W: crate::ItemWriter>(&mut self, w: &mut W, _secs: f64) {
-        self.resouce
+        self.resource
             .iter()
             .for_each(|(port, (region, total, available))| {
                 w.write_opts(
@@ -165,16 +168,15 @@ lazy_static! {
 }
 
 #[inline]
+fn get_region_res_miss() -> std::sync::MutexGuard<'static, RegionResMiss> {
+    REGION_RES_MISS.try_lock().expect("region res miss lock")
+}
+
+#[inline]
 pub fn add_region_res_miss(port: String, region: String, total: u16, available: u16) {
-    REGION_RES_MISS
-        .try_lock()
-        .expect("region res miss lock")
-        .add(port, region, total, available);
+    get_region_res_miss().add(port, region, total, available);
 }
 #[inline]
 pub fn remove_region_res_miss(port: String) {
-    REGION_RES_MISS
-        .try_lock()
-        .expect("region res miss lock")
-        .remove(port);
+    get_region_res_miss().remove(port);
 }

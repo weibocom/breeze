@@ -64,6 +64,7 @@ impl<T: Addr> Distance<T> {
         region_enabled: bool,
     ) -> Self {
         assert_ne!(replicas.len(), 0);
+        let port = replicas.get(0).unwrap().port();
         let mut me = Self::new();
 
         // 资源启用可用区
@@ -78,7 +79,7 @@ impl<T: Addr> Distance<T> {
             if l == 0 {
                 if replicas.len() > 0 {
                     metrics::add_region_res_miss(
-                        replicas.get(0).unwrap().port(),
+                        port,
                         distance::region(),
                         replicas.len() as u16,
                         0,
@@ -92,7 +93,7 @@ impl<T: Addr> Distance<T> {
                 );
                 replicas.len()
             } else {
-                metrics::remove_region_res_miss(replicas.get(0).unwrap().port());
+                metrics::remove_region_res_miss(port);
                 l
             }
         } else {
