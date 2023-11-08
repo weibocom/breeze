@@ -84,7 +84,7 @@ pub fn impl_number_ringslice(args: TokenStream, input: TokenStream) -> TokenStre
         let size = ty_bits / 8;
 
         let method_impl = quote! {
-            #[inline(always)]
+            #[inline]
             fn #method_name(&self, oft: usize) -> #ty{
             debug_assert!(self.len() >= oft + #copy_len);
             let oft_start = self.mask(oft + self.start());
