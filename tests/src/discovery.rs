@@ -7,7 +7,7 @@ use protocol::Parser;
 fn refresh() {
     use stream::{Backend, Builder, Request};
     type Endpoint = Arc<Backend<Request>>;
-    type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
+    type Topology = endpoint::TopologyProtocol<Endpoint, Request, Parser>;
     let service = "redisservice";
     let p = Parser::try_from("redis").unwrap();
     let top: Topology = endpoint::TopologyProtocol::try_from(p.clone(), "rs").unwrap();

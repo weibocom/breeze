@@ -1,10 +1,10 @@
 // 不要轻易变更这里面的测试用例，除非你知道你在做什么。拉相关同学进行方案评审。
-use std::{mem::size_of, sync::Arc};
+use std::mem::size_of;
 
+use endpoint::Backend;
 use protocol::{callback::CallbackContext, Parser};
-use stream::{Backend, Request};
-type Endpoint = Arc<Backend<Request>>;
-type Topology = endpoint::TopologyProtocol<Builder, Endpoint, Request, Parser>;
+use stream::Request;
+type Topology = endpoint::TopologyProtocol<Request, Parser>;
 //type RefreshTopology = endpoint::RefreshTopology<Topology>;
 
 type CheckedTopology = stream::CheckedTopology<Topology>;
@@ -12,14 +12,12 @@ type CheckedTopology = stream::CheckedTopology<Topology>;
 type CopyBidirectional = stream::pipeline::CopyBidirectional<Stream, Parser, CheckedTopology>;
 
 type Stream = rt::Stream<tokio::net::TcpStream>;
-type Handler<'r> = stream::handler::Handler<'r, Request, Parser, Stream>;
+type Handler<'r> = endpoint::handler::Handler<'r, Request, Parser, Stream>;
 
-type Builder = stream::Builder<Parser, Request>;
-type CacheService = endpoint::cacheservice::topo::CacheService<Builder, Endpoint, Request, Parser>;
-type RedisService = endpoint::redisservice::topo::RedisService<Builder, Endpoint, Request, Parser>;
-type PhantomService =
-    endpoint::phantomservice::topo::PhantomService<Builder, Endpoint, Request, Parser>;
-type MsgQue = endpoint::msgque::topo::MsgQue<Builder, Endpoint, Request, Parser>;
+type CacheService = endpoint::cacheservice::topo::CacheService<Request, Parser>;
+type RedisService = endpoint::redisservice::topo::RedisService<Request, Parser>;
+type PhantomService = endpoint::phantomservice::topo::PhantomService<Request, Parser>;
+type MsgQue = endpoint::msgque::topo::MsgQue<Request, Parser>;
 
 use rt::Entry;
 
@@ -40,7 +38,6 @@ fn checkout_basic() {
     assert_eq!(64, size_of::<metrics::Item>());
     assert_eq!(1, size_of::<Parser>());
     assert_eq!(48, size_of::<Backend<Request>>());
-    assert_eq!(0, size_of::<Builder>());
     assert_eq!(40, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());

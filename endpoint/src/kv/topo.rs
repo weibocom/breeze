@@ -17,7 +17,7 @@ use sharding::hash::{Hash, HashKey};
 use sharding::Distance;
 
 use crate::dns::DnsConfig;
-use crate::Builder;
+use crate::Backend;
 use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
@@ -27,16 +27,16 @@ use super::config::Years;
 use super::strategy::Strategist;
 use super::KVCtx;
 #[derive(Clone)]
-pub struct KvService<B, E, Req, P> {
-    shards: Shards<E>,
+pub struct KvService<Req, P> {
+    shards: Shards<Backend<Req>>,
     // selector: Selector,
     strategist: Strategist,
     parser: P,
     cfg: Box<DnsConfig<KvNamespace>>,
-    _mark: std::marker::PhantomData<(B, Req)>,
+    _mark: std::marker::PhantomData<Req>,
 }
 
-impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
+impl<Req, P> From<P> for KvService<Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -50,12 +50,10 @@ impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> Hash for KvService<B, E, Req, P>
+impl<Req, P> Hash for KvService<Req, P>
 where
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -63,18 +61,15 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for KvService<B, E, Req, P>
+impl<Req, P> Topology for KvService<Req, P>
 where
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for KvService<B, E, Req, P>
+impl<Req, P> Endpoint for KvService<Req, P>
 where
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -157,11 +152,10 @@ where
     }
 }
 
-impl<B, E, Req, P> TopologyWrite for KvService<B, E, Req, P>
+impl<Req, P> TopologyWrite for KvService<Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    Req: Request,
 {
     fn need_load(&self) -> bool {
         self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
@@ -176,23 +170,22 @@ where
         }
     }
 }
-impl<B, E, Req, P> KvService<B, E, Req, P>
+impl<Req, P> KvService<Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    Req: Request,
 {
     // #[inline]
     fn take_or_build(
         &self,
-        old: &mut HashMap<String, Vec<E>>,
+        old: &mut HashMap<String, Vec<Backend<Req>>>,
         addr: &str,
         timeout: Timeout,
         res: ResOption,
-    ) -> E {
+    ) -> Backend<Req> {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
-            _ => B::auth_option_build(
+            _ => crate::BackendBuilder::auth_option_build(
                 &addr,
                 self.parser.clone(),
                 Resource::Mysql,
@@ -314,10 +307,7 @@ where
         true
     }
 }
-impl<B, E, Req, P> discovery::Inited for KvService<B, E, Req, P>
-where
-    E: discovery::Inited,
-{
+impl<Req, P> discovery::Inited for KvService<Req, P> {
     // 每一个域名都有对应的endpoint，并且都初始化完成。
     #[inline]
     fn inited(&self) -> bool {

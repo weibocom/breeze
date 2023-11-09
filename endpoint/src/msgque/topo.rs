@@ -11,7 +11,7 @@ use tokio::time::Instant;
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::{Builder, Endpoint, Timeout, Topology};
+use crate::{Backend, Endpoint, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
 use crate::msgque::strategy::hitfirst::Node;
@@ -31,15 +31,15 @@ const OFFLINE_STOP_READ_SECONDS: u64 = 60 * 20;
 const OFFLINE_CLEAN_SECONDS: u64 = OFFLINE_STOP_READ_SECONDS + 60 * 2;
 
 #[derive(Clone)]
-pub struct MsgQue<B, E, Req, P> {
+pub struct MsgQue<Req, P> {
     service: String,
 
     // 读写stream需要分开，读会有大量的空读
-    streams_read: Vec<(String, E, usize)>,
-    streams_write: BTreeMap<usize, Vec<(String, E)>>,
+    streams_read: Vec<(String, Backend<Req>, usize)>,
+    streams_write: BTreeMap<usize, Vec<(String, Backend<Req>)>>,
 
     // 轮询访问，N分钟后下线
-    streams_offline: Vec<(String, E)>,
+    streams_offline: Vec<(String, Backend<Req>)>,
     offline_hits: Arc<AtomicUsize>,
     offline_time: Instant,
 
@@ -51,10 +51,10 @@ pub struct MsgQue<B, E, Req, P> {
 
     timeout_write: Timeout,
     timeout_read: Timeout,
-    _marker: std::marker::PhantomData<(B, Req)>,
+    _marker: std::marker::PhantomData<Req>,
 }
 
-impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
+impl<Req, P> From<P> for MsgQue<Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -75,10 +75,7 @@ impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> discovery::Inited for MsgQue<B, E, Req, P>
-where
-    E: discovery::Inited,
-{
+impl<Req, P> discovery::Inited for MsgQue<Req, P> {
     #[inline]
     fn inited(&self) -> bool {
         // check read streams
@@ -109,12 +106,10 @@ where
 
 const PADDING: Hasher = Hasher::Padding(Padding);
 
-impl<B, E, Req, P> Hash for MsgQue<B, E, Req, P>
+impl<Req, P> Hash for MsgQue<Req, P>
 where
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -122,10 +117,8 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for MsgQue<B, E, Req, P>
+impl<Req, P> Topology for MsgQue<Req, P>
 where
-    B: Send + Sync,
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -138,10 +131,8 @@ where
 }
 
 //TODO: 验证的时候需要考虑512字节这种边界msg
-impl<B, E, Req, P> Endpoint for MsgQue<B, E, Req, P>
+impl<Req, P> Endpoint for MsgQue<Req, P>
 where
-    B: Send + Sync,
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -212,10 +203,8 @@ where
 }
 
 //获得待读取的streams和qid，返回的bool指示是否从offline streams中读取，true为都offline stream
-impl<B, E, Req, P> MsgQue<B, E, Req, P>
+impl<Req, P> MsgQue<Req, P>
 where
-    B: Send + Sync,
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -249,14 +238,16 @@ where
     }
 }
 
-impl<B, E, Req, P> MsgQue<B, E, Req, P>
+impl<Req, P> MsgQue<Req, P>
 where
-    B: Builder<P, Req, E>,
-    E: Endpoint<Item = Req>,
     P: Protocol,
+    Req: Request,
 {
     // 构建下线的队列
-    fn build_offline(&mut self, sized_queue: &BTreeMap<usize, Vec<String>>) -> Vec<(String, E)> {
+    fn build_offline(
+        &mut self,
+        sized_queue: &BTreeMap<usize, Vec<String>>,
+    ) -> Vec<(String, Backend<Req>)> {
         let mut new_addrs = HashSet::with_capacity(self.streams_read.len());
         let _ = sized_queue
             .iter()
@@ -265,7 +256,7 @@ where
             if !new_addrs.contains(name) {
                 self.streams_offline.push((
                     name.clone(),
-                    B::build(
+                    crate::BackendBuilder::build(
                         name,
                         self.parser.clone(),
                         Resource::MsgQue,
@@ -290,11 +281,11 @@ where
 
     fn build_read_streams(
         &self,
-        old: &mut HashMap<String, E>,
+        old: &mut HashMap<String, Backend<Req>>,
         addrs: &BTreeMap<usize, Vec<String>>,
         name: &str,
         timeout: Timeout,
-    ) -> Vec<(String, E, usize)> {
+    ) -> Vec<(String, Backend<Req>, usize)> {
         let mut streams = Vec::with_capacity(addrs.len());
         for (size, servs) in addrs.iter() {
             for s in servs.iter() {
@@ -306,7 +297,7 @@ where
             .map(|(srv, size)| {
                 (
                     srv.clone(),
-                    old.remove(srv).unwrap_or(B::build(
+                    old.remove(srv).unwrap_or(crate::BackendBuilder::build(
                         srv,
                         self.parser.clone(),
                         Resource::MsgQue,
@@ -324,7 +315,7 @@ where
         addrs: &BTreeMap<usize, Vec<String>>,
         name: &str,
         timeout: Timeout,
-    ) -> BTreeMap<usize, Vec<(String, E)>> {
+    ) -> BTreeMap<usize, Vec<(String, Backend<Req>)>> {
         let mut old_streams = HashMap::with_capacity(self.streams_write.len() * 3);
         if self.streams_write.len() > 0 {
             let mut first_key = 512;
@@ -348,13 +339,15 @@ where
                     .map(|addr| {
                         (
                             addr.clone(),
-                            old_streams.remove(addr).unwrap_or(B::build(
-                                addr,
-                                self.parser.clone(),
-                                Resource::MsgQue,
-                                name,
-                                timeout,
-                            )),
+                            old_streams
+                                .remove(addr)
+                                .unwrap_or(crate::BackendBuilder::build(
+                                    addr,
+                                    self.parser.clone(),
+                                    Resource::MsgQue,
+                                    name,
+                                    timeout,
+                                )),
                         )
                     })
                     .collect(),
@@ -385,11 +378,10 @@ where
     // }
 }
 
-impl<B, E, Req, P> TopologyWrite for MsgQue<B, E, Req, P>
+impl<Req, P> TopologyWrite for MsgQue<Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    Req: Request,
 {
     #[inline]
     fn update(&mut self, name: &str, cfg: &str) {
@@ -403,7 +395,7 @@ where
             self.timeout_write.adjust(ns.timeout_write);
 
             let old_r = self.streams_read.split_off(0);
-            let mut old_streams_read: HashMap<String, E> =
+            let mut old_streams_read: HashMap<String, Backend<Req>> =
                 old_r.into_iter().map(|(addr, e, _)| (addr, e)).collect();
 
             // 首先构建offline stream，如果前一次下线ips已经超时，先清理

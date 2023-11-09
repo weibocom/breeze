@@ -23,7 +23,7 @@ pub struct BackendChecker<P, Req> {
     init: Switcher,
     parser: P,
     addr: String,
-    timeout: endpoint::Timeout,
+    timeout: crate::Timeout,
     path: Path,
     option: ResOption,
 }
@@ -36,7 +36,7 @@ impl<P, Req> BackendChecker<P, Req> {
         init: Switcher,
         parser: P,
         path: Path,
-        timeout: endpoint::Timeout,
+        timeout: crate::Timeout,
         option: ResOption,
     ) -> Self {
         Self {

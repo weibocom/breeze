@@ -1,11 +1,10 @@
 use std::io::{Error, ErrorKind, Result};
 
 use discovery::Inited;
-use protocol::{Protocol, ResOption, Resource};
+use protocol::Protocol;
 use sharding::hash::{Hash, HashKey};
 
 use crate::msgque::topo::MsgQue;
-use crate::Timeout;
 
 use enum_dispatch::enum_dispatch;
 
@@ -69,31 +68,31 @@ where
     }
 }
 
-pub trait Builder<P, R, E> {
-    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {
-        Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
-    }
+// pub trait Builder<P, R, E> {
+//     fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {
+//         Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
+//     }
 
-    // TODO: ResOption -> AuthOption
-    fn auth_option_build(
-        addr: &str,
-        parser: P,
-        rsrc: Resource,
-        service: &str,
-        timeout: Timeout,
-        option: ResOption,
-    ) -> E;
-}
+//     // TODO: ResOption -> AuthOption
+//     fn auth_option_build(
+//         addr: &str,
+//         parser: P,
+//         rsrc: Resource,
+//         service: &str,
+//         timeout: Timeout,
+//         option: ResOption,
+//     ) -> E;
+// }
 
 macro_rules! define_topology {
     ($($top:ty, $item:ident, $ep:expr);+) => {
 
  #[derive(Clone)]
- pub enum TopologyProtocol<B, E, R, P> {
+ pub enum TopologyProtocol<R, P> {
       $($item($top)),+
  }
 
- impl<B, E, R, P> TopologyProtocol<B, E, R, P>  {
+ impl<R, P> TopologyProtocol<R, P>  {
      pub fn try_from(parser:P, endpoint:&str) -> Result<Self> {
           match &endpoint[..]{
               $($ep => Ok(Self::$item(parser.into())),)+
@@ -101,7 +100,7 @@ macro_rules! define_topology {
           }
      }
  }
- impl<B, E, R, P> Inited for TopologyProtocol<B, E, R, P> where E:Inited {
+ impl<R, P> Inited for TopologyProtocol<R, P> {
      #[inline]
      fn inited(&self) -> bool {
           match self {
@@ -112,7 +111,7 @@ macro_rules! define_topology {
      }
  }
 
-impl<B, E, R, P> discovery::TopologyWrite for TopologyProtocol<B, E, R, P> where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>+Single{
+impl<R, P> discovery::TopologyWrite for TopologyProtocol<R, P> where P:Sync+Send+Protocol, R:protocol::Request{
     #[inline]
     fn update(&mut self, name: &str, cfg: &str) {
         match self {
@@ -139,8 +138,8 @@ impl<B, E, R, P> discovery::TopologyWrite for TopologyProtocol<B, E, R, P> where
     }
 }
 
-impl<B:Send+Sync, E, R, P> Hash for TopologyProtocol<B, E, R, P>
-where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
+impl<R, P> Hash for TopologyProtocol<R, P>
+where P:Sync+Send+Protocol, R:protocol::Request{
     #[inline]
     fn hash<K:HashKey>(&self, k:&K) -> i64 {
         match self {
@@ -151,8 +150,8 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
     }
 }
 
-impl<B:Send+Sync, E, R, P> Topology for TopologyProtocol<B, E, R, P>
-where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
+impl<R, P> Topology for TopologyProtocol<R, P>
+where P:Sync+Send+Protocol, R:protocol::Request{
     #[inline]
     fn exp_sec(&self) -> u32 {
         match self {
@@ -163,11 +162,11 @@ where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
     }
 }
 
-impl<B, E, R, P> Endpoint for TopologyProtocol<B, E, R, P>
-where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
+impl<R, P> Endpoint for TopologyProtocol<R, P>
+where P:Sync+Send+Protocol,
     R: protocol::Request,
     P: Protocol,
-    B:Send+Sync,
+
 {
     type Item = R;
     #[inline]
@@ -203,12 +202,12 @@ use crate::redisservice::topo::RedisService;
 use crate::uuid::topo::UuidService;
 
 define_topology! {
-    MsgQue<B, E, R, P>, MsgQue, "mq";
-    RedisService<B, E, R, P>, RedisService, "rs";
-    CacheService<B, E, R, P>, CacheService, "cs";
-    PhantomService<B, E, R, P>, PhantomService, "pt";
-    KvService<B, E, R, P>, KvService, "kv";
-    UuidService<B, E, R, P>, UuidService, "uuid"
+    MsgQue<R, P>, MsgQue, "mq";
+    RedisService<R, P>, RedisService, "rs";
+    CacheService<R, P>, CacheService, "cs";
+    PhantomService<R, P>, PhantomService, "pt";
+    KvService<R, P>, KvService, "kv";
+    UuidService<R, P>, UuidService, "uuid"
 }
 
 // 从环境变量获取是否开启后端资源访问的性能模式

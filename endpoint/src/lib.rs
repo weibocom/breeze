@@ -2,12 +2,17 @@ mod shards;
 mod topo;
 pub use topo::*;
 
+mod builder;
 pub mod cacheservice;
+pub(crate) mod checker;
+pub mod handler;
 pub mod kv;
 pub mod msgque;
 pub mod phantomservice;
+mod reconn;
 pub mod redisservice;
 pub mod uuid;
+pub use builder::*;
 
 pub(crate) mod dns;
 

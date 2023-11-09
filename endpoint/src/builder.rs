@@ -9,7 +9,7 @@ use ds::chan::mpsc::{channel, Sender, TrySendError};
 use ds::Switcher;
 
 use crate::checker::BackendChecker;
-use endpoint::{Builder, Endpoint, Single, Timeout};
+use crate::{Endpoint, Single, Timeout};
 use metrics::Path;
 use protocol::{Error, Protocol, Request, ResOption, Resource};
 
@@ -18,15 +18,26 @@ pub struct BackendBuilder<P, R> {
     _marker: std::marker::PhantomData<(P, R)>,
 }
 
-impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
-    fn auth_option_build(
+pub type Backend<R> = Arc<InnerBackend<R>>;
+
+impl<P: Protocol, R: Request> BackendBuilder<P, R> {
+    pub fn build(
+        addr: &str,
+        parser: P,
+        rsrc: Resource,
+        service: &str,
+        timeout: Timeout,
+    ) -> Backend<R> {
+        Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
+    }
+    pub fn auth_option_build(
         addr: &str,
         parser: P,
         rsrc: Resource,
         service: &str,
         timeout: Timeout,
         option: ResOption,
-    ) -> Arc<Backend<R>> {
+    ) -> Backend<R> {
         let (tx, rx) = channel(256);
         let finish: Switcher = false.into();
         let init: Switcher = false.into();
@@ -38,7 +49,7 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
         let s = single.clone();
         rt::spawn(async move { checker.start_check(s).await });
 
-        Backend {
+        InnerBackend {
             finish,
             init,
             tx,
@@ -48,7 +59,7 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
     }
 }
 
-pub struct Backend<R> {
+pub struct InnerBackend<R> {
     single: Arc<AtomicBool>,
     tx: Sender<R>,
     // 实例销毁时，设置该值，通知checker，会议上check.
@@ -57,7 +68,7 @@ pub struct Backend<R> {
     init: Switcher,
 }
 
-impl<R> discovery::Inited for Backend<R> {
+impl<R> discovery::Inited for InnerBackend<R> {
     // 已经连接上或者至少连接了一次
     #[inline]
     fn inited(&self) -> bool {
@@ -65,13 +76,13 @@ impl<R> discovery::Inited for Backend<R> {
     }
 }
 
-impl<R> Drop for Backend<R> {
+impl<R> Drop for InnerBackend<R> {
     fn drop(&mut self) {
         self.finish.on();
     }
 }
 
-impl<R: Request> Endpoint for Backend<R> {
+impl<R: Request> Endpoint for InnerBackend<R> {
     type Item = R;
     #[inline]
     fn send(&self, req: R) {
@@ -84,7 +95,7 @@ impl<R: Request> Endpoint for Backend<R> {
         }
     }
 }
-impl<R> Single for Backend<R> {
+impl<R> Single for InnerBackend<R> {
     fn single(&self) -> bool {
         self.single.load(Acquire)
     }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Builder, Endpoint, Single, Topology};
+use crate::{Backend, Endpoint, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource};
 use sharding::{
@@ -13,13 +13,13 @@ use crate::{dns::DnsConfig, Timeout};
 use discovery::dns::{self, IPPort};
 
 #[derive(Clone)]
-pub struct UuidService<B, E, Req, P> {
-    shard: Distance<(String, E)>,
+pub struct UuidService<Req, P> {
+    shard: Distance<(String, Backend<Req>)>,
     parser: P,
     cfg: Box<DnsConfig<UuidNamespace>>,
-    _mark: std::marker::PhantomData<(B, Req)>,
+    _mark: std::marker::PhantomData<Req>,
 }
-impl<B, E, Req, P> From<P> for UuidService<B, E, Req, P> {
+impl<Req, P> From<P> for UuidService<Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -31,12 +31,10 @@ impl<B, E, Req, P> From<P> for UuidService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> Hash for UuidService<B, E, Req, P>
+impl<Req, P> Hash for UuidService<Req, P>
 where
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, _k: &K) -> i64 {
@@ -44,18 +42,15 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for UuidService<B, E, Req, P>
+impl<Req, P> Topology for UuidService<Req, P>
 where
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for UuidService<B, E, Req, P>
+impl<Req, P> Endpoint for UuidService<Req, P>
 where
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -96,11 +91,10 @@ where
         0
     }
 }
-impl<B, E, Req, P> TopologyWrite for UuidService<B, E, Req, P>
+impl<Req, P> TopologyWrite for UuidService<Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    Req: Request,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -118,10 +112,7 @@ where
         self.cfg.load_guard().check_load(|| self.load_inner());
     }
 }
-impl<B, E, Req, P> discovery::Inited for UuidService<B, E, Req, P>
-where
-    E: discovery::Inited,
-{
+impl<Req, P> discovery::Inited for UuidService<Req, P> {
     #[inline]
     fn inited(&self) -> bool {
         self.shard.len() > 0
@@ -132,18 +123,28 @@ where
     }
 }
 
-impl<B, E, Req, P> UuidService<B, E, Req, P>
+impl<Req, P> UuidService<Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    Req: Request,
 {
     #[inline]
-    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
+    fn take_or_build(
+        &self,
+        old: &mut HashMap<String, Vec<Backend<Req>>>,
+        addr: &str,
+        timeout: Timeout,
+    ) -> Backend<Req> {
         let service = &self.cfg.service;
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
-            _ => B::build(&addr, self.parser.clone(), Resource::Uuid, service, timeout),
+            _ => crate::BackendBuilder::build(
+                &addr,
+                self.parser.clone(),
+                Resource::Uuid,
+                service,
+                timeout,
+            ),
         }
     }
 
@@ -198,9 +199,8 @@ where
     }
 }
 
-impl<B: Send + Sync, E, Req, P> std::fmt::Display for UuidService<B, E, Req, P>
+impl<Req, P> std::fmt::Display for UuidService<Req, P>
 where
-    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
