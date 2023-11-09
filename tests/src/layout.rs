@@ -1,7 +1,7 @@
 // 不要轻易变更这里面的测试用例，除非你知道你在做什么。拉相关同学进行方案评审。
 use std::mem::size_of;
 
-use endpoint::Backend;
+use endpoint::InnerBackend;
 use protocol::{callback::CallbackContext, Parser};
 use stream::Request;
 type Topology = endpoint::TopologyProtocol<Request, Parser>;
@@ -37,7 +37,7 @@ fn checkout_basic() {
     assert_eq!(16, size_of::<metrics::Metric>());
     assert_eq!(64, size_of::<metrics::Item>());
     assert_eq!(1, size_of::<Parser>());
-    assert_eq!(48, size_of::<Backend<Request>>());
+    assert_eq!(48, size_of::<InnerBackend<Request>>());
     assert_eq!(40, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
