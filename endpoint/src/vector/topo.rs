@@ -87,7 +87,7 @@ where
                 }
             };
 
-            let shard_idx = self.shard_idx(req.hash());
+            let shard_idx = self.shard_idx(self.hash(&vcmd.keys[0]));
             req.ctx().year = year;
             req.ctx().shard_idx = shard_idx as u16;
 

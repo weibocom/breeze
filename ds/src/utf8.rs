@@ -13,7 +13,7 @@ impl Utf8 for &[u8] {
                 .collect(),
         )
         .unwrap()
-            + &format!("u8_format:{:?}", self)
+            + &format!(" u8_format:{:?}", self)
     }
 }
 impl Utf8 for Vec<u8> {
