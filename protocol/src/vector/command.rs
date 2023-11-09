@@ -2,9 +2,12 @@ use ds::RingSlice;
 
 use crate::Operation;
 
+use super::OP_VRANGE;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(u16)]
 pub enum CommandType {
-    VRange = 0,
+    VRange = OP_VRANGE,
     VAdd,
     VUpdate,
     VDel,
