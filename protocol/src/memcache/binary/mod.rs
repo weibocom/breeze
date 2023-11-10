@@ -71,8 +71,6 @@ impl Protocol for MemcacheBinary {
             debug_assert!(!r.quiet_get(), "rsp: {:?}", r);
             if len >= pl {
                 return if !r.is_quiet() {
-                    //let mut flag = Flag::from_op(r.op() as u16, r.operation());
-                    //flag.set_status_ok(r.status_ok());
                     Ok(Some(Command::from(r.status_ok(), data.take(pl))))
                 } else {
                     // response返回quite请求只有一种情况：出错了。

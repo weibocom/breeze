@@ -72,11 +72,9 @@ impl<T: Addr> Distance<T> {
             // 按distance选local
             // 1. 距离小于等于4为local
             // 2. local为0，则全部为local
-            let l = replicas.sort_by_region(
-                Vec::new(),
-                context::get().region(),
-                |d, _| d <= discovery::distance::DISTANCE_VAL_REGION,
-            );
+            let l = replicas.sort_by_region(Vec::new(), context::get().region(), |d, _| {
+                d <= discovery::distance::DISTANCE_VAL_REGION
+            });
             if l == 0 {
                 log::warn!(
                     "too few instance in region:{} total:{}, {:?}",
@@ -156,6 +154,11 @@ impl<T: Addr> Distance<T> {
     fn check_quota_get_idx(&self) -> usize {
         if !self.backend_quota {
             return (self.idx.fetch_add(1, Relaxed) >> 10) % self.local_len();
+        }
+
+        // 如果local 只有一个，直接返回0，不用计算了 fishermen
+        if self.local_len() == 1 {
+            return 0;
         }
 
         let mut idx = self.idx();
