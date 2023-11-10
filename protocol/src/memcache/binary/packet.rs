@@ -269,6 +269,7 @@ impl Binary for RingSlice {
         if is_ok || !self.operation().is_store() {
             return is_ok;
         }
+
         // store cmd 请求失败了，某些描述的场景需要当作成功 fishermen
         let status = self.read_u16(6);
         match self.op() {
