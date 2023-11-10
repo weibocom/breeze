@@ -53,6 +53,17 @@ impl Metric {
             &mut *(self as *const _ as *mut _)
         }
     }
+    pub fn inited(&mut self) -> bool {
+        self.item.inited()
+    }
+    // num类型，若未初始化则尝试初始化；若已经初始化，则值清0
+    pub fn zero_num(&mut self) {
+        if !self.inited() {
+            self.try_inited();
+        } else {
+            self.item.data().zero_num();
+        }
+    }
 }
 impl<T: MetricData + Debug> AddAssign<T> for Metric {
     #[inline]

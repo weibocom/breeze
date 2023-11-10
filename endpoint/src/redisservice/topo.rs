@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{Builder, Endpoint, Single, Topology};
-use discovery::TopologyWrite;
+use discovery::{distance, TopologyWrite};
 use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
@@ -10,6 +10,7 @@ use sharding::Distance;
 use super::config::RedisNamespace;
 use crate::{dns::DnsConfig, Timeout};
 use discovery::dns::{self, IPPort};
+use metrics::Path;
 
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
@@ -262,6 +263,7 @@ where
         for (master_addr, slaves) in addrs {
             assert_ne!(master_addr.len(), 0);
             assert_ne!(slaves.len(), 0);
+            let port = master_addr.port().to_string();
             let master = self.take_or_build(&mut old, &master_addr, self.cfg.timeout_master());
             master.enable_single();
 
@@ -281,6 +283,13 @@ where
                 replicas,
                 self.cfg.basic.region_enabled,
             );
+
+            // 推送可用区内的len
+            if self.cfg.basic.region_enabled {
+                let len_region = shard.len_region();
+                self.len_region_metric(len_region, port.as_str());
+            }
+
             self.shards.push(shard);
         }
         assert_eq!(self.shards.len(), self.cfg.shards_url.len());
@@ -290,6 +299,19 @@ where
         });
 
         true
+    }
+
+    fn len_region_metric(&self, len_region: u16, port: &str) {
+        let path = Path::new(vec![
+            Resource::Redis.name(),
+            port,
+            distance::region().as_str(),
+        ]);
+        let mut metric = path.num("region_resource");
+        if metric.inited() {
+            metric.zero_num()
+        };
+        metric += len_region + 10000; // snapshot时>0才有输出，len_region这里加10000作为基准值，保证监控有数据；
     }
 }
 #[derive(Clone)]
@@ -326,6 +348,9 @@ impl<E> Shard<E> {
     #[inline]
     fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
         unsafe { self.slaves.unsafe_next(idx, runs) }
+    }
+    pub fn len_region(&self) -> u16 {
+        self.slaves.len_region()
     }
 }
 impl<E: discovery::Inited> Shard<E> {
