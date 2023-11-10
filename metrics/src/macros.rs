@@ -4,6 +4,7 @@ use std::sync::Arc;
 pub trait MetricData: Sized {
     fn incr_to(self, data: &ItemData);
     fn incr_to_cache(self, _id: &Arc<Id>) {}
+    fn zero(self, _data: &ItemData) {}
 }
 
 #[derive(Default, Debug)]
@@ -30,6 +31,13 @@ impl ItemData {
         assert!(self.id.t.is_num());
         self.inner.num.incr(num);
     }
+    #[inline]
+    pub fn zero_num(&self) {
+        assert!(self.id.t.is_num());
+        unsafe {
+            self.inner.num.zero();
+        }
+    }
 }
 use crate::ToNumber;
 impl<T: ToNumber> MetricData for T {
@@ -40,6 +48,10 @@ impl<T: ToNumber> MetricData for T {
     #[inline]
     fn incr_to_cache(self, id: &Arc<Id>) {
         crate::register_cache(id, self.int());
+    }
+    #[inline]
+    fn zero(self, data: &ItemData) {
+        data.zero_num();
     }
 }
 use ds::time::Duration;

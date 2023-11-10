@@ -208,6 +208,9 @@ impl DistanceCalculator {
             }
         }
     }
+    pub fn region(&self) -> &Option<String> {
+        &self.local_region
+    }
 }
 
 pub trait Addr {
@@ -493,4 +496,21 @@ impl BClass for &String {
         }
         b
     }
+}
+
+// 本机的region，优先级：
+// 1. 启动参数/环境变量的region
+// 2. 本机IP对应的region
+// 3. 本机IP
+pub fn region() -> String {
+    if let Some(region) = context::get().region() {
+        return region.to_string();
+    }
+
+    let cal = unsafe { DISTANCE_CALCULATOR.get_unchecked().get() };
+    if let Some(region) = cal.region() {
+        return region.clone();
+    }
+
+    return metrics::raw_local_ip().to_string();
 }
