@@ -1,6 +1,6 @@
 use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
-use protocol::{Protocol, Request, Resource, TryNextType};
+use protocol::{Protocol, Request, Resource};
 use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
 use std::collections::HashMap;
@@ -20,8 +20,15 @@ pub struct CacheService<B, E, Req, P> {
     hasher: Hasher,
     parser: P,
     exp_sec: u32,
-    force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
-    backend_no_storage: bool, // true：mc后面没有存储
+
+    // TODO 线上稳定后再清理，预计2024.2之后
+    // 1. 去掉force_write_all，其设计的本意是set失败后，是否更新其他layer；
+    // 当前的设计原则已经改为可用性优先，只要有layer可用，就应该对外提供服务，所以force_write_all都应该为true，也就失去了存在的价值了；
+    // b2. ackend_no_storage 也去掉，理由同上；
+    //
+    // 兼容已有业务逻辑，set master失败后，是否更新其他layer
+    // force_write_all: bool,
+    // backend_no_storage: bool, // true：mc后面没有存储
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -32,10 +39,10 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             parser,
             streams: Distance::new(),
             exp_sec: 0,
-            force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
+            // force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
             _marker: Default::default(),
-            backend_no_storage: false,
+            // backend_no_storage: false,
         }
     }
 }
@@ -105,7 +112,7 @@ where
                     req.quota(quota);
                 }
             }
-            self.context_get(&mut ctx)
+            self.context_get(&mut ctx, &req)
         };
         req.try_next(try_next);
         req.write_back(write_back);
@@ -130,6 +137,7 @@ where
         let (idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
+            // 写指令，总是从master开始
             idx = ctx.take_write_idx() as usize;
             write_back = idx + 1 < self.streams.len();
 
@@ -140,11 +148,12 @@ where
                 false
             } else {
                 use protocol::memcache::Binary;
-                match req.try_next_type() {
-                    TryNextType::NotTryNext => false,
-                    TryNextType::TryNext => true,
-                    TryNextType::Unkown => self.force_write_all,
-                }
+                req.can_retry()
+                // match req.try_next_type() {
+                //     TryNextType::NotTryNext => false,
+                //     TryNextType::TryNext => true,
+                //     // TryNextType::Unkown => self.force_write_all,
+                // }
             };
         } else {
             // 是读触发的回种的写请求
@@ -161,15 +170,18 @@ where
     //   若有L1，则两次访问分布在M、L1
     //   若无L1，则两次访问分布在M、S；#654
     #[inline]
-    fn context_get(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
-        let (idx, try_next, write_back);
+    fn context_get(&self, ctx: &mut super::Context, req: &Req) -> (usize, bool, bool) {
+        let (mut idx, try_next, write_back);
         if !ctx.check_and_inited(false) {
-            idx = self.streams.select_idx();
-            // 第一次访问，没有取到master，则下一次一定可以取到master
-            // 如果取到了master，有slave也可以继续访问
-            // 后端无storage且后端资源不止一组，可以多访问一次
-            try_next = (self.streams.local_len() > 1)
-                || self.backend_no_storage && (self.streams.len() > 1);
+            // 第一个retrieve，如果需要master-first，则直接访问master
+            idx = match req.operation().master_first() {
+                true => 0,
+                false => self.streams.select_idx(),
+            };
+
+            // TODO 去掉#654 的backend_no_storage逻辑
+            // 新逻辑：只要有多层，必须可以try_next fishermen
+            try_next = self.streams.len() > 1;
             write_back = false;
         } else {
             let last_idx = ctx.index();
@@ -179,8 +191,13 @@ where
             if last_idx != 0 {
                 idx = 0;
             } else {
-                // #654场景，这里idx会选到S
-                idx = self.streams.select_next_idx(0, 1);
+                // 满足#654场景，这里idx需要选到S
+                // 同时，为避免gets把第一个masterL1打成热点，先尝试用当前策略的读idx fishermen
+                idx = self.streams.select_idx();
+                if idx == 0 {
+                    // 如果不幸命中0，或者本来就没有master(local为1)，再用select_next_idx强选下一个
+                    idx = self.streams.select_next_idx(0, 1);
+                }
             }
             write_back = true;
         }
@@ -199,9 +216,10 @@ where
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
-            self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
-            self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
-            self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
+            // 转换成秒
+            self.exp_sec = (ns.exptime / 1000) as u32;
+            // self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
+            // self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
             let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();
