@@ -264,10 +264,10 @@ impl Binary for RingSlice {
     fn status_ok(&self) -> bool {
         debug_assert!(self.len() >= HEADER_LEN);
         debug_assert_eq!(self.at(PacketPos::Magic as usize), RESPONSE_MAGIC);
-        let ok = self.at(6) == 0 && self.at(7) == 0;
+        let is_ok = self.at(6) == 0 && self.at(7) == 0;
         // 请求ok 或者 非store类型指令，直接返回响应状态
-        if ok || !self.operation().is_store() {
-            return ok;
+        if is_ok || !self.operation().is_store() {
+            return is_ok;
         }
         // store cmd 请求失败了，某些描述的场景需要当作成功 fishermen
         let status = self.read_u16(6);
@@ -275,7 +275,7 @@ impl Binary for RingSlice {
             OP_SET | OP_SETQ => self.cas() == 0 || status != RespStatus::KeyExists as u16,
             OP_ADD | OP_ADDQ => status != RespStatus::NotStored as u16,
             OP_DEL | OP_DELQ => true,
-            _ => ok,
+            _ => is_ok,
         }
     }
     #[inline(always)]
