@@ -1,5 +1,4 @@
 use std::io::{Error, ErrorKind, Result};
-use std::ops::Deref;
 
 use discovery::{Inited, TopologyWrite};
 use protocol::{Protocol, Request, ResOption, Resource};
@@ -49,23 +48,6 @@ procs::topology_dispatcher! {
         fn hash<S: HashKey>(&self, key: &S) -> i64;
     } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, B:Send+Sync
 
-}
-
-impl<T, R, E> Endpoint for E
-where
-    E: Deref<Target = T> + Send + Sync,
-    T: Endpoint<Item = R>,
-{
-    type Item = R;
-    #[inline(always)]
-    fn send(&self, req: R) {
-        (**self).send(req)
-    }
-
-    #[inline(always)]
-    fn shard_idx(&self, hash: i64) -> usize {
-        (**self).shard_idx(hash)
-    }
 }
 
 pub trait Single {
