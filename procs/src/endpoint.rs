@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input, Fields, FnArg, ItemEnum, ItemTrait, PatType, Result, Token, TraitItem,
-    Visibility, WhereClause,
+    parse_macro_input, FnArg, ItemEnum, ItemTrait, PatType, Result, Token, TraitItem, Visibility,
+    WhereClause,
 };
 pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as TopologyInput);
@@ -44,35 +44,56 @@ pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
             let arms = enum_def.variants.iter().map(|variant| {
                 let args = args.clone();
                 let variant_ident = &variant.ident;
-                let variant_tuple = match &variant.fields {
-                    Fields::Unnamed(fields) => {
-                        assert!(fields.unnamed.len() == 1, "Only support 1 tuple variants");
-                        // 有且只有一个元素
-                        fields.unnamed.iter().enumerate().map(|(i, _)| {
-                            format_ident!("x{}", i)
-                        }).collect::<Vec<_>>()
-                    },
-                    _ => vec![],
-                };
+                let variant_tuple = vec![format_ident!("p")];
                 quote! {
                     #enum_name::#variant_ident(#(#variant_tuple),*) => #trait_ident::#method_name(#(#variant_tuple),*, #(#args),*),
                 }
             });
 
-        quote! {
-            #[inline]
-            #sig {
-                match self {
-                    #(#arms)*
+            quote! {
+                #[inline]
+                #sig {
+                    match self {
+                        #(#arms)*
+                    }
                 }
             }
-        }
     });
 
      let trait_define = match trait_def.vis {
          Visibility::Public(_) => Some(&trait_def),
          _ => None,
      };
+     // 为endpoint生成一个 Deref的实现
+     let endpoint_deref_impl = type_def.as_ref().map(|td| {
+         let methods = trait_def.items.iter().map(|item| {
+             if let TraitItem::Method(method) = item {
+                 let sig = method.sig.clone();
+                 let method_name = &sig.ident;
+                 let args = sig.inputs.iter().skip(1).map(|arg| if let FnArg::Typed(PatType { pat, .. }) = arg {
+                     pat
+                 } else {
+                     panic!("Only support typed arguments")
+                 });
+                 let impls = quote! {
+                     #[inline]
+                     #sig {
+                         self.deref().#method_name(#(#args),*)
+                     }
+                 };
+                 Some(impls)
+             } else {
+                 None
+             }
+         }).filter_map(|x| x);
+         quote! {
+            impl<T, R, E> #trait_ident for T where T: std::ops::Deref<Target = E> + Sync + Send, E: #trait_ident<Item = R> {
+                #td
+
+                #(#methods)* 
+            }
+         }
+     });
 
     quote! {
         #trait_define
@@ -82,6 +103,8 @@ pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
 
             #(#method_impls)*
         }
+
+        #endpoint_deref_impl
     }
     });
 
