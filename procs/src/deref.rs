@@ -30,6 +30,7 @@ pub fn impl_trait_for_deref_target(_attr: TokenStream, input: TokenStream) -> To
         });
 
         quote! {
+            #[inline]
             #sig {
                 (&**self).#method_name(#(#args),*)
             }
