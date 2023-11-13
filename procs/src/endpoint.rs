@@ -126,10 +126,10 @@ pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
     });
     let try_from = quote! {
         impl #enum_generics  #enum_name #enum_generics {
-            pub fn try_from(p:P, endpoint:&str) -> Result<Self> {
+            pub fn try_from(p:P, endpoint:&str) -> std::io::Result<Self> {
                 match endpoint {
                     #(#try_from_arms)*
-                    _ => Err(Error::new(ErrorKind::InvalidData, format!("'{}' is not a valid endpoint", endpoint))),
+                    _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("'{}' is not a valid endpoint", endpoint))),
                 }
             }
         }
