@@ -64,36 +64,6 @@ pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
          Visibility::Public(_) => Some(&trait_def),
          _ => None,
      };
-     // 为endpoint生成一个 Deref的实现
-     let endpoint_deref_impl = type_def.as_ref().map(|td| {
-         let methods = trait_def.items.iter().map(|item| {
-             if let TraitItem::Method(method) = item {
-                 let sig = method.sig.clone();
-                 let method_name = &sig.ident;
-                 let args = sig.inputs.iter().skip(1).map(|arg| if let FnArg::Typed(PatType { pat, .. }) = arg {
-                     pat
-                 } else {
-                     panic!("Only support typed arguments")
-                 });
-                 let impls = quote! {
-                     #[inline]
-                     #sig {
-                         self.deref().#method_name(#(#args),*)
-                     }
-                 };
-                 Some(impls)
-             } else {
-                 None
-             }
-         }).filter_map(|x| x);
-         quote! {
-            impl<T, R, E> #trait_ident for T where T: std::ops::Deref<Target = E> + Sync + Send, E: #trait_ident<Item = R> {
-                #td
-
-                #(#methods)* 
-            }
-         }
-     });
 
     quote! {
         #trait_define
@@ -104,7 +74,6 @@ pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
             #(#method_impls)*
         }
 
-        #endpoint_deref_impl
     }
     });
 
