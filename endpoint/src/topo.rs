@@ -1,5 +1,3 @@
-use std::io::{Error, ErrorKind, Result};
-
 use discovery::{Inited, TopologyWrite};
 use protocol::{Protocol, Request, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
@@ -8,8 +6,7 @@ use crate::Timeout;
 
 pub type TopologyProtocol<B, E, R, P> = Topologies<B, E, R, P>;
 
-// 1. 生成一个try_from(parser,
-//    endpoint)的方法，endpoint是名字的第一个单词或者是所有单词的首字母。RedisService的名字为"rs"或者"redis"
+// 1. 生成一个try_from(parser, endpoint)的方法，endpoint是名字的第一个单词或者是所有单词的首字母。RedisService的名字为"rs"或者"redis"
 // 2. trait => where表示，为Topologies实现trait，满足where的条件
 // 3. 如果trait是pub的，则同时会创建这个trait。非pub的trait，只会为Topologies实现
 procs::topology_dispatcher! {
