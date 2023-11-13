@@ -171,7 +171,7 @@ where
     //   若无L1，则两次访问分布在M、S；#654
     #[inline]
     fn context_get(&self, ctx: &mut super::Context, req: &Req) -> (usize, bool, bool) {
-        let (mut idx, try_next, write_back);
+        let (idx, try_next, write_back);
         if !ctx.check_and_inited(false) {
             // 第一个retrieve，如果需要master-first，则直接访问master
             idx = match req.operation().master_first() {
@@ -191,13 +191,9 @@ where
             if last_idx != 0 {
                 idx = 0;
             } else {
-                // 满足#654场景，这里idx需要选到S
-                // 同时，为避免gets把第一个masterL1打成热点，先尝试用当前策略的读idx fishermen
-                idx = self.streams.select_idx();
-                if idx == 0 {
-                    // 如果不幸命中0，或者本来就没有master(local为1)，再用select_next_idx强选下一个
-                    idx = self.streams.select_next_idx(0, 1);
-                }
+                // 满足#654场景，如果没有MasterL1，这里idx需要选到Slave
+                // 同时，为确保gets成功，请求路径按照固定顺序进行 fishermen
+                idx = self.streams.select_next_sequence_idx(0, 1);
             }
             write_back = true;
         }
