@@ -198,10 +198,11 @@ impl<T: Addr> Distance<T> {
         let idx = self.select_idx();
         (idx, unsafe { &self.replicas.get_unchecked(idx).0 })
     }
-    // idx: 上一次获取到的idx
-    // runs: 已经连续获取到的次数
+    /// idx: 上一次获取到的idx
+    /// runs: 已经连续获取到的次数
+    /// random_remote: 访问remote时，是否使用随机起点位置
     #[inline]
-    pub fn select_next_idx(&self, idx: usize, runs: usize) -> usize {
+    pub fn select_next_idx(&self, idx: usize, runs: usize, random_remote: bool) -> usize {
         assert!(runs < self.len(), "{} {} {:?}", idx, runs, self);
         // 还可以从local中取
         let s_idx = if runs < self.local_len() {
@@ -210,8 +211,8 @@ impl<T: Addr> Distance<T> {
         } else {
             // 从remote中取. remote_len > 0
             assert_ne!(self.local_len(), self.len(), "{} {} {:?}", idx, runs, self);
-            if idx < self.local_len() {
-                // 第一次使用remote，为避免热点，从[len_local..len)随机取一个
+            if random_remote && idx < self.local_len() {
+                // remomte需要random，且第一次使用remote，为避免热点，从[len_local..len)随机取一个
                 rand::thread_rng().gen_range(self.local_len()..self.len())
             } else {
                 // 按顺序从remote中取. 走到最后一个时，从local_len开始
@@ -221,9 +222,16 @@ impl<T: Addr> Distance<T> {
         assert!(s_idx < self.len(), "{},{} {} {:?}", idx, s_idx, runs, self);
         s_idx
     }
+    /// idx: 上一次获取到的idx
+    /// runs: 已经连续获取到的次数
+    /// 返回有序的idx，不会返回随机顺序的idx
+    #[inline]
+    pub fn select_next_sequence_idx(&self, idx: usize, runs: usize) -> usize {
+        self.select_next_idx(idx, runs, false)
+    }
     #[inline]
     pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T) {
-        let idx = self.select_next_idx(idx, runs);
+        let idx = self.select_next_idx(idx, runs, true);
         (idx, &self.replicas.get_unchecked(idx).0)
     }
     pub fn into_inner(self) -> Vec<T> {
