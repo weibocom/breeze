@@ -20,7 +20,7 @@ procs::topology_dispatcher! {
         UuidService(crate::uuid::topo::UuidService<B, E, R, P>),
     }
 
-    #[procs::dispatcher_trait_deref] 
+    #[procs::dispatcher_trait_deref]
     pub trait Endpoint: Sized + Send + Sync {
         type Item;
         fn send(&self, req: Self::Item);

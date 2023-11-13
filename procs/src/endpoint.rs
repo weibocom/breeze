@@ -88,6 +88,10 @@ pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
         // 2. 使用每个单词的首字母
         let caps: String = s.chars().filter(|c| c.is_uppercase()).collect();
         endpoints.push(caps.to_lowercase());
+        // 3. 特殊处理
+        if s.eq("PhantomService") {
+            endpoints.push("pt".to_string());
+        }
 
         quote! {
             #(#endpoints) | * => Ok(Self::#variant_ident(p.into())),
