@@ -3,8 +3,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, FnArg, ItemTrait, PatType, TraitItem, TraitItemMethod};
 
-// 在 trait 上添加 #[procs::dispatcher_trait_deref] 属性，会为trait生成一个impl块，该impl 块会为trait 的所有方法生成一个默认实现，
-// 该实现会调用 trait 的 Deref::deref 方法
+// 在 trait 上添加 #[procs::dispatcher_trait_deref] 属性，则所有实现了Deref<T:Trait>的类型，都会自动实现该 trait
 pub fn impl_trait_for_deref_target(_attr: TokenStream, input: TokenStream) -> TokenStream {
     // 解析 trait
     let trait_def = parse_macro_input!(input as ItemTrait);
