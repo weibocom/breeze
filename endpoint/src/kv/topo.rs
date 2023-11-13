@@ -6,6 +6,7 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::Binary;
+use protocol::kv::ContextError;
 use protocol::kv::MysqlBuilder;
 use protocol::kv::Strategy;
 use protocol::Protocol;
@@ -102,8 +103,8 @@ where
 
         let shards = self.shards.get(intyear);
         if shards.len() == 0 {
-            //todo 错误类型不合适
-            req.on_err(protocol::Error::TopChanged);
+            req.ctx().error = ContextError::TopInvalid;
+            req.on_err(protocol::Error::TopInvalid);
             return;
         }
         debug_assert!(
