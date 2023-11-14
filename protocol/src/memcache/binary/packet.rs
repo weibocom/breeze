@@ -257,7 +257,7 @@ impl Binary for RingSlice {
     /// 对于写指令，处理逻辑：
     ///   1 set/setq只要有响应则认为请求成功，然后set其他layers，但master结果会返回client，由client决定后续操作；
     ///   2 cas/casq只要不是Key Exists异常，则认为是成功，然后set其他layers；
-    ///   3 add/addq只要不是not-stored则认为请求成功，然后set其他layers；
+    ///   3 add/addq只要不是Key Exists 则认为请求成功，然后set其他layers；
     ///   4 del/delq不管什么状态都认为成功，然后del其他layers；
     /// 不管mesh认为是否成功，写指令的master响应都会原封不动的返回给client。
     #[inline(always)]
@@ -279,8 +279,7 @@ impl Binary for RingSlice {
             status
         );
         match self.op() {
-            OP_SET | OP_SETQ => status != RespStatus::KeyExists as u16,
-            OP_ADD | OP_ADDQ => status != RespStatus::NotStored as u16,
+            OP_SET | OP_SETQ | OP_ADD | OP_ADDQ => status != RespStatus::KeyExists as u16,
             OP_DEL | OP_DELQ => true,
             _ => is_ok,
         }
