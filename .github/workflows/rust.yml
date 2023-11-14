@@ -84,6 +84,33 @@ jobs:
         #    args: "--features=github_workflow --features=console-api -- --test-threads 1"
       - name: Run unit tests
         run: cargo test -p tests
+      - name: wait until 2 mins
+        run: |
+          port_list=(56810 56812 9302 9301 9303)  # 端口列表
+          start=$(date +%s)  # 获取当前时间戳
+          
+          while true; do
+              now=$(date +%s)  # 获取当前时间戳
+              diff=$((now - start))  # 计算时间差
+              if [ $diff -lt 120 ]; then  # 如果时间差小于120秒
+                  all_listened=true
+                  for port in "${port_list[@]}"; do
+                      if ! netstat -an | grep -q ":$port.*LISTEN"; then
+                          echo "Port $port is not being listened to. Sleeping for 5 seconds..."
+                          all_listened=false
+                          sleep 5  # 等待5秒
+                          break
+                      fi
+                  done
+                  if $all_listened; then
+                      echo "All ports are being listened to. Exiting loop."
+                      break  # 退出循环
+                  fi
+              else
+                  echo "Two minutes have passed. Exiting loop."
+                  break  # 退出循环
+              fi
+          done
       - name: Run ci tests
         run: cargo test -p tests_integration --features github_workflow
       - name: Output log
