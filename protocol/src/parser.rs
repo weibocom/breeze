@@ -251,7 +251,14 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::mem;
 impl Display for HashedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "hash:{} {}", self.hash, self.cmd)
+        write!(
+            f,
+            "hash:{} sentonly:{} ext:{:?} {}",
+            self.hash,
+            self.sentonly(),
+            self.flag,
+            self.cmd
+        )
     }
 }
 impl Debug for HashedCommand {
