@@ -46,20 +46,34 @@ impl VectorTime {
         // if keys.len() == keys_name.len() {
         for (i, key_name) in keys_name.iter().enumerate() {
             match key_name.as_str() {
-                "yyyymm" => {
+                "yymm" => {
                     return Ok((
-                        to_i64_err(&keys[i].slice(0, 4))? as u16,
-                        to_i64_err(&keys[i].slice(4, 2))? as u16,
+                        to_i64_err(&keys[i].slice(0, 2))? as u16 + 2000,
+                        to_i64_err(&keys[i].slice(2, 2))? as u16,
                         1,
                     ))
                 }
-                "yyyymmdd" => {
+                "yymmdd" => {
                     return Ok((
-                        to_i64_err(&keys[i].slice(0, 4))? as u16,
+                        to_i64_err(&keys[i].slice(0, 2))? as u16 + 2000,
+                        to_i64_err(&keys[i].slice(2, 2))? as u16,
                         to_i64_err(&keys[i].slice(4, 2))? as u16,
-                        to_i64_err(&keys[i].slice(6, 2))? as u16,
                     ))
                 }
+                // "yyyymm" => {
+                //     return Ok((
+                //         to_i64_err(&keys[i].slice(0, 4))? as u16,
+                //         to_i64_err(&keys[i].slice(4, 2))? as u16,
+                //         1,
+                //     ))
+                // }
+                // "yyyymmdd" => {
+                //     return Ok((
+                //         to_i64_err(&keys[i].slice(0, 4))? as u16,
+                //         to_i64_err(&keys[i].slice(4, 2))? as u16,
+                //         to_i64_err(&keys[i].slice(6, 2))? as u16,
+                //     ))
+                // }
                 &_ => {
                     continue;
                 }
@@ -85,7 +99,8 @@ impl VectorTime {
         self.keys_name
             .iter()
             .map(|key_name| match key_name.as_str() {
-                "yyyymm" | "yyyymmdd" => None,
+                "yymm" | "yymmdd" => None,
+                // "yyyymm" | "yyyymmdd" => None,
                 &_ => Some(key_name),
             })
     }
