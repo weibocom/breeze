@@ -12,7 +12,7 @@ fn vrange_basic() {
     let mut con = get_conn(&RESTYPE.get_host());
 
     let rsp = redis::cmd("vrange")
-        .arg(format!("{argkey},202105"))
+        .arg(format!("{argkey},2105"))
         .arg("field")
         .arg("a,b")
         .arg("where")
