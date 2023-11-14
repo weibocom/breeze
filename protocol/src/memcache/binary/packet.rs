@@ -82,10 +82,10 @@ pub(crate) const NOREPLY_MAPPING: [u8; 128] = [
 //];
 
 // 请求完毕后，不考虑layer及其他配置，如果cmd失败,是否继续try_next:
-// (1) 0: not try next(对add/replace生效);  (2) 1: try next;
-// TODO 本次修改了：set/cas、add、setq/casq、addq，都改为try next，master异常，尝试下一个
+// (1) 0: not try next(对add/replace生效);  (2) 1: try next; (3) 2: unknown，需要进一步check.
+// TODO 本次修改影响：set/cas、add、setq/casq、addq，都改为try next，master异常，尝试下一个
 const TRY_NEXT_TABLE: [u8; 128] = [
-    1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0,
+    1, 2, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 2, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0,
     1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -93,6 +93,7 @@ const TRY_NEXT_TABLE: [u8; 128] = [
 
 // 1：需要try next； 0: 不需要try next
 const TRY_NEXT_VAL: u8 = 1;
+const TRY_UNKNOWN_VAL: u8 = 2;
 
 // 总共有48个opcode，这里先只部分支持
 #[allow(dead_code)]
@@ -397,11 +398,18 @@ impl Binary for RingSlice {
 
     #[inline(always)]
     fn can_retry(&self) -> bool {
-        let op = self.op() as usize;
-        assert!(op < TRY_NEXT_TABLE.len());
+        let op = self.op();
+        assert!((op as usize) < TRY_NEXT_TABLE.len());
 
-        let try_next = TRY_NEXT_TABLE[op];
-        try_next == TRY_NEXT_VAL
+        let try_next = TRY_NEXT_TABLE[op as usize];
+        if try_next == TRY_UNKNOWN_VAL {
+            // 只有set/setq/cas/casq 的trynext是unknown
+            assert!(op == OP_SET || op == OP_SETQ, "{}", op);
+            // 普通的set/setq才可以retry，cas、casq 不可以 retry
+            self.cas() == 0
+        } else {
+            try_next == TRY_NEXT_VAL
+        }
 
         // TODO 去掉Unknown逻辑，线上稳定后清理，预计2024.2之后 fishermen
         // if try_next != TryNextType::Unkown as u8 {

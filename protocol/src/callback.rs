@@ -29,6 +29,13 @@ impl Callback {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DoneType {
+    OnSentErr,
+    OnSentNoreply,
+    OnResponse,
+}
+
 pub struct CallbackContext {
     pub(crate) flag: crate::Context,
     async_mode: bool,            // 是否是异步请求
@@ -98,7 +105,7 @@ impl CallbackContext {
     pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
         if self.request().sentonly() {
-            self.on_done();
+            self.on_done(DoneType::OnSentNoreply);
             false
         } else {
             true
@@ -112,7 +119,7 @@ impl CallbackContext {
             debug_assert!(!self.complete(), "{:?}", self);
             self.swap_response(resp);
         }
-        self.on_done();
+        self.on_done(DoneType::OnResponse);
     }
 
     #[inline]
@@ -128,7 +135,7 @@ impl CallbackContext {
     }
 
     #[inline]
-    fn need_gone(&self) -> bool {
+    fn need_gone(&self, done_type: DoneType) -> bool {
         if !self.async_mode {
             // 当前重试条件为 rsp == None || ("mc" && !rsp.ok())
             if self.inited() {
@@ -142,7 +149,9 @@ impl CallbackContext {
                     return false;
                 }
             }
-            self.try_next && self.tries.fetch_add(1, Release) < 1
+            // 至此，如果需要try next 或者 发送失败，只要重试次数tries少于1，都再尝试一次 fishermen
+            (self.try_next || DoneType::OnSentErr == done_type)
+                && self.tries.fetch_add(1, Release) < 1
         } else {
             // write back请求
             self.write_back
@@ -151,14 +160,14 @@ impl CallbackContext {
 
     // 只有在构建了response，该request才可以设置completed为true
     #[inline]
-    fn on_done(&mut self) {
+    fn on_done(&mut self, done_type: DoneType) {
         log::debug!("on-done:{}", self);
         if !self.async_mode {
             // 更新backend使用的时间
             self.quota.take().map(|q| q.incr(self.start_at().elapsed()));
         }
 
-        if self.need_gone() {
+        if self.need_gone(done_type) {
             // 需要重试或回写
             return self.goon();
         }
@@ -189,7 +198,7 @@ impl CallbackContext {
         self.quota
             .take()
             .map(|q| q.err_incr(self.start_at().elapsed()));
-        self.on_done();
+        self.on_done(DoneType::OnSentErr);
     }
     #[inline]
     pub fn request(&self) -> &HashedCommand {
