@@ -440,6 +440,7 @@ impl Kv {
         let err_response;
         let response = match ctx.ctx().error {
             ContextStatus::TopInvalid => {
+                assert!(response.is_none());
                 err_response = Some(RingSlice::from_slice(b"invalid request: year out of index"));
                 err_response.as_ref()
             }
