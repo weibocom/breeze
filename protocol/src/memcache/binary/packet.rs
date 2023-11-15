@@ -272,15 +272,11 @@ impl Binary for RingSlice {
         }
 
         // store cmd 请求失败了，某些描述的场景需要当作成功 fishermen
-        let status = self.read_u16(6);
-        log::debug!(
-            "+++++ tmp status [6,7]:{}/{}, status:{}",
-            self.at(6),
-            self.at(7),
-            status
-        );
         match self.op() {
-            OP_SET | OP_SETQ | OP_ADD | OP_ADDQ => status != RespStatus::KeyExists as u16,
+            OP_SET | OP_SETQ | OP_ADD | OP_ADDQ => {
+                let status = self.read_u16(6);
+                status != RespStatus::KeyExists as u16
+            }
             OP_DEL | OP_DELQ => true,
             _ => is_ok,
         }

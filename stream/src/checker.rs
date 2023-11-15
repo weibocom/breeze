@@ -74,7 +74,6 @@ impl<P, Req> BackendChecker<P, Req> {
                 continue;
             }
 
-            log::info!("+++ connected to:{} succeed", self.addr);
             let rtt = path_addr.rtt("req");
             let mut stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
