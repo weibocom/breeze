@@ -6,7 +6,7 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::Binary;
-use protocol::kv::ContextError;
+use protocol::kv::ContextStatus;
 use protocol::kv::MysqlBuilder;
 use protocol::kv::Strategy;
 use protocol::Protocol;
@@ -83,13 +83,13 @@ where
 
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-        let (intyear, shard_idx) = if req.ctx().runs == 0 {
+        let (intyear, shard_idx) = if req.ctx_mut().runs == 0 {
             let key = req.key();
             //定位年库
             let intyear: u16 = self.strategist.get_key(&key);
             let shard_idx = self.shard_idx(req.hash());
-            req.ctx().year = intyear;
-            req.ctx().shard_idx = shard_idx as u16;
+            req.ctx_mut().year = intyear;
+            req.ctx_mut().shard_idx = shard_idx as u16;
 
             //todo: 此处不应panic
             let cmd =
@@ -98,12 +98,12 @@ where
 
             (intyear, shard_idx)
         } else {
-            (req.ctx().year, req.ctx().shard_idx as usize)
+            (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
         };
 
         let shards = self.shards.get(intyear);
         if shards.len() == 0 {
-            req.ctx().error = ContextError::TopInvalid;
+            req.ctx_mut().error = ContextStatus::TopInvalid;
             req.on_err(protocol::Error::TopInvalid);
             return;
         }
@@ -131,7 +131,7 @@ where
                     req.quota(quota);
                 }
             }
-            let ctx = req.ctx();
+            let ctx = req.ctx_mut();
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
             } else {

@@ -438,12 +438,12 @@ impl Kv {
             _ => (None, None),
         };
         let err_response;
-        let response = match ctx.ctx_unmut().error {
-            ContextError::TopInvalid => {
-                err_response = Some(RingSlice::from_slice(b"invalid request: no top match"));
+        let response = match ctx.ctx().error {
+            ContextStatus::TopInvalid => {
+                err_response = Some(RingSlice::from_slice(b"invalid request: year out of index"));
                 err_response.as_ref()
             }
-            ContextError::None => response.map(|r| r.deref().deref()),
+            ContextStatus::Ok => response.map(|r| r.deref().deref()),
         };
         if status != RespStatus::NoError && status != RespStatus::NotFound {
             log::error!(
@@ -490,39 +490,39 @@ pub enum ConnState {
 }
 
 #[repr(u8)]
-pub enum ContextError {
-    None,
+pub enum ContextStatus {
+    Ok,
     TopInvalid,
 }
 
 #[repr(C)]
 pub struct Context {
     pub runs: u8, // 运行的次数
-    pub error: ContextError,
+    pub error: ContextStatus,
     pub idx: u16, //最多有65535个主从
     pub shard_idx: u16,
     pub year: u16,
 }
 
 pub trait KVCtx {
-    fn ctx(&mut self) -> &mut Context;
-    fn ctx_unmut(&self) -> &Context {
+    fn ctx_mut(&mut self) -> &mut Context;
+    fn ctx(&self) -> &Context {
         panic!("not implemented");
     }
 }
 
 impl KVCtx for u64 {
-    fn ctx(&mut self) -> &mut Context {
+    fn ctx_mut(&mut self) -> &mut Context {
         unsafe { std::mem::transmute(self) }
     }
-    fn ctx_unmut(&self) -> &Context {
+    fn ctx(&self) -> &Context {
         unsafe { std::mem::transmute(self) }
     }
 }
 
 impl<T: crate::Request> KVCtx for T {
     #[inline(always)]
-    fn ctx(&mut self) -> &mut Context {
+    fn ctx_mut(&mut self) -> &mut Context {
         unsafe { std::mem::transmute(self.context_mut()) }
     }
 }
