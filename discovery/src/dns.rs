@@ -1,5 +1,7 @@
+use once_cell::sync::OnceCell;
 use std::{
     collections::HashMap,
+    future::Future,
     net::IpAddr,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -12,23 +14,8 @@ use tokio::sync::mpsc::{
 
 use trust_dns_resolver::TokioAsyncResolver;
 
-use ds::{time::interval, CowReadHandle, CowWriteHandle};
-#[ctor::ctor]
-static DNSCACHE: CowReadHandle<DnsCache> = {
-    let resolver = TokioAsyncResolver::tokio_from_system_conf().expect("crate dns resolver");
-    let (reg_tx, reg_rx) = unbounded_channel();
-    let cache = DnsCache::from(reg_tx);
-    let (tx, rx) = ds::cow(cache);
-    let resolver = DnsResolver {
-        tx,
-        reg_rx,
-        resolver,
-    };
-    *DNS_RESOLVER.try_lock().expect("lock failed") = Some(resolver);
-    rx
-};
-use std::sync::Mutex;
-static DNS_RESOLVER: Mutex<Option<DnsResolver>> = Mutex::new(None);
+use ds::{time::interval, CowReadHandle, CowWriteHandle, ReadGuard};
+static DNSCACHE: OnceCell<CowReadHandle<DnsCache>> = OnceCell::new();
 
 type RegisterItem = (String, Arc<AtomicBool>);
 type Resolver = TokioAsyncResolver;
@@ -39,12 +26,16 @@ pub struct DnsResolver {
     resolver: Resolver,
 }
 
+fn get_dns() -> ReadGuard<DnsCache> {
+    //必须使用get进行线程间同步
+    DNSCACHE.get().unwrap().get()
+}
+
 pub fn register(host: &str, notify: Arc<AtomicBool>) {
-    DNSCACHE.get().watch(host, notify)
+    get_dns().watch(host, notify)
 }
 pub fn lookup_ips<'a>(host: &str, mut f: impl FnMut(&[IpAddr])) {
-    // log::debug!("++++ lookup ips:{:?}", DNSCACHE.get().hosts);
-    f(DNSCACHE.get().lookup(host));
+    f(get_dns().lookup(host))
 }
 
 #[derive(Default, Clone, Debug)]
@@ -141,67 +132,74 @@ impl IPPort for String {
     }
 }
 
-pub async fn start_dns_resolver_refresher() {
-    log::info!("task started ==> dns cache refresher");
-    let dns_resolver = DNS_RESOLVER
-        .try_lock()
-        .expect("lock failed")
-        .take()
-        .expect("not inited");
-    let mut cache = dns_resolver.tx;
-    let mut rx = dns_resolver.reg_rx;
-    let mut resolver = dns_resolver.resolver;
-    use ds::time::{Duration, Instant};
-    const BATCH_CNT: usize = 128;
-    let mut tick = interval(Duration::from_secs(1));
-    //let mut last = Instant::now(); // 上一次刷新的时间
-    let mut idx = 0;
-    loop {
-        let mut regs = Vec::new();
-        while let Ok(reg) = rx.try_recv() {
-            if regs.capacity() == 0 {
-                regs.reserve(16);
+pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
+    let (reg_tx, reg_rx) = unbounded_channel();
+    let cache = DnsCache::from(reg_tx);
+    let (tx, rx) = ds::cow(cache);
+    let _ = DNSCACHE.set(rx);
+    async move {
+        let resolver = TokioAsyncResolver::tokio_from_system_conf().expect("crate dns resolver");
+        let resolver = DnsResolver {
+            tx,
+            reg_rx,
+            resolver,
+        };
+        log::info!("task started ==> dns cache refresher");
+        let mut cache = resolver.tx;
+        let mut rx = resolver.reg_rx;
+        let mut resolver = resolver.resolver;
+        use ds::time::{Duration, Instant};
+        const BATCH_CNT: usize = 128;
+        let mut tick = interval(Duration::from_secs(1));
+        //let mut last = Instant::now(); // 上一次刷新的时间
+        let mut idx = 0;
+        loop {
+            let mut regs = Vec::new();
+            while let Ok(reg) = rx.try_recv() {
+                if regs.capacity() == 0 {
+                    regs.reserve(16);
+                }
+                regs.push(reg);
             }
-            regs.push(reg);
-        }
-        if regs.len() > 0 {
-            let mut w_cache = cache.copy();
-            for reg in regs {
-                w_cache.register(reg.0.clone(), reg.1.clone());
-                w_cache.refresh_one(&reg.0, &mut resolver).await;
+            if regs.len() > 0 {
+                let mut w_cache = cache.copy();
+                for reg in regs {
+                    w_cache.register(reg.0.clone(), reg.1.clone());
+                    w_cache.refresh_one(&reg.0, &mut resolver).await;
+                }
+                cache.update(w_cache);
+                // 再次快速尝试读取新注册的数据
+                continue;
             }
-            cache.update(w_cache);
-            // 再次快速尝试读取新注册的数据
-            continue;
-        }
 
-        // 每一秒种tick一次，检查是否
-        tick.tick().await;
+            // 每一秒种tick一次，检查是否
+            tick.tick().await;
 
-        let _start = Instant::now();
-        let mut updated = HashMap::new();
-        let r_cache = cache.get();
+            let _start = Instant::now();
+            let mut updated = HashMap::new();
+            let r_cache = cache.get();
 
-        for (host, record) in &r_cache.hosts {
-            if idx == record.id % BATCH_CNT {
-                if let Some(addrs) = record.check_refresh(host, &mut resolver).await {
-                    updated.insert(host.to_string(), addrs);
+            for (host, record) in &r_cache.hosts {
+                if idx == record.id % BATCH_CNT {
+                    if let Some(addrs) = record.check_refresh(host, &mut resolver).await {
+                        updated.insert(host.to_string(), addrs);
+                    }
                 }
             }
-        }
 
-        idx = (idx + 1) % BATCH_CNT;
-        drop(r_cache);
-        if updated.len() > 0 {
-            cache.write(|c| {
-                for (host, addrs) in updated.into_iter() {
-                    c.hosts.get_mut(&host).expect("insert before").update(addrs);
-                }
-            });
-        }
-        //last = Instant::now();
+            idx = (idx + 1) % BATCH_CNT;
+            drop(r_cache);
+            if updated.len() > 0 {
+                cache.write(|c| {
+                    for (host, addrs) in updated.into_iter() {
+                        c.hosts.get_mut(&host).expect("insert before").update(addrs);
+                    }
+                });
+            }
+            //last = Instant::now();
 
-        log::trace!("refresh dns elapsed:{:?}", _start.elapsed());
+            log::trace!("refresh dns elapsed:{:?}", _start.elapsed());
+        }
     }
 }
 
