@@ -6,7 +6,7 @@ use std::fmt::Display;
 ///   1 crc32: java版本的i64/long版本的crc32，对整个key做crc32算法；
 ///   2 crc32-num: 对偏移N个字节后的数字进行crc32计算, eg: crc32-num-5, crc32-num；
 ///   3 crc32-short: 对crc32计算后，再转为short，适配java mc访问；
-///   4 crc32-delimiter: 目前有3种，crc32-point, crc32-pound, crc32-underscore，表示对特殊字符后的内容做crc32，后面可以再跟一个数字表示偏移；
+///   4 crc32-delimiter: 目前有3种，crc32-point, crc32-pound, crc32-underscore，表示对特殊字符前的内容做crc32，后面可以再跟一个数字表示偏移；
 ///   5 crc32-mixnum:key中所有num拼接成一个字串num做hashkey，like a_123_456_bc的hashkey是123456；
 ///   6 crc32-smartnum: 第一串长度大于等于5的数字做为hashkey;
 ///   ================  基于i32版本  ================
