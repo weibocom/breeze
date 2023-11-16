@@ -192,7 +192,7 @@ where
                 idx = 0;
             } else {
                 // 满足#654场景，如果没有MasterL1，这里idx需要选到Slave
-                // 同时，为确保gets成功，请求路径按照固定顺序进行 fishermen
+                // 同时，为确保gets成功，请求路径按照固定顺序进行  fishermen
                 idx = self.streams.select_next_sequence_idx(0, 1);
             }
             write_back = true;
