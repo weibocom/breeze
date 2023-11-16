@@ -10,7 +10,6 @@ edition = "2021"
 log = { path = "../log" }
 ds = { path = "../ds" }
 metrics = { path = "../metrics" }
-context = { path = "../context" }
 
 url = "2.2.2"
 async-trait.workspace = true

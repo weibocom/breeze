@@ -10,7 +10,6 @@ use sharding::Distance;
 use super::config::RedisNamespace;
 use crate::{dns::DnsConfig, Timeout};
 use discovery::dns::{self, IPPort};
-use metrics::Path;
 
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
@@ -284,11 +283,18 @@ where
                 self.cfg.basic.region_enabled,
             );
 
-            // 推送可用区内的len
-            if self.cfg.basic.region_enabled {
-                let len_region = shard.len_region();
-                self.len_region_metric(len_region, port.as_str());
-            }
+            // 生成端口副本数量监控数据
+            let n: u16 = if self.cfg.basic.region_enabled {
+                shard.len_region() + 10000 // snapshot时>0才有输出，len_region这里加10000作为基准值，保证监控有数据；
+            } else {
+                0 // region功能关闭时，len_region为0，也就是不输出监控数据；可用区从打开到关闭场景，0也要生成监控数据，覆盖已有的同path旧数据
+            };
+            metrics::resource_num_metric(
+                self.cfg.resource_type(),
+                self.cfg.service.as_str(),
+                (host_region() + ":" + port.as_str()).as_str(),
+                n,
+            );
 
             self.shards.push(shard);
         }
@@ -300,20 +306,20 @@ where
 
         true
     }
-
-    fn len_region_metric(&self, len_region: u16, port: &str) {
-        let path = Path::new(vec![
-            Resource::Redis.name(),
-            port,
-            distance::region().as_str(),
-        ]);
-        let mut metric = path.num("region_resource");
-        if metric.inited() {
-            metric.zero_num()
-        };
-        metric += len_region + 10000; // snapshot时>0才有输出，len_region这里加10000作为基准值，保证监控有数据；
-    }
 }
+
+// 本机的region，优先级：
+// 1. 启动参数/环境变量的region
+// 2. 通过本机IP计算出来的region
+// TODO 目前仅本文件内被使用，后续可以考虑放在一个公共的地方
+fn host_region() -> String {
+    if let Some(region) = context::get().region() {
+        return region.to_string();
+    }
+
+    distance::host_region()
+}
+
 #[derive(Clone)]
 struct Shard<E> {
     master: (String, E),
