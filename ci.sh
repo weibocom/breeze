@@ -25,8 +25,6 @@ touch $brz_home/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
 
 cargo build
-#等待mysql初始化
-sleep 120
 nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot $brz_home/snapshot --service-path $brz_home/socks --log-dir $brz_home/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info --idc-path 127.0.0.1:8080/3/config/breeze/idc_region --key-path .github/workflows/private_key.pem > $brz_home/logs/log.file  2>&1 &
 
 pid=$!
@@ -43,7 +41,32 @@ export socks_dir=$brz_home/socks
 
 cargo test -p tests
 
-sleep 10
+#等待mesh初始化，最多等待两分钟
+port_list=(56810 56812 9302 9301 9303 3306)  # 端口列表
+start=$(date +%s)  # 获取当前时间戳
+
+while true; do
+    now=$(date +%s)  # 获取当前时间戳
+    diff=$((now - start))  # 计算时间差
+    if [ $diff -lt 120 ]; then  # 如果时间差小于120秒
+        all_listened=true
+        for port in "${port_list[@]}"; do
+            if ! netstat -an | grep -q ":$port.*LISTEN"; then
+                echo "Port $port is not being listened to. Sleeping for 5 seconds..."
+                all_listened=false
+                sleep 5  # 等待5秒
+                break
+            fi
+        done
+        if $all_listened; then
+            echo "All ports are being listened to. Exiting loop."
+            break  # 退出循环
+        fi
+    else
+        echo "Two minutes have passed. Exiting loop."
+        break  # 退出循环
+    fi
+done
 
 cargo test -p tests_integration --features github_workflow
 

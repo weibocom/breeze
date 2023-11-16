@@ -24,7 +24,7 @@ where
     }
     // 计算distance时，若传入的region为None，则以本地IP为准计算region的距离；否则以传入的region为准
     fn distance_by_region(&self, region: Option<&str>) -> u16 {
-        let cal = unsafe { DISTANCE_CALCULATOR.get_unchecked().get() };
+        let cal = DISTANCE_CALCULATOR.get().unwrap().get();
         cal.distance_by_region(self.as_ref(), region)
     }
 }
