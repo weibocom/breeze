@@ -121,3 +121,14 @@ pub fn decr_task() {
 pub fn set_sockfile_failed(failed_count: usize) {
     SOCKFILE_FAILED.store(failed_count as i64, Relaxed);
 }
+
+// fn unchange_number_metric(region_enable:bool,len_region: u16, port: &str, rsname: &str, region: &str) {
+pub fn resource_num_metric(source: &str, namespace: &str, bip: &str, n: u16) {
+    let path = crate::Path::new(vec![source, namespace, bip]);
+    let mut metric = path.num("region_resource");
+    if metric.inited() {
+        metric.zero_num()
+    };
+
+    metric += n;
+}
