@@ -346,6 +346,9 @@ impl From<ContextOption> for Context {
         if envs.timeslice {
             version.push('t');
         }
+        if ds::time::tsc_stable() {
+            version.push('c');
+        }
         let host_v3 = option.cpu == "v3";
         // 1. 如果宿主机的支持模式与编译器的编译方式不一致。
         if cfg!(target_feature = "avx") != host_v3 {

@@ -76,7 +76,7 @@ where
 
     fn send(&self, mut req: Self::Item) {
         // req 是mc binary协议，需要展出字段，转换成sql
-        let (year, shard_idx) = if req.ctx().runs == 0 {
+        let (year, shard_idx) = if req.ctx_mut().runs == 0 {
             let vcmd = MysqlBuilder::parse_vector_detail(&req).unwrap();
             //定位年库
             let (year, _, _) = match self.strategist.get_date(&vcmd.keys, &self.cfg.basic.keys) {
@@ -88,8 +88,8 @@ where
             };
 
             let shard_idx = self.shard_idx(self.hash(&vcmd.keys[0]));
-            req.ctx().year = year;
-            req.ctx().shard_idx = shard_idx as u16;
+            req.ctx_mut().year = year;
+            req.ctx_mut().shard_idx = shard_idx as u16;
 
             //todo: 此处不应panic
             let vector_builder =
@@ -100,7 +100,7 @@ where
 
             (year, shard_idx)
         } else {
-            (req.ctx().year, req.ctx().shard_idx as usize)
+            (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
         };
 
         let shards = self.shards.get(year);
@@ -133,7 +133,7 @@ where
                     req.quota(quota);
                 }
             }
-            let ctx = req.ctx();
+            let ctx = req.ctx_mut();
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
             } else {

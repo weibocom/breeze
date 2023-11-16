@@ -97,6 +97,12 @@ fn test_read_number() {
             assert_eq!(LittleEndian::read_u16(slice), rs.u16_le(i));
 
             assert_eq!(LittleEndian::read_i24(slice), rs.i24_le(i));
+            assert_eq!(
+                BigEndian::read_i24(slice),
+                rs.i24_be(i),
+                "{i} => {:?} => {rs} => {slice:?}",
+                unsafe { rs.data_dump() }
+            );
 
             assert_eq!(BigEndian::read_u32(slice), rs.u32_be(i));
             assert_eq!(LittleEndian::read_i32(slice), rs.i32_le(i));
@@ -116,16 +122,8 @@ fn test_read_number() {
 
 #[test]
 fn read_number_one() {
-    let v = vec![
-        250, 63, 209, 177, 238, 67, 85, 116, 95, 81, 12, 62, 104, 150, 17, 43, 119, 187, 244, 129,
-        17, 7, 205, 211, 229, 132, 223, 237, 172, 21, 157, 168, 78, 37, 10, 84, 195, 177, 70, 98,
-        201, 244, 157, 98, 105, 69, 32, 80, 149, 122, 2, 89, 138, 133, 219, 72, 67, 248, 86, 146,
-        233, 124, 31, 162, 137, 56, 81, 59, 11, 160, 158, 51, 226, 200, 242, 14, 36, 254, 39, 243,
-        27, 168, 67, 184, 100, 175, 209, 131, 217, 229, 175, 66, 191, 74, 61, 72, 183, 36, 98, 68,
-        240, 42, 77, 225, 67, 208, 203, 151, 240, 154, 105, 127, 237, 27, 10, 213, 48, 54, 13, 22,
-        69, 171, 0, 223, 68, 219, 84, 149,
-    ];
-    let rs = RingSlice::from_vec(&v);
+    let v = [250, 63, 209, 177, 37, 221, 128, 235];
+    let rs: RingSlice = (&v[..]).into();
     assert_eq!(rs.i24_le(0), LittleEndian::read_i24(&v));
     assert_eq!(rs.u48_le(0), LittleEndian::read_u48(&v));
     assert_eq!(rs.i48_le(0), LittleEndian::read_i48(&v));

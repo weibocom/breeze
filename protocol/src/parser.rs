@@ -287,6 +287,7 @@ pub trait Commander<M: Metric<I>, I: MetricItem> {
     // 请求所在的分片位置
     fn request_shard(&self) -> usize;
     fn metric(&self) -> &M;
+    fn ctx(&self) -> u64;
 }
 
 pub enum MetricName {

@@ -21,6 +21,7 @@ pub trait ByteOrder {
     fn i64_le(&self, oft: usize) -> i64;
 
     fn u16_be(&self, oft: usize) -> u16;
+    fn i24_be(&self, oft: usize) -> i32;
     fn u32_be(&self, oft: usize) -> u32;
     fn u64_be(&self, oft: usize) -> u64;
     fn f32_le(&self, oft: usize) -> f32;

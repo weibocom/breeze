@@ -115,4 +115,7 @@ impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> Commander<M, T>
     fn metric(&self) -> &M {
         &self.metrics
     }
+    fn ctx(&self) -> u64 {
+        self.ctx.flag()
+    }
 }

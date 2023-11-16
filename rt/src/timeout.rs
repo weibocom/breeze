@@ -1,8 +1,6 @@
 use std::task::{ready, Context, Poll};
 
-use ds::time::{interval, Interval};
-
-use ds::time::Duration;
+use ds::time::{interval, Duration, Interval};
 
 use super::entry::ReEnter;
 
