@@ -81,8 +81,8 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
-        // TODO 目前kv暂时不支持重复send，如果重复send，先返回异常 fishermen
-        if !req.first_send() {
+        // TODO kv目前只支持send一次，如果之前已经send过，即已经reshaped过，则直接返回异常 fishermen
+        if req.has_reshaped() {
             req.on_err(protocol::Error::Closed);
             return;
         }
