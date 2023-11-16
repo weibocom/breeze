@@ -81,6 +81,11 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
+        // TODO 目前kv暂时不支持重复send，如果重复send，先返回异常 fishermen
+        if !req.first_send() {
+            req.on_err(protocol::Error::Closed);
+            return;
+        }
         // req 是mc binary协议，需要展出字段，转换成sql
         let (intyear, shard_idx) = if req.ctx().runs == 0 {
             let key = req.key();

@@ -31,9 +31,10 @@ impl Callback {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DoneType {
-    OnSentErr,
+    OnServerConnErr,
+    OnRequestInvalid,
     OnSentNoreply,
-    OnResponse,
+    OnRecvResponse,
 }
 
 pub struct CallbackContext {
@@ -119,7 +120,7 @@ impl CallbackContext {
             debug_assert!(!self.complete(), "{:?}", self);
             self.swap_response(resp);
         }
-        self.on_done(DoneType::OnResponse);
+        self.on_done(DoneType::OnRecvResponse);
     }
 
     #[inline]
@@ -150,7 +151,7 @@ impl CallbackContext {
                 }
             }
             // 至此，如果需要try next 或者 发送失败，只要重试次数tries少于1，都再尝试一次 fishermen
-            (self.try_next || DoneType::OnSentErr == done_type)
+            (self.try_next || DoneType::OnServerConnErr == done_type)
                 && self.tries.fetch_add(1, Release) < 1
         } else {
             // write back请求
@@ -190,15 +191,18 @@ impl CallbackContext {
         // 正常err场景，仅仅在debug时check
         log::debug!("+++ on_err: {:?} => {:?}", err, self);
         use Error::*;
-        match err {
-            Closed | ChanDisabled | Waiting | Pending => {}
-            _err => log::warn!("on-err:{} {:?}", self, _err),
-        }
+        let done_type = match err {
+            Closed | ChanDisabled | Waiting | Pending => DoneType::OnServerConnErr,
+            _err => {
+                log::warn!("on-err:{} {:?}", self, _err);
+                DoneType::OnRequestInvalid
+            }
+        };
         // 一次错误至少消耗500ms的配额
         self.quota
             .take()
             .map(|q| q.err_incr(self.start_at().elapsed()));
-        self.on_done(DoneType::OnSentErr);
+        self.on_done(done_type);
     }
     #[inline]
     pub fn request(&self) -> &HashedCommand {
