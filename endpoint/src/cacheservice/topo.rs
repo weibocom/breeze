@@ -24,7 +24,7 @@ pub struct CacheService<B, E, Req, P> {
     // TODO 线上稳定后再清理，预计2024.2之后
     // 1. 去掉force_write_all，其设计的本意是set失败后，是否更新其他layer；
     // 当前的设计原则已经改为可用性优先，只要有layer可用，就应该对外提供服务，所以force_write_all都应该为true，也就失去了存在的价值了；
-    // b2. ackend_no_storage 也去掉，理由同上；
+    // b2. backend_no_storage 也去掉，理由同上；
     //
     // 兼容已有业务逻辑，set master失败后，是否更新其他layer
     // force_write_all: bool,

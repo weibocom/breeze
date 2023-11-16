@@ -235,8 +235,8 @@ impl HashedCommand {
         }
     }
     #[inline]
-    pub fn first_send(&self) -> bool {
-        self.origin_cmd.is_none()
+    pub fn has_reshaped(&self) -> bool {
+        self.origin_cmd.is_some()
     }
     #[inline]
     pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
