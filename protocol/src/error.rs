@@ -24,6 +24,7 @@ pub enum Error {
     ResponseProtocolInvalid,
     ProtocolNotSupported,
     TopChanged,
+    TopInvalid,
     WriteResponseErr,
     OpCodeNotSupported(u16),
     BufferFull,

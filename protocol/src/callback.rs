@@ -81,6 +81,11 @@ impl CallbackContext {
     }
 
     #[inline]
+    pub fn flag(&self) -> crate::Context {
+        self.flag
+    }
+
+    #[inline]
     pub(crate) fn on_noforward(&mut self) {
         debug_assert!(self.request().noforward(), "{:?}", self);
         self.mark_done();
