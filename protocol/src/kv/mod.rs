@@ -8,6 +8,8 @@ mod reqpacket;
 mod rsppacket;
 
 mod mc2mysql;
+use std::ops::Deref;
+
 pub use mc2mysql::{MysqlBuilder, Strategy};
 
 use self::common::proto::Text;
@@ -213,7 +215,7 @@ impl Protocol for Kv {
                     ctx.request(),
                     response
                 );
-                self.write_mc_response(ctx.request(), response.map(|r| &*r), w)?
+                self.write_mc_response(ctx.request(), response.map(|r| &*r), ctx.ctx(), w)?
             }
             // self.build_empty_response(RespStatus::NotStored, req)
 
@@ -352,7 +354,7 @@ impl Kv {
         status: RespStatus,
         key: Option<RingSlice>,
         extra: Option<u32>,
-        response: Option<&crate::Command>,
+        response: Option<&RingSlice>,
         w: &mut W,
     ) -> crate::Result<()>
     where
@@ -371,7 +373,7 @@ impl Kv {
 
         w.write_u16(status as u16)?; // Status 2byte
 
-        let response_len = response.as_ref().map_or(0, |r| r.len());
+        let response_len = response.map_or(0, |r| r.len());
         let total_body_len = extra_len as u32 + key_len as u32 + response_len as u32;
         w.write_u32(total_body_len)?; // total body len: 4 bytes
         w.write_u32(0)?; //opaque: 4bytes
@@ -384,7 +386,7 @@ impl Kv {
             w.write_ringslice(key, 0)?;
         }
         if let Some(response) = response {
-            w.write_slice(response, 0)? // value
+            w.write_ringslice(response, 0)? // value
         }
         Ok(())
     }
@@ -394,6 +396,7 @@ impl Kv {
         &self,
         request: &HashedCommand,
         response: Option<&crate::Command>,
+        ctx: u64,
         w: &mut W,
     ) -> crate::Result<()>
     where
@@ -433,6 +436,15 @@ impl Kv {
             }
             OP_GET | OP_GETQ => (None, Some(MARKER_BYTE_ARR)),
             _ => (None, None),
+        };
+        let err_response;
+        let response = match ctx.ctx().error {
+            ContextStatus::TopInvalid => {
+                assert!(response.is_none());
+                err_response = Some(RingSlice::from_slice(b"invalid request: year out of index"));
+                err_response.as_ref()
+            }
+            ContextStatus::Ok => response.map(|r| r.deref().deref()),
         };
         if status != RespStatus::NoError && status != RespStatus::NotFound {
             log::error!(
@@ -476,4 +488,42 @@ pub enum ConnState {
     AuthMoreData,
     // 对于AuthError，通过直接返回异常来标志
     AuthOk,
+}
+
+#[repr(u8)]
+pub enum ContextStatus {
+    Ok,
+    TopInvalid,
+}
+
+#[repr(C)]
+pub struct Context {
+    pub runs: u8, // 运行的次数
+    pub error: ContextStatus,
+    pub idx: u16, //最多有65535个主从
+    pub shard_idx: u16,
+    pub year: u16,
+}
+
+pub trait KVCtx {
+    fn ctx_mut(&mut self) -> &mut Context;
+    fn ctx(&self) -> &Context {
+        panic!("not implemented");
+    }
+}
+
+impl KVCtx for u64 {
+    fn ctx_mut(&mut self) -> &mut Context {
+        unsafe { std::mem::transmute(self) }
+    }
+    fn ctx(&self) -> &Context {
+        unsafe { std::mem::transmute(self) }
+    }
+}
+
+impl<T: crate::Request> KVCtx for T {
+    #[inline(always)]
+    fn ctx_mut(&mut self) -> &mut Context {
+        unsafe { std::mem::transmute(self.context_mut()) }
+    }
 }
