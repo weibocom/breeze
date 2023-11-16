@@ -1,38 +1,47 @@
 #[macro_export]
+macro_rules! noop{
+    ($($arg:tt)+) => {
+        {
+            let _ = format_args!($($arg)+);
+            ()
+        }
+    };
+}
+#[macro_export]
 macro_rules! trace {
     ($($arg:tt)+) => {
-        ()
+        log::noop!($($arg)+)
     };
 }
 #[macro_export]
 macro_rules! debug {
     ($($arg:tt)+) => {
-        ()
+        log::noop!($($arg)+)
     };
 }
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)+) => {
-        ()
+        log::noop!($($arg)+)
     };
 }
 
 #[macro_export]
 macro_rules! _warn {
     ($($arg:tt)+) => {
-        ()
+        log::noop!($($arg)+)
     };
 }
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)+) => {
-        ()
+        log::noop!($($arg)+)
     };
 }
 #[macro_export]
 macro_rules! fatal {
     ($($arg:tt)+) => {
-        ()
+        log::noop!($($arg)+)
     };
 }
 #[macro_export]

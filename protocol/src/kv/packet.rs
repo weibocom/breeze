@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use ds::RingSlice;
+use ds::{ByteOrder, RingSlice};
 
 use super::error::{Error, Result};
 
@@ -30,7 +30,7 @@ impl PacketData {
         }
 
         // 前三个字节是payload len
-        let payload_len = self.inner.read_u24_le(*oft) as usize;
+        let payload_len = self.inner.u24_le(*oft) as usize;
         if payload_len == 0 {
             log::warn!(
                 "+++ found 0-length packet:{:?}",

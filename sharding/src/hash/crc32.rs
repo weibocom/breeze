@@ -256,7 +256,7 @@ impl super::Hash for Crc32SmartNum {
         for i in start..end {
             let c = key.at(i);
             // smartnum hash，理论上必须是全部数字，但非法请求可能包含非数字（或者配置错误）
-            debug_assert!(c.is_ascii_digit(), "malfromed smart key:{:?}", key);
+            //debug_assert!(c.is_ascii_digit(), "malfromed smart key:{:?}", key);
             crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
         }
 

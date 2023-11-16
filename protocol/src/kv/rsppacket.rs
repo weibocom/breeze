@@ -383,6 +383,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         let client = self.client.as_ref().unwrap();
         let user = client.get_user().unwrap_or_default().as_bytes().to_vec();
         let db_name = client.get_db_name().unwrap_or_default().as_bytes().to_vec();
+        let conn_attrs = client.connect_attrs();
 
         let handshake_response = HandshakeResponse::new(
             scramble_buf,
@@ -393,7 +394,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
             Some(RingSlice::from_vec(&db_name)),
             Some(auth_plugin.clone()),
             client.capability_flags,
-            Some(client.connect_attrs()),
+            Some(&conn_attrs),
         );
         log::debug!("+++ kv handshake rsp: {}", handshake_response);
         let mut buf: Vec<u8> = Vec::with_capacity(256);

@@ -3,7 +3,7 @@ use std::{mem::size_of, num::NonZeroUsize};
 use bytes::BufMut;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
-use ds::RingSlice;
+use ds::{ByteOrder as RingSliceByteOrder, RingSlice};
 use rand::Rng;
 #[test]
 fn test_ring_slice() {
@@ -54,9 +54,9 @@ fn test_ring_slice() {
         std::ptr::copy_nonoverlapping(bytes.as_ptr().offset(1), ptr, 3);
     }
     let num_range = RingSlice::from(ptr, cap, 1000, 1064);
-    assert_eq!(u32_num, num_range.read_u32_be(32));
+    assert_eq!(u32_num, num_range.u32_be(32));
 
-    assert_eq!(u32_num, num_range.read_u32_be(23));
+    assert_eq!(u32_num, num_range.u32_be(23));
 
     // 验证查找\r\n
     let mut lines = RingSlice::from(ptr, cap, cap - 32, cap + 32);
@@ -91,45 +91,42 @@ fn test_read_number() {
 
         for i in 0..cap - 8 {
             let slice = &c[i..];
-            assert_eq!(BigEndian::read_u16(slice), rs.read_u16_be(i));
-            assert_eq!(LittleEndian::read_i16(slice), rs.read_i16_le(i));
-            assert_eq!(BigEndian::read_u32(slice), rs.read_u32_be(i));
-            assert_eq!(LittleEndian::read_i32(slice), rs.read_i32_le(i));
-            assert_eq!(BigEndian::read_u64(slice), rs.read_u64_be(i));
-            assert_eq!(LittleEndian::read_i64(slice), rs.read_i64_le(i));
-            assert_eq!(LittleEndian::read_i24(slice), rs.read_i24_le(i));
-            assert_eq!(LittleEndian::read_u48(slice), rs.read_u48_le(i));
+            // RingSliceByteOrder
+            assert_eq!(BigEndian::read_u16(slice), rs.u16_be(i));
+            assert_eq!(LittleEndian::read_i16(slice), rs.i16_le(i));
+            assert_eq!(LittleEndian::read_u16(slice), rs.u16_le(i));
 
-            assert_eq!(LittleEndian::read_i24(slice), rs.read_i24_le_cmp(i));
-            assert_eq!(LittleEndian::read_u48(slice), rs.read_u48_le_cmp(i));
+            assert_eq!(LittleEndian::read_i24(slice), rs.i24_le(i));
+            assert_eq!(
+                BigEndian::read_i24(slice),
+                rs.i24_be(i),
+                "{i} => {:?} => {rs} => {slice:?}",
+                unsafe { rs.data_dump() }
+            );
 
-            assert_eq!(BigEndian::read_i24(slice), rs.read_i24_be_cmp(i),);
-            assert_eq!(BigEndian::read_u48(slice), rs.read_u48_be_cmp(i));
+            assert_eq!(BigEndian::read_u32(slice), rs.u32_be(i));
+            assert_eq!(LittleEndian::read_i32(slice), rs.i32_le(i));
+            assert_eq!(LittleEndian::read_u32(slice), rs.u32_le(i));
 
-            assert_eq!(BigEndian::read_u16(slice), rs.read_u16_be_cmp(i));
-            assert_eq!(LittleEndian::read_i16(slice), rs.read_i16_le_cmp(i));
-            assert_eq!(BigEndian::read_u32(slice), rs.read_u32_be_cmp(i));
-            assert_eq!(LittleEndian::read_i32(slice), rs.read_i32_le_cmp(i));
-            assert_eq!(BigEndian::read_u64(slice), rs.read_u64_be_cmp(i));
-            assert_eq!(LittleEndian::read_i64(slice), rs.read_i64_le_cmp(i));
+            assert_eq!(LittleEndian::read_u48(slice), rs.u48_le(i));
+            assert_eq!(LittleEndian::read_i48(slice), rs.i48_le(i),);
+
+            assert_eq!(BigEndian::read_u64(slice), rs.u64_be(i));
+            assert_eq!(LittleEndian::read_i64(slice), rs.i64_le(i));
+
+            assert_eq!(BigEndian::read_u64(slice), rs.u64_be(i));
+            assert_eq!(LittleEndian::read_i64(slice), rs.i64_le(i));
         }
     }
 }
 
 #[test]
 fn read_number_one() {
-    let v = vec![
-        250, 63, 209, 177, 238, 67, 85, 116, 95, 81, 12, 62, 104, 150, 17, 43, 119, 187, 244, 129,
-        17, 7, 205, 211, 229, 132, 223, 237, 172, 21, 157, 168, 78, 37, 10, 84, 195, 177, 70, 98,
-        201, 244, 157, 98, 105, 69, 32, 80, 149, 122, 2, 89, 138, 133, 219, 72, 67, 248, 86, 146,
-        233, 124, 31, 162, 137, 56, 81, 59, 11, 160, 158, 51, 226, 200, 242, 14, 36, 254, 39, 243,
-        27, 168, 67, 184, 100, 175, 209, 131, 217, 229, 175, 66, 191, 74, 61, 72, 183, 36, 98, 68,
-        240, 42, 77, 225, 67, 208, 203, 151, 240, 154, 105, 127, 237, 27, 10, 213, 48, 54, 13, 22,
-        69, 171, 0, 223, 68, 219, 84, 149,
-    ];
-    let rs = RingSlice::from_vec(&v);
-    assert_eq!(rs.read_i24_le_cmp(0), LittleEndian::read_i24(&v));
-    assert_eq!(rs.read_i24_be_cmp(0), BigEndian::read_i24(&v));
+    let v = [250, 63, 209, 177, 37, 221, 128, 235];
+    let rs: RingSlice = (&v[..]).into();
+    assert_eq!(rs.i24_le(0), LittleEndian::read_i24(&v));
+    assert_eq!(rs.u48_le(0), LittleEndian::read_u48(&v));
+    assert_eq!(rs.i48_le(0), LittleEndian::read_i48(&v));
 }
 
 #[test]
@@ -247,20 +244,20 @@ fn check_read_num_le() {
 
     let slice = RingSlice::from_vec(&data);
 
-    assert_eq!(num1, slice.read_u64_le(0));
-    assert_eq!(num2, slice.read_u32_le(size_of::<u64>()));
-    assert_eq!(num3, slice.read_u16_le(size_of::<u64>() + size_of::<u32>()));
+    assert_eq!(num1, slice.u64_le(0));
+    assert_eq!(num2, slice.u32_le(size_of::<u64>()));
+    assert_eq!(num3, slice.u16_le(size_of::<u64>() + size_of::<u32>()));
     assert_eq!(
         num4,
-        slice.read_u8(size_of::<u64>() + size_of::<u32>() + size_of::<u16>())
+        slice.u8(size_of::<u64>() + size_of::<u32>() + size_of::<u16>())
     );
     assert_eq!(
         num5,
-        slice.read_u48_le(size_of::<u64>() + size_of::<u32>() + size_of::<u16>() + size_of::<u8>())
+        slice.u48_le(size_of::<u64>() + size_of::<u32>() + size_of::<u16>() + size_of::<u8>())
     );
     assert_eq!(
         num6,
-        slice.read_u56_le(
+        slice.u56_le(
             size_of::<u64>()
                 + size_of::<u32>()
                 + size_of::<u16>()
@@ -270,7 +267,7 @@ fn check_read_num_le() {
     );
     assert_eq!(
         num7,
-        slice.read_i32_le(
+        slice.i32_le(
             size_of::<u64>()
                 + size_of::<u32>()
                 + size_of::<u16>()
@@ -296,11 +293,11 @@ fn check_read_num_be() {
 
     let slice = RingSlice::from_vec(&data);
 
-    assert_eq!(num1, slice.read_u64_be(0));
-    assert_eq!(num2, slice.read_u32_be(size_of::<u64>()));
-    assert_eq!(num3, slice.read_u16_be(size_of::<u64>() + size_of::<u32>()));
+    assert_eq!(num1, slice.u64_be(0));
+    assert_eq!(num2, slice.u32_be(size_of::<u64>()));
+    assert_eq!(num3, slice.u16_be(size_of::<u64>() + size_of::<u32>()));
     assert_eq!(
         num4,
-        slice.read_u8(size_of::<u64>() + size_of::<u32>() + size_of::<u16>())
+        slice.u8(size_of::<u64>() + size_of::<u32>() + size_of::<u16>())
     );
 }

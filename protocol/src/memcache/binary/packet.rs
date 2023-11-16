@@ -1,4 +1,5 @@
 // // mc 二进制协议包，用于构建各种协议指令，所有mc协议构建均需放在这里 fishermen
+use ds::ByteOrder;
 
 // cmd的第一个字节，用于标示request or response
 #[allow(dead_code)]
@@ -12,6 +13,7 @@ use crate::{Error, Result, TryNextType};
 
 // response status 共11种，协议中占2个字节，当前只有1字节，如果超范围需要在协议处理位置对应修改
 #[allow(dead_code)]
+#[derive(PartialEq, Debug)]
 pub enum RespStatus {
     NoError = 0x0000,
     NotFound = 0x0001,
@@ -228,17 +230,17 @@ impl Binary for RingSlice {
     #[inline(always)]
     fn total_body_len(&self) -> u32 {
         debug_assert!(self.len() >= HEADER_LEN);
-        self.read_u32_be(PacketPos::TotalBodyLength as usize)
+        self.u32_be(PacketPos::TotalBodyLength as usize)
     }
     #[inline(always)]
     fn opaque(&self) -> u32 {
         debug_assert!(self.len() >= HEADER_LEN);
-        self.read_u32_be(PacketPos::Opaque as usize)
+        self.u32_be(PacketPos::Opaque as usize)
     }
     #[inline(always)]
     fn cas(&self) -> u64 {
         debug_assert!(self.len() >= HEADER_LEN);
-        self.read_u64_be(PacketPos::Cas as usize)
+        self.u64_be(PacketPos::Cas as usize)
     }
     #[inline(always)]
     fn packet_len(&self) -> usize {

@@ -68,11 +68,21 @@ impl RingSlice {
             mask,
         }
     }
+    /// 注意：本方法用vec的capacity作为cap，方便ManuallyDrop结构的恢复及正确drop
     #[inline(always)]
     pub fn from_vec(data: &Vec<u8>) -> Self {
         let mut mem: RingSlice = data.as_slice().into();
         // 这里面的cap是真实的cap
         mem.cap = data.capacity() as u32;
+        mem
+    }
+
+    /// 注意：对于Vec请使用from_vec，本方法直接用slice的长度作为cap，对ManuallyDrop结构无法友好支持
+    #[inline(always)]
+    pub fn from_slice(data: &[u8]) -> Self {
+        let mut mem: RingSlice = data.into();
+        // 这里面的cap是真实的cap
+        mem.cap = data.len() as u32;
         mem
     }
     #[inline(always)]
@@ -279,7 +289,7 @@ impl RingSlice {
     #[inline]
     pub fn copy_to_r<R: RangeBounds<usize>>(&self, s: &mut [u8], r: R) {
         let (start, end) = self.range(r);
-        assert!(start <= end && end <= s.len());
+        assert!(start <= end && end - start <= s.len());
         assert!(end - start <= s.len());
         if start == end {
             return;
@@ -336,12 +346,12 @@ impl RingSlice {
         self.cap as usize
     }
     #[inline(always)]
-    fn start(&self) -> usize {
+    pub(super) fn start(&self) -> usize {
         self.start as usize
     }
 
     #[inline(always)]
-    fn mask(&self, oft: usize) -> usize {
+    pub(super) fn mask(&self, oft: usize) -> usize {
         (self.mask & oft as u32) as usize
     }
 
@@ -437,153 +447,6 @@ impl RingSlice {
     pub fn reader(&self) -> RingSliceRead<'_> {
         RingSliceRead { oft: 0, rs: self }
     }
-}
-
-use std::convert::TryInto;
-macro_rules! define_read_number {
-    (le $($ty:ty)+) => {
-        $(paste::paste! {
-            define_read_number!([<read_ $ty _le_cmp>], std::mem::size_of::<$ty>(), 0, $ty, $ty, from_le_bytes);
-        })+
-    };
-    (be $($ty:ty)+) => {
-        $(paste::paste! {
-            define_read_number!([<read_ $ty _be_cmp>], std::mem::size_of::<$ty>(), 0, $ty, $ty, from_be_bytes);
-        })+
-    };
-    ($($ty:ty)+) => {
-        define_read_number!(le $($ty)+);
-        define_read_number!(be $($ty)+);
-    };
-    (ole $($actual_ty:ty, $ty:ty, $name:ident, $bits:literal);+) => {
-        $(paste::paste! {
-            define_read_number!([<read_ $name _le_cmp>], $bits / 8, 0, $actual_ty, $ty, from_le_bytes);
-        })+
-    };
-    (obe $($actual_ty:ty, $ty:ty, $name:ident, $bits:literal);+) => {
-        $(paste::paste! {
-            define_read_number!([<read_ $name _be_cmp>], $bits / 8, std::mem::size_of::<$ty>() * 8 - $bits, $actual_ty, $ty, from_be_bytes);
-        })+
-    };
-    ($fn:ident, $bytes:expr, $rshift:expr, $actual_ty:tt, $ty:tt, $which:ident) => {
-        #[inline]
-        pub fn $fn(&self, oft: usize) -> $actual_ty {
-            debug_assert!(oft + $bytes <= self.len());
-            let start = oft + self.start();
-            const SIZE: usize = std::mem::size_of::<$ty>();
-            let v = if start + SIZE <= self.cap() {
-                let b = unsafe { from_raw_parts(self.ptr().add(start), SIZE) };
-                $ty::$which(b.try_into().unwrap()) >> $rshift
-            } else {
-                use copy_nonoverlapping as copy;
-                // 分段读取
-                let mut b = [0u8; SIZE];
-                let start = self.mask(start);
-                const OFT:usize = $rshift / 8;
-                let len = (self.cap() - start).min($bytes);
-                unsafe { copy(self.ptr().add(start), b.as_mut_ptr().add(OFT), len) };
-                unsafe { copy(self.ptr(), b.as_mut_ptr().add(len + OFT), $bytes - len) };
-                $ty::$which(b)
-            };
-            const SHIFT: usize = std::mem::size_of::<$actual_ty>() * 8 - $bytes * 8;
-            // 保留符号位
-            (v << SHIFT) as $actual_ty >> SHIFT
-        }
-    };
-    ($fn_name:ident, $type_name:tt::$type_fn:ident) => {
-        #[inline]
-        pub fn $fn_name(&self, oft: usize) -> $type_name {
-            const SIZE: usize = std::mem::size_of::<$type_name>();
-            debug_assert!(self.len() >= oft + SIZE);
-            let oft_start = self.mask(oft + self.start());
-            let len = self.cap() - oft_start; // 从oft_start到cap的长度
-            if len >= SIZE {
-                let b = unsafe { from_raw_parts(self.ptr().add(oft_start), SIZE) };
-
-                // $type_name::from_be_bytes(b[..SIZE].try_into().unwrap())
-                $type_name::$type_fn(b[..SIZE].try_into().unwrap())
-            } else {
-                // 分段读取
-                let mut b = [0u8; SIZE];
-                use copy_nonoverlapping as copy;
-                unsafe { copy(self.ptr().add(oft_start), b.as_mut_ptr(), len) };
-                unsafe { copy(self.ptr(), b.as_mut_ptr().add(len), SIZE - len) };
-
-                // $type_name::from_be_bytes(b)
-
-                $type_name::$type_fn(b)
-            }
-        }
-    };
-
-    // 注意这里的offset，是转成目标类型时，在目标类型字节中的偏移
-    ($name:ident, $size:literal, $offset:literal, $t:tt::$fn:ident) => {
-        #[inline]
-        #[doc = "读取指定偏移、字节的数字，仅仅支持小端"]
-        pub fn $name(&self, oft: usize) -> $t {
-            // pub fn $name(&mut self, oft: usize) -> $t {
-            const SIZE: usize = $size;
-            debug_assert!(self.len() >= (oft + SIZE));
-            let mut x: $t = 0;
-            // let bytes = self.eat(SIZE);
-            // for (i, b) in bytes.iter().enumerate() {
-            //     x |= (*b as $t) << ((8 * i) + (8 * $offset));
-            // }
-            // $t::$fn(x)
-
-            // eat 放到外层去处理，ringslice后续改为静态类型？ fishermen
-            // let slice = self.eat(SIZE);
-            for i in 0..SIZE {
-                let b = self.at(oft + i);
-                x |= (b as $t) << ((8 * i) + (8 * $offset));
-            }
-            let v = $t::$fn(x);
-            const SHIFT: usize = std::mem::size_of::<$t>() * 8 - SIZE * 8;
-            // 保留符号位
-            (v << SHIFT) as $t >> SHIFT
-        }
-    };
-}
-
-impl RingSlice {
-    define_read_number!(u16 u32 u64);
-    define_read_number!(le i16 i32 i64);
-    define_read_number!(
-        ole  u32, u32, u24, 24;
-             i32, u32, i24, 24;
-             u64, u64, u48, 48;
-             u64, u64, u56, 56;
-             i64, u64, i56, 56
-    );
-    define_read_number!(
-        obe  u32, u32, u24, 24;
-             i32, u32, i24, 24;
-             u64, u64, u48, 48;
-             u64, u64, u56, 56;
-             i64, u64, i56, 56
-    );
-
-    // little endian
-    define_read_number!(read_u8, u8::from_le_bytes);
-    define_read_number!(read_i8, i8::from_le_bytes);
-    define_read_number!(read_u16_le, u16::from_le_bytes);
-    define_read_number!(read_i16_le, i16::from_le_bytes);
-    define_read_number!(read_u24_le, 3, 0, u32::from_le);
-    define_read_number!(read_i24_le, 3, 0, i32::from_le);
-    define_read_number!(read_u32_le, u32::from_le_bytes);
-    define_read_number!(read_i32_le, i32::from_le_bytes);
-    define_read_number!(read_u48_le, 6, 0, u64::from_le);
-    define_read_number!(read_u56_le, 7, 0, u64::from_le);
-    define_read_number!(read_i56_le, 7, 0, i64::from_le);
-    define_read_number!(read_u64_le, u64::from_le_bytes);
-    define_read_number!(read_i64_le, i64::from_le_bytes);
-    define_read_number!(read_f32_le, f32::from_le_bytes);
-    define_read_number!(read_f64_le, f64::from_le_bytes);
-
-    // big endian
-    define_read_number!(read_u16_be, u16::from_be_bytes);
-    define_read_number!(read_u32_be, u32::from_be_bytes);
-    define_read_number!(read_u64_be, u64::from_be_bytes);
 }
 
 impl From<&[u8]> for RingSlice {
