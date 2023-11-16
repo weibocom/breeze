@@ -48,7 +48,7 @@ pub fn private_api_log(
     level: Level,
     &(target, module_path, file, line): &(&str, &'static str, &'static str, u32),
 ) {
-    log::__private_api_log(args, level, &(target, module_path, file, line), None);
+    log::__private_api::log(args, level, &(target, module_path, file), line, None);
 }
 #[macro_export]
 macro_rules! log_enabled {
@@ -58,7 +58,7 @@ macro_rules! log_enabled {
 }
 #[inline]
 pub fn private_api_enabled(level: Level, target: &str) -> bool {
-    log::__private_api_enabled(level, target)
+    log::__private_api::enabled(level, target)
 }
 
 use elog::LevelFilter;

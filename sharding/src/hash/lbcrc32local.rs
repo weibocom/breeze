@@ -28,7 +28,7 @@ impl super::Hash for LBCrc32localDelimiter {
             if !c.is_ascii_digit() {
                 break;
             }
-            hkey = hkey * 10 + (key.at(i) - '0' as u8) as u64;
+            hkey = hkey.wrapping_mul(10) + (key.at(i) - '0' as u8) as u64;
         }
 
         // java 的Longs.toByteArray 用big endian

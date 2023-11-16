@@ -1,85 +1,58 @@
-use std::io::{Error, ErrorKind, Result};
-
-use discovery::Inited;
-use protocol::{Protocol, ResOption, Resource};
+use discovery::{Inited, TopologyWrite};
+use protocol::{Protocol, Request, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
 
-use crate::msgque::topo::MsgQue;
 use crate::Timeout;
 
-use enum_dispatch::enum_dispatch;
+pub type TopologyProtocol<B, E, R, P> = Topologies<B, E, R, P>;
 
-pub trait Endpoint: Sized + Send + Sync {
-    type Item;
-    fn send(&self, req: Self::Item);
-    // 返回hash应该发送的分片idx
-    fn shard_idx(&self, _hash: i64) -> usize {
-        log::warn!("+++ should not use defatult shard idx");
-        panic!("should not use defatult shard idx");
+// 1. 生成一个try_from(parser, endpoint)的方法，endpoint是名字的第一个单词或者是所有单词的首字母。RedisService的名字为"rs"或者"redis"
+// 2. trait => where表示，为Topologies实现trait，满足where的条件
+// 3. 如果trait是pub的，则同时会创建这个trait。非pub的trait，只会为Topologies实现
+procs::topology_dispatcher! {
+    #[derive(Clone)]
+    pub enum Topologies<B, E, R, P> {
+        MsgQue(crate::msgque::topo::MsgQue<B, E, R, P>),
+        RedisService(crate::redisservice::topo::RedisService<B, E, R, P>),
+        CacheService(crate::cacheservice::topo::CacheService<B, E, R, P>),
+        PhantomService(crate::phantomservice::topo::PhantomService<B, E, R, P>),
+        KvService(crate::kv::topo::KvService<B, E, R, P>),
+        UuidService(crate::uuid::topo::UuidService<B, E, R, P>),
     }
+
+    #[procs::dispatcher_trait_deref]
+    pub trait Endpoint: Sized + Send + Sync {
+        type Item;
+        fn send(&self, req: Self::Item);
+        fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R> + Inited, R: Request, P: Protocol+Sync+Send, B:Send+Sync
+
+    pub trait Topology : Endpoint + Hash{
+        fn exp_sec(&self) -> u32 {86400}
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, B: Send + Sync, Topologies<B, E, R, P>: Endpoint
+
+    trait Inited {
+        fn inited(&self) -> bool;
+    } => where E:Inited
+
+    trait TopologyWrite {
+        fn update(&mut self, name: &str, cfg: &str);
+        fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
+        fn need_load(&self) -> bool;
+        fn load(&mut self);
+    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>+Single
+
+    trait Hash {
+        fn hash<S: HashKey>(&self, key: &S) -> i64;
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, B:Send+Sync
+
 }
 
-impl<T, R> Endpoint for &T
-where
-    T: Endpoint<Item = R>,
-{
-    type Item = R;
-    #[inline]
-    fn send(&self, req: R) {
-        (*self).send(req)
-    }
-
-    #[inline]
-    fn shard_idx(&self, hash: i64) -> usize {
-        (*self).shard_idx(hash)
-    }
-}
-
-impl<T, R> Endpoint for std::sync::Arc<T>
-where
-    T: Endpoint<Item = R>,
-{
-    type Item = R;
-    #[inline]
-    fn send(&self, req: R) {
-        (**self).send(req)
-    }
-    #[inline]
-    fn shard_idx(&self, hash: i64) -> usize {
-        (**self).shard_idx(hash)
-    }
-}
-
-#[enum_dispatch]
-pub trait Topology: Endpoint + Hash {
-    #[inline]
-    fn exp_sec(&self) -> u32 {
-        86400
-    }
-}
-
+#[procs::dispatcher_trait_deref]
 pub trait Single {
     fn single(&self) -> bool;
     fn disable_single(&self);
     fn enable_single(&self);
-}
-
-impl<T> Single for std::sync::Arc<T>
-where
-    T: Single,
-{
-    #[inline]
-    fn single(&self) -> bool {
-        (**self).single()
-    }
-    #[inline]
-    fn disable_single(&self) {
-        (**self).disable_single()
-    }
-    #[inline]
-    fn enable_single(&self) {
-        (**self).enable_single()
-    }
 }
 
 pub trait Builder<P, R, E> {
@@ -96,132 +69,6 @@ pub trait Builder<P, R, E> {
         timeout: Timeout,
         option: ResOption,
     ) -> E;
-}
-
-macro_rules! define_topology {
-    ($($top:ty, $item:ident, $ep:expr);+) => {
-
- #[derive(Clone)]
- pub enum TopologyProtocol<B, E, R, P> {
-      $($item($top)),+
- }
-
- impl<B, E, R, P> TopologyProtocol<B, E, R, P>  {
-     pub fn try_from(parser:P, endpoint:&str) -> Result<Self> {
-          match &endpoint[..]{
-              $($ep => Ok(Self::$item(parser.into())),)+
-              _ => Err(Error::new(ErrorKind::InvalidData, format!("'{}' is not a valid endpoint", endpoint))),
-          }
-     }
- }
- impl<B, E, R, P> Inited for TopologyProtocol<B, E, R, P> where E:Inited {
-     #[inline]
-     fn inited(&self) -> bool {
-          match self {
-              $(
-                  Self::$item(p) => p.inited(),
-              )+
-          }
-     }
- }
-
-impl<B, E, R, P> discovery::TopologyWrite for TopologyProtocol<B, E, R, P> where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>+Single{
-    #[inline]
-    fn update(&mut self, name: &str, cfg: &str) {
-        match self {
-             $(Self::$item(s) => discovery::TopologyWrite::update(s, name, cfg),)+
-        }
-    }
-    #[inline]
-    fn disgroup<'a>(&self, path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
-        match self {
-             $(Self::$item(s) => discovery::TopologyWrite::disgroup(s, path, cfg),)+
-        }
-    }
-    #[inline]
-    fn need_load(&self) -> bool {
-        match self {
-             $(Self::$item(s) => discovery::TopologyWrite::need_load(s),)+
-        }
-    }
-    #[inline]
-    fn load(&mut self) {
-        match self {
-             $(Self::$item(s) => discovery::TopologyWrite::load(s),)+
-        }
-    }
-}
-
-impl<B:Send+Sync, E, R, P> Hash for TopologyProtocol<B, E, R, P>
-where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
-    #[inline]
-    fn hash<K:HashKey>(&self, k:&K) -> i64 {
-        match self {
-            $(
-                Self::$item(p) => p.hash(k),
-            )+
-        }
-    }
-}
-
-impl<B:Send+Sync, E, R, P> Topology for TopologyProtocol<B, E, R, P>
-where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:protocol::Request{
-    #[inline]
-    fn exp_sec(&self) -> u32 {
-        match self {
-            $(
-                Self::$item(p) => p.exp_sec(),
-            )+
-        }
-    }
-}
-
-impl<B, E, R, P> Endpoint for TopologyProtocol<B, E, R, P>
-where P:Sync+Send+Protocol, E:Endpoint<Item = R>,
-    R: protocol::Request,
-    P: Protocol,
-    B:Send+Sync,
-{
-    type Item = R;
-    #[inline]
-    fn send(&self, req:Self::Item) {
-        match self {
-            $(
-                Self::$item(p) => p.send(req),
-            )+
-        }
-    }
-
-    #[inline]
-    fn shard_idx(&self, hash: i64) -> usize {
-        match self {
-            $(
-                Self::$item(p) => p.shard_idx(hash),
-            )+
-        }
-    }
-}
-
-
-    };
-}
-
-use crate::kv::topo::KvService;
-#[cfg(feature = "mq")]
-use crate::msgque::topo::MsgQue;
-
-use crate::cacheservice::topo::CacheService;
-use crate::phantomservice::topo::PhantomService;
-use crate::redisservice::topo::RedisService;
-use crate::uuid::topo::UuidService;
-
-define_topology! {
-    MsgQue<B, E, R, P>, MsgQue, "mq";
-    RedisService<B, E, R, P>, RedisService, "rs";
-    CacheService<B, E, R, P>, CacheService, "cs";
-    PhantomService<B, E, R, P>, PhantomService, "pt";
-    KvService<B, E, R, P>, KvService, "kv";
-    UuidService<B, E, R, P>, UuidService, "uuid"
 }
 
 // 从环境变量获取是否开启后端资源访问的性能模式

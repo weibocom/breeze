@@ -26,7 +26,7 @@ impl RawSuffix {
 impl super::Hash for RawSuffix {
     fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
         // 按业务要求，如果没有分隔符，或者后缀有非数字，统统按照0处理
-        let mut hash = 0;
+        let mut hash = 0i64;
         let mut found_delimiter = false;
 
         for i in 0..key.len() {
@@ -41,7 +41,7 @@ impl super::Hash for RawSuffix {
                 hash = 0;
                 break;
             }
-            hash = hash * 10 + (b - '0' as u8) as i64;
+            hash = hash.wrapping_mul(10) + (b - '0' as u8) as i64;
         }
 
         hash

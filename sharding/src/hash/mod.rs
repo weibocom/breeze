@@ -22,6 +22,8 @@ pub use raw::Raw;
 pub use rawcrc32local::Rawcrc32local;
 pub use rawsuffix::RawSuffix;
 
+pub mod crc;
+
 use enum_dispatch::enum_dispatch;
 
 use self::{bkdrsub::Bkdrsub, crc64::Crc64};
@@ -191,6 +193,27 @@ impl Default for Hasher {
 pub trait HashKey: std::fmt::Debug {
     fn len(&self) -> usize;
     fn at(&self, idx: usize) -> u8;
+    #[inline]
+    fn num(&self, oft: usize) -> (i64, Option<u8>) {
+        let mut num = 0;
+        for i in oft..self.len() {
+            let c = self.at(i);
+            if !c.is_ascii_digit() {
+                return (num, Some(c));
+            }
+            num = num.wrapping_mul(10) + (c - b'0') as i64;
+        }
+        (num, None)
+    }
+    #[inline]
+    fn find(&self, oft: usize, found: impl Fn(u8) -> bool) -> Option<usize> {
+        for i in oft..self.len() {
+            if found(self.at(i)) {
+                return Some(i);
+            }
+        }
+        None
+    }
 }
 
 impl HashKey for &[u8] {

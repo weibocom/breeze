@@ -117,18 +117,15 @@ impl Metrics {
 
 #[inline]
 pub(crate) fn get_metrics() -> ReadGuard<Metrics> {
-    assert!(METRICS.get().is_some());
-    unsafe { METRICS.get_unchecked().get() }
+    METRICS.get().unwrap().get()
 }
 
 #[inline]
 pub(crate) fn register_metric(id: Id) -> Metric {
-    assert!(METRICS.get().is_some());
     get_metrics().register(id)
 }
 #[inline]
 pub(crate) fn register_cache(id: &Arc<Id>, cache: i64) {
-    assert!(METRICS.get().is_some());
     get_metrics().cache(id, cache)
 }
 #[inline]
