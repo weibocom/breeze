@@ -1,122 +1,17 @@
-use crate::kv::error::{Error, Result};
+use crate::kv::error::Result;
 use crate::{Command, Stream};
 
 pub use crate::kv::common::proto::{Binary, Text};
 
-use crate::kv::common::{io::ParseBuf, packets::OkPacket, row::RowDeserializer, value::ServerSide};
-use crate::kv::rsppacket::ResponsePacket;
+use super::rsppacket::ResponsePacket;
+use crate::kv::common::{io::ParseBuf, packets::OkPacket, row::RowDeserializer};
 
 use std::{marker::PhantomData, sync::Arc};
 
 use crate::kv::common::packets::Column;
+use crate::kv::common::query_result::{Or, SetIteratorState};
+use crate::kv::common::row::convert::{from_row, FromRow};
 use crate::kv::common::row::Row;
-
-use super::row::convert::{from_row, FromRow};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Or<A, B> {
-    A(A),
-    B(B),
-}
-
-/// Result set kind.
-pub(crate) trait Protocol: 'static + Send + Sync {
-    fn next<'a, S: Stream>(
-        rsp_packet: &'a mut ResponsePacket<'a, S>,
-        columns: Arc<[Column]>,
-    ) -> Result<Option<Row>>;
-}
-
-impl Protocol for Text {
-    fn next<'a, S: Stream>(
-        rsp_packet: &'a mut ResponsePacket<'a, S>,
-        columns: Arc<[Column]>,
-    ) -> Result<Option<Row>> {
-        match rsp_packet.next_row_packet()? {
-            Some(pld) => {
-                let row = ParseBuf::from(*pld).parse::<RowDeserializer<(), Text>>(columns)?;
-                Ok(Some(row.into()))
-            }
-            None => Ok(None),
-        }
-    }
-}
-
-impl Protocol for Binary {
-    fn next<'a, S: Stream>(
-        rsp_packet: &'a mut ResponsePacket<'a, S>,
-        columns: Arc<[Column]>,
-    ) -> Result<Option<Row>> {
-        match rsp_packet.next_row_packet()? {
-            Some(pld) => {
-                let row =
-                    ParseBuf::from(*pld).parse::<RowDeserializer<ServerSide, Binary>>(columns)?;
-                Ok(Some(row.into()))
-            }
-            None => Ok(None),
-        }
-    }
-}
-
-/// State of a result set iterator.
-#[derive(Debug)]
-pub enum SetIteratorState {
-    /// Iterator is in a non-empty set.
-    InSet(Arc<[Column]>),
-    /// Iterator is in an empty set.
-    InEmptySet(OkPacket),
-    /// Iterator is in an errored result set.
-    Errored(Error),
-    /// Next result set isn't handled.
-    OnBoundary,
-    /// No more result sets.
-    Done,
-}
-
-// impl SetIteratorState {
-//     fn ok_packet(&self) -> Option<&OkPacket<'_>> {
-//         if let Self::InEmptySet(ref ok) = self {
-//             Some(ok)
-//         } else {
-//             None
-//         }
-//     }
-
-//     fn columns(&self) -> Option<&Arc<[Column]>> {
-//         if let Self::InSet(ref cols) = self {
-//             Some(cols)
-//         } else {
-//             None
-//         }
-//     }
-// }
-
-impl From<Vec<Column>> for SetIteratorState {
-    fn from(columns: Vec<Column>) -> Self {
-        Self::InSet(columns.into())
-    }
-}
-
-impl From<OkPacket> for SetIteratorState {
-    fn from(ok_packet: OkPacket) -> Self {
-        Self::InEmptySet(ok_packet)
-    }
-}
-
-impl From<Error> for SetIteratorState {
-    fn from(err: Error) -> Self {
-        Self::Errored(err)
-    }
-}
-
-impl From<Or<Vec<Column>, OkPacket>> for SetIteratorState {
-    fn from(or: Or<Vec<Column>, OkPacket>) -> Self {
-        match or {
-            Or::A(cols) => Self::from(cols),
-            Or::B(ok) => Self::from(ok),
-        }
-    }
-}
 
 /// Response to a query or statement execution.
 ///
@@ -148,7 +43,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         }
     }
 
-    pub(crate) fn new(
+    pub fn new(
         rsp_packet: &'c mut ResponsePacket<'c, S>,
         meta: Or<Vec<Column>, OkPacket>,
     ) -> QueryResult<'c, T, S> {
@@ -161,17 +56,15 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
     ///
     /// **Requires:** `self.state == OnBoundary`
     /// TODO 这个方法搬到rsppacket中去实现 fishermen
-    pub(crate) fn handle_next(&mut self) {
+    pub fn handle_next(&mut self) {
         debug_assert!(
             matches!(self.state, SetIteratorState::OnBoundary),
             "self.state != OnBoundary"
         );
 
         // if status_flags.contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS) {}
-
         if self.rsp_packet.more_results_exists() {
             // TODO 等支持多行，再处理此处
-            log::error!("+++ should not come here:{:?}", self.rsp_packet);
             match self.rsp_packet.parse_result_set_meta() {
                 Ok(meta) => self.state = meta.into(),
                 Err(err) => self.state = err.into(),

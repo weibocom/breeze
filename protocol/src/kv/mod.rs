@@ -1,9 +1,9 @@
-mod client;
+pub mod client;
 pub mod common;
-mod mcpacket;
+pub mod mcpacket;
 
-mod error;
-mod packet;
+pub mod error;
+pub mod packet;
 mod reqpacket;
 mod rsppacket;
 
@@ -59,7 +59,7 @@ lazy_static! {
 pub struct Kv {}
 
 #[derive(Debug, Clone, Copy)]
-pub(self) enum HandShakeStatus {
+pub enum HandShakeStatus {
     #[allow(dead_code)]
     Init,
     InitialhHandshakeResponse,
