@@ -1,7 +1,9 @@
 pub mod bkdr;
+pub mod bkdrabscrc32;
 pub mod bkdrsub;
 pub mod crc32;
 pub mod crc32local;
+pub mod crc64;
 pub mod lbcrc32local;
 pub mod padding;
 pub mod random;
@@ -10,6 +12,7 @@ pub mod rawcrc32local;
 pub mod rawsuffix;
 
 pub use bkdr::Bkdr;
+pub use bkdrabscrc32::BkdrAbsCrc32;
 pub use crc32::*;
 pub use crc32local::*;
 pub use lbcrc32local::LBCrc32localDelimiter;
@@ -23,7 +26,7 @@ pub mod crc;
 
 use enum_dispatch::enum_dispatch;
 
-use self::bkdrsub::Bkdrsub;
+use self::{bkdrsub::Bkdrsub, crc64::Crc64};
 
 // 占位hash，主要用于兼容服务框架，供mq等业务使用
 pub const HASH_PADDING: &str = "padding";
@@ -67,6 +70,7 @@ pub enum Hasher {
     Raw(Raw), // redis raw, long型字符串直接用数字作为hash
     Bkdr(Bkdr),
     Bkdrsub(Bkdrsub),
+    BkdrAbsCrc32(BkdrAbsCrc32), // 混合三种hash：先bkdr，再abs，最后进行crc32计算
     Crc32(Crc32),
     Crc32Short(Crc32Short),         // mc short crc32
     Crc32Num(Crc32Num),             // crc32 for a hash key whick is a num,
@@ -79,6 +83,7 @@ pub enum Hasher {
     LBCrc32localDelimiter(LBCrc32localDelimiter), // long bytes crc32local for hash like: 123.a, 124_a, 123#a
     Rawcrc32local(Rawcrc32local),                 // raw or crc32local
     Crc32Abs(Crc32Abs), // crc32abs: 基于i32转换，然后直接取abs；其他走i64提升为正数
+    Crc64(Crc64),       // Crc64 算法，对整个key做crc64计算
     Random(RandomHash), // random hash
     RawSuffix(RawSuffix),
 }
@@ -114,6 +119,7 @@ impl Hasher {
                 HASH_PADDING => Self::Padding(Default::default()),
                 "bkdr" => Self::Bkdr(Default::default()),
                 "bkdrsub" => Self::Bkdrsub(Default::default()),
+                "bkdrabscrc32" => Self::BkdrAbsCrc32(Default::default()),
                 "raw" => Self::Raw(Raw::from(Default::default())),
                 "crc32" => Self::Crc32(Default::default()),
                 "crc32local" => Self::Crc32local(Default::default()),
@@ -122,6 +128,7 @@ impl Hasher {
                     Self::LBCrc32localDelimiter(LBCrc32localDelimiter::from(alg_lower.as_str()))
                 }
                 "crc32abs" => Self::Crc32Abs(Default::default()),
+                "crc64" => Self::Crc64(Default::default()),
                 "random" => Self::Random(Default::default()),
                 _ => {
                     // 默认采用mc的crc32-s hash
