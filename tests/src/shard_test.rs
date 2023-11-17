@@ -29,9 +29,8 @@ fn crc32_short() {
     assert_eq!(h_point, 2642712869, "crc32-point hash");
 }
 
-#[allow(dead_code)]
-fn build_servers() -> Vec<String> {
-    let shard_count = 8;
+fn build_servers(shard_count: usize) -> Vec<String> {
+    // let shard_count = 8;
     let mut servers = Vec::with_capacity(shard_count);
     for i in 0..shard_count {
         servers.push(format!("192.168.0.{}", i).to_string());
@@ -512,4 +511,66 @@ fn test_consis_sharding() {
         let hash = hasher.hash(&t.0.as_bytes());
         assert_eq!(dist.index(hash), t.1);
     }
+}
+
+#[test]
+fn crc64_check() {
+    crc64_file_check(6, "crc64_modula_6");
+    crc64_file_check(8, "crc64_modula_8");
+}
+
+fn crc64_file_check(shards_count: usize, file_name: &str) {
+    let root_dir = "sharding_datas/crc64";
+    let shards = build_servers(shards_count);
+    let shard_file = format!("{}/{}", root_dir, file_name);
+
+    let file = File::open(shard_file).unwrap();
+    let mut reader = BufReader::new(file);
+    let mut success_count = 0;
+    loop {
+        let mut line = String::with_capacity(64);
+        match reader.read_line(&mut line) {
+            Ok(len) => {
+                if len == 0 {
+                    // println!("process file/{} completed!", file_name);
+                    break;
+                }
+                line = line.trim().to_string();
+
+                if line.trim().len() == 0 || line.starts_with("#") {
+                    // println!("ignore comment: {}", line);
+                    continue;
+                }
+
+                let fields: Vec<&str> = line.split("|").collect();
+                if fields.len() != 3 {
+                    // println!("malformed line:{}", line);
+                    continue;
+                }
+
+                let hasher = Hasher::from("crc64");
+                let dist = Distribute::from("modula", &shards);
+
+                let key = fields[0];
+                // c 的crc64的idx从1开始，需要减去1
+                let idx_real = usize::from_str_radix(fields[1], 10).unwrap_or(usize::MAX) - 1;
+                let hash = hasher.hash(&key.as_bytes());
+                let idx = dist.index(hash);
+                assert_eq!(
+                    idx_real, idx,
+                    "line: {} - {}:{}/{}",
+                    line, hash, idx, idx_real
+                );
+                success_count += 1;
+
+                // println!("proc succeed line:{}", line);
+            }
+            Err(e) => {
+                println!("found err: {:?}", e);
+                break;
+            }
+        }
+    }
+    println!("file:{}, succeed count:{}", file_name, success_count);
+    assert!(success_count > 0);
 }

@@ -31,7 +31,8 @@ impl BackendQuota {
 // 2. 其他资源，replicas长度与len_local相同
 #[derive(Clone)]
 pub struct Distance<T> {
-    len_local: u16,
+    len_local: u16,  // 实际使用的local实例数量
+    len_region: u16, // 通过排序计算出的可用区内的实例数量，len_region <= len_local
     backend_quota: bool,
     idx: Arc<AtomicUsize>,
     replicas: Vec<(T, BackendQuota)>,
@@ -40,6 +41,7 @@ impl<T: Addr> Distance<T> {
     pub fn new() -> Self {
         Self {
             len_local: 0,
+            len_region: 0,
             backend_quota: false,
             idx: Default::default(),
             replicas: Vec::new(),
@@ -75,6 +77,7 @@ impl<T: Addr> Distance<T> {
             let l = replicas.sort_by_region(Vec::new(), context::get().region(), |d, _| {
                 d <= discovery::distance::DISTANCE_VAL_REGION
             });
+            me.len_region = l as u16; // 可用区内的实例数量
             if l == 0 {
                 log::warn!(
                     "too few instance in region:{} total:{}, {:?}",
@@ -100,6 +103,9 @@ impl<T: Addr> Distance<T> {
         me.topn(len_local);
 
         me
+    }
+    pub fn len_region(&self) -> u16 {
+        self.len_region
     }
     #[inline]
     pub fn from(replicas: Vec<T>) -> Self {

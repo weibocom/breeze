@@ -24,7 +24,7 @@ fn main() -> Result<()> {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async { run().await });
+        .block_on(run());
 
     println!("exit {:?}", result);
     result
