@@ -50,7 +50,7 @@ impl<P, Req> BackendChecker<P, Req> {
             option,
         }
     }
-    pub(crate) async fn start_check(&mut self, _single: Arc<AtomicBool>)
+    pub(crate) async fn start_check(mut self, _single: Arc<AtomicBool>)
     where
         P: Protocol,
         Req: Request,
