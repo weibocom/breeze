@@ -12,7 +12,7 @@ use crate::kv::common::packets::Column;
 use crate::kv::common::query_result::{Or, SetIteratorState};
 use crate::kv::common::row::convert::{from_row, FromRow};
 use crate::kv::common::row::Row;
-
+use SetIteratorState::*;
 /// Response to a query or statement execution.
 ///
 /// It is an iterator:
@@ -64,9 +64,12 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
 
         // if status_flags.contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS) {}
         if self.rsp_packet.more_results_exists() {
-            // TODO 等支持多行，再处理此处
             match self.rsp_packet.parse_result_set_meta() {
-                Ok(meta) => self.state = meta.into(),
+                Ok(meta) => {
+                    if self.set_index == 0 {
+                        self.state = meta.into();
+                    }
+                }
                 Err(err) => self.state = err.into(),
             }
             self.set_index += 1;
@@ -161,7 +164,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         self.rsp_packet.build_final_rsp_cmd(ok, rsp_data)
     }
 
-    /// 解析meta后面的rows
+    /// 解析meta后面的rows，有可能是完整响应，也有可能返回Err(不完整协议)
     #[inline(always)]
     pub fn parse_rows(&mut self) -> Result<Command> {
         // rows 收集器
@@ -170,16 +173,54 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
             acc
         };
 
+        // 构建最终返回给client的响应内容，格式详见issues/721
+        // *2\r\n 固定2
+        // *2\r\n 列数量
+        // +like_id\r\n
+        // +object_id\r\n
+        // *4\r\n  数据按行展开
+        // +111\r\n
+        // +112\r\n
+        // +121\r\n
+        // +122\r\n
+        let mut v: Vec<u8> = Vec::with_capacity(1024);
+
         // 解析row并构建cmd
-        let mut result_set = self.scan_rows(Vec::with_capacity(4), collector)?;
-        let status = result_set.len() > 0;
-        let row: Vec<u8> = if status {
-            //现在只支持单key，remove也不影响
-            result_set.remove(0)
-        } else {
-            b"not found".to_vec()
+        // self.state状态在下面scan_rows函数内可能会被从InSet修改为其他值，暂存列信息
+        let columns = match &self.state {
+            InSet(c) => Some(c.clone()),
+            _ => None,
         };
-        let cmd = self.build_final_rsp_cmd(status, row);
+        let result_set = self.scan_rows(Vec::with_capacity(4), collector)?;
+        let status = result_set.len() > 0;
+        if status {
+            // columns有值才会走到这个分支
+            let cols = columns.unwrap();
+            // 填充header，field部分
+            v.extend_from_slice("*2\r\n*".as_bytes());
+            v.extend_from_slice(&(cols.len().to_le_bytes()));
+            v.extend_from_slice("\r\n".as_bytes());
+            for (_, col) in cols.iter().enumerate() {
+                v.push(b'+');
+                v.extend_from_slice(&col.name_ref());
+                v.extend_from_slice("\r\n".as_bytes());
+            }
+
+            // 填充value部分
+            v.push(b'*');
+            v.extend_from_slice(&(result_set.len().to_le_bytes()));
+            v.extend_from_slice("\r\n".as_bytes());
+            let _ = result_set.iter().map(|r| {
+                v.push(b'+');
+                v.extend(r);
+                v.extend_from_slice("\r\n".as_bytes());
+            });
+            return Ok(self.build_final_rsp_cmd(status, v));
+        }
+        // else: not found
+        // use crate::redis::command::PADDING_RSP_TABLE;PADDING_RSP_TABLE[6]
+        let empty = b"$-1\r\n".to_vec(); // nil
+        let cmd = self.build_final_rsp_cmd(true, empty);
         Ok(cmd)
     }
 
@@ -205,7 +246,6 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
     }
 
     fn scan_row(&mut self) -> Result<Option<Row>> {
-        use SetIteratorState::*;
         let state = std::mem::replace(&mut self.state, OnBoundary);
         match state {
             InSet(cols) => match self.rsp_packet.next_row_packet()? {

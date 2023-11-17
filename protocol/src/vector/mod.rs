@@ -213,7 +213,6 @@ impl Vector {
         }
 
         // 解析meta后面的rows，返回列记录，如select
-        // 有可能多行数据，直接build成
         let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
         match query_result.parse_rows() {
             Ok(cmd) => Ok(cmd),

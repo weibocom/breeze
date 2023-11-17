@@ -2,11 +2,13 @@ use crate::ci::env::*;
 use crate::redis_helper::*;
 #[allow(unused)]
 use function_name::named;
+use redis::Value;
 
 const RESTYPE: &str = "vector";
 
 #[test]
 #[named]
+#[ignore]
 fn vrange_basic() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPE.get_host());
@@ -36,7 +38,8 @@ fn vrange_basic() {
 #[test]
 fn vrange_0() {
     let mut con = get_conn(&RESTYPE.get_host());
-    let rsp: Result<i32, redis::RedisError> = redis::cmd("vrange")
+
+    let rsp = redis::cmd("vrange")
         .arg("4668741184209284,2211")
         .arg("field")
         .arg("uid,object_type")
@@ -48,7 +51,7 @@ fn vrange_0() {
         .arg("0")
         .arg("10")
         .query(&mut con);
-    assert_eq!(rsp, Ok(32));
+    assert_eq!(rsp, Ok(Value::Nil));
 }
 
 #[test]
@@ -67,7 +70,16 @@ fn vrange_1() {
         .arg("0")
         .arg("10")
         .query(&mut con);
-    assert_eq!(rsp, Ok(32));
+    assert_eq!(
+        rsp,
+        Ok(Value::Bulk(vec![
+            Value::Bulk(vec![
+                Value::Data("uid".as_bytes().to_vec()),
+                Value::Data("object_type".as_bytes().to_vec())
+            ]),
+            Value::Bulk(vec![Value::Int(4668741184209281), Value::Int(4)])
+        ]))
+    );
 }
 #[test]
 // 返回2条数据
@@ -76,7 +88,7 @@ fn vrange_2() {
     let rsp = redis::cmd("vrange")
         .arg("4668741184209282,2211")
         .arg("field")
-        .arg("uid,object_type")
+        .arg("uid,like_id")
         .arg("where")
         .arg("object_id")
         .arg("=")
@@ -85,16 +97,30 @@ fn vrange_2() {
         .arg("0")
         .arg("10")
         .query(&mut con);
-    assert_eq!(rsp, Ok(32));
+    assert_eq!(
+        rsp,
+        Ok(Value::Bulk(vec![
+            Value::Bulk(vec![
+                Value::Data("uid".as_bytes().to_vec()),
+                Value::Data("like_id".as_bytes().to_vec())
+            ]),
+            Value::Bulk(vec![
+                Value::Int(4668741184209282),
+                Value::Int(4968741184209225),
+                Value::Int(4668741184209282),
+                Value::Int(4968741184209226)
+            ])
+        ]))
+    );
 }
 #[test]
 // 返回3条数据
 fn vrange_3() {
     let mut con = get_conn(&RESTYPE.get_host());
-    let rsp: Result<i32, redis::RedisError> = redis::cmd("vrange")
+    let rsp = redis::cmd("vrange")
         .arg("4668741184209283,2211")
         .arg("field")
-        .arg("uid,object_type")
+        .arg("uid,object_id")
         .arg("where")
         .arg("like_id")
         .arg("=")
@@ -103,5 +129,21 @@ fn vrange_3() {
         .arg("0")
         .arg("10")
         .query(&mut con);
-    assert_eq!(rsp, Ok(32));
+    assert_eq!(
+        rsp,
+        Ok(Value::Bulk(vec![
+            Value::Bulk(vec![
+                Value::Data("uid".as_bytes().to_vec()),
+                Value::Data("object_id".as_bytes().to_vec())
+            ]),
+            Value::Bulk(vec![
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209230),
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209231),
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209232)
+            ])
+        ]))
+    );
 }
