@@ -29,24 +29,16 @@ impl Callback {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DoneType {
-    OnServerConnErr,
-    OnRequestInvalid,
-    OnSentNoreply,
-    OnRecvResponse,
-}
-
 pub struct CallbackContext {
     pub(crate) flag: crate::Context,
-    async_mode: bool,            // 是否是异步请求
-    done: AtomicBool,            // 当前模式请求是否完成
-    inited: AtomicBool,          // response是否已经初始化
-    pub(crate) try_next: bool,   // 请求失败是否需要重试
-    retry_on_rsp_notok: bool,    //有响应且响应不ok时，是否需要重试
-    pub(crate) write_back: bool, // 请求结束后，是否需要回写。
-    first: bool,                 // 当前请求是否是所有子请求的第一个
-    last: bool,                  // 当前请求是否是所有子请求的最后一个
+    async_mode: bool,                    // 是否是异步请求
+    done: AtomicBool,                    // 当前模式请求是否完成
+    inited: AtomicBool,                  // response是否已经初始化
+    pub(crate) try_next: bool,           // 请求失败后，topo层面是否允许重试
+    pub(crate) retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
+    pub(crate) write_back: bool,         // 请求结束后，是否需要回写。
+    first: bool,                         // 当前请求是否是所有子请求的第一个
+    last: bool,                          // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
     request: HashedCommand,
     response: MaybeUninit<Command>,
@@ -106,7 +98,7 @@ impl CallbackContext {
     pub(crate) fn on_sent(&mut self) -> bool {
         log::debug!("request sent: {} ", self);
         if self.request().sentonly() {
-            self.on_done(DoneType::OnSentNoreply);
+            self.on_done();
             false
         } else {
             true
@@ -120,7 +112,7 @@ impl CallbackContext {
             debug_assert!(!self.complete(), "{:?}", self);
             self.swap_response(resp);
         }
-        self.on_done(DoneType::OnRecvResponse);
+        self.on_done();
     }
 
     #[inline]
@@ -136,7 +128,7 @@ impl CallbackContext {
     }
 
     #[inline]
-    fn need_gone(&self, done_type: DoneType) -> bool {
+    fn need_gone(&self) -> bool {
         if !self.async_mode {
             // 当前重试条件为 rsp == None || ("mc" && !rsp.ok())
             if self.inited() {
@@ -150,9 +142,8 @@ impl CallbackContext {
                     return false;
                 }
             }
-            // 至此，如果需要try next 或者 发送失败，只要重试次数tries少于1，都再尝试一次 fishermen
-            (self.try_next || DoneType::OnServerConnErr == done_type)
-                && self.tries.fetch_add(1, Release) < 1
+
+            self.try_next && self.tries.fetch_add(1, Release) < 1
         } else {
             // write back请求
             self.write_back
@@ -161,14 +152,14 @@ impl CallbackContext {
 
     // 只有在构建了response，该request才可以设置completed为true
     #[inline]
-    fn on_done(&mut self, done_type: DoneType) {
+    fn on_done(&mut self) {
         log::debug!("on-done:{}", self);
         if !self.async_mode {
             // 更新backend使用的时间
             self.quota.take().map(|q| q.incr(self.start_at().elapsed()));
         }
 
-        if self.need_gone(done_type) {
+        if self.need_gone() {
             // 需要重试或回写
             return self.goon();
         }
@@ -191,18 +182,15 @@ impl CallbackContext {
         // 正常err场景，仅仅在debug时check
         log::debug!("+++ on_err: {:?} => {:?}", err, self);
         use Error::*;
-        let done_type = match err {
-            Closed | ChanDisabled | Waiting | Pending => DoneType::OnServerConnErr,
-            _err => {
-                log::warn!("on-err:{} {:?}", self, _err);
-                DoneType::OnRequestInvalid
-            }
+        match err {
+            Closed | ChanDisabled | Waiting | Pending => {}
+            _err => log::warn!("on-err:{} {:?}", self, _err),
         };
         // 一次错误至少消耗500ms的配额
         self.quota
             .take()
             .map(|q| q.err_incr(self.start_at().elapsed()));
-        self.on_done(done_type);
+        self.on_done();
     }
     #[inline]
     pub fn request(&self) -> &HashedCommand {
@@ -310,11 +298,12 @@ impl Display for CallbackContext {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "async mod:{} done:{} init:{} try:{} write back:{} flag:{} tries:{} => {:?}",
+            "async mod:{} done:{} init:{} try_next:{} retry_on_notok:{} write back:{} flag:{} tries:{} => {:?}",
             self.async_mode,
             self.done.load(Acquire),
             self.inited(),
             self.try_next,
+            self.retry_on_rsp_notok,
             self.write_back,
             self.flag,
             self.tries.load(Acquire),
