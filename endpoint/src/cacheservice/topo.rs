@@ -118,7 +118,7 @@ where
         };
         req.try_next(try_next);
         req.write_back(write_back);
-        // TODO 有点怪异，先实现，晚点调整 fishermen
+        // TODO 有点怪异，先实现，晚点调整，这个属性直接从request获取更佳？ fishermen
         req.retry_on_rsp_notok(req.can_retry_on_rsp_notok());
         *req.mut_context() = ctx.ctx;
         if idx >= self.streams.len() {
