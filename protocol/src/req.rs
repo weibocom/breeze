@@ -30,8 +30,10 @@ pub trait Request:
     // 请求成功后，是否需要进行回写或者同步。
     fn write_back(&mut self, wb: bool);
     //fn is_write_back(&self) -> bool;
-    // 请求失败后，是否需要进行重试
+    // 请求失败后，topo层面是否允许进行重试
     fn try_next(&mut self, goon: bool);
+    // 请求失败后，协议层面是否允许进行重试
+    fn retry_on_rsp_notok(&mut self, retry: bool);
     // 初始化quota
     fn quota(&mut self, quota: sharding::BackendQuota);
 }

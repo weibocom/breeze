@@ -1,5 +1,6 @@
 use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
+use protocol::memcache::Binary;
 use protocol::{Protocol, Request, Resource};
 use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
@@ -102,7 +103,7 @@ where
         let mut ctx = super::Context::from(*req.mut_context());
         // gets及store类指令，都需要先请求master，然后再考虑masterL1
         let (idx, try_next, write_back) = if req.operation().is_store() {
-            self.context_store(&mut ctx, &req)
+            self.context_store(&mut ctx)
         } else {
             if !ctx.inited() {
                 // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
@@ -116,6 +117,8 @@ where
         };
         req.try_next(try_next);
         req.write_back(write_back);
+        // TODO 有点怪异，先实现，晚点调整 fishermen
+        req.retry_on_rsp_notok(req.can_retry_on_rsp_notok());
         *req.mut_context() = ctx.ctx;
         if idx >= self.streams.len() {
             req.on_err(protocol::Error::TopChanged);
@@ -133,7 +136,7 @@ where
     E: Endpoint<Item = Req>,
 {
     #[inline]
-    fn context_store(&self, ctx: &mut super::Context, req: &Req) -> (usize, bool, bool) {
+    fn context_store(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
@@ -141,20 +144,8 @@ where
             idx = ctx.take_write_idx() as usize;
             write_back = idx + 1 < self.streams.len();
 
-            // try_next逻辑：
-            //  1）如果当前为最后一个layer，设为false;
-            //  2）否则，根据opcode、force_write_all一起确定。
-            try_next = if idx + 1 >= self.streams.len() {
-                false
-            } else {
-                use protocol::memcache::Binary;
-                req.can_retry()
-                // match req.try_next_type() {
-                //     TryNextType::NotTryNext => false,
-                //     TryNextType::TryNext => true,
-                //     // TryNextType::Unkown => self.force_write_all,
-                // }
-            };
+            // topo控制try_next，只要还有layers，topo都支持try next
+            try_next = idx + 1 < self.streams.len();
         } else {
             // 是读触发的回种的写请求
             idx = ctx.take_read_idx() as usize;
@@ -192,8 +183,11 @@ where
                 idx = 0;
             } else {
                 // 满足#654场景，如果没有MasterL1，这里idx需要选到Slave
-                // 同时，为确保gets成功，请求路径按照固定顺序进行  fishermen
-                idx = self.streams.select_next_sequence_idx(0, 1);
+                // 同时，为对于gets成功，请求路径按照固定顺序进行  fishermen
+                idx = match req.operation().master_first() {
+                    true => 1,
+                    false => self.streams.select_next_idx(0, 1),
+                };
             }
             write_back = true;
         }

@@ -81,11 +81,6 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
-        // TODO kv目前只支持send一次，如果之前已经send过，即已经reshaped过，则直接返回异常 fishermen
-        if req.has_reshaped() {
-            req.on_err(protocol::Error::Closed);
-            return;
-        }
         // req 是mc binary协议，需要展出字段，转换成sql
         let (intyear, shard_idx) = if req.ctx().runs == 0 {
             let key = req.key();
