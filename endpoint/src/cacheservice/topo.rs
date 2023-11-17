@@ -1,6 +1,7 @@
 use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
-use protocol::{Protocol, Request, Resource, TryNextType};
+use protocol::memcache::Binary;
+use protocol::{Protocol, Request, Resource};
 use sharding::hash::{Hash, HashKey, Hasher};
 use sharding::Distance;
 use std::collections::HashMap;
@@ -20,7 +21,15 @@ pub struct CacheService<B, E, Req, P> {
     hasher: Hasher,
     parser: P,
     exp_sec: u32,
-    force_write_all: bool, // 兼容已有业务逻辑，set master失败后，是否更新其他layer
+
+    // TODO 线上稳定后再清理，预计2024.2之后
+    // 1. 去掉force_write_all，其设计的本意是set失败后，是否更新其他layer；
+    // 当前的设计原则已经改为可用性优先，只要有layer可用，就应该对外提供服务，所以force_write_all都应该为true，也就失去了存在的价值了；
+    //
+    // 兼容已有业务逻辑，set master失败后，是否更新其他layer
+    // force_write_all: bool,
+
+    // 保留本设置，非必要场景，减少一次slave访问
     backend_no_storage: bool, // true：mc后面没有存储
     _marker: std::marker::PhantomData<(B, Req)>,
 }
@@ -32,7 +41,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             parser,
             streams: Distance::new(),
             exp_sec: 0,
-            force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
+            // force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
             _marker: Default::default(),
             backend_no_storage: false,
@@ -91,31 +100,32 @@ where
     fn send(&self, mut req: Self::Item) {
         debug_assert!(self.streams.local_len() > 0);
 
-        let mut idx: usize = 0; // master
-        if !req.operation().master_only() {
-            let mut ctx = super::Context::from(*req.mut_context());
-            let (i, try_next, write_back) = if req.operation().is_store() {
-                self.context_store(&mut ctx, &req)
-            } else {
-                if !ctx.inited() {
-                    // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
-                    // 第一次读一般访问L1，miss之后再读master；
-                    // 读quota的更新根据第一次的请求时间更合理
-                    if let Some(quota) = self.streams.quota() {
-                        req.quota(quota);
-                    }
+        // let mut idx: usize = 0; // master
+        let mut ctx = super::Context::from(*req.mut_context());
+        // gets及store类指令，都需要先请求master，然后再考虑masterL1
+        let (idx, try_next, write_back) = if req.operation().is_store() {
+            self.context_store(&mut ctx)
+        } else {
+            if !ctx.inited() {
+                // ctx未初始化, 是第一次读请求；仅第一次请求记录时间，原因如下：
+                // 第一次读一般访问L1，miss之后再读master；
+                // 读quota的更新根据第一次的请求时间更合理
+                if let Some(quota) = self.streams.quota() {
+                    req.quota(quota);
                 }
-                self.context_get(&mut ctx)
-            };
-            req.try_next(try_next);
-            req.write_back(write_back);
-            *req.mut_context() = ctx.ctx;
-            idx = i;
-            if idx >= self.streams.len() {
-                req.on_err(protocol::Error::TopChanged);
-                return;
             }
+            self.context_get(&mut ctx, &req)
+        };
+        req.try_next(try_next);
+        req.write_back(write_back);
+        // TODO 有点怪异，先实现，晚点调整，这个属性直接从request获取更佳？ fishermen
+        req.retry_on_rsp_notok(req.can_retry_on_rsp_notok());
+        *req.mut_context() = ctx.ctx;
+        if idx >= self.streams.len() {
+            req.on_err(protocol::Error::TopChanged);
+            return;
         }
+
         log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
         debug_assert!(idx < self.streams.len(), "{} {} => {:?}", idx, self, req);
 
@@ -127,26 +137,16 @@ where
     E: Endpoint<Item = Req>,
 {
     #[inline]
-    fn context_store(&self, ctx: &mut super::Context, req: &Req) -> (usize, bool, bool) {
+    fn context_store(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
+            // 写指令，总是从master开始
             idx = ctx.take_write_idx() as usize;
             write_back = idx + 1 < self.streams.len();
 
-            // try_next逻辑：
-            //  1）如果当前为最后一个layer，设为false;
-            //  2）否则，根据opcode、force_write_all一起确定。
-            try_next = if idx + 1 >= self.streams.len() {
-                false
-            } else {
-                use protocol::memcache::Binary;
-                match req.try_next_type() {
-                    TryNextType::NotTryNext => false,
-                    TryNextType::TryNext => true,
-                    TryNextType::Unkown => self.force_write_all,
-                }
-            };
+            // topo控制try_next，只要还有layers，topo都支持try next
+            try_next = idx + 1 < self.streams.len();
         } else {
             // 是读触发的回种的写请求
             idx = ctx.take_read_idx() as usize;
@@ -162,10 +162,15 @@ where
     //   若有L1，则两次访问分布在M、L1
     //   若无L1，则两次访问分布在M、S；#654
     #[inline]
-    fn context_get(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
+    fn context_get(&self, ctx: &mut super::Context, req: &Req) -> (usize, bool, bool) {
         let (idx, try_next, write_back);
         if !ctx.check_and_inited(false) {
-            idx = self.streams.select_idx();
+            // 第一个retrieve，如果需要master-first，则直接访问master
+            idx = match req.operation().master_first() {
+                true => 0,
+                false => self.streams.select_idx(),
+            };
+
             // 第一次访问，没有取到master，则下一次一定可以取到master
             // 如果取到了master，有slave也可以继续访问
             // 后端无storage且后端资源不止一组，可以多访问一次
@@ -180,8 +185,12 @@ where
             if last_idx != 0 {
                 idx = 0;
             } else {
-                // #654场景，这里idx会选到S
-                idx = self.streams.select_next_idx(0, 1);
+                // 满足#654场景，如果没有MasterL1，这里idx需要选到Slave
+                // 同时，为对于gets成功，请求路径按照固定顺序进行  fishermen
+                idx = match req.operation().master_first() {
+                    true => 1,
+                    false => self.streams.select_next_idx(0, 1),
+                };
             }
             write_back = true;
         }
@@ -200,8 +209,10 @@ where
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
+
             self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
-            self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
+
+            // self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
             self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
             let dist = &ns.distribution.clone();
 

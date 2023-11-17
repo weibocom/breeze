@@ -48,6 +48,10 @@ impl crate::Request for Request {
         self.ctx().try_next = goon;
     }
     #[inline]
+    fn retry_on_rsp_notok(&mut self, retry: bool) {
+        self.ctx().retry_on_rsp_notok = retry;
+    }
+    #[inline]
     fn quota(&mut self, quota: BackendQuota) {
         self.ctx().quota(quota);
     }
