@@ -33,10 +33,10 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
         let f = finish.clone();
         let path = Path::new(vec![rsrc.name(), service]);
         let single = Arc::new(AtomicBool::new(false));
-        let mut checker =
+        let checker =
             BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout, option);
         let s = single.clone();
-        rt::spawn(async move { checker.start_check(s).await });
+        rt::spawn(checker.start_check(s));
 
         Backend {
             finish,
