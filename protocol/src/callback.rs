@@ -142,7 +142,6 @@ impl CallbackContext {
                     return false;
                 }
             }
-
             self.try_next && self.tries.fetch_add(1, Release) < 1
         } else {
             // write back请求
@@ -185,7 +184,7 @@ impl CallbackContext {
         match err {
             Closed | ChanDisabled | Waiting | Pending => {}
             _err => log::warn!("on-err:{} {:?}", self, _err),
-        };
+        }
         // 一次错误至少消耗500ms的配额
         self.quota
             .take()
