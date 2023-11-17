@@ -25,11 +25,12 @@ pub struct CacheService<B, E, Req, P> {
     // TODO 线上稳定后再清理，预计2024.2之后
     // 1. 去掉force_write_all，其设计的本意是set失败后，是否更新其他layer；
     // 当前的设计原则已经改为可用性优先，只要有layer可用，就应该对外提供服务，所以force_write_all都应该为true，也就失去了存在的价值了；
-    // b2. backend_no_storage 也去掉，理由同上；
     //
     // 兼容已有业务逻辑，set master失败后，是否更新其他layer
     // force_write_all: bool,
-    // backend_no_storage: bool, // true：mc后面没有存储
+
+    // 保留本设置，非必要场景，减少一次slave访问
+    backend_no_storage: bool, // true：mc后面没有存储
     _marker: std::marker::PhantomData<(B, Req)>,
 }
 
@@ -43,7 +44,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
             // force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
             _marker: Default::default(),
-            // backend_no_storage: false,
+            backend_no_storage: false,
         }
     }
 }
@@ -170,9 +171,11 @@ where
                 false => self.streams.select_idx(),
             };
 
-            // TODO 去掉#654 的backend_no_storage逻辑
-            // 新逻辑：只要有多层，必须可以try_next fishermen
-            try_next = self.streams.len() > 1;
+            // 第一次访问，没有取到master，则下一次一定可以取到master
+            // 如果取到了master，有slave也可以继续访问
+            // 后端无storage且后端资源不止一组，可以多访问一次
+            try_next = (self.streams.local_len() > 1)
+                || self.backend_no_storage && (self.streams.len() > 1);
             write_back = false;
         } else {
             let last_idx = ctx.index();
@@ -206,10 +209,11 @@ where
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
-            // 转换成秒
-            self.exp_sec = (ns.exptime / 1000) as u32;
+
+            self.exp_sec = (ns.exptime / 1000) as u32; // 转换成秒
+
             // self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
-            // self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
+            self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
             let dist = &ns.distribution.clone();
 
             let old_streams = self.streams.take();
