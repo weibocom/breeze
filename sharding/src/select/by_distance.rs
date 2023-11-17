@@ -156,11 +156,6 @@ impl<T: Addr> Distance<T> {
             return (self.idx.fetch_add(1, Relaxed) >> 10) % self.local_len();
         }
 
-        // 如果local 只有一个，直接返回0，不用计算了 fishermen
-        if self.local_len() == 1 {
-            return 0;
-        }
-
         let mut idx = self.idx();
         debug_assert!(idx < self.len());
         let quota = unsafe { &self.replicas.get_unchecked(idx).1 };
@@ -198,8 +193,8 @@ impl<T: Addr> Distance<T> {
         let idx = self.select_idx();
         (idx, unsafe { &self.replicas.get_unchecked(idx).0 })
     }
-    /// idx: 上一次获取到的idx
-    /// runs: 已经连续获取到的次数
+    // idx: 上一次获取到的idx
+    // runs: 已经连续获取到的次数
     #[inline]
     pub fn select_next_idx(&self, idx: usize, runs: usize) -> usize {
         assert!(runs < self.len(), "{} {} {:?}", idx, runs, self);
@@ -211,7 +206,7 @@ impl<T: Addr> Distance<T> {
             // 从remote中取. remote_len > 0
             assert_ne!(self.local_len(), self.len(), "{} {} {:?}", idx, runs, self);
             if idx < self.local_len() {
-                // remomte需要random，且第一次使用remote，为避免热点，从[len_local..len)随机取一个
+                // 第一次使用remote，为避免热点，从[len_local..len)随机取一个
                 rand::thread_rng().gen_range(self.local_len()..self.len())
             } else {
                 // 按顺序从remote中取. 走到最后一个时，从local_len开始
