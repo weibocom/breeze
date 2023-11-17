@@ -43,7 +43,7 @@ pub struct Namespace {
 // 通过bit位，设置不同的策略/属性；从低位开始依次排列
 #[repr(u8)]
 pub(crate) enum Flag {
-    // BackendNoStorage = 0,
+    BackendNoStorage = 0,
     // ForceWriteAll = 1,
     UpdateSlavel1 = 2,
     LocalAffinity = 3,
