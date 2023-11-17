@@ -235,10 +235,6 @@ impl HashedCommand {
         }
     }
     #[inline]
-    pub fn has_reshaped(&self) -> bool {
-        self.origin_cmd.is_some()
-    }
-    #[inline]
     pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
         assert!(
             self.origin_cmd.is_none(),
