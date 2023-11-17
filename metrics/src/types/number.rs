@@ -55,6 +55,10 @@ impl Number {
     pub(crate) fn incr(&self, v: i64) {
         self.inner.incr(v);
     }
+    #[inline]
+    pub(crate) fn zero(&self) {
+        self.inner.zero();
+    }
 }
 
 pub trait ToNumber {

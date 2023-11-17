@@ -6,7 +6,7 @@ mod rtt;
 mod status;
 
 pub(crate) use host::*;
-pub use host::{decr_task, incr_task, set_sockfile_failed};
+pub use host::{decr_task, incr_task, resource_num_metric, set_sockfile_failed};
 pub(crate) use number::*;
 pub(crate) use qps::*;
 pub(crate) use ratio::*;

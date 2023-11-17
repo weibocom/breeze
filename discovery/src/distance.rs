@@ -208,6 +208,9 @@ impl DistanceCalculator {
             }
         }
     }
+    pub fn region(&self) -> &Option<String> {
+        &self.local_region
+    }
 }
 
 pub trait Addr {
@@ -493,4 +496,16 @@ impl BClass for &String {
         }
         b
     }
+}
+
+// 本机的region，优先级：
+// 1. 本机IP对应的region
+// 2. 未知region，返回cnx
+pub fn host_region() -> String {
+    let cal = unsafe { DISTANCE_CALCULATOR.get_unchecked().get() };
+    if let Some(region) = cal.region() {
+        return region.clone();
+    }
+
+    return "cnx".to_string();
 }

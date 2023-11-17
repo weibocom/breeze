@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{Builder, Endpoint, Single, Topology};
-use discovery::TopologyWrite;
+use discovery::{distance, TopologyWrite};
 use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
@@ -262,6 +262,7 @@ where
         for (master_addr, slaves) in addrs {
             assert_ne!(master_addr.len(), 0);
             assert_ne!(slaves.len(), 0);
+            let port = master_addr.port().to_string();
             let master = self.take_or_build(&mut old, &master_addr, self.cfg.timeout_master());
             master.enable_single();
 
@@ -281,6 +282,20 @@ where
                 replicas,
                 self.cfg.basic.region_enabled,
             );
+
+            // 生成端口副本数量监控数据
+            let n: u16 = if self.cfg.basic.region_enabled {
+                shard.len_region() + 10000 // snapshot时>0才有输出，len_region这里加10000作为基准值，保证监控有数据；
+            } else {
+                0 // region功能关闭时，len_region为0，也就是不输出监控数据；可用区从打开到关闭场景，0也要生成监控数据，覆盖已有的同path旧数据
+            };
+            metrics::resource_num_metric(
+                self.cfg.resource_type(),
+                self.cfg.service.as_str(),
+                (host_region() + ":" + port.as_str()).as_str(),
+                n,
+            );
+
             self.shards.push(shard);
         }
         assert_eq!(self.shards.len(), self.cfg.shards_url.len());
@@ -292,6 +307,19 @@ where
         true
     }
 }
+
+// 本机的region，优先级：
+// 1. 启动参数/环境变量的region
+// 2. 通过本机IP计算出来的region
+// TODO 目前仅本文件内被使用，后续可以考虑放在一个公共的地方
+fn host_region() -> String {
+    if let Some(region) = context::get().region() {
+        return region.to_string();
+    }
+
+    distance::host_region()
+}
+
 #[derive(Clone)]
 struct Shard<E> {
     master: (String, E),
@@ -326,6 +354,9 @@ impl<E> Shard<E> {
     #[inline]
     fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
         unsafe { self.slaves.unsafe_next(idx, runs) }
+    }
+    pub fn len_region(&self) -> u16 {
+        self.slaves.len_region()
     }
 }
 impl<E: discovery::Inited> Shard<E> {
