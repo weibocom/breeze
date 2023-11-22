@@ -2,7 +2,7 @@
 mod tsc;
 #[cfg(not(feature = "tsc"))]
 mod tsc {
-    pub type Instant = minstant::Instant;
+    pub type Instant = std::time::Instant;
     pub type Duration = std::time::Duration;
 }
 
