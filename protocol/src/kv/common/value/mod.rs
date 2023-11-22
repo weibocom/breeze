@@ -47,6 +47,11 @@ impl SerializationSide for ClientSide {
     const BIT_OFFSET: usize = 0;
 }
 
+/// TODO 此处需要确认offset fishermen
+impl SerializationSide for () {
+    const BIT_OFFSET: usize = 0;
+}
+
 /// Textual value representation.
 pub struct TextValue;
 
@@ -300,6 +305,63 @@ impl Value {
                 }
             },
         }
+    }
+
+    /// 转换成redis序列化协议描述，注意check正确性 fishermen
+    pub fn as_resp(&self) -> Vec<u8> {
+        let resp = match *self {
+            // Value::NULL => "NULL".into(),
+            Value::NULL => "$-1\r\n".to_string(),
+            Value::Int(x) => format!(":{}\r\n", x),
+            Value::UInt(x) => format!(":{}\r\n", x),
+            Value::Float(x) => format!(",{}\r\n", x),
+            Value::Double(x) => format!(",{}\r\n", x),
+            Value::Date(y, m, d, 0, 0, 0, 0) => format!("$10\r\n'{:04}-{:02}-{:02}'\r\n", y, m, d),
+            Value::Date(year, month, day, hour, minute, second, 0) => format!(
+                "$19\r\n{:04}-{:02}-{:02} {:02}:{:02}:{:02}\r\n",
+                year, month, day, hour, minute, second
+            ),
+            Value::Date(year, month, day, hour, minute, second, micros) => format!(
+                "$26\r\n{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}\r\n",
+                year, month, day, hour, minute, second, micros
+            ),
+            Value::Time(neg, d, h, i, s, 0) => {
+                if neg {
+                    format!("$10\r\n-{:03}:{:02}:{:02}\r\n", d * 24 + u32::from(h), i, s)
+                } else {
+                    format!("$9\r\n{:03}:{:02}:{:02}\r\n", d * 24 + u32::from(h), i, s)
+                }
+            }
+            Value::Time(neg, days, hours, minutes, seconds, micros) => {
+                if neg {
+                    format!(
+                        "$17\r\n-{:03}:{:02}:{:02}.{:06}\r\n",
+                        days * 24 + u32::from(hours),
+                        minutes,
+                        seconds,
+                        micros
+                    )
+                } else {
+                    format!(
+                        "$16\r\n{:03}:{:02}:{:02}.{:06}\r\n",
+                        days * 24 + u32::from(hours),
+                        minutes,
+                        seconds,
+                        micros
+                    )
+                }
+            }
+            Value::Bytes(ref bytes) => {
+                // TODO 先用copy打通，后续再优化 fishermen
+                let mut rsp = Vec::with_capacity(bytes.len() + 16);
+                let prefix = format!("${}\r\n", bytes.len());
+                rsp.extend_from_slice(prefix.as_bytes());
+                rsp.extend_from_slice(bytes);
+                return rsp;
+            }
+        };
+        // TODO 先用copy打通，后续再优化 fishermen
+        resp.into_bytes()
     }
 
     // fn deserialize_text(buf: &mut ParseBuf<'_>) -> io::Result<Self> {

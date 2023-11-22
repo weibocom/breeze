@@ -174,7 +174,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         }
 
         let pld = self.next_packet()?;
-
+        log::info!("+++ kv packet:{:?}", pld);
         if self.has_capability(CapabilityFlags::CLIENT_DEPRECATE_EOF) {
             if pld[0] == 0xfe && pld.len() < MAX_PAYLOAD_LEN {
                 self.has_results = false;

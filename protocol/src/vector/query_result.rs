@@ -1,3 +1,5 @@
+use ds::Utf8;
+
 use crate::kv::error::Result;
 use crate::{Command, Stream};
 
@@ -63,6 +65,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         );
 
         // if status_flags.contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS) {}
+        log::debug!("+++ has more rs:{}", self.rsp_packet.more_results_exists());
         if self.rsp_packet.more_results_exists() {
             // TODO 等支持多行，再处理此处
             match self.rsp_packet.parse_result_set_meta() {
@@ -183,6 +186,45 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         Ok(cmd)
     }
 
+    /// 解析meta后面的rows
+    #[inline(always)]
+    pub fn parse_rows2(&mut self) -> Result<Command> {
+        // let dest = |(uid, flag)| UidFlag { uid, flag };
+        // rows 收集器
+        // let collector = |mut acc: Vec<UidFlag>, row| {
+        //     acc.push(dest(row));
+        //     acc
+        // };
+
+        // 解析row并构建cmd
+        log::debug!("+++ will parse kvector values...");
+        let resp_packet = self.scan_rows_bin()?;
+        log::debug!("+++ kvector redis rsp:{:?}", resp_packet.utf8());
+
+        let cmd = self.build_final_rsp_cmd(true, resp_packet);
+        Ok(cmd)
+    }
+
+    pub(crate) fn scan_rows_bin(&mut self) -> Result<Vec<u8>> {
+        // 改为每次只处理本次的响应
+        let mut rows = Vec::with_capacity(8);
+        loop {
+            match self.scan_one_row_bin()? {
+                Some(row) => {
+                    // init = f(init, from_row::<R>(row));
+                    rows.push(row);
+                }
+
+                None => {
+                    // take统一放在构建最终响应的地方进行
+                    // let _ = self.rsp_packet.take();
+
+                    return Ok(format_to_redis(&rows));
+                }
+            }
+        }
+    }
+
     pub(crate) fn scan_rows<R, F, U>(&mut self, mut init: U, mut f: F) -> Result<U>
     where
         R: FromRow,
@@ -212,6 +254,41 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
                 Some(pld) => {
                     let row_data =
                         ParseBuf::new(0, *pld).parse::<RowDeserializer<(), Text>>(cols.clone())?;
+                    self.state = InSet(cols.clone());
+                    return Ok(Some(row_data.into()));
+                }
+                None => {
+                    self.handle_next();
+                    return Ok(None);
+                }
+            },
+            InEmptySet(_) => {
+                self.handle_next();
+                Ok(None)
+            }
+            Errored(err) => {
+                self.handle_next();
+                Err(err)
+            }
+            OnBoundary => {
+                self.handle_next();
+                Ok(None)
+            }
+            Done => {
+                self.state = Done;
+                Ok(None)
+            }
+        }
+    }
+
+    fn scan_one_row_bin(&mut self) -> Result<Option<Row>> {
+        use SetIteratorState::*;
+        let state = std::mem::replace(&mut self.state, OnBoundary);
+        match state {
+            InSet(cols) => match self.rsp_packet.next_row_packet()? {
+                Some(pld) => {
+                    let row_data = ParseBuf::new(0, *pld)
+                        .parse::<RowDeserializer<(), Binary>>(cols.clone())?;
                     self.state = InSet(cols.clone());
                     return Ok(Some(row_data.into()));
                 }
@@ -405,3 +482,36 @@ pub struct SetColumns<'a> {
 //             .unwrap_or(&[][..])
 //     }
 // }
+/// 先打通，后续再考虑优化fishermen
+#[inline]
+pub fn format_to_redis(rows: &Vec<Row>) -> Vec<u8> {
+    let mut data = Vec::with_capacity(32 * rows.len());
+    // 响应为空，返回
+    if rows.len() == 0 {
+        data.extend_from_slice("$-1\r\n".as_bytes());
+        return data;
+    }
+
+    // 构建 resp协议的header总array计数 以及 column的计数
+    let columns = rows.get(0).expect("columns unexists").columns();
+    let prefix = format!("*2\r\n*{}\r\n", columns.len());
+    data.extend_from_slice(prefix.as_bytes());
+
+    // 构建columns
+    for idx in 0..columns.len() {
+        let col = columns.get(idx).expect("column");
+        data.push(b'+');
+        data.extend_from_slice(col.name_str().as_bytes());
+        data.extend_from_slice("\r\n".as_bytes());
+    }
+
+    // TODO 构建column values，存在copy，先打通再优化 fishermen
+    let val_header = format!("*{}\r\n", columns.len() * rows.len());
+    data.extend_from_slice(val_header.as_bytes());
+    for ri in 0..rows.len() {
+        let row = rows.get(ri).expect("row unexists");
+        row.write_as_redis(&mut data);
+    }
+
+    data
+}

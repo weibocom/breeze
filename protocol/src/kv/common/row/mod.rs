@@ -175,6 +175,22 @@ impl Row {
     pub fn place(&mut self, index: usize, value: Value) {
         self.values[index] = Some(value);
     }
+
+    // TODO 存在clone，先打通，再优化 fishermen
+    #[inline]
+    pub(crate) fn write_as_redis(&self, data: &mut Vec<u8>) {
+        assert_eq!(self.len(), self.columns.len());
+        for idx in 0..self.len() {
+            let val_resp = self
+                .values
+                .get(idx)
+                .expect("values exists")
+                .clone()
+                .expect("val")
+                .as_resp();
+            data.extend(val_resp);
+        }
+    }
 }
 
 impl Index<usize> for Row {
