@@ -75,7 +75,7 @@ impl Protocol for Vector {
         let mut rsp_packet = ResponsePacket::new(data, None);
 
         // 解析完毕rsp后，除了数据未读完的场景，其他不管是否遇到err，都要进行take
-        match self.parse_response_inner(&mut rsp_packet) {
+        match self.parse_response_inner2(&mut rsp_packet) {
             Ok(cmd) => Ok(Some(cmd)),
             Err(crate::Error::ProtocolIncomplete) => Ok(None),
             Err(e) => {
@@ -225,6 +225,44 @@ impl Vector {
             Err(e) => Err(e.into()),
         }
     }
+
+    fn parse_response_inner2<'a, S: crate::Stream>(
+        &self,
+        rsp_packet: &'a mut ResponsePacket<'a, S>,
+    ) -> crate::Result<Command> {
+        // 首先parse meta，对于UnhandleResponseError异常，需要构建成响应返回
+        let meta = match rsp_packet.parse_result_set_meta() {
+            Ok(meta) => meta,
+            Err(error::Error::UnhandleResponseError(emsg)) => {
+                // 对于UnhandleResponseError，需要构建rsp，发给client
+                let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
+                return Ok(cmd);
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        log::debug!("+++ parsed meta succeed!");
+
+        // 如果是只有meta的ok packet，直接返回影响的列数，如insert/delete/update
+        if let Or::B(ok) = meta {
+            let n = ok.affected_rows();
+            let cmd = rsp_packet.build_final_affected_rows_rsp_cmd(n);
+            return Ok(cmd);
+        }
+
+        // 解析meta后面的rows，返回列记录，如select
+        // 有可能多行数据，直接build成
+        let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
+        match query_result.parse_rows2() {
+            Ok(cmd) => Ok(cmd),
+            Err(error::Error::UnhandleResponseError(emsg)) => {
+                // 对于UnhandleResponseError，需要构建rsp，发给client
+                let cmd = query_result.build_final_rsp_cmd(false, emsg);
+                Ok(cmd)
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
 }
 
 // pub struct RingSliceIter {}
@@ -241,6 +279,8 @@ impl Vector {
 //         todo!()
 //     }
 // }
+
+struct LikeByMe {}
 
 pub enum Opcode {}
 
