@@ -1,9 +1,9 @@
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Instant(minstant::Instant);
+pub struct Instant(std::time::Instant);
 impl Instant {
     #[inline(always)]
     pub fn now() -> Instant {
-        Instant(minstant::Instant::now())
+        Instant(std::time::Instant::now())
     }
     #[inline(always)]
     fn cycles(&self) -> u64 {
