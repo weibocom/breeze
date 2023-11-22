@@ -50,7 +50,6 @@ fn vrange_0() {
         .arg("0")
         .arg("10")
         .query(&mut con);
-
     // assert_eq!(rsp, Ok(32));
     println!("++ rsp:{:?}", rsp);
     assert_eq!(rsp, Ok(Value::Nil));
