@@ -135,7 +135,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         // 构建最终返回给client的响应内容
         let mem = ds::MemGuard::from_vec(rsp_data);
         let cmd = Command::from(ok, mem);
-        log::debug!("+++ build vector rsp, ok:{} => {:?}", ok, cmd);
+        log::debug!("+++ build kvector rsp, ok:{} => {:?}", ok, cmd);
 
         // 返回最终响应前，take走已经解析的数据
         self.take();
