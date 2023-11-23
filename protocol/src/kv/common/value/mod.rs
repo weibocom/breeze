@@ -357,6 +357,7 @@ impl Value {
                 let prefix = format!("${}\r\n", bytes.len());
                 rsp.extend_from_slice(prefix.as_bytes());
                 rsp.extend_from_slice(bytes);
+                rsp.extend_from_slice("\r\n".as_bytes());
                 return rsp;
             }
         };
