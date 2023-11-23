@@ -379,7 +379,6 @@ impl Value {
             _ => {
                 let bytes: RawBytes<LenEnc> = buf.parse(())?;
                 // Ok(Value::Bytes(bytes.0.into_owned()))
-                log::debug!("+++ careful will dump for value len:{}", bytes.len());
                 let mut data = Vec::with_capacity(bytes.len());
                 bytes.0.copy_to_vec(&mut data);
                 Ok(Value::Bytes(data))
