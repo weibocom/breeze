@@ -19,7 +19,7 @@ use sharding::Distance;
 
 use crate::dns::DnsConfig;
 use crate::Builder;
-use crate::Single;
+// use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
 
@@ -162,7 +162,7 @@ impl<B, E, Req, P> TopologyWrite for KvService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     fn need_load(&self) -> bool {
         self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
@@ -181,7 +181,7 @@ impl<B, E, Req, P> KvService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     // #[inline]
     fn take_or_build(
@@ -291,7 +291,7 @@ where
                         self.cfg.timeout_slave(),
                         res_option.clone(),
                     );
-                    slave.disable_single();
+                    // slave.disable_single();
                     replicas.push((addr, slave));
                 }
 
