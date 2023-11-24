@@ -6,6 +6,8 @@
 // option. All files in the project carrying such notice may not be copied,
 // modified, or distributed except according to those terms.
 
+use ds::Utf8;
+
 use crate::kv::common::{
     io::ParseBuf,
     misc::unexpected_buf_eof,
@@ -176,20 +178,15 @@ impl Row {
         self.values[index] = Some(value);
     }
 
-    // TODO 存在clone，先打通，再优化 fishermen
+    // 将values中的数据按redis格式写入缓冲
     #[inline]
     pub(crate) fn write_as_redis(&self, data: &mut Vec<u8>) {
-        assert_eq!(self.len(), self.columns.len());
-        for idx in 0..self.len() {
-            let val_resp = self
-                .values
-                .get(idx)
-                .expect("values exists")
-                .clone()
-                .expect("val")
-                .as_resp();
-            data.extend(val_resp);
-        }
+        assert_eq!(self.len(), self.columns.len(), "{:?}", self);
+
+        self.values.iter().for_each(|row| {
+            assert!(row.is_some(), "{}:{:?}", data.utf8(), self);
+            row.as_ref().expect("row null").write_as_redis(data);
+        });
     }
 }
 

@@ -307,62 +307,72 @@ impl Value {
         }
     }
 
-    /// 转换成redis序列化协议描述，注意check正确性 fishermen
-    pub fn as_resp(&self) -> Vec<u8> {
-        let resp = match *self {
+    /// 转换成redis序列化协议描述，注意check正确性
+    /// TODO Date目前先用时间str来表示，后面考虑时间戳 fishermen
+    pub fn write_as_redis(&self, data: &mut Vec<u8>) {
+        match *self {
             // Value::NULL => "NULL".into(),
-            Value::NULL => "$-1\r\n".to_string(),
-            Value::Int(x) => format!(":{}\r\n", x),
-            Value::UInt(x) => format!(":{}\r\n", x),
-            Value::Float(x) => format!(",{}\r\n", x),
-            Value::Double(x) => format!(",{}\r\n", x),
-            Value::Date(y, m, d, 0, 0, 0, 0) => format!("$10\r\n'{:04}-{:02}-{:02}'\r\n", y, m, d),
-            Value::Date(year, month, day, hour, minute, second, 0) => format!(
-                "$19\r\n{:04}-{:02}-{:02} {:02}:{:02}:{:02}\r\n",
-                year, month, day, hour, minute, second
+            Value::NULL => data.extend_from_slice("$-1\r\n".as_bytes()),
+            Value::Int(x) => data.extend_from_slice(format!(":{}\r\n", x).as_bytes()),
+            Value::UInt(x) => data.extend_from_slice(format!(":{}\r\n", x).as_bytes()),
+            Value::Float(x) => data.extend_from_slice(format!(",{}\r\n", x).as_bytes()),
+            Value::Double(x) => data.extend_from_slice(format!(",{}\r\n", x).as_bytes()),
+            Value::Date(y, m, d, 0, 0, 0, 0) => data
+                .extend_from_slice(format!("$10\r\n'{:04}-{:02}-{:02}'\r\n", y, m, d).as_bytes()),
+            Value::Date(year, month, day, hour, minute, second, 0) => data.extend_from_slice(
+                format!(
+                    "$19\r\n{:04}-{:02}-{:02} {:02}:{:02}:{:02}\r\n",
+                    year, month, day, hour, minute, second
+                )
+                .as_bytes(),
             ),
-            Value::Date(year, month, day, hour, minute, second, micros) => format!(
-                "$26\r\n{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}\r\n",
-                year, month, day, hour, minute, second, micros
+            Value::Date(year, month, day, hour, minute, second, micros) => data.extend_from_slice(
+                format!(
+                    "$26\r\n{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}\r\n",
+                    year, month, day, hour, minute, second, micros
+                )
+                .as_bytes(),
             ),
-            Value::Time(neg, d, h, i, s, 0) => {
-                if neg {
-                    format!("$10\r\n-{:03}:{:02}:{:02}\r\n", d * 24 + u32::from(h), i, s)
-                } else {
-                    format!("$9\r\n{:03}:{:02}:{:02}\r\n", d * 24 + u32::from(h), i, s)
+            Value::Time(neg, d, h, i, s, 0) => data.extend_from_slice(
+                {
+                    if neg {
+                        format!("$10\r\n-{:03}:{:02}:{:02}\r\n", d * 24 + u32::from(h), i, s)
+                    } else {
+                        format!("$9\r\n{:03}:{:02}:{:02}\r\n", d * 24 + u32::from(h), i, s)
+                    }
                 }
-            }
-            Value::Time(neg, days, hours, minutes, seconds, micros) => {
-                if neg {
-                    format!(
-                        "$17\r\n-{:03}:{:02}:{:02}.{:06}\r\n",
-                        days * 24 + u32::from(hours),
-                        minutes,
-                        seconds,
-                        micros
-                    )
-                } else {
-                    format!(
-                        "$16\r\n{:03}:{:02}:{:02}.{:06}\r\n",
-                        days * 24 + u32::from(hours),
-                        minutes,
-                        seconds,
-                        micros
-                    )
+                .as_bytes(),
+            ),
+            Value::Time(neg, days, hours, minutes, seconds, micros) => data.extend_from_slice(
+                {
+                    if neg {
+                        format!(
+                            "$17\r\n-{:03}:{:02}:{:02}.{:06}\r\n",
+                            days * 24 + u32::from(hours),
+                            minutes,
+                            seconds,
+                            micros
+                        )
+                    } else {
+                        format!(
+                            "$16\r\n{:03}:{:02}:{:02}.{:06}\r\n",
+                            days * 24 + u32::from(hours),
+                            minutes,
+                            seconds,
+                            micros
+                        )
+                    }
                 }
-            }
+                .as_bytes(),
+            ),
             Value::Bytes(ref bytes) => {
                 // TODO 先用copy打通，后续再优化 fishermen
-                let mut rsp = Vec::with_capacity(bytes.len() + 16);
                 let prefix = format!("${}\r\n", bytes.len());
-                rsp.extend_from_slice(prefix.as_bytes());
-                rsp.extend_from_slice(bytes);
-                rsp.extend_from_slice("\r\n".as_bytes());
-                return rsp;
+                data.extend_from_slice(prefix.as_bytes());
+                data.extend_from_slice(bytes);
+                data.extend_from_slice("\r\n".as_bytes());
             }
         };
-        // TODO 先用copy打通，后续再优化 fishermen
-        resp.into_bytes()
     }
 
     // fn deserialize_text(buf: &mut ParseBuf<'_>) -> io::Result<Self> {

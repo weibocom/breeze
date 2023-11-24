@@ -182,8 +182,8 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
                 return Ok(None);
             }
         } else {
-            // 根据mysql doc，EOF_Packet的长度是小于9?
-            if pld[0] == 0xfe && pld.len() < 8 {
+            // 根据mysql doc，EOF_Packet的长度是小于9，先把这里从8改为9，注意观察影响 fishermen
+            if pld[0] == 0xfe && pld.len() < 9 {
                 self.has_results = false;
                 self.handle_ok::<OldEofPacket>(pld)?;
                 return Ok(None);
