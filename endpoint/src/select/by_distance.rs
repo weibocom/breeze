@@ -1,30 +1,8 @@
 use discovery::distance::{Addr, ByDistance};
+use protocol::BackendQuota;
 use rand::Rng;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
-
-#[repr(transparent)]
-#[derive(Clone, Default)]
-pub struct BackendQuota {
-    used_us: Arc<AtomicUsize>, // 所有副本累计使用的时间
-}
-impl BackendQuota {
-    #[inline]
-    pub fn incr(&self, d: ds::time::Duration) {
-        self.used_us.fetch_add(d.as_micros() as usize, Relaxed);
-    }
-    #[inline]
-    pub fn err_incr(&self, d: ds::time::Duration) {
-        // 一次错误请求，消耗500ms
-        self.used_us
-            .fetch_add(d.as_micros().max(500_000) as usize, Relaxed);
-    }
-    // 配置时间的微秒计数
-    #[inline]
-    fn us(&self) -> usize {
-        self.used_us.load(Relaxed)
-    }
-}
 
 // 选择replica策略，len_local指示的是优先访问的replicas。
 // 1. cacheservice因存在跨机房同步、优先访问本地机房，当前机房的replicas为local
@@ -170,7 +148,7 @@ impl<T: Addr> Distance<T> {
             let new = (idx + 1) % self.local_len();
             // 超过配额，则idx+1
             if let Ok(_) = self.idx.compare_exchange(idx, new, AcqRel, Relaxed) {
-                quota.used_us.store(0, Relaxed);
+                quota.set_used_us(0);
             }
             idx = new;
         }

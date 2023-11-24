@@ -1,9 +1,9 @@
+use crate::select::Distance;
 use crate::{Backend, Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
 use protocol::memcache::Binary;
 use protocol::{Protocol, Request, Resource};
 use sharding::hash::{Hash, HashKey, Hasher};
-use sharding::Distance;
 use std::collections::HashMap;
 
 use super::config::Flag;

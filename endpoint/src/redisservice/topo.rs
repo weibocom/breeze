@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
+use crate::select::Distance;
 use crate::{Backend, Builder, Endpoint, Topology};
 use discovery::{distance, TopologyWrite};
 use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
-use sharding::Distance;
 
 use super::config::RedisNamespace;
 use crate::{dns::DnsConfig, Timeout};

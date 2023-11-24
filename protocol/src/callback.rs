@@ -7,8 +7,8 @@ use std::{
     },
 };
 
+use crate::BackendQuota;
 use ds::{time::Instant, AtomicWaker};
-use sharding::BackendQuota;
 
 use crate::{request::Request, Command, Error, HashedCommand};
 
