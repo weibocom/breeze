@@ -48,7 +48,7 @@ impl Uuid for i64 {
         (t.year() as u16, t.month() as u8, t.day() as u8)
     }
     // 返回year 东八时区
-    #[inline]
+    #[inline(always)]
     fn year(&self) -> u16 {
         let (year, _, _) = self.ymd();
         year
