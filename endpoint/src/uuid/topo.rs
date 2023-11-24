@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Builder, Endpoint, Single, Topology};
+use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource};
 use sharding::{
@@ -100,7 +100,7 @@ impl<B, E, Req, P> TopologyWrite for UuidService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -136,7 +136,7 @@ impl<B, E, Req, P> UuidService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
