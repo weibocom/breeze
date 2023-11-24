@@ -25,11 +25,11 @@ procs::topology_dispatcher! {
         type Item;
         fn send(&self, req: Self::Item);
         fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R: Request, P: Protocol+Sync+Send, B:Send+Sync
+    } => where P:Sync+Send+Protocol, E:Backend<Item = R>, R: Request, P: Protocol+Sync+Send, B:Send+Sync
 
     pub trait Topology : Endpoint + Hash{
         fn exp_sec(&self) -> u32 {86400}
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, B: Send + Sync, Topologies<B, E, R, P>: Endpoint
+    } => where P:Sync+Send+Protocol, E:Backend<Item = R>, R:Request, B: Send + Sync, Topologies<B, E, R, P>: Endpoint
 
     trait Inited {
         fn inited(&self) -> bool;
@@ -40,7 +40,7 @@ procs::topology_dispatcher! {
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
         fn load(&mut self);
-    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>
+    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Backend<Item = R>
 
     trait Hash {
         fn hash<S: HashKey>(&self, key: &S) -> i64;
@@ -54,6 +54,11 @@ procs::topology_dispatcher! {
 //     fn disable_single(&self);
 //     fn enable_single(&self);
 // }
+
+#[procs::dispatcher_trait_deref]
+pub trait Backend: Endpoint {
+    fn available(&self) -> bool;
+}
 
 pub trait Builder<P, R, E> {
     fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {

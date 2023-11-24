@@ -91,3 +91,9 @@ impl<R: Request> Endpoint for Backend<R> {
 //         self.single.store(false, Release);
 //     }
 // }
+
+impl<R: Request> endpoint::Backend for Backend<R> {
+    fn available(&self) -> bool {
+        self.tx.is_enable()
+    }
+}

@@ -18,6 +18,7 @@ use sharding::hash::{Hash, HashKey};
 use sharding::Distance;
 
 use crate::dns::DnsConfig;
+use crate::Backend;
 use crate::Builder;
 // use crate::Single;
 use crate::Timeout;
@@ -66,7 +67,7 @@ where
 
 impl<B, E, Req, P> Topology for KvService<B, E, Req, P>
 where
-    E: Endpoint<Item = Req>,
+    E: Backend<Item = Req>,
     Req: Request,
     P: Protocol,
     B: Send + Sync,
@@ -75,7 +76,7 @@ where
 
 impl<B: Send + Sync, E, Req, P> Endpoint for KvService<B, E, Req, P>
 where
-    E: Endpoint<Item = Req>,
+    E: Backend<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -162,7 +163,7 @@ impl<B, E, Req, P> TopologyWrite for KvService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Backend<Item = Req>,
 {
     fn need_load(&self) -> bool {
         self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
@@ -181,7 +182,7 @@ impl<B, E, Req, P> KvService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Backend<Item = Req>,
 {
     // #[inline]
     fn take_or_build(
