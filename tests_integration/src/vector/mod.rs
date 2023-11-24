@@ -38,21 +38,20 @@ fn vrange_basic() {
 #[test]
 fn vrange_0() {
     let mut con = get_conn(&RESTYPE.get_host());
-    let rsp: Result<(Vec<String>, Vec<String>), redis::RedisError> = redis::cmd("vrange")
+    let rsp = redis::cmd("vrange")
         .arg("4668741184209284,2211")
         .arg("field")
         .arg("uid,object_type")
         .arg("where")
         .arg("like_id")
         .arg("=")
-        .arg("4968741184209249")
+        .arg("4968741184209240")
         .arg("limit")
         .arg("0")
         .arg("10")
         .query(&mut con);
-
     println!("++ rsp:{:?}", rsp);
-    // assert_eq!(rsp, Ok(Value::Nil));
+    assert_eq!(rsp, Ok(Value::Nil));
 }
 
 #[test]
@@ -60,7 +59,7 @@ fn vrange_0() {
 fn vrange_1() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vrange")
-        .arg("12345,2211")
+        .arg("4668741184209281,2211")
         .arg("field")
         .arg("uid,object_type")
         .arg("where")
@@ -71,14 +70,18 @@ fn vrange_1() {
         .arg("0")
         .arg("10")
         .query(&mut con);
+    println!("++ rsp:{:?}", rsp);
     assert_eq!(
         rsp,
         Ok(Value::Bulk(vec![
             Value::Bulk(vec![
-                Value::Data("uid".as_bytes().to_vec()),
-                Value::Data("object_type".as_bytes().to_vec())
+                Value::Status("uid".to_string()),
+                Value::Status("object_type".to_string())
             ]),
-            Value::Bulk(vec![Value::Int(4668741184209281), Value::Int(4)])
+            Value::Bulk(vec![
+                Value::Data("4668741184209281".as_bytes().to_vec()),
+                Value::Data("4".as_bytes().to_vec())
+            ])
         ]))
     );
 }
@@ -98,18 +101,19 @@ fn vrange_2() {
         .arg("0")
         .arg("10")
         .query(&mut con);
+    println!("++ rsp:{:?}", rsp);
     assert_eq!(
         rsp,
         Ok(Value::Bulk(vec![
             Value::Bulk(vec![
-                Value::Data("uid".as_bytes().to_vec()),
-                Value::Data("like_id".as_bytes().to_vec())
+                Value::Status("uid".to_string()),
+                Value::Status("like_id".to_string())
             ]),
             Value::Bulk(vec![
-                Value::Int(4668741184209282),
-                Value::Int(4968741184209225),
-                Value::Int(4668741184209282),
-                Value::Int(4968741184209226)
+                Value::Data("4668741184209282".as_bytes().to_vec()),
+                Value::Data("4968741184209225".as_bytes().to_vec()),
+                Value::Data("4668741184209282".as_bytes().to_vec()),
+                Value::Data("4968741184209226".as_bytes().to_vec())
             ])
         ]))
     );
@@ -130,20 +134,21 @@ fn vrange_3() {
         .arg("0")
         .arg("10")
         .query(&mut con);
+    println!("++ rsp:{:?}", rsp);
     assert_eq!(
         rsp,
         Ok(Value::Bulk(vec![
             Value::Bulk(vec![
-                Value::Data("uid".as_bytes().to_vec()),
-                Value::Data("object_id".as_bytes().to_vec())
+                Value::Status("uid".to_string()),
+                Value::Status("object_id".to_string())
             ]),
             Value::Bulk(vec![
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209230),
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209231),
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209232)
+                Value::Data("4668741184209283".as_bytes().to_vec()),
+                Value::Data("4968741184209230".as_bytes().to_vec()),
+                Value::Data("4668741184209283".as_bytes().to_vec()),
+                Value::Data("4968741184209231".as_bytes().to_vec()),
+                Value::Data("4668741184209283".as_bytes().to_vec()),
+                Value::Data("4968741184209232".as_bytes().to_vec())
             ])
         ]))
     );
