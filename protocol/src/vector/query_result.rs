@@ -311,41 +311,6 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         }
     }
 
-    fn scan_one_row_bin(&mut self) -> Result<Option<Row>> {
-        use SetIteratorState::*;
-        let state = std::mem::replace(&mut self.state, OnBoundary);
-        match state {
-            InSet(cols) => match self.rsp_packet.next_row_packet()? {
-                Some(pld) => {
-                    let row_data = ParseBuf::new(0, *pld)
-                        .parse::<RowDeserializer<(), Binary>>(cols.clone())?;
-                    self.state = InSet(cols.clone());
-                    return Ok(Some(row_data.into()));
-                }
-                None => {
-                    self.handle_next();
-                    return Ok(None);
-                }
-            },
-            InEmptySet(_) => {
-                self.handle_next();
-                Ok(None)
-            }
-            Errored(err) => {
-                self.handle_next();
-                Err(err)
-            }
-            OnBoundary => {
-                self.handle_next();
-                Ok(None)
-            }
-            Done => {
-                self.state = Done;
-                Ok(None)
-            }
-        }
-    }
-
     // /// Returns the number of affected rows for the current result set.
     // pub fn affected_rows(&self) -> u64 {
     //     self.state

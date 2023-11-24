@@ -240,8 +240,6 @@ impl Vector {
 //     }
 // }
 
-struct LikeByMe {}
-
 pub enum Opcode {}
 
 pub(crate) const COND_ORDER: &str = "ORDER";
