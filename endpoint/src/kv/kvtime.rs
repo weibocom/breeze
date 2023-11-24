@@ -1,7 +1,4 @@
-use super::{
-    strategy::{to_i64, Postfix},
-    uuid::Uuid,
-};
+use super::{strategy::Postfix, uuid::*};
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
@@ -21,8 +18,8 @@ impl KVTime {
     pub fn new(name: String, db_count: u32, shards: u32, table_postfix: Postfix) -> Self {
         Self {
             db_prefix: name.clone(),
-            table_prefix: name.clone(),
-            table_postfix: table_postfix,
+            table_prefix: name,
+            table_postfix,
             distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
             hasher: Hasher::from("crc32"),
         }
@@ -42,7 +39,7 @@ impl KVTime {
     }
 
     fn write_tname(&self, buf: &mut impl Write, key: &RingSlice) {
-        let uuid = to_i64(key);
+        let uuid = key.uuid();
         match self.table_postfix {
             Postfix::YYMM => {
                 self.write_date_tname(buf, uuid, false);
@@ -67,7 +64,7 @@ impl Strategy for KVTime {
         &self.hasher
     }
     fn get_key(&self, key: &RingSlice) -> u16 {
-        let uuid = to_i64(key);
+        let uuid = key.uuid();
         uuid.year()
     }
     fn tablename_len(&self) -> usize {
