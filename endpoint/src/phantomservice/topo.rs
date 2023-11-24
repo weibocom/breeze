@@ -1,6 +1,6 @@
 use std::{collections::HashMap, marker::PhantomData};
 
-use crate::{dns::DnsConfig, Builder, Endpoint, Timeout, Topology};
+use crate::{dns::DnsConfig, Backend, Builder, Endpoint, Timeout, Topology};
 use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
@@ -53,7 +53,7 @@ where
 
 impl<B, E, Req, P> Topology for PhantomService<B, E, Req, P>
 where
-    E: Endpoint<Item = Req>,
+    E: Backend<Item = Req>,
     Req: Request,
     P: Protocol,
     B: Send + Sync,
@@ -62,7 +62,7 @@ where
 
 impl<B, E, Req, P> Endpoint for PhantomService<B, E, Req, P>
 where
-    E: Endpoint<Item = Req>,
+    E: Backend<Item = Req>,
     Req: Request,
     P: Protocol,
     B: Send + Sync,
@@ -96,7 +96,7 @@ impl<B, E, Req, P> TopologyWrite for PhantomService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Backend<Item = Req>,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -133,7 +133,7 @@ impl<B, E, Req, P> PhantomService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Backend<Item = Req>,
 {
     #[inline]
     fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
