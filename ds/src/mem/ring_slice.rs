@@ -108,9 +108,9 @@ impl RingSlice {
     #[inline]
     pub fn str_num(&self, r: impl Range) -> usize {
         let (start, end) = r.range(self);
-        let mut num = 0;
+        let mut num = 0usize;
         for i in start..end {
-            num = num * 10 + (self[i] - b'0') as usize;
+            num = num.wrapping_mul(10) + (self[i] - b'0') as usize;
         }
         num
     }
