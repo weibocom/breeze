@@ -180,6 +180,36 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
             });
         });
     });
+    group.bench_function("data", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                let (first, sec) = rs.data();
+                for v in first {
+                    t += *v as u64;
+                }
+                for v in sec {
+                    t += *v as u64;
+                }
+                t
+            });
+        });
+    });
+    group.bench_function("data_r", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                let (first, sec) = rs.data_r(..);
+                for v in first {
+                    t += *v as u64;
+                }
+                for v in sec {
+                    t += *v as u64;
+                }
+                t
+            });
+        });
+    });
     group.finish();
 }
 

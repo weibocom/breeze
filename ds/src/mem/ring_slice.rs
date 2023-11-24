@@ -8,6 +8,8 @@ use std::{
     slice::from_raw_parts,
 };
 
+use super::Range;
+
 //从不拥有数据，是对ptr+start的引用
 #[derive(Default, Clone, Copy, Eq, Hash)]
 pub struct RingSlice {
@@ -24,6 +26,20 @@ macro_rules! with_segment {
         let oft_start = $self.mask($self.start() + $oft);
         let len = ($self.len() - $oft).min($len);
 
+        if oft_start + len <= $self.cap() {
+            unsafe { $noseg($self.ptr().add(oft_start), len) }
+        } else {
+            let seg1 = $self.cap() - oft_start;
+            let seg2 = len - seg1;
+            unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
+        }
+    }};
+    ($self:ident, $range:expr, $noseg:expr, $seg:expr) => {{
+        let (oft, end) = $range.range($self);
+        debug_assert!(end <= $self.len());
+        debug_assert!(oft <= end, "{} <= {}", oft, end);
+        let len = end - oft;
+        let oft_start = $self.mask($self.start() + oft);
         if oft_start + len <= $self.cap() {
             unsafe { $noseg($self.ptr().add(oft_start), len) }
         } else {
@@ -90,8 +106,8 @@ impl RingSlice {
         self.sub_slice(offset, len)
     }
     #[inline]
-    pub fn str_num<R: RangeBounds<usize>>(&self, r: R) -> usize {
-        let (start, end) = self.range(r);
+    pub fn str_num(&self, r: impl Range) -> usize {
+        let (start, end) = r.range(self);
         let mut num = 0;
         for i in start..end {
             num = num * 10 + (self[i] - b'0') as usize;
@@ -125,6 +141,16 @@ impl RingSlice {
             v(p0, l0);
             v(p1, l1);
         });
+    }
+    #[inline(always)]
+    pub fn data_r(&self, r: impl Range) -> (&[u8], &[u8]) {
+        static EMPTY: &[u8] = &[];
+        with_segment!(
+            self,
+            r,
+            |ptr, len| (from_raw_parts(ptr, len), EMPTY),
+            |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
+        )
     }
     #[inline(always)]
     pub fn data_oft_len(&self, oft: usize, len: usize) -> (&[u8], &[u8]) {

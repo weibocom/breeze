@@ -301,3 +301,25 @@ fn check_read_num_be() {
         slice.u8(size_of::<u64>() + size_of::<u32>() + size_of::<u16>())
     );
 }
+
+#[test]
+fn data_r() {
+    let cap = 512;
+    let mut data: Vec<u8> = (0..cap).map(|_| rand::random::<u8>()).collect();
+    let ptr = data.as_mut_ptr();
+    for _ in 0..100 {
+        let start = rand::thread_rng().gen_range(0..cap);
+        let rs = RingSlice::from(ptr, cap, start, start + cap);
+        // 随机选一个oft与len
+        // 对比data_r与data的结果
+        for _ in 0..64 {
+            let oft = rand::thread_rng().gen_range(0..rs.len());
+            let len = rand::thread_rng().gen_range(0..rs.len() - oft);
+            println!("oft:{}, end:{}", oft, len + oft);
+            let (first, sec) = rs.data_r(oft..oft + len);
+            let (first2, sec2) = rs.data_oft_len(oft, len);
+            assert_eq!(first, first2);
+            assert_eq!(sec, sec2);
+        }
+    }
+}
