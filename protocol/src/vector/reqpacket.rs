@@ -12,6 +12,7 @@ const MAX_KEY_LEN: usize = 200;
 /// 请求消息不能超过16M
 const MAX_REQUEST_LEN: usize = 1 << super::flager::CONDITION_POS_BITS - 1;
 const WHERE: &str = "WHERE";
+const ERR_UNSUPPORT_CMD: &'static [u8] = b"-Error unsupport cmd\r\n";
 
 pub(crate) struct RequestPacket<'a, S> {
     stream: &'a mut S,
@@ -102,7 +103,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         // 第一个bulk是bulk-string类型的cmd
         let cmd = self.next_bulk_string()?;
         self.cmd_type = cmd.into();
-        assert_ne!(self.cmd_type, CommandType::Unknown);
+        if self.cmd_type.is_invalid() {
+            return Err(Error::FlushOnClose(ERR_UNSUPPORT_CMD.into()));
+        }
         Ok(())
     }
 

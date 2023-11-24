@@ -11,6 +11,7 @@ pub enum CommandType {
     VAdd,
     VUpdate,
     VDel,
+    VCard,
     Unknown,
 }
 
@@ -26,6 +27,7 @@ impl From<RingSlice> for CommandType {
             b'A' => Self::to_cmd(&name, "VADD", Self::VAdd),
             b'U' => Self::to_cmd(&name, "VUPDATE", Self::VUpdate),
             b'D' => Self::to_cmd(&name, "VDEL", Self::VDel),
+            b'C' => Self::to_cmd(&name, "VCARD", Self::VCard),
             _ => Self::Unknown,
         }
     }
@@ -51,6 +53,15 @@ impl CommandType {
             CommandType::VRange => Operation::Gets,
             CommandType::Unknown => panic!("no operation for unknow!"),
             _ => Operation::Store,
+        }
+    }
+
+    /// 这个type是否是合法的，unknow不合法
+    #[inline]
+    pub(super) fn is_invalid(&self) -> bool {
+        match self {
+            CommandType::Unknown => true,
+            _ => false,
         }
     }
 }
