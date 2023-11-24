@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+use crate::select::Distance;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
@@ -15,7 +16,6 @@ use protocol::ResOption;
 use protocol::Resource;
 use rand::seq::SliceRandom;
 use sharding::hash::{Hash, HashKey};
-use sharding::Distance;
 
 use crate::dns::DnsConfig;
 use crate::Backend;

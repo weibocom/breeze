@@ -1,6 +1,6 @@
 use std::{collections::HashMap, marker::PhantomData};
 
-use crate::{dns::DnsConfig, Backend, Builder, Endpoint, Timeout, Topology};
+use crate::{dns::DnsConfig, select::Distance, Backend, Builder, Endpoint, Timeout, Topology};
 use discovery::{
     dns::{self, IPPort},
     TopologyWrite,
@@ -9,7 +9,6 @@ use protocol::{Protocol, Request, Resource};
 use sharding::{
     distribution::Range,
     hash::{Crc32, Hash, HashKey},
-    Distance,
 };
 
 use super::config::PhantomNamespace;
