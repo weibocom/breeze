@@ -311,28 +311,8 @@ impl RingSlice {
         debug_assert!(start <= end);
         (start, end)
     }
-    // 调用方确保 r.len() <= s.len()
     #[inline]
-    pub fn copy_to_r<R: RangeBounds<usize>>(&self, s: &mut [u8], r: R) {
-        let (start, end) = self.range(r);
-        assert!(start <= end && end - start <= s.len());
-        assert!(end - start <= s.len());
-        if start == end {
-            return;
-        }
-        let oft_start = self.mask(self.start() + start);
-        let oft_end = self.mask(self.start() + end);
-        use copy_nonoverlapping as copy;
-        if oft_start < oft_end {
-            unsafe { copy(self.ptr().add(oft_start), s.as_mut_ptr(), end - start) };
-        } else {
-            let seg1 = self.cap() - oft_start;
-            unsafe { copy(self.ptr().add(oft_start), s.as_mut_ptr(), seg1) };
-            unsafe { copy(self.ptr(), s.as_mut_ptr().add(seg1), oft_end) };
-        }
-    }
-    #[inline]
-    pub fn copy_to_range<R: RangeBounds<usize>>(&self, s: &mut [u8], r: R) {
+    pub fn copy_to_r<R: Range>(&self, s: &mut [u8], r: R) {
         let mut oft = 0;
         self.visit_seg(r, |p, l| {
             debug_assert!(oft + l <= s.len());
@@ -341,19 +321,10 @@ impl RingSlice {
         });
     }
     #[inline(always)]
-    fn visit_seg<R: RangeBounds<usize>>(&self, r: R, mut f: impl FnMut(*const u8, usize)) {
-        let start = match r.start_bound() {
-            Included(&s) => s,
-            Excluded(&s) => s + 1,
-            Unbounded => 0,
-        };
-        let end = match r.end_bound() {
-            Included(&e) => e + 1,
-            Excluded(&e) => e,
-            Unbounded => self.len(),
-        };
+    pub fn visit_seg<R: Range>(&self, r: R, mut f: impl FnMut(*const u8, usize)) {
+        let (start, end) = r.range(self);
         debug_assert!(end <= self.len());
-        assert!(start <= end);
+        debug_assert!(start <= end);
 
         if start == end {
             return;

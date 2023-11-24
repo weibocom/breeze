@@ -236,20 +236,11 @@ pub(super) fn bench_copy(c: &mut Criterion) {
             });
         });
     });
-    group.bench_function("copy_to_r", |b| {
+    group.bench_function("copy_to", |b| {
         b.iter(|| {
             black_box({
                 for i in 0..runs {
                     rs.copy_to_r(&mut dst[..], i..i + 64);
-                }
-            });
-        });
-    });
-    group.bench_function("copy_to_range", |b| {
-        b.iter(|| {
-            black_box({
-                for i in 0..runs {
-                    rs.copy_to_range(&mut dst[..], i..i + 64);
                 }
             });
         });
