@@ -7,7 +7,7 @@ pub mod kv;
 pub mod msgque;
 pub mod phantomservice;
 pub mod redisservice;
-mod select;
+pub mod select;
 pub mod uuid;
 
 pub(crate) mod dns;

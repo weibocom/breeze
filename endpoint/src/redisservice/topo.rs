@@ -352,7 +352,10 @@ impl<E> Shard<E> {
         self.slaves.unsafe_select()
     }
     #[inline]
-    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E))
+    where
+        E: Backend,
+    {
         unsafe { self.slaves.unsafe_next(idx, runs) }
     }
     pub fn len_region(&self) -> u16 {

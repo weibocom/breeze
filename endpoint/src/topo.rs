@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use discovery::{Inited, TopologyWrite};
 use protocol::{Protocol, Request, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
@@ -20,7 +22,7 @@ procs::topology_dispatcher! {
         UuidService(crate::uuid::topo::UuidService<B, E, R, P>),
     }
 
-    #[procs::dispatcher_trait_deref]
+    // #[procs::dispatcher_trait_deref]
     pub trait Endpoint: Sized + Send + Sync {
         type Item;
         fn send(&self, req: Self::Item);
@@ -55,9 +57,45 @@ procs::topology_dispatcher! {
 //     fn enable_single(&self);
 // }
 
-#[procs::dispatcher_trait_deref]
 pub trait Backend: Endpoint {
     fn available(&self) -> bool;
+    fn addr(&self) -> &str {
+        panic!("not implemented");
+    }
+}
+
+impl<B: Backend> Backend for Arc<B> {
+    fn available(&self) -> bool {
+        self.as_ref().available()
+    }
+
+    fn addr(&self) -> &str {
+        self.as_ref().addr()
+    }
+}
+
+impl<B: Endpoint<Item = R>, R> Endpoint for Arc<B> {
+    type Item = R;
+    fn send(&self, req: Self::Item) {
+        self.as_ref().send(req)
+    }
+}
+
+impl<B: Endpoint<Item = R>, R> Endpoint for (String, B) {
+    type Item = R;
+    fn send(&self, req: Self::Item) {
+        self.1.send(req)
+    }
+}
+
+impl<B: Backend> Backend for (String, B) {
+    fn available(&self) -> bool {
+        self.1.available()
+    }
+
+    fn addr(&self) -> &str {
+        self.1.addr()
+    }
 }
 
 pub trait Builder<P, R, E> {

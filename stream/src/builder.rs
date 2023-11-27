@@ -16,6 +16,7 @@ pub struct BackendBuilder<P, R> {
 
 impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
     fn auth_option_build(
+        //todo 这个传string会减少一次copy
         addr: &str,
         parser: P,
         rsrc: Resource,
@@ -38,6 +39,7 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
             finish,
             init,
             tx,
+            addr: addr.to_string(),
             // single,
         }
         .into()
@@ -51,6 +53,7 @@ pub struct Backend<R> {
     finish: Switcher,
     // 由checker设置，标识是否初始化完成。
     init: Switcher,
+    addr: String,
 }
 
 impl<R> discovery::Inited for Backend<R> {
@@ -95,5 +98,8 @@ impl<R: Request> Endpoint for Backend<R> {
 impl<R: Request> endpoint::Backend for Backend<R> {
     fn available(&self) -> bool {
         self.tx.is_enable()
+    }
+    fn addr(&self) -> &str {
+        &self.addr
     }
 }
