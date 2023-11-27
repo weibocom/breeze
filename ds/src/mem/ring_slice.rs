@@ -1,14 +1,9 @@
 use std::{
     fmt::{Debug, Display, Formatter},
-    ops::{
-        Bound::{Excluded, Included, Unbounded},
-        RangeBounds,
-    },
-    ptr::copy_nonoverlapping,
     slice::from_raw_parts,
 };
 
-use super::Range;
+use crate::{BufWriter, Range};
 
 //从不拥有数据，是对ptr+start的引用
 #[derive(Default, Clone, Copy, Eq, Hash)]
@@ -36,8 +31,7 @@ macro_rules! with_segment {
     }};
     ($self:ident, $range:expr, $noseg:expr, $seg:expr) => {{
         let (oft, end) = $range.range($self);
-        debug_assert!(end <= $self.len());
-        debug_assert!(oft <= end, "{} <= {}", oft, end);
+        debug_assert!(oft <= end && end <= $self.len());
         let len = end - oft;
         let oft_start = $self.mask($self.start() + oft);
         if oft_start + len <= $self.cap() {
@@ -57,16 +51,9 @@ macro_rules! with_segment {
 }
 
 impl RingSlice {
-    const EMPTY: Self = Self {
-        ptr: 0,
-        cap: 0,
-        start: 0,
-        len: 0,
-        mask: 0,
-    };
     #[inline]
     pub fn empty() -> Self {
-        Self::EMPTY
+        Self::default()
     }
     //从不拥有数据
     #[inline]
@@ -154,16 +141,17 @@ impl RingSlice {
     }
     #[inline(always)]
     pub fn data_oft_len(&self, oft: usize, len: usize) -> (&[u8], &[u8]) {
-        assert!(oft + len <= self.len(), "{}/{} =>{:?}", oft, len, self);
+        self.data_r(oft..oft + len)
+        //assert!(oft + len <= self.len(), "{}/{} =>{:?}", oft, len, self);
 
-        static EMPTY: &[u8] = &[];
-        with_segment!(
-            self,
-            oft,
-            len,
-            |ptr, len| (from_raw_parts(ptr, len), EMPTY),
-            |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
-        )
+        //static EMPTY: &[u8] = &[];
+        //with_segment!(
+        //    self,
+        //    oft,
+        //    len,
+        //    |ptr, len| (from_raw_parts(ptr, len), EMPTY),
+        //    |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
+        //)
     }
     #[inline(always)]
     pub fn data_oft(&self, oft: usize) -> (&[u8], &[u8]) {
@@ -230,58 +218,70 @@ impl RingSlice {
         });
     }
     #[inline]
-    pub fn copy_to<W: crate::BufWriter>(&self, oft: usize, w: &mut W) -> std::io::Result<()> {
+    pub fn copy_to<W: BufWriter + ?Sized, R: Range>(&self, r: R, w: &mut W) -> std::io::Result<()> {
         with_segment!(
             self,
-            oft,
+            r,
             |p, l| w.write_all(from_raw_parts(p, l)),
             |p0, l0, p1, l1| { w.write_seg_all(from_raw_parts(p0, l0), from_raw_parts(p1, l1)) }
         )
     }
     #[inline]
+    pub fn copy_to_w<W: BufWriter + ?Sized, R: Range>(&self, r: R, w: &mut W) {
+        let _r = self.copy_to(r, w);
+        debug_assert!(_r.is_ok());
+    }
+    #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
-        v.reserve(self.len());
-        let start = v.len();
-        let end = start + self.len();
-        // 先设置长度，再用切片方式调用，避免越界
-        unsafe { v.set_len(end) };
-        self.copy_to_slice(&mut v[start..end]);
+        self.copy_to_w(.., v);
+        //v.reserve(self.len());
+        //let start = v.len();
+        //let end = start + self.len();
+        //// 先设置长度，再用切片方式调用，避免越界
+        //unsafe { v.set_len(end) };
+        //self.copy_to_slice(&mut v[start..end]);
     }
     #[inline]
     pub fn copy_to_vec_with_len(&self, v: &mut Vec<u8>, len: usize) {
-        self.copy_to_vec_with_oft_len(0, len, v)
+        self.copy_to_w(..len, v);
+        //self.copy_to_vec_with_oft_len(0, len, v)
     }
     // TODO 会多生成一个RingSlice，优化的空间有多大？ fishermen
     #[inline]
     pub fn copy_to_vec_with_oft_len(&self, oft: usize, len: usize, v: &mut Vec<u8>) {
-        self.sub_slice(oft, len).copy_to_vec(v)
+        self.copy_to_w(oft..oft + len, v);
+        //self.sub_slice(oft, len).copy_to_vec(v)
     }
     #[inline]
-    pub fn copy_to_vec_r<R: RangeBounds<usize>>(&self, v: &mut Vec<u8>, r: R) {
-        let (start, end) = self.range(r);
-        let len = end - start;
-        let org_len = v.len();
-        v.reserve(len);
-        let total_len = org_len + len;
-        unsafe { v.set_len(total_len) };
-        self.copy_to_r(&mut v[org_len..total_len], start..end);
+    pub fn copy_to_vec_r<R: Range>(&self, v: &mut Vec<u8>, r: R) {
+        self.copy_to_w(r, v);
+        //let (start, end) = self.range(r);
+        //let len = end - start;
+        //let org_len = v.len();
+        //v.reserve(len);
+        //let total_len = org_len + len;
+        //unsafe { v.set_len(total_len) };
+        //self.copy_to_r(&mut v[org_len..total_len], start..end);
     }
     /// copy 数据到切片/数组中，目前暂时不需要oft，有需求后再加
     #[inline]
     pub fn copy_to_slice(&self, s: &mut [u8]) {
-        with_segment!(
-            self,
-            |p, l| {
-                copy_nonoverlapping(p, s.as_mut_ptr(), l);
-            },
-            |p0, l0, p1, l1| {
-                copy_nonoverlapping(p0, s.as_mut_ptr(), l0);
-                copy_nonoverlapping(p1, s.as_mut_ptr().add(l0), l1);
-            }
-        )
+        self.copy_to_w(.., s);
+        //with_segment!(
+        //    self,
+        //    |p, l| {
+        //        copy_nonoverlapping(p, s.as_mut_ptr(), l);
+        //    },
+        //    |p0, l0, p1, l1| {
+        //        copy_nonoverlapping(p0, s.as_mut_ptr(), l0);
+        //        copy_nonoverlapping(p1, s.as_mut_ptr().add(l0), l1);
+        //    }
+        //)
     }
     #[inline]
     pub fn copy_to_cmp(&self, s: &mut [u8], oft: usize, len: usize) {
+        //self.copy_to_w(oft..oft + len, s);
+        use std::ptr::copy_nonoverlapping;
         with_segment!(
             self,
             oft,
@@ -295,30 +295,31 @@ impl RingSlice {
             }
         )
     }
-    #[inline(always)]
-    fn range<R: RangeBounds<usize>>(&self, r: R) -> (usize, usize) {
-        let start = match r.start_bound() {
-            Included(&s) => s,
-            Excluded(&s) => s + 1,
-            Unbounded => 0,
-        };
-        let end = match r.end_bound() {
-            Included(&e) => e + 1,
-            Excluded(&e) => e,
-            Unbounded => self.len(),
-        };
-        debug_assert!(end <= self.len());
-        debug_assert!(start <= end);
-        (start, end)
-    }
+    //#[inline(always)]
+    //fn range<R: RangeBounds<usize>>(&self, r: R) -> (usize, usize) {
+    //    let start = match r.start_bound() {
+    //        Included(&s) => s,
+    //        Excluded(&s) => s + 1,
+    //        Unbounded => 0,
+    //    };
+    //    let end = match r.end_bound() {
+    //        Included(&e) => e + 1,
+    //        Excluded(&e) => e,
+    //        Unbounded => self.len(),
+    //    };
+    //    debug_assert!(end <= self.len());
+    //    debug_assert!(start <= end);
+    //    (start, end)
+    //}
     #[inline]
     pub fn copy_to_r<R: Range>(&self, s: &mut [u8], r: R) {
-        let mut oft = 0;
-        self.visit_seg(r, |p, l| {
-            debug_assert!(oft + l <= s.len());
-            unsafe { copy_nonoverlapping(p, s.as_mut_ptr().add(oft), l) };
-            oft += l;
-        });
+        self.copy_to_w(r, s);
+        //let mut oft = 0;
+        //self.visit_seg(r, |p, l| {
+        //    debug_assert!(oft + l <= s.len());
+        //    unsafe { copy_nonoverlapping(p, s.as_mut_ptr().add(oft), l) };
+        //    oft += l;
+        //});
     }
     #[inline(always)]
     pub fn visit_seg<R: Range>(&self, r: R, mut f: impl FnMut(*const u8, usize)) {
@@ -470,9 +471,8 @@ impl Debug for RingSlice {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         use crate::Utf8;
-        let slice = self.sub_slice(0, 512.min(self.len()));
-        let mut data = Vec::with_capacity(slice.len());
-        slice.copy_to_vec(&mut data);
+        let mut data = Vec::with_capacity(self.len().min(512));
+        self.copy_to_vec(&mut data);
         write!(f, "{} => {:?}", self, data.utf8())
     }
 }

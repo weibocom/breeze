@@ -136,7 +136,6 @@ fn copy_to_vec() {
 
     slice.copy_to_vec(&mut data);
     assert_eq!(data, vec![0, 1, 2, 0, 1, 2]);
-    println!("new data:{:?}", data);
 }
 
 #[test]
@@ -145,7 +144,7 @@ fn copy_to_slice() {
     let slice = RingSlice::from_vec(&data);
 
     let mut slice_short = [0_u8; 2];
-    slice.copy_to_slice(&mut slice_short);
+    slice.copy_to_w(0..2, &mut slice_short[..]);
     assert_eq!(slice_short, [0, 1]);
 
     let mut slice_long = [0_u8; 6];
