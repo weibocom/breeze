@@ -21,6 +21,7 @@ openssl = "0.10.52"
 
 bytes = "1.0"
 paste = "*"
+libc = "*"
 
 [features]
 default = ["heap-stats"]
