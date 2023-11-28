@@ -1,4 +1,4 @@
-use crate::{Backend, Endpoint};
+use crate::Endpoint;
 use sharding::distribution::Distribute;
 
 #[derive(Clone)]
@@ -31,12 +31,6 @@ where
             0
         }
     }
-}
-impl<E, Req> Backend for Shards<E, Req>
-where
-    E: Endpoint<Item = Req>,
-    Req: protocol::Request,
-{
     fn available(&self) -> bool {
         true
     }

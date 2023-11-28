@@ -27,11 +27,12 @@ procs::topology_dispatcher! {
         type Item;
         fn send(&self, req: Self::Item);
         fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
-    } => where P:Sync+Send+Protocol, E:Backend<Item = R>, R: Request, P: Protocol+Sync+Send, B:Send+Sync
+        fn available(&self) -> bool {todo!("available not implemented");}
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R: Request, P: Protocol+Sync+Send, B:Send+Sync
 
     pub trait Topology : Endpoint + Hash{
         fn exp_sec(&self) -> u32 {86400}
-    } => where P:Sync+Send+Protocol, E:Backend<Item = R>, R:Request, B: Send + Sync, Topologies<B, E, R, P>: Endpoint
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, B: Send + Sync, Topologies<B, E, R, P>: Endpoint
 
     trait Inited {
         fn inited(&self) -> bool;
@@ -42,7 +43,7 @@ procs::topology_dispatcher! {
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
         fn load(&mut self);
-    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Backend<Item = R>
+    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>
 
     trait Hash {
         fn hash<S: HashKey>(&self, key: &S) -> i64;
@@ -57,44 +58,29 @@ procs::topology_dispatcher! {
 //     fn enable_single(&self);
 // }
 
-pub trait Backend: Endpoint {
-    fn available(&self) -> bool;
-    fn addr(&self) -> &str {
-        panic!("not implemented");
-    }
-}
-
-impl<B: Backend> Backend for Arc<B> {
-    fn available(&self) -> bool {
-        self.as_ref().available()
-    }
-
-    fn addr(&self) -> &str {
-        self.as_ref().addr()
-    }
-}
-
-impl<B: Endpoint<Item = R>, R> Endpoint for Arc<B> {
+impl<T: Endpoint<Item = R>, R> Endpoint for Arc<T> {
     type Item = R;
     fn send(&self, req: Self::Item) {
         self.as_ref().send(req)
     }
+    fn shard_idx(&self, hash: i64) -> usize {
+        self.as_ref().shard_idx(hash)
+    }
+    fn available(&self) -> bool {
+        self.as_ref().available()
+    }
 }
 
-impl<B: Endpoint<Item = R>, R> Endpoint for (String, B) {
+impl<T: Endpoint<Item = R>, R> Endpoint for (String, T) {
     type Item = R;
     fn send(&self, req: Self::Item) {
         self.1.send(req)
     }
-}
-
-impl<B: Backend> Backend for (String, B) {
+    fn shard_idx(&self, hash: i64) -> usize {
+        self.1.shard_idx(hash)
+    }
     fn available(&self) -> bool {
         self.1.available()
-    }
-
-    fn addr(&self) -> &str {
-        self.1.addr()
     }
 }
 

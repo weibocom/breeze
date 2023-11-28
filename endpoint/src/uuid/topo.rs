@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{select::Distance, Backend, Builder, Endpoint, Topology};
+use crate::{select::Distance, Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource};
 use sharding::hash::{Hash, HashKey};
@@ -43,7 +43,7 @@ where
 
 impl<B, E, Req, P> Topology for UuidService<B, E, Req, P>
 where
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
     B: Send + Sync,
@@ -52,7 +52,7 @@ where
 
 impl<B: Send + Sync, E, Req, P> Endpoint for UuidService<B, E, Req, P>
 where
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -97,7 +97,7 @@ impl<B, E, Req, P> TopologyWrite for UuidService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -133,7 +133,7 @@ impl<B, E, Req, P> UuidService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
