@@ -11,7 +11,7 @@ use tokio::time::Instant;
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::{Backend, Builder, Endpoint, Timeout, Topology};
+use crate::{Builder, Endpoint, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
 use crate::msgque::strategy::hitfirst::Node;
@@ -125,7 +125,7 @@ where
 impl<B, E, Req, P> Topology for MsgQue<B, E, Req, P>
 where
     B: Send + Sync,
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -141,7 +141,7 @@ where
 impl<B, E, Req, P> Endpoint for MsgQue<B, E, Req, P>
 where
     B: Send + Sync,
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -389,7 +389,7 @@ impl<B, E, Req, P> TopologyWrite for MsgQue<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn update(&mut self, name: &str, cfg: &str) {

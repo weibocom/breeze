@@ -1,5 +1,5 @@
 use crate::select::Distance;
-use crate::{Backend, Builder, Endpoint, Topology};
+use crate::{Builder, Endpoint, Topology};
 use discovery::TopologyWrite;
 use protocol::memcache::Binary;
 use protocol::{Protocol, Request, Resource};
@@ -78,7 +78,7 @@ where
 
 impl<B, E, Req, P> Topology for CacheService<B, E, Req, P>
 where
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
     B: Send + Sync,
@@ -91,7 +91,7 @@ where
 
 impl<B: Send + Sync, E, Req, P> Endpoint for CacheService<B, E, Req, P>
 where
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
 {
@@ -203,7 +203,7 @@ impl<B, E, Req, P> TopologyWrite for CacheService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -271,7 +271,7 @@ impl<B, E, Req, P> CacheService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Backend<Item = Req>,
+    E: Endpoint<Item = Req>,
 {
     fn build(
         &self,

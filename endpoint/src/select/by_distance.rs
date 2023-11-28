@@ -180,58 +180,47 @@ impl<T: Addr> Distance<T> {
     // idx: 上一次获取到的idx
     // runs: 已经连续获取到的次数
     #[inline]
-    pub fn select_next_idx(&self, idx: usize, runs: usize) -> usize
+    fn select_next_idx_inner(&self, idx: usize, runs: usize) -> usize
     where
-        T: Backend,
+        T: Endpoint,
     {
-        //目前策略有个可能造成一直再local里面重试或者非local里面
         assert!(runs < self.len(), "{} {} {:?}", idx, runs, self);
-        let idx_is_local = idx < self.local_len();
-        let mut non_local_idx = idx;
-        if idx_is_local {
-            //首先遍历local
-            for i in (idx + 1..self.local_len()).chain(0..idx) {
-                if self.replicas[i].0.available() {
-                    return i;
-                }
+        // 还可以从local中取
+        let s_idx = if runs < self.local_len() {
+            // 在sort时，相关的distance会进行一次random处理，在idx节点宕机时，不会让idx+1个节点成为热点
+            (idx + 1) % self.local_len()
+        } else {
+            // 从remote中取. remote_len > 0
+            assert_ne!(self.local_len(), self.len(), "{} {} {:?}", idx, runs, self);
+            if idx < self.local_len() {
+                // 第一次使用remote，为避免热点，从[len_local..len)随机取一个
+                rand::thread_rng().gen_range(self.local_len()..self.len())
+            } else {
+                // 按顺序从remote中取. 走到最后一个时，从local_len开始
+                ((idx + 1) % self.len()).max(self.local_len())
             }
-            if self.len() == self.local_len() {
-                return (idx + 1) % self.len();
+        };
+        assert!(s_idx < self.len(), "{},{} {} {:?}", idx, s_idx, runs, self);
+        s_idx
+    }
+    pub fn select_next_idx(&self, mut idx: usize, mut runs: usize) -> usize
+    where
+        T: Endpoint,
+    {
+        let old_idx = idx;
+        while runs < self.len() {
+            idx = self.select_next_idx_inner(idx, runs);
+            if self.replicas[idx].0.available() {
+                return idx;
             }
-            non_local_idx = rand::thread_rng().gen_range(self.local_len()..self.len());
+            runs += 1;
         }
-        let replicas = (non_local_idx..self.len()).chain(self.local_len()..non_local_idx);
-        //idx访问过之后只访问n-1个就行
-        let replicas = replicas.skip(!idx_is_local as usize);
-        for i in replicas {
-            if self.replicas[i].0.available() {
-                return i;
-            }
-        }
-        // 都不可用则返回
-        return (idx + 1) % self.len();
-        // // 还可以从local中取
-        // let s_idx = if runs < self.local_len() {
-        //     // 在sort时，相关的distance会进行一次random处理，在idx节点宕机时，不会让idx+1个节点成为热点
-        //     (idx + 1) % self.local_len()
-        // } else {
-        //     // 从remote中取. remote_len > 0
-        //     assert_ne!(self.local_len(), self.len(), "{} {} {:?}", idx, runs, self);
-        //     if idx < self.local_len() {
-        //         // 第一次使用remote，为避免热点，从[len_local..len)随机取一个
-        //         rand::thread_rng().gen_range(self.local_len()..self.len())
-        //     } else {
-        //         // 按顺序从remote中取. 走到最后一个时，从local_len开始
-        //         ((idx + 1) % self.len()).max(self.local_len())
-        //     }
-        // };
-        // assert!(s_idx < self.len(), "{},{} {} {:?}", idx, s_idx, runs, self);
-        // s_idx
+        return (old_idx + 1) % self.len();
     }
     #[inline]
     pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T)
     where
-        T: Backend,
+        T: Endpoint,
     {
         let idx = self.select_next_idx(idx, runs);
         (idx, &self.replicas.get_unchecked(idx).0)
@@ -251,7 +240,8 @@ impl<T: Addr> Distance<T> {
 
 use std::ptr::NonNull;
 
-use crate::Backend;
+use crate::Endpoint;
+
 pub struct Iter<'a, T> {
     start: NonNull<(T, BackendQuota)>,
     end: *const (T, BackendQuota),
