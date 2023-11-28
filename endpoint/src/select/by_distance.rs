@@ -195,6 +195,9 @@ impl<T: Addr> Distance<T> {
                     return i;
                 }
             }
+            if self.len() == self.local_len() {
+                return (idx + 1) % self.len();
+            }
             non_local_idx = rand::thread_rng().gen_range(self.local_len()..self.len());
         }
         let replicas = (non_local_idx..self.len()).chain(self.local_len()..non_local_idx);
