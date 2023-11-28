@@ -275,7 +275,7 @@ impl Binary for RingSlice {
         // store cmd 请求失败了，某些描述的场景需要当作成功 fishermen
         match self.op() {
             OP_SET | OP_SETQ | OP_ADD | OP_ADDQ => {
-                let status = self.read_u16(6);
+                let status = self.u16_be(6);
                 status != RespStatus::KeyExists as u16
             }
             OP_DEL | OP_DELQ => true,
@@ -285,7 +285,7 @@ impl Binary for RingSlice {
     #[inline(always)]
     fn key_len(&self) -> u16 {
         debug_assert!(self.len() >= HEADER_LEN);
-        self.read_u16(PacketPos::Key as usize)
+        self.u16_be(PacketPos::Key as usize)
     }
     #[inline(always)]
     fn key(&self) -> Self {
