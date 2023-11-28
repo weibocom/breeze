@@ -247,3 +247,30 @@ pub(super) fn bench_copy(c: &mut Criterion) {
     });
     group.finish();
 }
+
+const RESP_START: u32 = u32::from_le_bytes(*b"VALU");
+pub(super) fn bench_read_num_vs_start_with(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ring_slice_read_num_vs_start_with");
+    let runs = 64;
+    let s = b"VALU".to_vec();
+    let rs = RingSlice::from_vec(&s);
+    group.bench_function("read_num", |b| {
+        b.iter(|| {
+            black_box({
+                for i in 0..runs {
+                    if rs.u32_le(0) != RESP_START {};
+                }
+            });
+        })
+    });
+    group.bench_function("start_with", |b| {
+        b.iter(|| {
+            black_box({
+                for i in 0..runs {
+                    if !rs.start_with(0, b"VALU") {};
+                }
+            });
+        })
+    });
+    group.finish();
+}
