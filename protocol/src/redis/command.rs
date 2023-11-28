@@ -23,10 +23,10 @@ pub(crate) enum CommandType {
 }
 
 #[derive(Default)]
-pub(super) struct CommandHasher(i32);
+pub(crate) struct CommandHasher(i32);
 impl CommandHasher {
     #[inline(always)]
-    fn hash(&mut self, mut b: u8) {
+    pub(crate) fn hash(&mut self, mut b: u8) {
         if b.is_ascii_lowercase() {
             // 转换大写  32 = 'a' - 'A'
             b -= b'a' - b'A';
@@ -35,11 +35,11 @@ impl CommandHasher {
         self.0 = self.0.wrapping_mul(31).wrapping_add(b as i32);
     }
     #[inline(always)]
-    fn finish(self) -> u16 {
+    pub(crate) fn finish(self) -> u16 {
         // +1 避免0
         1 + (self.0.abs() as usize & (Commands::MAPPING_RANGE - 1)) as u16
     }
-    fn hash_bytes(data: &[u8]) -> u16 {
+    pub(crate) fn hash_bytes(data: &[u8]) -> u16 {
         let mut h = CommandHasher::default();
         for b in data {
             h.hash(*b);
@@ -48,7 +48,7 @@ impl CommandHasher {
     }
     // oft: 指向'\r'的位置
     #[inline(always)]
-    pub(super) fn hash_slice(slice: &RingSlice, oft: usize) -> Result<(u16, usize)> {
+    pub(crate) fn hash_slice(slice: &RingSlice, oft: usize) -> Result<(u16, usize)> {
         let mut h = CommandHasher::default();
         for i in oft..slice.len() {
             if slice[i] == b'\r' {
