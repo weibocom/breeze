@@ -318,7 +318,7 @@ impl Kv {
         // 首先parse meta，对于UnhandleResponseError异常，需要构建成响应返回
         let meta = match rsp_packet.parse_result_set_meta() {
             Ok(meta) => meta,
-            Err(Error::UnhandleResponseError(emsg)) => {
+            Err(crate::kv::Error::UnhandleResponseError(emsg)) => {
                 // 对于UnhandleResponseError，需要构建rsp，发给client
                 let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
                 return Ok(cmd);

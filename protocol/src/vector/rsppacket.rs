@@ -450,7 +450,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     pub(super) fn handle_ok<T: OkPacketKind>(
         &mut self,
         payload: RingSlice,
-    ) -> super::error::Result<OkPacket> {
+    ) -> crate::kv::error::Result<OkPacket> {
         let ok = ParseBuf::from(payload)
             .parse::<OkPacketDeserializer<T>>(self.capability_flags())?
             .into_inner();

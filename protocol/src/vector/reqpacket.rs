@@ -1,26 +1,28 @@
-use super::flager::KvFlager;
+use super::{command::CommandProperties, flager::KvFlager};
 use ds::RingSlice;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-use crate::{redis::error::RedisError, Error, Flag, Packet, Result};
-
-use super::command::CommandType;
+use crate::{
+    redis::{command::CommandHasher, packet::CRLF_LEN},
+    vector::{command, error::KvectorError},
+    Error, Flag, Packet, Result,
+};
 
 /// key 最大长度限制为200
 const MAX_KEY_LEN: usize = 200;
 /// 请求消息不能超过16M
-const MAX_REQUEST_LEN: usize = 1 << super::flager::CONDITION_POS_BITS - 1;
-const WHERE: &str = "WHERE";
-const ERR_UNSUPPORT_CMD: &'static [u8] = b"-Error unsupport cmd\r\n";
+const MAX_REQUEST_LEN: usize = (1 << super::flager::CONDITION_POS_BITS) - 1;
+const BYTES_WHERE: &'static [u8] = b"WHERE";
 
 pub(crate) struct RequestPacket<'a, S> {
     stream: &'a mut S,
-    // TODO 对data的读写，除了bulks 数量，其他都必须走本地的代理方法，避免本地变量未更新
+    /// 对data的读写，除了bulks 数量，其他都必须走本地的代理方法，避免本地变量未更新
     data: Packet,
     /// redis协议中bulk的数量，如*4\r\n...，bulk的数量为4
     bulks: u16,
-    pub(super) cmd_type: CommandType,
+    pub op_code: u16,
+    // pub(super) cmd_type: CommandType,
     // pub(super) flag: Flag,
     /// 每个完整cmd的起点
     oft_last: usize,
@@ -35,7 +37,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             stream,
             data: data.into(),
             bulks: 0,
-            cmd_type: Default::default(),
+            op_code: Default::default(),
             // flag: Flag::new(),
             oft_last: 0,
             oft: 0,
@@ -49,15 +51,17 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     #[inline]
     pub(crate) fn parse_bulk_num(&mut self) -> Result<()> {
-        if self.bulks == 0 {
-            debug_assert!(self.available(), "{:?}", self);
-            if self.data[self.oft] != b'*' {
-                return Err(RedisError::ReqInvalidStar.into());
-            }
-            self.bulks = self.data.num_of_bulks(&mut self.oft)? as u16;
-            // 合法的kvector协议至少有2个bulk string
-            assert!(self.bulks >= 2, "packet:{}", self);
+        assert_eq!(self.bulks, 0, "{:?}", self);
+        assert!(self.available(), "{:?}", self);
+        log::debug!("+++ parse bulk_num: {}:{:?}", self.oft, self);
+
+        if self.data[self.oft] != b'*' {
+            return Err(KvectorError::ReqInvalidStar.into());
         }
+        self.bulks = self.data.num_of_bulks(&mut self.oft)? as u16;
+        // 合法的kvector协议至少有2个bulk string，但redis sdk的ping/select 等cmd格式不同
+        // assert!(self.bulks >= 2, "packet:{}", self);
+
         Ok(())
     }
 
@@ -81,33 +85,80 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    pub(crate) fn parse_cmd(&mut self) -> Result<Flag> {
+    pub(crate) fn parse_cmd_all(&mut self) -> Result<Flag> {
         // 第一个字段是cmd type，根据cmd type构建flag，并在后续解析中设置flag
-        self.parse_cmd_name()?;
-        let mut flag = Flag::from_op(self.cmd_type.clone() as u16, self.cmd_type.operation());
+        let cfg = self.parse_cmd()?;
+        let mut flag = cfg.flag();
 
-        // 第二个字段是key
-        self.parse_key(&mut flag)?;
+        // meta cmd 直接skip后面的tokens
+        if cfg.op.is_meta() {
+            self.skip_bulks(self.bulks)?;
+            return Ok(flag);
+        }
 
-        // 解析fields，因为要对比where，所以如果有where，也会消费掉
-        self.parse_fields(&mut flag)?;
+        // 非meta的cmd，有key，可能有fields和where condition
+        // 如果有key，则下一个字段是key
+        if cfg.has_key {
+            self.parse_key(&mut flag)?;
+        }
 
-        // 解析condition
-        self.parse_condition(&mut flag)?;
+        // 如果有field，则接下来解析fields，注意parse field时，会读出where token来进行比对field结束位置
+        if cfg.can_hold_field {
+            self.parse_fields(&mut flag)?;
+        } else if self.bulks > 0 && cfg.can_hold_where_condition {
+            // 如果还有bulks，且该cmd可以hold where condition，此处肯定是where token，直接读出skip掉
+            let token = self.next_bulk_string()?;
+            assert!(token.equal_ignore_case(BYTES_WHERE), "{:?}", self);
+            assert!(self.bulks > 0, "{:?}", self);
+        }
+        log::debug!("++++ after field parsedoft:{}", self.oft);
 
+        // 如果有condition，解析之，注意保证where token已经被skip掉了
+        if cfg.can_hold_where_condition {
+            self.parse_condition(&mut flag)?;
+        }
+
+        log::debug!("++++ after condition parsed oft:{}", self.oft);
         Ok(flag)
     }
 
     #[inline]
-    fn parse_cmd_name(&mut self) -> Result<()> {
-        // 第一个bulk是bulk-string类型的cmd
-        let cmd = self.next_bulk_string()?;
-        self.cmd_type = cmd.into();
-        if self.cmd_type.is_invalid() {
-            return Err(Error::FlushOnClose(ERR_UNSUPPORT_CMD.into()));
+    pub(crate) fn parse_cmd(&mut self) -> Result<&'static CommandProperties> {
+        // 当前上下文是获取命令。格式为:  $num\r\ncmd\r\n
+        if let Some(first_r) = self.data.find(self.oft, b'\r') {
+            debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
+            // 路过CRLF_LEN个字节，通过命令获取op_code
+            let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
+            if idx + CRLF_LEN > self.data.len() {
+                return Err(crate::Error::ProtocolIncomplete);
+            }
+            self.op_code = op_code;
+            // 第一次解析cmd需要对协议进行合法性校验
+            let cfg = command::get_cfg(op_code)?;
+            cfg.validate(self.bulks as usize)?;
+
+            // check 命令长度
+            debug_assert_eq!(cfg.name.len(), self.data.str_num(self.oft + 1..first_r));
+
+            // cmd name 解析完毕，bulk 减 1
+            self.oft = idx + CRLF_LEN;
+            self.bulks -= 1;
+            Ok(cfg)
+        } else {
+            return Err(crate::Error::ProtocolIncomplete);
         }
-        Ok(())
     }
+
+    // #[inline]
+    // fn parse_cmd_name(&mut self) -> Result<()> {
+    //     // 第一个bulk是bulk-string类型的cmd
+    //     let cmd = self.next_bulk_string()?;
+    //     self.cmd_type = cmd.into();
+    //     if self.cmd_type.is_invalid() {
+    //         return Err(Error::FlushOnClose(ERR_UNSUPPORT_CMD.into()));
+    //     }
+    //     Ok(())
+    // }
 
     /// 读取下一个bulk string，bulks会减1
     #[inline]
@@ -153,9 +204,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     fn parse_fields(&mut self, flag: &mut Flag) -> Result<()> {
         // key 后面的字段可能是field，也可能是where conditioncheck
         let pos = self.cmd_current_pos();
-        let field_or_where = self.next_bulk_string()?;
-        if !field_or_where.equal_ignore_case(WHERE.as_bytes()) {
-            // 不是where，就是field了，设置field的pos
+        let token = self.next_bulk_string()?;
+        if !token.equal_ignore_case(BYTES_WHERE) {
+            // 第0个token，不是where，那就一定是field了，设置field的pos
             flag.set_field_pos(pos as u8);
 
             // skip 掉所有的剩余的所有field tokens
@@ -179,7 +230,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 } else {
                     // 偶数位，可能是where，需要读出来进行check
                     let next = self.next_bulk_string()?;
-                    if next.equal_ignore_case(WHERE.as_bytes()) {
+                    if next.equal_ignore_case(BYTES_WHERE) {
                         if self.bulks == 0 {
                             log::warn!("+++ empty where condition req:{}", self);
                             return Err(Error::RequestProtocolInvalid);
@@ -226,7 +277,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.oft_last = self.oft;
         // 重置bulks和cmd_type
         self.bulks = 0;
-        self.cmd_type = CommandType::Unknown;
+        // self.cmd_type = CommandType::Unknown;
+        self.op_code = 0;
         self.stream.take(data.len())
     }
 }
@@ -236,10 +288,9 @@ impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(packet => len:{} bulk num: {} cmd_type:{:?} oft:({} => {})) data:{:?}",
+            "(packet => len:{} bulk num: {} oft:({} => {})) data:{:?}",
             self.data.len(),
             self.bulks,
-            self.cmd_type,
             self.oft_last,
             self.oft,
             self.data

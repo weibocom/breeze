@@ -1,4 +1,5 @@
 mod command;
+mod error;
 pub mod flager;
 mod query_result;
 mod reqpacket;
@@ -17,7 +18,6 @@ use self::rsppacket::ResponsePacket;
 
 use crate::kv::client::Client;
 use crate::kv::common::query_result::Or;
-use crate::kv::error;
 use crate::kv::HandShakeStatus;
 use crate::HandShake;
 
@@ -104,24 +104,9 @@ impl Protocol for Vector {
             return Ok(());
         }
 
-        log::debug!(
-            "+++ send to client rsp, req:{:?}, resp:{:?}",
-            ctx.request(),
-            response
-        );
-        // 非sentonly返回空，报错，外部断连接
-        if response.is_none() {
-            log::warn!("+++ vector response is none req:{:?}", ctx.request());
-            return Err(crate::Error::OpCodeNotSupported(255)); // TODO
-        }
         if let Some(response) = response {
+            log::debug!("+++ send to client {:?} => {:?}", ctx.request(), response);
             if !response.ok() {
-                log::debug!(
-                    "+++ vector resp error req: req:{:?}, resp:{:?}",
-                    ctx.request(),
-                    response
-                );
-
                 // 对于非ok的响应，需要构建rsp，发给client
                 w.write("-ERR ".as_bytes())?;
                 w.write_slice(response, 0)?; // mysql返回的错误信息
@@ -134,8 +119,21 @@ impl Protocol for Vector {
                 // 3. 结果为空
                 w.write_slice(response, 0)?; // value
             }
+            return Ok(());
         }
 
+        // 没有响应，考虑quit或返回占位rsp
+        let op_code = ctx.request().op_code();
+        let cfg = command::get_cfg(op_code).expect("kv cfg");
+
+        // quit 直接返回Err，外层断连接
+        if cfg.quit {
+            return Err(crate::Error::Quit); // TODO
+        }
+
+        // 其他场景返回padding rsp
+        w.write(cfg.padding_rsp.as_bytes())?;
+        log::debug!("+++ send to client padding {:?}", ctx.request());
         Ok(())
     }
 }
@@ -151,7 +149,7 @@ impl Vector {
         log::debug!("+++ rec kvector req:{:?}", packet.inner_data());
         while packet.available() {
             packet.parse_bulk_num()?;
-            let flag = packet.parse_cmd()?;
+            let flag = packet.parse_cmd_all()?;
             // 构建cmd，准备后续处理
             let cmd = packet.take();
             let hash = 0;
@@ -195,7 +193,7 @@ impl Vector {
         // 首先parse meta，对于UnhandleResponseError异常，需要构建成响应返回
         let meta = match rsp_packet.parse_result_set_meta() {
             Ok(meta) => meta,
-            Err(error::Error::UnhandleResponseError(emsg)) => {
+            Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
                 // 对于UnhandleResponseError，需要构建rsp，发给client
                 let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
                 return Ok(cmd);
@@ -215,7 +213,7 @@ impl Vector {
         let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
         match query_result.parse_rows_to_cmd() {
             Ok(cmd) => Ok(cmd),
-            Err(error::Error::UnhandleResponseError(emsg)) => {
+            Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
                 // 对于UnhandleResponseError，需要构建rsp，发给client
                 let cmd = query_result.build_final_rsp_cmd(false, emsg);
                 Ok(cmd)
