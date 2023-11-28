@@ -416,7 +416,7 @@ impl RingSlice {
 
     // 读取一个u16的数字，大端
     #[inline(always)]
-    pub fn read_u16(&self, oft: usize) -> u16 {
+    pub fn u16_be(&self, oft: usize) -> u16 {
         debug_assert!(self.len() >= oft + 2);
         (self[oft] as u16) << 8 | self[oft + 1] as u16
     }
