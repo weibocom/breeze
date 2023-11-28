@@ -8,7 +8,7 @@ mod tsc {
 pub use tsc::*;
 
 #[cfg(not(feature = "tsc"))]
-mod coarse;
+pub mod coarse;
 
 #[cfg(not(feature = "tsc"))]
 pub use coarse::*;
