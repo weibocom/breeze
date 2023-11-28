@@ -25,6 +25,22 @@ pub(super) fn bench_instant(c: &mut Criterion) {
             });
         });
     });
+    group.bench_function("coarse", |b| {
+        b.iter(|| {
+            black_box({
+                let start = ds::time::coarse::Instant::now();
+                start.elapsed().as_micros()
+            });
+        });
+    });
+    group.bench_function("time", |b| {
+        b.iter(|| {
+            black_box({
+                let start = time::Instant::now();
+                start.elapsed().whole_microseconds()
+            });
+        });
+    });
     group.finish();
 }
 struct CustomDuration(u64);

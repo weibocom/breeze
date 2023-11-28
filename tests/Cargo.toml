@@ -29,6 +29,7 @@ base64 = "0.21.0"
 bytes = "1.0"
 
 proptest = "1.0"
+time = "*"
 
 [dev-dependencies.criterion]
 version = "0.4"
