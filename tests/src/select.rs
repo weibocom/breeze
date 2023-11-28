@@ -135,3 +135,22 @@ fn select_some_local_all_noava() {
     assert_eq!(shards.select_next_idx(0, 2), 1);
     assert_eq!(shards.select_next_idx(1, 3), 2);
 }
+
+//全部是local，但全部不可用，则选择下一个
+#[test]
+fn select_all_local_all_noava() {
+    let mut shards = Distance::new();
+    shards.update(
+        vec![
+            TBackend::new("127.0.0.1".to_string(), false),
+            TBackend::new("127.0.0.2".to_string(), false),
+            TBackend::new("127.0.0.3".to_string(), false),
+            TBackend::new("127.0.0.4".to_string(), false),
+        ],
+        4,
+        true,
+    );
+    assert_eq!(shards.select_next_idx(3, 1), 0);
+    assert_eq!(shards.select_next_idx(0, 2), 1);
+    assert_eq!(shards.select_next_idx(1, 3), 2);
+}
