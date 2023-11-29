@@ -269,8 +269,6 @@ impl BitOps for u64 {
     }
 }
 
-unsafe impl Send for Chunk {}
-unsafe impl Sync for Chunk {}
 use std::fmt;
 impl fmt::Debug for Chunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -99,6 +99,3 @@ impl<D: Discover + Send + Sync> DiscoveryCache<D> {
         &self.discovery
     }
 }
-
-unsafe impl<D> Send for DiscoveryCache<D> {}
-unsafe impl<D> Sync for DiscoveryCache<D> {}

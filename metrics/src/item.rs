@@ -44,9 +44,6 @@ pub(crate) trait ItemWriter {
     );
 }
 
-unsafe impl Send for Item {}
-unsafe impl Sync for Item {}
-
 pub struct ItemRc {
     pub(crate) inner: *const Item,
 }
