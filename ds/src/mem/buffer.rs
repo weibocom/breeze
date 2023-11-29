@@ -131,12 +131,6 @@ impl RingBuffer {
             self.advance_write(l);
         });
     }
-    #[inline]
-    pub fn write(&mut self, data: &RingSlice) -> usize {
-        let n = data.len().min(self.available());
-        unsafe { self.write_all(&data.slice(0, n)) };
-        n
-    }
 
     // cap > self.len()
     #[inline]
@@ -195,6 +189,12 @@ mod tests {
         pub fn consume(&mut self, n: usize) {
             assert!(self.len() >= n);
             self.advance_read(n);
+        }
+        #[inline]
+        pub fn write(&mut self, data: &crate::RingSlice) -> usize {
+            let n = data.len().min(self.available());
+            unsafe { self.write_all(&data.slice(0, n)) };
+            n
         }
     }
 }
