@@ -1,71 +1,52 @@
+use std::ops::Sub;
+
+pub type Duration = std::time::Duration;
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Instant(minstant::Instant);
+#[repr(transparent)]
+pub struct Instant(u64);
+
 impl Instant {
     #[inline(always)]
     pub fn now() -> Instant {
-        Instant(minstant::Instant::now())
+        Instant(current_cycle())
     }
-    #[inline(always)]
-    fn cycles(&self) -> u64 {
-        unsafe { *(&self.0 as *const _ as *const u64) }
-    }
+
     #[inline(always)]
     pub fn elapsed(&self) -> Duration {
-        Duration(Instant::now().cycles() - self.cycles())
-    }
-}
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Debug)]
-pub struct Duration(u64);
-
-impl Duration {
-    pub const fn from_secs(_sec: u64) -> Self {
-        Self(0)
-    }
-    pub const fn from_millis(_ms: u64) -> Self {
-        Self(0)
+        Instant::now() - *self
     }
 
-    pub const fn as_micros(&self) -> u64 {
-        0
-    }
-    pub fn as_secs(&self) -> u64 {
-        todo!();
-    }
-    pub fn as_secs_f64(&self) -> f64 {
-        todo!();
-    }
-    pub fn as_millis(&self) -> u64 {
-        todo!();
+    #[inline(always)]
+    pub fn duration_since(&self, start: Instant) -> Duration {
+        let d = match self.0 > start.0 {
+            true => self.0 - start.0,
+            false => 0,
+        };
+        Duration::from_nanos(d * nanos_per_cycle() as u64)
     }
 }
 
-impl Into<std::time::Duration> for Duration {
-    fn into(self) -> std::time::Duration {
-        todo!();
+impl Sub<Instant> for Instant {
+    type Output = Duration;
+
+    fn sub(self, other: Instant) -> Duration {
+        self.duration_since(other)
     }
 }
 
-#[ctor::ctor]
-pub static NANOS_PER_CYCLE: f64 = {
-    let interval = std::time::Duration::from_millis(10);
-    let mut last = check_cps(interval);
-    loop {
-        let cps = check_cps(interval);
-        if (cps - last).abs() / cps < 0.000001 {
-            break;
-        }
-        last = cps;
-    }
-    0f64
-};
+/// 为方便测试，先写个固定值
+#[inline]
+fn nanos_per_cycle() -> f64 {
+    1.0
+}
 
-// cpu cycles per second
-fn check_cps(duration: std::time::Duration) -> f64 {
-    let start = Instant::now();
-    loop {
-        let end = Instant::now();
-        if end.0 - start.0 > duration {
-            return (end.cycles() - start.cycles()) as f64 / duration.as_secs_f64();
-        }
-    }
+#[inline]
+fn current_cycle() -> u64 {
+    #[cfg(target_arch = "x86")]
+    use core::arch::x86::_rdtsc;
+    #[cfg(target_arch = "x86_64")]
+    use core::arch::x86_64::_rdtsc;
+
+    unsafe { _rdtsc() }
 }
