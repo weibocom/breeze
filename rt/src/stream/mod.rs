@@ -2,6 +2,7 @@ mod metric;
 use metric::MetricStream;
 
 use std::io;
+use std::io::ErrorKind;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll, Waker};
 
@@ -88,7 +89,19 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
             let mut w = Pin::new(s);
             loop {
                 let data = buf.data();
-                let n = ready!(w.as_mut().poll_write(cx, data))?;
+                // let n = ready!(w.as_mut().poll_write(cx, data))?;
+                let n = match w.as_mut().poll_write(cx, data) {
+                    Poll::Ready(Ok(n)) => n,
+                    Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
+                    Poll::Pending => {
+                        // buf堆积超过512M且当前发送不出去了，网络可能有问题，继续堆积可能导致申请的内存过大，此处返回错误，上层走断开重连逻辑。
+                        if buf.len() > 512_000_000 {
+                            return Poll::Ready(Err(ErrorKind::WriteZero.into()));
+                        }
+                        return Poll::Pending;
+                    }
+                };
+
                 if buf.take(n) {
                     break;
                 }
@@ -126,7 +139,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
             self.buf.write(data);
         } else {
             let mut ctx = Context::from_waker(&NOOP);
-            let _ = Pin::new(self).poll_write(&mut ctx, data);
+            let _ = Pin::new(self).poll_write(&mut ctx, data)?;
         }
         Ok(())
     }
@@ -153,7 +166,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::BufWriter for Stream<S> {
             self.buf.write(data);
         } else {
             let mut ctx = Context::from_waker(&NOOP);
-            let _ = Pin::new(self).poll_write(&mut ctx, data);
+            let _ = Pin::new(self).poll_write(&mut ctx, data)?;
         }
         Ok(())
     }

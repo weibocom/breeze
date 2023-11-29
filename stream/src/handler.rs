@@ -119,13 +119,14 @@ where
         while let Some(req) = ready!(self.data.poll_recv(cx)) {
             self.num.tx();
 
-            self.s.write_slice(&*req, 0)?;
-
-            match req.on_sent() {
-                Some(r) => self.pending.push_back((r, Instant::now())),
-                None => {
-                    self.num.rx();
-                }
+            match self.s.write_slice(&*req, 0) {
+                Err(e) => req.on_err(e),
+                Ok(_) => match req.on_sent() {
+                    Some(r) => self.pending.push_back((r, Instant::now())),
+                    None => {
+                        self.num.rx();
+                    }
+                },
             }
         }
         Poll::Ready(Err(Error::ChanReadClosed))
