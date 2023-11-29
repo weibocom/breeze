@@ -36,7 +36,7 @@ fn test_ring_slice() {
     //let s = over_range.as_slices();
     //assert_eq!(over_range.len(), 64);
     //assert_eq!(s.len(), 2);
-    assert_eq!(over_range, (&dc[cap - 32..cap], &dc[0..32]));
+    assert_eq!(over_range.data(), (&dc[cap - 32..cap], &dc[0..32]));
     let mut v: Vec<u8> = Vec::new();
     over_range.copy_to_vec(&mut v);
     assert_eq!(&v[0..32], &dc[cap - 32..cap]);

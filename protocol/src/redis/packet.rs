@@ -563,10 +563,7 @@ impl Packet {
                     *oft += self.num_of_string(oft)? + CRLF_LEN;
                 }
                 b'+' | b':' => self.line(oft)?,
-                _ => {
-                    log::warn!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                    panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                }
+                _ => panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count),
             }
             bulk_count -= 1;
         }
