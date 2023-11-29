@@ -28,7 +28,7 @@ procs::topology_dispatcher! {
         fn send(&self, req: Self::Item);
         fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
         fn available(&self) -> bool {todo!("available not implemented");}
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R: Request, P: Protocol+Sync+Send, B:Send+Sync
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R> + Inited, R: Request, P: Protocol+Sync+Send, B:Send+Sync
 
     pub trait Topology : Endpoint + Hash{
         fn exp_sec(&self) -> u32 {86400}
@@ -43,7 +43,7 @@ procs::topology_dispatcher! {
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
         fn load(&mut self);
-    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>
+    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>+Single
 
     trait Hash {
         fn hash<S: HashKey>(&self, key: &S) -> i64;
@@ -51,12 +51,12 @@ procs::topology_dispatcher! {
 
 }
 
-// #[procs::dispatcher_trait_deref]
-// pub trait Single {
-//     fn single(&self) -> bool;
-//     fn disable_single(&self);
-//     fn enable_single(&self);
-// }
+#[procs::dispatcher_trait_deref]
+pub trait Single {
+    fn single(&self) -> bool;
+    fn disable_single(&self);
+    fn enable_single(&self);
+}
 
 impl<T: Endpoint<Item = R>, R> Endpoint for Arc<T> {
     type Item = R;

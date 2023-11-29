@@ -1,11 +1,15 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::AtomicBool,
+    atomic::Ordering::{Acquire, Release},
+    Arc,
+};
 
 use ds::chan::mpsc::{channel, Sender, TrySendError};
 
 use ds::Switcher;
 
 use crate::checker::BackendChecker;
-use endpoint::{Builder, Endpoint, Timeout};
+use endpoint::{Builder, Endpoint, Single, Timeout};
 use metrics::Path;
 use protocol::{Error, Protocol, Request, ResOption, Resource};
 
@@ -39,14 +43,14 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
             finish,
             init,
             tx,
-            // single,
+            single,
         }
         .into()
     }
 }
 
 pub struct Backend<R> {
-    // single: Arc<AtomicBool>,
+    single: Arc<AtomicBool>,
     tx: Sender<R>,
     // 实例销毁时，设置该值，通知checker，会议上check.
     finish: Switcher,
@@ -81,14 +85,14 @@ impl<R: Request> Endpoint for Backend<R> {
         }
     }
 }
-// impl<R> Single for Backend<R> {
-//     fn single(&self) -> bool {
-//         self.single.load(Acquire)
-//     }
-//     fn enable_single(&self) {
-//         self.single.store(true, Release);
-//     }
-//     fn disable_single(&self) {
-//         self.single.store(false, Release);
-//     }
-// }
+impl<R> Single for Backend<R> {
+    fn single(&self) -> bool {
+        self.single.load(Acquire)
+    }
+    fn enable_single(&self) {
+        self.single.store(true, Release);
+    }
+    fn disable_single(&self) {
+        self.single.store(false, Release);
+    }
+}
