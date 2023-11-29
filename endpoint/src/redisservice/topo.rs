@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::select::Distance;
-use crate::{Builder, Endpoint, Topology};
+use crate::{Builder, Endpoint, Single, Topology};
 use discovery::{distance, TopologyWrite};
 use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
@@ -133,7 +133,7 @@ impl<B, E, Req, P> TopologyWrite for RedisService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint<Item = Req> + Single,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -184,7 +184,7 @@ impl<B, E, Req, P> RedisService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint<Item = Req> + Single,
 {
     #[inline]
     fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
@@ -264,13 +264,13 @@ where
             assert_ne!(slaves.len(), 0);
             let port = master_addr.port().to_string();
             let master = self.take_or_build(&mut old, &master_addr, self.cfg.timeout_master());
-            // master.enable_single();
+            master.enable_single();
 
             // slave
             let mut replicas = Vec::with_capacity(8);
             for addr in slaves {
                 let slave = self.take_or_build(&mut old, &addr, self.cfg.timeout_slave());
-                // slave.disable_single();
+                slave.disable_single();
                 replicas.push((addr, slave));
             }
 

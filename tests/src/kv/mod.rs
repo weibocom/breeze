@@ -244,10 +244,3 @@ fn value_double_read_conversions_work() {
     // Reading an f32 from a MySQL double fails (precision loss).
     assert!(f32::from_value_opt(double_value).is_err());
 }
-
-#[test]
-fn tttt() {
-    let t = vec![1, 2];
-    let tt = &t[2..2];
-    println!("{tt:?}");
-}
