@@ -60,6 +60,3 @@ impl Fixed {
         self.inited
     }
 }
-
-unsafe impl Send for Fixed {}
-unsafe impl Sync for Fixed {}
