@@ -25,6 +25,14 @@ pub(super) fn bench_instant(c: &mut Criterion) {
             });
         });
     });
+    group.bench_function("tsc", |b| {
+        b.iter(|| {
+            black_box({
+                let start = ds::time::tsc::Instant::now();
+                start.elapsed().as_micros()
+            });
+        });
+    });
     group.bench_function("coarse", |b| {
         b.iter(|| {
             black_box({

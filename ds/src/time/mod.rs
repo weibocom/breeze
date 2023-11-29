@@ -1,13 +1,15 @@
-#[cfg(feature = "tsc")]
-mod tsc {
-    pub type Instant = minstant::Instant;
-    pub type Duration = std::time::Duration;
-}
+// #[cfg(feature = "tsc")]
+#[cfg(target_os = "linux")]
+pub mod tsc;
+// mod tsc {
+//     pub type Instant = minstant::Instant;
+//     pub type Duration = std::time::Duration;
+// }
 
 #[cfg(feature = "tsc")]
 pub use tsc::*;
 
-#[cfg(not(feature = "tsc"))]
+// #[cfg(not(feature = "tsc"))]
 pub mod coarse;
 
 #[cfg(not(feature = "tsc"))]
