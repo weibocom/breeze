@@ -250,24 +250,28 @@ pub(super) fn bench_copy(c: &mut Criterion) {
 
 pub(super) fn bench_read_num_vs_start_with(c: &mut Criterion) {
     let mut group = c.benchmark_group("ring_slice_read_num_vs_start_with");
-    let runs = 64;
-    let s = b"VALU".to_vec();
+    let s = b"1VALUE uuid 16784738294\r\njfdjk;afjkd;safjkds;ajfkdsa;".to_vec();
+    let runs = s.len() - 4;
     let rs = RingSlice::from_vec(&s);
     group.bench_function("read_num", |b| {
         b.iter(|| {
             black_box({
+                let mut v = 0;
                 for i in 0..runs {
-                    if rs.u32_le(0) != u32::from_le_bytes(*b"VALU") {};
+                    v += (rs.u32_le(i) != u32::from_le_bytes(*b"VALU")) as u64;
                 }
+                v
             });
         })
     });
     group.bench_function("start_with", |b| {
         b.iter(|| {
             black_box({
+                let mut v = 0;
                 for i in 0..runs {
-                    if !rs.start_with(0, b"VALU") {};
+                    v += !rs.start_with(i, b"VALU") as u64;
                 }
+                v
             });
         })
     });
