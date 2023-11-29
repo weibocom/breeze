@@ -117,7 +117,7 @@ impl RingBuffer {
     }
     // 调用方确保buf.available() >= rs.len()，否则UB
     #[inline]
-    pub(super) unsafe fn write_all(&mut self, rs: &RingSlice) {
+    unsafe fn write_all(&mut self, rs: &RingSlice) {
         use std::ptr::copy_nonoverlapping as copy;
         debug_assert!(rs.len() <= self.available());
         // 写入的位置

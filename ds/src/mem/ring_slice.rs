@@ -118,7 +118,7 @@ impl RingSlice {
         self.visit_segment_oft_len(oft, self.len(), v);
     }
     #[inline(always)]
-    pub(super) fn visit_segment_oft_len(
+    fn visit_segment_oft_len(
         &self,
         oft: usize,
         len: usize,
