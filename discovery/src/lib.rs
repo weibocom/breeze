@@ -23,8 +23,6 @@ use url::Url;
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 
-unsafe impl<C> Send for Config<C> {}
-unsafe impl<C> Sync for Config<C> {}
 #[derive(Debug)]
 pub enum Config<C> {
     NotFound,
