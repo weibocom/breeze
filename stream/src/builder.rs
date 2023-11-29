@@ -84,6 +84,10 @@ impl<R: Request> Endpoint for Backend<R> {
             }
         }
     }
+
+    fn available(&self) -> bool {
+        self.tx.is_enable()
+    }
 }
 impl<R> Single for Backend<R> {
     fn single(&self) -> bool {
