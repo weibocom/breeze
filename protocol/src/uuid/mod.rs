@@ -2,6 +2,7 @@ use crate::{
     Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
     Result, Stream, Writer,
 };
+use ds::ByteOrder;
 use sharding::hash::Hash;
 
 #[derive(Clone, Default)]
@@ -36,7 +37,8 @@ impl Protocol for Uuid {
                 return Ok(None);
             }
         }
-        if !data.start_with(0, b"VALUE") {
+        //等价于if !data.start_with(0, b"VALU")，但更快，用于判断响应是否乱序
+        if data.u32_le(0) != u32::from_le_bytes(*b"VALU") {
             return Err(crate::Error::UnexpectedData);
         }
         return Ok(Some(Command::from_ok(stream.take(oft))));
