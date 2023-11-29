@@ -57,8 +57,6 @@ impl<T: Inited, O> Inited for (T, O) {
     }
 }
 
-unsafe impl<T> Send for TopologyReadGuard<T> {}
-unsafe impl<T> Sync for TopologyReadGuard<T> {}
 #[derive(Clone)]
 pub struct TopologyReadGuard<T> {
     updates: Arc<AtomicUsize>,

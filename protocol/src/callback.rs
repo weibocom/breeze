@@ -293,9 +293,6 @@ impl Drop for CallbackContext {
     }
 }
 
-unsafe impl Send for CallbackContext {}
-unsafe impl Sync for CallbackContext {}
-
 use std::fmt::{self, Debug, Display, Formatter};
 impl Display for CallbackContext {
     #[inline]

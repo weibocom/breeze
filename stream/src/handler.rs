@@ -178,8 +178,6 @@ where
         Poll::Ready(Ok(()))
     }
 }
-unsafe impl<'r, Req, P, S> Send for Handler<'r, Req, P, S> {}
-unsafe impl<'r, Req, P, S> Sync for Handler<'r, Req, P, S> {}
 impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> rt::ReEnter
     for Handler<'r, Req, P, S>
 {
