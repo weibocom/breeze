@@ -18,7 +18,7 @@ fn test_ring_slice() {
     let in_range = RingSlice::from(ptr, cap, 0, 32);
     assert_eq!(in_range.len(), 32);
     assert_eq!(in_range, dc[0..32]);
-    let (f, s) = in_range.data_oft(0);
+    let (f, s) = in_range.data_r(0);
     assert_eq!(f, &dc[0..32]);
     assert!(s.len() == 0);
 
@@ -28,7 +28,7 @@ fn test_ring_slice() {
     //assert_eq!(s.len(), 1);
     assert_eq!(end_range.len(), 32);
     assert_eq!(end_range, dc[cap - 32..cap]);
-    let (f, s) = in_range.data_oft(0);
+    let (f, s) = in_range.data_r(0);
     assert_eq!(f, &dc[0..32]);
     assert!(s.len() == 0);
 
@@ -41,7 +41,7 @@ fn test_ring_slice() {
     over_range.copy_to_vec(&mut v);
     assert_eq!(&v[0..32], &dc[cap - 32..cap]);
     assert_eq!(&v[32..], &dc[0..32]);
-    let (f, s) = over_range.data_oft(0);
+    let (f, s) = over_range.data_r(0);
     assert_eq!(f, &dc[cap - 32..cap]);
     assert_eq!(s, &dc[0..32]);
 
@@ -194,9 +194,6 @@ fn copy_to_slice() {
                     (r_start, r_len)
                 }
             };
-            rs.copy_to_cmp(&mut dst[..], r_start, r_len);
-            assert_eq!(&dst[0..r_len], &slice[r_start..r_start + r_len]);
-            dst.fill(0);
             rs.copy_to_r(&mut dst, r_start..r_start + r_len);
             assert_eq!(&dst[0..r_len], &slice[r_start..r_start + r_len]);
         }
@@ -316,9 +313,34 @@ fn data_r() {
             let len = rand::thread_rng().gen_range(0..rs.len() - oft);
             println!("oft:{}, end:{}", oft, len + oft);
             let (first, sec) = rs.data_r(oft..oft + len);
-            let (first2, sec2) = rs.data_oft_len(oft, len);
+            let (first2, sec2) = rs.data_r(oft..oft + len);
             assert_eq!(first, first2);
             assert_eq!(sec, sec2);
         }
     }
+}
+
+#[test]
+fn fold() {
+    let data = &b"12345678abcdefg9"[..];
+    let rs: RingSlice = data.into();
+    let num = rs.fold_r(0.., 0u64, |acc, v| {
+        let ascii = v.is_ascii_digit();
+        if ascii {
+            *acc = acc.wrapping_mul(10).wrapping_add((v - b'0') as u64);
+        }
+        ascii
+    });
+    assert_eq!(num, 12345678);
+    let start = data.len() - 1; // '9'
+    let end = start + 9; // '8'
+    let rs = RingSlice::from(data.as_ptr(), data.len(), start, end);
+    let num = rs.fold_r(.., 0u64, |acc, v| {
+        let ascii = v.is_ascii_digit();
+        if ascii {
+            *acc = acc.wrapping_mul(10).wrapping_add((v - b'0') as u64);
+        }
+        ascii
+    });
+    assert_eq!(num, 912345678);
 }
