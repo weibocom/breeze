@@ -188,6 +188,21 @@ impl<'a> Display for InsertVals<'a> {
         Ok(())
     }
 }
+
+struct UpdateFields<'a>(&'a Vec<(RingSlice, RingSlice)>);
+impl<'a> Display for UpdateFields<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, field) in self.0.iter().enumerate() {
+            if i == 0 {
+                let _ = write!(f, "{}={}", VRingSlice(&field.0), Val(&field.1));
+            } else {
+                let _ = write!(f, ",{}={}", VRingSlice(&field.0), Val(&field.1));
+            }
+        }
+        Ok(())
+    }
+}
+
 struct KeysAndCondsAndOrderAndLimit<'a>(&'a Strategist, &'a VectorCmd);
 impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -283,9 +298,9 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
             vector::OP_VUPDATE => {
                 let _ = write!(
                     buf,
-                    "select {} from {} where {}",
-                    VRingSlice(&self.vcmd.fields[0].1),
+                    "update {} set {} where {}",
                     Table(&self.strategy, &self.vcmd.keys),
+                    UpdateFields(&self.vcmd.fields),
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
