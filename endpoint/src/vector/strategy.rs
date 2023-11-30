@@ -145,6 +145,49 @@ impl<'a> Display for Table<'a> {
     }
 }
 
+struct InsertCols<'a>(&'a Strategist, &'a Vec<(RingSlice, RingSlice)>);
+impl<'a> Display for InsertCols<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, fields) = self;
+        for (i, key) in strategy.condition_keys().enumerate() {
+            if let Some(key) = key {
+                if i == 0 {
+                    let _ = write!(f, "{}", key);
+                } else {
+                    let _ = write!(f, ",{}", key);
+                }
+            }
+        }
+        for field in fields {
+            let _ = write!(f, ",{}", VRingSlice(&field.0));
+        }
+        Ok(())
+    }
+}
+
+struct InsertVals<'a>(
+    &'a Strategist,
+    &'a Vec<RingSlice>,
+    &'a Vec<(RingSlice, RingSlice)>,
+);
+impl<'a> Display for InsertVals<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, keys, fields) = self;
+        for (i, key) in strategy.condition_keys().enumerate() {
+            if let Some(_) = key {
+                if i == 0 {
+                    let _ = write!(f, "{}", Val(&keys[i]));
+                } else {
+                    let _ = write!(f, ",{}", Val(&keys[i]));
+                }
+            }
+        }
+        for field in fields {
+            let _ = write!(f, ",{}", Val(&field.1));
+        }
+        Ok(())
+    }
+}
 struct KeysAndCondsAndOrderAndLimit<'a>(&'a Strategist, &'a VectorCmd);
 impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -231,10 +274,10 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
             vector::OP_VADD => {
                 let _ = write!(
                     buf,
-                    "select {} from {} where {}",
-                    VRingSlice(&self.vcmd.fields[0].1),
+                    "insert into {} ({}) values ({})",
                     Table(&self.strategy, &self.vcmd.keys),
-                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                    InsertCols(&self.strategy, &self.vcmd.fields),
+                    InsertVals(&self.strategy, &self.vcmd.keys, &self.vcmd.fields),
                 );
             }
             vector::OP_VUPDATE => {
