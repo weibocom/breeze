@@ -3,7 +3,7 @@ use std::{
     slice::from_raw_parts,
 };
 
-use crate::{BufWriter, Range};
+use crate::{BufWriter, Found, Range};
 
 //从不拥有数据，是对ptr+start的引用
 #[derive(Default, Clone, Copy, Eq, Hash)]
@@ -228,26 +228,39 @@ impl RingSlice {
 
     #[inline]
     pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
-        // TODO 先加上assert，安全第一 fishermen
-        assert!(offset <= self.len(), "offset:{}, self:{:?}", offset, self);
-
-        for i in offset..self.len() {
-            if self[i] == b {
-                return Some(i);
-            }
+        self.find_r(offset, |c| c == b)
+    }
+    #[inline]
+    pub fn find_r(&self, r: impl Range, mut f: impl Found) -> Option<usize> {
+        macro_rules! find {
+            ($p:expr, $l:expr) => {{
+                for i in 0..$l {
+                    if f.check(*$p.add(i)) {
+                        return Some(i);
+                    }
+                }
+                None
+            }};
         }
-        None
+        with_segment!(
+            self,
+            r,
+            |p: *const u8, l| find!(p, l),
+            |p0: *const u8, l0, p1: *const u8, l1| {
+                find!(p0, l0).or_else(|| find!(p1, l1).map(|i: usize| i + l0))
+            }
+        )
     }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     #[inline]
     pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
-        for i in offset..self.len() - 1 {
-            // 先找'\r'
-            if self[i] == b'\r' && self[i + 1] == b'\n' {
-                return Some(i);
+        self.find(offset + 1, b'\n').and_then(|i| {
+            if self[i - 1] == b'\r' {
+                Some(i - 1)
+            } else {
+                None
             }
-        }
-        None
+        })
     }
     #[inline]
     pub fn start_with(&self, oft: usize, s: &[u8]) -> bool {

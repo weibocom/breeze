@@ -32,6 +32,25 @@ pub trait Range {
     fn range(&self, slice: &RingSlice) -> (usize, usize);
 }
 
+pub trait Found {
+    fn check(&mut self, b: u8) -> bool;
+}
+impl Found for u8 {
+    #[inline(always)]
+    fn check(&mut self, b: u8) -> bool {
+        *self == b
+    }
+}
+impl<T> Found for T
+where
+    T: FnMut(u8) -> bool,
+{
+    #[inline(always)]
+    fn check(&mut self, b: u8) -> bool {
+        self(b)
+    }
+}
+
 type Offset = usize;
 impl Range for Offset {
     fn range(&self, slice: &RingSlice) -> (usize, usize) {
