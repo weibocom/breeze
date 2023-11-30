@@ -281,6 +281,10 @@ pub struct Limit {
 
 // TODO 这个值跟随hash方法变化，需要调整使用姿势？ fishermen
 pub const OP_VRANGE: u16 = 378;
+pub const OP_VADD: u16 = 378;
+pub const OP_VUPDATE: u16 = 378;
+pub const OP_VDEL: u16 = 378;
+pub const OP_VCARD: u16 = 378;
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
 #[derive(Debug, Clone, Default)]
 pub struct VectorCmd {

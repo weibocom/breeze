@@ -8,7 +8,7 @@ mod reqpacket;
 mod rsppacket;
 
 mod mc2mysql;
-pub use mc2mysql::{MysqlBuilder, Strategy, VectorSqlBuilder};
+pub use mc2mysql::{escape_mysql_and_push, MysqlBuilder, Strategy, VectorSqlBuilder};
 use std::ops::Deref;
 
 use self::common::proto::Text;
