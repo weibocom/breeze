@@ -83,12 +83,22 @@ impl Strategist {
     }
 }
 
-struct VectorRingSlice<'a>(&'a RingSlice);
-impl<'a> Display for VectorRingSlice<'a> {
+struct VRingSlice<'a>(&'a RingSlice);
+impl<'a> Display for VRingSlice<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (s1, s2) = self.0.data();
         f.write_str(unsafe { std::str::from_utf8_unchecked(s1) })?;
         f.write_str(unsafe { std::str::from_utf8_unchecked(s2) })?;
+        Ok(())
+    }
+}
+
+struct Val<'a>(&'a RingSlice);
+impl<'a> Display for Val<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let _ = f.write_char('\'');
+        self.0.visit(|c| protocol::kv::escape_mysql_and_push(f, c));
+        let _ = f.write_char('\'');
         Ok(())
     }
 }
@@ -100,30 +110,29 @@ impl<'a> Display for ConditionDisplay<'a> {
             let _ = write!(
                 f,
                 "{} {} ({})",
-                VectorRingSlice(&self.0.field),
-                VectorRingSlice(&self.0.op),
-                VectorRingSlice(&self.0.value)
+                VRingSlice(&self.0.field),
+                VRingSlice(&self.0.op),
+                Val(&self.0.value)
             );
         } else {
             let _ = write!(
                 f,
                 "{}{}{}",
-                VectorRingSlice(&self.0.field),
-                VectorRingSlice(&self.0.op),
-                VectorRingSlice(&self.0.value)
+                VRingSlice(&self.0.field),
+                VRingSlice(&self.0.op),
+                Val(&self.0.value)
             );
         }
         Ok(())
     }
 }
 
-struct Select<'a>(&'a RingSlice);
+struct Select<'a>(Option<&'a (RingSlice, RingSlice)>);
 impl<'a> Display for Select<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.0.len() == 0 {
-            f.write_char('*')
-        } else {
-            VectorRingSlice(self.0).fmt(f)
+        match self.0 {
+            Some(field) => VRingSlice(&field.1).fmt(f),
+            None => f.write_char('*'),
         }
     }
 }
@@ -152,9 +161,9 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
         for (i, key) in strategy.condition_keys().enumerate() {
             if let Some(key) = key {
                 if i == 0 {
-                    let _ = write!(f, "{}={}", key, VectorRingSlice(&keys[i]));
+                    let _ = write!(f, "{}={}", key, Val(&keys[i]));
                 } else {
-                    let _ = write!(f, " and {}={}", key, VectorRingSlice(&keys[i]));
+                    let _ = write!(f, " and {}={}", key, Val(&keys[i]));
                 }
             }
         }
@@ -165,16 +174,16 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
             let _ = write!(
                 f,
                 " order by {} {}",
-                VectorRingSlice(&order.field),
-                VectorRingSlice(&order.order)
+                VRingSlice(&order.field),
+                VRingSlice(&order.order)
             );
         }
         if limit.offset.len() != 0 {
             let _ = write!(
                 f,
                 " limit {} offset {}",
-                VectorRingSlice(&limit.limit),
-                VectorRingSlice(&limit.offset)
+                VRingSlice(&limit.limit),
+                VRingSlice(&limit.offset)
             );
         }
         Ok(())
@@ -199,11 +208,7 @@ impl<'a> VectorBuilder<'a> {
 
 impl<'a> MysqlBinary for VectorBuilder<'a> {
     fn mysql_cmd(&self) -> Command {
-        match self.op {
-            vector::OP_VRANGE => Command::COM_QUERY,
-            //校验应该在parser_req出
-            _ => panic!("not support op:{}", self.op),
-        }
+        Command::COM_QUERY
     }
 }
 
@@ -218,7 +223,43 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                 let _ = write!(
                     buf,
                     "select {} from {} where {}",
-                    VectorRingSlice(&self.vcmd.fields[0].1),
+                    Select(self.vcmd.fields.get(0)),
+                    Table(&self.strategy, &self.vcmd.keys),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                );
+            }
+            vector::OP_VADD => {
+                let _ = write!(
+                    buf,
+                    "select {} from {} where {}",
+                    VRingSlice(&self.vcmd.fields[0].1),
+                    Table(&self.strategy, &self.vcmd.keys),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                );
+            }
+            vector::OP_VUPDATE => {
+                let _ = write!(
+                    buf,
+                    "select {} from {} where {}",
+                    VRingSlice(&self.vcmd.fields[0].1),
+                    Table(&self.strategy, &self.vcmd.keys),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                );
+            }
+            vector::OP_VDEL => {
+                let _ = write!(
+                    buf,
+                    "select {} from {} where {}",
+                    VRingSlice(&self.vcmd.fields[0].1),
+                    Table(&self.strategy, &self.vcmd.keys),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                );
+            }
+            vector::OP_VCARD => {
+                let _ = write!(
+                    buf,
+                    "select {} from {} where {}",
+                    VRingSlice(&self.vcmd.fields[0].1),
                     Table(&self.strategy, &self.vcmd.keys),
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );

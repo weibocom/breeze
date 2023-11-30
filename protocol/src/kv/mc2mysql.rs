@@ -37,7 +37,7 @@ impl<'a, S> Table<'a, S> {
     }
 }
 
-struct KeyVal<'a>(&'a RingSlice);
+pub struct KeyVal<'a>(&'a RingSlice);
 impl<'a> Display for KeyVal<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.visit(|c| escape_mysql_and_push(f, c));
@@ -141,7 +141,7 @@ pub struct MysqlBuilder;
 // https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
 // Backslash (\) and the quote character used to quote the string must be escaped. In certain client environments, it may also be necessary to escape NUL or Control+Z.
 // 应该只需要转义上面的，我们使用单引号，所以双引号也不转义了
-fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
+pub fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
     //非法char要当成二进制push，否则会变成unicode
     let c = c as char;
     if c == '\\' || c == '\'' {
