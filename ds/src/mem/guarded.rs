@@ -117,19 +117,6 @@ impl MemGuard {
         let mem: RingSlice = RingSlice::empty();
         Self { mem, guard: None }
     }
-
-    //#[inline]
-    //pub fn data(&self) -> &RingSlice {
-    //    &self.mem
-    //}
-    //#[inline]
-    //pub fn data_mut(&mut self) -> &mut RingSlice {
-    //    &mut self.mem
-    //}
-    //#[inline]
-    //pub fn len(&self) -> usize {
-    //    self.mem.len()
-    //}
 }
 impl Drop for MemGuard {
     #[inline]

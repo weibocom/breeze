@@ -228,31 +228,17 @@ impl RingSlice {
 
     #[inline]
     pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
-        self.find_r(offset, |c, _| c == b)
+        self.find_r(offset, b)
     }
     #[inline]
     pub fn find_r(&self, r: impl Range, mut f: impl Visit) -> Option<usize> {
-        let (oft, _end) = r.range(self);
-        macro_rules! find {
-            ($p:expr, $l:expr, $oft:expr) => {{
-                for i in 0..$l {
-                    if f.check(*$p.add(i), i + $oft) {
-                        return Some(i + $oft);
-                    }
-                }
-                None
-            }};
+        let (start, end) = r.range(self);
+        for i in start..end {
+            if f.check(self[i], i) {
+                return Some(i);
+            }
         }
-        with_segment!(
-            self,
-            r,
-            |p: *const u8, l| find!(p, l, oft),
-            |p0: *const u8, l0, p1: *const u8, l1| find!(p0, l0, oft).or_else(|| find!(
-                p1,
-                l1,
-                oft + l0
-            ))
-        )
+        None
     }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     #[inline]

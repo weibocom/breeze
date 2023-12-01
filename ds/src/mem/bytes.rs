@@ -30,6 +30,10 @@ pub trait ByteOrder {
 
 pub trait Range {
     fn range(&self, slice: &RingSlice) -> (usize, usize);
+    #[inline]
+    fn start(&self, slice: &RingSlice) -> usize {
+        self.range(slice).0
+    }
 }
 
 pub trait Visit {
@@ -50,6 +54,7 @@ impl<T: FnMut(u8, usize) -> bool> Visit for T {
 
 type Offset = usize;
 impl Range for Offset {
+    #[inline(always)]
     fn range(&self, slice: &RingSlice) -> (usize, usize) {
         debug_assert!(*self <= slice.len());
         (*self, slice.len())

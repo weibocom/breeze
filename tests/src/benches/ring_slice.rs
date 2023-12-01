@@ -236,7 +236,7 @@ pub(super) fn bench_copy(c: &mut Criterion) {
 
 pub(super) fn bench_read_num_vs_start_with(c: &mut Criterion) {
     let mut group = c.benchmark_group("compare");
-    let s = b"get key\r\nVALUE\r\njfdjk;afjkd;safjkds;ajfkdsa;".to_vec();
+    let s = b"get keyVALUEjfdjk;afjkd;safjkds;\r\najfkdsa;".to_vec();
     let runs = s.len() - 4;
     let rs = RingSlice::from_vec(&s);
     group.bench_function("read_num", |b| {
