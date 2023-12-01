@@ -67,12 +67,12 @@ fn test_ring_slice() {
     lines.update(63, b'\n');
 
     let line = lines.find_lf_cr(0);
+    assert!(line.is_some(), "{lines:?}");
     let r = lines.find(0, b'\r');
-    assert!(line.is_some());
     assert!(r.is_some());
     assert_eq!(line.expect("line"), 20);
     assert_eq!(r.expect("line-r"), 9);
-    assert_eq!(lines.find_lf_cr(22).unwrap(), 62);
+    assert_eq!(lines.find_lf_cr(22), Some(62), "{lines:?}");
 
     let _ = unsafe { Vec::from_raw_parts(ptr, 0, cap) };
 }

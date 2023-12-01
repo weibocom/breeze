@@ -3,7 +3,7 @@ use std::{
     slice::from_raw_parts,
 };
 
-use crate::{BufWriter, Found, Range};
+use crate::{BufWriter, Range, Visit};
 
 //从不拥有数据，是对ptr+start的引用
 #[derive(Default, Clone, Copy, Eq, Hash)]
@@ -228,15 +228,16 @@ impl RingSlice {
 
     #[inline]
     pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
-        self.find_r(offset, |c| c == b)
+        self.find_r(offset, |c, _| c == b)
     }
     #[inline]
-    pub fn find_r(&self, r: impl Range, mut f: impl Found) -> Option<usize> {
+    pub fn find_r(&self, r: impl Range, mut f: impl Visit) -> Option<usize> {
+        let (oft, _end) = r.range(self);
         macro_rules! find {
-            ($p:expr, $l:expr) => {{
+            ($p:expr, $l:expr, $oft:expr) => {{
                 for i in 0..$l {
-                    if f.check(*$p.add(i)) {
-                        return Some(i);
+                    if f.check(*$p.add(i), i + $oft) {
+                        return Some(i + $oft);
                     }
                 }
                 None
@@ -245,21 +246,19 @@ impl RingSlice {
         with_segment!(
             self,
             r,
-            |p: *const u8, l| find!(p, l),
-            |p0: *const u8, l0, p1: *const u8, l1| {
-                find!(p0, l0).or_else(|| find!(p1, l1).map(|i: usize| i + l0))
-            }
+            |p: *const u8, l| find!(p, l, oft),
+            |p0: *const u8, l0, p1: *const u8, l1| find!(p0, l0, oft).or_else(|| find!(
+                p1,
+                l1,
+                oft + l0
+            ))
         )
     }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     #[inline]
     pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
-        self.find(offset + 1, b'\n').and_then(|i| {
-            if self[i - 1] == b'\r' {
-                Some(i - 1)
-            } else {
-                None
-            }
+        self.find_r(offset..self.len() - 1, |b, idx| {
+            b == b'\r' && self[idx + 1] == b'\n'
         })
     }
     #[inline]
@@ -267,16 +266,10 @@ impl RingSlice {
         if oft + s.len() <= self.len() {
             with_segment!(
                 self,
-                oft,
+                oft..oft + s.len(),
                 |p, _l| { from_raw_parts(p, s.len()) == s },
-                |p0, l0, p1, _l1| {
-                    if l0 < s.len() {
-                        from_raw_parts(p0, l0) == &s[..l0]
-                            && from_raw_parts(p1, s.len() - l0) == &s[l0..]
-                    } else {
-                        from_raw_parts(p0, s.len()) == s
-                    }
-                }
+                |p0, l0, p1, _l1| from_raw_parts(p0, l0) == &s[..l0]
+                    && from_raw_parts(p1, s.len() - l0) == &s[l0..]
             )
         } else {
             false
@@ -298,10 +291,7 @@ impl RingSlice {
         }
         let mut vec = Vec::new();
         self.copy_to_w(0, &mut vec);
-        String::from_utf8(vec).unwrap_or_else(|_| {
-            log::warn!("as_string_lossy: invalid utf8: {:?}", self);
-            String::new()
-        })
+        String::from_utf8(vec).unwrap_or_default()
     }
 }
 

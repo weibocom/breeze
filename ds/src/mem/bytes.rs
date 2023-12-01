@@ -32,22 +32,19 @@ pub trait Range {
     fn range(&self, slice: &RingSlice) -> (usize, usize);
 }
 
-pub trait Found {
-    fn check(&mut self, b: u8) -> bool;
+pub trait Visit {
+    fn check(&mut self, b: u8, idx: usize) -> bool;
 }
-impl Found for u8 {
+impl Visit for u8 {
     #[inline(always)]
-    fn check(&mut self, b: u8) -> bool {
+    fn check(&mut self, b: u8, _idx: usize) -> bool {
         *self == b
     }
 }
-impl<T> Found for T
-where
-    T: FnMut(u8) -> bool,
-{
+impl<T: FnMut(u8, usize) -> bool> Visit for T {
     #[inline(always)]
-    fn check(&mut self, b: u8) -> bool {
-        self(b)
+    fn check(&mut self, b: u8, idx: usize) -> bool {
+        self(b, idx)
     }
 }
 
