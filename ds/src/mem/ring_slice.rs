@@ -275,7 +275,7 @@ impl RingSlice {
         if self.len() >= 512 {
             log::warn!("as_string_lossy: data too long: {:?}", self);
         }
-        let mut vec = Vec::new();
+        let mut vec = Vec::with_capacity(self.len());
         self.copy_to_w(0, &mut vec);
         String::from_utf8(vec).unwrap_or_default()
     }
