@@ -240,6 +240,14 @@ impl RingSlice {
         }
         None
     }
+    // 跳过num个'\r\n'，返回下一个字节地址
+    #[inline]
+    pub fn skip_lf_cr(&self, mut oft: usize, num: usize) -> Option<usize> {
+        for _ in 0..num {
+            oft = self.find_lf_cr(oft)? + 2;
+        }
+        Some(oft)
+    }
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     #[inline]
     pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
