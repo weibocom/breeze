@@ -19,7 +19,7 @@ pub struct VectorNamespace {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Basic {
     #[serde(default)]
-    resource_type: String,
+    pub(crate) resource_type: String,
     #[serde(default)]
     pub(crate) selector: String,
     #[serde(default)]
