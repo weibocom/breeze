@@ -112,7 +112,8 @@ impl<'a> Display for ConditionDisplay<'a> {
                 "{} {} ({})",
                 VRingSlice(&self.0.field),
                 VRingSlice(&self.0.op),
-                Val(&self.0.value)
+                //todo:暂时不转义
+                VRingSlice(&self.0.value)
             );
         } else {
             let _ = write!(
@@ -323,5 +324,268 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
             //校验应该在parser_req出
             _ => panic!("not support op:{}", self.op),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use protocol::vector::{Limit, Order};
+    use sharding::hash::Hash;
+
+    use crate::{kv::config::Years, vector::config::Basic};
+    //   basic:
+    //     resource_type: mysql
+    //     selector: distance
+    //     timeout_ms_master: 10000
+    //     timeout_ms_slave: 10000
+    //     db_name: db_name
+    //     db_count: 32
+    //     table_name: table_name
+    //     table_postfix: yymm
+    //     keys: [id, yymm]
+    //     strategy: vector
+    //     user: user
+    //     password: password
+    //   backends:
+    //     2005-2099:
+    //       - 127.0.0.1:8080,127.0.0.2:8080
+    //       - 127.0.0.1:8081,127.0.0.2:8081
+    use super::*;
+    #[test]
+    fn cmd() {
+        let ns = VectorNamespace {
+            basic: Basic {
+                resource_type: Default::default(),
+                selector: Default::default(),
+                timeout_ms_master: Default::default(),
+                timeout_ms_slave: Default::default(),
+                db_name: "db_name".into(),
+                table_name: "table_name".into(),
+                table_postfix: "yymm".into(),
+                db_count: 32,
+                keys: vec!["kid".into(), "yymm".into()],
+                strategy: Default::default(),
+                password: Default::default(),
+                user: Default::default(),
+            },
+            backends_flaten: Default::default(),
+            backends: HashMap::from([(
+                Years(2005, 2099),
+                vec![
+                    "127.0.0.1:8080,127.0.0.2:8080".into(),
+                    "127.0.0.1:8081,127.0.0.2:8081".into(),
+                ],
+            )]),
+        };
+        let strategy = Strategist::try_from(&ns);
+        let mut buf = String::new();
+        let buf = &mut buf;
+        // vrange
+        let vector_cmd = VectorCmd {
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: vec![(
+                RingSlice::from_slice("field".as_bytes()),
+                RingSlice::from_slice("a,b".as_bytes()),
+            )],
+            wheres: vec![
+                Condition {
+                    field: RingSlice::from_slice("a".as_bytes()),
+                    op: RingSlice::from_slice("=".as_bytes()),
+                    value: RingSlice::from_slice("1".as_bytes()),
+                },
+                Condition {
+                    field: RingSlice::from_slice("b".as_bytes()),
+                    op: RingSlice::from_slice("in".as_bytes()),
+                    value: RingSlice::from_slice("2,3".as_bytes()),
+                },
+            ],
+            order: Order {
+                field: RingSlice::from_slice("a".as_bytes()),
+                order: RingSlice::from_slice("desc".as_bytes()),
+            },
+            limit: Limit {
+                offset: RingSlice::from_slice("12".as_bytes()),
+                limit: RingSlice::from_slice("24".as_bytes()),
+            },
+        };
+        let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        builder.write_sql(buf);
+        let db_idx = strategy
+            .distribution()
+            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        assert_eq!(
+            buf,
+            &format!("select a,b from db_name_{db_idx}.table_name_2105 where kid='id' and a='1' and b in (2,3) order by a desc limit 24 offset 12")
+            );
+
+        // vcard
+        let vector_cmd = VectorCmd {
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: vec![],
+            wheres: vec![
+                Condition {
+                    field: RingSlice::from_slice("a".as_bytes()),
+                    op: RingSlice::from_slice("=".as_bytes()),
+                    value: RingSlice::from_slice("1".as_bytes()),
+                },
+                Condition {
+                    field: RingSlice::from_slice("b".as_bytes()),
+                    op: RingSlice::from_slice("in".as_bytes()),
+                    value: RingSlice::from_slice("2,3".as_bytes()),
+                },
+            ],
+            order: Order {
+                field: RingSlice::from_slice("a".as_bytes()),
+                order: RingSlice::from_slice("desc".as_bytes()),
+            },
+            limit: Limit {
+                offset: RingSlice::from_slice("12".as_bytes()),
+                limit: RingSlice::from_slice("24".as_bytes()),
+            },
+        };
+        let builder = VectorBuilder::new(vector::OP_VCARD, &vector_cmd, &strategy).unwrap();
+        buf.clear();
+        builder.write_sql(buf);
+        let db_idx = strategy
+            .distribution()
+            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        assert_eq!(
+            buf,
+            &format!("select count(*) from db_name_{db_idx}.table_name_2105 where kid='id' and a='1' and b in (2,3) order by a desc limit 24 offset 12")
+            );
+
+        //vadd
+        let vector_cmd = VectorCmd {
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: vec![
+                (
+                    RingSlice::from_slice("a".as_bytes()),
+                    RingSlice::from_slice("1".as_bytes()),
+                ),
+                (
+                    RingSlice::from_slice("b".as_bytes()),
+                    RingSlice::from_slice("bb".as_bytes()),
+                ),
+            ],
+            wheres: vec![],
+            order: Order {
+                field: RingSlice::empty(),
+                order: RingSlice::empty(),
+            },
+            limit: Limit {
+                offset: RingSlice::empty(),
+                limit: RingSlice::empty(),
+            },
+        };
+        let builder = VectorBuilder::new(vector::OP_VADD, &vector_cmd, &strategy).unwrap();
+        buf.clear();
+        builder.write_sql(buf);
+        let db_idx = strategy
+            .distribution()
+            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        assert_eq!(
+            buf,
+            &format!(
+                "insert into db_name_{db_idx}.table_name_2105 (kid,a,b) values ('id','1','bb')"
+            )
+        );
+
+        //vupdate
+        let vector_cmd = VectorCmd {
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: vec![
+                (
+                    RingSlice::from_slice("a".as_bytes()),
+                    RingSlice::from_slice("1".as_bytes()),
+                ),
+                (
+                    RingSlice::from_slice("b".as_bytes()),
+                    RingSlice::from_slice("bb".as_bytes()),
+                ),
+            ],
+            wheres: vec![
+                Condition {
+                    field: RingSlice::from_slice("a".as_bytes()),
+                    op: RingSlice::from_slice("=".as_bytes()),
+                    value: RingSlice::from_slice("1".as_bytes()),
+                },
+                Condition {
+                    field: RingSlice::from_slice("b".as_bytes()),
+                    op: RingSlice::from_slice("in".as_bytes()),
+                    value: RingSlice::from_slice("2,3".as_bytes()),
+                },
+            ],
+            order: Order {
+                field: RingSlice::empty(),
+                order: RingSlice::empty(),
+            },
+            limit: Limit {
+                offset: RingSlice::empty(),
+                limit: RingSlice::empty(),
+            },
+        };
+        let builder = VectorBuilder::new(vector::OP_VUPDATE, &vector_cmd, &strategy).unwrap();
+        buf.clear();
+        builder.write_sql(buf);
+        let db_idx = strategy
+            .distribution()
+            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        assert_eq!(
+            buf,
+            &format!("update db_name_{db_idx}.table_name_2105 set a='1',b='bb' where kid='id' and a='1' and b in (2,3)")
+        );
+
+        //vdel
+        let vector_cmd = VectorCmd {
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: vec![],
+            wheres: vec![
+                Condition {
+                    field: RingSlice::from_slice("a".as_bytes()),
+                    op: RingSlice::from_slice("=".as_bytes()),
+                    value: RingSlice::from_slice("1".as_bytes()),
+                },
+                Condition {
+                    field: RingSlice::from_slice("b".as_bytes()),
+                    op: RingSlice::from_slice("in".as_bytes()),
+                    value: RingSlice::from_slice("2,3".as_bytes()),
+                },
+            ],
+            order: Order {
+                field: RingSlice::empty(),
+                order: RingSlice::empty(),
+            },
+            limit: Limit {
+                offset: RingSlice::empty(),
+                limit: RingSlice::empty(),
+            },
+        };
+        let builder = VectorBuilder::new(vector::OP_VDEL, &vector_cmd, &strategy).unwrap();
+        buf.clear();
+        builder.write_sql(buf);
+        let db_idx = strategy
+            .distribution()
+            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        assert_eq!(
+                buf,
+                &format!("delete from db_name_{db_idx}.table_name_2105 where kid='id' and a='1' and b in (2,3)")
+                );
     }
 }
