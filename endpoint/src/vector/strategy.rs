@@ -286,6 +286,14 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
+            vector::OP_VCARD => {
+                let _ = write!(
+                    buf,
+                    "select count(*) from {} where {}",
+                    Table(&self.strategy, &self.vcmd.keys),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                );
+            }
             vector::OP_VADD => {
                 let _ = write!(
                     buf,
@@ -307,17 +315,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
             vector::OP_VDEL => {
                 let _ = write!(
                     buf,
-                    "select {} from {} where {}",
-                    VRingSlice(&self.vcmd.fields[0].1),
-                    Table(&self.strategy, &self.vcmd.keys),
-                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
-                );
-            }
-            vector::OP_VCARD => {
-                let _ = write!(
-                    buf,
-                    "select {} from {} where {}",
-                    VRingSlice(&self.vcmd.fields[0].1),
+                    "delete from {} where {}",
                     Table(&self.strategy, &self.vcmd.keys),
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
