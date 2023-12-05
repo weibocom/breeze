@@ -629,6 +629,20 @@ impl ColumnType {
         )
     }
 
+    /// 判断是否为integer
+    #[inline]
+    pub fn is_integer_type(&self) -> bool {
+        use ColumnType::*;
+        matches!(
+            self,
+            MYSQL_TYPE_TINY
+                | MYSQL_TYPE_SHORT
+                | MYSQL_TYPE_INT24
+                | MYSQL_TYPE_LONG
+                | MYSQL_TYPE_LONGLONG
+        )
+    }
+
     pub fn is_character_type(&self) -> bool {
         use ColumnType::*;
         matches!(

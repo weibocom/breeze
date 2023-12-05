@@ -78,10 +78,7 @@ fn vrange_1() {
                 Value::Status("uid".to_string()),
                 Value::Status("object_type".to_string())
             ]),
-            Value::Bulk(vec![
-                Value::Data("4668741184209281".as_bytes().to_vec()),
-                Value::Data("4".as_bytes().to_vec())
-            ])
+            Value::Bulk(vec![Value::Int(4668741184209281), Value::Int(4)])
         ]))
     );
 }
@@ -110,10 +107,10 @@ fn vrange_2() {
                 Value::Status("like_id".to_string())
             ]),
             Value::Bulk(vec![
-                Value::Data("4668741184209282".as_bytes().to_vec()),
-                Value::Data("4968741184209225".as_bytes().to_vec()),
-                Value::Data("4668741184209282".as_bytes().to_vec()),
-                Value::Data("4968741184209226".as_bytes().to_vec())
+                Value::Int(4668741184209282),
+                Value::Int(4968741184209225),
+                Value::Int(4668741184209282),
+                Value::Int(4968741184209226)
             ])
         ]))
     );
@@ -143,12 +140,12 @@ fn vrange_3() {
                 Value::Status("object_id".to_string())
             ]),
             Value::Bulk(vec![
-                Value::Data("4668741184209283".as_bytes().to_vec()),
-                Value::Data("4968741184209230".as_bytes().to_vec()),
-                Value::Data("4668741184209283".as_bytes().to_vec()),
-                Value::Data("4968741184209231".as_bytes().to_vec()),
-                Value::Data("4668741184209283".as_bytes().to_vec()),
-                Value::Data("4968741184209232".as_bytes().to_vec())
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209230),
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209231),
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209232),
             ])
         ]))
     );

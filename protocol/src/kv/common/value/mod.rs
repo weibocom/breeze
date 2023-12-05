@@ -308,8 +308,29 @@ impl Value {
     }
 
     /// 转换成redis序列化协议描述，注意check正确性
+    /// TODO 先打通，再考虑优化 fishermen
+    pub fn write_text_as_redis(&self, data: &mut Vec<u8>, real_type: ColumnType) {
+        // 对于text val，只有Bytes一种类型
+        match *self {
+            Value::Bytes(ref bytes) => {
+                // TODO 写前缀，目前先只区分是否integer，是否需要继续区分，后续再考虑 fishermen
+                match real_type.is_integer_type() {
+                    true => data.push(b':'),
+                    false => data.extend_from_slice(format!("${}\r\n", bytes.len()).as_bytes()),
+                }
+                // 写value及postfix
+                data.extend_from_slice(bytes);
+                data.extend_from_slice("\r\n".as_bytes());
+            }
+            _ => {
+                panic!("malformed type in text protocol: {:?}", self);
+            }
+        };
+    }
+
+    /// 转换成redis序列化协议描述，注意check正确性
     /// TODO Date目前先用时间str来表示，后面考虑时间戳 fishermen
-    pub fn write_as_redis(&self, data: &mut Vec<u8>) {
+    pub fn write_bin_as_redis(&self, data: &mut Vec<u8>) {
         match *self {
             // Value::NULL => "NULL".into(),
             Value::NULL => data.extend_from_slice("$-1\r\n".as_bytes()),

@@ -487,8 +487,34 @@ pub fn format_to_redis(rows: &Vec<Row>) -> Vec<u8> {
         return data;
     }
 
+    // TODO 特殊结果返回
+    // 对于vrange :
+    //           +----------+
+    //           | count(*) |
+    //           +----------+
+    //           |        2 |
+    //           +----------+
+    //           1 row in set (0.04 sec)
+    //
+    // vdelete： Query OK, 0 rows affected (0.05 sec)；
+    // vupdate： Query OK, 0 rows affected (0.11 sec)
+    //           Rows matched: 1  Changed: 0  Warnings: 0
+    //vadd：     Query OK, 1 row affected (0.05 sec)
+
     // 构建 resp协议的header总array计数 以及 column的计数
-    let columns = rows.get(0).expect("columns unexists").columns();
+    let columns = rows.get(0).expect("columns unexists").columns_ref();
+    if rows.len() == 1 && columns.len() == 1 {
+        // 过去特殊响应，转为为redis integer
+        match columns[0].name_ref() {
+            b"count(" => {
+                rows.get(0).expect("rows empty").write_as_redis(&mut data);
+                return data;
+            }
+            // 其他三个响应待定
+            _ => {}
+        }
+    }
+
     let prefix = format!("*2\r\n*{}\r\n", columns.len());
     data.extend_from_slice(prefix.as_bytes());
 
