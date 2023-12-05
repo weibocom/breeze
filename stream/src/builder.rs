@@ -86,7 +86,7 @@ impl<R: Request> Endpoint for Backend<R> {
     }
 
     fn available(&self) -> bool {
-        self.tx.is_enable()
+        self.tx.get_enable()
     }
 }
 impl<R> Single for Backend<R> {
