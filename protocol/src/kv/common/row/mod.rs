@@ -72,6 +72,12 @@ impl Row {
         self.values.len()
     }
 
+    /// return length of columns
+    #[inline]
+    pub fn columns_len(&self) -> usize {
+        self.columns.len()
+    }
+
     /// Returns true if the row has a length of 0.
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
@@ -181,12 +187,21 @@ impl Row {
     // 将values中的数据按redis格式写入缓冲
     #[inline]
     pub(crate) fn write_as_redis(&self, data: &mut Vec<u8>) {
+        // TODO 这里应该core？
         assert_eq!(self.len(), self.columns.len(), "{:?}", self);
+        log::debug!("+++ panic: {} - {}", self.len(), self.columns.len());
+        assert!(self.columns_len() > 0, "{:?}", self);
 
-        self.values.iter().for_each(|row| {
-            assert!(row.is_some(), "{}:{:?}", data.utf8(), self);
-            row.as_ref().expect("row null").write_as_redis(data);
-        });
+        let columns = self.columns_ref();
+        for (i, val) in self.values.iter().enumerate() {
+            assert!(i < columns.len(), "{}:{:?}", data.utf8(), self);
+            assert!(val.is_some(), "{}:{:?}", data.utf8(), self);
+
+            let column_type = columns[i].column_type();
+            val.as_ref()
+                .expect(format!("row:{:?}", self).as_str())
+                .write_text_as_redis(data, column_type);
+        }
     }
 }
 
