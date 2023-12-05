@@ -1,12 +1,9 @@
 use std::collections::HashMap;
 
-use crate::{Builder, Endpoint, Single, Topology};
+use crate::{select::Distance, Builder, Endpoint, Single, Topology};
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource};
-use sharding::{
-    hash::{Hash, HashKey},
-    Distance,
-};
+use sharding::hash::{Hash, HashKey};
 
 use super::config::UuidNamespace;
 use crate::{dns::DnsConfig, Timeout};

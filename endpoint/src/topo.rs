@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use discovery::{Inited, TopologyWrite};
 use protocol::{Protocol, Request, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
@@ -20,11 +22,12 @@ procs::topology_dispatcher! {
         UuidService(crate::uuid::topo::UuidService<B, E, R, P>),
     }
 
-    #[procs::dispatcher_trait_deref]
+    // #[procs::dispatcher_trait_deref]
     pub trait Endpoint: Sized + Send + Sync {
         type Item;
         fn send(&self, req: Self::Item);
         fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
+        fn available(&self) -> bool {todo!("available not implemented");}
     } => where P:Sync+Send+Protocol, E:Endpoint<Item = R> + Inited, R: Request, P: Protocol+Sync+Send, B:Send+Sync
 
     pub trait Topology : Endpoint + Hash{
@@ -53,6 +56,38 @@ pub trait Single {
     fn single(&self) -> bool;
     fn disable_single(&self);
     fn enable_single(&self);
+}
+
+impl<T: Endpoint<Item = R>, R> Endpoint for Arc<T> {
+    type Item = R;
+    #[inline(always)]
+    fn send(&self, req: Self::Item) {
+        self.as_ref().send(req)
+    }
+    #[inline(always)]
+    fn shard_idx(&self, hash: i64) -> usize {
+        self.as_ref().shard_idx(hash)
+    }
+    #[inline(always)]
+    fn available(&self) -> bool {
+        self.as_ref().available()
+    }
+}
+
+impl<T: Endpoint<Item = R>, R> Endpoint for (String, T) {
+    type Item = R;
+    #[inline(always)]
+    fn send(&self, req: Self::Item) {
+        self.1.send(req)
+    }
+    #[inline(always)]
+    fn shard_idx(&self, hash: i64) -> usize {
+        self.1.shard_idx(hash)
+    }
+    #[inline(always)]
+    fn available(&self) -> bool {
+        self.1.available()
+    }
 }
 
 pub trait Builder<P, R, E> {

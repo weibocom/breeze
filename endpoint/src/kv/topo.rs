@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+use crate::select::Distance;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
@@ -15,7 +16,6 @@ use protocol::ResOption;
 use protocol::Resource;
 use rand::seq::SliceRandom;
 use sharding::hash::{Hash, HashKey};
-use sharding::Distance;
 
 use crate::dns::DnsConfig;
 use crate::Builder;
@@ -372,7 +372,10 @@ impl<E> Shard<E> {
         self.slaves.unsafe_select()
     }
     #[inline]
-    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E))
+    where
+        E: Endpoint,
+    {
         unsafe { self.slaves.unsafe_next(idx, runs) }
     }
 }

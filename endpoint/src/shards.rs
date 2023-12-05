@@ -31,6 +31,9 @@ where
             0
         }
     }
+    fn available(&self) -> bool {
+        true
+    }
 }
 
 impl<E, Req> discovery::Inited for Shards<E, Req>

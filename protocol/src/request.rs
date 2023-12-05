@@ -1,6 +1,4 @@
-use sharding::BackendQuota;
-
-use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand};
+use crate::{callback::CallbackContext, BackendQuota, Command, Context, Error, HashedCommand};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
