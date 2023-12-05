@@ -44,6 +44,7 @@ pub(super) async fn process_one(
         };
         sleep(s).await;
     }
+    listen_failed.zero_num();
 
     log::info!("service inited. {} ", quard);
     let switcher = ds::Switcher::from(true);
@@ -56,6 +57,7 @@ pub(super) async fn process_one(
         log::warn!("service process failed. {}, err:{:?}", quard, _e);
         sleep(Duration::from_secs(6)).await;
     }
+    listen_failed.zero_num();
     switcher.off();
 
     // 因为回调，有可能在连接释放的时候，还在引用top。
