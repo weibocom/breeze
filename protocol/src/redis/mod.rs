@@ -3,7 +3,6 @@ pub(crate) mod error;
 pub(crate) mod flag;
 pub use flag::RedisFlager;
 pub(crate) mod packet;
-//mod token;
 
 use crate::{
     redis::command::CommandType,
@@ -63,71 +62,12 @@ impl Redis {
                     let req = HashedCommand::new(cmd, hash, flag);
                     process.process(req, true);
                 }
-                // // 如果是指示下一个cmd hash的特殊指令，需要保留hash
-                // if cfg.reserve_hash {
-                //     debug_assert!(cfg.has_key, "cfg:{}", cfg.name);
-                //     // 执行到这里，需要保留指示key的，目前只有hashkey
-                //     debug_assert_eq!(cfg.cmd_type, CommandType::SpecLocalCmdHashkey);
-                //     packet.update_reserved_hash(hash);
-                // }
             }
             //一个请求结束才会走到这
             packet.clear_status(cfg);
         }
         Ok(())
     }
-
-    // 解析待吞噬的cmd，解析后会trim掉吞噬指令，消除吞噬指令的影响，目前swallowed cmds有master、hashkeyq、hashrandomq这几个，后续还有扩展就在这里加 fishermen
-    // fn parse_swallow_cmd<S: Stream, H: Hash>(
-    //     &self,
-    //     cfg: &CommandProperties,
-    //     packet: &mut RequestPacket<S>,
-    //     alg: &H,
-    // ) -> Result<()> {
-    //     debug_assert!(cfg.swallowed, "cfg:{}", cfg.name);
-    //     // 目前master_next 为true的只有master指令，所以不用比对cfg name
-    //     if cfg.master_next {
-    //         // cmd: master
-    //         packet.set_layer(LayerType::MasterOnly);
-    //     } else {
-    //         // 非master指令check后处理
-    //         match cfg.cmd_type {
-    //             // cmd: hashkeyq $key
-    //             CommandType::SwallowedCmdHashkeyq => {
-    //                 let key = packet.parse_key()?;
-    //                 // let hash: i64;
-    //                 // 如果key为-1，需要把指令发送到所有分片，但只返回一个分片的响应
-    //                 // if key.len() == 2 && key.at(0) == ('-' as u8) && key.at(1) == ('1' as u8) {
-    //                 //     log::info!("+++ will broadcast: {:?}", packet.inner_data());
-    //                 //     hash = crate::MAX_DIRECT_HASH;
-    //                 // } else {
-    //                 let hash = calculate_hash(cfg, alg, &key);
-    //                 // }
-
-    //                 // 记录reserved hash，为下一个指令使用
-    //                 packet.update_reserved_hash(hash);
-    //             }
-    //             // cmd: hashrandomq
-    //             CommandType::SwallowedCmdHashrandomq => {
-    //                 // 虽然hash名义为i64，但实际当前均为u32
-    //                 let hash = rand::random::<u32>();
-    //                 // 记录reserved hash，为下一个指令使用
-    //                 packet.update_reserved_hash(hash as i64);
-    //             }
-    //             _ => {
-    //                 debug_assert!(false, "unknown swallowed cmd:{}", cfg.name);
-    //                 log::warn!("should not come here![hashkey?]");
-    //             }
-    //         }
-    //     }
-
-    //     // 吞噬掉整个cmd，准备处理下一个cmd fishermen
-    //     packet.ignore_all_bulks()?;
-    //     // 吞噬/trim掉当前 cmd data，准备解析下一个cmd
-    //     packet.trim_swallowed_cmd()?;
-
-    //     Ok(())
-    // }
 
     #[inline]
     fn parse_response_inner<S: Stream>(
@@ -151,14 +91,7 @@ impl Redis {
             } // _ => panic!("not supported:{:?}", data),
         }
 
-        if *oft <= data.len() {
-            //let mem = s.take(*oft);
-            //let mut flag = Flag::new();
-            // TODO 这次需要测试err场景 fishermen
-            //flag.set_status_ok(true);
-            return Ok(Some(Command::from_ok(s.take(*oft))));
-        }
-        Ok(None)
+        Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
     }
 }
 
@@ -209,39 +142,6 @@ impl Protocol for Redis {
             e => e,
         }
     }
-
-    // 构建本地响应resp策略：
-    //  1 对于hashkey、keyshard直接构建resp；
-    //  2 对于除keyshard外的multi+多bulk req，构建nil rsp；(注意keyshard是mulit+多bulk)
-    //  2 对其他固定响应的请求，构建padding rsp；
-    // fn build_local_response<F: Fn(i64) -> usize>(
-    //     &self,
-    //     req: &HashedCommand,
-    //     dist_fn: F,
-    // ) -> Command {
-    //     let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
-
-    //     // 对hashkey、keyshard构建协议格式的resp，对其他请求构建nil or padding rsp
-    //     let rsp = match cfg.name {
-    //         command::DIST_CMD_HASHKEY => {
-    //             let shard = dist_fn(req.hash());
-    //             cfg.build_rsp_hashkey(shard)
-    //         }
-    //         command::DIST_CMD_KEYSHARD => {
-    //             assert!(cfg.multi && cfg.need_bulk_num, "{} cfg malformed", cfg.name);
-    //             let shard = dist_fn(req.hash());
-    //             cfg.build_rsp_keyshard(shard)
-    //         }
-    //         _ => {
-    //             if cfg.multi && cfg.need_bulk_num {
-    //                 cfg.build_nil_rsp()
-    //             } else {
-    //                 cfg.build_padding_rsp()
-    //             }
-    //         }
-    //     };
-    //     rsp
-    // }
 
     // TODO：当前把padding、nil整合成一个，后续考虑如何把spec-rsp也整合进来
     // 发送响应给client：
