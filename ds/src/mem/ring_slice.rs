@@ -110,6 +110,15 @@ impl RingSlice {
         })
     }
     #[inline(always)]
+    pub fn visit_data(&self, r: impl Range, mut f: impl FnMut(&[u8])) {
+        with_segment!(self, r, |p, l| f(from_raw_parts(p, l)), |p0, l0, p1, l1| {
+            {
+                f(from_raw_parts(p0, l0));
+                f(from_raw_parts(p1, l1));
+            }
+        })
+    }
+    #[inline(always)]
     pub fn data_r(&self, r: impl Range) -> (&[u8], &[u8]) {
         static EMPTY: &[u8] = &[];
         with_segment!(

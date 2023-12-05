@@ -81,18 +81,9 @@ pub trait BufMutExt: BufMut {
     /// copy 前len个bytes 到 BufMut，注意check len的长度
     #[inline]
     fn copy_from_slice(&mut self, data: &RingSlice, len: usize) {
-        let (l, r) = data.data();
-        if len <= l.len() {
-            self.put_slice(&l[..len]);
-            return;
-        }
-
-        // len大于l.len
-        self.put_slice(l);
-        let rmin = r.len().min(len - l.len());
-        if rmin > 0 {
-            self.put_slice(&r[..rmin]);
-        }
+        data.visit_data(..len, |data| {
+            self.put_slice(data);
+        });
     }
 }
 
