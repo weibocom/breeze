@@ -50,7 +50,7 @@ impl CommandHasher {
     #[inline(always)]
     pub(super) fn hash_slice(slice: &RingSlice, oft: usize) -> Result<(u16, usize)> {
         let mut h = CommandHasher::default();
-        for i in oft..slice.len() {
+        for i in oft..slice.len() - 1 {
             if slice[i] == b'\r' {
                 return Ok((h.finish(), i));
             }
