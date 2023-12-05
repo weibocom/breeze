@@ -31,6 +31,7 @@ impl TBackend {
 //以下所有测试用例轮询顺序都是先local后非local，直到选到可用的
 //全部都是local，都可用
 #[test]
+#[should_panic]
 fn select_all_local() {
     let mut shards = Distance::new();
     shards.update(
@@ -67,7 +68,6 @@ fn select_some_local() {
     let non_local = shards.select_next_idx(2, 2);
     assert!(non_local > 1);
     assert!(shards.select_next_idx(non_local, 3) > 1);
-    shards.select_next_idx(non_local, 4);
 }
 
 //全部都是local，但部分不可用

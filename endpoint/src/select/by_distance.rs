@@ -184,7 +184,6 @@ impl<T: Addr> Distance<T> {
     where
         T: Endpoint,
     {
-        assert!(runs < self.len(), "{} {} {:?}", idx, runs, self);
         // 还可以从local中取
         let s_idx = if runs < self.local_len() {
             // 在sort时，相关的distance会进行一次random处理，在idx节点宕机时，不会让idx+1个节点成为热点
@@ -203,19 +202,19 @@ impl<T: Addr> Distance<T> {
         assert!(s_idx < self.len(), "{},{} {} {:?}", idx, s_idx, runs, self);
         s_idx
     }
-    pub fn select_next_idx(&self, mut idx: usize, mut runs: usize) -> usize
+    pub fn select_next_idx(&self, idx: usize, runs: usize) -> usize
     where
         T: Endpoint,
     {
-        let old_idx = idx;
-        while runs < self.len() {
-            idx = self.select_next_idx_inner(idx, runs);
-            if self.replicas[idx].0.available() {
-                return idx;
+        let mut current_idx = idx;
+        assert!(runs < self.len(), "{} {} {:?}", current_idx, runs, self);
+        for run in runs..self.len() {
+            current_idx = self.select_next_idx_inner(current_idx, run);
+            if self.replicas[current_idx].0.available() {
+                return current_idx;
             }
-            runs += 1;
         }
-        return (old_idx + 1) % self.len();
+        return (idx + 1) % self.len();
     }
     #[inline]
     pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T)
