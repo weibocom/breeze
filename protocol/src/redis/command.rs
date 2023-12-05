@@ -78,7 +78,7 @@ pub(crate) struct CommandProperties {
     /// key 步长，get的步长为1，mset的步长为2，like:k1 v1 k2 v2
     pub(crate) key_step: u8,
     // 指令在不路由或者无server响应时的响应位置，
-    pub(crate) padding_rsp: &'static str,
+    pub(crate) padding_rsp: &'static [u8],
 
     // TODO 把padding、nil、special-rsp整合成一个
     // multi类指令，如果返回多个bulk，err bulk需要转为nil
@@ -118,7 +118,7 @@ impl CommandProperties {
     // 构建一个padding rsp，用于返回默认响应、server不可用响应、nil响应；
     // 响应格式类似：1 pong； 2 -Err redis no available; 3 $-1\r\n
     #[inline(always)]
-    pub(crate) fn get_padding_rsp(&self) -> &str {
+    pub(crate) fn get_padding_rsp(&self) -> &'static [u8] {
         self.padding_rsp
     }
 
@@ -574,7 +574,7 @@ impl CommandProperties {
         self
     }
     pub(crate) fn padding(mut self, padding_rsp: &'static str) -> Self {
-        self.padding_rsp = padding_rsp;
+        self.padding_rsp = padding_rsp.as_bytes();
         self
     }
     pub(crate) fn key(mut self) -> Self {
