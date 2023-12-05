@@ -171,18 +171,7 @@ impl Protocol for Redis {
                 w.write_slice(rsp, 0)?;
             } else {
                 // 无响应，则根据cmd name构建对应响应
-                match cfg.cmd_type {
-                    // CommandType::SpecLocalCmdHashkey => {
-                    //     // format!(":{}\r\n", shard)
-                    //     w.write(b":")?;
-                    //     w.write(ctx.request_shard().to_string().as_bytes())?;
-                    //     w.write(b"\r\n")?;
-                    // }
-                    _ => {
-                        let padding = cfg.get_padding_rsp();
-                        w.write(padding.as_bytes())?;
-                    }
-                };
+                w.write(cfg.get_padding_rsp())?;
             }
 
             // quit指令发送完毕后，返回异常断连接
@@ -220,10 +209,7 @@ impl Protocol for Redis {
                         w.write(shard.as_bytes())?;
                         w.write(b"\r\n")?;
                     }
-                    _ => {
-                        let padding = cfg.get_padding_rsp();
-                        w.write(padding.as_bytes())?;
-                    }
+                    _ => w.write(cfg.get_padding_rsp())?,
                 };
 
                 // rsp不为ok，对need_bulk_num为true的cmd进行nil convert 统计
@@ -251,14 +237,6 @@ impl Protocol for Redis {
         M: Metric<I>,
         I: MetricItem,
     {
-        // let hash_cmd = ctx.request_mut();
-        // debug_assert!(hash_cmd.direct_hash(), "data: {:?}", hash_cmd.data());
-
-        // hash idx 放到topo.send 中处理
-        // let idx_hash = hash_cmd.hash() - 1;
-        // hash_cmd.update_hash(idx_hash);
-        // 去掉ignore rsp，改由drop_on_done来处理
-        // hash_cmd.set_ignore_rsp(true);
         None
     }
     #[inline(always)]
