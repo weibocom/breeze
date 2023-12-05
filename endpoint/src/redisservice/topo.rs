@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
+use crate::select::Distance;
 use crate::{Builder, Endpoint, Single, Topology};
 use discovery::{distance, TopologyWrite};
 use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
-use sharding::Distance;
 
 use super::config::RedisNamespace;
 use crate::{dns::DnsConfig, Timeout};
@@ -352,7 +352,10 @@ impl<E> Shard<E> {
         self.slaves.unsafe_select()
     }
     #[inline]
-    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E))
+    where
+        E: Endpoint,
+    {
         unsafe { self.slaves.unsafe_next(idx, runs) }
     }
     pub fn len_region(&self) -> u16 {

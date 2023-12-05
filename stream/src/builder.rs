@@ -20,6 +20,7 @@ pub struct BackendBuilder<P, R> {
 
 impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
     fn auth_option_build(
+        //todo 这个传string会减少一次copy
         addr: &str,
         parser: P,
         rsrc: Resource,
@@ -82,6 +83,10 @@ impl<R: Request> Endpoint for Backend<R> {
                 TrySendError::Disabled(r) => r.on_err(Error::ChanDisabled),
             }
         }
+    }
+
+    fn available(&self) -> bool {
+        self.tx.get_enable()
     }
 }
 impl<R> Single for Backend<R> {

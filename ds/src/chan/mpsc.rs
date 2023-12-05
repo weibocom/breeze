@@ -42,6 +42,12 @@ pub struct Sender<T> {
     inner: tokio::sync::mpsc::Sender<T>,
 }
 
+impl<T> Sender<T> {
+    pub fn get_enable(&self) -> bool {
+        self.switcher.get()
+    }
+}
+
 impl<T> Receiver<T> {
     #[inline(always)]
     pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
