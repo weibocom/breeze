@@ -224,21 +224,6 @@ impl Protocol for Redis {
         Ok(())
     }
 
-    // redis writeback场景：hashkey -1 时，需要对所有节点进行数据（一般为script）分发
-    #[inline]
-    fn build_writeback_request<C, M, I>(
-        &self,
-        _ctx: &mut C,
-        _response: &Command,
-        _: u32,
-    ) -> Option<HashedCommand>
-    where
-        C: Commander<M, I>,
-        M: Metric<I>,
-        I: MetricItem,
-    {
-        None
-    }
     #[inline(always)]
     fn check(&self, _req: &HashedCommand, _resp: &Command) {
         if _resp[0] == b'-' {
