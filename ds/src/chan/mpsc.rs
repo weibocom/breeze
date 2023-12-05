@@ -43,7 +43,7 @@ pub struct Sender<T> {
 }
 
 impl<T> Sender<T> {
-    pub fn is_enable(&self) -> bool {
+    pub fn get_enable(&self) -> bool {
         self.switcher.get()
     }
 }

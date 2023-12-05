@@ -60,12 +60,15 @@ pub trait Single {
 
 impl<T: Endpoint<Item = R>, R> Endpoint for Arc<T> {
     type Item = R;
+    #[inline(always)]
     fn send(&self, req: Self::Item) {
         self.as_ref().send(req)
     }
+    #[inline(always)]
     fn shard_idx(&self, hash: i64) -> usize {
         self.as_ref().shard_idx(hash)
     }
+    #[inline(always)]
     fn available(&self) -> bool {
         self.as_ref().available()
     }
@@ -73,12 +76,15 @@ impl<T: Endpoint<Item = R>, R> Endpoint for Arc<T> {
 
 impl<T: Endpoint<Item = R>, R> Endpoint for (String, T) {
     type Item = R;
+    #[inline(always)]
     fn send(&self, req: Self::Item) {
         self.1.send(req)
     }
+    #[inline(always)]
     fn shard_idx(&self, hash: i64) -> usize {
         self.1.shard_idx(hash)
     }
+    #[inline(always)]
     fn available(&self) -> bool {
         self.1.available()
     }
