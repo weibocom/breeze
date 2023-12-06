@@ -57,8 +57,8 @@ pub(super) async fn process_one(
         log::warn!("service process failed. {}, err:{:?}", quard, _e);
         sleep(Duration::from_secs(6)).await;
     }
-    listen_failed.zero_num();
     switcher.off();
+    listen_failed.zero_num();
 
     // 因为回调，有可能在连接释放的时候，还在引用top。
     sleep(Duration::from_secs(3)).await;
@@ -74,10 +74,12 @@ async fn _process_one(
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("started. {}", quard);
     let metrics = Arc::new(StreamMetrics::new(path));
+    let mut listen_failed = path.status("listen_failed");
 
     loop {
         // 等待初始化成功
         let (client, _addr) = l.accept().await?;
+        listen_failed.zero_num();
         let client = rt::Stream::from(client);
         let p = p.clone();
         let _path = format!("{:?}", path);
