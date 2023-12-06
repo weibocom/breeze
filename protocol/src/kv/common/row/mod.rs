@@ -187,10 +187,8 @@ impl Row {
     // 将values中的数据按redis格式写入缓冲
     #[inline]
     pub(crate) fn write_as_redis(&self, data: &mut Vec<u8>) {
-        // TODO 这里应该core？
+        // 对于每一个row，vals的数量必须登录columns的数量，即便vals中有null
         assert_eq!(self.len(), self.columns.len(), "{:?}", self);
-        log::debug!("+++ panic: {} - {}", self.len(), self.columns.len());
-        assert!(self.columns_len() > 0, "{:?}", self);
 
         let columns = self.columns_ref();
         for (i, val) in self.values.iter().enumerate() {
