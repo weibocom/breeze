@@ -18,7 +18,7 @@ pub struct BackendBuilder<P, R> {
     _marker: std::marker::PhantomData<(P, R)>,
 }
 
-impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<P, R> {
+impl<P: Protocol, R: Request> Builder<P, R, Backend<R>> for BackendBuilder<P, R> {
     fn auth_option_build(
         //todo 这个传string会减少一次copy
         addr: &str,
@@ -27,7 +27,22 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
         service: &str,
         timeout: Timeout,
         option: ResOption,
-    ) -> Arc<Backend<R>> {
+    ) -> Backend<R> {
+        Backend::from((addr, parser, rsrc, service, timeout, option))
+    }
+}
+
+impl<R: Request, P: Protocol> From<(&str, P, Resource, &str, Timeout, ResOption)> for Backend<R> {
+    fn from(
+        (addr, parser, rsrc, service, timeout, option): (
+            &str,
+            P,
+            Resource,
+            &str,
+            Timeout,
+            ResOption,
+        ),
+    ) -> Self {
         let (tx, rx) = channel(256);
         let finish: Switcher = false.into();
         let init: Switcher = false.into();
@@ -40,16 +55,23 @@ impl<P: Protocol, R: Request> Builder<P, R, Arc<Backend<R>>> for BackendBuilder<
         rt::spawn(checker.start_check(s));
 
         Backend {
-            finish,
-            init,
-            tx,
-            single,
+            inner: BackendInner {
+                finish,
+                init,
+                tx,
+                single,
+            }
+            .into(),
         }
-        .into()
     }
 }
 
+#[derive(Clone)]
 pub struct Backend<R> {
+    inner: Arc<BackendInner<R>>,
+}
+
+pub struct BackendInner<R> {
     single: Arc<AtomicBool>,
     tx: Sender<R>,
     // 实例销毁时，设置该值，通知checker，会议上check.
@@ -62,11 +84,11 @@ impl<R> discovery::Inited for Backend<R> {
     // 已经连接上或者至少连接了一次
     #[inline]
     fn inited(&self) -> bool {
-        self.init.get()
+        self.inner.init.get()
     }
 }
 
-impl<R> Drop for Backend<R> {
+impl<R> Drop for BackendInner<R> {
     fn drop(&mut self) {
         self.finish.on();
     }
@@ -76,7 +98,7 @@ impl<R: Request> Endpoint for Backend<R> {
     type Item = R;
     #[inline]
     fn send(&self, req: R) {
-        if let Err(e) = self.tx.try_send(req) {
+        if let Err(e) = self.inner.tx.try_send(req) {
             match e {
                 TrySendError::Closed(r) => r.on_err(Error::ChanWriteClosed),
                 TrySendError::Full(r) => r.on_err(Error::ChanFull),
@@ -85,18 +107,19 @@ impl<R: Request> Endpoint for Backend<R> {
         }
     }
 
+    #[inline]
     fn available(&self) -> bool {
-        self.tx.get_enable()
+        self.inner.tx.get_enable()
     }
 }
 impl<R> Single for Backend<R> {
     fn single(&self) -> bool {
-        self.single.load(Acquire)
+        self.inner.single.load(Acquire)
     }
     fn enable_single(&self) {
-        self.single.store(true, Release);
+        self.inner.single.store(true, Release);
     }
     fn disable_single(&self) {
-        self.single.store(false, Release);
+        self.inner.single.store(false, Release);
     }
 }

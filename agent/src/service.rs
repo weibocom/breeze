@@ -11,7 +11,7 @@ use protocol::{Parser, Result};
 use stream::pipeline::copy_bidirectional;
 use stream::{Backend, Builder, CheckedTopology, Request, StreamMetrics};
 
-type Endpoint = Arc<Backend<Request>>;
+type Endpoint = Backend<Request>;
 type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
 // 一直侦听，直到成功侦听或者取消侦听（当前尚未支持取消侦听）
 // 1. 尝试侦听之前，先确保服务配置信息已经更新完成

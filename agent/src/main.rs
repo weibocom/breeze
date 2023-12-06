@@ -13,7 +13,10 @@ mod init;
 use ds::time::{sleep, Duration};
 use rt::spawn;
 
-use protocol::Result;
+use protocol::{Parser, Result};
+use stream::{Backend, Builder, Request};
+type Endpoint = Backend<Request>;
+type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
 
 // 默认支持
 fn main() -> Result<()> {
@@ -58,11 +61,6 @@ async fn run() -> Result<()> {
     }
 }
 
-use protocol::Parser;
-use std::sync::Arc;
-use stream::{Backend, Builder, Request};
-type Endpoint = Arc<Backend<Request>>;
-type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
 async fn discovery_init(
     ctx: &'static Context,
     rx: Receiver<TopologyWriteGuard<Topology>>,
