@@ -150,3 +150,17 @@ fn vrange_3() {
         ]))
     );
 }
+
+#[test]
+fn vcount() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let rsp = redis::cmd("vcard")
+        .arg("4668741184209283,2211")
+        .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg("4968741184209237")
+        .query(&mut con);
+    println!("++ rsp:{:?}", rsp);
+    assert_eq!(rsp, Ok(3));
+}
