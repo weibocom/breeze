@@ -11,6 +11,7 @@ use std::{marker::PhantomData, sync::Arc};
 use crate::kv::common::packets::Column;
 use crate::kv::common::query_result::{Or, SetIteratorState};
 use crate::kv::common::row::Row;
+use ds::Utf8;
 use SetIteratorState::*;
 /// Response to a query or statement execution.
 ///
@@ -504,10 +505,11 @@ pub fn format_to_redis(rows: &Vec<Row>) -> Vec<u8> {
     // 构建 resp协议的header总array计数 以及 column的计数
     let columns = rows.get(0).expect("columns unexists").columns_ref();
     if rows.len() == 1 && columns.len() == 1 {
-        // 过去特殊响应，转为为redis integer
+        // vcard特殊响应，转为为redis integer
         match columns[0].name_ref() {
-            b"count(" => {
+            b"count(*)" => {
                 rows.get(0).expect("rows empty").write_as_redis(&mut data);
+                log::debug!("+++ vcard rs:{}", data.utf8());
                 return data;
             }
             // 其他三个响应待定
