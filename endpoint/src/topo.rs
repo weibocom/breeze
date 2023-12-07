@@ -26,6 +26,7 @@ procs::topology_dispatcher! {
         fn send(&self, req: Self::Item);
         fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
         fn available(&self) -> bool {todo!("available not implemented");}
+        fn addr(&self) -> &str {todo!("addr not implemented");}
     } => where P:Sync+Send+Protocol, E:Endpoint<Item = R> + Inited, R: Request, P: Protocol+Sync+Send, B:Send+Sync
 
     pub trait Topology : Endpoint + Hash{
