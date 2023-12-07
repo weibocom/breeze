@@ -1,8 +1,4 @@
-use std::sync::{
-    atomic::AtomicBool,
-    atomic::Ordering::{Acquire, Release},
-    Arc,
-};
+use std::sync::Arc;
 
 use ds::chan::mpsc::{channel, Sender, TrySendError};
 
@@ -48,20 +44,12 @@ impl<R: Request, P: Protocol> From<(&str, P, Resource, &str, Timeout, ResOption)
         let init: Switcher = false.into();
         let f = finish.clone();
         let path = Path::new(vec![rsrc.name(), service]);
-        let single = Arc::new(AtomicBool::new(false));
         let checker =
             BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout, option);
-        let s = single.clone();
-        rt::spawn(checker.start_check(s));
+        rt::spawn(checker.start_check());
 
         Backend {
-            inner: BackendInner {
-                finish,
-                init,
-                tx,
-                single,
-            }
-            .into(),
+            inner: BackendInner { finish, init, tx }.into(),
         }
     }
 }
@@ -72,7 +60,6 @@ pub struct Backend<R> {
 }
 
 pub struct BackendInner<R> {
-    single: Arc<AtomicBool>,
     tx: Sender<R>,
     // 实例销毁时，设置该值，通知checker，会议上check.
     finish: Switcher,
@@ -114,12 +101,8 @@ impl<R: Request> Endpoint for Backend<R> {
 }
 impl<R> Single for Backend<R> {
     fn single(&self) -> bool {
-        self.inner.single.load(Acquire)
+        false
     }
-    fn enable_single(&self) {
-        self.inner.single.store(true, Release);
-    }
-    fn disable_single(&self) {
-        self.inner.single.store(false, Release);
-    }
+    fn enable_single(&self) {}
+    fn disable_single(&self) {}
 }

@@ -2,7 +2,6 @@ use ds::time::{timeout, Duration};
 use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{atomic::AtomicBool, Arc};
 use std::task::{ready, Poll};
 
 use tokio::io::AsyncWrite;
@@ -50,7 +49,7 @@ impl<P, Req> BackendChecker<P, Req> {
             option,
         }
     }
-    pub(crate) async fn start_check(mut self, _single: Arc<AtomicBool>)
+    pub(crate) async fn start_check(mut self)
     where
         P: Protocol,
         Req: Request,
