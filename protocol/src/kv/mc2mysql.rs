@@ -5,7 +5,9 @@ use super::common::proto::codec::PacketCodec;
 use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use crate::vector::flager::KvFlager;
-use crate::vector::{Condition, Limit, Order, VectorCmd, COND_LIMIT, COND_ORDER};
+use crate::vector::{
+    Condition, GroupBy, Limit, Order, VectorCmd, COND_GROUP, COND_LIMIT, COND_ORDER,
+};
 use crate::{Error::FlushOnClose, Result};
 use crate::{HashedCommand, Packet};
 use ds::{RingSlice, Utf8};
@@ -303,6 +305,8 @@ impl MysqlBuilder {
                         offset: op,
                         limit: val,
                     };
+                } else if name.equal_ignore_case(COND_GROUP.as_bytes()) {
+                    vcmd.group_by = GroupBy { fields: val }
                 } else {
                     vcmd.wheres.push(Condition::new(name, op, val));
                 }
