@@ -160,8 +160,8 @@ where
     fn need_load(&self) -> bool {
         self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
     }
-    fn load(&mut self) {
-        self.cfg.load_guard().check_load(|| self.load_inner());
+    fn load(&mut self) -> bool {
+        self.cfg.load_guard().check_load(|| self.load_inner())
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = KvNamespace::try_from(cfg) {
