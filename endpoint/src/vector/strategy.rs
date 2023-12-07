@@ -215,6 +215,7 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
                 wheres,
                 order,
                 limit,
+                group_by,
             },
         ) = self;
         for (i, key) in strategy.condition_keys().enumerate() {
@@ -228,6 +229,9 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
         }
         for w in wheres {
             let _ = write!(f, " and {}", ConditionDisplay(w));
+        }
+        if group_by.fields.len() != 0 {
+            let _ = write!(f, " group by {}", VRingSlice(&group_by.fields));
         }
         if order.field.len() != 0 {
             let _ = write!(
@@ -331,7 +335,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
 mod tests {
     use std::collections::HashMap;
 
-    use protocol::vector::{Limit, Order};
+    use protocol::vector::{GroupBy, Limit, Order};
     use sharding::hash::Hash;
 
     use crate::{kv::config::Years, vector::config::Basic};
@@ -404,6 +408,7 @@ mod tests {
                     value: RingSlice::from_slice("2,3".as_bytes()),
                 },
             ],
+            group_by: Default::default(),
             order: Order {
                 field: RingSlice::from_slice("a".as_bytes()),
                 order: RingSlice::from_slice("desc".as_bytes()),
@@ -442,6 +447,7 @@ mod tests {
                     value: RingSlice::from_slice("2,3".as_bytes()),
                 },
             ],
+            group_by: Default::default(),
             order: Order {
                 field: RingSlice::from_slice("a".as_bytes()),
                 order: RingSlice::from_slice("desc".as_bytes()),
@@ -479,6 +485,7 @@ mod tests {
                 ),
             ],
             wheres: vec![],
+            group_by: Default::default(),
             order: Order {
                 field: RingSlice::empty(),
                 order: RingSlice::empty(),
@@ -529,6 +536,7 @@ mod tests {
                     value: RingSlice::from_slice("2,3".as_bytes()),
                 },
             ],
+            group_by: Default::default(),
             order: Order {
                 field: RingSlice::empty(),
                 order: RingSlice::empty(),
@@ -568,6 +576,7 @@ mod tests {
                     value: RingSlice::from_slice("2,3".as_bytes()),
                 },
             ],
+            group_by: Default::default(),
             order: Order {
                 field: RingSlice::empty(),
                 order: RingSlice::empty(),

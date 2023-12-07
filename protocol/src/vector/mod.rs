@@ -242,6 +242,7 @@ pub enum Opcode {}
 
 pub(crate) const COND_ORDER: &str = "ORDER";
 pub(crate) const COND_LIMIT: &str = "LIMIT";
+pub(crate) const COND_GROUP: &str = "GROUP";
 
 #[derive(Debug, Clone, Default)]
 pub struct Condition {
@@ -278,6 +279,10 @@ pub struct Limit {
     pub offset: RingSlice,
     pub limit: RingSlice,
 }
+#[derive(Debug, Clone, Default)]
+pub struct GroupBy {
+    pub fields: RingSlice,
+}
 
 // TODO 这个值跟随hash方法变化，需要调整使用姿势？ fishermen
 pub const OP_VRANGE: u16 = 378;
@@ -293,4 +298,5 @@ pub struct VectorCmd {
     pub wheres: Vec<Condition>,
     pub order: Order,
     pub limit: Limit,
+    pub group_by: GroupBy,
 }

@@ -137,7 +137,7 @@ fn vrange_3() {
         Ok(Value::Bulk(vec![
             Value::Bulk(vec![
                 Value::Status("uid".to_string()),
-                Value::Status("object_id".to_string())
+                Value::Status("object_id".to_string()),
             ]),
             Value::Bulk(vec![
                 Value::Int(4668741184209283),
@@ -146,6 +146,79 @@ fn vrange_3() {
                 Value::Int(4968741184209231),
                 Value::Int(4668741184209283),
                 Value::Int(4968741184209232),
+            ])
+        ]))
+    );
+}
+
+#[test]
+// 返回3条数据
+fn vrange_with_group() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let rsp = redis::cmd("vrange")
+        .arg("4668741184209283,2211")
+        .arg("field")
+        .arg("uid,object_id")
+        .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg("4968741184209237")
+        .arg("group")
+        .arg("by")
+        .arg("object_id")
+        .arg("limit")
+        .arg("0")
+        .arg("10")
+        .query(&mut con);
+    println!("++ rsp:{:?}", rsp);
+    assert_eq!(
+        rsp,
+        Ok(Value::Bulk(vec![
+            Value::Bulk(vec![
+                Value::Status("uid".to_string()),
+                Value::Status("object_id".to_string()),
+            ]),
+            Value::Bulk(vec![
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209230),
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209231),
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209232),
+            ])
+        ]))
+    );
+}
+
+#[test]
+// 返回3条数据
+fn vrange_with_count() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let rsp = redis::cmd("vrange")
+        .arg("4668741184209283,2211")
+        .arg("field")
+        .arg("uid,object_id,count(*)")
+        .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg("4968741184209237")
+        .arg("limit")
+        .arg("0")
+        .arg("10")
+        .query(&mut con);
+    println!("++ rsp:{:?}", rsp);
+    assert_eq!(
+        rsp,
+        Ok(Value::Bulk(vec![
+            Value::Bulk(vec![
+                Value::Status("uid".to_string()),
+                Value::Status("object_id".to_string()),
+                Value::Status("count(*)".to_string())
+            ]),
+            Value::Bulk(vec![
+                Value::Int(4668741184209283),
+                Value::Int(4968741184209230),
+                Value::Int(3),
             ])
         ]))
     );
@@ -164,3 +237,25 @@ fn vcount() {
     println!("++ rsp:{:?}", rsp);
     assert_eq!(rsp, Ok(3));
 }
+
+#[test]
+fn vadd() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let rsp = redis::cmd("vadd")
+        .arg("4668741184209283,2211")
+        .arg("object_type")
+        .arg("4")
+        .arg("like_id")
+        .arg("10001")
+        .arg("object_id")
+        .arg("20001")
+        .query(&mut con);
+    println!("+++ rsp:{:?}", rsp);
+    assert_eq!(rsp, Ok(1));
+}
+
+#[test]
+fn vupdate() {}
+
+#[test]
+fn vdel() {}
