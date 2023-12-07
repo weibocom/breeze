@@ -48,8 +48,15 @@ impl<R: Request, P: Protocol> From<(&str, P, Resource, &str, Timeout, ResOption)
             BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout, option);
         rt::spawn(checker.start_check());
 
+        let addr = addr.to_string();
         Backend {
-            inner: BackendInner { finish, init, tx }.into(),
+            inner: BackendInner {
+                addr,
+                finish,
+                init,
+                tx,
+            }
+            .into(),
         }
     }
 }
@@ -60,6 +67,7 @@ pub struct Backend<R> {
 }
 
 pub struct BackendInner<R> {
+    addr: String,
     tx: Sender<R>,
     // 实例销毁时，设置该值，通知checker，会议上check.
     finish: Switcher,
@@ -97,6 +105,10 @@ impl<R: Request> Endpoint for Backend<R> {
     #[inline]
     fn available(&self) -> bool {
         self.inner.tx.get_enable()
+    }
+    #[inline]
+    fn addr(&self) -> &str {
+        &self.inner.addr
     }
 }
 impl<R> Single for Backend<R> {
