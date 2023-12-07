@@ -43,7 +43,7 @@ procs::topology_dispatcher! {
         fn update(&mut self, name: &str, cfg: &str);
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
-        fn load(&mut self);
+        fn load(&mut self) -> bool;
     } => where P:Protocol, E:Endpoint<Item = R>
 
     trait Hash {
