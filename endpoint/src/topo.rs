@@ -114,3 +114,93 @@ impl PerformanceTuning for bool {
         is_performance_tuning_from_env() || *self
     }
 }
+
+pub struct Pair<E> {
+    pub addr: String,
+    pub endpoint: E,
+}
+impl<E: Endpoint> From<(String, E)> for Pair<E> {
+    fn from(pair: (String, E)) -> Pair<E> {
+        Pair {
+            addr: pair.0,
+            endpoint: pair.1,
+        }
+    }
+}
+impl<E: Endpoint> From<E> for Pair<E> {
+    fn from(pair: E) -> Pair<E> {
+        Pair {
+            addr: pair.addr().to_string(),
+            endpoint: pair,
+        }
+    }
+}
+
+use std::collections::HashMap;
+pub struct Endpoints<'a, B, R, P, E: Endpoint> {
+    service: &'a str,
+    parser: &'a P,
+    resource: Resource,
+    cache: HashMap<String, Vec<E>>,
+    _marker: std::marker::PhantomData<(B, R)>,
+}
+impl<'a, B, R, P, E: Endpoint> Endpoints<'a, B, R, P, E> {
+    pub fn new(service: &'a str, parser: &'a P, resource: Resource) -> Self {
+        Endpoints {
+            service,
+            parser,
+            resource,
+            cache: HashMap::new(),
+            _marker: Default::default(),
+        }
+    }
+    pub fn with_cache<T: Into<Pair<E>>>(mut self, endpoints: Vec<T>) -> Self {
+        self.cache.reserve(endpoints.len());
+        for pair in endpoints.into_iter().map(|e| e.into()) {
+            self.cache
+                .entry(pair.addr)
+                .or_insert(Vec::new())
+                .push(pair.endpoint);
+        }
+        self
+    }
+}
+
+impl<'a, B: Builder<P, R, E>, R, P: Protocol, E: Endpoint> Endpoints<'a, B, R, P, E> {
+    pub fn take_or_build_one(&mut self, addr: &str, to: Timeout) -> E {
+        self.take_or_build(&[addr.to_owned()], to)
+            .pop()
+            .expect("take")
+            .1
+    }
+    pub fn take_or_build(&mut self, addrs: &[String], to: Timeout) -> Vec<(String, E)> {
+        addrs
+            .iter()
+            .map(|addr| {
+                let a = addr.to_string();
+                let e = self
+                    .cache
+                    .get_mut(addr)
+                    .map(|endpoints| endpoints.pop())
+                    .flatten()
+                    .unwrap_or_else(|| {
+                        B::build(&addr, self.parser.clone(), self.resource, self.service, to)
+                    });
+                (a, e)
+            })
+            .collect()
+    }
+}
+// 为Endpoints实现Formatter
+impl<'a, B, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, B, R, P, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+        for (addr, endpoints) in self.cache.iter() {
+            s.push_str(addr);
+            s.push_str(" ");
+            s.push_str(&endpoints.len().to_string());
+            s.push_str("\n");
+        }
+        write!(f, "{}", s)
+    }
+}
