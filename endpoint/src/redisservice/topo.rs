@@ -118,7 +118,7 @@ where
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
 
-            endpoint.1.send(req)
+            endpoint.send(req)
         } else {
             shard.master().send(req)
         }
