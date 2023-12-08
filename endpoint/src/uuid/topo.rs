@@ -1,12 +1,10 @@
-use std::collections::HashMap;
-
-use crate::{select::Distance, Builder, Endpoint, Single, Topology};
+use crate::{select::Distance, Builder, Endpoint, Endpoints, Single, Topology};
 use discovery::TopologyWrite;
-use protocol::{Protocol, Request, Resource};
+use protocol::{Protocol, Request, Resource::Uuid};
 use sharding::hash::{Hash, HashKey};
 
 use super::config::UuidNamespace;
-use crate::{dns::DnsConfig, Timeout};
+use crate::dns::DnsConfig;
 use discovery::dns::{self, IPPort};
 
 #[derive(Clone)]
@@ -130,14 +128,14 @@ where
     P: Protocol,
     E: Endpoint<Item = Req> + Single,
 {
-    #[inline]
-    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
-        let service = &self.cfg.service;
-        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
-            Some(Some(end)) => end,
-            _ => B::build(&addr, self.parser.clone(), Resource::Uuid, service, timeout),
-        }
-    }
+    //#[inline]
+    //fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
+    //    let service = &self.cfg.service;
+    //    match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
+    //        Some(Some(end)) => end,
+    //        _ => B::build(&addr, self.parser.clone(), Resource::Uuid, service, timeout),
+    //    }
+    //}
 
     #[inline]
     fn load_inner(&mut self) -> bool {
@@ -158,17 +156,20 @@ where
             log::warn!("addr {:?} not looked up", self.cfg.shards_url);
             return false;
         }
+        let mut endpoints: Endpoints<'_, B, Req, P, E> =
+            Endpoints::new(&self.cfg.service, &self.parser, Uuid).with_cache(self.shard.take());
+        let backends = endpoints.take_or_build(&addrs, self.cfg.timeout());
         // 到这之后，所有的shard都能解析出ip
-        let mut old = HashMap::with_capacity(self.shard.len());
-        for backend in self.shard.take() {
-            old.entry(backend.0).or_insert(Vec::new()).push(backend.1);
-        }
-        let mut backends = Vec::with_capacity(addrs.len());
-        for addr in addrs {
-            assert_ne!(addr.len(), 0);
-            let backend = self.take_or_build(&mut old, &addr, self.cfg.timeout());
-            backends.push((addr, backend));
-        }
+        //let mut old = HashMap::with_capacity(self.shard.len());
+        //for backend in self.shard.take() {
+        //    old.entry(backend.0).or_insert(Vec::new()).push(backend.1);
+        //}
+        //let mut backends = Vec::with_capacity(addrs.len());
+        //for addr in addrs {
+        //    assert_ne!(addr.len(), 0);
+        //    let backend = self.take_or_build(&mut old, &addr, self.cfg.timeout());
+        //    backends.push((addr, backend));
+        //}
         use crate::PerformanceTuning;
         self.shard = Distance::with_performance_tuning(
             backends,
@@ -176,26 +177,13 @@ where
             self.cfg.basic.region_enabled,
         );
 
-        log::info!(
-            "{} load complete, backends:{:?} . dropping:{:?}",
-            self.cfg.service,
-            self.shard,
-            {
-                old.retain(|_k, v| v.len() > 0);
-                old.keys()
-            }
-        );
+        log::info!("{} load backends. dropping:{}", self, endpoints);
 
         true
     }
 }
 
-impl<B: Send + Sync, E, Req, P> std::fmt::Display for UuidService<B, E, Req, P>
-where
-    E: Endpoint<Item = Req>,
-    Req: Request,
-    P: Protocol,
-{
+impl<B, E, Req, P> std::fmt::Display for UuidService<B, E, Req, P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UuidService")
             .field("cfg", &self.cfg)
