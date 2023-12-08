@@ -18,6 +18,7 @@ mod layout;
 // mod mysql;
 mod bkdrsub;
 mod decrypt;
+mod discovery;
 mod dns;
 mod kv;
 mod mysql_strategy;
