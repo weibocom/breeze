@@ -73,19 +73,14 @@ where
         } else {
             unsafe { self.shard.unsafe_next(ctx.idx as usize, ctx.runs as usize) }
         };
-        log::debug!(
-            "+++ {} send =>, idx:{}, addr:{}",
-            self.cfg.service,
-            idx,
-            endpoint.0,
-        );
+        log::debug!("{} =>, idx:{}, addr:{}", self, idx, endpoint.addr(),);
 
         ctx.idx = idx as u16;
         ctx.runs += 1;
 
         let try_next = ctx.runs == 1;
         req.try_next(try_next);
-        endpoint.1.send(req);
+        endpoint.send(req);
     }
 
     #[inline]
