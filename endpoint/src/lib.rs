@@ -10,7 +10,7 @@ pub mod redisservice;
 pub mod select;
 pub mod uuid;
 
-pub(crate) mod dns;
+pub mod dns;
 
 // 不同资源默认的超时时间
 const TO_PHANTOM_M: Timeout = Timeout::from_millis(200);
