@@ -154,7 +154,7 @@ impl<'a, B, R, P, E: Endpoint> Endpoints<'a, B, R, P, E> {
             _marker: Default::default(),
         }
     }
-    pub fn with_cache<T: Into<Pair<E>>>(mut self, endpoints: Vec<T>) -> Self {
+    pub fn cache<T: Into<Pair<E>>>(&mut self, endpoints: Vec<T>) {
         self.cache.reserve(endpoints.len());
         for pair in endpoints.into_iter().map(|e| e.into()) {
             self.cache
@@ -162,6 +162,9 @@ impl<'a, B, R, P, E: Endpoint> Endpoints<'a, B, R, P, E> {
                 .or_insert(Vec::new())
                 .push(pair.endpoint);
         }
+    }
+    pub fn with_cache<T: Into<Pair<E>>>(mut self, endpoints: Vec<T>) -> Self {
+        self.cache(endpoints);
         self
     }
 }
