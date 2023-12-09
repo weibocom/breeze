@@ -1,5 +1,5 @@
 use crate::select::Distance;
-use crate::{Builder, Endpoint, Endpoints, PerformanceTuning, Single, Topology};
+use crate::{Builder, Endpoint, Endpoints, PerformanceTuning, Topology};
 use discovery::{distance, dns::IPPort, TopologyWrite};
 use protocol::{Protocol, RedisFlager, Request, Resource::Redis};
 use sharding::distribution::Distribute;
@@ -124,7 +124,7 @@ impl<B, E, Req, P> TopologyWrite for RedisService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -177,7 +177,7 @@ impl<B, E, Req, P> RedisService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     // TODO 把load的日志级别提升，在罕见异常情况下（dns解析异常、配置异常）,持续load时可以通过日志来跟进具体状态；
     //      当然，也可以通过指标汇报的方式进行，但对这种罕见情况进行metrics消耗，需要考量；

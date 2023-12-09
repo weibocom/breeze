@@ -1,7 +1,7 @@
 use crate::{
     dns::{DnsConfig, DnsLookup},
     select::Distance,
-    Builder, Endpoint, Endpoints, PerformanceTuning, Single, Topology,
+    Builder, Endpoint, Endpoints, PerformanceTuning, Topology,
 };
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource::Uuid};
@@ -92,7 +92,7 @@ impl<B, E, Req, P> TopologyWrite for UuidService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -130,7 +130,7 @@ impl<B, E, Req, P> UuidService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn load_inner(&mut self) -> Option<()> {
