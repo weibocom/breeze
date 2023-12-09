@@ -1,15 +1,12 @@
-use std::collections::HashMap;
-
 use crate::select::Distance;
-use crate::{Builder, Endpoint, Single, Topology};
-use discovery::{distance, TopologyWrite};
-use protocol::{Protocol, RedisFlager, Request, Resource};
+use crate::{Builder, Endpoint, Endpoints, PerformanceTuning, Single, Topology};
+use discovery::{distance, dns::IPPort, TopologyWrite};
+use protocol::{Protocol, RedisFlager, Request, Resource::Redis};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
 
 use super::config::RedisNamespace;
-use crate::{dns::DnsConfig, Timeout};
-use discovery::dns::{self, IPPort};
+use crate::dns::{DnsConfig, DnsLookup};
 
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
@@ -82,13 +79,7 @@ where
         assert!(shard_idx < self.len(), "{} {:?} {}", shard_idx, req, self);
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-        log::debug!(
-            "+++ {} send master/{} {}=>{:?}",
-            self.cfg.service,
-            req.master_only(),
-            shard_idx,
-            req
-        );
+        log::debug!("{} send master{} {}=>{:?}", self, req, shard_idx, req);
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() && !req.master_only() {
@@ -154,7 +145,9 @@ where
     #[inline]
     fn load(&mut self) {
         // TODO: 先改通知状态，再load，如果失败，改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        self.cfg.load_guard().check_load(|| self.load_inner());
+        self.cfg
+            .load_guard()
+            .check_load(|| self.load_inner().is_some());
     }
 }
 impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
@@ -186,138 +179,40 @@ where
     P: Protocol,
     E: Endpoint<Item = Req> + Single,
 {
-    #[inline]
-    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
-        let service = &self.cfg.service;
-        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
-            Some(Some(end)) => end,
-            _ => B::build(
-                &addr,
-                self.parser.clone(),
-                Resource::Redis,
-                service,
-                timeout,
-            ),
-        }
-    }
-
     // TODO 把load的日志级别提升，在罕见异常情况下（dns解析异常、配置异常）,持续load时可以通过日志来跟进具体状态；
     //      当然，也可以通过指标汇报的方式进行，但对这种罕见情况进行metrics消耗，需要考量；
     //      先对这种罕见情况用日志记录，确有需要，再考虑用指标汇报； 待讨论 fishermen
     #[inline]
-    fn load_inner(&mut self) -> bool {
-        // 所有的ip要都能解析出主从域名
-        let mut addrs = Vec::with_capacity(self.cfg.shards_url.len());
-        for shard in self.cfg.shards_url.iter() {
-            if shard.len() < 2 {
-                log::warn!("{} both master and slave required.", self.cfg.service);
-                return false;
-            }
-            let master_url = &shard[0];
-            let mut master = String::new();
-            dns::lookup_ips(master_url.host(), |ips| {
-                if ips.len() > 0 {
-                    master = ips[0].to_string() + ":" + master_url.port();
-                }
-            });
-            let mut slaves = Vec::with_capacity(8);
-            if self.cfg.basic.master_read {
-                slaves.push(master.clone());
-            }
-            for url_port in &shard[1..] {
-                let url = url_port.host();
-                let port = url_port.port();
-                use ds::vec::Add;
-                dns::lookup_ips(url, |ips| {
-                    for ip in ips {
-                        slaves.add(ip.to_string() + ":" + port);
-                    }
-                });
-            }
-            if master.len() == 0 || slaves.len() == 0 {
-                log::warn!(
-                    "master:({}=>{}) or slave ({:?}=>{:?}) not looked up",
-                    master_url,
-                    master,
-                    &shard[1..],
-                    slaves
-                );
-                return false;
-            }
-            addrs.push((master, slaves));
-        }
+    fn load_inner(&mut self) -> Option<()> {
+        let addrs = self.cfg.shards_url.master_lookup()?;
+        assert_eq!(addrs.len(), self.cfg.shards_url.len());
         // 到这之后，所有的shard都能解析出ip
 
-        let mut old = HashMap::with_capacity(self.shards.len());
-        for shard in self.shards.split_off(0) {
-            old.entry(shard.master.0)
-                .or_insert(Vec::new())
-                .push(shard.master.1);
-            for (addr, endpoint) in shard.slaves.into_inner() {
-                // 一个ip可能存在于多个域名中。
-                old.entry(addr).or_insert(Vec::new()).push(endpoint);
-            }
-        }
-        // 遍历所有的shards_url
-        for (master_addr, slaves) in addrs {
-            assert_ne!(master_addr.len(), 0);
-            assert_ne!(slaves.len(), 0);
-            let port = master_addr.port().to_string();
-            let master = self.take_or_build(&mut old, &master_addr, self.cfg.timeout_master());
-            master.enable_single();
-
-            // slave
-            let mut replicas = Vec::with_capacity(8);
-            for addr in slaves {
-                let slave = self.take_or_build(&mut old, &addr, self.cfg.timeout_slave());
-                slave.disable_single();
-                replicas.push((addr, slave));
-            }
-
-            use crate::PerformanceTuning;
-            let shard = Shard::selector(
-                self.cfg.basic.selector.tuning_mode(),
-                master_addr,
-                master,
-                replicas,
-                self.cfg.basic.region_enabled,
-            );
-
-            // 生成端口副本数量监控数据
-            let n: u16 = if self.cfg.basic.region_enabled {
-                shard.len_region() + 10000 // snapshot时>0才有输出，len_region这里加10000作为基准值，保证监控有数据；
-            } else {
-                0 // region功能关闭时，len_region为0，也就是不输出监控数据；可用区从打开到关闭场景，0也要生成监控数据，覆盖已有的同path旧数据
-            };
-            metrics::resource_num_metric(
-                self.cfg.resource_type(),
-                self.cfg.service.as_str(),
-                (host_region() + ":" + port.as_str()).as_str(),
-                n,
-            );
-
-            self.shards.push(shard);
-        }
-        assert_eq!(self.shards.len(), self.cfg.shards_url.len());
-        log::info!("{} load complete. dropping:{:?}", self.cfg.service, {
-            old.retain(|_k, v| v.len() > 0);
-            old.keys()
+        // 把所有的endpoints cache下来
+        let mut endpoints: Endpoints<'_, B, Req, P, E> =
+            Endpoints::new(&self.cfg.service, &self.parser, Redis);
+        self.shards.split_off(0).into_iter().for_each(|shard| {
+            endpoints.cache_one(shard.master);
+            endpoints.cache(shard.slaves.into_inner());
         });
 
-        true
+        // 遍历所有的shards_url
+        addrs.iter().for_each(|ips| {
+            assert!(ips.len() >= 2);
+            let master = endpoints.take_or_build_one(&ips[0], self.cfg.timeout_master());
+            let slaves = endpoints.take_or_build(&ips[..], self.cfg.timeout_slave());
+            let shard = Shard::selector(
+                self.cfg.basic.selector.tuning_mode(),
+                ips[0].clone(),
+                master,
+                slaves,
+                self.cfg.basic.region_enabled,
+            );
+            shard.check_region_len(&self.cfg.service, ips[0].port());
+            self.shards.push(shard);
+        });
+        Some(())
     }
-}
-
-// 本机的region，优先级：
-// 1. 启动参数/环境变量的region
-// 2. 通过本机IP计算出来的region
-// TODO 目前仅本文件内被使用，后续可以考虑放在一个公共的地方
-fn host_region() -> String {
-    if let Some(region) = context::get().region() {
-        return region.to_string();
-    }
-
-    distance::host_region()
 }
 
 #[derive(Clone)]
@@ -358,8 +253,16 @@ impl<E> Shard<E> {
     {
         unsafe { self.slaves.unsafe_next(idx, runs) }
     }
-    pub fn len_region(&self) -> u16 {
-        self.slaves.len_region()
+    fn check_region_len(&self, service: &str, port: &str) {
+        // TODO: 10000: 这个值是与监控系统共享的，如果修改，需要同时修改监控系统的配置
+        let n = self.slaves.len_region().map(|l| l + 10000).unwrap_or(0);
+        let f = |r: &str| format!("{}:{}", r, port);
+        let bip = context::get()
+            .region()
+            .map(f)
+            .unwrap_or_else(|| f(distance::host_region().as_str()));
+
+        metrics::resource_num_metric(Redis.name(), service, &*bip, n);
     }
 }
 impl<E: discovery::Inited> Shard<E> {

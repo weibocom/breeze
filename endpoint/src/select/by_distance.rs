@@ -12,6 +12,7 @@ pub struct Distance<T> {
     len_local: u16,  // 实际使用的local实例数量
     len_region: u16, // 通过排序计算出的可用区内的实例数量，len_region <= len_local
     backend_quota: bool,
+    region_enabled: bool,
     idx: Arc<AtomicUsize>,
     replicas: Vec<(T, BackendQuota)>,
 }
@@ -21,6 +22,7 @@ impl<T: Addr> Distance<T> {
             len_local: 0,
             len_region: 0,
             backend_quota: false,
+            region_enabled: false,
             idx: Default::default(),
             replicas: Vec::new(),
         }
@@ -78,12 +80,14 @@ impl<T: Addr> Distance<T> {
 
         // 性能模式当前实现为按时间quota访问后端资源
         me.backend_quota = is_performance;
+        me.region_enabled = region_enabled;
         me.topn(len_local);
 
         me
     }
-    pub fn len_region(&self) -> u16 {
-        self.len_region
+    // None说明没有启动
+    pub fn len_region(&self) -> Option<u16> {
+        self.backend_quota.then(|| self.len_region)
     }
     #[inline]
     pub fn from(replicas: Vec<T>) -> Self {
