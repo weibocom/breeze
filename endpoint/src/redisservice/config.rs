@@ -104,7 +104,4 @@ impl RedisNamespace {
 
         true
     }
-    pub(super) fn resource_type(&self) -> &str {
-        self.basic.resource_type.as_str()
-    }
 }
