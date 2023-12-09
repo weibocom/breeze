@@ -207,3 +207,12 @@ impl<'a, B, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, B, R, P, E> {
         write!(f, "{}", s)
     }
 }
+
+// 为Endpoints实现Drop
+impl<'a, B, R, P, E: Endpoint> Drop for Endpoints<'a, B, R, P, E> {
+    fn drop(&mut self) {
+        if self.cache.len() > 0 {
+            log::info!("drop endpoints:{}", self);
+        }
+    }
+}

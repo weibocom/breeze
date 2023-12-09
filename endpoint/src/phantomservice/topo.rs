@@ -1,11 +1,12 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::marker::PhantomData;
 
-use crate::{dns::DnsConfig, select::Distance, Builder, Endpoint, Timeout, Topology};
-use discovery::{
-    dns::{self, IPPort},
-    TopologyWrite,
+use crate::{
+    dns::{DnsConfig, DnsLookup},
+    select::Distance,
+    Builder, Endpoint, Endpoints, Topology,
 };
-use protocol::{Protocol, Request, Resource};
+use discovery::{Inited, TopologyWrite};
+use protocol::{Protocol, Request, Resource::Phantom};
 use sharding::{
     distribution::Range,
     hash::{Crc32, Hash, HashKey},
@@ -87,7 +88,7 @@ where
         let e = unsafe { shard.get_unchecked(idx) };
         //ctx.check_inited();
         *req.context_mut() = ctx.ctx;
-        e.1.send(req)
+        e.send(req)
     }
 }
 
@@ -124,7 +125,9 @@ where
     #[inline]
     fn load(&mut self) {
         // 先改通知状态，再load，如果失败改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        self.cfg.load_guard().check_load(|| self.load_inner());
+        self.cfg
+            .load_guard()
+            .check_load(|| self.load_inner().is_some());
     }
 }
 
@@ -135,74 +138,26 @@ where
     E: Endpoint<Item = Req>,
 {
     #[inline]
-    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
-        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
-            Some(Some(end)) => end,
-            _ => B::build(
-                &addr,
-                self.parser.clone(),
-                Resource::Redis,
-                &self.cfg.service,
-                timeout,
-            ),
-        }
-    }
-
-    #[inline]
-    fn load_inner(&mut self) -> bool {
-        let mut addrs = Vec::with_capacity(self.cfg.shards_url.len());
-        for shard in self.cfg.shards_url.iter() {
-            if shard.is_empty() {
-                log::warn!("{:?} shard is empty", self);
-                return false;
-            }
-            let mut shard_ips = Vec::with_capacity(shard.len());
-            for url_port in shard.iter() {
-                let host = url_port.host();
-                dns::lookup_ips(host, |ips| {
-                    for ip in ips {
-                        shard_ips.push(ip.to_string() + ":" + url_port.port());
-                    }
-                });
-                if shard_ips.len() == 0 {
-                    log::info!("dns not inited => {}", url_port);
-                    return false;
-                }
-            }
-            assert!(!shard_ips.is_empty());
-            addrs.push(shard_ips);
-        }
-
-        let old_streams = self.streams.split_off(0);
-        self.streams.reserve(old_streams.len());
-        let mut old = HashMap::with_capacity(old_streams.len() * 8);
-
-        for mut shard in old_streams {
-            for (addr, e) in shard.take() {
-                old.entry(addr).or_insert(Vec::new()).push(e);
-            }
-        }
-
-        for a in addrs.iter() {
-            let mut shard_streams = Vec::with_capacity(a.len());
-            for addr in a {
-                let shard = self.take_or_build(&mut old, addr.as_str(), self.cfg.timeout());
-                shard_streams.push((addr.clone(), shard));
-            }
-
-            let shard = Distance::from(shard_streams);
-
-            self.streams.push(shard);
-        }
-
-        true
+    fn load_inner(&mut self) -> Option<()> {
+        let addrs = self.cfg.shards_url.lookup()?;
+        assert_eq!(addrs.len(), self.cfg.shards_url.len());
+        let mut endpoints: Endpoints<'_, B, Req, P, E> =
+            Endpoints::new(&self.cfg.service, &self.parser, Phantom);
+        // 把老的stream缓存起来
+        self.streams.split_off(0).into_iter().for_each(|shard| {
+            endpoints.cache(shard.into_inner());
+        });
+        addrs.iter().for_each(|shard| {
+            assert!(!shard.is_empty());
+            let backends = endpoints.take_or_build(&*shard, self.cfg.timeout());
+            self.streams.push(Distance::from(backends));
+        });
+        // endpoints中如果还有stream，会被drop掉
+        Some(())
     }
 }
 
-impl<B, E, Req, P> discovery::Inited for PhantomService<B, E, Req, P>
-where
-    E: discovery::Inited,
-{
+impl<B, E: Inited, Req, P> Inited for PhantomService<B, E, Req, P> {
     // 每一个域名都有对应的endpoint，并且都初始化完成。
     #[inline]
     fn inited(&self) -> bool {
