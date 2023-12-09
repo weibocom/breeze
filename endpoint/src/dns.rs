@@ -131,12 +131,16 @@ pub trait DnsLookup {
     // empty: 如果没有解析出IP，是否继续。
     // 如果所有的shard都没有解析出IP，则返回None，无论empty是否为true
     fn glookup<G: Lookup>(&self, master_slave_mode: bool, empty: bool) -> Option<Vec<Vec<String>>>;
-    fn lookup(&self, master_slave_mode: bool, empty: bool) -> Option<Vec<Vec<String>>> {
-        self.glookup::<GLookup>(master_slave_mode, empty)
+    // 每个元素至少返回一个IP。即：每个element都不为空
+    fn lookup(&self) -> Option<Vec<Vec<String>>> {
+        self.glookup::<GLookup>(false, false)
     }
+    // 每个元素的长度至少为2，第一个元素是master，之后的是slave
+    // 如果master有多个IP，则选择最后一个IP
     fn master_lookup(&self) -> Option<Vec<Vec<String>>> {
         self.glookup::<GLookup>(true, false)
     }
+    // 返回元素的长度至少为1。
     fn flatten_lookup(&self) -> Option<Vec<String>> {
         let mut all_ips = self.glookup::<GLookup>(false, true).unwrap_or_default();
         // 把所有的ip进行flatten
