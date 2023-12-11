@@ -74,12 +74,17 @@ impl Protocol for MemcacheBinary {
                     log::debug!("++++ mc status:{}", r.status_ok());
                     Ok(Some(Command::from(r.status_ok(), data.take(pl))))
                 } else {
-                    // response返回quite请求只有一种情况：出错了。
-                    // quite请求是异步处理，直接忽略即可。
-                    //assert!(!r.status_ok(), "rsp: {:?}", r);
-                    //data.ignore(pl);
-                    println!("mc response quiete: {:?}", r);
-                    Err(Error::ResponseQuiet)
+                    // quite rsp只有一种情况：出错了;但这种错误往往并不需要断连接：如deleteq的not-found,setq的not-stored。
+                    // quite请求是异步处理，可以考虑直接忽略即可，先忽略deleteq，后续setq。
+                    log::debug!("+++ found quite rsp:{:?}", r);
+                    let _ = data.take(pl);
+                    match r.op() {
+                        OP_DELQ => Ok(None),
+                        _ => {
+                            println!("mc response quiete: {:?}", r);
+                            Err(Error::ResponseQuiet)
+                        }
+                    }
                 };
             } else {
                 data.reserve(pl - len);
