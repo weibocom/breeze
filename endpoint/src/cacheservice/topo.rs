@@ -1,15 +1,13 @@
 use crate::select::Distance;
-use crate::{Builder, Endpoint, Topology};
+use crate::{Builder, Endpoint, Endpoints, Topology};
 use discovery::TopologyWrite;
 use protocol::memcache::Binary;
-use protocol::{Protocol, Request, Resource};
+use protocol::{Protocol, Request, Resource::Memcache};
 use sharding::hash::{Hash, HashKey, Hasher};
-use std::collections::HashMap;
 
 use super::config::Flag;
 use crate::shards::Shards;
 use crate::PerformanceTuning;
-use crate::Timeout;
 use protocol::Bit;
 
 #[derive(Clone)]
@@ -216,39 +214,29 @@ where
             self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
             let dist = &ns.distribution.clone();
 
-            let old_streams = self.streams.take();
-            //self.streams.reserve(old_streams.len());
-            // 把streams按address进行flatten
-            let mut streams = HashMap::with_capacity(old_streams.len() * 8);
-            let old = &mut streams;
+            // 把所有的endpoints cache下来
+            let mut endpoints: Endpoints<'_, B, Req, P, E> =
+                Endpoints::new(namespace, &self.parser, Memcache);
+            self.streams.take().into_iter().for_each(|shard| {
+                endpoints.cache(shard.into());
+            });
 
-            for shards in old_streams {
-                let group: Vec<(E, String)> = shards.into();
-                for e in group {
-                    old.insert(e.1, e.0);
-                }
-            }
             let mto = crate::TO_MC_M.to(ns.timeout_ms_master);
             let rto = crate::TO_MC_S.to(ns.timeout_ms_slave);
 
-            use discovery::distance::{Balance, ByDistance};
-            let master = ns.master.clone();
+            //use discovery::distance::{Balance, ByDistance};
+            //let master = ns.master.clone();
             let is_performance = ns.flag.get(Flag::LocalAffinity as u8).tuning_mode();
-            let (mut local_len, mut backends) = ns.take_backends();
-            //let local = true; 开启local，则local_len可能会变小，与按quota预期不符
-            if false && is_performance && local_len > 1 {
-                backends.balance(&master);
-                // 按比例选local：取前1/4个元素，以及与前1/4个元素最后一个距离相同的所有元素。
-                let l = (backends.len() / 4).max(1);
-                local_len = backends.sort(master, |_, s| s <= l);
-            }
+            let (local_len, backends) = ns.take_backends();
 
             let mut new = Vec::with_capacity(backends.len());
             for (i, group) in backends.into_iter().enumerate() {
                 // 第一组是master
                 let to = if i == 0 { mto } else { rto };
-                let e = self.build(old, group, dist, namespace, to);
-                new.push(e);
+                let backends = endpoints.take_or_build(&group, to);
+                let shard = Shards::from_dist(dist, backends);
+
+                new.push(shard);
             }
             self.streams.update(new, local_len, is_performance);
         }
@@ -265,27 +253,6 @@ where
             v.push((namespace, val));
         }
         v
-    }
-}
-impl<B, E, Req, P> CacheService<B, E, Req, P>
-where
-    B: Builder<P, Req, E>,
-    P: Protocol,
-    E: Endpoint<Item = Req>,
-{
-    fn build(
-        &self,
-        old: &mut HashMap<String, E>,
-        addrs: Vec<String>,
-        dist: &str,
-        name: &str,
-        timeout: Timeout,
-    ) -> Shards<E, Req> {
-        Shards::from(dist, addrs, |addr| {
-            old.remove(addr).map(|e| e).unwrap_or_else(|| {
-                B::build(addr, self.parser.clone(), Resource::Memcache, name, timeout)
-            })
-        })
     }
 }
 

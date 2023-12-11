@@ -11,7 +11,7 @@ use super::config::UuidNamespace;
 
 #[derive(Clone)]
 pub struct UuidService<B, E, Req, P> {
-    shard: Distance<(String, E)>,
+    shard: Distance<E>,
     parser: P,
     cfg: Box<DnsConfig<UuidNamespace>>,
     _mark: std::marker::PhantomData<(B, Req)>,
@@ -122,7 +122,7 @@ where
             && self
                 .shard
                 .iter()
-                .fold(true, |inited, (_, e)| inited && e.inited())
+                .fold(true, |inited, e| inited && e.inited())
     }
 }
 
@@ -139,7 +139,7 @@ where
         let mut endpoints: Endpoints<'_, B, Req, P, E> =
             Endpoints::new(&self.cfg.service, &self.parser, Uuid).with_cache(self.shard.take());
         let backends = endpoints.take_or_build(&addrs, self.cfg.timeout());
-        self.shard = Distance::with_performance_tuning(
+        self.shard = Distance::with_mode(
             backends,
             self.cfg.basic.selector.tuning_mode(),
             self.cfg.basic.region_enabled,

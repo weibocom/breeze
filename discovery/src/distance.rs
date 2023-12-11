@@ -237,28 +237,28 @@ pub trait Addr {
         s
     }
 }
-impl<T: Addr, O> Addr for (T, O) {
-    fn addr(&self) -> &str {
-        self.0.addr()
-    }
-}
+//impl<T: Addr, O> Addr for (T, O) {
+//    fn addr(&self) -> &str {
+//        self.0.addr()
+//    }
+//}
 impl Addr for String {
     fn addr(&self) -> &str {
         self.as_str()
     }
 }
 
-impl Addr for Vec<String> {
+impl<A: Addr> Addr for Vec<A> {
     fn addr(&self) -> &str {
         if self.len() == 0 {
             ""
         } else {
-            &self[0]
+            &self[0].addr()
         }
     }
     fn visit(&self, f: &mut dyn FnMut(&str)) {
-        for addr in self {
-            f(addr);
+        for a in self {
+            f(a.addr());
         }
     }
 }
