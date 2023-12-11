@@ -1,7 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::Debug;
 
-use crate::select::Distance;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
@@ -19,9 +17,8 @@ use sharding::hash::{Hash, HashKey};
 
 use crate::dns::DnsConfig;
 use crate::Builder;
-use crate::Single;
 use crate::Timeout;
-use crate::{Endpoint, Topology};
+use crate::{shards::Shard, Endpoint, Topology};
 
 use super::config::KvNamespace;
 use super::config::Years;
@@ -117,8 +114,8 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
         log::debug!(
-            "+++ mysql {} send {} year {} shards {:?} => {:?}",
-            self.cfg.service,
+            "mysql {:?} send {} year {} shards {:?} => {:?}",
+            self.cfg,
             shard_idx,
             intyear,
             shards,
@@ -162,7 +159,7 @@ impl<B, E, Req, P> TopologyWrite for KvService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     fn need_load(&self) -> bool {
         self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
@@ -181,7 +178,7 @@ impl<B, E, Req, P> KvService<B, E, Req, P>
 where
     B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint<Item = Req>,
 {
     // #[inline]
     fn take_or_build(
@@ -251,10 +248,11 @@ where
         // 到这之后，所有的shard都能解析出ip
         let mut old = HashMap::with_capacity(self.shards.len());
         for shard in self.shards.take() {
-            old.entry(shard.master.0)
+            old.entry(shard.master.addr().to_string())
                 .or_insert(Vec::new())
-                .push(shard.master.1);
-            for (addr, endpoint) in shard.slaves.into_inner() {
+                .push(shard.master);
+            for endpoint in shard.slaves.into_inner() {
+                let addr = endpoint.addr().to_string();
                 // 一个ip可能存在于多个域名中。
                 old.entry(addr).or_insert(Vec::new()).push(endpoint);
             }
@@ -291,14 +289,12 @@ where
                         self.cfg.timeout_slave(),
                         res_option.clone(),
                     );
-                    slave.disable_single();
-                    replicas.push((addr, slave));
+                    replicas.push(slave);
                 }
 
                 use crate::PerformanceTuning;
                 let shard = Shard::selector(
                     self.cfg.basic.selector.tuning_mode(),
-                    master_addr,
                     master,
                     replicas,
                     false,
@@ -330,72 +326,64 @@ where
 }
 
 // todo: 这一段跟redis是一样的，这段可以提到外面去
-impl<E: discovery::Inited> Shard<E> {
-    // 1. 主已经初始化
-    // 2. 有从
-    // 3. 所有的从已经初始化
-    #[inline]
-    fn inited(&self) -> bool {
-        self.master().inited()
-            && self.has_slave()
-            && self
-                .slaves
-                .iter()
-                .fold(true, |inited, (_, e)| inited && e.inited())
-    }
-}
+//impl<E: discovery::Inited> Shard<E> {
+//    // 1. 主已经初始化
+//    // 2. 有从
+//    // 3. 所有的从已经初始化
+//    #[inline]
+//    fn inited(&self) -> bool {
+//        self.master().inited()
+//            && self.has_slave()
+//            && self
+//                .slaves
+//                .iter()
+//                .fold(true, |inited, e| inited && e.inited())
+//    }
+//}
 // todo: 这一段跟redis是一样的，这段可以提到外面去
-impl<E> Shard<E> {
-    #[inline]
-    fn selector(
-        is_performance: bool,
-        master_host: String,
-        master: E,
-        replicas: Vec<(String, E)>,
-        region_enabled: bool,
-    ) -> Self {
-        Self {
-            master: (master_host, master),
-            slaves: Distance::with_performance_tuning(replicas, is_performance, region_enabled),
-        }
-    }
-    #[inline]
-    fn has_slave(&self) -> bool {
-        self.slaves.len() > 0
-    }
-    #[inline]
-    fn master(&self) -> &E {
-        &self.master.1
-    }
-    #[inline]
-    fn select(&self) -> (usize, &(String, E)) {
-        self.slaves.unsafe_select()
-    }
-    #[inline]
-    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E))
-    where
-        E: Endpoint,
-    {
-        unsafe { self.slaves.unsafe_next(idx, runs) }
-    }
-}
+//impl<E: Endpoint> Shard<E> {
+//    #[inline]
+//    fn selector(is_performance: bool, master: E, replicas: Vec<E>, region_enabled: bool) -> Self {
+//        Self {
+//            master,
+//            slaves: Distance::with_mode(replicas, is_performance, region_enabled),
+//        }
+//    }
+//}
+//impl<E> Shard<E> {
+//    #[inline]
+//    fn has_slave(&self) -> bool {
+//        self.slaves.len() > 0
+//    }
+//    #[inline]
+//    fn master(&self) -> &E {
+//        &self.master
+//    }
+//    #[inline]
+//    fn select(&self) -> (usize, &E) {
+//        self.slaves.unsafe_select()
+//    }
+//    #[inline]
+//    fn next(&self, idx: usize, runs: usize) -> (usize, &E)
+//    where
+//        E: Endpoint,
+//    {
+//        unsafe { self.slaves.unsafe_next(idx, runs) }
+//    }
+//}
 
 // todo: 这一段跟redis是一样的，这段可以提到外面去
-#[derive(Clone)]
-struct Shard<E> {
-    master: (String, E),
-    slaves: Distance<(String, E)>,
-}
+//#[derive(Clone)]
+//struct Shard<E> {
+//    master: E,
+//    slaves: Distance<E>,
+//}
 
-impl<E> Debug for Shard<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "shard(master: {}, slaves: {:?})",
-            self.master.0, self.slaves
-        )
-    }
-}
+//impl<E> Debug for Shard<E> {
+//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//        write!(f, "shard(master => slaves: {:?})", self.slaves.len())
+//    }
+//}
 
 const YEAR_START: u16 = 2000;
 const YEAR_END: u16 = 2099;

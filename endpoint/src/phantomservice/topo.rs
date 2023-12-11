@@ -17,7 +17,7 @@ use super::config::PhantomNamespace;
 #[derive(Clone)]
 pub struct PhantomService<B, E, Req, P> {
     // 一般有2组，相互做HA，每组是一个域名列表，域名下只有一个ip，但会变化
-    streams: Vec<Distance<(String, E)>>,
+    streams: Vec<Distance<E>>,
     hasher: Crc32,
     distribution: Range,
     parser: P,
@@ -166,9 +166,7 @@ impl<B, E: Inited, Req, P> Inited for PhantomService<B, E, Req, P> {
             && self.streams.iter().fold(true, |inited, shard| {
                 inited && {
                     // 每个shard都有对应的endpoint，并且都初始化完成。
-                    shard
-                        .iter()
-                        .fold(true, |inited, (_, e)| inited && e.inited())
+                    shard.iter().fold(true, |inited, e| inited && e.inited())
                 }
             })
     }

@@ -1,12 +1,14 @@
-use crate::select::Distance;
-use crate::{Builder, Endpoint, Endpoints, PerformanceTuning, Topology};
-use discovery::{distance, dns::IPPort, TopologyWrite};
+use crate::{
+    dns::{DnsConfig, DnsLookup},
+    shards::Shard,
+    Builder, Endpoint, Endpoints, PerformanceTuning, Topology,
+};
+use discovery::TopologyWrite;
 use protocol::{Protocol, RedisFlager, Request, Resource::Redis};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
 
 use super::config::RedisNamespace;
-use crate::dns::{DnsConfig, DnsLookup};
 
 #[derive(Clone)]
 pub struct RedisService<B, E, Req, P> {
@@ -203,82 +205,18 @@ where
             let slaves = endpoints.take_or_build(&ips[..], self.cfg.timeout_slave());
             let shard = Shard::selector(
                 self.cfg.basic.selector.tuning_mode(),
-                ips[0].clone(),
                 master,
                 slaves,
                 self.cfg.basic.region_enabled,
             );
-            shard.check_region_len(&self.cfg.service, ips[0].port());
+            let ty = &*self.cfg.basic.resource_type;
+            shard.check_region_len(ty, &self.cfg.service);
             self.shards.push(shard);
         });
         Some(())
     }
 }
 
-#[derive(Clone)]
-struct Shard<E> {
-    master: (String, E),
-    slaves: Distance<(String, E)>,
-}
-impl<E> Shard<E> {
-    #[inline]
-    fn selector(
-        is_performance: bool,
-        master_host: String,
-        master: E,
-        replicas: Vec<(String, E)>,
-        region_enabled: bool,
-    ) -> Self {
-        Self {
-            master: (master_host, master),
-            slaves: Distance::with_performance_tuning(replicas, is_performance, region_enabled),
-        }
-    }
-    #[inline]
-    fn has_slave(&self) -> bool {
-        self.slaves.len() > 0
-    }
-    #[inline]
-    fn master(&self) -> &E {
-        &self.master.1
-    }
-    #[inline]
-    fn select(&self) -> (usize, &(String, E)) {
-        self.slaves.unsafe_select()
-    }
-    #[inline]
-    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E))
-    where
-        E: Endpoint,
-    {
-        unsafe { self.slaves.unsafe_next(idx, runs) }
-    }
-    fn check_region_len(&self, service: &str, port: &str) {
-        // TODO: 10000: 这个值是与监控系统共享的，如果修改，需要同时修改监控系统的配置
-        let n = self.slaves.len_region().map(|l| l + 10000).unwrap_or(0);
-        let f = |r: &str| format!("{}:{}", r, port);
-        let bip = context::get()
-            .region()
-            .map(f)
-            .unwrap_or_else(|| f(distance::host_region().as_str()));
-
-        metrics::resource_num_metric(Redis.name(), service, &*bip, n);
-    }
-}
-impl<E: discovery::Inited> Shard<E> {
-    // 1. 主已经初始化
-    // 2. 有从
-    // 3. 所有的从已经初始化
-    #[inline]
-    fn inited(&self) -> bool {
-        self.master().inited()
-            && self.has_slave()
-            && self
-                .slaves
-                .iter()
-                .fold(true, |inited, (_, e)| inited && e.inited())
-    }
-}
 impl<B: Send + Sync, E, Req, P> std::fmt::Display for RedisService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,

@@ -24,31 +24,17 @@ impl KVTime {
             hasher: Hasher::from("crc32"),
         }
     }
-    fn write_date_tname(&self, buf: &mut impl Write, uuid: i64, is_display_day: bool) {
-        let (mut year, month, day) = uuid.ymd();
-        year %= 100;
-        if is_display_day {
-            let _ = write!(
-                buf,
-                "{}_{:02}{:02}{:02}",
-                &self.table_prefix, year, month, day
-            );
-        } else {
-            let _ = write!(buf, "{}_{:02}{:02}", &self.table_prefix, year, month);
-        }
-    }
-
     fn write_tname(&self, buf: &mut impl Write, key: &RingSlice) {
         let uuid = key.uuid();
+        let (mut year, month, day) = uuid.ymd();
+        year %= 100;
+        let _ = write!(buf, "{}_{:02}{:02}", self.table_prefix, year, month);
+        // 判断是否需要写入day
         match self.table_postfix {
-            Postfix::YYMM => {
-                self.write_date_tname(buf, uuid, false);
-            }
+            Postfix::YYMM => {}
             //Postfix::YYMMDD
-            _ => {
-                self.write_date_tname(buf, uuid, true);
-            }
-        }
+            _ => write!(buf, "{:02}", day).expect("buf"),
+        };
     }
 
     fn write_dname(&self, buf: &mut impl Write, key: &RingSlice) {

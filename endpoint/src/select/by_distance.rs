@@ -16,7 +16,7 @@ pub struct Distance<T> {
     idx: Arc<AtomicUsize>,
     replicas: Vec<(T, BackendQuota)>,
 }
-impl<T: Addr> Distance<T> {
+impl<T> Distance<T> {
     pub fn new() -> Self {
         Self {
             len_local: 0,
@@ -40,16 +40,16 @@ impl<T: Addr> Distance<T> {
         debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
         Some(unsafe { self.replicas.get_unchecked(idx).1.clone() })
     }
-    pub fn with_performance_tuning(
-        mut replicas: Vec<T>,
-        is_performance: bool,
-        region_enabled: bool,
-    ) -> Self {
+    pub fn with_mode(replicas: Vec<T>, performance: bool, region_first: bool) -> Self
+    where
+        T: Endpoint,
+    {
         assert_ne!(replicas.len(), 0);
+        let mut replicas: Vec<WithAddr<T>> = unsafe { std::mem::transmute(replicas) };
         let mut me = Self::new();
 
         // 资源启用可用区
-        let len_local = if region_enabled {
+        let len_local = if region_first {
             // 开启可用区，local_len是当前可用区资源实例副本长度；需求详见#658
             // 按distance选local
             // 1. 距离小于等于4为local
@@ -59,12 +59,7 @@ impl<T: Addr> Distance<T> {
             });
             me.len_region = l as u16; // 可用区内的实例数量
             if l == 0 {
-                log::warn!(
-                    "too few instance in region:{} total:{}, {:?}",
-                    l,
-                    replicas.len(),
-                    replicas.iter().map(|a| a.string()).collect::<Vec<_>>()
-                );
+                log::warn!("no region instance {}", replicas.string());
                 replicas.len()
             } else {
                 l
@@ -76,11 +71,11 @@ impl<T: Addr> Distance<T> {
             replicas.len()
         };
 
-        me.refresh(replicas);
+        me.refresh(unsafe { std::mem::transmute(replicas) });
 
         // 性能模式当前实现为按时间quota访问后端资源
-        me.backend_quota = is_performance;
-        me.region_enabled = region_enabled;
+        me.backend_quota = performance;
+        me.region_enabled = region_first;
         me.topn(len_local);
 
         me
@@ -90,8 +85,11 @@ impl<T: Addr> Distance<T> {
         self.backend_quota.then(|| self.len_region)
     }
     #[inline]
-    pub fn from(replicas: Vec<T>) -> Self {
-        Self::with_performance_tuning(replicas, true, false)
+    pub fn from(replicas: Vec<T>) -> Self
+    where
+        T: Endpoint,
+    {
+        Self::with_mode(replicas, true, false)
     }
     // 同时更新配额
     fn refresh(&mut self, replicas: Vec<T>) {
@@ -172,7 +170,7 @@ impl<T: Addr> Distance<T> {
         } else {
             self.check_quota_get_idx()
         };
-        debug_assert!(idx < self.local_len(), "idx:{} overflow {:?}", idx, self);
+        debug_assert!(idx < self.local_len(), "idx:{} < {}", idx, self.local_len());
         idx
     }
     // 只从local获取
@@ -232,45 +230,29 @@ impl<T: Addr> Distance<T> {
         self.replicas.into_iter().map(|(r, _)| r).collect()
     }
     #[inline]
-    pub fn iter(&self) -> Iter<'_, T> {
-        Iter {
-            start: unsafe { NonNull::new_unchecked(self.replicas.as_ptr() as *mut _) },
-            end: unsafe { self.replicas.as_ptr().add(self.replicas.len()) },
-            _marker: std::marker::PhantomData,
-        }
+    pub fn iter(&self) -> impl std::iter::Iterator<Item = &T> {
+        self.replicas.iter().map(|(r, _)| r)
     }
 }
-
-use std::ptr::NonNull;
 
 use crate::Endpoint;
 
-pub struct Iter<'a, T> {
-    start: NonNull<(T, BackendQuota)>,
-    end: *const (T, BackendQuota),
-    _marker: std::marker::PhantomData<&'a T>,
-}
-impl<'a, T> std::iter::Iterator for Iter<'a, T> {
-    type Item = &'a T;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.start.as_ptr() as *const _ == self.end {
-            None
-        } else {
-            let ret = unsafe { &self.start.as_ref().0 };
-            self.start = unsafe { NonNull::new_unchecked(self.start.as_ptr().add(1)) };
-            Some(ret)
-        }
+impl<T: Endpoint> std::fmt::Debug for Distance<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let addrs: &Vec<WithAddr<T>> = unsafe { std::mem::transmute(&self.replicas) };
+        write!(
+            f,
+            "len:{}, local:{} backends:{}",
+            self.len(),
+            self.len_local,
+            addrs.string()
+        )
     }
 }
 
-impl<T: Addr> std::fmt::Debug for Distance<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "len: {}, local: {} backends:{:?}",
-            self.len(),
-            self.len_local,
-            self.replicas.iter().map(|s| s.addr()).collect::<Vec<_>>()
-        )
+struct WithAddr<T>(T);
+impl<T: Endpoint> Addr for WithAddr<T> {
+    fn addr(&self) -> &str {
+        self.0.addr()
     }
 }

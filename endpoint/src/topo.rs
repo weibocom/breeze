@@ -26,7 +26,7 @@ procs::topology_dispatcher! {
         fn send(&self, req: Self::Item);
         fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
         fn available(&self) -> bool {todo!("available not implemented");}
-        fn addr(&self) -> &str {todo!("addr not implemented");}
+        fn addr(&self) -> &str {"addr not implemented"}
     } => where P:Sync+Send+Protocol, E:Endpoint<Item = R> + Inited, R: Request, P: Protocol+Sync+Send, B:Send+Sync
 
     pub trait Topology : Endpoint + Hash{
@@ -42,7 +42,7 @@ procs::topology_dispatcher! {
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
         fn load(&mut self);
-    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>+Single
+    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>
 
     trait Hash {
         fn hash<S: HashKey>(&self, key: &S) -> i64;
@@ -50,28 +50,12 @@ procs::topology_dispatcher! {
 
 }
 
-#[procs::dispatcher_trait_deref]
-pub trait Single {
-    fn single(&self) -> bool;
-    fn disable_single(&self);
-    fn enable_single(&self);
-}
-
-impl<T: Endpoint<Item = R>, R> Endpoint for (String, T) {
-    type Item = R;
-    #[inline(always)]
-    fn send(&self, req: Self::Item) {
-        self.1.send(req)
-    }
-    #[inline(always)]
-    fn shard_idx(&self, hash: i64) -> usize {
-        self.1.shard_idx(hash)
-    }
-    #[inline(always)]
-    fn available(&self) -> bool {
-        self.1.available()
-    }
-}
+//#[procs::dispatcher_trait_deref]
+//pub trait Single {
+//    fn single(&self) -> bool;
+//    fn disable_single(&self);
+//    fn enable_single(&self);
+//}
 
 pub trait Builder<P, R, E> {
     fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {
@@ -177,22 +161,18 @@ impl<'a, B: Builder<P, R, E>, R, P: Protocol, E: Endpoint> Endpoints<'a, B, R, P
         self.take_or_build(&[addr.to_owned()], to)
             .pop()
             .expect("take")
-            .1
     }
-    pub fn take_or_build(&mut self, addrs: &[String], to: Timeout) -> Vec<(String, E)> {
+    pub fn take_or_build(&mut self, addrs: &[String], to: Timeout) -> Vec<E> {
         addrs
             .iter()
             .map(|addr| {
-                let a = addr.to_string();
-                let e = self
-                    .cache
+                self.cache
                     .get_mut(addr)
                     .map(|endpoints| endpoints.pop())
                     .flatten()
                     .unwrap_or_else(|| {
                         B::build(&addr, self.parser.clone(), self.resource, self.service, to)
-                    });
-                (a, e)
+                    })
             })
             .collect()
     }

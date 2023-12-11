@@ -5,7 +5,7 @@ use ds::chan::mpsc::{channel, Sender, TrySendError};
 use ds::Switcher;
 
 use crate::checker::BackendChecker;
-use endpoint::{Builder, Endpoint, Single, Timeout};
+use endpoint::{Builder, Endpoint, Timeout};
 use metrics::Path;
 use protocol::{Error, Protocol, Request, ResOption, Resource};
 
@@ -110,11 +110,4 @@ impl<R: Request> Endpoint for Backend<R> {
     fn addr(&self) -> &str {
         &self.inner.addr
     }
-}
-impl<R> Single for Backend<R> {
-    fn single(&self) -> bool {
-        false
-    }
-    fn enable_single(&self) {}
-    fn disable_single(&self) {}
 }
