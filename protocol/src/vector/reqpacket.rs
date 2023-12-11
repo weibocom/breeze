@@ -262,6 +262,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             log::warn!("+++ too big request:{}", self);
             return Err(Error::RequestProtocolInvalid);
         }
+        log::debug!(
+            "+++ condition_pos:{}, char:{}",
+            condition_pos,
+            self.data.at(condition_pos) as char
+        );
         flag.set_condition_pos(condition_pos as u32);
         // skip 掉condition 的 bulks
         self.skip_bulks(self.bulks)?;

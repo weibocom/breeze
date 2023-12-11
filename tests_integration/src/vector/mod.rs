@@ -246,16 +246,70 @@ fn vadd() {
         .arg("object_type")
         .arg("4")
         .arg("like_id")
-        .arg("10001")
+        .arg("10002")
         .arg("object_id")
-        .arg("20001")
+        .arg("20002")
         .query(&mut con);
     println!("+++ rsp:{:?}", rsp);
     assert_eq!(rsp, Ok(1));
 }
 
 #[test]
-fn vupdate() {}
+fn vupdate() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let rsp = redis::cmd("vupdate")
+        .arg("4668741184209283,2211")
+        .arg("object_type")
+        .arg("5")
+        .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg("10002")
+        .arg("object_id")
+        .arg("=")
+        .arg("20002")
+        .arg("object_type")
+        .arg("=")
+        .arg("4")
+        .query(&mut con);
+    println!("+++ rsp:{:?}", rsp);
+    assert_eq!(rsp, Ok(1));
+
+    let rsp = redis::cmd("vupdate")
+        .arg("4668741184209283,2211")
+        .arg("object_type")
+        .arg("4")
+        .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg("10002")
+        .arg("object_id")
+        .arg("=")
+        .arg("20002")
+        .arg("object_type")
+        .arg("=")
+        .arg("5")
+        .query(&mut con);
+    println!("+++ rsp:{:?}", rsp);
+    assert_eq!(rsp, Ok(1));
+}
 
 #[test]
-fn vdel() {}
+fn vdel() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let rsp = redis::cmd("vdel")
+        .arg("4668741184209283,2211")
+        .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg("10002")
+        .arg("object_id")
+        .arg("=")
+        .arg("20002")
+        .arg("object_type")
+        .arg("=")
+        .arg("4")
+        .query(&mut con);
+    println!("+++ rsp:{:?}", rsp);
+    assert_eq!(rsp, Ok(1));
+}

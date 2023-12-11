@@ -230,13 +230,13 @@ impl MysqlBuilder {
         // 解析fields
         let field_start = flag.field_pos() as usize;
         let condition_pos = flag.condition_pos() as usize;
-        let field_end = if condition_pos > 0 {
-            const WHERE_LEN: usize = "$5\r\n$WHERE\r\n".len();
+        let pos_after_field = if condition_pos > 0 {
+            const WHERE_LEN: usize = "$5\r\nWHERE\r\n".len();
             condition_pos - WHERE_LEN
         } else {
             data.len()
         };
-        Self::parse_vector_field(&data, field_start, field_end, &mut vcmd)?;
+        Self::parse_vector_field(&data, field_start, pos_after_field, &mut vcmd)?;
 
         // 解析conditions
         Self::parse_vector_condition(&data, condition_pos, &mut vcmd)?;
@@ -267,7 +267,7 @@ impl MysqlBuilder {
     fn parse_vector_field(
         data: &Packet,
         field_start: usize,
-        field_end: usize,
+        pos_after_field: usize,
         vcmd: &mut VectorCmd,
     ) -> Result<()> {
         // 解析fields，format: $4\r\nname\r\n$5\r\nvalue\r\n
@@ -275,13 +275,13 @@ impl MysqlBuilder {
             return Ok(());
         }
         let mut oft = field_start;
-        while oft < field_end {
+        while oft < pos_after_field {
             let name = data.bulk_string(&mut oft)?;
             let value = data.bulk_string(&mut oft)?;
             vcmd.fields.push((name, value));
         }
-        // 解析完fields，结束的位置应该刚好是end pos
-        assert_eq!(oft, field_end + 1, "packet:{:?}", data);
+        // 解析完fields，结束的位置应该刚好是flag中记录的field之后下一个字节的oft
+        assert_eq!(oft, pos_after_field, "packet:{:?}", data);
 
         Ok(())
     }
