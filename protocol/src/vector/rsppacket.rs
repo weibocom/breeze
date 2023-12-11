@@ -147,9 +147,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     #[inline(always)]
     pub(super) fn build_final_affected_rows_rsp_cmd(&mut self, n: u64) -> Command {
         // 构建最终返回给client的响应内容
-        let mut r = n.to_le_bytes().to_vec();
-        r.insert(0, b':');
-        r.extend_from_slice(b"\r\n");
+        let r = format!(":{}\r\n", n).into_bytes();
         let mem = ds::MemGuard::from_vec(r);
         let cmd = Command::from(true, mem);
         log::debug!("+++ build vector affected rows rsp, {:?}", cmd);
