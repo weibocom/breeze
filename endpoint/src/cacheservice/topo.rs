@@ -1,5 +1,5 @@
 use crate::select::Distance;
-use crate::{Builder, Endpoint, Endpoints, Topology};
+use crate::{Endpoint, Endpoints, Topology};
 use discovery::TopologyWrite;
 use protocol::memcache::Binary;
 use protocol::{Protocol, Request, Resource::Memcache};
@@ -11,7 +11,7 @@ use crate::PerformanceTuning;
 use protocol::Bit;
 
 #[derive(Clone)]
-pub struct CacheService<B, E, Req, P> {
+pub struct CacheService<E, Req, P> {
     // 一共有n组，每组1个连接。
     // 排列顺序： master, master l1, slave, slave l1
     streams: Distance<Shards<E, Req>>,
@@ -29,10 +29,10 @@ pub struct CacheService<B, E, Req, P> {
 
     // 保留本设置，非必要场景，减少一次slave访问
     backend_no_storage: bool, // true：mc后面没有存储
-    _marker: std::marker::PhantomData<(B, Req)>,
+    _marker: std::marker::PhantomData<Req>,
 }
 
-impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
+impl<E, Req, P> From<P> for CacheService<E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -47,7 +47,7 @@ impl<B, E, Req, P> From<P> for CacheService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> discovery::Inited for CacheService<B, E, Req, P>
+impl<E, Req, P> discovery::Inited for CacheService<E, Req, P>
 where
     E: discovery::Inited,
 {
@@ -61,12 +61,11 @@ where
     }
 }
 
-impl<B, E, Req, P> Hash for CacheService<B, E, Req, P>
+impl<E, Req, P> Hash for CacheService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -74,12 +73,11 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for CacheService<B, E, Req, P>
+impl<E, Req, P> Topology for CacheService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn exp_sec(&self) -> u32 {
@@ -87,7 +85,7 @@ where
     }
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for CacheService<B, E, Req, P>
+impl<E, Req, P> Endpoint for CacheService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -130,7 +128,7 @@ where
         unsafe { self.streams.get_unchecked(idx).send(req) };
     }
 }
-impl<B: Send + Sync, E, Req: Request, P: Protocol> CacheService<B, E, Req, P>
+impl<E, Req: Request, P: Protocol> CacheService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
 {
@@ -197,9 +195,8 @@ where
         (idx, try_next, write_back)
     }
 }
-impl<B, E, Req, P> TopologyWrite for CacheService<B, E, Req, P>
+impl<E, Req, P> TopologyWrite for CacheService<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
@@ -257,7 +254,7 @@ where
 }
 
 use std::fmt::{self, Display, Formatter};
-impl<B, E, Req, P> Display for CacheService<B, E, Req, P> {
+impl<E, Req, P> Display for CacheService<E, Req, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,

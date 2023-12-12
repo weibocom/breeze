@@ -11,7 +11,7 @@ use tokio::time::Instant;
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::{Builder, Endpoint, Timeout, Topology};
+use crate::{Endpoint, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
 use crate::msgque::strategy::hitfirst::Node;
@@ -31,7 +31,7 @@ const OFFLINE_STOP_READ_SECONDS: u64 = 60 * 20;
 const OFFLINE_CLEAN_SECONDS: u64 = OFFLINE_STOP_READ_SECONDS + 60 * 2;
 
 #[derive(Clone)]
-pub struct MsgQue<B, E, Req, P> {
+pub struct MsgQue<E, Req, P> {
     service: String,
 
     // 读写stream需要分开，读会有大量的空读
@@ -51,10 +51,10 @@ pub struct MsgQue<B, E, Req, P> {
 
     timeout_write: Timeout,
     timeout_read: Timeout,
-    _marker: std::marker::PhantomData<(B, Req)>,
+    _marker: std::marker::PhantomData<Req>,
 }
 
-impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
+impl<E, Req, P> From<P> for MsgQue<E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -75,7 +75,7 @@ impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> discovery::Inited for MsgQue<B, E, Req, P>
+impl<E, Req, P> discovery::Inited for MsgQue<E, Req, P>
 where
     E: discovery::Inited,
 {
@@ -109,12 +109,11 @@ where
 
 const PADDING: Hasher = Hasher::Padding(Padding);
 
-impl<B, E, Req, P> Hash for MsgQue<B, E, Req, P>
+impl<E, Req, P> Hash for MsgQue<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -122,9 +121,8 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for MsgQue<B, E, Req, P>
+impl<E, Req, P> Topology for MsgQue<E, Req, P>
 where
-    B: Send + Sync,
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
@@ -138,9 +136,8 @@ where
 }
 
 //TODO: 验证的时候需要考虑512字节这种边界msg
-impl<B, E, Req, P> Endpoint for MsgQue<B, E, Req, P>
+impl<E, Req, P> Endpoint for MsgQue<E, Req, P>
 where
-    B: Send + Sync,
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
@@ -212,9 +209,8 @@ where
 }
 
 //获得待读取的streams和qid，返回的bool指示是否从offline streams中读取，true为都offline stream
-impl<B, E, Req, P> MsgQue<B, E, Req, P>
+impl<E, Req, P> MsgQue<E, Req, P>
 where
-    B: Send + Sync,
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
@@ -249,9 +245,8 @@ where
     }
 }
 
-impl<B, E, Req, P> MsgQue<B, E, Req, P>
+impl<E, Req, P> MsgQue<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     E: Endpoint<Item = Req>,
     P: Protocol,
 {
@@ -265,7 +260,7 @@ where
             if !new_addrs.contains(name) {
                 self.streams_offline.push((
                     name.clone(),
-                    B::build(
+                    E::build(
                         name,
                         self.parser.clone(),
                         Resource::MsgQue,
@@ -306,7 +301,7 @@ where
             .map(|(srv, size)| {
                 (
                     srv.clone(),
-                    old.remove(srv).unwrap_or(B::build(
+                    old.remove(srv).unwrap_or(E::build(
                         srv,
                         self.parser.clone(),
                         Resource::MsgQue,
@@ -348,7 +343,7 @@ where
                     .map(|addr| {
                         (
                             addr.clone(),
-                            old_streams.remove(addr).unwrap_or(B::build(
+                            old_streams.remove(addr).unwrap_or(E::build(
                                 addr,
                                 self.parser.clone(),
                                 Resource::MsgQue,
@@ -385,9 +380,8 @@ where
     // }
 }
 
-impl<B, E, Req, P> TopologyWrite for MsgQue<B, E, Req, P>
+impl<E, Req, P> TopologyWrite for MsgQue<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {

@@ -4,7 +4,7 @@ use std::mem::size_of;
 use protocol::{callback::CallbackContext, Parser};
 use stream::{Backend, BackendInner, Request};
 type Endpoint = Backend<Request>;
-type Topology = endpoint::TopologyProtocol<Builder, Endpoint, Request, Parser>;
+type Topology = endpoint::TopologyProtocol<Endpoint, Request, Parser>;
 //type RefreshTopology = endpoint::RefreshTopology<Topology>;
 
 type CheckedTopology = stream::CheckedTopology<Topology>;
@@ -14,12 +14,10 @@ type CopyBidirectional = stream::pipeline::CopyBidirectional<Stream, Parser, Che
 type Stream = rt::Stream<tokio::net::TcpStream>;
 type Handler<'r> = stream::handler::Handler<'r, Request, Parser, Stream>;
 
-type Builder = stream::Builder<Parser, Request>;
-type CacheService = endpoint::cacheservice::topo::CacheService<Builder, Endpoint, Request, Parser>;
-type RedisService = endpoint::redisservice::topo::RedisService<Builder, Endpoint, Request, Parser>;
-type PhantomService =
-    endpoint::phantomservice::topo::PhantomService<Builder, Endpoint, Request, Parser>;
-type MsgQue = endpoint::msgque::topo::MsgQue<Builder, Endpoint, Request, Parser>;
+type CacheService = endpoint::cacheservice::topo::CacheService<Endpoint, Request, Parser>;
+type RedisService = endpoint::redisservice::topo::RedisService<Endpoint, Request, Parser>;
+type PhantomService = endpoint::phantomservice::topo::PhantomService<Endpoint, Request, Parser>;
+type MsgQue = endpoint::msgque::topo::MsgQue<Endpoint, Request, Parser>;
 
 use rt::Entry;
 
@@ -44,7 +42,6 @@ fn checkout_basic() {
     assert_eq!(64, size_of::<metrics::Item>());
     assert_eq!(1, size_of::<Parser>());
     assert_eq!(64, size_of::<BackendInner<Request>>());
-    assert_eq!(0, size_of::<Builder>());
     assert_eq!(40, size_of::<CheckedTopology>());
     assert_eq!(368, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());

@@ -1,7 +1,7 @@
 use crate::{
     dns::{DnsConfig, DnsLookup},
     select::Distance,
-    Builder, Endpoint, Endpoints, PerformanceTuning, Topology,
+    Endpoint, Endpoints, PerformanceTuning, Topology,
 };
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource::Uuid};
@@ -10,13 +10,13 @@ use sharding::hash::{Hash, HashKey};
 use super::config::UuidNamespace;
 
 #[derive(Clone)]
-pub struct UuidService<B, E, Req, P> {
+pub struct UuidService<E, Req, P> {
     shard: Distance<E>,
     parser: P,
     cfg: Box<DnsConfig<UuidNamespace>>,
-    _mark: std::marker::PhantomData<(B, Req)>,
+    _mark: std::marker::PhantomData<Req>,
 }
-impl<B, E, Req, P> From<P> for UuidService<B, E, Req, P> {
+impl<E, Req, P> From<P> for UuidService<E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -28,12 +28,11 @@ impl<B, E, Req, P> From<P> for UuidService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> Hash for UuidService<B, E, Req, P>
+impl<E, Req, P> Hash for UuidService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, _k: &K) -> i64 {
@@ -41,16 +40,15 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for UuidService<B, E, Req, P>
+impl<E, Req, P> Topology for UuidService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for UuidService<B, E, Req, P>
+impl<E, Req, P> Endpoint for UuidService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -88,9 +86,8 @@ where
         0
     }
 }
-impl<B, E, Req, P> TopologyWrite for UuidService<B, E, Req, P>
+impl<E, Req, P> TopologyWrite for UuidService<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
@@ -112,7 +109,7 @@ where
             .check_load(|| self.load_inner().is_some());
     }
 }
-impl<B, E, Req, P> discovery::Inited for UuidService<B, E, Req, P>
+impl<E, Req, P> discovery::Inited for UuidService<E, Req, P>
 where
     E: discovery::Inited,
 {
@@ -126,9 +123,8 @@ where
     }
 }
 
-impl<B, E, Req, P> UuidService<B, E, Req, P>
+impl<E, Req, P> UuidService<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
@@ -150,7 +146,7 @@ where
     }
 }
 
-impl<B, E, Req, P> std::fmt::Display for UuidService<B, E, Req, P> {
+impl<E, Req, P> std::fmt::Display for UuidService<E, Req, P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UuidService")
             .field("cfg", &self.cfg)
