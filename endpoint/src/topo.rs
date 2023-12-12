@@ -29,11 +29,11 @@ procs::topology_dispatcher! {
         fn addr(&self) -> &str {"addr not implemented"}
         fn build_o<P:Protocol>(_addr: &str, _p: P, _r: Resource, _service: &str, _to: Timeout, _o: ResOption) -> Self {todo!("build not implemented")}
         fn build<P:Protocol>(addr: &str, p: P, r: Resource, service: &str, to: Timeout) -> Self {Self::build_o(addr, p, r, service, to, Default::default())}
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R> + Inited, R: Request, P: Protocol+Sync+Send
+    } => where P:Protocol, E:Endpoint<Item = R> + Inited, R: Request
 
     pub trait Topology : Endpoint + Hash{
         fn exp_sec(&self) -> u32 {86400}
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, R, P>: Endpoint
+    } => where P:Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, R, P>: Endpoint
 
     trait Inited {
         fn inited(&self) -> bool;
@@ -44,11 +44,11 @@ procs::topology_dispatcher! {
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
         fn load(&mut self);
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>
+    } => where P:Protocol, E:Endpoint<Item = R>
 
     trait Hash {
         fn hash<S: HashKey>(&self, key: &S) -> i64;
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request
+    } => where P:Protocol, E:Endpoint<Item = R>, R:Request
 
 }
 
