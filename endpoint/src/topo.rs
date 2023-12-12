@@ -7,7 +7,8 @@ use crate::Timeout;
 pub type TopologyProtocol<B, E, R, P> = Topologies<B, E, R, P>;
 
 // 1. 生成一个try_from(parser, endpoint)的方法，endpoint是名字的第一个单词或者是所有单词的首字母。RedisService的名字为"rs"或者"redis"
-// 2. trait => where表示，为Topologies实现trait，满足where的条件
+// 2. trait => where表示，为Topologies实现trait，满足where的条件.
+//    第一个参数必须是self，否则无法dispatcher
 // 3. 如果trait是pub的，则同时会创建这个trait。非pub的trait，只会为Topologies实现
 procs::topology_dispatcher! {
     #[derive(Clone)]
@@ -20,13 +21,14 @@ procs::topology_dispatcher! {
         UuidService(crate::uuid::topo::UuidService<B, E, R, P>),
     }
 
-    // #[procs::dispatcher_trait_deref]
     pub trait Endpoint: Sized + Send + Sync {
         type Item;
         fn send(&self, req: Self::Item);
         fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
         fn available(&self) -> bool {todo!("available not implemented");}
         fn addr(&self) -> &str {"addr not implemented"}
+        fn build_o<P:Protocol>(_addr: &str, _p: P, _r: Resource, _service: &str, _to: Timeout, _o: ResOption) -> Self {todo!("build not implemented")}
+        fn build<P:Protocol>(addr: &str, p: P, r: Resource, service: &str, to: Timeout) -> Self {Self::build_o(addr, p, r, service, to, Default::default())}
     } => where P:Sync+Send+Protocol, E:Endpoint<Item = R> + Inited, R: Request, P: Protocol+Sync+Send, B:Send+Sync
 
     pub trait Topology : Endpoint + Hash{
@@ -49,13 +51,6 @@ procs::topology_dispatcher! {
     } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, B:Send+Sync
 
 }
-
-//#[procs::dispatcher_trait_deref]
-//pub trait Single {
-//    fn single(&self) -> bool;
-//    fn disable_single(&self);
-//    fn enable_single(&self);
-//}
 
 pub trait Builder<P, R, E> {
     fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {
@@ -121,14 +116,14 @@ impl<E: Endpoint> From<E> for Pair<E> {
 }
 
 use std::collections::HashMap;
-pub struct Endpoints<'a, B, R, P, E: Endpoint> {
+pub struct Endpoints<'a, R, P, E: Endpoint> {
     service: &'a str,
     parser: &'a P,
     resource: Resource,
     cache: HashMap<String, Vec<E>>,
-    _marker: std::marker::PhantomData<(B, R)>,
+    _marker: std::marker::PhantomData<R>,
 }
-impl<'a, B, R, P, E: Endpoint> Endpoints<'a, B, R, P, E> {
+impl<'a, R, P, E: Endpoint> Endpoints<'a, R, P, E> {
     pub fn new(service: &'a str, parser: &'a P, resource: Resource) -> Self {
         Endpoints {
             service,
@@ -156,7 +151,7 @@ impl<'a, B, R, P, E: Endpoint> Endpoints<'a, B, R, P, E> {
     }
 }
 
-impl<'a, B: Builder<P, R, E>, R, P: Protocol, E: Endpoint> Endpoints<'a, B, R, P, E> {
+impl<'a, R, P: Protocol, E: Endpoint> Endpoints<'a, R, P, E> {
     pub fn take_or_build_one(&mut self, addr: &str, to: Timeout) -> E {
         self.take_or_build(&[addr.to_owned()], to)
             .pop()
@@ -171,14 +166,15 @@ impl<'a, B: Builder<P, R, E>, R, P: Protocol, E: Endpoint> Endpoints<'a, B, R, P
                     .map(|endpoints| endpoints.pop())
                     .flatten()
                     .unwrap_or_else(|| {
-                        B::build(&addr, self.parser.clone(), self.resource, self.service, to)
+                        let p = self.parser.clone();
+                        E::build(&addr, p, self.resource, self.service, to)
                     })
             })
             .collect()
     }
 }
 // 为Endpoints实现Formatter
-impl<'a, B, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, B, R, P, E> {
+impl<'a, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, R, P, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = String::new();
         for (addr, endpoints) in self.cache.iter() {
@@ -192,7 +188,7 @@ impl<'a, B, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, B, R, P, E> {
 }
 
 // 为Endpoints实现Drop
-impl<'a, B, R, P, E: Endpoint> Drop for Endpoints<'a, B, R, P, E> {
+impl<'a, R, P, E: Endpoint> Drop for Endpoints<'a, R, P, E> {
     fn drop(&mut self) {
         if self.cache.len() > 0 {
             log::info!("drop endpoints:{}", self);

@@ -110,4 +110,14 @@ impl<R: Request> Endpoint for Backend<R> {
     fn addr(&self) -> &str {
         &self.inner.addr
     }
+    fn build_o<P: Protocol>(
+        addr: &str,
+        p: P,
+        r: Resource,
+        service: &str,
+        to: Timeout,
+        o: ResOption,
+    ) -> Self {
+        Self::from((addr, p, r, service, to, o))
+    }
 }

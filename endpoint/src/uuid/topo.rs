@@ -136,7 +136,7 @@ where
     fn load_inner(&mut self) -> Option<()> {
         let addrs = self.cfg.shards_url.flatten_lookup()?;
         assert_ne!(addrs.len(), 0);
-        let mut endpoints: Endpoints<'_, B, Req, P, E> =
+        let mut endpoints: Endpoints<'_, Req, P, E> =
             Endpoints::new(&self.cfg.service, &self.parser, Uuid).with_cache(self.shard.take());
         let backends = endpoints.take_or_build(&addrs, self.cfg.timeout());
         self.shard = Distance::with_mode(
