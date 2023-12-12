@@ -5,28 +5,9 @@ use ds::chan::mpsc::{channel, Sender, TrySendError};
 use ds::Switcher;
 
 use crate::checker::BackendChecker;
-use endpoint::{Builder, Endpoint, Timeout};
+use endpoint::{Endpoint, Timeout};
 use metrics::Path;
 use protocol::{Error, Protocol, Request, ResOption, Resource};
-
-#[derive(Clone)]
-pub struct BackendBuilder<P, R> {
-    _marker: std::marker::PhantomData<(P, R)>,
-}
-
-impl<P: Protocol, R: Request> Builder<P, R, Backend<R>> for BackendBuilder<P, R> {
-    fn auth_option_build(
-        //todo 这个传string会减少一次copy
-        addr: &str,
-        parser: P,
-        rsrc: Resource,
-        service: &str,
-        timeout: Timeout,
-        option: ResOption,
-    ) -> Backend<R> {
-        Backend::from((addr, parser, rsrc, service, timeout, option))
-    }
-}
 
 impl<R: Request, P: Protocol> From<(&str, P, Resource, &str, Timeout, ResOption)> for Backend<R> {
     fn from(

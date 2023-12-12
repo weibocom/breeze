@@ -16,7 +16,6 @@ use rand::seq::SliceRandom;
 use sharding::hash::{Hash, HashKey};
 
 use crate::dns::DnsConfig;
-use crate::Builder;
 use crate::Timeout;
 use crate::{shards::Shard, Endpoint, Topology};
 
@@ -25,16 +24,16 @@ use super::config::Years;
 use super::strategy::Strategist;
 use super::KVCtx;
 #[derive(Clone)]
-pub struct KvService<B, E, Req, P> {
+pub struct KvService<E, Req, P> {
     shards: Shards<E>,
     // selector: Selector,
     strategist: Strategist,
     parser: P,
     cfg: Box<DnsConfig<KvNamespace>>,
-    _mark: std::marker::PhantomData<(B, Req)>,
+    _mark: std::marker::PhantomData<Req>,
 }
 
-impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
+impl<E, Req, P> From<P> for KvService<E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -48,12 +47,11 @@ impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> Hash for KvService<B, E, Req, P>
+impl<E, Req, P> Hash for KvService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -61,16 +59,15 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for KvService<B, E, Req, P>
+impl<E, Req, P> Topology for KvService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for KvService<B, E, Req, P>
+impl<E, Req, P> Endpoint for KvService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -155,9 +152,8 @@ where
     }
 }
 
-impl<B, E, Req, P> TopologyWrite for KvService<B, E, Req, P>
+impl<E, Req, P> TopologyWrite for KvService<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
@@ -174,9 +170,8 @@ where
         }
     }
 }
-impl<B, E, Req, P> KvService<B, E, Req, P>
+impl<E, Req, P> KvService<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
@@ -190,7 +185,7 @@ where
     ) -> E {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
-            _ => B::auth_option_build(
+            _ => E::build_o(
                 &addr,
                 self.parser.clone(),
                 Resource::Mysql,
@@ -311,7 +306,7 @@ where
         true
     }
 }
-impl<B, E, Req, P> discovery::Inited for KvService<B, E, Req, P>
+impl<E, Req, P> discovery::Inited for KvService<E, Req, P>
 where
     E: discovery::Inited,
 {

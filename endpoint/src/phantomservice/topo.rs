@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::{
     dns::{DnsConfig, DnsLookup},
     select::Distance,
-    Builder, Endpoint, Endpoints, Topology,
+    Endpoint, Endpoints, Topology,
 };
 use discovery::{Inited, TopologyWrite};
 use protocol::{Protocol, Request, Resource::Phantom};
@@ -15,17 +15,17 @@ use sharding::{
 use super::config::PhantomNamespace;
 
 #[derive(Clone)]
-pub struct PhantomService<B, E, Req, P> {
+pub struct PhantomService<E, Req, P> {
     // 一般有2组，相互做HA，每组是一个域名列表，域名下只有一个ip，但会变化
     streams: Vec<Distance<E>>,
     hasher: Crc32,
     distribution: Range,
     parser: P,
     cfg: Box<DnsConfig<PhantomNamespace>>,
-    _mark: PhantomData<(B, Req)>,
+    _mark: PhantomData<Req>,
 }
 
-impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
+impl<E, Req, P> From<P> for PhantomService<E, Req, P> {
     fn from(parser: P) -> Self {
         Self {
             parser,
@@ -38,12 +38,11 @@ impl<B, E, Req, P> From<P> for PhantomService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> Hash for PhantomService<B, E, Req, P>
+impl<E, Req, P> Hash for PhantomService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -51,21 +50,19 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for PhantomService<B, E, Req, P>
+impl<E, Req, P> Topology for PhantomService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
 }
 
-impl<B, E, Req, P> Endpoint for PhantomService<B, E, Req, P>
+impl<E, Req, P> Endpoint for PhantomService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     type Item = Req;
     #[inline]
@@ -92,9 +89,8 @@ where
     }
 }
 
-impl<B, E, Req, P> TopologyWrite for PhantomService<B, E, Req, P>
+impl<E, Req, P> TopologyWrite for PhantomService<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
@@ -131,9 +127,8 @@ where
     }
 }
 
-impl<B, E, Req, P> PhantomService<B, E, Req, P>
+impl<E, Req, P> PhantomService<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
@@ -157,7 +152,7 @@ where
     }
 }
 
-impl<B, E: Inited, Req, P> Inited for PhantomService<B, E, Req, P> {
+impl<E: Inited, Req, P> Inited for PhantomService<E, Req, P> {
     // 每一个域名都有对应的endpoint，并且都初始化完成。
     #[inline]
     fn inited(&self) -> bool {
@@ -171,7 +166,7 @@ impl<B, E: Inited, Req, P> Inited for PhantomService<B, E, Req, P> {
             })
     }
 }
-impl<B, E, Req, P> std::fmt::Debug for PhantomService<B, E, Req, P> {
+impl<E, Req, P> std::fmt::Debug for PhantomService<E, Req, P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.cfg)
     }

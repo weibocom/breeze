@@ -4,7 +4,7 @@ use sharding::hash::{Hash, HashKey};
 
 use crate::Timeout;
 
-pub type TopologyProtocol<B, E, R, P> = Topologies<B, E, R, P>;
+pub type TopologyProtocol<E, R, P> = Topologies<E, R, P>;
 
 // 1. 生成一个try_from(parser, endpoint)的方法，endpoint是名字的第一个单词或者是所有单词的首字母。RedisService的名字为"rs"或者"redis"
 // 2. trait => where表示，为Topologies实现trait，满足where的条件.
@@ -12,13 +12,13 @@ pub type TopologyProtocol<B, E, R, P> = Topologies<B, E, R, P>;
 // 3. 如果trait是pub的，则同时会创建这个trait。非pub的trait，只会为Topologies实现
 procs::topology_dispatcher! {
     #[derive(Clone)]
-    pub enum Topologies<B, E, R, P> {
-        MsgQue(crate::msgque::topo::MsgQue<B, E, R, P>),
-        RedisService(crate::redisservice::topo::RedisService<B, E, R, P>),
-        CacheService(crate::cacheservice::topo::CacheService<B, E, R, P>),
-        PhantomService(crate::phantomservice::topo::PhantomService<B, E, R, P>),
-        KvService(crate::kv::topo::KvService<B, E, R, P>),
-        UuidService(crate::uuid::topo::UuidService<B, E, R, P>),
+    pub enum Topologies<E, R, P> {
+        MsgQue(crate::msgque::topo::MsgQue<E, R, P>),
+        RedisService(crate::redisservice::topo::RedisService<E, R, P>),
+        CacheService(crate::cacheservice::topo::CacheService<E, R, P>),
+        PhantomService(crate::phantomservice::topo::PhantomService<E, R, P>),
+        KvService(crate::kv::topo::KvService<E, R, P>),
+        UuidService(crate::uuid::topo::UuidService<E, R, P>),
     }
 
     pub trait Endpoint: Sized + Send + Sync {
@@ -29,11 +29,11 @@ procs::topology_dispatcher! {
         fn addr(&self) -> &str {"addr not implemented"}
         fn build_o<P:Protocol>(_addr: &str, _p: P, _r: Resource, _service: &str, _to: Timeout, _o: ResOption) -> Self {todo!("build not implemented")}
         fn build<P:Protocol>(addr: &str, p: P, r: Resource, service: &str, to: Timeout) -> Self {Self::build_o(addr, p, r, service, to, Default::default())}
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R> + Inited, R: Request, P: Protocol+Sync+Send, B:Send+Sync
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R> + Inited, R: Request, P: Protocol+Sync+Send
 
     pub trait Topology : Endpoint + Hash{
         fn exp_sec(&self) -> u32 {86400}
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, B: Send + Sync, Topologies<B, E, R, P>: Endpoint
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, R, P>: Endpoint
 
     trait Inited {
         fn inited(&self) -> bool;
@@ -44,28 +44,12 @@ procs::topology_dispatcher! {
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
         fn load(&mut self);
-    } => where P:Sync+Send+Protocol, B:Builder<P, R, E>, E:Endpoint<Item = R>
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>
 
     trait Hash {
         fn hash<S: HashKey>(&self, key: &S) -> i64;
-    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request, B:Send+Sync
+    } => where P:Sync+Send+Protocol, E:Endpoint<Item = R>, R:Request
 
-}
-
-pub trait Builder<P, R, E> {
-    fn build(addr: &str, parser: P, rsrc: Resource, service: &str, timeout: Timeout) -> E {
-        Self::auth_option_build(addr, parser, rsrc, service, timeout, Default::default())
-    }
-
-    // TODO: ResOption -> AuthOption
-    fn auth_option_build(
-        addr: &str,
-        parser: P,
-        rsrc: Resource,
-        service: &str,
-        timeout: Timeout,
-        option: ResOption,
-    ) -> E;
 }
 
 // 从环境变量获取是否开启后端资源访问的性能模式

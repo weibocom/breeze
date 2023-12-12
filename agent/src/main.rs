@@ -14,9 +14,9 @@ use ds::time::{sleep, Duration};
 use rt::spawn;
 
 use protocol::{Parser, Result};
-use stream::{Backend, Builder, Request};
+use stream::{Backend, Request};
 type Endpoint = Backend<Request>;
-type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
+type Topology = endpoint::TopologyProtocol<Endpoint, Request, Parser>;
 
 // 默认支持
 fn main() -> Result<()> {

@@ -1,7 +1,7 @@
 use crate::{
     dns::{DnsConfig, DnsLookup},
     shards::Shard,
-    Builder, Endpoint, Endpoints, PerformanceTuning, Topology,
+    Endpoint, Endpoints, PerformanceTuning, Topology,
 };
 use discovery::TopologyWrite;
 use protocol::{Protocol, RedisFlager, Request, Resource::Redis};
@@ -11,16 +11,16 @@ use sharding::hash::{Hash, HashKey, Hasher};
 use super::config::RedisNamespace;
 
 #[derive(Clone)]
-pub struct RedisService<B, E, Req, P> {
+pub struct RedisService<E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
     shards: Vec<Shard<E>>,
     hasher: Hasher,
     distribute: Distribute,
     parser: P,
     cfg: Box<DnsConfig<RedisNamespace>>,
-    _mark: std::marker::PhantomData<(B, Req)>,
+    _mark: std::marker::PhantomData<Req>,
 }
-impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
+impl<E, Req, P> From<P> for RedisService<E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -34,12 +34,11 @@ impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
     }
 }
 
-impl<B, E, Req, P> Hash for RedisService<B, E, Req, P>
+impl<E, Req, P> Hash for RedisService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -47,16 +46,15 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for RedisService<B, E, Req, P>
+impl<E, Req, P> Topology for RedisService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for RedisService<B, E, Req, P>
+impl<E, Req, P> Endpoint for RedisService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -122,9 +120,8 @@ where
         self.distribute.index(hash)
     }
 }
-impl<B, E, Req, P> TopologyWrite for RedisService<B, E, Req, P>
+impl<E, Req, P> TopologyWrite for RedisService<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
@@ -152,7 +149,7 @@ where
             .check_load(|| self.load_inner().is_some());
     }
 }
-impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
+impl<E, Req, P> discovery::Inited for RedisService<E, Req, P>
 where
     E: discovery::Inited,
 {
@@ -168,16 +165,15 @@ where
                 .fold(true, |inited, shard| inited && shard.inited())
     }
 }
-impl<B, E, Req, P> RedisService<B, E, Req, P> {
+impl<E, Req, P> RedisService<E, Req, P> {
     #[inline]
     fn len(&self) -> usize {
         self.shards.len()
     }
 }
 
-impl<B, E, Req, P> RedisService<B, E, Req, P>
+impl<E, Req, P> RedisService<E, Req, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
     E: Endpoint<Item = Req>,
 {
@@ -217,7 +213,7 @@ where
     }
 }
 
-impl<B: Send + Sync, E, Req, P> std::fmt::Display for RedisService<B, E, Req, P>
+impl<E, Req, P> std::fmt::Display for RedisService<E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
