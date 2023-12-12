@@ -215,7 +215,7 @@ where
             let dist = &ns.distribution.clone();
 
             // 把所有的endpoints cache下来
-            let mut endpoints: Endpoints<'_, B, Req, P, E> =
+            let mut endpoints: Endpoints<'_, Req, P, E> =
                 Endpoints::new(namespace, &self.parser, Memcache);
             self.streams.take().into_iter().for_each(|shard| {
                 endpoints.cache(shard.into());

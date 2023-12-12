@@ -191,7 +191,7 @@ where
         // 到这之后，所有的shard都能解析出ip
 
         // 把所有的endpoints cache下来
-        let mut endpoints: Endpoints<'_, B, Req, P, E> =
+        let mut endpoints: Endpoints<'_, Req, P, E> =
             Endpoints::new(&self.cfg.service, &self.parser, Redis);
         self.shards.split_off(0).into_iter().for_each(|shard| {
             endpoints.cache_one(shard.master);

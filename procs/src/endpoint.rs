@@ -19,7 +19,17 @@ pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
         let trait_ident = &trait_def.ident;
         let methods = trait_def.items.iter().map(|item| {
             if let TraitItem::Method(method) = item {
-                Some(method)
+                // 判断第一个参数是否是self
+                let is_self = method.sig.inputs.iter().next().map(|arg| {
+                    if let FnArg::Receiver(_) = arg {
+                        true
+                    } else {
+                        // 判断当前方法是否有body
+                        assert!(method.default.is_some(), "Trait method without self Receiver must have body");
+                        false
+                    }
+                }).unwrap_or(false);
+                is_self.then_some(method)
             } else {
                 None
             }

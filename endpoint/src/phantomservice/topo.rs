@@ -141,7 +141,7 @@ where
     fn load_inner(&mut self) -> Option<()> {
         let addrs = self.cfg.shards_url.lookup()?;
         assert_eq!(addrs.len(), self.cfg.shards_url.len());
-        let mut endpoints: Endpoints<'_, B, Req, P, E> =
+        let mut endpoints: Endpoints<'_, Req, P, E> =
             Endpoints::new(&self.cfg.service, &self.parser, Phantom);
         // 把老的stream缓存起来
         self.streams.split_off(0).into_iter().for_each(|shard| {
