@@ -160,14 +160,13 @@ impl<'a, R, P: Protocol, E: Endpoint> Endpoints<'a, R, P, E> {
 // 为Endpoints实现Formatter
 impl<'a, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, R, P, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut s = String::new();
-        for (addr, endpoints) in self.cache.iter() {
-            s.push_str(addr);
-            s.push_str(" ");
-            s.push_str(&endpoints.len().to_string());
-            s.push_str("\n");
-        }
-        write!(f, "{}", s)
+        write!(
+            f,
+            "service:{} resource:{} addrs:{:?}",
+            self.service,
+            self.resource.name(),
+            self.cache.keys()
+        )
     }
 }
 
