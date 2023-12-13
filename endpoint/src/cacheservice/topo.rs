@@ -14,7 +14,7 @@ use protocol::Bit;
 pub struct CacheService<E, Req, P> {
     // 一共有n组，每组1个连接。
     // 排列顺序： master, master l1, slave, slave l1
-    streams: Distance<Shards<E, Req>>,
+    streams: Distance<Shards<E>>,
     // streams里面的前r_num个数据是提供读的(这个长度不包含slave l1, slave)。
     hasher: Hasher,
     parser: P,
