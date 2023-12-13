@@ -230,14 +230,17 @@ fn test_hashkey() {
 fn master_hashkeyq_1() {
     let argkey = function_name!();
     let mut con = get_conn(&RESTYPEWITHSLAVE.get_host());
+    let mut setted = false;
     for server in SERVERSWITHSLAVE {
         let mut con = get_conn(server[1]);
         if server[1].ends_with("56379") {
             assert_eq!(con.set(argkey, 1), Ok(true));
+            setted = true;
         } else {
             redis::cmd("DEL").arg(argkey).execute(&mut con);
         }
     }
+    assert!(setted, "not setted: {}", RESTYPEWITHSLAVE.get_host());
     assert_eq!(con.get(argkey), Ok(1));
     con.send_packed_command(&redis::cmd("master").get_packed_command())
         .expect("send err");
