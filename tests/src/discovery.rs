@@ -45,7 +45,7 @@ fn refresh() {
     assert_eq!(rx.get().need_load, 0);
     //第二次load成功
     assert!(tx.need_load());
-    tx.load();
+    assert!(tx.load());
     assert!(!tx.need_load());
     assert_eq!(rx.get().need_load, 2);
 
@@ -53,16 +53,19 @@ fn refresh() {
     tx.update(service, "1");
     assert!(!tx.need_load());
     assert_eq!(rx.get().need_load, 1);
+    //已经成功load后，load也会返回true
+    assert!(tx.load());
+    assert_eq!(rx.get().need_load, 1);
 
     //并发更新，只有最后一个生效
     tx.update(service, "2");
     tx.update(service, "3");
     assert!(tx.need_load());
     assert_eq!(rx.get().need_load, 1);
-    tx.load();
+    assert!(!tx.load());
     assert!(tx.need_load());
     assert_eq!(rx.get().need_load, 1);
-    tx.load();
+    assert!(tx.load());
     assert!(!tx.need_load());
     assert_eq!(rx.get().need_load, 3);
 }

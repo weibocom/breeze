@@ -19,6 +19,7 @@ pub trait TopologyWrite {
     fn need_load(&self) -> bool {
         false
     }
+    //返回load代表当前top可用，否则是不可用状态，可能需要继续load
     #[inline]
     fn load(&mut self) -> bool {
         true
@@ -105,14 +106,15 @@ impl<T> TopologyWriteGuard<T>
 where
     T: Clone,
 {
-    fn update_inner(&mut self, f: impl Fn(&mut T) -> bool) {
+    fn update_inner(&mut self, f: impl Fn(&mut T) -> bool) -> bool {
         let mut t = self.updating.take().unwrap_or_else(|| self.inner.copy());
         if !f(&mut t) {
             let _ = self.updating.insert(t);
-            return;
+            return false;
         }
         self.inner.update(t);
         self.updates.fetch_add(1, Ordering::AcqRel);
+        return true;
     }
 }
 
@@ -123,11 +125,7 @@ where
     fn update(&mut self, name: &str, cfg: &str) {
         self.update_inner(|t| {
             t.update(name, cfg);
-            if t.need_load() {
-                t.load()
-            } else {
-                true
-            }
+            !t.need_load() || t.load()
         });
     }
     #[inline]
@@ -144,8 +142,7 @@ where
     }
     #[inline]
     fn load(&mut self) -> bool {
-        self.update_inner(|t| t.load());
-        true
+        self.update_inner(|t| t.load())
     }
 }
 
