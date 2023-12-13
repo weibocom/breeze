@@ -2,12 +2,11 @@ use crate::Endpoint;
 use sharding::distribution::Distribute;
 
 #[derive(Clone)]
-pub(crate) struct Shards<E, Req> {
+pub(crate) struct Shards<E> {
     router: Distribute,
     backends: Vec<E>,
-    _mark: std::marker::PhantomData<Req>,
 }
-impl<E, Req> Endpoint for Shards<E, Req>
+impl<E, Req> Endpoint for Shards<E>
 where
     E: Endpoint<Item = Req>,
     Req: protocol::Request,
@@ -29,13 +28,14 @@ where
             0
         }
     }
+    #[inline(always)]
     fn available(&self) -> bool {
         true
     }
 }
 
 use discovery::Inited;
-impl<E: Inited, Req> Inited for Shards<E, Req> {
+impl<E: Inited> Inited for Shards<E> {
     fn inited(&self) -> bool {
         self.backends.len() > 0
             && self
@@ -45,30 +45,26 @@ impl<E: Inited, Req> Inited for Shards<E, Req> {
     }
 }
 
-impl<E: Endpoint, Req> Into<Vec<E>> for Shards<E, Req> {
+impl<E: Endpoint> Into<Vec<E>> for Shards<E> {
     #[inline]
     fn into(self) -> Vec<E> {
         self.backends
     }
 }
 
-impl<E, Req> Shards<E, Req> {
-    pub fn from_dist(dist: &str, group: Vec<E>) -> Self
-    where
-        E: Endpoint,
-    {
+impl<E: Endpoint> Shards<E> {
+    pub fn from_dist(dist: &str, group: Vec<E>) -> Self {
         let addrs = group.iter().map(|e| e.addr()).collect::<Vec<_>>();
         let router = Distribute::from(dist, &addrs);
         Self {
             router,
             backends: group,
-            _mark: Default::default(),
         }
     }
 }
 
 use discovery::distance::Addr;
-impl<E: Endpoint, Req> Addr for Shards<E, Req> {
+impl<E: Endpoint> Addr for Shards<E> {
     #[inline]
     fn addr(&self) -> &str {
         self.backends.get(0).map(|b| b.addr()).unwrap_or("")
