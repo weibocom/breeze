@@ -160,12 +160,18 @@ impl<'a, R, P: Protocol, E: Endpoint> Endpoints<'a, R, P, E> {
 // 为Endpoints实现Formatter
 impl<'a, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, R, P, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut exists = Vec::new();
+        for (_addr, endpoints) in self.cache.iter() {
+            for e in endpoints {
+                exists.push(e.addr());
+            }
+        }
         write!(
             f,
             "service:{} resource:{} addrs:{:?}",
             self.service,
             self.resource.name(),
-            self.cache.keys()
+            exists
         )
     }
 }
@@ -173,8 +179,6 @@ impl<'a, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, R, P, E> {
 // 为Endpoints实现Drop
 impl<'a, R, P, E: Endpoint> Drop for Endpoints<'a, R, P, E> {
     fn drop(&mut self) {
-        if self.cache.len() > 0 {
-            log::info!("drop endpoints:{}", self);
-        }
+        log::info!("drop endpoints:{}", self);
     }
 }
