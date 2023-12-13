@@ -198,7 +198,9 @@ where
         addrs.iter().for_each(|ips| {
             assert!(ips.len() >= 2);
             let master = endpoints.take_or_build_one(&ips[0], self.cfg.timeout_master());
-            let slaves = endpoints.take_or_build(&ips[..], self.cfg.timeout_slave());
+            // 第0个是master，如果master提供读，则从第0个开始。
+            let oft = if self.cfg.basic.master_read { 0 } else { 1 };
+            let slaves = endpoints.take_or_build(&ips[oft..], self.cfg.timeout_slave());
             let shard = Shard::selector(
                 self.cfg.basic.selector.tuning_mode(),
                 master,
