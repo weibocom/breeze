@@ -119,11 +119,11 @@ where
         self.streams.len() != self.cfg.shards_url.len() || self.cfg.need_load()
     }
     #[inline]
-    fn load(&mut self) {
+    fn load(&mut self) -> bool {
         // 先改通知状态，再load，如果失败改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
         self.cfg
             .load_guard()
-            .check_load(|| self.load_inner().is_some());
+            .check_load(|| self.load_inner().is_some())
     }
 }
 

@@ -110,7 +110,7 @@ pub struct LoadGuard {
 }
 
 impl LoadGuard {
-    pub fn check_load(&self, mut f: impl FnMut() -> bool) {
+    pub fn check_load(&self, mut f: impl FnMut() -> bool) -> bool {
         // load之前，先把guard设置为false，这样避免在load的过程中，又有新的配置更新，导致丢失更新。
         if let Err(_e) = self.guard.compare_exchange(true, false, AcqRel, Relaxed) {
             log::warn!("{} clear_status failed", self._service);
@@ -120,6 +120,9 @@ impl LoadGuard {
             if let Err(_e) = self.guard.compare_exchange(false, true, AcqRel, Relaxed) {
                 log::warn!("{} renotified failed => {}", self._service, _e);
             }
+            false
+        } else {
+            true
         }
     }
 }
