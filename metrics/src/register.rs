@@ -135,6 +135,14 @@ pub(crate) fn get_metric(id: &Arc<Id>) -> Option<*const Item> {
 
 use once_cell::sync::OnceCell;
 static METRICS: OnceCell<CowReadHandle<Metrics>> = OnceCell::new();
+pub mod tests {
+    use super::*;
+    pub fn init_metrics_onlyfor_test() {
+        let (register_tx, _) = unbounded_channel();
+        let (_, rx) = ds::cow(Metrics::new(register_tx));
+        let _ = METRICS.set(rx);
+    }
+}
 
 use ds::{CowReadHandle, CowWriteHandle, ReadGuard};
 
