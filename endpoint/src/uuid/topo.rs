@@ -103,10 +103,10 @@ where
     }
 
     #[inline]
-    fn load(&mut self) {
+    fn load(&mut self) -> bool {
         self.cfg
             .load_guard()
-            .check_load(|| self.load_inner().is_some());
+            .check_load(|| self.load_inner().is_some())
     }
 }
 impl<E, Req, P> discovery::Inited for UuidService<E, Req, P>

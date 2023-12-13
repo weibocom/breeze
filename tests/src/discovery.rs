@@ -1,49 +1,73 @@
-use std::{sync::Arc, thread};
-
 use discovery::TopologyWrite;
-use protocol::Parser;
+use metrics::tests::init_metrics_onlyfor_test;
+
+#[derive(Clone)]
+struct RandomLoad {
+    need_load: usize, //需要load的次数
+    count: usize,     //已经load的次数
+}
+
+impl RandomLoad {
+    fn new(need_load: usize) -> Self {
+        Self {
+            need_load,
+            count: 0,
+        }
+    }
+}
+
+impl TopologyWrite for RandomLoad {
+    fn update(&mut self, _name: &str, cfg: &str) {
+        self.need_load = cfg.parse().unwrap();
+        self.count = 0;
+    }
+
+    fn need_load(&self) -> bool {
+        self.count < self.need_load
+    }
+
+    fn load(&mut self) -> bool {
+        self.count += 1;
+        !self.need_load()
+    }
+}
 
 #[test]
 fn refresh() {
-    use stream::{Backend, Builder, Request};
-    type Endpoint = Arc<Backend<Request>>;
-    type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
-    let service = "redisservice";
-    let p = Parser::try_from("redis").unwrap();
-    let top: Topology = endpoint::TopologyProtocol::try_from(p.clone(), "rs").unwrap();
-
-    let cfg = r#"
-backends:
-- 1.1.1.1:1111,1.1.1.1:1111
-basic:
-    access_mod: rw
-    distribution: modula
-    hash: crc32local
-    listen: 1111
-    resource_type: eredis
-    timeout_ms_master: 0
-    timeout_ms_slave: 0"#;
-    let cfgnew = r#"
-backends:
-- 1.1.1.1:2222,1.1.1.1:2222
-basic:
-    access_mod: rw
-    distribution: modula
-    hash: crc32local
-    listen: 2222
-    resource_type: eredis
-    timeout_ms_master: 0
-    timeout_ms_slave: 0"#;
+    let top = RandomLoad::new(0);
+    let service = "service";
+    init_metrics_onlyfor_test();
     let (mut tx, rx) = discovery::topology(top, service);
-    tx.update(service, cfg);
-    let t_rx = rx.clone();
-    //一下两个线程并不能保证立马执行，但是没遇到过
-    thread::spawn(move || {
-        assert_eq!(t_rx.get().get_backends(), vec!["1.1.1.1:1111,1.1.1.1:1111"]);
-    });
-    tx.update(service, cfgnew);
-    let t_rx = rx.clone();
-    thread::spawn(move || {
-        assert_eq!(t_rx.get().get_backends(), vec!["1.1.1.1:2222,1.1.1.1:2222"]);
-    });
+
+    assert_eq!(rx.get().need_load, 0);
+    assert!(!tx.need_load());
+
+    //第一次没load成功，所以还是还是上一版top.need_load=0
+    tx.update(service, "2");
+    assert_eq!(rx.get().need_load, 0);
+    //第二次load成功
+    assert!(tx.need_load());
+    assert!(tx.load());
+    assert!(!tx.need_load());
+    assert_eq!(rx.get().need_load, 2);
+
+    //不需要load的场景
+    tx.update(service, "1");
+    assert!(!tx.need_load());
+    assert_eq!(rx.get().need_load, 1);
+    //已经成功load后，load也会返回true
+    assert!(tx.load());
+    assert_eq!(rx.get().need_load, 1);
+
+    //并发更新，只有最后一个生效
+    tx.update(service, "2");
+    tx.update(service, "3");
+    assert!(tx.need_load());
+    assert_eq!(rx.get().need_load, 1);
+    assert!(!tx.load());
+    assert!(tx.need_load());
+    assert_eq!(rx.get().need_load, 1);
+    assert!(tx.load());
+    assert!(!tx.need_load());
+    assert_eq!(rx.get().need_load, 3);
 }
