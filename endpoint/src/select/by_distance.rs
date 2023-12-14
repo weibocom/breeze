@@ -2,19 +2,32 @@ use discovery::distance::{Addr, ByDistance};
 use protocol::BackendQuota;
 use rand::Rng;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
-use std::sync::Arc;
 
 // 选择replica策略，len_local指示的是优先访问的replicas。
 // 1. cacheservice因存在跨机房同步、优先访问本地机房，当前机房的replicas为local
 // 2. 其他资源，replicas长度与len_local相同
-#[derive(Clone)]
 pub struct Distance<T> {
     len_local: u16,  // 实际使用的local实例数量
     len_region: u16, // 通过排序计算出的可用区内的实例数量，len_region <= len_local
     backend_quota: bool,
     region_enabled: bool,
-    idx: Arc<AtomicUsize>,
+    idx: AtomicUsize,
     replicas: Vec<(T, BackendQuota)>,
+}
+
+impl<T: Clone> Clone for Distance<T> {
+    fn clone(&self) -> Self {
+        Self {
+            len_local: self.len_local.clone(),
+            len_region: self.len_region.clone(),
+            backend_quota: self.backend_quota.clone(),
+            region_enabled: self.region_enabled.clone(),
+            //不同Distance之间没必要共享idx，也许应该设置为0，但当前对外暴露的更新接口更新replicas时都会更新idx，没有问题，否则可能产生越界
+            //警告：更新replicas需要同时更新idx
+            idx: self.idx.load(Relaxed).into(),
+            replicas: self.replicas.clone(),
+        }
+    }
 }
 impl<T> Distance<T> {
     pub fn new() -> Self {
