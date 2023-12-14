@@ -36,6 +36,7 @@ impl Metrics {
     // 只缓存Count类型的数据
     #[inline]
     pub(crate) fn cache(&self, id: &Arc<Id>, cache: i64) {
+        use crate::Snapshot;
         if id.t.need_flush() {
             if let Err(_e) = self.register.send((id.clone(), cache)) {
                 log::info!("cache error. id:{:?} cache:{} {:?}", id, cache, _e);
@@ -123,10 +124,6 @@ pub(crate) fn get_metrics() -> ReadGuard<Metrics> {
 #[inline]
 pub(crate) fn register_metric(id: Id) -> Metric {
     get_metrics().register(id)
-}
-#[inline]
-pub(crate) fn register_cache(id: &Arc<Id>, cache: i64) {
-    get_metrics().cache(id, cache)
 }
 #[inline]
 pub(crate) fn get_metric(id: &Arc<Id>) -> Option<*const Item> {
@@ -233,8 +230,9 @@ impl Future for MetricRegister {
                 for (id, v) in cache.iter_mut() {
                     if let Some(item) = metrics.check_and_get_item(id) {
                         // 已经初始化完成，flush cache
-                        unsafe { (&*item).data().flush(*v) };
+                        //unsafe { (&*item).data().flush(*v) };
                         *v = 0;
+                        todo!("flush not implemented");
                     }
                 }
                 // 删除所有cache为0的值

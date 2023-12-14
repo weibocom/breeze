@@ -4,7 +4,7 @@ use std::sync::atomic::{
 };
 use std::sync::Arc;
 
-use crate::{Id, ItemData};
+use crate::{Id, ItemData, ItemData0};
 
 pub(crate) trait WriteTo {
     fn write_to<W: ItemWriter>(&self, w: &mut W);
@@ -117,6 +117,10 @@ impl Item {
     pub(crate) fn data(&self) -> &ItemData {
         assert!(self.inited());
         &self.data
+    }
+    #[inline]
+    pub(crate) fn data0(&self) -> &ItemData0 {
+        &self.data.inner
     }
 
     #[inline]

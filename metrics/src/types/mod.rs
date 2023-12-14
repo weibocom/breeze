@@ -5,6 +5,8 @@ mod ratio;
 mod rtt;
 mod status;
 
+use crate::MetricType;
+
 pub(crate) use host::*;
 pub use host::{decr_task, incr_task, resource_num_metric, set_sockfile_failed};
 pub(crate) use number::*;
@@ -28,6 +30,14 @@ pub mod base {
         fn decr_by(&self, v: i64);
         fn take(&self) -> i64;
         fn get(&self) -> i64;
+        fn set(&self, v: i64);
+        #[inline(always)]
+        fn max(&self, v: i64) {
+            let cur = self.get();
+            if cur < v {
+                self.set(v);
+            }
+        }
     }
     impl Adder for AtomicI64 {
         #[inline(always)]
@@ -41,6 +51,10 @@ pub mod base {
         #[inline(always)]
         fn get(&self) -> i64 {
             self.load(Relaxed)
+        }
+        #[inline(always)]
+        fn set(&self, v: i64) {
+            self.store(v, Relaxed);
         }
         #[inline(always)]
         fn take(&self) -> i64 {
@@ -57,4 +71,50 @@ pub mod base {
     pub static POLL_PENDING_W: AtomicI64 = AtomicI64::new(0);
     pub static REENTER_10MS: AtomicI64 = AtomicI64::new(0);
     pub static LEAKED_CONN: AtomicI64 = AtomicI64::new(0);
+}
+
+use crate::ItemWriter as Writer;
+use enum_dispatch::enum_dispatch;
+use std::sync::atomic::AtomicI64;
+#[enum_dispatch]
+pub(crate) trait Snapshot {
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, secs: f64);
+    fn need_flush(&self) -> bool {
+        todo!();
+    }
+}
+// 用4个i64来存储数据。
+#[derive(Default)]
+pub(crate) struct ItemData0 {
+    d0: AtomicI64,
+    d1: AtomicI64,
+    d2: AtomicI64,
+    d3: AtomicI64,
+}
+
+pub(crate) trait IncrTo {
+    fn incr_to(&self, data: &ItemData0);
+}
+// 为ItemData0实现Debug
+impl std::fmt::Debug for ItemData0 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ItemData0")
+            .field("d0", &self.d0)
+            .field("d1", &self.d1)
+            .field("d2", &self.d2)
+            .field("d3", &self.d3)
+            .finish()
+    }
+}
+// 为ItemData0实现Default
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Empty;
+impl IncrTo for Empty {
+    #[inline]
+    fn incr_to(&self, _data: &ItemData0) {}
+}
+impl Snapshot for Empty {
+    #[inline]
+    fn snapshot<W: Writer>(&self, _: &str, _: &str, _: &ItemData0, _: &mut W, _: f64) {}
 }
