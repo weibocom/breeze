@@ -16,7 +16,7 @@ use rt::spawn;
 use protocol::{Parser, Result};
 use stream::{Backend, Request};
 type Endpoint = Backend<Request>;
-type Topology = endpoint::TopologyProtocol<Endpoint, Request, Parser>;
+type Topology = endpoint::TopologyProtocol<Endpoint, Parser>;
 
 // 默认支持
 fn main() -> Result<()> {
