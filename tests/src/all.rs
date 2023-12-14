@@ -1,6 +1,5 @@
 //mod cow;
 mod distribute;
-
 // mod hash_test;
 mod shard_test;
 //mod memcached_text;
