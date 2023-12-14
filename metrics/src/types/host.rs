@@ -130,5 +130,5 @@ pub fn resource_num_metric(source: &str, namespace: &str, bip: &str, n: u16) {
         metric.zero_num()
     };
 
-    metric += n;
+    metric += n as i64;
 }

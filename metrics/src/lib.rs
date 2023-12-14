@@ -58,26 +58,22 @@ impl Metric {
     }
     // num类型，若未初始化则尝试初始化；若已经初始化，则值清0
     pub fn zero_num(&mut self) {
-        if !self.inited() {
-            self.try_inited();
-        } else {
-            self.item.data().zero_num();
-        }
+        todo!();
+        //if !self.inited() {
+        //    self.try_inited();
+        //} else {
+        //    self.item.data().zero_num();
+        //}
     }
 }
-impl<T: MetricData + Debug> AddAssign<T> for Metric {
+impl<T: IncrTo + Debug> AddAssign<T> for Metric {
     #[inline]
     fn add_assign(&mut self, m: T) {
-        if self.item.inited() {
-            m.incr_to(self.item.data());
-        } else {
-            m.incr_to_cache(&self.id);
-            self.try_inited();
-        }
+        m.incr_to(&self.item.data0());
     }
 }
 use std::ops::SubAssign;
-impl<T: MetricData + std::ops::Neg<Output = T> + Debug> SubAssign<T> for Metric {
+impl<T: IncrTo + std::ops::Neg<Output = T> + Debug> SubAssign<T> for Metric {
     #[inline]
     fn sub_assign(&mut self, m: T) {
         *self += -m;
