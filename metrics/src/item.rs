@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering::*},
+    Arc,
+};
 
 use crate::{Id, ItemData, ItemData0};
 
@@ -70,6 +73,15 @@ impl ItemRc {
             }
         }
     }
+    #[inline(always)]
+    pub(crate) fn on_metric_drop(&self) {
+        let item = self.as_ref();
+        // 必须为local的，当前global的item不会释放
+        assert!(item.is_local());
+        item.local_dropped
+            .compare_exchange(false, true, AcqRel, Relaxed)
+            .expect("race");
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,11 +90,14 @@ pub(crate) enum Position {
     Local(Arc<Id>), // 说明Item在Local中分配。
 }
 
+// 所有的Item都由Metrics创建并且释放
 #[derive(Debug)]
 #[repr(align(64))]
 pub struct Item {
     // 使用Position，避免global与local更新时的race
     pub(crate) pos: Position,
+    // 本地的Metric，并且对应的Metric已经drop掉。该Item可以被安全的回收。
+    local_dropped: AtomicBool,
     data: ItemData,
 }
 impl Item {
@@ -90,6 +105,7 @@ impl Item {
         Self {
             pos: Position::Global(idx),
             data: ItemData::default(),
+            local_dropped: false.into(),
         }
     }
     #[inline(always)]
@@ -103,6 +119,7 @@ impl Item {
         Self {
             pos: Position::Local(id),
             data: ItemData::default(),
+            local_dropped: false.into(),
         }
     }
     #[inline]
@@ -114,5 +131,14 @@ impl Item {
     pub(crate) fn snapshot<W: crate::ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
         use crate::Snapshot;
         id.t.snapshot(&id.path, &id.key, &self.data.inner, w, secs);
+    }
+}
+
+impl Drop for Item {
+    fn drop(&mut self) {
+        if self.is_local() {
+            // 表明对应的Metric是本地的，Item释放之前，需要将对应的Metric释放掉。
+            assert!(self.local_dropped.load(Acquire));
+        }
     }
 }
