@@ -85,31 +85,33 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    pub(crate) fn parse_cmd_all(&mut self) -> Result<Flag> {
+    pub(crate) fn parse_cmd(&mut self) -> Result<Flag> {
         // 第一个字段是cmd type，根据cmd type构建flag，并在后续解析中设置flag
-        let cfg = self.parse_cmd()?;
+        let cfg = self.parse_cmd_properties()?;
         let mut flag = cfg.flag();
 
-        // meta cmd 直接skip后面的tokens
+        // meta cmd 当前直接返回固定响应，直接skip后面的tokens即可
         if cfg.op.is_meta() {
             self.skip_bulks(self.bulks)?;
             return Ok(flag);
         }
 
-        // 非meta的cmd，有key，可能有fields和where condition
+        // 非meta的cmd，有key，可能有fields和where condition，全部解析出位置，并记录到flag
         // 如果有key，则下一个字段是key
         if cfg.has_key {
             self.parse_key(&mut flag)?;
         }
 
-        // 如果有field，则接下来解析fields，注意parse field时，会读出where token来进行比对field结束位置
+        // 如果有field，则接下来解析fields，不管是否有field，统一先把where这个token消费掉，方便后续统一从condition位置解析
         if cfg.can_hold_field {
             self.parse_fields(&mut flag)?;
         } else if self.bulks > 0 && cfg.can_hold_where_condition {
             // 如果还有bulks，且该cmd可以hold where condition，此处肯定是where token，直接读出skip掉
             let token = self.next_bulk_string()?;
-            assert!(token.equal_ignore_case(BYTES_WHERE), "{:?}", self);
-            assert!(self.bulks > 0, "{:?}", self);
+            if !token.equal_ignore_case(BYTES_WHERE) || self.bulks < 1 {
+                // 没有where，或者有where，但剩余bulks为0则返回异常
+                return Err(KvectorError::ReqNotSupported.into());
+            }
         }
         log::debug!("++++ after field parsedoft:{}", self.oft);
 
@@ -123,7 +125,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    pub(crate) fn parse_cmd(&mut self) -> Result<&'static CommandProperties> {
+    pub(crate) fn parse_cmd_properties(&mut self) -> Result<&'static CommandProperties> {
         // 当前上下文是获取命令。格式为:  $num\r\ncmd\r\n
         if let Some(first_r) = self.data.find(self.oft, b'\r') {
             debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
@@ -165,7 +167,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     fn next_bulk_string(&mut self) -> Result<RingSlice> {
         if self.bulks == 0 {
             log::warn!("no more bulk string req:{}", self);
-            return Err(Error::RequestProtocolInvalid);
+            return Err(KvectorError::ReqNotSupported.into());
         }
         let next = self.data.bulk_string(&mut self.oft)?;
         self.bulks -= 1;
@@ -177,7 +179,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     fn skip_bulks(&mut self, count: u16) -> Result<()> {
         if count > self.bulks {
             log::warn!("not enough bulks to skip req:{}", self);
-            return Err(Error::RequestProtocolInvalid);
+            return Err(KvectorError::ReqInvalidBulkNum.into());
         }
         self.bulks -= count;
         self.data.skip_bulks(&mut self.oft, count as usize)
@@ -189,7 +191,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         let key_pos = self.cmd_current_pos();
         if key_pos > (MAX_KEY_LEN as usize) {
             log::warn!("+++ kvector cmd too long: {}", self);
-            return Err(Error::RequestProtocolInvalid);
+            return Err(KvectorError::ReqNotSupported.into());
         }
         flag.set_key_pos(key_pos as u8);
         let key = self.next_bulk_string()?;
@@ -198,7 +200,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
 
         log::warn!("+++ kvector key too long: {}", self);
-        return Err(Error::RequestProtocolInvalid);
+        return Err(KvectorError::ReqNotSupported.into());
     }
 
     fn parse_fields(&mut self, flag: &mut Flag) -> Result<()> {
@@ -217,7 +219,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 if self.bulks == 0 {
                     if field_idx & 2 == 1 {
                         log::warn!("+++ invalid field count:{}", self);
-                        return Err(Error::RequestProtocolInvalid);
+                        return Err(KvectorError::ReqNotSupported.into());
                     } else {
                         return Ok(());
                     }
@@ -233,7 +235,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                     if next.equal_ignore_case(BYTES_WHERE) {
                         if self.bulks == 0 {
                             log::warn!("+++ empty where condition req:{}", self);
-                            return Err(Error::RequestProtocolInvalid);
+                            return Err(KvectorError::ReqInvalidBulkNum.into());
                         }
                         return Ok(());
                     }
@@ -254,19 +256,15 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         // 剩下肯定全部是condition，必须是3的倍数
         if self.bulks % 3 != 0 {
             log::warn!("+++ kvector req condition count malformed: {}", self);
-            return Err(Error::RequestProtocolInvalid);
+            return Err(KvectorError::ReqInvalidBulkNum.into());
         }
         // 设置condition pos
         let condition_pos = self.cmd_current_pos();
         if condition_pos >= MAX_REQUEST_LEN as usize {
             log::warn!("+++ too big request:{}", self);
-            return Err(Error::RequestProtocolInvalid);
+            return Err(KvectorError::ReqNotSupported.into());
         }
-        log::debug!(
-            "+++ condition_pos:{}, char:{}",
-            condition_pos,
-            self.data.at(condition_pos) as char
-        );
+
         flag.set_condition_pos(condition_pos as u32);
         // skip 掉condition 的 bulks
         self.skip_bulks(self.bulks)?;

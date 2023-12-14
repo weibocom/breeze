@@ -11,8 +11,12 @@ use std::{marker::PhantomData, sync::Arc};
 use crate::kv::common::packets::Column;
 use crate::kv::common::query_result::{Or, SetIteratorState};
 use crate::kv::common::row::Row;
+use bytes::BufMut;
 use ds::Utf8;
 use SetIteratorState::*;
+
+const CRLF: &[u8] = b"\r\n";
+
 /// Response to a query or statement execution.
 ///
 /// It is an iterator:
@@ -164,66 +168,6 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
     pub fn build_final_rsp_cmd(&mut self, ok: bool, rsp_data: Vec<u8>) -> Command {
         self.rsp_packet.build_final_rsp_cmd(ok, rsp_data)
     }
-
-    // /// 解析meta后面的rows，有可能是完整响应，也有可能返回Err(不完整协议)
-    // #[inline(always)]
-    // pub fn parse_rows(&mut self) -> Result<Command> {
-    //     // rows 收集器
-    //     let collector = |mut acc: Vec<Vec<u8>>, row| {
-    //         acc.push(from_row(row));
-    //         acc
-    //     };
-
-    //     // 构建最终返回给client的响应内容，格式详见issues/721
-    //     // *2\r\n 固定2
-    //     // *2\r\n 列数量
-    //     // +like_id\r\n
-    //     // +object_id\r\n
-    //     // *4\r\n  数据按行展开
-    //     // +111\r\n
-    //     // +112\r\n
-    //     // +121\r\n
-    //     // +122\r\n
-    //     let mut v: Vec<u8> = Vec::with_capacity(1024);
-
-    //     // 解析row并构建cmd
-    //     // self.state状态在下面scan_rows函数内可能会被从InSet修改为其他值，暂存列信息
-    //     let columns = match &self.state {
-    //         InSet(c) => Some(c.clone()),
-    //         _ => None,
-    //     };
-    //     let result_set = self.scan_rows(Vec::with_capacity(4), collector)?;
-    //     let status = result_set.len() > 0;
-    //     if status {
-    //         // columns有值才会走到这个分支
-    //         let cols = columns.unwrap();
-    //         // 填充header，field部分
-    //         v.extend_from_slice("*2\r\n*".as_bytes());
-    //         v.extend_from_slice(&(cols.len().to_le_bytes()));
-    //         v.extend_from_slice("\r\n".as_bytes());
-    //         for (_, col) in cols.iter().enumerate() {
-    //             v.push(b'+');
-    //             v.extend_from_slice(&col.name_ref());
-    //             v.extend_from_slice("\r\n".as_bytes());
-    //         }
-
-    //         // 填充value部分
-    //         v.push(b'*');
-    //         v.extend_from_slice(&(result_set.len().to_le_bytes()));
-    //         v.extend_from_slice("\r\n".as_bytes());
-    //         let _ = result_set.iter().map(|r| {
-    //             v.push(b'+');
-    //             v.extend(r);
-    //             v.extend_from_slice("\r\n".as_bytes());
-    //         });
-    //         return Ok(self.build_final_rsp_cmd(status, v));
-    //     }
-    //     // else: not found
-    //     // use crate::redis::command::PADDING_RSP_TABLE;PADDING_RSP_TABLE[6]
-    //     let empty = b"$-1\r\n".to_vec(); // nil
-    //     let cmd = self.build_final_rsp_cmd(true, empty);
-    //     Ok(cmd)
-    // }
 
     /// 解析meta后面的rows
     #[inline(always)]
@@ -478,7 +422,7 @@ pub struct SetColumns<'a> {
 //             .unwrap_or(&[][..])
 //     }
 // }
-/// 先打通，后续再考虑优化fishermen
+
 #[inline]
 pub fn format_to_redis(rows: &Vec<Row>) -> Vec<u8> {
     let mut data = Vec::with_capacity(32 * rows.len());
@@ -488,53 +432,56 @@ pub fn format_to_redis(rows: &Vec<Row>) -> Vec<u8> {
         return data;
     }
 
-    // TODO 特殊结果返回
-    // 对于vrange :
-    //           +----------+
-    //           | count(*) |
-    //           +----------+
-    //           |        2 |
-    //           +----------+
-    //           1 row in set (0.04 sec)
-    //
-    // vdelete： Query OK, 0 rows affected (0.05 sec)；
-    // vupdate： Query OK, 0 rows affected (0.11 sec)
-    //           Rows matched: 1  Changed: 0  Warnings: 0
-    //vadd：     Query OK, 1 row affected (0.05 sec)
-
-    // 构建 resp协议的header总array计数 以及 column的计数
     let columns = rows.get(0).expect("columns unexists").columns_ref();
-    if rows.len() == 1 && columns.len() == 1 {
-        // vcard特殊响应，转为为redis integer
-        match columns[0].name_ref() {
-            b"count(*)" => {
-                rows.get(0).expect("rows empty").write_as_redis(&mut data);
-                log::debug!("+++ vcard rs:{}", data.utf8());
-                return data;
-            }
-            // 其他三个响应待定
-            _ => {}
-        }
+
+    // 对于vcard（即select count(*)），可能有1个row，也可能有多个rows(带group by)，转为integer/integer-array;
+    // sql 在mesh构建为小写，所以此处可以确认count(*)为小写，两者必须保持一致 fishermen
+    const VCARD_NAME: &[u8] = b"count(*)";
+    if columns.len() == 1 && columns[0].name_ref().eq(VCARD_NAME) {
+        format_for_vcard(rows, &mut data);
+        return data;
     }
 
-    let prefix = format!("*2\r\n*{}\r\n", columns.len());
-    data.extend_from_slice(prefix.as_bytes());
+    // 至此，只有vrange了(select * ..)，后续可能还有其他协议
+    format_for_commons(rows, &mut data, columns);
+    data
+}
 
-    // 构建columns
+fn format_for_vcard(rows: &Vec<Row>, data: &mut Vec<u8>) {
+    // vcard特殊响应，转为为redis integer/integer array
+    if rows.len() > 1 {
+        data.put("*".as_bytes());
+        data.put(rows.len().to_string().as_bytes());
+        data.put(CRLF);
+    }
+    rows.get(0).expect("rows empty").write_as_redis(data);
+    log::debug!("+++ vcard rs:{}", data.utf8());
+}
+
+/// 为vrange等带column header + rows的指令构建响应
+fn format_for_commons(rows: &Vec<Row>, data: &mut Vec<u8>, columns: &[Column]) {
+    // 构建 resp协议的header总array计数 以及 column的计数
+    data.put(&b"*2\r\n*"[..]);
+    data.put(columns.len().to_string().as_bytes());
+    data.put(CRLF);
+
+    // 构建columns 内容
     for idx in 0..columns.len() {
         let col = columns.get(idx).expect("column");
         data.push(b'+');
-        data.extend_from_slice(col.name_str().as_bytes());
-        data.extend_from_slice("\r\n".as_bytes());
+        data.put(col.name_str().as_bytes());
+        data.put(CRLF);
     }
 
-    // TODO 构建column values，存在copy，先打通再优化 fishermen
-    let val_header = format!("*{}\r\n", columns.len() * rows.len());
-    data.extend_from_slice(val_header.as_bytes());
+    // 构建column values
+    // 先构建value的header
+    let val_count = columns.len() * rows.len();
+    data.put_u8(b'*');
+    data.put(val_count.to_string().as_bytes());
+    data.put(CRLF);
+    // 再写入每个row的val
     for ri in 0..rows.len() {
         let row = rows.get(ri).expect("row unexists");
-        row.write_as_redis(&mut data);
+        row.write_as_redis(data);
     }
-
-    data
 }

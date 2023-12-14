@@ -192,13 +192,11 @@ impl Row {
 
         let columns = self.columns_ref();
         for (i, val) in self.values.iter().enumerate() {
-            assert!(i < columns.len(), "{}:{:?}", data.utf8(), self);
             assert!(val.is_some(), "{}:{:?}", data.utf8(), self);
 
             let column_type = columns[i].column_type();
             val.as_ref()
-                .expect(format!("row:{:?}", self).as_str())
-                .write_text_as_redis(data, column_type);
+                .and_then(|v| Some(v.write_text_as_redis(data, column_type)));
         }
     }
 }
