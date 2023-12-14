@@ -15,7 +15,6 @@ pub(crate) use ratio::*;
 pub use rtt::MAX;
 pub(crate) use rtt::*;
 pub(crate) use status::*;
-pub use status::Status;
 
 pub mod base {
     pub trait Adder {
@@ -80,9 +79,6 @@ use std::sync::atomic::AtomicI64;
 #[enum_dispatch]
 pub(crate) trait Snapshot {
     fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, secs: f64);
-    fn need_flush(&self) -> bool {
-        todo!();
-    }
     #[inline]
     fn merge(&self, _global: &ItemData0, _cache: &ItemData0) {}
 }

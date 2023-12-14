@@ -49,7 +49,7 @@ impl Path {
         self.with_type(key, MetricType::Rtt(Rtt))
     }
     pub fn status(&self, key: &'static str) -> Metric {
-        self.with_type(key, MetricType::StatusData(StatusData))
+        self.with_type(key, MetricType::Status(Status))
     }
     pub fn ratio(&self, key: &'static str) -> Metric {
         self.with_type(key, MetricType::Ratio(Ratio))
@@ -59,7 +59,7 @@ impl Path {
     }
 }
 
-use crate::{Count, Empty, Qps, Ratio, Rtt, StatusData};
+use crate::{types::Status, Count, Empty, Qps, Ratio, Rtt};
 use enum_dispatch::enum_dispatch;
 #[enum_dispatch(Snapshot)]
 #[repr(u8)]
@@ -68,7 +68,7 @@ pub(crate) enum MetricType {
     Empty,
     Qps,
     Ratio,
-    StatusData,
+    Status,
     Rtt,
     Count,
 }
@@ -79,7 +79,7 @@ impl MetricType {
             Self::Empty(_) => 0,
             Self::Qps(_) => 1,
             Self::Ratio(_) => 2,
-            Self::StatusData(_) => 3,
+            Self::Status(_) => 3,
             Self::Rtt(_) => 4,
             Self::Count(_) => 5,
         }
