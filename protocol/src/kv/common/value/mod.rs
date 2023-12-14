@@ -26,6 +26,8 @@ use crate::kv::common::{
 pub mod convert;
 pub mod json;
 
+const CRLF: &[u8] = b"\r\n";
+
 /// Side of MySql value serialization.
 pub trait SerializationSide {
     /// Null-bitmap offset of this side.
@@ -307,22 +309,26 @@ impl Value {
         }
     }
 
-    /// 转换成redis序列化协议描述，注意check正确性
-    /// TODO 先打通，再考虑优化 fishermen
+    /// 将text格式val写为redis 格式，目前只支持 integer or bulk string格式
     pub fn write_text_as_redis(&self, data: &mut Vec<u8>, real_type: ColumnType) {
-        // 对于text val，只有Bytes一种类型
         match *self {
             Value::Bytes(ref bytes) => {
-                // TODO 写前缀，目前先只区分是否integer，是否需要继续区分，后续再考虑 fishermen
+                // TODO 目前先只区分是否integer，是否需要继续区分，后续再考虑 fishermen
                 match real_type.is_integer_type() {
                     true => data.push(b':'),
-                    false => data.extend_from_slice(format!("${}\r\n", bytes.len()).as_bytes()),
+                    false => {
+                        // $n\r\n
+                        data.put_u8(b'$');
+                        data.put(bytes.len().to_string().as_bytes());
+                        data.put(CRLF);
+                    }
                 }
                 // 写value及postfix
                 data.extend_from_slice(bytes);
-                data.extend_from_slice("\r\n".as_bytes());
+                data.put(CRLF);
             }
             _ => {
+                // 对于text val，理论上应该只有Bytes一种类型
                 panic!("malformed type in text protocol: {:?}", self);
             }
         };

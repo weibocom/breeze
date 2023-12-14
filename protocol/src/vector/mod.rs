@@ -149,7 +149,7 @@ impl Vector {
         log::debug!("+++ rec kvector req:{:?}", packet.inner_data());
         while packet.available() {
             packet.parse_bulk_num()?;
-            let flag = packet.parse_cmd_all()?;
+            let flag = packet.parse_cmd()?;
             // 构建cmd，准备后续处理
             let cmd = packet.take();
             let hash = 0;
@@ -203,8 +203,8 @@ impl Vector {
 
         // 如果是只有meta的ok packet，直接返回影响的列数，如insert/delete/update
         if let Or::B(ok) = meta {
-            let n = ok.affected_rows();
-            let cmd = rsp_packet.build_final_affected_rows_rsp_cmd(n);
+            let affected = ok.affected_rows();
+            let cmd = rsp_packet.build_final_affected_rows_rsp_cmd(affected);
             return Ok(cmd);
         }
 
