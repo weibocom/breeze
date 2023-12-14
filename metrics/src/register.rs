@@ -69,13 +69,6 @@ impl Metrics {
         let slot = idx / CHUNK_SIZE;
         let offset = idx % CHUNK_SIZE;
         assert!(slot < self.chunks.len());
-        log::info!(
-            "get item:{} => {} {}, {} ",
-            idx,
-            slot,
-            offset,
-            self.chunks.len()
-        );
         unsafe { &*self.chunks.get_unchecked(slot).offset(offset as isize) }
     }
     #[inline]
@@ -137,6 +130,9 @@ pub(crate) fn get_metrics() -> ReadGuard<Metrics> {
 #[inline]
 pub(crate) fn register_metric(id: Id) -> Metric {
     get_metrics().register(id)
+}
+pub(crate) fn with_metric_id<O>(idx: usize, mut f: impl FnMut(&Id) -> O) -> O {
+    f(get_metrics().get_item_id(idx).0)
 }
 #[inline]
 pub(crate) fn get_item(id: &Id) -> Option<*const Item> {
