@@ -15,6 +15,7 @@ pub(crate) use ratio::*;
 pub use rtt::MAX;
 pub(crate) use rtt::*;
 pub(crate) use status::*;
+pub use status::Status;
 
 pub mod base {
     pub trait Adder {
@@ -82,6 +83,8 @@ pub(crate) trait Snapshot {
     fn need_flush(&self) -> bool {
         todo!();
     }
+    #[inline]
+    fn merge(&self, _global: &ItemData0, _cache: &ItemData0) {}
 }
 // 用4个i64来存储数据。
 #[derive(Default)]

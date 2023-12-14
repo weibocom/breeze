@@ -22,28 +22,20 @@ pub use types::*;
 use crate::{Id, ItemRc};
 use std::fmt::Debug;
 use std::ops::AddAssign;
-use std::sync::Arc;
 
 // tests only
 pub use item::Item;
 
 pub struct Metric {
-    id: Arc<Id>,
     item: ItemRc,
 }
 impl Metric {
     #[inline]
-    pub(crate) fn from(id: Arc<Id>) -> Self {
-        let mut me = Self {
-            id,
-            item: ItemRc::uninit(),
+    pub(crate) fn from(item: &Item) -> Self {
+        let item = ItemRc {
+            inner: item as *const _,
         };
-        me.try_inited();
-        me
-    }
-    #[inline]
-    fn try_inited(&mut self) {
-        self.item.try_init(&self.id);
+        Self { item }
     }
     // 所有的基于metrics的操作都是原子的
     #[inline(always)]
@@ -53,23 +45,16 @@ impl Metric {
             &mut *(self as *const _ as *mut _)
         }
     }
-    pub fn inited(&mut self) -> bool {
-        self.item.inited()
-    }
-    // num类型，若未初始化则尝试初始化；若已经初始化，则值清0
-    pub fn zero_num(&mut self) {
-        todo!();
-        //if !self.inited() {
-        //    self.try_inited();
-        //} else {
-        //    self.item.data().zero_num();
-        //}
+    pub fn id(&self) -> &str {
+        "not impl"
     }
 }
 impl<T: IncrTo + Debug> AddAssign<T> for Metric {
     #[inline]
     fn add_assign(&mut self, m: T) {
-        m.incr_to(&self.item.data0());
+        log::info!("add_assign:{:?}", m);
+        m.incr_to(&self.item.get().data0());
+        log::info!("add_assign complete :{:?}", m);
     }
 }
 use std::ops::SubAssign;
@@ -83,13 +68,13 @@ use std::fmt::{self, Display, Formatter};
 impl Display for Metric {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "name:{:?}", self.id.path)
+        write!(f, "name:{:?}", self.id())
     }
 }
 impl Debug for Metric {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "name:{:?}", self.id)
+        write!(f, "{}", self)
     }
 }
 unsafe impl Sync for Metric {}

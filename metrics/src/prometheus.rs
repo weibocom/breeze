@@ -48,11 +48,9 @@ impl AsyncRead for Prometheus {
                 let mut host = HOST.try_lock().expect("host lock");
                 host.snapshot(&mut w, self.secs);
             }
-            let item = metrics.get_item(idx);
-            if item.inited() {
-                item.snapshot(&mut w, self.secs);
-                self.left = w.left();
-            }
+            let (id, item) = metrics.get_item_id(idx);
+            item.snapshot(id, &mut w, self.secs);
+            self.left = w.left();
         }
         Poll::Ready(Ok(()))
     }

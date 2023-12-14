@@ -6,7 +6,7 @@ pub struct Ratio;
 
 impl Snapshot for Ratio {
     #[inline]
-    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, secs: f64) {
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, _secs: f64) {
         let hit = data.d0.take();
         let total = data.d1.take();
         if total > 0 {

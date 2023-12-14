@@ -1,7 +1,3 @@
-use std::sync::atomic::{
-    AtomicBool, AtomicU32,
-    Ordering::{self, *},
-};
 use std::sync::Arc;
 
 use crate::{Id, ItemData, ItemData0};
@@ -57,66 +53,53 @@ pub struct ItemRc {
     pub(crate) inner: *const Item,
 }
 impl ItemRc {
-    #[inline]
-    pub fn uninit() -> ItemRc {
-        Self {
-            inner: 0 as *const _,
-        }
-    }
-    #[inline]
-    pub fn inited(&self) -> bool {
-        !self.inner.is_null()
-    }
-    #[inline]
-    pub fn try_init(&mut self, id: &Arc<Id>) {
-        if let Some(item) = crate::get_metric(id) {
-            assert!(!item.is_null());
-            self.inner = item;
-            assert!(self.inited());
-            self.incr_rc();
-        }
-    }
-}
-use std::ops::Deref;
-impl Deref for ItemRc {
-    type Target = Item;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        assert!(self.inited());
-        unsafe { &*self.inner }
-    }
-}
-impl Drop for ItemRc {
-    #[inline]
-    fn drop(&mut self) {
-        if self.inited() {
-            self.decr_rc();
+    #[inline(always)]
+    pub(crate) fn get(&mut self) -> &Item {
+        debug_assert!(!self.inner.is_null());
+        let inner = unsafe { &*self.inner };
+        match &inner.pos {
+            Position::Global(_) => inner,
+            Position::Local(id) => {
+                crate::get_item(&*id).map(|item| self.inner = item);
+                unsafe { &*self.inner }
+            }
         }
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Position {
+    Global(usize),  // 说明Item在Chunk中分配，全局共享
+    Local(Arc<Id>), // 说明Item在Local中分配。
+}
+
+#[derive(Debug)]
+#[repr(align(64))]
 pub struct Item {
-    lock: AtomicBool,
-    pub(crate) rc: AtomicU32,
+    // 使用Position，避免global与local更新时的race
+    pos: Position,
     data: ItemData,
 }
 impl Item {
-    #[inline]
-    pub(crate) fn init(&mut self, id: Arc<Id>) {
-        assert_eq!(self.rc(), 0);
-        assert!(!id.t.is_empty());
-        self.data.init_id(id);
-        self.incr_rc();
+    pub(crate) fn global(idx: usize) -> Self {
+        log::info!("global item build: {}", idx);
+        Self {
+            pos: Position::Global(idx),
+            data: ItemData::default(),
+        }
     }
-    #[inline]
-    pub(crate) fn inited(&self) -> bool {
-        self.rc() > 0
+    #[inline(always)]
+    pub(crate) fn is_local(&self) -> bool {
+        match self.pos {
+            Position::Global(_) => false,
+            Position::Local(_) => true,
+        }
     }
-    #[inline]
-    pub(crate) fn data(&self) -> &ItemData {
-        assert!(self.inited());
-        &self.data
+    pub(crate) fn local(id: Arc<Id>) -> Self {
+        Self {
+            pos: Position::Local(id),
+            data: ItemData::default(),
+        }
     }
     #[inline]
     pub(crate) fn data0(&self) -> &ItemData0 {
@@ -124,56 +107,8 @@ impl Item {
     }
 
     #[inline]
-    pub(crate) fn snapshot<W: crate::ItemWriter>(&self, w: &mut W, secs: f64) {
-        self.data().snapshot(w, secs);
-    }
-    #[inline]
-    pub(crate) fn rc(&self) -> usize {
-        self.rc.load(Ordering::Acquire) as usize
-    }
-    #[inline]
-    fn incr_rc(&self) -> usize {
-        self.rc.fetch_add(1, Ordering::AcqRel) as usize
-    }
-    #[inline]
-    fn decr_rc(&self) -> usize {
-        self.rc.fetch_sub(1, Ordering::AcqRel) as usize
-    }
-    // 没有任何引用，才能够获取其mut
-    pub(crate) fn try_lock<'a>(&self) -> Option<ItemWriteGuard<'a>> {
-        self.lock
-            .compare_exchange(false, true, AcqRel, Relaxed)
-            .map(|_| ItemWriteGuard {
-                #[allow(invalid_reference_casting)]
-                item: unsafe { &mut *(self as *const _ as *mut _) },
-            })
-            .ok()
-    }
-    #[inline]
-    fn unlock(&self) {
-        self.lock
-            .compare_exchange(true, false, AcqRel, Relaxed)
-            .expect("unlock failed");
-    }
-}
-
-pub struct ItemWriteGuard<'a> {
-    item: &'a mut Item,
-}
-impl<'a> Deref for ItemWriteGuard<'a> {
-    type Target = Item;
-    fn deref(&self) -> &Self::Target {
-        &self.item
-    }
-}
-use std::ops::DerefMut;
-impl<'a> DerefMut for ItemWriteGuard<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.item
-    }
-}
-impl<'a> Drop for ItemWriteGuard<'a> {
-    fn drop(&mut self) {
-        self.unlock();
+    pub(crate) fn snapshot<W: crate::ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
+        use crate::Snapshot;
+        id.t.snapshot(&id.path, &id.key, &self.data.inner, w, secs);
     }
 }
