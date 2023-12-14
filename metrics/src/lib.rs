@@ -4,7 +4,6 @@ extern crate lazy_static;
 mod id;
 mod ip;
 mod item;
-mod macros;
 pub mod prometheus;
 mod register;
 mod types;
@@ -17,7 +16,7 @@ pub use macros::*;
 pub use register::*;
 pub use types::*;
 
-use crate::{Id, ItemRc};
+use crate::ItemRc;
 use std::fmt::Debug;
 use std::ops::AddAssign;
 
