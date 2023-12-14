@@ -54,6 +54,11 @@ pub struct ItemRc {
 }
 impl ItemRc {
     #[inline(always)]
+    pub(crate) fn as_ref(&self) -> &Item {
+        debug_assert!(!self.inner.is_null());
+        unsafe { &*self.inner }
+    }
+    #[inline(always)]
     pub(crate) fn get(&mut self) -> &Item {
         debug_assert!(!self.inner.is_null());
         let inner = unsafe { &*self.inner };
@@ -68,7 +73,7 @@ impl ItemRc {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Position {
+pub(crate) enum Position {
     Global(usize),  // 说明Item在Chunk中分配，全局共享
     Local(Arc<Id>), // 说明Item在Local中分配。
 }
@@ -77,12 +82,11 @@ enum Position {
 #[repr(align(64))]
 pub struct Item {
     // 使用Position，避免global与local更新时的race
-    pos: Position,
+    pub(crate) pos: Position,
     data: ItemData,
 }
 impl Item {
     pub(crate) fn global(idx: usize) -> Self {
-        log::info!("global item build: {}", idx);
         Self {
             pos: Position::Global(idx),
             data: ItemData::default(),

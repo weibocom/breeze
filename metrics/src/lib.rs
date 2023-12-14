@@ -5,10 +5,8 @@ mod id;
 mod ip;
 mod item;
 mod macros;
-mod packet;
 pub mod prometheus;
 mod register;
-mod sender;
 mod types;
 
 pub use id::*;
@@ -16,7 +14,6 @@ pub use ip::*;
 use item::*;
 pub use macros::*;
 pub use register::*;
-pub use sender::*;
 pub use types::*;
 
 use crate::{Id, ItemRc};
@@ -45,16 +42,11 @@ impl Metric {
             &mut *(self as *const _ as *mut _)
         }
     }
-    pub fn id(&self) -> &str {
-        "not impl"
-    }
 }
 impl<T: IncrTo + Debug> AddAssign<T> for Metric {
     #[inline]
     fn add_assign(&mut self, m: T) {
-        log::info!("add_assign:{:?}", m);
         m.incr_to(&self.item.get().data0());
-        log::info!("add_assign complete :{:?}", m);
     }
 }
 use std::ops::SubAssign;
@@ -68,7 +60,10 @@ use std::fmt::{self, Display, Formatter};
 impl Display for Metric {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "name:{:?}", self.id())
+        match &self.item.as_ref().pos {
+            Position::Global(idx) => crate::with_metric_id(*idx, |id| write!(f, "name:{id:?}")),
+            Position::Local(id) => write!(f, "name:{:?}", id),
+        }
     }
 }
 impl Debug for Metric {
