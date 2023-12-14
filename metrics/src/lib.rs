@@ -12,7 +12,6 @@ pub use crate::pub_status::Status;
 pub use id::*;
 pub use ip::*;
 use item::*;
-pub use macros::*;
 pub use register::*;
 pub use types::*;
 
@@ -70,6 +69,12 @@ impl Debug for Metric {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
+    }
+}
+impl Drop for Metric {
+    #[inline]
+    fn drop(&mut self) {
+        self.item.on_metric_drop();
     }
 }
 unsafe impl Sync for Metric {}
