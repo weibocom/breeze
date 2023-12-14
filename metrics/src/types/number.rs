@@ -6,7 +6,7 @@ pub struct Count;
 impl super::Snapshot for Count {
     // 只计数。
     #[inline]
-    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, secs: f64) {
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, _secs: f64) {
         let cur = data.d0.get();
         if cur > 0 {
             w.write(path, key, "num", cur);

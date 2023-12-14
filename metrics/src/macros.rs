@@ -1,24 +1,8 @@
-use crate::{Id, ItemData0, Snapshot};
-use std::sync::Arc;
+use crate::{Id, ItemData0};
 
 #[derive(Default, Debug)]
 pub struct ItemData {
-    id: Arc<Id>,
     pub(crate) inner: ItemData0,
-}
-
-impl ItemData {
-    #[inline]
-    pub(crate) fn init_id(&mut self, id: Arc<Id>) {
-        assert!(!self.id.valid());
-        self.id = id;
-    }
-    #[inline]
-    pub(crate) fn snapshot<W: crate::ItemWriter>(&self, w: &mut W, secs: f64) {
-        self.id
-            .t
-            .snapshot(&self.id.path, &self.id.key, &self.inner, w, secs);
-    }
 }
 
 use crate::Metric;
@@ -58,8 +42,20 @@ impl Path {
         self.path.push(name.to_string());
         self
     }
-    pub fn num(self, key: &'static str) -> Metric {
+    pub fn num(&self, key: &'static str) -> Metric {
         self.with_type(key, MetricType::Count(Count))
+    }
+    pub fn rtt(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::Rtt(Rtt))
+    }
+    pub fn status(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::StatusData(StatusData))
+    }
+    pub fn ratio(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::Ratio(Ratio))
+    }
+    pub fn qps(&self, key: &'static str) -> Metric {
+        self.with_type(key, MetricType::Qps(Qps))
     }
 }
 
@@ -69,17 +65,24 @@ use enum_dispatch::enum_dispatch;
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum MetricType {
-    Empty(Empty),
-    Qps(Qps),
-    Ratio(Ratio),
-    Status(StatusData),
-    Rtt(Rtt),
-    Count(Count),
+    Empty,
+    Qps,
+    Ratio,
+    StatusData,
+    Rtt,
+    Count,
 }
 impl MetricType {
     #[inline]
-    pub(crate) fn is_empty(&self) -> bool {
-        matches!(self, Self::Empty(_))
+    pub(crate) fn u8(&self) -> u8 {
+        match self {
+            Self::Empty(_) => 0,
+            Self::Qps(_) => 1,
+            Self::Ratio(_) => 2,
+            Self::StatusData(_) => 3,
+            Self::Rtt(_) => 4,
+            Self::Count(_) => 5,
+        }
     }
 }
 
