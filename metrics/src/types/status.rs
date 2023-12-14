@@ -1,9 +1,9 @@
-use super::{base::Adder, IncrTo, ItemData0};
+use super::{base::Adder, ItemData0};
 use crate::ItemWriter as Writer;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub struct StatusData;
-impl super::Snapshot for StatusData {
+pub struct Status;
+impl super::Snapshot for Status {
     // 只计数。
     #[inline]
     fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, _secs: f64) {
@@ -14,16 +14,19 @@ impl super::Snapshot for StatusData {
     }
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy)]
-pub enum Status {
-    OK,
-    Down,
-}
+pub mod pub_status {
+    use crate::{base::Adder, IncrTo, ItemData0};
+    #[repr(u8)]
+    #[derive(Clone, Copy)]
+    pub enum Status {
+        OK,
+        Down,
+    }
 
-impl IncrTo for Status {
-    #[inline]
-    fn incr_to(&self, data: &ItemData0) {
-        data.d0.set(*self as i64);
+    impl IncrTo for Status {
+        #[inline]
+        fn incr_to(&self, data: &ItemData0) {
+            data.d0.set(*self as i64);
+        }
     }
 }

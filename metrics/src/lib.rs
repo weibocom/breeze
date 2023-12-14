@@ -9,6 +9,7 @@ pub mod prometheus;
 mod register;
 mod types;
 
+pub use crate::pub_status::Status;
 pub use id::*;
 pub use ip::*;
 use item::*;
