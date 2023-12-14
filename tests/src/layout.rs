@@ -4,7 +4,7 @@ use std::mem::size_of;
 use protocol::{callback::CallbackContext, Parser};
 use stream::{Backend, BackendInner, Request};
 type Endpoint = Backend<Request>;
-type Topology = endpoint::TopologyProtocol<Endpoint, Request, Parser>;
+type Topology = endpoint::TopologyProtocol<Endpoint, Parser>;
 //type RefreshTopology = endpoint::RefreshTopology<Topology>;
 
 type CheckedTopology = stream::CheckedTopology<Topology>;
@@ -14,10 +14,10 @@ type CopyBidirectional = stream::pipeline::CopyBidirectional<Stream, Parser, Che
 type Stream = rt::Stream<tokio::net::TcpStream>;
 type Handler<'r> = stream::handler::Handler<'r, Request, Parser, Stream>;
 
-type CacheService = endpoint::cacheservice::topo::CacheService<Endpoint, Request, Parser>;
-type RedisService = endpoint::redisservice::topo::RedisService<Endpoint, Request, Parser>;
-type PhantomService = endpoint::phantomservice::topo::PhantomService<Endpoint, Request, Parser>;
-type MsgQue = endpoint::msgque::topo::MsgQue<Endpoint, Request, Parser>;
+type CacheService = endpoint::cacheservice::topo::CacheService<Endpoint, Parser>;
+type RedisService = endpoint::redisservice::topo::RedisService<Endpoint, Parser>;
+type PhantomService = endpoint::phantomservice::topo::PhantomService<Endpoint, Parser>;
+type MsgQue = endpoint::msgque::topo::MsgQue<Endpoint, Parser>;
 
 use rt::Entry;
 

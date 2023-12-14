@@ -10,28 +10,25 @@ use sharding::hash::{Hash, HashKey};
 use super::config::UuidNamespace;
 
 #[derive(Clone)]
-pub struct UuidService<E, Req, P> {
+pub struct UuidService<E, P> {
     shard: Distance<E>,
     parser: P,
     cfg: Box<DnsConfig<UuidNamespace>>,
-    _mark: std::marker::PhantomData<Req>,
 }
-impl<E, Req, P> From<P> for UuidService<E, Req, P> {
+impl<E, P> From<P> for UuidService<E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
             shard: Distance::new(),
             parser,
             cfg: Default::default(),
-            _mark: Default::default(),
         }
     }
 }
 
-impl<E, Req, P> Hash for UuidService<E, Req, P>
+impl<E, P> Hash for UuidService<E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
     #[inline]
@@ -40,7 +37,7 @@ where
     }
 }
 
-impl<E, Req, P> Topology for UuidService<E, Req, P>
+impl<E, Req, P> Topology for UuidService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -48,7 +45,7 @@ where
 {
 }
 
-impl<E, Req, P> Endpoint for UuidService<E, Req, P>
+impl<E, Req, P> Endpoint for UuidService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -86,10 +83,10 @@ where
         0
     }
 }
-impl<E, Req, P> TopologyWrite for UuidService<E, Req, P>
+impl<E, P> TopologyWrite for UuidService<E, P>
 where
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -109,7 +106,7 @@ where
             .check_load(|| self.load_inner().is_some())
     }
 }
-impl<E, Req, P> discovery::Inited for UuidService<E, Req, P>
+impl<E, P> discovery::Inited for UuidService<E, P>
 where
     E: discovery::Inited,
 {
@@ -123,16 +120,16 @@ where
     }
 }
 
-impl<E, Req, P> UuidService<E, Req, P>
+impl<E, P> UuidService<E, P>
 where
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn load_inner(&mut self) -> Option<()> {
         let addrs = self.cfg.shards_url.flatten_lookup()?;
         assert_ne!(addrs.len(), 0);
-        let mut endpoints: Endpoints<'_, Req, P, E> =
+        let mut endpoints: Endpoints<'_, P, E> =
             Endpoints::new(&self.cfg.service, &self.parser, Uuid).with_cache(self.shard.take());
         let backends = endpoints.take_or_build(&addrs, self.cfg.timeout());
         self.shard = Distance::with_mode(
@@ -146,7 +143,7 @@ where
     }
 }
 
-impl<E, Req, P> std::fmt::Display for UuidService<E, Req, P> {
+impl<E, P> std::fmt::Display for UuidService<E, P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UuidService")
             .field("cfg", &self.cfg)
