@@ -7,9 +7,14 @@ impl super::Snapshot for Status {
     // 只计数。
     #[inline]
     fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, _secs: f64) {
-        let down = data.d0.take() > 0;
+        let down = data.d0.take() == pub_status::Status::Down as i64;
         if down {
             w.write(path, key, "down", 1i64);
+        }
+    }
+    fn merge(&self, global: &ItemData0, cache: &ItemData0) {
+        if global.d0.get() == 0 {
+            global.d0.set(cache.d0.take());
         }
     }
 }
@@ -19,8 +24,8 @@ pub mod pub_status {
     #[repr(u8)]
     #[derive(Clone, Copy)]
     pub enum Status {
-        OK,
-        Down,
+        OK = 1,
+        Down = 2,
     }
 
     impl IncrTo for Status {
