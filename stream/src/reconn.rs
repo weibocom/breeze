@@ -24,7 +24,7 @@ impl ReconnPolicy {
         // 第一次失败的时候，continue_fails为0，因此不会sleep
         let sleep_mills = (self.continue_fails * 500).min(6000);
         log::info!(
-            "{}-th conn {} sleep:{} => {}",
+            "{}-th conn {} sleep:{}ms => {}",
             self.conns,
             self.continue_fails,
             sleep_mills,

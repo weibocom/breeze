@@ -1,11 +1,13 @@
+use ds::time::Instant;
 use std::sync::Arc;
 
 use crate::{Id, Item, Metric};
 
 const CHUNK_SIZE: usize = 4096;
 
-use tokio::sync::mpsc::{
-    unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender,
+use tokio::{
+    sync::mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
+    time::Interval,
 };
 
 #[derive(Clone)]
@@ -16,7 +18,7 @@ pub struct Metrics {
     len: usize,
     id_idx: HashMap<Arc<Id>, usize>,
     idx_id: Vec<Arc<Id>>,
-    cache: Vec<(usize, Arc<Box<Item>>)>,
+    cache: Vec<(usize, Arc<Box<Item>>, Instant)>,
 }
 
 enum Op {
@@ -92,17 +94,33 @@ impl Metrics {
         //assert_eq!(*self.id_idx.get(&id).expect("none"), idx);
 
         // 处理local的item
-        self.cache.push((idx, item.into()));
+        self.cache.push((idx, item.into(), Instant::now()));
     }
     // 把cache合并到global
     #[inline]
     pub(crate) fn flush_cache(&mut self) {
-        for (idx, local) in &self.cache {
+        for (idx, local, _) in &self.cache {
             let idx = *idx;
             assert!(idx < self.len());
             let (id, item) = self.get_item_id(idx);
             use crate::Snapshot;
             id.t.merge(item.data0(), local.data0());
+        }
+        self.clear_cache();
+    }
+    #[inline]
+    fn clear_cache(&mut self) {
+        if self.cache.len() > 0 {
+            let l = self.cache.len();
+            // 1. item deattach是metric主动调用，说明item可以安全释放；
+            // 2. 有些metric更新不频繁，因此通过一个时间来判断是否可能删除。因此metric在操作前都会检查global是否已经注册，
+            //      如果注册成功，则直接会使用global。超过60s是一个对应metric注册而言，是一个足够长的安全时间。
+            //      60秒的gap，足够避免获取到本地删除的metric。
+            //
+            self.cache.retain(|(_, item, instant)| {
+                item.is_attached() && instant.elapsed().as_secs() <= 60
+            });
+            log::info!("cache clear:{} => {}", l, self.cache.len());
         }
     }
     #[inline]
@@ -175,11 +193,18 @@ use std::collections::HashMap;
 pub struct MetricRegister {
     rx: Receiver<Op>,
     metrics: CowWriteHandle<Metrics>,
+    tick: Interval,
+    cache: bool, // 是否有cache, 有cache时，需要等待cache合并到global，会启动tick
 }
 
 impl MetricRegister {
     fn new(rx: Receiver<Op>, metrics: CowWriteHandle<Metrics>) -> Self {
-        Self { rx, metrics }
+        Self {
+            rx,
+            metrics,
+            tick: ds::time::interval(ds::time::Duration::from_secs(30)),
+            cache: false,
+        }
     }
 }
 impl Default for MetricRegister {
@@ -205,7 +230,7 @@ impl Future for MetricRegister {
         let me = &mut *self;
         //let mut t = me.metrics.copy();
         let mut t = None;
-        log::info!("metric register poll");
+        log::debug!("metric register poll");
         loop {
             let ret = me.rx.poll_recv(cx);
             if let Poll::Ready(Some(op)) = ret {
@@ -214,18 +239,18 @@ impl Future for MetricRegister {
                 };
                 let t = t.get_or_insert_with(|| me.metrics.copy());
                 t.reserve(id, local);
+                me.cache = true;
                 continue;
             }
 
-            let mut cache = false;
-            if let Some(mut t) = t {
-                t.flush_cache();
-                cache = t.cache.len() > 0;
-                me.metrics.update(t);
-            }
+            t.map(|t| me.metrics.update(t));
 
-            if cache {
-                // sleep 1秒，等待cache合并到global
+            while me.cache {
+                ready!(me.tick.poll_tick(cx));
+                let mut t = me.metrics.copy();
+                t.flush_cache();
+                me.cache = t.cache.len() > 0;
+                me.metrics.update(t);
             }
 
             let _r = ready!(ret);
