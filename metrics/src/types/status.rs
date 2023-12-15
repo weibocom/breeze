@@ -7,7 +7,7 @@ impl super::Snapshot for Status {
     // 只计数。
     #[inline]
     fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, _secs: f64) {
-        let down = data.d0.get() == pub_status::Status::Down as i64;
+        let down = data.d0.take() > 0;
         if down {
             w.write(path, key, "down", 1i64);
         }
