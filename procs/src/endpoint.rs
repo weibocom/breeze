@@ -17,23 +17,7 @@ pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
         let where_clause = trait_def.where_clause;
         let trait_def = trait_def.trait_def;
         let trait_ident = &trait_def.ident;
-        let methods = trait_def.items.iter().map(|item| {
-            if let TraitItem::Method(method) = item {
-                // 判断第一个参数是否是self
-                let is_self = method.sig.inputs.iter().next().map(|arg| {
-                    if let FnArg::Receiver(_) = arg {
-                        true
-                    } else {
-                        // 判断当前方法是否有body
-                        assert!(method.default.is_some(), "Trait method without self Receiver must have body");
-                        false
-                    }
-                }).unwrap_or(false);
-                is_self.then_some(method)
-            } else {
-                None
-            }
-        }).filter_map(|x| x);
+        let methods = get_trait_methods(&trait_def);
         let type_def = trait_def.items.iter().find_map(|item| {
             if let TraitItem::Type(_item) = item {
                 Some(quote!{
@@ -75,10 +59,16 @@ pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
          _ => None,
      };
 
+     let mut generics = enum_generics.clone();
+     // 判断where_clause里面是否有R，如果有，则generics需要增加R
+     if has_r(&where_clause) {
+         generics.params.push(syn::parse_quote!{R});
+     }
+
     quote! {
         #trait_define
 
-        impl #enum_generics #trait_ident for #enum_name #enum_generics #where_clause {
+        impl #generics #trait_ident for #enum_name #enum_generics #where_clause {
             #type_def
 
             #(#method_impls)*
@@ -155,4 +145,56 @@ impl Parse for TopologyInput {
         }
         Ok(TopologyInput { enum_def, traits })
     }
+}
+
+// 获取trait中的方法
+// 1. 第一个参数必须是self
+fn get_trait_methods(trait_def: &ItemTrait) -> impl Iterator<Item = &syn::TraitItemMethod> {
+    trait_def
+        .items
+        .iter()
+        .map(|item| {
+            if let TraitItem::Method(method) = item {
+                // 判断第一个参数是否是self
+                let is_self = method
+                    .sig
+                    .inputs
+                    .iter()
+                    .next()
+                    .map(|arg| {
+                        if let FnArg::Receiver(_) = arg {
+                            true
+                        } else {
+                            // 判断当前方法是否有body
+                            assert!(
+                                method.default.is_some(),
+                                "Trait method without self Receiver must have body"
+                            );
+                            false
+                        }
+                    })
+                    .unwrap_or(false);
+                is_self.then_some(method)
+            } else {
+                None
+            }
+        })
+        .filter_map(|x| x)
+}
+
+// 判断where_clause里面是否有R，如果有，则generics需要增加R
+fn has_r(where_clause: &WhereClause) -> bool {
+    where_clause
+        .predicates
+        .iter()
+        .any(|predicate| match predicate {
+            syn::WherePredicate::Type(syn::PredicateType { bounded_ty, .. }) => {
+                if let syn::Type::Path(syn::TypePath { path, .. }) = &*bounded_ty {
+                    path.segments.iter().any(|segment| segment.ident == "R")
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        })
 }

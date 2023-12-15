@@ -4,7 +4,7 @@ use sharding::hash::{Hash, HashKey};
 
 use crate::Timeout;
 
-pub type TopologyProtocol<E, R, P> = Topologies<E, R, P>;
+pub type TopologyProtocol<E, P> = Topologies<E, P>;
 
 // 1. 生成一个try_from(parser, endpoint)的方法，endpoint是名字的第一个单词或者是所有单词的首字母。RedisService的名字为"rs"或者"redis"
 // 2. trait => where表示，为Topologies实现trait，满足where的条件.
@@ -12,13 +12,13 @@ pub type TopologyProtocol<E, R, P> = Topologies<E, R, P>;
 // 3. 如果trait是pub的，则同时会创建这个trait。非pub的trait，只会为Topologies实现
 procs::topology_dispatcher! {
     #[derive(Clone)]
-    pub enum Topologies<E, R, P> {
-        MsgQue(crate::msgque::topo::MsgQue<E, R, P>),
-        RedisService(crate::redisservice::topo::RedisService<E, R, P>),
-        CacheService(crate::cacheservice::topo::CacheService<E, R, P>),
-        PhantomService(crate::phantomservice::topo::PhantomService<E, R, P>),
-        KvService(crate::kv::topo::KvService<E, R, P>),
-        UuidService(crate::uuid::topo::UuidService<E, R, P>),
+    pub enum Topologies<E, P> {
+        MsgQue(crate::msgque::topo::MsgQue<E, P>),
+        RedisService(crate::redisservice::topo::RedisService<E, P>),
+        CacheService(crate::cacheservice::topo::CacheService<E, P>),
+        PhantomService(crate::phantomservice::topo::PhantomService<E, P>),
+        KvService(crate::kv::topo::KvService<E, P>),
+        UuidService(crate::uuid::topo::UuidService<E, P>),
     }
 
     pub trait Endpoint: Sized + Send + Sync {
@@ -33,7 +33,7 @@ procs::topology_dispatcher! {
 
     pub trait Topology : Endpoint + Hash{
         fn exp_sec(&self) -> u32 {86400}
-    } => where P:Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, R, P>: Endpoint
+    } => where P:Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, P>: Endpoint
 
     trait Inited {
         fn inited(&self) -> bool;
@@ -44,11 +44,11 @@ procs::topology_dispatcher! {
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
         fn load(&mut self) -> bool;
-    } => where P:Protocol, E:Endpoint<Item = R>
+    } => where P:Protocol, E:Endpoint
 
     trait Hash {
         fn hash<S: HashKey>(&self, key: &S) -> i64;
-    } => where P:Protocol, E:Endpoint<Item = R>, R:Request
+    } => where P:Protocol, E:Endpoint,
 
 }
 
@@ -100,21 +100,19 @@ impl<E: Endpoint> From<E> for Pair<E> {
 }
 
 use std::collections::HashMap;
-pub struct Endpoints<'a, R, P, E: Endpoint> {
+pub struct Endpoints<'a, P, E: Endpoint> {
     service: &'a str,
     parser: &'a P,
     resource: Resource,
     cache: HashMap<String, Vec<E>>,
-    _marker: std::marker::PhantomData<R>,
 }
-impl<'a, R, P, E: Endpoint> Endpoints<'a, R, P, E> {
+impl<'a, P, E: Endpoint> Endpoints<'a, P, E> {
     pub fn new(service: &'a str, parser: &'a P, resource: Resource) -> Self {
         Endpoints {
             service,
             parser,
             resource,
             cache: HashMap::new(),
-            _marker: Default::default(),
         }
     }
     pub fn cache_one<T: Into<Pair<E>>>(&mut self, endpoint: T) {
@@ -135,7 +133,7 @@ impl<'a, R, P, E: Endpoint> Endpoints<'a, R, P, E> {
     }
 }
 
-impl<'a, R, P: Protocol, E: Endpoint> Endpoints<'a, R, P, E> {
+impl<'a, P: Protocol, E: Endpoint> Endpoints<'a, P, E> {
     pub fn take_or_build_one(&mut self, addr: &str, to: Timeout) -> E {
         self.take_or_build(&[addr.to_owned()], to)
             .pop()
@@ -158,7 +156,7 @@ impl<'a, R, P: Protocol, E: Endpoint> Endpoints<'a, R, P, E> {
     }
 }
 // 为Endpoints实现Formatter
-impl<'a, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, R, P, E> {
+impl<'a, P, E: Endpoint> std::fmt::Display for Endpoints<'a, P, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut exists = Vec::new();
         for (_addr, endpoints) in self.cache.iter() {
@@ -177,7 +175,7 @@ impl<'a, R, P, E: Endpoint> std::fmt::Display for Endpoints<'a, R, P, E> {
 }
 
 // 为Endpoints实现Drop
-impl<'a, R, P, E: Endpoint> Drop for Endpoints<'a, R, P, E> {
+impl<'a, P, E: Endpoint> Drop for Endpoints<'a, P, E> {
     fn drop(&mut self) {
         log::info!("drop endpoints:{}", self);
     }

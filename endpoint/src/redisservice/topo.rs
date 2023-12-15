@@ -11,16 +11,15 @@ use sharding::hash::{Hash, HashKey, Hasher};
 use super::config::RedisNamespace;
 
 #[derive(Clone)]
-pub struct RedisService<E, Req, P> {
+pub struct RedisService<E, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
     shards: Vec<Shard<E>>,
     hasher: Hasher,
     distribute: Distribute,
     parser: P,
     cfg: Box<DnsConfig<RedisNamespace>>,
-    _mark: std::marker::PhantomData<Req>,
 }
-impl<E, Req, P> From<P> for RedisService<E, Req, P> {
+impl<E, P> From<P> for RedisService<E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -29,15 +28,13 @@ impl<E, Req, P> From<P> for RedisService<E, Req, P> {
             hasher: Default::default(),
             distribute: Default::default(),
             cfg: Default::default(),
-            _mark: Default::default(),
         }
     }
 }
 
-impl<E, Req, P> Hash for RedisService<E, Req, P>
+impl<E, P> Hash for RedisService<E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
     #[inline]
@@ -46,7 +43,7 @@ where
     }
 }
 
-impl<E, Req, P> Topology for RedisService<E, Req, P>
+impl<E, Req, P> Topology for RedisService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -54,7 +51,7 @@ where
 {
 }
 
-impl<E, Req, P> Endpoint for RedisService<E, Req, P>
+impl<E, Req, P> Endpoint for RedisService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -120,10 +117,10 @@ where
         self.distribute.index(hash)
     }
 }
-impl<E, Req, P> TopologyWrite for RedisService<E, Req, P>
+impl<E, P> TopologyWrite for RedisService<E, P>
 where
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -149,7 +146,7 @@ where
             .check_load(|| self.load_inner().is_some())
     }
 }
-impl<E, Req, P> discovery::Inited for RedisService<E, Req, P>
+impl<E, P> discovery::Inited for RedisService<E, P>
 where
     E: discovery::Inited,
 {
@@ -165,17 +162,17 @@ where
                 .fold(true, |inited, shard| inited && shard.inited())
     }
 }
-impl<E, Req, P> RedisService<E, Req, P> {
+impl<E, P> RedisService<E, P> {
     #[inline]
     fn len(&self) -> usize {
         self.shards.len()
     }
 }
 
-impl<E, Req, P> RedisService<E, Req, P>
+impl<E, P> RedisService<E, P>
 where
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     // TODO 把load的日志级别提升，在罕见异常情况下（dns解析异常、配置异常）,持续load时可以通过日志来跟进具体状态；
     //      当然，也可以通过指标汇报的方式进行，但对这种罕见情况进行metrics消耗，需要考量；
@@ -187,7 +184,7 @@ where
         // 到这之后，所有的shard都能解析出ip
 
         // 把所有的endpoints cache下来
-        let mut endpoints: Endpoints<'_, Req, P, E> =
+        let mut endpoints: Endpoints<'_, P, E> =
             Endpoints::new(&self.cfg.service, &self.parser, Redis);
         self.shards.split_off(0).into_iter().for_each(|shard| {
             endpoints.cache_one(shard.master);
@@ -215,10 +212,9 @@ where
     }
 }
 
-impl<E, Req, P> std::fmt::Display for RedisService<E, Req, P>
+impl<E, P> std::fmt::Display for RedisService<E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -24,16 +24,15 @@ use super::config::Years;
 use super::strategy::Strategist;
 use super::KVCtx;
 #[derive(Clone)]
-pub struct KvService<E, Req, P> {
+pub struct KvService<E, P> {
     shards: Shards<E>,
     // selector: Selector,
     strategist: Strategist,
     parser: P,
     cfg: Box<DnsConfig<KvNamespace>>,
-    _mark: std::marker::PhantomData<Req>,
 }
 
-impl<E, Req, P> From<P> for KvService<E, Req, P> {
+impl<E, P> From<P> for KvService<E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -41,16 +40,14 @@ impl<E, Req, P> From<P> for KvService<E, Req, P> {
             shards: Default::default(),
             strategist: Default::default(),
             cfg: Default::default(),
-            _mark: std::marker::PhantomData,
             // selector: Selector::Random,
         }
     }
 }
 
-impl<E, Req, P> Hash for KvService<E, Req, P>
+impl<E, P> Hash for KvService<E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
     #[inline]
@@ -59,7 +56,7 @@ where
     }
 }
 
-impl<E, Req, P> Topology for KvService<E, Req, P>
+impl<E, Req, P> Topology for KvService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -67,7 +64,7 @@ where
 {
 }
 
-impl<E, Req, P> Endpoint for KvService<E, Req, P>
+impl<E, Req, P> Endpoint for KvService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -152,10 +149,10 @@ where
     }
 }
 
-impl<E, Req, P> TopologyWrite for KvService<E, Req, P>
+impl<E, P> TopologyWrite for KvService<E, P>
 where
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     fn need_load(&self) -> bool {
         self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
@@ -170,10 +167,10 @@ where
         }
     }
 }
-impl<E, Req, P> KvService<E, Req, P>
+impl<E, P> KvService<E, P>
 where
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     // #[inline]
     fn take_or_build(
@@ -306,7 +303,7 @@ where
         true
     }
 }
-impl<E, Req, P> discovery::Inited for KvService<E, Req, P>
+impl<E, P> discovery::Inited for KvService<E, P>
 where
     E: discovery::Inited,
 {
