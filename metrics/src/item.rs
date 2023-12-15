@@ -68,7 +68,10 @@ impl ItemRc {
         match &inner.pos {
             Position::Global(_) => inner,
             Position::Local(id) => {
-                crate::get_item(&*id).map(|item| self.inner = item);
+                if let Some(item) = crate::get_item(&*id) {
+                    inner.detach();
+                    self.inner = item;
+                }
                 unsafe { &*self.inner }
             }
         }
@@ -77,10 +80,9 @@ impl ItemRc {
     pub(crate) fn on_metric_drop(&self) {
         let item = self.as_ref();
         // 必须为local的，当前global的item不会释放
-        assert!(item.is_local());
-        item.local_dropped
-            .compare_exchange(false, true, AcqRel, Relaxed)
-            .expect("race");
+        if item.is_local() {
+            item.detach();
+        }
     }
 }
 
@@ -97,7 +99,7 @@ pub struct Item {
     // 使用Position，避免global与local更新时的race
     pub(crate) pos: Position,
     // 本地的Metric，并且对应的Metric已经drop掉。该Item可以被安全的回收。
-    local_dropped: AtomicBool,
+    local_attached: AtomicBool,
     data: ItemData,
 }
 impl Item {
@@ -105,7 +107,7 @@ impl Item {
         Self {
             pos: Position::Global(idx),
             data: ItemData::default(),
-            local_dropped: false.into(),
+            local_attached: false.into(),
         }
     }
     #[inline(always)]
@@ -119,12 +121,24 @@ impl Item {
         Self {
             pos: Position::Local(id),
             data: ItemData::default(),
-            local_dropped: false.into(),
+            local_attached: true.into(),
         }
     }
     #[inline]
     pub(crate) fn data0(&self) -> &ItemData0 {
         &self.data.inner
+    }
+    #[inline]
+    pub(crate) fn is_attached(&self) -> bool {
+        assert!(self.is_local());
+        self.local_attached.load(Acquire)
+    }
+    #[inline]
+    pub(crate) fn detach(&self) {
+        log::info!("metric detach: {:?}", self);
+        self.local_attached
+            .compare_exchange(true, false, AcqRel, Relaxed)
+            .expect("double attach");
     }
 
     #[inline]
@@ -136,9 +150,7 @@ impl Item {
 
 impl Drop for Item {
     fn drop(&mut self) {
-        if self.is_local() {
-            // 表明对应的Metric是本地的，Item释放之前，需要将对应的Metric释放掉。
-            assert!(self.local_dropped.load(Acquire));
-        }
+        // 表明对应的Metric是本地的，Item释放之前，需要将对应的Metric释放掉。
+        assert!(self.is_local());
     }
 }
