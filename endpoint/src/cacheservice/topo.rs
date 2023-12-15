@@ -11,7 +11,7 @@ use crate::PerformanceTuning;
 use protocol::Bit;
 
 #[derive(Clone)]
-pub struct CacheService<E, Req, P> {
+pub struct CacheService<E, P> {
     // 一共有n组，每组1个连接。
     // 排列顺序： master, master l1, slave, slave l1
     streams: Distance<Shards<E>>,
@@ -29,10 +29,9 @@ pub struct CacheService<E, Req, P> {
 
     // 保留本设置，非必要场景，减少一次slave访问
     backend_no_storage: bool, // true：mc后面没有存储
-    _marker: std::marker::PhantomData<Req>,
 }
 
-impl<E, Req, P> From<P> for CacheService<E, Req, P> {
+impl<E, P> From<P> for CacheService<E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -41,13 +40,12 @@ impl<E, Req, P> From<P> for CacheService<E, Req, P> {
             exp_sec: 0,
             // force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
-            _marker: Default::default(),
             backend_no_storage: false,
         }
     }
 }
 
-impl<E, Req, P> discovery::Inited for CacheService<E, Req, P>
+impl<E, P> discovery::Inited for CacheService<E, P>
 where
     E: discovery::Inited,
 {
@@ -61,10 +59,9 @@ where
     }
 }
 
-impl<E, Req, P> Hash for CacheService<E, Req, P>
+impl<E, P> Hash for CacheService<E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
     #[inline]
@@ -73,7 +70,7 @@ where
     }
 }
 
-impl<E, Req, P> Topology for CacheService<E, Req, P>
+impl<E, Req, P> Topology for CacheService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -85,7 +82,7 @@ where
     }
 }
 
-impl<E, Req, P> Endpoint for CacheService<E, Req, P>
+impl<E, Req, P> Endpoint for CacheService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -128,7 +125,7 @@ where
         unsafe { self.streams.get_unchecked(idx).send(req) };
     }
 }
-impl<E, Req: Request, P: Protocol> CacheService<E, Req, P>
+impl<E, Req: Request, P: Protocol> CacheService<E, P>
 where
     E: Endpoint<Item = Req>,
 {
@@ -195,10 +192,10 @@ where
         (idx, try_next, write_back)
     }
 }
-impl<E, Req, P> TopologyWrite for CacheService<E, Req, P>
+impl<E, P> TopologyWrite for CacheService<E, P>
 where
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -212,7 +209,7 @@ where
             let dist = &ns.distribution.clone();
 
             // 把所有的endpoints cache下来
-            let mut endpoints: Endpoints<'_, Req, P, E> =
+            let mut endpoints: Endpoints<'_, P, E> =
                 Endpoints::new(namespace, &self.parser, Memcache);
             self.streams.take().into_iter().for_each(|shard| {
                 endpoints.cache(shard.into());
@@ -254,7 +251,7 @@ where
 }
 
 use std::fmt::{self, Display, Formatter};
-impl<E, Req, P> Display for CacheService<E, Req, P> {
+impl<E, P> Display for CacheService<E, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,

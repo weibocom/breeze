@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use crate::{
     dns::{DnsConfig, DnsLookup},
     select::Distance,
@@ -15,17 +13,16 @@ use sharding::{
 use super::config::PhantomNamespace;
 
 #[derive(Clone)]
-pub struct PhantomService<E, Req, P> {
+pub struct PhantomService<E, P> {
     // 一般有2组，相互做HA，每组是一个域名列表，域名下只有一个ip，但会变化
     streams: Vec<Distance<E>>,
     hasher: Crc32,
     distribution: Range,
     parser: P,
     cfg: Box<DnsConfig<PhantomNamespace>>,
-    _mark: PhantomData<Req>,
 }
 
-impl<E, Req, P> From<P> for PhantomService<E, Req, P> {
+impl<E, P> From<P> for PhantomService<E, P> {
     fn from(parser: P) -> Self {
         Self {
             parser,
@@ -33,15 +30,13 @@ impl<E, Req, P> From<P> for PhantomService<E, Req, P> {
             hasher: Default::default(),
             distribution: Default::default(),
             cfg: Default::default(),
-            _mark: Default::default(),
         }
     }
 }
 
-impl<E, Req, P> Hash for PhantomService<E, Req, P>
+impl<E, P> Hash for PhantomService<E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
 {
     #[inline]
@@ -50,7 +45,7 @@ where
     }
 }
 
-impl<E, Req, P> Topology for PhantomService<E, Req, P>
+impl<E, Req, P> Topology for PhantomService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -58,7 +53,7 @@ where
 {
 }
 
-impl<E, Req, P> Endpoint for PhantomService<E, Req, P>
+impl<E, Req, P> Endpoint for PhantomService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -89,10 +84,10 @@ where
     }
 }
 
-impl<E, Req, P> TopologyWrite for PhantomService<E, Req, P>
+impl<E, P> TopologyWrite for PhantomService<E, P>
 where
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -127,16 +122,16 @@ where
     }
 }
 
-impl<E, Req, P> PhantomService<E, Req, P>
+impl<E, P> PhantomService<E, P>
 where
     P: Protocol,
-    E: Endpoint<Item = Req>,
+    E: Endpoint,
 {
     #[inline]
     fn load_inner(&mut self) -> Option<()> {
         let addrs = self.cfg.shards_url.lookup()?;
         assert_eq!(addrs.len(), self.cfg.shards_url.len());
-        let mut endpoints: Endpoints<'_, Req, P, E> =
+        let mut endpoints: Endpoints<'_, P, E> =
             Endpoints::new(&self.cfg.service, &self.parser, Phantom);
         // 把老的stream缓存起来
         self.streams.split_off(0).into_iter().for_each(|shard| {
@@ -152,7 +147,7 @@ where
     }
 }
 
-impl<E: Inited, Req, P> Inited for PhantomService<E, Req, P> {
+impl<E: Inited, P> Inited for PhantomService<E, P> {
     // 每一个域名都有对应的endpoint，并且都初始化完成。
     #[inline]
     fn inited(&self) -> bool {
@@ -166,7 +161,7 @@ impl<E: Inited, Req, P> Inited for PhantomService<E, Req, P> {
             })
     }
 }
-impl<E, Req, P> std::fmt::Debug for PhantomService<E, Req, P> {
+impl<E, P> std::fmt::Debug for PhantomService<E, P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.cfg)
     }
