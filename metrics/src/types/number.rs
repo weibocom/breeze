@@ -12,6 +12,9 @@ impl super::Snapshot for Count {
             w.write(path, key, "num", cur);
         }
     }
+    fn merge(&self, global: &ItemData0, cache: &ItemData0) {
+        global.d0.incr_by(cache.d0.take());
+    }
 }
 
 // 对于计数类的，只用第一个来计数
