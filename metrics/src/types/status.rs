@@ -22,9 +22,9 @@ impl super::Snapshot for Status {
 pub mod pub_status {
     use crate::{base::Adder, IncrTo, ItemData0};
     #[repr(u8)]
-    #[derive(Clone, Copy)]
+    #[derive(Debug, Clone, Copy)]
     pub enum Status {
-        OK = 1,
+        Ok = 1,
         Down = 2,
     }
 
