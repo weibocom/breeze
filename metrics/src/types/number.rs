@@ -1,80 +1,26 @@
-use std::sync::atomic::{AtomicI64, Ordering};
+use super::{base::Adder, IncrTo, ItemData0};
+use crate::ItemWriter as Writer;
 
-use crate::{Id, ItemWriter};
-
-pub(crate) struct NumberInner {
-    cur: AtomicI64,
-}
-impl NumberInner {
-    #[inline]
-    fn load(&self) -> i64 {
-        self.cur.load(Ordering::Relaxed)
-    }
-    #[inline]
-    pub(crate) fn incr(&self, v: i64) {
-        self.cur.fetch_add(v, Ordering::Relaxed);
-    }
-    #[inline]
-    pub(crate) fn take(&self) -> i64 {
-        let cur = self.load();
-        if cur > 0 {
-            self.cur.fetch_sub(cur, Ordering::Relaxed);
-        }
-        cur
-    }
-    #[inline]
-    pub(crate) fn zero(&self) -> i64 {
-        let cur = self.load();
-        if cur > 0 {
-            self.cur.store(0, Ordering::Relaxed);
-        }
-        cur
-    }
-    #[inline]
-    pub(crate) fn max(&self, v: i64) {
-        let cur = self.load();
-        if cur < v {
-            self.cur.store(v, Ordering::Relaxed);
-        }
-    }
-}
-
-pub struct Number {
-    pub(crate) inner: NumberInner,
-}
-impl Number {
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Count;
+impl super::Snapshot for Count {
     // 只计数。
     #[inline]
-    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, _secs: f64) {
-        let cur = self.inner.cur.load(Ordering::Relaxed);
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, _secs: f64) {
+        let cur = data.d0.get();
         if cur > 0 {
-            w.write(&id.path, id.key, id.t.name(), cur);
+            w.write(path, key, "num", cur);
         }
     }
-    #[inline]
-    pub(crate) fn incr(&self, v: i64) {
-        self.inner.incr(v);
-    }
-    #[inline]
-    pub(crate) fn zero(&self) {
-        self.inner.zero();
+    fn merge(&self, global: &ItemData0, cache: &ItemData0) {
+        global.d0.incr_by(cache.d0.take());
     }
 }
 
-pub trait ToNumber {
-    fn int(&self) -> i64;
+// 对于计数类的，只用第一个来计数
+impl IncrTo for i64 {
+    #[inline]
+    fn incr_to(&self, data: &ItemData0) {
+        data.d0.incr_by(*self);
+    }
 }
-
-macro_rules! impl_to_number {
-    ($($t:ty),+) => {
-        $(
-        impl ToNumber for $t {
-            #[inline]
-            fn int(&self) -> i64 {
-                *self as i64
-            }
-        }
-        )+
-    };
-}
-impl_to_number!(i8, u8, i16, u16, i32, u32, isize, usize, i64, u64);

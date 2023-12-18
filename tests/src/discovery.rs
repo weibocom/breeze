@@ -36,7 +36,7 @@ impl TopologyWrite for RandomLoad {
 fn refresh() {
     let top = RandomLoad::new(0);
     let service = "service";
-    init_metrics_onlyfor_test();
+    let _w = init_metrics_onlyfor_test();
     let (mut tx, rx) = discovery::topology(top, service);
 
     assert_eq!(rx.get().need_load, 0);

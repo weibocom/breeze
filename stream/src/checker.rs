@@ -85,7 +85,7 @@ impl<P, Req> BackendChecker<P, Req> {
                 };
                 if let Err(_e) = auth.await {
                     log::warn!("+++ auth err {} to: {}", _e, self.addr);
-                    auth_failed += 1;
+                    auth_failed += metrics::Status::ERROR;
                     stream.cancel();
                     //当作连接失败处理，不立马重试
                     //todo：可以尝试将等待操作统一提取到循环开头

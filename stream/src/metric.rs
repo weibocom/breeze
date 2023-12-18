@@ -5,19 +5,29 @@ macro_rules! define_metrics {
         pub struct StreamMetrics {
             $(
                 $(
-                $name: Metric,
+                pub $name: Metric,
                 )+
             )+
             ops: [Metric; OPS.len()],
             rtt: Metric,
         }
         impl StreamMetrics {
+            // 使用所有的metrics之前，需要先check是否已注册。
+            // 因为StremMetrics会依赖Metric.as_mut这个方法。
+            pub fn check_registered(&mut self) -> bool {
+                true $(
+                    $(
+                        && self.$name.check_registered()
+                    )+
+                )+ && self.rtt.check_registered() &&
+                    self.ops.iter_mut().fold(true, |r, m| r && m.check_registered())
+            }
             $(
             $(
             #[inline]
             pub fn $name(&self) -> &mut Metric {
                 // Metric操作是原子计数的，因此unsafe不会导致UB。
-               self.$name.as_mut()
+               unsafe{self.$name.as_mut()}
             }
             )+
             )+
@@ -31,7 +41,7 @@ macro_rules! define_metrics {
             #[inline]
             pub fn rtt(&self) -> &mut Metric {
                 // Metric操作是原子计数的，因此unsafe不会导致UB。
-                self.rtt.as_mut()
+                unsafe{self.rtt.as_mut()}
             }
             pub fn new(path:&Path) -> Self {
                 let ops: [Metric; OPS.len()] =
@@ -59,7 +69,8 @@ define_metrics!(
     qps:    tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn, key-key, nilconvert-nilconvert, inconsist-inconsist;
     num:    conn_num-conn, read-read, write-write, invalid_cmd-invalid_cmd, unsupport_cmd-unsupport_cmd;
     rtt:    avg-avg;
-    ratio:  cache-hit
+    ratio:  cache-hit;
+    status: listen_failed-listen_failed
 );
 
 impl ProtoMetric<Metric> for StreamMetrics {
