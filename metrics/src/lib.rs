@@ -50,7 +50,7 @@ impl Metric {
         &mut *(self as *const _ as *mut _)
     }
     #[inline(always)]
-    pub(crate) fn item(&self) -> &Item {
+    fn item(&self) -> &Item {
         debug_assert!(!self.item.is_null());
         //println!("on_metric_drop:{:p}", self.inner);
         unsafe { &*self.item }
