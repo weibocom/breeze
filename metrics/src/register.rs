@@ -1,4 +1,5 @@
 use ds::time::{interval, Duration, Instant};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::{Id, Item, Metric};
@@ -182,7 +183,6 @@ impl Display for Metrics {
     }
 }
 
-use std::collections::HashMap;
 pub struct MetricRegister {
     rx: Receiver<Op>,
     metrics: CowWriteHandle<Metrics>,
@@ -206,11 +206,6 @@ impl MetricRegister {
     fn get_metrics(&mut self) -> &mut Metrics {
         self.cache.get_or_insert_with(|| self.metrics.copy())
     }
-    fn get_metric_ops(&mut self) -> (&mut Metrics, &mut Vec<(usize, ItemPtr)>) {
-        let Self { ops, .. } = self;
-        let metrics = self.cache.get_or_insert_with(|| self.metrics.copy());
-        (metrics, ops)
-    }
     // op被清理的条件：
     // metric主动断开与item的连接(detach之后，一般是metric已经获取到了global的item，或者已经删除)
     // 1. item deattach是metric主动调用，说明item可以安全释放；
@@ -220,13 +215,21 @@ impl MetricRegister {
         }
         self.last_ops = Instant::now();
         use crate::Snapshot;
-        let (metrics, ops) = self.get_metric_ops();
+
+        let Self {
+            ops,
+            cache,
+            metrics,
+            ..
+        } = self;
         ops.retain(|(idx, local)| {
-            let (gid, global) = metrics.get_item_id(*idx);
+            let idx = *idx;
+            let (gid, global) = cache.get_or_insert_with(|| metrics.copy()).get_item_id(idx);
             let id: &Id = &*local.id();
             assert_eq!(gid, id, "id not equal");
 
             id.t.merge(global.data0(), local.data0());
+            // metric与local item还有连接，则保留。
             local.is_attached()
         });
         let new_cap = (ops.capacity() / 2).max(32);
