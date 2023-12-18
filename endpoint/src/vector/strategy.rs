@@ -93,6 +93,30 @@ impl<'a> Display for VRingSlice<'a> {
     }
 }
 
+struct Keys<'a>(&'a RingSlice);
+impl<'a> Display for Keys<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        //todo: 改成新dev的实现，或者提供一个iter
+        let mut start = 0;
+        while let Some(end) = self.0.find(start, b',') {
+            if start == 0 {
+                let _ = write!(f, "`{}`", VRingSlice(&self.0.slice(start, end - start)));
+            } else {
+                let _ = write!(f, ",`{}`", VRingSlice(&self.0.slice(start, end - start)));
+            }
+            start = end + 1;
+        }
+        let left = self.0.len() - start;
+        assert!(left > 0);
+        if start == 0 {
+            let _ = write!(f, "`{}`", VRingSlice(&self.0.slice(start, left)));
+        } else {
+            let _ = write!(f, ",`{}`", VRingSlice(&self.0.slice(start, left)));
+        }
+        Ok(())
+    }
+}
+
 struct Val<'a>(&'a RingSlice);
 impl<'a> Display for Val<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -110,7 +134,7 @@ impl<'a> Display for ConditionDisplay<'a> {
             let _ = write!(
                 f,
                 "{} {} ({})",
-                VRingSlice(&self.0.field),
+                Keys(&self.0.field),
                 VRingSlice(&self.0.op),
                 //todo:暂时不转义
                 VRingSlice(&self.0.value)
@@ -119,7 +143,7 @@ impl<'a> Display for ConditionDisplay<'a> {
             let _ = write!(
                 f,
                 "{}{}{}",
-                VRingSlice(&self.0.field),
+                Keys(&self.0.field),
                 VRingSlice(&self.0.op),
                 Val(&self.0.value)
             );
@@ -132,7 +156,7 @@ struct Select<'a>(Option<&'a (RingSlice, RingSlice)>);
 impl<'a> Display for Select<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
-            Some(field) => VRingSlice(&field.1).fmt(f),
+            Some(field) => Keys(&field.1).fmt(f),
             None => f.write_char('*'),
         }
     }
@@ -153,14 +177,14 @@ impl<'a> Display for InsertCols<'a> {
         for (i, key) in strategy.condition_keys().enumerate() {
             if let Some(key) = key {
                 if i == 0 {
-                    let _ = write!(f, "{}", key);
+                    let _ = write!(f, "`{}`", key);
                 } else {
-                    let _ = write!(f, ",{}", key);
+                    let _ = write!(f, ",`{}`", key);
                 }
             }
         }
         for field in fields {
-            let _ = write!(f, ",{}", VRingSlice(&field.0));
+            let _ = write!(f, ",{}", Keys(&field.0));
         }
         Ok(())
     }
@@ -195,9 +219,9 @@ impl<'a> Display for UpdateFields<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (i, field) in self.0.iter().enumerate() {
             if i == 0 {
-                let _ = write!(f, "{}={}", VRingSlice(&field.0), Val(&field.1));
+                let _ = write!(f, "{}={}", Keys(&field.0), Val(&field.1));
             } else {
-                let _ = write!(f, ",{}={}", VRingSlice(&field.0), Val(&field.1));
+                let _ = write!(f, ",{}={}", Keys(&field.0), Val(&field.1));
             }
         }
         Ok(())
@@ -221,9 +245,9 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
         for (i, key) in strategy.condition_keys().enumerate() {
             if let Some(key) = key {
                 if i == 0 {
-                    let _ = write!(f, "{}={}", key, Val(&keys[i]));
+                    let _ = write!(f, "`{}`={}", key, Val(&keys[i]));
                 } else {
-                    let _ = write!(f, " and {}={}", key, Val(&keys[i]));
+                    let _ = write!(f, " and `{}`={}", key, Val(&keys[i]));
                 }
             }
         }
@@ -231,13 +255,13 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
             let _ = write!(f, " and {}", ConditionDisplay(w));
         }
         if group_by.fields.len() != 0 {
-            let _ = write!(f, " group by {}", VRingSlice(&group_by.fields));
+            let _ = write!(f, " group by {}", Keys(&group_by.fields));
         }
         if order.field.len() != 0 {
             let _ = write!(
                 f,
                 " order by {} {}",
-                VRingSlice(&order.field),
+                Keys(&order.field),
                 VRingSlice(&order.order)
             );
         }
@@ -394,6 +418,54 @@ mod tests {
             ],
             fields: vec![(
                 RingSlice::from_slice("field".as_bytes()),
+                RingSlice::from_slice("a".as_bytes()),
+            )],
+            wheres: Default::default(),
+            group_by: Default::default(),
+            order: Default::default(),
+            limit: Default::default(),
+        };
+        let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        builder.write_sql(buf);
+        let db_idx = strategy
+            .distribution()
+            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        assert_eq!(
+            buf,
+            &format!("select `a` from db_name_{db_idx}.table_name_2105 where `kid`='id'")
+        );
+
+        // vrange 无field
+        let vector_cmd = VectorCmd {
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: Default::default(),
+            wheres: Default::default(),
+            group_by: Default::default(),
+            order: Default::default(),
+            limit: Default::default(),
+        };
+        let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        buf.clear();
+        builder.write_sql(buf);
+        let db_idx = strategy
+            .distribution()
+            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        assert_eq!(
+            buf,
+            &format!("select * from db_name_{db_idx}.table_name_2105 where `kid`='id'")
+        );
+
+        // 复杂vrange
+        let vector_cmd = VectorCmd {
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: vec![(
+                RingSlice::from_slice("field".as_bytes()),
                 RingSlice::from_slice("a,b".as_bytes()),
             )],
             wheres: vec![
@@ -408,9 +480,11 @@ mod tests {
                     value: RingSlice::from_slice("2,3".as_bytes()),
                 },
             ],
-            group_by: Default::default(),
+            group_by: GroupBy {
+                fields: RingSlice::from_slice("b".as_bytes()),
+            },
             order: Order {
-                field: RingSlice::from_slice("a".as_bytes()),
+                field: RingSlice::from_slice("a,b".as_bytes()),
                 order: RingSlice::from_slice("desc".as_bytes()),
             },
             limit: Limit {
@@ -419,13 +493,14 @@ mod tests {
             },
         };
         let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
             .distribution()
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
             buf,
-            &format!("select a,b from db_name_{db_idx}.table_name_2105 where kid='id' and a='1' and b in (2,3) order by a desc limit 24 offset 12")
+            &format!("select `a`,`b` from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by `b` order by `a`,`b` desc limit 24 offset 12")
             );
 
         // vcard
@@ -465,7 +540,7 @@ mod tests {
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
             buf,
-            &format!("select count(*) from db_name_{db_idx}.table_name_2105 where kid='id' and a='1' and b in (2,3) order by a desc limit 24 offset 12")
+            &format!("select count(*) from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) order by `a` desc limit 24 offset 12")
             );
 
         //vadd
@@ -504,7 +579,7 @@ mod tests {
         assert_eq!(
             buf,
             &format!(
-                "insert into db_name_{db_idx}.table_name_2105 (kid,a,b) values ('id','1','bb')"
+                "insert into db_name_{db_idx}.table_name_2105 (`kid`,`a`,`b`) values ('id','1','bb')"
             )
         );
 
@@ -554,7 +629,7 @@ mod tests {
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
             buf,
-            &format!("update db_name_{db_idx}.table_name_2105 set a='1',b='bb' where kid='id' and a='1' and b in (2,3)")
+            &format!("update db_name_{db_idx}.table_name_2105 set `a`='1',`b`='bb' where `kid`='id' and `a`='1' and `b` in (2,3)")
         );
 
         //vdel
@@ -594,7 +669,7 @@ mod tests {
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
                 buf,
-                &format!("delete from db_name_{db_idx}.table_name_2105 where kid='id' and a='1' and b in (2,3)")
+                &format!("delete from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3)")
                 );
     }
 }
