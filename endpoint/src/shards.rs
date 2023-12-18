@@ -116,15 +116,19 @@ impl<E> Shard<E> {
         use discovery::dns::IPPort;
         let addr = self.master.addr();
         let port = addr.port();
-        // TODO: 10000: 这个值是与监控系统共享的，如果修改，需要同时修改监控系统的配置
-        let n = self.slaves.len_region().map(|l| l + 10000).unwrap_or(0);
         let f = |r: &str| format!("{}:{}", r, port);
         let bip = context::get()
             .region()
             .map(f)
             .unwrap_or_else(|| f(discovery::distance::host_region().as_str()));
 
-        metrics::resource_num_metric(ty, service, &*bip, n);
+        // 构建metric数据
+        let path = metrics::Path::new(vec![ty, service, &*bip]);
+        let mut metric = path.status("region_resource");
+        match self.slaves.region_res_fail() {
+            true => metric += metrics::Status::NOTIFY, // 生成可用区内资源实例数量不足的监控数据
+            false => metric += metrics::Status::OK,
+        }
     }
 }
 impl<E: discovery::Inited> Shard<E> {
