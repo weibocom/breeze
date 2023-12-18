@@ -80,7 +80,10 @@ use std::sync::atomic::AtomicI64;
 pub(crate) trait Snapshot {
     fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, secs: f64);
     #[inline]
-    fn merge(&self, _global: &ItemData0, _cache: &ItemData0) {}
+    fn merge(&self, global: &ItemData0, cache: &ItemData0) {
+        let _ = global;
+        let _ = cache;
+    }
 }
 // 用4个i64来存储数据。
 #[derive(Default)]
