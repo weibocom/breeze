@@ -33,11 +33,9 @@ impl Metric {
     pub(crate) fn from(item: *const Item) -> Self {
         Self { item }
     }
-    //
+    // 检查metric是否已经注册到global
     pub fn check_registered(&mut self) -> bool {
-        let registered = self.check_get().is_global();
-        log::info!("check_registered: {self} {registered}");
-        registered
+        self.check_get().is_global()
     }
     // 部分场景需要依赖Arc<Metric>，又需要对Metric进行+=的更新操作，因此需要将只读metric更新为mut
     // 1. 所有的基于metrics的操作都是原子的
