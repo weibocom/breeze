@@ -1,8 +1,8 @@
-use ds::time::{interval, Duration, Instant};
+use ds::time::{interval, Duration};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::{Id, Item, Metric};
+use crate::{Id, Item, ItemData0, Metric};
 
 const CHUNK_SIZE: usize = 4096;
 
@@ -15,49 +15,22 @@ use tokio::{
 pub struct Metrics {
     // chunks只扩容，不做其他变更。
     chunks: Vec<*const Item>,
-    register: Sender<Op>,
     len: usize,
     id_idx: HashMap<Arc<Id>, usize>,
     idx_id: Vec<Arc<Id>>,
 }
 
-//pub type ItemPtr = Box<Item>;
-pub struct ItemPtr {
-    ptr: usize,
+enum Op {
+    Register(Arc<Id>),
+    Flush(Arc<Id>, ItemData0),
 }
-impl ItemPtr {
-    fn local(id: Arc<Id>) -> Self {
-        let item = Box::leak(Box::new(Item::local(id)));
-        Self {
-            ptr: item as *const _ as usize,
-        }
-    }
-}
-// 实现Deref
-impl std::ops::Deref for ItemPtr {
-    type Target = Item;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*(self.ptr as *const Item) }
-    }
-}
-impl Drop for ItemPtr {
-    fn drop(&mut self) {
-        let raw = self.ptr as *mut Item;
-        let _ = unsafe { Box::from_raw(raw) };
-    }
-}
-
-pub enum Op {
-    Local((Arc<Id>, ItemPtr)),
-}
+use crate::ItemPtr;
 
 impl Metrics {
-    fn new(register: Sender<Op>) -> Self {
+    fn new() -> Self {
         let mut me = Self {
             // 在metric register handler中，按需要扩容chunks
             chunks: Vec::new(),
-            register,
             len: 0,
             id_idx: Default::default(),
             idx_id: Default::default(),
@@ -65,17 +38,18 @@ impl Metrics {
         me.reserve_chunk_num(1);
         me
     }
-    pub(crate) fn register(&self, id: Id) -> Metric {
+    fn register(&self, id: Id) -> Metric {
         if let Some(&idx) = self.id_idx.get(&id) {
             let item = self.get_item(idx);
+            let item = ItemPtr::global(item);
             return Metric::from(item);
         }
         let id = Arc::new(id);
         // 从local中获取
         let item = ItemPtr::local(id.clone());
-        let metric = Metric::from(&*item as _);
+        let metric = Metric::from(item);
         log::debug!("register sent {id:?}");
-        let _r = self.register.send(Op::Local((id, item)));
+        let _r = get_register().send(Op::Register(id));
         assert!(_r.is_ok());
         return metric;
     }
@@ -102,7 +76,7 @@ impl Metrics {
         unsafe { &*self.chunks.get_unchecked(slot).offset(offset as isize) }
     }
     #[inline]
-    fn reserve_idx(&mut self, id: &Arc<Id>) -> usize {
+    fn reserve_idx(&mut self, id: &Arc<Id>) {
         self.reserve_chunk_num(1);
         let idx = *self.id_idx.entry(id.clone()).or_insert(self.len);
         if idx == self.len() {
@@ -114,7 +88,6 @@ impl Metrics {
             assert!(self.idx_id[idx].empty());
             self.idx_id[idx] = id.clone();
         }
-        idx
     }
     #[inline]
     fn reserve_chunk_num(&mut self, n: usize) {
@@ -142,6 +115,23 @@ pub(crate) fn get_metrics() -> ReadGuard<Metrics> {
 pub(crate) fn register_metric(id: Id) -> Metric {
     get_metrics().register(id)
 }
+#[inline]
+pub(crate) fn flush_item(item: &Item) {
+    debug_assert!(item.is_local());
+    let id = item.id();
+    use crate::Snapshot;
+    if let Some(global) = get_item(&*id) {
+        debug_assert!(!global.is_null());
+        let global = unsafe { &*global };
+        id.t.merge(global.data0(), item.data0());
+    } else {
+        // 如果global不存在，则将当前的item异步flush到global
+        let data = ItemData0::default();
+        id.t.merge(&data, item.data0());
+        let _r = get_register().send(Op::Flush(id.clone(), data));
+        assert!(_r.is_ok());
+    }
+}
 pub(crate) fn with_metric_id<O>(idx: usize, mut f: impl FnMut(&Id) -> O) -> O {
     f(get_metrics().get_item_id(idx).0)
 }
@@ -156,13 +146,19 @@ pub(crate) fn get_item(id: &Id) -> Option<*const Item> {
 
 use once_cell::sync::OnceCell;
 static METRICS: OnceCell<CowReadHandle<Metrics>> = OnceCell::new();
+static mut SENDER: Option<Sender<Op>> = None;
+fn get_register() -> &'static Sender<Op> {
+    unsafe { SENDER.as_ref().expect("not inited") }
+}
 pub mod tests {
     use super::*;
-    pub fn init_metrics_onlyfor_test() -> Receiver<Op> {
+    static mut TEST_RECEIVER: Option<Receiver<Op>> = None;
+    pub fn init_metrics_onlyfor_test() {
         let (register_tx, chan_rx) = unbounded_channel();
-        let (_tx, rx) = ds::cow(Metrics::new(register_tx));
+        let (_tx, rx) = ds::cow(Metrics::new());
+        unsafe { SENDER = Some(register_tx) };
         let _ = METRICS.set(rx).map_err(|_e| panic!("init"));
-        chan_rx
+        unsafe { TEST_RECEIVER = Some(chan_rx) };
     }
 }
 
@@ -173,13 +169,7 @@ unsafe impl Send for Metrics {}
 use std::fmt::{self, Display, Formatter};
 impl Display for Metrics {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "len:{} cap:{} chunks:{}",
-            self.len,
-            self.cap(),
-            self.chunks.len()
-        )
+        write!(f, "len:{} cap:{}", self.len, self.cap(),)
     }
 }
 
@@ -187,9 +177,7 @@ pub struct MetricRegister {
     rx: Receiver<Op>,
     metrics: CowWriteHandle<Metrics>,
     tick: Interval,
-    ops: Vec<(usize, ItemPtr)>,
     cache: Option<Metrics>,
-    last_ops: Instant,
 }
 
 impl MetricRegister {
@@ -198,51 +186,23 @@ impl MetricRegister {
             rx,
             metrics,
             tick: interval(Duration::from_secs(1)),
-            ops: Vec::new(),
             cache: None,
-            last_ops: Instant::now(),
         }
     }
     fn get_metrics(&mut self) -> &mut Metrics {
         self.cache.get_or_insert_with(|| self.metrics.copy())
-    }
-    // op被清理的条件：
-    // metric主动断开与item的连接(detach之后，一般是metric已经获取到了global的item，或者已经删除)
-    // 1. item deattach是metric主动调用，说明item可以安全释放；
-    fn process_ops(&mut self) {
-        if self.ops.len() == 0 || self.last_ops.elapsed() <= Duration::from_secs(32) {
-            return;
-        }
-        self.last_ops = Instant::now();
-        use crate::Snapshot;
-
-        let Self {
-            ops,
-            cache,
-            metrics,
-            ..
-        } = self;
-        ops.retain(|(idx, local)| {
-            let idx = *idx;
-            let (gid, global) = cache.get_or_insert_with(|| metrics.copy()).get_item_id(idx);
-            let id: &Id = &*local.id();
-            assert_eq!(gid, id, "id not equal");
-
-            id.t.merge(global.data0(), local.data0());
-            // metric与local item还有连接，则保留。
-            local.is_attached()
-        });
-        let new_cap = (ops.capacity() / 2).max(32);
-        ops.shrink_to(new_cap);
     }
 }
 impl Default for MetricRegister {
     fn default() -> Self {
         log::info!("task started ==> metric register");
         assert!(METRICS.get().is_none());
+        assert!(unsafe { SENDER.is_none() });
         let (register_tx, register_rx) = unbounded_channel();
-        let (tx, rx) = ds::cow(Metrics::new(register_tx));
+        let (tx, rx) = ds::cow(Metrics::new());
         let _ = METRICS.set(rx);
+        // 设置全局的SENDER
+        unsafe { SENDER = Some(register_tx) };
         MetricRegister::new(register_rx, tx)
     }
 }
@@ -260,22 +220,31 @@ impl Future for MetricRegister {
         log::debug!("metric register poll");
         loop {
             let ret = me.rx.poll_recv(cx);
-            if let Poll::Ready(Some(Op::Local((id, item)))) = ret {
-                assert!(item.is_local());
-                let idx = me.get_metrics().reserve_idx(&id);
-                me.ops.push((idx, item));
+            if let Poll::Ready(Some(op)) = ret {
+                match op {
+                    Op::Register(id) => {
+                        me.get_metrics().reserve_idx(&id);
+                    }
+                    Op::Flush(id, local) => {
+                        let metrics = me.get_metrics();
+                        // 一定是已经注册的
+                        let idx = *metrics.id_idx.get(&id).expect("id not registered");
+                        let global = metrics.get_item(idx);
+                        use crate::Snapshot;
+                        id.t.merge(global.data0(), &local);
+                    }
+                }
                 continue;
             }
-            if me.cache.is_none() && me.ops.len() == 0 {
+            if me.cache.is_none() {
                 let _r = ready!(ret);
                 panic!("register channel closed");
             }
 
             // 控制更新频繁
             ready!(me.tick.poll_tick(cx));
-            me.process_ops();
             if let Some(t) = me.cache.take() {
-                log::info!("metrics updated:{}", me.ops.len());
+                log::info!("metrics updated:{}", t);
                 me.metrics.update(t);
             }
         }
