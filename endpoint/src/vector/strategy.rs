@@ -117,6 +117,13 @@ impl<'a> Display for Keys<'a> {
     }
 }
 
+struct Key<'a>(&'a RingSlice);
+impl<'a> Display for Key<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "`{}`", VRingSlice(self.0))
+    }
+}
+
 struct Val<'a>(&'a RingSlice);
 impl<'a> Display for Val<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -134,7 +141,7 @@ impl<'a> Display for ConditionDisplay<'a> {
             let _ = write!(
                 f,
                 "{} {} ({})",
-                Keys(&self.0.field),
+                Key(&self.0.field),
                 VRingSlice(&self.0.op),
                 //todo:暂时不转义
                 VRingSlice(&self.0.value)
@@ -143,7 +150,7 @@ impl<'a> Display for ConditionDisplay<'a> {
             let _ = write!(
                 f,
                 "{}{}{}",
-                Keys(&self.0.field),
+                Key(&self.0.field),
                 VRingSlice(&self.0.op),
                 Val(&self.0.value)
             );
@@ -184,7 +191,7 @@ impl<'a> Display for InsertCols<'a> {
             }
         }
         for field in fields {
-            let _ = write!(f, ",{}", Keys(&field.0));
+            let _ = write!(f, ",{}", Key(&field.0));
         }
         Ok(())
     }
@@ -219,9 +226,9 @@ impl<'a> Display for UpdateFields<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (i, field) in self.0.iter().enumerate() {
             if i == 0 {
-                let _ = write!(f, "{}={}", Keys(&field.0), Val(&field.1));
+                let _ = write!(f, "{}={}", Key(&field.0), Val(&field.1));
             } else {
-                let _ = write!(f, ",{}={}", Keys(&field.0), Val(&field.1));
+                let _ = write!(f, ",{}={}", Key(&field.0), Val(&field.1));
             }
         }
         Ok(())
