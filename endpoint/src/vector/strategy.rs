@@ -308,8 +308,9 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     }
 
     fn write_sql(&self, buf: &mut impl Write) {
-        match self.op {
-            vector::OP_VRANGE => {
+        let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
+        match cmd_type {
+            vector::CommandType::VRange => {
                 let _ = write!(
                     buf,
                     "select {} from {} where {}",
@@ -318,7 +319,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
-            vector::OP_VCARD => {
+            vector::CommandType::VCard => {
                 let _ = write!(
                     buf,
                     "select count(*) from {} where {}",
@@ -326,7 +327,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
-            vector::OP_VADD => {
+            vector::CommandType::VAdd => {
                 let _ = write!(
                     buf,
                     "insert into {} ({}) values ({})",
@@ -335,7 +336,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     InsertVals(&self.strategy, &self.vcmd.keys, &self.vcmd.fields),
                 );
             }
-            vector::OP_VUPDATE => {
+            vector::CommandType::VUpdate => {
                 let _ = write!(
                     buf,
                     "update {} set {} where {}",
@@ -344,7 +345,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
-            vector::OP_VDEL => {
+            vector::CommandType::VDel => {
                 let _ = write!(
                     buf,
                     "delete from {} where {}",
@@ -352,8 +353,10 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
-            //校验应该在parser_req出
-            _ => panic!("not support op:{}", self.op),
+            _ => {
+                //校验应该在parser_req出
+                panic!("not support op:{}", self.op);
+            }
         }
     }
 }
