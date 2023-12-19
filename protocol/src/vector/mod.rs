@@ -240,9 +240,9 @@ impl Vector {
 
 pub enum Opcode {}
 
-pub(crate) const COND_ORDER: &str = "ORDER";
-pub(crate) const COND_LIMIT: &str = "LIMIT";
-pub(crate) const COND_GROUP: &str = "GROUP";
+pub(crate) const COND_ORDER: &[u8] = b"ORDER";
+pub(crate) const COND_LIMIT: &[u8] = b"LIMIT";
+pub(crate) const COND_GROUP: &[u8] = b"GROUP";
 
 #[derive(Debug, Clone, Default)]
 pub struct Condition {
