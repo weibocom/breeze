@@ -154,6 +154,7 @@ impl Vector {
             let cmd = packet.take();
             let hash = 0;
             let cmd = HashedCommand::new(cmd, hash, flag);
+            log::debug!("++ parse req ok");
             process.process(cmd, true);
         }
 
@@ -265,7 +266,7 @@ impl Condition {
 // }
 #[derive(Debug, Clone, Default)]
 pub struct Order {
-    pub fields: RingSlice,
+    pub field: RingSlice,
     pub order: RingSlice,
 }
 // pub struct Orders {
