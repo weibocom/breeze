@@ -308,52 +308,47 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     }
 
     fn write_sql(&self, buf: &mut impl Write) {
-        match self.op {
-            vector::OP_VRANGE => {
-                let _ = write!(
-                    buf,
-                    "select {} from {} where {}",
-                    Select(self.vcmd.fields.get(0)),
-                    Table(&self.strategy, &self.vcmd.keys),
-                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
-                );
-            }
-            vector::OP_VCARD => {
-                let _ = write!(
-                    buf,
-                    "select count(*) from {} where {}",
-                    Table(&self.strategy, &self.vcmd.keys),
-                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
-                );
-            }
-            vector::OP_VADD => {
-                let _ = write!(
-                    buf,
-                    "insert into {} ({}) values ({})",
-                    Table(&self.strategy, &self.vcmd.keys),
-                    InsertCols(&self.strategy, &self.vcmd.fields),
-                    InsertVals(&self.strategy, &self.vcmd.keys, &self.vcmd.fields),
-                );
-            }
-            vector::OP_VUPDATE => {
-                let _ = write!(
-                    buf,
-                    "update {} set {} where {}",
-                    Table(&self.strategy, &self.vcmd.keys),
-                    UpdateFields(&self.vcmd.fields),
-                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
-                );
-            }
-            vector::OP_VDEL => {
-                let _ = write!(
-                    buf,
-                    "delete from {} where {}",
-                    Table(&self.strategy, &self.vcmd.keys),
-                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
-                );
-            }
+        if self.op == *vector::OP_VRANGE {
+            let _ = write!(
+                buf,
+                "select {} from {} where {}",
+                Select(self.vcmd.fields.get(0)),
+                Table(&self.strategy, &self.vcmd.keys),
+                KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+            );
+        } else if self.op == *vector::OP_VCARD {
+            let _ = write!(
+                buf,
+                "select count(*) from {} where {}",
+                Table(&self.strategy, &self.vcmd.keys),
+                KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+            );
+        } else if self.op == *vector::OP_VADD {
+            let _ = write!(
+                buf,
+                "insert into {} ({}) values ({})",
+                Table(&self.strategy, &self.vcmd.keys),
+                InsertCols(&self.strategy, &self.vcmd.fields),
+                InsertVals(&self.strategy, &self.vcmd.keys, &self.vcmd.fields),
+            );
+        } else if self.op == *vector::OP_VUPDATE {
+            let _ = write!(
+                buf,
+                "update {} set {} where {}",
+                Table(&self.strategy, &self.vcmd.keys),
+                UpdateFields(&self.vcmd.fields),
+                KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+            );
+        } else if self.op == *vector::OP_VDEL {
+            let _ = write!(
+                buf,
+                "delete from {} where {}",
+                Table(&self.strategy, &self.vcmd.keys),
+                KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+            );
+        } else {
             //校验应该在parser_req出
-            _ => panic!("not support op:{}", self.op),
+            panic!("not support op:{}", self.op);
         }
     }
 }

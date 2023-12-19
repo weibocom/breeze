@@ -21,6 +21,8 @@ use crate::kv::common::query_result::Or;
 use crate::kv::HandShakeStatus;
 use crate::HandShake;
 
+extern crate lazy_static;
+
 #[derive(Clone, Default)]
 pub struct Vector;
 
@@ -143,16 +145,16 @@ impl Vector {
     fn parse_request_inner<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         packet: &mut RequestPacket<S>,
-        _alg: &H,
+        alg: &H,
         process: &mut P,
     ) -> Result<()> {
         log::debug!("+++ rec kvector req:{:?}", packet.inner_data());
         while packet.available() {
             packet.parse_bulk_num()?;
-            let flag = packet.parse_cmd()?;
+            let (cfg, flag) = packet.parse_cmd()?;
             // 构建cmd，准备后续处理
             let cmd = packet.take();
-            let hash = 0;
+            let hash = packet.hash(cfg, alg)?;
             let cmd = HashedCommand::new(cmd, hash, flag);
             log::debug!("++ parse req ok");
             process.process(cmd, true);
@@ -288,11 +290,20 @@ pub struct GroupBy {
 pub type Field = (RingSlice, RingSlice);
 
 // TODO 这个值跟随hash方法变化，需要调整使用姿势？ fishermen
-pub const OP_VRANGE: u16 = 378;
-pub const OP_VADD: u16 = 1132;
-pub const OP_VUPDATE: u16 = 1184;
-pub const OP_VDEL: u16 = 2006;
-pub const OP_VCARD: u16 = 103;
+// pub const OP_VRANGE: u16 = 378;
+// pub const OP_VADD: u16 = 1132;
+// pub const OP_VUPDATE: u16 = 1184;
+// pub const OP_VDEL: u16 = 2006;
+// pub const OP_VCARD: u16 = 103;
+
+lazy_static! {
+    pub static ref OP_VRANGE: u16 = command::get_cfg_byname("vrange").unwrap().op_code as u16;
+    pub static ref OP_VADD: u16 = command::get_cfg_byname("vadd").unwrap().op_code as u16;
+    pub static ref OP_VUPDATE: u16 = command::get_cfg_byname("vupdate").unwrap().op_code as u16;
+    pub static ref OP_VDEL: u16 = command::get_cfg_byname("vdel").unwrap().op_code as u16;
+    pub static ref OP_VCARD: u16 = command::get_cfg_byname("vcard").unwrap().op_code as u16;
+}
+
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
 #[derive(Debug, Clone, Default)]
 pub struct VectorCmd {

@@ -85,6 +85,16 @@ impl Commands {
     }
 
     #[inline]
+    pub(crate) fn get_by_name(&self, name: &str) -> crate::Result<&CommandProperties> {
+        for cmd in self.supported.iter() {
+            if cmd.name == name {
+                return Ok(cmd);
+            }
+        }
+        Err(super::error::KvectorError::ReqNotSupported.into())
+    }
+
+    #[inline]
     fn add_support(&mut self, mut c: CommandProperties) {
         let idx = CommandHasher::hash_bytes(c.name.as_bytes()) as usize;
         assert!(idx > 0 && idx < self.supported.len(), "idx:{}", idx);
@@ -103,6 +113,11 @@ impl Commands {
 #[inline(always)]
 pub(crate) fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties> {
     SUPPORTED.get_by_op(op_code)
+}
+
+#[inline(always)]
+pub(crate) fn get_cfg_byname(name: &str) -> crate::Result<&'static CommandProperties> {
+    SUPPORTED.get_by_name(name)
 }
 
 use Operation::*;
