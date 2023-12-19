@@ -301,8 +301,29 @@ pub struct VectorCmd {
     pub group_by: GroupBy,
 }
 
+/// field 字段的值，对于‘field’关键字，值是｜分隔的field names，否则就是二进制value
 #[derive(Debug, Clone)]
 pub enum FieldVal {
     Names(Vec<RingSlice>),
     Val(RingSlice),
+}
+
+impl FieldVal {
+    // TODO 需要在parse时，增加协议判断 fishermen
+    #[inline(always)]
+    pub fn names(&self) -> &Vec<RingSlice> {
+        match self {
+            Self::Names(names) => names,
+            _ => panic!("mustn't has field bin val"),
+        }
+    }
+
+    // TODO 需要在parse时，增加协议判断 fishermen
+    #[inline(always)]
+    pub fn val(&self) -> &RingSlice {
+        match self {
+            Self::Val(val) => val,
+            _ => panic!("mustn't has field names"),
+        }
+    }
 }
