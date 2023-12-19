@@ -6,15 +6,15 @@ use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use crate::vector::flager::KvFlager;
 use crate::vector::{
-    Condition, GroupBy, Limit, Order, VectorCmd, COND_GROUP, COND_LIMIT, COND_ORDER,
+    Condition, FieldVal, GroupBy, Limit, Order, VectorCmd, COND_GROUP, COND_LIMIT, COND_ORDER,
 };
 use crate::{Error::FlushOnClose, Result};
 use crate::{HashedCommand, Packet};
 use ds::{RingSlice, Utf8};
 use sharding::{distribution::DBRange, hash::Hasher};
 
-const BYTES_FIELD: &'static [u8] = b"FIELD";
-const FIELD_SEPARATOR: u8 = b',';
+const FIELD_BYTES: &'static [u8] = b"FIELD";
+const FIELD_SEPARATOR: u8 = b'|';
 
 pub trait Strategy {
     fn distribution(&self) -> &DBRange;
@@ -281,16 +281,17 @@ impl MysqlBuilder {
         while oft < pos_after_field {
             let name = data.bulk_string(&mut oft)?;
             let value = data.bulk_string(&mut oft)?;
-            // 对于field关键字，value是field names；否则 name就是field name
-            let field_names = if name.equal_ignore_case(BYTES_FIELD) {
-                value
+            // 对于field关键字，value是field names
+            if name.equal_ignore_case(FIELD_BYTES) {
+                let fields = Self::split_validate_field_name(value)?;
+                vcmd.fields.push((name, FieldVal::Names(fields)));
             } else {
-                name
+                // 否则 name就是field name
+                if !Self::validate_field_name(name) {
+                    return Err(crate::Error::RequestInvalidMagic);
+                }
+                vcmd.fields.push((name, FieldVal::Val(value)));
             };
-            if !Self::validate_field_name(field_names) {
-                return Err(crate::Error::RequestProtocolInvalid);
-            }
-            vcmd.fields.push((name, value));
         }
         // 解析完fields，结束的位置应该刚好是flag中记录的field之后下一个字节的oft
         assert_eq!(oft, pos_after_field, "packet:{:?}", data);
@@ -308,20 +309,13 @@ impl MysqlBuilder {
                 let op = data.bulk_string(&mut oft)?;
                 let val = data.bulk_string(&mut oft)?;
                 if name.equal_ignore_case(COND_ORDER) {
-                    // 先校验 order by 的value
-                    if !Self::validate_field_name(val) {
-                        return Err(crate::Error::RequestProtocolInvalid);
-                    }
-                    vcmd.order = Order {
-                        field: op,
-                        order: val,
-                    };
+                    // 先校验 order by 的value/fields
+                    let fields = Self::split_validate_field_name(val)?;
+                    vcmd.order = Order { fields, order: val };
                 } else if name.equal_ignore_case(COND_GROUP) {
-                    // 先校验 group by 的value
-                    if !Self::validate_field_name(val) {
-                        return Err(crate::Error::RequestProtocolInvalid);
-                    }
-                    vcmd.group_by = GroupBy { fields: val }
+                    // 先校验 group by 的value/fields
+                    let fields = Self::split_validate_field_name(val)?;
+                    vcmd.group_by = GroupBy { fields }
                 } else if name.equal_ignore_case(COND_LIMIT) {
                     vcmd.limit = Limit {
                         offset: op,
@@ -337,22 +331,48 @@ impl MysqlBuilder {
         Ok(())
     }
 
-    /// 校验mysql的field name，根据反引号的ASCII规则加强版，即ASCII: U+0001 .. U+007F，同时排除0、反引号;
-    /// 附加逻辑：结尾不可为','，其为fields分隔符，每个','后跟一个field
+    /// 根据分隔符把field names分拆成多个独立的fields，并对field进行校验；
+    /// 校验策略：反引号方案，即ASCII: U+0001 .. U+007F，同时排除0、反引号;
     /// https://dev.mysql.com/doc/refman/8.0/en/identifiers.html
+    fn split_validate_field_name(field_names: RingSlice) -> Result<Vec<RingSlice>> {
+        assert!(field_names.len() > 0, "field: {}", field_names);
+
+        let len = field_names.len();
+        let mut fields = Vec::with_capacity(len / 4 + 1);
+        let mut start = 0;
+        // 校验，并分拆fields
+        for i in 0..len {
+            let c = field_names.at(i);
+            if MYSQL_FIELD_CHAR_TBL[c as usize] == 0 {
+                return Err(crate::Error::RequestProtocolInvalid);
+            }
+            if c == FIELD_SEPARATOR {
+                if i > start {
+                    fields.push(field_names.sub_slice(start, i - start));
+                }
+                start = i + 1;
+            }
+        }
+        if (len - 1) > start {
+            fields.push(field_names.sub_slice(start, len - 1 - start));
+        }
+
+        Ok(fields)
+    }
+
+    /// 只校验单个field
     fn validate_field_name(field_name: RingSlice) -> bool {
         assert!(field_name.len() > 0, "field: {}", field_name);
 
-        let len = field_name.len();
-        for i in 0..len {
+        // 校验
+        for i in 0..field_name.len() {
             let c = field_name.at(i);
             if MYSQL_FIELD_CHAR_TBL[c as usize] == 0 {
                 return false;
             }
         }
 
-        // 至此，只要最后一个字节不为逗号即合法
-        field_name.at(len - 1) != b','
+        true
     }
 }
 
