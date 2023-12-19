@@ -326,4 +326,21 @@ impl FieldVal {
             _ => panic!("mustn't has field names"),
         }
     }
+
+    /// check names，如果names不存在，则返回异常
+    #[inline(always)]
+    pub fn has_names(&self) -> bool {
+        match self {
+            Self::Names(_) => true,
+            _ => false,
+        }
+    }
+
+    /// check val，如果val不存在，则返回异常
+    pub fn has_val(&self) -> bool {
+        match self {
+            Self::Val(_) => true,
+            _ => false,
+        }
+    }
 }
