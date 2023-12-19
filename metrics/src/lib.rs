@@ -20,17 +20,14 @@ use std::ops::AddAssign;
 use crate::Snapshot;
 
 use crate::ItemData0;
-use std::sync::{
-    atomic::{AtomicBool, Ordering::*},
-    Arc,
-};
+use std::sync::Arc;
 
 pub struct Metric {
-    item: *const Item,
+    item: ItemPtr,
 }
 impl Metric {
     #[inline]
-    pub(crate) fn from(item: *const Item) -> Self {
+    pub(crate) fn from(item: ItemPtr) -> Self {
         Self { item }
     }
     // 检查metric是否已经注册到global
@@ -51,45 +48,32 @@ impl Metric {
     }
     #[inline(always)]
     fn item(&self) -> &Item {
-        debug_assert!(!self.item.is_null());
-        //println!("on_metric_drop:{:p}", self.inner);
-        unsafe { &*self.item }
+        &*self.item
     }
     // 从global 同步item
     #[cold]
     #[inline(never)]
     fn rsync(&mut self) {
-        assert!(self.item().is_local());
+        debug_assert!(self.item().is_local());
         if let Position::Local(id) = &self.item().pos {
             if let Some(item) = crate::get_item(&*id) {
-                let local = self.item;
-                self.item = item;
-                unsafe { (&*local).detach() };
+                self.item = ItemPtr::global(item);
             }
         }
     }
     // get操作会触发更新
     #[inline(always)]
     pub(crate) fn check_get(&mut self) -> &Item {
-        debug_assert!(!self.item.is_null());
-        if self.item().is_local() {
+        if self.item.is_local() {
             self.rsync();
         }
         self.item()
-    }
-    #[inline(always)]
-    pub(crate) fn try_detach(&self) {
-        let item = self.item();
-        // 必须为local的，当前global的item不会释放
-        if item.is_local() {
-            item.detach();
-        }
     }
 }
 impl<T: IncrTo + Debug> AddAssign<T> for Metric {
     #[inline(always)]
     fn add_assign(&mut self, m: T) {
-        m.incr_to(self.item().data0());
+        m.incr_to(self.check_get().data0());
     }
 }
 use std::ops::SubAssign;
@@ -113,12 +97,6 @@ impl Debug for Metric {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
-    }
-}
-impl Drop for Metric {
-    #[inline]
-    fn drop(&mut self) {
-        self.try_detach();
     }
 }
 unsafe impl Sync for Metric {}
@@ -183,8 +161,6 @@ pub(crate) enum Position {
 pub struct Item {
     // 使用Position，避免global与local更新时的race
     pub(crate) pos: Position,
-    // 本地的Metric，并且对应的Metric已经drop掉。该Item可以被安全的回收。
-    local_attached: AtomicBool,
     data: ItemData,
 }
 impl Item {
@@ -192,7 +168,6 @@ impl Item {
         Self {
             pos: Position::Global(idx),
             data: ItemData::default(),
-            local_attached: false.into(),
         }
     }
     #[inline(always)]
@@ -208,7 +183,6 @@ impl Item {
     }
     #[inline(always)]
     pub(crate) fn id(&self) -> &Arc<Id> {
-        assert!(self.is_local());
         match &self.pos {
             Position::Local(id) => &id,
             Position::Global(_) => panic!("id called in global item"),
@@ -218,36 +192,71 @@ impl Item {
         Self {
             pos: Position::Local(id),
             data: ItemData::default(),
-            local_attached: true.into(),
         }
     }
     #[inline]
     pub(crate) fn data0(&self) -> &ItemData0 {
         &self.data.inner
     }
-    #[inline]
-    pub(crate) fn is_attached(&self) -> bool {
-        assert!(self.is_local());
-        self.local_attached.load(Acquire)
-    }
-    #[inline]
-    pub(crate) fn detach(&self) {
-        log::info!("metric detached: {:?} => {:p}", self, self);
-        self.local_attached
-            .compare_exchange(true, false, AcqRel, Acquire)
-            .expect("double attach");
-    }
 
     #[inline]
     pub(crate) fn snapshot<W: crate::ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
         id.t.snapshot(&id.path, &id.key, &self.data.inner, w, secs);
     }
+    #[inline]
+    pub(crate) fn flush(&self) {
+        debug_assert!(self.is_local());
+        crate::flush_item(self);
+    }
 }
 
 impl Drop for Item {
     fn drop(&mut self) {
-        log::info!("item drop:{:?}", self);
-        // 表明对应的Metric是本地的，Item释放之前，需要将对应的Metric释放掉。
         assert!(self.is_local(), "{:?}", self.pos);
+        self.flush();
+    }
+}
+
+pub(crate) struct ItemPtr {
+    ptr: *const Item,
+}
+impl Clone for ItemPtr {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        panic!("ItemPtr should not be cloned");
+    }
+}
+impl ItemPtr {
+    #[inline(always)]
+    fn global(global: *const Item) -> Self {
+        debug_assert!(!global.is_null());
+        debug_assert!(unsafe { &*global }.is_global());
+        Self { ptr: global }
+    }
+    #[inline(always)]
+    fn local(id: Arc<Id>) -> Self {
+        let item = Item::local(id);
+        Self {
+            ptr: Box::into_raw(Box::new(item)),
+        }
+    }
+}
+// 实现Deref
+impl std::ops::Deref for ItemPtr {
+    type Target = Item;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        debug_assert!(!self.ptr.is_null());
+        unsafe { &*self.ptr }
+    }
+}
+// 实现Drop。如果是local，则释放内存
+impl Drop for ItemPtr {
+    #[inline(always)]
+    fn drop(&mut self) {
+        if self.is_local() {
+            let raw = self.ptr as *mut Item;
+            let _ = unsafe { Box::from_raw(raw) };
+        }
     }
 }
