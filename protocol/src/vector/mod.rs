@@ -265,7 +265,7 @@ impl Condition {
 // }
 #[derive(Debug, Clone, Default)]
 pub struct Order {
-    pub fields: RingSlice,
+    pub field: RingSlice,
     pub order: RingSlice,
 }
 // pub struct Orders {

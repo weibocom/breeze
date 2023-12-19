@@ -314,7 +314,7 @@ impl MysqlBuilder {
                     Self::validate_field_name(val)?;
                     vcmd.order = Order {
                         order: op,
-                        fields: val,
+                        field: val,
                     };
                 } else if name.equal_ignore_case(COND_GROUP) {
                     // 先校验 group by 的value/fields
