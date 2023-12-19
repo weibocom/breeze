@@ -51,8 +51,6 @@ impl Metric {
         &*self.item
     }
     // 从global 同步item
-    #[cold]
-    #[inline(never)]
     fn rsync(&mut self) {
         debug_assert!(self.item().is_local());
         if let Position::Local(id) = &self.item().pos {
@@ -73,7 +71,13 @@ impl Metric {
 impl<T: IncrTo + Debug> AddAssign<T> for Metric {
     #[inline(always)]
     fn add_assign(&mut self, m: T) {
-        m.incr_to(self.check_get().data0());
+        m.incr_to(self.item().data0());
+        if self.item().is_local() {
+            self.rsync();
+            if self.item().is_local() {
+                self.item().flush();
+            }
+        }
     }
 }
 use std::ops::SubAssign;
