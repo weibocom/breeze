@@ -32,7 +32,10 @@ impl Metric {
     }
     // 检查metric是否已经注册到global
     pub fn check_registered(&mut self) -> bool {
-        self.check_get().is_global()
+        if self.item.is_local() {
+            self.rsync(false);
+        }
+        self.item().is_global()
     }
     // 部分场景需要依赖Arc<Metric>，又需要对Metric进行+=的更新操作，因此需要将只读metric更新为mut
     // 1. 所有的基于metrics的操作都是原子的
@@ -51,21 +54,19 @@ impl Metric {
         &*self.item
     }
     // 从global 同步item
-    fn rsync(&mut self) {
+    #[cold]
+    #[inline(never)]
+    fn rsync(&mut self, flush: bool) {
         debug_assert!(self.item().is_local());
         if let Position::Local(id) = &self.item().pos {
             if let Some(item) = crate::get_item(&*id) {
                 self.item = ItemPtr::global(item);
             }
+        } else {
+            if flush {
+                self.item().flush();
+            }
         }
-    }
-    // get操作会触发更新
-    #[inline(always)]
-    pub(crate) fn check_get(&mut self) -> &Item {
-        if self.item.is_local() {
-            self.rsync();
-        }
-        self.item()
     }
 }
 impl<T: IncrTo + Debug> AddAssign<T> for Metric {
@@ -73,10 +74,7 @@ impl<T: IncrTo + Debug> AddAssign<T> for Metric {
     fn add_assign(&mut self, m: T) {
         m.incr_to(self.item().data0());
         if self.item().is_local() {
-            self.rsync();
-            if self.item().is_local() {
-                self.item().flush();
-            }
+            self.rsync(true);
         }
     }
 }
