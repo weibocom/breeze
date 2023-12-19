@@ -4,7 +4,7 @@ pub use crate::kv::strategy::{to_i64, Postfix};
 use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, VectorSqlBuilder};
-use protocol::vector::Condition;
+use protocol::vector::{Condition, Field};
 use protocol::{vector, vector::VectorCmd, OpCode};
 use protocol::{Error, Result};
 use sharding::distribution::DBRange;
@@ -159,7 +159,7 @@ impl<'a> Display for ConditionDisplay<'a> {
     }
 }
 
-struct Select<'a>(Option<&'a (RingSlice, RingSlice)>);
+struct Select<'a>(Option<&'a Field>);
 impl<'a> Display for Select<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
@@ -177,7 +177,7 @@ impl<'a> Display for Table<'a> {
     }
 }
 
-struct InsertCols<'a>(&'a Strategist, &'a Vec<(RingSlice, RingSlice)>);
+struct InsertCols<'a>(&'a Strategist, &'a Vec<Field>);
 impl<'a> Display for InsertCols<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, fields) = self;
@@ -197,11 +197,7 @@ impl<'a> Display for InsertCols<'a> {
     }
 }
 
-struct InsertVals<'a>(
-    &'a Strategist,
-    &'a Vec<RingSlice>,
-    &'a Vec<(RingSlice, RingSlice)>,
-);
+struct InsertVals<'a>(&'a Strategist, &'a Vec<RingSlice>, &'a Vec<Field>);
 impl<'a> Display for InsertVals<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, keys, fields) = self;
@@ -221,7 +217,7 @@ impl<'a> Display for InsertVals<'a> {
     }
 }
 
-struct UpdateFields<'a>(&'a Vec<(RingSlice, RingSlice)>);
+struct UpdateFields<'a>(&'a Vec<Field>);
 impl<'a> Display for UpdateFields<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (i, field) in self.0.iter().enumerate() {
