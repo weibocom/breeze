@@ -13,6 +13,9 @@ use crate::{HashedCommand, Packet};
 use ds::{RingSlice, Utf8};
 use sharding::{distribution::DBRange, hash::Hasher};
 
+const BYTES_FIELD: &'static [u8] = b"FIELD";
+const FIELD_SEPARATOR: u8 = b',';
+
 pub trait Strategy {
     fn distribution(&self) -> &DBRange;
     fn hasher(&self) -> &Hasher;
@@ -270,7 +273,7 @@ impl MysqlBuilder {
         pos_after_field: usize,
         vcmd: &mut VectorCmd,
     ) -> Result<()> {
-        // 解析fields，format: $4\r\nname\r\n$5\r\nvalue\r\n
+        // field start pos为0，说明没有field
         if field_start == 0 {
             return Ok(());
         }
@@ -278,6 +281,15 @@ impl MysqlBuilder {
         while oft < pos_after_field {
             let name = data.bulk_string(&mut oft)?;
             let value = data.bulk_string(&mut oft)?;
+            // 对于field关键字，value是field names；否则 name就是field name
+            let field_names = if name.equal_ignore_case(BYTES_FIELD) {
+                value
+            } else {
+                name
+            };
+            if !Self::validate_field_name(field_names) {
+                return Err(crate::Error::RequestProtocolInvalid);
+            }
             vcmd.fields.push((name, value));
         }
         // 解析完fields，结束的位置应该刚好是flag中记录的field之后下一个字节的oft
@@ -295,18 +307,26 @@ impl MysqlBuilder {
                 let name = data.bulk_string(&mut oft)?;
                 let op = data.bulk_string(&mut oft)?;
                 let val = data.bulk_string(&mut oft)?;
-                if name.equal_ignore_case(COND_ORDER.as_bytes()) {
+                if name.equal_ignore_case(COND_ORDER) {
+                    // 先校验 order by 的value
+                    if !Self::validate_field_name(val) {
+                        return Err(crate::Error::RequestProtocolInvalid);
+                    }
                     vcmd.order = Order {
                         field: op,
                         order: val,
                     };
-                } else if name.equal_ignore_case(COND_LIMIT.as_bytes()) {
+                } else if name.equal_ignore_case(COND_GROUP) {
+                    // 先校验 group by 的value
+                    if !Self::validate_field_name(val) {
+                        return Err(crate::Error::RequestProtocolInvalid);
+                    }
+                    vcmd.group_by = GroupBy { fields: val }
+                } else if name.equal_ignore_case(COND_LIMIT) {
                     vcmd.limit = Limit {
                         offset: op,
                         limit: val,
                     };
-                } else if name.equal_ignore_case(COND_GROUP.as_bytes()) {
-                    vcmd.group_by = GroupBy { fields: val }
                 } else {
                     vcmd.wheres.push(Condition::new(name, op, val));
                 }
@@ -316,4 +336,34 @@ impl MysqlBuilder {
         }
         Ok(())
     }
+
+    /// 校验mysql的field name，根据反引号的ASCII规则加强版，即ASCII: U+0001 .. U+007F，同时排除0、反引号;
+    /// 附加逻辑：结尾不可为','，其为fields分隔符，每个','后跟一个field
+    /// https://dev.mysql.com/doc/refman/8.0/en/identifiers.html
+    fn validate_field_name(field_name: RingSlice) -> bool {
+        assert!(field_name.len() > 0, "field: {}", field_name);
+
+        let len = field_name.len();
+        for i in 0..len {
+            let c = field_name.at(i);
+            if MYSQL_FIELD_CHAR_TBL[c as usize] == 0 {
+                return false;
+            }
+        }
+
+        // 至此，只要最后一个字节不为逗号即合法
+        field_name.at(len - 1) != b','
+    }
 }
+
+/// mysql 反引号方案，即目前只支持：ASCII: U+0001 .. U+007F，同时排除0、反单引号(96)。
+pub static MYSQL_FIELD_CHAR_TBL: [u8; 256] = [
+    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
