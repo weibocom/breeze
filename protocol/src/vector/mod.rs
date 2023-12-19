@@ -265,7 +265,7 @@ impl Condition {
 // }
 #[derive(Debug, Clone, Default)]
 pub struct Order {
-    pub fields: Vec<RingSlice>,
+    pub fields: RingSlice,
     pub order: RingSlice,
 }
 // pub struct Orders {
@@ -281,7 +281,7 @@ pub struct Limit {
 }
 #[derive(Debug, Clone, Default)]
 pub struct GroupBy {
-    pub fields: Vec<RingSlice>,
+    pub fields: RingSlice,
 }
 
 // TODO 这个值跟随hash方法变化，需要调整使用姿势？ fishermen
@@ -294,7 +294,7 @@ pub const OP_VCARD: u16 = 103;
 #[derive(Debug, Clone, Default)]
 pub struct VectorCmd {
     pub keys: Vec<RingSlice>,
-    pub fields: Vec<(RingSlice, FieldVal)>,
+    pub fields: Vec<(RingSlice, RingSlice)>,
     pub wheres: Vec<Condition>,
     pub order: Order,
     pub limit: Limit,

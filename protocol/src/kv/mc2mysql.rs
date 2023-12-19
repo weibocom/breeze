@@ -287,13 +287,12 @@ impl MysqlBuilder {
             let value = data.bulk_string(&mut oft)?;
             // 对于field关键字，value是field names
             if name.equal_ignore_case(FIELD_BYTES) {
-                let fields = Self::split_validate_field_name(value)?;
-                vcmd.fields.push((name, FieldVal::Names(fields)));
+                Self::validate_field_name(value)?;
             } else {
                 // 否则 name就是field name
                 Self::validate_field_name(name)?;
-                vcmd.fields.push((name, FieldVal::Val(value)));
             };
+            vcmd.fields.push((name, value));
         }
         // 解析完fields，结束的位置应该刚好是flag中记录的field之后下一个字节的oft
         assert_eq!(oft, pos_after_field, "packet:{:?}", data);
@@ -312,12 +311,15 @@ impl MysqlBuilder {
                 let val = data.bulk_string(&mut oft)?;
                 if name.equal_ignore_case(COND_ORDER) {
                     // 先校验 order by 的value/fields
-                    let fields = Self::split_validate_field_name(val)?;
-                    vcmd.order = Order { fields, order: val };
+                    Self::validate_field_name(val)?;
+                    vcmd.order = Order {
+                        order: op,
+                        fields: val,
+                    };
                 } else if name.equal_ignore_case(COND_GROUP) {
                     // 先校验 group by 的value/fields
-                    let fields = Self::split_validate_field_name(val)?;
-                    vcmd.group_by = GroupBy { fields }
+                    Self::validate_field_name(val)?;
+                    vcmd.group_by = GroupBy { fields: val }
                 } else if name.equal_ignore_case(COND_LIMIT) {
                     vcmd.limit = Limit {
                         offset: op,
@@ -333,6 +335,7 @@ impl MysqlBuilder {
         Ok(())
     }
 
+    /// TODO: c
     /// 根据分隔符把field names分拆成多个独立的fields，并对field进行校验；
     /// 校验策略：反引号方案，即ASCII: U+0001 .. U+007F，同时排除0、反引号;
     /// https://dev.mysql.com/doc/refman/8.0/en/identifiers.html
@@ -387,16 +390,10 @@ impl MysqlBuilder {
         match opcode {
             OP_VRANGE => {
                 // vrange 的fields数量不能大于1
-                if vcmd.fields.len() > 1 {
+                if vcmd.fields.len() > 1
+                    || (vcmd.fields.len() == 1 && !vcmd.fields[0].0.equal_ignore_case(FIELD_BYTES))
+                {
                     return Err(crate::Error::RequestInvalidMagic);
-                }
-                // vrange的fields必须是： field field_names
-                if vcmd.fields.len() == 1 {
-                    if !vcmd.fields[0].0.equal_ignore_case(FIELD_BYTES)
-                        || !vcmd.fields[0].1.has_names()
-                    {
-                        return Err(crate::Error::RequestInvalidMagic);
-                    }
                 }
             }
             OP_VADD => {
