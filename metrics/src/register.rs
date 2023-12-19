@@ -243,10 +243,9 @@ impl Future for MetricRegister {
 
             // 控制更新频繁
             ready!(me.tick.poll_tick(cx));
-            if let Some(t) = me.cache.take() {
-                log::info!("metrics updated:{}", t);
-                me.metrics.update(t);
-            }
+            let t = me.cache.take().expect("cache");
+            log::debug!("metrics updated:{}", t);
+            me.metrics.update(t);
         }
     }
 }
