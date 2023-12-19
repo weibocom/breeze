@@ -285,6 +285,8 @@ pub struct GroupBy {
     pub fields: RingSlice,
 }
 
+pub type Field = (RingSlice, RingSlice);
+
 // TODO 这个值跟随hash方法变化，需要调整使用姿势？ fishermen
 pub const OP_VRANGE: u16 = 378;
 pub const OP_VADD: u16 = 1132;
@@ -295,7 +297,7 @@ pub const OP_VCARD: u16 = 103;
 #[derive(Debug, Clone, Default)]
 pub struct VectorCmd {
     pub keys: Vec<RingSlice>,
-    pub fields: Vec<(RingSlice, RingSlice)>,
+    pub fields: Vec<Field>,
     pub wheres: Vec<Condition>,
     pub order: Order,
     pub limit: Limit,
