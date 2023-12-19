@@ -390,34 +390,28 @@ impl MysqlBuilder {
     ///   4. vdel： fields必须为空；
     ///   5. vcard：无；
     fn validate_cmd(vcmd: &VectorCmd, opcode: u16) -> Result<()> {
-        match opcode {
-            OP_VRANGE => {
-                // vrange 的fields数量不能大于1
-                if vcmd.fields.len() > 1
-                    || (vcmd.fields.len() == 1 && !vcmd.fields[0].0.equal_ignore_case(FIELD_BYTES))
-                {
-                    return Err(crate::Error::RequestInvalidMagic);
-                }
+        if opcode == *OP_VRANGE {
+            // vrange 的fields数量不能大于1
+            if vcmd.fields.len() > 1
+                || (vcmd.fields.len() == 1 && !vcmd.fields[0].0.equal_ignore_case(FIELD_BYTES))
+            {
+                return Err(crate::Error::RequestInvalidMagic);
             }
-            OP_VADD => {
-                if vcmd.fields.len() == 0 || vcmd.wheres.len() > 0 {
-                    return Err(crate::Error::RequestInvalidMagic);
-                }
+        } else if opcode == *OP_VADD {
+            if vcmd.fields.len() == 0 || vcmd.wheres.len() > 0 {
+                return Err(crate::Error::RequestInvalidMagic);
             }
-            OP_VUPDATE => {
-                if vcmd.fields.len() == 0 {
-                    return Err(crate::Error::RequestInvalidMagic);
-                }
+        } else if opcode == *OP_VUPDATE {
+            if vcmd.fields.len() == 0 {
+                return Err(crate::Error::RequestInvalidMagic);
             }
-            OP_VDEL => {
-                if vcmd.fields.len() > 0 {
-                    return Err(crate::Error::RequestInvalidMagic);
-                }
+        } else if opcode == *OP_VDEL {
+            if vcmd.fields.len() > 0 {
+                return Err(crate::Error::RequestInvalidMagic);
             }
-            OP_VCARD => {}
-            _ => {
-                panic!("unknown kvector cmd:{:?}", vcmd);
-            }
+        } else if opcode == *OP_VCARD {
+        } else {
+            panic!("unknown kvector cmd:{:?}", vcmd);
         }
 
         Ok(())
