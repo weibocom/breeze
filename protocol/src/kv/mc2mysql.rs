@@ -6,8 +6,8 @@ use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use crate::vector::flager::KvFlager;
 use crate::vector::{
-    Condition, FieldVal, GroupBy, Limit, Order, VectorCmd, COND_GROUP, COND_LIMIT, COND_ORDER,
-    OP_VADD, OP_VCARD, OP_VDEL, OP_VRANGE, OP_VUPDATE,
+    Condition, GroupBy, Limit, Order, VectorCmd, COND_GROUP, COND_LIMIT, COND_ORDER, OP_VADD,
+    OP_VCARD, OP_VDEL, OP_VRANGE, OP_VUPDATE,
 };
 use crate::{Error::FlushOnClose, Result};
 use crate::{HashedCommand, Packet};
@@ -15,7 +15,7 @@ use ds::{RingSlice, Utf8};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 const FIELD_BYTES: &'static [u8] = b"FIELD";
-const FIELD_SEPARATOR: u8 = b'|';
+const KVECTOR_SEPARATOR: u8 = b'|';
 
 pub trait Strategy {
     fn distribution(&self) -> &DBRange;
@@ -221,7 +221,6 @@ impl MysqlBuilder {
         Ok(packet)
     }
 
-    // TODO 先用最简单模式打通，稍后优化 fishermen
     /// 根据parse的结果，此处进一步获得kvector的detail/具体字段信息，以便进行sql构建
     pub fn parse_vector_detail(cmd: &HashedCommand) -> crate::Result<VectorCmd> {
         let data = Packet::from(cmd.sub_slice(0, cmd.len()));
@@ -253,6 +252,8 @@ impl MysqlBuilder {
 
     #[inline]
     fn parse_vector_key(data: &Packet, key_pos: usize, vcmd: &mut VectorCmd) -> Result<()> {
+        assert!(key_pos > 0, "{:?}", data);
+
         // 解析key，format: $-1\r\n or $2\r\nab\r\n
         let mut oft = key_pos;
         let key_data = data.bulk_string(&mut oft)?;
@@ -263,7 +264,9 @@ impl MysqlBuilder {
                 break;
             }
             // 从keys中split出','分割的key
-            let idx = key_data.find(oft, ',' as u8).unwrap_or(key_data.len());
+            let idx = key_data
+                .find(oft, KVECTOR_SEPARATOR)
+                .unwrap_or(key_data.len());
             vcmd.keys.push(key_data.sub_slice(oft, idx - oft));
             oft = idx + 1;
         }
@@ -335,35 +338,35 @@ impl MysqlBuilder {
         Ok(())
     }
 
-    /// TODO: c
-    /// 根据分隔符把field names分拆成多个独立的fields，并对field进行校验；
-    /// 校验策略：反引号方案，即ASCII: U+0001 .. U+007F，同时排除0、反引号;
-    /// https://dev.mysql.com/doc/refman/8.0/en/identifiers.html
-    fn split_validate_field_name(field_names: RingSlice) -> Result<Vec<RingSlice>> {
-        assert!(field_names.len() > 0, "field: {}", field_names);
+    // /// TODO: 暂时先不用这个方法，目前sql会多轮询field一次，后续需要去掉轮询，再打开
+    // /// 根据分隔符把field names分拆成多个独立的fields，并对field进行校验；
+    // /// 校验策略：反引号方案，即ASCII: U+0001 .. U+007F，同时排除0、反引号;
+    // /// https://dev.mysql.com/doc/refman/8.0/en/identifiers.html
+    // fn split_validate_field_name(field_names: RingSlice) -> Result<Vec<RingSlice>> {
+    //     assert!(field_names.len() > 0, "field: {}", field_names);
 
-        let len = field_names.len();
-        let mut fields = Vec::with_capacity(len / 4 + 1);
-        let mut start = 0;
-        // 校验，并分拆fields
-        for i in 0..len {
-            let c = field_names.at(i);
-            if MYSQL_FIELD_CHAR_TBL[c as usize] == 0 {
-                return Err(crate::Error::RequestProtocolInvalid);
-            }
-            if c == FIELD_SEPARATOR {
-                if i > start {
-                    fields.push(field_names.sub_slice(start, i - start));
-                }
-                start = i + 1;
-            }
-        }
-        if (len - 1) > start {
-            fields.push(field_names.sub_slice(start, len - 1 - start));
-        }
+    //     let len = field_names.len();
+    //     let mut fields = Vec::with_capacity(len / 4 + 1);
+    //     let mut start = 0;
+    //     // 校验，并分拆fields
+    //     for i in 0..len {
+    //         let c = field_names.at(i);
+    //         if MYSQL_FIELD_CHAR_TBL[c as usize] == 0 {
+    //             return Err(crate::Error::RequestProtocolInvalid);
+    //         }
+    //         if c == KVECTOR_SEPARATOR {
+    //             if i > start {
+    //                 fields.push(field_names.sub_slice(start, i - start));
+    //             }
+    //             start = i + 1;
+    //         }
+    //     }
+    //     if (len - 1) > start {
+    //         fields.push(field_names.sub_slice(start, len - 1 - start));
+    //     }
 
-        Ok(fields)
-    }
+    //     Ok(fields)
+    // }
 
     /// 只校验单个field
     fn validate_field_name(field_name: RingSlice) -> Result<()> {

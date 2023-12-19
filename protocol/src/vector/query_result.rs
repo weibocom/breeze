@@ -434,6 +434,7 @@ pub fn format_to_redis(rows: &Vec<Row>) -> Vec<u8> {
 
     let columns = rows.get(0).expect("columns unexists").columns_ref();
 
+    // TODO 后面需要支持 select count(uid) from db.tbl
     // 对于vcard（即select count(*)），可能有1个row，也可能有多个rows(带group by)，转为integer/integer-array;
     // sql 在mesh构建为小写，所以此处可以确认count(*)为小写，两者必须保持一致 fishermen
     const VCARD_NAME: &[u8] = b"count(*)";

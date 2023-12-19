@@ -16,7 +16,7 @@ fn vrange_basic() {
     let rsp = redis::cmd("vrange")
         .arg(format!("{argkey},2105"))
         .arg("field")
-        .arg("a,b")
+        .arg("a|b")
         .arg("where")
         .arg("a")
         .arg("=")
@@ -39,9 +39,9 @@ fn vrange_basic() {
 fn vrange_0() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209284,2211")
+        .arg("4668741184209284|2211")
         .arg("field")
-        .arg("uid,object_type")
+        .arg("uid|object_type")
         .arg("where")
         .arg("like_id")
         .arg("=")
@@ -59,9 +59,9 @@ fn vrange_0() {
 fn vrange_1() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209281,2211")
+        .arg("4668741184209281|2211")
         .arg("field")
-        .arg("uid,object_type")
+        .arg("uid|object_type")
         .arg("where")
         .arg("like_id")
         .arg("=")
@@ -87,9 +87,9 @@ fn vrange_1() {
 fn vrange_2() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209282,2211")
+        .arg("4668741184209282|2211")
         .arg("field")
-        .arg("uid,like_id")
+        .arg("uid|like_id")
         .arg("where")
         .arg("object_id")
         .arg("=")
@@ -120,9 +120,9 @@ fn vrange_2() {
 fn vrange_3() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209283,2211")
+        .arg("4668741184209283|2211")
         .arg("field")
-        .arg("uid,object_id")
+        .arg("uid|object_id")
         .arg("where")
         .arg("like_id")
         .arg("=")
@@ -156,9 +156,9 @@ fn vrange_3() {
 fn vrange_with_group() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209283,2211")
+        .arg("4668741184209283|2211")
         .arg("field")
-        .arg("uid,object_id")
+        .arg("uid|object_id")
         .arg("where")
         .arg("like_id")
         .arg("=")
@@ -195,7 +195,7 @@ fn vrange_with_group() {
 fn vrange_with_count() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209283,2211")
+        .arg("4668741184209283|2211")
         .arg("field")
         .arg("uid,object_id,count(*)")
         .arg("where")
@@ -228,7 +228,7 @@ fn vrange_with_count() {
 fn vcard() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vcard")
-        .arg("4668741184209283,2211")
+        .arg("4668741184209283|2211")
         .arg("where")
         .arg("like_id")
         .arg("=")
@@ -247,7 +247,7 @@ fn vadd() {
     let object_type = "4";
 
     let rsp: Result<i32, redis::RedisError> = redis::cmd("vdel")
-        .arg(format!("{},2211", uid))
+        .arg(format!("{}|2211", uid))
         .arg("where")
         .arg("like_id")
         .arg("=")
@@ -263,7 +263,7 @@ fn vadd() {
     // assert_eq!(rsp, Ok(1));
 
     let rsp = redis::cmd("vadd")
-        .arg(format!("{},2211", uid))
+        .arg(format!("{}|2211", uid))
         .arg("object_type")
         .arg(object_type)
         .arg("like_id")
@@ -285,7 +285,7 @@ fn vupdate() {
 
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp: Result<i32, redis::RedisError> = redis::cmd("vdel")
-        .arg(format!("{},2211", uid))
+        .arg(format!("{}|2211", uid))
         .arg("where")
         .arg("like_id")
         .arg("=")
@@ -300,7 +300,7 @@ fn vupdate() {
     println!("+++ rsp:{:?}", rsp);
 
     let rsp = redis::cmd("vadd")
-        .arg(format!("{},2211", uid))
+        .arg(format!("{}|2211", uid))
         .arg("object_type")
         .arg(object_type)
         .arg("like_id")
@@ -313,7 +313,7 @@ fn vupdate() {
 
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vupdate")
-        .arg(format!("{},2211", uid))
+        .arg(format!("{}|2211", uid))
         .arg("object_type")
         .arg(object_type_new)
         .arg("where")
@@ -331,7 +331,7 @@ fn vupdate() {
     assert_eq!(rsp, Ok(1));
 
     let rsp = redis::cmd("vupdate")
-        .arg(format!("{},2211", uid))
+        .arg(format!("{}|2211", uid))
         .arg("object_type")
         .arg(object_type)
         .arg("where")
@@ -358,7 +358,7 @@ fn vdel() {
 
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp = redis::cmd("vadd")
-        .arg(format!("{},2211", uid))
+        .arg(format!("{}|2211", uid))
         .arg("object_type")
         .arg(object_type)
         .arg("like_id")
@@ -370,7 +370,7 @@ fn vdel() {
     assert_eq!(rsp, Ok(1));
 
     let rsp = redis::cmd("vdel")
-        .arg(format!("{},2211", uid))
+        .arg(format!("{}|2211", uid))
         .arg("where")
         .arg("like_id")
         .arg("=")

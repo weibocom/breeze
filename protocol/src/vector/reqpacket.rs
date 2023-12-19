@@ -6,7 +6,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use crate::{
     redis::{command::CommandHasher, packet::CRLF_LEN},
     vector::{command, error::KvectorError},
-    Error, Flag, Packet, Result,
+    Flag, Packet, Result,
 };
 
 /// key 最大长度限制为200
@@ -118,6 +118,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         // 如果有condition，解析之，注意保证where token已经被skip掉了
         if cfg.can_hold_where_condition {
             self.parse_condition(&mut flag)?;
+        }
+
+        if self.bulks != 0 {
+            return Err(KvectorError::ReqNotSupported.into());
         }
 
         log::debug!("++++ after condition parsed oft:{}", self.oft);
@@ -248,10 +252,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     fn parse_condition(&mut self, flag: &mut Flag) -> Result<()> {
-        // 如果bulks为0，说明没有condition 了
-        if self.bulks == 0 {
-            return Ok(());
-        }
+        // bulks必须大于0
+        assert!(self.bulks > 0, "{:?}", self);
 
         // 剩下肯定全部是condition，必须是3的倍数
         if self.bulks % 3 != 0 {
