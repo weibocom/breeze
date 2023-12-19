@@ -1,5 +1,6 @@
 use super::{command::CommandProperties, flager::KvFlager};
 use ds::RingSlice;
+use sharding::hash::Hash;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -85,7 +86,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    pub(crate) fn parse_cmd(&mut self) -> Result<Flag> {
+    pub(crate) fn parse_cmd(&mut self) -> Result<(&'static CommandProperties, Flag)> {
         // 第一个字段是cmd type，根据cmd type构建flag，并在后续解析中设置flag
         let cfg = self.parse_cmd_properties()?;
         let mut flag = cfg.flag();
@@ -93,7 +94,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         // meta cmd 当前直接返回固定响应，直接skip后面的tokens即可
         if cfg.op.is_meta() {
             self.skip_bulks(self.bulks)?;
-            return Ok(flag);
+            return Ok((cfg, flag));
         }
 
         // 非meta的cmd，有key，可能有fields和where condition，全部解析出位置，并记录到flag
@@ -125,7 +126,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
 
         log::debug!("++++ after condition parsed oft:{}", self.oft);
-        Ok(flag)
+        Ok((cfg, flag))
     }
 
     #[inline]
@@ -286,6 +287,33 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.op_code = 0;
         self.stream.take(data.len())
     }
+
+    //总是会parsekey
+    pub(super) fn hash<H: Hash>(&mut self, cfg: &CommandProperties, alg: &H) -> Result<i64> {
+        if cfg.has_key {
+            let key = self.next_bulk_string()?;
+            return Ok(calculate_hash(alg, &key));
+        }
+        Ok(default_hash())
+    }
+}
+
+use std::sync::atomic::{AtomicI64, Ordering};
+static VECTOR_AUTO: AtomicI64 = AtomicI64::new(0);
+
+// 避免异常情况下hash为0，请求集中到某一个shard上。
+// hash正常情况下可能为0?
+#[inline]
+fn calculate_hash<H: Hash>(alg: &H, key: &RingSlice) -> i64 {
+    match key.len() {
+        0 => default_hash(),
+        _ => alg.hash(key),
+    }
+}
+
+#[inline]
+fn default_hash() -> i64 {
+    VECTOR_AUTO.fetch_add(1, Ordering::Relaxed)
 }
 
 impl<'a, S: crate::Stream> Display for RequestPacket<'a, S> {
