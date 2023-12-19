@@ -1,4 +1,6 @@
-use super::{command::CommandProperties, flager::KvFlager};
+use super::{
+    command::CommandProperties, flager::KvFlager, OP_VADD, OP_VCARD, OP_VDEL, OP_VRANGE, OP_VUPDATE,
+};
 use ds::RingSlice;
 
 use std::fmt::{self, Debug, Display, Formatter};
@@ -6,7 +8,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use crate::{
     redis::{command::CommandHasher, packet::CRLF_LEN},
     vector::{command, error::KvectorError},
-    Error, Flag, Packet, Result,
+    Flag, Packet, Result,
 };
 
 /// key 最大长度限制为200
@@ -14,6 +16,7 @@ const MAX_KEY_LEN: usize = 200;
 /// 请求消息不能超过16M
 const MAX_REQUEST_LEN: usize = (1 << super::flager::CONDITION_POS_BITS) - 1;
 const BYTES_WHERE: &'static [u8] = b"WHERE";
+const BYTES_FIELD: &'static [u8] = b"FIELD";
 
 pub(crate) struct RequestPacket<'a, S> {
     stream: &'a mut S,
@@ -100,6 +103,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         // 如果有key，则下一个字段是key
         if cfg.has_key {
             self.parse_key(&mut flag)?;
+        }
+
+        // 如果request不带fields、condition则，此时bulks应该为0
+        if self.bulks == 0 {
+            return Ok(flag);
         }
 
         // 如果有field，则接下来解析fields，不管是否有field，统一先把where这个token消费掉，方便后续统一从condition位置解析
@@ -203,48 +211,114 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         return Err(KvectorError::ReqNotSupported.into());
     }
 
+    /// 前置条件： bulks大于0
     fn parse_fields(&mut self, flag: &mut Flag) -> Result<()> {
+        assert!(self.bulks > 0, "{:?}", self);
+
+        // 解析并校验field
+        match flag.op_code() {
+            OP_VRANGE => return self.parse_vrange_fields(flag),
+            OP_VUPDATE | OP_VADD => return self.parse_vadd_vupdate_fields(flag),
+            OP_VDEL | OP_VCARD => {
+                // vdel、vcard没有condition，只可能有where conditions
+                let token = self.next_bulk_string()?;
+                if token.equal_ignore_case(BYTES_WHERE) && self.bulks > 0 {
+                    return Ok(());
+                }
+                return Err(KvectorError::ReqNotSupported.into());
+            }
+            _ => {
+                panic!("+++ should not come here:{:?}", self);
+            }
+        }
+    }
+
+    fn parse_vrange_fields(&mut self, flag: &mut Flag) -> Result<()> {
         // key 后面的字段可能是field，也可能是where conditioncheck
         let pos = self.cmd_current_pos();
-        let token = self.next_bulk_string()?;
+        let mut token = self.next_bulk_string()?;
+
+        // vrange对应的格式field $field_names，其中field_names以逗号分隔
+        if token.equal_ignore_case(BYTES_FIELD) {
+            // 设置field的pos
+            flag.set_field_pos(pos as u8);
+
+            // 校验field names
+            let field_names = self.next_bulk_string()?;
+            if !validate_field_name(field_names) {
+                log::warn!("+++ malformed req:{:?}", self);
+                return Err(KvectorError::ReqNotSupported.into());
+            }
+
+            // bulkd为0，说明没有where condition
+            if self.bulks == 0 {
+                return Ok(());
+            }
+            token = self.next_bulk_string()?;
+        }
+
+        // 解析完field，当前的token必须是where，且where之后必须还有conditions
+        if token.equal_ignore_case(BYTES_WHERE) && self.bulks > 0 {
+            return Ok(());
+        }
+
+        log::warn!("+++ malformed vdel/vcard req:{:?}", self);
+        return Err(KvectorError::ReqNotSupported.into());
+    }
+
+    fn parse_vadd_vupdate_fields(&mut self, flag: &mut Flag) -> Result<()> {
+        // key 后面的字段可能是field，也可能是where conditioncheck
+        let pos = self.cmd_current_pos();
+        let mut token = self.next_bulk_string()?;
+
+        // 格式：$field_name $field_value
         if !token.equal_ignore_case(BYTES_WHERE) {
             // 第0个token，不是where，那就一定是field了，设置field的pos
             flag.set_field_pos(pos as u8);
 
-            // skip 掉所有的剩余的所有field tokens
-            let mut field_idx = 1;
-            loop {
-                // field 是key value pair 对，idx从0开始计数，如 [k1 v1 k2 v2] 的idx [0, 1, 2, 3]
-                // 没有bulks时，如果idx正好是奇数位，说明协议非法，少了value;如果idx为偶数，说明解析完毕；
-                if self.bulks == 0 {
-                    if field_idx & 2 == 1 {
-                        log::warn!("+++ invalid field count:{}", self);
-                        return Err(KvectorError::ReqNotSupported.into());
-                    } else {
-                        return Ok(());
-                    }
-                };
+            // validate field name
+            if !validate_field_name(token) {
+                return Err(KvectorError::ReqNotSupported.into());
+            }
 
-                // 还有bulks，检测奇偶位
-                if field_idx & 2 == 1 {
-                    // 奇数位的value直接skip
+            // 下一个token是field_value，不是field name
+            let mut is_next_field_name = false;
+            // 接下来loop skip 掉所有的剩余的所有$field_name $field_value pair
+            loop {
+                if !is_next_field_name {
+                    if self.bulks == 0 {
+                        return Err(KvectorError::ReqNotSupported.into());
+                    }
+                    // field value直接skip
                     self.skip_bulks(1)?;
                 } else {
-                    // 偶数位，可能是where，需要读出来进行check
-                    let next = self.next_bulk_string()?;
-                    if next.equal_ignore_case(BYTES_WHERE) {
-                        if self.bulks == 0 {
-                            log::warn!("+++ empty where condition req:{}", self);
-                            return Err(KvectorError::ReqInvalidBulkNum.into());
-                        }
+                    if self.bulks == 0 {
                         return Ok(());
                     }
-                    // 当前不是where，则肯定是field，则其后面必须还要有val
+                    // 可能是field，也可能是where，需要读出来进行check
+                    let next = self.next_bulk_string()?;
+                    // 遇到 where，break出loop
+                    if next.equal_ignore_case(BYTES_WHERE) {
+                        token = next;
+                        break;
+                    }
+                    // 不是where，肯定是field name，需要进行校验，校验失败则返回异常
+                    if !validate_field_name(next) {
+                        return Err(KvectorError::ReqNotSupported.into());
+                    }
                 }
-                field_idx += 1;
+
+                is_next_field_name = !is_next_field_name;
             }
         }
-        Ok(())
+
+        // 至此，token必须是where，且剩余bulks必须大于0
+        if token.equal_ignore_case(BYTES_WHERE) && self.bulks > 0 {
+            return Ok(());
+        }
+
+        log::warn!("+++ malformed vdel/vcard req:{:?}", self);
+        return Err(KvectorError::ReqNotSupported.into());
     }
 
     fn parse_condition(&mut self, flag: &mut Flag) -> Result<()> {
@@ -306,3 +380,58 @@ impl<'a, S: crate::Stream> Debug for RequestPacket<'a, S> {
         Display::fmt(self, f)
     }
 }
+
+/// 校验mysql的field name，根据反引号的ASCII规则加强版，即ASCII: U+0001 .. U+007F，同时排除0、反引号;
+/// 附加逻辑：结尾不可为','，其为fields分隔符，每个','后跟一个field
+/// https://dev.mysql.com/doc/refman/8.0/en/identifiers.html
+fn validate_field_name(field_name: RingSlice) -> bool {
+    assert!(field_name.len() > 0, "field: {}", field_name);
+
+    let len = field_name.len();
+    for i in 0..len {
+        let c = field_name.at(i);
+        if MYSQL_FIELD_CHAR_TBL[c as usize] == 0 {
+            return false;
+        }
+    }
+
+    // 至此，只要最后一个字节不为逗号即合法
+    field_name.at(len - 1) != b','
+}
+
+/// mysql 反引号方案，即目前只支持：ASCII: U+0001 .. U+007F，同时排除0、反单引号(96)。
+pub static MYSQL_FIELD_CHAR_TBL: [u8; 256] = [
+    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
+// /// mysql 非引号方案：ASCII: [0-9,a-z,A-Z$_] (basic Latin letters, digits 0-9, dollar, underscore)，如果合法，对应位置的值为1
+// pub static MYSQL_FIELD_CHAR_TBL: [u8; 256] = [
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+//     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1,
+//     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+// ];
+
+// /// mysql field 带的多个字段名的字符checking table，不同字段名之间用','分隔，用于check多field_name的字符合法性，如果合法，对应位置的值为1
+// /// 相对于单个field name，多了一个逗号/",", 逗号的ascii码值为44
+// pub static MYSQL_FIELD_AND_COMMA_CHAR_TBL: [u8; 256] = [
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+//     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1,
+//     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+// ];

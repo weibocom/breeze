@@ -193,8 +193,6 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
                 }
 
                 None => {
-                    // take统一放在构建最终响应的地方进行
-                    // let _ = self.rsp_packet.take();
                     return Ok(rows);
                 }
             }
