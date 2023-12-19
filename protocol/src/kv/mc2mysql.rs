@@ -7,6 +7,7 @@ use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use crate::vector::flager::KvFlager;
 use crate::vector::{
     Condition, FieldVal, GroupBy, Limit, Order, VectorCmd, COND_GROUP, COND_LIMIT, COND_ORDER,
+    OP_VADD, OP_VCARD, OP_VDEL, OP_VRANGE, OP_VUPDATE,
 };
 use crate::{Error::FlushOnClose, Result};
 use crate::{HashedCommand, Packet};
@@ -244,6 +245,9 @@ impl MysqlBuilder {
         // 解析conditions
         Self::parse_vector_condition(&data, condition_pos, &mut vcmd)?;
 
+        // 校验cmd的合法性
+        Self::validate_cmd(&vcmd, flag.op_code())?;
+
         Ok(vcmd)
     }
 
@@ -287,9 +291,7 @@ impl MysqlBuilder {
                 vcmd.fields.push((name, FieldVal::Names(fields)));
             } else {
                 // 否则 name就是field name
-                if !Self::validate_field_name(name) {
-                    return Err(crate::Error::RequestInvalidMagic);
-                }
+                Self::validate_field_name(name)?;
                 vcmd.fields.push((name, FieldVal::Val(value)));
             };
         }
@@ -361,18 +363,64 @@ impl MysqlBuilder {
     }
 
     /// 只校验单个field
-    fn validate_field_name(field_name: RingSlice) -> bool {
+    fn validate_field_name(field_name: RingSlice) -> Result<()> {
         assert!(field_name.len() > 0, "field: {}", field_name);
 
         // 校验
         for i in 0..field_name.len() {
             let c = field_name.at(i);
             if MYSQL_FIELD_CHAR_TBL[c as usize] == 0 {
-                return false;
+                return Err(crate::Error::RequestProtocolInvalid);
             }
         }
 
-        true
+        Ok(())
+    }
+
+    /// 解析cmd detail完毕，开始根据cmd类型进行校验
+    ///   1. vrange: 如果有fields，最多只能有1个，且name为“field”
+    ///   2. vadd：fields必须大于0,不能where condition；
+    ///   3. vupdate： fields必须大于0；
+    ///   4. vdel： fields必须为空；
+    ///   5. vcard：无；
+    fn validate_cmd(vcmd: &VectorCmd, opcode: u16) -> Result<()> {
+        match opcode {
+            OP_VRANGE => {
+                // vrange 的fields数量不能大于1
+                if vcmd.fields.len() > 1 {
+                    return Err(crate::Error::RequestInvalidMagic);
+                }
+                // vrange的fields必须是： field field_names
+                if vcmd.fields.len() == 1 {
+                    if !vcmd.fields[0].0.equal_ignore_case(FIELD_BYTES)
+                        || !vcmd.fields[0].1.has_names()
+                    {
+                        return Err(crate::Error::RequestInvalidMagic);
+                    }
+                }
+            }
+            OP_VADD => {
+                if vcmd.fields.len() == 0 || vcmd.wheres.len() > 0 {
+                    return Err(crate::Error::RequestInvalidMagic);
+                }
+            }
+            OP_VUPDATE => {
+                if vcmd.fields.len() == 0 {
+                    return Err(crate::Error::RequestInvalidMagic);
+                }
+            }
+            OP_VDEL => {
+                if vcmd.fields.len() > 0 {
+                    return Err(crate::Error::RequestInvalidMagic);
+                }
+            }
+            OP_VCARD => {}
+            _ => {
+                panic!("unknown kvector cmd:{:?}", vcmd);
+            }
+        }
+
+        Ok(())
     }
 }
 
