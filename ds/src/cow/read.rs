@@ -77,11 +77,11 @@ impl<T> CowHandleInner<T> {
     pub(super) fn update(&self, t: T) {
         let w_handle = Box::into_raw(Box::new(Arc::new(t)));
         let old = self.inner.swap(w_handle, AcqRel);
-        let _dropping = unsafe { Box::from_raw(old) };
         //old有可能被enter load了，这时候释放会有问题，需要等到一次读为0后释放，后续再有读也会是对new的引用，释放old不会再有问题
         while self.enters.load(Acquire) > 0 {
             hint::spin_loop();
         }
+        let _dropping = unsafe { Box::from_raw(old) };
     }
 }
 

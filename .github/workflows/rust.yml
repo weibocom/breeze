@@ -83,7 +83,7 @@ jobs:
         #    version: "0.22.0"
         #    args: "--features=github_workflow --features=console-api -- --test-threads 1"
       - name: Run unit tests
-        run: cargo test -p tests
+        run: cargo test -p tests --features github_workflow
       - name: wait until 2 mins
         run: |
           port_list=(56810 56812 9302 9301 9303 3306)  # 端口列表

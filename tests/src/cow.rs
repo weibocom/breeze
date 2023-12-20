@@ -1,6 +1,7 @@
-use ds::cow;
 #[test]
+#[cfg(feature = "github_workflow")]
 fn test_cow() {
+    use ds::cow;
     let (mut tx, rx) = cow(0usize);
     let mut joins = vec![];
     joins.push(std::thread::spawn(move || {
