@@ -81,12 +81,8 @@ impl Metrics {
         let idx = *self.id_idx.entry(id.clone()).or_insert(self.len);
         if idx == self.len() {
             self.len += 1;
-            for _i in self.idx_id.len()..=idx {
-                self.idx_id.push(Default::default());
-            }
-            assert!(idx < self.idx_id.len());
-            assert!(self.idx_id[idx].empty());
-            self.idx_id[idx] = id.clone();
+            self.idx_id.push(id.clone());
+            assert_eq!(self.len, self.idx_id.len());
         }
     }
     #[inline]
@@ -120,6 +116,9 @@ pub(crate) fn flush_item(item: &Item) {
     debug_assert!(item.is_local());
     let id = item.id();
     use crate::Snapshot;
+    if id.t.is_empty(item.data0()) {
+        return;
+    }
     if let Some(global) = get_item(&*id) {
         debug_assert!(!global.is_null());
         let global = unsafe { &*global };

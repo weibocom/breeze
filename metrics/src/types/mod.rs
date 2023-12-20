@@ -84,6 +84,10 @@ pub(crate) trait Snapshot {
         let _ = global;
         let _ = cache;
     }
+    fn is_empty(&self, data: &ItemData0) -> bool {
+        use crate::base::Adder;
+        data.d0.get() == 0 && data.d1.get() == 0
+    }
 }
 // 用4个i64来存储数据。
 #[derive(Default)]
