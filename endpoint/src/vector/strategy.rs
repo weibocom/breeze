@@ -4,8 +4,7 @@ pub use crate::kv::strategy::{to_i64, Postfix};
 use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, VectorSqlBuilder};
-use protocol::vector::{Condition, Field};
-use protocol::{vector, vector::VectorCmd, OpCode};
+use protocol::vector::{CommandType, Condition, Field, VectorCmd};
 use protocol::{Error, Result};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
@@ -281,17 +280,25 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
 }
 
 pub(crate) struct VectorBuilder<'a> {
-    op: OpCode,
+    cmd_type: CommandType,
     vcmd: &'a VectorCmd,
     strategy: &'a Strategist,
 }
 
 impl<'a> VectorBuilder<'a> {
-    pub fn new(op: OpCode, vcmd: &'a VectorCmd, strategy: &'a Strategist) -> Result<Self> {
+    pub fn new(
+        cmd_type: CommandType,
+        vcmd: &'a VectorCmd,
+        strategy: &'a Strategist,
+    ) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys().len() {
             Err(Error::ProtocolIncomplete)
         } else {
-            Ok(Self { op, vcmd, strategy })
+            Ok(Self {
+                cmd_type,
+                vcmd,
+                strategy,
+            })
         }
     }
 }
@@ -308,9 +315,9 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     }
 
     fn write_sql(&self, buf: &mut impl Write) {
-        let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
-        match cmd_type {
-            vector::CommandType::VRange => {
+        // let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
+        match self.cmd_type {
+            CommandType::VRange => {
                 let _ = write!(
                     buf,
                     "select {} from {} where {}",
@@ -319,7 +326,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
-            vector::CommandType::VCard => {
+            CommandType::VCard => {
                 let _ = write!(
                     buf,
                     "select count(*) from {} where {}",
@@ -327,7 +334,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
-            vector::CommandType::VAdd => {
+            CommandType::VAdd => {
                 let _ = write!(
                     buf,
                     "insert into {} ({}) values ({})",
@@ -336,7 +343,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     InsertVals(&self.strategy, &self.vcmd.keys, &self.vcmd.fields),
                 );
             }
-            vector::CommandType::VUpdate => {
+            CommandType::VUpdate => {
                 let _ = write!(
                     buf,
                     "update {} set {} where {}",
@@ -345,7 +352,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
-            vector::CommandType::VDel => {
+            CommandType::VDel => {
                 let _ = write!(
                     buf,
                     "delete from {} where {}",
@@ -355,7 +362,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
             }
             _ => {
                 //校验应该在parser_req出
-                panic!("not support op:{}", self.op);
+                panic!("not support cmd_type:{:?}", self.cmd_type);
             }
         }
     }
@@ -431,7 +438,7 @@ mod tests {
             order: Default::default(),
             limit: Default::default(),
         };
-        let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy).unwrap();
         builder.write_sql(buf);
         let db_idx = strategy
             .distribution()
@@ -453,7 +460,7 @@ mod tests {
             order: Default::default(),
             limit: Default::default(),
         };
-        let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -498,7 +505,7 @@ mod tests {
                 limit: RingSlice::from_slice("24".as_bytes()),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -538,7 +545,7 @@ mod tests {
                 limit: RingSlice::from_slice("24".as_bytes()),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VCARD, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VCard, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -576,7 +583,7 @@ mod tests {
                 limit: RingSlice::empty(),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VADD, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VAdd, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -627,7 +634,7 @@ mod tests {
                 limit: RingSlice::empty(),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VUPDATE, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VUpdate, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -667,7 +674,7 @@ mod tests {
                 limit: RingSlice::empty(),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VDEL, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VDel, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
