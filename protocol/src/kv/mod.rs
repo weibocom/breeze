@@ -443,6 +443,11 @@ impl Kv {
                 err_response = Some(RingSlice::from_slice(b"invalid request: year out of index"));
                 err_response.as_ref()
             }
+            ContextStatus::ReqInvalid => {
+                assert!(response.is_none());
+                err_response = Some(RingSlice::from_slice(b"invalid request"));
+                err_response.as_ref()
+            }
             ContextStatus::Ok => response.map(|r| r.deref().deref()),
         };
         if status != RespStatus::NoError && status != RespStatus::NotFound {
@@ -493,6 +498,7 @@ pub enum ConnState {
 pub enum ContextStatus {
     Ok,
     TopInvalid,
+    ReqInvalid,
 }
 
 #[repr(C)]
