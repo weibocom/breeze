@@ -99,18 +99,18 @@ impl<'a> Display for Keys<'a> {
         let mut start = 0;
         while let Some(end) = self.0.find(start, b'|') {
             if start == 0 {
-                let _ = write!(f, "`{}`", VRingSlice(&self.0.slice(start, end - start)));
+                let _ = write!(f, "{}", VRingSlice(&self.0.slice(start, end - start)));
             } else {
-                let _ = write!(f, ",`{}`", VRingSlice(&self.0.slice(start, end - start)));
+                let _ = write!(f, ",{}", VRingSlice(&self.0.slice(start, end - start)));
             }
             start = end + 1;
         }
         let left = self.0.len() - start;
         assert!(left > 0);
         if start == 0 {
-            let _ = write!(f, "`{}`", VRingSlice(&self.0.slice(start, left)));
+            let _ = write!(f, "{}", VRingSlice(&self.0.slice(start, left)));
         } else {
-            let _ = write!(f, ",`{}`", VRingSlice(&self.0.slice(start, left)));
+            let _ = write!(f, ",{}", VRingSlice(&self.0.slice(start, left)));
         }
         Ok(())
     }
@@ -445,7 +445,7 @@ mod tests {
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
             buf,
-            &format!("select `a` from db_name_{db_idx}.table_name_2105 where `kid`='id'")
+            &format!("select a from db_name_{db_idx}.table_name_2105 where `kid`='id'")
         );
 
         // vrange 无field
@@ -513,7 +513,7 @@ mod tests {
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
             buf,
-            &format!("select `a`,`b` from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by `b` order by `a`,`b` desc limit 24 offset 12")
+            &format!("select a,b from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by b order by a,b desc limit 24 offset 12")
             );
 
         // vcard
@@ -553,7 +553,7 @@ mod tests {
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
             buf,
-            &format!("select count(*) from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) order by `a` desc limit 24 offset 12")
+            &format!("select count(*) from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) order by a desc limit 24 offset 12")
             );
 
         //vadd
