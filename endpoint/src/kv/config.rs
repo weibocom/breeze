@@ -53,7 +53,7 @@ pub struct Basic {
     #[serde(default)]
     listen: String,
     #[serde(default)]
-    pub(crate) resource_type: String,
+    resource_type: String,
     #[serde(default)]
     pub(crate) selector: String,
     #[serde(default)]
