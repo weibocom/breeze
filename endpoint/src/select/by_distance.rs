@@ -81,13 +81,8 @@ impl<T> Distance<T> {
         me
     }
     // None说明没有启动
-    // pub fn len_region(&self) -> Option<u16> {
-    //     self.backend_quota.then(|| self.len_region)
-    // }
-    // 开启可用区且可用区内实例数量为0，返回true
-    #[inline]
-    pub fn region_res_fail(&self) -> bool {
-        self.region_enabled && self.len_region == 0
+    pub fn len_region(&self) -> Option<u16> {
+        self.region_enabled.then(|| self.len_region)
     }
     #[inline]
     pub fn from(replicas: Vec<T>) -> Self
