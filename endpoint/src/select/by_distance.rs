@@ -82,7 +82,7 @@ impl<T> Distance<T> {
     }
     // None说明没有启动
     pub fn len_region(&self) -> Option<u16> {
-        self.backend_quota.then(|| self.len_region)
+        self.region_enabled.then(|| self.len_region)
     }
     #[inline]
     pub fn from(replicas: Vec<T>) -> Self
