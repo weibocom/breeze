@@ -253,7 +253,6 @@ where
             }
         }
 
-        let year_now = year_now();
         let mut rng = rand::thread_rng();
         for (interval, addrs_per_interval) in addrs {
             let mut shards_per_interval = Vec::with_capacity(addrs_per_interval.len());
@@ -296,11 +295,8 @@ where
                     self.cfg.basic.region_enabled,
                 );
 
-                // 当前库需要检查可用区内实例数量, 详见issues-771
-                if need_check_region(year_now, interval) {
-                    let ty = &*self.cfg.basic.resource_type;
-                    shard.check_region_len(ty, &self.cfg.service);
-                }
+                // 检查可用区内实例数量, 详见issues-771
+                shard.check_region_len("mysql", &self.cfg.service);
                 shards_per_interval.push(shard);
             }
             self.shards.push((interval, shards_per_interval));
@@ -455,15 +451,4 @@ impl<E> Shards<E> {
         }
         &self.shards[index]
     }
-}
-
-#[inline]
-fn year_now() -> u16 {
-    use chrono::{Datelike, Local};
-    Local::now().year() as u16
-}
-
-#[inline]
-fn need_check_region(now: u16, years: &Years) -> bool {
-    now >= years.0 && now <= years.1
 }
