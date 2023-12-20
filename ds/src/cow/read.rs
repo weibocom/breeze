@@ -2,10 +2,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::{
     hint,
-    sync::atomic::{
-        AtomicPtr, AtomicUsize,
-        Ordering::{AcqRel, Acquire},
-    },
+    sync::atomic::{AtomicPtr, AtomicUsize, Ordering::*},
 };
 pub struct CowReadHandle<T> {
     pub(crate) inner: Arc<CowHandleInner<T>>,
@@ -35,12 +32,11 @@ impl<T> CowReadHandle<T> {
 
 impl<T> From<T> for CowReadHandle<T> {
     fn from(t: T) -> Self {
-        let t = Arc::into_raw(Arc::new(t)) as *mut T;
+        let t = Box::into_raw(Box::new(Arc::new(t)));
         Self {
             inner: Arc::new(CowHandleInner {
                 inner: AtomicPtr::new(t),
                 enters: AtomicUsize::new(0),
-                // dropping: AtomicPtr::default(),
                 _t: Default::default(),
             }),
         }
@@ -54,7 +50,7 @@ impl<T> From<T> for CowReadHandle<T> {
 /// 也就是多个线程获取的T是同一个T，行为本质上和多个线程操作Arc<T>没有区别，不是线程安全的
 /// 所以只有T本身是sync+send的时候，我们才是sync+send的，PhantomData保证了这一点
 pub(crate) struct CowHandleInner<T> {
-    inner: AtomicPtr<T>,
+    inner: AtomicPtr<Arc<T>>,
     enters: AtomicUsize,
     _t: std::marker::PhantomData<Arc<T>>,
 }
@@ -72,18 +68,16 @@ impl<T> std::ops::Deref for ReadGuard<T> {
 impl<T> CowHandleInner<T> {
     #[inline]
     pub(super) fn get(&self) -> ReadGuard<T> {
-        self.enters.fetch_add(1, AcqRel);
-        let t = unsafe { Arc::from_raw(self.inner.load(Acquire)) };
+        self.enters.fetch_add(1, Release);
+        let t = unsafe { &*self.inner.load(Acquire) };
         let new = t.clone();
-        self.enters.fetch_sub(1, AcqRel);
-        //自身持有的不能释放
-        let _ = Arc::into_raw(t);
+        self.enters.fetch_sub(1, Release);
         ReadGuard(new)
     }
     pub(super) fn update(&self, t: T) {
-        let w_handle = Arc::into_raw(Arc::new(t)) as *mut T;
+        let w_handle = Box::into_raw(Box::new(Arc::new(t)));
         let old = self.inner.swap(w_handle, AcqRel);
-        let _dropping = unsafe { Arc::from_raw(old) };
+        let _dropping = unsafe { Box::from_raw(old) };
         //old有可能被enter load了，这时候释放会有问题，需要等到一次读为0后释放，后续再有读也会是对new的引用，释放old不会再有问题
         while self.enters.load(Acquire) > 0 {
             hint::spin_loop();
@@ -94,7 +88,7 @@ impl<T> CowHandleInner<T> {
 impl<T> Drop for CowHandleInner<T> {
     fn drop(&mut self) {
         unsafe {
-            let _dropping = Arc::from_raw(self.inner.load(Acquire));
+            let _dropping = Box::from_raw(self.inner.load(Acquire));
         }
     }
 }
