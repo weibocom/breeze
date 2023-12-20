@@ -4,12 +4,6 @@ pub struct Id {
     pub(crate) key: &'static str,
     pub(crate) t: MetricType,
 }
-impl Id {
-    #[inline]
-    pub(crate) fn empty(&self) -> bool {
-        self.path.len() == 0 && self.t.u8() == 0
-    }
-}
 // 为Id实现Debug
 impl std::fmt::Debug for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -91,19 +85,6 @@ pub(crate) enum MetricType {
     Status,
     Rtt,
     Count,
-}
-impl MetricType {
-    #[inline]
-    pub(crate) fn u8(&self) -> u8 {
-        match self {
-            Self::Empty(_) => 0,
-            Self::Qps(_) => 1,
-            Self::Ratio(_) => 2,
-            Self::Status(_) => 3,
-            Self::Rtt(_) => 4,
-            Self::Count(_) => 5,
-        }
-    }
 }
 
 impl Default for MetricType {
