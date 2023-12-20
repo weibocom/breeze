@@ -116,18 +116,21 @@ impl<E> Shard<E> {
         use discovery::dns::IPPort;
         let addr = self.master.addr();
         let port = addr.port();
-        let f = |r: &str| format!("{}:{}", r, port);
-        let bip = context::get()
-            .region()
-            .map(f)
-            .unwrap_or_else(|| f(discovery::distance::host_region().as_str()));
+        let len_region = self.slaves.len_region();
 
-        // 构建metric数据
-        let path = metrics::Path::new(vec![ty, service, &*bip]);
-        let mut metric = path.status("region_resource");
-        match self.slaves.region_res_fail() {
-            true => metric += metrics::Status::NOTIFY, // 生成可用区内资源实例数量不足的监控数据
-            false => metric += metrics::Status::OK,
+        // 开启可用区且可用区内资源数量为0，才生成监控数据；
+        // 暂不考虑从开启可用区变更到不开启场景
+        if len_region == Some(0) {
+            let f = |r: &str| format!("{}:{}", r, port);
+            let region_port = context::get()
+                .region()
+                .map(f)
+                .unwrap_or_else(|| f(discovery::distance::host_region().as_str()));
+
+            // 构建metric数据
+            let path = metrics::Path::new(vec![ty, service, &*region_port]);
+            let mut metric = path.status("region_resource");
+            metric += metrics::Status::NOTIFY; // 生成可用区内资源实例数量不足的监控数据
         }
     }
 }
