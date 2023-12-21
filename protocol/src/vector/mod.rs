@@ -151,12 +151,16 @@ impl Vector {
         log::debug!("+++ rec kvector req:{:?}", packet.inner_data());
         while packet.available() {
             packet.parse_bulk_num()?;
-            let (cfg, flag) = packet.parse_cmd()?;
+            let cfg = packet.parse_cmd_properties()?;
+            let mut flag = cfg.flag();
+            let key = packet.parse_cmd(cfg, &mut flag)?;
+            log::debug!("+++ parsed cmd!!!!!!");
             // 构建cmd，准备后续处理
             let cmd = packet.take();
-            let hash = packet.hash(cfg, alg)?;
+            let hash = packet.hash(key, alg);
+            log::debug!("+++ hashed cmd!!!!!!");
             let cmd = HashedCommand::new(cmd, hash, flag);
-            log::debug!("++ parse req ok");
+            log::debug!("+++ parse req ok");
             process.process(cmd, true);
         }
 

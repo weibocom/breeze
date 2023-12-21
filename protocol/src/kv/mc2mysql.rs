@@ -15,7 +15,7 @@ use ds::{RingSlice, Utf8};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 const FIELD_BYTES: &'static [u8] = b"FIELD";
-const KVECTOR_SEPARATOR: u8 = b'|';
+const KVECTOR_SEPARATOR: u8 = b',';
 
 pub trait Strategy {
     fn distribution(&self) -> &DBRange;
@@ -338,7 +338,7 @@ impl MysqlBuilder {
         Ok(())
     }
 
-    // /// TODO: 暂时先不用这个方法，目前sql会多轮询field一次，后续需要去掉轮询，再打开
+    // /// TODO: 反引号方案，目前暂时不用，先注释掉 fishermen
     // /// 根据分隔符把field names分拆成多个独立的fields，并对field进行校验；
     // /// 校验策略：反引号方案，即ASCII: U+0001 .. U+007F，同时排除0、反引号;
     // /// https://dev.mysql.com/doc/refman/8.0/en/identifiers.html
@@ -368,11 +368,11 @@ impl MysqlBuilder {
     //     Ok(fields)
     // }
 
-    /// 只校验单个field
+    /// 校验fields，不可含有非法字符，避免sql注入
     fn validate_field_name(field_name: RingSlice) -> Result<()> {
         assert!(field_name.len() > 0, "field: {}", field_name);
 
-        // 校验
+        // 逐字节校验
         for i in 0..field_name.len() {
             let c = field_name.at(i);
             if MYSQL_FIELD_CHAR_TBL[c as usize] == 0 {
@@ -418,14 +418,64 @@ impl MysqlBuilder {
     }
 }
 
-/// mysql 反引号方案，即目前只支持：ASCII: U+0001 .. U+007F，同时排除0、反单引号(96)。
+/// mysql 非反引号方案 + 内建函数 + ‘,’，即field中只有如下字符在mesh中是合法的：
+///  1. ASCII: [0-9,a-z,A-Z$_] (basic Latin letters, digits 0-9, dollar, underscore)
+///  2. 内置函数符号17个：& >= < ( )等
+///  3. 永久禁止：‘;’ 和空白符号；
+///  具体见 #775
 pub static MYSQL_FIELD_CHAR_TBL: [u8; 256] = [
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0,
+    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
+    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
+
+#[cfg(test)]
+mod ValidateTest {
+    use super::MYSQL_FIELD_CHAR_TBL;
+
+    fn test_field_tbl() {
+        // 校验nums
+        let nums = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        for c in nums {
+            assert_eq!(MYSQL_FIELD_CHAR_TBL[c as usize], 1, "nums checked faield");
+            println!("{} is ok", c);
+        }
+
+        // 校验大写字母
+        const A: u8 = b'A';
+        const a: u8 = b'a';
+        for i in 0..26 {
+            let upper = A + i;
+            let lower = a + i;
+            assert_eq!(
+                MYSQL_FIELD_CHAR_TBL[upper as usize], 1,
+                "upper alphabets checked faield"
+            );
+            assert_eq!(
+                MYSQL_FIELD_CHAR_TBL[lower as usize], 1,
+                "upper alphabets checked faield"
+            );
+            println!("{} and {} is ok", upper as char, lower as char);
+        }
+
+        // 校验特殊字符
+        let special_chars = [
+            33_u8, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 58, 60, 61, 62, 94, 124,
+        ];
+        for c in special_chars {
+            assert_eq!(
+                MYSQL_FIELD_CHAR_TBL[c as usize], 1,
+                "special checked faield"
+            );
+            println!("{} is ok", c);
+        }
+
+        // 必须禁止的字符
+        // let forbidden_chars = [];
+    }
+}

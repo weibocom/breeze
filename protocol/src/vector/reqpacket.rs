@@ -86,26 +86,29 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    pub(crate) fn parse_cmd(&mut self) -> Result<(&'static CommandProperties, Flag)> {
+    pub(crate) fn parse_cmd(
+        &mut self,
+        cfg: &CommandProperties,
+        flag: &mut Flag,
+    ) -> Result<Option<RingSlice>> {
         // 第一个字段是cmd type，根据cmd type构建flag，并在后续解析中设置flag
-        let cfg = self.parse_cmd_properties()?;
-        let mut flag = cfg.flag();
+        // let cfg = self.parse_cmd_properties()?;
+        // let mut flag = cfg.flag();
 
         // meta cmd 当前直接返回固定响应，直接skip后面的tokens即可
         if cfg.op.is_meta() {
             self.skip_bulks(self.bulks)?;
-            return Ok((cfg, flag));
+            return Ok(None);
         }
 
-        // 非meta的cmd，有key，可能有fields和where condition，全部解析出位置，并记录到flag
+        // 非meta的cmd，必须得有key，可能有fields和where condition，全部解析出位置，并记录到flag
         // 如果有key，则下一个字段是key
-        if cfg.has_key {
-            self.parse_key(&mut flag)?;
-        }
+        assert!(cfg.has_key, "{:?}", self);
+        let key = self.parse_key(flag)?;
 
         // 如果有field，则接下来解析fields，不管是否有field，统一先把where这个token消费掉，方便后续统一从condition位置解析
         if cfg.can_hold_field {
-            self.parse_fields(&mut flag)?;
+            self.parse_fields(flag)?;
         } else if self.bulks > 0 && cfg.can_hold_where_condition {
             // 如果还有bulks，且该cmd可以hold where condition，此处肯定是where token，直接读出skip掉
             let token = self.next_bulk_string()?;
@@ -114,11 +117,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 return Err(KvectorError::ReqNotSupported.into());
             }
         }
-        log::debug!("++++ after field parsedoft:{}", self.oft);
+        log::debug!("++++ after field parsed oft:{}", self.oft);
 
         // 如果有condition，解析之，注意保证where token已经被skip掉了
         if cfg.can_hold_where_condition {
-            self.parse_condition(&mut flag)?;
+            self.parse_condition(flag)?;
         }
 
         if self.bulks != 0 {
@@ -126,7 +129,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
 
         log::debug!("++++ after condition parsed oft:{}", self.oft);
-        Ok((cfg, flag))
+        Ok(Some(key))
     }
 
     #[inline]
@@ -191,7 +194,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     #[inline]
-    fn parse_key(&mut self, flag: &mut Flag) -> Result<()> {
+    fn parse_key(&mut self, flag: &mut Flag) -> Result<RingSlice> {
         // 第二个bulk是bulk-string类型的key
         let key_pos = self.cmd_current_pos();
         if key_pos > (MAX_KEY_LEN as usize) {
@@ -201,7 +204,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         flag.set_key_pos(key_pos as u8);
         let key = self.next_bulk_string()?;
         if key.len() < MAX_KEY_LEN {
-            return Ok(());
+            return Ok(key);
         }
 
         log::warn!("+++ kvector key too long: {}", self);
@@ -289,12 +292,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     }
 
     //总是会parsekey
-    pub(super) fn hash<H: Hash>(&mut self, cfg: &CommandProperties, alg: &H) -> Result<i64> {
-        if cfg.has_key {
-            let key = self.next_bulk_string()?;
-            return Ok(calculate_hash(alg, &key));
+    pub(super) fn hash<H: Hash>(&mut self, key: Option<RingSlice>, alg: &H) -> i64 {
+        match key {
+            Some(k) => calculate_hash(alg, &k),
+            None => 0,
         }
-        Ok(default_hash())
     }
 }
 
