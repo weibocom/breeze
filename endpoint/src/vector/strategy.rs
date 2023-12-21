@@ -96,23 +96,23 @@ struct Keys<'a>(&'a RingSlice);
 impl<'a> Display for Keys<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         //todo: 改成新dev的实现，或者提供一个iter
-        let mut start = 0;
-        while let Some(end) = self.0.find(start, b'|') {
-            if start == 0 {
-                let _ = write!(f, "{}", VRingSlice(&self.0.slice(start, end - start)));
-            } else {
-                let _ = write!(f, ",{}", VRingSlice(&self.0.slice(start, end - start)));
-            }
-            start = end + 1;
-        }
-        let left = self.0.len() - start;
-        assert!(left > 0);
-        if start == 0 {
-            let _ = write!(f, "{}", VRingSlice(&self.0.slice(start, left)));
-        } else {
-            let _ = write!(f, ",{}", VRingSlice(&self.0.slice(start, left)));
-        }
-        Ok(())
+        // let mut start = 0;
+        // while let Some(end) = self.0.find(start, b'|') {
+        //     if start == 0 {
+        //         let _ = write!(f, "{}", VRingSlice(&self.0.slice(start, end - start)));
+        //     } else {
+        //         let _ = write!(f, ",{}", VRingSlice(&self.0.slice(start, end - start)));
+        //     }
+        //     start = end + 1;
+        // }
+        // let left = self.0.len() - start;
+        // assert!(left > 0);
+        // if start == 0 {
+        //     let _ = write!(f, "{}", VRingSlice(&self.0.slice(start, left)));
+        // } else {
+        //     let _ = write!(f, ",{}", VRingSlice(&self.0.slice(start, left)));
+        // }
+        VRingSlice(self.0).fmt(f)
     }
 }
 
@@ -479,7 +479,7 @@ mod tests {
             ],
             fields: vec![(
                 RingSlice::from_slice("field".as_bytes()),
-                RingSlice::from_slice("a|b".as_bytes()),
+                RingSlice::from_slice("a,b".as_bytes()),
             )],
             wheres: vec![
                 Condition {
@@ -497,7 +497,7 @@ mod tests {
                 fields: RingSlice::from_slice("b".as_bytes()),
             },
             order: Order {
-                field: RingSlice::from_slice("a|b".as_bytes()),
+                field: RingSlice::from_slice("a,b".as_bytes()),
                 order: RingSlice::from_slice("desc".as_bytes()),
             },
             limit: Limit {
