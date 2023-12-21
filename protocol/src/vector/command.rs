@@ -2,9 +2,10 @@ use crate::{redis::command::CommandHasher, OpCode, Operation, Result};
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Debug)]
-pub(crate) struct CommandProperties {
+pub struct CommandProperties {
     pub(crate) name: &'static str,
     pub(crate) op_code: OpCode,
+    pub(crate) cmd_type: CommandType,
     // cmd 参数的个数，对于不确定的cmd，如mget、mset用负数表示最小数量
     arity: i8,
     /// cmd的类型
@@ -111,8 +112,13 @@ impl Commands {
 }
 
 #[inline(always)]
-pub(crate) fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties> {
+pub fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties> {
     SUPPORTED.get_by_op(op_code)
+}
+#[inline(always)]
+pub fn get_cmd_type(op_code: u16) -> crate::Result<CommandType> {
+    let cmd = get_cfg(op_code)?;
+    Ok(cmd.cmd_type)
 }
 
 #[inline(always)]
@@ -140,11 +146,11 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
 
         // kvector 相关的指令
-        Cmd::new("vrange").arity(-2).op(Get).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
-        Cmd::new("vadd").arity(-2).op(Store).padding(pt[3]).has_key().can_hold_field(),
-        Cmd::new("vupdate").arity(-2).op(Store).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
-        Cmd::new("vdel").arity(-2).op(Store).padding(pt[3]).has_key().can_hold_where_condition(),
-        Cmd::new("vcard").arity(-2).op(Get).padding(pt[3]).has_key().can_hold_where_condition(),
+        Cmd::new("vrange").arity(-2).op(Get).cmd_type(CommandType::VRange).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        Cmd::new("vadd").arity(-2).op(Store).cmd_type(CommandType::VAdd).padding(pt[3]).has_key().can_hold_field(),
+        Cmd::new("vupdate").arity(-2).op(Store).cmd_type(CommandType::VUpdate).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        Cmd::new("vdel").arity(-2).op(Store).cmd_type(CommandType::VDel).padding(pt[3]).has_key().can_hold_where_condition(),
+        Cmd::new("vcard").arity(-2).op(Get).cmd_type(CommandType::VCard).padding(pt[3]).has_key().can_hold_where_condition(),
     ] {
         cmds.add_support(c);
     }
@@ -164,6 +170,10 @@ impl CommandProperties {
     }
     pub(crate) fn op(mut self, op: Operation) -> Self {
         self.op = op;
+        self
+    }
+    pub(crate) fn cmd_type(mut self, cmd_type: CommandType) -> Self {
+        self.cmd_type = cmd_type;
         self
     }
     pub(crate) fn padding(mut self, padding_rsp: &'static str) -> Self {
@@ -193,26 +203,30 @@ impl CommandProperties {
     }
 }
 
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// #[repr(u16)]
-// pub enum CommandType {
-//     // kvector 访问的指令
-//     VRange = OP_VRANGE,
-//     VAdd,
-//     VUpdate,
-//     VDel,
-//     VCard,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+pub enum CommandType {
+    // kvector 访问的指令
+    VRange,
+    VAdd,
+    VUpdate,
+    VDel,
+    VCard,
 
-//     // 兼容redisclient而引入的指令
-//     Select,
-//     Ping,
-//     Hello,
-//     Quit,
+    // // 兼容redisclient而引入的指令
+    // Select,
+    // Ping,
+    // Hello,
+    // Quit,
 
-//     // 未知or不支持的指令
-//     Unknown,
-// }
-
+    // 未知or不支持的指令
+    Unknown,
+}
+impl Default for CommandType {
+    fn default() -> Self {
+        CommandType::Unknown
+    }
+}
 // impl From<RingSlice> for CommandType {
 //     fn from(name: RingSlice) -> Self {
 //         if name.len() >= 7 {

@@ -4,8 +4,7 @@ pub use crate::kv::strategy::{to_i64, Postfix};
 use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, VectorSqlBuilder};
-use protocol::vector::{Condition, Field};
-use protocol::{vector, vector::VectorCmd, OpCode};
+use protocol::vector::{CommandType, Condition, Field, VectorCmd};
 use protocol::{Error, Result};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
@@ -97,23 +96,23 @@ struct Keys<'a>(&'a RingSlice);
 impl<'a> Display for Keys<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         //todo: 改成新dev的实现，或者提供一个iter
-        let mut start = 0;
-        while let Some(end) = self.0.find(start, b'|') {
-            if start == 0 {
-                let _ = write!(f, "`{}`", VRingSlice(&self.0.slice(start, end - start)));
-            } else {
-                let _ = write!(f, ",`{}`", VRingSlice(&self.0.slice(start, end - start)));
-            }
-            start = end + 1;
-        }
-        let left = self.0.len() - start;
-        assert!(left > 0);
-        if start == 0 {
-            let _ = write!(f, "`{}`", VRingSlice(&self.0.slice(start, left)));
-        } else {
-            let _ = write!(f, ",`{}`", VRingSlice(&self.0.slice(start, left)));
-        }
-        Ok(())
+        // let mut start = 0;
+        // while let Some(end) = self.0.find(start, b'|') {
+        //     if start == 0 {
+        //         let _ = write!(f, "{}", VRingSlice(&self.0.slice(start, end - start)));
+        //     } else {
+        //         let _ = write!(f, ",{}", VRingSlice(&self.0.slice(start, end - start)));
+        //     }
+        //     start = end + 1;
+        // }
+        // let left = self.0.len() - start;
+        // assert!(left > 0);
+        // if start == 0 {
+        //     let _ = write!(f, "{}", VRingSlice(&self.0.slice(start, left)));
+        // } else {
+        //     let _ = write!(f, ",{}", VRingSlice(&self.0.slice(start, left)));
+        // }
+        VRingSlice(self.0).fmt(f)
     }
 }
 
@@ -281,17 +280,25 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
 }
 
 pub(crate) struct VectorBuilder<'a> {
-    op: OpCode,
+    cmd_type: CommandType,
     vcmd: &'a VectorCmd,
     strategy: &'a Strategist,
 }
 
 impl<'a> VectorBuilder<'a> {
-    pub fn new(op: OpCode, vcmd: &'a VectorCmd, strategy: &'a Strategist) -> Result<Self> {
+    pub fn new(
+        cmd_type: CommandType,
+        vcmd: &'a VectorCmd,
+        strategy: &'a Strategist,
+    ) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys().len() {
             Err(Error::ProtocolIncomplete)
         } else {
-            Ok(Self { op, vcmd, strategy })
+            Ok(Self {
+                cmd_type,
+                vcmd,
+                strategy,
+            })
         }
     }
 }
@@ -308,47 +315,55 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     }
 
     fn write_sql(&self, buf: &mut impl Write) {
-        if self.op == *vector::OP_VRANGE {
-            let _ = write!(
-                buf,
-                "select {} from {} where {}",
-                Select(self.vcmd.fields.get(0)),
-                Table(&self.strategy, &self.vcmd.keys),
-                KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
-            );
-        } else if self.op == *vector::OP_VCARD {
-            let _ = write!(
-                buf,
-                "select count(*) from {} where {}",
-                Table(&self.strategy, &self.vcmd.keys),
-                KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
-            );
-        } else if self.op == *vector::OP_VADD {
-            let _ = write!(
-                buf,
-                "insert into {} ({}) values ({})",
-                Table(&self.strategy, &self.vcmd.keys),
-                InsertCols(&self.strategy, &self.vcmd.fields),
-                InsertVals(&self.strategy, &self.vcmd.keys, &self.vcmd.fields),
-            );
-        } else if self.op == *vector::OP_VUPDATE {
-            let _ = write!(
-                buf,
-                "update {} set {} where {}",
-                Table(&self.strategy, &self.vcmd.keys),
-                UpdateFields(&self.vcmd.fields),
-                KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
-            );
-        } else if self.op == *vector::OP_VDEL {
-            let _ = write!(
-                buf,
-                "delete from {} where {}",
-                Table(&self.strategy, &self.vcmd.keys),
-                KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
-            );
-        } else {
-            //校验应该在parser_req出
-            panic!("not support op:{}", self.op);
+        // let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
+        match self.cmd_type {
+            CommandType::VRange => {
+                let _ = write!(
+                    buf,
+                    "select {} from {} where {}",
+                    Select(self.vcmd.fields.get(0)),
+                    Table(&self.strategy, &self.vcmd.keys),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                );
+            }
+            CommandType::VCard => {
+                let _ = write!(
+                    buf,
+                    "select count(*) from {} where {}",
+                    Table(&self.strategy, &self.vcmd.keys),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                );
+            }
+            CommandType::VAdd => {
+                let _ = write!(
+                    buf,
+                    "insert into {} ({}) values ({})",
+                    Table(&self.strategy, &self.vcmd.keys),
+                    InsertCols(&self.strategy, &self.vcmd.fields),
+                    InsertVals(&self.strategy, &self.vcmd.keys, &self.vcmd.fields),
+                );
+            }
+            CommandType::VUpdate => {
+                let _ = write!(
+                    buf,
+                    "update {} set {} where {}",
+                    Table(&self.strategy, &self.vcmd.keys),
+                    UpdateFields(&self.vcmd.fields),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                );
+            }
+            CommandType::VDel => {
+                let _ = write!(
+                    buf,
+                    "delete from {} where {}",
+                    Table(&self.strategy, &self.vcmd.keys),
+                    KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
+                );
+            }
+            _ => {
+                //校验应该在parser_req出
+                panic!("not support cmd_type:{:?}", self.cmd_type);
+            }
         }
     }
 }
@@ -423,14 +438,14 @@ mod tests {
             order: Default::default(),
             limit: Default::default(),
         };
-        let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy).unwrap();
         builder.write_sql(buf);
         let db_idx = strategy
             .distribution()
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
             buf,
-            &format!("select `a` from db_name_{db_idx}.table_name_2105 where `kid`='id'")
+            &format!("select a from db_name_{db_idx}.table_name_2105 where `kid`='id'")
         );
 
         // vrange 无field
@@ -445,7 +460,7 @@ mod tests {
             order: Default::default(),
             limit: Default::default(),
         };
-        let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -464,7 +479,7 @@ mod tests {
             ],
             fields: vec![(
                 RingSlice::from_slice("field".as_bytes()),
-                RingSlice::from_slice("a|b".as_bytes()),
+                RingSlice::from_slice("a,b".as_bytes()),
             )],
             wheres: vec![
                 Condition {
@@ -482,7 +497,7 @@ mod tests {
                 fields: RingSlice::from_slice("b".as_bytes()),
             },
             order: Order {
-                field: RingSlice::from_slice("a|b".as_bytes()),
+                field: RingSlice::from_slice("a,b".as_bytes()),
                 order: RingSlice::from_slice("desc".as_bytes()),
             },
             limit: Limit {
@@ -490,7 +505,7 @@ mod tests {
                 limit: RingSlice::from_slice("24".as_bytes()),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VRANGE, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -498,7 +513,7 @@ mod tests {
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
             buf,
-            &format!("select `a`,`b` from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by `b` order by `a`,`b` desc limit 24 offset 12")
+            &format!("select a,b from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by b order by a,b desc limit 24 offset 12")
             );
 
         // vcard
@@ -530,7 +545,7 @@ mod tests {
                 limit: RingSlice::from_slice("24".as_bytes()),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VCARD, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VCard, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -538,7 +553,7 @@ mod tests {
             .db_idx(strategy.hasher().hash(&"id".as_bytes()));
         assert_eq!(
             buf,
-            &format!("select count(*) from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) order by `a` desc limit 24 offset 12")
+            &format!("select count(*) from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) order by a desc limit 24 offset 12")
             );
 
         //vadd
@@ -568,7 +583,7 @@ mod tests {
                 limit: RingSlice::empty(),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VADD, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VAdd, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -619,7 +634,7 @@ mod tests {
                 limit: RingSlice::empty(),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VUPDATE, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VUpdate, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
@@ -659,7 +674,7 @@ mod tests {
                 limit: RingSlice::empty(),
             },
         };
-        let builder = VectorBuilder::new(vector::OP_VDEL, &vector_cmd, &strategy).unwrap();
+        let builder = VectorBuilder::new(CommandType::VDel, &vector_cmd, &strategy).unwrap();
         buf.clear();
         builder.write_sql(buf);
         let db_idx = strategy
