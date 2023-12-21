@@ -4,7 +4,8 @@ use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
-use protocol::kv::MysqlBuilder;
+use protocol::kv::{ContextStatus, MysqlBuilder};
+use protocol::vector::{get_cmd_type, CommandType};
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -75,58 +76,63 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
-        // req 是mc binary协议，需要展出字段，转换成sql
-        let (year, shard_idx) = if req.ctx_mut().runs == 0 {
-            let vcmd = MysqlBuilder::parse_vector_detail(&req).unwrap();
-            //定位年库
-            let (year, _, _) = match self.strategist.get_date(&vcmd.keys, &self.cfg.basic.keys) {
-                Ok(year) => year,
-                Err(e) => {
-                    req.on_err(e);
-                    return;
-                }
+        let shard = (|| -> Result<&Shard<E>, protocol::Error> {
+            // req 是mc binary协议，需要展出字段，转换成sql
+            let (year, shard_idx) = if req.ctx_mut().runs == 0 {
+                let vcmd = MysqlBuilder::parse_vector_detail(&req)?;
+                //定位年库
+                let (year, _, _) = self.strategist.get_date(&vcmd.keys, &self.cfg.basic.keys)?;
+
+                let shard_idx = self.shard_idx(self.hash(&vcmd.keys[0]));
+                req.ctx_mut().year = year;
+                req.ctx_mut().shard_idx = shard_idx as u16;
+
+                let cmd_type = get_cmd_type(req.op_code()).unwrap_or(CommandType::Unknown);
+
+                //todo: 此处不应panic
+                let vector_builder = VectorBuilder::new(cmd_type, &vcmd, &self.strategist)?;
+                let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
+                req.reshape(MemGuard::from_vec(cmd));
+
+                (year, shard_idx)
+            } else {
+                (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
             };
 
-            let shard_idx = self.shard_idx(self.hash(&vcmd.keys[0]));
-            req.ctx_mut().year = year;
-            req.ctx_mut().shard_idx = shard_idx as u16;
+            let shards = self.shards.get(year);
+            if shards.len() == 0 {
+                return Err(protocol::Error::TopInvalid);
+            }
+            debug_assert!(
+                shard_idx < shards.len(),
+                "mysql: {}/{} req:{:?}",
+                shard_idx,
+                shards.len(),
+                req
+            );
+            let shard = unsafe { shards.get_unchecked(shard_idx) };
 
-            //todo: 此处不应panic
-            let vector_builder =
-                VectorBuilder::new(req.op_code(), &vcmd, &self.strategist).expect("malformed sql");
-            let cmd =
-                MysqlBuilder::build_packets_for_vector(vector_builder).expect("malformed sql");
-            req.reshape(MemGuard::from_vec(cmd));
-
-            (year, shard_idx)
-        } else {
-            (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
+            log::debug!(
+                "+++ mysql {} send {} year {} shards {:?} => {:?}",
+                self.cfg.service,
+                shard_idx,
+                year,
+                shards,
+                req
+            );
+            Ok(shard)
+        })();
+        let shard = match shard {
+            Ok(shard) => shard,
+            Err(e) => {
+                req.ctx_mut().error = match e {
+                    protocol::Error::TopInvalid => ContextStatus::TopInvalid,
+                    _ => ContextStatus::ReqInvalid,
+                };
+                req.on_err(e);
+                return;
+            }
         };
-
-        let shards = self.shards.get(year);
-        if shards.len() == 0 {
-            //todo 错误类型不合适
-            req.on_err(protocol::Error::TopChanged);
-            return;
-        }
-        debug_assert!(
-            shard_idx < shards.len(),
-            "mysql: {}/{} req:{:?}",
-            shard_idx,
-            shards.len(),
-            req
-        );
-
-        let shard = unsafe { shards.get_unchecked(shard_idx) };
-        log::debug!(
-            "+++ mysql {} send {} year {} shards {:?} => {:?}",
-            self.cfg.service,
-            shard_idx,
-            year,
-            shards,
-            req
-        );
-
         if shard.has_slave() && !req.operation().is_store() {
             if *req.context_mut() == 0 {
                 if let Some(quota) = shard.slaves.quota() {
