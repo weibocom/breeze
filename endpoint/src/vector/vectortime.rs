@@ -81,8 +81,8 @@ impl VectorTime {
         }
         return Err(Error::ProtocolIncomplete);
     }
-    pub fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice]) {
-        self.kvtime.write_dname(buf, &keys[0]);
+    pub fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice], hash: i64) {
+        self.kvtime.write_dname_with_hash(buf, hash);
         let _ = buf.write_char('.');
         let date = self.get_date(keys, &self.keys_name).unwrap();
         self.kvtime.write_tname_with_date(
