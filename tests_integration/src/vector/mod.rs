@@ -171,6 +171,19 @@ fn vrange_with_sql_injectrion() {
     assert!(rsp.is_err());
 }
 
+// 返回0条数据
+#[test]
+fn vrange_without_where() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let rsp: Result<Value, redis::RedisError> = redis::cmd("vrange")
+        .arg("4668741184209284,2211")
+        .arg("field")
+        .arg("uid,object_type")
+        .query(&mut con);
+    println!("++ rsp:{:?}", rsp);
+    assert!(rsp.is_ok());
+}
+
 #[test]
 // 返回3条数据
 fn vrange_with_group() {

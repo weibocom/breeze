@@ -120,7 +120,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         log::debug!("++++ after field parsed oft:{}", self.oft);
 
         // 如果有condition，解析之，注意保证where token已经被skip掉了
-        if cfg.can_hold_where_condition {
+        if cfg.can_hold_where_condition && self.bulks > 0 {
             self.parse_condition(flag)?;
         }
 
