@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use chrono::Datelike;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
@@ -81,7 +82,10 @@ where
             let (year, shard_idx) = if req.ctx_mut().runs == 0 {
                 let vcmd = MysqlBuilder::parse_vector_detail(&req)?;
                 //定位年库
-                let (year, _, _) = self.strategist.get_date(&vcmd.keys, &self.cfg.basic.keys)?;
+                let year = self
+                    .strategist
+                    .get_date(&vcmd.keys, &self.cfg.basic.keys)?
+                    .year() as u16;
 
                 let shard_idx = self.shard_idx(req.hash());
                 req.ctx_mut().year = year;

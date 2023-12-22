@@ -1,6 +1,7 @@
 use std::fmt::{Display, Write};
 
 pub use crate::kv::strategy::{to_i64, Postfix};
+use chrono::NaiveDate;
 use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, VectorSqlBuilder};
@@ -60,7 +61,7 @@ impl Strategist {
         }
     }
     #[inline]
-    pub fn get_date(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<(u16, u16, u16)> {
+    pub fn get_date(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<NaiveDate> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys, keys_name),
         }

@@ -1,8 +1,7 @@
 use crate::kv::kvtime::KVTime;
 
 use super::strategy::Postfix;
-use chrono::TimeZone;
-use chrono_tz::Asia::Shanghai;
+use chrono::NaiveDate;
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
@@ -38,16 +37,12 @@ impl VectorTime {
         <KVTime as Strategy>::hasher(&self.kvtime)
     }
 
-    pub fn get_date(
-        &self,
-        keys: &[RingSlice],
-        keys_name: &[String],
-    ) -> Result<(u16, u16, u16), Error> {
-        // if keys.len() == keys_name.len() {
+    pub fn get_date(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<NaiveDate, Error> {
+        let mut ymd = (0u16, 0u16, 0u16);
         for (i, key_name) in keys_name.iter().enumerate() {
             match key_name.as_str() {
                 "yymm" => {
-                    return Ok((
+                    ymd = (
                         keys[i]
                             .try_str_num(0..0 + 2)
                             .ok_or(Error::RequestProtocolInvalid)? as u16
@@ -56,10 +51,11 @@ impl VectorTime {
                             .try_str_num(2..2 + 2)
                             .ok_or(Error::RequestProtocolInvalid)? as u16,
                         1,
-                    ))
+                    );
+                    break;
                 }
                 "yymmdd" => {
-                    return Ok((
+                    ymd = (
                         keys[i]
                             .try_str_num(0..0 + 2)
                             .ok_or(Error::RequestProtocolInvalid)? as u16
@@ -70,37 +66,37 @@ impl VectorTime {
                         keys[i]
                             .try_str_num(4..4 + 2)
                             .ok_or(Error::RequestProtocolInvalid)? as u16,
-                    ))
+                    );
+                    break;
                 }
                 // "yyyymm" => {
-                //     return Ok((
+                //     ymd = (
                 //         keys[i].try_str_num(0..0+4)? as u16,
                 //         keys[i].try_str_num(4..4+2)? as u16,
                 //         1,
-                //     ))
+                //     )
                 // }
                 // "yyyymmdd" => {
-                //     return Ok((
+                //     ymd = (
                 //         keys[i].try_str_num(0..0+4)? as u16,
                 //         keys[i].try_str_num(4..4+2)? as u16,
                 //         keys[i].try_str_num(6..6+2)? as u16,
-                //     ))
+                //     )
                 // }
                 &_ => {
                     continue;
                 }
             }
         }
-        return Err(Error::ProtocolIncomplete);
+        NaiveDate::from_ymd_opt(ymd.0.into(), ymd.1.into(), ymd.2.into())
+            .ok_or(Error::RequestProtocolInvalid)
     }
     pub fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice], hash: i64) {
         self.kvtime.write_dname_with_hash(buf, hash);
         let _ = buf.write_char('.');
+        //外部已经判断过日期有效
         let date = self.get_date(keys, &self.keys_name).unwrap();
-        self.kvtime.write_tname_with_date(
-            buf,
-            &Shanghai.ymd(date.0.into(), date.1.into(), date.2.into()),
-        )
+        self.kvtime.write_tname_with_date(buf, &date)
     }
 
     pub(crate) fn keys(&self) -> &[String] {
