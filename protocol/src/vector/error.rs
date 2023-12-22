@@ -9,6 +9,7 @@ pub enum KvectorError {
     // ReqInvalidNoReturn,
     ReqInvalidBulkNum,
     ReqNotSupported,
+    ReqMalformedField,
     // RespInvalid,
     // ReqInvalidNumZero,
     // ReqInvalidDigit,
@@ -20,6 +21,7 @@ const REQ_INVALID_STAR: &'static [u8] = b"-ERR kv invalid star\r\n";
 // const REQ_INVALID_NO_RETURN: &'static [u8] = b"-ERR kv invalid no return char\r\n";
 const REQ_INVALID_BULK_NUM: &'static [u8] = b"-ERR kv invalid bulk num\r\n";
 const REQ_NOT_SUPPORTED: &'static [u8] = b"-ERR kv unsupport cmd\r\n";
+const REQ_MALFORMED_FIELD: &'static [u8] = b"-ERR malformed fields\r\n";
 // const RESP_INVALID: &'static [u8] = b"-ERR kv mesh bug for parsing resp\r\n";
 
 /// 将Redis error转为通用可flush的Error，保留Error细节
@@ -33,7 +35,7 @@ impl Into<Error> for KvectorError {
             // Self::ReqInvalidNoReturn => Error::FlushOnClose(REQ_INVALID_NO_RETURN.into()),
             Self::ReqInvalidBulkNum => Error::FlushOnClose(REQ_INVALID_BULK_NUM.into()),
             Self::ReqNotSupported => Error::FlushOnClose(REQ_NOT_SUPPORTED.into()),
-            // Self::RespInvalid => Error::FlushOnClose(RESP_INVALID.into()),
+            Self::ReqMalformedField => Error::FlushOnClose(REQ_MALFORMED_FIELD.into()), // Self::RespInvalid => Error::FlushOnClose(RESP_INVALID.into()),
         }
     }
 }
