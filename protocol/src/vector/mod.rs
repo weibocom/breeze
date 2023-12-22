@@ -18,7 +18,7 @@ use self::rsppacket::ResponsePacket;
 
 use crate::kv::client::Client;
 use crate::kv::common::query_result::Or;
-use crate::kv::HandShakeStatus;
+use crate::kv::{ContextStatus, HandShakeStatus};
 use crate::HandShake;
 
 pub use command::{get_cmd_type, CommandType};
@@ -133,8 +133,15 @@ impl Protocol for Vector {
             return Err(crate::Error::Quit); // TODO
         }
 
+        use crate::kv::KVCtx;
+        let response = match ctx.ctx().ctx().error {
+            ContextStatus::TopInvalid => b"-ERR invalid request: year out of index\r\n".as_slice(),
+            ContextStatus::ReqInvalid => b"-ERR invalid request\r\n".as_slice(),
+            ContextStatus::Ok => cfg.padding_rsp.as_bytes(),
+        };
+
         // 其他场景返回padding rsp
-        w.write(cfg.padding_rsp.as_bytes())?;
+        w.write(response)?;
         log::debug!("+++ send to client padding {:?}", ctx.request());
         Ok(())
     }
