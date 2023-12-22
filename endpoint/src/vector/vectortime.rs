@@ -1,4 +1,4 @@
-use crate::kv::{kvtime::KVTime, strategy::to_i64_err};
+use crate::kv::kvtime::KVTime;
 
 use super::strategy::Postfix;
 use chrono::TimeZone;
@@ -48,30 +48,42 @@ impl VectorTime {
             match key_name.as_str() {
                 "yymm" => {
                     return Ok((
-                        to_i64_err(&keys[i].slice(0, 2))? as u16 + 2000,
-                        to_i64_err(&keys[i].slice(2, 2))? as u16,
+                        keys[i]
+                            .try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        keys[i]
+                            .try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
                         1,
                     ))
                 }
                 "yymmdd" => {
                     return Ok((
-                        to_i64_err(&keys[i].slice(0, 2))? as u16 + 2000,
-                        to_i64_err(&keys[i].slice(2, 2))? as u16,
-                        to_i64_err(&keys[i].slice(4, 2))? as u16,
+                        keys[i]
+                            .try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        keys[i]
+                            .try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                        keys[i]
+                            .try_str_num(4..4 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
                     ))
                 }
                 // "yyyymm" => {
                 //     return Ok((
-                //         to_i64_err(&keys[i].slice(0, 4))? as u16,
-                //         to_i64_err(&keys[i].slice(4, 2))? as u16,
+                //         keys[i].try_str_num(0..0+4)? as u16,
+                //         keys[i].try_str_num(4..4+2)? as u16,
                 //         1,
                 //     ))
                 // }
                 // "yyyymmdd" => {
                 //     return Ok((
-                //         to_i64_err(&keys[i].slice(0, 4))? as u16,
-                //         to_i64_err(&keys[i].slice(4, 2))? as u16,
-                //         to_i64_err(&keys[i].slice(6, 2))? as u16,
+                //         keys[i].try_str_num(0..0+4)? as u16,
+                //         keys[i].try_str_num(4..4+2)? as u16,
+                //         keys[i].try_str_num(6..6+2)? as u16,
                 //     ))
                 // }
                 &_ => {

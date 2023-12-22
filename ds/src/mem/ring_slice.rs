@@ -98,6 +98,18 @@ impl RingSlice {
         }
         num
     }
+    #[inline]
+    pub fn try_str_num<R: RangeBounds<usize>>(&self, r: R) -> Option<usize> {
+        let (start, end) = self.range(r);
+        let mut num = 0;
+        for i in start..end {
+            if !self[i].is_ascii_digit() {
+                return None;
+            }
+            num = num * 10 + (self[i] - b'0') as usize;
+        }
+        Some(num)
+    }
 
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
