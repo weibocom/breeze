@@ -75,9 +75,9 @@ impl Strategist {
             Strategist::VectorTime(inner) => inner.condition_keys(),
         }
     }
-    fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice]) {
+    fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice], hash: i64) {
         match self {
-            Strategist::VectorTime(inner) => inner.write_database_table(buf, keys),
+            Strategist::VectorTime(inner) => inner.write_database_table(buf, keys, hash),
         }
     }
 }
@@ -168,10 +168,10 @@ impl<'a> Display for Select<'a> {
     }
 }
 
-struct Table<'a>(&'a Strategist, &'a [RingSlice]);
+struct Table<'a>(&'a Strategist, &'a [RingSlice], i64);
 impl<'a> Display for Table<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.write_database_table(f, self.1);
+        self.0.write_database_table(f, self.1, self.2);
         Ok(())
     }
 }
@@ -283,6 +283,7 @@ pub(crate) struct VectorBuilder<'a> {
     cmd_type: CommandType,
     vcmd: &'a VectorCmd,
     strategy: &'a Strategist,
+    hash: i64,
 }
 
 impl<'a> VectorBuilder<'a> {
@@ -290,6 +291,7 @@ impl<'a> VectorBuilder<'a> {
         cmd_type: CommandType,
         vcmd: &'a VectorCmd,
         strategy: &'a Strategist,
+        hash: i64,
     ) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys().len() {
             Err(Error::ProtocolIncomplete)
@@ -298,6 +300,7 @@ impl<'a> VectorBuilder<'a> {
                 cmd_type,
                 vcmd,
                 strategy,
+                hash,
             })
         }
     }
@@ -322,7 +325,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                     buf,
                     "select {} from {} where {}",
                     Select(self.vcmd.fields.get(0)),
-                    Table(&self.strategy, &self.vcmd.keys),
+                    Table(&self.strategy, &self.vcmd.keys, self.hash),
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
@@ -330,7 +333,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                 let _ = write!(
                     buf,
                     "select count(*) from {} where {}",
-                    Table(&self.strategy, &self.vcmd.keys),
+                    Table(&self.strategy, &self.vcmd.keys, self.hash),
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
@@ -338,7 +341,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                 let _ = write!(
                     buf,
                     "insert into {} ({}) values ({})",
-                    Table(&self.strategy, &self.vcmd.keys),
+                    Table(&self.strategy, &self.vcmd.keys, self.hash),
                     InsertCols(&self.strategy, &self.vcmd.fields),
                     InsertVals(&self.strategy, &self.vcmd.keys, &self.vcmd.fields),
                 );
@@ -347,7 +350,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                 let _ = write!(
                     buf,
                     "update {} set {} where {}",
-                    Table(&self.strategy, &self.vcmd.keys),
+                    Table(&self.strategy, &self.vcmd.keys, self.hash),
                     UpdateFields(&self.vcmd.fields),
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
@@ -356,7 +359,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
                 let _ = write!(
                     buf,
                     "delete from {} where {}",
-                    Table(&self.strategy, &self.vcmd.keys),
+                    Table(&self.strategy, &self.vcmd.keys, self.hash),
                     KeysAndCondsAndOrderAndLimit(&self.strategy, &self.vcmd),
                 );
             }
@@ -438,11 +441,11 @@ mod tests {
             order: Default::default(),
             limit: Default::default(),
         };
-        let builder = VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy).unwrap();
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let builder =
+            VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy, hash).unwrap();
         builder.write_sql(buf);
-        let db_idx = strategy
-            .distribution()
-            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
             &format!("select a from db_name_{db_idx}.table_name_2105 where `kid`='id'")
@@ -460,12 +463,12 @@ mod tests {
             order: Default::default(),
             limit: Default::default(),
         };
-        let builder = VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy).unwrap();
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let builder =
+            VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
-        let db_idx = strategy
-            .distribution()
-            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
             &format!("select * from db_name_{db_idx}.table_name_2105 where `kid`='id'")
@@ -505,12 +508,12 @@ mod tests {
                 limit: RingSlice::from_slice("24".as_bytes()),
             },
         };
-        let builder = VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy).unwrap();
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let builder =
+            VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
-        let db_idx = strategy
-            .distribution()
-            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
             &format!("select a,b from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by b order by a,b desc limit 24 offset 12")
@@ -545,12 +548,11 @@ mod tests {
                 limit: RingSlice::from_slice("24".as_bytes()),
             },
         };
-        let builder = VectorBuilder::new(CommandType::VCard, &vector_cmd, &strategy).unwrap();
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let builder = VectorBuilder::new(CommandType::VCard, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
-        let db_idx = strategy
-            .distribution()
-            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
             &format!("select count(*) from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) order by a desc limit 24 offset 12")
@@ -583,12 +585,11 @@ mod tests {
                 limit: RingSlice::empty(),
             },
         };
-        let builder = VectorBuilder::new(CommandType::VAdd, &vector_cmd, &strategy).unwrap();
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let builder = VectorBuilder::new(CommandType::VAdd, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
-        let db_idx = strategy
-            .distribution()
-            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
             &format!(
@@ -634,12 +635,12 @@ mod tests {
                 limit: RingSlice::empty(),
             },
         };
-        let builder = VectorBuilder::new(CommandType::VUpdate, &vector_cmd, &strategy).unwrap();
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let builder =
+            VectorBuilder::new(CommandType::VUpdate, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
-        let db_idx = strategy
-            .distribution()
-            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
             &format!("update db_name_{db_idx}.table_name_2105 set `a`='1',`b`='bb' where `kid`='id' and `a`='1' and `b` in (2,3)")
@@ -674,12 +675,11 @@ mod tests {
                 limit: RingSlice::empty(),
             },
         };
-        let builder = VectorBuilder::new(CommandType::VDel, &vector_cmd, &strategy).unwrap();
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let builder = VectorBuilder::new(CommandType::VDel, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
-        let db_idx = strategy
-            .distribution()
-            .db_idx(strategy.hasher().hash(&"id".as_bytes()));
+        let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
                 buf,
                 &format!("delete from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3)")

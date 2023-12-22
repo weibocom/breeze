@@ -76,6 +76,11 @@ impl KVTime {
         let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
     }
 
+    pub fn write_dname_with_hash(&self, buf: &mut impl Write, hash: i64) {
+        let db_idx: usize = self.distribution.db_idx(hash);
+        let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
+    }
+
     pub fn write_tname_with_date(&self, buf: &mut impl Write, date: &Date<Tz>) {
         let (mut year, month, day) = (date.year(), date.month(), date.day());
         year %= 100;
