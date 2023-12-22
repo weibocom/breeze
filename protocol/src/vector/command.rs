@@ -85,15 +85,15 @@ impl Commands {
         }
     }
 
-    #[inline]
-    pub(crate) fn get_by_name(&self, name: &str) -> crate::Result<&CommandProperties> {
-        for cmd in self.supported.iter() {
-            if cmd.name == name {
-                return Ok(cmd);
-            }
-        }
-        Err(super::error::KvectorError::ReqNotSupported.into())
-    }
+    // #[inline]
+    // pub(crate) fn get_by_name(&self, name: &str) -> crate::Result<&CommandProperties> {
+    //     for cmd in self.supported.iter() {
+    //         if cmd.name == name {
+    //             return Ok(cmd);
+    //         }
+    //     }
+    //     Err(super::error::KvectorError::ReqNotSupported.into())
+    // }
 
     #[inline]
     fn add_support(&mut self, mut c: CommandProperties) {
@@ -121,10 +121,10 @@ pub fn get_cmd_type(op_code: u16) -> crate::Result<CommandType> {
     Ok(cmd.cmd_type)
 }
 
-#[inline(always)]
-pub(crate) fn get_cfg_byname(name: &str) -> crate::Result<&'static CommandProperties> {
-    SUPPORTED.get_by_name(name)
-}
+// #[inline(always)]
+// pub(crate) fn get_cfg_byname(name: &str) -> crate::Result<&'static CommandProperties> {
+//     SUPPORTED.get_by_name(name)
+// }
 
 use Operation::*;
 type Cmd = CommandProperties;

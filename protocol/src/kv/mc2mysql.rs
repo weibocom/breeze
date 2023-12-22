@@ -377,7 +377,7 @@ impl MysqlBuilder {
         for i in 0..field_name.len() {
             let c = field_name.at(i);
             if MYSQL_FIELD_CHAR_TBL[c as usize] == 0 {
-                return Err(crate::Error::RequestProtocolInvalid);
+                return Err(crate::vector::error::KvectorError::ReqMalformedField.into());
             }
         }
 

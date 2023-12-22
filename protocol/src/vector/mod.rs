@@ -1,5 +1,5 @@
 mod command;
-mod error;
+pub(crate) mod error;
 pub mod flager;
 mod query_result;
 mod reqpacket;

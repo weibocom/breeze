@@ -151,6 +151,26 @@ fn vrange_3() {
     );
 }
 
+// 返回0条数据
+#[test]
+fn vrange_with_sql_injectrion() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let rsp: Result<Value, redis::RedisError> = redis::cmd("vrange")
+        .arg("4668741184209284,2211")
+        .arg("field")
+        .arg("uid,object_type,(select 1)")
+        .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg("4968741184209240")
+        .arg("limit")
+        .arg("0")
+        .arg("10")
+        .query(&mut con);
+    println!("++ rsp:{:?}", rsp);
+    assert!(rsp.is_err());
+}
+
 #[test]
 // 返回3条数据
 fn vrange_with_group() {
