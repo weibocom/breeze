@@ -5,7 +5,6 @@ use super::kvtime::KVTime;
 use ds::RingSlice;
 
 use protocol::kv::Strategy;
-use protocol::{Error, Result};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
