@@ -63,6 +63,18 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         cx: &mut Context<'_>,
         data: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
+        if self.buf.cap() > 256 * 1024 * 1024 || data.len() > 5 * 1024 * 1024 {
+            println!(
+                "self ptr {:p} metric :{:?}, data len {}, buf {:p} cap:{} len:{}",
+                &self,
+                self.s,
+                data.len(),
+                &self.buf,
+                self.buf.cap(),
+                self.buf.len(),
+            );
+        }
+
         // 这个值应该要大于MSS，否则一个请求分多次返回，会触发delay ack。
         const LARGE_SIZE: usize = 4 * 1024;
         // 数据量比较大，尝试直接写入。写入之前要把buf flush掉。
