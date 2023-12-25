@@ -2,7 +2,7 @@ use ds::time::{interval, Duration};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::{Id, Item, ItemData0, Metric};
+use crate::{Id, Item, ItemData, Metric};
 
 const CHUNK_SIZE: usize = 4096;
 
@@ -22,7 +22,7 @@ pub struct Metrics {
 
 enum Op {
     Register(Arc<Id>),
-    Flush(Arc<Id>, ItemData0),
+    Flush(Arc<Id>, ItemData),
 }
 use crate::ItemPtr;
 
@@ -116,17 +116,17 @@ pub(crate) fn flush_item(item: &Item) {
     debug_assert!(item.is_local());
     let id = item.id();
     use crate::Snapshot;
-    if id.t.is_empty(item.data0()) {
+    if id.t.is_empty(item.data()) {
         return;
     }
     if let Some(global) = get_item(&*id) {
         debug_assert!(!global.is_null());
         let global = unsafe { &*global };
-        id.t.merge(global.data0(), item.data0());
+        id.t.merge(global.data(), item.data());
     } else {
         // 如果global不存在，则将当前的item异步flush到global
-        let data = ItemData0::default();
-        id.t.merge(&data, item.data0());
+        let data = ItemData::default();
+        id.t.merge(&data, item.data());
         let _r = get_register().send(Op::Flush(id.clone(), data));
         assert!(_r.is_ok());
     }
@@ -230,7 +230,7 @@ impl Future for MetricRegister {
                         let idx = *metrics.id_idx.get(&id).expect("id not registered");
                         let global = metrics.get_item(idx);
                         use crate::Snapshot;
-                        id.t.merge(global.data0(), &local);
+                        id.t.merge(global.data(), &local);
                     }
                 }
                 continue;

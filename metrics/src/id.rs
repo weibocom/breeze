@@ -12,12 +12,10 @@ impl std::fmt::Debug for Id {
 }
 pub(crate) const BASE_PATH: &str = "base";
 
-use crate::ItemData0;
-
-#[derive(Default, Debug)]
-pub struct ItemData {
-    pub(crate) inner: ItemData0,
-}
+//#[derive(Default, Debug)]
+//pub struct ItemData {
+//    pub(crate) inner: ItemData,
+//}
 
 use crate::Metric;
 #[derive(Debug, Clone)]
