@@ -17,6 +17,7 @@ mod asserts;
 mod layout;
 // mod mysql;
 mod bkdrsub;
+mod cow;
 mod decrypt;
 mod discovery;
 mod dns;
