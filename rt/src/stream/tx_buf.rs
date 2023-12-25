@@ -64,6 +64,9 @@ impl TxBuffer {
 
     #[inline]
     pub fn write(&mut self, data: &[u8]) {
+        if data.len() > 5 * 1024 * 1024 {
+            println!("write data len:{}, head {:?}", data.len(), &data[0..256])
+        }
         if self.policy.need_grow(self.len(), self.cap(), data.len()) {
             let new = self.policy.grow(self.len(), self.cap(), data.len());
             self.resize(new);
@@ -89,6 +92,19 @@ impl TxBuffer {
     }
     #[inline]
     fn resize(&mut self, new: usize) {
+        if new > 1024 * 1024 * 1024 {
+            println!(
+                "resize self: {:p} tx_buf read:{} write:{} cap:{} MemPolicy:{:?} len:{} head: {:?}",
+                &self,
+                self.read,
+                self.write,
+                self.cap,
+                self.policy,
+                self.data().len(),
+                &self.data()[0..self.cap.min(2048) as usize]
+            );
+        }
+
         assert!(new < u32::MAX as usize);
         let data = if new > 0 {
             ds::BUF_TX.incr_by(new);
