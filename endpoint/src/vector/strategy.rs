@@ -315,7 +315,45 @@ impl<'a> MysqlBinary for VectorBuilder<'a> {
 
 impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     fn len(&self) -> usize {
-        128
+        //按照可能的最长长度计算，其中table长度取得32，key长度取得5，测试比实际长15左右
+        let mut base = match self.cmd_type {
+            CommandType::VRange => "select  from  where ".len(),
+            CommandType::VCard => "select count(*) from  where ".len(),
+            CommandType::VAdd => "insert into  () values ()".len(),
+            CommandType::VUpdate => "update  set  where ".len(),
+            CommandType::VDel => "delete from  where ".len(),
+            _ => {
+                //校验应该在parser_req出
+                panic!("not support cmd_type:{:?}", self.cmd_type);
+            }
+        };
+        let VectorCmd {
+            keys,
+            fields,
+            wheres,
+            order,
+            limit,
+            group_by,
+        } = &self.vcmd;
+        //key通常只用来构建where条件，8代表"field=''"，包含包裹val的引号
+        keys.iter().for_each(|k| base += k.len() + 8);
+        fields
+            .iter()
+            .for_each(|k| base += k.0.len() + k.1.len() + "``=''".len());
+        wheres
+            .iter()
+            .for_each(|k| base += k.field.len() + k.op.len() + k.value.len() + " and ``''".len());
+        if order.field.len() != 0 {
+            base += order.field.len() + order.order.len() + " order by ".len();
+        }
+        if limit.limit.len() != 0 {
+            base += limit.limit.len() + limit.offset.len() + " limit offset ".len();
+        }
+        if group_by.fields.len() != 0 {
+            base += " group by ".len() + group_by.fields.len();
+        }
+        base += 32; //tablename
+        base.max(64)
     }
 
     fn write_sql(&self, buf: &mut impl Write) {
@@ -446,6 +484,7 @@ mod tests {
         let builder =
             VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy, hash).unwrap();
         builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
@@ -469,6 +508,7 @@ mod tests {
             VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
@@ -514,6 +554,7 @@ mod tests {
             VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
@@ -553,6 +594,7 @@ mod tests {
         let builder = VectorBuilder::new(CommandType::VCard, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
@@ -590,6 +632,7 @@ mod tests {
         let builder = VectorBuilder::new(CommandType::VAdd, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
@@ -641,6 +684,7 @@ mod tests {
             VectorBuilder::new(CommandType::VUpdate, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
@@ -680,6 +724,7 @@ mod tests {
         let builder = VectorBuilder::new(CommandType::VDel, &vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
                 buf,
