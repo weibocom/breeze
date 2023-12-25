@@ -86,16 +86,15 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         if self.buf.avail() {
             let Self { s, buf, .. } = &mut *self;
             let mut w = Pin::new(s);
-            loop {
-                let data = buf.data();
-                let n = ready!(w.as_mut().poll_write(cx, data))?;
-                if buf.take(n) {
-                    break;
-                }
+            while buf.w_num() > 0 {
+                let n = ready!(w.as_mut().poll_write(cx, buf.data()))?;
+                assert!(n > 0, "{self:?}");
+                buf.take(n);
             }
-            let flush = w.poll_flush(cx)?;
-            ready!(flush);
+            ready!(w.poll_flush(cx))?;
         }
+        // read == write时，write一定会被清0
+        assert_eq!(self.buf.w_num(), 0, "{self:?}");
         Poll::Ready(Ok(()))
     }
     #[inline]

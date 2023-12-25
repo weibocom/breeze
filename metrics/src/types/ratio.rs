@@ -1,12 +1,12 @@
 use super::{base::Adder, Snapshot};
-use crate::{IncrTo, ItemData0, ItemWriter as Writer};
+use crate::{IncrTo, ItemData, ItemWriter as Writer};
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Ratio;
 
 impl Snapshot for Ratio {
     #[inline]
-    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, _secs: f64) {
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData, w: &mut W, _secs: f64) {
         let hit = data.d0.take();
         let total = data.d1.take();
         if total > 0 {
@@ -24,7 +24,7 @@ impl Snapshot for Ratio {
 // d1: 总的数量
 impl IncrTo for bool {
     #[inline]
-    fn incr_to(&self, data: &ItemData0) {
+    fn incr_to(&self, data: &ItemData) {
         data.d0.incr_by(*self as i64);
         data.d1.incr();
     }
