@@ -1,4 +1,4 @@
-use super::{base::Adder, ItemData0};
+use super::{base::Adder, ItemData};
 use crate::ItemWriter as Writer;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -6,7 +6,7 @@ pub struct Status;
 impl super::Snapshot for Status {
     // 只计数。
     #[inline]
-    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, _secs: f64) {
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData, w: &mut W, _secs: f64) {
         let v = data.d0.get();
 
         let down = v != 0;
@@ -22,7 +22,7 @@ impl super::Snapshot for Status {
             w.write(path, key, "down", v);
         }
     }
-    fn merge(&self, global: &ItemData0, cache: &ItemData0) {
+    fn merge(&self, global: &ItemData, cache: &ItemData) {
         if global.d0.get() == 0 {
             global.d0.set(cache.d0.take());
         }
@@ -30,7 +30,7 @@ impl super::Snapshot for Status {
 }
 
 pub mod pub_status {
-    use crate::{base::Adder, IncrTo, ItemData0};
+    use crate::{base::Adder, IncrTo, ItemData};
     // 0: ok
     // -1: error
     // 2..: notify
@@ -56,7 +56,7 @@ pub mod pub_status {
 
     impl IncrTo for Status {
         #[inline]
-        fn incr_to(&self, data: &ItemData0) {
+        fn incr_to(&self, data: &ItemData) {
             data.d0.set(self.0 as i64);
         }
     }

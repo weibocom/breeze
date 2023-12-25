@@ -78,20 +78,20 @@ use enum_dispatch::enum_dispatch;
 use std::sync::atomic::AtomicI64;
 #[enum_dispatch]
 pub(crate) trait Snapshot {
-    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, secs: f64);
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData, w: &mut W, secs: f64);
     #[inline]
-    fn merge(&self, global: &ItemData0, cache: &ItemData0) {
+    fn merge(&self, global: &ItemData, cache: &ItemData) {
         let _ = global;
         let _ = cache;
     }
-    fn is_empty(&self, data: &ItemData0) -> bool {
+    fn is_empty(&self, data: &ItemData) -> bool {
         use crate::base::Adder;
         data.d0.get() == 0 && data.d1.get() == 0
     }
 }
 // 用4个i64来存储数据。
-#[derive(Default)]
-pub(crate) struct ItemData0 {
+#[derive(Default, Debug)]
+pub(crate) struct ItemData {
     d0: AtomicI64,
     d1: AtomicI64,
     d2: AtomicI64,
@@ -99,28 +99,16 @@ pub(crate) struct ItemData0 {
 }
 
 pub(crate) trait IncrTo {
-    fn incr_to(&self, data: &ItemData0);
+    fn incr_to(&self, data: &ItemData);
 }
-// 为ItemData0实现Debug
-impl std::fmt::Debug for ItemData0 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ItemData0")
-            .field("d0", &self.d0)
-            .field("d1", &self.d1)
-            .field("d2", &self.d2)
-            .field("d3", &self.d3)
-            .finish()
-    }
-}
-// 为ItemData0实现Default
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Empty;
 impl IncrTo for Empty {
     #[inline]
-    fn incr_to(&self, _data: &ItemData0) {}
+    fn incr_to(&self, _data: &ItemData) {}
 }
 impl Snapshot for Empty {
     #[inline]
-    fn snapshot<W: Writer>(&self, _: &str, _: &str, _: &ItemData0, _: &mut W, _: f64) {}
+    fn snapshot<W: Writer>(&self, _: &str, _: &str, _: &ItemData, _: &mut W, _: f64) {}
 }

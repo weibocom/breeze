@@ -19,7 +19,7 @@ use std::ops::AddAssign;
 // tests only
 use crate::Snapshot;
 
-use crate::ItemData0;
+use crate::ItemData;
 use std::sync::Arc;
 
 pub struct Metric {
@@ -72,7 +72,7 @@ impl Metric {
 impl<T: IncrTo + Debug> AddAssign<T> for Metric {
     #[inline(always)]
     fn add_assign(&mut self, m: T) {
-        m.incr_to(self.item().data0());
+        m.incr_to(self.item().data());
         if self.item().is_local() {
             self.rsync(true);
         }
@@ -197,13 +197,13 @@ impl Item {
         }
     }
     #[inline]
-    pub(crate) fn data0(&self) -> &ItemData0 {
-        &self.data.inner
+    pub(crate) fn data(&self) -> &ItemData {
+        &self.data
     }
 
     #[inline]
     pub(crate) fn snapshot<W: crate::ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
-        id.t.snapshot(&id.path, &id.key, &self.data.inner, w, secs);
+        id.t.snapshot(&id.path, &id.key, &self.data, w, secs);
     }
     #[inline]
     pub(crate) fn flush(&self) {

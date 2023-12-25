@@ -1,6 +1,6 @@
 use ds::time::Duration;
 
-use super::{base::Adder, IncrTo, ItemData0};
+use super::{base::Adder, IncrTo, ItemData};
 use crate::ItemWriter as Writer;
 pub const MAX: Duration = Duration::from_millis(30);
 const SLOW_US: i64 = Duration::from_millis(100).as_micros() as i64;
@@ -21,7 +21,7 @@ pub struct Rtt;
 // d3: 最大的耗时
 impl super::Snapshot for Rtt {
     #[inline]
-    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData0, w: &mut W, secs: f64) {
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData, w: &mut W, secs: f64) {
         // qps
         let count = data.d0.take();
         if count > 0 {
@@ -51,7 +51,7 @@ impl super::Snapshot for Rtt {
 // d3: 最大的耗时
 impl IncrTo for Duration {
     #[inline]
-    fn incr_to(&self, data: &ItemData0) {
+    fn incr_to(&self, data: &ItemData) {
         // 总的数量
         data.d0.incr();
         let us = self.as_micros() as i64;
