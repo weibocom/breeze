@@ -2,13 +2,13 @@ use once_cell::sync::OnceCell;
 
 pub(crate) const TARGET_SPLIT: u8 = b'/';
 #[inline]
-pub fn encode_addr(addr: &str) -> &str {
+pub(crate) fn encode_addr(addr: &str) -> &str {
     addr
 }
 
 // 通过建立一次连接获取本地通讯的IP
-pub static LOCAL_IP_BY_CONNECT: OnceCell<String> = OnceCell::new();
-pub static RAW_LOCAL_IP_BY_CONNECT: OnceCell<String> = OnceCell::new();
+static LOCAL_IP_BY_CONNECT: OnceCell<String> = OnceCell::new();
+static RAW_LOCAL_IP_BY_CONNECT: OnceCell<String> = OnceCell::new();
 lazy_static! {
     static ref LOCAL_IP_STATIC: String =
         local_ip_address::local_ip().expect("local ip").to_string();
