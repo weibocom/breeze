@@ -1,25 +1,21 @@
 mod command;
 pub(crate) mod error;
 pub mod flager;
+mod packet;
 mod query_result;
 mod reqpacket;
 mod rsppacket;
-
+use self::reqpacket::RequestPacket;
+use self::rsppacket::ResponsePacket;
+use crate::kv::client::Client;
+use crate::kv::{ContextStatus, HandShakeStatus};
+use crate::HandShake;
 use crate::{
     Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
     Result, Stream, Writer,
 };
 use ds::RingSlice;
 use sharding::hash::Hash;
-
-use self::query_result::{QueryResult, Text};
-use self::reqpacket::RequestPacket;
-use self::rsppacket::ResponsePacket;
-
-use crate::kv::client::Client;
-use crate::kv::common::query_result::Or;
-use crate::kv::{ContextStatus, HandShakeStatus};
-use crate::HandShake;
 
 pub use command::{get_cmd_type, CommandType};
 
@@ -74,16 +70,18 @@ impl Protocol for Vector {
 
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         log::debug!("+++ vector recv mysql response:{:?}", data.slice());
-        let mut rsp_packet = ResponsePacket::new(data, None);
+        let mut rsp_packet = ResponsePacket::new(data);
 
         // 解析完毕rsp后，除了数据未读完的场景，其他不管是否遇到err，都要进行take
         match self.parse_response_inner(&mut rsp_packet) {
             Ok(cmd) => Ok(Some(cmd)),
-            Err(crate::Error::ProtocolIncomplete) => Ok(None),
+            Err(crate::Error::ProtocolIncomplete) => {
+                rsp_packet.reserve();
+                Ok(None)
+            }
             Err(e) => {
-                // 非MysqlError需要日志并外层断连处理
                 log::error!("+++ err when parse mysql response: {:?}", e);
-                Err(e.into())
+                Err(e)
             }
         }
     }
@@ -178,12 +176,12 @@ impl Vector {
         option: &mut crate::ResOption,
     ) -> crate::Result<HandShake> {
         log::debug!("+++ recv vector handshake packet:{:?}", stream.slice());
-        let client = Client::from_user_pwd(option.username.clone(), option.token.clone());
-        let mut packet = ResponsePacket::new(stream, Some(client));
-
+        let mut packet = ResponsePacket::new(stream);
         match packet.ctx().status {
             HandShakeStatus::Init => {
-                packet.proc_handshake()?;
+                let mut client =
+                    Client::from_user_pwd(option.username.clone(), option.token.clone());
+                packet.proc_handshake(&mut client)?;
                 packet.ctx().status = HandShakeStatus::InitialhHandshakeResponse;
                 Ok(HandShake::Continue)
             }
@@ -198,40 +196,51 @@ impl Vector {
         }
     }
 
+    /// 消除了rsppacket 和 query_result的循环依赖，代价就是不支持存储过程 fishermen
     fn parse_response_inner<'a, S: crate::Stream>(
         &self,
-        rsp_packet: &'a mut ResponsePacket<'a, S>,
+        rsp_packet: &mut ResponsePacket<S>,
     ) -> crate::Result<Command> {
-        // 首先parse meta，对于UnhandleResponseError异常，需要构建成响应返回
-        let meta = match rsp_packet.parse_result_set_meta() {
-            Ok(meta) => meta,
-            Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
-                // 对于UnhandleResponseError，需要构建rsp，发给client
-                let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
-                return Ok(cmd);
-            }
-            Err(e) => return Err(e.into()),
-        };
-
-        // 如果是只有meta的ok packet，直接返回影响的列数，如insert/delete/update
-        if let Or::B(ok) = meta {
-            let affected = ok.affected_rows();
-            let cmd = rsp_packet.build_final_affected_rows_rsp_cmd(affected);
-            return Ok(cmd);
-        }
-
-        // 解析meta后面的rows，返回列记录，如select
-        // 有可能多行数据，直接build成
-        let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
-        match query_result.parse_rows_to_cmd() {
+        // parse result set，对于UnhandleResponseError异常，需要构建成响应返回
+        match rsp_packet.parse_result_set() {
             Ok(cmd) => Ok(cmd),
             Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
                 // 对于UnhandleResponseError，需要构建rsp，发给client
-                let cmd = query_result.build_final_rsp_cmd(false, emsg);
+                let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
                 Ok(cmd)
             }
             Err(e) => Err(e.into()),
         }
+
+        // let meta = match rsp_packet.parse_result_set_meta() {
+        //     Ok(meta) => meta,
+        //     Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
+        //         // 对于UnhandleResponseError，需要构建rsp，发给client
+        //         let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
+        //         return Ok(cmd);
+        //     }
+        //     Err(e) => return Err(e.into()),
+        // };
+
+        // // 如果是只有meta的ok packet，直接返回影响的列数，如insert/delete/update
+        // if let Or::B(ok) = meta {
+        //     let affected = ok.affected_rows();
+        //     let cmd = rsp_packet.build_final_affected_rows_rsp_cmd(affected);
+        //     return Ok(cmd);
+        // }
+
+        // // 解析meta后面的rows，返回列记录，如select
+        // // 有可能多行数据，直接build成
+        // let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
+        // match query_result.parse_rows_to_cmd() {
+        //     Ok(cmd) => Ok(cmd),
+        //     Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
+        //         // 对于UnhandleResponseError，需要构建rsp，发给client
+        //         let cmd = query_result.build_final_rsp_cmd(false, emsg);
+        //         Ok(cmd)
+        //     }
+        //     Err(e) => Err(e.into()),
+        // }
     }
 }
 

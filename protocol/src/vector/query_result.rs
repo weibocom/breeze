@@ -1,14 +1,15 @@
+use crate::kv::common::buffer_pool::Buffer;
+use crate::kv::common::constants::{CapabilityFlags, MAX_PAYLOAD_LEN};
 use crate::kv::error::Result;
-use crate::{Command, Stream};
 
 pub use crate::kv::common::proto::{Binary, Text};
 
-use super::rsppacket::ResponsePacket;
+use super::packet::MysqlRawPacket;
 use crate::kv::common::{io::ParseBuf, packets::OkPacket, row::RowDeserializer};
 
 use std::{marker::PhantomData, sync::Arc};
 
-use crate::kv::common::packets::Column;
+use crate::kv::common::packets::{Column, OldEofPacket, ResultSetTerminator};
 use crate::kv::common::query_result::{Or, SetIteratorState};
 use crate::kv::common::row::Row;
 use bytes::BufMut;
@@ -18,40 +19,42 @@ use SetIteratorState::*;
 const CRLF: &[u8] = b"\r\n";
 
 /// Response to a query or statement execution.
-///
-/// It is an iterator:
-/// *   over result sets (via `Self::current_set`)
-/// *   over rows of a current result set (via `Iterator` impl)
 #[derive(Debug)]
-pub(crate) struct QueryResult<'c, T: crate::kv::prelude::Protocol, S: Stream> {
+pub(crate) struct QueryResult<T: crate::kv::prelude::Protocol> {
     // conn: ConnMut<'c, 't, 'tc>,
-    rsp_packet: &'c mut ResponsePacket<'c, S>,
+    // rsp_packet: &'c mut ResponsePacket<'c, S>,
+    data: MysqlRawPacket,
+    has_results: bool,
     state: SetIteratorState,
-    set_index: usize,
-    // status_flags: StatusFlags,
+    // set_index: usize,
     protocol: PhantomData<T>,
 }
 
-impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
+// impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
+impl<T: crate::kv::prelude::Protocol> QueryResult<T> {
     fn from_state(
-        rsp_packet: &'c mut ResponsePacket<'c, S>,
+        // rsp_packet: &'c mut ResponsePacket<'c, S>,
+        data: MysqlRawPacket,
+        has_results: bool,
         state: SetIteratorState,
-        // status_flags: StatusFlags,
-    ) -> QueryResult<'c, T, S> {
+    ) -> QueryResult<T> {
         QueryResult {
-            rsp_packet,
+            // rsp_packet,
+            data,
+            has_results,
             state,
-            set_index: 0,
-            // status_flags,
+            // set_index: 0,
             protocol: PhantomData,
         }
     }
 
     pub fn new(
-        rsp_packet: &'c mut ResponsePacket<'c, S>,
+        // rsp_packet: &'c mut ResponsePacket<'c, S>,
+        data: MysqlRawPacket,
+        has_results: bool,
         meta: Or<Vec<Column>, OkPacket>,
-    ) -> QueryResult<'c, T, S> {
-        Self::from_state(rsp_packet, meta.into())
+    ) -> QueryResult<T> {
+        Self::from_state(data, has_results, meta.into())
     }
 
     /// Updates state with the next result set, if any.
@@ -59,173 +62,94 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
     /// Returns `false` if there is no next result set.
     ///
     /// **Requires:** `self.state == OnBoundary`
-    /// TODO 这个方法搬到rsppacket中去实现 fishermen
+    /// 不支持存储过程，所以 more_results_exists 始终为false
     pub fn handle_next(&mut self) {
-        debug_assert!(
+        assert!(
             matches!(self.state, SetIteratorState::OnBoundary),
             "self.state != OnBoundary"
         );
 
+        // 不支持multi-resultset，该响应由存储过程产生
+        assert!(
+            !self.data.more_results_exists(),
+            "unsupport stored programs"
+        );
+        self.state = SetIteratorState::Done;
+
         // if status_flags.contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS) {}
-        log::debug!("+++ has more rs:{}", self.rsp_packet.more_results_exists());
-        if self.rsp_packet.more_results_exists() {
-            match self.rsp_packet.parse_result_set_meta() {
-                Ok(meta) => {
-                    if self.set_index == 0 {
-                        self.state = meta.into();
-                    }
-                }
-                Err(err) => self.state = err.into(),
+        // if self.data.more_results_exists() {
+        //     match self.rsp_packet.parse_result_set_meta() {
+        //         Ok(meta) => {
+        //             if self.set_index == 0 {
+        //                 self.state = meta.into();
+        //             }
+        //         }
+        //         Err(err) => self.state = err.into(),
+        //     }
+        //     self.set_index += 1;
+        // } else {
+        //     self.state = SetIteratorState::Done;
+        // }
+    }
+
+    pub(super) fn next_row_packet(&mut self, oft: &mut usize) -> Result<Option<Buffer>> {
+        if !self.has_results {
+            return Ok(None);
+        }
+
+        // TODO 这里会parse出最新的seq，但目前是comm query模式，不会用到，暂时丢弃 fishermen
+        let packet = self.data.next_packet(oft)?;
+        let pld = packet.payload;
+        log::info!("+++ kv packet:{:?}", pld);
+        if self
+            .data
+            .has_capability(CapabilityFlags::CLIENT_DEPRECATE_EOF)
+        {
+            if pld[0] == 0xfe && pld.len() < MAX_PAYLOAD_LEN {
+                self.has_results = false;
+                self.data.handle_ok::<ResultSetTerminator>(pld)?;
+                return Ok(None);
             }
-            self.set_index += 1;
         } else {
-            self.state = SetIteratorState::Done;
+            // 根据mysql doc，EOF_Packet的长度是小于9，先把这里从8改为9，注意观察影响 fishermen
+            if pld[0] == 0xfe && pld.len() < 9 {
+                self.has_results = false;
+                self.data.handle_ok::<OldEofPacket>(pld)?;
+                return Ok(None);
+            }
         }
-    }
 
-    // /// Returns an iterator over the current result set.
-    // #[deprecated = "Please use QueryResult::iter"]
-    // pub fn next_set<'d>(&'d mut self) -> Option<ResultSet<'c, 'd, T, S>> {
-    //     self.iter()
-    // }
-
-    /// Returns an iterator over the current result set.
-    ///
-    /// The returned iterator will be consumed either by the caller
-    /// or implicitly by the `ResultSet::drop`. This operation
-    /// will advance `self` to the next result set (if any).
-    ///
-    /// The following code describes the behavior:
-    ///
-    /// ```rust
-    /// # mysql::doctest_wrapper!(__result, {
-    /// # use mysql::*;
-    /// # use mysql::prelude::*;
-    /// # let pool = Pool::new(get_opts())?;
-    /// # let mut conn = pool.get_conn()?;
-    /// # conn.query_drop("CREATE TEMPORARY TABLE mysql.tbl(id INT NOT NULL PRIMARY KEY)")?;
-    ///
-    /// let mut query_result = conn.query_iter("\
-    ///     INSERT INTO mysql.tbl (id) VALUES (3, 4);\
-    ///     SELECT * FROM mysql.tbl;
-    ///     UPDATE mysql.tbl SET id = id + 1;")?;
-    ///
-    /// // query_result is on the first result set at the moment
-    /// {
-    ///     assert_eq!(query_result.affected_rows(), 2);
-    ///     assert_eq!(query_result.last_insert_id(), Some(4));
-    ///
-    ///     let first_result_set = query_result.iter().unwrap();
-    ///     assert_eq!(first_result_set.affected_rows(), 2);
-    ///     assert_eq!(first_result_set.last_insert_id(), Some(4));
-    /// }
-    ///
-    /// // the first result set is now dropped, so query_result is on the second result set
-    /// {
-    ///     assert_eq!(query_result.affected_rows(), 0);
-    ///     assert_eq!(query_result.last_insert_id(), None);
-    ///     
-    ///     let mut second_result_set = query_result.iter().unwrap();
-    ///
-    ///     let first_row = second_result_set.next().unwrap().unwrap();
-    ///     assert_eq!(from_row::<u8>(first_row), 3_u8);
-    ///     let second_row = second_result_set.next().unwrap().unwrap();
-    ///     assert_eq!(from_row::<u8>(second_row), 4_u8);
-    ///
-    ///     assert!(second_result_set.next().is_none());
-    ///
-    ///     // second_result_set is consumed but still represents the second result set
-    ///     assert_eq!(second_result_set.affected_rows(), 0);
-    /// }
-    ///
-    /// // the second result set is now dropped, so query_result is on the third result set
-    /// assert_eq!(query_result.affected_rows(), 2);
-    ///
-    /// // QueryResult::drop simply does the following:
-    /// while query_result.iter().is_some() {}
-    /// # });
-    /// ```
-    pub fn iter<'d>(&'d mut self) -> Option<ResultSet<'c, 'd, T, S>> {
-        use SetIteratorState::*;
-
-        if let OnBoundary | Done = &self.state {
-            debug_assert!(
-                !self.rsp_packet.more_results_exists(),
-                "the next state must be handled by the Iterator::next"
-            );
-
-            None
-        } else {
-            Some(ResultSet {
-                set_index: self.set_index,
-                inner: self,
-            })
-        }
-    }
-
-    /// TODO 代理rsp_packet的同名方法，这两个文件需要进行整合
-    #[inline(always)]
-    pub fn build_final_rsp_cmd(&mut self, ok: bool, rsp_data: Vec<u8>) -> Command {
-        self.rsp_packet.build_final_rsp_cmd(ok, rsp_data)
+        let buff = Buffer::new(pld);
+        Ok(Some(buff))
     }
 
     /// 解析meta后面的rows
     #[inline(always)]
-    pub(crate) fn parse_rows_to_cmd(&mut self) -> Result<Command> {
+    pub(crate) fn parse_rows_to_redis(&mut self, oft: &mut usize) -> Result<Vec<u8>> {
         // 解析出mysql rows
-        let rows = self.parse_rows()?;
-
-        // 将rows转为redis协议
-        let packet_data = format_to_redis(&rows);
-
-        // 构建响应
-        Ok(self.build_final_rsp_cmd(true, packet_data))
-    }
-
-    pub(crate) fn parse_rows(&mut self) -> Result<Vec<Row>> {
         // 改为每次只处理本次的响应
         let mut rows = Vec::with_capacity(8);
         loop {
-            match self.scan_one_row()? {
+            match self.scan_one_row(oft)? {
                 Some(row) => {
                     // init = f(init, from_row::<R>(row));
                     rows.push(row);
                 }
 
                 None => {
-                    // take统一放在构建最终响应的地方进行
-                    // let _ = self.rsp_packet.take();
-                    return Ok(rows);
+                    break;
                 }
             }
         }
+
+        // 将rows转为redis协议
+        Ok(format_to_redis(&rows))
     }
 
-    // pub(crate) fn scan_rows<R, F, U>(&mut self, mut init: U, mut f: F) -> Result<U>
-    // where
-    //     R: FromRow,
-    //     F: FnMut(U, R) -> U,
-    // {
-    //     // 改为每次只处理本次的响应
-    //     loop {
-    //         match self.scan_one_row()? {
-    //             Some(row) => {
-    //                 init = f(init, from_row::<R>(row));
-    //             }
-
-    //             None => {
-    //                 // take统一放在构建最终响应的地方进行
-    //                 // let _ = self.rsp_packet.take();
-    //                 return Ok(init);
-    //             }
-    //         }
-    //     }
-    // }
-
-    fn scan_one_row(&mut self) -> Result<Option<Row>> {
+    fn scan_one_row(&mut self, oft: &mut usize) -> Result<Option<Row>> {
         let state = std::mem::replace(&mut self.state, OnBoundary);
         match state {
-            InSet(cols) => match self.rsp_packet.next_row_packet()? {
+            InSet(cols) => match self.next_row_packet(oft)? {
                 Some(pld) => {
                     let row_data =
                         ParseBuf::new(0, *pld).parse::<RowDeserializer<(), Text>>(cols.clone())?;
@@ -255,173 +179,12 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
             }
         }
     }
-
-    // /// Returns the number of affected rows for the current result set.
-    // pub fn affected_rows(&self) -> u64 {
-    //     self.state
-    //         .ok_packet()
-    //         .map(|ok| ok.affected_rows())
-    //         .unwrap_or_default()
-    // }
-
-    // /// Returns the last insert id for the current result set.
-    // pub fn last_insert_id(&self) -> Option<u64> {
-    //     self.state
-    //         .ok_packet()
-    //         .map(|ok| ok.last_insert_id())
-    //         .unwrap_or_default()
-    // }
-
-    // /// Returns the warnings count for the current result set.
-    // pub fn warnings(&self) -> u16 {
-    //     self.state
-    //         .ok_packet()
-    //         .map(|ok| ok.warnings())
-    //         .unwrap_or_default()
-    // }
-
-    // /// [Info] for the current result set.
-    // ///
-    // /// Will be empty if not defined.
-    // ///
-    // /// [Info]: http://dev.mysql.com/doc/internals/en/packet-OK_Packet.html
-    // pub fn info_ref(&self) -> &[u8] {
-    //     self.state
-    //         .ok_packet()
-    //         .and_then(|ok| ok.info_ref())
-    //         .unwrap_or_default()
-    // }
-
-    // /// [Info] for the current result set.
-    // ///
-    // /// Will be empty if not defined.
-    // ///
-    // /// [Info]: http://dev.mysql.com/doc/internals/en/packet-OK_Packet.html
-    // pub fn info_str(&self) -> Cow<str> {
-    //     self.state
-    //         .ok_packet()
-    //         .and_then(|ok| ok.info_str())
-    //         .unwrap_or_else(|| "".into())
-    // }
-
-    // /// Returns columns of the current result rest.
-    // pub fn columns(&self) -> SetColumns {
-    //     SetColumns {
-    //         inner: self.state.columns().map(Into::into),
-    //     }
-    // }
-}
-
-impl<'c, T: crate::kv::prelude::Protocol, S: Stream> Drop for QueryResult<'c, T, S> {
-    fn drop(&mut self) {
-        while self.iter().is_some() {}
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct ResultSet<'a, 'd, T: crate::kv::prelude::Protocol, S: Stream> {
-    set_index: usize,
-    inner: &'d mut QueryResult<'a, T, S>,
-}
-
-impl<'a, 'b, 'c, T: crate::kv::prelude::Protocol, S: Stream> std::ops::Deref
-    for ResultSet<'a, '_, T, S>
-{
-    type Target = QueryResult<'a, T, S>;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.inner
-    }
-}
-
-impl<T: crate::kv::prelude::Protocol, S: Stream> Iterator for ResultSet<'_, '_, T, S> {
-    type Item = Result<Row>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.set_index == self.inner.set_index {
-            self.inner.next()
-        } else {
-            None
-        }
-    }
-}
-
-impl<'c, T: crate::kv::prelude::Protocol, S: Stream> Iterator for QueryResult<'c, T, S> {
-    type Item = Result<Row>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        use SetIteratorState::*;
-
-        let state = std::mem::replace(&mut self.state, OnBoundary);
-        match state {
-            InSet(cols) => match self.rsp_packet.next_row_packet() {
-                Ok(Some(pld)) => {
-                    log::debug!("+++ read row data: {:?}", pld);
-                    match ParseBuf::from(*pld).parse::<RowDeserializer<(), Text>>(cols.clone()) {
-                        Ok(row) => {
-                            log::debug!("+++ parsed row: {:?}", row);
-                            self.state = InSet(cols.clone());
-                            Some(Ok(row.into()))
-                        }
-                        Err(_e) => {
-                            log::warn!("+++ parsed row failed: {:?}, data: {:?}", _e, pld);
-                            None
-                        }
-                    }
-                }
-                Ok(None) => {
-                    self.handle_next();
-                    None
-                }
-                Err(e) => {
-                    self.handle_next();
-                    Some(Err(e))
-                }
-            },
-            InEmptySet(_) => {
-                self.handle_next();
-                None
-            }
-            Errored(err) => {
-                self.handle_next();
-                Some(Err(err))
-            }
-            OnBoundary => None,
-            Done => {
-                self.state = Done;
-                None
-            }
-        }
-    }
-}
-
-impl<T: crate::kv::prelude::Protocol, S: Stream> Drop for ResultSet<'_, '_, T, S> {
-    fn drop(&mut self) {
-        while self.next().is_some() {}
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetColumns<'a> {
     inner: Option<&'a Arc<[Column]>>,
 }
-
-// impl<'a> SetColumns<'a> {
-//     /// Returns an index of a column by its name.
-//     pub fn column_index<U: AsRef<str>>(&self, name: U) -> Option<usize> {
-//         let name = name.as_ref().as_bytes();
-//         self.inner
-//             .as_ref()
-//             .and_then(|cols| cols.iter().position(|col| col.name_ref() == name))
-//     }
-
-//     pub fn as_ref(&self) -> &[Column] {
-//         self.inner
-//             .as_ref()
-//             .map(|cols| &(*cols)[..])
-//             .unwrap_or(&[][..])
-//     }
-// }
 
 #[inline]
 pub fn format_to_redis(rows: &Vec<Row>) -> Vec<u8> {
