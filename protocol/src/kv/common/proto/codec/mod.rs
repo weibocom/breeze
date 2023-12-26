@@ -40,6 +40,7 @@ pub fn packet_to_chunks<T: Buf>(mut seq_id: u8, packet: &mut T, dst: &mut BytesM
     while packet.has_remaining() {
         let mut chunk_len = min(packet.remaining(), MAX_PAYLOAD_LEN);
         dst.put_u32_le(chunk_len as u32 | (u32::from(seq_id) << 24));
+
         while chunk_len > 0 {
             let chunk = packet.chunk();
             let count = min(chunk.len(), chunk_len);
@@ -694,7 +695,6 @@ impl PlainPacketCodec {
         }
 
         self.seq_id = packet_to_chunks(self.seq_id, packet, dst);
-
         Ok(())
     }
 }
