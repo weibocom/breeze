@@ -77,7 +77,7 @@ where
     fn send(&self, mut req: Self::Item) {
         let shard = (|| -> Result<&Shard<E>, protocol::Error> {
             let (year, shard_idx) = if req.ctx_mut().runs == 0 {
-                let vcmd = protocol::vector::parse_vector_detail(&req)?;
+                let vcmd = protocol::vector::redis::parse_vector_detail(&req)?;
                 //定位年库
                 let year = self.strategist.get_year(&vcmd.keys, &self.cfg.basic.keys)?;
 
