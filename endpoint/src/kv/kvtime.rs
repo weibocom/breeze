@@ -2,8 +2,7 @@ use super::{
     strategy::{to_i64, Postfix},
     uuid::Uuid,
 };
-use chrono::{Date, Datelike};
-use chrono_tz::Tz;
+use chrono::{Datelike, NaiveDate};
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
@@ -76,7 +75,12 @@ impl KVTime {
         let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
     }
 
-    pub fn write_tname_with_date(&self, buf: &mut impl Write, date: &Date<Tz>) {
+    pub fn write_dname_with_hash(&self, buf: &mut impl Write, hash: i64) {
+        let db_idx: usize = self.distribution.db_idx(hash);
+        let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
+    }
+
+    pub fn write_tname_with_date(&self, buf: &mut impl Write, date: &NaiveDate) {
         let (mut year, month, day) = (date.year(), date.month(), date.day());
         year %= 100;
         match self.table_postfix {

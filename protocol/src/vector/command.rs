@@ -115,11 +115,6 @@ impl Commands {
 pub fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties> {
     SUPPORTED.get_by_op(op_code)
 }
-#[inline(always)]
-pub fn get_cmd_type(op_code: u16) -> crate::Result<CommandType> {
-    let cmd = get_cfg(op_code)?;
-    Ok(cmd.cmd_type)
-}
 
 // #[inline(always)]
 // pub(crate) fn get_cfg_byname(name: &str) -> crate::Result<&'static CommandProperties> {
