@@ -41,6 +41,10 @@ impl TxBuffer {
         self.write as usize
     }
     #[inline]
+    pub fn taked(&self) -> usize {
+        self.read as usize
+    }
+    #[inline]
     pub fn data(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
@@ -92,7 +96,7 @@ impl TxBuffer {
     }
     #[inline]
     fn resize(&mut self, new: usize) {
-        if new > 1024 * 1024 * 1024 {
+        if new > 256 * 1024 * 1024 {
             println!(
                 "resize self: {:p} tx_buf read:{} write:{} cap:{} MemPolicy:{:?} len:{} head: {:?}",
                 &self,
