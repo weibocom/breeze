@@ -74,6 +74,8 @@ impl Host {
         self.qps(w, secs, &POLL_WRITE, "poll_write");
         self.qps(w, secs, &POLL_PENDING_R, "r_pending");
         self.qps(w, secs, &POLL_PENDING_W, "w_pending");
+        self.qps(w, secs, &WRITE_LEN0, "w_write0");
+        self.qps(w, secs, &WRITE_ERR, "w_writerr");
         self.qps(w, secs, &REENTER_10MS, "reenter10ms");
 
         self.qps(w, secs, &ds::CACHE_ALLOC_NUM, "heap_cache_num");

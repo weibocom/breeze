@@ -57,4 +57,6 @@ pub mod base {
     pub static POLL_PENDING_W: AtomicI64 = AtomicI64::new(0);
     pub static REENTER_10MS: AtomicI64 = AtomicI64::new(0);
     pub static LEAKED_CONN: AtomicI64 = AtomicI64::new(0);
+    pub static WRITE_LEN0: AtomicI64 = AtomicI64::new(0);
+    pub static WRITE_ERR: AtomicI64 = AtomicI64::new(0);
 }
