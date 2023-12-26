@@ -3,8 +3,10 @@ pub(crate) mod error;
 pub mod flager;
 mod packet;
 mod query_result;
+pub mod redis;
 mod reqpacket;
 mod rsppacket;
+
 use self::reqpacket::RequestPacket;
 use self::rsppacket::ResponsePacket;
 use crate::kv::client::Client;
@@ -14,10 +16,9 @@ use crate::{
     Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
     Result, Stream, Writer,
 };
+pub use command::CommandType;
 use ds::RingSlice;
 use sharding::hash::Hash;
-
-pub use command::{get_cmd_type, CommandType};
 
 #[derive(Clone, Default)]
 pub struct Vector;
@@ -310,6 +311,7 @@ pub type Field = (RingSlice, RingSlice);
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
 #[derive(Debug, Clone, Default)]
 pub struct VectorCmd {
+    pub cmd: CommandType,
     pub keys: Vec<RingSlice>,
     pub fields: Vec<Field>,
     pub wheres: Vec<Condition>,
