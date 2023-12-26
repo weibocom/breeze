@@ -67,13 +67,15 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         const LARGE_SIZE: usize = 4 * 1024;
         // 数据量比较大，尝试直接写入。写入之前要把buf flush掉。
         if self.buf.len() + data.len() >= LARGE_SIZE {
-            let _ = self.as_mut().poll_flush(cx)?;
+            let _ = self.as_mut().poll_flush(cx);
         }
         let mut oft = 0;
         // 1. buf.len()必须为0；
         // 2. 如果没有显示要求写入到buf, 或者数据量大，则直接写入
         if self.buf.len() == 0 && (!self.buf.enable || data.len() >= LARGE_SIZE) {
-            let _ = Pin::new(&mut self.s).poll_write(cx, data)?.map(|n| oft = n);
+            if let Poll::Ready(Ok(n)) = Pin::new(&mut self.s).poll_write(cx, data) {
+                oft = n;
+            }
         }
         // 未写完的数据写入到buf。
         if oft < data.len() {
