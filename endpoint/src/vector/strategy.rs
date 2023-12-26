@@ -237,6 +237,7 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
         let &Self(
             strategy,
             VectorCmd {
+                cmd: _,
                 keys,
                 fields: _,
                 wheres,
@@ -281,24 +282,17 @@ impl<'a> Display for KeysAndCondsAndOrderAndLimit<'a> {
 }
 
 pub(crate) struct VectorBuilder<'a> {
-    cmd_type: CommandType,
     vcmd: &'a VectorCmd,
     strategy: &'a Strategist,
     hash: i64,
 }
 
 impl<'a> VectorBuilder<'a> {
-    pub fn new(
-        cmd_type: CommandType,
-        vcmd: &'a VectorCmd,
-        strategy: &'a Strategist,
-        hash: i64,
-    ) -> Result<Self> {
+    pub fn new(vcmd: &'a VectorCmd, strategy: &'a Strategist, hash: i64) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys().len() {
             Err(Error::ProtocolIncomplete)
         } else {
             Ok(Self {
-                cmd_type,
                 vcmd,
                 strategy,
                 hash,
@@ -316,7 +310,7 @@ impl<'a> MysqlBinary for VectorBuilder<'a> {
 impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
     fn len(&self) -> usize {
         //按照可能的最长长度计算，其中table长度取得32，key长度取得5，测试比实际长15左右
-        let mut base = match self.cmd_type {
+        let mut base = match self.vcmd.cmd {
             CommandType::VRange => "select  from  where ".len(),
             CommandType::VCard => "select count(*) from  where ".len(),
             CommandType::VAdd => "insert into  () values ()".len(),
@@ -324,10 +318,11 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
             CommandType::VDel => "delete from  where ".len(),
             _ => {
                 //校验应该在parser_req出
-                panic!("not support cmd_type:{:?}", self.cmd_type);
+                panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
         };
         let VectorCmd {
+            cmd: _,
             keys,
             fields,
             wheres,
@@ -358,7 +353,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
 
     fn write_sql(&self, buf: &mut impl Write) {
         // let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
-        match self.cmd_type {
+        match self.vcmd.cmd {
             CommandType::VRange => {
                 let _ = write!(
                     buf,
@@ -404,7 +399,7 @@ impl<'a> VectorSqlBuilder for VectorBuilder<'a> {
             }
             _ => {
                 //校验应该在parser_req出
-                panic!("not support cmd_type:{:?}", self.cmd_type);
+                panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
         }
     }
@@ -467,6 +462,7 @@ mod tests {
         let buf = &mut buf;
         // vrange
         let vector_cmd = VectorCmd {
+            cmd: CommandType::VRange,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -481,8 +477,7 @@ mod tests {
             limit: Default::default(),
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder =
-            VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy, hash).unwrap();
+        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
@@ -493,6 +488,7 @@ mod tests {
 
         // vrange 无field
         let vector_cmd = VectorCmd {
+            cmd: CommandType::VRange,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -504,8 +500,7 @@ mod tests {
             limit: Default::default(),
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder =
-            VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy, hash).unwrap();
+        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -517,6 +512,7 @@ mod tests {
 
         // 复杂vrange
         let vector_cmd = VectorCmd {
+            cmd: CommandType::VRange,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -550,8 +546,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder =
-            VectorBuilder::new(CommandType::VRange, &vector_cmd, &strategy, hash).unwrap();
+        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -563,6 +558,7 @@ mod tests {
 
         // vcard
         let vector_cmd = VectorCmd {
+            cmd: CommandType::VCard,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -591,7 +587,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(CommandType::VCard, &vector_cmd, &strategy, hash).unwrap();
+        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -603,6 +599,7 @@ mod tests {
 
         //vadd
         let vector_cmd = VectorCmd {
+            cmd: CommandType::VAdd,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -629,7 +626,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(CommandType::VAdd, &vector_cmd, &strategy, hash).unwrap();
+        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -643,6 +640,7 @@ mod tests {
 
         //vupdate
         let vector_cmd = VectorCmd {
+            cmd: CommandType::VUpdate,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -680,8 +678,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder =
-            VectorBuilder::new(CommandType::VUpdate, &vector_cmd, &strategy, hash).unwrap();
+        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -693,6 +690,7 @@ mod tests {
 
         //vdel
         let vector_cmd = VectorCmd {
+            cmd: CommandType::VDel,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -721,7 +719,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(CommandType::VDel, &vector_cmd, &strategy, hash).unwrap();
+        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());

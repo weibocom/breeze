@@ -12,6 +12,7 @@ use crate::{
 use ds::RingSlice;
 use sharding::hash::Hash;
 
+use self::command::get_cfg;
 use self::flager::KvFlager;
 use self::query_result::{QueryResult, Text};
 use self::reqpacket::RequestPacket;
@@ -302,6 +303,7 @@ pub type Field = (RingSlice, RingSlice);
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
 #[derive(Debug, Clone, Default)]
 pub struct VectorCmd {
+    pub cmd: CommandType,
     pub keys: Vec<RingSlice>,
     pub fields: Vec<Field>,
     pub wheres: Vec<Condition>,
@@ -362,6 +364,7 @@ pub fn parse_vector_detail(cmd: &HashedCommand) -> crate::Result<VectorCmd> {
     let flag = cmd.flag();
 
     let mut vcmd: VectorCmd = Default::default();
+    vcmd.cmd = get_cfg(flag.op_code())?.cmd_type;
     // 解析keys
     parse_vector_key(&data, flag.key_pos() as usize, &mut vcmd)?;
 

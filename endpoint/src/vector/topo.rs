@@ -6,7 +6,6 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::{ContextStatus, MysqlBuilder};
-use protocol::vector::{get_cmd_type, CommandType};
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -91,11 +90,8 @@ where
                 req.ctx_mut().year = year;
                 req.ctx_mut().shard_idx = shard_idx as u16;
 
-                let cmd_type = get_cmd_type(req.op_code()).unwrap_or(CommandType::Unknown);
-
                 //todo: 此处不应panic
-                let vector_builder =
-                    VectorBuilder::new(cmd_type, &vcmd, &self.strategist, req.hash())?;
+                let vector_builder = VectorBuilder::new(&vcmd, &self.strategist, req.hash())?;
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
                 req.reshape(MemGuard::from_vec(cmd));
 
