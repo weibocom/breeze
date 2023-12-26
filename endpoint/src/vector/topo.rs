@@ -80,7 +80,7 @@ where
         let shard = (|| -> Result<&Shard<E>, protocol::Error> {
             // req 是mc binary协议，需要展出字段，转换成sql
             let (year, shard_idx) = if req.ctx_mut().runs == 0 {
-                let vcmd = MysqlBuilder::parse_vector_detail(&req)?;
+                let vcmd = protocol::vector::parse_vector_detail(&req)?;
                 //定位年库
                 let year = self
                     .strategist
