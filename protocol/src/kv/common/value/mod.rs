@@ -27,6 +27,7 @@ pub mod convert;
 pub mod json;
 
 const CRLF: &[u8] = b"\r\n";
+const NIL: &[u8] = b"$-1\r\n";
 
 /// Side of MySql value serialization.
 pub trait SerializationSide {
@@ -327,7 +328,12 @@ impl Value {
                 data.extend_from_slice(bytes);
                 data.put(CRLF);
             }
+            NULL => {
+                log::warn!("++ found null value");
+                data.put(NIL);
+            }
             _ => {
+                log::error!("+++ found malformed type:{:?}", self);
                 // 对于text val，理论上应该只有Bytes一种类型
                 panic!("malformed type in text protocol: {:?}", self);
             }
