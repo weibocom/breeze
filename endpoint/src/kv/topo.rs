@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use discovery::distance::ByDistance;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
@@ -271,12 +272,28 @@ where
                     self.cfg.timeout_master(),
                     res_option.clone(),
                 );
-                // slave
+                // slave 数量有限制时，先按可用区规则对slaves排序
+                // 若可用区内实例数量为0或未开启可用区，则将slaves随机化作为排序结果
+                // 按slave数量限制截取将使用的slave
                 let mut replicas = Vec::with_capacity(8);
-                if self.cfg.basic.max_slave_conns != 0 {
-                    slaves.shuffle(&mut rng);
-                    slaves.truncate(self.cfg.basic.max_slave_conns as usize);
+                if self.cfg.basic.max_slave_conns != 0
+                    && slaves.len() > self.cfg.basic.max_slave_conns as usize
+                {
+                    let mut l = if self.cfg.basic.region_enabled {
+                        slaves.sort_by_region(Vec::new(), context::get().region(), |d, _| {
+                            d <= discovery::distance::DISTANCE_VAL_REGION
+                        })
+                    } else {
+                        0
+                    };
+                    if l == 0 {
+                        slaves.shuffle(&mut rng);
+                        l = slaves.len();
+                    }
+
+                    slaves.truncate(l.min(self.cfg.basic.max_slave_conns as usize));
                 }
+
                 for addr in slaves {
                     let slave = self.take_or_build(
                         &mut old,
