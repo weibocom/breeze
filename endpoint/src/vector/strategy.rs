@@ -1,7 +1,7 @@
 use std::fmt::{Display, Write};
 
 pub use crate::kv::strategy::{to_i64, Postfix};
-use chrono::NaiveDate;
+use chrono::Datelike;
 use ds::RingSlice;
 use protocol::kv::common::Command;
 use protocol::kv::{MysqlBinary, VectorSqlBuilder};
@@ -61,12 +61,14 @@ impl Strategist {
         }
     }
     #[inline]
-    pub fn get_date(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<NaiveDate> {
+    pub fn get_year(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<u16> {
         match self {
-            Strategist::VectorTime(inner) => inner.get_date(keys, keys_name),
+            Strategist::VectorTime(inner) => {
+                inner.get_date(keys, keys_name).map(|d| d.year() as u16)
+            }
         }
     }
-    fn keys(&self) -> &[String] {
+    pub fn keys(&self) -> &[String] {
         match self {
             Strategist::VectorTime(inner) => inner.keys(),
         }
@@ -290,7 +292,7 @@ pub(crate) struct VectorBuilder<'a> {
 impl<'a> VectorBuilder<'a> {
     pub fn new(vcmd: &'a VectorCmd, strategy: &'a Strategist, hash: i64) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys().len() {
-            Err(Error::ProtocolIncomplete)
+            Err(Error::RequestProtocolInvalid)
         } else {
             Ok(Self {
                 vcmd,
