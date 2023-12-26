@@ -50,7 +50,7 @@ impl TxBuffer {
     }
     #[inline(always)]
     fn ptr_w(&mut self) -> *mut u8 {
-        unsafe { self.data.as_ptr().offset(self.write as isize) as *mut u8 }
+        unsafe { self.data.as_ptr().offset(self.write as isize) }
     }
     #[inline]
     pub fn data(&self) -> &[u8] {
