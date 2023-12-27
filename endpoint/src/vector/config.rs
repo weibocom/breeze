@@ -42,6 +42,8 @@ pub struct Basic {
     pub(crate) password: String,
     #[serde(default)]
     pub(crate) user: String,
+    #[serde(default)]
+    pub(crate) region_enabled: bool,
 }
 
 impl VectorNamespace {
