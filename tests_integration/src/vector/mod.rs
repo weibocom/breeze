@@ -36,16 +36,26 @@ fn vrange_basic() {
 
 // 返回0条数据
 #[test]
-fn vrange_0() {
+fn vrange_0_with_empty_rs() {
     let mut con = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 46687411842092840,
+        like_id: 4968741184209240,
+        object_id: 4968741184209220,
+        object_type: 40,
+    };
+    let uid_unknown = 99999;
+
+    safe_add(&mut con, &like_by_me);
+
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209284,2211")
+        .arg(format!("{},2211", uid_unknown))
         .arg("field")
         .arg("uid,object_type")
         .arg("where")
         .arg("like_id")
         .arg("=")
-        .arg("4968741184209240")
+        .arg(like_by_me.like_id)
         .arg("limit")
         .arg("0")
         .arg("10")
@@ -56,21 +66,34 @@ fn vrange_0() {
 
 #[test]
 // 返回1条数据
-fn vrange_1() {
+fn vrange_1_with_1rows() {
     let mut con = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 46687411842092841,
+        like_id: 4968741184209241,
+        object_id: 4968741184209221,
+        object_type: 41,
+    };
+
+    safe_add(&mut con, &like_by_me);
+
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209281,2211")
+        .arg(format!("{},2211", like_by_me.uid))
         .arg("field")
         .arg("uid,object_type")
         .arg("where")
         .arg("like_id")
         .arg("=")
-        .arg("4968741184209211")
+        .arg(like_by_me.like_id)
+        .arg("uid")
+        .arg("=")
+        .arg(like_by_me.uid)
         .arg("limit")
         .arg("0")
         .arg("10")
         .query(&mut con);
     println!("++ rsp:{:?}", rsp);
+
     assert_eq!(
         rsp,
         Ok(Value::Bulk(vec![
@@ -78,74 +101,124 @@ fn vrange_1() {
                 Value::Status("uid".to_string()),
                 Value::Status("object_type".to_string())
             ]),
-            Value::Bulk(vec![Value::Int(4668741184209281), Value::Int(4)])
+            Value::Bulk(vec![
+                Value::Int(like_by_me.uid),
+                Value::Int(like_by_me.object_type),
+            ])
         ]))
     );
 }
 #[test]
 // 返回2条数据
-fn vrange_2() {
+fn vrange_2_with_2rows() {
     let mut con = get_conn(&RESTYPE.get_host());
+    let like_by_me1 = LikeByMe {
+        uid: 46687411842092842,
+        like_id: 4968741184209242,
+        object_id: 4968741184209222,
+        object_type: 42,
+    };
+    let like_by_me2 = LikeByMe {
+        uid: 46687411842092842,
+        like_id: 4968741184209242,
+        object_id: 49687411842092222,
+        object_type: 42,
+    };
+
+    safe_add(&mut con, &like_by_me1);
+    safe_add(&mut con, &like_by_me2);
+
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209282,2211")
+        .arg(format!("{},2211", like_by_me1.uid))
         .arg("field")
-        .arg("uid,like_id")
+        .arg("uid,object_type")
         .arg("where")
-        .arg("object_id")
+        .arg("like_id")
         .arg("=")
-        .arg("4968741184209227")
+        .arg(like_by_me1.like_id)
+        .arg("uid")
+        .arg("=")
+        .arg(like_by_me1.uid)
         .arg("limit")
         .arg("0")
         .arg("10")
         .query(&mut con);
     println!("++ rsp:{:?}", rsp);
+
     assert_eq!(
         rsp,
         Ok(Value::Bulk(vec![
             Value::Bulk(vec![
                 Value::Status("uid".to_string()),
-                Value::Status("like_id".to_string())
+                Value::Status("object_type".to_string())
             ]),
             Value::Bulk(vec![
-                Value::Int(4668741184209282),
-                Value::Int(4968741184209225),
-                Value::Int(4668741184209282),
-                Value::Int(4968741184209226)
+                Value::Int(like_by_me1.uid),
+                Value::Int(like_by_me1.object_type),
+                Value::Int(like_by_me2.uid),
+                Value::Int(like_by_me2.object_type)
             ])
         ]))
     );
 }
 #[test]
 // 返回3条数据
-fn vrange_3() {
+fn vrange_3_with_3rows() {
     let mut con = get_conn(&RESTYPE.get_host());
+    let like_by_me1 = LikeByMe {
+        uid: 46687411842092843,
+        like_id: 496874118420924,
+        object_id: 4968741184209223,
+        object_type: 43,
+    };
+    let like_by_me2 = LikeByMe {
+        uid: 46687411842092843,
+        like_id: 4968741184209243,
+        object_id: 49687411842092232,
+        object_type: 43,
+    };
+    let like_by_me3 = LikeByMe {
+        uid: 46687411842092843,
+        like_id: 4968741184209243,
+        object_id: 49687411842092233,
+        object_type: 43,
+    };
+
+    safe_add(&mut con, &like_by_me1);
+    safe_add(&mut con, &like_by_me2);
+    safe_add(&mut con, &like_by_me3);
+
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209283,2211")
+        .arg(format!("{},2211", like_by_me1.uid))
         .arg("field")
-        .arg("uid,object_id")
+        .arg("uid,object_type")
         .arg("where")
         .arg("like_id")
         .arg("=")
-        .arg("4968741184209237")
+        .arg(like_by_me1.like_id)
+        .arg("uid")
+        .arg("=")
+        .arg(like_by_me1.uid)
         .arg("limit")
         .arg("0")
         .arg("10")
         .query(&mut con);
     println!("++ rsp:{:?}", rsp);
+
     assert_eq!(
         rsp,
         Ok(Value::Bulk(vec![
             Value::Bulk(vec![
                 Value::Status("uid".to_string()),
-                Value::Status("object_id".to_string()),
+                Value::Status("object_type".to_string())
             ]),
             Value::Bulk(vec![
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209230),
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209231),
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209232),
+                Value::Int(like_by_me1.uid),
+                Value::Int(like_by_me1.object_type),
+                Value::Int(like_by_me2.uid),
+                Value::Int(like_by_me2.object_type),
+                Value::Int(like_by_me3.uid),
+                Value::Int(like_by_me3.object_type)
             ])
         ]))
     );
@@ -153,7 +226,7 @@ fn vrange_3() {
 
 // 返回0条数据
 #[test]
-fn vrange_with_sql_injectrion() {
+fn vrange_4_with_sql_injectrion() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp: Result<Value, redis::RedisError> = redis::cmd("vrange")
         .arg("4668741184209284,2211")
@@ -173,7 +246,7 @@ fn vrange_with_sql_injectrion() {
 
 // 返回0条数据
 #[test]
-fn vrange_without_where() {
+fn vrange_5_without_where() {
     let mut con = get_conn(&RESTYPE.get_host());
     let rsp: Result<Value, redis::RedisError> = redis::cmd("vrange")
         .arg("4668741184209284,2211")
@@ -186,16 +259,39 @@ fn vrange_without_where() {
 
 #[test]
 // 返回3条数据
-fn vrange_with_group() {
+fn vrange_6_with_group() {
     let mut con = get_conn(&RESTYPE.get_host());
+    let like_by_me1 = LikeByMe {
+        uid: 46687411842092846,
+        like_id: 496874118420926,
+        object_id: 4968741184209226,
+        object_type: 46,
+    };
+    let like_by_me2 = LikeByMe {
+        uid: 46687411842092846,
+        like_id: 496874118420926,
+        object_id: 49687411842092262,
+        object_type: 46,
+    };
+    let like_by_me3 = LikeByMe {
+        uid: 46687411842092846,
+        like_id: 496874118420926,
+        object_id: 49687411842092263,
+        object_type: 46,
+    };
+
+    safe_add(&mut con, &like_by_me1);
+    safe_add(&mut con, &like_by_me2);
+    safe_add(&mut con, &like_by_me3);
+
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209283,2211")
+        .arg(format!("{},2211", like_by_me1.uid))
         .arg("field")
         .arg("uid,object_id")
         .arg("where")
         .arg("like_id")
         .arg("=")
-        .arg("4968741184209237")
+        .arg(like_by_me1.like_id)
         .arg("group")
         .arg("by")
         .arg("object_id")
@@ -212,12 +308,12 @@ fn vrange_with_group() {
                 Value::Status("object_id".to_string()),
             ]),
             Value::Bulk(vec![
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209230),
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209231),
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209232),
+                Value::Int(like_by_me1.uid),
+                Value::Int(like_by_me1.object_id),
+                Value::Int(like_by_me2.uid),
+                Value::Int(like_by_me2.object_id),
+                Value::Int(like_by_me3.uid),
+                Value::Int(like_by_me3.object_id)
             ])
         ]))
     );
@@ -225,16 +321,39 @@ fn vrange_with_group() {
 
 #[test]
 // 返回3条数据
-fn vrange_with_count() {
+fn vrange_7_with_count() {
     let mut con = get_conn(&RESTYPE.get_host());
+    let like_by_me1 = LikeByMe {
+        uid: 46687411842092847,
+        like_id: 496874118420927,
+        object_id: 4968741184209227,
+        object_type: 47,
+    };
+    let like_by_me2 = LikeByMe {
+        uid: 46687411842092847,
+        like_id: 496874118420927,
+        object_id: 49687411842092272,
+        object_type: 47,
+    };
+    let like_by_me3 = LikeByMe {
+        uid: 46687411842092847,
+        like_id: 4968741184209247,
+        object_id: 49687411842092273,
+        object_type: 47,
+    };
+
+    safe_add(&mut con, &like_by_me1);
+    safe_add(&mut con, &like_by_me2);
+    safe_add(&mut con, &like_by_me3);
+
     let rsp = redis::cmd("vrange")
-        .arg("4668741184209283,2211")
+        .arg(format!("{},2211", like_by_me1.uid))
         .arg("field")
         .arg("uid,object_id,count(*)")
         .arg("where")
         .arg("like_id")
         .arg("=")
-        .arg("4968741184209237")
+        .arg(like_by_me1.like_id)
         .arg("limit")
         .arg("0")
         .arg("10")
@@ -249,8 +368,8 @@ fn vrange_with_count() {
                 Value::Status("count(*)".to_string())
             ]),
             Value::Bulk(vec![
-                Value::Int(4668741184209283),
-                Value::Int(4968741184209230),
+                Value::Int(like_by_me1.uid),
+                Value::Int(like_by_me1.object_id),
                 Value::Int(3),
             ])
         ]))
@@ -260,52 +379,58 @@ fn vrange_with_count() {
 #[test]
 fn vcard() {
     let mut con = get_conn(&RESTYPE.get_host());
+    let like_by_me1 = LikeByMe {
+        uid: 46687411842092848,
+        like_id: 496874118420928,
+        object_id: 4968741184209228,
+        object_type: 48,
+    };
+    let like_by_me2 = LikeByMe {
+        uid: 46687411842092848,
+        like_id: 496874118420928,
+        object_id: 49687411842092282,
+        object_type: 48,
+    };
+    let like_by_me3 = LikeByMe {
+        uid: 46687411842092848,
+        like_id: 4968741184209248,
+        object_id: 49687411842092283,
+        object_type: 48,
+    };
+
+    safe_add(&mut con, &like_by_me1);
+    safe_add(&mut con, &like_by_me2);
+    safe_add(&mut con, &like_by_me3);
+
     let rsp = redis::cmd("vcard")
-        .arg("4668741184209283,2211")
+        .arg(format!("{},2211", like_by_me1.uid))
         .arg("where")
         .arg("like_id")
         .arg("=")
-        .arg("4968741184209237")
+        .arg(like_by_me1.like_id)
         .query(&mut con);
     println!("++ rsp:{:?}", rsp);
     assert_eq!(rsp, Ok(3));
 }
 
+struct LikeByMe {
+    uid: i64,
+    like_id: i64,
+    object_id: i64,
+    object_type: i64,
+}
+
 #[test]
 fn vadd() {
     let mut con = get_conn(&RESTYPE.get_host());
-    let uid = "4668741184209288";
-    let like_id = "4968741184209225";
-    let object_id = "4968741184209227";
-    let object_type = "4";
+    let like_by_me = LikeByMe {
+        uid: 4668741184209288,
+        like_id: 4968741184209225,
+        object_id: 4968741184209227,
+        object_type: 4,
+    };
 
-    let rsp: Result<i32, redis::RedisError> = redis::cmd("vdel")
-        .arg(format!("{},2211", uid))
-        .arg("where")
-        .arg("like_id")
-        .arg("=")
-        .arg(like_id)
-        .arg("object_id")
-        .arg("=")
-        .arg(object_id)
-        .arg("object_type")
-        .arg("=")
-        .arg(object_type)
-        .query(&mut con);
-    println!("+++ rsp:{:?}", rsp);
-    // assert_eq!(rsp, Ok(1));
-
-    let rsp = redis::cmd("vadd")
-        .arg(format!("{},2211", uid))
-        .arg("object_type")
-        .arg(object_type)
-        .arg("like_id")
-        .arg(like_id)
-        .arg("object_id")
-        .arg(object_id)
-        .query(&mut con);
-    println!("+++ rsp:{:?}", rsp);
-    assert_eq!(rsp, Ok(1));
+    safe_add(&mut con, &like_by_me);
 }
 
 #[test]
@@ -419,4 +544,34 @@ fn vdel() {
     assert_eq!(rsp, Ok(1));
 
     vadd();
+}
+
+fn safe_add(con: &mut redis::Connection, like_by_me: &LikeByMe) {
+    let rsp: Result<i32, redis::RedisError> = redis::cmd("vdel")
+        .arg(format!("{},2211", like_by_me.uid))
+        .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg(like_by_me.like_id)
+        .arg("object_id")
+        .arg("=")
+        .arg(like_by_me.object_id)
+        .arg("object_type")
+        .arg("=")
+        .arg(like_by_me.object_type)
+        .query(con);
+    println!("+++ rsp:{:?}", rsp);
+    // assert_eq!(rsp, Ok(1));
+
+    let rsp = redis::cmd("vadd")
+        .arg(format!("{},2211", like_by_me.uid))
+        .arg("object_type")
+        .arg(like_by_me.object_type)
+        .arg("like_id")
+        .arg(like_by_me.like_id)
+        .arg("object_id")
+        .arg(like_by_me.object_id)
+        .query(con);
+    println!("+++ rsp:{:?}", rsp);
+    assert_eq!(rsp, Ok(1));
 }
