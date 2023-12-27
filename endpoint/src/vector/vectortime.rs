@@ -91,12 +91,10 @@ impl VectorTime {
         NaiveDate::from_ymd_opt(ymd.0.into(), ymd.1.into(), ymd.2.into())
             .ok_or(Error::RequestProtocolInvalid)
     }
-    pub fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice], hash: i64) {
+    pub fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
         self.kvtime.write_dname_with_hash(buf, hash);
         let _ = buf.write_char('.');
-        //外部已经判断过日期有效
-        let date = self.get_date(keys, &self.keys_name).unwrap();
-        self.kvtime.write_tname_with_date(buf, &date)
+        self.kvtime.write_tname_with_date(buf, date)
     }
 
     pub(crate) fn keys(&self) -> &[String] {
