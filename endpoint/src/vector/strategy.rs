@@ -166,7 +166,7 @@ mod tests {
             limit: Default::default(),
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
@@ -189,7 +189,7 @@ mod tests {
             limit: Default::default(),
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -235,7 +235,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -276,7 +276,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -315,7 +315,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -367,7 +367,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -408,7 +408,7 @@ mod tests {
             },
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
-        let builder = VectorBuilder::new(&vector_cmd, &strategy, hash).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, &strategy, hash).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
