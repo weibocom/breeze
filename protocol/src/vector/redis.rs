@@ -199,10 +199,11 @@ pub static MYSQL_FIELD_CHAR_TBL: [u8; 256] = [
 ];
 
 #[cfg(test)]
-pub(crate) mod ValidateTest {
+mod validate_test {
     use super::MYSQL_FIELD_CHAR_TBL;
 
-    fn test_field_tbl() {
+    #[test]
+    pub fn test_field_tbl() {
         // 校验nums
         let nums = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
         for c in nums {
@@ -211,11 +212,11 @@ pub(crate) mod ValidateTest {
         }
 
         // 校验大写字母
-        const A: u8 = b'A';
-        const a: u8 = b'a';
+        const A_UPPER: u8 = b'A';
+        const A_LOWER: u8 = b'a';
         for i in 0..26 {
-            let upper = A + i;
-            let lower = a + i;
+            let upper = A_UPPER + i;
+            let lower = A_LOWER + i;
             assert_eq!(
                 MYSQL_FIELD_CHAR_TBL[upper as usize], 1,
                 "upper alphabets checked faield"
@@ -240,6 +241,13 @@ pub(crate) mod ValidateTest {
         }
 
         // 必须禁止的字符
-        // let forbidden_chars = [];
+        let forbidden_bytes = [9_u8, 10, 11, 12, 13, 32, 59];
+        for b in forbidden_bytes {
+            assert_eq!(
+                MYSQL_FIELD_CHAR_TBL[b as usize], 0,
+                "{} should forbidden forever!",
+                b as char
+            );
+        }
     }
 }
