@@ -1,24 +1,29 @@
 mod command;
 pub(crate) mod error;
 pub mod flager;
+pub mod mysql;
 mod packet;
 mod query_result;
 pub mod redis;
 mod reqpacket;
 mod rsppacket;
 
+use std::fmt::Write;
+
+use crate::{
+    Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
+    Result, Stream, Writer,
+};
+use chrono::NaiveDate;
+use ds::RingSlice;
+use sharding::hash::Hash;
+
 use self::reqpacket::RequestPacket;
 use self::rsppacket::ResponsePacket;
 use crate::kv::client::Client;
 use crate::kv::{ContextStatus, HandShakeStatus};
 use crate::HandShake;
-use crate::{
-    Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
-    Result, Stream, Writer,
-};
 pub use command::CommandType;
-use ds::RingSlice;
-use sharding::hash::Hash;
 
 #[derive(Clone, Default)]
 pub struct Vector;
@@ -362,4 +367,12 @@ impl FieldVal {
             _ => false,
         }
     }
+}
+
+pub trait Strategy {
+    fn get_date(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<NaiveDate>;
+    fn keys(&self) -> &[String];
+    //todo 通过代理类型实现
+    fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
+    fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice], hash: i64);
 }
