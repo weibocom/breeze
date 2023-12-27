@@ -58,9 +58,9 @@ impl Strategist {
         }
     }
     #[inline]
-    pub fn get_date(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<NaiveDate> {
+    pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate> {
         match self {
-            Strategist::VectorTime(inner) => inner.get_date(keys, keys_name),
+            Strategist::VectorTime(inner) => inner.get_date(keys),
         }
     }
 }

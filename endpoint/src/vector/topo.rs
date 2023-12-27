@@ -80,7 +80,7 @@ where
             let (year, shard_idx) = if req.ctx_mut().runs == 0 {
                 let vcmd = protocol::vector::redis::parse_vector_detail(&req)?;
                 //定位年库
-                let date = self.strategist.get_date(&vcmd.keys, &self.cfg.basic.keys)?;
+                let date = self.strategist.get_date(&vcmd.keys)?;
                 let year = date.year() as u16;
 
                 let shard_idx = self.shard_idx(req.hash());
