@@ -12,11 +12,11 @@ use protocol::Resource;
 use sharding::hash::{Hash, HashKey};
 
 use crate::dns::DnsConfig;
-use crate::vector::strategy::VectorBuilder;
 use crate::Builder;
 use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
+use protocol::vector::mysql::SqlBuilder;
 
 use super::config::VectorNamespace;
 use super::strategy::Strategist;
@@ -85,7 +85,7 @@ where
                 req.ctx_mut().year = year;
                 req.ctx_mut().shard_idx = shard_idx as u16;
 
-                let vector_builder = VectorBuilder::new(&vcmd, &self.strategist, req.hash())?;
+                let vector_builder = SqlBuilder::new(&vcmd, &self.strategist, req.hash())?;
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
                 req.reshape(MemGuard::from_vec(cmd));
 
