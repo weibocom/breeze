@@ -4,6 +4,7 @@ use crate::kv::common::Command;
 use crate::kv::{MysqlBinary, VectorSqlBuilder};
 use crate::vector::{CommandType, Condition, Field, VectorCmd};
 use crate::{Error, Result};
+use chrono::NaiveDate;
 use ds::RingSlice;
 
 use super::Strategy;
@@ -208,19 +209,21 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
 
 pub struct SqlBuilder<'a, S> {
     vcmd: &'a VectorCmd,
-    strategy: &'a S,
     hash: i64,
+    date: NaiveDate,
+    strategy: &'a S,
 }
 
 impl<'a, S: Strategy> SqlBuilder<'a, S> {
-    pub fn new(vcmd: &'a VectorCmd, strategy: &'a S, hash: i64) -> Result<Self> {
+    pub fn new(vcmd: &'a VectorCmd, hash: i64, date: NaiveDate, strategy: &'a S) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys().len() {
             Err(Error::RequestProtocolInvalid)
         } else {
             Ok(Self {
                 vcmd,
-                strategy,
                 hash,
+                date,
+                strategy,
             })
         }
     }
