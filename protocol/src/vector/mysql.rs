@@ -206,13 +206,13 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
     }
 }
 
-pub struct VectorBuilder<'a, S> {
+pub struct SqlBuilder<'a, S> {
     vcmd: &'a VectorCmd,
     strategy: &'a S,
     hash: i64,
 }
 
-impl<'a, S: Strategy> VectorBuilder<'a, S> {
+impl<'a, S: Strategy> SqlBuilder<'a, S> {
     pub fn new(vcmd: &'a VectorCmd, strategy: &'a S, hash: i64) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys().len() {
             Err(Error::RequestProtocolInvalid)
@@ -226,13 +226,13 @@ impl<'a, S: Strategy> VectorBuilder<'a, S> {
     }
 }
 
-impl<'a, S> MysqlBinary for VectorBuilder<'a, S> {
+impl<'a, S> MysqlBinary for SqlBuilder<'a, S> {
     fn mysql_cmd(&self) -> Command {
         Command::COM_QUERY
     }
 }
 
-impl<'a, S: Strategy> VectorSqlBuilder for VectorBuilder<'a, S> {
+impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     fn len(&self) -> usize {
         //按照可能的最长长度计算，其中table长度取得32，key长度取得5，测试比实际长15左右
         let mut base = match self.vcmd.cmd {
