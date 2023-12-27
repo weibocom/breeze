@@ -41,6 +41,7 @@ sha2 = "0.10.0"
 url = "2.1"
 percent-encoding = "2.1.0"
 seq-macro = "*"
+chrono = "0.4"
 paste = "1.0"
 
 [features]

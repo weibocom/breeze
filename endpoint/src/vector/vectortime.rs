@@ -103,14 +103,16 @@ impl VectorTime {
         &self.keys_name
     }
 
-    pub(crate) fn condition_keys(&self) -> impl Iterator<Item = Option<&String>> {
-        self.keys_name
-            .iter()
-            .map(|key_name| match key_name.as_str() {
-                "yymm" | "yymmdd" => None,
-                // "yyyymm" | "yyyymmdd" => None,
-                &_ => Some(key_name),
-            })
+    pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
+        Box::new(
+            self.keys_name
+                .iter()
+                .map(|key_name| match key_name.as_str() {
+                    "yymm" | "yymmdd" => None,
+                    // "yyyymm" | "yyyymmdd" => None,
+                    &_ => Some(key_name),
+                }),
+        )
     }
 }
 

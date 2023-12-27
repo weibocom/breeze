@@ -12,11 +12,11 @@ use protocol::Resource;
 use sharding::hash::{Hash, HashKey};
 
 use crate::dns::DnsConfig;
-use crate::vector::strategy::VectorBuilder;
 use crate::Builder;
 use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
+use protocol::vector::mysql::VectorBuilder;
 
 use super::config::VectorNamespace;
 use super::strategy::Strategist;
