@@ -37,9 +37,9 @@ impl VectorTime {
         <KVTime as Strategy>::hasher(&self.kvtime)
     }
 
-    pub fn get_date(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<NaiveDate, Error> {
+    pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
         let mut ymd = (0u16, 0u16, 0u16);
-        for (i, key_name) in keys_name.iter().enumerate() {
+        for (i, key_name) in self.keys_name.iter().enumerate() {
             match key_name.as_str() {
                 "yymm" => {
                     ymd = (
