@@ -167,7 +167,7 @@ fn vrange_3_with_3rows() {
     let mut con = get_conn(&RESTYPE.get_host());
     let like_by_me1 = LikeByMe {
         uid: 46687411842092843,
-        like_id: 496874118420924,
+        like_id: 4968741184209243,
         object_id: 4968741184209223,
         object_type: 43,
     };
@@ -393,7 +393,7 @@ fn vcard() {
     };
     let like_by_me3 = LikeByMe {
         uid: 46687411842092848,
-        like_id: 4968741184209248,
+        like_id: 496874118420928,
         object_id: 49687411842092283,
         object_type: 48,
     };
