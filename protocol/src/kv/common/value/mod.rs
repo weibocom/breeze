@@ -329,7 +329,7 @@ impl Value {
                 data.put(CRLF);
             }
             NULL => {
-                log::warn!("++ found null value");
+                // 对于NULL字段，不管类型直接返回nil，因为无法确定其他类型的默认值
                 data.put(NIL);
             }
             _ => {
