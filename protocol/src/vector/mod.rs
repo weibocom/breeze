@@ -370,9 +370,8 @@ impl FieldVal {
 }
 
 pub trait Strategy {
-    fn get_date(&self, keys: &[RingSlice], keys_name: &[String]) -> Result<NaiveDate>;
     fn keys(&self) -> &[String];
     //todo 通过代理类型实现
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
-    fn write_database_table(&self, buf: &mut impl Write, keys: &[RingSlice], hash: i64);
+    fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);
 }

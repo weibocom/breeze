@@ -95,10 +95,10 @@ impl<'a> Display for Select<'a> {
     }
 }
 
-struct Table<'a, S>(&'a S, &'a [RingSlice], i64);
+struct Table<'a, S>(&'a S, &'a NaiveDate, i64);
 impl<'a, S: Strategy> Display for Table<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.write_database_table(f, self.1, self.2);
+        self.0.write_database_table(f, &self.1, self.2);
         Ok(())
     }
 }
@@ -287,7 +287,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     buf,
                     "select {} from {} where {}",
                     Select(self.vcmd.fields.get(0)),
-                    Table(self.strategy, &self.vcmd.keys, self.hash),
+                    Table(self.strategy, &self.date, self.hash),
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd),
                 );
             }
@@ -295,7 +295,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                 let _ = write!(
                     buf,
                     "select count(*) from {} where {}",
-                    Table(self.strategy, &self.vcmd.keys, self.hash),
+                    Table(self.strategy, &self.date, self.hash),
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd),
                 );
             }
@@ -303,7 +303,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                 let _ = write!(
                     buf,
                     "insert into {} ({}) values ({})",
-                    Table(self.strategy, &self.vcmd.keys, self.hash),
+                    Table(self.strategy, &self.date, self.hash),
                     InsertCols(self.strategy, &self.vcmd.fields),
                     InsertVals(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
                 );
@@ -312,7 +312,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                 let _ = write!(
                     buf,
                     "update {} set {} where {}",
-                    Table(self.strategy, &self.vcmd.keys, self.hash),
+                    Table(self.strategy, &self.date, self.hash),
                     UpdateFields(&self.vcmd.fields),
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd),
                 );
@@ -321,7 +321,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                 let _ = write!(
                     buf,
                     "delete from {} where {}",
-                    Table(self.strategy, &self.vcmd.keys, self.hash),
+                    Table(self.strategy, &self.date, self.hash),
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd),
                 );
             }
