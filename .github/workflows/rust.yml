@@ -4,7 +4,7 @@ on:
   push:
     branches: ["dev", "dev_ci", "dev_icy"]
   pull_request:
-    branches: ["dev", "dev_ci"]
+    branches: ["dev", "dev_ci", "vector"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -86,7 +86,7 @@ jobs:
         #    version: "0.22.0"
         #    args: "--features=github_workflow --features=console-api -- --test-threads 1"
       - name: Run unit tests
-        run: cargo test -p tests --features github_workflow
+        run: cargo test -p tests #--features github_workflow
       - name: wait until 2 mins
         run: |
           port_list=(56810 56812 9302 9301 9303 3306 3308)  # 端口列表
@@ -115,7 +115,7 @@ jobs:
               fi
           done
       - name: Run ci tests
-        run: cargo test -p tests_integration --features github_workflow
+        run: cargo test -p tests_integration #--features github_workflow
       - name: Output log
         if: failure()
         run: |
