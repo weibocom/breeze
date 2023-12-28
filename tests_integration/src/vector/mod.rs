@@ -294,7 +294,7 @@ fn vrange_6_with_group() {
         .arg(like_by_me1.like_id)
         .arg("group")
         .arg("by")
-        .arg("uid")
+        .arg("uid,object_id")
         .arg("limit")
         .arg("0")
         .arg("10")
