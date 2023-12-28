@@ -337,7 +337,7 @@ fn vrange_7_with_count() {
     };
     let like_by_me3 = LikeByMe {
         uid: 46687411842092847,
-        like_id: 4968741184209247,
+        like_id: 496874118420927,
         object_id: 49687411842092273,
         object_type: 47,
     };
@@ -349,14 +349,14 @@ fn vrange_7_with_count() {
     let rsp = redis::cmd("vrange")
         .arg(format!("{},2211", like_by_me1.uid))
         .arg("field")
-        .arg("uid,object_id,count(*)")
+        .arg("uid,like_id,count(*)")
         .arg("where")
         .arg("like_id")
         .arg("=")
         .arg(like_by_me1.like_id)
         .arg("group")
         .arg("by")
-        .arg("uid,object_id")
+        .arg("uid,like_id")
         .arg("limit")
         .arg("0")
         .arg("10")
@@ -367,12 +367,12 @@ fn vrange_7_with_count() {
         Ok(Value::Bulk(vec![
             Value::Bulk(vec![
                 Value::Status("uid".to_string()),
-                Value::Status("object_id".to_string()),
+                Value::Status("like_id".to_string()),
                 Value::Status("count(*)".to_string())
             ]),
             Value::Bulk(vec![
                 Value::Int(like_by_me1.uid),
-                Value::Int(like_by_me1.object_id),
+                Value::Int(like_by_me1.like_id),
                 Value::Int(3),
             ])
         ]))
