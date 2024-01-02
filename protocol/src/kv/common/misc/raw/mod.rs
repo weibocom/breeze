@@ -23,9 +23,7 @@ use self::bytes::LenEnc;
 pub use self::{
     _const::{Const, RawConst},
     bytes::RawBytes,
-    flags::RawFlags,
     int::RawInt,
-    seq::RawSeq,
 };
 
 use super::unexpected_buf_eof;
