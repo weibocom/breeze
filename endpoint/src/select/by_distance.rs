@@ -163,7 +163,7 @@ impl<T> Distance<T> {
             let new = (idx + 1) % self.local_len();
             // 超过配额，则idx+1
             if let Ok(_) = self.idx.compare_exchange(idx, new, AcqRel, Relaxed) {
-                quota.set_used_us(0);
+                quota.reset();
             }
             idx = new;
         }
