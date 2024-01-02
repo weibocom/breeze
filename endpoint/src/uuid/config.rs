@@ -19,7 +19,7 @@ pub struct Basic {
 
 impl UuidNamespace {
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
-        let ns = serde_yaml::from_str::<UuidNamespace>(cfg)
+        let ns = serde_yaml::from_str::<Self>(cfg)
             .map_err(|e| log::info!("parse uuid:{cfg} => {e:?}"))
             .ok()?;
         (ns.backends.len() > 0).then_some(ns)
