@@ -1,11 +1,12 @@
 use ds::time::{timeout, Duration};
 use rt::Cancel;
+use socket2::SockRef;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{ready, Poll};
 
 use tokio::io::AsyncWrite;
-use tokio::net::TcpStream;
+use tokio::net::{TcpSocket, TcpStream};
 
 use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream};
 
@@ -119,16 +120,22 @@ impl<P, Req> BackendChecker<P, Req> {
         log::info!("{:?} finished {}", path_addr, self.addr);
     }
     async fn reconnect(&self) -> Option<TcpStream> {
-        timeout(Duration::from_secs(2), TcpStream::connect(&self.addr))
-            .await
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))
-            .and_then(|x| x)
-            .map_err(|_e| log::debug!("conn to {} err:{}", self.addr, _e))
-            .ok()
-            .map(|s| {
-                let _ = s.set_nodelay(true);
-                s
-            })
+        timeout(Duration::from_secs(2), async {
+            let socket = TcpSocket::new_v4()?;
+            let socket2_socket = SockRef::from(&socket);
+            socket2_socket.set_tcp_user_timeout(Some(Duration::from_secs(30)))?;
+            let addr = self.addr.parse().unwrap();
+            socket.connect(addr).await
+        })
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))
+        .and_then(|x| x)
+        .map_err(|_e| log::debug!("conn to {} err:{}", self.addr, _e))
+        .ok()
+        .map(|s| {
+            let _ = s.set_nodelay(true);
+            s
+        })
     }
 }
 

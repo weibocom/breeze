@@ -20,5 +20,6 @@ enum_dispatch = "0.3.8"
 noop-waker = "0.1.0"
 array-init = "2"
 ctor = "0.1.23"
+socket2 = "0.5.5"
 
 tokio.workspace = true
