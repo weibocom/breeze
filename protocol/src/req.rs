@@ -29,9 +29,9 @@ impl BackendQuota {
     pub fn us(&self) -> usize {
         self.used_us.load(Relaxed)
     }
-
-    pub fn set_used_us(&self, used_us: usize) {
-        self.used_us.store(used_us, Relaxed);
+    #[inline]
+    pub fn reset(&self) {
+        self.used_us.store(0, Relaxed);
     }
 }
 
