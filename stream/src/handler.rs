@@ -6,7 +6,6 @@ use std::task::{ready, Context, Poll};
 use ds::chan::mpsc::Receiver;
 use ds::time::Instant;
 use protocol::{Error, Protocol, Request, Result, Stream};
-use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use metrics::Metric;
@@ -91,25 +90,10 @@ where
         // 通过一次poll read来判断是否连接已经断开。
         let noop = noop_waker::noop_waker();
         let mut ctx = std::task::Context::from_waker(&noop);
-        let mut data = [0u8; 8];
-        let mut buf = ReadBuf::new(&mut data);
-        let poll_read = Pin::new(&mut self.s).poll_read(&mut ctx, &mut buf);
-        // 只有Pending才说明连接是正常的。
-        match poll_read {
-            Poll::Ready(Ok(_)) => {
-                // 没有请求，但是读到了数据？bug
-                debug_assert_eq!(buf.filled().len(), 0, "unexpected:{:?} => {:?}", self, data);
-                if buf.filled().len() > 0 {
-                    log::error!("unexpected data from server:{:?} => {:?}", self, data);
-                    Err(Error::UnexpectedData)
-                } else {
-                    // 读到了EOF，连接已经断开。
-                    Err(Error::Eof)
-                }
-            }
-            Poll::Ready(Err(e)) => Err(e.into()),
-            Poll::Pending => Ok(()),
-        }
+        let r = self.poll_clear_response(&mut ctx)?;
+        assert!(r.is_pending(), "poll_clear_response must be pending");
+
+        Ok(())
     }
 
     // 发送request. 读空所有的request，并且发送。直到pending或者error
@@ -130,47 +114,37 @@ where
         }
         Poll::Ready(Err(Error::ChanReadClosed))
     }
-    #[inline]
+    #[inline(always)]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         while self.pending.len() > 0 {
-            let poll_read = self.s.poll_recv(cx);
-
-            while self.s.len() > 0 {
-                match self.parser.parse_response(&mut self.s) {
-                    Ok(None) => break,
-
-                    Ok(Some(cmd)) => {
-                        let (req, start) = self.pending.pop_front().expect("take response");
-                        self.num.rx();
-                        // 统计请求耗时。
-                        self.rtt += start.elapsed();
-                        self.parser.check(&*req, &cmd);
-                        req.on_complete(cmd);
-                    }
-                    Err(e) => match e {
-                        // Error::UnexpectedData => {
-                        //     let req = self
-                        //         .pending
-                        //         .iter()
-                        //         .map(|(r, _)| r.data())
-                        //         .collect::<Vec<_>>();
-                        //     let rsp_data = self.s.slice();
-                        //     let rsp_buf = unsafe { rsp_data.data_dump() };
-                        //     panic!(
-                        //         "unexpected:{:?} rsp:{:?} buff:{:?} pending req:[{:?}] ",
-                        //         self, rsp_data, rsp_buf, req
-                        //     );
-                        // }
-                        _ => {
-                            return Poll::Ready(Err(e.into()));
-                        }
-                    },
-                }
-            }
-
-            ready!(poll_read)?;
+            ready!(self.poll_response_once(cx))?;
         }
         Poll::Ready(Ok(()))
+    }
+    #[inline(always)]
+    fn poll_clear_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        loop {
+            ready!(self.poll_response_once(cx))?;
+        }
+    }
+    #[inline(always)]
+    fn poll_response_once(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        let poll_read = self.s.poll_recv(cx);
+
+        while self.s.len() > 0 {
+            match self.parser.parse_response(&mut self.s)? {
+                None => break,
+                Some(cmd) => {
+                    let (req, start) = self.pending.pop_front().expect("take response");
+                    self.num.rx();
+                    // 统计请求耗时。
+                    self.rtt += start.elapsed();
+                    self.parser.check(&*req, &cmd);
+                    req.on_complete(cmd);
+                }
+            }
+        }
+        poll_read
     }
     #[inline(always)]
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<()>> {
