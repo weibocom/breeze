@@ -92,11 +92,11 @@ where
             self.process_pending()?;
             let flush = self.poll_flush(cx)?;
 
-            if self.pending.len() > 0 && !self.parser.config().pipeline {
-                // CallbackContext::on_done负责唤醒
-                // 非pipeline请求（即ping-pong），已经有ping了，因此等待pong即可。
-                return Poll::Pending;
-            }
+            // if self.pending.len() > 0 && !self.parser.config().pipeline {
+            //     // CallbackContext::on_done负责唤醒
+            //     // 非pipeline请求（即ping-pong），已经有ping了，因此等待pong即可。
+            //     return Poll::Pending;
+            // }
 
             ready!(flush);
             ready!(request);
