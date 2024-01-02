@@ -70,8 +70,6 @@ where
     // 1. 连续5分钟没有发送请求，则进行检查
     // 2. 从io进行一次poll_read
     // 3. 如果poll_read返回Pending，则说明连接正常
-    // 4. 如果poll_read返回Ready，并且返回的数据为0，则说明连接已经断开
-    // 5. 如果poll_read返回Ready，并且返回的数据不为0，则说明收到异常请求
     #[inline]
     fn check_alive(&mut self) -> Result<()> {
         if self.pending.len() != 0 {
@@ -86,7 +84,6 @@ where
             return Ok(());
         }
         self.ping_cycle = 0;
-        assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
         // 通过一次poll read来判断是否连接已经断开。
         let noop = noop_waker::noop_waker();
         let mut ctx = std::task::Context::from_waker(&noop);
@@ -123,6 +120,7 @@ where
     }
     #[inline(always)]
     fn poll_clear_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
         loop {
             ready!(self.poll_response_once(cx))?;
         }
