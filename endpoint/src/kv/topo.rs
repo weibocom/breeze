@@ -1,8 +1,4 @@
-use std::collections::HashMap;
-
 use discovery::distance::ByDistance;
-use discovery::dns;
-use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::Binary;
@@ -16,9 +12,11 @@ use protocol::Resource;
 use rand::seq::SliceRandom;
 use sharding::hash::{Hash, HashKey};
 
-use crate::dns::DnsConfig;
-use crate::Timeout;
-use crate::{shards::Shard, Endpoint, Topology};
+use crate::{
+    dns::{DnsConfig, DnsLookup},
+    shards::Shard,
+    Endpoint, Endpoints, PerformanceTuning, Topology,
+};
 
 use super::config::KvNamespace;
 use super::config::Years;
@@ -159,7 +157,9 @@ where
         self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
     }
     fn load(&mut self) -> bool {
-        self.cfg.load_guard().check_load(|| self.load_inner())
+        self.cfg
+            .load_guard()
+            .check_load(|| self.load_inner().is_some())
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = KvNamespace::try_from(cfg) {
@@ -173,106 +173,69 @@ where
     P: Protocol,
     E: Endpoint,
 {
-    // #[inline]
-    fn take_or_build(
-        &self,
-        old: &mut HashMap<String, Vec<E>>,
-        addr: &str,
-        timeout: Timeout,
-        res: ResOption,
-    ) -> E {
-        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
-            Some(Some(end)) => end,
-            _ => E::build_o(
-                &addr,
-                self.parser.clone(),
-                Resource::Mysql,
-                &self.cfg.service,
-                timeout,
-                res,
-            ),
-        }
-    }
+    // // #[inline]
+    // fn take_or_build(
+    //     &self,
+    //     old: &mut HashMap<String, Vec<E>>,
+    //     addr: &str,
+    //     timeout: Timeout,
+    //     res: ResOption,
+    // ) -> E {
+    //     match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
+    //         Some(Some(end)) => end,
+    //         _ => E::build_o(
+    //             &addr,
+    //             self.parser.clone(),
+    //             Resource::Mysql,
+    //             &self.cfg.service,
+    //             timeout,
+    //             res,
+    //         ),
+    //     }
+    // }
     #[inline]
-    fn load_inner(&mut self) -> bool {
+    fn load_inner(&mut self) -> Option<()> {
         // 所有的ip要都能解析出主从域名
         let mut addrs = Vec::with_capacity(self.cfg.backends.len());
         for (interval, shard) in &self.cfg.backends {
-            let mut addrs_per_interval = Vec::with_capacity(shard.len());
+            let mut url_per_interval = Vec::with_capacity(shard.len());
             for shard in shard.iter() {
-                let shard: Vec<&str> = shard.split(",").collect();
-                if shard.len() < 2 {
-                    log::warn!("{} both master and slave required.", self.cfg.service);
-                    return false;
-                }
-                let master_url = &shard[0];
-                let mut master = String::new();
-                dns::lookup_ips(master_url.host(), |ips| {
-                    if ips.len() > 0 {
-                        master = ips[0].to_string() + ":" + master_url.port();
-                    }
-                });
-                let mut slaves = Vec::with_capacity(8);
-                for url_port in &shard[1..] {
-                    let url = url_port.host();
-                    let port = url_port.port();
-                    use ds::vec::Add;
-                    dns::lookup_ips(url, |ips| {
-                        for ip in ips {
-                            slaves.add(ip.to_string() + ":" + port);
-                        }
-                    });
-                }
-                if master.len() == 0 || slaves.len() == 0 {
-                    log::warn!(
-                        "master:({}=>{}) or slave ({:?}=>{:?}) not looked up",
-                        master_url,
-                        master,
-                        &shard[1..],
-                        slaves
-                    );
-                    return false;
-                }
-                addrs_per_interval.push((master, slaves));
+                let shard_url: Vec<String> = shard.split(",").map(str::to_string).collect();
+                url_per_interval.push(shard_url);
             }
+            let addrs_per_interval = url_per_interval.master_lookup()?;
             addrs.push((interval, addrs_per_interval));
         }
+        // 到这之后，所有shard都能解析出ip
 
-        // 到这之后，所有的shard都能解析出ip
-        let mut old = HashMap::with_capacity(self.shards.len());
-        for shard in self.shards.take() {
-            old.entry(shard.master.addr().to_string())
-                .or_insert(Vec::new())
-                .push(shard.master);
-            for endpoint in shard.slaves.into_inner() {
-                let addr = endpoint.addr().to_string();
-                // 一个ip可能存在于多个域名中。
-                old.entry(addr).or_insert(Vec::new()).push(endpoint);
-            }
-        }
+        // 用户名和密码
+        let res_option = ResOption {
+            token: self.cfg.basic.password.clone(),
+            username: self.cfg.basic.user.clone(),
+        };
 
+        // 按Years遍历
         let mut rng = rand::thread_rng();
-        for (interval, addrs_per_interval) in addrs {
+        addrs.iter().for_each(|(interval, addrs_per_interval)| {
             let mut shards_per_interval = Vec::with_capacity(addrs_per_interval.len());
-            // 遍历所有的shards_url
-            for (master_addr, mut slaves) in addrs_per_interval {
-                assert_ne!(master_addr.len(), 0);
-                assert_ne!(slaves.len(), 0);
-                // 用户名和密码
-                let res_option = ResOption {
-                    token: self.cfg.basic.password.clone(),
-                    username: self.cfg.basic.user.clone(),
-                };
-                let master = self.take_or_build(
-                    &mut old,
-                    &master_addr,
-                    self.cfg.timeout_master(),
-                    res_option.clone(),
-                );
+
+            // 把所有的endpoints cache下来
+            let mut endpoints: Endpoints<'_, P, E> =
+                Endpoints::new(&self.cfg.service, &self.parser, Resource::Mysql);
+            self.shards.remove(interval.0).map(|shard| {
+                shard.into_iter().for_each(|shard| {
+                    endpoints.cache_one(shard.master);
+                    endpoints.cache(shard.slaves.into_inner());
+                })
+            });
+
+            // 遍历当前Years所有的shards
+            addrs_per_interval.iter().for_each(|ips| {
+                assert!(ips.len() >= 2);
                 // slave 数量有限制时，先按可用区规则对slaves排序
                 // 若可用区内实例数量为0或未开启可用区，则将slaves随机化作为排序结果
                 // 按slave数量限制截取将使用的slave
-                let mut replicas = Vec::with_capacity(8);
+                let mut slaves = ips[1..].to_vec();
                 if self.cfg.basic.max_slave_conns != 0
                     && slaves.len() > self.cfg.basic.max_slave_conns as usize
                 {
@@ -291,17 +254,18 @@ where
                     slaves.truncate(l.min(self.cfg.basic.max_slave_conns as usize));
                 }
 
-                for addr in slaves {
-                    let slave = self.take_or_build(
-                        &mut old,
-                        &addr,
-                        self.cfg.timeout_slave(),
-                        res_option.clone(),
-                    );
-                    replicas.push(slave);
-                }
+                let master = endpoints.take_or_build_one_o(
+                    &ips[0],
+                    self.cfg.timeout_master(),
+                    res_option.clone(),
+                );
 
-                use crate::PerformanceTuning;
+                let replicas = endpoints.take_or_build_o(
+                    &slaves,
+                    self.cfg.timeout_slave(),
+                    res_option.clone(),
+                );
+
                 let shard = Shard::selector(
                     self.cfg.basic.selector.tuning_mode(),
                     master,
@@ -312,15 +276,12 @@ where
                 // 检查可用区内实例数量, 详见issues-771
                 shard.check_region_len("mysql", &self.cfg.service);
                 shards_per_interval.push(shard);
-            }
+            });
             self.shards.push((interval, shards_per_interval));
-        }
-        assert_eq!(self.shards.len(), self.cfg.shards_url.len());
-        log::info!("{} load complete. dropping:{:?}", self.cfg.service, {
-            old.retain(|_k, v| v.len() > 0);
-            old.keys()
         });
-        true
+
+        assert_eq!(self.shards.len(), self.cfg.shards_url.len());
+        Some(())
     }
 }
 impl<E, P> discovery::Inited for KvService<E, P>
@@ -422,12 +383,12 @@ impl<E> Shards<E> {
     fn len(&self) -> usize {
         self.len
     }
-    //会重新初始化
-    fn take(&mut self) -> Vec<Shard<E>> {
-        self.index = [usize::MAX; YEAR_LEN];
-        self.len = 0;
-        self.shards.split_off(0).into_iter().flatten().collect()
-    }
+    // //会重新初始化
+    // fn take(&mut self) -> Vec<Shard<E>> {
+    //     self.index = [usize::MAX; YEAR_LEN];
+    //     self.len = 0;
+    //     self.shards.split_off(0).into_iter().flatten().collect()
+    // }
     //push 进来的shard是否init了
     fn inited(&self) -> bool
     where
@@ -464,5 +425,15 @@ impl<E> Shards<E> {
             return &[];
         }
         &self.shards[index]
+    }
+    fn remove(&mut self, intyear: u16) -> Option<Vec<Shard<E>>> {
+        if intyear > YEAR_END || intyear < YEAR_START {
+            return None;
+        }
+        let index = self.index[Self::year_index(intyear)];
+        if index == usize::MAX {
+            return None;
+        }
+        Some(self.shards.remove(index))
     }
 }

@@ -154,6 +154,26 @@ impl<'a, P: Protocol, E: Endpoint> Endpoints<'a, P, E> {
             })
             .collect()
     }
+    pub fn take_or_build_one_o(&mut self, addr: &str, to: Timeout, res: ResOption) -> E {
+        self.take_or_build_o(&[addr.to_owned()], to, res)
+            .pop()
+            .expect("take")
+    }
+    pub fn take_or_build_o(&mut self, addrs: &[String], to: Timeout, res: ResOption) -> Vec<E> {
+        addrs
+            .iter()
+            .map(|addr| {
+                self.cache
+                    .get_mut(addr)
+                    .map(|endpoints| endpoints.pop())
+                    .flatten()
+                    .unwrap_or_else(|| {
+                        let p = self.parser.clone();
+                        E::build_o(&addr, p, self.resource, self.service, to, res.to_owned())
+                    })
+            })
+            .collect()
+    }
 }
 // 为Endpoints实现Formatter
 impl<'a, P, E: Endpoint> std::fmt::Display for Endpoints<'a, P, E> {
