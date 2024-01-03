@@ -13,7 +13,7 @@ use metrics::Metric;
 pub struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
     pending: VecDeque<(Req, Instant)>,
-
+    last_async_req: Option<Instant>,
     s: S,
     parser: P,
     rtt: Metric,
@@ -40,8 +40,15 @@ where
         let request = me.poll_request(cx)?;
         let flush = me.poll_flush(cx)?;
         let response = me.poll_response(cx)?;
+        //当没有同步请求且tx buf有未flush出去的数据时，我们认为有异步请求未发送成功，
+        //有可能在持续有异步请求进来的情况，tx buf一直有少量数据未flush，我们会认为不成功，但这种状况非稳态，不会持续很长时间
+        if self.pending.len() == 0 && self.s.pending() != 0 {
+            self.last_async_req.get_or_insert_with(|| Instant::now());
+        } else {
+            //否则，认为全部异步请求发送成功
+            self.last_async_req.take();
+        }
 
-        // 必须要先flush，否则可能有请求未发送导致超时。
         ready!(flush);
         ready!(response);
         ready!(request);
@@ -64,6 +71,7 @@ where
             rtt,
             num: Number::default(),
             ping_cycle: 0,
+            last_async_req: None,
         }
     }
     // 检查连接是否存在
@@ -155,7 +163,10 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
 {
     #[inline]
     fn last(&self) -> Option<ds::time::Instant> {
-        self.pending.front().map(|(_, t)| *t)
+        self.pending
+            .front()
+            .map(|(_, t)| *t)
+            .or(self.last_async_req)
     }
     #[inline]
     fn close(&mut self) -> bool {

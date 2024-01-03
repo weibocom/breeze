@@ -130,7 +130,7 @@ impl<P, Req> BackendChecker<P, Req> {
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))
         .and_then(|x| x)
-        .map_err(|_e| log::debug!("conn to {} err:{}", self.addr, _e))
+        .map_err(|_e| log::info!("conn to {} err:{}", self.addr, _e))
         .ok()
         .map(|s| {
             let _ = s.set_nodelay(true);
