@@ -6,7 +6,6 @@ use std::task::{ready, Context, Poll};
 use super::timeout::*;
 
 use ds::time::{interval, Duration, Instant, Interval};
-use metrics::base::*;
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -47,9 +46,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Cancel for T {
 pub struct Entry<F, T> {
     inner: F,
     refresh_tick: Interval,
-    out: Option<Result<()>>,
-    closing: u32,
-
+    status: Status,
     timeout: T,
 }
 impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + ReEnter + Debug>
@@ -62,9 +59,8 @@ impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + R
         Self {
             inner: f,
             timeout,
-            out: None,
+            status: Status { closing: 0 },
             refresh_tick,
-            closing: 0,
         }
     }
     #[inline]
@@ -74,13 +70,10 @@ impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + R
         ready!(timeout.poll_check(cx, inner)?);
         // 运行到这里说明：没有需要check timeout的请求
 
-        if ret.is_pending() {
-            // 只有pengding时，才尝试刷新
-            loop {
-                ready!(self.refresh_tick.poll_tick(cx));
-                // 总是定期刷新
-                let _ = self.inner.refresh()?;
-            }
+        // 只要当前poll进入pending，就会触发持续refresh
+        while ret.is_pending() {
+            ready!(self.refresh_tick.poll_tick(cx));
+            let _ = self.inner.refresh()?;
         }
         ret.map(|r| Ok(r))
     }
@@ -93,25 +86,40 @@ impl<T: TimeoutCheck + Unpin, F: Future<Output = Result<()>> + ReEnter + Debug +
     type Output = F::Output;
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.closing == 0 {
-            self.out = Some(ready!(self.as_mut().poll_run(cx)));
-            self.closing = 1;
+        if self.status.running() {
+            let out = ready!(self.as_mut().poll_run(cx));
+            self.status.close(out);
         }
         // close
         while !self.inner.close() {
-            if self.closing == 1 {
-                // 复用原来的tick
-                self.refresh_tick = interval(Duration::from_millis(50));
-            }
+            self.refresh_tick.reset_after(Duration::from_millis(50));
             ready!(self.refresh_tick.poll_tick(cx));
-            self.closing = self.closing.wrapping_add(1).max(2);
-            // 一次tick是50ms，约1秒钟统计一次
-            if self.closing % 256 == 0 {
-                println!("closing=>{} {:?} {:?}", self.closing, self.inner, self.out);
-                log::error!("closing=>{} {:?} {:?}", self.closing, self.inner, self.out);
-                LEAKED_CONN.incr();
-            }
         }
-        Poll::Ready(self.out.take().unwrap())
+        Poll::Ready(self.status.take_out())
     }
 }
+
+// 运行过程中使用closing判断running
+// 运行结束后使用out存储结果。
+union Status {
+    closing: usize,
+    out: *mut Result<()>,
+}
+impl Status {
+    #[inline(always)]
+    fn running(&self) -> bool {
+        unsafe { self.closing == 0 }
+    }
+    #[inline(always)]
+    fn close(&mut self, out: Result<()>) {
+        let out = Box::leak(Box::new(out));
+        self.out = out;
+        assert!(!self.running());
+    }
+    #[inline(always)]
+    fn take_out(&mut self) -> Result<()> {
+        unsafe { *Box::from_raw(self.out) }
+    }
+}
+unsafe impl Send for Status {}
+unsafe impl Sync for Status {}

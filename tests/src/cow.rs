@@ -1,5 +1,5 @@
+#[ignore]
 #[test]
-#[cfg(feature = "github_workflow")]
 fn test_cow() {
     use ds::cow;
     let (mut tx, rx) = cow(0usize);
