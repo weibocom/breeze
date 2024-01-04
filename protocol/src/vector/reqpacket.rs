@@ -15,6 +15,7 @@ const MAX_KEY_LEN: usize = 200;
 /// 请求消息不能超过16M
 const MAX_REQUEST_LEN: usize = (1 << super::flager::CONDITION_POS_BITS) - 1;
 const BYTES_WHERE: &'static [u8] = b"WHERE";
+const KEY_SEPERATOR: u8 = b',';
 
 pub(crate) struct RequestPacket<'a, S> {
     stream: &'a mut S,
@@ -129,7 +130,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
 
         log::debug!("++++ after condition parsed oft:{}", self.oft);
-        Ok(Some(key))
+
+        // 返回main-key，不带sub-key、ext-key
+        let main_key_len = key.find(0, KEY_SEPERATOR).map_or(key.len(), |len| len);
+        log::debug!("+++ real key: {:?}", key.sub_slice(0, main_key_len));
+        Ok(Some(key.sub_slice(0, main_key_len)))
     }
 
     #[inline]
@@ -193,6 +198,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.data.skip_bulks(&mut self.oft, count as usize)
     }
 
+    /// 注意返回的是整个key，包括main-key和扩展key
     #[inline]
     fn parse_key(&mut self, flag: &mut Flag) -> Result<RingSlice> {
         // 第二个bulk是bulk-string类型的key
