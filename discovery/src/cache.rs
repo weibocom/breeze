@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use crate::path::{GetNamespace, ToName, ToPath};
 use crate::sig::Sig;
 use crate::Discover;
-use async_trait::async_trait;
 
-#[async_trait]
 pub(crate) trait Cache {
     // 有更新，并且成功获取则返回对应的值
     async fn get<G: crate::TopologyWrite + Send + Sync>(
@@ -32,7 +30,6 @@ pub(crate) struct DiscoveryCache<D> {
     sigs: HashMap<String, String>,         // 这里面存储的key是Service::path
 }
 
-#[async_trait]
 impl<D: Discover + Send + Sync> Cache for DiscoveryCache<D> {
     async fn get<G: crate::TopologyWrite + Send + Sync>(
         &mut self,

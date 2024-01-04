@@ -20,7 +20,6 @@ use std::io::Result;
 
 use url::Url;
 
-use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 
 #[derive(Debug)]
@@ -30,11 +29,14 @@ pub enum Config<C> {
     Config(String, C), // 第一个元素是签名，第二个是数据
 }
 
-#[async_trait]
 #[enum_dispatch]
 pub trait Discover {
     ///name 格式为domain/path/to/path
-    async fn get_service<C>(&self, name: &str, sig: &str) -> Result<Config<C>>
+    fn get_service<C>(
+        &self,
+        name: &str,
+        sig: &str,
+    ) -> impl std::future::Future<Output = Result<Config<C>>> + Send
     where
         C: Unpin + Send + From<String>;
 }
@@ -52,15 +54,8 @@ impl Discovery {
             _ => panic!("not supported endpoint name"),
         }
     }
-    // fn copy_url_to_http(url: &Url) -> Url {
-    //     let schem = url.scheme();
-    //     let mut s = "http".to_owned();
-    //     s.push_str(&url.as_str()[schem.len()..]);
-    //     Url::parse(&s).unwrap()
-    // }
 }
 
-#[async_trait]
 impl<T: Discover + Send + Unpin + Sync> Discover for std::sync::Arc<T> {
     #[inline]
     async fn get_service<C>(&self, name: &str, sig: &str) -> std::io::Result<Config<C>>
