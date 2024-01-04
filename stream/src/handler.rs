@@ -123,9 +123,7 @@ where
 
             match req.on_sent() {
                 Some(r) => self.pending.push_back((r, Instant::now())),
-                None => {
-                    self.num.rx();
-                }
+                None => self.num.rx(),
             }
         }
         Poll::Ready(Err(Error::ChanReadClosed))
@@ -136,10 +134,9 @@ where
             let poll_read = self.s.poll_recv(cx);
 
             while self.s.len() > 0 {
-                match self.parser.parse_response(&mut self.s) {
-                    Ok(None) => break,
-
-                    Ok(Some(cmd)) => {
+                match self.parser.parse_response(&mut self.s)? {
+                    None => break,
+                    Some(cmd) => {
                         let (req, start) = self.pending.pop_front().expect("take response");
                         self.num.rx();
                         // 统计请求耗时。
@@ -147,24 +144,6 @@ where
                         self.parser.check(&*req, &cmd);
                         req.on_complete(cmd);
                     }
-                    Err(e) => match e {
-                        // Error::UnexpectedData => {
-                        //     let req = self
-                        //         .pending
-                        //         .iter()
-                        //         .map(|(r, _)| r.data())
-                        //         .collect::<Vec<_>>();
-                        //     let rsp_data = self.s.slice();
-                        //     let rsp_buf = unsafe { rsp_data.data_dump() };
-                        //     panic!(
-                        //         "unexpected:{:?} rsp:{:?} buff:{:?} pending req:[{:?}] ",
-                        //         self, rsp_data, rsp_buf, req
-                        //     );
-                        // }
-                        _ => {
-                            return Poll::Ready(Err(e.into()));
-                        }
-                    },
                 }
             }
 
