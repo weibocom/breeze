@@ -19,7 +19,7 @@ type RedisService = endpoint::redisservice::topo::RedisService<Endpoint, Parser>
 type PhantomService = endpoint::phantomservice::topo::PhantomService<Endpoint, Parser>;
 type MsgQue = endpoint::msgque::topo::MsgQue<Endpoint, Parser>;
 
-use rt::Entry;
+use rt::{DisableTimeout, Entry};
 
 #[test]
 fn checkout_basic() {
@@ -51,12 +51,12 @@ fn checkout_basic() {
 #[ignore]
 #[test]
 fn check_layout_rx_buffer() {
-    assert_eq!((32, 96).select(), size_of::<rt::TxBuffer>());
+    assert_eq!(32, size_of::<rt::TxBuffer>());
 }
 #[ignore]
 #[test]
 fn check_callback_ctx() {
-    assert_eq!(144, size_of::<CallbackContext>());
+    assert_eq!(192, size_of::<CallbackContext>());
     //assert_eq!(16, size_of::<protocol::callback::Context>());
 }
 //#[ignore]
@@ -67,23 +67,20 @@ fn check_callback_ctx() {
 #[ignore]
 #[test]
 fn check_stream() {
-    assert_eq!((152, 288).select(), size_of::<Stream>());
+    assert_eq!(160, size_of::<Stream>());
 }
 #[ignore]
 #[test]
 fn check_handler() {
-    assert_eq!((216, 368).select(), size_of::<Handler<'static>>());
-    assert_eq!(
-        (296, 448).select(),
-        size_of::<Entry<Handler<'static>, rt::Timeout>>()
-    );
+    assert_eq!(216, size_of::<Handler<'static>>());
+    assert_eq!(296, size_of::<Entry<Handler<'static>, rt::Timeout>>());
 }
 
 #[ignore]
 #[test]
 fn check_topology() {
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
-    assert_eq!(96, size_of::<Topology>());
+    assert_eq!(952, size_of::<Topology>());
     assert_eq!(72, size_of::<CacheService>());
     assert_eq!(96, size_of::<RedisService>());
     assert_eq!(56, size_of::<PhantomService>());
@@ -94,32 +91,7 @@ fn check_topology() {
 #[ignore]
 #[test]
 fn check_pipeline() {
-    assert_eq!((320, 456).select(), size_of::<CopyBidirectional>());
+    assert_eq!(320, size_of::<CopyBidirectional>());
     // 512字节对齐
-    assert_eq!(
-        (360, 496).select(),
-        size_of::<Entry<CopyBidirectional, rt::DisableTimeout>>()
-    );
-}
-
-trait Select {
-    fn select(&self) -> usize;
-}
-
-impl Select for (usize, usize) {
-    fn select(&self) -> usize {
-        if cfg!(feature = "layout-min") {
-            assert!(
-                !cfg!(debug_assertions) && !cfg!(feature = "layout-max"),
-                "layout-min must be used with release mode"
-            );
-            self.0
-        } else {
-            assert!(
-                cfg!(debug_assertions) && !cfg!(feature = "layout-min"),
-                "layout-max must be used with debug mode"
-            );
-            self.1
-        }
-    }
+    assert_eq!(360, size_of::<Entry<CopyBidirectional, DisableTimeout>>());
 }

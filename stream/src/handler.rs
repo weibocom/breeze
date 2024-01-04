@@ -233,12 +233,12 @@ impl<'r, Req, P, S: Debug> Debug for Handler<'r, Req, P, S> {
 
 #[derive(Default, Debug)]
 struct Number {
-    #[cfg(debug_assertions)]
+    #[cfg(any(feature = "trace"))]
     rx: usize,
-    #[cfg(debug_assertions)]
+    #[cfg(any(feature = "trace"))]
     tx: usize,
 }
-#[cfg(debug_assertions)]
+#[cfg(any(feature = "trace"))]
 impl Number {
     #[inline(always)]
     fn rx(&mut self) {
@@ -253,7 +253,8 @@ impl Number {
         len == self.tx - self.rx
     }
 }
-#[cfg(not(debug_assertions))]
+
+#[cfg(not(feature = "trace"))]
 impl Number {
     #[inline(always)]
     fn rx(&mut self) {}
