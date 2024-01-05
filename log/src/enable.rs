@@ -41,7 +41,7 @@ macro_rules! log {
         }
     };)
 }
-pub use {_warn as warn, debug, error, fatal, info, trace};
+pub use _warn as warn;
 #[inline]
 pub fn private_api_log(
     args: std::fmt::Arguments,
