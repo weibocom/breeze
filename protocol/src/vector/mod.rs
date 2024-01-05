@@ -169,6 +169,7 @@ impl Vector {
             // 构建cmd，准备后续处理
             let cmd = packet.take();
             let hash = packet.hash(key, alg);
+            log::debug!("+++ kvector key:{:?}, hash:{}", key, hash);
             let cmd = HashedCommand::new(cmd, hash, flag);
             process.process(cmd, true);
         }
