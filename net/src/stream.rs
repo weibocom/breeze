@@ -91,18 +91,14 @@ use std::io::{Error, ErrorKind, Result};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use async_trait::async_trait;
-#[async_trait]
 trait Bind: Sized {
     async fn binding(addr: &str) -> Result<Self>;
 }
-#[async_trait]
 impl Bind for tokio::net::TcpListener {
     async fn binding(addr: &str) -> Result<Self> {
         Self::bind(addr).await
     }
 }
-#[async_trait]
 impl Bind for tokio::net::UnixListener {
     async fn binding(addr: &str) -> Result<Self> {
         Self::bind(addr)

@@ -72,56 +72,45 @@ impl Flag {
     pub fn noforward(&self) -> bool {
         self.noforward
     }
-
-    //#[inline]
-    //pub fn mark(&mut self, bit: u8) {
-    //    self.v |= 1 << bit;
-    //}
-    //#[inline]
-    //pub fn marked(&self, bit: u8) -> bool {
-    //    let m = 1 << bit;
-    //    self.v & m == m
-    //}
     #[inline]
     pub fn reset_flag(&mut self, op_code: OpCode, op: Operation) {
         self.op_code = op_code;
         self.op = op;
     }
-    //#[inline]
-    //pub fn set_ext(&mut self, ext: u64) {
-    //    self.v = ext;
-    //}
-    //#[inline]
-    //pub fn ext(&self) -> u64 {
-    //    self.v
-    //}
-    //#[inline]
-    //pub fn ext_mut(&mut self) -> &mut u64 {
-    //    &mut self.v
-    //}
 }
 
-#[derive(Debug, Clone)]
-pub enum TryNextType {
-    NotTryNext = 0,
-    TryNext = 1,
-    Unkown = 2,
-}
+// TODO 暂时保留备查，2024.2后再考虑清理 fishermen
+// #[derive(Debug, Clone)]
+// pub enum TryNextType {
+//     NotTryNext = 0,
+//     TryNext = 1,
+//     // 去掉unknow类型，统一逻辑处理，测试稳定后清理，预计2024.1后清理 fishermen
+//     // Unkown = 2,
+// }
 
-// (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对set生效，注意提前考虑cas)
-impl TryNextType {
-    pub fn from(val: u8) -> Self {
-        match val {
-            0 => TryNextType::NotTryNext,
-            1 => TryNextType::TryNext,
-            2 => TryNextType::Unkown,
-            _ => panic!("unknow try next type"),
-        }
-    }
-}
+// // (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对set生效，注意提前考虑cas)
+// impl From<u8> for TryNextType {
+//     fn from(val: u8) -> Self {
+//         match val {
+//             0 => TryNextType::NotTryNext,
+//             1 => TryNextType::TryNext,
+//             // 2 => TryNextType::Unkown,
+//             _ => panic!("unknow try next type"),
+//         }
+//     }
+//     // TODO 暂时保留，线上稳定后清理，预计2024.2之后 fishermen
+//     // pub fn from(val: u8) -> Self {
+//     //     match val {
+//     //         0 => TryNextType::NotTryNext,
+//     //         1 => TryNextType::TryNext,
+//     //         // 2 => TryNextType::Unkown,
+//     //         _ => panic!("unknow try next type"),
+//     //     }
+//     // }
+// }
 
-impl Default for TryNextType {
-    fn default() -> Self {
-        TryNextType::TryNext
-    }
-}
+// impl Default for TryNextType {
+//     fn default() -> Self {
+//         TryNextType::TryNext
+//     }
+// }

@@ -27,7 +27,7 @@ pub struct Basic {
     //#[serde(default)]
     //pub(crate) listen: String,
     #[serde(default)]
-    resource_type: String,
+    pub(crate) resource_type: String,
     #[serde(default)]
     pub(crate) selector: String,
     #[serde(default)]
@@ -44,10 +44,7 @@ pub struct Basic {
 impl RedisNamespace {
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         let mut ns = serde_yaml::from_str::<RedisNamespace>(cfg)
-            .map_err(|e| {
-                log::info!("failed to parse redis config:{}", cfg);
-                e
-            })
+            .map_err(|e| log::info!("failed to parse redis config:{} => {e:?}", cfg))
             .ok()?;
         if ns.backends.len() == 0 {
             log::warn!("cfg invalid:{:?}", ns);

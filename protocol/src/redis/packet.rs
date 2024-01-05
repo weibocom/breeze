@@ -125,9 +125,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
                 // 路过CRLF_LEN个字节，通过命令获取op_code
                 let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
-                if idx + CRLF_LEN > self.data.len() {
-                    return Err(crate::Error::ProtocolIncomplete);
-                }
+                assert!(idx + CRLF_LEN <= self.data.len());
                 self.ctx.op_code = op_code;
                 // 第一次解析cmd需要对协议进行合法性校验
                 let cfg = command::get_cfg(op_code)?;
@@ -576,10 +574,7 @@ impl Packet {
                     *oft += self.num_of_string(oft)? + CRLF_LEN;
                 }
                 b'+' | b':' => self.line(oft)?,
-                _ => {
-                    log::warn!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                    panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                }
+                _ => panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count),
             }
             bulk_count -= 1;
         }

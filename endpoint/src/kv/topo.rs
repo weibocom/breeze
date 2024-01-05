@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::fmt::Debug;
 
+use discovery::distance::ByDistance;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
@@ -15,29 +15,25 @@ use protocol::ResOption;
 use protocol::Resource;
 use rand::seq::SliceRandom;
 use sharding::hash::{Hash, HashKey};
-use sharding::Distance;
 
 use crate::dns::DnsConfig;
-use crate::Builder;
-use crate::Single;
 use crate::Timeout;
-use crate::{Endpoint, Topology};
+use crate::{shards::Shard, Endpoint, Topology};
 
 use super::config::KvNamespace;
 use super::config::Years;
 use super::strategy::Strategist;
 use super::KVCtx;
 #[derive(Clone)]
-pub struct KvService<B, E, Req, P> {
+pub struct KvService<E, P> {
     shards: Shards<E>,
     // selector: Selector,
     strategist: Strategist,
     parser: P,
     cfg: Box<DnsConfig<KvNamespace>>,
-    _mark: std::marker::PhantomData<(B, Req)>,
 }
 
-impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
+impl<E, P> From<P> for KvService<E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -45,18 +41,15 @@ impl<B, E, Req, P> From<P> for KvService<B, E, Req, P> {
             shards: Default::default(),
             strategist: Default::default(),
             cfg: Default::default(),
-            _mark: std::marker::PhantomData,
             // selector: Selector::Random,
         }
     }
 }
 
-impl<B, E, Req, P> Hash for KvService<B, E, Req, P>
+impl<E, P> Hash for KvService<E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -64,16 +57,15 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for KvService<B, E, Req, P>
+impl<E, Req, P> Topology for KvService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for KvService<B, E, Req, P>
+impl<E, Req, P> Endpoint for KvService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -117,8 +109,8 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
         log::debug!(
-            "+++ mysql {} send {} year {} shards {:?} => {:?}",
-            self.cfg.service,
+            "mysql {:?} send {} year {} shards {:?} => {:?}",
+            self.cfg,
             shard_idx,
             intyear,
             shards,
@@ -147,7 +139,7 @@ where
             // 只重试一次，重试次数过多，可能会导致雪崩。如果不重试，现在的配额策略在当前副本也只会连续发送四次请求，问题也不大
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
-            endpoint.1.send(req)
+            endpoint.send(req)
         } else {
             shard.master().send(req);
         }
@@ -158,17 +150,16 @@ where
     }
 }
 
-impl<B, E, Req, P> TopologyWrite for KvService<B, E, Req, P>
+impl<E, P> TopologyWrite for KvService<E, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint,
 {
     fn need_load(&self) -> bool {
         self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
     }
-    fn load(&mut self) {
-        self.cfg.load_guard().check_load(|| self.load_inner());
+    fn load(&mut self) -> bool {
+        self.cfg.load_guard().check_load(|| self.load_inner())
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = KvNamespace::try_from(cfg) {
@@ -177,11 +168,10 @@ where
         }
     }
 }
-impl<B, E, Req, P> KvService<B, E, Req, P>
+impl<E, P> KvService<E, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint,
 {
     // #[inline]
     fn take_or_build(
@@ -193,7 +183,7 @@ where
     ) -> E {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
-            _ => B::auth_option_build(
+            _ => E::build_o(
                 &addr,
                 self.parser.clone(),
                 Resource::Mysql,
@@ -251,10 +241,11 @@ where
         // 到这之后，所有的shard都能解析出ip
         let mut old = HashMap::with_capacity(self.shards.len());
         for shard in self.shards.take() {
-            old.entry(shard.master.0)
+            old.entry(shard.master.addr().to_string())
                 .or_insert(Vec::new())
-                .push(shard.master.1);
-            for (addr, endpoint) in shard.slaves.into_inner() {
+                .push(shard.master);
+            for endpoint in shard.slaves.into_inner() {
+                let addr = endpoint.addr().to_string();
                 // 一个ip可能存在于多个域名中。
                 old.entry(addr).or_insert(Vec::new()).push(endpoint);
             }
@@ -278,12 +269,28 @@ where
                     self.cfg.timeout_master(),
                     res_option.clone(),
                 );
-                // slave
+                // slave 数量有限制时，先按可用区规则对slaves排序
+                // 若可用区内实例数量为0或未开启可用区，则将slaves随机化作为排序结果
+                // 按slave数量限制截取将使用的slave
                 let mut replicas = Vec::with_capacity(8);
-                if self.cfg.basic.max_slave_conns != 0 {
-                    slaves.shuffle(&mut rng);
-                    slaves.truncate(self.cfg.basic.max_slave_conns as usize);
+                if self.cfg.basic.max_slave_conns != 0
+                    && slaves.len() > self.cfg.basic.max_slave_conns as usize
+                {
+                    let mut l = if self.cfg.basic.region_enabled {
+                        slaves.sort_by_region(Vec::new(), context::get().region(), |d, _| {
+                            d <= discovery::distance::DISTANCE_VAL_REGION
+                        })
+                    } else {
+                        0
+                    };
+                    if l == 0 {
+                        slaves.shuffle(&mut rng);
+                        l = slaves.len();
+                    }
+
+                    slaves.truncate(l.min(self.cfg.basic.max_slave_conns as usize));
                 }
+
                 for addr in slaves {
                     let slave = self.take_or_build(
                         &mut old,
@@ -291,18 +298,19 @@ where
                         self.cfg.timeout_slave(),
                         res_option.clone(),
                     );
-                    slave.disable_single();
-                    replicas.push((addr, slave));
+                    replicas.push(slave);
                 }
 
                 use crate::PerformanceTuning;
                 let shard = Shard::selector(
                     self.cfg.basic.selector.tuning_mode(),
-                    master_addr,
                     master,
                     replicas,
-                    false,
+                    self.cfg.basic.region_enabled,
                 );
+
+                // 检查可用区内实例数量, 详见issues-771
+                shard.check_region_len("mysql", &self.cfg.service);
                 shards_per_interval.push(shard);
             }
             self.shards.push((interval, shards_per_interval));
@@ -315,7 +323,7 @@ where
         true
     }
 }
-impl<B, E, Req, P> discovery::Inited for KvService<B, E, Req, P>
+impl<E, P> discovery::Inited for KvService<E, P>
 where
     E: discovery::Inited,
 {
@@ -330,69 +338,120 @@ where
 }
 
 // todo: 这一段跟redis是一样的，这段可以提到外面去
-impl<E: discovery::Inited> Shard<E> {
-    // 1. 主已经初始化
-    // 2. 有从
-    // 3. 所有的从已经初始化
-    #[inline]
-    pub(crate) fn inited(&self) -> bool {
-        self.master().inited()
-            && self.has_slave()
-            && self
-                .slaves
-                .iter()
-                .fold(true, |inited, (_, e)| inited && e.inited())
-    }
-}
+//<<<<<<< vector
+// impl<E: discovery::Inited> Shard<E> {
+//     // 1. 主已经初始化
+//     // 2. 有从
+//     // 3. 所有的从已经初始化
+//     #[inline]
+//     pub(crate) fn inited(&self) -> bool {
+//         self.master().inited()
+//             && self.has_slave()
+//             && self
+//                 .slaves
+//                 .iter()
+//                 .fold(true, |inited, (_, e)| inited && e.inited())
+//     }
+// }
 // todo: 这一段跟redis是一样的，这段可以提到外面去
-impl<E> Shard<E> {
-    #[inline]
-    pub(crate) fn selector(
-        is_performance: bool,
-        master_host: String,
-        master: E,
-        replicas: Vec<(String, E)>,
-        region_enabled: bool,
-    ) -> Self {
-        Self {
-            master: (master_host, master),
-            slaves: Distance::with_performance_tuning(replicas, is_performance, region_enabled),
-        }
-    }
-    #[inline]
-    pub(crate) fn has_slave(&self) -> bool {
-        self.slaves.len() > 0
-    }
-    #[inline]
-    pub(crate) fn master(&self) -> &E {
-        &self.master.1
-    }
-    #[inline]
-    pub(crate) fn select(&self) -> (usize, &(String, E)) {
-        self.slaves.unsafe_select()
-    }
-    #[inline]
-    pub(crate) fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
-        unsafe { self.slaves.unsafe_next(idx, runs) }
-    }
-}
+// impl<E> Shard<E> {
+//     #[inline]
+//     pub(crate) fn selector(
+//         is_performance: bool,
+//         master_host: String,
+//         master: E,
+//         replicas: Vec<(String, E)>,
+//         region_enabled: bool,
+//     ) -> Self {
+//         Self {
+//             master: (master_host, master),
+//             slaves: Distance::with_performance_tuning(replicas, is_performance, region_enabled),
+//         }
+//     }
+//     #[inline]
+//     pub(crate) fn has_slave(&self) -> bool {
+//         self.slaves.len() > 0
+//     }
+//     #[inline]
+//     pub(crate) fn master(&self) -> &E {
+//         &self.master.1
+//     }
+//     #[inline]
+//     pub(crate) fn select(&self) -> (usize, &(String, E)) {
+//         self.slaves.unsafe_select()
+//     }
+//     #[inline]
+//     pub(crate) fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+//         unsafe { self.slaves.unsafe_next(idx, runs) }
+//     }
+// }
+
+// // todo: 这一段跟redis是一样的，这段可以提到外面去
+// #[derive(Clone)]
+// pub(crate) struct Shard<E> {
+//     pub(crate) master: (String, E),
+//     pub(crate) slaves: Distance<(String, E)>,
+// }
+//=======
+//impl<E: discovery::Inited> Shard<E> {
+//    // 1. 主已经初始化
+//    // 2. 有从
+//    // 3. 所有的从已经初始化
+//    #[inline]
+//    fn inited(&self) -> bool {
+//        self.master().inited()
+//            && self.has_slave()
+//            && self
+//                .slaves
+//                .iter()
+//                .fold(true, |inited, e| inited && e.inited())
+//    }
+//}
+// todo: 这一段跟redis是一样的，这段可以提到外面去
+//impl<E: Endpoint> Shard<E> {
+//    #[inline]
+//    fn selector(is_performance: bool, master: E, replicas: Vec<E>, region_enabled: bool) -> Self {
+//        Self {
+//            master,
+//            slaves: Distance::with_mode(replicas, is_performance, region_enabled),
+//        }
+//    }
+//}
+//impl<E> Shard<E> {
+//    #[inline]
+//    fn has_slave(&self) -> bool {
+//        self.slaves.len() > 0
+//    }
+//    #[inline]
+//    fn master(&self) -> &E {
+//        &self.master
+//    }
+//    #[inline]
+//    fn select(&self) -> (usize, &E) {
+//        self.slaves.unsafe_select()
+//    }
+//    #[inline]
+//    fn next(&self, idx: usize, runs: usize) -> (usize, &E)
+//    where
+//        E: Endpoint,
+//    {
+//        unsafe { self.slaves.unsafe_next(idx, runs) }
+//    }
+//}
 
 // todo: 这一段跟redis是一样的，这段可以提到外面去
-#[derive(Clone)]
-pub(crate) struct Shard<E> {
-    pub(crate) master: (String, E),
-    pub(crate) slaves: Distance<(String, E)>,
-}
+//#[derive(Clone)]
+//struct Shard<E> {
+//    master: E,
+//    slaves: Distance<E>,
+//}
+//>>>>>>> dev
 
-impl<E> Debug for Shard<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "shard(master: {}, slaves: {:?})",
-            self.master.0, self.slaves
-        )
-    }
-}
+//impl<E> Debug for Shard<E> {
+//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//        write!(f, "shard(master => slaves: {:?})", self.slaves.len())
+//    }
+//}
 
 const YEAR_START: u16 = 2000;
 const YEAR_END: u16 = 2099;
