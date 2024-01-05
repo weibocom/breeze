@@ -55,9 +55,8 @@ const DIST_RANGE_SLOT_COUNT_DEFAULT: u64 = 256;
 // slotmod
 //const DIST_SLOT_MOD_PREFIX: &str = "slotmod-";
 
-use std::ops::Deref;
 impl Distribute {
-    pub fn from<T: Deref<Target = str>>(distribution: &str, names: &[T]) -> Self {
+    pub fn from(distribution: &str, names: &Vec<String>) -> Self {
         let dist = distribution.to_ascii_lowercase();
         let idx = dist.find('-');
         let name = &dist[..idx.unwrap_or(dist.len())];

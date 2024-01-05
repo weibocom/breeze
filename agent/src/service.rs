@@ -9,11 +9,10 @@ use ds::chan::Sender;
 use metrics::Path;
 use protocol::{Parser, Result};
 use stream::pipeline::copy_bidirectional;
-use stream::{Backend, CheckedTopology, Request, StreamMetrics};
+use stream::{Backend, Builder, CheckedTopology, Request, StreamMetrics};
 
-type Endpoint = Backend<Request>;
-type Topology = endpoint::TopologyProtocol<Endpoint, Parser>;
-use metrics::Status;
+type Endpoint = Arc<Backend<Request>>;
+type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
 // 一直侦听，直到成功侦听或者取消侦听（当前尚未支持取消侦听）
 // 1. 尝试侦听之前，先确保服务配置信息已经更新完成
 pub(super) async fn process_one(
@@ -26,18 +25,17 @@ pub(super) async fn process_one(
     // 注册，定期更新配置
     discovery.send(tx).await.map_err(|e| e.to_string())?;
 
-    let path = Path::new(vec![quard.protocol(), &quard.biz()]);
-    let mut metrics = StreamMetrics::new(&path);
+    let mut listen_failed = Path::new(vec![quard.protocol(), &quard.biz()]).status("listen_failed");
 
     // 等待初始化完成
     let mut tries = 0usize;
-    while !rx.inited() || !metrics.check_registered() {
+    while !rx.inited() {
         tries += 1;
         let s = if tries <= 10 {
             Duration::from_secs(1)
         } else {
             // 拉取配置失败，业务监听失败数+1
-            metrics.listen_failed += Status::ERROR;
+            listen_failed += 1;
             log::warn!("waiting inited. {} tries:{}", quard, tries);
             // Duration::from_secs(1 << (tries.min(10)))
             // 1 << 10 差不多20分钟，太久了，先改为递增间隔 fishermen
@@ -49,13 +47,12 @@ pub(super) async fn process_one(
 
     log::info!("service inited. {} ", quard);
     let switcher = ds::Switcher::from(true);
-
-    let metrics = Arc::new(metrics);
+    let path = Path::new(vec![quard.protocol(), &quard.biz()]);
 
     // 服务注册完成，侦听端口直到成功。
-    while let Err(_e) = _process_one(quard, &p, &rx, metrics.clone()).await {
+    while let Err(_e) = _process_one(quard, &p, &rx, &path).await {
         // 监听失败或accept连接失败，对监听失败数+1
-        unsafe { *metrics.listen_failed.as_mut() += Status::ERROR };
+        listen_failed += 1;
         log::warn!("service process failed. {}, err:{:?}", quard, _e);
         sleep(Duration::from_secs(6)).await;
     }
@@ -70,18 +67,19 @@ async fn _process_one(
     quard: &Quadruple,
     p: &Parser,
     top: &TopologyReadGuard<Topology>,
-    metrics: Arc<StreamMetrics>,
+    path: &Path,
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("started. {}", quard);
-    unsafe { *metrics.listen_failed.as_mut() += Status::OK };
+    let metrics = Arc::new(StreamMetrics::new(path));
 
     loop {
         // 等待初始化成功
         let (client, _addr) = l.accept().await?;
         let client = rt::Stream::from(client);
         let p = p.clone();
-        log::debug!("connection established:{:?}", metrics.biz());
+        let _path = format!("{:?}", path);
+        log::debug!("connection established:{:?}", _path);
         let ctop = CheckedTopology::from(top.clone());
         let metrics = metrics.clone();
         spawn(async move {
@@ -92,12 +90,12 @@ async fn _process_one(
                     // Quit | Eof | IO(_) => {}
                     Quit => {} // client发送quit协议退出
                     Eof | IO(_) => {
-                        log::warn!("{:?} disconnected. {:?}", metrics.biz(), e);
+                        log::warn!("{:?} disconnected. {:?}", _path, e);
                     }
                     // 发送异常信息给client：request在parse异常位置发送，response暂不发送
                     _e => {
                         *metrics.unsupport_cmd() += 1;
-                        log::warn!("{:?} disconnected. {:?}", metrics.biz(), _e);
+                        log::warn!("{:?} disconnected. {:?}", _path, _e);
                     }
                 }
             }

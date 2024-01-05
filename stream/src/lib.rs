@@ -12,6 +12,7 @@ pub trait Read {
 }
 
 mod builder;
+pub use builder::BackendBuilder as Builder;
 pub use builder::*;
 
 pub(crate) mod checker;

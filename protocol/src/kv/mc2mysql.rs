@@ -54,7 +54,11 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
         let val = match op {
             OP_ADD | OP_SET => Some(req.value()),
             OP_GET | OP_GETK | OP_DEL => None,
-            _ => return Err(FlushOnClose(format!("not support op:{op}").into())),
+            _ => {
+                return Err(FlushOnClose(
+                    format!("not support op:{op}").into_bytes().into(),
+                ))
+            }
         };
         Ok(Self {
             op,

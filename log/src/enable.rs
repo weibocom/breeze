@@ -17,7 +17,7 @@ macro_rules! info{
 }
 
 #[macro_export]
-macro_rules! warn{
+macro_rules! _warn{
     ($($arg:tt)+) => (log::log!(log::Level::Warn, $($arg)+));
 }
 #[macro_export]
@@ -41,6 +41,7 @@ macro_rules! log {
         }
     };)
 }
+pub use {_warn as warn, debug, error, fatal, info, trace};
 #[inline]
 pub fn private_api_log(
     args: std::fmt::Arguments,

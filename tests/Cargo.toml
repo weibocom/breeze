@@ -12,7 +12,6 @@ rt = { path = "../rt", default-features = false, features = [] }
 sharding = { path = "../sharding" }
 stream = { path = "../stream" }
 protocol = { path = "../protocol" }
-discovery = { path = "../discovery" }
 rand = "0.8.5"
 md5 = "*"
 byteorder = "1.4.3"
@@ -51,4 +50,3 @@ default = ["layout-max", "regex"]
 layout-min = ["ds/tsc"]
 layout-max = ["rt/poll-io-metrics"]
 regex = ["protocol/regex"]
-github_workflow = []

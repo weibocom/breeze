@@ -1,4 +1,6 @@
-use crate::{callback::CallbackContext, BackendQuota, Command, Context, Error, HashedCommand};
+use sharding::BackendQuota;
+
+use crate::{callback::CallbackContext, Command, Context, Error, HashedCommand};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
@@ -44,10 +46,6 @@ impl crate::Request for Request {
     #[inline]
     fn try_next(&mut self, goon: bool) {
         self.ctx().try_next = goon;
-    }
-    #[inline]
-    fn retry_on_rsp_notok(&mut self, retry: bool) {
-        self.ctx().retry_on_rsp_notok = retry;
     }
     #[inline]
     fn quota(&mut self, quota: BackendQuota) {
