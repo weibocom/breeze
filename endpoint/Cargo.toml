@@ -15,7 +15,6 @@ sharding = { path = "../sharding" }
 log = { path = "../log" }
 rt = { path = "../rt" }
 context = { path = "../context" }
-metrics = { path = "../metrics" }
 procs = { path = "../procs" }
 
 byteorder = "1.4.3"

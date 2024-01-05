@@ -26,7 +26,11 @@ impl<'a, C> Reader<'a, C> {
         if self.n > 0 {
             Ok(())
         } else {
-            Err(Error::Eof)
+            if self.b == 0 {
+                Err(Error::BufferFull)
+            } else {
+                Err(Error::Eof)
+            }
         }
     }
 }
@@ -38,14 +42,15 @@ where
     type Out = Poll<std::io::Result<()>>;
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> (usize, Self::Out) {
-        self.b += buf.len();
+        let Self { n, client, cx, b } = self;
+        *b += buf.len();
         let mut rb = ReadBuf::new(buf);
-        let out = Pin::new(&mut self.client).poll_read(&mut self.cx, &mut rb);
+        let out = Pin::new(&mut **client).poll_read(cx, &mut rb);
         let r = rb.capacity() - rb.remaining();
         if r > 0 {
             log::debug!("{} bytes received", r);
         }
-        self.n += r;
+        *n += r;
 
         (r, out)
     }

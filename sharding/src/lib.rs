@@ -11,6 +11,9 @@ use hash::*;
 pub mod distribution;
 // use distribution::*;
 
+mod select;
+pub use select::*;
+
 // use std::ops::Deref;
 
 // impl Sharding {

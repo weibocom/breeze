@@ -75,12 +75,6 @@ impl From<Vec<u8>> for ToVec {
         Self::Vec(v)
     }
 }
-impl From<String> for ToVec {
-    #[inline]
-    fn from(v: String) -> Self {
-        Self::Vec(v.into())
-    }
-}
 use std::ops::Deref;
 impl Deref for ToVec {
     type Target = [u8];

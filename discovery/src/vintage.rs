@@ -98,7 +98,9 @@ impl Vintage {
 }
 
 use super::Config;
+use async_trait::async_trait;
 
+#[async_trait]
 impl super::Discover for Vintage {
     #[inline]
     async fn get_service<C>(&self, name: &str, sig: &str) -> std::io::Result<Config<C>>

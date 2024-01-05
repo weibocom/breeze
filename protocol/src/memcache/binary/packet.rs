@@ -9,7 +9,7 @@ pub enum Magic {
 }
 
 pub const CAS_LEN: usize = 8;
-use crate::{Error, Result};
+use crate::{Error, Result, TryNextType};
 
 // response status 共11种，协议中占2个字节，当前只有1字节，如果超范围需要在协议处理位置对应修改
 #[allow(dead_code)]
@@ -17,7 +17,6 @@ use crate::{Error, Result};
 pub enum RespStatus {
     NoError = 0x0000,
     NotFound = 0x0001,
-    KeyExists = 0x0002,
     InvalidArg = 0x0004,
     NotStored = 0x0005,
     NonNumeric = 0x0006,
@@ -81,19 +80,14 @@ pub(crate) const NOREPLY_MAPPING: [u8; 128] = [
 //    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 //];
 
-// 请求完毕后，不考虑layer及其他配置，如果cmd失败,是否继续retry:
-// (1) 0: not retry (对cas/casq/add/replace生效);  (2) 1: retry ; (3) 2: unknown，需要进一步check.
-// TODO 本次修改影响：注意check set/cas、add/addq、setq/casq的影响
-const RETRY_TABLE: [u8; 128] = [
+// 请求完毕后，不考虑layer及其他配置，如果cmd失败,是否继续try_next:
+// (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对set生效，注意提前考虑cas)
+const TRY_NEXT_TABLE: [u8; 128] = [
     1, 2, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 2, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0,
     1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
-
-// 1：需要try next； 0: 不需要try next
-const RETRY_TRUE: u8 = 1;
-const RETRY_UNKNOWN: u8 = 2;
 
 // 总共有48个opcode，这里先只部分支持
 #[allow(dead_code)]
@@ -129,9 +123,7 @@ pub(crate) const OP_GETKQ: u8 = 0x0d;
 pub(crate) const OP_GETQ: u8 = 0x09;
 pub const OP_SET: u8 = 0x01;
 pub const OP_DEL: u8 = 0x04;
-pub const OP_DELQ: u8 = 0x14;
 pub const OP_ADD: u8 = 0x02;
-pub(crate) const OP_ADDQ: u8 = 0x12;
 pub const OP_GETK: u8 = 0x0c;
 pub(crate) const OP_SETQ: u8 = 0x11;
 // 这个专门为gets扩展
@@ -200,8 +192,7 @@ pub trait Binary {
     fn hash<H: sharding::hash::Hash>(&self, alg: &H) -> i64;
     fn check_request(&self) -> Result<()>;
     fn check_response(&self) -> Result<()>;
-    // 请求是否是幂等的，对于幂等协议才可以在失败后，再次重试访问
-    fn can_retry_on_rsp_notok(&self) -> bool;
+    fn try_next_type(&self) -> TryNextType;
     fn sentonly(&self) -> bool;
     fn noforward(&self) -> bool;
 }
@@ -256,36 +247,16 @@ impl Binary for RingSlice {
         debug_assert!(self.len() >= HEADER_LEN);
         self.total_body_len() as usize + HEADER_LEN
     }
-    /// 对于写指令，处理逻辑：
-    ///   1 set/setq只要有响应则认为请求成功，然后set其他layers，但master结果会返回client，由client决定后续操作；
-    ///   2 cas/casq只要不是Key Exists异常，则认为是成功，然后set其他layers；
-    ///   3 add/addq只要不是Key Exists 则认为请求成功，然后set其他layers；
-    ///   4 del/delq不管什么状态都认为成功，然后del其他layers；
-    /// 不管mesh认为是否成功，写指令的master响应都会原封不动的返回给client。
     #[inline(always)]
     fn status_ok(&self) -> bool {
         debug_assert!(self.len() >= HEADER_LEN);
         debug_assert_eq!(self.at(PacketPos::Magic as usize), RESPONSE_MAGIC);
-        let is_ok = self.at(6) == 0 && self.at(7) == 0;
-        // 请求ok 或者 非store类型指令，直接返回响应状态
-        if is_ok || !self.operation().is_store() {
-            return is_ok;
-        }
-
-        // store cmd 请求失败了，某些描述的场景需要当作成功 fishermen
-        match self.op() {
-            OP_SET | OP_SETQ | OP_ADD | OP_ADDQ => {
-                let status = self.u16_be(6);
-                status != RespStatus::KeyExists as u16
-            }
-            OP_DEL | OP_DELQ => true,
-            _ => is_ok,
-        }
+        self.at(6) == 0 && self.at(7) == 0
     }
     #[inline(always)]
     fn key_len(&self) -> u16 {
         debug_assert!(self.len() >= HEADER_LEN);
-        self.u16_be(PacketPos::Key as usize)
+        self.read_u16(PacketPos::Key as usize)
     }
     #[inline(always)]
     fn key(&self) -> Self {
@@ -394,31 +365,21 @@ impl Binary for RingSlice {
     }
 
     #[inline(always)]
-    fn can_retry_on_rsp_notok(&self) -> bool {
-        let op = self.op();
-        assert!((op as usize) < RETRY_TABLE.len());
+    fn try_next_type(&self) -> TryNextType {
+        let op = self.op() as usize;
+        assert!(op < TRY_NEXT_TABLE.len());
 
-        let retry = RETRY_TABLE[op as usize];
-        if retry == RETRY_UNKNOWN {
-            // 只有set/setq/cas/casq 的retry是unknown
-            assert!(op == OP_SET || op == OP_SETQ, "{}", op);
-            // 普通的set/setq才可以retry，cas、casq 不可以 retry
-            self.cas() == 0
-        } else {
-            retry == RETRY_TRUE
+        let try_next = TRY_NEXT_TABLE[op];
+        if try_next != TryNextType::Unkown as u8 {
+            return TryNextType::from(try_next);
         }
 
-        // TODO 去掉Unknown逻辑，线上稳定后清理，预计2024.2之后 fishermen
-        // if try_next != TryNextType::Unkown as u8 {
-        //     return TryNextType::from(try_next);
-        // }
-
         // 只有set、setq 才会是unknown，此时只需要对cas再设置为NotTryNext即可
-        // if self.cas() > 0 {
-        //     log::debug!("not try next for cas");
-        //     return TryNextType::NotTryNext;
-        // }
-        // return TryNextType::from(try_next);
+        if self.cas() > 0 {
+            log::debug!("not try next for cas");
+            return TryNextType::NotTryNext;
+        }
+        return TryNextType::from(try_next);
     }
 
     #[inline(always)]

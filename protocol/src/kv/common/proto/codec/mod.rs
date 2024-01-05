@@ -8,6 +8,8 @@
 
 //! MySql protocol codec implementation.
 
+pub use flate2::Compression;
+
 // use byteorder::{ByteOrder, LittleEndian};
 use bytes::{Buf, BufMut, BytesMut};
 // use flate2::read::ZlibEncoder;

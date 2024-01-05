@@ -1,25 +1,27 @@
-use crate::{
-    dns::{DnsConfig, DnsLookup},
-    shards::Shard,
-    Endpoint, Endpoints, PerformanceTuning, Topology,
-};
+use std::collections::HashMap;
+
+use crate::{Builder, Endpoint, Single, Topology};
 use discovery::TopologyWrite;
-use protocol::{Protocol, RedisFlager, Request, Resource::Redis};
+use protocol::{Protocol, RedisFlager, Request, Resource};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
+use sharding::Distance;
 
 use super::config::RedisNamespace;
+use crate::{dns::DnsConfig, Timeout};
+use discovery::dns::{self, IPPort};
 
 #[derive(Clone)]
-pub struct RedisService<E, P> {
+pub struct RedisService<B, E, Req, P> {
     // 一共shards.len()个分片，每个分片 shard[0]是master, shard[1..]是slave
     shards: Vec<Shard<E>>,
     hasher: Hasher,
     distribute: Distribute,
     parser: P,
     cfg: Box<DnsConfig<RedisNamespace>>,
+    _mark: std::marker::PhantomData<(B, Req)>,
 }
-impl<E, P> From<P> for RedisService<E, P> {
+impl<B, E, Req, P> From<P> for RedisService<B, E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -28,14 +30,17 @@ impl<E, P> From<P> for RedisService<E, P> {
             hasher: Default::default(),
             distribute: Default::default(),
             cfg: Default::default(),
+            _mark: Default::default(),
         }
     }
 }
 
-impl<E, P> Hash for RedisService<E, P>
+impl<B, E, Req, P> Hash for RedisService<B, E, Req, P>
 where
-    E: Endpoint,
+    E: Endpoint<Item = Req>,
+    Req: Request,
     P: Protocol,
+    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -43,15 +48,16 @@ where
     }
 }
 
-impl<E, Req, P> Topology for RedisService<E, P>
+impl<B, E, Req, P> Topology for RedisService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
+    B: Send + Sync,
 {
 }
 
-impl<E, Req, P> Endpoint for RedisService<E, P>
+impl<B: Send + Sync, E, Req, P> Endpoint for RedisService<B, E, Req, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -76,7 +82,13 @@ where
         assert!(shard_idx < self.len(), "{} {:?} {}", shard_idx, req, self);
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-        log::debug!("{} send master{} {}=>{:?}", self, req, shard_idx, req);
+        log::debug!(
+            "+++ {} send master/{} {}=>{:?}",
+            self.cfg.service,
+            req.master_only(),
+            shard_idx,
+            req
+        );
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() && !req.master_only() {
@@ -106,7 +118,7 @@ where
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
 
-            endpoint.send(req)
+            endpoint.1.send(req)
         } else {
             shard.master().send(req)
         }
@@ -117,10 +129,11 @@ where
         self.distribute.index(hash)
     }
 }
-impl<E, P> TopologyWrite for RedisService<E, P>
+impl<B, E, Req, P> TopologyWrite for RedisService<B, E, Req, P>
 where
+    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint,
+    E: Endpoint<Item = Req> + Single,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -139,14 +152,12 @@ where
     }
 
     #[inline]
-    fn load(&mut self) -> bool {
+    fn load(&mut self) {
         // TODO: 先改通知状态，再load，如果失败，改一个通用状态，确保下次重试，同时避免变更过程中新的并发变更，待讨论 fishermen
-        self.cfg
-            .load_guard()
-            .check_load(|| self.load_inner().is_some())
+        self.cfg.load_guard().check_load(|| self.load_inner());
     }
 }
-impl<E, P> discovery::Inited for RedisService<E, P>
+impl<B, E, Req, P> discovery::Inited for RedisService<B, E, Req, P>
 where
     E: discovery::Inited,
 {
@@ -162,59 +173,179 @@ where
                 .fold(true, |inited, shard| inited && shard.inited())
     }
 }
-impl<E, P> RedisService<E, P> {
+impl<B, E, Req, P> RedisService<B, E, Req, P> {
     #[inline]
     fn len(&self) -> usize {
         self.shards.len()
     }
 }
 
-impl<E, P> RedisService<E, P>
+impl<B, E, Req, P> RedisService<B, E, Req, P>
 where
+    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint,
+    E: Endpoint<Item = Req> + Single,
 {
+    #[inline]
+    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
+        let service = &self.cfg.service;
+        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
+            Some(Some(end)) => end,
+            _ => B::build(
+                &addr,
+                self.parser.clone(),
+                Resource::Redis,
+                service,
+                timeout,
+            ),
+        }
+    }
+
     // TODO 把load的日志级别提升，在罕见异常情况下（dns解析异常、配置异常）,持续load时可以通过日志来跟进具体状态；
     //      当然，也可以通过指标汇报的方式进行，但对这种罕见情况进行metrics消耗，需要考量；
     //      先对这种罕见情况用日志记录，确有需要，再考虑用指标汇报； 待讨论 fishermen
     #[inline]
-    fn load_inner(&mut self) -> Option<()> {
-        let addrs = self.cfg.shards_url.master_lookup()?;
-        assert_eq!(addrs.len(), self.cfg.shards_url.len());
+    fn load_inner(&mut self) -> bool {
+        // 所有的ip要都能解析出主从域名
+        let mut addrs = Vec::with_capacity(self.cfg.shards_url.len());
+        for shard in self.cfg.shards_url.iter() {
+            if shard.len() < 2 {
+                log::warn!("{} both master and slave required.", self.cfg.service);
+                return false;
+            }
+            let master_url = &shard[0];
+            let mut master = String::new();
+            dns::lookup_ips(master_url.host(), |ips| {
+                if ips.len() > 0 {
+                    master = ips[0].to_string() + ":" + master_url.port();
+                }
+            });
+            let mut slaves = Vec::with_capacity(8);
+            if self.cfg.basic.master_read {
+                slaves.push(master.clone());
+            }
+            for url_port in &shard[1..] {
+                let url = url_port.host();
+                let port = url_port.port();
+                use ds::vec::Add;
+                dns::lookup_ips(url, |ips| {
+                    for ip in ips {
+                        slaves.add(ip.to_string() + ":" + port);
+                    }
+                });
+            }
+            if master.len() == 0 || slaves.len() == 0 {
+                log::warn!(
+                    "master:({}=>{}) or slave ({:?}=>{:?}) not looked up",
+                    master_url,
+                    master,
+                    &shard[1..],
+                    slaves
+                );
+                return false;
+            }
+            addrs.push((master, slaves));
+        }
         // 到这之后，所有的shard都能解析出ip
 
-        // 把所有的endpoints cache下来
-        let mut endpoints: Endpoints<'_, P, E> =
-            Endpoints::new(&self.cfg.service, &self.parser, Redis);
-        self.shards.split_off(0).into_iter().for_each(|shard| {
-            endpoints.cache_one(shard.master);
-            endpoints.cache(shard.slaves.into_inner());
-        });
-
+        let mut old = HashMap::with_capacity(self.shards.len());
+        for shard in self.shards.split_off(0) {
+            old.entry(shard.master.0)
+                .or_insert(Vec::new())
+                .push(shard.master.1);
+            for (addr, endpoint) in shard.slaves.into_inner() {
+                // 一个ip可能存在于多个域名中。
+                old.entry(addr).or_insert(Vec::new()).push(endpoint);
+            }
+        }
         // 遍历所有的shards_url
-        addrs.iter().for_each(|ips| {
-            assert!(ips.len() >= 2);
-            let master = endpoints.take_or_build_one(&ips[0], self.cfg.timeout_master());
-            // 第0个是master，如果master提供读，则从第0个开始。
-            let oft = if self.cfg.basic.master_read { 0 } else { 1 };
-            let slaves = endpoints.take_or_build(&ips[oft..], self.cfg.timeout_slave());
+        for (master_addr, slaves) in addrs {
+            assert_ne!(master_addr.len(), 0);
+            assert_ne!(slaves.len(), 0);
+            let master = self.take_or_build(&mut old, &master_addr, self.cfg.timeout_master());
+            master.enable_single();
+
+            // slave
+            let mut replicas = Vec::with_capacity(8);
+            for addr in slaves {
+                let slave = self.take_or_build(&mut old, &addr, self.cfg.timeout_slave());
+                slave.disable_single();
+                replicas.push((addr, slave));
+            }
+
+            use crate::PerformanceTuning;
             let shard = Shard::selector(
                 self.cfg.basic.selector.tuning_mode(),
+                master_addr,
                 master,
-                slaves,
+                replicas,
                 self.cfg.basic.region_enabled,
             );
-            let ty = &*self.cfg.basic.resource_type;
-            shard.check_region_len(ty, &self.cfg.service);
             self.shards.push(shard);
+        }
+        assert_eq!(self.shards.len(), self.cfg.shards_url.len());
+        log::info!("{} load complete. dropping:{:?}", self.cfg.service, {
+            old.retain(|_k, v| v.len() > 0);
+            old.keys()
         });
-        Some(())
+
+        true
     }
 }
-
-impl<E, P> std::fmt::Display for RedisService<E, P>
+#[derive(Clone)]
+struct Shard<E> {
+    master: (String, E),
+    slaves: Distance<(String, E)>,
+}
+impl<E> Shard<E> {
+    #[inline]
+    fn selector(
+        is_performance: bool,
+        master_host: String,
+        master: E,
+        replicas: Vec<(String, E)>,
+        region_enabled: bool,
+    ) -> Self {
+        Self {
+            master: (master_host, master),
+            slaves: Distance::with_performance_tuning(replicas, is_performance, region_enabled),
+        }
+    }
+    #[inline]
+    fn has_slave(&self) -> bool {
+        self.slaves.len() > 0
+    }
+    #[inline]
+    fn master(&self) -> &E {
+        &self.master.1
+    }
+    #[inline]
+    fn select(&self) -> (usize, &(String, E)) {
+        self.slaves.unsafe_select()
+    }
+    #[inline]
+    fn next(&self, idx: usize, runs: usize) -> (usize, &(String, E)) {
+        unsafe { self.slaves.unsafe_next(idx, runs) }
+    }
+}
+impl<E: discovery::Inited> Shard<E> {
+    // 1. 主已经初始化
+    // 2. 有从
+    // 3. 所有的从已经初始化
+    #[inline]
+    fn inited(&self) -> bool {
+        self.master().inited()
+            && self.has_slave()
+            && self
+                .slaves
+                .iter()
+                .fold(true, |inited, (_, e)| inited && e.inited())
+    }
+}
+impl<B: Send + Sync, E, Req, P> std::fmt::Display for RedisService<B, E, Req, P>
 where
-    E: Endpoint,
+    E: Endpoint<Item = Req>,
+    Req: Request,
     P: Protocol,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

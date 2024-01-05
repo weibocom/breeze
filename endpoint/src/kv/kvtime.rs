@@ -37,23 +37,37 @@ impl KVTime {
     pub fn new(name: String, db_count: u32, shards: u32, table_postfix: Postfix) -> Self {
         Self {
             db_prefix: name.clone(),
-            table_prefix: name,
-            table_postfix,
+            table_prefix: name.clone(),
+            table_postfix: table_postfix,
             distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
             hasher: Hasher::from("crc32"),
         }
     }
-    fn write_tname(&self, buf: &mut impl Write, key: &RingSlice) {
-        let uuid = key.uuid();
+    fn write_date_tname(&self, buf: &mut impl Write, uuid: i64, is_display_day: bool) {
         let (mut year, month, day) = uuid.ymd();
         year %= 100;
-        let _ = write!(buf, "{}_{:02}{:02}", self.table_prefix, year, month);
-        // 判断是否需要写入day
+        if is_display_day {
+            let _ = write!(
+                buf,
+                "{}_{:02}{:02}{:02}",
+                &self.table_prefix, year, month, day
+            );
+        } else {
+            let _ = write!(buf, "{}_{:02}{:02}", &self.table_prefix, year, month);
+        }
+    }
+
+    fn write_tname(&self, buf: &mut impl Write, key: &RingSlice) {
+        let uuid = to_i64(key);
         match self.table_postfix {
-            Postfix::YYMM => {}
+            Postfix::YYMM => {
+                self.write_date_tname(buf, uuid, false);
+            }
             //Postfix::YYMMDD
-            _ => write!(buf, "{:02}", day).expect("buf"),
-        };
+            _ => {
+                self.write_date_tname(buf, uuid, true);
+            }
+        }
     }
 
     pub fn write_dname(&self, buf: &mut impl Write, key: &RingSlice) {
@@ -92,7 +106,7 @@ impl Strategy for KVTime {
         &self.hasher
     }
     fn get_key(&self, key: &RingSlice) -> u16 {
-        let uuid = key.uuid();
+        let uuid = to_i64(key);
         uuid.year()
     }
     fn tablename_len(&self) -> usize {

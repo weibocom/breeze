@@ -2,6 +2,7 @@ use ds::time::{timeout, Duration};
 use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{atomic::AtomicBool, Arc};
 use std::task::{ready, Poll};
 
 use tokio::io::AsyncWrite;
@@ -49,18 +50,21 @@ impl<P, Req> BackendChecker<P, Req> {
             option,
         }
     }
-    pub(crate) async fn start_check(mut self)
+    pub(crate) async fn start_check(&mut self, _single: Arc<AtomicBool>)
     where
         P: Protocol,
         Req: Request,
     {
         let path_addr = self.path.clone().push(&self.addr);
-        let mut be_conns = path_addr.qps("be_conn");
+        let mut all_conns = path_addr.qps("conn");
+        let mut m_timeout = path_addr.qps("timeout");
+        let mut auth_failed = path_addr.status("auth_failed");
+        let mut unexpected_resp = path_addr.num("unexpected_resp");
         let mut timeout = Path::base().qps("timeout");
-        let mut reconn = crate::reconn::ReconnPolicy::new();
+        let mut reconn = crate::reconn::ReconnPolicy::new(&path_addr);
         metrics::incr_task();
         while !self.finish.get() {
-            be_conns += 1;
+            all_conns += 1;
             let stream = self.reconnect().await;
             if stream.is_none() {
                 // 连接失败，按策略sleep
@@ -82,8 +86,7 @@ impl<P, Req> BackendChecker<P, Req> {
                 };
                 if let Err(_e) = auth.await {
                     log::warn!("+++ auth err {} to: {}", _e, self.addr);
-                    let mut auth_failed = path_addr.status("auth_failed");
-                    auth_failed += metrics::Status::ERROR;
+                    auth_failed += 1;
                     stream.cancel();
                     //当作连接失败处理，不立马重试
                     //todo：可以尝试将等待操作统一提取到循环开头
@@ -101,20 +104,16 @@ impl<P, Req> BackendChecker<P, Req> {
             let p = self.parser.clone();
             let handler = Handler::from(rx, stream, p, rtt);
             let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
-            let ret = handler.await;
-            log::error!("backend error {:?} => {:?}", path_addr, ret);
-            // handler 一定返回err，不会返回ok
-            match ret.err().expect("handler return ok") {
-                Error::Timeout(_t) => {
-                    let mut m_timeout = path_addr.qps("timeout");
-                    m_timeout += 1;
-                    timeout += 1;
+            if let Err(e) = handler.await {
+                log::error!("backend error {:?} => {:?}", path_addr, e);
+                match e {
+                    Error::Timeout(_t) => {
+                        m_timeout += 1;
+                        timeout += 1;
+                    }
+                    Error::UnexpectedData => unexpected_resp += 1,
+                    _ => {}
                 }
-                Error::UnexpectedData => {
-                    let mut unexpected_resp = path_addr.num("unexpected_resp");
-                    unexpected_resp += 1;
-                }
-                _ => {}
             }
         }
         metrics::decr_task();

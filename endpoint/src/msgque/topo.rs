@@ -11,7 +11,7 @@ use tokio::time::Instant;
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::{Endpoint, Timeout, Topology};
+use crate::{Builder, Endpoint, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
 use crate::msgque::strategy::hitfirst::Node;
@@ -31,7 +31,7 @@ const OFFLINE_STOP_READ_SECONDS: u64 = 60 * 20;
 const OFFLINE_CLEAN_SECONDS: u64 = OFFLINE_STOP_READ_SECONDS + 60 * 2;
 
 #[derive(Clone)]
-pub struct MsgQue<E, P> {
+pub struct MsgQue<B, E, Req, P> {
     service: String,
 
     // 读写stream需要分开，读会有大量的空读
@@ -51,9 +51,10 @@ pub struct MsgQue<E, P> {
 
     timeout_write: Timeout,
     timeout_read: Timeout,
+    _marker: std::marker::PhantomData<(B, Req)>,
 }
 
-impl<E, P> From<P> for MsgQue<E, P> {
+impl<B, E, Req, P> From<P> for MsgQue<B, E, Req, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -69,11 +70,12 @@ impl<E, P> From<P> for MsgQue<E, P> {
             max_size: super::BLOCK_SIZE,
             timeout_write: Timeout::from_millis(200),
             timeout_read: Timeout::from_millis(100),
+            _marker: Default::default(),
         }
     }
 }
 
-impl<E, P> discovery::Inited for MsgQue<E, P>
+impl<B, E, Req, P> discovery::Inited for MsgQue<B, E, Req, P>
 where
     E: discovery::Inited,
 {
@@ -107,10 +109,12 @@ where
 
 const PADDING: Hasher = Hasher::Padding(Padding);
 
-impl<E, P> Hash for MsgQue<E, P>
+impl<B, E, Req, P> Hash for MsgQue<B, E, Req, P>
 where
-    E: Endpoint,
+    E: Endpoint<Item = Req>,
+    Req: Request,
     P: Protocol,
+    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -118,8 +122,9 @@ where
     }
 }
 
-impl<E, Req, P> Topology for MsgQue<E, P>
+impl<B, E, Req, P> Topology for MsgQue<B, E, Req, P>
 where
+    B: Send + Sync,
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
@@ -133,8 +138,9 @@ where
 }
 
 //TODO: 验证的时候需要考虑512字节这种边界msg
-impl<E, Req, P> Endpoint for MsgQue<E, P>
+impl<B, E, Req, P> Endpoint for MsgQue<B, E, Req, P>
 where
+    B: Send + Sync,
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
@@ -206,9 +212,11 @@ where
 }
 
 //获得待读取的streams和qid，返回的bool指示是否从offline streams中读取，true为都offline stream
-impl<E, P> MsgQue<E, P>
+impl<B, E, Req, P> MsgQue<B, E, Req, P>
 where
-    E: Endpoint,
+    B: Send + Sync,
+    E: Endpoint<Item = Req>,
+    Req: Request,
     P: Protocol,
 {
     fn get_read_idx(&self, ctx: &Context, inited: bool, rw_count: usize) -> (bool, usize) {
@@ -241,9 +249,10 @@ where
     }
 }
 
-impl<E, P> MsgQue<E, P>
+impl<B, E, Req, P> MsgQue<B, E, Req, P>
 where
-    E: Endpoint,
+    B: Builder<P, Req, E>,
+    E: Endpoint<Item = Req>,
     P: Protocol,
 {
     // 构建下线的队列
@@ -256,7 +265,7 @@ where
             if !new_addrs.contains(name) {
                 self.streams_offline.push((
                     name.clone(),
-                    E::build(
+                    B::build(
                         name,
                         self.parser.clone(),
                         Resource::MsgQue,
@@ -297,7 +306,7 @@ where
             .map(|(srv, size)| {
                 (
                     srv.clone(),
-                    old.remove(srv).unwrap_or(E::build(
+                    old.remove(srv).unwrap_or(B::build(
                         srv,
                         self.parser.clone(),
                         Resource::MsgQue,
@@ -339,7 +348,7 @@ where
                     .map(|addr| {
                         (
                             addr.clone(),
-                            old_streams.remove(addr).unwrap_or(E::build(
+                            old_streams.remove(addr).unwrap_or(B::build(
                                 addr,
                                 self.parser.clone(),
                                 Resource::MsgQue,
@@ -376,10 +385,11 @@ where
     // }
 }
 
-impl<E, P> TopologyWrite for MsgQue<E, P>
+impl<B, E, Req, P> TopologyWrite for MsgQue<B, E, Req, P>
 where
+    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint,
+    E: Endpoint<Item = Req>,
 {
     #[inline]
     fn update(&mut self, name: &str, cfg: &str) {

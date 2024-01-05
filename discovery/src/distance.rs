@@ -208,9 +208,6 @@ impl DistanceCalculator {
             }
         }
     }
-    pub fn region(&self) -> &Option<String> {
-        &self.local_region
-    }
 }
 
 pub trait Addr {
@@ -237,28 +234,28 @@ pub trait Addr {
         s
     }
 }
-//impl<T: Addr, O> Addr for (T, O) {
-//    fn addr(&self) -> &str {
-//        self.0.addr()
-//    }
-//}
+impl<T: Addr, O> Addr for (T, O) {
+    fn addr(&self) -> &str {
+        self.0.addr()
+    }
+}
 impl Addr for String {
     fn addr(&self) -> &str {
         self.as_str()
     }
 }
 
-impl<A: Addr> Addr for Vec<A> {
+impl Addr for Vec<String> {
     fn addr(&self) -> &str {
         if self.len() == 0 {
             ""
         } else {
-            &self[0].addr()
+            &self[0]
         }
     }
     fn visit(&self, f: &mut dyn FnMut(&str)) {
-        for a in self {
-            f(a.addr());
+        for addr in self {
+            f(addr);
         }
     }
 }
@@ -496,16 +493,4 @@ impl BClass for &String {
         }
         b
     }
-}
-
-// 本机的region，优先级：
-// 1. 本机IP对应的region
-// 2. 未知region，返回cnx
-pub fn host_region() -> String {
-    let cal = unsafe { DISTANCE_CALCULATOR.get_unchecked().get() };
-    if let Some(region) = cal.region() {
-        return region.clone();
-    }
-
-    return "cnx".to_string();
 }

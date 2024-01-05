@@ -1,7 +1,7 @@
 // 从多个副本中，选择一个副本
 
-// mod random;
-// pub use random::*;
+mod random;
+pub use random::*;
 
 mod by_distance;
 pub use by_distance::*;
@@ -14,12 +14,12 @@ pub enum Selector {
     ByDistance,
 }
 impl Selector {
-    // pub fn is_local(&self) -> bool {
-    //     match self {
-    //         Self::Random => false,
-    //         Self::ByDistance => true,
-    //     }
-    // }
+    pub fn is_local(&self) -> bool {
+        match self {
+            Self::Random => false,
+            Self::ByDistance => true,
+        }
+    }
 }
 impl From<&str> for Selector {
     #[inline]

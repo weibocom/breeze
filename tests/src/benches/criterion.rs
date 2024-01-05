@@ -19,8 +19,7 @@ criterion_group!(
     ring_slice,
     ring_slice::bench_iter,
     ring_slice::bench_copy,
-    ring_slice::bench_read_num,
-    ring_slice::bench_read_num_vs_start_with
+    ring_slice::bench_read_num
 );
 criterion_group!(arena, arena::bench_alloc);
 
