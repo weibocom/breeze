@@ -208,6 +208,15 @@ where
         }
         // 到这之后，所有shard都能解析出ip
 
+        // 把所有的endpoints cache下来
+        let shards = self.shards.take();
+        let mut endpoints: Endpoints<'_, P, E> =
+            Endpoints::new(&self.cfg.service, &self.parser, Resource::Mysql);
+        shards.into_iter().for_each(|shard| {
+            endpoints.cache_one(shard.master);
+            endpoints.cache(shard.slaves.into_inner());
+        });
+
         // 用户名和密码
         let res_option = ResOption {
             token: self.cfg.basic.password.clone(),
@@ -216,26 +225,17 @@ where
 
         // 按Years遍历
         let mut rng = rand::thread_rng();
-        addrs.iter().for_each(|(interval, addrs_per_interval)| {
+        addrs.iter_mut().for_each(|(interval, addrs_per_interval)| {
             let mut shards_per_interval = Vec::with_capacity(addrs_per_interval.len());
 
-            // 把所有的endpoints cache下来
-            let mut endpoints: Endpoints<'_, P, E> =
-                Endpoints::new(&self.cfg.service, &self.parser, Resource::Mysql);
-            self.shards.remove(interval.0).map(|shard| {
-                shard.into_iter().for_each(|shard| {
-                    endpoints.cache_one(shard.master);
-                    endpoints.cache(shard.slaves.into_inner());
-                })
-            });
-
             // 遍历当前Years所有的shards
-            addrs_per_interval.iter().for_each(|ips| {
+            addrs_per_interval.iter_mut().for_each(|ips| {
                 assert!(ips.len() >= 2);
                 // slave 数量有限制时，先按可用区规则对slaves排序
                 // 若可用区内实例数量为0或未开启可用区，则将slaves随机化作为排序结果
                 // 按slave数量限制截取将使用的slave
-                let mut slaves = ips[1..].to_vec();
+                // let (master, mut slaves) = ips.split_at(1);
+                let mut slaves = &mut ips[1..];
                 if self.cfg.basic.max_slave_conns != 0
                     && slaves.len() > self.cfg.basic.max_slave_conns as usize
                 {
@@ -251,18 +251,15 @@ where
                         l = slaves.len();
                     }
 
-                    slaves.truncate(l.min(self.cfg.basic.max_slave_conns as usize));
+                    slaves = &mut slaves[..l.min(self.cfg.basic.max_slave_conns as usize)];
                 }
+
+                let replicas =
+                    endpoints.take_or_build_o(slaves, self.cfg.timeout_slave(), res_option.clone());
 
                 let master = endpoints.take_or_build_one_o(
                     &ips[0],
                     self.cfg.timeout_master(),
-                    res_option.clone(),
-                );
-
-                let replicas = endpoints.take_or_build_o(
-                    &slaves,
-                    self.cfg.timeout_slave(),
                     res_option.clone(),
                 );
 
@@ -383,12 +380,12 @@ impl<E> Shards<E> {
     fn len(&self) -> usize {
         self.len
     }
-    // //会重新初始化
-    // fn take(&mut self) -> Vec<Shard<E>> {
-    //     self.index = [usize::MAX; YEAR_LEN];
-    //     self.len = 0;
-    //     self.shards.split_off(0).into_iter().flatten().collect()
-    // }
+    //会重新初始化
+    fn take(&mut self) -> Vec<Shard<E>> {
+        self.index = [usize::MAX; YEAR_LEN];
+        self.len = 0;
+        self.shards.split_off(0).into_iter().flatten().collect()
+    }
     //push 进来的shard是否init了
     fn inited(&self) -> bool
     where
@@ -425,15 +422,5 @@ impl<E> Shards<E> {
             return &[];
         }
         &self.shards[index]
-    }
-    fn remove(&mut self, intyear: u16) -> Option<Vec<Shard<E>>> {
-        if intyear > YEAR_END || intyear < YEAR_START {
-            return None;
-        }
-        let index = self.index[Self::year_index(intyear)];
-        if index == usize::MAX {
-            return None;
-        }
-        Some(self.shards.remove(index))
     }
 }
