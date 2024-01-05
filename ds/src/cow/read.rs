@@ -1,49 +1,57 @@
+use std::ops::Deref;
 use std::sync::Arc;
 use std::{
     hint,
-    sync::atomic::{
-        AtomicBool, AtomicPtr, AtomicUsize,
-        Ordering::{AcqRel, Acquire, Release},
-    },
+    sync::atomic::{AtomicPtr, AtomicUsize, Ordering::*},
 };
-#[derive(Clone)]
 pub struct CowReadHandle<T> {
-    inner: Arc<CowReadHandleInner<T>>,
+    pub(crate) inner: Arc<CowHandleInner<T>>,
 }
+
+impl<T> Clone for CowReadHandle<T> {
+    fn clone(&self) -> Self {
+        match self {
+            CowReadHandle { inner } => CowReadHandle {
+                inner: inner.clone(),
+            },
+        }
+    }
+}
+
+impl<T> CowReadHandle<T> {
+    pub fn copy(&self) -> T
+    where
+        T: Clone,
+    {
+        self.get().deref().clone()
+    }
+    pub fn get(&self) -> ReadGuard<T> {
+        self.inner.get()
+    }
+}
+
 impl<T> From<T> for CowReadHandle<T> {
     fn from(t: T) -> Self {
-        let t = Arc::into_raw(Arc::new(t)) as *mut T;
+        let t = Box::into_raw(Box::new(Arc::new(t)));
         Self {
-            inner: Arc::new(CowReadHandleInner {
+            inner: Arc::new(CowHandleInner {
                 inner: AtomicPtr::new(t),
-                released: AtomicBool::new(false),
                 enters: AtomicUsize::new(0),
-                epoch: AtomicBool::new(false),
-                // dropping: AtomicPtr::default(),
                 _t: Default::default(),
             }),
         }
     }
 }
 
-impl<T> std::ops::Deref for CowReadHandle<T> {
-    type Target = CowReadHandleInner<T>;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-/// 效果相当于一个Mutex<Cow<Arc<T>>>, 但是
-/// - 实际上不会并发更新
+/// 效果相当于一个Cow<Arc<T>>, 但是
+/// - 并发更新会以最后更新的为准，但是没验证过
 /// - Cow通过AtomicPtr实现，每次更新T，都会在堆上创建一个Arc<T>，阻塞等到没有读后drop旧Arc<T>
 /// - 读取会获取一个对当前堆上Arc<T>的一个clone，否则我们drop后，T将会失效
 /// 也就是多个线程获取的T是同一个T，行为本质上和多个线程操作Arc<T>没有区别，不是线程安全的
-pub struct CowReadHandleInner<T> {
-    inner: AtomicPtr<T>,
+/// 所以只有T本身是sync+send的时候，我们才是sync+send的，PhantomData保证了这一点
+pub(crate) struct CowHandleInner<T> {
+    inner: AtomicPtr<Arc<T>>,
     enters: AtomicUsize,
-    released: AtomicBool,
-    pub(super) epoch: AtomicBool,
     _t: std::marker::PhantomData<Arc<T>>,
 }
 
@@ -57,43 +65,30 @@ impl<T> std::ops::Deref for ReadGuard<T> {
     }
 }
 
-impl<T: Clone> CowReadHandleInner<T> {
+impl<T> CowHandleInner<T> {
     #[inline]
-    pub fn get(&self) -> ReadGuard<T> {
-        self.enters.fetch_add(1, AcqRel);
-        let t = unsafe { Arc::from_raw(self.inner.load(Acquire)) };
+    pub(super) fn get(&self) -> ReadGuard<T> {
+        self.enters.fetch_add(1, Release);
+        let t = unsafe { &*self.inner.load(Acquire) };
         let new = t.clone();
-        let old = self.enters.fetch_sub(1, AcqRel);
-        //读者数量达到过一次0， 大部分情况下release都是true，没必要store
-        if old == 1 && !self.released.load(Acquire) {
-            self.released.store(true, Release);
-        }
-        //自身持有的不能释放
-        let _ = Arc::into_raw(t);
+        self.enters.fetch_sub(1, Release);
         ReadGuard(new)
     }
-    pub fn copy(&self) -> T {
-        T::clone(&self.get())
-    }
-
     pub(super) fn update(&self, t: T) {
-        assert!(self.epoch.load(Acquire));
-        let w_handle = Arc::into_raw(Arc::new(t)) as *mut T;
-        let old = self.inner.swap(w_handle, Release);
-        let _dropping = unsafe { Arc::from_raw(old) };
+        let w_handle = Box::into_raw(Box::new(Arc::new(t)));
+        let old = self.inner.swap(w_handle, AcqRel);
         //old有可能被enter load了，这时候释放会有问题，需要等到一次读为0后释放，后续再有读也会是对new的引用，释放old不会再有问题
-        //released用来标识当enters不等于0时，可能也在swap后达到过一次0，可能对短链接场景有优化
-        self.released.store(false, Release);
-        while self.enters.load(Acquire) > 0 && !self.released.load(Acquire) {
+        while self.enters.load(Acquire) > 0 {
             hint::spin_loop();
         }
+        let _dropping = unsafe { Box::from_raw(old) };
     }
 }
 
-impl<T> Drop for CowReadHandleInner<T> {
+impl<T> Drop for CowHandleInner<T> {
     fn drop(&mut self) {
         unsafe {
-            let _dropping = Arc::from_raw(self.inner.load(Acquire));
+            let _dropping = Box::from_raw(self.inner.load(Acquire));
         }
     }
 }

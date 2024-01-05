@@ -21,9 +21,10 @@ pub struct Namespace {
     #[serde(default)]
     pub slave_l1: Vec<Vec<String>>,
 
+    // TODO 去掉该逻辑,线上稳定后清理 fishermen
     // set master 失败后，是否更新其他各层
-    #[serde(default)]
-    pub force_write_all: bool,
+    // #[serde(default)]
+    // pub force_write_all: bool,
 
     // set/cas/add/delete等更新操作，是否更新slave L1，默认需要是true
     #[serde(default = "Namespace::default_update_slave_l1")]
@@ -43,7 +44,7 @@ pub struct Namespace {
 #[repr(u8)]
 pub(crate) enum Flag {
     BackendNoStorage = 0,
-    ForceWriteAll = 1,
+    // ForceWriteAll = 1,
     UpdateSlavel1 = 2,
     LocalAffinity = 3,
 }
@@ -80,11 +81,12 @@ impl Namespace {
                         log::debug!("change mc crc32 to {}", ns.hash);
                     }
 
+                    // TODO 暂时保留，线上稳定后清理
                     // refresh flag
+                    // if ns.force_write_all {
+                    //     ns.flag.set(Flag::ForceWriteAll as u8);
+                    // }
                     use protocol::Bit;
-                    if ns.force_write_all {
-                        ns.flag.set(Flag::ForceWriteAll as u8);
-                    }
                     if ns.update_slave_l1 {
                         ns.flag.set(Flag::UpdateSlavel1 as u8);
                     }

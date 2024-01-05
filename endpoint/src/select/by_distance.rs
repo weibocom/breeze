@@ -1,46 +1,41 @@
 use discovery::distance::{Addr, ByDistance};
+use protocol::BackendQuota;
 use rand::Rng;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
-use std::sync::Arc;
-
-#[repr(transparent)]
-#[derive(Clone, Default)]
-pub struct BackendQuota {
-    used_us: Arc<AtomicUsize>, // 所有副本累计使用的时间
-}
-impl BackendQuota {
-    #[inline]
-    pub fn incr(&self, d: ds::time::Duration) {
-        self.used_us.fetch_add(d.as_micros() as usize, Relaxed);
-    }
-    #[inline]
-    pub fn err_incr(&self, d: ds::time::Duration) {
-        // 一次错误请求，消耗500ms
-        self.used_us
-            .fetch_add(d.as_micros().max(500_000) as usize, Relaxed);
-    }
-    // 配置时间的微秒计数
-    #[inline]
-    fn us(&self) -> usize {
-        self.used_us.load(Relaxed)
-    }
-}
 
 // 选择replica策略，len_local指示的是优先访问的replicas。
 // 1. cacheservice因存在跨机房同步、优先访问本地机房，当前机房的replicas为local
 // 2. 其他资源，replicas长度与len_local相同
-#[derive(Clone)]
 pub struct Distance<T> {
-    len_local: u16,
+    len_local: u16,  // 实际使用的local实例数量
+    len_region: u16, // 通过排序计算出的可用区内的实例数量，len_region <= len_local
     backend_quota: bool,
-    idx: Arc<AtomicUsize>,
+    region_enabled: bool,
+    idx: AtomicUsize,
     replicas: Vec<(T, BackendQuota)>,
 }
-impl<T: Addr> Distance<T> {
+
+impl<T: Clone> Clone for Distance<T> {
+    fn clone(&self) -> Self {
+        Self {
+            len_local: self.len_local.clone(),
+            len_region: self.len_region.clone(),
+            backend_quota: self.backend_quota.clone(),
+            region_enabled: self.region_enabled.clone(),
+            //不同Distance之间没必要共享idx，也许应该设置为0，但当前对外暴露的更新接口更新replicas时都会更新idx，没有问题，否则可能产生越界
+            //警告：更新replicas需要同时更新idx
+            idx: self.idx.load(Relaxed).into(),
+            replicas: self.replicas.clone(),
+        }
+    }
+}
+impl<T> Distance<T> {
     pub fn new() -> Self {
         Self {
             len_local: 0,
+            len_region: 0,
             backend_quota: false,
+            region_enabled: false,
             idx: Default::default(),
             replicas: Vec::new(),
         }
@@ -58,32 +53,26 @@ impl<T: Addr> Distance<T> {
         debug_assert!(idx < self.len(), "{} < {}", idx, self.len());
         Some(unsafe { self.replicas.get_unchecked(idx).1.clone() })
     }
-    pub fn with_performance_tuning(
-        mut replicas: Vec<T>,
-        is_performance: bool,
-        region_enabled: bool,
-    ) -> Self {
+    pub fn with_mode(replicas: Vec<T>, performance: bool, region_first: bool) -> Self
+    where
+        T: Endpoint,
+    {
         assert_ne!(replicas.len(), 0);
+        let mut replicas: Vec<WithAddr<T>> = unsafe { std::mem::transmute(replicas) };
         let mut me = Self::new();
 
         // 资源启用可用区
-        let len_local = if region_enabled {
+        let len_local = if region_first {
             // 开启可用区，local_len是当前可用区资源实例副本长度；需求详见#658
             // 按distance选local
             // 1. 距离小于等于4为local
             // 2. local为0，则全部为local
-            let l = replicas.sort_by_region(
-                Vec::new(),
-                context::get().region(),
-                |d, _| d <= discovery::distance::DISTANCE_VAL_REGION,
-            );
+            let l = replicas.sort_by_region(Vec::new(), context::get().region(), |d, _| {
+                d <= discovery::distance::DISTANCE_VAL_REGION
+            });
+            me.len_region = l as u16; // 可用区内的实例数量
             if l == 0 {
-                log::warn!(
-                    "too few instance in region:{} total:{}, {:?}",
-                    l,
-                    replicas.len(),
-                    replicas.iter().map(|a| a.string()).collect::<Vec<_>>()
-                );
+                log::warn!("no region instance {}", replicas.string());
                 replicas.len()
             } else {
                 l
@@ -95,17 +84,25 @@ impl<T: Addr> Distance<T> {
             replicas.len()
         };
 
-        me.refresh(replicas);
+        me.refresh(unsafe { std::mem::transmute(replicas) });
 
         // 性能模式当前实现为按时间quota访问后端资源
-        me.backend_quota = is_performance;
+        me.backend_quota = performance;
+        me.region_enabled = region_first;
         me.topn(len_local);
 
         me
     }
+    // None说明没有启动
+    pub fn len_region(&self) -> Option<u16> {
+        self.region_enabled.then(|| self.len_region)
+    }
     #[inline]
-    pub fn from(replicas: Vec<T>) -> Self {
-        Self::with_performance_tuning(replicas, true, false)
+    pub fn from(replicas: Vec<T>) -> Self
+    where
+        T: Endpoint,
+    {
+        Self::with_mode(replicas, true, false)
     }
     // 同时更新配额
     fn refresh(&mut self, replicas: Vec<T>) {
@@ -166,7 +163,7 @@ impl<T: Addr> Distance<T> {
             let new = (idx + 1) % self.local_len();
             // 超过配额，则idx+1
             if let Ok(_) = self.idx.compare_exchange(idx, new, AcqRel, Relaxed) {
-                quota.used_us.store(0, Relaxed);
+                quota.reset();
             }
             idx = new;
         }
@@ -186,7 +183,7 @@ impl<T: Addr> Distance<T> {
         } else {
             self.check_quota_get_idx()
         };
-        debug_assert!(idx < self.local_len(), "idx:{} overflow {:?}", idx, self);
+        debug_assert!(idx < self.local_len(), "idx:{} < {}", idx, self.local_len());
         idx
     }
     // 只从local获取
@@ -198,8 +195,10 @@ impl<T: Addr> Distance<T> {
     // idx: 上一次获取到的idx
     // runs: 已经连续获取到的次数
     #[inline]
-    pub fn select_next_idx(&self, idx: usize, runs: usize) -> usize {
-        assert!(runs < self.len(), "{} {} {:?}", idx, runs, self);
+    fn select_next_idx_inner(&self, idx: usize, runs: usize) -> usize
+    where
+        T: Endpoint,
+    {
         // 还可以从local中取
         let s_idx = if runs < self.local_len() {
             // 在sort时，相关的distance会进行一次random处理，在idx节点宕机时，不会让idx+1个节点成为热点
@@ -218,8 +217,25 @@ impl<T: Addr> Distance<T> {
         assert!(s_idx < self.len(), "{},{} {} {:?}", idx, s_idx, runs, self);
         s_idx
     }
+    pub fn select_next_idx(&self, idx: usize, runs: usize) -> usize
+    where
+        T: Endpoint,
+    {
+        let mut current_idx = idx;
+        assert!(runs < self.len(), "{} {} {:?}", current_idx, runs, self);
+        for run in runs..self.len() {
+            current_idx = self.select_next_idx_inner(current_idx, run);
+            if self.replicas[current_idx].0.available() {
+                return current_idx;
+            }
+        }
+        return (idx + 1) % self.len();
+    }
     #[inline]
-    pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T) {
+    pub unsafe fn unsafe_next(&self, idx: usize, runs: usize) -> (usize, &T)
+    where
+        T: Endpoint,
+    {
         let idx = self.select_next_idx(idx, runs);
         (idx, &self.replicas.get_unchecked(idx).0)
     }
@@ -227,42 +243,29 @@ impl<T: Addr> Distance<T> {
         self.replicas.into_iter().map(|(r, _)| r).collect()
     }
     #[inline]
-    pub fn iter(&self) -> Iter<'_, T> {
-        Iter {
-            start: unsafe { NonNull::new_unchecked(self.replicas.as_ptr() as *mut _) },
-            end: unsafe { self.replicas.as_ptr().add(self.replicas.len()) },
-            _marker: std::marker::PhantomData,
-        }
+    pub fn iter(&self) -> impl std::iter::Iterator<Item = &T> {
+        self.replicas.iter().map(|(r, _)| r)
     }
 }
 
-use std::ptr::NonNull;
-pub struct Iter<'a, T> {
-    start: NonNull<(T, BackendQuota)>,
-    end: *const (T, BackendQuota),
-    _marker: std::marker::PhantomData<&'a T>,
-}
-impl<'a, T> std::iter::Iterator for Iter<'a, T> {
-    type Item = &'a T;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.start.as_ptr() as *const _ == self.end {
-            None
-        } else {
-            let ret = unsafe { &self.start.as_ref().0 };
-            self.start = unsafe { NonNull::new_unchecked(self.start.as_ptr().add(1)) };
-            Some(ret)
-        }
-    }
-}
+use crate::Endpoint;
 
-impl<T: Addr> std::fmt::Debug for Distance<T> {
+impl<T: Endpoint> std::fmt::Debug for Distance<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let addrs: &Vec<WithAddr<T>> = unsafe { std::mem::transmute(&self.replicas) };
         write!(
             f,
-            "len: {}, local: {} backends:{:?}",
+            "len:{}, local:{} backends:{}",
             self.len(),
             self.len_local,
-            self.replicas.iter().map(|s| s.addr()).collect::<Vec<_>>()
+            addrs.string()
         )
+    }
+}
+
+struct WithAddr<T>(T);
+impl<T: Endpoint> Addr for WithAddr<T> {
+    fn addr(&self) -> &str {
+        self.0.addr()
     }
 }

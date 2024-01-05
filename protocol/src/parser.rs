@@ -101,6 +101,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     // 构建回写请求。
     // 返回None: 说明req复用，build in place
     // 返回新的request
+    #[inline(always)]
     fn build_writeback_request<C, M, I>(
         &self,
         _ctx: &mut C,

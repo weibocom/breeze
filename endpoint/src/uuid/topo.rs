@@ -1,42 +1,35 @@
-use std::collections::HashMap;
-
-use crate::{Builder, Endpoint, Single, Topology};
-use discovery::TopologyWrite;
-use protocol::{Protocol, Request, Resource};
-use sharding::{
-    hash::{Hash, HashKey},
-    Distance,
+use crate::{
+    dns::{DnsConfig, DnsLookup},
+    select::Distance,
+    Endpoint, Endpoints, PerformanceTuning, Topology,
 };
+use discovery::TopologyWrite;
+use protocol::{Protocol, Request, Resource::Uuid};
+use sharding::hash::{Hash, HashKey};
 
 use super::config::UuidNamespace;
-use crate::{dns::DnsConfig, Timeout};
-use discovery::dns::{self, IPPort};
 
 #[derive(Clone)]
-pub struct UuidService<B, E, Req, P> {
-    shard: Distance<(String, E)>,
+pub struct UuidService<E, P> {
+    shard: Distance<E>,
     parser: P,
     cfg: Box<DnsConfig<UuidNamespace>>,
-    _mark: std::marker::PhantomData<(B, Req)>,
 }
-impl<B, E, Req, P> From<P> for UuidService<B, E, Req, P> {
+impl<E, P> From<P> for UuidService<E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
             shard: Distance::new(),
             parser,
             cfg: Default::default(),
-            _mark: Default::default(),
         }
     }
 }
 
-impl<B, E, Req, P> Hash for UuidService<B, E, Req, P>
+impl<E, P> Hash for UuidService<E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, _k: &K) -> i64 {
@@ -44,16 +37,15 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for UuidService<B, E, Req, P>
+impl<E, Req, P> Topology for UuidService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for UuidService<B, E, Req, P>
+impl<E, Req, P> Endpoint for UuidService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -76,19 +68,14 @@ where
         } else {
             unsafe { self.shard.unsafe_next(ctx.idx as usize, ctx.runs as usize) }
         };
-        log::debug!(
-            "+++ {} send =>, idx:{}, addr:{}",
-            self.cfg.service,
-            idx,
-            endpoint.0,
-        );
+        log::debug!("{} =>, idx:{}, addr:{}", self, idx, endpoint.addr(),);
 
         ctx.idx = idx as u16;
         ctx.runs += 1;
 
         let try_next = ctx.runs == 1;
         req.try_next(try_next);
-        endpoint.1.send(req);
+        endpoint.send(req);
     }
 
     #[inline]
@@ -96,11 +83,10 @@ where
         0
     }
 }
-impl<B, E, Req, P> TopologyWrite for UuidService<B, E, Req, P>
+impl<E, P> TopologyWrite for UuidService<E, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint,
 {
     #[inline]
     fn update(&mut self, namespace: &str, cfg: &str) {
@@ -114,11 +100,13 @@ where
     }
 
     #[inline]
-    fn load(&mut self) {
-        self.cfg.load_guard().check_load(|| self.load_inner());
+    fn load(&mut self) -> bool {
+        self.cfg
+            .load_guard()
+            .check_load(|| self.load_inner().is_some())
     }
 }
-impl<B, E, Req, P> discovery::Inited for UuidService<B, E, Req, P>
+impl<E, P> discovery::Inited for UuidService<E, P>
 where
     E: discovery::Inited,
 {
@@ -128,82 +116,34 @@ where
             && self
                 .shard
                 .iter()
-                .fold(true, |inited, (_, e)| inited && e.inited())
+                .fold(true, |inited, e| inited && e.inited())
     }
 }
 
-impl<B, E, Req, P> UuidService<B, E, Req, P>
+impl<E, P> UuidService<E, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint,
 {
     #[inline]
-    fn take_or_build(&self, old: &mut HashMap<String, Vec<E>>, addr: &str, timeout: Timeout) -> E {
-        let service = &self.cfg.service;
-        match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
-            Some(Some(end)) => end,
-            _ => B::build(&addr, self.parser.clone(), Resource::Uuid, service, timeout),
-        }
-    }
-
-    #[inline]
-    fn load_inner(&mut self) -> bool {
-        let mut addrs = Vec::new();
-        for shard in self.cfg.shards_url.iter() {
-            for url_port in shard {
-                let url = url_port.host();
-                let port = url_port.port();
-                use ds::vec::Add;
-                dns::lookup_ips(url, |ips| {
-                    for ip in ips {
-                        addrs.add(ip.to_string() + ":" + port);
-                    }
-                });
-            }
-        }
-        if addrs.len() == 0 {
-            log::warn!("addr {:?} not looked up", self.cfg.shards_url);
-            return false;
-        }
-        // 到这之后，所有的shard都能解析出ip
-        let mut old = HashMap::with_capacity(self.shard.len());
-        for backend in self.shard.take() {
-            old.entry(backend.0).or_insert(Vec::new()).push(backend.1);
-        }
-        let mut backends = Vec::with_capacity(addrs.len());
-        for addr in addrs {
-            assert_ne!(addr.len(), 0);
-            let backend = self.take_or_build(&mut old, &addr, self.cfg.timeout());
-            backends.push((addr, backend));
-        }
-        use crate::PerformanceTuning;
-        self.shard = Distance::with_performance_tuning(
+    fn load_inner(&mut self) -> Option<()> {
+        let addrs = self.cfg.shards_url.flatten_lookup()?;
+        assert_ne!(addrs.len(), 0);
+        let mut endpoints: Endpoints<'_, P, E> =
+            Endpoints::new(&self.cfg.service, &self.parser, Uuid).with_cache(self.shard.take());
+        let backends = endpoints.take_or_build(&addrs, self.cfg.timeout());
+        self.shard = Distance::with_mode(
             backends,
             self.cfg.basic.selector.tuning_mode(),
             self.cfg.basic.region_enabled,
         );
 
-        log::info!(
-            "{} load complete, backends:{:?} . dropping:{:?}",
-            self.cfg.service,
-            self.shard,
-            {
-                old.retain(|_k, v| v.len() > 0);
-                old.keys()
-            }
-        );
-
-        true
+        log::info!("{} load backends. dropping:{}", self, endpoints);
+        Some(())
     }
 }
 
-impl<B: Send + Sync, E, Req, P> std::fmt::Display for UuidService<B, E, Req, P>
-where
-    E: Endpoint<Item = Req>,
-    Req: Request,
-    P: Protocol,
-{
+impl<E, P> std::fmt::Display for UuidService<E, P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UuidService")
             .field("cfg", &self.cfg)

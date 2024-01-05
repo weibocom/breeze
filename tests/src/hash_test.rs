@@ -88,6 +88,19 @@ mod hash_test {
         // h14243dc752b5beac 对应i64算法为2461123049，i32算法为-1833844247，abs后为1833844247，
         assert_eq!(crc, 1833844247);
     }
+    #[test]
+    fn crc32_rawlocal() {
+        // 这个case是验证key是"0000"是的场景，这个取num时的值应该为0。
+        //let crc32_rawlocal = Rawcrc32local::default();
+        //let crc32_rawlocal_hasher = sharding::hash::crc::Rawcrc32local::default();
+
+        //let key = &&[48u8, 48, 48, 48][..];
+
+        //// crc32 rawlocal
+        //let crc32_rawlocal = crc32_rawlocal.hash(key);
+        //let crc32_rawlocal_hasher = crc32_rawlocal_hasher.hash(key);
+        //assert_eq!(crc32_rawlocal, crc32_rawlocal_hasher, "key:{key:?}");
+    }
 
     #[test]
     fn crc32_hasher() {

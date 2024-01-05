@@ -1,71 +1,57 @@
+use ds::time::{interval, Duration};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::{Id, IdSequence, Item, Metric};
+use crate::{Id, Item, ItemData, Metric};
 
 const CHUNK_SIZE: usize = 4096;
 
-use tokio::sync::mpsc::{
-    unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender,
+use tokio::{
+    sync::mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
+    time::Interval,
 };
 
 #[derive(Clone)]
 pub struct Metrics {
     // chunks只扩容，不做其他变更。
     chunks: Vec<*const Item>,
-    register: Sender<(Arc<Id>, i64)>,
     len: usize,
-    id_idx: IdSequence,
+    id_idx: HashMap<Arc<Id>, usize>,
+    idx_id: Vec<Arc<Id>>,
 }
 
+enum Op {
+    Register(Arc<Id>),
+    Flush(Arc<Id>, ItemData),
+}
+use crate::ItemPtr;
+
 impl Metrics {
-    fn new(register: Sender<(Arc<Id>, i64)>) -> Self {
-        Self {
+    fn new() -> Self {
+        let mut me = Self {
             // 在metric register handler中，按需要扩容chunks
             chunks: Vec::new(),
-            register,
             len: 0,
             id_idx: Default::default(),
-        }
+            idx_id: Default::default(),
+        };
+        me.reserve_chunk_num(1);
+        me
     }
-    pub(crate) fn register(&self, id: Id) -> Metric {
+    fn register(&self, id: Id) -> Metric {
+        if let Some(&idx) = self.id_idx.get(&id) {
+            let item = self.get_item(idx);
+            let item = ItemPtr::global(item);
+            return Metric::from(item);
+        }
         let id = Arc::new(id);
-        self.try_send_register(id.clone());
-        Metric::from(id)
-    }
-    // 在初始化完成之前，部分数据需要先缓存处理。
-    // 只缓存Count类型的数据
-    #[inline]
-    pub(crate) fn cache(&self, id: &Arc<Id>, cache: i64) {
-        if id.t.need_flush() {
-            if let Err(_e) = self.register.send((id.clone(), cache)) {
-                log::info!("cache error. id:{:?} cache:{} {:?}", id, cache, _e);
-            }
-        }
-    }
-    pub(crate) fn try_send_register(&self, id: Arc<Id>) {
-        if self.id_idx.get_idx(&id).is_none() {
-            // 需要注册。可能会多次重复注册，在接收的时候去重处理。
-            log::debug!("metric registering {:?}", id);
-            if let Err(_e) = self.register.send((id.clone(), 0)) {
-                log::info!("send register metric failed. {:?} id:{:?}", _e, id)
-            };
-        }
-    }
-    fn init(&mut self, id: Arc<Id>) {
-        // 检查是否已经初始化
-        if let Some(idx) = self.id_idx.get_idx(&id) {
-            assert!(self.get_item(idx).inited());
-            return;
-        }
-        let idx = self.id_idx.register_name(&id);
-        self.reserve(idx);
-        self.len = (idx + 1).max(self.len);
-        if let Some(mut item) = self.get_item(idx).try_lock() {
-            log::debug!("item inited:{:?}", id);
-            item.init(id);
-            return;
-        }
-        log::warn!("failed to aquire metric lock. idx:{}", idx);
+        // 从local中获取
+        let item = ItemPtr::local(id.clone());
+        let metric = Metric::from(item);
+        log::debug!("register sent {id:?}");
+        let _r = get_register().send(Op::Register(id));
+        assert!(_r.is_ok());
+        return metric;
     }
     fn cap(&self) -> usize {
         self.chunks.len() * CHUNK_SIZE
@@ -73,6 +59,13 @@ impl Metrics {
     #[inline]
     pub(crate) fn len(&self) -> usize {
         self.len
+    }
+    #[inline]
+    pub(crate) fn get_item_id(&self, idx: usize) -> (&Id, &Item) {
+        let item = self.get_item(idx);
+        assert!(idx < self.idx_id.len());
+        let id = self.idx_id.get(idx).expect("id");
+        (id, item)
     }
     pub(crate) fn get_item(&self, idx: usize) -> &Item {
         assert!(idx < self.len);
@@ -83,36 +76,30 @@ impl Metrics {
         unsafe { &*self.chunks.get_unchecked(slot).offset(offset as isize) }
     }
     #[inline]
-    fn check_and_get_item(&self, id: &Arc<Id>) -> Option<*const Item> {
-        if let Some(idx) = self.id_idx.get_idx(id) {
-            let item = self.get_item(idx);
-            if item.inited() {
-                return Some(item);
-            }
+    fn reserve_idx(&mut self, id: &Arc<Id>) {
+        self.reserve_chunk_num(1);
+        let idx = *self.id_idx.entry(id.clone()).or_insert(self.len);
+        if idx == self.len() {
+            self.len += 1;
+            self.idx_id.push(id.clone());
+            assert_eq!(self.len, self.idx_id.len());
         }
-        None
     }
     #[inline]
-    fn reserve(&mut self, idx: usize) {
-        if idx < self.cap() {
+    fn reserve_chunk_num(&mut self, n: usize) {
+        if self.len + n < self.cap() {
             return;
         }
-        let num = ((idx + CHUNK_SIZE) - self.cap()) / CHUNK_SIZE;
+        let num = ((self.len + n + CHUNK_SIZE) - self.cap()) / CHUNK_SIZE;
+        let mut oft = self.chunks.len() * CHUNK_SIZE;
         for _i in 0..num {
-            let chunk: Vec<Item> = (0..CHUNK_SIZE).map(|_| Default::default()).collect();
+            let chunk: Vec<Item> = (0..CHUNK_SIZE).map(|j| Item::global(oft + j)).collect();
             let leaked = Box::leak(Box::new(chunk));
             self.chunks.push(leaked.as_mut_ptr());
+            oft += CHUNK_SIZE;
         }
         log::info!("chunks scaled:{}", self);
     }
-    //pub(crate) fn write<W: crate::ItemWriter>(&self, w: &mut W, secs: f64) {
-    //    for i in 0..self.len {
-    //        let item = self.get_item(i);
-    //        if item.inited() {
-    //            item.snapshot(w, secs);
-    //        }
-    //    }
-    //}
 }
 
 #[inline]
@@ -125,16 +112,54 @@ pub(crate) fn register_metric(id: Id) -> Metric {
     get_metrics().register(id)
 }
 #[inline]
-pub(crate) fn register_cache(id: &Arc<Id>, cache: i64) {
-    get_metrics().cache(id, cache)
+pub(crate) fn flush_item(item: &Item) {
+    debug_assert!(item.is_local());
+    let id = item.id();
+    use crate::Snapshot;
+    if id.t.is_empty(item.data()) {
+        return;
+    }
+    if let Some(global) = get_item(&*id) {
+        debug_assert!(!global.is_null());
+        let global = unsafe { &*global };
+        id.t.merge(global.data(), item.data());
+    } else {
+        // 如果global不存在，则将当前的item异步flush到global
+        let data = ItemData::default();
+        id.t.merge(&data, item.data());
+        let _r = get_register().send(Op::Flush(id.clone(), data));
+        assert!(_r.is_ok());
+    }
+}
+pub(crate) fn with_metric_id<O>(idx: usize, mut f: impl FnMut(&Id) -> O) -> O {
+    f(get_metrics().get_item_id(idx).0)
 }
 #[inline]
-pub(crate) fn get_metric(id: &Arc<Id>) -> Option<*const Item> {
-    get_metrics().check_and_get_item(id)
+pub(crate) fn get_item(id: &Id) -> Option<*const Item> {
+    let metrics = get_metrics();
+    metrics
+        .id_idx
+        .get(id)
+        .map(|&idx| metrics.get_item(idx) as *const _)
 }
 
 use once_cell::sync::OnceCell;
 static METRICS: OnceCell<CowReadHandle<Metrics>> = OnceCell::new();
+static mut SENDER: Option<Sender<Op>> = None;
+fn get_register() -> &'static Sender<Op> {
+    unsafe { SENDER.as_ref().expect("not inited") }
+}
+pub mod tests {
+    use super::*;
+    static mut TEST_RECEIVER: Option<Receiver<Op>> = None;
+    pub fn init_metrics_onlyfor_test() {
+        let (register_tx, chan_rx) = unbounded_channel();
+        let (_tx, rx) = ds::cow(Metrics::new());
+        unsafe { SENDER = Some(register_tx) };
+        let _ = METRICS.set(rx).map_err(|_e| panic!("init"));
+        unsafe { TEST_RECEIVER = Some(chan_rx) };
+    }
+}
 
 use ds::{CowReadHandle, CowWriteHandle, ReadGuard};
 
@@ -143,101 +168,83 @@ unsafe impl Send for Metrics {}
 use std::fmt::{self, Display, Formatter};
 impl Display for Metrics {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "len:{} cap:{} chunks:{}",
-            self.len,
-            self.cap(),
-            self.chunks.len()
-        )
+        write!(f, "len:{} cap:{}", self.len, self.cap(),)
     }
 }
 
-use std::collections::HashMap;
 pub struct MetricRegister {
-    rx: Receiver<(Arc<Id>, i64)>,
+    rx: Receiver<Op>,
     metrics: CowWriteHandle<Metrics>,
     tick: Interval,
-    cache: Option<HashMap<Arc<Id>, i64>>,
-    metrics_r: Option<Metrics>,
+    cache: Option<Metrics>,
 }
 
 impl MetricRegister {
-    fn new(rx: Receiver<(Arc<Id>, i64)>, metrics: CowWriteHandle<Metrics>) -> Self {
-        let mut tick = interval(Duration::from_secs(3));
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    fn new(rx: Receiver<Op>, metrics: CowWriteHandle<Metrics>) -> Self {
         Self {
             rx,
             metrics,
-            tick,
+            tick: interval(Duration::from_secs(1)),
             cache: None,
-            metrics_r: None,
         }
     }
-    fn process_one(&mut self, id: Arc<Id>, cache: i64) {
-        if cache == 0 {
-            // 说明是初始化
-            self.metrics_r
-                .get_or_insert_with(|| self.metrics.copy())
-                .init(id);
-        } else {
-            *self
-                .cache
-                .get_or_insert_with(|| HashMap::with_capacity(128))
-                .entry(id)
-                .or_insert(0) += cache;
-        }
+    fn get_metrics(&mut self) -> &mut Metrics {
+        self.cache.get_or_insert_with(|| self.metrics.copy())
     }
 }
 impl Default for MetricRegister {
     fn default() -> Self {
         log::info!("task started ==> metric register");
         assert!(METRICS.get().is_none());
+        assert!(unsafe { SENDER.is_none() });
         let (register_tx, register_rx) = unbounded_channel();
-        let (tx, rx) = ds::cow(Metrics::new(register_tx));
+        let (tx, rx) = ds::cow(Metrics::new());
         let _ = METRICS.set(rx);
+        // 设置全局的SENDER
+        unsafe { SENDER = Some(register_tx) };
         MetricRegister::new(register_rx, tx)
     }
 }
 
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-
-use ds::time::{interval, Duration, Interval};
-use std::task::ready;
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{ready, Context, Poll},
+};
 
 impl Future for MetricRegister {
     type Output = ();
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = &mut *self;
+        log::debug!("metric register poll");
         loop {
-            while let Poll::Ready(Some((id, cache))) = me.rx.poll_recv(cx) {
-                me.process_one(id, cache);
-            }
-            // 注册。
-            if let Some(metrics) = me.metrics_r.take() {
-                me.metrics.update(metrics);
-            }
-            // flush cache
-            if let Some(mut cache) = me.cache.take() {
-                let metrics = me.metrics.get();
-                for (id, v) in cache.iter_mut() {
-                    if let Some(item) = metrics.check_and_get_item(id) {
-                        // 已经初始化完成，flush cache
-                        unsafe { (&*item).data().flush(*v) };
-                        *v = 0;
+            let ret = me.rx.poll_recv(cx);
+            if let Poll::Ready(Some(op)) = ret {
+                match op {
+                    Op::Register(id) => {
+                        me.get_metrics().reserve_idx(&id);
+                    }
+                    Op::Flush(id, local) => {
+                        let metrics = me.get_metrics();
+                        // 一定是已经注册的
+                        let idx = *metrics.id_idx.get(&id).expect("id not registered");
+                        let global = metrics.get_item(idx);
+                        use crate::Snapshot;
+                        id.t.merge(global.data(), &local);
                     }
                 }
-                // 删除所有cache为0的值
-                cache.retain(|_k, v| *v > 0);
-                if cache.len() > 0 {
-                    me.cache = Some(cache);
-                }
-                // 有更新，说明channel里面可能还有数据等待处理。
                 continue;
             }
+            if me.cache.is_none() {
+                let _r = ready!(ret);
+                panic!("register channel closed");
+            }
+
+            // 控制更新频繁
             ready!(me.tick.poll_tick(cx));
+            let t = me.cache.take().expect("cache");
+            log::debug!("metrics updated:{}", t);
+            me.metrics.update(t);
         }
     }
 }

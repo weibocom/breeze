@@ -43,8 +43,11 @@ impl Operation {
     pub fn name(&self) -> &'static str {
         OP_NAMES[*self as u8 as usize]
     }
+
+    // 去掉master only语意，增加master first，在首先尝试master失败后，可以继续retry 非master节点 fishermen
     #[inline]
-    pub fn master_only(&self) -> bool {
+    // pub fn master_only(&self) -> bool {
+    pub fn master_first(&self) -> bool {
         *self as usize == Gets as usize || *self as usize == Meta as usize
     }
     #[inline]

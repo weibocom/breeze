@@ -1,51 +1,68 @@
 use ds::time::Duration;
 
-use crate::{Id, ItemWriter, NumberInner};
+use super::{base::Adder, IncrTo, ItemData};
+use crate::ItemWriter as Writer;
 pub const MAX: Duration = Duration::from_millis(30);
 const SLOW_US: i64 = Duration::from_millis(100).as_micros() as i64;
 const MAX_US: i64 = MAX.as_micros() as i64;
-pub struct Rtt {
-    count: NumberInner,
-    total_us: NumberInner,
-    slow: NumberInner,
-    max: NumberInner,
-}
 
-impl Rtt {
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Rtt;
+//{
+//    count: NumberInner,
+//    total_us: NumberInner,
+//    slow: NumberInner,
+//    max: NumberInner,
+//}
+
+// d0: 总的数量
+// d1: 总的耗时
+// d2: 慢的数量
+// d3: 最大的耗时
+impl super::Snapshot for Rtt {
     #[inline]
-    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData, w: &mut W, secs: f64) {
         // qps
-        let count = self.count.take();
+        let count = data.d0.take();
         if count > 0 {
-            w.write(&id.path, id.key, "qps", count as f64 / secs);
+            w.write(path, key, "qps", count as f64 / secs);
             // avg_us
-            let total_us = self.total_us.take();
+            let total_us = data.d1.take();
             // 按微秒取整
             let avg = (total_us as f64 / count as f64) as i64;
-            w.write(&id.path, id.key, "avg_us", avg);
+            w.write(path, key, "avg_us", avg);
 
             // slow qps
-            let slow = self.slow.take();
+            let slow = data.d2.take();
             if slow > 0 {
-                w.write(&id.path, id.key, "qps_itvl100ms", slow as f64 / secs);
+                w.write(path, key, "qps_itvl100ms", slow as f64 / secs);
             }
-            let max = self.max.zero();
+            let max = data.d3.take();
             if max > 0 {
-                w.write(&id.path, id.key, "max_us", max);
+                w.write(path, key, "max_us", max);
             }
         }
     }
+}
 
+// d0: 总的数量
+// d1: 总的耗时
+// d2: 慢的数量
+// d3: 最大的耗时
+impl IncrTo for Duration {
     #[inline]
-    pub(crate) fn incr(&self, d: Duration) {
-        self.count.incr(1);
-        let us = d.as_micros() as i64;
-        self.total_us.incr(us);
-        if us >= SLOW_US {
-            self.slow.incr(1);
+    fn incr_to(&self, data: &ItemData) {
+        // 总的数量
+        data.d0.incr();
+        let us = self.as_micros() as i64;
+        // 总的耗时
+        data.d1.incr_by(us);
+        if self.as_micros() as i64 >= SLOW_US {
+            // 慢的数量
+            data.d2.incr();
         }
         if us >= MAX_US {
-            self.max.max(us);
+            data.d3.max(us);
         }
     }
 }
