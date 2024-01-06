@@ -140,25 +140,14 @@ impl<'a, P: Protocol, E: Endpoint> Endpoints<'a, P, E> {
             .expect("take")
     }
     pub fn take_or_build(&mut self, addrs: &[String], to: Timeout) -> Vec<E> {
-        addrs
-            .iter()
-            .map(|addr| {
-                self.cache
-                    .get_mut(addr)
-                    .map(|endpoints| endpoints.pop())
-                    .flatten()
-                    .unwrap_or_else(|| {
-                        let p = self.parser.clone();
-                        E::build(&addr, p, self.resource, self.service, to)
-                    })
-            })
-            .collect()
+        self.take_or_build_o(addrs, to, Default::default())
     }
     pub fn take_or_build_one_o(&mut self, addr: &str, to: Timeout, res: ResOption) -> E {
         self.take_or_build_o(&[addr.to_owned()], to, res)
             .pop()
             .expect("take")
     }
+    // 优先从cache里面取；如果cache里面没有，则新建一个endpoint
     pub fn take_or_build_o(&mut self, addrs: &[String], to: Timeout, res: ResOption) -> Vec<E> {
         addrs
             .iter()
