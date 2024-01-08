@@ -2,7 +2,7 @@ use crate::kv::common::buffer_pool::Buffer;
 use crate::kv::common::constants::{CapabilityFlags, MAX_PAYLOAD_LEN};
 use crate::kv::error::Result;
 
-pub use crate::kv::common::proto::{Binary, Text};
+pub use crate::kv::common::proto::Text;
 
 use super::packet::MysqlRawPacket;
 use crate::kv::common::{io::ParseBuf, packets::OkPacket, row::RowDeserializer};
