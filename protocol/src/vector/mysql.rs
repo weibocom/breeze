@@ -239,7 +239,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     fn len(&self) -> usize {
         //按照可能的最长长度计算，其中table长度取得32，key长度取得5，测试比实际长15左右
         let mut base = match self.vcmd.cmd {
-            CommandType::VRange => "select  from  where ".len(),
+            CommandType::VRange | CommandType::VGet => "select  from  where ".len(),
             CommandType::VCard => "select count(*) from  where ".len(),
             CommandType::VAdd => "insert into  () values ()".len(),
             CommandType::VUpdate => "update  set  where ".len(),
@@ -282,7 +282,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     fn write_sql(&self, buf: &mut impl Write) {
         // let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
         match self.vcmd.cmd {
-            CommandType::VRange => {
+            CommandType::VRange | CommandType::VGet => {
                 let _ = write!(
                     buf,
                     "select {} from {} where {}",
