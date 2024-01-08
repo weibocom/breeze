@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-pub use crate::kv::strategy::{to_i64, Postfix};
+pub use crate::kv::strategy::Postfix;
 use chrono::NaiveDate;
 use ds::RingSlice;
 use protocol::Result;
