@@ -141,11 +141,4 @@ impl KvNamespace {
         }
         to
     }
-
-    // 可连接的slave数量的上限，取值及含义如下：
-    //   0: 可连接的slave数量不设置上限；else: 当前值即为最多可连接的slave数量
-    #[inline]
-    pub(super) fn max_slave_conns(&self) -> u16 {
-        self.basic.max_slave_conns
-    }
 }

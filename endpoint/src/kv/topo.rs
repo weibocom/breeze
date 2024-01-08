@@ -218,31 +218,25 @@ where
         });
 
         // 用户名和密码
-        let p = ResOption {
+        let opt = ResOption {
             token: self.cfg.basic.password.clone(),
             username: self.cfg.basic.user.clone(),
         };
 
         // 按Years遍历
-        addrs.iter_mut().for_each(|(interval, addrs_per_interval)| {
+        for (interval, addrs_per_interval) in addrs {
             let mut shards_per_interval = Vec::with_capacity(addrs_per_interval.len());
-
-            // 遍历当前Years所有的shards
-            addrs_per_interval.iter_mut().for_each(|ips| {
+            for mut ips in addrs_per_interval {
                 assert!(ips.len() >= 2);
                 // 选择需连接的slaves
                 let mut slaves = &mut ips[1..];
-                slaves = select_replicas(
-                    self.cfg.max_slave_conns(),
-                    self.cfg.basic.region_enabled,
-                    slaves,
-                );
+                slaves = self.select_replicas(slaves);
 
                 let replicas =
-                    endpoints.take_or_build_o(slaves, self.cfg.timeout_slave(), p.clone());
+                    endpoints.take_or_build_o(slaves, self.cfg.timeout_slave(), opt.clone());
 
                 let master =
-                    endpoints.take_or_build_one_o(&ips[0], self.cfg.timeout_master(), p.clone());
+                    endpoints.take_or_build_one_o(&ips[0], self.cfg.timeout_master(), opt.clone());
 
                 let shard = Shard::selector(
                     self.cfg.basic.selector.tuning_mode(),
@@ -254,48 +248,46 @@ where
                 // 检查可用区内实例数量, 详见issues-771
                 shard.check_region_len("mysql", &self.cfg.service);
                 shards_per_interval.push(shard);
-            });
+            }
             self.shards.push((interval, shards_per_interval));
-        });
+        }
 
         assert_eq!(self.shards.len(), self.cfg.shards_url.len());
         Some(())
     }
-}
 
-// 生成需要连接的候选slave列表：
-// 如果slave数量没有上限或者当前slave数量达不到上限，所有slave均被选中；
-// 否则需要挑选一部分slave连接，挑选规则：
-//   如果开启可用区，则挑选范围为可用区内的slaves；
-//   如果可用区内实例数量为0，或者未开启可用区，挑选范围为所有的slave
-//   在挑选范围内，选择slave数量不超过max_slave_conns的slave。
-#[inline]
-fn select_replicas<'a>(
-    max_conns: u16,
-    region_first: bool,
-    mut slaves: &'a mut [String],
-) -> &'a mut [String] {
-    if max_conns == 0 || slaves.len() <= max_conns as usize {
-        return slaves;
+    // 生成需要连接的候选slave列表：
+    // 如果slave数量没有上限或者当前slave数量达不到上限，所有slave均被选中；
+    // 否则需要挑选一部分slave连接，挑选规则：
+    //   如果开启可用区，则挑选范围为可用区内的slaves；
+    //   如果可用区内实例数量为0，或者未开启可用区，挑选范围为所有的slave
+    //   在挑选范围内，选择slave数量不超过max_slave_conns的slave。
+    #[inline]
+    fn select_replicas<'a>(&self, mut slaves: &'a mut [String]) -> &'a mut [String] {
+        if self.cfg.basic.max_slave_conns == 0
+            || slaves.len() <= self.cfg.basic.max_slave_conns as usize
+        {
+            return slaves;
+        }
+
+        // 计算可用区内slave数量；若未开启可用区则数量为0
+        let mut l = if self.cfg.basic.region_enabled {
+            slaves.sort_by_region(Vec::new(), context::get().region(), |d, _| {
+                d <= discovery::distance::DISTANCE_VAL_REGION
+            })
+        } else {
+            0
+        };
+
+        // 按可用区优先选到的slave数量为0，先随机化所有slave实例；l不为0，sort_by_region函数内对同距离的实例已做随机化
+        if l == 0 {
+            let mut rng = rand::thread_rng();
+            slaves.shuffle(&mut rng);
+            l = slaves.len();
+        }
+
+        &mut slaves[..l.min(self.cfg.basic.max_slave_conns as usize)]
     }
-
-    // 计算可用区内slave数量；若未开启可用区则数量为0
-    let mut l = if region_first {
-        slaves.sort_by_region(Vec::new(), context::get().region(), |d, _| {
-            d <= discovery::distance::DISTANCE_VAL_REGION
-        })
-    } else {
-        0
-    };
-
-    // 按可用区优先选到的slave数量为0，先随机化所有slave实例；l不为0，sort_by_region函数内对同距离的实例已做随机化
-    if l == 0 {
-        let mut rng = rand::thread_rng();
-        slaves.shuffle(&mut rng);
-        l = slaves.len();
-    }
-
-    &mut slaves[..l.min(max_conns as usize)]
 }
 
 impl<E, P> discovery::Inited for KvService<E, P>
