@@ -133,7 +133,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
         // 返回main-key，不带sub-key、ext-key
         let main_key_len = key.find(0, KEY_SEPERATOR).map_or(key.len(), |len| len);
-        log::debug!("+++ real key: {:?}", key.sub_slice(0, main_key_len));
         Ok(Some(key.sub_slice(0, main_key_len)))
     }
 
