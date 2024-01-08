@@ -417,5 +417,105 @@ mod tests {
                 buf,
                 &format!("delete from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3)")
                 );
+
+        // vget
+        let vector_cmd = VectorCmd {
+            cmd: CommandType::VGet,
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: vec![(
+                RingSlice::from_slice("field".as_bytes()),
+                RingSlice::from_slice("a".as_bytes()),
+            )],
+            wheres: Default::default(),
+            group_by: Default::default(),
+            order: Default::default(),
+            limit: Default::default(),
+        };
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        buf.clear();
+        builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
+        let db_idx = strategy.distribution().db_idx(hash);
+        assert_eq!(
+            buf,
+            &format!("select a from db_name_{db_idx}.table_name_2105 where `kid`='id'")
+        );
+
+        // vget 无field
+        let vector_cmd = VectorCmd {
+            cmd: CommandType::VGet,
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: Default::default(),
+            wheres: Default::default(),
+            group_by: Default::default(),
+            order: Default::default(),
+            limit: Default::default(),
+        };
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        buf.clear();
+        builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
+        let db_idx = strategy.distribution().db_idx(hash);
+        assert_eq!(
+            buf,
+            &format!("select * from db_name_{db_idx}.table_name_2105 where `kid`='id'")
+        );
+
+        // 复杂vget
+        let vector_cmd = VectorCmd {
+            cmd: CommandType::VGet,
+            keys: vec![
+                RingSlice::from_slice("id".as_bytes()),
+                RingSlice::from_slice("2105".as_bytes()),
+            ],
+            fields: vec![(
+                RingSlice::from_slice("field".as_bytes()),
+                RingSlice::from_slice("a,b".as_bytes()),
+            )],
+            wheres: vec![
+                Condition {
+                    field: RingSlice::from_slice("a".as_bytes()),
+                    op: RingSlice::from_slice("=".as_bytes()),
+                    value: RingSlice::from_slice("1".as_bytes()),
+                },
+                Condition {
+                    field: RingSlice::from_slice("b".as_bytes()),
+                    op: RingSlice::from_slice("in".as_bytes()),
+                    value: RingSlice::from_slice("2,3".as_bytes()),
+                },
+            ],
+            group_by: GroupBy {
+                fields: RingSlice::from_slice("b".as_bytes()),
+            },
+            order: Order {
+                field: RingSlice::from_slice("a,b".as_bytes()),
+                order: RingSlice::from_slice("desc".as_bytes()),
+            },
+            limit: Limit {
+                offset: RingSlice::from_slice("12".as_bytes()),
+                limit: RingSlice::from_slice("24".as_bytes()),
+            },
+        };
+        let hash = strategy.hasher().hash(&"id".as_bytes());
+        let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        buf.clear();
+        builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
+        let db_idx = strategy.distribution().db_idx(hash);
+        assert_eq!(
+            buf,
+            &format!("select a,b from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by b order by a,b desc limit 24 offset 12")
+            );
     }
 }
