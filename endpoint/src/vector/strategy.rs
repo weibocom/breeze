@@ -128,6 +128,7 @@ mod tests {
                 strategy: Default::default(),
                 password: Default::default(),
                 user: Default::default(),
+                region_enabled: Default::default(),
             },
             backends_flaten: Default::default(),
             backends: HashMap::from([(
