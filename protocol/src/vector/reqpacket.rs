@@ -92,10 +92,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         cfg: &CommandProperties,
         flag: &mut Flag,
     ) -> Result<Option<RingSlice>> {
-        // 第一个字段是cmd type，根据cmd type构建flag，并在后续解析中设置flag
-        // let cfg = self.parse_cmd_properties()?;
-        // let mut flag = cfg.flag();
-
         // meta cmd 当前直接返回固定响应，直接skip后面的tokens即可
         if cfg.op.is_meta() {
             self.skip_bulks(self.bulks)?;
@@ -280,6 +276,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         // skip 掉condition 的 bulks
         self.skip_bulks(self.bulks)?;
 
+        // 至此，剩余bulks必须得为0
         assert_eq!(self.bulks, 0, "kvector:{}", self);
         Ok(())
     }
