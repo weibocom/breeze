@@ -141,14 +141,13 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
 
         // kvector 相关的指令
-        // Cmd::new("vget").arity(-2).op(Get).cmd_type(CommandType::VGet).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        Cmd::new("vget").arity(-2).op(Get).cmd_type(CommandType::VGet).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
         Cmd::new("vrange").arity(-2).op(Get).cmd_type(CommandType::VRange).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
         Cmd::new("vadd").arity(-2).op(Store).cmd_type(CommandType::VAdd).padding(pt[3]).has_key().can_hold_field(),
         // Cmd::new("vreplace").arity(-2).op(Store).cmd_type(CommandType::VReplace).padding(pt[3]).has_key().can_hold_field(),
         Cmd::new("vupdate").arity(-2).op(Store).cmd_type(CommandType::VUpdate).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
         Cmd::new("vdel").arity(-2).op(Store).cmd_type(CommandType::VDel).padding(pt[3]).has_key().can_hold_where_condition(),
         Cmd::new("vcard").arity(-2).op(Get).cmd_type(CommandType::VCard).padding(pt[3]).has_key().can_hold_where_condition(),
-        Cmd::new("vget").arity(-2).op(Get).cmd_type(CommandType::VGet).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
     ] {
         cmds.add_support(c);
     }
@@ -205,14 +204,13 @@ impl CommandProperties {
 #[repr(u16)]
 pub enum CommandType {
     // kvector 访问的指令
-    // VGet,
+    VGet,
     VRange,
     VAdd,
     // VReplace,
     VUpdate,
     VDel,
     VCard,
-    VGet,
 
     // // 兼容redisclient而引入的指令
     // Select,

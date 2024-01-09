@@ -226,7 +226,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 // field 是key value pair 对，idx从0开始计数，如 [k1 v1 k2 v2] 的idx [0, 1, 2, 3]
                 // 没有bulks时，如果idx正好是奇数位，说明协议非法，少了value;如果idx为偶数，说明解析完毕；
                 if self.bulks == 0 {
-                    if field_idx & 2 == 1 {
+                    if field_idx & 1 == 1 {
                         log::warn!("+++ invalid field count:{}", self);
                         return Err(KvectorError::ReqNotSupported.into());
                     } else {
@@ -235,7 +235,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 };
 
                 // 还有bulks，检测奇偶位
-                if field_idx & 2 == 1 {
+                if field_idx & 1 == 1 {
                     // 奇数位的value直接skip
                     self.skip_bulks(1)?;
                 } else {
