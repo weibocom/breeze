@@ -5,6 +5,8 @@ use function_name::named;
 use redis::Value;
 
 const RESTYPE: &str = "vector";
+const CMD_VGET: &str = "vget";
+const CMD_VRANGE: &str = "vrange";
 
 #[test]
 #[named]
@@ -33,10 +35,33 @@ fn vrange_basic() {
         .query(&mut con);
     assert_eq!(rsp, Ok(32));
 }
+#[test]
+fn vget_key0() {
+    let mut con = get_conn(&RESTYPE.get_host());
+    let rsp: Result<_, redis::RedisError> = redis::cmd("vget")
+        .arg("0")
+        .arg("field")
+        .arg("a,b")
+        .arg("where")
+        .arg("a")
+        .arg("=")
+        .arg("1")
+        .arg("b")
+        .arg("in")
+        .arg("2,3")
+        .arg("order")
+        .arg("a")
+        .arg("desc")
+        .arg("limit")
+        .arg("12")
+        .arg("24")
+        .query::<i32>(&mut con);
+    println!("++ rsp:{:?}", rsp);
+    assert!(rsp.err().is_some());
+}
 
 // 返回0条数据
-#[test]
-fn vrange_0_with_empty_rs() {
+fn vrange_or_vget_0_with_empty_rs(cmd: &str) {
     let mut con = get_conn(&RESTYPE.get_host());
     let like_by_me = LikeByMe {
         uid: 46687411842092840,
@@ -48,7 +73,7 @@ fn vrange_0_with_empty_rs() {
 
     safe_add(&mut con, &like_by_me);
 
-    let rsp = redis::cmd("vrange")
+    let rsp = redis::cmd(cmd)
         .arg(format!("{},2211", uid_unknown))
         .arg("field")
         .arg("uid,object_type")
@@ -64,9 +89,8 @@ fn vrange_0_with_empty_rs() {
     assert_eq!(rsp, Ok(Value::Nil));
 }
 
-#[test]
 // 返回1条数据
-fn vrange_1_with_1rows() {
+fn vrange_or_vget_1_with_1rows(cmd: &str) {
     let mut con = get_conn(&RESTYPE.get_host());
     let like_by_me = LikeByMe {
         uid: 46687411842092841,
@@ -77,7 +101,7 @@ fn vrange_1_with_1rows() {
 
     safe_add(&mut con, &like_by_me);
 
-    let rsp = redis::cmd("vrange")
+    let rsp = redis::cmd(cmd)
         .arg(format!("{},2211", like_by_me.uid))
         .arg("field")
         .arg("uid,object_type")
@@ -108,9 +132,8 @@ fn vrange_1_with_1rows() {
         ]))
     );
 }
-#[test]
 // 返回2条数据
-fn vrange_2_with_2rows() {
+fn vrange_or_vget_2_with_2rows(cmd: &str) {
     let mut con = get_conn(&RESTYPE.get_host());
     let like_by_me1 = LikeByMe {
         uid: 46687411842092842,
@@ -128,7 +151,7 @@ fn vrange_2_with_2rows() {
     safe_add(&mut con, &like_by_me1);
     safe_add(&mut con, &like_by_me2);
 
-    let rsp = redis::cmd("vrange")
+    let rsp = redis::cmd(cmd)
         .arg(format!("{},2211", like_by_me1.uid))
         .arg("field")
         .arg("uid,object_type")
@@ -161,9 +184,8 @@ fn vrange_2_with_2rows() {
         ]))
     );
 }
-#[test]
 // 返回3条数据
-fn vrange_3_with_3rows() {
+fn vrange_or_vget_3_with_3rows(cmd: &str) {
     let mut con = get_conn(&RESTYPE.get_host());
     let like_by_me1 = LikeByMe {
         uid: 46687411842092843,
@@ -188,7 +210,7 @@ fn vrange_3_with_3rows() {
     safe_add(&mut con, &like_by_me2);
     safe_add(&mut con, &like_by_me3);
 
-    let rsp = redis::cmd("vrange")
+    let rsp = redis::cmd(cmd)
         .arg(format!("{},2211", like_by_me1.uid))
         .arg("field")
         .arg("uid,object_type")
@@ -228,10 +250,9 @@ fn vrange_3_with_3rows() {
 }
 
 // 返回0条数据
-#[test]
-fn vrange_4_with_sql_injectrion() {
+fn vrange_or_vget_4_with_sql_injectrion(cmd: &str) {
     let mut con = get_conn(&RESTYPE.get_host());
-    let rsp: Result<Value, redis::RedisError> = redis::cmd("vrange")
+    let rsp: Result<Value, redis::RedisError> = redis::cmd(cmd)
         .arg("4668741184209284,2211")
         .arg("field")
         .arg("uid,object_type,(select 1)")
@@ -248,10 +269,9 @@ fn vrange_4_with_sql_injectrion() {
 }
 
 // 返回0条数据
-#[test]
-fn vrange_5_without_where() {
+fn vrange_or_vget_5_without_where(cmd: &str) {
     let mut con = get_conn(&RESTYPE.get_host());
-    let rsp: Result<Value, redis::RedisError> = redis::cmd("vrange")
+    let rsp: Result<Value, redis::RedisError> = redis::cmd(cmd)
         .arg("4668741184209284,2211")
         .arg("field")
         .arg("uid,object_type")
@@ -260,9 +280,8 @@ fn vrange_5_without_where() {
     assert!(rsp.is_ok());
 }
 
-#[test]
 // 返回3条数据
-fn vrange_6_with_group() {
+fn vrange_or_vget_6_with_group(cmd: &str) {
     let mut con = get_conn(&RESTYPE.get_host());
     let like_by_me1 = LikeByMe {
         uid: 46687411842092846,
@@ -287,7 +306,7 @@ fn vrange_6_with_group() {
     safe_add(&mut con, &like_by_me2);
     safe_add(&mut con, &like_by_me3);
 
-    let rsp = redis::cmd("vrange")
+    let rsp = redis::cmd(cmd)
         .arg(format!("{},2211", like_by_me1.uid))
         .arg("field")
         .arg("uid,object_id")
@@ -322,9 +341,8 @@ fn vrange_6_with_group() {
     );
 }
 
-#[test]
 // 返回3条数据
-fn vrange_7_with_count() {
+fn vrange_or_vget_7_with_count(cmd: &str) {
     let mut con = get_conn(&RESTYPE.get_host());
     let like_by_me1 = LikeByMe {
         uid: 46687411842092847,
@@ -349,7 +367,7 @@ fn vrange_7_with_count() {
     safe_add(&mut con, &like_by_me2);
     safe_add(&mut con, &like_by_me3);
 
-    let rsp = redis::cmd("vrange")
+    let rsp = redis::cmd(cmd)
         .arg(format!("{},2211", like_by_me1.uid))
         .arg("field")
         .arg("uid,like_id,count(*)")
@@ -380,6 +398,98 @@ fn vrange_7_with_count() {
             ])
         ]))
     );
+}
+
+// 返回0条数据
+#[test]
+fn vrange_0_with_empty_rs() {
+    vrange_or_vget_0_with_empty_rs(CMD_VRANGE);
+}
+
+#[test]
+// 返回1条数据
+fn vrange_1_with_1rows() {
+    vrange_or_vget_1_with_1rows(CMD_VRANGE);
+}
+#[test]
+// 返回2条数据
+fn vrange_2_with_2rows() {
+    vrange_or_vget_2_with_2rows(CMD_VRANGE);
+}
+#[test]
+// 返回3条数据
+fn vrange_3_with_3rows() {
+    vrange_or_vget_3_with_3rows(CMD_VRANGE);
+}
+
+// 返回0条数据
+#[test]
+fn vrange_4_with_sql_injectrion() {
+    vrange_or_vget_4_with_sql_injectrion(CMD_VRANGE);
+}
+
+// 返回0条数据
+#[test]
+fn vrange_5_without_where() {
+    vrange_or_vget_5_without_where(CMD_VRANGE);
+}
+
+#[test]
+// 返回3条数据
+fn vrange_6_with_group() {
+    vrange_or_vget_6_with_group(CMD_VRANGE);
+}
+
+#[test]
+// 返回3条数据
+fn vrange_7_with_count() {
+    vrange_or_vget_7_with_count(CMD_VRANGE);
+}
+
+// 返回0条数据
+#[test]
+fn vget_0_with_empty_rs() {
+    vrange_or_vget_0_with_empty_rs(CMD_VGET);
+}
+
+#[test]
+// 返回1条数据
+fn vget_1_with_1rows() {
+    vrange_or_vget_1_with_1rows(CMD_VGET);
+}
+#[test]
+// 返回2条数据
+fn vget_2_with_2rows() {
+    vrange_or_vget_2_with_2rows(CMD_VGET);
+}
+#[test]
+// 返回3条数据
+fn vget_3_with_3rows() {
+    vrange_or_vget_3_with_3rows(CMD_VGET);
+}
+
+// 返回0条数据
+#[test]
+fn vget_4_with_sql_injectrion() {
+    vrange_or_vget_4_with_sql_injectrion(CMD_VGET);
+}
+
+// 返回0条数据
+#[test]
+fn vget_5_without_where() {
+    vrange_or_vget_5_without_where(CMD_VGET);
+}
+
+#[test]
+// 返回3条数据
+fn vget_6_with_group() {
+    vrange_or_vget_6_with_group(CMD_VGET);
+}
+
+#[test]
+// 返回3条数据
+fn vget_7_with_count() {
+    vrange_or_vget_7_with_count(CMD_VGET);
 }
 
 #[test]

@@ -149,6 +149,7 @@ pub(crate) fn validate_field_name(field_name: RingSlice) -> Result<()> {
 ///   3. vupdate： fields必须大于0；
 ///   4. vdel： fields必须为空；
 ///   5. vcard：无；
+///   6. vget：key不能为0
 pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()> {
     match cmd_type {
         CommandType::VRange => {
@@ -171,6 +172,12 @@ pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()
         }
         CommandType::VDel => {
             if vcmd.fields.len() > 0 {
+                return Err(crate::Error::RequestInvalidMagic);
+            }
+        }
+        CommandType::VGet => {
+            // vget 的key不能为0
+            if vcmd.keys[0].len() == 1 && vcmd.keys[0][0] == b'0' {
                 return Err(crate::Error::RequestInvalidMagic);
             }
         }
