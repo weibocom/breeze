@@ -158,19 +158,8 @@ impl<'a, P: Protocol, E: Endpoint> Endpoints<'a, P, E> {
 // 为Endpoints实现Formatter
 impl<'a, P, E: Endpoint> std::fmt::Display for Endpoints<'a, P, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut exists = Vec::new();
-        for (_addr, endpoints) in self.cache.iter() {
-            for e in endpoints {
-                exists.push(e.addr());
-            }
-        }
-        write!(
-            f,
-            "service:{} resource:{} addrs:{:?}",
-            self.service,
-            self.resource.name(),
-            exists
-        )
+        let addr: Vec<_> = self.cache.values().flatten().map(|e| e.addr()).collect();
+        write!(f, "({} {}) => {addr:?}", self.service, self.resource.name())
     }
 }
 
