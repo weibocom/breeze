@@ -48,7 +48,7 @@ pub(crate) fn register_target(ctx: &context::Context) {
 {{
   "labels": {{
     "pool": "{pool}",
-    "job": "datamesh-agent"
+    "job": "datamesh-agent",
     "idc": "{idc}"
   }},
   "target": "{local_ip}:{port}"
