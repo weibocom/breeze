@@ -182,8 +182,9 @@ impl DnsLookup for Vec<Vec<String>> {
                 let host = url_port.host();
                 let port = url_port.port();
                 G::lookup(host, |ips| {
+                    use ds::vec::Add;
                     for ip in ips {
-                        shard_ips.push(ip.to_string() + ":" + port);
+                        shard_ips.add(ip.to_string() + ":" + port);
                     }
                 });
                 first_ips_num.get_or_insert(shard_ips.len());
