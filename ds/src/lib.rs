@@ -21,7 +21,6 @@ pub use waker::AtomicWaker;
 pub mod time;
 
 mod asserts;
-pub use asserts::*;
 
 mod bits;
 pub use bits::*;

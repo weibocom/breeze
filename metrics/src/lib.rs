@@ -16,7 +16,6 @@ pub use ip::*;
 use item::*;
 pub use macros::*;
 pub use register::*;
-pub use sender::*;
 pub use types::*;
 
 use crate::{Id, ItemRc};
