@@ -75,14 +75,47 @@ fn dns_lookup() {
     // master有2个ip，只取最后一个
     assert_eq!(
         ips,
-        vec![vec![
-            "10.0.0.3:8080".to_string(),
-            "10.0.0.10:8080".to_string(),
-            "10.0.0.6:8080".to_string(),
-        ],
         vec![
-        "10.0.0.4:8080".to_string(),
-        "10.0.0.7:8080".to_string(),
-        ]]
+            vec![
+                "10.0.0.1:8080".to_string(),
+                "10.0.0.10:8080".to_string(),
+                "10.0.0.6:8080".to_string(),
+            ],
+            vec!["10.0.0.2:8080".to_string(), "10.0.0.7:8080".to_string(),]
+        ]
+    );
+    //从需要去重
+    query[1].push("slave_1_1:8080".to_string());
+    Dns.insert("slave_1_1", "10.0.0.7");
+    let ips = query.glookup::<Dns>(true, false).unwrap();
+    assert_eq!(ips.len(), 2);
+    assert_eq!(
+        ips,
+        vec![
+            vec![
+                "10.0.0.1:8080".to_string(),
+                "10.0.0.10:8080".to_string(),
+                "10.0.0.6:8080".to_string(),
+            ],
+            vec!["10.0.0.2:8080".to_string(), "10.0.0.7:8080".to_string(),]
+        ]
+    );
+    //从需要去重,但可以包含主
+    Dns.insert("slave_1", "10.0.0.2");
+    let ips = query.glookup::<Dns>(true, false).unwrap();
+    assert_eq!(
+        ips,
+        vec![
+            vec![
+                "10.0.0.1:8080".to_string(),
+                "10.0.0.10:8080".to_string(),
+                "10.0.0.6:8080".to_string(),
+            ],
+            vec![
+                "10.0.0.2:8080".to_string(),
+                "10.0.0.7:8080".to_string(),
+                "10.0.0.2:8080".to_string(),
+            ]
+        ]
     );
 }
