@@ -94,14 +94,6 @@ impl NumStr for usize {
                 buf[2] = b'0' + (*self % 10) as u8;
                 f(&buf)
             }
-            1000..=9999 => {
-                let mut buf = [0u8; 4];
-                buf[0] = b'0' + (*self / 1000) as u8;
-                buf[1] = b'0' + (*self / 100 % 10) as u8;
-                buf[2] = b'0' + (*self / 10 % 10) as u8;
-                buf[3] = b'0' + (*self % 10) as u8;
-                f(&buf)
-            }
             _ => {
                 let mut buf = [0u8; 32];
                 let mut left = *self;
