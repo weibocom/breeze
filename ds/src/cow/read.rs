@@ -56,7 +56,7 @@ pub(crate) struct CowHandleInner<T> {
 }
 
 #[derive(Clone)]
-pub struct ReadGuard<T>(Arc<T>);
+pub struct ReadGuard<T>(pub Arc<T>);
 impl<T> std::ops::Deref for ReadGuard<T> {
     type Target = T;
     #[inline]

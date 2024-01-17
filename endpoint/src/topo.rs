@@ -1,5 +1,5 @@
 use discovery::{Inited, TopologyWrite};
-use protocol::{Protocol, Request, ResOption, Resource};
+use protocol::{callback::ReqCallback, Protocol, Request, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
 
 use crate::Timeout;
@@ -21,14 +21,14 @@ procs::topology_dispatcher! {
         UuidService(crate::uuid::topo::UuidService<E, P>),
     }
 
-    pub trait Endpoint: Sized + Send + Sync {
+    pub trait Endpoint: Send + Sync {
         type Item;
         fn send(&self, req: Self::Item);
         fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
         fn available(&self) -> bool {todo!("available not implemented");}
         fn addr(&self) -> &str {"addr not implemented"}
-        fn build_o<P:Protocol>(_addr: &str, _p: P, _r: Resource, _service: &str, _to: Timeout, _o: ResOption) -> Self {todo!("build not implemented")}
-        fn build<P:Protocol>(addr: &str, p: P, r: Resource, service: &str, to: Timeout) -> Self {Self::build_o(addr, p, r, service, to, Default::default())}
+        fn build_o<P:Protocol>(_addr: &str, _p: P, _r: Resource, _service: &str, _to: Timeout, _o: ResOption) -> Self where Self: Sized {todo!("build not implemented")}
+        fn build<P:Protocol>(addr: &str, p: P, r: Resource, service: &str, to: Timeout) -> Self where Self: Sized {Self::build_o(addr, p, r, service, to, Default::default())}
     } => where P:Protocol, E:Endpoint<Item = R> + Inited, R: Request
 
     pub trait Topology : Endpoint + Hash{
@@ -50,6 +50,16 @@ procs::topology_dispatcher! {
         fn hash<S: HashKey>(&self, key: &S) -> i64;
     } => where P:Protocol, E:Endpoint,
 
+
+
+}
+
+impl<E: Endpoint<Item = protocol::request::Request> + Inited, P: Protocol> ReqCallback
+    for Topologies<E, P>
+{
+    fn send(&self, req: protocol::request::Request) {
+        Endpoint::send(self, req)
+    }
 }
 
 // 从环境变量获取是否开启后端资源访问的性能模式

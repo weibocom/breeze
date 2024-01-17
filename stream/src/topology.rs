@@ -1,15 +1,14 @@
+use std::sync::Arc;
+
 use discovery::TopologyReadGuard;
 use ds::ReadGuard;
 use endpoint::{Endpoint, Topology};
-use protocol::{
-    callback::{Callback, CallbackPtr},
-    request::Request,
-};
+use protocol::{callback::ReqCallback, request::Request};
 use sharding::hash::{Hash, HashKey};
 
 pub trait TopologyCheck: Sized {
     fn refresh(&mut self) -> bool;
-    fn callback(&self) -> CallbackPtr;
+    fn callback(&self) -> Arc<dyn ReqCallback>;
 }
 
 pub struct CheckedTopology<T> {
@@ -18,7 +17,6 @@ pub struct CheckedTopology<T> {
     version: usize,
     //快照，定时刷新
     top: ReadGuard<T>,
-    cb: CallbackPtr,
 }
 
 impl<T: Clone + Topology<Item = Request> + 'static> From<TopologyReadGuard<T>>
@@ -30,19 +28,17 @@ impl<T: Clone + Topology<Item = Request> + 'static> From<TopologyReadGuard<T>>
         // reader一定是已经初始化过的，否则会UB
         assert!(version > 0);
         let top = reader.get();
-        let cb_top = top.clone();
-        let send = Box::new(move |req| cb_top.send(req));
-        let cb = Callback::new(send).into();
         Self {
             reader,
             version,
             top,
-            cb,
         }
     }
 }
 
-impl<T: Clone + Topology<Item = Request> + 'static> TopologyCheck for CheckedTopology<T> {
+impl<T: Clone + Topology<Item = Request> + 'static + protocol::callback::ReqCallback> TopologyCheck
+    for CheckedTopology<T>
+{
     fn refresh(&mut self) -> bool {
         let version = self.reader.version();
         //大部分情况下都不需要更新
@@ -53,8 +49,8 @@ impl<T: Clone + Topology<Item = Request> + 'static> TopologyCheck for CheckedTop
             false
         }
     }
-    fn callback(&self) -> CallbackPtr {
-        self.cb.clone()
+    fn callback(&self) -> Arc<dyn ReqCallback> {
+        self.top.clone().0
     }
 }
 
