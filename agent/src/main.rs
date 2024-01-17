@@ -61,10 +61,7 @@ async fn run() -> Result<()> {
     }
 }
 
-async fn discovery_init(
-    ctx: &'static Context,
-    rx: Receiver<TopologyWriteGuard<Topology>>,
-) -> Result<()> {
+async fn discovery_init(ctx: &Context, rx: Receiver<TopologyWriteGuard<Topology>>) -> Result<()> {
     // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
     let discovery = discovery::Discovery::from_url(&ctx.discovery);
     let snapshot = ctx.snapshot_path.to_string();
