@@ -8,11 +8,13 @@ use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
 use super::config::VectorNamespace;
+use super::user::User;
 use super::vectortime::VectorTime;
 
 #[derive(Debug, Clone)]
 pub enum Strategist {
     VectorTime(VectorTime),
+    User(User),
 }
 
 impl Default for Strategist {
@@ -35,32 +37,47 @@ impl Default for Strategist {
 //2. 库名表名后缀如何计算
 impl Strategist {
     pub fn try_from(ns: &VectorNamespace) -> Self {
-        Self::VectorTime(VectorTime::new_with_db(
-            ns.basic.db_name.clone(),
-            ns.basic.table_name.clone(),
-            ns.basic.db_count,
-            //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
-            ns.backends.iter().next().unwrap().1.len() as u32,
-            ns.basic.table_postfix.as_str().into(),
-            ns.basic.keys.clone(),
-        ))
+        match ns.basic.strategy.as_str() {
+            "user" => Self::User(User::new(
+                ns.basic.db_name.clone(),
+                ns.basic.table_name.clone(),
+                ns.basic.db_count,
+                ns.basic.table_count,
+                ns.backends_all.len() as u32,
+                ns.basic.keys.clone(),
+            )),
+            _ => {
+                Self::VectorTime(VectorTime::new_with_db(
+                    ns.basic.db_name.clone(),
+                    ns.basic.table_name.clone(),
+                    ns.basic.db_count,
+                    //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
+                    ns.backends.iter().next().unwrap().1.len() as u32,
+                    ns.basic.table_postfix.as_str().into(),
+                    ns.basic.keys.clone(),
+                ))
+            }
+        }
     }
     #[inline]
     pub fn distribution(&self) -> &DBRange {
         match self {
             Strategist::VectorTime(inner) => inner.distribution(),
+            Strategist::User(inner) => inner.distribution(),
         }
     }
     #[inline]
     pub fn hasher(&self) -> &Hasher {
         match self {
             Strategist::VectorTime(inner) => inner.hasher(),
+            Strategist::User(inner) => inner.hasher(),
         }
     }
     #[inline]
     pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys),
+            Strategist::User(_) => todo!("User not impl get_date"),
         }
     }
 }
@@ -69,16 +86,19 @@ impl protocol::vector::Strategy for Strategist {
     fn keys(&self) -> &[String] {
         match self {
             Strategist::VectorTime(inner) => inner.keys(),
+            Strategist::User(inner) => inner.keys(),
         }
     }
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
         match self {
             Strategist::VectorTime(inner) => inner.condition_keys(),
+            Strategist::User(inner) => inner.condition_keys(),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
         match self {
             Strategist::VectorTime(inner) => inner.write_database_table(buf, date, hash),
+            Strategist::User(inner) => inner.write_database_table(buf, date, hash),
         }
     }
 }
@@ -124,13 +144,14 @@ mod tests {
                 table_name: "table_name".into(),
                 table_postfix: "yymm".into(),
                 db_count: 32,
+                table_count: 0,
                 keys: vec!["kid".into(), "yymm".into()],
                 strategy: Default::default(),
                 password: Default::default(),
                 user: Default::default(),
                 region_enabled: Default::default(),
             },
-            backends_flaten: Default::default(),
+            backends_all: Default::default(),
             backends: HashMap::from([(
                 Years(2005, 2099),
                 vec![
