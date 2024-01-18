@@ -28,7 +28,7 @@ pub struct Basic {
     //pub(crate) listen: String,
     #[serde(default)]
     pub(crate) resource_type: String,
-    #[serde(default)]
+    #[serde(default = "RedisNamespace::default_selector")]
     pub(crate) selector: String,
     #[serde(default)]
     pub(crate) region_enabled: bool,
@@ -58,6 +58,10 @@ impl RedisNamespace {
 
         log::debug!("parsed redis config:{}/{}", ns.basic.distribution, cfg);
         return Some(ns);
+    }
+
+    fn default_selector() -> String {
+        "timeslice".to_string()
     }
 
     #[inline]
