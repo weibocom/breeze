@@ -40,6 +40,7 @@ pub(crate) fn register_target(ctx: &context::Context) {
     };
     let port = ctx.port;
     let pool = ctx.service_pool.to_string();
+    let idc = ctx.idc.to_string();
     let local_ip = metrics::local_ip();
     rt::spawn(async move {
         let body = format!(
@@ -47,7 +48,8 @@ pub(crate) fn register_target(ctx: &context::Context) {
 {{
   "labels": {{
     "pool": "{pool}",
-    "job": "datamesh-agent"
+    "job": "datamesh-agent",
+    "idc": "{idc}"
   }},
   "target": "{local_ip}:{port}"
 }}"#
