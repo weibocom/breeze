@@ -176,36 +176,34 @@ impl DnsLookup for Vec<Vec<String>> {
         for shard in self {
             let mut shard_ips = Vec::with_capacity(shard.len());
             // 第一个域名包含的ip的数量
-            let mut first_ips_num = None;
+            let mut master = None;
             // 先把所有的ip解析出来。
-            for url_port in shard {
+            for (i, url_port) in shard.iter().enumerate() {
                 let host = url_port.host();
                 let port = url_port.port();
                 G::lookup(host, |ips| {
-                    for ip in ips {
-                        shard_ips.push(ip.to_string() + ":" + port);
+                    if master_slave_mode && i == 0 {
+                        if ips.len() > 0 {
+                            let _ = master.insert(ips[0].to_string() + ":" + port);
+                        }
+                    } else {
+                        use ds::vec::Add;
+                        for ip in ips {
+                            shard_ips.add(ip.to_string() + ":" + port);
+                        }
                     }
                 });
-                first_ips_num.get_or_insert(shard_ips.len());
             }
-            if !empty && shard_ips.len() == 0 {
+            if master_slave_mode {
+                if master.is_none() || shard_ips.len() == 0 {
+                    return None;
+                }
+                shard_ips.insert(0, master.unwrap());
+            } else if !empty && shard_ips.len() == 0 {
                 return None;
             }
             total_ips += shard_ips.len();
-            let mut oft = 0;
-            if master_slave_mode {
-                let num = first_ips_num?;
-                if num == 0 {
-                    return None;
-                }
-                // 确保master至少有一个ip
-                oft = num - 1;
-                // 确保至少有一个slave
-                if shard_ips.len() <= oft + 1 {
-                    return None;
-                }
-            }
-            all_ips.push(shard_ips.split_off(oft));
+            all_ips.push(shard_ips);
         }
         (total_ips > 0).then_some(all_ips)
     }
