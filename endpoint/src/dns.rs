@@ -94,7 +94,7 @@ impl Backends for crate::kv::config::KvNamespace {
 
 impl Backends for crate::vector::config::VectorNamespace {
     fn get_backends(&self) -> &Vec<String> {
-        &self.backends_flaten
+        &self.backends_all
     }
 }
 

@@ -11,7 +11,7 @@ pub struct VectorNamespace {
     #[serde(default)]
     pub(crate) basic: Basic,
     #[serde(skip)]
-    pub(crate) backends_flaten: Vec<String>,
+    pub(crate) backends_all: Vec<String>,
     #[serde(default)]
     pub(crate) backends: HashMap<Years, Vec<String>>,
 }
@@ -35,6 +35,8 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) db_count: u32,
     #[serde(default)]
+    pub(crate) table_count: u32,
+    #[serde(default)]
     pub(crate) keys: Vec<String>,
     #[serde(default)]
     pub(crate) strategy: String,
@@ -51,8 +53,6 @@ impl VectorNamespace {
     pub(crate) fn try_from(cfg: &str) -> Option<Self> {
         match serde_yaml::from_str::<VectorNamespace>(cfg) {
             Ok(mut ns) => {
-                //移除default分片，兼容老defalut
-                ns.backends.remove(&Years(0, 0));
                 //配置的年需要连续，不重叠
                 let mut years: Vec<_> = ns.backends.keys().collect();
                 if years.len() == 0 {
@@ -73,7 +73,7 @@ impl VectorNamespace {
                         return None;
                     }
                 }
-                ns.backends_flaten = ns.backends.iter().fold(Vec::new(), |mut init, b| {
+                ns.backends_all = ns.backends.iter().fold(Vec::new(), |mut init, b| {
                     init.extend_from_slice(b.1);
                     init
                 });
