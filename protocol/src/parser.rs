@@ -69,7 +69,8 @@ pub enum HandShake {
 
 #[enum_dispatch]
 pub trait Proto: Unpin + Clone + Send + Sync + 'static {
-    fn handshake(&self, _stream: &mut impl Stream, _option: &mut ResOption) -> Result<HandShake> {
+    #[allow(unused_variables)]
+    fn handshake(&self, stream: &mut impl Stream, option: &mut ResOption) -> Result<HandShake> {
         Ok(HandShake::Success)
     }
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(

@@ -27,7 +27,8 @@ procs::topology_dispatcher! {
         fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
         fn available(&self) -> bool {todo!("available not implemented");}
         fn addr(&self) -> &str {"addr not implemented"}
-        fn build_o<P:Protocol>(_addr: &str, _p: P, _r: Resource, _service: &str, _to: Timeout, _o: ResOption) -> Self {todo!("build not implemented")}
+        #[allow(unused_variables)]
+        fn build_o<P:Protocol>(addr: &str, p: P, r: Resource, service: &str, to: Timeout, o: ResOption) -> Self {todo!("build not implemented")}
         fn build<P:Protocol>(addr: &str, p: P, r: Resource, service: &str, to: Timeout) -> Self {Self::build_o(addr, p, r, service, to, Default::default())}
     } => where P:Protocol, E:Endpoint<Item = R> + Inited, R: Request
 
