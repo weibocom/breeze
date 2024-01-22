@@ -118,11 +118,6 @@ where
         );
 
         if shard.has_slave() && !req.operation().is_store() {
-            if *req.context_mut() == 0 {
-                if let Some(quota) = shard.slaves.quota() {
-                    req.quota(quota);
-                }
-            }
             let ctx = req.ctx_mut();
             let (idx, endpoint) = if ctx.runs == 0 {
                 shard.select()
@@ -139,6 +134,11 @@ where
             // 只重试一次，重试次数过多，可能会导致雪崩。如果不重试，现在的配额策略在当前副本也只会连续发送四次请求，问题也不大
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
+
+            // 选定idx之后、发送之前更新本req使用的quota; 重传时，本次访问的quota也更新在对应的后端资源上
+            if let Some(quota) = shard.slaves.quota() {
+                req.quota(quota);
+            }
             endpoint.send(req)
         } else {
             shard.master().send(req);

@@ -56,12 +56,6 @@ where
     fn send(&self, mut req: Self::Item) {
         log::debug!("+++ {} send => {:?}", self.cfg.service, req);
 
-        if *req.context_mut() == 0 {
-            if let Some(quota) = self.shard.quota() {
-                req.quota(quota);
-            }
-        }
-
         let ctx = super::transmute(req.context_mut());
         let (idx, endpoint) = if ctx.runs == 0 {
             self.shard.unsafe_select()
@@ -75,6 +69,11 @@ where
 
         let try_next = ctx.runs == 1;
         req.try_next(try_next);
+
+        // 选定idx之后、发送之前更新本req使用的quota; 重传时，本次访问的quota也更新在对应的后端资源上
+        if let Some(quota) = self.shard.quota() {
+            req.quota(quota);
+        }
         endpoint.send(req);
     }
 
