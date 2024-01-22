@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["dev", "dev_ci", "dev_icy"]
+    branches: ["dev", "dev_fix", "dev_ci", "dev_icy"]
   pull_request:
     branches: ["dev", "dev_ci"]
 
