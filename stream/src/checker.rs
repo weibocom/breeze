@@ -58,6 +58,7 @@ impl<P, Req> BackendChecker<P, Req> {
         let mut be_conns = path_addr.qps("be_conn");
         let mut timeout = Path::base().qps("timeout");
         let mut reconn = crate::reconn::ReconnPolicy::new();
+        let mut quite_resp = path_addr.num("quite_resp");
         metrics::incr_task();
         while !self.finish.get() {
             be_conns += 1;
@@ -113,6 +114,9 @@ impl<P, Req> BackendChecker<P, Req> {
                 Error::UnexpectedData => {
                     let mut unexpected_resp = path_addr.num("unexpected_resp");
                     unexpected_resp += 1;
+                }
+                Error::ResponseQuiet => {
+                    quite_resp += 1;
                 }
                 _ => {}
             }
