@@ -128,8 +128,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         log::debug!("++++ after condition parsed oft:{}", self.oft);
 
         // 返回main-key，不带sub-key、ext-key
-        let main_key_len = key.find(0, KEY_SEPERATOR).map_or(key.len(), |len| len);
-        Ok(Some(key.sub_slice(0, main_key_len)))
+        let mkey_len = key.find(0, KEY_SEPERATOR).map_or(key.len(), |len| len);
+        let mkey = key.sub_slice(0, mkey_len);
+        self.validate_key(&mkey)?;
+        Ok(Some(mkey))
     }
 
     #[inline]
@@ -299,6 +301,19 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             Some(k) => calculate_hash(alg, &k),
             None => 0,
         }
+    }
+
+    /// 校验cmd的main key，目前只支持数字类型
+    #[inline]
+    fn validate_key(&self, main_key: &RingSlice) -> Result<()> {
+        assert!(main_key.len() > 0, "invalid key from: {}", self);
+
+        for i in 0..main_key.len() {
+            if !main_key.at(i).is_ascii_digit() {
+                return Err(KvectorError::ReqInvalid.into());
+            }
+        }
+        Ok(())
     }
 }
 
