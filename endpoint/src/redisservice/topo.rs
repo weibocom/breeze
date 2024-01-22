@@ -101,7 +101,7 @@ where
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
 
-            // 选定idx之后、发送之前更新quota
+            // 选定idx之后、发送之前更新本req使用的quota; 重传时，本次访问的quota也更新在对应的后端资源上
             if let Some(quota) = shard.slaves.quota() {
                 req.quota(quota);
             }
