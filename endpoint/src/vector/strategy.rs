@@ -41,6 +41,8 @@ impl Strategist {
             "user" => Self::User(User::new(
                 ns.basic.db_name.clone(),
                 ns.basic.table_name.clone(),
+                ns.basic.table_postfix.clone(),
+                ns.basic.table_postfix.clone(),
                 ns.basic.db_count,
                 ns.basic.table_count,
                 ns.backends_all.len() as u32,
@@ -77,7 +79,7 @@ impl Strategist {
     pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys),
-            Strategist::User(_) => todo!("User not impl get_date"),
+            Strategist::User(_) => panic!("User not impl get_date"),
         }
     }
 }
@@ -98,7 +100,7 @@ impl protocol::vector::Strategy for Strategist {
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
         match self {
             Strategist::VectorTime(inner) => inner.write_database_table(buf, date, hash),
-            Strategist::User(inner) => inner.write_database_table(buf, date, hash),
+            Strategist::User(inner) => inner.write_database_table(buf, hash),
         }
     }
 }

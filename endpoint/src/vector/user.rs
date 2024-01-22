@@ -12,8 +12,10 @@ use sharding::{distribution::DBRange, hash::Hasher};
 pub struct User {
     db_prefix: String,
     table_prefix: String,
+    db_postfix: String,
+    table_postfix: String,
     shards: u32,
-    hash: Hasher,
+    hasher: Hasher,
     dist: DBRange,
     keys_name: Vec<String>,
 }
@@ -22,6 +24,8 @@ impl User {
     pub fn new(
         db_prefix: String,
         table_prefix: String,
+        db_postfix: String,
+        table_postfix: String,
         db_count: u32,
         table_count: u32,
         shards: u32,
@@ -30,8 +34,10 @@ impl User {
         Self {
             db_prefix,
             table_prefix,
+            db_postfix,
+            table_postfix,
             dist: DBRange::new_user(db_count as usize, table_count as usize),
-            hash: Hasher::from("crc32"),
+            hasher: Hasher::from("crc32"),
             shards,
             keys_name,
         }
@@ -42,13 +48,31 @@ impl User {
     }
 
     pub fn hasher(&self) -> &Hasher {
-        &self.hash
+        &self.hasher
     }
 
-    pub fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
-        // self.kvtime.write_dname_with_hash(buf, hash);
-        // let _ = buf.write_char('.');
-        // self.kvtime.write_tname_with_date(buf, date)
+    pub fn write_database_table(&self, buf: &mut impl Write, hash: i64) {
+        let Self {
+            db_prefix,
+            table_prefix,
+            db_postfix,
+            table_postfix,
+            dist,
+            ..
+        } = self;
+        if db_postfix.is_empty() {
+            let _ = buf.write_str(db_prefix);
+        } else {
+            let db_idx: usize = dist.db_idx(hash);
+            let _ = write!(buf, "{}_{}", db_prefix, db_idx);
+        }
+        let _ = buf.write_char('.');
+        if table_postfix.is_empty() {
+            let _ = buf.write_str(table_prefix);
+        } else {
+            let table_idx: usize = dist.table_idx(hash);
+            let _ = write!(buf, "{}_{}", table_prefix, table_idx);
+        }
     }
 
     pub(crate) fn keys(&self) -> &[String] {
