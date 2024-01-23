@@ -19,6 +19,7 @@ impl<'a> Display for VRingSlice<'a> {
     }
 }
 
+//keys 先不加``，兼容函数等
 struct Keys<'a>(&'a RingSlice);
 impl<'a> Display for Keys<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -47,6 +48,13 @@ struct Key<'a>(&'a RingSlice);
 impl<'a> Display for Key<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "`{}`", VRingSlice(self.0))
+    }
+}
+
+struct StringKey<'a>(&'a String);
+impl<'a> Display for StringKey<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "`{}`", self.0)
     }
 }
 
@@ -103,21 +111,24 @@ impl<'a, S: Strategy> Display for Table<'a, S> {
     }
 }
 
-struct InsertCols<'a, S>(&'a S, &'a Vec<Field>);
+struct InsertCols<'a, S>(&'a S, &'a Vec<RingSlice>, &'a Vec<Field>);
 impl<'a, S: Strategy> Display for InsertCols<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let &Self(strategy, fields) = self;
-        for (i, key) in (&mut strategy.condition_keys()).enumerate() {
-            if let Some(key) = key {
-                if i == 0 {
-                    let _ = write!(f, "`{}`", key);
-                } else {
-                    let _ = write!(f, ",`{}`", key);
-                }
+        let &Self(strategy, keys, fields) = self;
+        let has_keys = strategy.condition_keys(keys, |first, key, _| {
+            if first {
+                let _ = write!(f, "{}", StringKey(key));
+            } else {
+                let _ = write!(f, ",{}", StringKey(key));
             }
-        }
-        for field in fields {
-            let _ = write!(f, ",{}", Key(&field.0));
+        });
+        for (i, field) in fields.iter().enumerate() {
+            //前面key没写入过，不能写逗号
+            if i == 0 && !has_keys {
+                let _ = write!(f, "{}", Key(&field.0));
+            } else {
+                let _ = write!(f, ",{}", Key(&field.0));
+            }
         }
         Ok(())
     }
@@ -127,17 +138,19 @@ struct InsertVals<'a, S>(&'a S, &'a Vec<RingSlice>, &'a Vec<Field>);
 impl<'a, S: Strategy> Display for InsertVals<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, keys, fields) = self;
-        for (i, key) in (&mut strategy.condition_keys()).enumerate() {
-            if let Some(_) = key {
-                if i == 0 {
-                    let _ = write!(f, "{}", Val(&keys[i]));
-                } else {
-                    let _ = write!(f, ",{}", Val(&keys[i]));
-                }
+        let has_keys = strategy.condition_keys(keys, |first, _, val| {
+            if first {
+                let _ = write!(f, "{}", Val(val));
+            } else {
+                let _ = write!(f, ",{}", Val(val));
             }
-        }
-        for field in fields {
-            let _ = write!(f, ",{}", Val(&field.1));
+        });
+        for (i, field) in fields.iter().enumerate() {
+            if i == 0 && !has_keys {
+                let _ = write!(f, "{}", Val(&field.1));
+            } else {
+                let _ = write!(f, ",{}", Val(&field.1));
+            }
         }
         Ok(())
     }
@@ -172,17 +185,19 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
                 group_by,
             },
         ) = self;
-        for (i, key) in (&mut strategy.condition_keys()).enumerate() {
-            if let Some(key) = key {
-                if i == 0 {
-                    let _ = write!(f, "`{}`={}", key, Val(&keys[i]));
-                } else {
-                    let _ = write!(f, " and `{}`={}", key, Val(&keys[i]));
-                }
+        let has_keys = strategy.condition_keys(keys, |first, key, val| {
+            if first {
+                let _ = write!(f, "{}={}", StringKey(key), Val(val));
+            } else {
+                let _ = write!(f, " and {}={}", StringKey(key), Val(val));
             }
-        }
-        for w in wheres {
-            let _ = write!(f, " and {}", ConditionDisplay(w));
+        });
+        for (i, w) in wheres.iter().enumerate() {
+            if i == 0 && !has_keys {
+                let _ = write!(f, "{}", ConditionDisplay(w));
+            } else {
+                let _ = write!(f, " and {}", ConditionDisplay(w));
+            }
         }
         if group_by.fields.len() != 0 {
             let _ = write!(f, " group by {}", Keys(&group_by.fields));
@@ -216,7 +231,7 @@ pub struct SqlBuilder<'a, S> {
 
 impl<'a, S: Strategy> SqlBuilder<'a, S> {
     pub fn new(vcmd: &'a VectorCmd, hash: i64, date: NaiveDate, strategy: &'a S) -> Result<Self> {
-        if vcmd.keys.len() != strategy.keys().len() {
+        if strategy.must_have_keys() && (vcmd.keys.len() != strategy.keys().len()) {
             Err(Error::RequestProtocolInvalid)
         } else {
             Ok(Self {
@@ -304,7 +319,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     buf,
                     "insert into {} ({}) values ({})",
                     Table(self.strategy, &self.date, self.hash),
-                    InsertCols(self.strategy, &self.vcmd.fields),
+                    InsertCols(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
                     InsertVals(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
                 );
             }
