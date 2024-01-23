@@ -134,16 +134,13 @@ where
             let poll_read = self.s.poll_recv(cx);
 
             while self.s.len() > 0 {
-                match self.parser.parse_response(&mut self.s)? {
-                    None => break,
-                    Some(cmd) => {
-                        let (req, start) = self.pending.pop_front().expect("take response");
-                        self.num.rx();
-                        // 统计请求耗时。
-                        self.rtt += start.elapsed();
-                        self.parser.check(&*req, &cmd);
-                        req.on_complete(cmd);
-                    }
+                if let Some(cmd) = self.parser.parse_response(&mut self.s)? {
+                    let (req, start) = self.pending.pop_front().expect("take response");
+                    self.num.rx();
+                    // 统计请求耗时。
+                    self.rtt += start.elapsed();
+                    self.parser.check(&*req, &cmd);
+                    req.on_complete(cmd);
                 }
             }
 
