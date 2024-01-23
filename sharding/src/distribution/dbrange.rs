@@ -138,6 +138,9 @@ impl UserRange {
             hash.abs() as usize
         };
 
+        if self.db_count == 1 {
+            return 0;
+        }
         hash_abs
             .wrapping_div(self.db_count)
             .wrapping_rem(self.db_count)

@@ -105,16 +105,29 @@ impl VectorTime {
         &self.keys_name
     }
 
-    pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
-        Box::new(
-            self.keys_name
-                .iter()
-                .map(|key_name| match key_name.as_str() {
-                    "yymm" | "yymmdd" => None,
-                    // "yyyymm" | "yyyymmdd" => None,
-                    &_ => Some(key_name),
-                }),
-        )
+    pub(crate) fn condition_keys(
+        &self,
+        keys: &Vec<RingSlice>,
+        mut f: impl FnMut(bool, &String, &RingSlice),
+    ) -> bool {
+        let key_val = self
+            .keys_name
+            .iter()
+            .map(|key_name| match key_name.as_str() {
+                "yymm" | "yymmdd" => None,
+                // "yyyymm" | "yyyymmdd" => None,
+                &_ => Some(key_name),
+            })
+            .zip(keys);
+
+        let mut has_key = false;
+        for (key, val) in key_val {
+            if let Some(key) = key {
+                f(!has_key, key, val);
+                has_key = true;
+            }
+        }
+        return has_key;
     }
 }
 

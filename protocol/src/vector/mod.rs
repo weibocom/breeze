@@ -372,7 +372,11 @@ impl FieldVal {
 
 pub trait Strategy {
     fn keys(&self) -> &[String];
-    //todo 通过代理类型实现
-    fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
+    fn must_have_keys(&self) -> bool;
+    fn condition_keys(
+        &self,
+        keys: &Vec<RingSlice>,
+        f: impl FnMut(bool, &String, &RingSlice),
+    ) -> bool;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);
 }

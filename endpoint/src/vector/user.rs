@@ -1,10 +1,6 @@
-use crate::kv::kvtime::KVTime;
-
-use super::strategy::Postfix;
 use chrono::NaiveDate;
 use core::fmt::Write;
 use ds::RingSlice;
-use protocol::kv::Strategy;
 use protocol::Error;
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -14,7 +10,6 @@ pub struct User {
     table_prefix: String,
     db_postfix: String,
     table_postfix: String,
-    shards: u32,
     hasher: Hasher,
     dist: DBRange,
     keys_name: Vec<String>,
@@ -28,7 +23,6 @@ impl User {
         table_postfix: String,
         db_count: u32,
         table_count: u32,
-        shards: u32,
         keys_name: Vec<String>,
     ) -> Self {
         Self {
@@ -36,9 +30,9 @@ impl User {
             table_prefix,
             db_postfix,
             table_postfix,
+            //dbcount = 分片数量
             dist: DBRange::new_user(db_count as usize, table_count as usize),
             hasher: Hasher::from("crc32"),
-            shards,
             keys_name,
         }
     }
@@ -79,7 +73,26 @@ impl User {
         &self.keys_name
     }
 
-    pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
-        Box::new(self.keys_name.iter().map(|k| Some(k)))
+    pub(crate) fn condition_keys(
+        &self,
+        keys: &Vec<RingSlice>,
+        mut f: impl FnMut(bool, &String, &RingSlice),
+    ) -> bool {
+        let key_val = self.keys_name.iter().map(|k| Some(k)).zip(keys);
+
+        let mut has_key = false;
+        for (key, val) in key_val {
+            if let Some(key) = key {
+                f(!has_key, key, val);
+                has_key = true;
+            }
+        }
+        return has_key;
+    }
+
+    //虽然不分年库，先统一使用2000年
+    pub(crate) fn get_date(&self, _keys: &[RingSlice]) -> Result<NaiveDate, Error> {
+        const YEAR: Option<NaiveDate> = NaiveDate::from_ymd_opt(2000, 1, 1);
+        Ok(YEAR.unwrap())
     }
 }

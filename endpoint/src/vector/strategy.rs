@@ -43,9 +43,8 @@ impl Strategist {
                 ns.basic.table_name.clone(),
                 ns.basic.table_postfix.clone(),
                 ns.basic.table_postfix.clone(),
-                ns.basic.db_count,
-                ns.basic.table_count,
                 ns.backends_all.len() as u32,
+                ns.basic.table_count,
                 ns.basic.keys.clone(),
             )),
             _ => {
@@ -79,7 +78,7 @@ impl Strategist {
     pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys),
-            Strategist::User(_) => panic!("User not impl get_date"),
+            Strategist::User(inner) => inner.get_date(keys),
         }
     }
 }
@@ -91,10 +90,20 @@ impl protocol::vector::Strategy for Strategist {
             Strategist::User(inner) => inner.keys(),
         }
     }
-    fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
+    fn must_have_keys(&self) -> bool {
         match self {
-            Strategist::VectorTime(inner) => inner.condition_keys(),
-            Strategist::User(inner) => inner.condition_keys(),
+            Strategist::VectorTime(_) => true,
+            Strategist::User(_) => false,
+        }
+    }
+    fn condition_keys(
+        &self,
+        keys: &Vec<RingSlice>,
+        f: impl FnMut(bool, &String, &RingSlice),
+    ) -> bool {
+        match self {
+            Strategist::VectorTime(inner) => inner.condition_keys(keys, f),
+            Strategist::User(inner) => inner.condition_keys(keys, f),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
