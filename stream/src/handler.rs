@@ -134,6 +134,7 @@ where
             let poll_read = self.s.poll_recv(cx);
 
             while self.s.len() > 0 {
+                let l = self.s.len();
                 if let Some(cmd) = self.parser.parse_response(&mut self.s)? {
                     let (req, start) = self.pending.pop_front().expect("take response");
                     self.num.rx();
@@ -141,6 +142,11 @@ where
                     self.rtt += start.elapsed();
                     self.parser.check(&*req, &cmd);
                     req.on_complete(cmd);
+                    continue;
+                }
+                if l == self.s.len() {
+                    // 说明当前的数据不足以解析一个完整的响应。
+                    break;
                 }
             }
 
