@@ -20,17 +20,14 @@ type Topology = endpoint::TopologyProtocol<Endpoint, Parser>;
 
 // 默认支持
 fn main() -> Result<()> {
-    let result = tokio::runtime::Builder::new_multi_thread()
+    tokio::runtime::Builder::new_multi_thread()
         .worker_threads(context::get().thread_num as usize)
         .thread_name("breeze-w")
         .thread_stack_size(2 * 1024 * 1024)
         .enable_all()
         .build()
         .unwrap()
-        .block_on(run());
-
-    println!("exit {:?}", result);
-    result
+        .block_on(run())
 }
 
 async fn run() -> Result<()> {
