@@ -135,7 +135,7 @@ where
 
             while self.s.len() > 0 {
                 match self.parser.parse_response(&mut self.s)? {
-                    None => break,
+                    None => (),
                     Some(cmd) => {
                         let (req, start) = self.pending.pop_front().expect("take response");
                         self.num.rx();
