@@ -70,20 +70,16 @@ impl Protocol for MemcacheBinary {
             let pl = r.packet_len();
             debug_assert!(!r.quiet_get(), "rsp: {:?}", r);
             if len >= pl {
+                log::debug!("++++ response found:{r:?}");
                 return if !r.is_quiet() {
-                    log::debug!("++++ mc status:{}", r.status_ok());
                     Ok(Some(Command::from(r.status_ok(), data.take(pl))))
                 } else {
                     // quite rsp只有一种情况：出错了;但这种错误往往并不需要断连接：如deleteq的not-found,setq的not-stored。
                     // quite请求是异步处理，可以考虑直接忽略即可，先忽略deleteq，后续setq。
-                    log::debug!("+++ found quite rsp:{:?}", r);
                     let _ = data.take(pl);
                     match r.op() {
                         OP_DELQ => Ok(None),
-                        _ => {
-                            println!("mc response quiete: {:?}", r);
-                            Err(Error::ResponseQuiet)
-                        }
+                        _ => Err(Error::ResponseQuiet),
                     }
                 };
             } else {
@@ -94,11 +90,10 @@ impl Protocol for MemcacheBinary {
     }
     #[inline]
     fn check(&self, req: &HashedCommand, resp: &Command) {
+        debug_assert!(!resp.is_quiet());
         assert!(
-            !resp.is_quiet() && req.op() == resp.op() && req.opaque() == resp.opaque(),
-            "{:?} => {:?}",
-            req,
-            resp,
+            req.op() == resp.op() && req.opaque() == resp.opaque(),
+            "{req:?} => {resp:?}",
         );
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
