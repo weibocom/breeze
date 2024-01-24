@@ -45,7 +45,7 @@ impl User {
         &self.hasher
     }
 
-    fn get_hex(n: usize) -> char {
+    pub(crate) fn get_hex(n: usize) -> char {
         let n = (n & 0xf) as u8;
         if n < 10 {
             return (n + b'0') as char;
