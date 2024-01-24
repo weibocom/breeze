@@ -47,8 +47,8 @@ impl DBRange {
     // alg: hash_abs / self.table_count % self.table_count
     pub fn table_idx(&self, hash: i64) -> usize {
         match self {
-            DBRange::VectorRange(inner) => inner.db_idx(hash),
-            DBRange::UserRange(inner) => inner.db_idx(hash),
+            DBRange::VectorRange(inner) => inner.table_idx(hash),
+            DBRange::UserRange(inner) => inner.table_idx(hash),
         }
     }
 }

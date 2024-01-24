@@ -45,6 +45,14 @@ impl User {
         &self.hasher
     }
 
+    fn get_hex(n: usize) -> char {
+        let n = (n & 0xf) as u8;
+        if n < 10 {
+            return (n + b'0') as char;
+        }
+        (n - 10 + b'a') as char
+    }
+
     pub fn write_database_table(&self, buf: &mut impl Write, hash: i64) {
         let Self {
             db_prefix,
@@ -54,18 +62,19 @@ impl User {
             dist,
             ..
         } = self;
+        let mut db_hex = char::default();
         if db_postfix.is_empty() {
             let _ = buf.write_str(db_prefix);
         } else {
-            let db_idx: usize = dist.db_idx(hash);
-            let _ = write!(buf, "{}_{}", db_prefix, db_idx);
+            db_hex = Self::get_hex(dist.db_idx(hash));
+            let _ = write!(buf, "{db_prefix}_{db_hex}");
         }
         let _ = buf.write_char('.');
         if table_postfix.is_empty() {
             let _ = buf.write_str(table_prefix);
         } else {
-            let table_idx: usize = dist.table_idx(hash);
-            let _ = write!(buf, "{}_{}", table_prefix, table_idx);
+            let table_hex = Self::get_hex(dist.table_idx(hash));
+            let _ = write!(buf, "{table_prefix}_{db_hex}{table_hex}");
         }
     }
 
