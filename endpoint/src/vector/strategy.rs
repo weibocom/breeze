@@ -42,7 +42,7 @@ impl Strategist {
                 ns.basic.db_name.clone(),
                 ns.basic.table_name.clone(),
                 ns.basic.table_postfix.clone(),
-                ns.basic.table_postfix.clone(),
+                ns.basic.db_postfix.clone(),
                 ns.backends_all.len() as u32,
                 ns.basic.table_count,
                 ns.basic.keys.clone(),
@@ -154,6 +154,7 @@ mod tests {
                 db_name: "db_name".into(),
                 table_name: "table_name".into(),
                 table_postfix: "yymm".into(),
+                db_postfix: Default::default(),
                 db_count: 32,
                 table_count: 0,
                 keys: vec!["kid".into(), "yymm".into()],
@@ -549,5 +550,151 @@ mod tests {
             buf,
             &format!("select a,b from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by b order by a,b desc limit 24 offset 12")
             );
+    }
+
+    #[test]
+    fn user() {
+        let ns = VectorNamespace {
+            basic: Basic {
+                resource_type: Default::default(),
+                selector: Default::default(),
+                timeout_ms_master: Default::default(),
+                timeout_ms_slave: Default::default(),
+                db_name: "db_name".into(),
+                table_name: "table_name".into(),
+                table_postfix: "hex".into(),
+                db_postfix: "hex".into(),
+                table_count: 16,
+                db_count: Default::default(),
+                keys: vec!["kid".into(), "name".into()],
+                strategy: "user".into(),
+                password: Default::default(),
+                user: Default::default(),
+                region_enabled: Default::default(),
+            },
+            backends_all: vec![
+                "127.0.0.1:8080,127.0.0.2:8080".into(),
+                "127.0.0.1:8081,127.0.0.2:8081".into(),
+            ],
+            backends: HashMap::from([(
+                Years(2000, 2099),
+                vec![
+                    "127.0.0.1:8080,127.0.0.2:8080".into(),
+                    "127.0.0.1:8081,127.0.0.2:8081".into(),
+                ],
+            )]),
+        };
+        let strategy = Strategist::try_from(&ns);
+        let mut buf = String::new();
+        let buf = &mut buf;
+        // vrange
+        let vector_cmd = VectorCmd {
+            cmd: CommandType::VRange,
+            keys: vec![RingSlice::from_slice("11".as_bytes())],
+            fields: vec![(
+                RingSlice::from_slice("field".as_bytes()),
+                RingSlice::from_slice("a".as_bytes()),
+            )],
+            wheres: Default::default(),
+            group_by: Default::default(),
+            order: Default::default(),
+            limit: Default::default(),
+        };
+        let hash = strategy.hasher().hash(&"11".as_bytes());
+        let date = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
+        let db_idx = User::get_hex(strategy.distribution().db_idx(hash));
+        let table_idx = User::get_hex(strategy.distribution().table_idx(hash));
+        assert_eq!(
+            buf,
+            &format!(
+                "select a from db_name_{db_idx}.table_name_{db_idx}{table_idx} where `kid`='11'"
+            )
+        );
+
+        // vrange 两个key
+        buf.clear();
+        let vector_cmd = VectorCmd {
+            cmd: CommandType::VRange,
+            keys: vec![
+                RingSlice::from_slice("11".as_bytes()),
+                RingSlice::from_slice("11name".as_bytes()),
+            ],
+            wheres: Default::default(),
+            group_by: Default::default(),
+            order: Default::default(),
+            limit: Default::default(),
+            fields: Default::default(),
+        };
+        let hash = strategy.hasher().hash(&"11".as_bytes());
+        let date = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
+        let db_idx = User::get_hex(strategy.distribution().db_idx(hash));
+        let table_idx = User::get_hex(strategy.distribution().table_idx(hash));
+        assert_eq!(
+            buf,
+            &format!(
+                "select * from db_name_{db_idx}.table_name_{db_idx}{table_idx} where `kid`='11' and `name`='11name'"
+            )
+        );
+    }
+    #[test]
+    fn user_singledb() {
+        let ns = VectorNamespace {
+            basic: Basic {
+                resource_type: Default::default(),
+                selector: Default::default(),
+                timeout_ms_master: Default::default(),
+                timeout_ms_slave: Default::default(),
+                db_name: "db_name".into(),
+                table_name: "table_name".into(),
+                table_postfix: Default::default(),
+                db_postfix: Default::default(),
+                table_count: Default::default(),
+                db_count: Default::default(),
+                keys: vec!["kid".into(), "name".into()],
+                strategy: "user".into(),
+                password: Default::default(),
+                user: Default::default(),
+                region_enabled: Default::default(),
+            },
+            backends_all: vec![
+                "127.0.0.1:8080,127.0.0.2:8080".into(),
+                "127.0.0.1:8081,127.0.0.2:8081".into(),
+            ],
+            backends: HashMap::from([(
+                Years(2000, 2099),
+                vec![
+                    "127.0.0.1:8080,127.0.0.2:8080".into(),
+                    "127.0.0.1:8081,127.0.0.2:8081".into(),
+                ],
+            )]),
+        };
+        let strategy = Strategist::try_from(&ns);
+        let mut buf = String::new();
+        let buf = &mut buf;
+        // vrange
+        let vector_cmd = VectorCmd {
+            cmd: CommandType::VRange,
+            keys: vec![RingSlice::from_slice("11".as_bytes())],
+            wheres: Default::default(),
+            group_by: Default::default(),
+            order: Default::default(),
+            limit: Default::default(),
+            fields: Default::default(),
+        };
+        let hash = strategy.hasher().hash(&"11".as_bytes());
+        let date = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
+        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        builder.write_sql(buf);
+        println!("len: {}, act len: {}", builder.len(), buf.len());
+        assert_eq!(
+            buf,
+            &format!("select * from db_name.table_name where `kid`='11'")
+        );
     }
 }
