@@ -81,14 +81,9 @@ impl Redis {
 
         match data.at(0) {
             b'-' | b':' | b'+' => data.line(oft)?,
-            b'$' => {
-                *oft += data.num_of_string(oft)? + 2;
-            }
+            b'$' => *oft += data.num_of_string(oft)? + 2,
             b'*' => data.skip_all_bulk(oft)?,
-            _ => {
-                log::error!("+++ found malformed redis rsp:{:?}", data);
-                return Err(RedisError::RespInvalid.into());
-            } // _ => panic!("not supported:{:?}", data),
+            _ => return Err(RedisError::RespInvalid.into()),
         }
 
         Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
