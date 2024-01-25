@@ -13,26 +13,24 @@ use protocol::Resource;
 use sharding::hash::{Hash, HashKey};
 
 use crate::dns::DnsConfig;
-use crate::Builder;
-use crate::Single;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
 use protocol::vector::mysql::SqlBuilder;
 
 use super::config::VectorNamespace;
 use super::strategy::Strategist;
-use crate::kv::topo::{Shard, Shards};
+use crate::kv::topo::Shards;
 use crate::kv::KVCtx;
+use crate::shards::Shard;
 #[derive(Clone)]
-pub struct VectorService<B, E, Req, P> {
+pub struct VectorService<E, P> {
     shards: Shards<E>,
     strategist: Strategist,
     parser: P,
     cfg: Box<DnsConfig<VectorNamespace>>,
-    _mark: std::marker::PhantomData<(B, Req)>,
 }
 
-impl<B, E, Req, P> From<P> for VectorService<B, E, Req, P> {
+impl<E, P> From<P> for VectorService<E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -40,17 +38,14 @@ impl<B, E, Req, P> From<P> for VectorService<B, E, Req, P> {
             shards: Default::default(),
             strategist: Default::default(),
             cfg: Default::default(),
-            _mark: std::marker::PhantomData,
         }
     }
 }
 
-impl<B, E, Req, P> Hash for VectorService<B, E, Req, P>
+impl<E, P> Hash for VectorService<E, P>
 where
-    E: Endpoint<Item = Req>,
-    Req: Request,
+    E: Endpoint,
     P: Protocol,
-    B: Send + Sync,
 {
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
@@ -58,16 +53,15 @@ where
     }
 }
 
-impl<B, E, Req, P> Topology for VectorService<B, E, Req, P>
+impl<E, Req, P> Topology for VectorService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
     P: Protocol,
-    B: Send + Sync,
 {
 }
 
-impl<B: Send + Sync, E, Req, P> Endpoint for VectorService<B, E, Req, P>
+impl<E, Req, P> Endpoint for VectorService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -152,7 +146,7 @@ where
             // 只重试一次，重试次数过多，可能会导致雪崩。如果不重试，现在的配额策略在当前副本也只会连续发送四次请求，问题也不大
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
-            endpoint.1.send(req)
+            endpoint.send(req)
         } else {
             shard.master().send(req);
         }
@@ -163,17 +157,16 @@ where
     }
 }
 
-impl<B, E, Req, P> TopologyWrite for VectorService<B, E, Req, P>
+impl<E, P> TopologyWrite for VectorService<E, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint,
 {
     fn need_load(&self) -> bool {
         self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
     }
-    fn load(&mut self) {
-        self.cfg.load_guard().check_load(|| self.load_inner());
+    fn load(&mut self) -> bool {
+        self.cfg.load_guard().check_load(|| self.load_inner())
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = VectorNamespace::try_from(cfg) {
@@ -182,11 +175,10 @@ where
         }
     }
 }
-impl<B, E, Req, P> VectorService<B, E, Req, P>
+impl<E, P> VectorService<E, P>
 where
-    B: Builder<P, Req, E>,
     P: Protocol,
-    E: Endpoint<Item = Req> + Single,
+    E: Endpoint,
 {
     // #[inline]
     fn take_or_build(
@@ -198,7 +190,7 @@ where
     ) -> E {
         match old.get_mut(addr).map(|endpoints| endpoints.pop()) {
             Some(Some(end)) => end,
-            _ => B::auth_option_build(
+            _ => E::build_o(
                 &addr,
                 self.parser.clone(),
                 Resource::Mysql,
@@ -256,10 +248,11 @@ where
         // 到这之后，所有的shard都能解析出ip
         let mut old = HashMap::with_capacity(self.shards.len());
         for shard in self.shards.take() {
-            old.entry(shard.master.0)
+            old.entry(shard.master.addr().to_string())
                 .or_insert(Vec::new())
-                .push(shard.master.1);
-            for (addr, endpoint) in shard.slaves.into_inner() {
+                .push(shard.master);
+            for endpoint in shard.slaves.into_inner() {
+                let addr = endpoint.addr().to_string();
                 // 一个ip可能存在于多个域名中。
                 old.entry(addr).or_insert(Vec::new()).push(endpoint);
             }
@@ -291,14 +284,12 @@ where
                         self.cfg.timeout_slave(),
                         res_option.clone(),
                     );
-                    slave.disable_single();
-                    replicas.push((addr, slave));
+                    replicas.push(slave);
                 }
 
                 use crate::PerformanceTuning;
                 let shard = Shard::selector(
                     self.cfg.basic.selector.tuning_mode(),
-                    master_addr,
                     master,
                     replicas,
                     false,
@@ -315,7 +306,7 @@ where
         true
     }
 }
-impl<B, E, Req, P> discovery::Inited for VectorService<B, E, Req, P>
+impl<E, P> discovery::Inited for VectorService<E, P>
 where
     E: discovery::Inited,
 {
