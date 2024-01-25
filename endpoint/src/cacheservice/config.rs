@@ -1,3 +1,4 @@
+use rand::{seq::SliceRandom, thread_rng};
 use serde::{Deserialize, Serialize};
 use sharding::hash;
 //use ds::time::Duration;
@@ -114,7 +115,12 @@ impl Namespace {
         use ds::vec::Add;
         let mut backends = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
         backends.add(self.master);
-        self.master_l1.into_iter().for_each(|v| backends.add(v));
+
+        // master l1 需要进行乱序，避免master miss后，全部打到同一个masterL1 #790
+        let mut master_l1 = self.master_l1.clone();
+        master_l1.shuffle(&mut thread_rng());
+        master_l1.into_iter().for_each(|v| backends.add(v));
+
         let local = backends.len();
         if self.slave.len() > 0 {
             backends.add(self.slave);
