@@ -70,40 +70,35 @@ pub(super) fn bench_iter(c: &mut Criterion) {
             });
         });
     });
+    group.bench_function("visit_seg", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                rs.visit_seg(0, |p, l| {
+                    for i in 0..l {
+                        t += unsafe { *p.add(i) } as u64;
+                    }
+                });
+                t
+            });
+        });
+    });
     group.bench_function("fold", |b| {
         b.iter(|| {
             black_box({
-                rs.fold(0u64, |t, v| {
+                rs.fold(0, 0u64, |t, v| {
                     *t += v as u64;
                 })
             });
         });
     });
-    group.bench_function("fold_oft", |b| {
+    group.bench_function("fold_r-true", |b| {
         b.iter(|| {
             black_box({
-                rs.fold_until(
-                    0,
-                    0u64,
-                    |t, v| {
-                        *t += v as u64;
-                    },
-                    |c| c > b'9' || c < b'0',
-                )
-            });
-        });
-    });
-    group.bench_function("fold_oft-true", |b| {
-        b.iter(|| {
-            black_box({
-                rs.fold_until(
-                    0,
-                    0u64,
-                    |t, v| {
-                        *t += v as u64;
-                    },
-                    |_| true,
-                )
+                rs.fold_r(0, 0u64, |t, v| {
+                    *t += v as u64;
+                    true
+                })
             });
         });
     });
@@ -180,6 +175,36 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
             });
         });
     });
+    group.bench_function("data", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                let (first, sec) = rs.data();
+                for v in first {
+                    t += *v as u64;
+                }
+                for v in sec {
+                    t += *v as u64;
+                }
+                t
+            });
+        });
+    });
+    group.bench_function("data_r", |b| {
+        b.iter(|| {
+            black_box({
+                let mut t = 0u64;
+                let (first, sec) = rs.data_r(..);
+                for v in first {
+                    t += *v as u64;
+                }
+                for v in sec {
+                    t += *v as u64;
+                }
+                t
+            });
+        });
+    });
     group.finish();
 }
 
@@ -197,16 +222,7 @@ pub(super) fn bench_copy(c: &mut Criterion) {
     let start = 128;
     let rs = RingSlice::from(slice.as_ptr(), slice.len(), start, start + len);
     let mut dst = [0u8; 128];
-    group.bench_function("copy_to_cmp", |b| {
-        b.iter(|| {
-            black_box({
-                for i in 0..runs {
-                    rs.copy_to_cmp(&mut dst[..], i, 64)
-                }
-            });
-        });
-    });
-    group.bench_function("copy_to_r", |b| {
+    group.bench_function("copy_to", |b| {
         b.iter(|| {
             black_box({
                 for i in 0..runs {
@@ -215,14 +231,59 @@ pub(super) fn bench_copy(c: &mut Criterion) {
             });
         });
     });
-    group.bench_function("copy_to_range", |b| {
+    group.finish();
+}
+
+pub(super) fn bench_read_num_vs_start_with(c: &mut Criterion) {
+    let mut group = c.benchmark_group("compare");
+    let s = b"get keyVALUEjfdjk;afjkd;safjkds;\r\najfkdsa;".to_vec();
+    let runs = s.len() - 4;
+    let rs = RingSlice::from_vec(&s);
+    group.bench_function("read_num", |b| {
         b.iter(|| {
             black_box({
+                let mut v = 0;
                 for i in 0..runs {
-                    rs.copy_to_range(&mut dst[..], i..i + 64);
+                    v += (rs.u32_le(i) != u32::from_le_bytes(*b"VALU")) as u64;
                 }
+                v
             });
-        });
+        })
+    });
+    group.bench_function("start_with", |b| {
+        b.iter(|| {
+            black_box({
+                let mut v = 0;
+                for i in 0..runs {
+                    v += !rs.start_with(i, b"VALU") as u64;
+                }
+                v
+            });
+        })
+    });
+    group.bench_function("find", |b| {
+        b.iter(|| {
+            black_box({
+                let mut v = 0usize;
+                for i in 0..runs {
+                    v += rs.find(0, b'\n').expect("not found");
+                    v += i;
+                }
+                v
+            });
+        })
+    });
+    group.bench_function("find_r", |b| {
+        b.iter(|| {
+            black_box({
+                let mut v = 0usize;
+                for i in 0..runs {
+                    v += rs.find_r(0, b'\n').expect("not found");
+                    v += i;
+                }
+                v
+            });
+        })
     });
     group.finish();
 }

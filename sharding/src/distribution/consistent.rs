@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::ops::Bound::Included;
+use std::ops::Deref;
 
 #[derive(Clone, Debug, Default)]
 pub struct Consistent {
@@ -23,7 +24,7 @@ impl Consistent {
         return 0;
     }
 
-    pub fn from(shards: &Vec<String>) -> Self {
+    pub fn from<T: Deref<Target = str>>(shards: &[T]) -> Self {
         let mut map = BTreeMap::default();
         for idx in 0..shards.len() {
             let factor = 40;

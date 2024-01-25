@@ -17,6 +17,7 @@ lazy_static = "1.4.0"
 array-init = "2"
 psutil = { version = "3.2.1", default-features = false, features = ["cpu", "process"] }
 tokio.workspace = true
+enum_dispatch = "0.3.8"
 
 [features]
 mock-local-ip = []

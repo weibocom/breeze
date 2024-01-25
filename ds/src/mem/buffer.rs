@@ -117,11 +117,11 @@ impl RingBuffer {
     }
     // 调用方确保buf.available() >= rs.len()，否则UB
     #[inline]
-    pub(super) unsafe fn write_all(&mut self, rs: &RingSlice) {
+    unsafe fn write_all(&mut self, rs: &RingSlice) {
         use std::ptr::copy_nonoverlapping as copy;
         debug_assert!(rs.len() <= self.available());
         // 写入的位置
-        rs.visit_segment_oft(0, |p, l| {
+        rs.visit_seg(0, |p, l| {
             let offset = self.mask(self.write);
             let n = l.min(self.size - offset);
             copy(p, self.data.as_ptr().add(offset), n);
@@ -130,12 +130,6 @@ impl RingBuffer {
             }
             self.advance_write(l);
         });
-    }
-    #[inline]
-    pub fn write(&mut self, data: &RingSlice) -> usize {
-        let n = data.len().min(self.available());
-        unsafe { self.write_all(&data.slice(0, n)) };
-        n
     }
 
     // cap > self.len()
@@ -195,6 +189,12 @@ mod tests {
         pub fn consume(&mut self, n: usize) {
             assert!(self.len() >= n);
             self.advance_read(n);
+        }
+        #[inline]
+        pub fn write(&mut self, data: &crate::RingSlice) -> usize {
+            let n = data.len().min(self.available());
+            unsafe { self.write_all(&data.slice(0, n)) };
+            n
         }
     }
 }

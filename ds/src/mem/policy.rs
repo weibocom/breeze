@@ -29,7 +29,7 @@ impl MemPolicy {
     }
     #[inline(always)]
     pub fn need_grow(&mut self, len: usize, cap: usize, reserve: usize) -> bool {
-        #[cfg(any(feature = "trace", debug_assertions))]
+        #[cfg(any(feature = "trace"))]
         self.trace.trace_check(len, cap);
         log::debug!("need_grow: len={}, cap={}, reserve={}", len, cap, reserve);
         len + reserve > cap
@@ -39,7 +39,7 @@ impl MemPolicy {
         if self.max < len as u32 {
             self.max = len as u32;
         }
-        #[cfg(any(feature = "trace", debug_assertions))]
+        #[cfg(any(feature = "trace"))]
         self.trace.trace_check(len, _cap);
     }
     // 调用方定期调用need_shrink，如果返回true，则需要缩容
@@ -66,7 +66,7 @@ impl MemPolicy {
     fn reset(&mut self) {
         self.max = 0;
         self.cycles = 0;
-        #[cfg(any(feature = "trace", debug_assertions))]
+        #[cfg(any(feature = "trace"))]
         self.trace.trace_reset();
     }
     // 确认缩容的size
@@ -114,7 +114,7 @@ impl Display for MemPolicy {
     }
 }
 
-#[cfg(any(feature = "trace", debug_assertions))]
+#[cfg(any(feature = "trace"))]
 mod trace {
     use crate::time::Instant;
     use std::fmt::{self, Debug, Formatter};
@@ -175,7 +175,7 @@ mod trace {
         }
     }
 }
-#[cfg(not(any(feature = "trace", debug_assertions)))]
+#[cfg(not(any(feature = "trace")))]
 mod trace {
     #[derive(Debug)]
     pub(super) struct Trace;

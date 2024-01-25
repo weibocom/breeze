@@ -25,6 +25,7 @@ touch $brz_home/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+vectortest@vector:3308@vector
 
+
 cargo build
 nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot $brz_home/snapshot --service-path $brz_home/socks --log-dir $brz_home/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info --idc-path 127.0.0.1:8080/3/config/breeze/idc_region --key-path .github/workflows/private_key.pem > $brz_home/logs/log.file  2>&1 &
 
@@ -41,7 +42,7 @@ export min_key=1
 export max_key=10000
 export socks_dir=$brz_home/socks
 
-cargo test -p tests
+RUST_BACKTRACE=1 cargo test -p tests
 
 #等待mesh初始化，最多等待两分钟
 port_list=(56810 56812 9302 9301 9303 3306 3308)  # 端口列表
@@ -70,6 +71,7 @@ while true; do
     fi
 done
 
-cargo test -p tests_integration --features github_workflow
+RUST_BACKTRACE=1 cargo test -p tests_integration --features github_workflow
 
 kill -9 $pid
+

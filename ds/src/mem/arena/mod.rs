@@ -18,9 +18,7 @@ impl<T> Allocator<T> for Heap {
     }
     #[inline(always)]
     fn dealloc(&self, t: NonNull<T>) {
-        unsafe {
-            let _ = Box::from_raw(t.as_ptr());
-        }
+        let _ = unsafe { Box::from_raw(t.as_ptr()) };
     }
 }
 
@@ -28,12 +26,6 @@ pub struct Arena<T, H = Heap> {
     cache: cache::CachedArena<T, H>,
 }
 impl<T, H: Allocator<T>> Arena<T, H> {
-    //#[inline]
-    //pub fn cache(cache: usize) -> Self {
-    //    Self {
-    //        cache: cache::CachedArena::with_capacity(cache, Heap),
-    //    }
-    //}
     #[inline]
     pub fn with_cache(cache: usize, heap: H) -> Self {
         Self {

@@ -1,7 +1,4 @@
-use super::{
-    strategy::{to_i64, Postfix},
-    uuid::Uuid,
-};
+use super::{strategy::Postfix, uuid::*};
 use chrono::{Datelike, NaiveDate};
 use core::fmt::Write;
 use ds::RingSlice;
@@ -37,37 +34,23 @@ impl KVTime {
     pub fn new(name: String, db_count: u32, shards: u32, table_postfix: Postfix) -> Self {
         Self {
             db_prefix: name.clone(),
-            table_prefix: name.clone(),
-            table_postfix: table_postfix,
+            table_prefix: name,
+            table_postfix,
             distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
             hasher: Hasher::from("crc32"),
         }
     }
-    fn write_date_tname(&self, buf: &mut impl Write, uuid: i64, is_display_day: bool) {
+    fn write_tname(&self, buf: &mut impl Write, key: &RingSlice) {
+        let uuid = key.uuid();
         let (mut year, month, day) = uuid.ymd();
         year %= 100;
-        if is_display_day {
-            let _ = write!(
-                buf,
-                "{}_{:02}{:02}{:02}",
-                &self.table_prefix, year, month, day
-            );
-        } else {
-            let _ = write!(buf, "{}_{:02}{:02}", &self.table_prefix, year, month);
-        }
-    }
-
-    fn write_tname(&self, buf: &mut impl Write, key: &RingSlice) {
-        let uuid = to_i64(key);
+        let _ = write!(buf, "{}_{:02}{:02}", self.table_prefix, year, month);
+        // 判断是否需要写入day
         match self.table_postfix {
-            Postfix::YYMM => {
-                self.write_date_tname(buf, uuid, false);
-            }
+            Postfix::YYMM => {}
             //Postfix::YYMMDD
-            _ => {
-                self.write_date_tname(buf, uuid, true);
-            }
-        }
+            _ => write!(buf, "{:02}", day).expect("buf"),
+        };
     }
 
     pub fn write_dname(&self, buf: &mut impl Write, key: &RingSlice) {
@@ -106,7 +89,7 @@ impl Strategy for KVTime {
         &self.hasher
     }
     fn get_key(&self, key: &RingSlice) -> u16 {
-        let uuid = to_i64(key);
+        let uuid = key.uuid();
         uuid.year()
     }
     fn tablename_len(&self) -> usize {

@@ -74,6 +74,8 @@ pub struct Basic {
     pub(crate) user: String,
     #[serde(default)]
     pub(crate) max_slave_conns: u16,
+    #[serde(default)]
+    pub(crate) region_enabled: bool,
 }
 pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 

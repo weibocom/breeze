@@ -29,8 +29,6 @@ pub async fn watch_discovery<D, T>(
     };
     refresher.watch().await
 }
-unsafe impl<D, T> Send for Refresher<D, T> {}
-unsafe impl<D, T> Sync for Refresher<D, T> {}
 
 struct Refresher<D, T> {
     discovery: DiscoveryCache<D>,

@@ -6,17 +6,17 @@ pub(super) fn parse(c: &mut Criterion) {
     let stream: RingSlice = data[..].into();
     let stream: Packet = stream.into();
     let mut group = c.benchmark_group("skip_bulks");
-    group.bench_function("num_skip_all", |b| {
-        b.iter(|| {
-            black_box({
-                let mut oft = 0;
-                while oft < stream.len() {
-                    stream.num_skip_all(&mut oft).expect("error not allowed");
-                }
-                assert_eq!(oft, stream.len());
-            });
-        });
-    });
+    //group.bench_function("num_skip_all", |b| {
+    //    b.iter(|| {
+    //        black_box({
+    //            let mut oft = 0;
+    //            while oft < stream.len() {
+    //                stream.num_skip_all(&mut oft).expect("error not allowed");
+    //            }
+    //            assert_eq!(oft, stream.len());
+    //        });
+    //    });
+    //});
     group.bench_function("skip_all_bulk", |b| {
         b.iter(|| {
             black_box({
