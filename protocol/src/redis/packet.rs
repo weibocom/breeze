@@ -549,7 +549,13 @@ impl Packet {
     //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
     #[inline]
     pub fn skip_all_bulk(&self, oft: &mut usize) -> Result<()> {
-        let mut bulk_count = self.num_of_bulks(oft)?;
+        let bulk_count = self.num_of_bulks(oft)?;
+        self.skip_bulk(oft, bulk_count)
+    }
+
+    #[inline]
+    pub fn skip_bulk(&self, oft: &mut usize, bulk_count: usize) -> Result<()> {
+        let mut bulk_count = bulk_count;
         // 使用stack实现递归, 通常没有递归，可以初始化这Empty
         let mut levels = Vec::new();
         while bulk_count > 0 || levels.len() > 0 {
@@ -573,39 +579,6 @@ impl Packet {
                 b'+' | b':' => self.line(oft)?,
                 _ => panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count),
             }
-            bulk_count -= 1;
-        }
-        Ok(())
-    }
-    // 需要支持4种协议格式：（除了-代表的错误类型）
-    //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
-    #[inline]
-    pub fn num_skip_all(&self, oft: &mut usize) -> Result<()> {
-        let bulk_count = self.num(oft)?;
-        self.skip_bulks(oft, bulk_count)
-    }
-
-    #[inline]
-    pub fn skip_bulks(&self, oft: &mut usize, bulk_count: usize) -> Result<()> {
-        let mut bulk_count = bulk_count;
-        while bulk_count > 0 {
-            if *oft >= self.len() {
-                return Err(crate::Error::ProtocolIncomplete);
-            }
-            match self.at(*oft) {
-                b'*' => {
-                    self.num_skip_all(oft)?;
-                }
-                b'$' => {
-                    self.num_and_skip(oft)?;
-                }
-                b'+' | b':' => self.line(oft)?,
-                _ => {
-                    log::info!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                    panic!("not supported in num_skip_all");
-                }
-            }
-            // data.num_and_skip(&mut oft)?;
             bulk_count -= 1;
         }
         Ok(())

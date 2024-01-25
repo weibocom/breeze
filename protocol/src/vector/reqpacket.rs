@@ -94,7 +94,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     ) -> Result<Option<RingSlice>> {
         // meta cmd 当前直接返回固定响应，直接skip后面的tokens即可
         if cfg.op.is_meta() {
-            self.skip_bulks(self.bulks)?;
+            self.safe_skip_bulk(self.bulks)?;
             return Ok(None);
         }
 
@@ -184,13 +184,13 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     /// skip 掉n个bulk
     #[inline]
-    fn skip_bulks(&mut self, count: u16) -> Result<()> {
+    fn safe_skip_bulk(&mut self, count: u16) -> Result<()> {
         if count > self.bulks {
             log::warn!("not enough bulks to skip req:{}", self);
             return Err(KvectorError::ReqInvalidBulkNum.into());
         }
         self.bulks -= count;
-        self.data.skip_bulks(&mut self.oft, count as usize)
+        self.data.skip_bulk(&mut self.oft, count as usize)
     }
 
     /// 注意返回的是整个key，包括main-key和扩展key
@@ -237,7 +237,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 // 还有bulks，检测奇偶位
                 if field_idx & 1 == 1 {
                     // 奇数位的value直接skip
-                    self.skip_bulks(1)?;
+                    self.safe_skip_bulk(1)?;
                 } else {
                     // 偶数位，可能是where，需要读出来进行check
                     let next = self.next_bulk_string()?;
@@ -274,7 +274,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
         flag.set_condition_pos(condition_pos as u32);
         // skip 掉condition 的 bulks
-        self.skip_bulks(self.bulks)?;
+        self.safe_skip_bulk(self.bulks)?;
 
         // 至此，剩余bulks必须得为0
         assert_eq!(self.bulks, 0, "kvector:{}", self);

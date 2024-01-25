@@ -258,7 +258,9 @@ impl<T: Endpoint> std::fmt::Debug for Distance<T> {
             "len:{}, local:{} backends:{}",
             self.len(),
             self.len_local,
-            addrs.string()
+            // TODO: 这里addr会段错误异常，先调整，流程跑通后再来debug fishermen
+            // addrs.string()
+            addrs.len()
         )
     }
 }

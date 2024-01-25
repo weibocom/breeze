@@ -102,7 +102,6 @@ where
                 req
             );
             let shard = unsafe { shards.get_unchecked(shard_idx) };
-
             log::debug!(
                 "+++ mysql {} send {} year {} shards {:?} => {:?}",
                 self.cfg.service,
