@@ -1,15 +1,14 @@
-use crate::{Id, ItemWriter, NumberInner};
-
-pub struct Qps {
-    inner: NumberInner,
-}
-impl Qps {
+use super::base::Adder;
+use crate::{ItemData, ItemWriter as Writer};
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Qps;
+impl super::Snapshot for Qps {
     // 只计数。
     #[inline]
-    pub(crate) fn snapshot<W: ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
-        let num = self.inner.take();
+    fn snapshot<W: Writer>(&self, path: &str, key: &str, data: &ItemData, w: &mut W, secs: f64) {
+        let num = data.d0.take();
         if num > 0 {
-            w.write(&id.path, id.key, id.t.name(), num as f64 / secs);
+            w.write(path, key, "qps", num as f64 / secs);
         }
     }
 }

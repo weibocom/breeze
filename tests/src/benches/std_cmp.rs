@@ -92,6 +92,36 @@ pub(super) fn bench_mod(c: &mut Criterion) {
             });
         });
     });
+    let mut v: Vec<u8> = Vec::with_capacity(1024);
+    let val: f64 = 789.1;
+    group.bench_function("metric_write_f64", |b| {
+        b.iter(|| {
+            black_box({
+                v.clear();
+                let s = format!("{:.3}", val);
+                v.extend_from_slice(s.as_bytes());
+            });
+        });
+    });
+    group.bench_function("metric_write_f64_zerocopy", |b| {
+        b.iter(|| {
+            black_box({
+                v.clear();
+                let mut trunc = val.trunc() as i64;
+                if val < 0.0 {
+                    v.push(b'-');
+                    trunc = -trunc;
+                }
+                use ds::NumStr;
+                (trunc as usize).with_str(|s| v.extend_from_slice(s));
+                let fraction = ((val.fract() * 1000.0) as i64).abs() as usize;
+                if fraction > 0 {
+                    v.push(b'.');
+                    fraction.with_str(|s| v.extend_from_slice(s));
+                }
+            });
+        });
+    });
     group.finish();
 }
 

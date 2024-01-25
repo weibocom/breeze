@@ -20,16 +20,9 @@ pub struct Basic {
 impl UuidNamespace {
     pub(super) fn try_from(cfg: &str) -> Option<Self> {
         let ns = serde_yaml::from_str::<UuidNamespace>(cfg)
-            .map_err(|e| {
-                log::info!("failed to parse uuid config:{}", cfg);
-                e
-            })
+            .map_err(|e| log::info!("parse uuid:{cfg} => {e:?}"))
             .ok()?;
-        if ns.backends.len() == 0 {
-            log::warn!("cfg invalid:{:?}", ns);
-            return None;
-        }
-        Some(ns)
+        (ns.backends.len() > 0).then_some(ns)
     }
     pub(super) fn timeout(&self) -> Timeout {
         let mut to = TO_UUID;

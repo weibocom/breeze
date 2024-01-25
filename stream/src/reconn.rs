@@ -1,15 +1,12 @@
 use ds::time::{sleep, Duration};
-use metrics::{Metric, Path};
 pub(crate) struct ReconnPolicy {
     conns: usize,
-    metric: Metric,
     continue_fails: usize,
 }
 
 impl ReconnPolicy {
-    pub(crate) fn new(path: &Path) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            metric: path.status("reconn"),
             conns: 0,
             continue_fails: 0,
         }
@@ -19,16 +16,14 @@ impl ReconnPolicy {
     // 第一次快速重连
     pub async fn conn_failed(&mut self) {
         self.conns += 1;
-        self.metric += 1;
 
         // 第一次失败的时候，continue_fails为0，因此不会sleep
         let sleep_mills = (self.continue_fails * 500).min(6000);
         log::info!(
-            "{}-th conn {} sleep:{} => {}",
+            "{}-th conn {} sleep:{}ms",
             self.conns,
             self.continue_fails,
             sleep_mills,
-            self.metric
         );
         self.continue_fails += 1;
         if sleep_mills > 0 {

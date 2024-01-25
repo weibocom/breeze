@@ -125,9 +125,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 debug_assert_eq!(self.data[self.oft], b'$', "{:?}", self);
                 // 路过CRLF_LEN个字节，通过命令获取op_code
                 let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
-                if idx + CRLF_LEN > self.data.len() {
-                    return Err(crate::Error::ProtocolIncomplete);
-                }
+                assert!(idx + CRLF_LEN <= self.data.len());
                 self.ctx.op_code = op_code;
                 // 第一次解析cmd需要对协议进行合法性校验
                 let cfg = command::get_cfg(op_code)?;
@@ -466,13 +464,10 @@ impl Packet {
     pub fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         // 至少4个字节
         if *oft + 4 <= self.len() {
-            debug_assert!(
-                self[*oft] == b'*' || self[*oft] == b'$',
-                "packet:{:?}",
-                self
-            );
+            debug_assert!(self[*oft] == b'*' || self[*oft] == b'$', "packet:{self:?}");
             let start = *oft;
-            *oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
+            //*oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
+            *oft += num_skips(self.at(*oft + 1));
             let mut val: usize = 0;
             while *oft < self.len() - 1 {
                 let b = self.at(*oft);
@@ -494,7 +489,7 @@ impl Packet {
                     // \r后面没有接\n。错误的协议
                     return Err(RedisError::ReqInvalidNoReturn.into());
                 }
-                if is_number_digit(b) {
+                if b.is_ascii_digit() {
                     val = val * 10 + (b - b'0') as usize;
                     if val <= std::u32::MAX as usize {
                         continue;
@@ -542,7 +537,7 @@ impl Packet {
         }
     }
     #[inline(always)]
-    pub fn check_onetoken(&self, oft: usize) -> Result<()> {
+    pub(super) fn check_onetoken(&self, oft: usize) -> Result<()> {
         // 一个token至少4个字节
         if oft + 4 <= self.len() {
             Ok(())
@@ -576,10 +571,7 @@ impl Packet {
                     *oft += self.num_of_string(oft)? + CRLF_LEN;
                 }
                 b'+' | b':' => self.line(oft)?,
-                _ => {
-                    log::warn!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                    panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-                }
+                _ => panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count),
             }
             bulk_count -= 1;
         }
@@ -618,10 +610,6 @@ impl Packet {
         }
         Ok(())
     }
-}
-#[inline]
-fn is_number_digit(d: u8) -> bool {
-    d >= b'0' && d <= b'9'
 }
 
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -684,17 +672,10 @@ impl<'a, S: crate::Stream> Debug for RequestPacket<'a, S> {
     }
 }
 
-// 在Packet::num时，需要跳过第一个symbol(可能是*也可能是$)，如果下一个字符是
-// '-'，则说明当前的num是0，则需要3个字节，即 "$-1".  格式为 $-1\r\n
-// '0'，则说明格式为 $0\r\n\r\n. 需跳过4字节，"$0\r\n"。
-// 其他只需要跳过 $或者*这一个字节即可。
-const NUM_SKIPS: [u8; 256] = [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-];
+#[inline(always)]
+fn num_skips(idx: u8) -> usize {
+    match idx {
+        b'-' => 3, // $-1\r\n 直接跳过 $-1 3个字节
+        _ => 1,    // 其他情况，跳过 $ 或者 * 1个字节
+    }
+}

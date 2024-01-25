@@ -45,7 +45,7 @@ impl Fixed {
     pub fn register(
         &mut self,
         path: String,
-        name_ext: &'static str,
+        name_ext: &str,
         cb: impl Fn(&str) + 'static + Send + Sync,
     ) {
         let mut available_paths = Vec::new();
@@ -60,6 +60,3 @@ impl Fixed {
         self.inited
     }
 }
-
-unsafe impl Send for Fixed {}
-unsafe impl Sync for Fixed {}

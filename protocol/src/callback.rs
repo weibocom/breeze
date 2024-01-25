@@ -7,8 +7,8 @@ use std::{
     },
 };
 
+use crate::BackendQuota;
 use ds::{time::Instant, AtomicWaker};
-use sharding::BackendQuota;
 
 use crate::{request::Request, Command, Error, HashedCommand};
 
@@ -31,14 +31,14 @@ impl Callback {
 
 pub struct CallbackContext {
     pub(crate) flag: crate::Context,
-    async_mode: bool,            // 是否是异步请求
-    done: AtomicBool,            // 当前模式请求是否完成
-    inited: AtomicBool,          // response是否已经初始化
-    pub(crate) try_next: bool,   // 请求失败是否需要重试
-    retry_on_rsp_notok: bool,    //有响应且响应不ok时，是否需要重试
-    pub(crate) write_back: bool, // 请求结束后，是否需要回写。
-    first: bool,                 // 当前请求是否是所有子请求的第一个
-    last: bool,                  // 当前请求是否是所有子请求的最后一个
+    async_mode: bool,                    // 是否是异步请求
+    done: AtomicBool,                    // 当前模式请求是否完成
+    inited: AtomicBool,                  // response是否已经初始化
+    pub(crate) try_next: bool,           // 请求失败后，topo层面是否允许重试
+    pub(crate) retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
+    pub(crate) write_back: bool,         // 请求结束后，是否需要回写。
+    first: bool,                         // 当前请求是否是所有子请求的第一个
+    last: bool,                          // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
     request: HashedCommand,
     response: MaybeUninit<Command>,
@@ -293,20 +293,18 @@ impl Drop for CallbackContext {
     }
 }
 
-unsafe impl Send for CallbackContext {}
-unsafe impl Sync for CallbackContext {}
-
 use std::fmt::{self, Debug, Display, Formatter};
 impl Display for CallbackContext {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "async mod:{} done:{} init:{} try:{} write back:{} flag:{} tries:{} => {:?}",
+            "async mod:{} done:{} init:{} try_next:{} retry_on_notok:{} write back:{} flag:{} tries:{} => {:?}",
             self.async_mode,
             self.done.load(Acquire),
             self.inited(),
             self.try_next,
+            self.retry_on_rsp_notok,
             self.write_back,
             self.flag,
             self.tries.load(Acquire),

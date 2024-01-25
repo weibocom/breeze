@@ -4,11 +4,9 @@ use super::Hash;
 pub struct Padding;
 
 impl Hash for Padding {
-    fn hash<S: super::HashKey>(&self, _key: &S) -> i64 {
-        log::warn!(
-            "+++ careful - may not call the padding hash with key: {:?}",
-            _key
-        );
+    #[inline(always)]
+    fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
+        log::warn!("+++ padding hash with key: {:?}", key);
         0
     }
 }

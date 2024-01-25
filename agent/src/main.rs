@@ -13,21 +13,21 @@ mod init;
 use ds::time::{sleep, Duration};
 use rt::spawn;
 
-use protocol::Result;
+use protocol::{Parser, Result};
+use stream::{Backend, Request};
+type Endpoint = Backend<Request>;
+type Topology = endpoint::TopologyProtocol<Endpoint, Parser>;
 
 // 默认支持
 fn main() -> Result<()> {
-    let result = tokio::runtime::Builder::new_multi_thread()
+    tokio::runtime::Builder::new_multi_thread()
         .worker_threads(context::get().thread_num as usize)
         .thread_name("breeze-w")
         .thread_stack_size(2 * 1024 * 1024)
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async { run().await });
-
-    println!("exit {:?}", result);
-    result
+        .block_on(run())
 }
 
 async fn run() -> Result<()> {
@@ -58,15 +58,7 @@ async fn run() -> Result<()> {
     }
 }
 
-use protocol::Parser;
-use std::sync::Arc;
-use stream::{Backend, Builder, Request};
-type Endpoint = Arc<Backend<Request>>;
-type Topology = endpoint::TopologyProtocol<Builder<Parser, Request>, Endpoint, Request, Parser>;
-async fn discovery_init(
-    ctx: &'static Context,
-    rx: Receiver<TopologyWriteGuard<Topology>>,
-) -> Result<()> {
+async fn discovery_init(ctx: &Context, rx: Receiver<TopologyWriteGuard<Topology>>) -> Result<()> {
     // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
     let discovery = discovery::Discovery::from_url(&ctx.discovery);
     let snapshot = ctx.snapshot_path.to_string();
