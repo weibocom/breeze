@@ -252,13 +252,13 @@ use crate::Endpoint;
 
 impl<T: Endpoint> std::fmt::Debug for Distance<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let addrs: &Vec<WithAddr<T>> = unsafe { std::mem::transmute(&self.replicas) };
+        let addrs: Vec<&str> = self.replicas.iter().map(|(t, _)| t.addr()).collect();
         write!(
             f,
-            "len:{}, local:{} backends:{}",
+            "len:{}, local:{} backends:{:?}",
             self.len(),
             self.len_local,
-            addrs.string()
+            addrs
         )
     }
 }
