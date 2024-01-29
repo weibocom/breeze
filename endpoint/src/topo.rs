@@ -25,7 +25,8 @@ procs::topology_dispatcher! {
     pub trait Endpoint: Sized + Send + Sync {
         type Item;
         fn send(&self, req: Self::Item);
-        fn shard_idx(&self, _hash: i64) -> usize {todo!("shard_idx not implemented");}
+        #[allow(unused_variables)]
+        fn shard_idx(&self, hash: i64) -> usize {todo!("shard_idx not implemented");}
         fn available(&self) -> bool {todo!("available not implemented");}
         fn addr(&self) -> &str {"addr not implemented"}
         #[allow(unused_variables)]
@@ -80,27 +81,6 @@ impl PerformanceTuning for bool {
     }
 }
 
-pub struct Pair<E> {
-    pub addr: String,
-    pub endpoint: E,
-}
-impl<E: Endpoint> From<(String, E)> for Pair<E> {
-    fn from(pair: (String, E)) -> Pair<E> {
-        Pair {
-            addr: pair.0,
-            endpoint: pair.1,
-        }
-    }
-}
-impl<E: Endpoint> From<E> for Pair<E> {
-    fn from(pair: E) -> Pair<E> {
-        Pair {
-            addr: pair.addr().to_string(),
-            endpoint: pair,
-        }
-    }
-}
-
 use std::collections::HashMap;
 pub struct Endpoints<'a, P, E: Endpoint> {
     service: &'a str,
@@ -117,19 +97,19 @@ impl<'a, P, E: Endpoint> Endpoints<'a, P, E> {
             cache: HashMap::new(),
         }
     }
-    pub fn cache_one<T: Into<Pair<E>>>(&mut self, endpoint: T) {
+    pub fn cache_one(&mut self, endpoint: E) {
         self.cache(vec![endpoint]);
     }
-    pub fn cache<T: Into<Pair<E>>>(&mut self, endpoints: Vec<T>) {
+    pub fn cache(&mut self, endpoints: Vec<E>) {
         self.cache.reserve(endpoints.len());
-        for pair in endpoints.into_iter().map(|e| e.into()) {
+        for pair in endpoints.into_iter() {
             self.cache
-                .entry(pair.addr)
+                .entry(pair.addr().to_owned())
                 .or_insert(Vec::new())
-                .push(pair.endpoint);
+                .push(pair);
         }
     }
-    pub fn with_cache<T: Into<Pair<E>>>(mut self, endpoints: Vec<T>) -> Self {
+    pub fn with_cache(mut self, endpoints: Vec<E>) -> Self {
         self.cache(endpoints);
         self
     }
