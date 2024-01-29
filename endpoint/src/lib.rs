@@ -9,6 +9,7 @@ pub mod phantomservice;
 pub mod redisservice;
 pub mod select;
 pub mod uuid;
+pub mod vector;
 
 pub mod dns;
 
@@ -20,6 +21,8 @@ const TO_MC_M: Timeout = Timeout::from_millis(100); // TODO: 先改成与当前�
 const TO_MC_S: Timeout = Timeout::from_millis(100); // TODO: 先改成与当前线上实际使用值一致
 const TO_MYSQL_M: Timeout = Timeout::from_millis(1000);
 const TO_MYSQL_S: Timeout = Timeout::from_millis(500);
+const TO_VECTOR_M: Timeout = Timeout::from_millis(1000);
+const TO_VECTOR_S: Timeout = Timeout::from_millis(500);
 const TO_UUID: Timeout = Timeout::from_millis(100);
 
 #[derive(Copy, Clone, Debug)]

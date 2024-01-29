@@ -1,5 +1,4 @@
 use core::fmt::Write;
-use enum_dispatch::enum_dispatch;
 use std::fmt::Display;
 
 use super::common::proto::codec::PacketCodec;
@@ -7,14 +6,13 @@ use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
 use crate::HashedCommand;
 use crate::{Error::FlushOnClose, Result};
-use ds::RingSlice;
+use ds::{RingSlice, Utf8};
 use sharding::{distribution::DBRange, hash::Hasher};
 
-#[enum_dispatch]
 pub trait Strategy {
     fn distribution(&self) -> &DBRange;
     fn hasher(&self) -> &Hasher;
-    fn get_key(&self, key: &RingSlice) -> u16;
+    fn get_key(&self, _key: &RingSlice) -> u16;
     fn tablename_len(&self) -> usize;
     fn write_database_table(&self, buf: &mut impl Write, key: &RingSlice);
 }
@@ -37,7 +35,7 @@ impl<'a, S> Table<'a, S> {
     }
 }
 
-struct KeyVal<'a>(&'a RingSlice);
+pub struct KeyVal<'a>(&'a RingSlice);
 impl<'a> Display for KeyVal<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.visit(|c| escape_mysql_and_push(f, c));
@@ -137,7 +135,7 @@ pub struct MysqlBuilder;
 // https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
 // Backslash (\) and the quote character used to quote the string must be escaped. In certain client environments, it may also be necessary to escape NUL or Control+Z.
 // 应该只需要转义上面的，我们使用单引号，所以双引号也不转义了
-fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
+pub fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
     //非法char要当成二进制push，否则会变成unicode
     let c = c as char;
     if c == '\\' || c == '\'' {
@@ -158,6 +156,11 @@ fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
     } else {
         let _ = packet.write_char(c);
     }
+}
+
+pub trait VectorSqlBuilder: MysqlBinary {
+    fn len(&self) -> usize;
+    fn write_sql(&self, buf: &mut impl Write);
 }
 
 impl MysqlBuilder {
@@ -183,17 +186,26 @@ impl MysqlBuilder {
             .check_total_payload_len()
             .map_err(|_| FlushOnClose(b"payload > max_allowed_packet"[..].into()))?;
         let packet: Vec<u8> = packet.into();
-        log::debug!(
-            "build mysql packet:{}",
-            String::from_utf8(
-                packet
-                    .iter()
-                    .map(|b| std::ascii::escape_default(*b))
-                    .flatten()
-                    .collect()
-            )
-            .unwrap()
-        );
+        log::debug!("build mysql packet:{}", packet.utf8());
+        Ok(packet)
+    }
+    pub fn build_packets_for_vector(sql_builder: impl VectorSqlBuilder) -> Result<Vec<u8>> {
+        let sql_len = sql_builder.len();
+
+        let mut packet = PacketCodec::default();
+        packet.reserve(sql_len + 5);
+        //5即下面两行包头长度
+        packet.write_next_packet_header();
+        packet.push(sql_builder.mysql_cmd() as u8);
+
+        sql_builder.write_sql(&mut packet);
+
+        packet.finish_current_packet();
+        packet
+            .check_total_payload_len()
+            .map_err(|_| FlushOnClose(b"payload > max_allowed_packet"[..].into()))?;
+        let packet: Vec<u8> = packet.into();
+        log::debug!("build mysql packet:{}", packet.utf8());
         Ok(packet)
     }
 }

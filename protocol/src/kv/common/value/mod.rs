@@ -26,6 +26,9 @@ use crate::kv::common::{
 pub mod convert;
 pub mod json;
 
+const CRLF: &[u8] = b"\r\n";
+const NIL: &[u8] = b"$-1\r\n";
+
 /// Side of MySql value serialization.
 pub trait SerializationSide {
     /// Null-bitmap offset of this side.
@@ -44,6 +47,11 @@ impl SerializationSide for ServerSide {
 pub struct ClientSide;
 
 impl SerializationSide for ClientSide {
+    const BIT_OFFSET: usize = 0;
+}
+
+/// TODO 此处需要确认offset fishermen
+impl SerializationSide for () {
     const BIT_OFFSET: usize = 0;
 }
 
@@ -302,6 +310,104 @@ impl Value {
         }
     }
 
+    /// 将text格式val写为redis 格式，目前只支持 integer or bulk string格式
+    pub fn write_text_as_redis(&self, data: &mut Vec<u8>, real_type: ColumnType) {
+        match *self {
+            Value::Bytes(ref bytes) => {
+                // TODO 目前先只区分是否integer，是否需要继续区分，后续再考虑 fishermen
+                match real_type.is_integer_type() {
+                    true => data.push(b':'),
+                    false => {
+                        // $n\r\n
+                        data.put_u8(b'$');
+                        data.put(bytes.len().to_string().as_bytes());
+                        data.put(CRLF);
+                    }
+                }
+                // 写value及postfix
+                data.extend_from_slice(bytes);
+                data.put(CRLF);
+            }
+            NULL => {
+                // 对于NULL字段，不管类型直接返回nil，因为无法确定其他类型的默认值
+                data.put(NIL);
+            }
+            _ => {
+                log::error!("+++ found malformed type:{:?}", self);
+                // 对于text val，理论上应该只有Bytes一种类型
+                panic!("malformed type in text protocol: {:?}", self);
+            }
+        };
+    }
+
+    /// 转换成redis序列化协议描述，注意check正确性
+    /// TODO Date目前先用时间str来表示，后面考虑时间戳 fishermen
+    pub fn write_bin_as_redis(&self, data: &mut Vec<u8>) {
+        match *self {
+            // Value::NULL => "NULL".into(),
+            Value::NULL => data.extend_from_slice("$-1\r\n".as_bytes()),
+            Value::Int(x) => data.extend_from_slice(format!(":{}\r\n", x).as_bytes()),
+            Value::UInt(x) => data.extend_from_slice(format!(":{}\r\n", x).as_bytes()),
+            Value::Float(x) => data.extend_from_slice(format!(",{}\r\n", x).as_bytes()),
+            Value::Double(x) => data.extend_from_slice(format!(",{}\r\n", x).as_bytes()),
+            Value::Date(y, m, d, 0, 0, 0, 0) => data
+                .extend_from_slice(format!("$10\r\n'{:04}-{:02}-{:02}'\r\n", y, m, d).as_bytes()),
+            Value::Date(year, month, day, hour, minute, second, 0) => data.extend_from_slice(
+                format!(
+                    "$19\r\n{:04}-{:02}-{:02} {:02}:{:02}:{:02}\r\n",
+                    year, month, day, hour, minute, second
+                )
+                .as_bytes(),
+            ),
+            Value::Date(year, month, day, hour, minute, second, micros) => data.extend_from_slice(
+                format!(
+                    "$26\r\n{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}\r\n",
+                    year, month, day, hour, minute, second, micros
+                )
+                .as_bytes(),
+            ),
+            Value::Time(neg, d, h, i, s, 0) => data.extend_from_slice(
+                {
+                    if neg {
+                        format!("$10\r\n-{:03}:{:02}:{:02}\r\n", d * 24 + u32::from(h), i, s)
+                    } else {
+                        format!("$9\r\n{:03}:{:02}:{:02}\r\n", d * 24 + u32::from(h), i, s)
+                    }
+                }
+                .as_bytes(),
+            ),
+            Value::Time(neg, days, hours, minutes, seconds, micros) => data.extend_from_slice(
+                {
+                    if neg {
+                        format!(
+                            "$17\r\n-{:03}:{:02}:{:02}.{:06}\r\n",
+                            days * 24 + u32::from(hours),
+                            minutes,
+                            seconds,
+                            micros
+                        )
+                    } else {
+                        format!(
+                            "$16\r\n{:03}:{:02}:{:02}.{:06}\r\n",
+                            days * 24 + u32::from(hours),
+                            minutes,
+                            seconds,
+                            micros
+                        )
+                    }
+                }
+                .as_bytes(),
+            ),
+            Value::Bytes(ref bytes) => {
+                // TODO 先用copy打通，后续再优化 fishermen
+                let prefix = format!("${}\r\n", bytes.len());
+                data.extend_from_slice(prefix.as_bytes());
+                data.extend_from_slice(bytes);
+                data.extend_from_slice("\r\n".as_bytes());
+            }
+        };
+    }
+
     // fn deserialize_text(buf: &mut ParseBuf<'_>) -> io::Result<Self> {
     pub fn deserialize_text(buf: &mut ParseBuf) -> io::Result<Self> {
         if buf.is_empty() {
@@ -317,7 +423,6 @@ impl Value {
             _ => {
                 let bytes: RawBytes<LenEnc> = buf.parse(())?;
                 // Ok(Value::Bytes(bytes.0.into_owned()))
-                log::debug!("+++ careful will dump for value len:{}", bytes.len());
                 let mut data = Vec::with_capacity(bytes.len());
                 bytes.0.copy_to_vec(&mut data);
                 Ok(Value::Bytes(data))

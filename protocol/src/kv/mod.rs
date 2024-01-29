@@ -1,16 +1,15 @@
-mod client;
+pub mod client;
 pub mod common;
-mod mcpacket;
+pub mod mcpacket;
 
-mod error;
-mod packet;
+pub mod error;
+pub mod packet;
 mod reqpacket;
 mod rsppacket;
 
 mod mc2mysql;
+pub use mc2mysql::{escape_mysql_and_push, MysqlBuilder, Strategy, VectorSqlBuilder};
 use std::ops::Deref;
-
-pub use mc2mysql::{MysqlBuilder, Strategy};
 
 use self::common::proto::Text;
 use self::common::query_result::{Or, QueryResult};
@@ -60,7 +59,7 @@ lazy_static! {
 pub struct Kv {}
 
 #[derive(Debug, Clone, Copy)]
-pub(self) enum HandShakeStatus {
+pub enum HandShakeStatus {
     #[allow(dead_code)]
     Init,
     InitialhHandshakeResponse,
@@ -319,7 +318,7 @@ impl Kv {
         // 首先parse meta，对于UnhandleResponseError异常，需要构建成响应返回
         let meta = match rsp_packet.parse_result_set_meta() {
             Ok(meta) => meta,
-            Err(Error::UnhandleResponseError(emsg)) => {
+            Err(crate::kv::Error::UnhandleResponseError(emsg)) => {
                 // 对于UnhandleResponseError，需要构建rsp，发给client
                 let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
                 return Ok(cmd);
@@ -444,6 +443,11 @@ impl Kv {
                 err_response = Some(RingSlice::from_slice(b"invalid request: year out of index"));
                 err_response.as_ref()
             }
+            ContextStatus::ReqInvalid => {
+                assert!(response.is_none());
+                err_response = Some(RingSlice::from_slice(b"invalid request"));
+                err_response.as_ref()
+            }
             ContextStatus::Ok => response.map(|r| r.deref().deref()),
         };
         if status != RespStatus::NoError && status != RespStatus::NotFound {
@@ -494,6 +498,7 @@ pub enum ConnState {
 pub enum ContextStatus {
     Ok,
     TopInvalid,
+    ReqInvalid,
 }
 
 #[repr(C)]

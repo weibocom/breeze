@@ -6,7 +6,7 @@ use crate::{error::Error, redis::command, Flag, Result, StreamContext};
 use ds::RingSlice;
 use sharding::hash::Hash;
 
-const CRLF_LEN: usize = b"\r\n".len();
+pub(crate) const CRLF_LEN: usize = b"\r\n".len();
 // 这个context是用于中multi请求中，同一个multi请求中跨request协调
 // 必须是u64长度的。
 #[repr(C)]
@@ -523,6 +523,19 @@ impl Packet {
             Err(crate::Error::ProtocolIncomplete)
         }
     }
+    /// 解析一个bulk string结构，即 $4\r\nname\r\n or $-1\r\n
+    #[inline]
+    pub fn bulk_string(&self, oft: &mut usize) -> Result<RingSlice> {
+        let len = self.num_of_string(oft)?;
+        let start = *oft;
+        *oft += len + CRLF_LEN;
+
+        if *oft <= self.len() {
+            Ok(self.sub_slice(start, len))
+        } else {
+            Err(crate::Error::ProtocolIncomplete)
+        }
+    }
     #[inline(always)]
     pub(super) fn check_onetoken(&self, oft: usize) -> Result<()> {
         // 一个token至少4个字节
@@ -536,7 +549,13 @@ impl Packet {
     //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
     #[inline]
     pub fn skip_all_bulk(&self, oft: &mut usize) -> Result<()> {
-        let mut bulk_count = self.num_of_bulks(oft)?;
+        let bulk_count = self.num_of_bulks(oft)?;
+        self.skip_bulk(oft, bulk_count)
+    }
+
+    #[inline]
+    pub fn skip_bulk(&self, oft: &mut usize, bulk_count: usize) -> Result<()> {
+        let mut bulk_count = bulk_count;
         // 使用stack实现递归, 通常没有递归，可以初始化这Empty
         let mut levels = Vec::new();
         while bulk_count > 0 || levels.len() > 0 {
@@ -564,33 +583,6 @@ impl Packet {
         }
         Ok(())
     }
-    // 需要支持4种协议格式：（除了-代表的错误类型）
-    //    1）* 代表array； 2）$代表bulk 字符串；3）+ 代表简单字符串；4）:代表整型；
-    //#[inline]
-    //pub fn num_skip_all(&self, oft: &mut usize) -> Result<()> {
-    //    let mut bulk_count = self.num(oft)?;
-    //    while bulk_count > 0 {
-    //        if *oft >= self.len() {
-    //            return Err(crate::Error::ProtocolIncomplete);
-    //        }
-    //        match self.at(*oft) {
-    //            b'*' => {
-    //                self.num_skip_all(oft)?;
-    //            }
-    //            b'$' => {
-    //                self.num_and_skip(oft)?;
-    //            }
-    //            b'+' | b':' => self.line(oft)?,
-    //            _ => {
-    //                log::info!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count);
-    //                panic!("not supported in num_skip_all");
-    //            }
-    //        }
-    //        // data.num_and_skip(&mut oft)?;
-    //        bulk_count -= 1;
-    //    }
-    //    Ok(())
-    //}
 }
 
 use std::sync::atomic::{AtomicI64, Ordering};

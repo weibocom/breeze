@@ -82,6 +82,18 @@ impl RingSlice {
         }
         num
     }
+    #[inline]
+    pub fn try_str_num(&self, r: impl Range) -> Option<usize> {
+        let (start, end) = r.range(self);
+        let mut num = 0usize;
+        for i in start..end {
+            if !self[i].is_ascii_digit() {
+                return None;
+            }
+            num = num.wrapping_mul(10) + (self[i] - b'0') as usize;
+        }
+        Some(num)
+    }
 
     #[inline]
     pub fn sub_slice(&self, offset: usize, len: usize) -> RingSlice {
@@ -265,6 +277,32 @@ impl RingSlice {
         })
     }
     #[inline]
+    pub fn equal(&self, other: &[u8]) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        for i in 0..self.len() {
+            if self[i] != other[i] {
+                return false;
+            }
+        }
+        return true;
+    }
+    /// 判断是否相同，忽略大小写
+    #[inline]
+    pub fn equal_ignore_case(&self, other: &[u8]) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        for i in 0..self.len() {
+            // 指令一般是大写
+            if self[i].to_ascii_uppercase() != other[i].to_ascii_uppercase() {
+                return false;
+            }
+        }
+        return true;
+    }
+    #[inline]
     pub fn start_with(&self, oft: usize, s: &[u8]) -> bool {
         if oft + s.len() <= self.len() {
             with_segment!(
@@ -273,6 +311,27 @@ impl RingSlice {
                 |p, _l| { from_raw_parts(p, s.len()) == s },
                 |p0, l0, p1, _l1| from_raw_parts(p0, l0) == &s[..l0]
                     && from_raw_parts(p1, s.len() - l0) == &s[l0..]
+            )
+        } else {
+            false
+        }
+    }
+
+    #[inline]
+    pub fn start_ignore_case(&self, oft: usize, s: &[u8]) -> bool {
+        if oft + s.len() <= self.len() {
+            with_segment!(
+                self,
+                oft,
+                |p, _l| { from_raw_parts(p, s.len()).eq_ignore_ascii_case(s) },
+                |p0, l0, p1, _l1| {
+                    if l0 < s.len() {
+                        from_raw_parts(p0, l0).eq_ignore_ascii_case(&s[..l0])
+                            && from_raw_parts(p1, s.len() - l0).eq_ignore_ascii_case(&s[l0..])
+                    } else {
+                        from_raw_parts(p0, s.len()).eq_ignore_ascii_case(s)
+                    }
+                }
             )
         } else {
             false
