@@ -9,7 +9,7 @@ const HEADER_LEN: usize = 4;
 /// mysql的响应或请求packet的原始数据封装，packet data可能包含多个packet；
 /// 如Com_Query的响应中包含一个定义columns的meta packet 和 若干个row packet。
 #[derive(Debug)]
-pub(super) struct PacketData {
+pub struct PacketData {
     inner: RingSlice,
 }
 
@@ -23,7 +23,7 @@ impl From<RingSlice> for PacketData {
 /// 基于RingSlice解析mysql协议
 impl PacketData {
     /// 解析packet header，
-    pub(super) fn parse_header(&self, oft: &mut usize) -> Result<PacketHeader> {
+    pub fn parse_header(&self, oft: &mut usize) -> Result<PacketHeader> {
         // mysql packet至少需要4个字节来读取sequence id
         if self.left_len(*oft) <= HEADER_LEN {
             return Err(Error::ProtocolIncomplete);
@@ -45,7 +45,7 @@ impl PacketData {
     }
 
     #[inline(always)]
-    pub(super) fn left_len(&self, oft: usize) -> usize {
+    pub fn left_len(&self, oft: usize) -> usize {
         self.inner.len() - oft
     }
 }
@@ -65,9 +65,9 @@ impl Display for PacketData {
     }
 }
 
-pub(super) struct PacketHeader {
-    pub(super) payload_len: usize,
-    pub(super) seq: u8,
+pub struct PacketHeader {
+    pub payload_len: usize,
+    pub seq: u8,
 }
 
 impl PacketHeader {

@@ -9,7 +9,7 @@ mod proc_test {
         let data: RingSlice = SIMPLE_ARR.as_bytes().into();
         let data: Packet = data.into();
         let mut oft: usize = 0;
-        assert!(data.num_skip_all(&mut oft).is_ok());
+        assert!(data.skip_all_bulk(&mut oft).is_ok());
         assert_eq!(oft, data.len());
 
         let mut oft: usize = 0;
@@ -23,7 +23,7 @@ mod proc_test {
         let rsp_data: RingSlice = rsp.as_bytes().into();
         let rsp_data: Packet = rsp_data.into();
         let mut oft: usize = 0;
-        assert!(rsp_data.num_skip_all(&mut oft).is_ok());
+        assert!(rsp_data.skip_all_bulk(&mut oft).is_ok());
         assert_eq!(oft, rsp_data.len());
 
         let mut oft: usize = 0;

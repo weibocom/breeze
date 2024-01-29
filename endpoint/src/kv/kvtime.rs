@@ -1,4 +1,5 @@
 use super::{strategy::Postfix, uuid::*};
+use chrono::{Datelike, NaiveDate};
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
@@ -15,6 +16,21 @@ pub struct KVTime {
 }
 
 impl KVTime {
+    pub fn new_with_db(
+        db_prefix: String,
+        table_prefix: String,
+        db_count: u32,
+        shards: u32,
+        table_postfix: Postfix,
+    ) -> Self {
+        Self {
+            db_prefix,
+            table_prefix,
+            table_postfix,
+            distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
+            hasher: Hasher::from("crc32"),
+        }
+    }
     pub fn new(name: String, db_count: u32, shards: u32, table_postfix: Postfix) -> Self {
         Self {
             db_prefix: name.clone(),
@@ -37,9 +53,32 @@ impl KVTime {
         };
     }
 
-    fn write_dname(&self, buf: &mut impl Write, key: &RingSlice) {
+    pub fn write_dname(&self, buf: &mut impl Write, key: &RingSlice) {
         let db_idx: usize = self.distribution.db_idx(self.hasher.hash(key));
         let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
+    }
+
+    pub fn write_dname_with_hash(&self, buf: &mut impl Write, hash: i64) {
+        let db_idx: usize = self.distribution.db_idx(hash);
+        let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
+    }
+
+    pub fn write_tname_with_date(&self, buf: &mut impl Write, date: &NaiveDate) {
+        let (mut year, month, day) = (date.year(), date.month(), date.day());
+        year %= 100;
+        match self.table_postfix {
+            Postfix::YYMM => {
+                let _ = write!(buf, "{}_{:02}{:02}", &self.table_prefix, year, month);
+            }
+            //Postfix::YYMMDD
+            _ => {
+                let _ = write!(
+                    buf,
+                    "{}_{:02}{:02}{:02}",
+                    &self.table_prefix, year, month, day
+                );
+            }
+        }
     }
 }
 impl Strategy for KVTime {

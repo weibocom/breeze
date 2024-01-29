@@ -19,6 +19,7 @@ procs::topology_dispatcher! {
         PhantomService(crate::phantomservice::topo::PhantomService<E, P>),
         KvService(crate::kv::topo::KvService<E, P>),
         UuidService(crate::uuid::topo::UuidService<E, P>),
+        VectorService(crate::vector::topo::VectorService<E, P>),
     }
 
     pub trait Endpoint: Sized + Send + Sync {

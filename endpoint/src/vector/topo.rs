@@ -1,39 +1,36 @@
 use std::collections::HashMap;
 
-use discovery::distance::ByDistance;
+use chrono::Datelike;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
-use protocol::kv::Binary;
-use protocol::kv::ContextStatus;
-use protocol::kv::MysqlBuilder;
-use protocol::kv::Strategy;
+use protocol::kv::{ContextStatus, MysqlBuilder};
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
-use rand::seq::SliceRandom;
 use sharding::hash::{Hash, HashKey};
 
 use crate::dns::DnsConfig;
 use crate::Timeout;
-use crate::{shards::Shard, Endpoint, Topology};
+use crate::{Endpoint, Topology};
+use protocol::vector::mysql::SqlBuilder;
 
-use super::config::KvNamespace;
-use super::config::Years;
+use super::config::VectorNamespace;
 use super::strategy::Strategist;
-use super::KVCtx;
+use crate::kv::topo::Shards;
+use crate::kv::KVCtx;
+use crate::shards::Shard;
 #[derive(Clone)]
-pub struct KvService<E, P> {
+pub struct VectorService<E, P> {
     shards: Shards<E>,
-    // selector: Selector,
     strategist: Strategist,
     parser: P,
-    cfg: Box<DnsConfig<KvNamespace>>,
+    cfg: Box<DnsConfig<VectorNamespace>>,
 }
 
-impl<E, P> From<P> for KvService<E, P> {
+impl<E, P> From<P> for VectorService<E, P> {
     #[inline]
     fn from(parser: P) -> Self {
         Self {
@@ -41,12 +38,11 @@ impl<E, P> From<P> for KvService<E, P> {
             shards: Default::default(),
             strategist: Default::default(),
             cfg: Default::default(),
-            // selector: Selector::Random,
         }
     }
 }
 
-impl<E, P> Hash for KvService<E, P>
+impl<E, P> Hash for VectorService<E, P>
 where
     E: Endpoint,
     P: Protocol,
@@ -57,7 +53,7 @@ where
     }
 }
 
-impl<E, Req, P> Topology for KvService<E, P>
+impl<E, Req, P> Topology for VectorService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -65,7 +61,7 @@ where
 {
 }
 
-impl<E, Req, P> Endpoint for KvService<E, P>
+impl<E, Req, P> Endpoint for VectorService<E, P>
 where
     E: Endpoint<Item = Req>,
     Req: Request,
@@ -74,49 +70,59 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
-        // req 是mc binary协议，需要展出字段，转换成sql
-        let (intyear, shard_idx) = if req.ctx_mut().runs == 0 {
-            let key = req.key();
-            //定位年库
-            let intyear: u16 = self.strategist.get_key(&key);
-            let shard_idx = self.shard_idx(req.hash());
-            req.ctx_mut().year = intyear;
-            req.ctx_mut().shard_idx = shard_idx as u16;
+        let shard = (|| -> Result<&Shard<E>, protocol::Error> {
+            let (year, shard_idx) = if req.ctx_mut().runs == 0 {
+                let vcmd = protocol::vector::redis::parse_vector_detail(&req)?;
+                //定位年库
+                let date = self.strategist.get_date(&vcmd.keys)?;
+                let year = date.year() as u16;
 
-            //todo: 此处不应panic
-            let cmd =
-                MysqlBuilder::build_packets(&self.strategist, &req, &key).expect("malformed sql");
-            req.reshape(MemGuard::from_vec(cmd));
+                let shard_idx = self.shard_idx(req.hash());
+                req.ctx_mut().year = year;
+                req.ctx_mut().shard_idx = shard_idx as u16;
 
-            (intyear, shard_idx)
-        } else {
-            (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
+                let vector_builder = SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
+                let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
+                req.reshape(MemGuard::from_vec(cmd));
+
+                (year, shard_idx)
+            } else {
+                (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
+            };
+
+            let shards = self.shards.get(year);
+            if shards.len() == 0 {
+                return Err(protocol::Error::TopInvalid);
+            }
+            debug_assert!(
+                shard_idx < shards.len(),
+                "mysql: {}/{} req:{:?}",
+                shard_idx,
+                shards.len(),
+                req
+            );
+            let shard = unsafe { shards.get_unchecked(shard_idx) };
+            log::debug!(
+                "+++ mysql {} send {} year {} shards {:?} => {:?}",
+                self.cfg.service,
+                shard_idx,
+                year,
+                shards,
+                req
+            );
+            Ok(shard)
+        })();
+        let shard = match shard {
+            Ok(shard) => shard,
+            Err(e) => {
+                req.ctx_mut().error = match e {
+                    protocol::Error::TopInvalid => ContextStatus::TopInvalid,
+                    _ => ContextStatus::ReqInvalid,
+                };
+                req.on_err(e);
+                return;
+            }
         };
-
-        let shards = self.shards.get(intyear);
-        if shards.len() == 0 {
-            req.ctx_mut().error = ContextStatus::TopInvalid;
-            req.on_err(protocol::Error::TopInvalid);
-            return;
-        }
-        debug_assert!(
-            shard_idx < shards.len(),
-            "mysql: {}/{} req:{:?}",
-            shard_idx,
-            shards.len(),
-            req
-        );
-
-        let shard = unsafe { shards.get_unchecked(shard_idx) };
-        log::debug!(
-            "mysql {:?} send {} year {} shards {:?} => {:?}",
-            self.cfg,
-            shard_idx,
-            intyear,
-            shards,
-            req
-        );
-
         if shard.has_slave() && !req.operation().is_store() {
             if *req.context_mut() == 0 {
                 if let Some(quota) = shard.slaves.quota() {
@@ -150,7 +156,7 @@ where
     }
 }
 
-impl<E, P> TopologyWrite for KvService<E, P>
+impl<E, P> TopologyWrite for VectorService<E, P>
 where
     P: Protocol,
     E: Endpoint,
@@ -162,13 +168,13 @@ where
         self.cfg.load_guard().check_load(|| self.load_inner())
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
-        if let Some(ns) = KvNamespace::try_from(cfg) {
+        if let Some(ns) = VectorNamespace::try_from(cfg) {
             self.strategist = Strategist::try_from(&ns);
             self.cfg.update(namespace, ns);
         }
     }
 }
-impl<E, P> KvService<E, P>
+impl<E, P> VectorService<E, P>
 where
     P: Protocol,
     E: Endpoint,
@@ -251,11 +257,10 @@ where
             }
         }
 
-        let mut rng = rand::thread_rng();
         for (interval, addrs_per_interval) in addrs {
             let mut shards_per_interval = Vec::with_capacity(addrs_per_interval.len());
             // 遍历所有的shards_url
-            for (master_addr, mut slaves) in addrs_per_interval {
+            for (master_addr, slaves) in addrs_per_interval {
                 assert_ne!(master_addr.len(), 0);
                 assert_ne!(slaves.len(), 0);
                 // 用户名和密码
@@ -269,28 +274,8 @@ where
                     self.cfg.timeout_master(),
                     res_option.clone(),
                 );
-                // slave 数量有限制时，先按可用区规则对slaves排序
-                // 若可用区内实例数量为0或未开启可用区，则将slaves随机化作为排序结果
-                // 按slave数量限制截取将使用的slave
+                // slave
                 let mut replicas = Vec::with_capacity(8);
-                if self.cfg.basic.max_slave_conns != 0
-                    && slaves.len() > self.cfg.basic.max_slave_conns as usize
-                {
-                    let mut l = if self.cfg.basic.region_enabled {
-                        slaves.sort_by_region(Vec::new(), context::get().region(), |d, _| {
-                            d <= discovery::distance::DISTANCE_VAL_REGION
-                        })
-                    } else {
-                        0
-                    };
-                    if l == 0 {
-                        slaves.shuffle(&mut rng);
-                        l = slaves.len();
-                    }
-
-                    slaves.truncate(l.min(self.cfg.basic.max_slave_conns as usize));
-                }
-
                 for addr in slaves {
                     let slave = self.take_or_build(
                         &mut old,
@@ -306,11 +291,8 @@ where
                     self.cfg.basic.selector.tuning_mode(),
                     master,
                     replicas,
-                    self.cfg.basic.region_enabled,
+                    false,
                 );
-
-                // 检查可用区内实例数量, 详见issues-771
-                shard.check_region_len("mysql", &self.cfg.service);
                 shards_per_interval.push(shard);
             }
             self.shards.push((interval, shards_per_interval));
@@ -323,7 +305,7 @@ where
         true
     }
 }
-impl<E, P> discovery::Inited for KvService<E, P>
+impl<E, P> discovery::Inited for VectorService<E, P>
 where
     E: discovery::Inited,
 {
@@ -334,135 +316,5 @@ where
         self.shards.len() > 0
             && self.shards.len() == self.cfg.shards_url.len()
             && self.shards.inited()
-    }
-}
-
-// todo: 这一段跟redis是一样的，这段可以提到外面去
-//impl<E: discovery::Inited> Shard<E> {
-//    // 1. 主已经初始化
-//    // 2. 有从
-//    // 3. 所有的从已经初始化
-//    #[inline]
-//    fn inited(&self) -> bool {
-//        self.master().inited()
-//            && self.has_slave()
-//            && self
-//                .slaves
-//                .iter()
-//                .fold(true, |inited, e| inited && e.inited())
-//    }
-//}
-// todo: 这一段跟redis是一样的，这段可以提到外面去
-//impl<E: Endpoint> Shard<E> {
-//    #[inline]
-//    fn selector(is_performance: bool, master: E, replicas: Vec<E>, region_enabled: bool) -> Self {
-//        Self {
-//            master,
-//            slaves: Distance::with_mode(replicas, is_performance, region_enabled),
-//        }
-//    }
-//}
-//impl<E> Shard<E> {
-//    #[inline]
-//    fn has_slave(&self) -> bool {
-//        self.slaves.len() > 0
-//    }
-//    #[inline]
-//    fn master(&self) -> &E {
-//        &self.master
-//    }
-//    #[inline]
-//    fn select(&self) -> (usize, &E) {
-//        self.slaves.unsafe_select()
-//    }
-//    #[inline]
-//    fn next(&self, idx: usize, runs: usize) -> (usize, &E)
-//    where
-//        E: Endpoint,
-//    {
-//        unsafe { self.slaves.unsafe_next(idx, runs) }
-//    }
-//}
-
-// todo: 这一段跟redis是一样的，这段可以提到外面去
-//#[derive(Clone)]
-//struct Shard<E> {
-//    master: E,
-//    slaves: Distance<E>,
-//}
-
-//impl<E> Debug for Shard<E> {
-//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//        write!(f, "shard(master => slaves: {:?})", self.slaves.len())
-//    }
-//}
-
-const YEAR_START: u16 = 2000;
-const YEAR_END: u16 = 2099;
-const YEAR_LEN: usize = (YEAR_END - YEAR_START) as usize + 1;
-#[derive(Clone)]
-pub(crate) struct Shards<E> {
-    shards: Vec<Vec<Shard<E>>>,
-    //2000~2099年的分片索引范围，如index[0] = 2 表示2000年的shards为shards[2]
-    //使用usize::MAX表示未初始化
-    index: [usize; YEAR_LEN],
-    len: usize,
-}
-
-impl<E> Default for Shards<E> {
-    fn default() -> Self {
-        Self {
-            shards: Default::default(),
-            index: [usize::MAX; YEAR_LEN],
-            len: 0,
-        }
-    }
-}
-impl<E> Shards<E> {
-    pub(crate) fn len(&self) -> usize {
-        self.len
-    }
-    //会重新初始化
-    pub(crate) fn take(&mut self) -> Vec<Shard<E>> {
-        self.index = [usize::MAX; YEAR_LEN];
-        self.len = 0;
-        self.shards.split_off(0).into_iter().flatten().collect()
-    }
-    //push 进来的shard是否init了
-    pub(crate) fn inited(&self) -> bool
-    where
-        E: discovery::Inited,
-    {
-        self.shards
-            .iter()
-            .flatten()
-            .fold(true, |inited, shard| inited && shard.inited())
-    }
-
-    fn year_index(year: u16) -> usize {
-        (year - YEAR_START) as usize
-    }
-
-    pub(crate) fn push(&mut self, shards_per_interval: (&Years, Vec<Shard<E>>)) {
-        let (interval, shards_per_interval) = shards_per_interval;
-        let index = self.shards.len();
-        self.len += shards_per_interval.len();
-        self.shards.push(shards_per_interval);
-        let (start_year, end_year) = (Self::year_index(interval.0), Self::year_index(interval.1));
-        for i in &mut self.index[start_year..=end_year] {
-            assert_eq!(*i, usize::MAX);
-            *i = index
-        }
-    }
-
-    pub(crate) fn get(&self, intyear: u16) -> &[Shard<E>] {
-        if intyear > YEAR_END || intyear < YEAR_START {
-            return &[];
-        }
-        let index = self.index[Self::year_index(intyear)];
-        if index == usize::MAX {
-            return &[];
-        }
-        &self.shards[index]
     }
 }

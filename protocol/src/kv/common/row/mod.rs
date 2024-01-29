@@ -6,6 +6,8 @@
 // option. All files in the project carrying such notice may not be copied,
 // modified, or distributed except according to those terms.
 
+use ds::Utf8;
+
 use crate::kv::common::{
     io::ParseBuf,
     misc::unexpected_buf_eof,
@@ -68,6 +70,12 @@ impl Row {
     /// Returns length of a row.
     pub fn len(&self) -> usize {
         self.values.len()
+    }
+
+    /// return length of columns
+    #[inline]
+    pub fn columns_len(&self) -> usize {
+        self.columns.len()
     }
 
     /// Returns true if the row has a length of 0.
@@ -174,6 +182,22 @@ impl Row {
     #[doc(hidden)]
     pub fn place(&mut self, index: usize, value: Value) {
         self.values[index] = Some(value);
+    }
+
+    // 将values中的数据按redis格式写入缓冲
+    #[inline]
+    pub(crate) fn write_as_redis(&self, data: &mut Vec<u8>) {
+        // 对于每一个row，vals的数量必须登录columns的数量，即便vals中有null
+        assert_eq!(self.len(), self.columns.len(), "{:?}", self);
+
+        let columns = self.columns_ref();
+        for (i, val) in self.values.iter().enumerate() {
+            assert!(val.is_some(), "{}:{:?}", data.utf8(), self);
+
+            let column_type = columns[i].column_type();
+            val.as_ref()
+                .and_then(|v| Some(v.write_text_as_redis(data, column_type)));
+        }
     }
 }
 

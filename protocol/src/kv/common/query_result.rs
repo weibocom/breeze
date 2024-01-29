@@ -60,7 +60,7 @@ impl Protocol for Binary {
 
 /// State of a result set iterator.
 #[derive(Debug)]
-enum SetIteratorState {
+pub enum SetIteratorState {
     /// Iterator is in a non-empty set.
     InSet(Arc<[Column]>),
     /// Iterator is in an empty set.

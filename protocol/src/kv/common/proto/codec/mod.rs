@@ -38,6 +38,7 @@ pub fn packet_to_chunks<T: Buf>(mut seq_id: u8, packet: &mut T, dst: &mut BytesM
     while packet.has_remaining() {
         let mut chunk_len = min(packet.remaining(), MAX_PAYLOAD_LEN);
         dst.put_u32_le(chunk_len as u32 | (u32::from(seq_id) << 24));
+
         while chunk_len > 0 {
             let chunk = packet.chunk();
             let count = min(chunk.len(), chunk_len);
@@ -373,6 +374,20 @@ impl core::fmt::Write for PacketCodec {
     }
 }
 
+// impl std::io::Write for PacketCodec {
+//     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+//         if buf.len() == 1 {
+//             self.push(buf[0])
+//         }
+//         self.push_u8(buf);
+//         Ok(buf.len())
+//     }
+
+//     fn flush(&mut self) -> std::io::Result<()> {
+//         Ok(())
+//     }
+// }
+//
 impl PacketCodec {
     // /// Sets sequence id to `0`.
     // pub fn reset_seq_id(&mut self) {
@@ -415,6 +430,20 @@ impl PacketCodec {
         dst: &mut BytesMut,
     ) -> Result<(), PacketCodecError> {
         self.inner.encode(src, dst, self.max_allowed_packet)
+    }
+
+    pub fn push_u8(&mut self, mut buf: &[u8]) {
+        if cfg!(feature = "max_allowed_packet") {
+            while buf.len() > 0 {
+                let cap = MAX_PAYLOAD_LEN - self.payload_len();
+                let writed = min(cap, buf.len());
+                self.buf.extend_from_slice(&buf[..writed]);
+                self.check_full();
+                buf = &buf[writed..];
+            }
+        } else {
+            self.buf.extend_from_slice(buf);
+        }
     }
 
     pub fn push_str(&mut self, string: &str) {
@@ -664,7 +693,6 @@ impl PlainPacketCodec {
         }
 
         self.seq_id = packet_to_chunks(self.seq_id, packet, dst);
-
         Ok(())
     }
 }

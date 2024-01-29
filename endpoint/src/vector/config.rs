@@ -1,45 +1,13 @@
 use base64::{engine::general_purpose, Engine as _};
-use serde::{de::Error, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
-use crate::{Timeout, TO_MYSQL_M, TO_MYSQL_S};
-
-//时间间隔，闭区间, 可以是2010, 或者2010-2015
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct Years(pub u16, pub u16);
-
-impl<'de> Deserialize<'de> for Years {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        match String::deserialize(deserializer) {
-            Ok(interval) => {
-                //暂时兼容defalut，配置更新后删除
-                if interval == ARCHIVE_DEFAULT_KEY {
-                    return Ok(Years(0, 0));
-                }
-                let mut interval_split = interval.split("-");
-                let start = interval_split
-                    .next()
-                    .ok_or(Error::custom(&format!("interval is empty:{interval}")))?
-                    .parse()
-                    .map_err(Error::custom)?;
-                let end = if let Some(end) = interval_split.next() {
-                    end.parse().map_err(Error::custom)?
-                } else {
-                    start
-                };
-                Ok(Years(start, end))
-            }
-            Err(e) => Err(e),
-        }
-    }
-}
+pub use crate::kv::config::Years;
+use crate::{Timeout, TO_VECTOR_M, TO_VECTOR_S};
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct KvNamespace {
+pub struct VectorNamespace {
     #[serde(default)]
     pub(crate) basic: Basic,
     #[serde(skip)]
@@ -51,9 +19,7 @@ pub struct KvNamespace {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Basic {
     #[serde(default)]
-    listen: String,
-    #[serde(default)]
-    resource_type: String,
+    pub(crate) resource_type: String,
     #[serde(default)]
     pub(crate) selector: String,
     #[serde(default)]
@@ -63,9 +29,13 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) db_name: String,
     #[serde(default)]
+    pub(crate) table_name: String,
+    #[serde(default)]
     pub(crate) table_postfix: String,
     #[serde(default)]
     pub(crate) db_count: u32,
+    #[serde(default)]
+    pub(crate) keys: Vec<String>,
     #[serde(default)]
     pub(crate) strategy: String,
     #[serde(default)]
@@ -73,16 +43,13 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) user: String,
     #[serde(default)]
-    pub(crate) max_slave_conns: u16,
-    #[serde(default)]
     pub(crate) region_enabled: bool,
 }
-pub const ARCHIVE_DEFAULT_KEY: &str = "__default__";
 
-impl KvNamespace {
+impl VectorNamespace {
     #[inline]
     pub(crate) fn try_from(cfg: &str) -> Option<Self> {
-        match serde_yaml::from_str::<KvNamespace>(cfg) {
+        match serde_yaml::from_str::<VectorNamespace>(cfg) {
             Ok(mut ns) => {
                 //移除default分片，兼容老defalut
                 ns.backends.remove(&Years(0, 0));
@@ -128,16 +95,16 @@ impl KvNamespace {
         Ok(decrypted_string)
     }
     pub(crate) fn timeout_master(&self) -> Timeout {
-        let mut to = TO_MYSQL_M;
+        let mut to = TO_VECTOR_M;
         if self.basic.timeout_ms_master > 0 {
             to.adjust(self.basic.timeout_ms_master);
         }
         to
     }
     pub(crate) fn timeout_slave(&self) -> Timeout {
-        let mut to = TO_MYSQL_S;
+        let mut to = TO_VECTOR_S;
         if self.basic.timeout_ms_slave > 0 {
-            to.adjust(self.basic.timeout_ms_slave);
+            to.adjust(self.basic.timeout_ms_master);
         }
         to
     }

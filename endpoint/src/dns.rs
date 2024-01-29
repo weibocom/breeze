@@ -92,6 +92,12 @@ impl Backends for crate::kv::config::KvNamespace {
     }
 }
 
+impl Backends for crate::vector::config::VectorNamespace {
+    fn get_backends(&self) -> &Vec<String> {
+        &self.backends_flaten
+    }
+}
+
 impl<T> std::ops::Deref for DnsConfig<T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {

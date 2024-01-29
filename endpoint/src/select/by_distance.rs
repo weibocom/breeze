@@ -258,6 +258,7 @@ impl<T: Endpoint> std::fmt::Debug for Distance<T> {
             "len:{}, local:{} backends:{:?}",
             self.len(),
             self.len_local,
+            // addrs.string()
             addrs
         )
     }

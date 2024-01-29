@@ -4,7 +4,7 @@ on:
   push:
     branches: ["dev", "dev_ci", "dev_icy"]
   pull_request:
-    branches: ["dev", "dev_ci"]
+    branches: ["dev", "dev_ci", "vector"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,6 +14,7 @@ env:
   mc: localhost:9301
   phantom: localhost:9303
   mysql: localhost:3306
+  vector: localhost:3308
   min_key: 1
   max_key: 10000
   socks_dir: /home/runner/work/breeze/socks
@@ -26,10 +27,10 @@ jobs:
     steps:
       - name: Mysql start and init
         run: |
-          docker run --rm --name breeze_ci_mysql4623  -p 4623:3306 -d viciousstar/mysqlci_with_schema
-          docker run --rm --name breeze_ci_mysql4624  -p 4624:3306 -d viciousstar/mysqlci_with_schema
+          docker run --rm --name breeze_ci_mysql4623  -p 4623:3306 -d parabala/mysqlci_with_schema:v0.0.2
+          docker run --rm --name breeze_ci_mysql4624  -p 4624:3306 -d parabala/mysqlci_with_schema:v0.0.2
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci viciousstar/breeze:githubci108
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci parabala/breeze:githubci108
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -47,6 +48,7 @@ jobs:
           curl http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest
           curl http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest
           curl http://127.0.0.1:8080/config/cloud/kv/testbreeze/kvmeshtest
+          curl http://127.0.0.1:8080/config/cloud/vector/testbreeze/vectortest
       - name: Create Socks
         run: |
           #ps -aux|grep breeze
@@ -59,6 +61,7 @@ jobs:
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+counterservice+testbreeze+meshtest@redis:9302@rs
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+vectortest@vector:3308@vector
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
@@ -83,10 +86,10 @@ jobs:
         #    version: "0.22.0"
         #    args: "--features=github_workflow --features=console-api -- --test-threads 1"
       - name: Run unit tests
-        run: cargo test -p tests --features github_workflow
+        run: cargo test -p tests --features github_workflow -p endpoint
       - name: wait until 2 mins
         run: |
-          port_list=(56810 56812 9302 9301 9303 3306)  # 端口列表
+          port_list=(56810 56812 9302 9301 9303 3306 3308)  # 端口列表
           start=$(date +%s)  # 获取当前时间戳
           
           while true; do
