@@ -46,13 +46,10 @@ impl Record {
         self.subscribers.push(s);
     }
     fn update(&mut self, addr_md5: (Vec<IpAddr>, u64)) {
-        if self.md5 != 0 {
-            log::info!("update dns record: {:?} => {:?}", self, addr_md5);
-        }
+        (self.md5 != 0).then(|| log::info!("record changed: {self:?} => {addr_md5:?}"));
         debug_assert_ne!(self.ips, addr_md5.0);
         debug_assert_ne!(self.md5, addr_md5.1);
-        self.ips = addr_md5.0;
-        self.md5 = addr_md5.1;
+        (self.ips, self.md5) = addr_md5;
         self.notify();
     }
     fn notify(&self) {
@@ -85,9 +82,7 @@ impl Record {
                     return Some((addrs, md5));
                 }
             }
-            Err(_e) => {
-                log::info!("refresh host failed:{}, {:?}", host, _e);
-            }
+            Err(e) => log::info!("refresh host failed:{}, {:?}", host, e),
         }
         None
     }
