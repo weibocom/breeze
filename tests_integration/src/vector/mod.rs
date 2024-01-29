@@ -1,3 +1,5 @@
+mod kuser;
+
 use crate::ci::env::*;
 use crate::redis_helper::*;
 #[allow(unused)]
@@ -662,6 +664,7 @@ fn vdel() {
     vadd();
 }
 
+#[ignore = "util function"]
 fn safe_add(con: &mut redis::Connection, like_by_me: &LikeByMe) {
     let rsp: Result<i32, redis::RedisError> = redis::cmd("vdel")
         .arg(format!("{},2211", like_by_me.uid))

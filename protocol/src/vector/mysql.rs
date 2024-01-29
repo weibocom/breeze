@@ -257,6 +257,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
             CommandType::VRange | CommandType::VGet => "select  from  where ".len(),
             CommandType::VCard => "select count(*) from  where ".len(),
             CommandType::VAdd => "insert into  () values ()".len(),
+            CommandType::VReplace => "replace into () values ()".len(),
             CommandType::VUpdate => "update  set  where ".len(),
             CommandType::VDel => "delete from  where ".len(),
             _ => {
@@ -318,6 +319,15 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                 let _ = write!(
                     buf,
                     "insert into {} ({}) values ({})",
+                    Table(self.strategy, &self.date, self.hash),
+                    InsertCols(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
+                    InsertVals(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
+                );
+            }
+            CommandType::VReplace => {
+                let _ = write!(
+                    buf,
+                    "replace into {} ({}) values ({})",
                     Table(self.strategy, &self.date, self.hash),
                     InsertCols(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
                     InsertVals(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
