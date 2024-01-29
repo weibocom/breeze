@@ -22,7 +22,7 @@ const REQ_INVALID_STAR: &'static [u8] = b"-ERR kv invalid star\r\n";
 const REQ_INVALID_BULK_NUM: &'static [u8] = b"-ERR kv invalid bulk num\r\n";
 const REQ_NOT_SUPPORTED: &'static [u8] = b"-ERR kv unsupport cmd\r\n";
 const REQ_MALFORMED_FIELD: &'static [u8] = b"-ERR malformed fields\r\n";
-// const RESP_INVALID: &'static [u8] = b"-ERR kv mesh bug for parsing resp\r\n";
+// const RESP_INVALID: &'static [u8] = b"-ERR kv mesh failed to parse resp\r\n";
 
 /// 将Redis error转为通用可flush的Error，保留Error细节
 impl Into<Error> for KvectorError {

@@ -160,8 +160,9 @@ pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()
                 return Err(crate::Error::RequestInvalidMagic);
             }
         }
-        CommandType::VAdd => {
-            if vcmd.fields.len() == 0 || vcmd.wheres.len() > 0 {
+        CommandType::VAdd | CommandType::VReplace => {
+            // vadd 的fields可以等于0，即所有字段可以在key中，但不能有where
+            if vcmd.wheres.len() > 0 {
                 return Err(crate::Error::RequestInvalidMagic);
             }
         }

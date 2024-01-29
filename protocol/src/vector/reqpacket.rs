@@ -103,6 +103,11 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         assert!(cfg.has_key, "{:?}", self);
         let key = self.parse_key(flag)?;
 
+        // 如果request不带fields、condition则，此时bulks应该为0
+        if self.bulks == 0 {
+            return Ok(Some(key));
+        }
+
         // 如果有field，则接下来解析fields，不管是否有field，统一先把where这个token消费掉，方便后续统一从condition位置解析
         if cfg.can_hold_field {
             self.parse_fields(flag)?;
@@ -126,10 +131,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
 
         log::debug!("++++ after condition parsed oft:{}", self.oft);
-
-        // 返回main-key，不带sub-key、ext-key
-        let main_key_len = key.find(0, KEY_SEPERATOR).map_or(key.len(), |len| len);
-        Ok(Some(key.sub_slice(0, main_key_len)))
+        Ok(Some(key))
     }
 
     #[inline]
@@ -193,7 +195,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         self.data.skip_bulks(&mut self.oft, count as usize)
     }
 
-    /// 注意返回的是整个key，包括main-key和扩展key
+    /// 注意返回的是main key，不包括sub-key 和 ext-key
     #[inline]
     fn parse_key(&mut self, flag: &mut Flag) -> Result<RingSlice> {
         // 第二个bulk是bulk-string类型的key
@@ -205,7 +207,9 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         flag.set_key_pos(key_pos as u8);
         let key = self.next_bulk_string()?;
         if key.len() < MAX_KEY_LEN {
-            return Ok(key);
+            let mkey_len = key.find(0, KEY_SEPERATOR).map_or(key.len(), |len| len);
+            let mkey = key.sub_slice(0, mkey_len);
+            return Ok(mkey);
         }
 
         log::warn!("+++ kvector key too long: {}", self);
