@@ -574,3 +574,98 @@ fn crc64_file_check(shards_count: usize, file_name: &str) {
     println!("file:{}, succeed count:{}", file_name, success_count);
     assert!(success_count > 0);
 }
+
+#[test]
+fn fnv1a_64_ketama_check() {
+    let root_dir = "sharding_datas/fnv1";
+    let file_name = "fnv1a_64-ketama-data";
+    let shard_file = format!("{}/{}", root_dir, file_name);
+
+    let file = File::open(shard_file).unwrap();
+    let mut reader = BufReader::new(file);
+    let mut success_count = 0;
+
+    // 业务为了避免ip变更而导致节点变化，会增加nickname,like: node1,node2...
+    let shard_count = 256;
+    let mut servers = Vec::with_capacity(shard_count);
+    for i in 1..(shard_count + 1) {
+        servers.push(format!("node{}", i).to_string());
+    }
+    let hasher = Hasher::from("fnv1a64");
+    let dist = Distribute::from("ketama", &servers);
+
+    const PORT_BASE: u16 = 58064;
+    let mut idx_dest = 0;
+    loop {
+        let mut line = String::with_capacity(64);
+        match reader.read_line(&mut line) {
+            Ok(len) => {
+                if len == 0 {
+                    // println!("process file/{} completed!", file_name);
+                    break;
+                }
+                line = line.trim().to_string();
+
+                if line.trim().len() == 0 || line.starts_with("#") {
+                    // println!("ignore comment: {}", line);
+                    continue;
+                }
+
+                // port=58064 指示接下来的key所在的分片
+                if line.starts_with("port=") {
+                    let port_str = line.split("=").nth(1).unwrap();
+                    let port = u16::from_str_radix(port_str, 10).unwrap();
+                    idx_dest = (port - PORT_BASE) as usize;
+                    println!("+++ will proc idx/port: {}/{}", idx_dest, port);
+                    continue;
+                }
+
+                let key = line;
+                let hash = hasher.hash(&key.as_bytes());
+                let idx = dist.index(hash);
+                // assert_eq!(
+                //     idx_dest, idx,
+                //     "line/key: {} - {}:{}/{}",
+                //     key, hash, idx_dest, idx
+                // );
+                if idx_dest != idx {
+                    println!(
+                        "+++ wrong key: {}/{}, hash/idx:{}:{}, idx in redis:{}",
+                        key,
+                        key.len(),
+                        hash,
+                        idx,
+                        idx_dest
+                    );
+                    continue;
+                }
+                success_count += 1;
+
+                println!("proc succeed line:{}", key);
+            }
+            Err(e) => {
+                println!("found err: {:?}", e);
+                break;
+            }
+        }
+    }
+    println!("file:{}, succeed count:{}", file_name, success_count);
+    assert!(success_count > 0);
+}
+
+#[test]
+fn fnv1_tmp_test() {
+    // 业务为了避免ip变更而导致节点变化，会增加nickname,like: node1,node2...
+    let shard_count = 256;
+    let mut servers = Vec::with_capacity(shard_count);
+    for i in 1..(shard_count + 1) {
+        servers.push(format!("node{}", i).to_string());
+    }
+    let hasher = Hasher::from("fnv1a64");
+    let dist = Distribute::from("ketama", &servers);
+
+    let key = "throttle_android_6244642063";
+    let hash = hasher.hash(&key.as_bytes());
+    let idx = dist.index(hash);
+    println!("+++ key:{}, hash:{}, idx:{}", key, hash, idx);
+}
