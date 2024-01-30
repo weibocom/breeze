@@ -669,3 +669,19 @@ fn fnv1_tmp_test() {
     let idx = dist.index(hash);
     println!("+++ key:{}, hash:{}, idx:{}", key, hash, idx);
 }
+
+#[test]
+fn print_fnv1_backends_for_vintage() {
+    for i in 0..256 {
+        let port = 58064 + i;
+        let master = format!(
+            "  - rm{}.eos.grid.sina.com.cn:{},rs{}.hebe.grid.sina.com.cn:{} node{}",
+            port,
+            port,
+            port,
+            port,
+            i + 1,
+        );
+        println!("{}", master);
+    }
+}

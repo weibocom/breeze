@@ -126,7 +126,12 @@ where
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
             self.hasher = Hasher::from(&ns.basic.hash);
-            self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
+            let backends = match ns.backend_names.len() {
+                0 => &ns.backends,
+                _ => &ns.backend_names,
+            };
+            log::debug!("+++ dist with backends:{:?}", backends);
+            self.distribute = Distribute::from(ns.basic.distribution.as_str(), backends);
             self.cfg.update(namespace, ns);
         }
     }
