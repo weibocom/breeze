@@ -14,6 +14,8 @@ const NO_CHECK_SUFFIX: &str = "-nocheck";
 pub struct RedisNamespace {
     pub(crate) basic: Basic,
     pub(crate) backends: Vec<String>,
+    // 对于一致性hash，为了确保ip变化后，分片不变，一般会为每组分片取一个name，来确定分片的hash始终固定
+    pub(crate) backend_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -51,8 +53,26 @@ impl RedisNamespace {
             return None;
         }
 
+        // check backends，分离出names
+        let mut backends = Vec::with_capacity(ns.backends.len());
+        for b in &mut ns.backends {
+            let domain_name: Vec<&str> = b.split(" ").collect();
+            // 后端地址格式： 域名,域名 name, name不能是rm、rs开头
+            if domain_name.len() == 2
+                && !domain_name[1].starts_with("rm")
+                && !domain_name[1].starts_with("rs")
+            {
+                backends.push(domain_name[0].to_string());
+                ns.backend_names.push(domain_name[1].to_string());
+            }
+        }
+        if backends.len() > 0 {
+            ns.backends = backends;
+            log::info!("+++ found redis backends with name: {}", cfg);
+        }
+
         if !ns.validate_and_correct() {
-            log::error!("shards {} is not power of two: {}", ns.backends.len(), cfg);
+            log::error!("malformed names or shards {}: {}", ns.backends.len(), cfg);
             return None;
         }
 
@@ -86,8 +106,8 @@ impl RedisNamespace {
     #[inline(always)]
     fn validate_and_correct(&mut self) -> bool {
         let dist = &self.basic.distribution;
-        // 需要检测dist时（默认场景），对于range/modrange类型的dist需要限制后端数量为2^n
 
+        // 需要检测dist时（默认场景），对于range/modrange类型的dist需要限制后端数量为2^n
         if dist.starts_with(sharding::distribution::DIST_RANGE)
             || dist.starts_with(sharding::distribution::DIST_MOD_RANGE)
         {
@@ -101,6 +121,11 @@ impl RedisNamespace {
             if !power_two {
                 return false;
             }
+        }
+
+        // 如果backend有name，则所有的后端都必须有name
+        if self.backend_names.len() > 0 && self.backend_names.len() != self.backends.len() {
+            return false;
         }
 
         true
