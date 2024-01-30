@@ -68,7 +68,7 @@ impl Distribute {
             "modula" => Self::Modula(Modula::from(names.len(), false)),
             "absmodula" => Self::Modula(Modula::from(names.len(), true)),
             "ketama" => Self::Consistent(Consistent::from(names)),
-            "ketama-origin" => Self::Consistent(Consistent::new(names, true)),
+            "ketama_origin" => Self::Consistent(Consistent::new(names, true)),
             "range" => Self::Range(Range::from(num, names.len())),
             "modrange" => Self::ModRange(ModRange::from(num, names.len())),
             "splitmod" => Self::SplitMod(SplitMod::from(num, names.len())),

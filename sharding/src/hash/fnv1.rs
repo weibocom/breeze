@@ -13,6 +13,7 @@ impl super::Hash for Fnv1a64 {
             hash ^= key.at(i) as u32;
             hash = hash.wrapping_mul(FNV_64_PRIME as u32);
         }
+        log::debug!("+++ use Fnv1a64");
         hash as i64
     }
 }
