@@ -29,6 +29,7 @@ impl Consistent {
     }
 
     pub fn new<T: Deref<Target = str>>(shards: &[T], origin_alg: bool) -> Self {
+        log::debug!("+++ use ketama with origin:{}", origin_alg);
         let mut map = BTreeMap::default();
         for idx in 0..shards.len() {
             let factor = 40;
