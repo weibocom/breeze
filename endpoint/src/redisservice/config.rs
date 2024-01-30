@@ -15,6 +15,7 @@ pub struct RedisNamespace {
     pub(crate) basic: Basic,
     pub(crate) backends: Vec<String>,
     // 对于一致性hash，为了确保ip变化后，分片不变，一般会为每组分片取一个name，来确定分片的hash始终固定
+    #[serde(default)]
     pub(crate) backend_names: Vec<String>,
 }
 
