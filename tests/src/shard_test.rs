@@ -592,7 +592,7 @@ fn fnv1a_64_ketama_check() {
         servers.push(format!("node{}", i).to_string());
     }
     let hasher = Hasher::from("fnv1a64");
-    let dist = Distribute::from("ketama", &servers);
+    let dist = Distribute::from("ketama_origin", &servers);
 
     const PORT_BASE: u16 = 58064;
     let mut idx_dest = 0;
@@ -623,25 +623,21 @@ fn fnv1a_64_ketama_check() {
                 let key = line;
                 let hash = hasher.hash(&key.as_bytes());
                 let idx = dist.index(hash);
-                // assert_eq!(
-                //     idx_dest, idx,
-                //     "line/key: {} - {}:{}/{}",
-                //     key, hash, idx_dest, idx
+                assert_eq!(
+                    idx_dest, idx,
+                    "line/key: {} - {}:{}/{}",
+                    key, hash, idx_dest, idx
+                );
+                // 原始业务数据存在漂移，导致无法准确匹配
+                // if idx_dest != idx {
+                // println!(
+                //     "+++ wrong key: {}/{}, hash/idx:{}:{}, idx in redis:{}", key, key.len(), hash, idx,idx_dest
                 // );
-                if idx_dest != idx {
-                    println!(
-                        "+++ wrong key: {}/{}, hash/idx:{}:{}, idx in redis:{}",
-                        key,
-                        key.len(),
-                        hash,
-                        idx,
-                        idx_dest
-                    );
-                    continue;
-                }
+                //     continue;
+                // }
                 success_count += 1;
 
-                println!("proc succeed line:{}", key);
+                // println!("proc succeed line:{}/{}", key, key.len());
             }
             Err(e) => {
                 println!("found err: {:?}", e);
@@ -662,7 +658,7 @@ fn fnv1_tmp_test() {
         servers.push(format!("node{}", i).to_string());
     }
     let hasher = Hasher::from("fnv1a64");
-    let dist = Distribute::from("ketama", &servers);
+    let dist = Distribute::from("ketama_origin", &servers);
 
     let key = "throttle_android_6244642063";
     let hash = hasher.hash(&key.as_bytes());
