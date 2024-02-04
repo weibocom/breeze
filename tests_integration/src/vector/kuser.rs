@@ -79,7 +79,7 @@ fn user_vget() {
     let rsp1 = redis::cmd("vget")
         .arg(format!("{}", user.uid))
         .arg("field")
-        .arg("uid,level,type")
+        .arg("uid,level,type,reg_time,update_time")
         .query(&mut con);
     println!("++ rsp1:{:?}", rsp1);
 
@@ -88,11 +88,15 @@ fn user_vget() {
             Value::Status("uid".to_string()),
             Value::Status("level".to_string()),
             Value::Status("type".to_string()),
+            Value::Status("reg_time".to_string()),
+            Value::Status("update_time".to_string()),
         ]),
         Value::Bulk(vec![
             Value::Int(user.uid as i64),
             Value::Int(user.level as i64),
             Value::Int(user.r#type as i64),
+            Value::Data(user.reg_time.as_bytes().to_vec()),
+            Value::Data(user.update_time.as_bytes().to_vec()),
         ]),
     ]));
     assert_eq!(rsp1, respect);
