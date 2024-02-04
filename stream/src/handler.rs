@@ -22,6 +22,8 @@ pub struct Handler<'r, Req, P, S> {
     // 处理timeout
     num: Number,
 
+    // 这个cycle，是否请求过后端
+    requested_backend_in_cycle: bool,
     // 连续多少个cycle检查到当前没有请求发送，则发送一个ping
     ping_cycle: u16,
 }
@@ -64,6 +66,7 @@ where
             parser,
             rtt,
             num: Number::default(),
+            requested_backend_in_cycle: false,
             ping_cycle: 0,
         }
     }
@@ -75,17 +78,22 @@ where
     // 5. 如果poll_read返回Ready，并且返回的数据不为0，则说明收到异常请求
     #[inline]
     fn check_alive(&mut self) -> Result<()> {
-        if self.pending.len() != 0 {
-            // 有请求发送，不需要ping
+        // 如果待check的这个cycle，有请求后端，则对ping进行重置
+        if self.requested_backend_in_cycle {
+            // 有请求发送，不需要ping，同时将后端请求标志置为false
             self.ping_cycle = 0;
+            self.requested_backend_in_cycle = false;
+            log::debug!("+++ requested with pending:{}", self.pending.len());
             return Ok(());
         }
+
         self.ping_cycle += 1;
         // 目前调用方每隔30秒调用一次，所以这里是5分钟检查一次心跳
         // 如果最近5分钟之内pending为0（pending为0并不意味着没有请求），则发送一个ping作为心跳
         if self.ping_cycle <= 10 {
             return Ok(());
         }
+
         self.ping_cycle = 0;
         assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
         // 通过一次poll read来判断是否连接已经断开。
@@ -148,6 +156,11 @@ where
                     // 说明当前的数据不足以解析一个完整的响应。
                     break;
                 }
+            }
+
+            // 对cycle内第一次请求了后端，将该标志设为true
+            if !self.requested_backend_in_cycle {
+                self.requested_backend_in_cycle = true;
             }
 
             ready!(poll_read)?;
