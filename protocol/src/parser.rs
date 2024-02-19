@@ -7,7 +7,7 @@ use crate::memcache::MemcacheBinary;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
 use crate::uuid::Uuid;
-use crate::vector::{Vector, VectorCmd};
+use crate::vector::Vector;
 use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
 #[derive(Clone)]
@@ -142,7 +142,6 @@ pub struct HashedCommand {
     flag: Flag,
     cmd: ds::MemGuard,
     origin_cmd: Option<MemGuard>,
-    vector_cmd: Option<VectorCmd>,
 }
 
 impl Command {
@@ -194,7 +193,6 @@ impl HashedCommand {
             flag,
             cmd,
             origin_cmd: None,
-            vector_cmd: None,
         }
     }
     #[inline]
@@ -251,9 +249,6 @@ impl HashedCommand {
         // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
         mem::swap(&mut self.cmd, &mut dest_cmd);
         self.origin_cmd = Some(dest_cmd);
-    }
-    pub fn vector_cmd(&mut self) -> Option<VectorCmd> {
-        self.vector_cmd.take()
     }
 }
 
