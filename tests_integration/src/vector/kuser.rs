@@ -40,7 +40,7 @@ fn user_vrange() {
         .arg("field")
         .arg("uid,level,type")
         .query(&mut con);
-    println!("++ rsp1:{:?}", rsp1);
+    println!("++ vrange rsp1:{:?}", rsp1);
 
     let rsp2 = redis::cmd("vrange")
         .arg(format!("{}", user.uid))
@@ -51,7 +51,7 @@ fn user_vrange() {
         .arg("=")
         .arg(user.nick)
         .query(&mut con);
-    println!("++ rsp2:{:?}", rsp2);
+    println!("++ vrange rsp2:{:?}", rsp2);
 
     let respect = Ok(Value::Bulk(vec![
         Value::Bulk(vec![
@@ -65,6 +65,7 @@ fn user_vrange() {
             Value::Int(user.r#type as i64),
         ]),
     ]));
+
     assert_eq!(rsp1, respect);
     assert_eq!(rsp2, respect);
 }
@@ -81,7 +82,7 @@ fn user_vget() {
         .arg("field")
         .arg("uid,level,type,reg_time,update_time")
         .query(&mut con);
-    println!("++ rsp1:{:?}", rsp1);
+    println!("++ vget rsp1:{:?}", rsp1);
 
     let respect = Ok(Value::Bulk(vec![
         Value::Bulk(vec![
