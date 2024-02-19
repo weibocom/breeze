@@ -218,53 +218,8 @@ impl Vector {
             }
             Err(e) => Err(e.into()),
         }
-
-        // let meta = match rsp_packet.parse_result_set_meta() {
-        //     Ok(meta) => meta,
-        //     Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
-        //         // 对于UnhandleResponseError，需要构建rsp，发给client
-        //         let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
-        //         return Ok(cmd);
-        //     }
-        //     Err(e) => return Err(e.into()),
-        // };
-
-        // // 如果是只有meta的ok packet，直接返回影响的列数，如insert/delete/update
-        // if let Or::B(ok) = meta {
-        //     let affected = ok.affected_rows();
-        //     let cmd = rsp_packet.build_final_affected_rows_rsp_cmd(affected);
-        //     return Ok(cmd);
-        // }
-
-        // // 解析meta后面的rows，返回列记录，如select
-        // // 有可能多行数据，直接build成
-        // let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
-        // match query_result.parse_rows_to_cmd() {
-        //     Ok(cmd) => Ok(cmd),
-        //     Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
-        //         // 对于UnhandleResponseError，需要构建rsp，发给client
-        //         let cmd = query_result.build_final_rsp_cmd(false, emsg);
-        //         Ok(cmd)
-        //     }
-        //     Err(e) => Err(e.into()),
-        // }
     }
 }
-
-// pub struct RingSliceIter {}
-// impl Iterator for RingSliceIter {
-//     type Item = RingSlice;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         todo!()
-//     }
-// }
-// pub struct ConditionIter {}
-// impl Iterator for ConditionIter {
-//     type Item = Condition;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         todo!()
-//     }
-// }
 
 pub enum Opcode {}
 
