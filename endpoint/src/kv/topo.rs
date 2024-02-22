@@ -161,11 +161,13 @@ where
     fn load(&mut self) -> bool {
         self.cfg.load_guard().check_load(|| self.load_inner())
     }
-    fn update(&mut self, namespace: &str, cfg: &str) {
+    fn update(&mut self, namespace: &str, cfg: &str) -> bool {
         if let Some(ns) = KvNamespace::try_from(cfg) {
             self.strategist = Strategist::try_from(&ns);
             self.cfg.update(namespace, ns);
+            return true;
         }
+        false
     }
 }
 impl<E, P> KvService<E, P>

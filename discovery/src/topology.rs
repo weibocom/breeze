@@ -12,7 +12,7 @@ use std::{
 use crate::path::GetNamespace;
 
 pub trait TopologyWrite {
-    fn update(&mut self, name: &str, cfg: &str);
+    fn update(&mut self, name: &str, cfg: &str) -> bool;
     #[inline]
     fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
         vec![("", cfg)]
@@ -129,11 +129,16 @@ impl<T> TopologyWrite for TopologyWriteGuard<T>
 where
     T: TopologyWrite + Clone,
 {
-    fn update(&mut self, name: &str, cfg: &str) {
+    fn update(&mut self, name: &str, cfg: &str) -> bool {
         self.update_inner(|t| {
-            t.update(name, cfg);
-            !t.need_load() || t.load()
-        });
+            let updated = t.update(name, cfg);
+            if !updated {
+                return false;
+            }
+            let _loaded = !t.need_load() || t.load();
+            // 只要topo update成功，即算成功，load失败后，后面可以继续重试
+            true
+        })
     }
     #[inline]
     fn disgroup<'a>(&self, path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {

@@ -382,7 +382,7 @@ where
     E: Endpoint,
 {
     #[inline]
-    fn update(&mut self, name: &str, cfg: &str) {
+    fn update(&mut self, name: &str, cfg: &str) -> bool {
         if let Some(ns) = super::config::Namespace::try_from(cfg, name) {
             log::debug!("+++ updating msgque for {}", name);
             assert!(ns.sized_queue.len() > 0, "msgque: {}, cfg:{}", name, cfg);
@@ -446,11 +446,13 @@ where
                 self.streams_write.len()
             );
 
+            return true;
             // TODO: 10分钟后，清理offline streams
             // rt::spawn(async move {
             //     tokio::time::sleep(Duration::from_secs(OFFLINE_CLEAN_SECONDS)).await;
             //     self.clean_offline_streams();
             // });
         }
+        false
     }
 }

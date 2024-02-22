@@ -90,7 +90,7 @@ where
     E: Endpoint,
 {
     #[inline]
-    fn update(&mut self, namespace: &str, cfg: &str) {
+    fn update(&mut self, namespace: &str, cfg: &str) -> bool {
         if let Some(ns) = PhantomNamespace::try_from(cfg) {
             log::info!("topo updating {:?} => {:?}", self, ns);
             // phantome 只会使用crc32
@@ -103,7 +103,9 @@ where
             self.distribution = Range::from(num, ns.backends.len());
 
             self.cfg.update(namespace, ns);
+            return true;
         }
+        false
     }
 
     // 更新条件：

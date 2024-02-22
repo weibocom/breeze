@@ -89,10 +89,12 @@ where
     E: Endpoint,
 {
     #[inline]
-    fn update(&mut self, namespace: &str, cfg: &str) {
+    fn update(&mut self, namespace: &str, cfg: &str) -> bool {
         if let Some(ns) = UuidNamespace::try_from(cfg) {
             self.cfg.update(namespace, ns);
+            return true;
         }
+        false
     }
     #[inline]
     fn need_load(&self) -> bool {

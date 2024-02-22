@@ -1,6 +1,7 @@
+use chrono::Local;
+use ds::time::{Duration, Instant};
 use std::io::{Error, ErrorKind, Result};
 use std::path::PathBuf;
-use ds::time::{Duration, Instant};
 
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -35,26 +36,48 @@ where
     // 初始化。
     pub(crate) async fn init<C: Cache>(&mut self, snapshot: &str, discovery: &mut C) {
         match self.load_from_snapshot(snapshot).await {
-            Ok((cfg, sig)) => self.update(&cfg, sig),
+            Ok((cfg, sig)) => {
+                let updated = self.update(&cfg, sig);
+                if !updated {
+                    log::warn!("+++ malformed snapshot:{} => {}", self.service(), cfg);
+                }
+            }
             Err(_e) => self.check_update(snapshot, discovery).await,
         }
     }
+
+    /// 1 配置内容变化时，只有更新成功，才能更新snapshot；
+    /// 2 把之前的配置临时输出到console，方便配置回滚
     pub(crate) async fn check_update<D: Cache>(&mut self, snapshot: &str, discovery: &mut D) {
-        let service = self.service();
-        if let Some((cfg, sig)) = discovery.get(&service.name(), &self.sig, &self.inner).await {
-            let dump = self.sig != sig;
+        let service_name = self.service().name();
+        if let Some((cfg, sig)) = discovery.get(&service_name, &self.sig, &self.inner).await {
+            let mut dump = self.sig != sig;
             let update = self.sig.digest != sig.digest;
             if !dump && !update {
                 return;
             }
-            log::info!("+++ service:{}, dump:{}, update:{}", service, dump, update);
+
             if update {
                 log::info!("updating {:?} => {:?} cfg: {:?}", self, sig, cfg);
-                self.update(&cfg, sig);
+                dump = self.update(&cfg, sig);
             } else {
                 self.sig = sig;
             }
-            self.dump(snapshot, &cfg).await;
+
+            if dump {
+                // TODO：先dump出原配置，并写入console（临时方案，待配置回滚方案完善后，考虑去掉 fishermen #815）
+                if let Ok((old_cfg, _sig)) = self.load_from_snapshot(&snapshot).await {
+                    const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S.%3f";
+                    let time = Local::now().format(TIME_FORMAT).to_string();
+                    println!("+++ {} {:?} will update cfg, old:{}", time, self, old_cfg);
+                } else {
+                    log::warn!("+++ load snapshot failed: {:?}", self);
+                }
+
+                self.dump(snapshot, &cfg).await;
+            } else {
+                log::warn!("+++ ignore malformed cfg: {:?} => \n{}", self, cfg);
+            }
         }
     }
     pub(crate) fn try_load(&mut self) {
@@ -67,11 +90,11 @@ where
             }
         }
     }
-    fn update(&mut self, cfg: &str, sig: Sig) {
+    fn update(&mut self, cfg: &str, sig: Sig) -> bool {
         self.sig = sig;
         let name = self.service().namespace().to_string();
-        self.inner.update(&name, cfg);
         self.last_update = Instant::now();
+        self.inner.update(&name, cfg)
     }
     fn encoded_path(&self, snapshot: &str) -> PathBuf {
         let base = self.service().name();
