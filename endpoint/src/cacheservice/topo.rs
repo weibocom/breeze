@@ -198,7 +198,7 @@ where
     E: Endpoint,
 {
     #[inline]
-    fn update(&mut self, namespace: &str, cfg: &str) {
+    fn update(&mut self, namespace: &str, cfg: &str) -> bool {
         if let Some(ns) = super::config::Namespace::try_from(cfg, namespace) {
             self.hasher = Hasher::from(&ns.hash);
 
@@ -233,8 +233,10 @@ where
                 new.push(shard);
             }
             self.streams.update(new, local_len, is_performance);
+            return true;
         }
         // old 会被dopped
+        false
     }
     // 不同的业务共用一个配置。把不同的业务配置给拆分开
     #[inline]

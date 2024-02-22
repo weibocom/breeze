@@ -17,9 +17,10 @@ impl RandomLoad {
 }
 
 impl TopologyWrite for RandomLoad {
-    fn update(&mut self, _name: &str, cfg: &str) {
+    fn update(&mut self, _name: &str, cfg: &str) -> bool {
         self.need_load = cfg.parse().unwrap();
         self.count = 0;
+        true
     }
 
     fn need_load(&self) -> bool {

@@ -43,7 +43,7 @@ procs::topology_dispatcher! {
     } => where E:Inited
 
     trait TopologyWrite {
-        fn update(&mut self, name: &str, cfg: &str);
+        fn update(&mut self, name: &str, cfg: &str) -> bool;
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
         fn load(&mut self) -> bool;

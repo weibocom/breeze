@@ -123,12 +123,14 @@ where
     E: Endpoint,
 {
     #[inline]
-    fn update(&mut self, namespace: &str, cfg: &str) {
+    fn update(&mut self, namespace: &str, cfg: &str) -> bool {
         if let Some(ns) = RedisNamespace::try_from(cfg) {
             self.hasher = Hasher::from(&ns.basic.hash);
             self.distribute = Distribute::from(ns.basic.distribution.as_str(), &ns.backends);
             self.cfg.update(namespace, ns);
+            return true;
         }
+        false
     }
     // 满足以下两个条件之一，则需要更新：
     // 1. 存在某dns未成功解析，并且dns数据准备就绪
