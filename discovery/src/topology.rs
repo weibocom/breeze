@@ -108,20 +108,43 @@ where
     }
 }
 
+/// 记录Topology的更新状态，包括update是否成功，load是否成功
+struct TopologyWriteStatus {
+    updated: bool,
+    loaded: bool,
+}
+
+impl TopologyWriteStatus {
+    fn new(updated: bool, loaded: bool) -> Self {
+        Self { updated, loaded }
+    }
+}
+
 impl<T> TopologyWriteGuard<T>
 where
     T: Clone,
 {
-    fn update_inner(&mut self, f: impl Fn(&mut T) -> bool) -> bool {
+    fn update_inner(&mut self, f: impl Fn(&mut T) -> TopologyWriteStatus) -> TopologyWriteStatus {
         self.update_num += 1;
         let mut t = self.updating.take().unwrap_or_else(|| self.inner.copy());
-        if !f(&mut t) {
-            let _ = self.updating.insert(t);
-            return false;
+        let status = f(&mut t);
+
+        // 如果updated为false，说明配置异常，且loaded肯定为false，忽略配置，直接返回
+        if !status.updated {
+            assert!(!status.loaded);
+            return status;
         }
+
+        // 如果updated为true，但loaed为false，保存t，稍后再试
+        if !status.loaded {
+            let _ = self.updating.insert(t);
+            return status;
+        }
+
+        // updated、loaded都为true，则直接更新t
         self.inner.update(t);
         self.updates.fetch_add(1, Ordering::AcqRel);
-        return true;
+        return status;
     }
 }
 
@@ -130,15 +153,18 @@ where
     T: TopologyWrite + Clone,
 {
     fn update(&mut self, name: &str, cfg: &str) -> bool {
-        self.update_inner(|t| {
+        let status = self.update_inner(|t| {
             let updated = t.update(name, cfg);
             if !updated {
-                return false;
+                return TopologyWriteStatus::new(updated, false);
             }
-            let _loaded = !t.need_load() || t.load();
-            // 只要topo update成功，即算成功，load失败后，后面可以继续重试
-            true
-        })
+
+            let loaded = !t.need_load() || t.load();
+            TopologyWriteStatus::new(updated, loaded)
+        });
+
+        // 只要updated为true，则认为update成功，load可以稍后继续重试
+        status.updated
     }
     #[inline]
     fn disgroup<'a>(&self, path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
@@ -154,7 +180,12 @@ where
     }
     #[inline]
     fn load(&mut self) -> bool {
-        self.update_inner(|t| t.load())
+        // load时，不需要update，所以updated直接设置为true即可
+        let status = self.update_inner(|t| TopologyWriteStatus {
+            updated: true,
+            loaded: t.load(),
+        });
+        status.loaded
     }
 }
 
