@@ -76,7 +76,7 @@ where
 
                 self.dump(snapshot, &cfg).await;
             } else {
-                log::warn!("+++ ignore malformed cfg: {:?} => \n{}", self, cfg);
+                log::warn!("+++ found malformed cfg: {:?} => \n{}", self, cfg);
             }
         }
     }
@@ -90,6 +90,8 @@ where
             }
         }
     }
+    /// 不管update是否成功，sig、last_update需要更新，避免异常配置之下，持续重复check
+    /// 假设前提：一个配置，如果第一次update失败，不管重试几次，都会失败
     fn update(&mut self, cfg: &str, sig: Sig) -> bool {
         self.sig = sig;
         let name = self.service().namespace().to_string();
