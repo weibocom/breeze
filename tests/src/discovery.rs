@@ -17,7 +17,14 @@ impl RandomLoad {
 }
 
 impl TopologyWrite for RandomLoad {
+    // update 需要验证false的场景
     fn update(&mut self, _name: &str, cfg: &str) -> bool {
+        for c in cfg.chars() {
+            if !c.is_ascii_digit() {
+                // 不是数字，返回false
+                return false;
+            }
+        }
         self.need_load = cfg.parse().unwrap();
         self.count = 0;
         true
@@ -71,4 +78,8 @@ fn refresh() {
     assert!(tx.load());
     assert!(!tx.need_load());
     assert_eq!(rx.get().need_load, 3);
+
+    // 更新失败，则不需要进行load，tx的内部值不变
+    tx.update(service, "malformed num");
+    assert!(!tx.need_load());
 }
