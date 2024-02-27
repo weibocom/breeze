@@ -85,12 +85,12 @@ impl Record {
         }
         None
     }
-    async fn refresh(&mut self, resolver: &mut Resolver) -> Option<String> {
+    async fn refresh(&mut self, resolver: &mut Resolver) -> bool {
         if let Some((addrs, md5)) = self.check_refresh(resolver).await {
             self.update((addrs, md5));
-            return Some(self.host.clone());
+            return true;
         }
-        None
+        false
     }
 }
 
@@ -138,22 +138,30 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
         let mut tick = interval(Duration::from_secs(1));
         let mut idx = 0;
         let mut w_cache = None;
-        //需要先更新后notify
-        let mut need_notify = HashMap::new();
+        let mut need_notify = Vec::new();
         loop {
             if let Ok(reg) = rx.try_recv() {
                 let w = w_cache.get_or_insert_with(|| cache.copy());
                 let r = w.register(reg.0, reg.1);
                 r.refresh(&mut resolver)
                     .await
-                    .and_then(|host| need_notify.insert(host, ()));
+                    .then(|| need_notify.push(r.host.clone()));
                 continue;
             }
             // 第一次增量更新，不等待tick
-            w_cache.take().map(|w| cache.update(w));
-            cache.get().notify(&need_notify);
-            need_notify.clear();
-
+            let notify = |cache: &mut ds::CowWriteHandle<DnsCache>,
+                          w_cache: Option<DnsCache>,
+                          need_notify: &mut Vec<String>| {
+                if let Some(w) = w_cache {
+                    cache.update(w);
+                    let hosts = &cache.get().hosts;
+                    for host in need_notify.iter() {
+                        hosts.get(host).map(|r| r.notify());
+                    }
+                    need_notify.clear();
+                }
+            };
+            notify(&mut cache, w_cache.take(), &mut need_notify);
             // 每一秒种tick一次，检查是否
             tick.tick().await;
             let start = Instant::now();
@@ -163,14 +171,12 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
                     if let Some(addrs) = record.check_refresh(&mut resolver).await {
                         let w = w_cache.get_or_insert_with(|| cache.copy());
                         w.hosts.get_mut(host).expect("insert before").update(addrs);
-                        need_notify.insert(host.clone(), ());
+                        need_notify.push(host.clone());
                     }
                 }
             }
             // 第二次增量更新，每个tick只更新一部分(1/BATCH_CNT)
-            w_cache.take().map(|w| cache.update(w));
-            cache.get().notify(&need_notify);
-            need_notify.clear();
+            notify(&mut cache, w_cache.take(), &mut need_notify);
             need_notify.shrink_to(1);
 
             idx = (idx + 1) % BATCH_CNT;
@@ -213,10 +219,5 @@ impl DnsCache {
             .get(host)
             .map(|r| &r.ips)
             .unwrap_or_else(|| &EMPTY)
-    }
-    fn notify(&self, hosts: &HashMap<String, ()>) {
-        for (host, _) in hosts {
-            self.hosts.get(host).map(|r| r.notify());
-        }
     }
 }
