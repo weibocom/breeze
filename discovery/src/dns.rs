@@ -50,7 +50,6 @@ impl Record {
         debug_assert_ne!(self.ips, addr_md5.0);
         debug_assert_ne!(self.md5, addr_md5.1);
         (self.ips, self.md5) = addr_md5;
-        self.notify();
     }
     fn notify(&self) {
         for update in self.subscribers.iter() {
@@ -86,10 +85,12 @@ impl Record {
         }
         None
     }
-    async fn refresh(&mut self, resolver: &mut Resolver) {
+    async fn refresh(&mut self, resolver: &mut Resolver) -> bool {
         if let Some((addrs, md5)) = self.check_refresh(resolver).await {
             self.update((addrs, md5));
+            return true;
         }
+        false
     }
 }
 
@@ -125,42 +126,56 @@ impl IPPort for String {
 
 pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
     let (reg_tx, reg_rx) = unbounded_channel();
-    let (tx, rx) = ds::cow(DnsCache::from(reg_tx));
+    let mut local_cache = DnsCache::from(reg_tx);
+    let (tx, rx) = ds::cow(local_cache.clone());
     let _r = DNSCACHE.set(rx);
     assert!(_r.is_ok(), "dns cache set failed");
     async move {
         let mut resolver = TokioAsyncResolver::tokio_from_system_conf().expect("resolver");
         log::info!("task started ==> dns cache refresher");
-        let mut cache = tx;
+        let mut writer = tx;
         let mut rx = reg_rx;
         const BATCH_CNT: usize = 128;
         let mut tick = interval(Duration::from_secs(1));
         let mut idx = 0;
-        let mut w_cache = None;
+        let mut need_notify = Vec::new();
         loop {
             if let Ok(reg) = rx.try_recv() {
-                let w = w_cache.get_or_insert_with(|| cache.copy());
-                let r = w.register(reg.0, reg.1);
-                r.refresh(&mut resolver).await;
+                let r = local_cache.register(reg.0, reg.1);
+                r.refresh(&mut resolver)
+                    .await
+                    .then(|| need_notify.push(r.host.clone()));
                 continue;
             }
             // 第一次增量更新，不等待tick
-            w_cache.take().map(|w| cache.update(w));
-
+            let notify = |writer: &mut ds::CowWriteHandle<DnsCache>,
+                          local_cache: &DnsCache,
+                          need_notify: &mut Vec<String>| {
+                if need_notify.len() > 0 {
+                    writer.update(local_cache.clone());
+                    let hosts = &local_cache.hosts;
+                    for host in need_notify.iter() {
+                        hosts.get(host).map(|r| r.notify());
+                    }
+                    need_notify.clear();
+                }
+            };
+            notify(&mut writer, &local_cache, &mut need_notify);
             // 每一秒种tick一次，检查是否
             tick.tick().await;
             let start = Instant::now();
-            for (host, record) in &cache.get().hosts {
+            for (host, record) in &mut local_cache.hosts {
                 assert_eq!(host, &record.host);
                 if idx == record.id % BATCH_CNT {
                     if let Some(addrs) = record.check_refresh(&mut resolver).await {
-                        let w = w_cache.get_or_insert_with(|| cache.copy());
-                        w.hosts.get_mut(host).expect("insert before").update(addrs);
+                        record.update(addrs);
+                        need_notify.push(host.clone());
                     }
                 }
             }
             // 第二次增量更新，每个tick只更新一部分(1/BATCH_CNT)
-            w_cache.take().map(|w| cache.update(w));
+            notify(&mut writer, &local_cache, &mut need_notify);
+            need_notify.shrink_to(64);
 
             idx = (idx + 1) % BATCH_CNT;
             log::trace!("refresh dns elapsed:{:?}", start.elapsed());
