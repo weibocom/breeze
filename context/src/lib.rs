@@ -116,7 +116,7 @@ lazy_static! {
     // tags/v0.0.1.59-0-gd80aa42d
     // heads/dev-0-gc647f866
     static ref SHORT_VERSION: String = {
-        let full = git_version::git_version!(args = ["--long", "--all", "--dirty=-m"]);
+        let full = git_version::git_version!(args = ["--long", "--all", "--dirty=-m", "--exclude=origin/HEAD"]);
 
         let v = match full.find('/') {
             Some(idx) => &full[idx+1..],
@@ -357,7 +357,11 @@ impl From<ContextOption> for Context {
         if version.as_bytes().last() == Some(&b'_') {
             version.pop();
         }
-        Self { version, option, envs }
+        Self {
+            version,
+            option,
+            envs,
+        }
     }
 }
 
@@ -378,7 +382,6 @@ impl Context {
         self.envs.timeslice
     }
 }
-
 
 #[inline(always)]
 pub fn get() -> &'static Context {
