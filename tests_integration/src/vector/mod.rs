@@ -691,3 +691,13 @@ fn safe_add(con: &mut redis::Connection, like_by_me: &LikeByMe) {
     println!("+++ rsp:{:?}", rsp);
     assert_eq!(rsp, Ok(1));
 }
+
+/// 使用非vector协议的命令验证
+#[test]
+fn vector_conflict_test() {
+    crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_kv_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_vector_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_uuid_cmd(RESTYPE);
+}

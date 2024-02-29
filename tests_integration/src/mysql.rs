@@ -6,6 +6,7 @@ use std::{thread::sleep, time::Duration};
 const ERR_INVALID_ARG: &str = "Invalid arguments provided";
 // NotStored 异常对应的响应，code 5 对应 RespStatus::NotStored
 const ERR_NOT_STORED: &str = "Unknown error occurred with code: 5";
+const RESTYPE: &str = "mysql";
 
 //val中有非assic字符和需要mysql转义的字符
 #[test]
@@ -227,4 +228,14 @@ fn sql_inject_get() {
     let key_inject = "4892225613598465 or 1=1 --";
     let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key_inject);
     result.unwrap();
+}
+
+/// 使用各种协议的命令验证
+#[test]
+fn kv_conflict_test() {
+    crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_vector_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_kv_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_uuid_cmd(RESTYPE);
 }

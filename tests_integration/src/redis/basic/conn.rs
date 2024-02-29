@@ -27,3 +27,14 @@ fn sys_basic() {
 
     assert_eq!(redis::cmd("quit").query(&mut con), Ok("OK".to_string()));
 }
+
+/// 使用非redis协议的命令验证
+#[test]
+fn redis_conflict_test() {
+    println!("in redis conflicts test....");
+    crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_kv_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_vector_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_uuid_cmd(RESTYPE);
+}
