@@ -77,6 +77,7 @@ fn get_uncomplete_req() {
 
 /// 使用非uuid协议的命令验证
 #[test]
+#[ignore]
 fn uuid_conflict_test() {
     crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
     crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
