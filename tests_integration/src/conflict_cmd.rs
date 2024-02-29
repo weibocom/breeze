@@ -11,22 +11,6 @@ use std::{
 /// 不关注rsp，只要目标机器不panic，则认为验证通过
 
 pub(crate) fn conflict_with_mc_cmd(origin_resource: &str) {
-    // mc client建连会阻塞在version
-    // let client = mc_helper::mc_get_conn(origin_resource);
-    // let key = "fooadd";
-    // let value = "bar";
-
-    // println!("+++ before get...");
-    // // 验证mc get cmd
-    // let result: Result<Option<String>, MemcacheError> = client.get(key);
-    // println!("{} use mc cmd: get rs: {:?}", origin_resource, result);
-    // println!("+++ after get!");
-
-    // // 验证mc add cmd
-    // let rsp = client.add(key, value, 10);
-    // println!("{} use mc cmd: get rs: {:?}", origin_resource, rsp);
-
-    println!("will test with mc cmd...");
     let host_ip = origin_resource.get_host();
 
     let mut stream = TcpStream::connect(host_ip).unwrap();
@@ -44,7 +28,6 @@ pub(crate) fn conflict_with_mc_cmd(origin_resource: &str) {
 
 /// 对mc发送redis指令，不能crash
 pub(crate) fn conflict_with_redis_cmd(origin_resource: &str) {
-    println!("{} will test with redis cmd", origin_resource);
     let mut conn = get_redis_conn(origin_resource);
 
     let key = "foo";
@@ -99,20 +82,6 @@ pub(crate) fn conflict_with_vector_cmd(origin_resource: &str) {
 }
 
 pub(crate) fn conflict_with_kv_cmd(origin_resource: &str) {
-    // let client = crate::mc_helper::mc_get_conn(origin_resource);
-    // let key = "123";
-
-    // // 测试kv add cmd
-    // let rsp = client.add(key, "1", 10000);
-    // println!("{} use kv cmd: add rs: {:?}", origin_resource, rsp);
-
-    // let result: Result<Option<String>, MemcacheError> = client.get(key);
-    // println!("{} use kv cmd: get rs: {:?}", origin_resource, result);
-
-    // // 测试kv get cmd
-    // let result: Result<Option<String>, MemcacheError> = client.get(key);
-    // println!("{} use kv cmd: set rs: {:?}", origin_resource, result);
-
     println!("will test with kv cmd...");
     let host_ip = origin_resource.get_host();
 

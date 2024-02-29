@@ -162,7 +162,6 @@ fn mc_simple_incr_decr() {
 /// 使用非mc协议的命令验证
 #[test]
 fn mc_conflict_test() {
-    println!("mc will test with other protocol cmds...");
     crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
     crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
     crate::conflict_cmd::conflict_with_kv_cmd(RESTYPE);
