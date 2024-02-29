@@ -1,5 +1,4 @@
 use crate::ci::env::Mesh;
-use memcache::MemcacheError;
 use redis::RedisResult;
 use std::{
     io::{Read, Write},
