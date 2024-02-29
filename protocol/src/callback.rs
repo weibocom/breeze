@@ -167,10 +167,15 @@ impl CallbackContext {
             // 需要重试或回写
             return self.goon();
         }
-        //防止markdone后，在pipeline中req被释放，req和waker被覆写
+        //markdone后，req标记为已完成，那么CallbackContext和CopyBidirectional都有可能被释放
+        //CopyBidirectional会提前释放，所以需要提前clone一份
+        //CallbackContext会提前释放，则需要在此clone到栈上
+        //async_mode同理
         let waker = unsafe { self.waker.as_ref().unwrap().clone() };
+        let async_mode = self.async_mode;
         self.mark_done();
-        if !self.async_mode {
+        //！！！mark_done之后禁止使用self，self有可能已被释放
+        if !async_mode {
             waker.wake()
         }
     }
