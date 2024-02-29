@@ -65,18 +65,16 @@ where
             }
 
             if dump {
-                // TODO：先dump出原配置，并写入console（临时方案，待配置回滚方案完善后，考虑去掉 fishermen #815）
                 if let Ok((old_cfg, _sig)) = self.load_from_snapshot(&snapshot).await {
                     const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S.%3f";
                     let time = Local::now().format(TIME_FORMAT).to_string();
+                    // dump新配置前，先load出原配置，并写入console（临时方案，待配置回滚方案完善后，考虑去掉 fishermen #815）
                     println!("+++ {} {:?} will update cfg, old:{}", time, self, old_cfg);
                 } else {
                     log::warn!("+++ load snapshot failed: {:?}", self);
                 }
 
                 self.dump(snapshot, &cfg).await;
-            } else {
-                log::warn!("+++ found malformed cfg: {:?} => \n{}", self, cfg);
             }
         }
     }
