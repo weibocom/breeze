@@ -98,6 +98,15 @@ impl Protocol for Kv {
         assert!(stream.len() > 0, "mc req: {:?}", stream.slice());
         log::debug!("+++ recv mysql-mc req:{:?}", stream.slice());
 
+        // 如果req小于HEADER_LEN，不能完全解析，但是可以检查是否是一个合法的请求，避免阻塞。
+        if stream.len() < HEADER_LEN {
+            if stream.len() > 0 {
+                let req = stream.slice();
+                req.check_request()?;
+            }
+            return Ok(());
+        }
+
         // 直接解析mc协议，待有额外逻辑，再考虑封装解析过程
         while stream.len() >= mcpacket::HEADER_LEN {
             let mut req = stream.slice();

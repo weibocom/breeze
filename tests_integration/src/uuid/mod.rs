@@ -3,6 +3,8 @@ use std::io::prelude::*;
 use std::net::TcpStream;
 use std::time::Duration;
 
+const RESTYPE: &str = "uuid";
+
 //以pipeline模式同时发送1-10个请求
 #[test]
 #[ignore]
@@ -71,4 +73,14 @@ fn get_uncomplete_req() {
             lines[1].parse::<u64>().unwrap();
         }
     }
+}
+
+/// 使用非uuid协议的命令验证
+#[test]
+fn uuid_conflict_test() {
+    crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_kv_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_vector_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_uuid_cmd(RESTYPE);
 }

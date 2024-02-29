@@ -1,5 +1,5 @@
-use crate::mc_helper::*;
-use memcache::MemcacheError;
+use std::collections::HashMap;
+
 /// # 已测试场景：
 /// - 验证 mesh buffer 扩容，同一个连接，同一个key，set 8次不同大小的String value
 ///     key: "fooset"  value: 每个字符内容为 ‘A’
@@ -14,7 +14,11 @@ use memcache::MemcacheError;
 ///     set命令未单独测试；
 ///
 /// -
-use std::collections::HashMap;
+use crate::mc_helper::*;
+use memcache::MemcacheError;
+
+const RESTYPE: &str = "mc";
+
 /// 测试场景：基本的mc add 命令验证
 #[test]
 fn mc_max_key() {
@@ -153,4 +157,15 @@ fn mc_simple_incr_decr() {
     let res = client.decrement(key, 5);
     assert!(res.is_ok());
     assert_eq!(res.expect("ok"), 10);
+}
+
+/// 使用非mc协议的命令验证
+#[test]
+fn mc_conflict_test() {
+    println!("mc will test with other protocol cmds...");
+    crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_kv_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_vector_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_uuid_cmd(RESTYPE);
 }
