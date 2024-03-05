@@ -55,9 +55,10 @@ impl VectorNamespace {
     pub(crate) fn try_from(cfg: &str) -> Option<Self> {
         match serde_yaml::from_str::<VectorNamespace>(cfg) {
             Ok(mut ns) => {
-                //配置的年需要连续，不重叠
+                //配置的年需要连续，不重叠，同时vector目前不支持default配置
                 let mut years: Vec<_> = ns.backends.keys().collect();
-                if years.len() == 0 {
+                if years.len() == 0 || years[0].0 == 0 {
+                    log::warn!("+++ malformed bk years:{}", cfg);
                     return None;
                 }
                 years.sort();
