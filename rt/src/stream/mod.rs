@@ -159,6 +159,11 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::BufWriter for Stream<S> {
         Ok(())
     }
     #[inline]
+    fn write_all_hint(&mut self, buf: &[u8], next: bool) -> std::io::Result<()> {
+        self.buf.enable |= next;
+        self.write_all(buf)
+    }
+    #[inline]
     fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) -> std::io::Result<()> {
         self.buf.enable = true;
         self.write_all(buf0)?;

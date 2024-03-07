@@ -27,12 +27,24 @@ pub trait ByteOrder {
     fn f32_le(&self, oft: usize) -> f32;
     fn f64_le(&self, oft: usize) -> f64;
 }
+pub trait Slicer {
+    fn len(&self) -> usize;
+    fn with_seg<R: Range, O: Merge>(&self, r: R, v: impl FnMut(&[u8], usize, bool) -> O) -> O;
+}
+pub trait Merge {
+    fn merge(self, other: impl FnMut() -> Self) -> Self;
+}
 
 pub trait Range {
-    fn range(&self, slice: &RingSlice) -> (usize, usize);
+    #[inline(always)]
+    fn r_len<S: Slicer>(&self, s: &S) -> usize {
+        let r = self.range(s);
+        r.1 - r.0
+    }
+    fn range<S: Slicer>(&self, s: &S) -> (usize, usize);
     #[inline]
-    fn start(&self, slice: &RingSlice) -> usize {
-        self.range(slice).0
+    fn start<S: Slicer>(&self, s: &S) -> usize {
+        self.range(s).0
     }
 }
 
@@ -55,37 +67,37 @@ impl<T: FnMut(u8, usize) -> bool> Visit for T {
 type Offset = usize;
 impl Range for Offset {
     #[inline(always)]
-    fn range(&self, slice: &RingSlice) -> (usize, usize) {
-        debug_assert!(*self <= slice.len());
-        (*self, slice.len())
+    fn range<S: Slicer>(&self, s: &S) -> (usize, usize) {
+        debug_assert!(*self <= s.len());
+        (*self, s.len())
     }
 }
 
 impl Range for std::ops::Range<usize> {
     #[inline(always)]
-    fn range(&self, slice: &RingSlice) -> (usize, usize) {
-        debug_assert!(self.start <= slice.len());
-        debug_assert!(self.end <= slice.len());
+    fn range<S: Slicer>(&self, s: &S) -> (usize, usize) {
+        debug_assert!(self.start <= s.len());
+        debug_assert!(self.end <= s.len());
         (self.start, self.end)
     }
 }
 impl Range for std::ops::RangeFrom<usize> {
     #[inline(always)]
-    fn range(&self, slice: &RingSlice) -> (usize, usize) {
-        debug_assert!(self.start <= slice.len());
-        (self.start, slice.len())
+    fn range<S: Slicer>(&self, s: &S) -> (usize, usize) {
+        debug_assert!(self.start <= s.len());
+        (self.start, s.len())
     }
 }
 impl Range for std::ops::RangeTo<usize> {
     #[inline(always)]
-    fn range(&self, slice: &RingSlice) -> (usize, usize) {
-        debug_assert!(self.end <= slice.len());
+    fn range<S: Slicer>(&self, s: &S) -> (usize, usize) {
+        debug_assert!(self.end <= s.len());
         (0, self.end)
     }
 }
 impl Range for std::ops::RangeFull {
     #[inline(always)]
-    fn range(&self, slice: &RingSlice) -> (usize, usize) {
-        (0, slice.len())
+    fn range<S: Slicer>(&self, s: &S) -> (usize, usize) {
+        (0, s.len())
     }
 }

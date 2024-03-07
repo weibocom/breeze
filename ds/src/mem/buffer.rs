@@ -73,23 +73,6 @@ impl RingBuffer {
         self.advance_write(read);
         out
     }
-    //// 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
-    //#[inline]
-    //fn as_mut_bytes(&mut self) -> &mut [u8] {
-    //    if self.read + self.size == self.write {
-    //        // 已满
-    //        unsafe { from_raw_parts_mut(self.data.as_ptr(), 0) }
-    //    } else {
-    //        let offset = self.mask(self.write);
-    //        let read = self.mask(self.read);
-    //        let n = if offset < read {
-    //            read - offset
-    //        } else {
-    //            self.size - offset
-    //        };
-    //        unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
-    //    }
-    //}
     #[inline]
     pub fn data(&self) -> RingSlice {
         RingSlice::from(self.data.as_ptr(), self.size, self.read, self.write)

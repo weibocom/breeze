@@ -2,15 +2,11 @@
 brz_home="/data1/ci/breeze"
 mkdir -p $brz_home
 
-docker ps -a | grep breeze_ci_mysql4623 && docker rm -f breeze_ci_mysql4623
-docker ps -a | grep breeze_ci_mysql4624 && docker rm -f breeze_ci_mysql4624
+docker stop breeze_ci_mysql4623 breeze_ci_mysql4624 breeze_github_ci 2>/dev/null
+
 docker run --rm --name breeze_ci_mysql4623  -p 4623:3306 -d parabala/mysqlci_with_schema:v0.0.2
 docker run --rm --name breeze_ci_mysql4624  -p 4624:3306 -d parabala/mysqlci_with_schema:v0.0.2
-
 container_name=breeze_github_ci
-docker ps -a | grep "$container_name" && docker rm -f "$container_name"
-
-
 docker run --rm -d -v $brz_home:/data1/resource/breeze  --net="host"  --name "$container_name"  parabala/breeze:githubci108
 
 # rm -rf $brz_home/*
@@ -75,3 +71,4 @@ RUST_BACKTRACE=1 cargo test -p tests_integration --features github_workflow
 
 kill -9 $pid
 
+docker stop breeze_ci_mysql4623 breeze_ci_mysql4624 breeze_github_ci 
