@@ -1,5 +1,6 @@
 use std::{
     fmt::{Debug, Display, Formatter},
+    ptr::copy_nonoverlapping,
     slice::from_raw_parts,
 };
 
@@ -13,22 +14,6 @@ pub struct RingSlice {
     start: u32,
     len: u32,
     mask: u32,
-}
-
-macro_rules! with_segment {
-    ($self:ident, $range:expr, $noseg:expr, $seg:expr) => {{
-        let (oft, end) = $range.range($self);
-        debug_assert!(oft <= end && end <= $self.len());
-        let len = end - oft;
-        let oft_start = $self.mask($self.start() + oft);
-        if oft_start + len <= $self.cap() {
-            unsafe { $noseg($self.ptr().add(oft_start), len) }
-        } else {
-            let seg1 = $self.cap() - oft_start;
-            let seg2 = len - seg1;
-            unsafe { $seg($self.ptr().add(oft_start), seg1, $self.ptr(), seg2) }
-        }
-    }};
 }
 
 impl RingSlice {
@@ -75,24 +60,22 @@ impl RingSlice {
     }
     #[inline]
     pub fn str_num(&self, r: impl Range) -> usize {
-        let (start, end) = r.range(self);
-        let mut num = 0usize;
-        for i in start..end {
-            num = num.wrapping_mul(10) + (self[i] - b'0') as usize;
-        }
-        num
+        self.fold(r, 0, |num, b| {
+            *num = num.wrapping_mul(10) + (b - b'0') as usize
+        })
     }
+    // 如果有一个非数字的字符，则返回None
     #[inline]
     pub fn try_str_num(&self, r: impl Range) -> Option<usize> {
-        let (start, end) = r.range(self);
-        let mut num = 0usize;
-        for i in start..end {
-            if !self[i].is_ascii_digit() {
-                return None;
+        let mut digit = true;
+        let num = self.fold_r(r, 0usize, |num, b| {
+            digit &= b.is_ascii_digit();
+            if digit {
+                *num = num.wrapping_mul(10) + (b - b'0') as usize;
             }
-            num = num.wrapping_mul(10) + (self[i] - b'0') as usize;
-        }
-        Some(num)
+            !digit
+        });
+        digit.then_some(num)
     }
 
     #[inline]
@@ -106,39 +89,65 @@ impl RingSlice {
             mask: self.mask,
         }
     }
+    // 这个方法是最核心的方法，所有的方法都是基于这个方法实现的
+    // F:ptr, len, oft, segment
+    #[inline]
+    fn _visit<R, O, F>(&self, r: R, mut f: F) -> O
+    where
+        O: Merge,
+        R: Range,
+        F: FnMut(*const u8, usize, usize, bool) -> O,
+    {
+        let (oft, end) = r.range(self);
+        debug_assert!(oft <= end && end <= self.len());
+        let len = end - oft;
+        let oft_start = self.mask as usize & (self.start() + oft);
+        let seg1 = self.cap() - oft_start;
+        if len <= seg1 {
+            unsafe { f(self.ptr().add(oft_start), len, oft, false) }
+        } else {
+            let o0 = unsafe { f(self.ptr().add(oft_start), seg1, oft, true) };
+            let seg2 = len - seg1;
+            o0.merge(|| f(self.ptr(), seg2, self.cap() - self.start(), true))
+        }
+    }
+    #[inline(always)]
+    fn _visit_data<R, O, F>(&self, r: R, mut f: F) -> O
+    where
+        O: Merge,
+        R: Range,
+        F: FnMut(&[u8], usize, bool) -> O,
+    {
+        self._visit(r, |p, len, oft, seg| unsafe {
+            f(from_raw_parts(p, len), oft, seg)
+        })
+    }
     #[inline(always)]
     pub fn visit(&self, mut f: impl FnMut(u8)) {
-        self.visit_seg(0, |p, l| {
-            for i in 0..l {
+        self._visit(0usize, |p, len, _oft, _seg| {
+            for i in 0..len {
                 unsafe { f(*p.add(i)) };
             }
-        });
+        })
     }
     #[inline(always)]
     pub fn visit_seg<R: Range>(&self, r: R, mut f: impl FnMut(*const u8, usize)) {
-        with_segment!(self, r, |p, l| f(p, l), |p0, l0, p1, l1| {
-            f(p0, l0);
-            f(p1, l1)
-        })
+        self._visit(r, |p, len, _, _| f(p, len))
     }
     #[inline(always)]
     pub fn visit_data(&self, r: impl Range, mut f: impl FnMut(&[u8])) {
-        with_segment!(self, r, |p, l| f(from_raw_parts(p, l)), |p0, l0, p1, l1| {
-            {
-                f(from_raw_parts(p0, l0));
-                f(from_raw_parts(p1, l1));
-            }
-        })
+        self._visit(r, |p, len, _, _| f(unsafe { from_raw_parts(p, len) }))
     }
     #[inline(always)]
     pub fn data_r(&self, r: impl Range) -> (&[u8], &[u8]) {
         static EMPTY: &[u8] = &[];
-        with_segment!(
-            self,
-            r,
-            |ptr, len| (from_raw_parts(ptr, len), EMPTY),
-            |p0, l0, p1, l1| (from_raw_parts(p0, l0), from_raw_parts(p1, l1))
-        )
+        let mut seg = [EMPTY, EMPTY];
+        let mut idx = 0;
+        self._visit(r, |p, l, _idx, _seg| {
+            seg[idx] = unsafe { from_raw_parts(p, l) };
+            idx += 1;
+        });
+        (&seg[0], &seg[1])
     }
     #[inline(always)]
     pub fn data(&self) -> (&[u8], &[u8]) {
@@ -149,46 +158,45 @@ impl RingSlice {
     pub unsafe fn data_dump(&self) -> &[u8] {
         from_raw_parts(self.ptr(), self.cap())
     }
+    // 遍历，直到v返回true时.
     #[inline(always)]
-    pub fn fold_r<I, R: Range, V: FnMut(&mut I, u8) -> bool>(
-        &self,
-        r: R,
-        mut init: I,
-        mut v: V,
-    ) -> I {
-        macro_rules! visit {
-            ($p:expr, $l:expr) => {{
-                for i in 0..$l {
-                    if !v(&mut init, *$p.add(i)) {
-                        return false;
-                    }
+    pub fn fold_r<I, R: Range, V: FnMut(&mut I, u8) -> bool>(&self, r: R, init: I, mut v: V) -> I {
+        let mut init = init;
+        self._visit(r, |p, l, _oft, _seg| {
+            for i in 0..l {
+                if !v(&mut init, unsafe { *p.add(i) }) {
+                    continue;
                 }
-                true
-            }};
-        }
-        with_segment!(
-            self,
-            r,
-            |p: *mut u8, l| visit!(p, l),
-            |p0: *mut u8, l0, p1: *mut u8, l1| { visit!(p0, l0) && visit!(p1, l1) }
-        );
+                // 说明v返回true，则终止遍历
+                return true;
+            }
+            // 尝试下一个seg
+            false
+        });
         init
     }
+    // 遍历所有的数据。
     #[inline(always)]
     pub fn fold<I, R: Range>(&self, r: R, init: I, mut v: impl FnMut(&mut I, u8)) -> I {
         self.fold_r(r, init, |i, b| {
             v(i, b);
-            true
+            false
         })
     }
     #[inline]
     pub fn copy_to<W: BufWriter + ?Sized, R: Range>(&self, r: R, w: &mut W) -> std::io::Result<()> {
-        with_segment!(
-            self,
-            r,
-            |p, l| w.write_all(from_raw_parts(p, l)),
-            |p0, l0, p1, l1| { w.write_seg_all(from_raw_parts(p0, l0), from_raw_parts(p1, l1)) }
-        )
+        self._visit(r, |p, len, _, seg| {
+            w.write_all_hint(unsafe { from_raw_parts(p, len) }, seg)
+        })
+    }
+    #[inline]
+    fn _copy_to<R: Range, T: AsMut<[u8]>>(&self, r: R, mut o: T) {
+        let out = o.as_mut();
+        let mut idx = 0;
+        self._visit(r, |p, len, _, _| {
+            unsafe { copy_nonoverlapping(p, out.as_mut_ptr().add(idx), len) };
+            idx += len;
+        });
     }
     #[inline]
     pub fn copy_to_w<W: BufWriter + ?Sized, R: Range>(&self, r: R, w: &mut W) {
@@ -197,24 +205,29 @@ impl RingSlice {
     }
     #[inline]
     pub fn copy_to_vec(&self, v: &mut Vec<u8>) {
-        self.copy_to_w(.., v);
+        self.copy_to_v(.., v);
     }
     #[inline]
     pub fn copy_to_vec_with_len(&self, v: &mut Vec<u8>, len: usize) {
-        self.copy_to_w(..len, v);
+        self.copy_to_v(..len, v);
     }
     #[inline]
-    pub fn copy_to_vec_r<R: Range>(&self, v: &mut Vec<u8>, r: R) {
-        self.copy_to_w(r, v);
+    pub fn copy_to_v<R: Range>(&self, r: R, v: &mut Vec<u8>) {
+        let rlen = r.r_len(self);
+        v.reserve(rlen);
+        let len = v.len();
+        unsafe { v.set_len(len + rlen) };
+        let out = &mut v[len..];
+        self._copy_to(r, out);
     }
     /// copy 数据到切片/数组中，目前暂时不需要oft，有需求后再加
     #[inline]
     pub fn copy_to_slice(&self, s: &mut [u8]) {
-        self.copy_to_w(.., s);
+        self._copy_to(0, s)
     }
     #[inline]
-    pub fn copy_to_r<R: Range>(&self, s: &mut [u8], r: R) {
-        self.copy_to_w(r, s);
+    pub fn copy_to_r<R: Range>(&self, r: R, s: &mut [u8]) {
+        self._copy_to(r, s);
     }
     #[inline(always)]
     pub(super) fn cap(&self) -> usize {
@@ -222,6 +235,7 @@ impl RingSlice {
     }
     #[inline(always)]
     pub(super) fn start(&self) -> usize {
+        debug_assert!(self.start < self.cap || self.start == 0, "{self}");
         self.start as usize
     }
 
@@ -233,6 +247,12 @@ impl RingSlice {
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.len as usize
+    }
+    #[inline(always)]
+    pub fn first(&self) -> u8 {
+        debug_assert!(self.len > 0);
+        debug_assert!(self.start < self.cap);
+        unsafe { *self.ptr() }
     }
     #[inline(always)]
     pub fn at(&self, idx: usize) -> u8 {
@@ -251,15 +271,18 @@ impl RingSlice {
     pub fn find(&self, offset: usize, b: u8) -> Option<usize> {
         self.find_r(offset, b)
     }
+    // 找到满足f.check(b, idx)的第一个字节位置，返回idx
     #[inline]
     pub fn find_r(&self, r: impl Range, mut f: impl Visit) -> Option<usize> {
-        let (start, end) = r.range(self);
-        for i in start..end {
-            if f.check(self[i], i) {
-                return Some(i);
+        self._visit(r, |p, len, oft, _seg| {
+            for i in 0..len {
+                let idx = oft + i;
+                if f.check(unsafe { *p.add(i) }, idx) {
+                    return Some(idx);
+                }
             }
-        }
-        None
+            None
+        })
     }
     // 跳过num个'\r\n'，返回下一个字节地址
     #[inline]
@@ -269,73 +292,47 @@ impl RingSlice {
         }
         Some(oft)
     }
-    // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
+    // 查找是否存在 '\r\n' ，返回'\r' 的位置
     #[inline]
     pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
         self.find_r(offset..self.len() - 1, |b, idx| {
+            debug_assert!(idx < self.len() - 1, "{offset} => {idx}, {self} ");
             b == b'\r' && self[idx + 1] == b'\n'
         })
     }
     #[inline]
     pub fn equal(&self, other: &[u8]) -> bool {
-        if self.len() != other.len() {
-            return false;
-        }
-        for i in 0..self.len() {
-            if self[i] != other[i] {
-                return false;
-            }
-        }
-        return true;
+        self.eq(other)
     }
     /// 判断是否相同，忽略大小写
     #[inline]
     pub fn equal_ignore_case(&self, other: &[u8]) -> bool {
-        if self.len() != other.len() {
-            return false;
-        }
-        for i in 0..self.len() {
-            // 指令一般是大写
-            if self[i].to_ascii_uppercase() != other[i].to_ascii_uppercase() {
-                return false;
-            }
-        }
-        return true;
+        self.len() == other.len() && self.compare(0, other, |a, b| a.eq_ignore_ascii_case(b))
+    }
+    #[inline]
+    fn compare(&self, r: impl Range, s: &[u8], eq: impl Fn(&[u8], &[u8]) -> bool) -> bool {
+        debug_assert!(r.r_len(self) == s.len());
+        let mut cmp = s;
+        let mut matched = true;
+        self._visit_data(r, |data, _, _| {
+            let l = data.len().min(cmp.len());
+            let d = &data[..l];
+            matched &= eq(d, &cmp[..l]);
+            cmp = &cmp[l..];
+            // 还有未比对完成的数据，且当前数据不是最后一个数据，则继续比对
+            cmp.len() == 0 || !matched
+        });
+        matched
     }
     #[inline]
     pub fn start_with(&self, oft: usize, s: &[u8]) -> bool {
-        if oft + s.len() <= self.len() {
-            with_segment!(
-                self,
-                oft..oft + s.len(),
-                |p, _l| { from_raw_parts(p, s.len()) == s },
-                |p0, l0, p1, _l1| from_raw_parts(p0, l0) == &s[..l0]
-                    && from_raw_parts(p1, s.len() - l0) == &s[l0..]
-            )
-        } else {
-            false
-        }
+        oft + s.len() <= self.len() && self.compare(oft..oft + s.len(), s, |a, b| a == b)
     }
 
     #[inline]
     pub fn start_ignore_case(&self, oft: usize, s: &[u8]) -> bool {
-        if oft + s.len() <= self.len() {
-            with_segment!(
-                self,
-                oft,
-                |p, _l| { from_raw_parts(p, s.len()).eq_ignore_ascii_case(s) },
-                |p0, l0, p1, _l1| {
-                    if l0 < s.len() {
-                        from_raw_parts(p0, l0).eq_ignore_ascii_case(&s[..l0])
-                            && from_raw_parts(p1, s.len() - l0).eq_ignore_ascii_case(&s[l0..])
-                    } else {
-                        from_raw_parts(p0, s.len()).eq_ignore_ascii_case(s)
-                    }
-                }
-            )
-        } else {
-            false
-        }
+        oft + s.len() <= self.len()
+            && self.compare(oft..oft + s.len(), s, |a, b| a.eq_ignore_ascii_case(b))
     }
 
     // 读取一个u16的数字，大端
@@ -348,11 +345,8 @@ impl RingSlice {
     /// 展示所有内容，仅用于长度比较小的场景 fishermen
     #[inline]
     pub fn as_string_lossy(&self) -> String {
-        if self.len() >= 512 {
-            log::warn!("as_string_lossy: data too long: {:?}", self);
-        }
         let mut vec = Vec::with_capacity(self.len());
-        self.copy_to_w(0, &mut vec);
+        self.copy_to_v(0, &mut vec);
         String::from_utf8(vec).unwrap_or_default()
     }
 }
@@ -408,7 +402,7 @@ impl std::ops::IndexMut<usize> for RingSlice {
 impl PartialEq<[u8]> for super::RingSlice {
     #[inline]
     fn eq(&self, other: &[u8]) -> bool {
-        self.len() == other.len() && self.start_with(0, other)
+        self.len() == other.len() && self.compare(0, other, |a, b| a == b)
     }
 }
 // 内容相等
@@ -417,5 +411,17 @@ impl PartialEq<Self> for super::RingSlice {
     fn eq(&self, other: &Self) -> bool {
         let (f, s) = other.data_r(0);
         self.len() == other.len() && self.start_with(0, f) && self.start_with(f.len(), s)
+    }
+}
+
+use crate::{Merge, Slicer};
+impl Slicer for RingSlice {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.len as usize
+    }
+    #[inline]
+    fn with_seg<R: Range, O: Merge>(&self, r: R, v: impl FnMut(&[u8], usize, bool) -> O) -> O {
+        self._visit_data(r, v)
     }
 }

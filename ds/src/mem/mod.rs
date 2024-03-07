@@ -4,6 +4,8 @@ pub use buffer::*;
 mod resized;
 pub use resized::*;
 
+mod slice;
+
 mod ring_slice;
 pub use ring_slice::*;
 

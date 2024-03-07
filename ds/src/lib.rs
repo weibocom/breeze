@@ -13,7 +13,6 @@ pub use cow::*;
 pub use mem::*;
 pub use vec::Buffer;
 mod switcher;
-//pub use queue::PinnedQueue;
 pub use switcher::Switcher;
 pub use utf8::*;
 pub use waker::AtomicWaker;
@@ -25,49 +24,16 @@ mod asserts;
 mod bits;
 pub use bits::*;
 
-use std::ptr::copy_nonoverlapping as copy;
-
 pub trait BufWriter {
     fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()>;
+    #[inline]
+    fn write_all_hint(&mut self, buf: &[u8], _next: bool) -> std::io::Result<()> {
+        self.write_all(buf)
+    }
     #[inline]
     fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) -> std::io::Result<()> {
         self.write_all(buf0)?;
         self.write_all(buf1)
-    }
-}
-
-impl BufWriter for Vec<u8> {
-    #[inline]
-    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
-        self.reserve(buf.len());
-        let len = self.len();
-        unsafe { self.set_len(len + buf.len()) };
-        (&mut self[len..]).write_all(buf)?;
-        Ok(())
-    }
-    #[inline]
-    fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) -> std::io::Result<()> {
-        let reserve_len = buf0.len() + buf1.len();
-        self.reserve(reserve_len);
-        let len = self.len();
-        unsafe { self.set_len(len + reserve_len) };
-        (&mut self[len..]).write_seg_all(buf0, buf1)?;
-        Ok(())
-    }
-}
-impl BufWriter for [u8] {
-    #[inline(always)]
-    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
-        debug_assert!(self.len() >= buf.len(), "{} >= {}", self.len(), buf.len());
-        unsafe { copy(buf.as_ptr(), self.as_mut_ptr(), buf.len()) };
-        Ok(())
-    }
-    #[inline(always)]
-    fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) -> std::io::Result<()> {
-        debug_assert!(self.len() >= buf0.len() + buf1.len());
-        unsafe { copy(buf0.as_ptr(), self.as_mut_ptr(), buf0.len()) };
-        unsafe { copy(buf1.as_ptr(), self.as_mut_ptr().add(buf0.len()), buf1.len()) };
-        Ok(())
     }
 }
 
