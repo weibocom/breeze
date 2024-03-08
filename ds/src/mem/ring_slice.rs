@@ -230,17 +230,17 @@ impl RingSlice {
         self._copy_to(r, s);
     }
     #[inline(always)]
-    pub(super) fn cap(&self) -> usize {
+    pub(crate) fn cap(&self) -> usize {
         self.cap as usize
     }
     #[inline(always)]
-    pub(super) fn start(&self) -> usize {
+    pub(crate) fn start(&self) -> usize {
         debug_assert!(self.start < self.cap || self.start == 0, "{self}");
         self.start as usize
     }
 
     #[inline(always)]
-    pub(super) fn mask(&self, oft: usize) -> usize {
+    pub(crate) fn mask(&self, oft: usize) -> usize {
         (self.mask & oft as u32) as usize
     }
 
@@ -263,7 +263,7 @@ impl RingSlice {
         self[idx] = b;
     }
     #[inline(always)]
-    pub(super) fn ptr(&self) -> *mut u8 {
+    pub(crate) fn ptr(&self) -> *mut u8 {
         self.ptr as *mut u8
     }
 

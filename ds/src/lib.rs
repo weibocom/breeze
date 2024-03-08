@@ -6,18 +6,22 @@ mod mem;
 //pub mod queue;
 pub mod rand;
 pub mod utf8;
-pub mod vec;
 mod waker;
+
+pub mod vec;
+pub use vec::*;
 
 pub use cow::*;
 pub use mem::*;
-pub use vec::Buffer;
 mod switcher;
 pub use switcher::Switcher;
 pub use utf8::*;
 pub use waker::AtomicWaker;
 
 pub mod time;
+
+mod io;
+pub use io::*;
 
 mod asserts;
 

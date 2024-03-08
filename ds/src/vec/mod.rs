@@ -17,7 +17,10 @@ pub trait Buffer: Sized {
     }
     #[inline(always)]
     fn write_slice(&mut self, slice: &crate::RingSlice) {
-        slice.copy_to_vec(self);
+        use crate::Slicer;
+        slice.with_seg(0, |data, _oft, _seg| {
+            self.write(data);
+        });
     }
 }
 impl Buffer for Vec<u8> {
@@ -34,6 +37,10 @@ impl Buffer for Vec<u8> {
             );
             self.set_len(self.len() + b.len());
         }
+    }
+    #[inline(always)]
+    fn write_slice(&mut self, slice: &crate::RingSlice) {
+        slice.copy_to_vec(self);
     }
 }
 
