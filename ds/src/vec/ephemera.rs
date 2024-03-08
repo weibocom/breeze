@@ -1,6 +1,6 @@
 use std::ptr::copy_nonoverlapping;
 
-use crate::{arena::CacheArena, Buffer};
+use crate::{arena::CacheArena, Writer};
 
 // 用来分配快速释放的Vec<u8>
 // 1. cap大小固定, 不支持动态扩展；
@@ -15,7 +15,7 @@ impl From<Vec<u8>> for EphemeralVec {
     fn from(vec: Vec<u8>) -> Self {
         assert!(vec.capacity() < u32::MAX as usize);
         let mut v = Self::fix_cap(vec.len());
-        v.write(vec.as_slice());
+        v.write_all(vec.as_slice()).expect("err");
         v
     }
 }
@@ -74,13 +74,13 @@ impl DerefMut for EphemeralVec {
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len as usize) }
     }
 }
-impl Buffer for EphemeralVec {
+impl crate::Writer for EphemeralVec {
     #[inline(always)]
-    fn write<D: AsRef<[u8]>>(&mut self, d: D) {
-        let data = d.as_ref();
+    fn write_all(&mut self, data: &[u8]) -> std::io::Result<()> {
         assert!(self.len() + data.len() <= self.cap());
         unsafe { copy_nonoverlapping(data.as_ptr(), self.ptr.add(self.len()), data.len()) };
         self.len += data.len() as u32;
+        Ok(())
     }
 }
 // 实现Drop

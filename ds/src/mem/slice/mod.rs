@@ -1,14 +1,23 @@
-use std::ops::Deref;
-impl<T: Deref<Target = [u8]>> Slicer for T {
+impl<T: AsRef<[u8]>> Slicer for T {
     #[inline(always)]
     fn len(&self) -> usize {
-        self.deref().len()
+        self.as_ref().len()
     }
     #[inline(always)]
     fn with_seg<R: Range, O: Merge>(&self, r: R, mut v: impl FnMut(&[u8], usize, bool) -> O) -> O {
         let (start, end) = r.range(self);
         debug_assert!(start <= end && end <= self.len() as usize);
-        v(&*self, start, false)
+        v(self.as_ref(), start, false)
+    }
+}
+impl Slicer for str {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.len()
+    }
+    #[inline(always)]
+    fn with_seg<R: Range, O: Merge>(&self, r: R, v: impl FnMut(&[u8], usize, bool) -> O) -> O {
+        self.as_bytes().with_seg(r, v)
     }
 }
 
@@ -45,6 +54,10 @@ pub trait Merge {
 }
 
 pub trait Range {
+    #[inline(always)]
+    fn len<S: Slicer>(&self, s: &S) -> usize {
+        self.r_len(s)
+    }
     #[inline(always)]
     fn r_len<S: Slicer>(&self, s: &S) -> usize {
         let r = self.range(s);

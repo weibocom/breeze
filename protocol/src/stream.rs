@@ -22,34 +22,29 @@ pub trait BufRead {
     fn reserve(&mut self, r: usize);
 }
 use super::Result;
-pub trait Writer: ds::BufWriter + Sized {
+pub trait Writer: ds::Writer + Sized {
     fn cap(&self) -> usize;
     fn pending(&self) -> usize;
     // 写数据，一次写完
-    fn write(&mut self, data: &[u8]) -> Result<()>;
+    #[inline(always)]
+    fn write(&mut self, data: &[u8]) -> Result<()> {
+        self.write_r(0, &data)?;
+        Ok(())
+    }
     #[inline]
     fn write_u8(&mut self, v: u8) -> Result<()> {
         self.write(&[v])
     }
     #[inline]
     fn write_u16(&mut self, v: u16) -> Result<()> {
-        // let mut data = Vec::with_capacity(2);
-        // data.write_u16::<BigEndian>(v)?;
-        // self.write(&data[0..])
         self.write(&v.to_be_bytes())
     }
     #[inline]
     fn write_u32(&mut self, v: u32) -> Result<()> {
-        // let mut data = Vec::with_capacity(4);
-        // data.write_u32::<BigEndian>(v)?;
-        // self.write(&data[0..])
         self.write(&v.to_be_bytes())
     }
     #[inline]
     fn write_u64(&mut self, v: u64) -> Result<()> {
-        // let mut data = Vec::with_capacity(8);
-        // data.write_u64::<BigEndian>(v)?;
-        // self.write(&data[0..])
         self.write(&v.to_be_bytes())
     }
     #[inline(always)]
@@ -63,14 +58,14 @@ pub trait Writer: ds::BufWriter + Sized {
 
     #[inline]
     fn write_slice<S: Deref<Target = MemGuard>>(&mut self, data: &S, oft: usize) -> Result<()> {
-        (&*data).copy_to(oft, self)?;
+        self.write_r(oft, &**data)?;
         Ok(())
     }
 
     // 暂时没发现更好的实现方式，先用这个实现
     #[inline]
     fn write_ringslice(&mut self, data: &RingSlice, oft: usize) -> Result<()> {
-        data.copy_to(oft, self)?;
+        self.write_r(oft, data)?;
         Ok(())
     }
 
