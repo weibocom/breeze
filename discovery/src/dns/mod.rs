@@ -33,13 +33,24 @@ pub fn lookup_ips<'a>(host: &str, mut f: impl FnMut(&[IpAddr])) {
     f(get_dns().lookup(host))
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Clone, Debug)]
 struct Record {
     subscribers: Vec<Arc<AtomicBool>>,
     ips: Vec<IpAddr>,
     id: usize,
     md5: u64,     // 使用所有ip的和作为md5
     notify: bool, // true表示需要通知
+}
+impl Default for Record {
+    fn default() -> Self {
+        Record {
+            subscribers: Vec::with_capacity(2),
+            ips: Vec::with_capacity(2),
+            id: 0,
+            md5: 0,
+            notify: false,
+        }
+    }
 }
 impl Record {
     fn watch(&mut self, s: Arc<AtomicBool>) {
@@ -67,12 +78,12 @@ impl Record {
             cnt += 1;
             md5 += u32::from(ip) as u64;
         });
-        log::debug!("{} resolved ips:{:?}, md5:{}", host, ips, md5);
         if cnt > 0 && (cnt != self.ips.len() || self.md5 != md5) {
             self.ips.clear();
             ips.visit_v4(|ip| self.ips.push(ip));
             self.md5 = md5;
             self.notify = true;
+            log::debug!("{} resolved ips:{:?}, md5:{}", host, self.ips, md5);
             return true;
         }
         false
