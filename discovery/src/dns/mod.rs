@@ -11,7 +11,7 @@ use std::{
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender as Sender};
 
 mod lookup;
-use lookup::Lookup;
+use lookup::*;
 
 use ds::{
     time::{interval, Duration, Instant},
@@ -60,35 +60,20 @@ impl Record {
     }
     // 如果有更新，则返回lookup的ip。
     // 无更新则返回None
-    async fn refresh(&mut self, host: &str, r: &mut Lookup) -> bool {
-        match r.lookup(host).await {
-            Ok(ips) => {
-                let mut md5 = 0u64;
-                let mut cnt = 0;
-                for ip in ips.iter() {
-                    match ip {
-                        std::net::IpAddr::V4(ip) => {
-                            md5 += u32::from(*ip) as u64;
-                            cnt += 1;
-                        }
-                        std::net::IpAddr::V6(_ip) => {}
-                    }
-                }
-                log::debug!("{} resolved ips:{:?}, md5:{}", host, ips, md5);
-                if cnt > 0 && (cnt != self.ips.len() || self.md5 != md5) {
-                    self.ips = ips
-                        .into_iter()
-                        .map(|ip| match ip {
-                            std::net::IpAddr::V4(ip) => ip,
-                            _ => unreachable!(),
-                        })
-                        .collect();
-                    self.md5 = md5;
-                    self.notify = true;
-                    return true;
-                }
-            }
-            Err(e) => log::info!("refresh host failed:{}, {:?}", host, e),
+    fn refresh(&mut self, host: &str, ips: IpAddrLookup) -> bool {
+        let mut md5 = 0u64;
+        let mut cnt = 0;
+        ips.visit_v4(|ip| {
+            cnt += 1;
+            md5 += u32::from(ip) as u64;
+        });
+        log::debug!("{} resolved ips:{:?}, md5:{}", host, ips, md5);
+        if cnt > 0 && (cnt != self.ips.len() || self.md5 != md5) {
+            self.ips.clear();
+            ips.visit_v4(|ip| self.ips.push(ip));
+            self.md5 = md5;
+            self.notify = true;
+            return true;
         }
         false
     }
@@ -130,7 +115,7 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
     let _r = DNSCACHE.set(reader);
     assert!(_r.is_ok(), "dns cache set failed");
     async move {
-        let mut resolver = Lookup::new();
+        let resolver = Lookup::new();
         log::info!("task started ==> dns cache refresher");
         let mut tick = interval(Duration::from_secs(1));
         let mut idx = 0;
@@ -139,7 +124,7 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
                 local_cache.register(host, notify);
             }
             let start = Instant::now();
-            let (num, cache) = local_cache.refresh_by_idx(idx, &mut resolver).await;
+            let (num, cache) = resolver.lookups(local_cache.iter(idx)).await;
             if num > 0 {
                 let new = local_cache.clone();
                 writer.update(new);
@@ -175,25 +160,9 @@ impl DnsCache {
     // 1. 返回刷新成功的数量；
     // 2. 如果刷新成功的数量大于1，则返回第一个刷新的addr。
     // 通常不会有同时多个record刷新，可以使用这个减少flush_to时的遍历。
-    async fn refresh_by_idx(
-        &mut self,
-        idx: usize,
-        resolver: &mut Lookup,
-    ) -> (usize, Option<String>) {
-        let mut refreshes = 0usize;
-        let mut cache = None;
-        const BATCH_CNT: usize = 128;
-        let idx = idx % BATCH_CNT;
-        for (host, record) in &mut self.hosts {
-            // 新注册的host要及时刷新，从来没有解析成功的也一直要刷新
-            if idx == record.id % BATCH_CNT || record.empty() {
-                if record.refresh(host, resolver).await {
-                    (refreshes == 0).then(|| cache.insert(host.clone()));
-                    refreshes += 1;
-                }
-            }
-        }
-        (refreshes, cache)
+    fn iter(&mut self, idx: usize) -> HostRecordIter<'_> {
+        const PERIOD: usize = 128;
+        HostRecordIter::new(self, idx, PERIOD)
     }
     fn notify(&mut self, cache: String, refreshes: usize) {
         assert!(refreshes >= 1);
@@ -230,5 +199,32 @@ impl DnsCache {
             .get(host)
             .map(|r| &r.ips)
             .unwrap_or_else(|| &EMPTY)
+    }
+}
+
+struct HostRecordIter<'a> {
+    // 当前遍历的hist的id的索引
+    idx: usize,
+    iter: std::collections::hash_map::IterMut<'a, String, Record>,
+    period: usize,
+}
+
+impl<'a> HostRecordIter<'a> {
+    fn new(cache: &'a mut DnsCache, idx: usize, period: usize) -> Self {
+        let idx = idx % period;
+        let iter = cache.hosts.iter_mut();
+        Self { idx, iter, period }
+    }
+}
+// 实现Iterator trait
+impl<'a> Iterator for HostRecordIter<'a> {
+    type Item = (&'a str, &'a mut Record);
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((host, record)) = self.iter.next() {
+            if record.id % self.period == self.idx || record.empty() {
+                return Some((host, record));
+            }
+        }
+        None
     }
 }
