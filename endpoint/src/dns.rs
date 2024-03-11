@@ -168,7 +168,7 @@ impl Lookup for GLookup {
     }
 }
 
-use std::net::IpAddr;
+use std::net::Ipv4Addr as IpAddr;
 pub trait Lookup {
     fn lookup(host: &str, f: impl FnMut(&[IpAddr]));
 }

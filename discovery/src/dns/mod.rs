@@ -2,7 +2,7 @@ use once_cell::sync::OnceCell;
 use std::{
     collections::HashMap,
     future::Future,
-    net::IpAddr,
+    net::Ipv4Addr as IpAddr,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
@@ -10,7 +10,8 @@ use std::{
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender as Sender};
 
-use trust_dns_resolver::TokioAsyncResolver;
+mod lookup;
+use lookup::Lookup;
 
 use ds::{
     time::{interval, Duration, Instant},
@@ -19,7 +20,6 @@ use ds::{
 static DNSCACHE: OnceCell<CowReadHandle<DnsCache>> = OnceCell::new();
 
 type RegisterItem = (String, Arc<AtomicBool>);
-type Resolver = TokioAsyncResolver;
 
 fn get_dns() -> ReadGuard<DnsCache> {
     //必须使用get进行线程间同步
@@ -35,60 +35,60 @@ pub fn lookup_ips<'a>(host: &str, mut f: impl FnMut(&[IpAddr])) {
 
 #[derive(Default, Clone, Debug)]
 struct Record {
-    host: String,
     subscribers: Vec<Arc<AtomicBool>>,
     ips: Vec<IpAddr>,
     id: usize,
-    md5: u64, // 使用所有ip的和作为md5
+    md5: u64,     // 使用所有ip的和作为md5
+    notify: bool, // true表示需要通知
 }
 impl Record {
     fn watch(&mut self, s: Arc<AtomicBool>) {
         self.subscribers.push(s);
     }
-    fn update(&mut self, addr_md5: (Vec<IpAddr>, u64)) {
-        (self.md5 != 0).then(|| log::info!("record changed: {self:?} => {addr_md5:?}"));
-        debug_assert_ne!(self.ips, addr_md5.0);
-        debug_assert_ne!(self.md5, addr_md5.1);
-        (self.ips, self.md5) = addr_md5;
+    fn need_notify(&self) -> bool {
+        self.notify
     }
-    fn notify(&self) {
+    fn notify(&mut self) {
+        assert!(self.notify);
         for update in self.subscribers.iter() {
             update.store(true, Ordering::Release);
         }
+        self.notify = false;
+    }
+    fn empty(&self) -> bool {
+        self.ips.len() == 0
     }
     // 如果有更新，则返回lookup的ip。
     // 无更新则返回None
-    async fn check_refresh(&self, r: &mut Resolver) -> Option<(Vec<IpAddr>, u64)> {
-        let host = &self.host;
-        match r.lookup_ip(host).await {
+    async fn refresh(&mut self, host: &str, r: &mut Lookup) -> bool {
+        match r.lookup(host).await {
             Ok(ips) => {
                 let mut md5 = 0u64;
                 let mut cnt = 0;
                 for ip in ips.iter() {
-                    log::debug!("{} resolved ip {}", host, ip);
-                    if let IpAddr::V4(v4) = ip {
-                        cnt += 1;
-                        let bits: u32 = v4.into();
-                        md5 += bits as u64;
+                    match ip {
+                        std::net::IpAddr::V4(ip) => {
+                            md5 += u32::from(*ip) as u64;
+                            cnt += 1;
+                        }
+                        std::net::IpAddr::V6(_ip) => {}
                     }
                 }
                 log::debug!("{} resolved ips:{:?}, md5:{}", host, ips, md5);
                 if cnt > 0 && (cnt != self.ips.len() || self.md5 != md5) {
-                    let mut addrs = Vec::with_capacity(cnt);
-                    for ip in ips.iter() {
-                        addrs.push(ip);
-                    }
-                    return Some((addrs, md5));
+                    self.ips = ips
+                        .into_iter()
+                        .map(|ip| match ip {
+                            std::net::IpAddr::V4(ip) => ip,
+                            _ => unreachable!(),
+                        })
+                        .collect();
+                    self.md5 = md5;
+                    self.notify = true;
+                    return true;
                 }
             }
             Err(e) => log::info!("refresh host failed:{}, {:?}", host, e),
-        }
-        None
-    }
-    async fn refresh(&mut self, resolver: &mut Resolver) -> bool {
-        if let Some((addrs, md5)) = self.check_refresh(resolver).await {
-            self.update((addrs, md5));
-            return true;
         }
         false
     }
@@ -123,62 +123,32 @@ impl IPPort for String {
         &self[idx..]
     }
 }
-
 pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
-    let (reg_tx, reg_rx) = unbounded_channel();
+    let (reg_tx, mut reg_rx) = unbounded_channel();
     let mut local_cache = DnsCache::from(reg_tx);
-    let (tx, rx) = ds::cow(local_cache.clone());
-    let _r = DNSCACHE.set(rx);
+    let (mut writer, reader) = ds::cow(local_cache.clone());
+    let _r = DNSCACHE.set(reader);
     assert!(_r.is_ok(), "dns cache set failed");
     async move {
-        let mut resolver = TokioAsyncResolver::tokio_from_system_conf().expect("resolver");
+        let mut resolver = Lookup::new();
         log::info!("task started ==> dns cache refresher");
-        let mut writer = tx;
-        let mut rx = reg_rx;
-        const BATCH_CNT: usize = 128;
         let mut tick = interval(Duration::from_secs(1));
         let mut idx = 0;
-        let mut need_notify = Vec::new();
         loop {
-            if let Ok(reg) = rx.try_recv() {
-                let r = local_cache.register(reg.0, reg.1);
-                r.refresh(&mut resolver)
-                    .await
-                    .then(|| need_notify.push(r.host.clone()));
-                continue;
+            while let Ok((host, notify)) = reg_rx.try_recv() {
+                local_cache.register(host, notify);
             }
-            // 第一次增量更新，不等待tick
-            let notify = |writer: &mut ds::CowWriteHandle<DnsCache>,
-                          local_cache: &DnsCache,
-                          need_notify: &mut Vec<String>| {
-                if need_notify.len() > 0 {
-                    writer.update(local_cache.clone());
-                    let hosts = &local_cache.hosts;
-                    for host in need_notify.iter() {
-                        hosts.get(host).map(|r| r.notify());
-                    }
-                    need_notify.clear();
-                }
-            };
-            notify(&mut writer, &local_cache, &mut need_notify);
-            // 每一秒种tick一次，检查是否
-            tick.tick().await;
             let start = Instant::now();
-            for (host, record) in &mut local_cache.hosts {
-                assert_eq!(host, &record.host);
-                if idx == record.id % BATCH_CNT {
-                    if let Some(addrs) = record.check_refresh(&mut resolver).await {
-                        record.update(addrs);
-                        need_notify.push(host.clone());
-                    }
-                }
+            let (num, cache) = local_cache.refresh_by_idx(idx, &mut resolver).await;
+            if num > 0 {
+                let new = local_cache.clone();
+                writer.update(new);
+                local_cache.notify(cache.expect("cache none"), num);
             }
-            // 第二次增量更新，每个tick只更新一部分(1/BATCH_CNT)
-            notify(&mut writer, &local_cache, &mut need_notify);
-            need_notify.shrink_to(64);
 
-            idx = (idx + 1) % BATCH_CNT;
+            idx += 1;
             log::trace!("refresh dns elapsed:{:?}", start.elapsed());
+            tick.tick().await;
         }
     }
 }
@@ -192,7 +162,7 @@ impl DnsCache {
     fn from(tx: Sender<RegisterItem>) -> Self {
         Self {
             tx,
-            hosts: Default::default(),
+            hosts: HashMap::with_capacity(4096),
         }
     }
     fn watch(&self, addr: &str, notify: Arc<AtomicBool>) {
@@ -201,15 +171,58 @@ impl DnsCache {
             log::error!("watcher failed to {} => {:?}", addr, _e);
         }
     }
-    fn register(&mut self, host: String, notify: Arc<AtomicBool>) -> &mut Record {
+    // 刷新所有id是idx的record。如果record的ips长度为空，也一共刷新。
+    // 1. 返回刷新成功的数量；
+    // 2. 如果刷新成功的数量大于1，则返回第一个刷新的addr。
+    // 通常不会有同时多个record刷新，可以使用这个减少flush_to时的遍历。
+    async fn refresh_by_idx(
+        &mut self,
+        idx: usize,
+        resolver: &mut Lookup,
+    ) -> (usize, Option<String>) {
+        let mut refreshes = 0usize;
+        let mut cache = None;
+        const BATCH_CNT: usize = 128;
+        let idx = idx % BATCH_CNT;
+        for (host, record) in &mut self.hosts {
+            // 新注册的host要及时刷新，从来没有解析成功的也一直要刷新
+            if idx == record.id % BATCH_CNT || record.empty() {
+                if record.refresh(host, resolver).await {
+                    (refreshes == 0).then(|| cache.insert(host.clone()));
+                    refreshes += 1;
+                }
+            }
+        }
+        (refreshes, cache)
+    }
+    fn notify(&mut self, cache: String, refreshes: usize) {
+        assert!(refreshes >= 1);
+        // 先更新，再通知。
+        // 通知
+        if refreshes == 1 {
+            // shrink主要是减少cap，以提升遍历性能
+            self.hosts.shrink_to_fit();
+            let record = self.hosts.get_mut(&cache).unwrap();
+            record.notify();
+        } else {
+            // 遍历，notify为true的需要通知
+            let mut n = 0;
+            for (_, record) in self.hosts.iter_mut() {
+                if record.need_notify() {
+                    record.notify();
+                    n += 1;
+                }
+            }
+            assert_eq!(n, refreshes);
+        }
+    }
+    fn register(&mut self, host: String, notify: Arc<AtomicBool>) {
         log::debug!("host {} registered to cache", host);
         static SEQ: AtomicUsize = AtomicUsize::new(0);
         let id = SEQ.fetch_add(1, Ordering::Relaxed);
         let r = self.hosts.entry(host.clone()).or_default();
         r.id = id;
-        r.host = host;
         r.watch(notify);
-        r
     }
     fn lookup(&self, host: &str) -> &[IpAddr] {
         static EMPTY: Vec<IpAddr> = Vec::new();
