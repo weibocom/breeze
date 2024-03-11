@@ -1,6 +1,5 @@
 use std::{
-    mem::MaybeUninit,
-    ptr::{self, NonNull},
+    ptr::NonNull,
     sync::{
         atomic::{AtomicBool, AtomicU8, Ordering::*},
         Arc,
@@ -41,7 +40,7 @@ pub struct CallbackContext {
     last: bool,                          // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
     request: HashedCommand,
-    response: MaybeUninit<Command>,
+    response: Option<Command>,
     start: Instant, // 请求的开始时间
     waker: *const Arc<AtomicWaker>,
     callback: CallbackPtr,
@@ -71,7 +70,7 @@ impl CallbackContext {
             retry_on_rsp_notok,
             write_back: false,
             request: req,
-            response: MaybeUninit::uninit(),
+            response: None,
             callback: cb,
             start: now,
             tries: 0.into(),
@@ -123,7 +122,7 @@ impl CallbackContext {
     #[inline]
     pub fn take_response(&mut self) -> Option<Command> {
         match self.inited.compare_exchange(true, false, AcqRel, Acquire) {
-            Ok(_) => unsafe { Some(ptr::read(self.response.as_mut_ptr())) },
+            Ok(_) => self.response.take(),
             Err(_) => {
                 self.write_back = false;
                 //assert!(!self.ctx.try_next && !self.ctx.write_back, "{}", self);
@@ -139,7 +138,7 @@ impl CallbackContext {
             if self.inited() {
                 // 优先筛出正常的请求，便于理解
                 // rsp.ok 不需要重试
-                if unsafe { self.unchecked_response().ok() } {
+                if self.unchecked_response().ok() {
                     return false;
                 }
                 //有响应并且!ok，配置了!retry_on_rsp_notok，不需要重试，比如mysql
@@ -211,8 +210,8 @@ impl CallbackContext {
     }
     // 在使用前，先得判断inited
     #[inline]
-    unsafe fn unchecked_response(&self) -> &Command {
-        self.response.assume_init_ref()
+    fn unchecked_response(&self) -> &Command {
+        self.response.as_ref().expect("uninit response")
     }
     #[inline]
     pub fn complete(&self) -> bool {
@@ -266,10 +265,10 @@ impl CallbackContext {
     #[inline]
     fn swap_response(&mut self, resp: Command) {
         if self.inited() {
-            log::debug!("drop response:{}", unsafe { self.unchecked_response() });
-            unsafe { std::ptr::replace(self.response.as_mut_ptr(), resp) };
+            log::debug!("drop response:{}", self.unchecked_response());
+            let _ = self.response.insert(resp);
         } else {
-            self.response.write(resp);
+            let _ = self.response.insert(resp);
             self.inited.store(true, Release);
         }
     }
