@@ -13,9 +13,13 @@ impl Lookup {
                 .expect("Failed to create the resolver"),
         }
     }
-    pub(super) async fn lookup(&self, host: &str) -> std::io::Result<IpAddrLookup> {
+    async fn lookup(&self, host: &str) -> std::io::Result<IpAddrLookup> {
         let ips = self.resolver.lookup_ip(host).await?;
-        Ok(IpAddrLookup::new(ips))
+        Ok(IpAddrLookup::LookupIp(ips))
+    }
+    fn dns_lookup(&self, host: &str) -> std::io::Result<IpAddrLookup> {
+        let ips = dns_lookup::lookup_host(host)?;
+        Ok(IpAddrLookup::AddrInfoIter(ips))
     }
     pub(super) async fn lookups<'a, I>(&self, iter: I) -> (usize, Option<String>)
     where
@@ -24,7 +28,7 @@ impl Lookup {
         let mut num = 0;
         let mut cache = None;
         for (host, r) in iter {
-            let ret = self.lookup(host).await;
+            let ret = self.dns_lookup(host);
             if ret.is_err() {
                 log::error!("Failed to lookup ip for {} err:{:?}", host, ret.err());
                 break;
@@ -42,18 +46,24 @@ impl Lookup {
     }
 }
 
-#[derive(Debug)]
-pub(super) struct IpAddrLookup {
-    ips: LookupIp,
+pub(super) enum IpAddrLookup {
+    LookupIp(LookupIp),
+    AddrInfoIter(Vec<IpAddr>),
 }
 impl IpAddrLookup {
-    fn new(ips: LookupIp) -> Self {
-        Self { ips }
-    }
     pub(super) fn visit_v4(&self, mut v: impl FnMut(std::net::Ipv4Addr)) {
-        for ip in self.ips.iter() {
-            if let IpAddr::V4(ip) = ip {
-                v(ip);
+        match self {
+            Self::LookupIp(ips) => ips.iter().for_each(|ip| {
+                if let IpAddr::V4(ip) = ip {
+                    v(ip);
+                }
+            }),
+            Self::AddrInfoIter(iter) => {
+                for ip in iter.iter() {
+                    if let std::net::IpAddr::V4(ip) = ip {
+                        v(*ip);
+                    }
+                }
             }
         }
     }
