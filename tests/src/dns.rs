@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::net::IpAddr;
 static mut CACHE: Option<HashMap<String, Vec<String>>> = None;
 struct Dns;
 
@@ -15,7 +14,7 @@ impl Dns {
     }
 }
 
-use endpoint::dns::{DnsLookup, Lookup};
+use endpoint::dns::{DnsLookup, IpAddr, Lookup};
 impl Lookup for Dns {
     fn lookup(host: &str, mut f: impl FnMut(&[IpAddr])) {
         unsafe {
