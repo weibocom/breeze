@@ -1,4 +1,4 @@
-# 文件格式：首先设置hash、dist、shard_count，然后设置每个分片的数据
+# 文件格式：首先设置hash、distribution、shard_count，然后设置每个分片的数据
 # header
 hash=crc64
 distribution=modula

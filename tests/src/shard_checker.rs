@@ -9,7 +9,7 @@ use sharding::{
     hash::{Hash, Hasher},
 };
 
-/// shard_checker 用于校验任何hash/disst/分片数的正确性，校验数据的格式如下：
+/// shard_checker 用于校验任何hash/distribution/shard_count 的正确性，校验数据的格式如下：
 ///   1. 首先设置好待check文件的header：
 ///       hash=bkdirsub
 ///       distribution=modula
