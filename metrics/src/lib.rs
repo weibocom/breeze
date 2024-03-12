@@ -121,29 +121,32 @@ impl WriteTo for i64 {
         v.with_str(|s| w.put_slice(s));
     }
 }
-// impl WriteTo for f64 {
-//     #[inline]
-//     fn write_to<W: ItemWriter>(&self, w: &mut W) {
-//         let mut trunc = self.trunc() as i64;
-//         if *self < 0.0 {
-//             w.put_slice(b"-");
-//             trunc = -trunc;
-//         }
-//         (trunc as usize).with_str(|s| w.put_slice(s));
-//         let fraction = ((self.fract() * 1000.0) as i64).abs() as usize;
-//         if fraction > 0 {
-//             w.put_slice(b".");
-//             fraction.with_str(|s| w.put_slice(s));
-//         }
-//     }
-// }
 impl WriteTo for f64 {
     #[inline]
     fn write_to<W: ItemWriter>(&self, w: &mut W) {
-        let s = format!("{:.3}", *self);
-        w.put_slice(s);
+        let trunc = self.trunc() as i64;
+        trunc.write_to(w);
+
+        let fraction = ((self.fract() * 1000.0) as i64).abs() as usize;
+        if fraction > 0 {
+            static PAD: &[u8; 4] = b".000";
+            fraction.with_str(|s| {
+                // s长度不够，需要补零
+                // 比如 6 => .006
+                debug_assert!(s.len() <= 3);
+                w.put_slice(&PAD[0..4 - s.len()]);
+                w.put_slice(s)
+            });
+        }
     }
 }
+//impl WriteTo for f64 {
+//    #[inline]
+//    fn write_to<W: ItemWriter>(&self, w: &mut W) {
+//        let s = format!("{:.3}", *self);
+//        w.put_slice(s);
+//    }
+//}
 
 pub(crate) trait ItemWriter {
     fn put_slice<S: AsRef<[u8]>>(&mut self, data: S);
