@@ -4,6 +4,7 @@ pub mod bkdrsub;
 pub mod crc32;
 pub mod crc32local;
 pub mod crc64;
+pub mod fnv1;
 pub mod lbcrc32local;
 pub mod padding;
 pub mod random;
@@ -26,7 +27,7 @@ pub mod crc;
 
 use enum_dispatch::enum_dispatch;
 
-use self::{bkdrsub::Bkdrsub, crc64::Crc64};
+use self::{bkdrsub::Bkdrsub, crc64::Crc64, fnv1::Fnv1_32};
 
 // 占位hash，主要用于兼容服务框架，供mq等业务使用
 pub const HASH_PADDING: &str = "padding";
@@ -86,6 +87,7 @@ pub enum Hasher {
     Crc64(Crc64),       // Crc64 算法，对整个key做crc64计算
     Random(RandomHash), // random hash
     RawSuffix(RawSuffix),
+    Fnv1_32(Fnv1_32),
 }
 
 impl Hasher {
@@ -130,9 +132,11 @@ impl Hasher {
                 "crc32abs" => Self::Crc32Abs(Default::default()),
                 "crc64" => Self::Crc64(Default::default()),
                 "random" => Self::Random(Default::default()),
+                "fnv1_32" => Self::Fnv1_32(Default::default()),
                 _ => {
                     // 默认采用mc的crc32-s hash
                     log::error!("found unknown hash:{}, use crc32-short instead", alg);
+                    println!("found unknown hash:{}, use crc32-short instead!", alg);
                     return Self::Crc32Short(Default::default());
                 }
             };
