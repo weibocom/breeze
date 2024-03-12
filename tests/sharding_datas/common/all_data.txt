@@ -1,0 +1,30 @@
+# 文件格式：首先设置hash、dist、shard_count，然后设置每个分片的数据
+# header
+hash=crc64
+distribution=modula
+shard_count=6
+
+shard_idx=0
+hot_band_conf_6041884361
+hot_band_conf_7457077031
+hot_band_conf_5983133201
+
+shard_idx=1
+hot_band_conf_5658472751
+hot_band_conf_3306842351
+hot_band_conf_7550365451
+hot_band_conf_3306842351
+
+shard_idx=2
+hot_band_conf_2759747141
+hot_band_conf_7202166971
+hot_band_conf_7723136021
+
+shard_idx=3
+hot_band_conf_7816767401
+
+shard_idx=4
+hot_band_conf_5211889061
+
+shard_idx=5
+hot_band_conf_2739628991
