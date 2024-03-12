@@ -4,7 +4,7 @@ use std::{
     future::Future,
     net::Ipv4Addr as IpAddr,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc,
     },
 };
@@ -14,7 +14,7 @@ mod lookup;
 use lookup::*;
 
 use ds::{
-    time::{interval, Duration, Instant},
+    time::{interval, Duration},
     CowReadHandle, ReadGuard,
 };
 static DNSCACHE: OnceCell<CowReadHandle<DnsCache>> = OnceCell::new();
@@ -37,7 +37,6 @@ pub fn lookup_ips<'a>(host: &str, mut f: impl FnMut(&[IpAddr])) {
 struct Record {
     subscribers: Vec<Arc<AtomicBool>>,
     ips: Vec<IpAddr>,
-    id: usize,
     md5: u64,     // 使用所有ip的和作为md5
     notify: bool, // true表示需要通知
 }
@@ -46,7 +45,6 @@ impl Default for Record {
         Record {
             subscribers: Vec::with_capacity(2),
             ips: Vec::with_capacity(2),
-            id: 0,
             md5: 0,
             notify: false,
         }
@@ -129,21 +127,18 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
         let resolver = Lookup::new();
         log::info!("task started ==> dns cache refresher");
         let mut tick = interval(Duration::from_secs(1));
-        let mut idx = 0;
         loop {
             while let Ok((host, notify)) = reg_rx.try_recv() {
                 local_cache.register(host, notify);
             }
-            let start = Instant::now();
-            let (num, cache) = resolver.lookups(local_cache.iter(idx)).await;
+            // 处理新增的
+            let (num, cache) = resolver.lookups(local_cache.iter()).await;
             if num > 0 {
                 let new = local_cache.clone();
                 writer.update(new);
                 local_cache.notify(cache.expect("cache none"), num);
             }
 
-            idx += 1;
-            log::trace!("refresh dns elapsed:{:?}", start.elapsed());
             tick.tick().await;
         }
     }
@@ -152,13 +147,19 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
 #[derive(Clone)]
 pub struct DnsCache {
     tx: Sender<RegisterItem>,
-    hosts: HashMap<String, Record>,
+    hosts: Hosts,
+    last_idx: usize, // 刷新到的idx
+    last_len: usize, // 上次刷新的长度
+    cycle: usize,
 }
 impl DnsCache {
     fn from(tx: Sender<RegisterItem>) -> Self {
         Self {
             tx,
-            hosts: HashMap::with_capacity(4096),
+            hosts: Default::default(),
+            last_idx: 0,
+            last_len: 0,
+            cycle: 0,
         }
     }
     fn watch(&self, addr: &str, notify: Arc<AtomicBool>) {
@@ -167,22 +168,39 @@ impl DnsCache {
             log::error!("watcher failed to {} => {:?}", addr, _e);
         }
     }
-    // 刷新所有id是idx的record。如果record的ips长度为空，也一共刷新。
-    // 1. 返回刷新成功的数量；
-    // 2. 如果刷新成功的数量大于1，则返回第一个刷新的addr。
-    // 通常不会有同时多个record刷新，可以使用这个减少flush_to时的遍历。
-    fn iter(&mut self, idx: usize) -> HostRecordIter<'_> {
+    // 每16个tick执行一次empty，避免某一次刷新未解释成功导致需要等待下一个周期。
+    // 其他情况下，每个tick只会刷新部分chunk数据。
+    fn iter(&mut self) -> HostRecordIter<'_> {
         const PERIOD: usize = 128;
-        HostRecordIter::new(self, idx, PERIOD)
+        let ith = self.cycle % PERIOD;
+        // 如果当前是走空搜索，下一次扫描的时候会搜索2个chunk.
+        self.cycle += 1;
+        // 16是一个经验值。
+        if self.hosts.len() > self.last_len || (self.cycle % 16 == 0 && self.hosts.has_empty()) {
+            self.last_len = self.hosts.len();
+            HostRecordIter::empty_iter(self.hosts.hosts.iter_mut())
+        } else {
+            // 刷新从上个idx开始的一个chunk长度的数据
+            assert!(self.last_len == self.hosts.len());
+            let len = self.last_len;
+            let chunk = (len + (PERIOD - 1)) / PERIOD;
+            // 因为chunk是动态变化的，所以不能用last_idx + chunk
+            let end = ((ith + 1) * chunk).min(len);
+            assert!(self.last_idx <= end);
+            let iter = self.hosts.hosts[self.last_idx..end].iter_mut();
+            self.last_idx = end;
+            if self.last_idx == len {
+                self.last_idx = 0;
+            }
+            HostRecordIter::new(iter)
+        }
     }
     fn notify(&mut self, cache: String, refreshes: usize) {
         assert!(refreshes >= 1);
         // 先更新，再通知。
         // 通知
         if refreshes == 1 {
-            // shrink主要是减少cap，以提升遍历性能
-            self.hosts.shrink_to_fit();
-            let record = self.hosts.get_mut(&cache).unwrap();
+            let record = self.hosts.get_mut(&cache);
             record.notify();
         } else {
             // 遍历，notify为true的需要通知
@@ -198,44 +216,91 @@ impl DnsCache {
     }
     fn register(&mut self, host: String, notify: Arc<AtomicBool>) {
         log::debug!("host {} registered to cache", host);
-        static SEQ: AtomicUsize = AtomicUsize::new(0);
-        let id = SEQ.fetch_add(1, Ordering::Relaxed);
-        let r = self.hosts.entry(host.clone()).or_default();
-        r.id = id;
+        let r = self.hosts.get_or_insert(host);
         r.watch(notify);
     }
     fn lookup(&self, host: &str) -> &[IpAddr] {
         static EMPTY: Vec<IpAddr> = Vec::new();
-        self.hosts
-            .get(host)
-            .map(|r| &r.ips)
-            .unwrap_or_else(|| &EMPTY)
+        self.hosts.get(host).unwrap_or_else(|| &EMPTY)
+    }
+}
+
+#[derive(Clone)]
+struct Hosts {
+    // 只有注册与lookup的时候才需要使用cache进行判断是否已经存在, 这个只在变更的时候使用。
+    index: HashMap<String, usize>,
+    hosts: Vec<(String, Record)>,
+}
+impl Default for Hosts {
+    fn default() -> Self {
+        const CAP: usize = 2048;
+        Self {
+            index: HashMap::with_capacity(CAP),
+            hosts: Vec::with_capacity(CAP),
+        }
+    }
+}
+impl Hosts {
+    fn iter_mut(&mut self) -> std::slice::IterMut<'_, (String, Record)> {
+        self.hosts.iter_mut()
+    }
+    fn get_mut(&mut self, host: &String) -> &mut Record {
+        let &id = self.index.get(host).expect("not register");
+        assert!(id < self.hosts.len());
+        &mut self.hosts[id].1
+    }
+    fn get(&self, host: &str) -> Option<&[IpAddr]> {
+        self.index.get(host).map(|&id| {
+            assert!(id < self.hosts.len());
+            &self.hosts[id].1.ips[..]
+        })
+    }
+    fn get_or_insert(&mut self, host: String) -> &mut Record {
+        let id = match self.index.get(&host) {
+            Some(id) => *id,
+            None => {
+                let id = self.hosts.len();
+                self.hosts.push((host.clone(), Record::default()));
+                self.index.insert(host, id);
+                id
+            }
+        };
+        assert!(id < self.hosts.len());
+        &mut self.hosts[id].1
+    }
+    fn len(&self) -> usize {
+        self.hosts.len()
+    }
+    // 是否有ips为空的记录
+    fn has_empty(&self) -> bool {
+        self.hosts.iter().any(|(_, record)| record.ips.is_empty())
     }
 }
 
 struct HostRecordIter<'a> {
-    // 当前遍历的hist的id的索引
-    idx: usize,
-    iter: std::collections::hash_map::IterMut<'a, String, Record>,
-    period: usize,
+    iter: Box<dyn Iterator<Item = &'a mut (String, Record)> + 'a>,
 }
 
 impl<'a> HostRecordIter<'a> {
-    fn new(cache: &'a mut DnsCache, idx: usize, period: usize) -> Self {
-        let idx = idx % period;
-        let iter = cache.hosts.iter_mut();
-        Self { idx, iter, period }
+    fn empty_iter<I: Iterator<Item = &'a mut (String, Record)> + 'a>(iter: I) -> Self {
+        let iter = iter.filter(|(_, r)| r.empty());
+        HostRecordIter {
+            iter: Box::new(iter),
+        }
+    }
+    fn new<I: Iterator<Item = &'a mut (String, Record)> + 'a>(iter: I) -> Self {
+        HostRecordIter {
+            iter: Box::new(iter),
+        }
     }
 }
-// 实现Iterator trait
+
 impl<'a> Iterator for HostRecordIter<'a> {
     type Item = (&'a str, &'a mut Record);
+
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((host, record)) = self.iter.next() {
-            if record.id % self.period == self.idx || record.empty() {
-                return Some((host, record));
-            }
-        }
-        None
+        self.iter.next().map(|(k, v)| (k.as_str(), v))
     }
 }
+unsafe impl<'a> Send for HostRecordIter<'a> {}
+unsafe impl<'a> Sync for HostRecordIter<'a> {}
