@@ -591,7 +591,7 @@ fn fnv1a_64_ketama_check() {
     for i in 1..(shard_count + 1) {
         servers.push(format!("node{}", i).to_string());
     }
-    let hasher = Hasher::from("fnv1a64");
+    let hasher = Hasher::from("fnv1a_64");
     let dist = Distribute::from("ketama_origin", &servers);
 
     const PORT_BASE: u16 = 58064;
