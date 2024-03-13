@@ -309,4 +309,8 @@ mod hash_test {
         let crc32_lblocal_hasher = crc32_lblocal_hasher.hash(key);
         assert_eq!(crc32_lblocal, crc32_lblocal_hasher, "key:{key:?}");
     }
+
+    fn tmp_print_ports() {
+        for i in 58064..58319 {}
+    }
 }
