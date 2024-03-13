@@ -657,7 +657,7 @@ fn fnv1_tmp_test() {
     for i in 1..(shard_count + 1) {
         servers.push(format!("node{}", i).to_string());
     }
-    let hasher = Hasher::from("fnv1a64");
+    let hasher = Hasher::from("fnv1a_64");
     let dist = Distribute::from("ketama_origin", &servers);
 
     let key = "throttle_android_6244642063";
