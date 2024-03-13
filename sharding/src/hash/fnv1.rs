@@ -2,12 +2,12 @@
 /// 对应算法源自twemproxy
 
 #[derive(Debug, Default, Clone)]
-pub struct Fnv1_32;
+pub struct Fnv1F32;
 
 const FNV_32_INIT: u32 = 2166136261;
 const FNV_32_PRIME: u32 = 16777619;
 
-impl super::Hash for Fnv1_32 {
+impl super::Hash for Fnv1F32 {
     fn hash<S: crate::HashKey>(&self, key: &S) -> i64 {
         let mut hash = FNV_32_INIT;
         for i in 0..key.len() {
