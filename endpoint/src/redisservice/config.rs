@@ -1,6 +1,6 @@
 //use ds::time::Duration;
 
-use std::fmt::Debug;
+use std::{collections::HashSet, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 //use sharding::distribution::{DIST_ABS_MODULA, DIST_MODULA};
@@ -124,9 +124,16 @@ impl RedisNamespace {
             }
         }
 
-        // 如果backend有name，则所有的后端都必须有name
-        if self.backend_names.len() > 0 && self.backend_names.len() != self.backends.len() {
-            return false;
+        // 如果backend有name，则所有的后端都必须有name，且name不能重复
+        if self.backend_names.len() > 0 {
+            if self.backend_names.len() != self.backends.len() {
+                return false;
+            }
+            let mut names_unique = HashSet::with_capacity(self.backend_names.len());
+            names_unique.extend(self.backend_names.clone());
+            if names_unique.len() != self.backend_names.len() {
+                return false;
+            }
         }
 
         true
