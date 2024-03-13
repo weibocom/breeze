@@ -27,7 +27,7 @@ pub mod crc;
 
 use enum_dispatch::enum_dispatch;
 
-use self::{bkdrsub::Bkdrsub, crc64::Crc64, fnv1::Fnv1_32};
+use self::{bkdrsub::Bkdrsub, crc64::Crc64, fnv1::Fnv1F32};
 
 // 占位hash，主要用于兼容服务框架，供mq等业务使用
 pub const HASH_PADDING: &str = "padding";
@@ -87,7 +87,7 @@ pub enum Hasher {
     Crc64(Crc64),       // Crc64 算法，对整个key做crc64计算
     Random(RandomHash), // random hash
     RawSuffix(RawSuffix),
-    Fnv1_32(Fnv1_32),
+    Fnv1_32(Fnv1F32),
 }
 
 impl Hasher {
