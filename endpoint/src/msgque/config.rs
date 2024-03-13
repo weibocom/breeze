@@ -3,18 +3,35 @@ use std::{collections::BTreeMap, time::Duration};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct Namespace {
-    // TODO loadbalance 稳定后去掉，不需要业务设置
+pub struct MsgqueNamespace {
+    basic: Basic,
+
+    backends: Backends,
+
+    // Map<size, Vec<ip>>，key：存放的msg最大size；value：该size的队列ip列表
     #[serde(default)]
-    pub loadbalance: String, // eg: weight
+    pub sized_queue: BTreeMap<usize, Vec<String>>,
+
+    #[serde(default)]
+    pub(crate) timeout_read: u32,
+    #[serde(default)]
+    pub(crate) timeout_write: u32,
+
+    #[serde(default)]
+    pub offline_idle_time: Duration,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct Basic {
+    /// msgque 可以读写的mq的名字
+    pub keys: String,
 
     #[serde(default)]
     pub resource_type: String, //eg: mcq2,mcq3
+}
 
-    // 下线的ip列表，只可读，不可写
-    #[serde(default)]
-    pub offline: Vec<String>,
-
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct Backends {
     // 线上的que，可直接读写
     #[serde(default)]
     pub que_512: Vec<String>,
@@ -30,18 +47,6 @@ pub struct Namespace {
     pub que_16384: Vec<String>,
     #[serde(default)]
     pub que_32768: Vec<String>,
-
-    // Map<size, Vec<ip>>，key：存放的msg最大size；value：该size的队列ip列表
-    #[serde(default)]
-    pub sized_queue: BTreeMap<usize, Vec<String>>,
-
-    #[serde(default)]
-    pub(crate) timeout_read: u32,
-    #[serde(default)]
-    pub(crate) timeout_write: u32,
-
-    #[serde(default)]
-    pub offline_idle_time: Duration,
 }
 
 impl Namespace {
