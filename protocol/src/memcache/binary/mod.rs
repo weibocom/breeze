@@ -34,14 +34,6 @@ impl Protocol for MemcacheBinary {
     ) -> Result<()> {
         log::debug!("+++ recv mc:{:?}", data.slice());
         debug_assert!(data.len() > 0, "mc req: {:?}", data.slice());
-        // 如果req小于HEADER_LEN，不能完全解析，但是可以检查是否是一个合法的请求，避免阻塞。
-        if data.len() < HEADER_LEN {
-            if data.len() > 0 {
-                let req = data.slice();
-                req.check_request()?;
-            }
-            return Ok(());
-        }
 
         while data.len() >= HEADER_LEN {
             let mut req = data.slice();
