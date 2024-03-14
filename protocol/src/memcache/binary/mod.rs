@@ -34,7 +34,6 @@ impl Protocol for MemcacheBinary {
     ) -> Result<()> {
         log::debug!("+++ recv mc:{:?}", data.slice());
         debug_assert!(data.len() > 0, "mc req: {:?}", data.slice());
-
         while data.len() >= HEADER_LEN {
             let mut req = data.slice();
             req.check_request()?;
