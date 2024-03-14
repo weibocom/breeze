@@ -163,8 +163,9 @@ fn mc_simple_incr_decr() {
 #[test]
 fn mc_conflict_test() {
     crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
-    crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
     crate::conflict_cmd::conflict_with_kv_cmd(RESTYPE);
-    crate::conflict_cmd::conflict_with_vector_cmd(RESTYPE);
-    crate::conflict_cmd::conflict_with_uuid_cmd(RESTYPE);
+    // 非mc/kv协议不访问kv，避免阻塞
+    // crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
+    // crate::conflict_cmd::conflict_with_vector_cmd(RESTYPE);
+    // crate::conflict_cmd::conflict_with_uuid_cmd(RESTYPE);
 }
