@@ -58,10 +58,11 @@ impl RedisNamespace {
         let mut backends = Vec::with_capacity(ns.backends.len());
         for b in &mut ns.backends {
             let domain_name: Vec<&str> = b.split(" ").collect();
-            // 后端地址格式： 域名,域名 name, name不能是rm、rs开头
+            // 后端地址格式： 域名,域名 name, name不能是rm、rs、','开头，避免把异常格式的slave当作name
             if domain_name.len() == 2
                 && !domain_name[1].starts_with("rm")
                 && !domain_name[1].starts_with("rs")
+                && !domain_name[1].starts_with(",")
             {
                 backends.push(domain_name[0].to_string());
                 ns.backend_names.push(domain_name[1].to_string());
