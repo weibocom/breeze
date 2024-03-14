@@ -32,9 +32,8 @@ fn sys_basic() {
 #[test]
 fn redis_conflict_test() {
     println!("in redis conflicts test....");
-    // 非mc协议咱不验证mc/kv，避免测试阻塞
-    // crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
-    // crate::conflict_cmd::conflict_with_kv_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_mc_cmd(RESTYPE);
+    crate::conflict_cmd::conflict_with_kv_cmd(RESTYPE);
     crate::conflict_cmd::conflict_with_redis_cmd(RESTYPE);
     crate::conflict_cmd::conflict_with_vector_cmd(RESTYPE);
     crate::conflict_cmd::conflict_with_uuid_cmd(RESTYPE);
