@@ -115,36 +115,26 @@ where
         if self.client.len() == 0 {
             return Ok(());
         }
-        let Self {
-            client,
-            top,
-            parser,
-            pending,
-            waker,
-            first,
-            arena,
-            ..
-        } = self;
         // 解析请求，发送请求，并且注册回调
         let mut processor = Visitor {
-            pending,
-            waker,
-            top,
-            first,
-            arena,
-            retry_on_rsp_notok: parser.config().retry_on_rsp_notok,
+            pending: &mut self.pending,
+            waker: &mut self.waker,
+            top: &self.top,
+            first: &mut self.first,
+            arena: &mut self.arena,
+            retry_on_rsp_notok: self.parser.config().retry_on_rsp_notok,
         };
 
-        parser
-            .parse_request(client, top, &mut processor)
+        self.parser
+            .parse_request(&mut self.client, &self.top, &mut processor)
             .map_err(|e| {
-                log::info!("+++ parse request error: {:?} on client:{:?}", e, client);
+                log::info!("+++ parse error: {:?} :{:?}", e, self.client);
                 match e {
                     FlushOnClose(ref emsg) => {
                         // 此处只处理FLushOnClose，用于发送异常给client
-                        let _write_rs = client.write_all(emsg);
-                        let _flush_rs = client.flush();
-                        log::warn!("+++ flush emsg[{:?}], client:[{:?}]", emsg, client);
+                        let _write_rs = self.client.write_all(emsg);
+                        let _flush_rs = self.client.flush();
+                        log::warn!("+++ flush emsg[{:?}], client:[{:?}]", emsg, self.client);
                         e
                     }
                     _ => e,
@@ -154,48 +144,35 @@ where
     // 处理pending中的请求，并且把数据发送到buffer
     #[inline]
     fn process_pending(&mut self) -> Result<()> {
-        let Self {
-            // 修改处理流程后，不再用pedding
-            client,
-            pending,
-            parser,
-            start,
-            start_init,
-            metrics,
-            flush,
-            ..
-        } = self;
         // 处理回调
-        client.cache(pending.len() > 1);
-        while let Some(ctx) = pending.front_mut() {
+        self.client.cache(self.pending.len() > 1);
+        while let Some(ctx) = self.pending.front_mut() {
             // 当前请求是第一个请求
-            if !*start_init {
-                *start = ctx.start_at();
-                *start_init = true;
+            if !self.start_init {
+                self.start = ctx.start_at();
+                self.start_init = true;
             }
             if !ctx.complete() {
                 break;
             }
-            let mut ctx = pending.pop_front().expect("front");
+            let mut ctx = self.pending.pop_front().expect("front");
             let last = ctx.last();
             // 当前不是最后一个值。也优先写入cache
-            if !last {
-                client.cache(true);
-            }
+            (!last).then(|| self.client.cache(true));
 
-            *metrics.key() += 1;
+            *self.metrics.key() += 1;
             let mut response = ctx.take_response();
 
-            parser.write_response(
-                &mut ResponseContext::new(&mut ctx, metrics, |hash| self.top.shard_idx(hash)),
+            self.parser.write_response(
+                &mut ResponseContext::new(&mut ctx, &self.metrics, |hash| self.top.shard_idx(hash)),
                 response.as_mut(),
-                client,
+                &mut self.client,
             )?;
 
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
-                    ctx.async_write_back(parser, rsp, self.top.exp_sec(), metrics);
+                    ctx.async_write_back(&self.parser, rsp, self.top.exp_sec(), &mut self.metrics);
                     self.async_pending.push_back(ctx);
                 }
             }
@@ -203,12 +180,12 @@ where
             // 数据写完，统计耗时。当前数据只写入到buffer中，
             // 但mesh通常与client部署在同一台物理机上，buffer flush的耗时通常在微秒级。
             if last {
-                let elapsed = start.elapsed();
-                *metrics.ops(op) += elapsed;
+                let elapsed = self.start.elapsed();
+                *self.metrics.ops(op) += elapsed;
                 // 统计整机耗时
-                *metrics.rtt() += elapsed;
-                *flush = true;
-                *start_init = false;
+                *self.metrics.rtt() += elapsed;
+                self.flush = true;
+                self.start_init = false;
             }
         }
         Ok(())
