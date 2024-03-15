@@ -25,6 +25,11 @@ impl Consistent {
     }
 
     pub fn from<T: Deref<Target = str>>(shards: &[T]) -> Self {
+        Consistent::new(shards, false)
+    }
+
+    pub fn new<T: Deref<Target = str>>(shards: &[T], origin_alg: bool) -> Self {
+        log::debug!("+++ use ketama with origin:{}", origin_alg);
         let mut map = BTreeMap::default();
         for idx in 0..shards.len() {
             let factor = 40;
@@ -32,20 +37,24 @@ impl Consistent {
                 let data: String = shards[idx].to_string() + "-" + &i.to_string();
                 let out_bytes = md5::compute(data.as_str());
                 for j in 0..4 {
-                    let hash = (((out_bytes[3 + j * 4] & 0xFF) as i64) << 24)
+                    let mut hash = (((out_bytes[3 + j * 4] & 0xFF) as i64) << 24)
                         | (((out_bytes[2 + j * 4] & 0xFF) as i64) << 16)
                         | (((out_bytes[1 + j * 4] & 0xFF) as i64) << 8)
                         | ((out_bytes[0 + j * 4] & 0xFF) as i64);
 
-                    let mut hash = hash.wrapping_rem(i32::MAX as i64);
+                    // twemproxy 为代表的原始版ketama算法，不需要此计算, 但业务sdk的修正版需要此计算
+                    if !origin_alg {
+                        hash = hash.wrapping_rem(i32::MAX as i64);
+                    }
+
                     if hash < 0 {
                         hash = hash.wrapping_mul(-1);
                     }
-
                     map.insert(hash, idx);
                 }
             }
         }
+
         Self { buckets: map }
     }
 }

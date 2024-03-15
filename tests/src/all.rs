@@ -17,6 +17,7 @@ mod asserts;
 mod layout;
 // mod mysql;
 mod bkdrsub;
+mod cfg_build;
 mod cow;
 mod decrypt;
 mod discovery;
