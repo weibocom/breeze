@@ -114,13 +114,8 @@ where
         // TODO 有点怪异，先实现，晚点调整，这个属性直接从request获取更佳？ fishermen
         req.retry_on_rsp_notok(req.can_retry_on_rsp_notok());
         *req.mut_context() = ctx.ctx;
-        if idx >= self.streams.len() {
-            req.on_err(protocol::Error::TopChanged);
-            return;
-        }
-
         log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
-        debug_assert!(idx < self.streams.len(), "{} {} => {:?}", idx, self, req);
+        assert!(idx < self.streams.len(), "{} {} => {:?}", idx, self, req);
 
         unsafe { self.streams.get_unchecked(idx).send(req) };
     }
