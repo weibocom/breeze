@@ -142,6 +142,10 @@ impl Protocol for MemcacheBinary {
             log::debug!("+++ will write mc rsp:{:?}", rsp.data());
             //let data = rsp.data_mut();
             rsp.restore_op(old_op_code);
+
+            // TODO check request、rsp的op code、opaque，如果不同，panic以快速定位问题 fishermen
+            self.check(ctx.request(), rsp);
+
             w.write_slice(rsp, 0)?;
 
             return Ok(());
