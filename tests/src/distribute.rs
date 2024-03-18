@@ -77,11 +77,7 @@ mod distribute_test {
         for i in 0..shards_count {
             shards.push(format!("192.168.10.{}", i));
         }
-        let dist = Distribute::from_o(
-            "slotmap",
-            &shards,
-            Some("[0,255];[256,511];[512,767];[768,1023]"),
-        );
+        let dist = Distribute::from("slotmap-[0,255];[256,511];[512,767];[768,1023]", &shards);
 
         let key = "1234567890.fri";
         let hash = hasher.hash(&key.as_bytes());
