@@ -60,11 +60,7 @@ const DIST_RANGE_SLOT_COUNT_DEFAULT: u64 = 256;
 
 use std::ops::Deref;
 impl Distribute {
-    pub fn from_o<T: Deref<Target = str>>(
-        distribution: &str,
-        names: &[T],
-        dist_ext: Option<&str>,
-    ) -> Self {
+    pub fn from<T: Deref<Target = str>>(distribution: &str, names: &[T]) -> Self {
         let dist = distribution.to_ascii_lowercase();
         let idx = dist.find('-');
         let name = &dist[..idx.unwrap_or(dist.len())];
@@ -80,16 +76,16 @@ impl Distribute {
             "modrange" => Self::ModRange(ModRange::from(num, names.len())),
             "splitmod" => Self::SplitMod(SplitMod::from(num, names.len())),
             "slotmod" => Self::SlotMod(SlotMod::from(num, names.len())),
-            "slotmap" => Self::SlotMap(SlotMap::from(num, names.len(), dist_ext)),
+            "slotmap" => {
+                let parts: Vec<&str> = dist.split('-').collect();
+                Self::SlotMap(SlotMap::from(names.len(), parts[parts.len() - 1]))
+            }
             "secmod" => Self::SecMod(SecMod::from(names.len())),
             _ => {
                 log::warn!("'{}' is not valid , use modula instead", distribution);
                 Self::Modula(Modula::from(names.len(), false))
             }
         }
-    }
-    pub fn from<T: Deref<Target = str>>(distribution: &str, names: &[T]) -> Self {
-        Self::from_o(distribution, names, None)
     }
     // 适配mysql 动态shands
     // pub fn from_num(distribution: &str, num: usize) -> Self {
