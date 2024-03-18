@@ -6,6 +6,7 @@ mod modula;
 mod range;
 mod secmod;
 mod slotmod;
+mod slotshard;
 mod splitmod;
 
 use consistent::Consistent;
@@ -15,6 +16,7 @@ use modula::Modula;
 //use padding::Padding;
 use self::secmod::SecMod;
 use self::slotmod::SlotMod;
+use self::slotshard::SlotShard;
 pub use range::Range;
 use splitmod::SplitMod;
 
@@ -28,6 +30,7 @@ pub enum Distribute {
     SplitMod(SplitMod),
     SlotMod(SlotMod),
     SecMod(SecMod),
+    SlotShard(SlotShard),
 }
 
 //pub const DIST_PADDING: &str = "padding";
@@ -73,6 +76,7 @@ impl Distribute {
             "modrange" => Self::ModRange(ModRange::from(num, names.len())),
             "splitmod" => Self::SplitMod(SplitMod::from(num, names.len())),
             "slotmod" => Self::SlotMod(SlotMod::from(num, names.len())),
+            "slotshard" => Self::SlotShard(SlotShard::from(num, names.len())),
             "secmod" => Self::SecMod(SecMod::from(names.len())),
             _ => {
                 log::warn!("'{}' is not valid , use modula instead", distribution);
@@ -101,6 +105,7 @@ impl Distribute {
             Self::ModRange(m) => m.index(hash),
             Self::SplitMod(s) => s.index(hash),
             Self::SlotMod(s) => s.index(hash),
+            Self::SlotShard(s) => s.index(hash),
             Self::SecMod(s) => s.index(hash),
         }
     }
