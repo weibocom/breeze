@@ -7,7 +7,7 @@ use strategy::QID;
 
 // 0-7: 读/写次数；
 const COUNT_BITS: u8 = 8;
-// 8-23：读写的位置索引
+// 8-23：读写的位置索引, 数量可能超过256，所以用16位；
 const QID_SHIFT: u8 = 0 + COUNT_BITS;
 const QID_BITS: u8 = 16;
 // 24-31: 写入队列的size的block数，即：size/512；
@@ -81,4 +81,12 @@ impl Context {
         let block = wsize / BLOCK_SIZE;
         self.ctx = lower | (block << WRITE_SIZE_BLOCK_SHIFT) as u64 | high;
     }
+}
+
+pub trait WriteStrategy {
+    fn get_write_idx(&self, msg_size: usize, last_idx: Option<usize>) -> usize;
+}
+
+pub trait ReadStrategy {
+    fn get_read_idx(&self, last_idx: Option<usize>) -> usize;
 }
