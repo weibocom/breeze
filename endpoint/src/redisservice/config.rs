@@ -27,6 +27,8 @@ pub struct Basic {
     pub(crate) hash: String,
     #[serde(default)]
     pub(crate) distribution: String,
+    #[serde(default)]
+    pub(crate) slotmap: String,
     //#[serde(default)]
     //pub(crate) listen: String,
     #[serde(default)]

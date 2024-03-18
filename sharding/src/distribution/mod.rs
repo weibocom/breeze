@@ -5,6 +5,7 @@ mod modula;
 //mod padding;
 mod range;
 mod secmod;
+mod slotmap;
 mod slotmod;
 mod splitmod;
 
@@ -14,6 +15,7 @@ use modrange::ModRange;
 use modula::Modula;
 //use padding::Padding;
 use self::secmod::SecMod;
+use self::slotmap::SlotMap;
 use self::slotmod::SlotMod;
 pub use range::Range;
 use splitmod::SplitMod;
@@ -27,6 +29,7 @@ pub enum Distribute {
     ModRange(ModRange),
     SplitMod(SplitMod),
     SlotMod(SlotMod),
+    SlotMap(SlotMap),
     SecMod(SecMod),
 }
 
@@ -57,7 +60,11 @@ const DIST_RANGE_SLOT_COUNT_DEFAULT: u64 = 256;
 
 use std::ops::Deref;
 impl Distribute {
-    pub fn from<T: Deref<Target = str>>(distribution: &str, names: &[T]) -> Self {
+    pub fn from_o<T: Deref<Target = str>>(
+        distribution: &str,
+        names: &[T],
+        dist_ext: Option<&str>,
+    ) -> Self {
         let dist = distribution.to_ascii_lowercase();
         let idx = dist.find('-');
         let name = &dist[..idx.unwrap_or(dist.len())];
@@ -73,12 +80,16 @@ impl Distribute {
             "modrange" => Self::ModRange(ModRange::from(num, names.len())),
             "splitmod" => Self::SplitMod(SplitMod::from(num, names.len())),
             "slotmod" => Self::SlotMod(SlotMod::from(num, names.len())),
+            "slotmap" => Self::SlotMap(SlotMap::from(num, names.len(), dist_ext)),
             "secmod" => Self::SecMod(SecMod::from(names.len())),
             _ => {
                 log::warn!("'{}' is not valid , use modula instead", distribution);
                 Self::Modula(Modula::from(names.len(), false))
             }
         }
+    }
+    pub fn from<T: Deref<Target = str>>(distribution: &str, names: &[T]) -> Self {
+        Self::from_o(distribution, names, None)
     }
     // 适配mysql 动态shands
     // pub fn from_num(distribution: &str, num: usize) -> Self {
@@ -101,6 +112,7 @@ impl Distribute {
             Self::ModRange(m) => m.index(hash),
             Self::SplitMod(s) => s.index(hash),
             Self::SlotMod(s) => s.index(hash),
+            Self::SlotMap(s) => s.index(hash),
             Self::SecMod(s) => s.index(hash),
         }
     }
