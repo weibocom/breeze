@@ -131,7 +131,11 @@ where
                 _ => &ns.backend_names,
             };
             log::debug!("+++ dist with backends:{:?}", backends);
-            self.distribute = Distribute::from(ns.basic.distribution.as_str(), backends);
+            self.distribute = Distribute::from_o(
+                ns.basic.distribution.as_str(),
+                backends,
+                Some(ns.basic.slotmap.as_str()),
+            );
             self.cfg.update(namespace, ns);
         }
     }

@@ -70,6 +70,27 @@ mod distribute_test {
     }
 
     #[test]
+    fn slotmap() {
+        let shards_count = 4;
+        let mut shards = Vec::with_capacity(shards_count);
+        let hasher = Hasher::from("crc32");
+        for i in 0..shards_count {
+            shards.push(format!("192.168.10.{}", i));
+        }
+        let dist = Distribute::from_o(
+            "slotmap",
+            &shards,
+            Some("[0,255];[256,511];[512,767];[768,1023]"),
+        );
+
+        let key = "1234567890.fri";
+        let hash = hasher.hash(&key.as_bytes());
+        let idx = dist.index(hash);
+        println!("slotmap key:{}, hash:{}, idx: {}", key, hash, idx);
+        assert_eq!(idx, 2);
+    }
+
+    #[test]
     fn secmod() {
         let hasher = Hasher::from("crc32abs");
 
