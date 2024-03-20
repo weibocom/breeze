@@ -13,7 +13,7 @@ use crate::{Error, Result};
 
 // response status 共11种，协议中占2个字节，当前只有1字节，如果超范围需要在协议处理位置对应修改
 #[allow(dead_code)]
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum RespStatus {
     NoError = 0x0000,
     NotFound = 0x0001,

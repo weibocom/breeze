@@ -1,3 +1,6 @@
+use ds::Utf8;
+
+use crate::kv::common::row::convert::from_row;
 use crate::kv::error::{Error, Result};
 use crate::{Command, Stream};
 
@@ -10,8 +13,6 @@ use std::{marker::PhantomData, sync::Arc};
 
 use crate::kv::common::packets::Column;
 use crate::kv::common::row::Row;
-
-use super::row::convert::{from_row, FromRow};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Or<A, B> {
@@ -264,51 +265,45 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
 
     /// TODO 代理rsp_packet的同名方法，这两个文件需要进行整合
     #[inline(always)]
-    pub fn build_final_rsp_cmd(&mut self, ok: bool, rsp_data: Vec<u8>) -> Command {
-        self.rsp_packet.build_final_rsp_cmd(ok, rsp_data)
+    pub fn build_final_rsp_cmd(
+        &mut self,
+        ok: bool,
+        identity: Option<u32>,
+        rsp_data: Vec<u8>,
+    ) -> Command {
+        self.rsp_packet
+            .build_final_rsp_cmd(ok, rsp_data)
+            .with_identity(identity)
     }
 
     /// 解析meta后面的rows
     #[inline(always)]
     pub fn parse_rows(&mut self) -> Result<Command> {
-        // rows 收集器
-        let collector = |mut acc: Vec<Vec<u8>>, row| {
-            acc.push(from_row(row));
-            acc
-        };
-
         // 解析row并构建cmd
-        let mut result_set = self.scan_rows(Vec::with_capacity(4), collector)?;
-        let status = result_set.len() > 0;
-        let row: Vec<u8> = if status {
-            //现在只支持单key，remove也不影响
-            result_set.remove(0)
-        } else {
-            b"not found".to_vec()
-        };
-        let cmd = self.build_final_rsp_cmd(status, row);
+        let row = self.scan_kv_rows()?;
+        let status_ok = row.is_some();
+        let (identity, val) = row
+            .map(|r| from_row(r))
+            .unwrap_or((None, b"not found".to_vec()));
+
+        log::debug!("+++ identity:{:?}, row:{}", identity, val.utf8());
+        let cmd = self.build_final_rsp_cmd(status_ok, identity, val);
+
         Ok(cmd)
     }
 
-    pub(crate) fn scan_rows<R, F, U>(&mut self, mut init: U, mut f: F) -> Result<U>
-    where
-        R: FromRow,
-        F: FnMut(U, R) -> U,
-    {
-        // 改为每次只处理本次的响应
+    pub(crate) fn scan_kv_rows(&mut self) -> Result<Option<Row>> {
+        let mut rows = Vec::with_capacity(1);
         loop {
             match self.scan_row()? {
-                Some(row) => {
-                    init = f(init, from_row::<R>(row));
-                }
-
-                None => {
-                    // take统一放在构建最终响应的地方进行
-                    // let _ = self.rsp_packet.take();
-                    return Ok(init);
-                }
+                Some(row) => rows.push(row),
+                None => break,
             }
         }
+        if rows.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(rows.pop().expect(format!("{:?}", rows).as_str())))
     }
 
     fn scan_row(&mut self) -> Result<Option<Row>> {

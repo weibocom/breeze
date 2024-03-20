@@ -109,12 +109,12 @@ where
 
         let shard = unsafe { shards.get_unchecked(shard_idx) };
         log::debug!(
-            "mysql {:?} send {} year {} shards {:?} => {:?}",
-            self.cfg,
+            "+++ mysql send {} year {} shards {:?} => {:?},  cfg: {:?} ",
             shard_idx,
             intyear,
             shards,
-            req
+            req,
+            self.cfg
         );
 
         if shard.has_slave() && !req.operation().is_store() {
