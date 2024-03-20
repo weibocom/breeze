@@ -22,6 +22,7 @@ fn set() {
         '\\' as u8,
         '"' as u8,
     ];
+    let _ = client.delete(key);
     client.add(key, val.as_ref(), 10000).unwrap();
     let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key);
     assert_eq!(val.as_ref(), result.unwrap().unwrap());
@@ -47,6 +48,7 @@ fn delete() {
     let client = mc_get_conn("mysql");
     let key = "4892225613598453";
 
+    let _ = client.delete(key);
     client.add(key, "1", 10000).unwrap();
     assert_eq!("1", client.get::<String>(key).unwrap().unwrap());
 
@@ -64,6 +66,7 @@ fn set_huge_payload() {
     let key = "4892225613598444";
     //当val长度为MAX_PAYLOAD_LEN - 1 - 76，构建出来的insert语句长度恰好为MAX_PAYLOAD_LEN
     let val = vec!['a' as u8; MAX_PAYLOAD_LEN];
+    let _ = client.delete(key);
     client.add(key, val.as_slice(), 10000).unwrap();
     sleep(Duration::from_secs(3));
     let result: Result<Option<Vec<u8>>, MemcacheError> = client.get(key);
