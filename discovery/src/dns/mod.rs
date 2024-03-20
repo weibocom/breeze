@@ -190,6 +190,7 @@ impl DnsCache {
             let iter = self.hosts.hosts[self.last_idx..end].iter_mut();
             self.last_idx = end;
             if self.last_idx == len {
+                self.cycle = 0;
                 self.last_idx = 0;
             }
             HostRecordIter::new(iter)
