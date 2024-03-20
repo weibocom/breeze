@@ -93,7 +93,7 @@ impl Error {
     /// 后续如果Error发生变动，需要关注这里是否需要调整
     #[inline]
     pub(crate) fn error(&self) -> crate::kv::Error {
-        let msg = format!("{}", self).as_bytes().to_vec();
+        let msg = format!("mysql err: {}", self).as_bytes().to_vec();
         // let content = RingSlice::from_vec(&msg.as_bytes().to_vec());
         log::error!("kv found error: {:?}", self);
         match self {
