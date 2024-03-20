@@ -32,6 +32,7 @@ fn update() {
     let client = mc_get_conn("mysql");
     let key = "4892225613598454";
 
+    let _ = client.delete(key);
     client.add(key, "1", 10000).unwrap();
     let result: Result<Option<String>, MemcacheError> = client.get(key);
     assert_eq!("1", result.unwrap().unwrap());
