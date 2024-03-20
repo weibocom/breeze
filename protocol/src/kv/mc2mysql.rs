@@ -91,7 +91,9 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
             _ => panic!("not support op:{op}"),
         }
     }
-    fn write_sql(&self, packet: &mut PacketCodec, opeque: u32) {
+
+    /// 传入一个identity用于跟踪sql的执行结果，类似mc协议中的opaque
+    fn write_sql(&self, packet: &mut PacketCodec, identity: u32) {
         let &Self {
             strategy,
             key,
@@ -125,7 +127,7 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
                 let _ = write!(
                     packet,
                     "select {}, content from {} where id={}",
-                    opeque, table, key
+                    identity, table, key
                 );
             }
             _ => panic!("not support op:{op}"),
