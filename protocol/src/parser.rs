@@ -132,6 +132,8 @@ pub trait RequestProcessor {
 
 pub struct Command {
     ok: bool,
+    // 用于标识cmd身份的id，目前只有mysql使用，mc的在cmd中有opaque，其他协议的使用姿势待定 fishermen
+    identity: Option<u32>,
     cmd: MemGuard,
 }
 
@@ -147,14 +149,28 @@ pub struct HashedCommand {
 impl Command {
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
-        Self { ok, cmd }
+        Self {
+            ok,
+            identity: None,
+            cmd,
+        }
     }
+    #[inline]
     pub fn from_ok(cmd: ds::MemGuard) -> Self {
         Self::from(true, cmd)
     }
     #[inline]
+    pub fn with_identity(mut self, identity: Option<u32>) -> Self {
+        self.identity = identity;
+        self
+    }
+    #[inline]
     pub fn ok(&self) -> bool {
         self.ok
+    }
+    #[inline]
+    pub fn identity(&self) -> Option<u32> {
+        self.identity
     }
 }
 impl std::ops::Deref for Command {

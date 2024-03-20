@@ -91,7 +91,7 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
             _ => panic!("not support op:{op}"),
         }
     }
-    fn write_sql(&self, packet: &mut PacketCodec) {
+    fn write_sql(&self, packet: &mut PacketCodec, opeque: u32) {
         let &Self {
             strategy,
             key,
@@ -122,7 +122,11 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
                 let _ = write!(packet, "delete from {} where id={}", table, key);
             }
             OP_GET | OP_GETK => {
-                let _ = write!(packet, "select content from {} where id={}", table, key);
+                let _ = write!(
+                    packet,
+                    "select {}, content from {} where id={}",
+                    opeque, table, key
+                );
             }
             _ => panic!("not support op:{op}"),
         };
@@ -179,7 +183,7 @@ impl MysqlBuilder {
         packet.write_next_packet_header();
         packet.push(req.mysql_cmd() as u8);
 
-        sql_builder.write_sql(&mut packet);
+        sql_builder.write_sql(&mut packet, req.opaque());
 
         packet.finish_current_packet();
         packet

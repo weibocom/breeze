@@ -339,7 +339,7 @@ impl Kv {
             Ok(cmd) => Ok(cmd),
             Err(Error::UnhandleResponseError(emsg)) => {
                 // 对于UnhandleResponseError，需要构建rsp，发给client
-                let cmd = query_result.build_final_rsp_cmd(false, emsg);
+                let cmd = query_result.build_final_rsp_cmd(false, None, emsg);
                 Ok(cmd)
             }
             Err(e) => Err(e.into()),
@@ -347,45 +347,40 @@ impl Kv {
     }
 
     #[inline]
-    fn write_mc_packet<W>(
-        &self,
-        opcode: u8,
-        status: RespStatus,
-        key: Option<RingSlice>,
-        extra: Option<u32>,
-        response: Option<&RingSlice>,
-        w: &mut W,
-    ) -> crate::Result<()>
+    fn write_mc_packet<W>(&self, reply: &ReplyInfo, w: &mut W) -> crate::Result<()>
     where
         W: crate::Writer,
     {
         w.write_u8(mcpacket::Magic::Response as u8)?; //magic 1byte
-        w.write_u8(opcode)?; // opcode 1 byte
+        w.write_u8(reply.opcode)?; // opcode 1 byte
 
-        let key_len = key.as_ref().map_or(0, |r| r.len());
+        let key_len = reply.key.as_ref().map_or(0, |r| r.len());
         w.write_u16(key_len as u16)?; // key len 2 bytes
 
-        let extra_len = if extra.is_some() { 4 } else { 0 };
+        let extra_len = if reply.extra.is_some() { 4 } else { 0 };
         w.write_u8(extra_len)?; //extras length 1byte
 
         w.write_u8(0_u8)?; //data type 1byte
 
-        w.write_u16(status as u16)?; // Status 2byte
+        w.write_u16(reply.status.clone() as u16)?; // Status 2byte
 
-        let response_len = response.map_or(0, |r| r.len());
+        let response_len = reply.body.map_or(0, |r| r.len());
         let total_body_len = extra_len as u32 + key_len as u32 + response_len as u32;
         w.write_u32(total_body_len)?; // total body len: 4 bytes
-        w.write_u32(0)?; //opaque: 4bytes
+
+        // 没有opaque时，设置为0，sdk会忽略比对这个值
+        let opaque = reply.opaque.unwrap_or(0_u32);
+        w.write_u32(opaque)?; //opaque: 4bytes
         w.write_u64(0)?; //cas: 8 bytes
 
-        if let Some(extra) = extra {
+        if let Some(extra) = reply.extra {
             w.write_u32(extra)?;
         }
-        if let Some(key) = &key {
+        if let Some(key) = &reply.key {
             w.write_ringslice(key, 0)?;
         }
-        if let Some(response) = response {
-            w.write_ringslice(response, 0)? // value
+        if let Some(body) = reply.body {
+            w.write_ringslice(&body, 0)? // value
         }
         Ok(())
     }
@@ -437,7 +432,7 @@ impl Kv {
             _ => (None, None),
         };
         let err_response;
-        let response = match ctx.ctx().error {
+        let body = match ctx.ctx().error {
             ContextStatus::TopInvalid => {
                 assert!(response.is_none());
                 err_response = Some(RingSlice::from_slice(b"invalid request: year out of index"));
@@ -459,7 +454,9 @@ impl Kv {
             );
         }
         //协议与标准协议不一样了，add等也返回response了
-        self.write_mc_packet(old_op_code, status, write_key, write_extra, response, w)?;
+        let opaque = response.map(|r| r.identity()).unwrap_or(None);
+        let reply = ReplyInfo::new(old_op_code, status, opaque, write_key, write_extra, body);
+        self.write_mc_packet(&reply, w)?;
         Ok(())
     }
 
@@ -530,5 +527,35 @@ impl<T: crate::Request> KVCtx for T {
     #[inline(always)]
     fn ctx_mut(&mut self) -> &mut Context {
         unsafe { std::mem::transmute(self.context_mut()) }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ReplyInfo<'a> {
+    opcode: u8,
+    status: RespStatus,
+    opaque: Option<u32>,
+    key: Option<RingSlice>,
+    extra: Option<u32>,
+    body: Option<&'a RingSlice>,
+}
+
+impl<'a> ReplyInfo<'a> {
+    fn new(
+        opcode: u8,
+        status: RespStatus,
+        opaque: Option<u32>,
+        key: Option<RingSlice>,
+        extra: Option<u32>,
+        body: Option<&'a RingSlice>,
+    ) -> Self {
+        Self {
+            opcode,
+            status,
+            opaque,
+            key,
+            extra,
+            body,
+        }
     }
 }
