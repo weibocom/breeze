@@ -280,7 +280,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
     #[inline(always)]
     pub fn parse_rows(&mut self) -> Result<Command> {
         // 解析row并构建cmd
-        let row = self.scan_kv_rows()?;
+        let row = self.scan_kv_row()?;
         let status_ok = row.is_some();
         let (identity, val) = row
             .map(|r| from_row(r))
@@ -292,7 +292,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         Ok(cmd)
     }
 
-    pub(crate) fn scan_kv_rows(&mut self) -> Result<Option<Row>> {
+    fn scan_kv_row(&mut self) -> Result<Option<Row>> {
         let mut rows = Vec::with_capacity(1);
         loop {
             match self.scan_row()? {
@@ -303,6 +303,7 @@ impl<'c, T: crate::kv::prelude::Protocol, S: Stream> QueryResult<'c, T, S> {
         if rows.is_empty() {
             return Ok(None);
         }
+        assert_eq!(rows.len(), 1, "{:?}", rows);
         Ok(Some(rows.pop().expect(format!("{:?}", rows).as_str())))
     }
 
