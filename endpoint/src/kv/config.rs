@@ -50,8 +50,8 @@ pub struct KvNamespace {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Basic {
-    #[serde(default)]
-    listen: String,
+    // #[serde(default)]
+    // listen: String,
     #[serde(default)]
     resource_type: String,
     #[serde(default)]
