@@ -88,13 +88,11 @@ impl Protocol for MemcacheBinary {
         }
         Ok(None)
     }
+
     #[inline]
     fn check(&self, req: &HashedCommand, resp: &Command) {
         debug_assert!(!resp.is_quiet());
-        assert!(
-            req.op() == resp.op() && req.opaque() == resp.opaque(),
-            "{req:?} => {resp:?}",
-        );
+        assert!(req.opaque() == resp.opaque(), "{req:?} => {resp:?}",);
     }
     // 在parse_request中可能会更新op_code，在write_response时，再更新回来。
     #[inline]
@@ -139,12 +137,13 @@ impl Protocol for MemcacheBinary {
             if is_quiet_get(old_op_code) && !rsp.ok() {
                 return Ok(());
             }
+
+            // check request、rsp的opaque，如果不同，panic以快速定位问题 fishermen
+            self.check(ctx.request(), rsp);
+
             log::debug!("+++ will write mc rsp:{:?}", rsp.data());
             //let data = rsp.data_mut();
             rsp.restore_op(old_op_code);
-
-            // TODO check request、rsp的op code、opaque，如果不同，panic以快速定位问题 fishermen
-            self.check(ctx.request(), rsp);
 
             w.write_slice(rsp, 0)?;
 

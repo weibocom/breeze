@@ -14,7 +14,7 @@ use memcache::MemcacheError;
 ///     set命令未单独测试；
 ///
 /// -
-use std::collections::HashMap;
+use std::{collections::HashMap, thread::sleep, time::Duration};
 /// 测试场景：基本的mc add 命令验证
 #[test]
 fn mc_max_key() {
@@ -46,9 +46,12 @@ fn mc_simple_add() {
 #[test]
 fn mc_simple_get() {
     let client = mc_get_conn("mc");
-    let result: Result<Option<String>, MemcacheError> = client.get("307");
+    let key = "307";
+    let val = "308";
+    let _ = client.set(key, val, 100);
+    let result: Result<Option<String>, MemcacheError> = client.get(key);
     assert!(result.is_ok());
-    assert_eq!(result.expect("ok").expect("ok"), "307");
+    assert_eq!(result.expect("ok").expect("ok"), val);
 }
 /// 测试场景：基本的mc replace 命令验证
 #[test]
@@ -119,6 +122,7 @@ fn mc_simple_prepend() {
 fn mc_simple_cas() {
     let client = mc_get_conn("mc");
     assert!(client.set("foocas", "bar", 10).is_ok());
+    sleep(Duration::from_millis(10));
     let getsres: Result<HashMap<String, (Vec<u8>, u32, Option<u64>)>, MemcacheError> =
         client.gets(&["foocas"]);
     assert!(getsres.is_ok());
@@ -136,6 +140,7 @@ fn mc_simple_gets() {
     let value = "getsbar";
     assert!(client.set(key, value, 2).is_ok());
     assert!(client.set(value, key, 2).is_ok());
+    sleep(Duration::from_millis(10));
     let result: Result<HashMap<String, String>, MemcacheError> =
         client.gets(&["getsfoo", "getsbar"]);
     assert!(result.is_ok());
