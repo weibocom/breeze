@@ -3,6 +3,8 @@ use crate::ci::env::exists_key_iter;
 use crate::mc_helper::*;
 use memcache::MemcacheError;
 use std::collections::HashMap;
+use std::thread::sleep;
+use std::time::Duration;
 
 /// 测试场景：buffer扩容验证: 同一个连接，同一个key, set不同大小的value
 /// 特征:    key；固定为"fooset"  value: 不同长度的String,内容固定: 每个字符内容为 ‘A’
@@ -101,6 +103,7 @@ fn mc_key_length() {
         } else {
             assert!(set_res.is_err())
         }
+        sleep(Duration::from_millis(10));
         let result: Result<Option<String>, MemcacheError> =
             client.get(&String::from_utf8_lossy(&key).to_string());
         if k_len < 251 {
