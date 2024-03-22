@@ -1,14 +1,31 @@
-use super::Record;
+use super::{Ipv4Vec, Record};
 pub(super) struct Lookup {}
+
+use dns_lookup::{getaddrinfo, AddrInfoHints};
+use libc::SOCK_STREAM;
 
 use std::net::IpAddr;
 impl Lookup {
     pub(super) fn new() -> Self {
         Self {}
     }
-    fn dns_lookup(&self, host: &str) -> std::io::Result<IpAddrLookup> {
-        let ips = dns_lookup::lookup_host(host)?;
-        Ok(IpAddrLookup::AddrInfoIter(ips))
+    fn dns_lookup(&self, host: &str) -> std::io::Result<Ipv4Vec> {
+        let hints = AddrInfoHints {
+            socktype: SOCK_STREAM as i32,
+            ..AddrInfoHints::default()
+        };
+
+        let mut ipv4vec = super::Ipv4Vec::new();
+
+        let addrs = getaddrinfo(Some(host), None, Some(hints))?;
+        for ip in addrs {
+            let ip = ip?;
+            match ip.sockaddr.ip() {
+                IpAddr::V4(ip) => ipv4vec.push(ip),
+                IpAddr::V6(_) => {}
+            }
+        }
+        Ok(ipv4vec)
     }
     pub(super) fn lookups<'a, I>(&self, iter: I) -> (usize, Option<String>)
     where
@@ -23,7 +40,7 @@ impl Lookup {
                 break;
             }
             let ips = ret.unwrap();
-            if r.refresh(host, ips) {
+            if r.refresh(ips) {
                 num += 1;
                 (num == 1).then(|| cache = Some(host.to_string()));
             }
@@ -32,19 +49,4 @@ impl Lookup {
     }
 }
 
-pub(super) enum IpAddrLookup {
-    AddrInfoIter(Vec<IpAddr>),
-}
-impl IpAddrLookup {
-    pub(super) fn visit_v4(&self, mut v: impl FnMut(std::net::Ipv4Addr)) {
-        match self {
-            Self::AddrInfoIter(iter) => {
-                for ip in iter.iter() {
-                    if let std::net::IpAddr::V4(ip) = ip {
-                        v(*ip);
-                    }
-                }
-            }
-        }
-    }
-}
+pub type IpAddrLookup = Ipv4Vec;
