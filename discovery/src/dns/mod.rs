@@ -124,7 +124,7 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
     let _r = DNSCACHE.set(reader);
     assert!(_r.is_ok(), "dns cache set failed");
     async move {
-        let resolver = Lookup::new();
+        let mut resolver = Lookup::new();
         log::info!("task started ==> dns cache refresher");
         let mut tick = interval(Duration::from_secs(1));
         loop {
@@ -132,12 +132,17 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
                 local_cache.register(host, notify);
             }
             // 处理新增的
-            let (num, cache) = resolver.lookups(local_cache.iter()).await;
-            if num > 0 {
-                let new = local_cache.clone();
-                writer.update(new);
-                local_cache.notify(cache.expect("cache none"), num);
-            }
+            (writer, resolver, local_cache) = tokio::task::spawn_blocking(move || {
+                let (num, cache) = resolver.lookups(local_cache.iter());
+                if num > 0 {
+                    let new = local_cache.clone();
+                    writer.update(new);
+                    local_cache.notify(cache.expect("cache none"), num);
+                }
+                (writer, resolver, local_cache)
+            })
+            .await
+            .expect("no err");
 
             tick.tick().await;
         }

@@ -14,8 +14,8 @@ use crate::path::GetNamespace;
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
     #[inline]
-    fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
-        vec![("", cfg)]
+    fn disgroup<'a>(&self, path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
+        vec![(path, cfg)]
     }
     // 部分场景下，配置更新后，还需要load 命名服务，比如dns。
     #[inline]
