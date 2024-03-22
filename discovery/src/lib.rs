@@ -9,7 +9,7 @@ mod vintage;
 pub use update::*;
 pub mod dns;
 mod fixed;
-mod path;
+//mod path;
 //mod sig;
 
 pub use fixed::Fixed;
