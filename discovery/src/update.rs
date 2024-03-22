@@ -1,3 +1,4 @@
+use metrics::Metric;
 // 定期更新discovery.
 use super::{Discover, TopologyWrite};
 use ds::chan::Receiver;
@@ -283,19 +284,23 @@ struct Service<T> {
     name: String,
     top: T,
     cfg: String,
+    metric: Metric,
 }
 impl<T: TopologyWrite> Service<T> {
     fn new(name: String, top: T) -> Self {
+        let metric = metrics::Path::new(vec!["any", name.as_str()]).num("top_updated");
         Self {
             name,
             top,
             cfg: String::new(),
+            metric,
         }
     }
     fn update(&mut self, cfg: &str) {
         if cfg != self.cfg {
             self.cfg = cfg.to_string();
             self.top.update(&self.name, cfg);
+            self.metric += 1;
             log::info!("Updated {}", self.name);
         }
     }

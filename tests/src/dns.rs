@@ -116,3 +116,38 @@ fn dns_lookup() {
         ]
     );
 }
+
+#[test]
+fn test_ipv4_vec() {
+    use discovery::dns::Ipv4Vec;
+    assert_eq!(std::mem::size_of::<Ipv4Vec>(), 32);
+    use std::net::Ipv4Addr;
+    let mut ips = Ipv4Vec::new();
+    let ip0: Ipv4Addr = "10.0.0.1".parse().expect("invalid ip");
+    ips.push(ip0);
+    let mut iter = ips.iter();
+    assert_eq!(iter.next(), Some(ip0));
+    assert_eq!(iter.next(), None);
+
+    let vec = vec![
+        Ipv4Addr::new(10, 0, 0, 1),
+        Ipv4Addr::new(10, 0, 0, 2),
+        Ipv4Addr::new(10, 0, 0, 3),
+        Ipv4Addr::new(10, 0, 0, 4),
+        Ipv4Addr::new(10, 0, 0, 5),
+        Ipv4Addr::new(10, 0, 0, 6),
+        Ipv4Addr::new(10, 0, 0, 7),
+        Ipv4Addr::new(10, 0, 0, 8),
+    ];
+    let mut ips = discovery::dns::Ipv4Vec::new();
+    vec.iter().for_each(|ip| ips.push(*ip));
+    assert_eq!(ips.len(), 8);
+    let mut iter = ips.iter();
+    for i in 0..vec.len() {
+        assert_eq!(iter.next(), Some(vec[i]));
+    }
+    let mut other = Ipv4Vec::new();
+    vec.iter().rev().for_each(|ip| other.push(*ip));
+    assert_eq!(other.len(), 8);
+    assert!(ips == other);
+}

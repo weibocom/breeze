@@ -30,22 +30,22 @@ pub fn register(host: &str, notify: Arc<AtomicBool>) {
     get_dns().watch(host, notify)
 }
 pub fn lookup_ips<'a>(host: &str, mut f: impl FnMut(&[IpAddr])) {
-    f(get_dns().lookup(host))
+    if let Some(ips) = get_dns().lookup(host) {
+        f(ips.as_slice())
+    }
 }
 
 #[derive(Clone, Debug)]
 struct Record {
     subscribers: Vec<Arc<AtomicBool>>,
-    ips: Vec<IpAddr>,
-    md5: u64,     // 使用所有ip的和作为md5
+    ips: Ipv4Vec,
     notify: bool, // true表示需要通知
 }
 impl Default for Record {
     fn default() -> Self {
         Record {
             subscribers: Vec::with_capacity(2),
-            ips: Vec::with_capacity(2),
-            md5: 0,
+            ips: Ipv4Vec::new(),
             notify: false,
         }
     }
@@ -69,22 +69,14 @@ impl Record {
     }
     // 如果有更新，则返回lookup的ip。
     // 无更新则返回None
-    fn refresh(&mut self, host: &str, ips: IpAddrLookup) -> bool {
-        let mut md5 = 0u64;
-        let mut cnt = 0;
-        ips.visit_v4(|ip| {
-            cnt += 1;
-            md5 += u32::from(ip) as u64;
-        });
-        if cnt > 0 && (cnt != self.ips.len() || self.md5 != md5) {
-            self.ips.clear();
-            ips.visit_v4(|ip| self.ips.push(ip));
-            self.md5 = md5;
+    fn refresh(&mut self, ips: IpAddrLookup) -> bool {
+        if ips.len() > 0 && self.ips != ips {
+            self.ips = ips;
             self.notify = true;
-            log::debug!("{} resolved ips:{:?}, md5:{}", host, self.ips, md5);
-            return true;
+            true
+        } else {
+            false
         }
-        false
     }
 }
 
@@ -225,9 +217,8 @@ impl DnsCache {
         let r = self.hosts.get_or_insert(host);
         r.watch(notify);
     }
-    fn lookup(&self, host: &str) -> &[IpAddr] {
-        static EMPTY: Vec<IpAddr> = Vec::new();
-        self.hosts.get(host).unwrap_or_else(|| &EMPTY)
+    fn lookup(&self, host: &str) -> Option<&Ipv4Vec> {
+        self.hosts.get(host)
     }
 }
 
@@ -255,10 +246,10 @@ impl Hosts {
         assert!(id < self.hosts.len());
         &mut self.hosts[id].1
     }
-    fn get(&self, host: &str) -> Option<&[IpAddr]> {
+    fn get(&self, host: &str) -> Option<&Ipv4Vec> {
         self.index.get(host).map(|&id| {
             assert!(id < self.hosts.len());
-            &self.hosts[id].1.ips[..]
+            &self.hosts[id].1.ips
         })
     }
     fn get_or_insert(&mut self, host: String) -> &mut Record {
@@ -310,3 +301,86 @@ impl<'a> Iterator for HostRecordIter<'a> {
 }
 unsafe impl<'a> Send for HostRecordIter<'a> {}
 unsafe impl<'a> Sync for HostRecordIter<'a> {}
+
+// 一个高效的ipv4数组。
+// 小于等于5个元素时，直接使用cache，大于5个元素时，使用ext。
+use std::net::Ipv4Addr;
+#[derive(Debug, Clone)]
+pub struct Ipv4Vec {
+    len: u32,
+    cache: [Ipv4Addr; 5],
+    ext: Option<Box<Vec<Ipv4Addr>>>,
+}
+impl Ipv4Vec {
+    pub fn new() -> Self {
+        Self {
+            len: 0,
+            cache: [Ipv4Addr::from(0u32); 5],
+            ext: None,
+        }
+    }
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.len as usize
+    }
+    pub fn push(&mut self, ip: Ipv4Addr) {
+        if self.len() < self.cache.len() {
+            self.cache[self.len()] = ip;
+        } else {
+            let ext = self
+                .ext
+                .get_or_insert_with(|| Box::new(Vec::with_capacity(16)));
+            if ext.len() == 0 {
+                ext.extend_from_slice(&self.cache[..])
+            }
+            ext.push(ip);
+        }
+        self.len += 1;
+    }
+    pub fn iter(&self) -> Ipv4VecIter {
+        let iter = if self.len() <= self.cache.len() {
+            self.cache[..self.len as usize].iter()
+        } else {
+            self.ext.as_ref().expect("ext").iter()
+        };
+        Ipv4VecIter { iter }
+    }
+    fn md5(&self) -> u64 {
+        self.iter().fold(0u64, |acc, ip| acc + u32::from(ip) as u64)
+    }
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    pub fn as_slice(&self) -> &[Ipv4Addr] {
+        if self.len() <= self.cache.len() {
+            &self.cache[..self.len as usize]
+        } else {
+            self.ext.as_ref().expect("ext").as_slice()
+        }
+    }
+}
+pub struct Ipv4VecIter<'a> {
+    iter: std::slice::Iter<'a, Ipv4Addr>,
+}
+impl<'a> Iterator for Ipv4VecIter<'a> {
+    type Item = Ipv4Addr;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|ip| *ip)
+    }
+}
+// 为Ipv4Vec实现一个Equal trait，这样就可以比较两个Ipv4Vec是否相等
+impl PartialEq for Ipv4Vec {
+    fn eq(&self, other: &Self) -> bool {
+        self.len == other.len && {
+            match self.len {
+                0 => true,
+                1 => self.cache[0] == other.cache[0],
+                2 => {
+                    self.cache[..2] == other.cache[..2]
+                        || (self.cache[0] == other.cache[1] && self.cache[1] == other.cache[0])
+                }
+                _ => self.md5() == other.md5(),
+            }
+        }
+    }
+}
