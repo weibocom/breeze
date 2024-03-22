@@ -24,6 +24,7 @@ tokio.workspace = true
 ctor = "0.1.23"
 mysql_async ="0.31.3"
 chrono = "0.4"
+lazy_static = "*"
 
 mysql = "*"
 base64 = "0.21.0"
