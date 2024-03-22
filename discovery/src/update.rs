@@ -101,43 +101,40 @@ impl<T: TopologyWrite> Services<T> {
         assert!(idx < self.groups.len());
         Some(&mut self.groups[idx])
     }
+    // name的格式。 dir0+dir1+dir2+...+group:namespace
+    // 规范：最后一个+号之后的是group:namespace
+    // namespace是可选。
+    // namespace之前的是group的路径，如：分隔符为'+'。
     async fn register<D: Discover>(&mut self, name: String, top: T, d: &D) {
-        // name的格式为 group_path:namespace
-        // 其中，group_path是一个路径，如：分隔符为'+'。
-        let ns_idx = name.rfind(':');
-        let (path_group, namespace) = match ns_idx {
-            Some(i) => (&name[..i], Some(&name[i + 1..])),
-            None => (&name[..], None),
+        let group = name.split('+').last().expect("name");
+        let mut group_namespace = group.split(':');
+        let group = group_namespace.next().expect("group");
+        let (path, service) = match group_namespace.next() {
+            Some(ns) => (&name[..name.len() - ns.len() - 1], ns),
+            None => (name.as_str(), group),
         };
-        let g_name = path_group.split('+').last().expect("not valid");
 
-        let group = match self.get_group(g_name) {
+        let g = match self.get_group(group) {
             Some(g) => g,
             None => {
                 let idx = self.groups.len();
-                let local_path = path_group.to_string();
-                let remote_path = path_group.replace('+', "/");
-                let name = g_name.to_string();
+                let local = path.to_string();
+                let remote = path.replace('+', "/");
                 self.groups
-                    .push(ServiceGroup::new(name, local_path, remote_path));
-                self.indices.insert(g_name.to_string(), idx);
-                let g = self.groups.last_mut().unwrap();
-                assert_eq!(g.name, g_name);
+                    .push(ServiceGroup::new(group.to_string(), local, remote));
+                self.indices.insert(group.to_string(), idx);
+                let g = self.groups.get_mut(idx).expect("not push");
+                assert_eq!(g.name, group);
                 g.init(&self.snapshot, d).await;
                 g
             }
         };
-        log::info!("register service: {} => {}", name, g_name);
-        let service = namespace
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| g_name.to_string());
-        group.register(service, top);
+        log::info!("register service: {} => {}", name, group);
+        g.register(service.to_string(), top);
     }
 }
 
-use serde::{Deserialize, Serialize};
 // 一个group会有一个或者多个namespace,共享一个group配置。
-#[derive(Serialize, Deserialize)]
 struct ServiceGroup<T> {
     changed: bool,
     name: String, // group的名称。
@@ -145,9 +142,7 @@ struct ServiceGroup<T> {
     path: String, // 从discover获取配置时使用group的path。
     sig: String,
     cfg: String,
-    #[serde(skip_serializing, skip_deserializing)]
     cache: HashMap<String, String>,
-    #[serde(skip_serializing, skip_deserializing)]
     namespaces: Vec<Service<T>>,
 }
 use tokio::fs::File;
@@ -180,10 +175,7 @@ impl<T: TopologyWrite> ServiceGroup<T> {
             }
             Some((s, left))
         }
-        let content = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|e| log::info!("load snapshot {path} err:{e:?}"))
-            .ok()?;
+        let content = tokio::fs::read_to_string(&path).await.ok()?;
         let (sig, group_cfg) = take_line(content)?;
         let (group, cfg) = take_line(group_cfg)?;
 
