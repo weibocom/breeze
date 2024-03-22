@@ -5,7 +5,6 @@ use rt::spawn;
 use std::sync::Arc;
 
 use discovery::{TopologyReadGuard, TopologyWriteGuard};
-use ds::chan::Sender;
 use metrics::Path;
 use protocol::{Parser, Result};
 use stream::pipeline::copy_bidirectional;
@@ -16,15 +15,18 @@ type Topology = endpoint::TopologyProtocol<Endpoint, Parser>;
 use metrics::Status;
 // 一直侦听，直到成功侦听或者取消侦听（当前尚未支持取消侦听）
 // 1. 尝试侦听之前，先确保服务配置信息已经更新完成
+type Sender = ds::chan::Sender<(String, TopologyWriteGuard<Topology>)>;
+pub(super) type Receiver = ds::chan::Receiver<(String, TopologyWriteGuard<Topology>)>;
 pub(super) async fn process_one(
     quard: &Quadruple,
-    discovery: Sender<TopologyWriteGuard<Topology>>,
+    discovery: Sender,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let p = Parser::try_from(&quard.protocol())?;
     let top = endpoint::TopologyProtocol::try_from(p.clone(), quard.endpoint())?;
     let (tx, rx) = discovery::topology(top, &quard.service());
     // 注册，定期更新配置
-    discovery.send(tx).await.map_err(|e| e.to_string())?;
+    let service = quard.service().to_string();
+    discovery.send((service, tx)).await?;
 
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
     let mut metrics = StreamMetrics::new(&path);
