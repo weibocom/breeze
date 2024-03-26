@@ -43,7 +43,7 @@ fn checkout_basic() {
     assert_eq!(1, size_of::<Parser>());
     assert_eq!(64, size_of::<BackendInner<Request>>());
     assert_eq!(40, size_of::<CheckedTopology>());
-    assert_eq!(192, size_of::<stream::StreamMetrics>());
+    assert_eq!(128, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
 }
 
@@ -80,7 +80,7 @@ fn check_handler() {
 #[test]
 fn check_topology() {
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
-    assert_eq!(952, size_of::<Topology>());
+    assert_eq!(976, size_of::<Topology>());
     assert_eq!(72, size_of::<CacheService>());
     assert_eq!(96, size_of::<RedisService>());
     assert_eq!(56, size_of::<PhantomService>());

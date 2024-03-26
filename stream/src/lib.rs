@@ -16,7 +16,7 @@ pub use builder::*;
 pub(crate) mod checker;
 
 mod metric;
-pub use metric::StreamMetrics;
+pub use metric::{StreamMetrics, *};
 
 mod arena;
 

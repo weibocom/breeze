@@ -31,6 +31,8 @@ pub(super) async fn process_one(
     let path = Path::new(vec![quard.protocol(), &quard.biz()]);
     let mut metrics = StreamMetrics::new(&path);
 
+    let mut listen_failed = None;
+
     // 等待初始化完成
     let mut tries = 0usize;
     while !rx.inited() || !metrics.check_registered() {
@@ -38,8 +40,8 @@ pub(super) async fn process_one(
         let s = if tries <= 10 {
             Duration::from_secs(1)
         } else {
+            *listen_failed.get_or_insert(path.status("listen_failed")) += Status::ERROR;
             // 拉取配置失败，业务监听失败数+1
-            metrics.listen_failed += Status::ERROR;
             log::warn!("waiting inited. {} tries:{}", quard, tries);
             // Duration::from_secs(1 << (tries.min(10)))
             // 1 << 10 差不多20分钟，太久了，先改为递增间隔 fishermen
@@ -55,9 +57,8 @@ pub(super) async fn process_one(
     let metrics = Arc::new(metrics);
 
     // 服务注册完成，侦听端口直到成功。
-    while let Err(_e) = _process_one(quard, &p, &rx, metrics.clone()).await {
-        // 监听失败或accept连接失败，对监听失败数+1
-        unsafe { *metrics.listen_failed.as_mut() += Status::ERROR };
+    while let Err(_e) = _process_one(quard, &p, &rx, metrics.clone(), listen_failed.take()).await {
+        *listen_failed.get_or_insert(path.status("listen_failed")) += Status::ERROR;
         log::warn!("service process failed. {}, err:{:?}", quard, _e);
         sleep(Duration::from_secs(6)).await;
     }
@@ -73,10 +74,11 @@ async fn _process_one(
     p: &Parser,
     top: &TopologyReadGuard<Topology>,
     metrics: Arc<StreamMetrics>,
+    listen_failed: Option<metrics::Metric>,
 ) -> Result<()> {
     let l = Listener::bind(&quard.family(), &quard.address()).await?;
     log::info!("started. {}", quard);
-    unsafe { *metrics.listen_failed.as_mut() += Status::OK };
+    listen_failed.map(|mut m| m += Status::OK);
 
     loop {
         // 等待初始化成功
@@ -93,13 +95,12 @@ async fn _process_one(
                     // TODO Eof、IO需要日志？
                     // Quit | Eof | IO(_) => {}
                     Quit => {} // client发送quit协议退出
-                    Eof | IO(_) => {
-                        log::warn!("{:?} disconnected. {:?}", metrics.biz(), e);
-                    }
+                    Eof | IO(_) => log::warn!("{:?} disconnected. {:?}", metrics.biz(), e),
+
                     // 发送异常信息给client：request在parse异常位置发送，response暂不发送
-                    _e => {
-                        *metrics.unsupport_cmd() += 1;
-                        log::warn!("{:?} disconnected. {:?}", metrics.biz(), _e);
+                    e => {
+                        stream::on_unexpected(metrics.biz());
+                        log::warn!("{:?} disconnected. {:?}", metrics.biz(), e);
                     }
                 }
             }

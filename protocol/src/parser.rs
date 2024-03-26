@@ -117,7 +117,7 @@ pub trait RequestProcessor {
 
 pub const MAX_DIRECT_HASH: i64 = i64::MAX;
 
-pub trait Commander<M: Metric<I>, I: MetricItem> {
+pub trait Commander<M: Metric<I>, I> {
     fn request_mut(&mut self) -> &mut HashedCommand;
     fn request(&self) -> &HashedCommand;
     // 请求所在的分片位置
@@ -126,23 +126,11 @@ pub trait Commander<M: Metric<I>, I: MetricItem> {
     fn ctx(&self) -> u64;
 }
 
-pub enum MetricName {
-    Read,
-    Write,
-    NilConvert,
-    Cache, // cache(mc)命中率
-    Inconsist,
-}
-pub trait Metric<Item: MetricItem> {
-    fn get(&self, name: MetricName) -> &mut Item;
-    #[inline]
-    fn cache(&self, hit: bool) {
-        *self.get(MetricName::Cache) += hit;
-    }
-    #[inline]
-    fn inconsist(&self, c: i64) {
-        *self.get(MetricName::Inconsist) += c;
-    }
+pub struct MetricName;
+
+pub trait Metric<I> {
+    fn cache(&self, hit: bool);
+    fn inconsist(&self);
 }
 pub trait MetricItem: std::ops::AddAssign<i64> + std::ops::AddAssign<bool> {}
 impl<T: std::ops::AddAssign<i64> + std::ops::AddAssign<bool>> MetricItem for T {}

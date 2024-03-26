@@ -110,10 +110,7 @@ impl<P, Req> BackendChecker<P, Req> {
                     m_timeout += 1;
                     timeout += 1;
                 }
-                Error::UnexpectedData => {
-                    let mut unexpected_resp = path_addr.num("unexpected_resp");
-                    unexpected_resp += 1;
-                }
+                Error::UnexpectedData => crate::metric::on_unexpected(&self.addr),
                 _ => {}
             }
         }

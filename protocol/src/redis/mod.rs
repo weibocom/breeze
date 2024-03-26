@@ -7,8 +7,8 @@ pub(crate) mod packet;
 use crate::{
     redis::command::CommandType,
     redis::{error::RedisError, packet::RequestPacket},
-    Command, Commander, Error, HashedCommand, Metric, MetricItem, MetricName, Protocol,
-    RequestProcessor, Result, Stream, Writer,
+    Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
+    Result, Stream, Writer,
 };
 pub use packet::Packet;
 use sharding::hash::Hash;
@@ -209,7 +209,7 @@ impl Protocol for Redis {
 
                 // rsp不为ok，对need_bulk_num为true的cmd进行nil convert 统计
                 if cfg.need_bulk_num {
-                    *ctx.metric().get(MetricName::NilConvert) += 1;
+                    ctx.metric().inconsist();
                 }
             }
             // 有些请求，如mset，不需要bulk_num,说明只需要返回一个首个key的请求即可；这些响应直接吞噬。

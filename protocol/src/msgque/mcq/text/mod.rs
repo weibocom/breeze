@@ -69,21 +69,12 @@ impl McqText {
 
     // 协议内部的metric统计，全部放置于此
     #[inline]
-    fn metrics<C, M, I>(&self, request: &HashedCommand, response: &Command, metrics: &C)
+    fn metrics<C, M, I>(&self, _request: &HashedCommand, _response: &Command, _metrics: &C)
     where
         C: Commander<M, I>,
         M: Metric<I>,
         I: MetricItem,
     {
-        if response.ok() {
-            match request.operation() {
-                crate::Operation::Get | crate::Operation::Gets | crate::Operation::MGet => {
-                    *metrics.metric().get(crate::MetricName::Read) += 1
-                }
-                crate::Operation::Store => *metrics.metric().get(crate::MetricName::Write) += 1,
-                _ => {}
-            }
-        }
     }
 }
 

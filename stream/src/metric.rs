@@ -1,5 +1,5 @@
 use metrics::{Metric, Path};
-use protocol::{Metric as ProtoMetric, MetricName, Operation, OPS};
+use protocol::{Metric as ProtoMetric, Operation, OPS};
 macro_rules! define_metrics {
     ($($t:ident:$($name:ident-$key:expr),+);+) => {
         pub struct StreamMetrics {
@@ -66,30 +66,25 @@ macro_rules! define_metrics {
 }
 
 define_metrics!(
-    qps:    tx-tx, rx-rx, err-err, cps-cps, kps-kps, conn-conn, key-key, nilconvert-nilconvert, inconsist-inconsist;
-    num:    conn_num-conn, read-read, write-write, invalid_cmd-invalid_cmd, unsupport_cmd-unsupport_cmd;
+    qps:    tx-tx, rx-rx, cps-cps, kps-kps, conn-conn, key-key;
+    num:    conn_num-conn;
     rtt:    avg-avg;
-    ratio:  cache-hit;
-    status: listen_failed-listen_failed
+    ratio:  cache-hit
 );
 
 impl ProtoMetric<Metric> for StreamMetrics {
-    #[inline]
-    fn get(&self, name: MetricName) -> &mut Metric {
-        match name {
-            MetricName::Read => self.read(),
-            MetricName::Write => self.write(),
-            MetricName::NilConvert => self.nilconvert(),
-            MetricName::Cache => self.cache(),
-            MetricName::Inconsist => self.inconsist(),
-        }
-    }
     #[inline(always)]
     fn cache(&self, hit: bool) {
         *self.cache() += hit;
     }
     #[inline(always)]
-    fn inconsist(&self, c: i64) {
-        *self.inconsist() += c;
+    fn inconsist(&self) {
+        on_unexpected(self.biz());
     }
+}
+
+pub fn on_unexpected<D: std::fmt::Debug>(path: D) {
+    log::error!("unexpected metric: {:?}", path);
+    let mut unexpect = Path::base().num("unexpect");
+    unexpect += 1;
 }
