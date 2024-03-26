@@ -3,7 +3,7 @@ use ds::ReadGuard;
 use endpoint::{Endpoint, Topology};
 use protocol::{
     callback::{Callback, CallbackPtr},
-    request::Request,
+    ContextPtr as Request,
 };
 use sharding::hash::{Hash, HashKey};
 

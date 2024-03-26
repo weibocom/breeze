@@ -1,8 +1,8 @@
 // 不要轻易变更这里面的测试用例，除非你知道你在做什么。拉相关同学进行方案评审。
 use std::mem::size_of;
 
-use protocol::{callback::CallbackContext, Parser};
-use stream::{Backend, BackendInner, Request};
+use protocol::{callback::CallbackContext, ContextPtr as Request, Parser};
+use stream::{Backend, BackendInner};
 type Endpoint = Backend<Request>;
 type Topology = endpoint::TopologyProtocol<Endpoint, Parser>;
 //type RefreshTopology = endpoint::RefreshTopology<Topology>;

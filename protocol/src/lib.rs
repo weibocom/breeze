@@ -9,12 +9,14 @@ pub mod redis;
 pub use redis::RedisFlager;
 //for test
 pub use redis::packet::Packet;
-pub mod req;
 //pub mod resp;
 pub mod kv;
 pub mod msgque;
 pub mod uuid;
 pub mod vector;
+
+mod packet;
+pub use packet::*;
 
 pub use flag::*;
 pub use parser::Proto as Protocol;
@@ -27,12 +29,12 @@ pub use ds::{Bit, Ext};
 mod stream;
 pub use stream::*;
 
-pub use req::*;
+mod request;
+pub use request::*;
 mod operation;
 pub use operation::*;
 
 pub mod callback;
-pub mod request;
 
 #[derive(Copy, Clone)]
 pub enum Resource {

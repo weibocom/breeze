@@ -7,10 +7,9 @@ use std::{
     },
 };
 
-use crate::BackendQuota;
 use ds::{time::Instant, AtomicWaker};
 
-use crate::{request::Request, Command, Error, HashedCommand};
+use crate::{BackendQuota, Command, ContextPtr as Request, Error, HashedCommand};
 
 //const REQ_TRY_MAX_COUNT: u8 = 3;
 

@@ -12,12 +12,12 @@ use crate::topology::TopologyCheck;
 use ds::{time::Instant, AtomicWaker};
 use endpoint::Topology;
 use protocol::Error::FlushOnClose;
-use protocol::{HashedCommand, Protocol, Result, Stream};
+use protocol::{ContextPtr as Request, HashedCommand, Protocol, Result, Stream};
 
 use crate::{
     arena::CallbackContextArena,
     context::{CallbackContextPtr, ResponseContext},
-    CallbackContext, Request, StreamMetrics,
+    CallbackContext, StreamMetrics,
 };
 
 pub async fn copy_bidirectional<C, P, T>(
@@ -246,7 +246,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
         let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
 
-        use protocol::req::Request as RequestTrait;
+        use protocol::Request as RequestTrait;
         if req.noforward() {
             req.on_noforward();
         } else {

@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use discovery::{TopologyReadGuard, TopologyWriteGuard};
 use metrics::Path;
-use protocol::{Parser, Result};
+use protocol::{ContextPtr as Request, Parser, Result};
 use stream::pipeline::copy_bidirectional;
-use stream::{Backend, CheckedTopology, Request, StreamMetrics};
+use stream::{Backend, CheckedTopology, StreamMetrics};
 
 type Endpoint = Backend<Request>;
 type Topology = endpoint::TopologyProtocol<Endpoint, Parser>;

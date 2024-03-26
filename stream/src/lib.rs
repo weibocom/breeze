@@ -2,7 +2,6 @@
 pub mod handler;
 pub mod pipeline;
 pub use protocol::callback::*;
-pub use protocol::request::*;
 mod reconn;
 
 mod context;

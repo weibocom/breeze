@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, ptr::NonNull, sync::Arc};
 
 use protocol::{
-    callback::CallbackContext, request::Request, Command, Commander, HashedCommand, Metric,
+    callback::CallbackContext, Command, Commander, ContextPtr as Request, HashedCommand, Metric,
     MetricItem, Protocol,
 };
 
