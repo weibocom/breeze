@@ -1,6 +1,7 @@
 /// 按需支持fnv1系列所有相关的hash算法，目前支持fnv1_32、fnv1a_64;
 /// 对应算法源自twemproxy
 
+/// fnv1_32相关
 #[derive(Debug, Default, Clone)]
 pub struct Fnv1F32;
 
@@ -18,6 +19,8 @@ impl super::Hash for Fnv1F32 {
     }
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+/// fnv1a_64相关
 #[derive(Debug, Default, Clone)]
 pub struct Fnv1aF64;
 
