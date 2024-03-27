@@ -3,6 +3,7 @@ use std::{
     io::{BufWriter, Write},
 };
 
+#[ignore]
 #[test]
 fn build_redis_cfg() {
     let start_port = 58064;
@@ -20,7 +21,7 @@ fn build_redis_cfg() {
     let mut shards = String::with_capacity(4096);
     for p in start_port..end_port {
         shards += &format!(
-            "  - rm{}.eos.grid.sina.com.cn:{},rs{}.hebe.grid.sina.com.cn:{} node{}\n",
+            "  - m{}.test:{},s{}.:{} node{}\n",
             p,
             p,
             p,
@@ -50,7 +51,7 @@ fn build_redis_cfg() {
     let mut shards_4_table = String::with_capacity(8192);
     for p in start_port..end_port {
         shards_4_table += &format!(
-            "rm{}.eos.grid.sina.com.cn:{},rs{}.hebe.grid.sina.com.cn:{} node{}\n",
+            "m{}.test:{},s{}.test:{} node{}\n",
             p,
             p,
             p,
