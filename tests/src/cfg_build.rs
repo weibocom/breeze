@@ -10,7 +10,7 @@ fn build_redis_cfg() {
     let end_port = 58319 + 1;
     let hash = "fnv1a_64";
     let dist = "ketama_origin";
-    let namespace = "mapi";
+    let namespace = "testapi";
 
     let mut ports = String::with_capacity(1024);
     for p in start_port..end_port {
