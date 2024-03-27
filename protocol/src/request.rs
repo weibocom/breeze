@@ -68,7 +68,7 @@ pub trait Request:
     // 请求失败后，topo层面是否允许进行重试
     fn try_next(&mut self, goon: bool);
     // 请求失败后，协议层面是否允许进行重试
-    fn retry_on_rsp_notok(&mut self, retry: bool);
+    //fn retry_on_rsp_notok(&mut self, retry: bool);
     // 初始化quota
     fn quota(&mut self, quota: BackendQuota);
 }
@@ -114,10 +114,10 @@ impl crate::Request for ContextPtr {
     fn try_next(&mut self, goon: bool) {
         self.ctx().try_next = goon;
     }
-    #[inline]
-    fn retry_on_rsp_notok(&mut self, retry: bool) {
-        self.ctx().retry_on_rsp_notok = retry;
-    }
+    //#[inline]
+    //fn retry_on_rsp_notok(&mut self, retry: bool) {
+    //    self.ctx().retry_on_rsp_notok = retry;
+    //}
     #[inline]
     fn quota(&mut self, quota: BackendQuota) {
         self.ctx().quota(quota);

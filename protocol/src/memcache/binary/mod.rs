@@ -20,7 +20,6 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn config(&self) -> crate::Config {
         crate::Config {
-            retry_on_rsp_notok: true,
             ..Default::default()
         }
     }
@@ -72,7 +71,9 @@ impl Protocol for MemcacheBinary {
             if len >= pl {
                 log::debug!("++++ response found:{r:?}");
                 return if !r.is_quiet() {
-                    Ok(Some(Command::from(r.status_ok(), data.take(pl))))
+                    // 不能retry的请求等同于ok。ok的含义指的是response可以也应该直接返回给调用方。
+                    let ok = r.status_ok() || !r.can_retry_on_rsp_notok();
+                    Ok(Some(Command::from(ok, data.take(pl))))
                 } else {
                     // quite rsp只有一种情况：出错了;但这种错误往往并不需要断连接：如deleteq的not-found,setq的not-stored。
                     // quite请求是异步处理，可以考虑直接忽略即可，先忽略deleteq，后续setq。

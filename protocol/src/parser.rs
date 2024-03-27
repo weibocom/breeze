@@ -46,7 +46,7 @@ pub struct ResOption {
 pub struct Config {
     pub need_auth: bool,
     pub pipeline: bool,
-    pub retry_on_rsp_notok: bool,
+    //pub retry_on_rsp_notok: bool,
 }
 
 pub enum HandShake {
