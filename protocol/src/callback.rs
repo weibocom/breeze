@@ -1,8 +1,7 @@
 use std::{
-    mem::MaybeUninit,
-    ptr::{self, NonNull},
+    ptr::NonNull,
     sync::{
-        atomic::{AtomicBool, AtomicU8, Ordering::*},
+        atomic::{AtomicBool, Ordering::*},
         Arc,
     },
 };
@@ -30,17 +29,16 @@ impl Callback {
 
 pub struct CallbackContext {
     pub(crate) flag: crate::Context,
-    async_mode: bool,                    // 是否是异步请求
-    done: AtomicBool,                    // 当前模式请求是否完成
-    inited: AtomicBool,                  // response是否已经初始化
+    async_mode: bool, // 是否是异步请求
+    done: AtomicBool, // 当前模式请求是否完成
+    //inited: AtomicBool,                  // response是否已经初始化
     pub(crate) try_next: bool,           // 请求失败后，topo层面是否允许重试
     pub(crate) retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
     pub(crate) write_back: bool,         // 请求结束后，是否需要回写。
-    first: bool,                         // 当前请求是否是所有子请求的第一个
     last: bool,                          // 当前请求是否是所有子请求的最后一个
-    tries: AtomicU8,
+    tries: u8,
     request: HashedCommand,
-    response: MaybeUninit<Command>,
+    response: Option<Command>,
     start: Instant, // 请求的开始时间
     waker: *const Arc<AtomicWaker>,
     callback: CallbackPtr,
@@ -53,24 +51,23 @@ impl CallbackContext {
         req: HashedCommand,
         waker: *const Arc<AtomicWaker>,
         cb: CallbackPtr,
-        first: bool,
+        _first: bool,
         last: bool,
         retry_on_rsp_notok: bool,
     ) -> Self {
         log::debug!("request prepared:{}", req);
         let now = Instant::now();
         Self {
-            first,
             last,
             flag: crate::Context::default(),
             done: AtomicBool::new(false),
-            inited: AtomicBool::new(false),
+            //inited: AtomicBool::new(false),
             async_mode: false,
             try_next: false,
             retry_on_rsp_notok,
             write_back: false,
             request: req,
-            response: MaybeUninit::uninit(),
+            response: None,
             callback: cb,
             start: now,
             tries: 0.into(),
@@ -114,26 +111,20 @@ impl CallbackContext {
         // 异步请求不关注response。
         if !self.async_mode {
             debug_assert!(!self.complete(), "{:?}", self);
-            self.swap_response(resp);
+            self.response = Some(resp);
         }
         self.on_done();
     }
 
     #[inline]
     pub fn take_response(&mut self) -> Option<Command> {
-        match self.inited.compare_exchange(true, false, AcqRel, Acquire) {
-            Ok(_) => unsafe { Some(ptr::read(self.response.as_mut_ptr())) },
-            Err(_) => {
-                self.write_back = false;
-                //assert!(!self.ctx.try_next && !self.ctx.write_back, "{}", self);
-                None
-            }
-        }
+        self.response.take()
     }
 
     #[inline]
-    fn need_gone(&self) -> bool {
+    fn need_gone(&mut self) -> bool {
         if !self.async_mode {
+            self.tries += 1;
             // 当前重试条件为 rsp == None || ("mc" && !rsp.ok())
             if self.inited() {
                 // 优先筛出正常的请求，便于理解
@@ -146,7 +137,10 @@ impl CallbackContext {
                     return false;
                 }
             }
-            self.try_next && self.tries.fetch_add(1, Release) < 1
+            if self.tries > 2 {
+                println!("tries more than 2 times:{self:?}");
+            }
+            self.try_next && self.tries < 2
         } else {
             // write back请求
             self.write_back
@@ -211,7 +205,7 @@ impl CallbackContext {
     // 在使用前，先得判断inited
     #[inline]
     unsafe fn unchecked_response(&self) -> &Command {
-        self.response.assume_init_ref()
+        self.response.as_ref().expect("not init")
     }
     #[inline]
     pub fn complete(&self) -> bool {
@@ -220,7 +214,8 @@ impl CallbackContext {
     }
     #[inline]
     pub fn inited(&self) -> bool {
-        self.inited.load(Acquire)
+        self.response.is_some()
+        //self.inited.load(Acquire)
     }
     #[inline]
     pub fn is_write_back(&self) -> bool {
@@ -263,20 +258,6 @@ impl CallbackContext {
         self.request = req;
     }
     #[inline]
-    fn swap_response(&mut self, resp: Command) {
-        if self.inited() {
-            log::debug!("drop response:{}", unsafe { self.unchecked_response() });
-            unsafe { std::ptr::replace(self.response.as_mut_ptr(), resp) };
-        } else {
-            self.response.write(resp);
-            self.inited.store(true, Release);
-        }
-    }
-    #[inline]
-    pub fn first(&self) -> bool {
-        self.first
-    }
-    #[inline]
     pub fn last(&self) -> bool {
         self.last
     }
@@ -290,7 +271,7 @@ impl Drop for CallbackContext {
     #[inline]
     fn drop(&mut self) {
         debug_assert!(*self.done.get_mut(), "{}", self);
-        debug_assert!(!*self.inited.get_mut(), "response not taken:{:?}", self);
+        debug_assert!(!self.inited(), "response not taken:{:?}", self);
         // 可以尝试检查double free
         // 在debug环境中，设置done为false
         debug_assert_eq!(*self.done.get_mut() = false, ());
@@ -303,16 +284,16 @@ impl Display for CallbackContext {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "async mod:{} done:{} init:{} try_next:{} retry_on_notok:{} write back:{} flag:{} tries:{} => {:?}",
+            "async mod:{} done:{} try_next:{} retry_on_notok:{} write back:{} flag:{} tries:{} => {:?} ==> {:?}",
             self.async_mode,
             self.done.load(Acquire),
-            self.inited(),
             self.try_next,
             self.retry_on_rsp_notok,
             self.write_back,
             self.flag,
-            self.tries.load(Acquire),
+            self.tries,
             self.request,
+            self.response,
         )
     }
 }
