@@ -34,9 +34,7 @@ procs::topology_dispatcher! {
         fn build<P:Protocol>(addr: &str, p: P, r: Resource, service: &str, to: Timeout) -> Self {Self::build_o(addr, p, r, service, to, Default::default())}
     } => where P:Protocol, E:Endpoint<Item = R> + Inited, R: Request
 
-    pub trait Topology : Endpoint + Hash{
-        fn exp_sec(&self) -> u32 {86400}
-    } => where P:Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, P>: Endpoint
+    pub trait Topology : Endpoint + Hash{} => where P:Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, P>: Endpoint
 
     trait Inited {
         fn inited(&self) -> bool;

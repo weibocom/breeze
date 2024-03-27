@@ -76,10 +76,6 @@ where
     Req: Request,
     P: Protocol,
 {
-    #[inline]
-    fn exp_sec(&self) -> u32 {
-        self.exp_sec
-    }
 }
 
 impl<E, Req, P> Endpoint for CacheService<E, P>
@@ -106,6 +102,10 @@ where
                 if let Some(quota) = self.streams.quota() {
                     req.quota(quota);
                 }
+                use ds::Ext;
+                debug_assert!(req.flag().ext() == 0, "{req:?}");
+                // 用来设置回种时的过期时间
+                *req.flag_mut().ext_mut() = self.exp_sec as u64;
             }
             self.context_get(&mut ctx, &req)
         };

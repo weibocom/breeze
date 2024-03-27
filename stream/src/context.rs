@@ -27,7 +27,6 @@ impl CallbackContextPtr {
         &mut self,
         parser: &P,
         resp: Command,
-        exp: u32,
         metric: &mut Arc<M>,
     ) {
         self.async_mode();
@@ -35,7 +34,7 @@ impl CallbackContextPtr {
             assert!(false, "write back"); // 此处的dist_fn逻辑上暂时不会用
             0
         });
-        if let Some(new) = parser.build_writeback_request(&mut rsp_ctx, &resp, exp) {
+        if let Some(new) = parser.build_writeback_request(&mut rsp_ctx, &resp) {
             self.with_request(new);
         }
         log::debug!("start write back:{}", &**self);

@@ -237,19 +237,6 @@ impl Protocol for Kv {
         Ok(())
     }
 
-    fn build_writeback_request<C, M, I>(
-        &self,
-        _ctx: &mut C,
-        _response: &crate::Command,
-        _: u32,
-    ) -> Option<crate::HashedCommand>
-    where
-        C: crate::Commander<M, I>,
-        M: crate::Metric<I>,
-        I: crate::MetricItem,
-    {
-        None
-    }
 }
 
 impl Kv {

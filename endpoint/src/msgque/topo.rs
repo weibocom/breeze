@@ -124,12 +124,6 @@ where
     Req: Request,
     P: Protocol,
 {
-    #[inline]
-    fn exp_sec(&self) -> u32 {
-        log::error!("msg queue does't support expire");
-        assert!(false, "msg queue does't support expire");
-        0
-    }
 }
 
 //TODO: 验证的时候需要考虑512字节这种边界msg

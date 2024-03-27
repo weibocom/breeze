@@ -100,6 +100,7 @@ impl Namespace {
                         ns.slave_l1 = Vec::with_capacity(0);
                         log::info!("{} update slave l1: false", _namespace);
                     }
+                    ns.exptime = ns.exptime.max(3000); // 回种时间不能小于3000ms
                     Some(ns)
                 }
             }

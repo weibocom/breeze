@@ -78,9 +78,4 @@ impl<T: Topology> Hash for CheckedTopology<T> {
     }
 }
 
-impl<T: Topology> Topology for CheckedTopology<T> {
-    #[inline(always)]
-    fn exp_sec(&self) -> u32 {
-        self.top.exp_sec()
-    }
-}
+impl<T: Topology> Topology for CheckedTopology<T> {}

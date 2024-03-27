@@ -172,7 +172,7 @@ where
             let op = ctx.request().operation();
             if let Some(rsp) = response {
                 if ctx.is_write_back() && rsp.ok() {
-                    ctx.async_write_back(&self.parser, rsp, self.top.exp_sec(), &mut self.metrics);
+                    ctx.async_write_back(&self.parser, rsp, &mut self.metrics);
                     self.async_pending.push_back(ctx);
                 }
             }

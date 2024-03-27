@@ -175,7 +175,6 @@ impl Protocol for MemcacheBinary {
         &self,
         ctx: &mut C,
         response: &Command,
-        exp_sec: u32,
     ) -> Option<HashedCommand>
     where
         C: Commander<M, I>,
@@ -184,7 +183,7 @@ impl Protocol for MemcacheBinary {
     {
         if ctx.request_mut().operation().is_retrival() {
             let req = &*ctx.request();
-            self.build_write_back_get(req, response, exp_sec)
+            self.build_write_back_get(req, response)
         } else {
             self.build_write_back_inplace(ctx.request_mut());
             None
@@ -226,12 +225,7 @@ impl MemcacheBinary {
         assert!(req.sentonly(), "req: {:?}", req);
     }
     #[inline]
-    fn build_write_back_get(
-        &self,
-        req: &HashedCommand,
-        resp: &Command,
-        exp_sec: u32,
-    ) -> Option<HashedCommand> {
+    fn build_write_back_get(&self, req: &HashedCommand, resp: &Command) -> Option<HashedCommand> {
         // 轮询response的cmds，构建回写request
         // 只为status为ok的resp构建回种req
         assert!(resp.ok(), "resp: {:?}", resp.data());
@@ -261,6 +255,9 @@ impl MemcacheBinary {
 
         /*============= 构建request body =============*/
         rsp_cmd.extra_or_flag().copy_to_vec(&mut req_cmd); // extra之flag: [24, 27]
+        use ds::Ext;
+        let exp_sec = req.flag().ext() as u32;
+        debug_assert!(exp_sec > 0, "{req:?}");
         req_cmd.write_u32(exp_sec); // extra之expiration：[28,31]
         r_data.key().copy_to_vec(&mut req_cmd);
         rsp_cmd.value().copy_to_vec(&mut req_cmd);

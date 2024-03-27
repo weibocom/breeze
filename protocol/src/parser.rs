@@ -92,7 +92,6 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         &self,
         _ctx: &mut C,
         _response: &Command,
-        _: u32,
     ) -> Option<HashedCommand>
     where
         C: Commander<M, I>,
