@@ -17,6 +17,7 @@ pub struct Namespace {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Basic {
     /// msgque 可以读写的mq的名字
+    #[serde(default)]
     pub(crate) keys: String,
     ///eg: mcq2,mcq3
     #[serde(default)]
