@@ -66,17 +66,15 @@ async fn discovery_init(ctx: &Context, rx: service::Receiver) -> Result<()> {
     let service_pool_socks_url = ctx.service_pool_socks_url();
 
     //watch_discovery之前执行清理sock
-    if !ctx.disable_clean_service_path {
-        let mut dir = tokio::fs::read_dir(&ctx.service_path).await?;
-        while let Some(child) = dir.next_entry().await? {
-            let path = child.path();
-            //从vintage获取socklist，或者存在unixsock，需要事先清理
-            if service_pool_socks_url.len() > 1
-                || path.to_str().map(|s| s.ends_with(".sock")).unwrap_or(false)
-            {
-                log::info!("{:?} exists. deleting", path);
-                let _ = tokio::fs::remove_file(path).await;
-            }
+    let mut dir = tokio::fs::read_dir(&ctx.service_path).await?;
+    while let Some(child) = dir.next_entry().await? {
+        let path = child.path();
+        //从vintage获取socklist，或者存在unixsock，需要事先清理
+        if service_pool_socks_url.len() > 1
+            || path.to_str().map(|s| s.ends_with(".sock")).unwrap_or(false)
+        {
+            log::info!("{:?} exists. deleting", path);
+            let _ = tokio::fs::remove_file(path).await;
         }
     }
 
