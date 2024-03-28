@@ -130,9 +130,7 @@ impl Protocol for MemcacheBinary {
             assert!(rsp.len() > 0, "empty rsp:{:?}", rsp);
 
             // 验证Opaque是否相同. 不相同说明数据不一致
-            if ctx.request().opaque() != rsp.opaque() {
-                ctx.metric().inconsist(1);
-            }
+            self.check(ctx.request(), rsp);
 
             // 如果quite 请求没拿到数据，直接忽略
             //if QUITE_GET_TABLE[old_op_code as usize] == 1 && !rsp.ok() {
@@ -140,7 +138,6 @@ impl Protocol for MemcacheBinary {
                 return Ok(());
             }
             log::debug!("+++ will write mc rsp:{:?}", rsp.data());
-            //let data = rsp.data_mut();
             rsp.restore_op(old_op_code);
             w.write_slice(rsp, 0)?;
 

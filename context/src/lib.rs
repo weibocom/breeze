@@ -73,6 +73,11 @@ pub struct ContextOption {
     )]
     pub service_path: String,
 
+    #[clap(
+        long,
+        help("clean path for unix domain socket ."),
+        default_value("false")
+    )]
     #[clap(short, long, help("starting in upgrade mode"))]
     upgrade: bool,
 

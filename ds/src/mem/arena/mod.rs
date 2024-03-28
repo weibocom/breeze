@@ -4,6 +4,9 @@ pub use ephemera::*;
 mod cache;
 pub use cache::*;
 
+mod vec;
+pub(crate) use vec::*;
+
 use std::ptr::NonNull;
 pub trait Allocator<T> {
     fn alloc(&self, t: T) -> NonNull<T>;

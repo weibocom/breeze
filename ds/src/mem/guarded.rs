@@ -95,6 +95,17 @@ impl DerefMut for MemGuard {
         &mut self.mem
     }
 }
+use crate::{Merge, Range, Slicer};
+impl Slicer for MemGuard {
+    #[inline]
+    fn len(&self) -> usize {
+        self.mem.len()
+    }
+    #[inline]
+    fn with_seg<R: Range, O: Merge>(&self, r: R, v: impl FnMut(&[u8], usize, bool) -> O) -> O {
+        self.mem.with_seg(r, v)
+    }
+}
 
 impl MemGuard {
     #[inline]
