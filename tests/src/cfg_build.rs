@@ -3,13 +3,14 @@ use std::{
     io::{BufWriter, Write},
 };
 
+#[ignore]
 #[test]
 fn build_redis_cfg() {
     let start_port = 58064;
     let end_port = 58319 + 1;
     let hash = "fnv1a_64";
     let dist = "ketama_origin";
-    let namespace = "mapi";
+    let namespace = "testapi";
 
     let mut ports = String::with_capacity(1024);
     for p in start_port..end_port {
@@ -20,7 +21,7 @@ fn build_redis_cfg() {
     let mut shards = String::with_capacity(4096);
     for p in start_port..end_port {
         shards += &format!(
-            "  - rm{}.eos.grid.sina.com.cn:{},rs{}.hebe.grid.sina.com.cn:{} node{}\n",
+            "  - m{}.test:{},s{}.:{} node{}\n",
             p,
             p,
             p,
@@ -41,7 +42,7 @@ fn build_redis_cfg() {
     cfg_str += "backends:\n";
     cfg_str += &shards;
 
-    let cfg_file = format!("../static.{}.cfg", namespace);
+    let cfg_file = format!("/tmp/static.{}.cfg", namespace);
     let file = File::create(cfg_file).unwrap();
     let mut writer = BufWriter::new(file);
     writer.write_all(cfg_str.as_bytes()).unwrap();
@@ -50,7 +51,7 @@ fn build_redis_cfg() {
     let mut shards_4_table = String::with_capacity(8192);
     for p in start_port..end_port {
         shards_4_table += &format!(
-            "rm{}.eos.grid.sina.com.cn:{},rs{}.hebe.grid.sina.com.cn:{} node{}\n",
+            "m{}.test:{},s{}.test:{} node{}\n",
             p,
             p,
             p,
@@ -58,7 +59,7 @@ fn build_redis_cfg() {
             (p - start_port + 1)
         );
     }
-    let cfg_file = format!("../static.{}.cfg.table", namespace);
+    let cfg_file = format!("/tmp/static.{}.cfg.table", namespace);
     let file = File::create(cfg_file).unwrap();
     let mut writer = BufWriter::new(file);
     writer
