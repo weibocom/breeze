@@ -42,7 +42,7 @@ fn build_redis_cfg() {
     cfg_str += "backends:\n";
     cfg_str += &shards;
 
-    let cfg_file = format!("../static.{}.cfg", namespace);
+    let cfg_file = format!("/tmp/static.{}.cfg", namespace);
     let file = File::create(cfg_file).unwrap();
     let mut writer = BufWriter::new(file);
     writer.write_all(cfg_str.as_bytes()).unwrap();
@@ -59,7 +59,7 @@ fn build_redis_cfg() {
             (p - start_port + 1)
         );
     }
-    let cfg_file = format!("../static.{}.cfg.table", namespace);
+    let cfg_file = format!("/tmp/static.{}.cfg.table", namespace);
     let file = File::create(cfg_file).unwrap();
     let mut writer = BufWriter::new(file);
     writer
