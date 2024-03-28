@@ -53,6 +53,10 @@ pub mod prelude {
 // 如果没有找到value，且无异常，则返回该响应内容
 lazy_static! {
     static ref NOT_FOUND: Vec<u8> = b"not found".to_vec();
+    static ref TOP_INVALID_RSP: RingSlice =
+        RingSlice::from_slice(b"invalid request: year out of index");
+    static ref REQ_INVALID_RSP: RingSlice = RingSlice::from_slice(b"invalid request");
+    static ref UNKNOWN_RSP: RingSlice = RingSlice::from_slice(b"server may unavailable");
 }
 
 #[derive(Clone, Default)]
@@ -171,18 +175,6 @@ impl Protocol for Kv {
         }
 
         let old_op_code = ctx.request().op_code() as u8;
-
-        // 如果原始请求是quite_get请求，并且not found，则不回写。
-        // if let Some(rsp) = response {
-        //     log::debug!(
-        //         "+++ sent to client for req:{:?}, rsp:{:?}",
-        //         ctx.request(),
-        //         rsp
-        //     );
-        //     // mysql 请求到正确的数据，才会转换并write
-        //     self.write_mc_packet(ctx.request(), Some(rsp), w)?;
-        //     return Ok(());
-        // }
 
         // 先进行metrics统计
         //self.metrics(ctx.request(), None, ctx);
@@ -436,19 +428,23 @@ impl Kv {
             OP_GET | OP_GETQ => (None, Some(MARKER_BYTE_ARR)),
             _ => (None, None),
         };
-        let err_response;
-        let response = match ctx.ctx().error {
+
+        let response: Option<&RingSlice> = match ctx.ctx().error {
             ContextStatus::TopInvalid => {
                 assert!(response.is_none());
-                err_response = Some(RingSlice::from_slice(b"invalid request: year out of index"));
-                err_response.as_ref()
+                Some(&TOP_INVALID_RSP)
             }
             ContextStatus::ReqInvalid => {
                 assert!(response.is_none());
-                err_response = Some(RingSlice::from_slice(b"invalid request"));
-                err_response.as_ref()
+                Some(&REQ_INVALID_RSP)
             }
-            ContextStatus::Ok => response.map(|r| r.deref().deref()),
+            ContextStatus::Ok => {
+                if status == RespStatus::NoError || response.is_some() {
+                    response.map(|r| r.deref().deref())
+                } else {
+                    Some(&UNKNOWN_RSP)
+                }
+            }
         };
         if status != RespStatus::NoError && status != RespStatus::NotFound {
             log::error!(
