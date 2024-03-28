@@ -164,13 +164,13 @@ impl CommandProperties {
         cmd.push(b'*');
         // 1个cmd, 1个key，1个value。一共3个bulk
         cmd.push((2 + self.has_val as u8) + b'0');
-        cmd.write("\r\n");
+        cmd.write(b"\r\n");
         cmd.push(b'$');
         cmd.write(&self.mname_len);
-        cmd.write("\r\n");
-        cmd.write(self.mname);
-        cmd.write("\r\n");
-        cmd.write_slice(data);
+        cmd.write(b"\r\n");
+        cmd.write(&self.mname);
+        cmd.write(b"\r\n");
+        cmd.write(data);
         //data.copy_to_vec(&mut cmd);
         use super::flag::RedisFlager;
         if first {

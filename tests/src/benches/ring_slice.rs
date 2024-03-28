@@ -11,6 +11,7 @@ pub(super) fn bench_iter(c: &mut Criterion) {
     let len = slice.len();
     let mut group = c.benchmark_group("ring_slice_iter");
     let rs = RingSlice::from(slice.as_ptr(), slice.len(), 0, len);
+    let seg = ds::RingSlicer::from(slice.as_ptr(), slice.len(), 0, len);
     group.bench_function("vec", |b| {
         b.iter(|| {
             black_box({
@@ -83,6 +84,15 @@ pub(super) fn bench_iter(c: &mut Criterion) {
             });
         });
     });
+    group.bench_function("fold_seg", |b| {
+        b.iter(|| {
+            black_box({
+                seg.fold(0, 0u64, |t, v| {
+                    *t += v as u64;
+                })
+            });
+        });
+    });
     group.bench_function("fold", |b| {
         b.iter(|| {
             black_box({
@@ -133,7 +143,7 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
                 let mut t = 0u64;
                 for i in 0..runs {
                     let mut buf = [0u8; 8];
-                    rs.copy_to_r(&mut buf[..], i..i + 8);
+                    rs.copy_to_r(i..i + 8, &mut buf[..]);
                     t = t.wrapping_add(u64::from_le_bytes(buf));
                 }
                 t
@@ -157,7 +167,7 @@ pub(super) fn bench_read_num(c: &mut Criterion) {
                 let mut t = 0u64;
                 for i in 0..runs {
                     let mut buf = [0u8; 8];
-                    rs.copy_to_r(&mut buf[..], i..i + 8);
+                    rs.copy_to_r(i..i + 8, &mut buf[..]);
                     t = t.wrapping_add(u64::from_be_bytes(buf));
                 }
                 t
@@ -226,7 +236,7 @@ pub(super) fn bench_copy(c: &mut Criterion) {
         b.iter(|| {
             black_box({
                 for i in 0..runs {
-                    rs.copy_to_r(&mut dst[..], i..i + 64);
+                    rs.copy_to_r(i..i + 64, &mut dst[..]);
                 }
             });
         });

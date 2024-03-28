@@ -4,6 +4,9 @@ pub use buffer::*;
 mod resized;
 pub use resized::*;
 
+mod slice;
+pub use slice::*;
+
 mod ring_slice;
 pub use ring_slice::*;
 
@@ -17,9 +20,6 @@ mod malloc;
 pub use malloc::*;
 
 pub mod arena;
-
-mod bytes;
-pub use self::bytes::*;
 
 use std::sync::atomic::{AtomicI64, Ordering::Relaxed};
 pub static BUF_TX: Buffers = Buffers::new();

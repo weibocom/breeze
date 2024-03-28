@@ -121,16 +121,6 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
     fn pending(&self) -> usize {
         self.buf.len()
     }
-    #[inline]
-    fn write(&mut self, data: &[u8]) -> protocol::Result<()> {
-        if data.len() <= 4 {
-            self.buf.write(data);
-        } else {
-            let mut ctx = Context::from_waker(&NOOP);
-            let _ = Pin::new(self).poll_write(&mut ctx, data);
-        }
-        Ok(())
-    }
     // hint: 提示可能优先写入到cache
     #[inline]
     fn cache(&mut self, hint: bool) {
@@ -147,22 +137,24 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> protocol::Writer for Stream<S> {
         self.rx_buf.pending() == 0
     }
 }
-impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::BufWriter for Stream<S> {
+use ds::{Range, Slicer};
+impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::Writer for Stream<S> {
     #[inline]
     fn write_all(&mut self, data: &[u8]) -> std::io::Result<()> {
         if data.len() <= 4 {
             self.buf.write(data);
         } else {
             let mut ctx = Context::from_waker(&NOOP);
-            let _ = Pin::new(self).poll_write(&mut ctx, data);
+            let _ = Pin::new(self).poll_write(&mut ctx, data)?;
         }
         Ok(())
     }
-    #[inline]
-    fn write_seg_all(&mut self, buf0: &[u8], buf1: &[u8]) -> std::io::Result<()> {
-        self.buf.enable = true;
-        self.write_all(buf0)?;
-        self.write_all(buf1)
+    #[inline(always)]
+    fn write_r<D: Slicer, R: Range>(&mut self, r: R, slicer: &D) -> std::io::Result<()> {
+        slicer.with_seg(r, |data, _oft, seg| {
+            self.buf.enable |= seg;
+            self.write_all(data)
+        })
     }
 }
 impl<S> protocol::BufRead for Stream<S> {
