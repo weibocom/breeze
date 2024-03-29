@@ -1,5 +1,4 @@
 use ds::{cow, CowReadHandle, CowWriteHandle};
-use metrics::{Metric, Path};
 
 use std::{
     ops::Deref,
@@ -9,13 +8,11 @@ use std::{
     },
 };
 
-use crate::path::GetNamespace;
-
 pub trait TopologyWrite {
     fn update(&mut self, name: &str, cfg: &str);
     #[inline]
-    fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
-        vec![("", cfg)]
+    fn disgroup<'a>(&self, path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)> {
+        vec![(path, cfg)]
     }
     // 部分场景下，配置更新后，还需要load 命名服务，比如dns。
     #[inline]
@@ -36,15 +33,12 @@ where
     let (tx, rx) = cow(t);
 
     let updates = Arc::new(AtomicUsize::new(0));
-
-    let path = Path::new(vec!["any", service.namespace()]);
     (
         TopologyWriteGuard {
             updating: None,
             inner: tx,
             service: service.to_string(),
             updates: updates.clone(),
-            update_num: path.num("top_updated"),
         },
         TopologyReadGuard { inner: rx, updates },
     )
@@ -79,7 +73,6 @@ where
     inner: CowWriteHandle<T>,
     service: String,
     updates: Arc<AtomicUsize>,
-    update_num: Metric,
 }
 
 impl<T> Deref for TopologyReadGuard<T> {
@@ -113,7 +106,6 @@ where
     T: Clone,
 {
     fn update_inner(&mut self, f: impl Fn(&mut T) -> bool) -> bool {
-        self.update_num += 1;
         let mut t = self.updating.take().unwrap_or_else(|| self.inner.copy());
         if !f(&mut t) {
             let _ = self.updating.insert(t);
