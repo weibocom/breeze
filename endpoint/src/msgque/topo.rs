@@ -20,10 +20,11 @@ use crate::{Endpoint, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};
 use std::sync::atomic::Ordering::Relaxed;
 
-// 读miss后的重试次数
-const READ_RETRY_COUNT: usize = 2;
-// 写失败后的重试次数
-const WRITE_RETRY_COUNT: usize = 3;
+// TODO 目前重试暂时都设置为1，因为总的retries目前是1，需要讨论是否有必须要调大 fishermen
+// 读mq读空后，最大的尝试次数
+const MAX_RETRIES_READ: usize = 1;
+// 写mq失败后，最大尝试次数
+const MAX_RETRIES_WRITE: usize = 1;
 
 // const READ_OFFLINE_MQ: bool = true;
 
@@ -171,7 +172,7 @@ where
                 ctx.update_qid(qid as u16);
             }
             // 是否重试，按设置的读重试次数
-            req.try_next(tried_count < (READ_RETRY_COUNT - 1));
+            req.try_next(tried_count < MAX_RETRIES_READ);
             req.retry_on_rsp_notok(true);
             *req.mut_context() = ctx.ctx;
             log::debug!(
@@ -195,7 +196,7 @@ where
         let last_qid = ctx.get_last_qid(inited);
         let qid = self.writer_strategy.get_write_idx(req.len(), last_qid);
         ctx.update_qid(qid as u16);
-        req.try_next(tried_count < WRITE_RETRY_COUNT);
+        req.try_next(tried_count < MAX_RETRIES_WRITE);
         req.retry_on_rsp_notok(true);
         *req.mut_context() = ctx.ctx;
         log::debug!("+++ last qid:{:?}", last_qid);
@@ -228,21 +229,27 @@ where
 
         // 如果可以读下线queue，把最后一次访问的1%的概率留给访问下线队列，下线队列最多读20分钟
         if self.readers_offline.len() > 0
-            && tried_count == (READ_RETRY_COUNT - 1)
+            && tried_count == MAX_RETRIES_READ
             && self.can_read_offline.load(Relaxed)
         {
             // 请求空后，最后一次访问，1%的概率尝试访问offline队列
             let rand = THREAD_RNG.with(|rng| rng.borrow_mut().next_u32() % 100) as usize;
-            if rand % 100 == 1 {
+            if rand == 1 {
                 if self.offline_time.elapsed().as_secs() > OFFLINE_LIMIT_SECONDS {
                     self.can_read_offline.store(false, Relaxed);
+                    log::info!("+++ {} stop read offline", self);
                 }
-                return (true, rand % self.readers_offline.len());
+                let qid = rand % self.readers_offline.len();
+                log::debug!("+++ read offline:{}/{}/{}", tried_count, rand, qid);
+
+                return (true, qid);
             }
+            log::debug!("+++ tried count:{}, rand:{}", tried_count, rand);
         }
 
         // 不读下线队列，则按照既定策略获取下一个stream
         let qid = self.reader_strategy.get_read_idx();
+        log::debug!("+++ tried count:{}, still read online:{}", tried_count, qid);
         return (false, qid as usize);
     }
 }
@@ -315,6 +322,7 @@ where
         }
         if self.readers_offline.len() > 0 {
             self.offline_time = Instant::now();
+            self.can_read_offline.store(true, Relaxed);
         }
     }
 
@@ -426,24 +434,22 @@ where
     E: Endpoint,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut reader_str = String::with_capacity(256);
-        let mut writers_str = String::with_capacity(256);
+        let mut readers = String::with_capacity(256);
+        let mut writers = String::with_capacity(256);
+        let mut offlines = String::with_capacity(256);
         self.readers
             .iter()
-            .for_each(|r| reader_str.push_str(format!("{},", r.0.addr()).as_str()));
+            .for_each(|r| readers.push_str(format!("{},", r.0.addr()).as_str()));
         self.writers
             .iter()
-            .for_each(|w| writers_str.push_str(format!("{},", w.0.addr()).as_str()));
-
+            .for_each(|w| writers.push_str(format!("{},", w.0.addr()).as_str()));
+        self.readers_offline
+            .iter()
+            .for_each(|r| offlines.push_str(format!("{},", r.0.addr()).as_str()));
         write!(
             f,
             "mq - {} rstrategy:{}, wstrategy:{}, offline/{}, reads/{:?}, writes/{:?}",
-            self.service,
-            self.reader_strategy,
-            self.writer_strategy,
-            self.readers_offline.len(),
-            reader_str,
-            writers_str,
+            self.service, self.reader_strategy, self.writer_strategy, offlines, readers, writers,
         )
     }
 }
