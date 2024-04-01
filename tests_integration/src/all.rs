@@ -5,6 +5,7 @@ mod counterservice;
 mod discovery;
 mod mc;
 mod mc_helper;
+mod mq;
 mod mysql;
 mod phantom;
 mod redis;

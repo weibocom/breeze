@@ -22,6 +22,7 @@ mod decrypt;
 mod discovery;
 mod dns;
 mod kv;
+mod mq;
 mod mysql_strategy;
 mod number;
 mod ring_buffer;

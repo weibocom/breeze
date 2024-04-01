@@ -1,29 +1,43 @@
-use std::sync::{atomic::AtomicU32, Arc};
+use std::{
+    fmt::{Display, Formatter},
+    sync::{atomic::AtomicUsize, Arc},
+};
 
-/// 依次轮询队列列表，注意列表在初始化时或clone时需要进行随机重构
 use crate::msgque::ReadStrategy;
-use std::sync::atomic::Ordering::AcqRel;
+use std::sync::atomic::Ordering::Relaxed;
 
-use super::QID;
-
+/// 依次轮询队列列表，注意整个列表在初始化时需要进行随机乱序处理
 #[derive(Debug, Clone, Default)]
-pub(crate) struct RoundRobbin {
-    que_len: u16,
-    current_pos: Arc<AtomicU32>,
+pub struct RoundRobbin {
+    que_len: usize,
+    current_pos: Arc<AtomicUsize>,
 }
 
 impl ReadStrategy for RoundRobbin {
+    /// 初始化一个轮询读策略，起始位置进行一个随机化处理
     #[inline]
     fn new(reader_len: usize) -> Self {
+        let rand: usize = rand::random();
         Self {
-            que_len: reader_len as u16,
-            current_pos: Arc::new(AtomicU32::new(0)),
+            que_len: reader_len,
+            current_pos: Arc::new(AtomicUsize::new(rand)),
         }
     }
     /// 实现策略很简单：持续轮询
     #[inline]
-    fn get_read_idx(&self) -> QID {
-        let pos = self.current_pos.fetch_add(1, AcqRel);
-        pos.wrapping_rem(self.que_len as u32) as u16
+    fn get_read_idx(&self) -> usize {
+        let pos = self.current_pos.fetch_add(1, Relaxed);
+        pos.wrapping_rem(self.que_len)
+    }
+}
+
+impl Display for RoundRobbin {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "mq round robbin read:{}/{}",
+            self.que_len,
+            self.current_pos.load(Relaxed)
+        )
     }
 }
