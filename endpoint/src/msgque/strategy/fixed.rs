@@ -1,39 +1,43 @@
-/// 对同一个size，总是从固定的队列ip位置开始访问，队列在初始化时需要进行随机初始化
-use super::QID;
+use std::fmt::{self, Display, Formatter};
+
+/// 对同一个size，总是从固定的队列位置开始访问，但同一个size的队列在初始化时需要进行随机初始化
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Fixed {
-    que_len: u16,
+pub struct Fixed {
+    que_len: usize,
     // 存储的内容：(que_size，起始位置)；按照que size排序，方便查找
-    writer_pos: Vec<(usize, QID)>,
+    qsize_pos: Vec<(usize, usize)>,
 }
 
 impl crate::msgque::WriteStrategy for Fixed {
     #[inline]
     fn new(que_len: usize, qsize_pos: &Vec<(usize, usize)>) -> Self {
-        let writer_pos = qsize_pos
-            .iter()
-            .map(|(qsize, pos)| (*qsize, (*pos) as QID))
-            .collect();
         Self {
-            que_len: que_len as u16,
-            writer_pos,
+            que_len: que_len,
+            qsize_pos: qsize_pos.clone(),
         }
     }
     #[inline]
-    fn get_write_idx(&self, msg_size: usize, last_idx: Option<QID>) -> QID {
+    fn get_write_idx(&self, msg_len: usize, last_idx: Option<usize>) -> usize {
         match last_idx {
             None => {
-                for (qsize, idx) in self.writer_pos.iter() {
-                    if *qsize > msg_size {
+                for (qsize, idx) in self.qsize_pos.iter() {
+                    if *qsize > msg_len {
+                        log::debug!("+++ msg len:{}, qsize:{}, idx:{}", msg_len, *qsize, *idx);
                         return *idx;
                     }
                 }
                 // 如果所有size均小于消息长度，则返回最大size的queue
-                log::warn!("+++ msg too big {}", msg_size);
-                self.writer_pos.last().expect("queue").1
+                log::warn!("+++ msg too big {}", msg_len);
+                self.qsize_pos.last().expect("queue").1
             }
             Some(last_idx) => (last_idx + 1) % self.que_len,
         }
+    }
+}
+
+impl Display for Fixed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "mq fixed: {}/{:?}", self.que_len, self.qsize_pos)
     }
 }

@@ -1,15 +1,15 @@
-mod strategy;
-
 pub(crate) mod config;
+pub mod strategy;
 pub mod topo;
 
-use strategy::QID;
+// use strategy::QID;
 
 // 0-7: 读/写次数；
 const COUNT_BITS: u8 = 8;
+
 // 8-23：读写的位置索引, 数量可能超过256，所以用16位；
 const QID_SHIFT: u8 = 0 + COUNT_BITS;
-const QID_BITS: u8 = QID_SHIFT + 8;
+// const QID_BITS: u8 = 16;
 // 24-63: 保留
 
 #[repr(transparent)]
@@ -52,23 +52,25 @@ impl Context {
 
     // read/write 的idx位置相同
     #[inline]
-    fn get_last_qid(&self) -> Option<QID> {
-        if !self.inited() {
+    fn get_last_qid(&self, inited: bool) -> Option<usize> {
+        if !inited {
             return None;
         }
 
-        // idx 占16个字节
-        let idx = (self.ctx >> QID_SHIFT) as u16;
-        Some(idx as QID)
+        let idx = self.ctx >> QID_SHIFT;
+        Some(idx as usize)
     }
 
     #[inline]
     fn update_qid(&mut self, qid: u16) {
         let lower = self.ctx as u8;
+        self.ctx = lower as u64 | (qid as u64) << QID_SHIFT;
+
+        // 去掉了高位字段，下面的逻辑不需要了
         // 不直接使用qid后面字段的shit，因为context的字段可能会变
-        let high_shift = QID_SHIFT + QID_BITS;
-        let high = self.ctx >> high_shift << high_shift;
-        self.ctx = lower as u64 | (qid << QID_SHIFT) as u64 | high;
+        // let high_shift = QID_SHIFT + QID_BITS;
+        // let high = self.ctx >> high_shift << high_shift;
+        // self.ctx = lower as u64 | (qid << QID_SHIFT) as u64 | high;
     }
 
     // #[inline]
@@ -81,11 +83,11 @@ impl Context {
 }
 
 pub trait WriteStrategy {
-    fn new(queue_len: usize, writers_flag: &Vec<(usize, usize)>) -> Self;
-    fn get_write_idx(&self, msg_size: usize, last_idx: Option<QID>) -> QID;
+    fn new(queue_len: usize, qsize_pos: &Vec<(usize, usize)>) -> Self;
+    fn get_write_idx(&self, msg_size: usize, last_idx: Option<usize>) -> usize;
 }
 
 pub trait ReadStrategy {
     fn new(reader_len: usize) -> Self;
-    fn get_read_idx(&self) -> QID;
+    fn get_read_idx(&self) -> usize;
 }

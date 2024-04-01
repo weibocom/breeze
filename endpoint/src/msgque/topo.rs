@@ -3,7 +3,9 @@ use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource};
 use rand::{rngs::ThreadRng, seq::SliceRandom, thread_rng, RngCore};
 
+use core::fmt;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::{cell::RefCell, time::Instant};
@@ -11,7 +13,7 @@ use std::{cell::RefCell, time::Instant};
 use super::config::Namespace;
 use super::{
     strategy::{Fixed, RoundRobbin},
-    Context, ReadStrategy, WriteStrategy,
+    ReadStrategy, WriteStrategy,
 };
 use crate::dns::{DnsConfig, DnsLookup};
 use crate::{Endpoint, Timeout, Topology};
@@ -152,6 +154,9 @@ where
     #[inline]
     fn send(&self, mut req: Self::Item) {
         let mut ctx = super::Context::from(*req.mut_context());
+        let inited = ctx.inited();
+
+        // 将访问次数加一，并返回之前的访问次数
         let tried_count = ctx.get_and_incr_tried_count();
 
         // 队列始终不需要write back，即写成功后不需要继回写
@@ -160,22 +165,23 @@ where
         // 对于读请求：顺序读取队列，如果队列都去了到数据，就连续读N个，如果没读到，则尝试下一个ip，直到轮询完所有的ip
         // 注意空读后的最后一次请求，会概率尝试访问offline
         if req.operation().is_retrival() {
-            let (get_offline, qid) = self.get_read_idx(&ctx, tried_count);
+            let (frm_offline, qid) = self.get_read_idx(inited, tried_count);
 
-            if !get_offline {
+            if !frm_offline {
                 ctx.update_qid(qid as u16);
             }
             // 是否重试，按设置的读重试次数
             req.try_next(tried_count < (READ_RETRY_COUNT - 1));
             *req.mut_context() = ctx.ctx;
             log::debug!(
-                "+++ mcq get {} from qid/{}, from_offline/{} req: {:?}",
+                "+++ mq {} send get to: {}/{}, tried:{}, req:{:?}",
                 self.service,
                 qid,
-                get_offline,
-                req.data()
+                frm_offline,
+                tried_count,
+                req
             );
-            if !get_offline {
+            if !frm_offline {
                 assert!(qid < self.readers.len());
                 self.readers.get(qid).expect("mq").0.send(req);
             } else {
@@ -185,18 +191,18 @@ where
             return;
         }
 
-        let qid = self
-            .writer_strategy
-            .get_write_idx(req.len(), ctx.get_last_qid());
-        ctx.update_qid(qid);
+        let last_qid = ctx.get_last_qid(inited);
+        let qid = self.writer_strategy.get_write_idx(req.len(), last_qid);
+        ctx.update_qid(qid as u16);
         req.try_next(tried_count < WRITE_RETRY_COUNT);
         *req.mut_context() = ctx.ctx;
-
+        log::debug!("+++ last qid:{:?}", last_qid);
         log::debug!(
-            "+++ will send mcq/set to {}/{}, req:{:?}",
+            "+++ mq {} send set to: {}, tried:{}, req:{:?}",
+            self.service,
             qid,
             tried_count,
-            req.data()
+            req
         );
 
         assert!((qid as usize) < self.writers.len(), "qid:{}", qid);
@@ -211,9 +217,9 @@ where
     E: Endpoint,
     P: Protocol,
 {
-    fn get_read_idx(&self, ctx: &Context, tried_count: usize) -> (bool, usize) {
+    fn get_read_idx(&self, inited: bool, tried_count: usize) -> (bool, usize) {
         // ctx未初始化，说明是第一次访问，直接获取一个stream
-        if !ctx.inited() {
+        if !inited {
             let qid = self.reader_strategy.get_read_idx();
             return (false, qid as usize);
         }
@@ -373,12 +379,8 @@ where
         self.reader_strategy = RoundRobbin::new(self.readers.len());
         self.writer_strategy = Fixed::new(self.writers.len(), &qsize_poses);
 
-        log::debug!(
-            "+++ updated msgque for offline/{}, reads/{}, writes/{}",
-            self.readers_offline.len(),
-            self.readers.len(),
-            self.writers.len()
-        );
+        log::debug!("+++ mq loaded: {}", self);
+
         Some(())
     }
 }
@@ -413,5 +415,33 @@ where
         self.cfg
             .load_guard()
             .check_load(|| self.load_inner().is_some())
+    }
+}
+
+impl<E, P> Display for MsgQue<E, P>
+where
+    P: Protocol,
+    E: Endpoint,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut reader_str = String::with_capacity(256);
+        let mut writers_str = String::with_capacity(256);
+        self.readers
+            .iter()
+            .for_each(|r| reader_str.push_str(format!("{},", r.0.addr()).as_str()));
+        self.writers
+            .iter()
+            .for_each(|w| writers_str.push_str(format!("{},", w.0.addr()).as_str()));
+
+        write!(
+            f,
+            "mq - {} rstrategy:{}, wstrategy:{}, offline/{}, reads/{:?}, writes/{:?}",
+            self.service,
+            self.reader_strategy,
+            self.writer_strategy,
+            self.readers_offline.len(),
+            reader_str,
+            writers_str,
+        )
     }
 }
