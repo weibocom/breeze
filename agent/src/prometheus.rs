@@ -54,10 +54,10 @@ pub(crate) fn register_target(ctx: &context::Context) {
   "target": "{local_ip}:{port}"
 }}"#
         );
+        let body: &'static str = Box::leak(body.into_boxed_str());
         let client = Client::new();
         let mut interval = interval(Duration::from_secs(60));
         loop {
-            let body = body.clone();
             let req = Request::builder()
                 .method("PUT")
                 .uri(&url)
