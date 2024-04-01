@@ -105,17 +105,6 @@ impl Namespace {
 
             self.backends_flatten.push(origin_que.to_string());
             self.backends_qsize.push(qsize);
-
-            // 首先记录size的起始位置，然后将某个size的que中的ip随机排序，然后写入到整体的队列中
-            // 最后将排序后的数据放入dest中
-            // let qsize_pos = self.backends_qsize_flatten.len();
-            // self.backends_qsize_index.push((qsize, qsize_pos));
-            // let mut que: Vec<&str> = origin_que.split(",").collect();
-            // que.shuffle(&mut rand::thread_rng());
-            // let _ = que.iter().map(|q| {
-            //     self.backends_flatten.push(q.clone());
-            //     self.backends_qsize_flatten.push((q.clone(), qsize));
-            // });
         }
     }
 }
