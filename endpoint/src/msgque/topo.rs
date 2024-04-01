@@ -172,6 +172,7 @@ where
             }
             // 是否重试，按设置的读重试次数
             req.try_next(tried_count < (READ_RETRY_COUNT - 1));
+            req.retry_on_rsp_notok(true);
             *req.mut_context() = ctx.ctx;
             log::debug!(
                 "+++ mq {} send get to: {}/{}, tried:{}, req:{:?}",
@@ -195,6 +196,7 @@ where
         let qid = self.writer_strategy.get_write_idx(req.len(), last_qid);
         ctx.update_qid(qid as u16);
         req.try_next(tried_count < WRITE_RETRY_COUNT);
+        req.retry_on_rsp_notok(true);
         *req.mut_context() = ctx.ctx;
         log::debug!("+++ last qid:{:?}", last_qid);
         log::debug!(
