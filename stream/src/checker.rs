@@ -65,7 +65,7 @@ impl<P, Req> BackendChecker<P, Req> {
             if stream.is_none() {
                 // 连接失败，按策略sleep
                 log::debug!("+++ connected failed to:{}", self.addr);
-                reconn.conn_failed().await;
+                reconn.conn_failed(&self.addr).await;
                 self.init.on();
                 continue;
             }
@@ -87,7 +87,7 @@ impl<P, Req> BackendChecker<P, Req> {
                     stream.cancel();
                     //当作连接失败处理，不立马重试
                     //todo：可以尝试将等待操作统一提取到循环开头
-                    reconn.conn_failed().await;
+                    reconn.conn_failed(&self.addr).await;
                     continue;
                 }
             }
