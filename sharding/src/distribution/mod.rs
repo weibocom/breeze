@@ -76,6 +76,7 @@ impl Distribute {
             "secmod" => Self::SecMod(SecMod::from(names.len())),
             _ => {
                 log::warn!("'{}' is not valid , use modula instead", distribution);
+                println!("'{}' is not valid , use modula instead!", distribution);
                 Self::Modula(Modula::from(names.len(), false))
             }
         }
