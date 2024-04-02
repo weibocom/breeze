@@ -10,8 +10,6 @@ pub enum Error {
     MysqlError(Vec<u8>),
     Eof,
     UnexpectedData,
-    NotInit,
-    Closed,
     ChanFull,
     ChanDisabled,
     ChanWriteClosed,
@@ -27,7 +25,6 @@ pub enum Error {
     TopInvalid,
     WriteResponseErr,
     OpCodeNotSupported(u16),
-    BufferFull,
     Quit,
     Timeout(u16),
     Pending, // 在连接退出时，仍然有请求在队列中没有发送。

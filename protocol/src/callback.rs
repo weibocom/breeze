@@ -192,7 +192,7 @@ impl CallbackContext {
         log::debug!("+++ on_err: {:?} => {:?}", err, self);
         use Error::*;
         match err {
-            Closed | ChanDisabled | Waiting | Pending => {}
+            ChanDisabled | Waiting | Pending => {}
             _err => log::warn!("on-err:{} {:?}", self, _err),
         }
         // 一次错误至少消耗500ms的配额
