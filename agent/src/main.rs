@@ -1,4 +1,4 @@
-use ds::{chan::Receiver, BrzMalloc};
+use ds::BrzMalloc;
 #[global_allocator]
 static GLOBAL: BrzMalloc = BrzMalloc {};
 
@@ -13,10 +13,7 @@ mod init;
 use ds::time::{sleep, Duration};
 use rt::spawn;
 
-use protocol::{Parser, Result};
-use stream::{Backend, Request};
-type Endpoint = Backend<Request>;
-type Topology = endpoint::TopologyProtocol<Endpoint, Parser>;
+use protocol::Result;
 
 // 默认支持
 fn main() -> Result<()> {
@@ -58,7 +55,7 @@ async fn run() -> Result<()> {
     }
 }
 
-async fn discovery_init(ctx: &Context, rx: Receiver<TopologyWriteGuard<Topology>>) -> Result<()> {
+async fn discovery_init(ctx: &Context, rx: service::Receiver) -> Result<()> {
     // 将dns resolver的初始化放到外层，提前进行，避免并发场景下顺序错乱 fishermen
     let discovery = discovery::Discovery::from_url(&ctx.discovery);
     let snapshot = ctx.snapshot_path.to_string();
