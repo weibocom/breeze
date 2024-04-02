@@ -105,16 +105,16 @@ impl<P, Req> BackendChecker<P, Req> {
             log::error!("backend error {:?} => {:?}", path_addr, ret);
             // handler 一定返回err，不会返回ok
             match ret.err().expect("handler return ok") {
+                Error::Eof | Error::IO(_) => {}
                 Error::Timeout(_t) => {
                     let mut m_timeout = path_addr.qps("timeout");
                     m_timeout += 1;
                     timeout += 1;
                 }
-                Error::UnexpectedData => {
-                    let mut unexpected_resp = path_addr.num("unexpected_resp");
+                Error::UnexpectedData | _ => {
+                    let mut unexpected_resp = Path::base().num("unexpected_resp");
                     unexpected_resp += 1;
                 }
-                _ => {}
             }
         }
         metrics::decr_task();
