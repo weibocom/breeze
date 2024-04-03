@@ -1,4 +1,4 @@
-use super::{MemPolicy, RingBuffer};
+use crate::{MemPolicy, RingBuffer};
 
 // 支持自动扩缩容的ring buffer。
 // 扩容时机：在reserve_bytes_mut时触发扩容判断。如果当前容量满，或者超过4ms时间处理过的内存未通过reset释放。
