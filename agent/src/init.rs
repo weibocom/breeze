@@ -61,7 +61,7 @@ pub(crate) fn init_log(ctx: &Context) {
     }
 }
 pub(crate) fn init_local_ip(ctx: &Context) {
-    metrics::init_local_ip(&ctx.metrics_probe);
+    metrics::init_local_ip(&ctx.metrics_probe, &ctx.host_ip);
 }
 
 pub(crate) fn start_metrics_register_task(_ctx: &Context) {

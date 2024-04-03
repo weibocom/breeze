@@ -17,7 +17,7 @@ rand = "0.8.5"
 md5 = "*"
 byteorder = "1.4.3"
 assert-panic = "1.0.1"
-metrics = { path = "../metrics" }
+metrics = { path = "../metrics", features = ["mock-local-ip"]}
 endpoint = { path = "../endpoint" }
 context = { path = "../context" }
 
