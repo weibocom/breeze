@@ -67,14 +67,11 @@ impl Host {
         self.snapshot_buf(&BUF_TX, w, "mem_buf_tx", secs);
         self.snapshot_buf(&BUF_RX, w, "mem_buf_rx", secs);
 
-        w.write(BASE_PATH, "leak_conn", "num", LEAKED_CONN.take());
-
         self.qps(w, secs, &P_W_CACHE, "poll_write_cache");
         self.qps(w, secs, &POLL_READ, "poll_read");
         self.qps(w, secs, &POLL_WRITE, "poll_write");
         self.qps(w, secs, &POLL_PENDING_R, "r_pending");
         self.qps(w, secs, &POLL_PENDING_W, "w_pending");
-        self.qps(w, secs, &REENTER_10MS, "reenter10ms");
 
         self.qps(w, secs, &ds::CACHE_ALLOC_NUM, "heap_cache_num");
         self.qps(w, secs, &ds::CACHE_MISS_ALLOC_NUM, "heap_cache_miss_num");

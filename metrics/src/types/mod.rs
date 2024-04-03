@@ -69,8 +69,21 @@ pub mod base {
     pub static POLL_WRITE: AtomicI64 = AtomicI64::new(0);
     pub static POLL_PENDING_R: AtomicI64 = AtomicI64::new(0);
     pub static POLL_PENDING_W: AtomicI64 = AtomicI64::new(0);
-    pub static REENTER_10MS: AtomicI64 = AtomicI64::new(0);
-    pub static LEAKED_CONN: AtomicI64 = AtomicI64::new(0);
+
+    #[inline(always)]
+    pub fn on_poll_read(pending: bool) {
+        POLL_READ.incr();
+        if pending {
+            POLL_PENDING_R.incr();
+        }
+    }
+    #[inline(always)]
+    pub fn on_poll_write(pending: bool) {
+        POLL_WRITE.incr();
+        if pending {
+            POLL_PENDING_W.incr();
+        }
+    }
 }
 
 use crate::ItemWriter as Writer;

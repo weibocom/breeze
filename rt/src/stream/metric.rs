@@ -1,7 +1,7 @@
 pub use inner::*;
 #[cfg(feature = "poll-io-metrics")]
 mod inner {
-    use metrics::base::*;
+    use metrics::base::{on_poll_read, on_poll_write};
     #[repr(transparent)]
     #[derive(Debug)]
     pub struct MetricStream<S> {
@@ -29,10 +29,7 @@ mod inner {
             buf: &mut ReadBuf<'_>,
         ) -> Poll<Result<()>> {
             let ret = Pin::new(&mut self.s).poll_read(cx, buf);
-            POLL_READ.incr();
-            if ret.is_pending() {
-                POLL_PENDING_R.incr();
-            }
+            on_poll_read(ret.is_pending());
             ret
         }
     }
@@ -44,11 +41,8 @@ mod inner {
             cx: &mut Context<'_>,
             buf: &[u8],
         ) -> Poll<Result<usize>> {
-            POLL_WRITE.incr();
             let r = Pin::new(&mut self.s).poll_write(cx, buf);
-            if r.is_pending() {
-                POLL_PENDING_W.incr();
-            }
+            on_poll_write(r.is_pending());
             r
         }
         #[inline]
