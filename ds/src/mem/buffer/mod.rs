@@ -1,8 +1,16 @@
-use super::RingSlice;
+mod guarded;
+pub use guarded::*;
+
+mod resized;
+pub use resized::*;
+
+mod cache;
 
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
 use std::slice::from_raw_parts_mut;
+
+use crate::RingSlice;
 
 // <= read的字节是已经全部读取完的
 // [read, write]是已经写入，但未全部收到读取完成通知的
@@ -73,23 +81,6 @@ impl RingBuffer {
         self.advance_write(read);
         out
     }
-    //// 返回可写入的buffer。如果无法写入，则返回一个长度为0的slice
-    //#[inline]
-    //fn as_mut_bytes(&mut self) -> &mut [u8] {
-    //    if self.read + self.size == self.write {
-    //        // 已满
-    //        unsafe { from_raw_parts_mut(self.data.as_ptr(), 0) }
-    //    } else {
-    //        let offset = self.mask(self.write);
-    //        let read = self.mask(self.read);
-    //        let n = if offset < read {
-    //            read - offset
-    //        } else {
-    //            self.size - offset
-    //        };
-    //        unsafe { from_raw_parts_mut(self.data.as_ptr().offset(offset as isize), n) }
-    //    }
-    //}
     #[inline]
     pub fn data(&self) -> RingSlice {
         RingSlice::from(self.data.as_ptr(), self.size, self.read, self.write)
