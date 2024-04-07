@@ -19,6 +19,7 @@ byteorder = "1.4.3"
 assert-panic = "1.0.1"
 metrics = { path = "../metrics" }
 endpoint = { path = "../endpoint" }
+context = { path = "../context" }
 
 tokio.workspace = true
 ctor = "0.1.23"
