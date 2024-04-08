@@ -44,10 +44,15 @@ impl ResizedRingBuffer {
     // 对于场景2，有可能还有数据未读取，需要再次调用. 主要是为了降级一次系统调用的开销
     #[inline]
     pub fn copy_from<O, R: crate::BuffRead<Out = O>>(&mut self, src: &mut R) -> O {
+        let mut runs = 0;
         loop {
+            runs += 1;
             self.grow(512);
             let out = self.inner.copy_from(src);
             if self.inner.available() > 0 {
+                if runs >= 8 {
+                    println!("copy_from: too many runs in one loop");
+                }
                 return out;
             }
             // 否则说明buffer已经满了，需要再次读取
