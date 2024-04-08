@@ -103,7 +103,7 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = Handler::from(rx, stream, p, rtt);
             let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             let ret = handler.await;
-            log::error!("backend error {:?} => {:?}", path_addr, ret);
+            println!("backend error {:?} => {:?}", path_addr, ret);
             // handler 一定返回err，不会返回ok
             match ret.err().expect("handler return ok") {
                 Error::Timeout(_t) => {
