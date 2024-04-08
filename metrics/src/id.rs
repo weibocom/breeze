@@ -26,11 +26,7 @@ impl Path {
     #[inline]
     pub fn pop(&self) -> Self {
         let mut new = self.clone();
-        let len = match new.path.rfind(TARGET_SPLIT) {
-            // 去掉'/'以及后面的字符。max(1)是为了兼容idx为0的情况
-            Some(idx) => idx.max(1) - 1,
-            _ => 0,
-        };
+        let len = new.path.rfind(TARGET_SPLIT).unwrap_or(0);
         new.path.truncate(len);
         new
     }
