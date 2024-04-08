@@ -23,7 +23,7 @@ bytes = "1.0"
 paste = "*"
 
 [features]
-default = ["heap-stats"]
+default = ["heap-stats", "trace"]
 heap-stats = []
 tsc = []
 trace = []

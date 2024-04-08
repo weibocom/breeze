@@ -81,7 +81,7 @@ impl MemPolicy {
             .max(BUF_MIN)
             .next_power_of_two();
         if cap > BUF_MIN {
-            log::info!("grow: {}+{}>{} => {} {}", len, reserve, cap, new, self);
+            println!("grow: {}+{}>{} => {} {}", len, reserve, cap, new, self);
         }
         self.reset();
         new
@@ -91,7 +91,7 @@ impl MemPolicy {
         let max = self.max as usize;
         assert!(max < cap, "{}", self);
         let new = (max * 2).max(BUF_MIN).max(len).next_power_of_two();
-        log::info!("shrink: {}  < {} => {} {}", len, cap, new, self);
+        println!("shrink: {}  < {} => {} {}", len, cap, new, self);
         assert!(new >= len);
         self.reset();
         new
@@ -100,7 +100,7 @@ impl MemPolicy {
 
 impl Drop for MemPolicy {
     fn drop(&mut self) {
-        log::info!("buf policy drop => {}", self);
+        println!("buf policy drop => {}", self);
     }
 }
 use std::fmt::{self, Display, Formatter};
@@ -119,8 +119,7 @@ mod trace {
     use crate::time::Instant;
     use std::fmt::{self, Debug, Formatter};
     pub(super) struct Trace {
-        direction: &'static str, // 方向: true为tx, false为rx. 打日志用
-        id: usize,
+        id: String, // 方向: true为tx, false为rx. 打日志用
         start: Instant,
         max: usize, // 上一个周期内，最大的len
         checks: usize,
@@ -131,9 +130,10 @@ mod trace {
     impl From<&'static str> for Trace {
         fn from(direction: &'static str) -> Self {
             static ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
-            let id = ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let id = ID
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                .to_string();
             Self {
-                direction,
                 id,
                 start: Instant::now(),
                 max: 0,
@@ -147,14 +147,13 @@ mod trace {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             write!(
                 f,
-                " id: {} trace max:{} total checks:{} last checks:{} cap:{}, lifetime:{:?} => {}",
+                " id: {} trace max:{} total checks:{} last checks:{} cap:{}, lifetime:{:?}",
                 self.id,
                 self.max,
                 self.checks,
                 self.last_checks,
                 self.cap,
                 self.start.elapsed(),
-                self.direction
             )
         }
     }
