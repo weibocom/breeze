@@ -45,35 +45,32 @@ where
         // 降低tick的频率，便于快速从chann中接收新的服务。
         let period = Duration::from_secs(1);
         let cycle = (self.tick.as_secs_f64() / period.as_secs_f64()).ceil() as usize;
-        let mut cycle_i = 0usize;
         let mut tick = interval(period);
+        let mut tick_i = 0;
         self.cb.with_discovery(&self.discovery).await;
         let mut services = Services::new(&self.snapshot);
-        // 每个周期结束清理缓存
         loop {
             while let Ok((name, t)) = self.rx.try_recv() {
-                log::info!("receive new service: {}", name);
                 services.register(name, t, &self.discovery).await;
             }
-            cycle_i += 1;
+            let cycle_i = tick_i % cycle;
 
-            // 部分服务更新配置后，需要重新加载
-            if cycle_i <= cycle || cycle_i % cycle == 0 {
-                services.check_load().await;
-                if !self.cb.inited() || cycle_i % cycle == 0 {
-                    self.cb.with_discovery(&self.discovery).await;
-                }
-            }
-            let i = cycle_i % cycle;
-            // 更新部分
             for (idx, group) in services.groups.iter_mut().enumerate() {
-                if idx % cycle == i {
+                if idx % cycle == cycle_i {
                     group.refresh(&self.snapshot, &self.discovery).await;
                 } else {
                     group.refresh_new(&self.snapshot, &self.discovery).await;
                 }
             }
-            // 更新新注册的
+            // tick_i < cycle时，每个tick都check，增加扫描的效率。
+            // tick_i >= cycle时，每个cycle的第一个tick才check，减少扫描的消耗。
+            if tick_i < cycle || cycle_i == 0 {
+                services.check_load().await;
+                if !self.cb.inited() || cycle_i == 0 {
+                    self.cb.with_discovery(&self.discovery).await;
+                }
+            }
+            tick_i += 1;
             tick.tick().await;
         }
     }
@@ -107,6 +104,7 @@ impl<T: TopologyWrite> Services<T> {
     // namespace是可选。
     // namespace之前的是group的路径，如：分隔符为'+'。
     async fn register<D: Discover>(&mut self, name: String, top: T, d: &D) {
+        log::info!("receive new service: {}", name);
         let group = name.split('+').last().expect("name");
         let mut group_namespace = group.split(':');
         let group = group_namespace.next().expect("group");

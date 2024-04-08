@@ -54,7 +54,8 @@ impl<P, Req> BackendChecker<P, Req> {
         P: Protocol,
         Req: Request,
     {
-        let path_addr = self.path.clone().push(&self.addr);
+        self.path.push(&self.addr);
+        let path_addr = &self.path;
         let mut be_conns = path_addr.qps("be_conn");
         let mut timeout = Path::base().qps("timeout");
         let mut reconn = crate::reconn::ReconnPolicy::new();
