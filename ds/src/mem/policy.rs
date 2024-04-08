@@ -118,7 +118,7 @@ impl Display for MemPolicy {
 mod trace {
     use crate::time::Instant;
     use std::fmt::{self, Debug, Formatter};
-    pub(super) struct Trace {
+    pub struct Trace {
         id: String, // 方向: true为tx, false为rx. 打日志用
         start: Instant,
         max: usize, // 上一个周期内，最大的len
@@ -128,7 +128,7 @@ mod trace {
     }
 
     impl From<&'static str> for Trace {
-        fn from(direction: &'static str) -> Self {
+        fn from(_direction: &'static str) -> Self {
             static ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
             let id = ID
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -158,6 +158,10 @@ mod trace {
         }
     }
     impl Trace {
+        pub fn with_id(&mut self, id: &str) {
+            println!("with_id {self:?} => {id}");
+            self.id = id.to_string();
+        }
         #[inline]
         pub(super) fn trace_check(&mut self, len: usize, cap: usize) {
             self.checks += 1;
