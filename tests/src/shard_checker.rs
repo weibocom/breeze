@@ -44,11 +44,10 @@ fn build_shard_data() {
         shards: 2,
     };
 
-    let root_dir = "sharding_datas/common";
-    let src_data_file = "compare.txt";
-    let dest_data_file = "compare_shard.txt";
+    let src = "sharding_datas/common/compare.txt";
+    let dest = "/tmp/compare_shard.txt";
 
-    write_shard_data(&shard_conf, root_dir, src_data_file, dest_data_file);
+    write_shard_data(&shard_conf, src, dest);
 }
 
 /// shard校验的基础配置
@@ -187,14 +186,7 @@ fn mock_servers(shard_count: usize) -> Vec<String> {
     servers
 }
 
-fn write_shard_data(
-    shard_conf: &ShardConf,
-    root_dir: &str,
-    src_data_file: &str,
-    dest_data_file: &str,
-) {
-    let src = format!("{}/{}", root_dir, src_data_file);
-    let dest = format!("{}/{}", root_dir, dest_data_file);
+fn write_shard_data(shard_conf: &ShardConf, src: &str, dest: &str) {
     let src_file = File::open(&src).unwrap();
 
     let mut writer = BufWriter::new(File::create(&dest).unwrap());
