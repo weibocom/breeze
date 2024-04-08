@@ -49,6 +49,7 @@ where
         let mut tick_i = 0;
         self.cb.with_discovery(&self.discovery).await;
         let mut services = Services::new(&self.snapshot);
+        let mut need_load = false;
         loop {
             while let Ok((name, t)) = self.rx.try_recv() {
                 services.register(name, t, &self.discovery).await;
@@ -56,19 +57,22 @@ where
             let cycle_i = tick_i % cycle;
 
             for (idx, group) in services.groups.iter_mut().enumerate() {
-                if idx % cycle == cycle_i {
-                    group.refresh(&self.snapshot, &self.discovery).await;
+                let refreshed = if idx % cycle == cycle_i {
+                    group.refresh(&self.snapshot, &self.discovery).await
                 } else {
-                    group.refresh_new(&self.snapshot, &self.discovery).await;
-                }
+                    group.refresh_new(&self.snapshot, &self.discovery).await
+                };
+                // 有一个group的refresh返回true，则需要load。
+                need_load |= refreshed;
+            }
+            if need_load {
+                // 没有全部load完成，则需要继续load。
+                need_load = !services.check_load().await;
             }
             // tick_i < cycle时，每个tick都check，增加扫描的效率。
             // tick_i >= cycle时，每个cycle的第一个tick才check，减少扫描的消耗。
-            if tick_i < cycle || cycle_i == 0 {
-                services.check_load().await;
-                if !self.cb.inited() || cycle_i == 0 {
-                    self.cb.with_discovery(&self.discovery).await;
-                }
+            if !self.cb.inited() || cycle_i == 0 {
+                self.cb.with_discovery(&self.discovery).await;
             }
             tick_i += 1;
             tick.tick().await;
@@ -89,10 +93,12 @@ impl<T: TopologyWrite> Services<T> {
             indices: HashMap::with_capacity(64),
         }
     }
-    async fn check_load(&mut self) {
-        for g in self.groups.iter_mut() {
-            g.load();
-        }
+    // 检查所有的namespace是否已经加载。
+    // true: 所有的namespace都已经加载。
+    // false: 有namespace没有加载。
+    async fn check_load(&mut self) -> bool {
+        // c & g.load()是按位与，而不是逻辑与。确保所有的group都已经加载。
+        self.groups.iter_mut().fold(true, |c, g| c & g.load())
     }
     fn get_group(&mut self, group: &str) -> Option<&mut ServiceGroup<T>> {
         let &idx = self.indices.get(group)?;
@@ -152,12 +158,18 @@ impl<T: TopologyWrite> ServiceGroup<T> {
         self.load_from_snapshot(snapshot).await;
         self.load_from_discover(snapshot, d).await;
     }
-    fn load(&mut self) {
+    // load所有的namespace。
+    // true: 表示load完成
+    // false: 表示后续需要继续load
+    fn load(&mut self) -> bool {
+        let mut completed = true;
         for s in &mut self.namespaces {
             if s.top.need_load() {
                 s.top.load();
+                completed &= !s.top.need_load();
             }
         }
+        completed
     }
     // 第一行是sig
     // 第二行是group name
@@ -224,18 +236,19 @@ impl<T: TopologyWrite> ServiceGroup<T> {
             Err(e) => log::error!("failed to get service: {}, {}", self.path, e),
         }
     }
-    async fn refresh_new<D: Discover>(&mut self, snapshot: &str, d: &D) {
+    async fn refresh_new<D: Discover>(&mut self, snapshot: &str, d: &D) -> bool {
         if self.cfg.len() == 0 {
             self.load_from_discover(snapshot, d).await;
         }
-        self.update_all(true);
+        self.update_all(true)
     }
-    async fn refresh<D: Discover>(&mut self, snapshot: &str, d: &D) {
+    async fn refresh<D: Discover>(&mut self, snapshot: &str, d: &D) -> bool {
         self.load_from_discover(snapshot, d).await;
-        self.update_all(false);
+        self.update_all(false)
     }
     // new: 只更新新注册的服务
-    fn update_all(&mut self, new: bool) {
+    // 返回是否可能有namespace更新
+    fn update_all(&mut self, new: bool) -> bool {
         if self.changed && self.namespaces.len() > 0 {
             let s = self.namespaces.first().expect("empty");
             self.cache = s
@@ -256,7 +269,9 @@ impl<T: TopologyWrite> ServiceGroup<T> {
                 }
             }
             self.changed = false;
+            return true;
         }
+        false
     }
     fn register(&mut self, ns: String, top: T) {
         assert!(self.namespaces.iter().find(|s| s.name == ns).is_none());
