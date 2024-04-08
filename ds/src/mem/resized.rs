@@ -47,7 +47,7 @@ impl ResizedRingBuffer {
         let mut runs = 0;
         loop {
             runs += 1;
-            self.grow(512);
+            self.grow(4096);
             let out = self.inner.copy_from(src);
             if self.inner.available() > 0 {
                 if runs >= 8 {
