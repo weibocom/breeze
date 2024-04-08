@@ -359,6 +359,10 @@ impl From<ContextOption> for Context {
         if cfg!(target_feature = "avx") != host_v3 {
             version.push('!');
         };
+        if let Ok(cpu_type) = cpu_type() {
+            version.push('_');
+            version.push_str(cpu_type.as_str());
+        }
         if version.as_bytes().last() == Some(&b'_') {
             version.pop();
         }
@@ -414,4 +418,40 @@ impl EnvOptions {
             region: std::env::var("CURRENT_CLUSTER").unwrap_or("".to_string()),
         }
     }
+}
+
+pub fn cpu_type() -> Result<String> {
+    use std::fs::File;
+    use std::io::BufRead;
+    use std::io::BufReader;
+    let file = File::open("/proc/cpuinfo")?;
+    let reader = BufReader::new(file);
+    let mut cpu_type = String::new();
+
+    for line in reader.lines() {
+        let line = line.unwrap();
+        if line.starts_with("model name") {
+            // Example:
+            //   Model name: AMD EPYC 7713 64-Core Processor --> A7713
+            //   Model name: Intel(R) Xeon(R) Gold 6240R CPU @ 2.40GHz --> I6240R
+            let mut parts = line.split(':');
+            parts.next(); // skip "model name"
+            let model_name = parts.next().unwrap().trim();
+            let mut parts = model_name.split_whitespace();
+
+            parts.next();
+            parts.next();
+            if model_name.starts_with("I") {
+                parts.next();
+                cpu_type.push('I');
+            } else if model_name.starts_with("A") {
+                cpu_type.push('A');
+            } else {
+                cpu_type.push('U');
+            }
+            cpu_type.push_str(parts.next().unwrap_or(""));
+            break;
+        }
+    }
+    Ok(cpu_type)
 }
