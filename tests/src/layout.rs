@@ -72,8 +72,8 @@ fn check_stream() {
 #[ignore]
 #[test]
 fn check_handler() {
-    assert_eq!(216, size_of::<Handler<'static>>());
-    assert_eq!(296, size_of::<Entry<Handler<'static>, rt::Timeout>>());
+    assert_eq!(240, size_of::<Handler<'static>>());
+    assert_eq!(320, size_of::<Entry<Handler<'static>, rt::Timeout>>());
 }
 
 #[ignore]

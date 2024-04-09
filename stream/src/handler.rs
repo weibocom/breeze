@@ -19,8 +19,9 @@ pub struct Handler<'r, Req, P, S> {
     parser: P,
     rtt: Metric,
 
-    // 处理timeout
     num: Number,
+
+    req_buf: Vec<Req>,
 
     // 连续多少个cycle检查到当前没有请求发送，则发送一个ping
     ping_cycle: u16,
@@ -64,6 +65,7 @@ where
             parser,
             rtt,
             num: Number::default(),
+            req_buf: Vec::with_capacity(4),
             ping_cycle: 0,
         }
     }
@@ -115,15 +117,15 @@ where
     // 发送request. 读空所有的request，并且发送。直到pending或者error
     #[inline]
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        self.s.cache(self.data.has_multi());
-        while let Some(req) = ready!(self.data.poll_recv(cx)) {
-            self.num.tx();
-
-            self.s.write_slice(&*req, 0)?;
-
-            match req.on_sent() {
-                Some(r) => self.pending.push_back((r, Instant::now())),
-                None => self.num.rx(),
+        while ready!(self.data.poll_recv_many(cx, &mut self.req_buf, 4)) > 0 {
+            self.s.cache(self.req_buf.len() > 1);
+            while let Some(req) = self.req_buf.pop() {
+                self.s.write_slice(&*req, 0).expect("should not err");
+                self.num.tx();
+                match req.on_sent() {
+                    Some(r) => self.pending.push_back((r, Instant::now())),
+                    None => self.num.rx(),
+                }
             }
         }
         Poll::Ready(Err(Error::ChanReadClosed))
@@ -184,7 +186,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
         use rt::Cancel;
         self.s.cancel();
 
-        self.s.try_gc() && self.data.is_empty_hint()
+        self.s.try_gc()
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
