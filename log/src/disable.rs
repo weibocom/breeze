@@ -27,7 +27,7 @@ macro_rules! info {
 }
 
 #[macro_export]
-macro_rules! _warn {
+macro_rules! warn {
     ($($arg:tt)+) => {
         log::noop!($($arg)+)
     };
@@ -50,7 +50,6 @@ macro_rules! log_enabled {
         false
     };
 }
-pub use {_warn as warn, debug, error, fatal, info, trace};
 
 use std::io::Write;
 pub fn init(path: &str, _l: &str) -> std::io::Result<()> {
