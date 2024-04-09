@@ -80,7 +80,7 @@ fn check_handler() {
 #[test]
 fn check_topology() {
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
-    assert_eq!(952, size_of::<Topology>());
+    assert_eq!(976, size_of::<Topology>());
     assert_eq!(72, size_of::<CacheService>());
     assert_eq!(96, size_of::<RedisService>());
     assert_eq!(56, size_of::<PhantomService>());
