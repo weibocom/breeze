@@ -58,6 +58,7 @@ impl<P, Req> BackendChecker<P, Req> {
         let path_addr = &self.path;
         let mut be_conns = path_addr.qps("be_conn");
         let mut timeout = Path::base().qps("timeout");
+        let mut m_timeout = path_addr.qps("timeout");
         let mut reconn = crate::reconn::ReconnPolicy::new();
         metrics::incr_task();
         while !self.finish.get() {
@@ -108,7 +109,6 @@ impl<P, Req> BackendChecker<P, Req> {
             match ret.err().expect("handler return ok") {
                 Error::Eof | Error::IO(_) => {}
                 Error::Timeout(_t) => {
-                    let mut m_timeout = path_addr.qps("timeout");
                     m_timeout += 1;
                     timeout += 1;
                 }
