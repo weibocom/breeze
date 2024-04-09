@@ -38,14 +38,14 @@ pub struct MsgQue<E, P> {
 
     // TODO：目前只是每个业务topo随机，后续尝试做到每个topo的clone都随机 fishermen
     // 读队列，随机乱序
-    readers: Vec<(E, String, usize)>,
+    readers: Vec<(E, usize)>,
     // 写队列，按size递增放置，相同size的队列随机放置
-    writers: Vec<(E, String, usize)>,
+    writers: Vec<(E, usize)>,
 
     // streams_write: BTreeMap<usize, Vec<(String, E)>>,
 
     // 轮询访问，N分钟后下线
-    readers_offline: Vec<(E, String, usize)>,
+    readers_offline: Vec<(E, usize)>,
 
     reader_strategy: RoundRobbin,
     writer_strategy: Fixed,
@@ -105,7 +105,7 @@ where
 
         // check write streams
         if self.writers.len() > 0 {
-            for (stream, _name, _size) in self.writers.iter() {
+            for (stream, _size) in self.writers.iter() {
                 if !stream.inited() {
                     return false;
                 }
@@ -290,7 +290,7 @@ where
         let old_r = self.readers.split_off(0);
         let mut old_readers: HashMap<String, (E, usize)> = old_r
             .into_iter()
-            .map(|(ept, addr, qsize)| (addr, (ept, qsize)))
+            .map(|(ept, qsize)| (ept.addr().to_string(), (ept, qsize)))
             .collect();
 
         // 构建新的readers，并进行随机打乱顺序
@@ -308,7 +308,6 @@ where
                             &self.service,
                             self.timeout_read,
                         )),
-                    addr.clone(),
                     *qsize,
                 )
             })
@@ -317,8 +316,8 @@ where
 
         // 将之前reader中剩余/下线的连接放置到offline中
         self.readers_offline.clear();
-        for (addr, (ept, qsize)) in old_readers.into_iter() {
-            self.readers_offline.push((ept, addr, qsize));
+        for (_addr, (ept, qsize)) in old_readers.into_iter() {
+            self.readers_offline.push((ept, qsize));
         }
         if self.readers_offline.len() > 0 {
             self.offline_time = Instant::now();
@@ -330,7 +329,7 @@ where
         let old_w = self.writers.split_off(0);
         let mut old_writers: HashMap<String, E> = old_w
             .into_iter()
-            .map(|(ept, addr, _)| (addr, ept))
+            .map(|(ept, _)| (ept.addr().to_string(), ept))
             .collect();
 
         // 构建writer queues，同时记录每个size的起始位置
@@ -345,7 +344,6 @@ where
                         &self.service,
                         self.timeout_write,
                     )),
-                    addr.clone(),
                     *qsize,
                 )
             })

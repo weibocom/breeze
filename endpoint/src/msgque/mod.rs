@@ -42,14 +42,6 @@ impl Context {
         count as usize
     }
 
-    // // 获取idx，并将原有的idx+1
-    // #[inline]
-    // fn get_write_size(&mut self) -> usize {
-    //     // block 占 8 字节
-    //     let block = (self.ctx >> WRITE_SIZE_BLOCK_SHIFT) as u8;
-    //     (block as usize) * BLOCK_SIZE
-    // }
-
     // read/write 的idx位置相同
     #[inline]
     fn get_last_qid(&self, inited: bool) -> Option<usize> {
@@ -72,14 +64,6 @@ impl Context {
         // let high = self.ctx >> high_shift << high_shift;
         // self.ctx = lower as u64 | (qid << QID_SHIFT) as u64 | high;
     }
-
-    // #[inline]
-    // fn update_write_size(&mut self, wsize: usize) {
-    //     let lower = self.ctx & ((1 << WRITE_SIZE_BLOCK_SHIFT) - 1);
-    //     let high = self.ctx >> DATA_RESERVE_SHIFT << DATA_RESERVE_SHIFT;
-    //     let block = wsize / BLOCK_SIZE;
-    //     self.ctx = lower | (block << WRITE_SIZE_BLOCK_SHIFT) as u64 | high;
-    // }
 }
 
 pub trait WriteStrategy {

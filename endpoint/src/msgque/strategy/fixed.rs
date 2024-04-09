@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-/// 对同一个size，总是从固定的队列位置开始访问，但同一个size的队列在初始化时需要进行随机初始化
+/// 写策略：对同一个size，总是从固定的队列位置开始访问，但同一个size的队列在初始化时需要进行随机初始化；
 
 #[derive(Debug, Clone, Default)]
 pub struct Fixed {
@@ -21,6 +21,7 @@ impl crate::msgque::WriteStrategy for Fixed {
     fn get_write_idx(&self, msg_len: usize, last_idx: Option<usize>) -> usize {
         match last_idx {
             None => {
+                // 使用loop原因：短消息是大概率;size小于8时，list loop 性能比hash类算法性能更佳 fishermen
                 for (qsize, idx) in self.qsize_pos.iter() {
                     if *qsize > msg_len {
                         log::debug!("+++ msg len:{}, qsize:{}, idx:{}", msg_len, *qsize, *idx);
