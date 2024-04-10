@@ -1,4 +1,4 @@
-use crate::msgque::mcq::text::error::McqError;
+use crate::msgque::McqError;
 
 #[derive(Debug)]
 #[repr(u8)]
