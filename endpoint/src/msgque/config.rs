@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+const DOMAIN_DELIMITER: &str = ",";
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Namespace {
     #[serde(default)]
     pub(crate) basic: Basic,
+
     #[serde(default)]
-    pub(crate) backends: Backends,
+    pub(crate) backends: Vec<String>,
 
     // TODO 作为非主路径，实时构建更轻便？先和其他ns保持一致 fishermen
     #[serde(skip)]
@@ -28,32 +31,21 @@ pub struct Basic {
     pub(crate) timeout_write: u32,
 }
 
-/// mcq 只支持512,1024,2048,4096,8192,16384,32768七个size
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct Backends {
-    // 线上的que，可直接读写
-    #[serde(default)]
-    pub(crate) que_512: String,
-    #[serde(default)]
-    pub(crate) que_1024: String,
-    #[serde(default)]
-    pub(crate) que_2048: String,
-    #[serde(default)]
-    pub(crate) que_4096: String,
-    #[serde(default)]
-    pub(crate) que_8192: String,
-    #[serde(default)]
-    pub(crate) que_16384: String,
-    #[serde(default)]
-    pub(crate) que_32768: String,
-}
-
 impl Namespace {
     pub(crate) fn try_from(cfg: &str, _namespace: &str) -> Option<Self> {
         log::debug!("mq/{} parsing - cfg: {}", _namespace, cfg);
         match serde_yaml::from_str::<Namespace>(cfg) {
             Ok(mut ns) => {
-                ns.flatten_backends();
+                let bkends = ns.parse_and_sort_backends();
+                if bkends.is_none() {
+                    log::warn!("+++ mq malformed cfg:{}/{}", _namespace, cfg);
+                    return None;
+                }
+                let bkends = bkends.expect("mq");
+                bkends.into_iter().for_each(|(qsize, domain)| {
+                    ns.backends_qsize.push(qsize);
+                    ns.backends_flatten.push(domain);
+                });
                 return Some(ns);
             }
             Err(_e) => {
@@ -63,48 +55,32 @@ impl Namespace {
         }
     }
 
-    /// 获取所有的后端mq，按照size的顺序依次放置，但每个size中的mq会进行乱序
+    /// 解析backends，分离出qsize，并对新的backends进行按qsize递增排序；
+    /// 注意：不允许qsize重复，否则认为配置错误
     #[inline]
-    pub(crate) fn flatten_backends(&mut self) {
-        self.backends_flatten = Vec::with_capacity(7);
-        self.backends_qsize = Vec::with_capacity(7);
-        // self.backends_qsize_flatten = Vec::with_capacity(8);
-        // self.backends_qsize_index = Vec::with_capacity(8);
-
-        self.collect_to_queue(512);
-        self.collect_to_queue(1024);
-        self.collect_to_queue(2048);
-        self.collect_to_queue(4096);
-        self.collect_to_queue(8192);
-        self.collect_to_queue(16384);
-        self.collect_to_queue(32768);
-    }
-
-    /// 将某个size的mq放入到整体的队列中，加入之前会进行乱序
-    #[inline]
-    fn collect_to_queue(&mut self, qsize: usize) {
-        static EMPTY_QUE: String = String::new();
-        let origin_que = match qsize {
-            512 => &mut self.backends.que_512,
-            1024 => &mut self.backends.que_1024,
-            2048 => &mut self.backends.que_2048,
-            4096 => &mut self.backends.que_4096,
-            8192 => &mut self.backends.que_8192,
-            16384 => &mut self.backends.que_16384,
-            32768 => &mut self.backends.que_32768,
-            _ => {
-                debug_assert!(false, "not support qsize:{}", qsize);
-                &EMPTY_QUE
+    fn parse_and_sort_backends(&mut self) -> Option<Vec<(usize, String)>> {
+        let mut bkends: Vec<(usize, String)> = Vec::with_capacity(self.backends.len());
+        for sd in self.backends.iter() {
+            let size_domain = sd.split_once(DOMAIN_DELIMITER);
+            if size_domain.is_none() {
+                return None;
             }
-        };
-        log::debug!("+++ size:{}, que:{:?}", qsize, origin_que);
-        if origin_que.len() > 0 {
-            // 调用顺序必须是按照size从小到大的顺序
-            let last_qsize = self.backends_qsize.last().map(|s| s.clone()).unwrap_or(0);
-            assert!(last_qsize < qsize, "{}/{}", last_qsize, qsize);
-
-            self.backends_flatten.push(origin_que.to_string());
-            self.backends_qsize.push(qsize);
+            let (s, d) = size_domain.expect("mq");
+            let qsize = s.parse::<usize>().unwrap_or(0);
+            let domain = d.to_string();
+            if qsize == 0 || domain.len() == 0 {
+                return None;
+            }
+            // 排重，不能有相同size的mq
+            for (qs, _) in bkends.iter() {
+                if qs.eq(&qsize) {
+                    return None;
+                }
+            }
+            bkends.push((qsize, domain));
         }
+
+        bkends.sort_by(|a, b| a.0.cmp(&b.0));
+        Some(bkends)
     }
 }
