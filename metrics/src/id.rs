@@ -1,3 +1,4 @@
+pub(crate) const TARGET_SPLIT: char = '/';
 #[derive(Hash, PartialEq, Eq, Default)]
 pub struct Id {
     pub(crate) path: String,
@@ -12,15 +13,10 @@ impl std::fmt::Debug for Id {
 }
 pub(crate) const BASE_PATH: &str = "base";
 
-//#[derive(Default, Debug)]
-//pub struct ItemData {
-//    pub(crate) inner: ItemData,
-//}
-
 use crate::Metric;
 #[derive(Debug, Clone)]
 pub struct Path {
-    path: Vec<String>,
+    path: String,
 }
 impl Path {
     #[inline]
@@ -30,29 +26,28 @@ impl Path {
     #[inline]
     pub fn pop(&self) -> Self {
         let mut new = self.clone();
-        new.path.pop();
+        let len = new.path.rfind(TARGET_SPLIT).unwrap_or(0);
+        new.path.truncate(len);
         new
     }
     #[inline]
-    pub fn new<T: ToString>(names: Vec<T>) -> Self {
-        Self {
-            path: names.into_iter().map(|s| s.to_string()).collect(),
-        }
+    pub fn new<T: AsRef<str>>(names: Vec<T>) -> Self {
+        let mut me = Self {
+            path: String::with_capacity(128),
+        };
+        names.iter().for_each(|x| me.push(x));
+        me
     }
     fn with_type(&self, key: &'static str, t: MetricType) -> Metric {
-        let mut s: String = String::with_capacity(256);
-        for name in self.path.iter() {
-            s += &crate::encode_addr(name.as_ref());
-            s.push(crate::TARGET_SPLIT as char);
-        }
-        s.pop();
-        s.shrink_to_fit();
-        let id = Id { path: s, key, t };
+        let path = self.path.clone();
+        let id = Id { path, key, t };
         crate::register_metric(id)
     }
-    pub fn push(mut self, name: &str) -> Self {
-        self.path.push(name.to_string());
-        self
+    pub fn push<T: AsRef<str>>(&mut self, name: T) {
+        if self.path.len() > 0 {
+            self.path.push(TARGET_SPLIT);
+        }
+        self.path.push_str(name.as_ref());
     }
     pub fn num(&self, key: &'static str) -> Metric {
         self.with_type(key, MetricType::Count(Count))

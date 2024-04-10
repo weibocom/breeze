@@ -1,11 +1,5 @@
 use once_cell::sync::OnceCell;
 
-pub(crate) const TARGET_SPLIT: u8 = b'/';
-#[inline]
-pub(crate) fn encode_addr(addr: &str) -> &str {
-    addr
-}
-
 // 通过建立一次连接获取本地通讯的IP
 static LOCAL_IP_BY_CONNECT: OnceCell<String> = OnceCell::new();
 static RAW_LOCAL_IP_BY_CONNECT: OnceCell<String> = OnceCell::new();
