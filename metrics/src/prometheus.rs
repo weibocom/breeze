@@ -12,7 +12,7 @@ impl Prometheus {
         Self {
             idx: 0,
             secs,
-            ext_buf: Default::default(),
+            ext_buf: Vec::with_capacity(1024),
             host: false,
             ext_oft: 0,
         }
