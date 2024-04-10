@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-const DOMAIN_DELIMITER: &str = ",";
+const QSIZE_DOMAIN_DELIMITER: &str = "=";
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Namespace {
@@ -61,7 +61,7 @@ impl Namespace {
     fn parse_and_sort_backends(&mut self) -> Option<Vec<(usize, String)>> {
         let mut bkends: Vec<(usize, String)> = Vec::with_capacity(self.backends.len());
         for sd in self.backends.iter() {
-            let size_domain = sd.split_once(DOMAIN_DELIMITER);
+            let size_domain = sd.split_once(QSIZE_DOMAIN_DELIMITER);
             if size_domain.is_none() {
                 return None;
             }
