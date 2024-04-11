@@ -28,7 +28,6 @@ impl Lookup for Dns {
         }
     }
 }
-#[ignore = "暂时注释掉，#439 有修正"]
 #[test]
 fn dns_lookup() {
     let mut query: Vec<Vec<String>> = Vec::new();
