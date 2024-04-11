@@ -19,8 +19,9 @@ pub struct Handler<'r, Req, P, S> {
     parser: P,
     rtt: Metric,
 
-    // 处理timeout
     num: Number,
+
+    req_buf: Vec<Req>,
 
     // 连续多少个cycle检查到当前没有请求发送，则发送一个ping
     ping_cycle: u16,
@@ -64,6 +65,7 @@ where
             parser,
             rtt,
             num: Number::default(),
+            req_buf: Vec::with_capacity(4),
             ping_cycle: 0,
         }
     }
@@ -88,16 +90,73 @@ where
         }
         self.ping_cycle = 0;
         assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
-        // 通过一次poll read来判断是否连接已经断开。
         let noop = noop_waker::noop_waker();
         let mut ctx = std::task::Context::from_waker(&noop);
+        // cap == 0 说明从来没有发送过request，不需要poll_response。
+        if self.s.cap() > 0 {
+            self.poll_sentonly_response(&mut ctx)
+        } else {
+            self.poll_checkalive(&mut ctx)
+        }
+    }
+
+    // 发送request. 读空所有的request，并且发送。直到pending或者error
+    #[inline]
+    fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        while ready!(self.data.poll_recv_many(cx, &mut self.req_buf, 4)) > 0 {
+            self.s.cache(self.req_buf.len() > 1);
+            while let Some(req) = self.req_buf.pop() {
+                self.s.write_slice(&*req, 0).expect("should not err");
+                self.num.tx();
+                match req.on_sent() {
+                    Some(r) => self.pending.push_back((r, Instant::now())),
+                    None => self.num.rx(),
+                }
+            }
+        }
+        Poll::Ready(Err(Error::ChanReadClosed))
+    }
+    #[inline]
+    fn poll_response_inner(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        let poll_read = self.s.poll_recv(cx);
+
+        while self.s.len() > 0 {
+            let l = self.s.len();
+            if let Some(cmd) = self.parser.parse_response(&mut self.s)? {
+                let (req, start) = self.pending.pop_front().expect("take response");
+                self.num.rx();
+                // 统计请求耗时。
+                self.rtt += start.elapsed();
+                self.parser.check(&*req, &cmd);
+                req.on_complete(cmd);
+                continue;
+            }
+            if l == self.s.len() {
+                // 说明当前的数据不足以解析一个完整的响应。
+                break;
+            }
+        }
+
+        poll_read
+    }
+    // 有些请求，是sentonly的，通常情况下，不需要等待响应。
+    // 但是部分sentonly的请求，也会有响应，这时候直接会被直接丢弃。
+    fn poll_sentonly_response(&mut self, cx: &mut Context) -> Result<()> {
+        assert!(self.pending.len() == 0);
+        loop {
+            match self.poll_response_inner(cx)? {
+                Poll::Pending => return Ok(()),
+                Poll::Ready(()) => continue,
+            }
+        }
+    }
+    // 当前handler没有发送过任何请求。
+    fn poll_checkalive(&mut self, cx: &mut Context) -> Result<()> {
+        // 通过一次poll read来判断是否连接已经断开。
         let mut data = [0u8; 8];
         let mut buf = ReadBuf::new(&mut data);
-        let poll_read = Pin::new(&mut self.s).poll_read(&mut ctx, &mut buf);
-        // 只有Pending才说明连接是正常的。
-        match poll_read {
+        match Pin::new(&mut self.s).poll_read(cx, &mut buf) {
             Poll::Ready(Ok(_)) => {
-                // 没有请求，但是读到了数据？bug
                 debug_assert_eq!(buf.filled().len(), 0, "unexpected:{:?} => {:?}", self, data);
                 if buf.filled().len() > 0 {
                     log::error!("unexpected data from server:{:?} => {:?}", self, data);
@@ -111,46 +170,10 @@ where
             Poll::Pending => Ok(()),
         }
     }
-
-    // 发送request. 读空所有的request，并且发送。直到pending或者error
-    #[inline]
-    fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        self.s.cache(self.data.has_multi());
-        while let Some(req) = ready!(self.data.poll_recv(cx)) {
-            self.num.tx();
-
-            self.s.write_slice(&*req, 0)?;
-
-            match req.on_sent() {
-                Some(r) => self.pending.push_back((r, Instant::now())),
-                None => self.num.rx(),
-            }
-        }
-        Poll::Ready(Err(Error::ChanReadClosed))
-    }
-    #[inline]
+    #[inline(always)]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         while self.pending.len() > 0 {
-            let poll_read = self.s.poll_recv(cx);
-
-            while self.s.len() > 0 {
-                let l = self.s.len();
-                if let Some(cmd) = self.parser.parse_response(&mut self.s)? {
-                    let (req, start) = self.pending.pop_front().expect("take response");
-                    self.num.rx();
-                    // 统计请求耗时。
-                    self.rtt += start.elapsed();
-                    self.parser.check(&*req, &cmd);
-                    req.on_complete(cmd);
-                    continue;
-                }
-                if l == self.s.len() {
-                    // 说明当前的数据不足以解析一个完整的响应。
-                    break;
-                }
-            }
-
-            ready!(poll_read)?;
+            ready!(self.poll_response_inner(cx))?;
         }
         Poll::Ready(Ok(()))
     }
@@ -184,7 +207,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
         use rt::Cancel;
         self.s.cancel();
 
-        self.s.try_gc() && self.data.is_empty_hint()
+        self.s.try_gc()
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
