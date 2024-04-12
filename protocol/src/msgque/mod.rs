@@ -22,7 +22,6 @@ const OP_SET: u16 = 1;
 const OP_STATS: u16 = 2;
 const OP_VERSION: u16 = 3;
 const OP_QUIT: u16 = 4;
-const OP_UNKNOWN: u16 = 5;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct CommandProperties {
@@ -101,42 +100,55 @@ impl Protocol for McqText {
     fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
         &self,
         stream: &mut S,
-        alg: &H,
+        _alg: &H,
         process: &mut P,
     ) -> Result<()> {
         let data = stream.slice();
         let mut oft = 0;
-        while let Some(lfcr) = data.find_lf_cr(oft) {
-            let op_code = if data.start_with(oft, b"get") {
-                OP_GET
-            // <command name> <key> <flags> <exptime> <bytes> [noreply]\r\n
+        while let Some(mut lfcr) = data.find_lf_cr(oft) {
+            let (op_code, op) = if data.start_with(oft, b"get") {
+                (OP_GET, Get)
+            // <command name> <key> <flags> <exptime> <bytes>\r\n
             // 命令之后第四个空格是数据长度
             } else if data.start_with(oft, b"set") {
-                let Some(space) = data.skip_space(oft + 3, 4) else {
+                let line_oft = lfcr + 2;
+                let Some(space) = data.find_r_n(oft + 3..line_oft, b' ', 4) else {
                     return Err(Error::ProtocolNotSupported);
                 };
-                let Some(data_len) = data.try_str_num(space..lfcr + 2) else {
+                let Some(val_len) = data.try_str_num(space + 1..lfcr) else {
                     return Err(Error::ProtocolNotSupported);
                 };
-                OP_SET
+                lfcr = line_oft + val_len;
+                if data.len() < lfcr + 2 {
+                    stream.reserve(lfcr + 2 - data.len());
+                    return Ok(());
+                }
+                if data[lfcr] != b'\r' || data[lfcr + 1] != b'\n' {
+                    return Err(Error::ProtocolNotSupported);
+                }
+                (OP_SET, Store)
             } else if data.start_with(oft, b"stats") {
-                OP_STATS
+                (OP_STATS, Meta)
             } else if data.start_with(oft, b"version") {
-                OP_VERSION
+                (OP_VERSION, Meta)
             } else if data.start_with(oft, b"quit") {
-                OP_QUIT
+                (OP_QUIT, Meta)
             } else {
-                OP_UNKNOWN
+                return Err(Error::ProtocolNotSupported);
             };
-        }
 
+            let cmd = stream.take(lfcr + 2 - oft);
+            oft = lfcr + 2;
+            let mut flag = Flag::from_op(op_code, op);
+            flag.set_noforward(op == Meta);
+            let req = HashedCommand::new(cmd, 0, flag);
+            process.process(req, true);
+        }
         Ok(())
     }
 
     #[inline]
-    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        todo!("");
-    }
+    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {}
 
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
