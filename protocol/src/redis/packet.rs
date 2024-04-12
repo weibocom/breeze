@@ -378,12 +378,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     pub(crate) fn reserve_stream_buff(&mut self) {
         if self.oft > self.data.len() {
             log::debug!("+++ will reserve len:{}", (self.oft - self.data.len()));
-            println!(
-                "+++ will reserve len:{}",
-                (self.oft - self.data.len()) * self.ctx.bulk as usize
-            );
-            self.stream
-                .reserve((self.oft - self.data.len()) * self.ctx.bulk as usize)
+            println!("reserve_stream_buff reserve len:{}", self.oft);
+            self.stream.reserve(self.oft)
         }
     }
 }
