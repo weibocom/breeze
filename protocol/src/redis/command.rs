@@ -101,7 +101,7 @@ pub(crate) struct CommandProperties {
 
 // 默认响应
 // 第0个表示quit
-const PADDING_RSP_TABLE: [&str; 8] = [
+const PADDING_RSP_TABLE: [&str; 9] = [
     "",
     "+OK\r\n",
     "+PONG\r\n",
@@ -110,6 +110,7 @@ const PADDING_RSP_TABLE: [&str; 8] = [
     "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
     "$-1\r\n",                           // mget 等指令对应的nil
     ":-10\r\n",                          //phantom -1返回已被服务端占用
+    "*2\r\n$5\r\nproto\r\n:2\r\n",       //hello 指令返回的响应
 ];
 
 // 调用式确保idx < PADDING_RSP_TABLE.len()
@@ -261,9 +262,12 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("command").arity(-1).op(Meta).padding(pt[1]).nofwd(),
         Cmd::new("ping").arity(-1).op(Meta).padding(pt[2]).nofwd(),
         Cmd::new("select").arity(2).op(Meta).padding(pt[1]).nofwd(),
-        Cmd::new("hello").arity(-1).op(Meta).padding(pt[4]).nofwd(),
+        Cmd::new("hello").arity(-1).op(Meta).padding(pt[8]).nofwd(),
         // quit、master的指令token数/arity应该都是1,quit 的padding设为1 
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
+
+        #[cfg(target_os="macos")]
+        Cmd::new("client").arity(-1).op(Meta).padding(pt[1]).nofwd(),
 
         // masterq 不返回任何响应，masterx 必须返回响应，master当前同masterq，待sdk全部切换后，再考虑统一
         Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::Master).effect_on_next_req(),

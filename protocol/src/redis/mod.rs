@@ -127,9 +127,11 @@ impl Protocol for Redis {
         match self.parse_response_inner(data, &mut oft) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => {
+                println!("response Incomplete oft {} datalen {}", oft, data.len());
                 //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
                 if oft > data.len() {
-                    data.reserve(oft - data.len());
+                    // response可能比较长，按已接收到的数据长度扩容
+                    data.reserve(oft);
                 }
 
                 Ok(None)
