@@ -5,11 +5,12 @@ use std::task::{ready, Context, Poll};
 
 use ds::chan::mpsc::Receiver;
 use ds::time::Instant;
+use protocol::metrics::HostMetric;
 use protocol::{Error, Protocol, Request, Result, Stream};
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use metrics::Metric;
+use metrics::{Metric, Path};
 
 pub struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
@@ -18,6 +19,7 @@ pub struct Handler<'r, Req, P, S> {
     s: S,
     parser: P,
     rtt: Metric,
+    host_metric: HostMetric,
 
     // 处理timeout
     num: Number,
@@ -55,14 +57,16 @@ where
     S: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
 {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, rtt: Metric) -> Self {
+    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, path: Path) -> Self {
         data.enable();
+        let rtt = path.rtt("req");
         Self {
             data,
             pending: VecDeque::with_capacity(31),
             s,
             parser,
             rtt,
+            host_metric: HostMetric::from(path),
             num: Number::default(),
             ping_cycle: 0,
         }
@@ -121,6 +125,7 @@ where
 
             self.s.write_slice(&*req, 0)?;
 
+            self.parser.on_sent(req.operation(), &mut self.host_metric);
             match req.on_sent() {
                 Some(r) => self.pending.push_back((r, Instant::now())),
                 None => self.num.rx(),
@@ -203,10 +208,11 @@ impl<'r, Req, P, S: Debug> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler num:{:?}  p_req:{} {} buf:{:?} data:{:?}",
+            "handler num:{:?}  p_req:{} {} {} buf:{:?} data:{:?}",
             self.num,
             self.pending.len(),
             self.rtt,
+            self.host_metric,
             self.s,
             self.data
         )

@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-const QSIZE_DOMAIN_DELIMITER: &str = "=";
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Namespace {
@@ -8,7 +8,7 @@ pub struct Namespace {
     pub(crate) basic: Basic,
 
     #[serde(default)]
-    pub(crate) backends: Vec<String>,
+    pub(crate) backends: HashMap<usize, String>,
 
     // TODO 作为非主路径，实时构建更轻便？先和其他ns保持一致 fishermen
     #[serde(skip)]
@@ -55,31 +55,13 @@ impl Namespace {
         }
     }
 
-    /// 解析backends，分离出qsize，并对新的backends进行按qsize递增排序；
-    /// 注意：不允许qsize重复，否则认为配置错误
+    /// 解析backends，对新的backends进行按qsize递增排序；
     #[inline]
     fn parse_and_sort_backends(&mut self) -> Option<Vec<(usize, String)>> {
         let mut bkends: Vec<(usize, String)> = Vec::with_capacity(self.backends.len());
-        for sd in self.backends.iter() {
-            let size_domain = sd.split_once(QSIZE_DOMAIN_DELIMITER);
-            if size_domain.is_none() {
-                return None;
-            }
-            let (s, d) = size_domain.expect("mq");
-            let qsize = s.parse::<usize>().unwrap_or(0);
-            let domain = d.to_string();
-            if qsize == 0 || domain.len() == 0 {
-                return None;
-            }
-            // 排重，不能有相同size的mq
-            for (qs, _) in bkends.iter() {
-                if qs.eq(&qsize) {
-                    return None;
-                }
-            }
-            bkends.push((qsize, domain));
-        }
-
+        self.backends
+            .iter()
+            .for_each(|(qsize, domains)| bkends.push((qsize.clone(), domains.to_string())));
         bkends.sort_by(|a, b| a.0.cmp(&b.0));
         Some(bkends)
     }

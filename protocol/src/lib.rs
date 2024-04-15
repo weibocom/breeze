@@ -12,6 +12,7 @@ pub use redis::packet::Packet;
 pub mod req;
 //pub mod resp;
 pub mod kv;
+pub mod metrics;
 pub mod msgque;
 pub mod uuid;
 pub mod vector;
