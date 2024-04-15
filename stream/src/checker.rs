@@ -70,7 +70,8 @@ impl<P, Req> BackendChecker<P, Req> {
                 continue;
             }
 
-            let rtt = path_addr.rtt("req");
+            // TODO rtt放到handler中，同时增加协议级别的分类统计，待review确认 fishermen
+            // let rtt = path_addr.rtt("req");
             let mut stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
 
@@ -99,7 +100,7 @@ impl<P, Req> BackendChecker<P, Req> {
             self.init.on();
             log::debug!("handler started:{:?} with: {}", self.path, self.addr);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, stream, p, rtt);
+            let handler = Handler::from(rx, stream, p, path_addr.clone());
             let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             let ret = handler.await;
             log::error!("backend error {:?} => {:?}", path_addr, ret);

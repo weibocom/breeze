@@ -4,6 +4,7 @@ use sharding::hash::Hash;
 
 use crate::kv::Kv;
 use crate::memcache::MemcacheBinary;
+use crate::metrics::HostMetric;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
 use crate::uuid::Uuid;
@@ -119,6 +120,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn config(&self) -> Config {
         Config::default()
     }
+    // 统计每个mesh实例在后端的请求统计，这些统计是按cmd类型维度的，目前只有mq需要
+    fn on_sent(&self, _req_op: Operation, _metrics: &mut HostMetric) {}
 }
 
 pub trait RequestProcessor {
