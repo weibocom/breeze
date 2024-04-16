@@ -1,9 +1,6 @@
-use crate::msgque::McqError;
-
 #[derive(Debug)]
 #[repr(u8)]
 pub enum Error {
-    Mcq(McqError),
     // 注意，当前仅在paser_req出错时才会发送错误，关闭连接前需要把（静态/动态）异常消息发出去
     FlushOnClose(ToVec),
     // TODO: 暂时保留，等endpoint merge完毕后再清理，避免merge冲突导致的ci测试问题

@@ -1,94 +1,15 @@
 use crate::{
-    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, OpCode, Operation,
-    Protocol, RequestProcessor, Result, Stream, Writer,
+    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, Operation::*, Protocol,
+    RequestProcessor, Result, Stream, Writer,
 };
-use sharding::hash::{Bkdr, Hash, UppercaseHashKey};
-
-#[derive(Debug)]
-pub enum McqError {
-    ReqInvalid,
-    RspInvalid,
-}
-
-impl Into<Error> for McqError {
-    #[inline]
-    fn into(self) -> Error {
-        Error::Mcq(self)
-    }
-}
+use ds::ByteOrder;
+use sharding::hash::Hash;
 
 const OP_GET: u16 = 0;
 const OP_SET: u16 = 1;
 const OP_STATS: u16 = 2;
 const OP_VERSION: u16 = 3;
 const OP_QUIT: u16 = 4;
-
-#[derive(Clone, Copy, Debug, Default)]
-struct CommandProperties {
-    op_code: OpCode,
-    op: Operation,
-    padding_rsp: &'static [u8],
-    noforward: bool,
-}
-
-#[inline]
-fn get_cfg_by_name<'a>(cmd: &ds::RingSlice) -> crate::Result<&'a CommandProperties> {
-    todo!("");
-}
-#[inline]
-fn get_cfg<'a>(op_code: u16) -> crate::Result<&'a CommandProperties> {
-    SUPPORTED
-        .get(op_code as usize)
-        .ok_or(crate::Error::ProtocolNotSupported)
-}
-
-const PADDING_RSP_TABLE: [&[u8]; 4] = [
-    b"",
-    b"SERVER_ERROR mcq not available\r\n",
-    b"VERSION 0.0.1\r\n",
-    b"STAT supported later\r\nEND\r\n",
-];
-
-// for (name, req_type, op, padding_rsp, noforward) in vec![
-//     ("get", RequestType::Get, Get, 1, false),
-//     ("set", RequestType::Set, Store, 1, false),
-//     ("stats", RequestType::Stats, Meta, 3, true),
-//     ("version", RequestType::Version, Meta, 2, true),
-//     ("quit", RequestType::Quit, Meta, 0, true),
-// ]
-use Operation::*;
-static SUPPORTED: [CommandProperties; 5] = [
-    CommandProperties {
-        op_code: OP_GET,
-        op: Get,
-        padding_rsp: PADDING_RSP_TABLE[1],
-        noforward: false,
-    },
-    CommandProperties {
-        op_code: OP_SET,
-        op: Store,
-        padding_rsp: PADDING_RSP_TABLE[1],
-        noforward: false,
-    },
-    CommandProperties {
-        op_code: OP_STATS,
-        op: Meta,
-        padding_rsp: PADDING_RSP_TABLE[3],
-        noforward: true,
-    },
-    CommandProperties {
-        op_code: OP_VERSION,
-        op: Meta,
-        padding_rsp: PADDING_RSP_TABLE[2],
-        noforward: true,
-    },
-    CommandProperties {
-        op_code: OP_QUIT,
-        op: Meta,
-        padding_rsp: PADDING_RSP_TABLE[0],
-        noforward: true,
-    },
-];
 
 pub type MsgQue = McqText;
 
@@ -106,13 +27,14 @@ impl Protocol for McqText {
         let data = stream.slice();
         let mut oft = 0;
         while let Some(mut lfcr) = data.find_lf_cr(oft) {
-            let (op_code, op) = if data.start_with(oft, b"get") {
+            let head4 = data.u32_le(0);
+            let (op_code, op) = if head4 == u32::from_le_bytes(*b"get ") {
                 (OP_GET, Get)
             // <command name> <key> <flags> <exptime> <bytes>\r\n
             // 命令之后第四个空格是数据长度
-            } else if data.start_with(oft, b"set") {
+            } else if head4 == u32::from_le_bytes(*b"set ") {
                 let line_oft = lfcr + 2;
-                let Some(space) = data.find_r_n(oft + 3..line_oft, b' ', 4) else {
+                let Some(space) = data.find_r_n(oft + 4..line_oft, b' ', 3) else {
                     return Err(Error::ProtocolNotSupported);
                 };
                 let Some(val_len) = data.try_str_num(space + 1..lfcr) else {
@@ -127,11 +49,13 @@ impl Protocol for McqText {
                     return Err(Error::ProtocolNotSupported);
                 }
                 (OP_SET, Store)
-            } else if data.start_with(oft, b"stats") {
+            } else if head4 == u32::from_le_bytes(*b"stat") {
+                //stats
                 (OP_STATS, Meta)
-            } else if data.start_with(oft, b"version") {
+            } else if head4 == u32::from_le_bytes(*b"vers") {
+                //version
                 (OP_VERSION, Meta)
-            } else if data.start_with(oft, b"quit") {
+            } else if head4 == u32::from_le_bytes(*b"quit") {
                 (OP_QUIT, Meta)
             } else {
                 return Err(Error::ProtocolNotSupported);
@@ -148,7 +72,45 @@ impl Protocol for McqText {
     }
 
     #[inline]
-    fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {}
+    fn parse_response<S: Stream>(&self, stream: &mut S) -> Result<Option<Command>> {
+        let data = stream.slice();
+        let Some(mut lfcr) = data.find_lf_cr(0) else {
+            return Ok(None);
+        };
+        //最短响应是end\r\n
+        if lfcr < 3 {
+            return Err(crate::Error::UnexpectedData);
+        }
+        let head4 = data.u32_le(0);
+        let ok = if head4 == u32::from_le_bytes(*b"END\r") {
+            false
+        // VALUE <key> <flags> <bytes> [<cas unique>]\r\n
+        } else if head4 == u32::from_le_bytes(*b"VALU") {
+            let line_oft = lfcr + 2;
+            let Some(space) = data.find_r_n(4..line_oft, b' ', 3) else {
+                return Err(Error::UnexpectedData);
+            };
+            let Some(val_len) = data.try_str_num(space + 1..lfcr) else {
+                return Err(Error::UnexpectedData);
+            };
+            lfcr = line_oft + val_len;
+            //数据之后是\r\nend\r\n
+            if data.len() < lfcr + 2 + 5 {
+                stream.reserve(lfcr + 2 + 5 - data.len());
+                return Ok(None);
+            }
+            if !data.start_with(lfcr, b"\r\nEND\r\n") {
+                return Err(Error::UnexpectedData);
+            }
+            lfcr = lfcr + 5;
+            true
+        } else if head4 == u32::from_le_bytes(*b"STOR") {
+            true
+        } else {
+            false
+        };
+        return Ok(Some(Command::from(ok, stream.take(lfcr + 2))));
+    }
 
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
@@ -165,24 +127,26 @@ impl Protocol for McqText {
         I: MetricItem,
     {
         let request = ctx.request();
-        let cfg = get_cfg(request.op_code())?;
-
-        // 对于quit指令，直接返回Err断连
-        // if cfg.quit {
-        //     // mc协议的quit，直接断连接
-        //     return Err(crate::Error::Quit);
-        // }
+        let op_code = request.op_code();
+        match op_code {
+            OP_QUIT => {
+                return Err(crate::Error::Quit);
+            }
+            OP_STATS => {
+                w.write(b"STAT supported later\r\nEND\r\n")?;
+            }
+            OP_VERSION => {
+                w.write(b"VERSION 0.0.1\r\n")?;
+            }
+            _ => {}
+        }
 
         if let Some(rsp) = response {
-            // 不再创建local rsp，所有server响应的rsp data长度应该大于0
-            debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
-            log::debug!("+++ write mq:{}", rsp.as_string_lossy());
             w.write_slice(rsp, 0)?;
         } else {
-            let padding = cfg.padding_rsp;
-            log::debug!("+++ write mq padding:{:?}", padding);
-            w.write(padding)?;
-            // TODO 写失败尚没有统计（还没merge进来？），暂时先和dev保持一致 fishermen
+            //协议要求服务端错误断连
+            w.write(b"SERVER_ERROR mcq not available\r\n")?;
+            return Err(Error::Quit);
         }
         Ok(())
     }
