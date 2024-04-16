@@ -74,7 +74,12 @@ impl ResizedRingBuffer {
     pub fn grow(&mut self, reserve: usize) {
         let len = self.len();
         if self.policy.need_grow(len, self.cap(), reserve) {
-            println!("grow cap {} len {} reserve {}", self.cap(), len, reserve);
+            println!(
+                "need grow cap {} len {} reserve {}",
+                self.cap(),
+                len,
+                reserve
+            );
             let new = self.policy.grow(len, self.cap(), reserve);
             self.resize(new);
         }

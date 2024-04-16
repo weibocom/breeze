@@ -82,7 +82,10 @@ impl Redis {
         match data.at(0) {
             b'-' | b':' | b'+' => data.line(oft)?,
             b'$' => *oft += data.num_of_string(oft)? + 2,
-            b'*' => data.skip_all_bulk(oft)?,
+            b'*' => {
+                let ctx = packet::transmute(s.context());
+                data.skip_multibulks(oft, &mut ctx.multibulk_ptr)?
+            }
             _ => return Err(RedisError::RespInvalid.into()),
         }
 
