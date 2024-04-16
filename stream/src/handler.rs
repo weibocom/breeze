@@ -112,6 +112,7 @@ where
             while let Some(req) = self.req_buf.pop() {
                 self.s.write_slice(&*req, 0).expect("should not err");
                 self.num.tx();
+                self.parser.on_sent(req.operation(), &mut self.host_metric);
                 match req.on_sent() {
                     Some(r) => self.pending.push_back((r, Instant::now())),
                     None => self.num.rx(),
@@ -173,24 +174,6 @@ where
             Poll::Ready(Err(e)) => Err(e.into()),
             Poll::Pending => Ok(()),
         }
-    }
-
-    // 发送request. 读空所有的request，并且发送。直到pending或者error
-    #[inline]
-    fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        self.s.cache(self.data.has_multi());
-        while let Some(req) = ready!(self.data.poll_recv(cx)) {
-            self.num.tx();
-
-            self.s.write_slice(&*req, 0)?;
-
-            self.parser.on_sent(req.operation(), &mut self.host_metric);
-            match req.on_sent() {
-                Some(r) => self.pending.push_back((r, Instant::now())),
-                None => self.num.rx(),
-            }
-        }
-        Poll::Ready(Err(Error::ChanReadClosed))
     }
 
     #[inline(always)]

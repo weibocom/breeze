@@ -30,6 +30,7 @@ pub use stream::*;
 
 pub use req::*;
 mod operation;
+pub use metrics::HostMetric;
 pub use operation::*;
 
 pub mod callback;
