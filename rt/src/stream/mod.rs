@@ -184,7 +184,12 @@ impl<S> protocol::BufRead for Stream<S> {
     }
     #[inline]
     fn reserve(&mut self, r: usize) {
-        println!("stream reserve: {}", r);
+        println!(
+            "stream reserve: cap:{} len:{} reserve:{}",
+            self.rx_buf.cap(),
+            self.rx_buf.len(),
+            r
+        );
         self.rx_buf.grow(r);
     }
 }

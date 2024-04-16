@@ -21,7 +21,47 @@ pub struct RequestContext {
     pub is_reserved_hash: bool,
     //16
     pub reserved_hash: i64,
+    pub multibulk_ptr: usize, // 解析RESP arrays数据类型时使用
 }
+
+// 解析Bulk
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MultiBulk {
+    total: u16,  // bulk数量
+    parsed: u16, // 已解析的bulk数量
+    pos: u32,    // 当前bulk待解析的起始位置
+}
+
+impl MultiBulk {
+    #[inline]
+    pub fn new(total: u16, pos: usize) -> Self {
+        Self {
+            total,
+            parsed: 0,
+            pos: pos as u32,
+        }
+    }
+    #[inline]
+    pub fn parse1(&mut self, pos: usize) {
+        self.parsed += 1;
+        self.pos = pos as u32;
+    }
+    #[inline]
+    pub fn pos(&self) -> usize {
+        self.pos as usize
+    }
+    #[inline]
+    pub fn set_pos(&mut self, pos: usize) {
+        self.pos = pos as u32;
+    }
+    #[inline]
+    pub fn complete(&self) -> bool {
+        self.total == self.parsed
+    }
+}
+
+// impl Copy for MultiBulk {}
 
 impl From<&mut StreamContext> for RequestContext {
     fn from(value: &mut StreamContext) -> Self {
@@ -35,12 +75,29 @@ impl From<RequestContext> for StreamContext {
     }
 }
 
+#[inline]
+pub fn transmute(ctx: &mut StreamContext) -> &mut RequestContext {
+    // 这个放在layout的单元测试里面
+    //assert_eq!(std::mem::size_of::<Context>(), 8);
+    unsafe { std::mem::transmute(ctx) }
+}
+
 // 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
 #[repr(u8)]
 pub enum LayerType {
     MasterOnly = 1,
 }
 
+impl RequestContext {
+    #[inline]
+    fn clear_multibulks(&mut self) {
+        if self.multibulk_ptr > 0 {
+            println!("call clear_multibulks and ptr not null");
+            let _ = unsafe { Box::from_raw(self.multibulk_ptr as *mut Vec<MultiBulk>) };
+            self.multibulk_ptr = 0;
+        }
+    }
+}
 // impl RequestContext {
 //     #[inline]
 //     fn reset(&mut self) {
@@ -235,6 +292,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         } else {
             self.reset_context();
         }
+        self.clear_bulk();
     }
 
     #[inline]
@@ -347,6 +405,10 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(crate) fn bulk(&self) -> u16 {
         self.ctx.bulk
+    }
+    #[inline]
+    pub(crate) fn clear_bulk(&mut self) {
+        self.ctx.clear_multibulks()
     }
     #[inline]
     pub(crate) fn op_code(&self) -> u16 {
@@ -553,7 +615,73 @@ impl Packet {
         let bulk_count = self.num_of_bulks(oft)?;
         self.skip_bulk(oft, bulk_count)
     }
+    #[inline]
+    pub fn skip_multibulks(&self, oft: &mut usize, multibulk_ptr: &mut usize) -> Result<()> {
+        if *multibulk_ptr == 0 {
+            let bulk_count = self.num_of_bulks(oft)?;
+            let mut data = Box::new(Vec::with_capacity(2)); // 2层嵌套覆盖常见场景
+            data.push(MultiBulk::new(bulk_count as u16, *oft));
+            //  let ptr = unsafe { NonNull::new_unchecked(data.as_mut_ptr()) };
 
+            *multibulk_ptr = Box::into_raw(data) as usize;
+        }
+
+        let r = self.skip_multibulks_inner(oft, *multibulk_ptr);
+
+        if r.is_ok() {
+            let _ = unsafe { Box::from_raw(*multibulk_ptr as *mut Vec<MultiBulk>) };
+            *multibulk_ptr = 0;
+        } else {
+            // 在当前层记录解析到的位置
+            let arrays = *multibulk_ptr as *mut Vec<MultiBulk>;
+            let arrays = unsafe { &mut *arrays };
+            if let Some(array) = arrays.last_mut() {
+                array.set_pos(*oft);
+            }
+        }
+        r
+    }
+
+    #[inline]
+    pub fn skip_multibulks_inner(&self, oft: &mut usize, multibulk_ptr: usize) -> Result<()> {
+        let arrays = multibulk_ptr as *mut Vec<MultiBulk>;
+        let arrays = unsafe { &mut *arrays };
+        while arrays.len() > 0 {
+            if let Some(level_0) = arrays.get(0) {
+                if level_0.complete() {
+                    return Ok(());
+                }
+            }
+
+            if let Some(array) = arrays.last_mut() {
+                *oft = array.pos();
+                self.check_onetoken(*oft)?;
+                match self.at(*oft) {
+                    b'*' => {
+                        let current = self.num_of_bulks(oft)?;
+                        arrays.push(MultiBulk::new(current as u16, *oft));
+                        continue;
+                    }
+                    b'$' => {
+                        // 跳过num个字节 + "\r\n" 2个字节
+                        *oft += self.num_of_string(oft)? + CRLF_LEN;
+                        array.parse1(*oft);
+                    }
+                    b'+' | b':' => {
+                        self.line(oft)?;
+                        array.parse1(*oft);
+                    }
+                    _ => panic!("unsupport rsp:{:?}, pos: {}", self, oft),
+                }
+
+                // 当前的层次的array已解析完，
+                if array.complete() {
+                    let _ = arrays.pop();
+                }
+            }
+        }
+        Ok(())
+    }
     #[inline]
     pub fn skip_bulk(&self, oft: &mut usize, bulk_count: usize) -> Result<()> {
         let mut bulk_count = bulk_count;
