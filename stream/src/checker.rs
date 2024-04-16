@@ -54,9 +54,11 @@ impl<P, Req> BackendChecker<P, Req> {
         P: Protocol,
         Req: Request,
     {
-        let path_addr = self.path.clone().push(&self.addr);
+        self.path.push(&self.addr);
+        let path_addr = &self.path;
         let mut be_conns = path_addr.qps("be_conn");
         let mut timeout = Path::base().qps("timeout");
+        let mut m_timeout = path_addr.qps("timeout");
         let mut reconn = crate::reconn::ReconnPolicy::new();
         metrics::incr_task();
         while !self.finish.get() {
@@ -65,7 +67,7 @@ impl<P, Req> BackendChecker<P, Req> {
             if stream.is_none() {
                 // 连接失败，按策略sleep
                 log::debug!("+++ connected failed to:{}", self.addr);
-                reconn.conn_failed().await;
+                reconn.conn_failed(&self.addr).await;
                 self.init.on();
                 continue;
             }
@@ -88,7 +90,7 @@ impl<P, Req> BackendChecker<P, Req> {
                     stream.cancel();
                     //当作连接失败处理，不立马重试
                     //todo：可以尝试将等待操作统一提取到循环开头
-                    reconn.conn_failed().await;
+                    reconn.conn_failed(&self.addr).await;
                     continue;
                 }
             }
@@ -106,16 +108,15 @@ impl<P, Req> BackendChecker<P, Req> {
             log::error!("backend error {:?} => {:?}", path_addr, ret);
             // handler 一定返回err，不会返回ok
             match ret.err().expect("handler return ok") {
+                Error::Eof | Error::IO(_) => {}
                 Error::Timeout(_t) => {
-                    let mut m_timeout = path_addr.qps("timeout");
                     m_timeout += 1;
                     timeout += 1;
                 }
-                Error::UnexpectedData => {
-                    let mut unexpected_resp = path_addr.num("unexpected_resp");
+                Error::UnexpectedData | _ => {
+                    let mut unexpected_resp = Path::base().num("unexpected_resp");
                     unexpected_resp += 1;
                 }
-                _ => {}
             }
         }
         metrics::decr_task();

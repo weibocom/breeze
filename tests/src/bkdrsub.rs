@@ -65,6 +65,8 @@ fn check_file(idx: usize, fname: &str, hasher: Hasher, dist: Distribute) {
             let idx_line = dist.index(hash);
             if idx_line != idx {
                 println!("line:{}, hash:{}, idx:{}", line, hash, idx_line);
+            } else {
+                println!("succeed line:{}, hash:{}, idx:{}", line, hash, idx_line);
             }
             assert_eq!(
                 idx, idx_line,

@@ -1,21 +1,34 @@
 use crate::{ItemWriter, WriteTo};
-use std::sync::{
-    atomic::{AtomicUsize, Ordering::AcqRel},
-    Arc,
-};
 pub struct Prometheus {
     secs: f64,
-    idx: Arc<AtomicUsize>,
-    left: Vec<u8>,
+    idx: usize,
+    host: bool,       // host相关的metrics是否已经发送
+    ext_buf: Vec<u8>, // 扩展的buffer，如果ReadBuf没有足够的空间，则使用这个buffer
+    ext_oft: usize,
 }
 
 impl Prometheus {
     pub fn new(secs: f64) -> Self {
-        let idx = Arc::new(AtomicUsize::new(0));
         Self {
-            idx,
+            idx: 0,
             secs,
-            left: Default::default(),
+            ext_buf: Vec::with_capacity(1024),
+            host: false,
+            ext_oft: 0,
+        }
+    }
+    // 把ext_buf中的数据拷贝到buf中
+    fn copy_buf(&mut self, buf: &mut ReadBuf<'_>) {
+        if self.ext_buf.len() > 0 {
+            let left = self.ext_buf.len() - self.ext_oft;
+            debug_assert!(left > 0);
+            let n = left.min(buf.remaining());
+            buf.put_slice(&self.ext_buf[self.ext_oft..self.ext_oft + n]);
+            self.ext_oft += n;
+            if self.ext_oft >= self.ext_buf.len() {
+                self.ext_buf.clear();
+                self.ext_oft = 0;
+            }
         }
     }
 }
@@ -30,48 +43,46 @@ impl AsyncRead for Prometheus {
         _cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
+        // 1. copy buffer
+        self.copy_buf(buf);
         let metrics = crate::get_metrics();
         let len = metrics.len();
-        if self.left.len() > 0 {
-            let n = std::cmp::min(self.left.len(), buf.remaining());
-            let left = self.left.split_off(n);
-            buf.put_slice(&self.left);
-            self.left = left;
-        }
-        while buf.remaining() > 0 {
-            let idx = self.idx.fetch_add(1, AcqRel);
-            if idx >= len {
-                break;
-            }
-            let mut w = PrometheusItemWriter::new(buf);
-            if idx == 0 {
-                let mut host = HOST.try_lock().expect("host lock");
-                host.snapshot(&mut w, self.secs);
-            }
-            let (id, item) = metrics.get_item_id(idx);
-            item.snapshot(id, &mut w, self.secs);
-            self.left = w.left();
+        let secs = self.secs;
+        let Self {
+            host, idx, ext_buf, ..
+        } = &mut *self;
+        // 2. write host metrics
+        let mut w = PrometheusItemWriter::new(buf, ext_buf);
+        if !*host {
+            *host = true;
+            HOST.try_lock().expect("host lock").snapshot(&mut w, secs);
+        };
+        // 3. write metrics by idx
+        while w.remaining() > 0 && *idx < len {
+            let (id, item) = metrics.get_item_id(*idx);
+            item.snapshot(id, &mut w, secs);
+            *idx += 1;
         }
         Poll::Ready(Ok(()))
     }
 }
 
-struct PrometheusItemWriter<'a, 'r> {
-    left: Vec<u8>,
+struct PrometheusItemWriter<'a, 'r, 'b> {
+    left: &'b mut Vec<u8>,
     buf: &'a mut ReadBuf<'r>,
     first: bool, // 在lable中，第一个k/v前面不输出 ','
 }
-impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
-    fn new(buf: &'a mut ReadBuf<'r>) -> Self {
+impl<'a, 'r, 'b> PrometheusItemWriter<'a, 'r, 'b> {
+    fn new(buf: &'a mut ReadBuf<'r>, ext: &'b mut Vec<u8>) -> Self {
         Self {
-            left: Vec::new(),
+            left: ext,
             buf,
             first: true,
         }
     }
     #[inline]
-    fn left(self) -> Vec<u8> {
-        self.left
+    fn remaining(&self) -> usize {
+        self.buf.remaining()
     }
     #[inline]
     fn put_label(&mut self, name: &str, val: &[u8]) {
@@ -88,7 +99,7 @@ impl<'a, 'r> PrometheusItemWriter<'a, 'r> {
         }
     }
 }
-impl<'a, 'r> ItemWriter for PrometheusItemWriter<'a, 'r> {
+impl<'a, 'r, 'b> ItemWriter for PrometheusItemWriter<'a, 'r, 'b> {
     #[inline]
     fn put_slice<S: AsRef<[u8]>>(&mut self, data: S) {
         let data = data.as_ref();

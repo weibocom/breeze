@@ -68,6 +68,7 @@ impl Distribute {
             "modula" => Self::Modula(Modula::from(names.len(), false)),
             "absmodula" => Self::Modula(Modula::from(names.len(), true)),
             "ketama" => Self::Consistent(Consistent::from(names)),
+            "ketama_origin" => Self::Consistent(Consistent::new(names, true)),
             "range" => Self::Range(Range::from(num, names.len())),
             "modrange" => Self::ModRange(ModRange::from(num, names.len())),
             "splitmod" => Self::SplitMod(SplitMod::from(num, names.len())),
@@ -75,6 +76,7 @@ impl Distribute {
             "secmod" => Self::SecMod(SecMod::from(names.len())),
             _ => {
                 log::warn!("'{}' is not valid , use modula instead", distribution);
+                println!("'{}' is not valid , use modula instead!", distribution);
                 Self::Modula(Modula::from(names.len(), false))
             }
         }

@@ -128,7 +128,7 @@ impl LoadGuard {
             log::warn!("{} clear_status failed", self._service);
         }
         if !f() {
-            log::info!("{} load failed", self._service);
+            log::info!("{} load not complete", self._service);
             if let Err(_e) = self.guard.compare_exchange(false, true, AcqRel, Relaxed) {
                 log::warn!("{} renotified failed => {}", self._service, _e);
             }
@@ -174,7 +174,7 @@ impl Lookup for GLookup {
     }
 }
 
-use std::net::IpAddr;
+pub use std::net::Ipv4Addr as IpAddr;
 pub trait Lookup {
     fn lookup(host: &str, f: impl FnMut(&[IpAddr]));
 }
