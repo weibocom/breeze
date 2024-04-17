@@ -6,6 +6,7 @@ use endpoint::msgque::strategy::RoundRobbin;
 use endpoint::msgque::ReadStrategy;
 use endpoint::msgque::WriteStrategy;
 
+mod protocol;
 /// 轮询读取40次，预期把每个节点都读一遍
 #[test]
 fn mq_read_strategy() {

@@ -5,11 +5,11 @@ use crate::{
 use ds::ByteOrder;
 use sharding::hash::Hash;
 
-const OP_GET: u16 = 0;
-const OP_SET: u16 = 1;
-const OP_STATS: u16 = 2;
-const OP_VERSION: u16 = 3;
-const OP_QUIT: u16 = 4;
+pub const OP_GET: u16 = 0;
+pub const OP_SET: u16 = 1;
+pub const OP_STATS: u16 = 2;
+pub const OP_VERSION: u16 = 3;
+pub const OP_QUIT: u16 = 4;
 
 pub type MsgQue = McqText;
 
@@ -105,6 +105,7 @@ impl Protocol for McqText {
             lfcr = lfcr + 5;
             true
         } else if head4 == u32::from_le_bytes(*b"STOR") {
+            //STORED
             true
         } else {
             false
