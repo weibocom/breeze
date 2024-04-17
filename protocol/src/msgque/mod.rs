@@ -27,7 +27,7 @@ impl Protocol for McqText {
         let data = stream.slice();
         let mut oft = 0;
         while let Some(mut lfcr) = data.find_lf_cr(oft) {
-            let head4 = data.u32_le(0);
+            let head4 = data.u32_le(oft);
             let (op_code, op) = if head4 == u32::from_le_bytes(*b"get ") {
                 (OP_GET, Get)
             // <command name> <key> <flags> <exptime> <bytes>\r\n
@@ -139,15 +139,15 @@ impl Protocol for McqText {
             OP_VERSION => {
                 w.write(b"VERSION 0.0.1\r\n")?;
             }
-            _ => {}
-        }
-
-        if let Some(rsp) = response {
-            w.write_slice(rsp, 0)?;
-        } else {
-            //协议要求服务端错误断连
-            w.write(b"SERVER_ERROR mcq not available\r\n")?;
-            return Err(Error::Quit);
+            _ => {
+                if let Some(rsp) = response {
+                    w.write_slice(rsp, 0)?;
+                } else {
+                    //协议要求服务端错误断连
+                    w.write(b"SERVER_ERROR mcq not available\r\n")?;
+                    return Err(Error::Quit);
+                }
+            }
         }
         Ok(())
     }
