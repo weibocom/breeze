@@ -288,7 +288,7 @@ impl RingSlice {
     // 查找是否存在 '\r\n' ，返回匹配的第一个字节地址
     #[inline]
     pub fn find_lf_cr(&self, offset: usize) -> Option<usize> {
-        self.find_r(offset..self.len() - 1, |b, idx| {
+        self.find_r(offset..self.len().saturating_sub(1), |b, idx| {
             b == b'\r' && self[idx + 1] == b'\n'
         })
     }
