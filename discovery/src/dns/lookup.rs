@@ -8,7 +8,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 pub struct DnsProtocol {
     err: Metric,
-    stream: Option<TcpStream>,
+    stream: Vec<TcpStream>,
     buf: Vec<u8>,
 }
 
@@ -19,7 +19,7 @@ impl DnsProtocol {
     pub fn new() -> Self {
         Self {
             buf: Vec::with_capacity(2048),
-            stream: None,
+            stream: Vec::new(),
             err: metrics::Path::base().qps("lookup_err"),
         }
     }
@@ -42,13 +42,14 @@ impl DnsProtocol {
         }
         (num, cache)
     }
-    // 从stream获取数据出错时，会把stream给take走，下一次lookup时会check重新建立连接
+    // 从/etc/resolv.conf中读取nameserver，并连接。
+    // 如果无法建立有效连接，尝试3次，每次间隔500ms。
     async fn check(&mut self) -> std::io::Result<()> {
-        if self.stream.is_none() {
+        while self.stream.is_empty() {
             let mut file = tokio::fs::File::open("/etc/resolv.conf").await?;
             let mut buf = String::new();
             file.read_to_string(&mut buf).await?;
-            for line in buf.lines() {
+            for line in buf.lines().rev() {
                 if !line.starts_with("nameserver") {
                     continue;
                 }
@@ -59,37 +60,47 @@ impl DnsProtocol {
                         .map(|_| nameserver.to_string())
                         .unwrap_or_else(|| format!("{}:53", nameserver));
                     if let Ok(s) = TcpStream::connect(&nameserver).await {
-                        self.stream = Some(s);
-                        return Ok(());
+                        self.stream.push(s);
                     }
                 }
+            }
+            if self.stream.is_empty() {
+                println!("no nameserver established, sleep 1s");
+                tokio::time::sleep(ds::time::Duration::from_secs(1)).await;
             }
         }
         // 无法建立连接，返回失败
         Ok(())
     }
     pub async fn lookup(&mut self, host: &str) -> std::io::Result<Ipv4Lookup<'_>> {
-        self.check().await?;
-        match self._lookup(host).await {
-            Err(e) => {
-                self.stream.take();
-                self.err += 1;
-                log::warn!("lookup error:{} {:?}", host, e);
-                println!("lookup error:{e:?}");
-                Err(e)
+        loop {
+            self.check().await?;
+            assert!(!self.stream.is_empty());
+            let Self { stream, buf, .. } = self;
+            let s = stream.last_mut().expect("stream check failed");
+            match Self::lookup_inner(host, s, buf).await {
+                Err(e) => {
+                    let dropped = stream.pop();
+                    self.err += 1;
+                    log::warn!("lookup error:{} {:?}", host, e);
+                    println!(
+                        "lookup error:{e:?} => {dropped:?} {:?}",
+                        dropped.as_ref().map(|s| s.peer_addr())
+                    );
+                }
+                // 前面2个字节是包长度。
+                Ok(()) => return Ok(Ipv4Lookup::new(&self.buf[2..], &mut self.err)),
             }
-            // 前面2个字节是包长度。
-            Ok(()) => Ok(Ipv4Lookup::new(&self.buf[2..], &mut self.err)),
         }
     }
-    async fn _lookup(&mut self, host: &str) -> std::io::Result<()> {
-        // 每次lookup前，必须先清空buf。
-        let Self { stream, buf, .. } = self;
-        let stream = stream.as_mut().expect("stream check failed");
+    async fn lookup_inner(
+        host: &str,
+        stream: &mut TcpStream,
+        buf: &mut Vec<u8>,
+    ) -> std::io::Result<()> {
         unsafe { buf.set_len(0) };
         let mut query = Query::new(buf);
         query.send(host, stream).await?;
-
         // 清空buff，读取的时候需要重复使用
         unsafe { buf.set_len(0) };
         let mut answer = Answer::new(buf);
