@@ -22,6 +22,7 @@ mod cow;
 mod decrypt;
 mod discovery;
 mod dns;
+// mod ip;
 mod kv;
 mod mysql_strategy;
 mod number;

@@ -115,6 +115,9 @@ pub struct ContextOption {
     // api参数，目前只有这一个差异参数，先放这里
     #[clap(long, help("api whitelist host"), default_value("localhost"))]
     pub whitelist_host: String,
+
+    #[clap(long, help("host ip"), default_value(""))]
+    pub host_ip: String,
 }
 
 lazy_static! {
