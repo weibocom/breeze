@@ -62,6 +62,7 @@ impl Record {
         for update in self.subscribers.iter() {
             update.store(true, Ordering::Release);
         }
+        println!("notified:{:?}", self.ips);
         self.notify = false;
     }
     fn empty(&self) -> bool {
@@ -69,9 +70,16 @@ impl Record {
     }
     // 如果有更新，则返回lookup的ip。
     // 无更新则返回None
-    fn refresh(&mut self, ips: IpAddrLookup) -> bool {
-        if ips.len() > 0 && self.ips != ips {
-            self.ips = ips;
+    fn refresh(&mut self, mut ips: Ipv4Lookup<'_>) -> bool {
+        let mut n = 0;
+        let mut md5 = 0u64;
+        ips.visit(|ip| {
+            n += 1;
+            md5 += u32::from(ip) as u64;
+        });
+        if n > 0 && self.ips.md5() != md5 {
+            self.ips.clear();
+            ips.visit(|ip| self.ips.push(ip));
             self.notify = true;
             true
         } else {
@@ -109,6 +117,7 @@ impl IPPort for String {
         &self[idx..]
     }
 }
+use lookup::DnsProtocol as Lookup;
 pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
     let (reg_tx, mut reg_rx) = unbounded_channel();
     let mut local_cache = DnsCache::from(reg_tx);
@@ -123,19 +132,12 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
             while let Ok((host, notify)) = reg_rx.try_recv() {
                 local_cache.register(host, notify);
             }
-            // 处理新增的
-            (writer, resolver, local_cache) = tokio::task::spawn_blocking(move || {
-                let (num, cache) = resolver.lookups(local_cache.iter());
-                if num > 0 {
-                    let new = local_cache.clone();
-                    writer.update(new);
-                    local_cache.notify(cache.expect("cache none"), num);
-                }
-                (writer, resolver, local_cache)
-            })
-            .await
-            .expect("no err");
-
+            let (num, cache) = resolver.lookups(local_cache.iter()).await;
+            if num > 0 {
+                let new = local_cache.clone();
+                writer.update(new);
+                local_cache.notify(cache.expect("cache none"), num);
+            }
             tick.tick().await;
         }
     }
@@ -357,6 +359,10 @@ impl Ipv4Vec {
         } else {
             self.ext.as_ref().expect("ext").as_slice()
         }
+    }
+    pub fn clear(&mut self) {
+        self.len = 0;
+        self.ext.as_mut().map(|e| e.clear());
     }
 }
 pub struct Ipv4VecIter<'a> {
