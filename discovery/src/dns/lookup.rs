@@ -4,7 +4,7 @@ use metrics::Metric;
 
 use byteorder::{BigEndian, ByteOrder};
 use std::net::Ipv4Addr;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 pub struct DnsProtocol {
     err: Metric,
@@ -68,9 +68,6 @@ impl DnsProtocol {
         // 无法建立连接，返回失败
         Ok(())
     }
-    fn clear(&mut self) {
-        unsafe { self.buf.set_len(0) };
-    }
     pub async fn lookup(&mut self, host: &str) -> std::io::Result<Ipv4Lookup<'_>> {
         self.check().await?;
         match self._lookup(host).await {
@@ -85,50 +82,18 @@ impl DnsProtocol {
             Ok(()) => Ok(Ipv4Lookup::new(&self.buf[2..], &mut self.err)),
         }
     }
-    // 调用这个方法前，必须先调用check，确保stream不为空。
-    fn stream(&mut self) -> &mut TcpStream {
-        self.stream.as_mut().expect("stream check failed")
-    }
     async fn _lookup(&mut self, host: &str) -> std::io::Result<()> {
         // 每次lookup前，必须先清空buf。
-        self.clear();
         let Self { stream, buf, .. } = self;
         let stream = stream.as_mut().expect("stream check failed");
-        static ID: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
-        let id = ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 2;
+        unsafe { buf.set_len(0) };
         let mut query = Query::new(buf);
-        query.build(id, host);
-
-        stream.write_all(&query.buf[..]).await?;
-        stream.flush().await?;
+        query.send(host, stream).await?;
 
         // 清空buff，读取的时候需要重复使用
-        self.clear();
-        let mut pkt_len = usize::MAX;
-        while self.buf.len() < pkt_len {
-            self.buf.reserve(512);
-            let available = self.buf.capacity() - self.buf.len();
-            let mut buf = unsafe {
-                std::slice::from_raw_parts_mut(self.buf.as_mut_ptr().add(self.buf.len()), available)
-            };
-            let n = self.stream().read(&mut buf).await?;
-            if n == 0 {
-                println!(
-                    "host:{host} pkt_len:{pkt_len}, len:{} response:{:?}",
-                    self.buf.len(),
-                    &buf[..n]
-                );
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "EOF",
-                ));
-            }
-            if self.buf.len() == 0 && n >= 2 {
-                // 第一次需要读取包长度
-                pkt_len = ((buf[0] as usize) << 8) | buf[1] as usize;
-            }
-            unsafe { self.buf.set_len(self.buf.len() + n) };
-        }
+        unsafe { buf.set_len(0) };
+        let mut answer = Answer::new(buf);
+        answer.recv(host, stream).await?;
         Ok(())
     }
 }
@@ -209,6 +174,15 @@ impl<'a> Query<'a> {
         }
         self.buf.push(0);
     }
+    async fn send<S: AsyncWrite + Unpin>(&mut self, host: &str, s: &mut S) -> std::io::Result<()> {
+        static ID: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+        let id = ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 2;
+        self.build(id, host);
+
+        s.write_all(&self.buf[..]).await?;
+        s.flush().await?;
+        Ok(())
+    }
 }
 
 impl<'a> Ipv4Lookup<'a> {
@@ -277,4 +251,42 @@ fn parse_record<'a>(
 pub struct Ipv4Lookup<'a> {
     data: &'a [u8],
     err: &'a mut Metric,
+}
+
+struct Answer<'a> {
+    buf: &'a mut Vec<u8>,
+}
+impl<'a> Answer<'a> {
+    pub fn new(buf: &'a mut Vec<u8>) -> Self {
+        Self { buf }
+    }
+    async fn recv<S: AsyncRead + Unpin>(&mut self, host: &str, s: &mut S) -> std::io::Result<()> {
+        assert!(self.buf.is_empty());
+        let mut pkt_len = usize::MAX;
+        while self.buf.len() < pkt_len {
+            self.buf.reserve(512);
+            let available = self.buf.capacity() - self.buf.len();
+            let mut buf = unsafe {
+                std::slice::from_raw_parts_mut(self.buf.as_mut_ptr().add(self.buf.len()), available)
+            };
+            let n = s.read(&mut buf).await?;
+            if n == 0 {
+                println!(
+                    "host:{host} pkt_len:{pkt_len}, len:{} response:{:?}",
+                    self.buf.len(),
+                    &buf[..n]
+                );
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "EOF",
+                ));
+            }
+            if self.buf.len() == 0 && n >= 2 {
+                // 第一次需要读取包长度
+                pkt_len = ((buf[0] as usize) << 8) | buf[1] as usize;
+            }
+            unsafe { self.buf.set_len(self.buf.len() + n) };
+        }
+        Ok(())
+    }
 }
