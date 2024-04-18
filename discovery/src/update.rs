@@ -175,11 +175,8 @@ impl<T: TopologyWrite> ServiceGroup<T> {
         let (sig, group_cfg) = take_line(&*content)?;
         let (group, cfg) = take_line(group_cfg)?;
 
-        if group != self.name {
-            log::warn!("group name changed: {path} '{}' -> '{}'", self.name, group);
-            return None;
-        }
-        log::info!("load from snapshot: {} {} => {}", path, self.sig, sig);
+        // 检查group是否匹配
+        (group == self.name).then(|| ())?;
         self.sig = sig.to_string();
         self.cfg = cfg.to_string();
         self.changed = true;
