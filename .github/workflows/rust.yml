@@ -63,7 +63,7 @@ jobs:
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+vectortest@vector:3308@vector
-          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+mcqmeshtest@msgque:56815@mq
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+mq+testbreeze+mcqmeshtest@msgque:56815@mq
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
