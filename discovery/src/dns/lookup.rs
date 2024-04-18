@@ -78,6 +78,7 @@ impl DnsProtocol {
                 self.stream.take();
                 self.err += 1;
                 log::warn!("lookup error:{} {:?}", host, e);
+                println!("lookup error:{e:?}");
                 Err(e)
             }
             // 前面2个字节是包长度。
@@ -218,6 +219,7 @@ impl<'a> Ipv4Lookup<'a> {
         let _ = self._visit(f).map_err(|e| {
             *self.err += 1;
             log::warn!("ipv4lookup visit error:{:?}", e);
+            println!("ipv4lookup visit error:{:?}", e);
         });
     }
     fn _visit(&mut self, mut f: impl FnMut(Ipv4Addr)) -> Result<(), Error> {
