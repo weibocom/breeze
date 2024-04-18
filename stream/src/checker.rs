@@ -119,6 +119,7 @@ impl<P, Req> BackendChecker<P, Req> {
             }
         }
         metrics::decr_task();
+        println!("{:?} finished {}", path_addr, self.addr);
         log::info!("{:?} finished {}", path_addr, self.addr);
     }
     async fn reconnect(&self) -> Option<TcpStream> {
