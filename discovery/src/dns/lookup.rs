@@ -100,6 +100,7 @@ impl DnsProtocol {
         query.build(id, host);
 
         stream.write_all(&query.buf[..]).await?;
+        stream.flush().await?;
 
         // 清空buff，读取的时候需要重复使用
         self.clear();
