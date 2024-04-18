@@ -15,6 +15,7 @@ env:
   phantom: localhost:9303
   mysql: localhost:3306
   vector: localhost:3308
+  mq: localhost:56815
   min_key: 1
   max_key: 10000
   socks_dir: /home/runner/work/breeze/socks
