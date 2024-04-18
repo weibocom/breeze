@@ -162,17 +162,17 @@ impl<T: TopologyWrite> ServiceGroup<T> {
     async fn load_from_snapshot(&mut self, snapshot: &str) -> Option<()> {
         let path = format!("{}/{}", snapshot, self.local_path);
         // 返回第一行与剩余的内容
-        fn take_line(mut s: String) -> Option<(String, String)> {
+        fn take_line(s: &str) -> Option<(&str, &str)> {
             let idx = s.find("\n")?;
-            let left = s.split_off(idx + 1);
-            s.pop();
-            if s.len() > 0 && s.as_bytes()[s.len() - 1] == b'\r' {
-                s.pop();
+            let mut first = &s[..idx];
+            let left = &s[idx + 1..];
+            if *first.as_bytes().last()? == b'\r' {
+                first = &first[..idx - 1];
             }
-            Some((s, left))
+            Some((first, left))
         }
         let content = tokio::fs::read_to_string(&path).await.ok()?;
-        let (sig, group_cfg) = take_line(content)?;
+        let (sig, group_cfg) = take_line(&*content)?;
         let (group, cfg) = take_line(group_cfg)?;
 
         if group != self.name {
@@ -180,8 +180,8 @@ impl<T: TopologyWrite> ServiceGroup<T> {
             return None;
         }
         log::info!("load from snapshot: {} {} => {}", path, self.sig, sig);
-        self.sig = sig;
-        self.cfg = cfg;
+        self.sig = sig.to_string();
+        self.cfg = cfg.to_string();
         self.changed = true;
         Some(())
     }
