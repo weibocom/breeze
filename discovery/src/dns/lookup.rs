@@ -113,7 +113,7 @@ impl DnsProtocol {
             let n = self.stream().read(&mut buf).await?;
             if n == 0 {
                 println!(
-                    "pkt_len:{pkt_len}, len:{} response:{:?}",
+                    "host:{host} pkt_len:{pkt_len}, len:{} response:{:?}",
                     self.buf.len(),
                     &buf[..n]
                 );
