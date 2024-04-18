@@ -260,7 +260,11 @@ impl<'a> Answer<'a> {
     pub fn new(buf: &'a mut Vec<u8>) -> Self {
         Self { buf }
     }
-    async fn recv<S: AsyncRead + Unpin>(&mut self, host: &str, s: &mut S) -> std::io::Result<()> {
+    async fn recv<S: AsyncRead + Unpin + std::fmt::Debug>(
+        &mut self,
+        host: &str,
+        s: &mut S,
+    ) -> std::io::Result<()> {
         assert!(self.buf.is_empty());
         let mut pkt_len = usize::MAX;
         while self.buf.len() < pkt_len {
@@ -272,7 +276,7 @@ impl<'a> Answer<'a> {
             let n = s.read(&mut buf).await?;
             if n == 0 {
                 println!(
-                    "host:{host} pkt_len:{pkt_len}, len:{} response:{:?}",
+                    "host:{host} pkt_len:{pkt_len}, len:{} response:{:?} s:{s:?}",
                     self.buf.len(),
                     &buf[..n]
                 );
