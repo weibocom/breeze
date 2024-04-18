@@ -287,9 +287,10 @@ impl<'a> Answer<'a> {
             let n = s.read(&mut buf).await?;
             if n == 0 {
                 println!(
-                    "host:{host} pkt_len:{pkt_len}, len:{} response:{:?} s:{s:?}",
+                    "host:{host} pkt_len:{pkt_len}, len:{} response:{:?} s:{s:?} buf len:{}",
                     self.buf.len(),
-                    &buf[..n]
+                    &buf[..n],
+                    buf.len(),
                 );
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::UnexpectedEof,
