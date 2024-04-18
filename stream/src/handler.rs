@@ -105,7 +105,9 @@ where
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         while ready!(self.data.poll_recv_many(cx, &mut self.req_buf, 4)) > 0 {
             self.s.cache(self.req_buf.len() > 1);
-            while let Some(req) = self.req_buf.pop() {
+            let ptr = self.req_buf.as_ptr();
+            for i in 0..self.req_buf.len() {
+                let req = unsafe { ptr.add(i).read() };
                 self.s.write_slice(&*req, 0).expect("should not err");
                 self.num.tx();
                 match req.on_sent() {
@@ -113,6 +115,9 @@ where
                     None => self.num.rx(),
                 }
             }
+            // 发送完成后，清空buffer
+            // 在这是安全的，因为在L110已经读取所有数据，并且这当中不会中断
+            unsafe { self.req_buf.set_len(0) };
         }
         Poll::Ready(Err(Error::ChanReadClosed))
     }
