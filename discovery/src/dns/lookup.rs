@@ -3,6 +3,7 @@ use dns_parser::{Error, Header, Name, Opcode, QueryClass, QueryType, ResponseCod
 use metrics::Metric;
 
 use byteorder::{BigEndian, ByteOrder};
+use std::io::{Error as IoError, ErrorKind};
 use std::net::Ipv4Addr;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -65,7 +66,7 @@ impl DnsProtocol {
                 }
             }
             if self.stream.is_empty() {
-                println!("no nameserver established, sleep 1s");
+                self.err += 1;
                 tokio::time::sleep(ds::time::Duration::from_secs(1)).await;
             }
         }
@@ -82,11 +83,7 @@ impl DnsProtocol {
                 Err(e) => {
                     let dropped = stream.pop();
                     self.err += 1;
-                    log::warn!("lookup error:{} {:?}", host, e);
-                    println!(
-                        "lookup error:{e:?} => {dropped:?} {:?}",
-                        dropped.as_ref().map(|s| s.peer_addr())
-                    );
+                    log::warn!("lookup error:{} {:?} => {dropped:?}", host, e);
                 }
                 // 前面2个字节是包长度。
                 Ok(()) => return Ok(Ipv4Lookup::new(&self.buf[2..], &mut self.err)),
@@ -104,7 +101,7 @@ impl DnsProtocol {
         // 清空buff，读取的时候需要重复使用
         unsafe { buf.set_len(0) };
         let mut answer = Answer::new(buf);
-        answer.recv(host, stream).await?;
+        answer.recv(stream).await?;
         Ok(())
     }
 }
@@ -271,31 +268,18 @@ impl<'a> Answer<'a> {
     pub fn new(buf: &'a mut Vec<u8>) -> Self {
         Self { buf }
     }
-    async fn recv<S: AsyncRead + Unpin + std::fmt::Debug>(
-        &mut self,
-        host: &str,
-        s: &mut S,
-    ) -> std::io::Result<()> {
+    async fn recv<S: AsyncRead + Unpin>(&mut self, s: &mut S) -> std::io::Result<()> {
         assert!(self.buf.is_empty());
         let mut pkt_len = usize::MAX;
         while self.buf.len() < pkt_len {
             self.buf.reserve(512);
             let available = self.buf.capacity() - self.buf.len();
-            let mut buf = unsafe {
-                std::slice::from_raw_parts_mut(self.buf.as_mut_ptr().add(self.buf.len()), available)
-            };
+            use std::slice::from_raw_parts_mut;
+            let mut buf =
+                unsafe { from_raw_parts_mut(self.buf.as_mut_ptr().add(self.buf.len()), available) };
             let n = s.read(&mut buf).await?;
             if n == 0 {
-                println!(
-                    "host:{host} pkt_len:{pkt_len}, len:{} response:{:?} s:{s:?} buf len:{}",
-                    self.buf.len(),
-                    &buf[..n],
-                    buf.len(),
-                );
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "EOF",
-                ));
+                return Err(IoError::new(ErrorKind::UnexpectedEof, "EOF"));
             }
             if self.buf.len() == 0 && n >= 2 {
                 // 第一次需要读取包长度
