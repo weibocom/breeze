@@ -69,8 +69,9 @@ impl Record {
     }
     // 如果有更新，则返回lookup的ip。
     // 无更新则返回None
-    fn refresh(&mut self, ips: IpAddrLookup) -> bool {
+    fn refresh(&mut self, host: &str, ips: IpAddrLookup) -> bool {
         if ips.len() > 0 && self.ips != ips {
+            println!("{host} ips change from {:?} to {:?}", self.ips, ips);
             self.ips = ips;
             self.notify = true;
             true

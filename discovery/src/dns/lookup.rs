@@ -40,7 +40,7 @@ impl Lookup {
                 break;
             }
             let ips = ret.unwrap();
-            if r.refresh(ips) {
+            if r.refresh(host, ips) {
                 num += 1;
                 (num == 1).then(|| cache = Some(host.to_string()));
             }
