@@ -107,7 +107,7 @@ impl<P, Req> BackendChecker<P, Req> {
             log::error!("backend error {:?} => {:?}", path_addr, ret);
             // handler 一定返回err，不会返回ok
             match ret.err().expect("handler return ok") {
-                Error::Eof | Error::IO(_) => {}
+                Error::Eof | Error::IO(_) | Error::ChanReadClosed => {}
                 Error::Timeout(_t) => {
                     m_timeout += 1;
                     timeout += 1;
