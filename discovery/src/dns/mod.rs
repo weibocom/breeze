@@ -9,6 +9,7 @@ use std::{
     },
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender as Sender};
+use trust_dns_resolver::TokioAsyncResolver;
 
 mod lookup;
 use lookup::*;
@@ -20,6 +21,7 @@ use ds::{
 static DNSCACHE: OnceCell<CowReadHandle<DnsCache>> = OnceCell::new();
 
 type RegisterItem = (String, Arc<AtomicBool>);
+type Resolver = TokioAsyncResolver;
 
 fn get_dns() -> ReadGuard<DnsCache> {
     //必须使用get进行线程间同步
@@ -116,7 +118,7 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
     let _r = DNSCACHE.set(reader);
     assert!(_r.is_ok(), "dns cache set failed");
     async move {
-        let mut resolver = Lookup::new();
+        let resolver = Lookup::new();
         log::info!("task started ==> dns cache refresher");
         let mut tick = interval(Duration::from_secs(1));
         loop {
@@ -124,18 +126,13 @@ pub fn start_dns_resolver_refresher() -> impl Future<Output = ()> {
                 local_cache.register(host, notify);
             }
             // 处理新增的
-            (writer, resolver, local_cache) = tokio::task::spawn_blocking(move || {
-                let (num, cache) = resolver.lookups(local_cache.iter());
+            if let Ok((num, cache)) = resolver.lookups(local_cache.iter()).await {
                 if num > 0 {
                     let new = local_cache.clone();
                     writer.update(new);
                     local_cache.notify(cache.expect("cache none"), num);
                 }
-                (writer, resolver, local_cache)
-            })
-            .await
-            .expect("no err");
-
+            };
             tick.tick().await;
         }
     }
@@ -213,7 +210,6 @@ impl DnsCache {
         }
     }
     fn register(&mut self, host: String, notify: Arc<AtomicBool>) {
-        log::debug!("host {} registered to cache", host);
         let r = self.hosts.get_or_insert(host);
         r.watch(notify);
     }
