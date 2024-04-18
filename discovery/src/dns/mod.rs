@@ -62,7 +62,6 @@ impl Record {
         for update in self.subscribers.iter() {
             update.store(true, Ordering::Release);
         }
-        println!("notified:{:?}", self.ips);
         self.notify = false;
     }
     fn empty(&self) -> bool {
