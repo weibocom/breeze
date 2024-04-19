@@ -10,7 +10,7 @@ fn msgque_write_read() {
 
     let key = "k2";
     let count = 5;
-    const QSIZES: [usize; 3] = [512, 4096];
+    const QSIZES: [usize; 2] = [512, 4096];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
@@ -48,7 +48,7 @@ fn msgque_write() {
 
     let key = "k2";
     let count = 5;
-    const QSIZES: [usize; 3] = [512, 4096];
+    const QSIZES: [usize; 2] = [512, 4096];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
