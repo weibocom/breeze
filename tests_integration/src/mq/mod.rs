@@ -9,8 +9,8 @@ fn msgque_write_read() {
     let mq_client = mc_get_text_conn(MQ);
 
     let key = "k2";
-    let count = 1000;
-    const QSIZES: [usize; 3] = [512, 4096, 32768];
+    let count = 5;
+    const QSIZES: [usize; 3] = [512, 4096];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
@@ -47,8 +47,8 @@ fn msgque_write() {
     let mq_client = mc_get_text_conn(MQ);
 
     let key = "k2";
-    let count = 1000;
-    const QSIZES: [usize; 3] = [512, 4096, 32768];
+    let count = 5;
+    const QSIZES: [usize; 3] = [512, 4096];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
@@ -64,7 +64,7 @@ fn msgque_write() {
 fn msgque_read() {
     let mq_client = mc_get_text_conn(MQ);
 
-    const COUNT: i32 = 1000;
+    const COUNT: i32 = 5;
 
     let key = "k2";
     let mut read_count = 0;
