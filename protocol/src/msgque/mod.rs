@@ -30,16 +30,17 @@ impl Protocol for McqText {
             let head4 = data.u32_le(oft);
             let (op_code, op) = if head4 == u32::from_le_bytes(*b"get ") {
                 (OP_GET, Get)
-            // <command name> <key> <flags> <exptime> <bytes>\r\n
-            // 命令之后第四个空格是数据长度
             } else if head4 == u32::from_le_bytes(*b"set ") {
+                // <command name> <key> <flags> <exptime> <bytes>\r\n
                 let line_oft = lfcr + 2;
+                // 命令之后第四个空格是数据长度
                 let Some(space) = data.find_r_n(oft + 4..line_oft, b' ', 3) else {
                     return Err(Error::ProtocolNotSupported);
                 };
                 let Some(val_len) = data.try_str_num(space + 1..lfcr) else {
                     return Err(Error::ProtocolNotSupported);
                 };
+                // 大value一次申请
                 lfcr = line_oft + val_len;
                 if data.len() < lfcr + 2 {
                     stream.reserve(lfcr + 2 - data.len());
