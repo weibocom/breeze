@@ -31,7 +31,7 @@ jobs:
           docker run --rm --name breeze_ci_mysql4623  -p 4623:3306 -d parabala/mysqlci_with_schema:v0.0.2
           docker run --rm --name breeze_ci_mysql4624  -p 4624:3306 -d parabala/mysqlci_with_schema:v0.0.2
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci hustfisher/breeze:githubci109
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci hustfisher/breeze:githubci110
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -47,7 +47,7 @@ jobs:
           curl http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all
           curl http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest
           curl http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest
-          curl http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest
+          curl http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest_1
           curl http://127.0.0.1:8080/config/cloud/kv/testbreeze/kvmeshtest
           curl http://127.0.0.1:8080/config/cloud/vector/testbreeze/vectortest
       - name: Create Socks
@@ -63,7 +63,7 @@ jobs:
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+vectortest@vector:3308@vector
-          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+mq+testbreeze+mcqmeshtest@msgque:56815@mq
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+mq+testbreeze+mcqmeshtest_1@msgque:56815@mq
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
