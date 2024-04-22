@@ -175,6 +175,7 @@ where
             Poll::Pending => Ok(()),
         }
     }
+
     #[inline(always)]
     fn poll_response(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         while self.pending.len() > 0 {
