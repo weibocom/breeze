@@ -31,7 +31,7 @@ jobs:
           docker run --rm --name breeze_ci_mysql4623  -p 4623:3306 -d parabala/mysqlci_with_schema:v0.0.2
           docker run --rm --name breeze_ci_mysql4624  -p 4624:3306 -d parabala/mysqlci_with_schema:v0.0.2
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci hustfisher/breeze:githubci113
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci hustfisher/breeze:githubci114
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
