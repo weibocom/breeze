@@ -45,35 +45,31 @@ where
         // 降低tick的频率，便于快速从chann中接收新的服务。
         let period = Duration::from_secs(1);
         let cycle = (self.tick.as_secs_f64() / period.as_secs_f64()).ceil() as usize;
-        let mut cycle_i = 0usize;
         let mut tick = interval(period);
+        let mut tick_i = 0;
         self.cb.with_discovery(&self.discovery).await;
         let mut services = Services::new(&self.snapshot);
-        // 每个周期结束清理缓存
+
         loop {
             while let Ok((name, t)) = self.rx.try_recv() {
-                log::info!("receive new service: {}", name);
                 services.register(name, t, &self.discovery).await;
             }
-            cycle_i += 1;
-
-            // 部分服务更新配置后，需要重新加载
-            if cycle_i <= cycle || cycle_i % cycle == 0 {
-                services.check_load().await;
-                if !self.cb.inited() || cycle_i % cycle == 0 {
-                    self.cb.with_discovery(&self.discovery).await;
-                }
-            }
-            let i = cycle_i % cycle;
-            // 更新部分
+            let cycle_i = tick_i % cycle;
             for (idx, group) in services.groups.iter_mut().enumerate() {
-                if idx % cycle == i {
+                if idx % cycle == cycle_i {
                     group.refresh(&self.snapshot, &self.discovery).await;
                 } else {
                     group.refresh_new(&self.snapshot, &self.discovery).await;
                 }
+                group.check_load();
             }
-            // 更新新注册的
+
+            // tick_i < cycle时，每个tick都check，增加扫描的效率。
+            // tick_i >= cycle时，每个cycle的第一个tick才check，减少扫描的消耗。
+            if !self.cb.inited() || cycle_i == 0 {
+                self.cb.with_discovery(&self.discovery).await;
+            }
+            tick_i += 1;
             tick.tick().await;
         }
     }
@@ -92,11 +88,6 @@ impl<T: TopologyWrite> Services<T> {
             indices: HashMap::with_capacity(64),
         }
     }
-    async fn check_load(&mut self) {
-        for g in self.groups.iter_mut() {
-            g.load();
-        }
-    }
     fn get_group(&mut self, group: &str) -> Option<&mut ServiceGroup<T>> {
         let &idx = self.indices.get(group)?;
         assert!(idx < self.groups.len());
@@ -107,6 +98,7 @@ impl<T: TopologyWrite> Services<T> {
     // namespace是可选。
     // namespace之前的是group的路径，如：分隔符为'+'。
     async fn register<D: Discover>(&mut self, name: String, top: T, d: &D) {
+        log::info!("receive new service: {}", name);
         let group = name.split('+').last().expect("name");
         let mut group_namespace = group.split(':');
         let group = group_namespace.next().expect("group");
@@ -154,7 +146,10 @@ impl<T: TopologyWrite> ServiceGroup<T> {
         self.load_from_snapshot(snapshot).await;
         self.load_from_discover(snapshot, d).await;
     }
-    fn load(&mut self) {
+    // load所有的namespace。
+    // true: 表示load完成
+    // false: 表示后续需要继续load
+    fn check_load(&mut self) {
         for s in &mut self.namespaces {
             if s.top.need_load() {
                 s.top.load();
@@ -226,18 +221,19 @@ impl<T: TopologyWrite> ServiceGroup<T> {
             Err(e) => log::error!("failed to get service: {}, {}", self.path, e),
         }
     }
-    async fn refresh_new<D: Discover>(&mut self, snapshot: &str, d: &D) {
+    async fn refresh_new<D: Discover>(&mut self, snapshot: &str, d: &D) -> bool {
         if self.cfg.len() == 0 {
             self.load_from_discover(snapshot, d).await;
         }
-        self.update_all(true);
+        self.update_all(true)
     }
-    async fn refresh<D: Discover>(&mut self, snapshot: &str, d: &D) {
+    async fn refresh<D: Discover>(&mut self, snapshot: &str, d: &D) -> bool {
         self.load_from_discover(snapshot, d).await;
-        self.update_all(false);
+        self.update_all(false)
     }
     // new: 只更新新注册的服务
-    fn update_all(&mut self, new: bool) {
+    // 返回是否可能有namespace更新
+    fn update_all(&mut self, new: bool) -> bool {
         if self.changed && self.namespaces.len() > 0 {
             let s = self.namespaces.first().expect("empty");
             self.cache = s
@@ -258,7 +254,9 @@ impl<T: TopologyWrite> ServiceGroup<T> {
                 }
             }
             self.changed = false;
+            return true;
         }
+        false
     }
     fn register(&mut self, ns: String, top: T) {
         assert!(self.namespaces.iter().find(|s| s.name == ns).is_none());

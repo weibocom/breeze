@@ -14,11 +14,8 @@ metrics = { path = "../metrics" }
 url = "2.2.2"
 enum_dispatch = "0.3.8"
 
-#for http request and json parse
-#reqwest = { version = "0.11.4", features = ["json"], default-features = false }
-hyper = { version = "0.14",  features = ["stream", "tcp", "client", "http1"]}
+hyper = { version = "0.14",  features = ["stream", "client", "tcp", "http1"]}
 tokio.workspace = true
-#json = "0.12.4"
 
 #for deserialize
 serde.workspace = true
