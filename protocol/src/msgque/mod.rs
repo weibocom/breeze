@@ -142,6 +142,7 @@ impl Protocol for McqText {
             _ => {
                 if let Some(rsp) = response {
                     w.write_slice(rsp, 0)?;
+                    self.metrics(request, rsp, ctx);
                 } else {
                     //协议要求服务端错误断连
                     w.write(b"SERVER_ERROR mcq not available\r\n")?;
@@ -150,5 +151,32 @@ impl Protocol for McqText {
             }
         }
         Ok(())
+    }
+
+    fn on_sent(&self, req_op: crate::Operation, metrics: &mut crate::HostMetric) {
+        match req_op {
+            crate::Operation::Get => metrics.get += 1,
+            crate::Operation::Store => metrics.store += 1,
+            _ => metrics.others += 1,
+        }
+    }
+}
+
+impl McqText {
+    // 响应发送时，统计请求最终成功的qps
+    #[inline]
+    fn metrics<C, M, I>(&self, request: &HashedCommand, response: &Command, metrics: &C)
+    where
+        C: Commander<M, I>,
+        M: Metric<I>,
+        I: MetricItem,
+    {
+        if response.ok() {
+            match request.operation() {
+                crate::Operation::Get => *metrics.metric().get(crate::MetricName::Read) += 1,
+                crate::Operation::Store => *metrics.metric().get(crate::MetricName::Write) += 1,
+                _ => {}
+            }
+        }
     }
 }
