@@ -59,3 +59,8 @@ impl Into<Duration> for Timeout {
         Duration::from_millis(self.ms as u64)
     }
 }
+
+pub fn init() {
+    // 目前仅cacheservice需要初始化
+    cacheservice::init();
+}

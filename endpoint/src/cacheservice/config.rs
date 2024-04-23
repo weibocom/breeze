@@ -110,23 +110,34 @@ impl Namespace {
     }
     // 确保master在第0个位置
     // 返回master + master_l1的数量作为local
-    pub(super) fn take_backends(self) -> (usize, Vec<Vec<String>>) {
+    pub(super) fn take_backends(self) -> (usize, Vec<Vec<String>>, Option<usize>) {
         assert!(self.master.len() > 0);
         use ds::vec::Add;
+        let mut slave_index = (self.master == self.slave).then_some(0);
+        let mut index = 0;
         let mut backends = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
         backends.add(self.master);
 
         // master l1 需要进行乱序，避免master miss后，全部打到同一个masterL1 #790
         let mut master_l1 = self.master_l1.clone();
         master_l1.shuffle(&mut thread_rng());
-        master_l1.into_iter().for_each(|v| backends.add(v));
+        master_l1.into_iter().for_each(|v| {
+            index += 1;
+            if v == self.slave && slave_index.is_none() {
+                slave_index = Some(index);
+            }
+            backends.add(v);
+        });
 
         let local = backends.len();
         if self.slave.len() > 0 {
+            if slave_index.is_none() {
+                slave_index = Some(local);
+            }
             backends.add(self.slave);
         }
         self.slave_l1.into_iter().for_each(|v| backends.add(v));
-        (local, backends)
+        (local, backends, slave_index)
     }
     //pub(super) fn timeout_master(&self) -> Duration {
     //    Duration::from_millis(200.max(self.timeout_ms_master as u64))

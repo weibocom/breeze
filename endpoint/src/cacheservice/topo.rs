@@ -29,6 +29,8 @@ pub struct CacheService<E, P> {
 
     // 保留本设置，非必要场景，减少一次slave访问
     backend_no_storage: bool, // true：mc后面没有存储
+    update_master_l1: bool,   // false：不更新master_L1，issue#834
+    slave_index: Option<usize>,
 }
 
 impl<E, P> From<P> for CacheService<E, P> {
@@ -41,6 +43,8 @@ impl<E, P> From<P> for CacheService<E, P> {
             // force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
             backend_no_storage: false,
+            update_master_l1: true,
+            slave_index: None,
         }
     }
 }
@@ -126,12 +130,26 @@ where
 {
     #[inline]
     fn context_store(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
-        let (idx, try_next, write_back);
+        let (mut idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
             // 写指令，总是从master开始
             idx = ctx.take_write_idx() as usize;
-            write_back = idx + 1 < self.streams.len();
+            if self.update_master_l1 {
+                write_back = idx + 1 < self.streams.len();
+            } else {
+                // 不更新master_l1时，只更新Master和Slave
+                if self.slave_index.is_some() {
+                    if idx != 0 {
+                        write_back = false;
+                        idx = self.slave_index.unwrap();
+                    } else {
+                        write_back = true;
+                    }
+                } else {
+                    write_back = false;
+                }
+            }
 
             // topo控制try_next，只要还有layers，topo都支持try next
             try_next = idx + 1 < self.streams.len();
@@ -201,6 +219,7 @@ where
 
             // self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
             self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
+            self.update_master_l1 = super::update_master_l1(namespace);
             let dist = &ns.distribution.clone();
 
             // 把所有的endpoints cache下来
@@ -216,7 +235,8 @@ where
             //use discovery::distance::{Balance, ByDistance};
             //let master = ns.master.clone();
             let is_performance = ns.flag.get(Flag::LocalAffinity as u8).tuning_mode();
-            let (local_len, backends) = ns.take_backends();
+            let (local_len, backends, slave_index) = ns.take_backends();
+            self.slave_index = slave_index;
 
             let mut new = Vec::with_capacity(backends.len());
             for (i, group) in backends.into_iter().enumerate() {

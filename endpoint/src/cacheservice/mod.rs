@@ -1,3 +1,5 @@
+use once_cell::sync::OnceCell;
+use std::collections::HashSet;
 mod config;
 pub mod topo;
 
@@ -74,5 +76,34 @@ impl Context {
     #[inline]
     fn inited(&self) -> bool {
         self.ctx != 0
+    }
+}
+
+static NOT_UPDATE_MASTER_L1: OnceCell<HashSet<String>> = OnceCell::new();
+// 从环境变量获取当前服务池下，哪些namespace不需要更新master_L1
+pub fn init() {
+    let s = std::env::var("BREEZE_NOT_UPDATE_ML1_NS")
+        .unwrap_or("".to_string())
+        .clone();
+    let namespaces = s.as_str().split(',').collect::<Vec<&str>>();
+    if namespaces.len() == 0 {
+        return;
+    }
+
+    let h = namespaces
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<HashSet<String>>();
+    if let Err(e) = NOT_UPDATE_MASTER_L1.set(h) {
+        log::warn!("init not_update_master_l1 fail: {:?}", e);
+    }
+}
+
+// 当前namespace是否需要更新master_l1
+pub fn update_master_l1(namespace: &str) -> bool {
+    match NOT_UPDATE_MASTER_L1.get() {
+        // 没有出现在NOT_UPDATE_MASTER_L1里的，需要更新master_l1
+        Some(h) => h.get(namespace).is_none(),
+        None => true,
     }
 }
