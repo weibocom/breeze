@@ -21,7 +21,7 @@ pub struct Namespace {
 pub struct Basic {
     /// msgque 可以读写的mq的名字
     #[serde(default)]
-    pub(crate) keys: String,
+    pub(crate) keys: Vec<String>,
     ///eg: mcq2,mcq3
     #[serde(default)]
     pub(crate) resource_type: String,
