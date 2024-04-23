@@ -1,13 +1,12 @@
-use std::marker::PhantomData;
+use std::cell::UnsafeCell;
 
 use ds::BufWriter;
 use protocol::{
     msgque::{McqText, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
-    AsyncBufRead, BufRead, Commander, Error, HashedCommand, Metric, MetricItem, Proto,
-    RequestProcessor, Stream, Writer,
+    AsyncBufRead, BufRead, Commander, Error, HashedCommand, Metric, Proto, RequestProcessor,
+    Stream, Writer,
 };
 use sharding::hash::{Hash, HashKey};
-use stream::StreamMetrics;
 
 #[derive(Debug)]
 struct VecStream {
@@ -316,23 +315,40 @@ fn test_rsp() {
     }
 }
 
-struct TestCtx<M, T> {
+struct TestCtx {
     req: HashedCommand,
-    _marker: PhantomData<T>,
-    _marker1: PhantomData<M>,
+    metric: TestMetric,
 }
 
-impl TestCtx<StreamMetrics, metrics::Metric> {
+impl TestCtx {
     fn new(req: HashedCommand) -> Self {
         Self {
             req,
-            _marker: PhantomData,
-            _marker1: PhantomData,
+            metric: TestMetric {
+                item: UnsafeCell::new(TestMetricItem {}),
+            },
         }
     }
 }
 
-impl<M: Metric<T>, T: MetricItem> Commander<M, T> for TestCtx<M, T> {
+struct TestMetricItem {}
+impl std::ops::AddAssign<i64> for TestMetricItem {
+    fn add_assign(&mut self, _rhs: i64) {}
+}
+impl std::ops::AddAssign<bool> for TestMetricItem {
+    fn add_assign(&mut self, _rhs: bool) {}
+}
+
+struct TestMetric {
+    item: UnsafeCell<TestMetricItem>,
+}
+impl Metric<TestMetricItem> for TestMetric {
+    fn get(&self, _name: protocol::MetricName) -> &mut TestMetricItem {
+        unsafe { &mut *self.item.get() }
+    }
+}
+
+impl Commander<TestMetric, TestMetricItem> for TestCtx {
     fn request_mut(&mut self) -> &mut HashedCommand {
         todo!()
     }
@@ -345,8 +361,8 @@ impl<M: Metric<T>, T: MetricItem> Commander<M, T> for TestCtx<M, T> {
         todo!()
     }
 
-    fn metric(&self) -> &M {
-        todo!()
+    fn metric(&self) -> &TestMetric {
+        &self.metric
     }
 
     fn ctx(&self) -> u64 {
