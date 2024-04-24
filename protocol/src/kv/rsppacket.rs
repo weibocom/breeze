@@ -488,7 +488,7 @@ impl<'a, S: crate::Stream> Debug for ResponsePacket<'a, S> {
 pub(super) struct ResponseContext {
     pub(super) seq_id: u8,
     pub(super) status: HandShakeStatus,
-    _ignore: [u8; 14],
+    _ignore: [u8; 22],
 }
 
 impl From<&mut StreamContext> for &mut ResponseContext {
