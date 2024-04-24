@@ -109,7 +109,7 @@ impl Protocol for McqText {
             //STORED
             true
         } else {
-            false
+            return Err(Error::UnexpectedData);
         };
         return Ok(Some(Command::from(ok, stream.take(lfcr + 2))));
     }
