@@ -24,6 +24,7 @@ mod discovery;
 mod dns;
 // mod ip;
 mod kv;
+mod mq;
 mod mysql_strategy;
 mod number;
 mod ring_buffer;

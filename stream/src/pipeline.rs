@@ -123,6 +123,7 @@ where
             first: &mut self.first,
             arena: &mut self.arena,
             retry_on_rsp_notok: self.parser.config().retry_on_rsp_notok,
+            parser: &self.parser,
         };
 
         self.parser
@@ -213,17 +214,18 @@ where
 }
 
 // struct Visitor<'a, P, T> {
-struct Visitor<'a, T> {
+struct Visitor<'a, T, P> {
     pending: &'a mut VecDeque<CallbackContextPtr>,
     waker: &'a Arc<AtomicWaker>,
     top: &'a T,
+    parser: &'a P,
     first: &'a mut bool,
     arena: &'a mut CallbackContextArena,
     retry_on_rsp_notok: bool,
 }
 
-impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
-    for Visitor<'a, T>
+impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::RequestProcessor
+    for Visitor<'a, T, P>
 {
     #[inline]
     fn process(&mut self, cmd: HashedCommand, last: bool) {
@@ -232,6 +234,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
         // 否则下一个请求是子请求。
         *self.first = last;
         let cb = self.top.callback();
+        let req_op = cmd.operation();
         let ctx = self.arena.alloc(CallbackContext::new(
             cmd,
             self.waker,
@@ -239,6 +242,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck> protocol::RequestProcessor
             first,
             last,
             self.retry_on_rsp_notok,
+            self.parser.max_tries(req_op),
         ));
         let mut ctx = CallbackContextPtr::from(ctx, self.arena);
 

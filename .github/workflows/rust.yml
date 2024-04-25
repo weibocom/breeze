@@ -15,6 +15,7 @@ env:
   phantom: localhost:9303
   mysql: localhost:3306
   vector: localhost:3308
+  mq: localhost:56815
   min_key: 1
   max_key: 10000
   socks_dir: /home/runner/work/breeze/socks
@@ -30,7 +31,7 @@ jobs:
           docker run --rm --name breeze_ci_mysql4623  -p 4623:3306 -d parabala/mysqlci_with_schema:v0.0.2
           docker run --rm --name breeze_ci_mysql4624  -p 4624:3306 -d parabala/mysqlci_with_schema:v0.0.2
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci parabala/breeze:githubci108
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci hustfisher/breeze:githubci115
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -44,10 +45,13 @@ jobs:
           docker ps -a
           curl http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
           curl http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all
+          sleep 1
           curl http://127.0.0.1:8080/config/cloud/counterservice/testbreeze/meshtest
           curl http://127.0.0.1:8080/config/cloud/phantom/testbreeze/phantomtest
-          curl http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest
+          sleep 1
+          curl http://127.0.0.1:8080/config/cloud/mq/testbreeze/mcqmeshtest_1
           curl http://127.0.0.1:8080/config/cloud/kv/testbreeze/kvmeshtest
+          sleep 1
           curl http://127.0.0.1:8080/config/cloud/vector/testbreeze/vectortest
       - name: Create Socks
         run: |
@@ -62,6 +66,7 @@ jobs:
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+vectortest@vector:3308@vector
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+mq+testbreeze+mcqmeshtest_1@msgque:56815@mq
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
