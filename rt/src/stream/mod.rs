@@ -67,6 +67,12 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         const LARGE_SIZE: usize = 4 * 1024;
         // 数据量比较大，尝试直接写入。写入之前要把buf flush掉。
         if self.buf.len() + data.len() >= LARGE_SIZE {
+            println!(
+                "tx {:?} buf len {} datalen {}",
+                self.s,
+                self.buf.len(),
+                data.len()
+            );
             let _ = self.as_mut().poll_flush(cx);
         }
         let mut oft = 0;
@@ -165,7 +171,7 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::BufWriter for Stream<S> {
         self.write_all(buf1)
     }
 }
-impl<S> protocol::BufRead for Stream<S> {
+impl<S: std::fmt::Debug> protocol::BufRead for Stream<S> {
     #[inline]
     fn take(&mut self, n: usize) -> MemGuard {
         self.rx_buf.take(n)
@@ -185,7 +191,8 @@ impl<S> protocol::BufRead for Stream<S> {
     #[inline]
     fn reserve(&mut self, r: usize) {
         println!(
-            "stream reserve: cap:{} len:{} reserve:{}",
+            "stream {:?} reserve: cap:{} len:{} reserve:{} ",
+            self.s,
             self.rx_buf.cap(),
             self.rx_buf.len(),
             r
