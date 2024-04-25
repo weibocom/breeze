@@ -285,6 +285,9 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
             return Ok(());
         }
 
+        // 首先将flag进行重置
+        self.reset_flag();
+
         // 业务层只有接少数场景会用到flags 字段，也就是绝大多数场景下为0
         // 即使使用也为u8类型，实际场景下不会存在置为时间戳的场景, 万一使用，则存在被覆盖的bug
         //
@@ -302,10 +305,17 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         let mut delay_metric = Path::base().rtt("mcq_delay");
         delay_metric += Duration::from_secs(sub);
 
+        // for idx in self.flags_start..(self.flags_start + self.flags_len) {
+        //     self.data.update(idx, b'0');
+        // }
+        return Ok(());
+    }
+
+    #[inline]
+    fn reset_flag(&mut self) {
         for idx in self.flags_start..(self.flags_start + self.flags_len) {
             self.data.update(idx, b'0');
         }
-        return Ok(());
     }
 
     #[inline]

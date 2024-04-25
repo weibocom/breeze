@@ -98,6 +98,12 @@ impl Backends for crate::vector::config::VectorNamespace {
     }
 }
 
+impl Backends for crate::msgque::config::Namespace {
+    fn get_backends(&self) -> &Vec<String> {
+        &self.backends_flatten
+    }
+}
+
 impl<T> std::ops::Deref for DnsConfig<T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {

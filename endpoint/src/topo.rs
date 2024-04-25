@@ -136,6 +136,15 @@ impl<'a, P: Protocol, E: Endpoint> Endpoints<'a, P, E> {
             })
             .collect()
     }
+
+    #[inline]
+    pub fn take_all(&mut self) -> Vec<E> {
+        self.cache
+            .values_mut()
+            .map(|v| v.split_off(0))
+            .flatten()
+            .collect()
+    }
 }
 // 为Endpoints实现Formatter
 impl<'a, P, E: Endpoint> std::fmt::Display for Endpoints<'a, P, E> {
