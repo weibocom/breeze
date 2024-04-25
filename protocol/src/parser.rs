@@ -122,6 +122,12 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     }
     // 统计每个mesh实例在后端的请求统计，这些统计是按cmd类型维度的，目前只有mq需要
     fn on_sent(&self, _req_op: Operation, _metrics: &mut HostMetric) {}
+
+    /// 返回当前请求类型的最大重试次数，默认都是1，目前只有mcq的写例外
+    #[inline]
+    fn max_tries(&self, _req_op: Operation) -> u8 {
+        1_u8
+    }
 }
 
 pub trait RequestProcessor {

@@ -26,9 +26,7 @@ pub struct Basic {
     #[serde(default)]
     pub(crate) resource_type: String,
     #[serde(default)]
-    pub(crate) timeout_read: u32,
-    #[serde(default)]
-    pub(crate) timeout_write: u32,
+    pub(crate) timeout: u32,
 }
 
 impl Namespace {

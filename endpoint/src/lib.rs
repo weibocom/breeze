@@ -53,9 +53,39 @@ impl Timeout {
     }
 }
 
-use std::time::Duration;
+use std::{ops::Deref, sync::atomic::AtomicUsize, time::Duration};
 impl Into<Duration> for Timeout {
     fn into(self) -> Duration {
         Duration::from_millis(self.ms as u64)
+    }
+}
+
+/// 支持clone的atomic usize。
+/// 目前只有topo会用到，如果其他地方也用，再提升到ds
+#[derive(Debug, Default)]
+pub struct CloneableAtomicUsize {
+    inner: AtomicUsize,
+}
+
+impl CloneableAtomicUsize {
+    pub fn new(v: usize) -> Self {
+        Self {
+            inner: AtomicUsize::new(v),
+        }
+    }
+}
+
+impl Clone for CloneableAtomicUsize {
+    fn clone(&self) -> Self {
+        Self {
+            inner: AtomicUsize::new(self.inner.load(std::sync::atomic::Ordering::Relaxed)),
+        }
+    }
+}
+
+impl Deref for CloneableAtomicUsize {
+    type Target = AtomicUsize;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }

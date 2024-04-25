@@ -42,6 +42,10 @@ impl crate::Request for Request {
         self.ctx().write_back = wb;
     }
     #[inline]
+    fn is_write_back(&self) -> bool {
+        self.ctx().write_back
+    }
+    #[inline]
     fn try_next(&mut self, goon: bool) {
         self.ctx().try_next = goon;
     }

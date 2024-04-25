@@ -161,6 +161,15 @@ impl Protocol for McqText {
             _ => metrics.others += 1,
         }
     }
+
+    /// 最大重试次数，mq的写设置为50，即认为必须成功
+    #[inline]
+    fn max_tries(&self, req_op: crate::Operation) -> u8 {
+        match req_op {
+            crate::Operation::Store => 10,
+            _ => 1,
+        }
+    }
 }
 
 impl McqText {
