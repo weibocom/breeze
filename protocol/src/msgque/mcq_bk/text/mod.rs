@@ -111,17 +111,6 @@ impl Protocol for McqText {
         }
     }
 
-    // TODO 测试完毕清理
-    // msgque没有multi请求，直接构建padding rsp即可
-    // fn build_local_response<F: Fn(i64) -> usize>(
-    //     &self,
-    //     req: &HashedCommand,
-    //     _dist_fn: F,
-    // ) -> Command {
-    //     let cfg = command::get_cfg(req.op_code()).expect(format!("req:{:?}", req).as_str());
-    //     cfg.build_padding_rsp()
-    // }
-
     // mc协议比较简单，除了quit直接断连接，其他指令直接发送即可
     #[inline]
     fn write_response<C, W, M, I>(
@@ -148,49 +137,26 @@ impl Protocol for McqText {
         if let Some(rsp) = response {
             // 不再创建local rsp，所有server响应的rsp data长度应该大于0
             debug_assert!(rsp.len() > 0, "req:{:?}, rsp:{:?}", request, rsp);
+            log::debug!("+++ write mq:{}", rsp.as_string_lossy());
             w.write_slice(rsp, 0)?;
             self.metrics(request, rsp, ctx);
         } else {
             let padding = cfg.get_padding_rsp();
+            log::debug!("+++ write mq padding:{}", padding);
             w.write(padding.as_bytes())?;
             // TODO 写失败尚没有统计（还没merge进来？），暂时先和dev保持一致 fishermen
         }
 
-        // TODO 测试完毕后清理
-        // let rsp = ctx.response().data();
-        // // 虽然quit的响应长度为0，但不排除有其他响应长度为0的场景，还是用quit属性来断连更安全
-        // if rsp.len() > 0 {
-        //     w.write_slice(rsp, 0)?;
-        // }
-
         Ok(())
     }
 
-    // TODO 暂时保留，备查及比对，待上线稳定一段时间后再删除（预计 2022.12.30之后可以） fishermen
-    // #[inline]
-    // fn write_no_response<W: Writer, F: Fn(i64) -> usize>(
-    //     &self,
-    //     req: &HashedCommand,
-    //     w: &mut W,
-    //     _dist_fn: F,
-    // ) -> Result<usize> {
-    //     // mcq 没有sentonly指令
-    //     assert!(!req.sentonly(), "req: {:?}", req.data());
-    //     let cfg = command::get_cfg(req.op_code())?;
-    //     let rsp = cfg.padding_rsp();
-
-    //     if rsp.len() > 0 {
-    //         log::debug!(
-    //             "+++ will write padding rsp/{} for req/{}:{:?}",
-    //             rsp,
-    //             cfg.name,
-    //             req.data(),
-    //         );
-    //         w.write(rsp.as_bytes())?;
-    //         Ok(0)
-    //     } else {
-    //         // 说明请求是quit，直接返回Err断开连接即可
-    //         Err(crate::Error::Quit)
-    //     }
-    // }
+    /// 统计每个mesh实例在后端的请求统计，这些统计是按cmd类型维度的，目前只有mq需要
+    #[inline]
+    fn on_sent(&self, req_op: crate::Operation, metrics: &mut crate::metrics::HostMetric) {
+        match req_op {
+            crate::Operation::Get => metrics.get += 1,
+            crate::Operation::Store => metrics.store += 1,
+            _ => metrics.others += 1,
+        }
+    }
 }
