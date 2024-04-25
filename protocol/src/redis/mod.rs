@@ -130,11 +130,17 @@ impl Protocol for Redis {
         match self.parse_response_inner(data, &mut oft) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => {
-                println!("response Incomplete oft {} datalen {}", oft, data.len());
+                let left = self.maybe_left_bytes(data);
+                println!(
+                    "response Incomplete oft {} datalen {} maybeleft {}",
+                    oft,
+                    data.len(),
+                    left
+                );
                 //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
                 if oft > data.len() {
                     // response可能比较长，按已接收到的数据长度扩容
-                    data.reserve(oft);
+                    data.reserve((oft - data.len()).max(left));
                 }
 
                 Ok(None)
@@ -228,6 +234,26 @@ impl Protocol for Redis {
     fn check(&self, _req: &HashedCommand, _resp: &Command) {
         if _resp[0] == b'-' {
             log::error!("+++ check failed for req:{:?}, resp:{:?}", _req, _resp);
+        }
+    }
+
+    #[inline(always)]
+    fn maybe_left_bytes<S: Stream>(&self, data: &mut S) -> usize {
+        let ctx = packet::transmute(data.context());
+        let multibulk_ptr = ctx.multibulk_ptr;
+        if multibulk_ptr == 0 {
+            return 0;
+        }
+
+        // 在当前层记录解析到的位置
+        let arrays = multibulk_ptr as *const Vec<packet::MultiBulk>;
+        // let arrays = *multibulk_ptr as *const Vec<packet::MultiBulk>;
+        let arrays = unsafe { &*arrays };
+        // let a = (*arrays).last().unwrap();
+
+        match arrays.last() {
+            Some(array) => array.maybe_left_bytes(),
+            _ => 0,
         }
     }
 }

@@ -28,9 +28,10 @@ pub struct RequestContext {
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MultiBulk {
-    total: u16,  // bulk数量
-    parsed: u16, // 已解析的bulk数量
-    pos: u32,    // 当前bulk待解析的起始位置
+    total: u16,       // bulk数量
+    parsed: u16,      // 已解析的bulk数量
+    pos: u32,         // 当前bulk待解析的起始位置
+    parsed_size: u32, // 解析过的大小
 }
 
 impl MultiBulk {
@@ -40,11 +41,13 @@ impl MultiBulk {
             total,
             parsed: 0,
             pos: pos as u32,
+            parsed_size: 0,
         }
     }
     #[inline]
     pub fn parse1(&mut self, pos: usize) {
         self.parsed += 1;
+        self.parsed_size += pos as u32 - self.pos;
         self.pos = pos as u32;
     }
     #[inline]
@@ -58,6 +61,15 @@ impl MultiBulk {
     #[inline]
     pub fn complete(&self) -> bool {
         self.total == self.parsed
+    }
+    #[inline]
+    pub fn maybe_left_bytes(&self) -> usize {
+        if self.parsed > 0 {
+            // 假设MultiBulk里面的单条消息长度是差不多的
+            self.parsed_size as usize * self.total as usize / self.parsed as usize
+        } else {
+            0
+        }
     }
 }
 

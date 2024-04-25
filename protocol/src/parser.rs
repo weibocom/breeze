@@ -119,6 +119,9 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn config(&self) -> Config {
         Config::default()
     }
+    fn maybe_left_bytes<S: Stream>(&self, _data: &mut S) -> usize {
+        0
+    }
 }
 
 pub trait RequestProcessor {
