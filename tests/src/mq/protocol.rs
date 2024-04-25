@@ -1,4 +1,4 @@
-use std::cell::UnsafeCell;
+use std::{cell::UnsafeCell, collections::HashMap};
 
 use ds::BufWriter;
 use protocol::{

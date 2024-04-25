@@ -1,3 +1,11 @@
+use core::fmt;
+use std::{
+    fmt::{Display, Formatter},
+    ops::Deref,
+};
+
+use crate::Endpoint;
+
 pub(crate) mod config;
 pub mod strategy;
 pub mod topo;
@@ -74,4 +82,35 @@ pub trait WriteStrategy {
 pub trait ReadStrategy {
     fn new(reader_len: usize) -> Self;
     fn get_read_idx(&self) -> usize;
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Shard<E> {
+    pub(crate) endpoint: E,
+    pub(crate) qsize: usize,
+}
+
+impl<E> Shard<E> {
+    /// Create a new shard，如果是下线的endpoint，则qsize为0
+    #[inline]
+    pub fn new(endpoint: E, qsize: usize) -> Self {
+        Shard { endpoint, qsize }
+    }
+}
+
+impl<E> Deref for Shard<E> {
+    type Target = E;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.endpoint
+    }
+}
+
+impl<E> Display for Shard<E>
+where
+    E: Endpoint,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.endpoint.addr(), self.qsize)
+    }
 }

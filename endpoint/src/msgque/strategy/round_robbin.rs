@@ -1,16 +1,13 @@
-use std::{
-    fmt::{Display, Formatter},
-    sync::{atomic::AtomicUsize, Arc},
-};
+use std::fmt::{Display, Formatter};
 
-use crate::msgque::ReadStrategy;
+use crate::{msgque::ReadStrategy, CloneableAtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
 
 /// 依次轮询队列列表，注意整个列表在初始化时需要进行随机乱序处理
 #[derive(Debug, Clone, Default)]
 pub struct RoundRobbin {
     que_len: usize,
-    current_pos: Arc<AtomicUsize>,
+    current_pos: CloneableAtomicUsize,
 }
 
 impl ReadStrategy for RoundRobbin {
@@ -20,7 +17,8 @@ impl ReadStrategy for RoundRobbin {
         let rand: usize = rand::random();
         Self {
             que_len: reader_len,
-            current_pos: Arc::new(AtomicUsize::new(rand)),
+            // current_pos: Arc::new(AtomicUsize::new(rand)),
+            current_pos: CloneableAtomicUsize::new(rand),
         }
     }
     /// 实现策略很简单：持续轮询
