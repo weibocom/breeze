@@ -1,4 +1,5 @@
 use std::{
+    cell::OnceCell,
     mem::MaybeUninit,
     ptr::{self, NonNull},
     sync::{
@@ -37,6 +38,7 @@ pub struct CallbackContext {
     pub(crate) try_next: bool,           // 请求失败后，topo层面是否允许重试
     pub(crate) retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
     pub(crate) write_back: bool,         // 请求结束后，是否需要回写。
+    pub(crate) max_tries: OnceCell<u8>,  // 最大重试次数
     first: bool,                         // 当前请求是否是所有子请求的第一个
     last: bool,                          // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
@@ -57,6 +59,7 @@ impl CallbackContext {
         first: bool,
         last: bool,
         retry_on_rsp_notok: bool,
+        max_tries: u8,
     ) -> Self {
         log::debug!("request prepared:{}", req);
         let now = Instant::now();
@@ -70,6 +73,7 @@ impl CallbackContext {
             try_next: false,
             retry_on_rsp_notok,
             write_back: false,
+            max_tries: OnceCell::from(max_tries),
             request: req,
             response: MaybeUninit::uninit(),
             callback: cb,
@@ -147,7 +151,8 @@ impl CallbackContext {
                     return false;
                 }
             }
-            self.try_next && self.tries.fetch_add(1, Release) < 1
+            let max_tries = *self.max_tries.get().expect("max tries");
+            self.try_next && self.tries.fetch_add(1, Release) < max_tries
         } else {
             // write back请求
             self.write_back
