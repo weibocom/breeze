@@ -6,6 +6,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use core::fmt;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::sync::atomic::Ordering::{Acquire, Release};
 use std::time::Instant;
 
 use super::config::Namespace;
@@ -15,7 +16,7 @@ use super::{
     ReadStrategy, WriteStrategy,
 };
 use crate::dns::{DnsConfig, DnsLookup};
-use crate::{Endpoint, Endpoints, Timeout, Topology};
+use crate::{CloneAbleAtomicBool, Endpoint, Endpoints, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
 // ip vintage下线后，2分钟后真正从读列表中下线，写列表是立即下线的
@@ -41,6 +42,8 @@ pub struct MsgQue<E, P> {
     cfg: Box<DnsConfig<Namespace>>,
     // 最近一次的配置变更 or 域名变更
     last_updated_time: Instant,
+    // 配置/域名变更时，updating为true，会设置last updated time，保持此后2分钟内，下线的ip依然可读
+    updating: CloneAbleAtomicBool,
 }
 
 impl<E, P> From<P> for MsgQue<E, P> {
@@ -56,6 +59,7 @@ impl<E, P> From<P> for MsgQue<E, P> {
             timeout: Timeout::from_millis(200),
             cfg: Default::default(),
             last_updated_time: Instant::now(),
+            updating: Default::default(),
         }
     }
 }
@@ -125,7 +129,7 @@ where
         // 注意空读后的最后一次请求，会概率尝试访问offline
         let (qid, try_next) = if req.operation().is_retrival() {
             let qid = self.reader_strategy.get_read_idx();
-            let try_next = tried_count < self.backends.len();
+            let try_next = (tried_count + 1) < self.backends.len();
             (qid, try_next)
         } else {
             debug_assert!(req.operation().is_store());
@@ -133,7 +137,7 @@ where
             let last_wid = ctx.get_last_qid(inited);
             let wid = self.writer_strategy.get_write_idx(req.len(), last_wid);
             ctx.update_qid(wid as u16);
-            let try_next = wid < self.writers.len();
+            let try_next = (wid + 1) < self.writers.len();
 
             assert!(wid < self.writers.len(), "{}/{}", wid, self);
             (*self.writers.get(wid).expect("mq write"), try_next)
@@ -244,8 +248,11 @@ where
         let qsizes = &self.cfg.backends_qsize;
         assert_eq!(qaddrs.len(), qsizes.len(), "{:?}/{:?}", qaddrs, qsizes);
 
-        // 对于配置变更 或 域名变更 并解析完毕后，记录变更时间，给予一定时间（2分钟），使得下线的ip保持读状态
-        if self.cfg.need_load() {
+        // 对于配置变更 或 域名变更时，记录变更时间; 后续会给予一定时间（2分钟），使得下线的ip保持读状态
+        if let Ok(true) = self
+            .updating
+            .compare_exchange(true, false, Release, Acquire)
+        {
             self.last_updated_time = Instant::now();
         }
 
@@ -298,6 +305,7 @@ where
     #[inline]
     fn need_load(&self) -> bool {
         if self.cfg.need_load() {
+            self.updating.store(true, Release);
             return true;
         }
 
