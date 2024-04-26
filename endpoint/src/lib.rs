@@ -53,7 +53,11 @@ impl Timeout {
     }
 }
 
-use std::{ops::Deref, sync::atomic::AtomicUsize, time::Duration};
+use std::{
+    ops::Deref,
+    sync::atomic::{AtomicBool, AtomicUsize},
+    time::Duration,
+};
 impl Into<Duration> for Timeout {
     fn into(self) -> Duration {
         Duration::from_millis(self.ms as u64)
@@ -85,6 +89,26 @@ impl Clone for CloneableAtomicUsize {
 
 impl Deref for CloneableAtomicUsize {
     type Target = AtomicUsize;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct CloneAbleAtomicBool {
+    inner: AtomicBool,
+}
+
+impl Clone for CloneAbleAtomicBool {
+    fn clone(&self) -> Self {
+        Self {
+            inner: AtomicBool::new(self.inner.load(std::sync::atomic::Ordering::Relaxed)),
+        }
+    }
+}
+
+impl Deref for CloneAbleAtomicBool {
+    type Target = AtomicBool;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
