@@ -46,7 +46,8 @@ define_read_number!(
 );
 
 pub trait Add<T> {
-    fn add(&mut self, t: T);
+    // 添加元素，如果元素已存在，则返回false
+    fn add(&mut self, t: T) -> bool;
 }
 
 impl<T> Add<T> for Vec<T>
@@ -54,9 +55,11 @@ where
     T: std::cmp::PartialEq,
 {
     #[inline]
-    fn add(&mut self, e: T) {
-        if !self.contains(&e) {
-            self.push(e);
+    fn add(&mut self, e: T) -> bool {
+        if self.contains(&e) {
+            return false;
         }
+        self.push(e);
+        true
     }
 }
