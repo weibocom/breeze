@@ -118,21 +118,23 @@ impl Namespace {
         use ds::vec::Add;
         let mut backends = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
         let mut writer_idx = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
-        backends.add(self.master);
         let mut index = 0;
-        writer_idx.push(index);
 
-        // add函数用于将master_l1、slave、slave_l1添加到backends中，同时记录其writer_idx
+        // add函数用于将master、master_l1、slave、slave_l1添加到backends中，同时记录其writer_idx
+        // 参数a：指向backends；b：准备添加到a的元素；c：如果b新加入到a，是否将当前的index记录到writer_idx
+        // 参数s是为了处理这种场景：当slave同时在master_l1里、且不更新master_l1的时候，也需要将这个master_l1的索引放入writer_idx
+        //   仅master_l1调用本函数时，需将slave作为s传入；slave、slave_l1调用本函数时传入default值
         let mut add = |a: &mut Vec<Vec<String>>, b, c, s: &Vec<String>| {
-            // 额外判断一次是否需要加到writer_idx, 当前仅slave在master l1、且不更新master l1的时候需要
             let additional = b == *s;
             if a.add(b) {
-                index += 1; // 添加成功，更新index
                 if c || additional {
-                    writer_idx.push(index);
+                    writer_idx.push(index); // 将当前元素的index记录到写索引列表
                 }
+                index += 1;
             }
         };
+
+        add(&mut backends, self.master, true, &Default::default());
 
         // master l1 需要进行乱序，避免master miss后，全部打到同一个masterL1 #790
         let mut master_l1 = self.master_l1.clone();
