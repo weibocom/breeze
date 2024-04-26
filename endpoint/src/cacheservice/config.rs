@@ -110,23 +110,49 @@ impl Namespace {
     }
     // 确保master在第0个位置
     // 返回master + master_l1的数量作为local
-    pub(super) fn take_backends(self) -> (usize, Vec<Vec<String>>) {
+    pub(super) fn take_backends(
+        self,
+        update_master_l1: bool,
+    ) -> (usize, Vec<Vec<String>>, Vec<usize>) {
         assert!(self.master.len() > 0);
         use ds::vec::Add;
         let mut backends = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
+        let mut writer_idx = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
         backends.add(self.master);
+        let mut index = 0;
+        writer_idx.push(index);
 
         // master l1 需要进行乱序，避免master miss后，全部打到同一个masterL1 #790
         let mut master_l1 = self.master_l1.clone();
         master_l1.shuffle(&mut thread_rng());
-        master_l1.into_iter().for_each(|v| backends.add(v));
+        master_l1.into_iter().for_each(|v| {
+            if backends.add(v) {
+                index += 1; // 添加成功，更新index
+                if update_master_l1 {
+                    writer_idx.push(index);
+                }
+            }
+        });
 
         let local = backends.len();
         if self.slave.len() > 0 {
-            backends.add(self.slave);
+            if backends.add(self.slave) {
+                index += 1;
+                writer_idx.push(index);
+            }
         }
-        self.slave_l1.into_iter().for_each(|v| backends.add(v));
-        (local, backends)
+        self.slave_l1.into_iter().for_each(|v| {
+            if backends.add(v) {
+                // 添加成功，更新index
+                index += 1;
+                // 在解析Namespace时，如果不更新slave_l1，这里slave_l1会为空
+                // 如果slave_l1非空，更新master_l1时也更新slave_l1
+                if update_master_l1 {
+                    writer_idx.push(index);
+                }
+            }
+        });
+        (local, backends, writer_idx)
     }
     //pub(super) fn timeout_master(&self) -> Duration {
     //    Duration::from_millis(200.max(self.timeout_ms_master as u64))

@@ -29,6 +29,8 @@ pub struct CacheService<E, P> {
 
     // 保留本设置，非必要场景，减少一次slave访问
     backend_no_storage: bool, // true：mc后面没有存储
+    update_master_l1: bool,   // false：不更新master_L1，issue#834
+    writer_idx: Vec<usize>,   // 写操作对象在streams里的索引
 }
 
 impl<E, P> From<P> for CacheService<E, P> {
@@ -41,6 +43,8 @@ impl<E, P> From<P> for CacheService<E, P> {
             // force_write_all: false, // 兼容考虑默认为false，set master失败后，不更新其他layers，新业务推荐用true
             hasher: Default::default(),
             backend_no_storage: false,
+            update_master_l1: true,
+            writer_idx: Default::default(),
         }
     }
 }
@@ -126,15 +130,17 @@ where
 {
     #[inline]
     fn context_store(&self, ctx: &mut super::Context) -> (usize, bool, bool) {
-        let (idx, try_next, write_back);
+        let (seq, idx, try_next, write_back);
         ctx.check_and_inited(true);
         if ctx.is_write() {
             // 写指令，总是从master开始
-            idx = ctx.take_write_idx() as usize;
-            write_back = idx + 1 < self.streams.len();
+            seq = ctx.take_write_idx() as usize; // 第几次写
+            write_back = seq + 1 < self.writer_idx.len();
 
             // topo控制try_next，只要还有layers，topo都支持try next
-            try_next = idx + 1 < self.streams.len();
+            try_next = seq + 1 < self.writer_idx.len();
+            assert!(seq < self.writer_idx.len());
+            idx = self.writer_idx[seq];
         } else {
             // 是读触发的回种的写请求
             idx = ctx.take_read_idx() as usize;
@@ -201,6 +207,7 @@ where
 
             // self.force_write_all = ns.flag.get(Flag::ForceWriteAll as u8);
             self.backend_no_storage = ns.flag.get(Flag::BackendNoStorage as u8);
+            self.update_master_l1 = namespace.update_master_l1();
             let dist = &ns.distribution.clone();
 
             // 把所有的endpoints cache下来
@@ -216,7 +223,8 @@ where
             //use discovery::distance::{Balance, ByDistance};
             //let master = ns.master.clone();
             let is_performance = ns.flag.get(Flag::LocalAffinity as u8).tuning_mode();
-            let (local_len, backends) = ns.take_backends();
+            let (local_len, backends, writer_idx) = ns.take_backends(self.update_master_l1);
+            self.writer_idx = writer_idx;
 
             let mut new = Vec::with_capacity(backends.len());
             for (i, group) in backends.into_iter().enumerate() {
@@ -254,5 +262,36 @@ impl<E, P> Display for CacheService<E, P> {
             self.streams.len(),
             self.streams.local_len(),
         )
+    }
+}
+
+use once_cell::sync::OnceCell;
+use std::collections::HashSet;
+static NOT_UPDATE_MASTER_L1: OnceCell<HashSet<String>> = OnceCell::new();
+pub trait UpdateMasterL1 {
+    fn update_master_l1(&self) -> bool;
+}
+
+impl UpdateMasterL1 for &str {
+    // fn update_master_l1(&self) -> bool{
+    //     let s = std::env::var("BREEZE_NOT_UPDATE_ML1_NS")
+    //     .unwrap_or("".to_string())
+    //     .clone();
+    //     let namespaces = s.as_str().split(',').collect::<Vec<&str>>();
+    //     namespaces.contains(self)
+    // }
+    fn update_master_l1(&self) -> bool {
+        let h = NOT_UPDATE_MASTER_L1.get_or_init(|| {
+            let v = std::env::var("BREEZE_NOT_UPDATE_ML1_NS")
+                .unwrap_or("".to_string())
+                .clone();
+            v.as_str()
+                .split(',')
+                .collect::<Vec<&str>>()
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<HashSet<String>>()
+        });
+        !h.contains(*self)
     }
 }
