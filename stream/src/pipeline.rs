@@ -122,7 +122,7 @@ where
             top: &self.top,
             first: &mut self.first,
             arena: &mut self.arena,
-            retry_on_rsp_notok: self.parser.config().retry_on_rsp_notok,
+            // retry_on_rsp_notok: self.parser.config().retry_on_rsp_notok,
             parser: &self.parser,
         };
 
@@ -221,7 +221,7 @@ struct Visitor<'a, T, P> {
     parser: &'a P,
     first: &'a mut bool,
     arena: &'a mut CallbackContextArena,
-    retry_on_rsp_notok: bool,
+    // retry_on_rsp_notok: bool,
 }
 
 impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::RequestProcessor
@@ -234,16 +234,10 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::Req
         // 否则下一个请求是子请求。
         *self.first = last;
         let cb = self.top.callback();
-        let req_op = cmd.operation();
-        let ctx = self.arena.alloc(CallbackContext::new(
-            cmd,
-            self.waker,
-            cb,
-            first,
-            last,
-            self.retry_on_rsp_notok,
-            self.parser.max_tries(req_op),
-        ));
+        // let req_op = cmd.operation();
+        let ctx = self.arena.alloc(
+            CallbackContext::new(cmd, self.waker, cb, first, last).with_retry_strategy(self.parser),
+        );
         let mut ctx = CallbackContextPtr::from(ctx, self.arena);
 
         // pendding 会move走ctx，所以提前把req给封装好
