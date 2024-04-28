@@ -8,7 +8,7 @@ use std::{
     },
 };
 
-use crate::BackendQuota;
+use crate::{BackendQuota, Protocol};
 use ds::{time::Instant, AtomicWaker};
 
 use crate::{request::Request, Command, Error, HashedCommand};
@@ -32,15 +32,16 @@ impl Callback {
 
 pub struct CallbackContext {
     pub(crate) flag: crate::Context,
-    async_mode: bool,                    // 是否是异步请求
-    done: AtomicBool,                    // 当前模式请求是否完成
-    inited: AtomicBool,                  // response是否已经初始化
-    pub(crate) try_next: bool,           // 请求失败后，topo层面是否允许重试
-    pub(crate) retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
-    pub(crate) write_back: bool,         // 请求结束后，是否需要回写。
-    pub(crate) max_tries: OnceCell<u8>,  // 最大重试次数
-    first: bool,                         // 当前请求是否是所有子请求的第一个
-    last: bool,                          // 当前请求是否是所有子请求的最后一个
+    async_mode: bool,            // 是否是异步请求
+    done: AtomicBool,            // 当前模式请求是否完成
+    inited: AtomicBool,          // response是否已经初始化
+    pub(crate) try_next: bool,   // 请求失败后，topo层面是否允许重试
+    pub(crate) write_back: bool, // 请求结束后，是否需要回写。
+    // TODO 收拢try权限到协议context层面，读写都在本地进行，待讨论 fishermen
+    retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
+    max_tries: OnceCell<u8>,  // 最大重试次数
+    first: bool,              // 当前请求是否是所有子请求的第一个
+    last: bool,               // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
     request: HashedCommand,
     response: MaybeUninit<Command>,
@@ -58,8 +59,8 @@ impl CallbackContext {
         cb: CallbackPtr,
         first: bool,
         last: bool,
-        retry_on_rsp_notok: bool,
-        max_tries: u8,
+        // retry_on_rsp_notok: bool,
+        // max_tries: u8,
     ) -> Self {
         log::debug!("request prepared:{}", req);
         let now = Instant::now();
@@ -71,9 +72,9 @@ impl CallbackContext {
             inited: AtomicBool::new(false),
             async_mode: false,
             try_next: false,
-            retry_on_rsp_notok,
+            retry_on_rsp_notok: false,
+            max_tries: OnceCell::new(),
             write_back: false,
-            max_tries: OnceCell::from(max_tries),
             request: req,
             response: MaybeUninit::uninit(),
             callback: cb,
@@ -289,6 +290,18 @@ impl CallbackContext {
     #[inline]
     pub fn quota(&mut self, quota: BackendQuota) {
         self.quota = Some(quota);
+    }
+
+    #[inline]
+    pub fn with_retry_strategy<P>(mut self, parser: &P) -> Self
+    where
+        P: Protocol,
+    {
+        self.max_tries
+            .set(parser.max_tries(self.request.operation()))
+            .expect("retry");
+        self.retry_on_rsp_notok = parser.retry_on_rsp_notok(&self.request);
+        self
     }
 }
 

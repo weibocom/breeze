@@ -170,6 +170,12 @@ impl Protocol for McqText {
             _ => 1,
         }
     }
+
+    /// 对于mq，不管什么指令，只要返回错误rsp，都需要重试
+    #[inline]
+    fn retry_on_rsp_notok(&self, _req: &HashedCommand) -> bool {
+        true
+    }
 }
 
 impl McqText {

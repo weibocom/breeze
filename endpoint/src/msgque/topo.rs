@@ -144,7 +144,9 @@ where
         };
 
         req.try_next(try_next);
-        req.retry_on_rsp_notok(true);
+        // TODO 设计原则：协议性质的属性，在构建时一次性设置，测试完毕后清理,预计2024.6.1后可清理 fishermen
+        // req.retry_on_rsp_notok(true);
+
         *req.mut_context() = ctx.ctx;
 
         log::debug!(

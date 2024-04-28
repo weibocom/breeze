@@ -1,7 +1,6 @@
 use crate::select::Distance;
 use crate::{Endpoint, Endpoints, Topology};
 use discovery::TopologyWrite;
-use protocol::memcache::Binary;
 use protocol::{Protocol, Request, Resource::Memcache};
 use sharding::hash::{Hash, HashKey, Hasher};
 
@@ -111,8 +110,10 @@ where
         };
         req.try_next(try_next);
         req.write_back(write_back);
-        // TODO 有点怪异，先实现，晚点调整，这个属性直接从request获取更佳？ fishermen
-        req.retry_on_rsp_notok(req.can_retry_on_rsp_notok());
+
+        // TODO 有点怪异，先实现，晚点调整，这个属性直接从request获取更佳？ 预计2024.6.1后可清理 fishermen
+        // req.retry_on_rsp_notok(req.can_retry_on_rsp_notok());
+
         *req.mut_context() = ctx.ctx;
         log::debug!("+++ request sent prepared:{} - {} {}", idx, req, self);
         assert!(idx < self.streams.len(), "{} {} => {:?}", idx, self, req);
