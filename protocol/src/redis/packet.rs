@@ -88,8 +88,6 @@ impl From<RequestContext> for StreamContext {
 
 #[inline]
 pub fn transmute(ctx: &mut StreamContext) -> &mut RequestContext {
-    // 这个放在layout的单元测试里面
-    //assert_eq!(std::mem::size_of::<Context>(), 8);
     unsafe { std::mem::transmute(ctx) }
 }
 
