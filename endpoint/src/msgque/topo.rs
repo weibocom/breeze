@@ -144,7 +144,9 @@ where
         };
 
         req.try_next(try_next);
-        req.retry_on_rsp_notok(true);
+        // TODO 设计原则：协议性质的属性，在构建时一次性设置，测试完毕后清理,预计2024.6.1后可清理 fishermen
+        // req.retry_on_rsp_notok(true);
+
         *req.mut_context() = ctx.ctx;
 
         log::debug!(
@@ -341,7 +343,7 @@ where
         let sec = self.last_updated_time.elapsed().as_secs();
         write!(
             f,
-            "mq - {} rstrategy:{}, wstrategy:{}, backends/{:?}, writes/{:?}, changed: {}",
+            "mq - {} rstrategy:{}, wstrategy:{}, backends/{:?}, writes/{:?}, changed_time: {}",
             self.service, self.reader_strategy, self.writer_strategy, backends, self.writers, sec
         )
     }

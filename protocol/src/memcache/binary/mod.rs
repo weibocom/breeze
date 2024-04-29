@@ -20,7 +20,7 @@ impl Protocol for MemcacheBinary {
     #[inline]
     fn config(&self) -> crate::Config {
         crate::Config {
-            retry_on_rsp_notok: true,
+            // retry_on_rsp_notok: true,
             ..Default::default()
         }
     }
@@ -189,6 +189,12 @@ impl Protocol for MemcacheBinary {
             self.build_write_back_inplace(ctx.request_mut());
             None
         }
+    }
+
+    /// 在收到notok的响应时，对cas/casq/add等指令不重试，其他指令需重试
+    #[inline]
+    fn retry_on_rsp_notok(&self, req: &HashedCommand) -> bool {
+        req.can_retry_on_rsp_notok()
     }
 }
 impl MemcacheBinary {

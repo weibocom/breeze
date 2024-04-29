@@ -174,6 +174,7 @@ pub(crate) fn is_quiet_get(op_code: u8) -> bool {
 
 pub trait Binary {
     type Item;
+    fn is_request(&self) -> bool;
     fn op(&self) -> u8;
     fn operation(&self) -> Operation;
     fn noop(&self) -> bool;
@@ -211,6 +212,13 @@ pub trait Op {}
 use ds::RingSlice;
 impl Binary for RingSlice {
     type Item = Self;
+
+    /// check 该指令是否是request请求
+    #[inline]
+    fn is_request(&self) -> bool {
+        debug_assert!(self.len() >= HEADER_LEN);
+        self.at(PacketPos::Magic as usize) == REQUEST_MAGIC
+    }
     #[inline(always)]
     fn op(&self) -> u8 {
         debug_assert!(self.len() >= HEADER_LEN);
@@ -395,6 +403,9 @@ impl Binary for RingSlice {
 
     #[inline(always)]
     fn can_retry_on_rsp_notok(&self) -> bool {
+        // 这个方法只对request才生效
+        assert!(self.is_request(), "{}", self);
+
         let op = self.op();
         assert!((op as usize) < RETRY_TABLE.len());
 

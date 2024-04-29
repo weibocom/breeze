@@ -63,8 +63,11 @@ pub trait Request:
     //fn is_write_back(&self) -> bool;
     // 请求失败后，topo层面是否允许进行重试
     fn try_next(&mut self, goon: bool);
+
+    // TODO 测试完毕后清理 fishermen
     // 请求失败后，协议层面是否允许进行重试
-    fn retry_on_rsp_notok(&mut self, retry: bool);
+    // fn retry_on_rsp_notok(&mut self, retry: bool);
+
     // 初始化quota
     fn quota(&mut self, quota: BackendQuota);
 }

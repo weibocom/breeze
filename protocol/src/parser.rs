@@ -62,7 +62,7 @@ pub struct ResOption {
 pub struct Config {
     pub need_auth: bool,
     pub pipeline: bool,
-    pub retry_on_rsp_notok: bool,
+    // pub retry_on_rsp_notok: bool,
 }
 
 pub enum HandShake {
@@ -127,6 +127,13 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     #[inline]
     fn max_tries(&self, _req_op: Operation) -> u8 {
         1_u8
+    }
+
+    /// 在收到的rsp为notok时，是否重试，默认都不重试；
+    /// precondition：得收到rsp，且rsp为notok；没收到响应，不属于该策略的处理范围
+    #[inline]
+    fn retry_on_rsp_notok(&self, _req: &HashedCommand) -> bool {
+        false
     }
 }
 
