@@ -25,8 +25,13 @@ impl Protocol for McqText {
         process: &mut P,
     ) -> Result<()> {
         let data = stream.slice();
+        log::debug!("+++ recv mq msg:{}", data);
         let mut oft = 0;
+
         while let Some(mut lfcr) = data.find_lf_cr(oft) {
+            if data.len() < 4 {
+                return Err(Error::ProtocolIncomplete);
+            }
             let head4 = data.u32_le(oft);
             let (op_code, op) = if head4 == u32::from_le_bytes(*b"get ") {
                 (OP_GET, Get)
@@ -75,6 +80,7 @@ impl Protocol for McqText {
     #[inline]
     fn parse_response<S: Stream>(&self, stream: &mut S) -> Result<Option<Command>> {
         let data = stream.slice();
+        log::debug!("+++ will parse mq rsp:{}", data);
         let Some(mut lfcr) = data.find_lf_cr(0) else {
             return Ok(None);
         };

@@ -343,7 +343,7 @@ where
         let sec = self.last_updated_time.elapsed().as_secs();
         write!(
             f,
-            "mq - {} rstrategy:{}, wstrategy:{}, backends/{:?}, writes/{:?}, changed: {}",
+            "mq - {} rstrategy:{}, wstrategy:{}, backends/{:?}, writes/{:?}, changed_time: {}",
             self.service, self.reader_strategy, self.writer_strategy, backends, self.writers, sec
         )
     }
