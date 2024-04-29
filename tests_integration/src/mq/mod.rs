@@ -67,8 +67,8 @@ fn msgque_write() {
 fn msgque_read() {
     let mq_client = mc_get_text_conn(MQ);
 
-    let count = 5;
     // const COUNT: i32 = 1000;
+    const COUNT: i32 = 5;
 
     let key = "k2";
     let mut read_count = 0;
