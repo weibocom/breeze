@@ -1,4 +1,4 @@
-const BUF_MIN: usize = 2 * 1024;
+const BUF_MIN: usize = 4 * 1024;
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
 #[derive(Debug)]
