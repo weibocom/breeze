@@ -1,4 +1,4 @@
-use byteorder::{LittleEndian as LE, ReadBytesExt, WriteBytesExt};
+use byteorder::{LittleEndian as LE, ReadBytesExt};
 use bytes::BufMut;
 use ds::{ByteOrder, RingSlice};
 // use sha1::digest::typenum::Minimum;
@@ -420,43 +420,43 @@ pub trait ReadMysqlExt: ReadBytesExt {
         }
     }
 
-    /// Reads MySql's length-encoded string.
-    fn read_lenenc_str(&mut self) -> io::Result<Vec<u8>> {
-        let len = self.read_lenenc_int()?;
-        let mut output = vec![0_u8; len as usize];
-        self.read_exact(&mut output)?;
-        Ok(output)
-    }
+    // Reads MySql's length-encoded string.
+    // fn read_lenenc_str(&mut self) -> io::Result<Vec<u8>> {
+    //     let len = self.read_lenenc_int()?;
+    //     let mut output = vec![0_u8; len as usize];
+    //     self.read_exact(&mut output)?;
+    //     Ok(output)
+    // }
 }
 
-pub trait WriteMysqlExt: WriteBytesExt {
-    /// Writes MySql's length-encoded integer.
-    fn write_lenenc_int(&mut self, x: u64) -> io::Result<u64> {
-        if x < 251 {
-            self.write_u8(x as u8)?;
-            Ok(1)
-        } else if x < 65_536 {
-            self.write_u8(0xFC)?;
-            self.write_uint::<LE>(x, 2)?;
-            Ok(3)
-        } else if x < 16_777_216 {
-            self.write_u8(0xFD)?;
-            self.write_uint::<LE>(x, 3)?;
-            Ok(4)
-        } else {
-            self.write_u8(0xFE)?;
-            self.write_uint::<LE>(x, 8)?;
-            Ok(9)
-        }
-    }
+// pub trait WriteMysqlExt: WriteBytesExt {
+//     /// Writes MySql's length-encoded integer.
+//     fn write_lenenc_int(&mut self, x: u64) -> io::Result<u64> {
+//         if x < 251 {
+//             self.write_u8(x as u8)?;
+//             Ok(1)
+//         } else if x < 65_536 {
+//             self.write_u8(0xFC)?;
+//             self.write_uint::<LE>(x, 2)?;
+//             Ok(3)
+//         } else if x < 16_777_216 {
+//             self.write_u8(0xFD)?;
+//             self.write_uint::<LE>(x, 3)?;
+//             Ok(4)
+//         } else {
+//             self.write_u8(0xFE)?;
+//             self.write_uint::<LE>(x, 8)?;
+//             Ok(9)
+//         }
+//     }
 
-    /// Writes MySql's length-encoded string.
-    fn write_lenenc_str(&mut self, bytes: &[u8]) -> io::Result<u64> {
-        let written = self.write_lenenc_int(bytes.len() as u64)?;
-        self.write_all(bytes)?;
-        Ok(written + bytes.len() as u64)
-    }
-}
+//     /// Writes MySql's length-encoded string.
+//     fn write_lenenc_str(&mut self, bytes: &[u8]) -> io::Result<u64> {
+//         let written = self.write_lenenc_int(bytes.len() as u64)?;
+//         self.write_all(bytes)?;
+//         Ok(written + bytes.len() as u64)
+//     }
+// }
 
 impl Display for ParseBuf {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -471,7 +471,7 @@ impl Display for ParseBuf {
 }
 
 impl<T> ReadMysqlExt for T where T: ReadBytesExt {}
-impl<T> WriteMysqlExt for T where T: WriteBytesExt {}
+// impl<T> WriteMysqlExt for T where T: WriteBytesExt {}
 
 #[cfg(test)]
 mod tests {
