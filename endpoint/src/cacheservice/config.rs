@@ -110,23 +110,47 @@ impl Namespace {
     }
     // 确保master在第0个位置
     // 返回master + master_l1的数量作为local
-    pub(super) fn take_backends(self) -> (usize, Vec<Vec<String>>) {
+    pub(super) fn take_backends(
+        self,
+        update_master_l1: bool,
+    ) -> (usize, Vec<Vec<String>>, Vec<usize>) {
         assert!(self.master.len() > 0);
         use ds::vec::Add;
         let mut backends = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
-        backends.add(self.master);
+        let mut writer_idx = Vec::with_capacity(2 + self.master_l1.len() + self.slave_l1.len());
+        let mut index = 0;
+
+        // add函数用于将master、master_l1、slave、slave_l1添加到backends中，同时记录其writer_idx
+        // 参数a：指向backends；b：准备添加到a的元素；c：如果b新加入到a，是否将当前的index记录到writer_idx
+        // 参数s是为了处理这种场景：当slave同时在master_l1里、且不更新master_l1的时候，也需要将这个master_l1的索引放入writer_idx
+        //   仅master_l1调用本函数时，需将slave作为s传入；slave、slave_l1调用本函数时传入default值
+        let mut add = |a: &mut Vec<Vec<String>>, b, c, s: &Vec<String>| {
+            let additional = b == *s;
+            if a.add(b) {
+                if c || additional {
+                    writer_idx.push(index); // 将当前元素的index记录到写索引列表
+                }
+                index += 1;
+            }
+        };
+
+        add(&mut backends, self.master, true, &Default::default());
 
         // master l1 需要进行乱序，避免master miss后，全部打到同一个masterL1 #790
         let mut master_l1 = self.master_l1.clone();
         master_l1.shuffle(&mut thread_rng());
-        master_l1.into_iter().for_each(|v| backends.add(v));
+        master_l1
+            .into_iter()
+            .for_each(|v| add(&mut backends, v, update_master_l1, &self.slave));
 
         let local = backends.len();
         if self.slave.len() > 0 {
-            backends.add(self.slave);
+            add(&mut backends, self.slave, true, &Default::default());
         }
-        self.slave_l1.into_iter().for_each(|v| backends.add(v));
-        (local, backends)
+        self.slave_l1
+            .into_iter()
+            .for_each(|v| add(&mut backends, v, true, &Default::default()));
+        (local, backends, writer_idx)
     }
     //pub(super) fn timeout_master(&self) -> Duration {
     //    Duration::from_millis(200.max(self.timeout_ms_master as u64))
