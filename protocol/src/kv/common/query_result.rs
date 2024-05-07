@@ -3,7 +3,7 @@ use crate::{Command, Stream};
 
 pub use crate::kv::common::proto::{Binary, Text};
 
-use crate::kv::common::{io::ParseBuf, packets::OkPacket, row::RowDeserializer, value::ServerSide};
+use crate::kv::common::{io::ParseBuf, packets::OkPacket, row::RowDeserializer};
 use crate::kv::rsppacket::ResponsePacket;
 
 use std::{marker::PhantomData, sync::Arc};
@@ -21,41 +21,41 @@ pub enum Or<A, B> {
 
 /// Result set kind.
 pub(crate) trait Protocol: 'static + Send + Sync {
-    fn next<'a, S: Stream>(
-        rsp_packet: &'a mut ResponsePacket<'a, S>,
-        columns: Arc<[Column]>,
-    ) -> Result<Option<Row>>;
+    // fn next<'a, S: Stream>(
+    //     rsp_packet: &'a mut ResponsePacket<'a, S>,
+    //     columns: Arc<[Column]>,
+    // ) -> Result<Option<Row>>;
 }
 
 impl Protocol for Text {
-    fn next<'a, S: Stream>(
-        rsp_packet: &'a mut ResponsePacket<'a, S>,
-        columns: Arc<[Column]>,
-    ) -> Result<Option<Row>> {
-        match rsp_packet.next_row_packet()? {
-            Some(pld) => {
-                let row = ParseBuf::from(*pld).parse::<RowDeserializer<(), Text>>(columns)?;
-                Ok(Some(row.into()))
-            }
-            None => Ok(None),
-        }
-    }
+    // fn next<'a, S: Stream>(
+    //     rsp_packet: &'a mut ResponsePacket<'a, S>,
+    //     columns: Arc<[Column]>,
+    // ) -> Result<Option<Row>> {
+    //     match rsp_packet.next_row_packet()? {
+    //         Some(pld) => {
+    //             let row = ParseBuf::from(*pld).parse::<RowDeserializer<(), Text>>(columns)?;
+    //             Ok(Some(row.into()))
+    //         }
+    //         None => Ok(None),
+    //     }
+    // }
 }
 
 impl Protocol for Binary {
-    fn next<'a, S: Stream>(
-        rsp_packet: &'a mut ResponsePacket<'a, S>,
-        columns: Arc<[Column]>,
-    ) -> Result<Option<Row>> {
-        match rsp_packet.next_row_packet()? {
-            Some(pld) => {
-                let row =
-                    ParseBuf::from(*pld).parse::<RowDeserializer<ServerSide, Binary>>(columns)?;
-                Ok(Some(row.into()))
-            }
-            None => Ok(None),
-        }
-    }
+    // fn next<'a, S: Stream>(
+    //     rsp_packet: &'a mut ResponsePacket<'a, S>,
+    //     columns: Arc<[Column]>,
+    // ) -> Result<Option<Row>> {
+    //     match rsp_packet.next_row_packet()? {
+    //         Some(pld) => {
+    //             let row =
+    //                 ParseBuf::from(*pld).parse::<RowDeserializer<ServerSide, Binary>>(columns)?;
+    //             Ok(Some(row.into()))
+    //         }
+    //         None => Ok(None),
+    //     }
+    // }
 }
 
 /// State of a result set iterator.

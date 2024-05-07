@@ -206,7 +206,7 @@ pub trait Binary {
     fn noforward(&self) -> bool;
 }
 
-pub trait Op {}
+// pub trait Op {}
 
 use ds::RingSlice;
 impl Binary for RingSlice {
