@@ -266,9 +266,6 @@ pub(super) static SUPPORTED: Commands = {
         // quit、master的指令token数/arity应该都是1,quit 的padding设为1 
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
 
-        #[cfg(target_os="macos")]
-        Cmd::new("client").arity(-1).op(Meta).padding(pt[1]).nofwd(),
-
         // masterq 不返回任何响应，masterx 必须返回响应，master当前同masterq，待sdk全部切换后，再考虑统一
         Cmd::new("master").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::Master).effect_on_next_req(),
         Cmd::new("masterq").arity(1).op(Meta).nofwd().master().swallow().cmd_type(CommandType::Master).effect_on_next_req(),
@@ -439,6 +436,10 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("bfset").arity(2).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("bfmget").m("bfget").arity(-2).op(MGet).first(1).last(-1).step(1).padding(pt[7]).multi().key().bulk(),
         Cmd::new("bfmset").m("bfset").arity(-2).op(Store).first(1).last(1).step(1).padding(pt[7]).multi().key().bulk(),
+
+        // 有些redis客户端要求支持client指令; 为了方便测试，在debug模式下极简化支持client指令
+        #[cfg(debug_assertions)]
+        Cmd::new("client").arity(-1).op(Meta).padding(pt[1]).nofwd(),
         
         // 待支持
         // {"lsmalloc",lsmallocCommand,3,REDIS_CMD_DENYOOM|REDIS_CMD_WRITE,NULL,1,1,1},
