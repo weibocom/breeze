@@ -43,7 +43,7 @@ pub mod prelude {
     #[doc(inline)]
     pub use crate::kv::common::value::convert::{ConvIr, FromValue, ToValue};
 
-    /// Trait for protocol markers [`crate::Binary`] and [`crate::Text`].
+    // Trait for protocol markers [`crate::Binary`] and [`crate::Text`].
     pub(crate) trait Protocol: crate::kv::common::query_result::Protocol {}
 
     impl Protocol for crate::kv::common::proto::Binary {}
