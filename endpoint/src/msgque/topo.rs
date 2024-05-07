@@ -128,7 +128,7 @@ where
         // 对于读请求：顺序读取队列，如果队列都去了到数据，就连续读N个，如果没读到，则尝试下一个ip，直到轮询完所有的ip
         // 注意空读后的最后一次请求，会概率尝试访问offline
         let (qid, try_next) = if req.operation().is_retrival() {
-            let qid = self.reader_strategy.get_read_idx();
+            let qid = self.reader_strategy.get_read_idx(count == 0);
             let try_next = (tried_count + 1) < self.backends.len();
             (qid, try_next)
         } else {

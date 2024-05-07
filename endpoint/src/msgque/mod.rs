@@ -81,7 +81,7 @@ pub trait WriteStrategy {
 
 pub trait ReadStrategy {
     fn new(reader_len: usize) -> Self;
-    fn get_read_idx(&self) -> usize;
+    fn get_read_idx(&self, first_read: bool) -> usize;
 }
 
 #[derive(Debug, Clone, Default)]
