@@ -101,7 +101,7 @@ pub(crate) struct CommandProperties {
 
 // 默认响应
 // 第0个表示quit
-const PADDING_RSP_TABLE: [&str; 8] = [
+const PADDING_RSP_TABLE: [&str; 9] = [
     "",
     "+OK\r\n",
     "+PONG\r\n",
@@ -110,6 +110,7 @@ const PADDING_RSP_TABLE: [&str; 8] = [
     "-ERR should swallowed in mesh\r\n", // 仅仅占位，会在mesh内吞噬掉，不会返回给client or server
     "$-1\r\n",                           // mget 等指令对应的nil
     ":-10\r\n",                          //phantom -1返回已被服务端占用
+    "*2\r\n$5\r\nproto\r\n:2\r\n",       //hello 指令返回的响应
 ];
 
 // 调用式确保idx < PADDING_RSP_TABLE.len()
@@ -261,7 +262,7 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("command").arity(-1).op(Meta).padding(pt[1]).nofwd(),
         Cmd::new("ping").arity(-1).op(Meta).padding(pt[2]).nofwd(),
         Cmd::new("select").arity(2).op(Meta).padding(pt[1]).nofwd(),
-        Cmd::new("hello").arity(-1).op(Meta).padding(pt[4]).nofwd(),
+        Cmd::new("hello").arity(-1).op(Meta).padding(pt[8]).nofwd(),
         // quit、master的指令token数/arity应该都是1,quit 的padding设为1 
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
 
@@ -435,6 +436,10 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("bfset").arity(2).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("bfmget").m("bfget").arity(-2).op(MGet).first(1).last(-1).step(1).padding(pt[7]).multi().key().bulk(),
         Cmd::new("bfmset").m("bfset").arity(-2).op(Store).first(1).last(1).step(1).padding(pt[7]).multi().key().bulk(),
+
+        // 有些redis客户端要求支持client指令; 为了方便测试，在debug模式下极简化支持client指令
+        #[cfg(debug_assertions)]
+        Cmd::new("client").arity(-1).op(Meta).padding(pt[1]).nofwd(),
         
         // 待支持
         // {"lsmalloc",lsmallocCommand,3,REDIS_CMD_DENYOOM|REDIS_CMD_WRITE,NULL,1,1,1},
