@@ -76,3 +76,36 @@ impl Context {
         self.ctx != 0
     }
 }
+
+use once_cell::sync::OnceCell;
+use std::collections::HashSet;
+static NOT_UPDATE_MASTER_L1: OnceCell<HashSet<String>> = OnceCell::new();
+pub fn init_not_update_master_l1() {
+    let s = std::env::var("BREEZE_NOT_UPDATE_ML1_NS")
+        .unwrap_or("".to_string())
+        .clone();
+    let h = s
+        .as_str()
+        .split(',')
+        .collect::<Vec<&str>>()
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<HashSet<String>>();
+    if let Err(e) = NOT_UPDATE_MASTER_L1.set(h) {
+        log::warn!("init not_update_master_l1 fail: {:?}", e);
+    }
+}
+
+pub trait UpdateMasterL1 {
+    fn update_master_l1(&self) -> bool;
+}
+
+impl UpdateMasterL1 for &str {
+    fn update_master_l1(&self) -> bool {
+        match NOT_UPDATE_MASTER_L1.get() {
+            // 没有出现在NOT_UPDATE_MASTER_L1里的，需要更新master_l1
+            Some(h) => !h.contains(*self),
+            None => true,
+        }
+    }
+}

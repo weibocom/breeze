@@ -14,6 +14,8 @@ pub(super) fn init(ctx: &Context) {
     crate::http::start(ctx);
     rt::spawn(discovery::dns::start_dns_resolver_refresher());
     crate::prometheus::register_target(ctx);
+
+    endpoint::cacheservice::init_not_update_master_l1();
 }
 pub(crate) fn init_limit(ctx: &Context) {
     set_rlimit(ctx.no_file);
