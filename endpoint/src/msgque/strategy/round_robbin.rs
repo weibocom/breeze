@@ -27,20 +27,29 @@ impl ReadStrategy for RoundRobbin {
     }
     /// 实现策略很简单：持续轮询
     #[inline]
-    fn get_read_idx(&self, first_read: bool) -> usize {
-        // 主路径，第一次读
-        if first_read {
-            // 如果没有超过阀值，不进行轮询，只增加hits计数，
-            if self.continue_hits.load(ordering::Relaxed) <= MAX_CONTINUE_HITS {
-                self.continue_hits.fetch_add(1, ordering::Relaxed);
-                return self.current_pos.load(Relaxed);
+    fn get_read_idx(&self, last_idx: Option<usize>) -> usize {
+        let pos = match last_idx {
+            None => {
+                // 连续hits没有超过阀值，不进行轮询，只增加hits计数，否则重置hits，并将下次请求轮询到下个位置
+                let hits = self.continue_hits.load(Relaxed);
+                if hits < MAX_CONTINUE_HITS {
+                    self.continue_hits.fetch_add(1, Relaxed);
+                    self.current_pos.load(Relaxed)
+                } else {
+                    self.continue_hits.store(0, Relaxed);
+                    self.current_pos.fetch_add(1, Relaxed)
+                }
             }
-            // 读取次数超过阀值，重置hits次数
-            self.continue_hits.store(0, ordering::Relaxed);
-        }
-
-        // 持续命中次数超过阀值，或者重试读取，开始进行轮询下一个位置
-        let pos = self.current_pos.fetch_add(1, Relaxed);
+            Some(lidx) => {
+                // 将pos向后移动一个位置，如果已经被移动了，则不再移动
+                let cur_idx = self.current_pos.load(Relaxed).wrapping_rem(self.que_len);
+                if cur_idx == lidx {
+                    self.current_pos.fetch_add(1, Relaxed);
+                }
+                // 无论如何，重试的时候都要尝试下一个idx
+                lidx + 1
+            }
+        };
         pos.wrapping_rem(self.que_len)
     }
 }
