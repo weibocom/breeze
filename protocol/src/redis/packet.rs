@@ -28,26 +28,21 @@ pub struct RequestContext {
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MultiBulk {
-    total: u16,       // bulk数量
-    parsed: u16,      // 已解析的bulk数量
-    pos: u32,         // 当前bulk待解析的起始位置
-    parsed_size: u32, // 解析过的大小
+    left_bulk: u32, // 待解析bulk数量
+    pos: u32,       // 当前bulk待解析的起始位置
 }
 
 impl MultiBulk {
     #[inline]
-    pub fn new(total: u16, pos: usize) -> Self {
+    pub fn new(left_bulk: u32, pos: usize) -> Self {
         Self {
-            total,
-            parsed: 0,
+            left_bulk,
             pos: pos as u32,
-            parsed_size: 0,
         }
     }
     #[inline]
     pub fn parse1(&mut self, pos: usize) {
-        self.parsed += 1;
-        self.parsed_size += pos as u32 - self.pos;
+        (self.left_bulk > 0).then(|| self.left_bulk -= 1);
         self.pos = pos as u32;
     }
     #[inline]
@@ -55,24 +50,14 @@ impl MultiBulk {
         self.pos as usize
     }
     #[inline]
-    pub fn set_pos(&mut self, pos: usize) {
-        self.pos = pos as u32;
-    }
-    #[inline]
     pub fn complete(&self) -> bool {
-        self.total == self.parsed
+        self.left_bulk == 0
     }
     #[inline]
     pub fn maybe_left_bytes(&self) -> usize {
-        match self.parsed > 0 {
-            // 假设MultiBulk里面的单条消息长度是差不多的
-            true => self.parsed_size as usize * self.total as usize / self.parsed as usize,
-            false => 0,
-        }
+        self.left_bulk as usize * 64
     }
 }
-
-// impl Copy for MultiBulk {}
 
 impl From<&mut StreamContext> for RequestContext {
     fn from(value: &mut StreamContext) -> Self {
@@ -101,7 +86,6 @@ impl RequestContext {
     #[inline]
     fn clear_multibulks(&mut self) {
         if self.multibulk_ptr > 0 {
-            println!("call clear_multibulks and ptr not null");
             let _ = unsafe { Box::from_raw(self.multibulk_ptr as *mut Vec<MultiBulk>) };
             self.multibulk_ptr = 0;
         }
@@ -254,6 +238,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     fn reset_context(&mut self) {
         // 重置packet的ctx
+        self.ctx.clear_multibulks();
         self.ctx = Default::default();
 
         // 重置stream的ctx
@@ -301,7 +286,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         } else {
             self.reset_context();
         }
-        self.clear_bulk();
     }
 
     #[inline]
@@ -310,6 +294,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
         // 更新上下文的bulk num。
+        self.ctx.clear_multibulks();
         self.ctx.first = false;
         *self.stream.context() = self.ctx.into();
         self.stream.take(data.len())
@@ -414,10 +399,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(crate) fn bulk(&self) -> u16 {
         self.ctx.bulk
-    }
-    #[inline]
-    pub(crate) fn clear_bulk(&mut self) {
-        self.ctx.clear_multibulks()
     }
     #[inline]
     pub(crate) fn op_code(&self) -> u16 {
@@ -628,24 +609,15 @@ impl Packet {
         if *multibulk_ptr == 0 {
             let bulk_count = self.num_of_bulks(oft)?;
             let mut data = Box::new(Vec::with_capacity(2)); // 2层嵌套覆盖常见场景
-            data.push(MultiBulk::new(bulk_count as u16, *oft));
-            //  let ptr = unsafe { NonNull::new_unchecked(data.as_mut_ptr()) };
+            data.push(MultiBulk::new(bulk_count as u32, *oft));
 
             *multibulk_ptr = Box::into_raw(data) as usize;
         }
 
         let r = self.skip_multibulks_inner(oft, *multibulk_ptr);
-
         if r.is_ok() {
             let _ = unsafe { Box::from_raw(*multibulk_ptr as *mut Vec<MultiBulk>) };
             *multibulk_ptr = 0;
-        } else {
-            // 在当前层记录解析到的位置
-            let arrays = *multibulk_ptr as *mut Vec<MultiBulk>;
-            let arrays = unsafe { &mut *arrays };
-            if let Some(array) = arrays.last_mut() {
-                array.set_pos(*oft);
-            }
         }
         r
     }
@@ -667,7 +639,7 @@ impl Packet {
                 match self.at(*oft) {
                     b'*' => {
                         let current = self.num_of_bulks(oft)?;
-                        arrays.push(MultiBulk::new(current as u16, *oft));
+                        arrays.push(MultiBulk::new(current as u32, *oft));
                         continue;
                     }
                     b'$' => {
