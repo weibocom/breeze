@@ -121,6 +121,7 @@ where
 
         // 将访问次数加一，并返回之前的访问次数
         let tried_count = ctx.get_and_incr_tried_count();
+        let last_qid = ctx.get_last_qid(inited);
 
         // 队列始终不需要write back，即写成功后不需要继回写
         assert!(!req.is_write_back());
@@ -128,14 +129,13 @@ where
         // 对于读请求：顺序读取队列，如果队列都去了到数据，就连续读N个，如果没读到，则尝试下一个ip，直到轮询完所有的ip
         // 注意空读后的最后一次请求，会概率尝试访问offline
         let (qid, try_next) = if req.operation().is_retrival() {
-            let qid = self.reader_strategy.get_read_idx(count == 0);
+            let qid = self.reader_strategy.get_read_idx(last_qid);
+            ctx.update_qid(qid as u16);
             let try_next = (tried_count + 1) < self.backends.len();
             (qid, try_next)
         } else {
             debug_assert!(req.operation().is_store());
-
-            let last_wid = ctx.get_last_qid(inited);
-            let wid = self.writer_strategy.get_write_idx(req.len(), last_wid);
+            let wid = self.writer_strategy.get_write_idx(req.len(), last_qid);
             ctx.update_qid(wid as u16);
             let try_next = (wid + 1) < self.writers.len();
 
