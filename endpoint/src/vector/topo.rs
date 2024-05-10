@@ -79,6 +79,7 @@ where
 
                 let shard_idx = self.shard_idx(req.hash());
                 req.ctx_mut().year = year;
+                req.ctx_mut().month = date.month() as u8;
                 req.ctx_mut().shard_idx = shard_idx as u16;
 
                 let vector_builder = SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
