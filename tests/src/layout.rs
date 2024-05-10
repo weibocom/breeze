@@ -26,6 +26,7 @@ fn checkout_basic() {
     assert_eq!(24, size_of::<ds::RingSlice>());
     assert_eq!(8, size_of::<protocol::Context>());
     assert_eq!(size_of::<protocol::Context>(), 8);
+    assert_eq!(size_of::<protocol::ContextExtra>(), 8);
     assert_eq!(
         size_of::<protocol::Context>(),
         size_of::<protocol::kv::Context>()
@@ -56,7 +57,7 @@ fn check_layout_rx_buffer() {
 #[ignore]
 #[test]
 fn check_callback_ctx() {
-    assert_eq!(192, size_of::<CallbackContext>());
+    assert_eq!(200, size_of::<CallbackContext>());
     //assert_eq!(16, size_of::<protocol::callback::Context>());
 }
 //#[ignore]
