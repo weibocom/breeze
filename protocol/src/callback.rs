@@ -32,6 +32,8 @@ impl Callback {
 
 pub struct CallbackContext {
     pub(crate) flag: crate::Context,
+    //直接扩展flag，风险大
+    pub(crate) extra: crate::ContextExtra,
     async_mode: bool,                    // 是否是异步请求
     done: AtomicBool,                    // 当前模式请求是否完成
     inited: AtomicBool,                  // response是否已经初始化
@@ -67,6 +69,7 @@ impl CallbackContext {
             first,
             last,
             flag: crate::Context::default(),
+            extra: crate::ContextExtra::default(),
             done: AtomicBool::new(false),
             inited: AtomicBool::new(false),
             async_mode: false,
