@@ -57,10 +57,10 @@ pub trait Request:
         self.mut_context()
     }
     fn mut_context(&mut self) -> &mut Context;
-    fn extra_context(&self) -> &ContextExtra {
+    fn extra_ctx(&self) -> &ContextExtra {
         todo!("not impl")
     }
-    fn extra_context_mut(&mut self) -> &mut ContextExtra {
+    fn extra_ctx_mut(&mut self) -> &mut ContextExtra {
         todo!("not impl")
     }
     // 请求成功后，是否需要进行回写或者同步。
@@ -74,4 +74,8 @@ pub trait Request:
     fn retry_on_rsp_notok(&mut self, retry: bool);
     // 初始化quota
     fn quota(&mut self, quota: BackendQuota);
+    // 重试时上次响应是否成功
+    fn retry_rsp_ok(&self) -> bool {
+        false
+    }
 }

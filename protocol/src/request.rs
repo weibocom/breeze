@@ -57,10 +57,10 @@ impl crate::Request for Request {
     fn quota(&mut self, quota: BackendQuota) {
         self.ctx().quota(quota);
     }
-    fn extra_context(&self) -> &crate::ContextExtra {
+    fn extra_ctx(&self) -> &crate::ContextExtra {
         &self.ctx().extra
     }
-    fn extra_context_mut(&mut self) -> &mut crate::ContextExtra {
+    fn extra_ctx_mut(&mut self) -> &mut crate::ContextExtra {
         &mut self.ctx().extra
     }
 }

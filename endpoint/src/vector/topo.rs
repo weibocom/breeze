@@ -71,16 +71,32 @@ where
 
     fn send(&self, mut req: Self::Item) {
         let shard = (|| -> Result<&Shard<E>, protocol::Error> {
-            let (year, shard_idx) = if req.ctx_mut().runs == 0 {
-                let vcmd = protocol::vector::redis::parse_vector_detail(&req)?;
-                //定位年库
-                let date = self.strategist.get_date(&vcmd.keys)?;
-                let year = date.year() as u16;
+            //需要请求多轮的场景处理逻辑看作是一次新的请求，除外出错重试
+            let more = self.strategist.more() && req.retry_rsp_ok();
+            let (year, shard_idx) = if req.ctx_mut().runs == 0 || more {
+                let (vcmd, date, year, shard_idx) =
+                    if self.strategist.more() && *req.extra_ctx() > 0 {
+                        todo!()
+                        //非第一轮请求
+                    } else {
+                        let vcmd = protocol::vector::redis::parse_vector_detail(&req)?;
+                        //定位年库
+                        let date = self.strategist.get_date(&vcmd.keys)?;
+                        let year = date.year() as u16;
 
-                let shard_idx = self.shard_idx(req.hash());
-                req.ctx_mut().year = year;
-                req.ctx_mut().month = date.month() as u8;
-                req.ctx_mut().shard_idx = shard_idx as u16;
+                        let shard_idx = self.shard_idx(req.hash());
+                        req.ctx_mut().year = year;
+                        req.ctx_mut().month = date.month() as u8;
+                        req.ctx_mut().shard_idx = shard_idx as u16;
+                        (vcmd, date, year, shard_idx)
+                    };
+                if self.strategist.more() {
+                    // 批量获取场景不提供limit报错
+                    let Some(limit) = vcmd.limit() else {
+                        return Err(protocol::Error::RequestProtocolInvalid);
+                    };
+                    *req.extra_ctx_mut() = limit as u64;
+                }
 
                 let vector_builder = SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
