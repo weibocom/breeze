@@ -107,12 +107,6 @@ impl<T: TopologyWrite> Services<T> {
             None => (name.as_str(), group),
         };
 
-        log::debug!(
-            "+++ in register full-group:{},service:{}, name:{}",
-            full_group,
-            service,
-            name
-        );
         let g = match self.get_group(full_group) {
             Some(g) => g,
             None => {
@@ -247,10 +241,7 @@ impl<T: TopologyWrite> ServiceGroup<T> {
                 .top
                 .disgroup(&self.name, &self.cfg)
                 .into_iter()
-                .map(|(k, v)| {
-                    log::debug!("+++ config key: {}, v:{}", k.to_string(), v.to_string());
-                    (k.to_string(), v.to_string())
-                })
+                .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect();
             for s in self.namespaces.iter_mut() {
                 // 如果是新注册的，则不更新
