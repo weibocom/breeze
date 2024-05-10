@@ -326,6 +326,12 @@ pub struct VectorCmd {
     pub group_by: GroupBy,
 }
 
+impl VectorCmd {
+    pub fn limit(&self) -> Option<usize> {
+        self.limit.limit.try_str_num(..)
+    }
+}
+
 /// field 字段的值，对于‘field’关键字，值是｜分隔的field names，否则就是二进制value
 #[derive(Debug, Clone)]
 pub enum FieldVal {
