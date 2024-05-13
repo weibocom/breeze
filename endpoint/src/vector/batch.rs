@@ -5,8 +5,8 @@ use chrono::{Datelike, NaiveDate};
 use chrono_tz::Tz;
 use core::fmt::Write;
 use ds::RingSlice;
-use protocol::kv::Strategy;
 use protocol::Error;
+use protocol::{kv::Strategy, ContextExtra};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
@@ -62,6 +62,18 @@ impl Batch {
                     &_ => Some(key_name),
                 }),
         )
+    }
+
+    pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
+        if month == 12 {
+            return NaiveDate::from_ymd_opt((year + 1).into(), 1, 1).unwrap();
+        } else {
+            return NaiveDate::from_ymd_opt(year.into(), (month + 1).into(), 1).unwrap();
+        }
+    }
+
+    pub(crate) fn batch(&self, ctx: ContextExtra, _: &protocol::vector::VectorCmd) -> u64 {
+        ctx
     }
 }
 

@@ -250,14 +250,13 @@ impl HashedCommand {
     }
     #[inline]
     pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
-        assert!(
-            self.origin_cmd.is_none(),
-            "origin cmd should be none: {:?}",
-            self.origin_cmd
-        );
-        // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
-        mem::swap(&mut self.cmd, &mut dest_cmd);
-        self.origin_cmd = Some(dest_cmd);
+        if self.origin_cmd.is_none() {
+            // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
+            mem::swap(&mut self.cmd, &mut dest_cmd);
+            self.origin_cmd = Some(dest_cmd);
+        } else {
+            self.cmd = dest_cmd;
+        }
     }
 }
 

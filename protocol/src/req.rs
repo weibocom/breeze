@@ -57,12 +57,8 @@ pub trait Request:
         self.mut_context()
     }
     fn mut_context(&mut self) -> &mut Context;
-    fn extra_ctx(&self) -> &ContextExtra {
-        todo!("not impl")
-    }
-    fn extra_ctx_mut(&mut self) -> &mut ContextExtra {
-        todo!("not impl")
-    }
+    fn extra_ctx(&self) -> &ContextExtra;
+    fn extra_ctx_mut(&mut self) -> &mut ContextExtra;
     // 请求成功后，是否需要进行回写或者同步。
     fn write_back(&mut self, wb: bool);
     // 是否需要进行回写或者同步
