@@ -26,7 +26,7 @@ impl Batch {
     ) -> Self {
         Self {
             kvtime: KVTime::new_with_db(db_prefix, table_prefix, db_count, shards, table_postfix),
-            keys_name: keys_name,
+            keys_name,
         }
     }
 

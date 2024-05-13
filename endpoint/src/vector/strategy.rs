@@ -117,7 +117,7 @@ impl protocol::vector::Strategy for Strategist {
     }
     fn batch(&self, ctx: ContextExtra, vcmd: &protocol::vector::VectorCmd) -> u64 {
         match self {
-            Strategist::VectorTime(_) => panic!("VectorTime not support write_limit"),
+            Strategist::VectorTime(_) => 0,
             Strategist::Batch(inner) => inner.batch(ctx, vcmd),
         }
     }
