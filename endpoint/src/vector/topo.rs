@@ -6,6 +6,7 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::{ContextStatus, MysqlBuilder};
+use protocol::vector::redis::parse_vector_detail;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -74,43 +75,49 @@ where
             //需要请求多轮的场景处理逻辑看作是一次新的请求，除外出错重试
             let more = self.strategist.more() && req.retry_rsp_ok();
             let (year, shard_idx) = if req.ctx_mut().runs == 0 || more {
-                let (vcmd, date, year, shard_idx) =
-                    if self.strategist.more() && *req.extra_ctx() > 0 {
-                        todo!()
-                        //非第一轮请求
-                    } else {
-                        let vcmd = protocol::vector::redis::parse_vector_detail(&req)?;
-                        //定位年库
-                        let date = self.strategist.get_date(&vcmd.keys)?;
-                        let year = date.year() as u16;
+                let (vcmd, date, shard_idx) = if more {
+                    //非第一轮请求
+                    let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
 
-                        let shard_idx = self.shard_idx(req.hash());
-                        req.ctx_mut().year = year;
-                        req.ctx_mut().month = date.month() as u8;
-                        req.ctx_mut().shard_idx = shard_idx as u16;
-                        (vcmd, date, year, shard_idx)
-                    };
-                if self.strategist.more() {
-                    // 批量获取场景不提供limit报错
-                    let Some(limit) = vcmd.limit() else {
-                        return Err(protocol::Error::RequestProtocolInvalid);
-                    };
-                    *req.extra_ctx_mut() = limit as u64;
-                }
+                    let ctx = req.ctx_mut();
+                    let date = self.strategist.get_next_date(ctx.year, ctx.month);
+                    ctx.runs = 0;
+                    (vcmd, date, ctx.shard_idx)
+                } else {
+                    let vcmd = parse_vector_detail(***req, req.flag())?;
+                    if self.strategist.more() {
+                        // 批量获取场景必须提供limit
+                        let Some(limit) = vcmd.limit() else {
+                            return Err(protocol::Error::RequestProtocolInvalid);
+                        };
+                        //需要在buildsql之前设置
+                        *req.extra_ctx_mut() = limit as u64;
+                    }
+                    //定位年库
+                    let date = self.strategist.get_date(&vcmd.keys)?;
+                    let shard_idx = self.shard_idx(req.hash());
 
-                let vector_builder = SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
+                    req.ctx_mut().shard_idx = shard_idx as u16;
+                    (vcmd, date, shard_idx as u16)
+                };
+                req.ctx_mut().year = date.year() as u16;
+                req.ctx_mut().month = date.month() as u8;
+
+                let vector_builder =
+                    SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, *req.extra_ctx())?;
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
                 req.reshape(MemGuard::from_vec(cmd));
 
-                (year, shard_idx)
+                (date.year() as u16, shard_idx)
             } else {
-                (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
+                (req.ctx_mut().year, req.ctx_mut().shard_idx)
             };
 
             let shards = self.shards.get(year);
             if shards.len() == 0 {
                 return Err(protocol::Error::TopInvalid);
             }
+            let shard_idx = shard_idx as usize;
             debug_assert!(
                 shard_idx < shards.len(),
                 "mysql: {}/{} req:{:?}",
