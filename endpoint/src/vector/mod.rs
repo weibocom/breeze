@@ -1,3 +1,4 @@
+mod batch;
 pub(crate) mod config;
 mod strategy;
 pub mod topo;

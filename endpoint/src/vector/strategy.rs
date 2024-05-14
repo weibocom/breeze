@@ -3,16 +3,18 @@ use std::fmt::Write;
 pub use crate::kv::strategy::Postfix;
 use chrono::NaiveDate;
 use ds::RingSlice;
-use protocol::Result;
+use protocol::{ContextExtra, Result};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
+use super::batch::Batch;
 use super::config::VectorNamespace;
 use super::vectortime::VectorTime;
 
 #[derive(Debug, Clone)]
 pub enum Strategist {
     VectorTime(VectorTime),
+    Batch(Batch),
 }
 
 impl Default for Strategist {
@@ -35,32 +37,61 @@ impl Default for Strategist {
 //2. 库名表名后缀如何计算
 impl Strategist {
     pub fn try_from(ns: &VectorNamespace) -> Self {
-        Self::VectorTime(VectorTime::new_with_db(
-            ns.basic.db_name.clone(),
-            ns.basic.table_name.clone(),
-            ns.basic.db_count,
-            //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
-            ns.backends.iter().next().unwrap().1.len() as u32,
-            ns.basic.table_postfix.as_str().into(),
-            ns.basic.keys.clone(),
-        ))
+        match ns.basic.strategy.as_str() {
+            "batch" => Self::Batch(Batch::new_with_db(
+                ns.basic.db_name.clone(),
+                ns.basic.table_name.clone(),
+                ns.basic.db_count,
+                //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
+                ns.backends.iter().next().unwrap().1.len() as u32,
+                ns.basic.table_postfix.as_str().into(),
+                ns.basic.keys.clone(),
+            )),
+            _ => Self::VectorTime(VectorTime::new_with_db(
+                ns.basic.db_name.clone(),
+                ns.basic.table_name.clone(),
+                ns.basic.db_count,
+                //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
+                ns.backends.iter().next().unwrap().1.len() as u32,
+                ns.basic.table_postfix.as_str().into(),
+                ns.basic.keys.clone(),
+            )),
+        }
     }
     #[inline]
     pub fn distribution(&self) -> &DBRange {
         match self {
             Strategist::VectorTime(inner) => inner.distribution(),
+            Strategist::Batch(inner) => inner.distribution(),
         }
     }
     #[inline]
     pub fn hasher(&self) -> &Hasher {
         match self {
             Strategist::VectorTime(inner) => inner.hasher(),
+            Strategist::Batch(inner) => inner.hasher(),
         }
     }
     #[inline]
     pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys),
+            Strategist::Batch(inner) => inner.get_date(keys),
+        }
+    }
+    // 请求成功后，是否有更多的数据需要请求
+    #[inline]
+    pub fn more(&self) -> bool {
+        match self {
+            Strategist::VectorTime(_) => false,
+            Strategist::Batch(_) => true,
+        }
+    }
+
+    pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
+        match self {
+            Strategist::VectorTime(_) => panic!("VectorTime not support get_next_date"),
+            Strategist::Batch(inner) => inner.get_next_date(year, month),
         }
     }
 }
@@ -69,16 +100,25 @@ impl protocol::vector::Strategy for Strategist {
     fn keys(&self) -> &[String] {
         match self {
             Strategist::VectorTime(inner) => inner.keys(),
+            Strategist::Batch(inner) => inner.keys(),
         }
     }
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
         match self {
             Strategist::VectorTime(inner) => inner.condition_keys(),
+            Strategist::Batch(inner) => inner.condition_keys(),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
         match self {
             Strategist::VectorTime(inner) => inner.write_database_table(buf, date, hash),
+            Strategist::Batch(inner) => inner.write_database_table(buf, date, hash),
+        }
+    }
+    fn batch(&self, ctx: ContextExtra, vcmd: &protocol::vector::VectorCmd) -> u64 {
+        match self {
+            Strategist::VectorTime(_) => panic!("VectorTime not support write_limit"),
+            Strategist::Batch(inner) => inner.batch(ctx, vcmd),
         }
     }
 }
@@ -160,7 +200,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
@@ -184,7 +225,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -231,7 +273,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -273,7 +316,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -313,7 +357,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -366,7 +411,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -408,7 +454,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -436,7 +483,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -461,7 +509,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
@@ -508,7 +557,8 @@ mod tests {
         };
         let hash = strategy.hasher().hash(&"id".as_bytes());
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
-        let builder = SqlBuilder::new(&vector_cmd, hash, date, &strategy).unwrap();
+        let builder =
+            SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
         builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
