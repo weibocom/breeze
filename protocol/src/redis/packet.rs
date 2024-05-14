@@ -82,15 +82,6 @@ pub enum LayerType {
     MasterOnly = 1,
 }
 
-impl RequestContext {
-    #[inline]
-    fn clear_multibulks(&mut self) {
-        if self.multibulk_ptr > 0 {
-            let _ = unsafe { Box::from_raw(self.multibulk_ptr as *mut Vec<MultiBulk>) };
-            self.multibulk_ptr = 0;
-        }
-    }
-}
 // impl RequestContext {
 //     #[inline]
 //     fn reset(&mut self) {
@@ -238,7 +229,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     fn reset_context(&mut self) {
         // 重置packet的ctx
-        self.ctx.clear_multibulks();
         self.ctx = Default::default();
 
         // 重置stream的ctx
@@ -294,7 +284,6 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
         // 更新上下文的bulk num。
-        self.ctx.clear_multibulks();
         self.ctx.first = false;
         *self.stream.context() = self.ctx.into();
         self.stream.take(data.len())
@@ -605,21 +594,27 @@ impl Packet {
         self.skip_bulk(oft, bulk_count)
     }
     #[inline]
-    pub fn skip_multibulks(&self, oft: &mut usize, multibulk_ptr: &mut usize) -> Result<()> {
-        if *multibulk_ptr == 0 {
-            let bulk_count = self.num_of_bulks(oft)?;
-            let mut data = Box::new(Vec::with_capacity(2)); // 2层嵌套覆盖常见场景
-            data.push(MultiBulk::new(bulk_count as u32, *oft));
-
-            *multibulk_ptr = Box::into_raw(data) as usize;
+    pub fn skip_multibulks(&self, oft: &mut usize, multibulks: &mut Option<usize>) -> Result<()> {
+        let bulk_count = self.num_of_bulks(oft)?;
+        let multibulk_ptr: usize;
+        match multibulks {
+            Some(v) => {
+                multibulk_ptr = *v;
+                let arrays = multibulk_ptr as *mut Vec<MultiBulk>;
+                let arrays = unsafe { &mut *arrays };
+                if arrays.is_empty() {
+                    arrays.push(MultiBulk::new(bulk_count as u32, *oft));
+                }
+            }
+            None => {
+                println!("error: multibulk_ptr==0");
+                let mut data = Box::new(Vec::with_capacity(2)); // 2层嵌套覆盖常见场景
+                data.push(MultiBulk::new(bulk_count as u32, *oft));
+                multibulk_ptr = Box::into_raw(data) as usize;
+                *multibulks = Some(multibulk_ptr);
+            }
         }
-
-        let r = self.skip_multibulks_inner(oft, *multibulk_ptr);
-        if r.is_ok() {
-            let _ = unsafe { Box::from_raw(*multibulk_ptr as *mut Vec<MultiBulk>) };
-            *multibulk_ptr = 0;
-        }
-        r
+        self.skip_multibulks_inner(oft, multibulk_ptr)
     }
 
     #[inline]

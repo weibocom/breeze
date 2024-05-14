@@ -2,7 +2,7 @@ pub(crate) mod command;
 pub(crate) mod error;
 pub(crate) mod flag;
 pub use flag::RedisFlager;
-pub(crate) mod packet;
+pub mod packet;
 
 use crate::{
     redis::command::CommandType,
@@ -83,8 +83,8 @@ impl Redis {
             b'-' | b':' | b'+' => data.line(oft)?,
             b'$' => *oft += data.num_of_string(oft)? + 2,
             b'*' => {
-                let ctx = packet::transmute(s.context());
-                data.skip_multibulks(oft, &mut ctx.multibulk_ptr)?
+                let multibulks = s.additional();
+                data.skip_multibulks(oft, multibulks)?
             }
             _ => return Err(RedisError::RespInvalid.into()),
         }
