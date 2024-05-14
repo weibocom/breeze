@@ -88,8 +88,8 @@ impl<T: TopologyWrite> Services<T> {
             indices: HashMap::with_capacity(64),
         }
     }
-    fn get_group(&mut self, group: &str) -> Option<&mut ServiceGroup<T>> {
-        let &idx = self.indices.get(group)?;
+    fn get_group(&mut self, full_group: &str) -> Option<&mut ServiceGroup<T>> {
+        let &idx = self.indices.get(full_group)?;
         assert!(idx < self.groups.len());
         Some(&mut self.groups[idx])
     }
@@ -102,20 +102,21 @@ impl<T: TopologyWrite> Services<T> {
         let group = name.split('+').last().expect("name");
         let mut group_namespace = group.split(':');
         let group = group_namespace.next().expect("group");
-        let (path, service) = match group_namespace.next() {
+        let (full_group, service) = match group_namespace.next() {
             Some(ns) => (&name[..name.len() - ns.len() - 1], ns),
             None => (name.as_str(), group),
         };
 
-        let g = match self.get_group(group) {
+        let g = match self.get_group(full_group) {
             Some(g) => g,
             None => {
                 let idx = self.groups.len();
-                let local = path.to_string();
-                let remote = path.replace('+', "/");
+                let local = full_group.to_string();
+                let remote = full_group.replace('+', "/");
+
                 self.groups
                     .push(ServiceGroup::new(group.to_string(), local, remote));
-                self.indices.insert(group.to_string(), idx);
+                self.indices.insert(full_group.to_string(), idx);
                 let g = self.groups.get_mut(idx).expect("not push");
                 assert_eq!(g.name, group);
                 g.init(&self.snapshot, d).await;
