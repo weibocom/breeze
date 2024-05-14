@@ -1,6 +1,8 @@
+use self::attachment::Attachement;
+
 use super::{command::get_cfg, flager::KvFlager, *};
 use crate::{HashedCommand, Packet, Result};
-use ds::RingSlice;
+use ds::{ByteOrder, RingSlice};
 
 pub(crate) const FIELD_BYTES: &'static [u8] = b"FIELD";
 
@@ -34,6 +36,24 @@ pub fn parse_vector_detail(cmd: &HashedCommand) -> crate::Result<VectorCmd> {
     validate_cmd(&vcmd, vcmd.cmd)?;
 
     Ok(vcmd)
+}
+
+/// 根据VectorCmd构建attachment：
+///     1. 第一次目前只需要偏移位置和数量，滚动月表；
+///     2. 第二次及之后，还需要保留解析出来的响应；
+#[inline]
+pub fn refresh_attachment(
+    vcmd: &VectorCmd,
+    old_attchement: Option<&Vec<u8>>,
+) -> Option<Attachement> {
+    // 如果没有count/limit，设置默认值
+    if vcmd.limit.limit.len() == 0 {
+        return None;
+    }
+    assert!(vcmd.limit.offset.len() > 0, "vcmd:{:?}", vcmd);
+    let offset = vcmd.limit.offset.str_num(..) as u16;
+    let count = vcmd.limit.limit.str_num(..) as u16;
+    Some(Attachement::new(offset, count))
 }
 
 #[inline]

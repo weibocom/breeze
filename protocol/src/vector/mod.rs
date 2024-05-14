@@ -1,3 +1,4 @@
+pub mod attachment;
 mod command;
 pub(crate) mod error;
 pub mod flager;

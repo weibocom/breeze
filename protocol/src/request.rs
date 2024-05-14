@@ -57,6 +57,14 @@ impl crate::Request for Request {
     fn quota(&mut self, quota: BackendQuota) {
         self.ctx().quota(quota);
     }
+    #[inline]
+    fn attach(&mut self, attachment: Vec<u8>) {
+        self.ctx().attach(attachment);
+    }
+    #[inline]
+    fn attachment(&self) -> Option<&Vec<u8>> {
+        self.ctx().attachment()
+    }
 }
 impl Request {
     #[inline]
