@@ -73,6 +73,11 @@ where
         let shard = (|| -> Result<&Shard<E>, protocol::Error> {
             let (year, shard_idx) = if req.ctx_mut().runs == 0 {
                 let vcmd = protocol::vector::redis::parse_vector_detail(&req)?;
+                let attachment = protocol::vector::redis::build_attach(&vcmd);
+                if attachment.is_some() {
+                    req.attach(attachment.expect("attach"));
+                }
+
                 //定位年库
                 let date = self.strategist.get_date(&vcmd.keys)?;
                 let year = date.year() as u16;

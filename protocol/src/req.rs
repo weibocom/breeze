@@ -67,4 +67,8 @@ pub trait Request:
     fn retry_on_rsp_notok(&mut self, retry: bool);
     // 初始化quota
     fn quota(&mut self, quota: BackendQuota);
+    // 对request增加附加信息
+    fn attach(&mut self, attachment: Vec<u8>);
+    // 获取附加信息
+    fn attachment(&self) -> Option<&Vec<u8>>;
 }

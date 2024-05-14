@@ -48,6 +48,7 @@ pub struct CallbackContext {
     waker: *const Arc<AtomicWaker>,
     callback: CallbackPtr,
     quota: Option<BackendQuota>,
+    attachment: Option<Vec<u8>>, // 附加数据，用于辅助请求和响应，目前只有kvector在使用
 }
 
 impl CallbackContext {
@@ -81,6 +82,7 @@ impl CallbackContext {
             tries: 0.into(),
             waker,
             quota: None,
+            attachment: None,
         }
     }
 
@@ -289,6 +291,16 @@ impl CallbackContext {
     #[inline]
     pub fn quota(&mut self, quota: BackendQuota) {
         self.quota = Some(quota);
+    }
+
+    #[inline]
+    pub fn attach(&mut self, attachment: Vec<u8>) {
+        self.attachment = Some(attachment);
+    }
+
+    #[inline]
+    pub fn attachment(&self) -> Option<&Vec<u8>> {
+        self.attachment.as_ref()
     }
 }
 
