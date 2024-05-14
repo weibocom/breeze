@@ -20,6 +20,7 @@ pub trait BufRead {
     // 在解析一个流的不同的req/response时，有时候需要共享数据。
     fn context(&mut self) -> &mut StreamContext;
     fn reserve(&mut self, r: usize);
+    fn additional(&mut self) -> &mut Option<usize>;
 }
 use super::Result;
 pub trait Writer: ds::BufWriter + Sized {
