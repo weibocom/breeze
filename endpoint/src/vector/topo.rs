@@ -6,6 +6,7 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::{ContextStatus, MysqlBuilder};
+use protocol::vector::redis::{build_attachment, parse_vector_detail};
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -71,34 +72,61 @@ where
 
     fn send(&self, mut req: Self::Item) {
         let shard = (|| -> Result<&Shard<E>, protocol::Error> {
-            let (year, shard_idx) = if req.ctx_mut().runs == 0 {
-                let vcmd = protocol::vector::redis::parse_vector_detail(&req)?;
-                let attachment = protocol::vector::redis::build_attach(&vcmd);
-                if attachment.is_some() {
-                    req.attach(attachment.expect("attach"));
+            //需要请求多轮的场景处理逻辑看作是一次新的请求，除外出错重试
+            let more = self.strategist.more() && req.retry_rsp_ok();
+            let (year, shard_idx) = if req.ctx_mut().runs == 0 || more {
+                let (vcmd, date, shard_idx) = if more {
+                    //非第一轮请求
+                    let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
+
+                    let ctx = req.ctx_mut();
+                    let date = self.strategist.get_next_date(ctx.year, ctx.month);
+                    ctx.runs = 0;
+                    (vcmd, date, ctx.shard_idx)
+                } else {
+                    let vcmd = parse_vector_detail(***req, req.flag())?;
+                    if self.strategist.more() {
+                        // 批量获取场景必须提供limit
+                        let Some(limit) = vcmd.limit() else {
+                            return Err(protocol::Error::RequestProtocolInvalid);
+                        };
+                        //需要在buildsql之前设置
+                        *req.extra_ctx_mut() = limit as u64;
+                    }
+                    //定位年库
+                    let date = self.strategist.get_date(&vcmd.keys)?;
+                    let shard_idx = self.shard_idx(req.hash());
+
+                    req.ctx_mut().shard_idx = shard_idx as u16;
+                    (vcmd, date, shard_idx as u16)
+                };
+
+                // 首次访问，设置attachment，后续在解析响应后更新
+                if req.attachment().is_none() {
+                    let attachment = build_attachment(&vcmd);
+                    if attachment.is_some() {
+                        req.attach(attachment.expect("attach"));
+                    }
                 }
 
-                //定位年库
-                let date = self.strategist.get_date(&vcmd.keys)?;
-                let year = date.year() as u16;
+                req.ctx_mut().year = date.year() as u16;
+                req.ctx_mut().month = date.month() as u8;
 
-                let shard_idx = self.shard_idx(req.hash());
-                req.ctx_mut().year = year;
-                req.ctx_mut().shard_idx = shard_idx as u16;
-
-                let vector_builder = SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
+                let vector_builder =
+                    SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, *req.extra_ctx())?;
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
                 req.reshape(MemGuard::from_vec(cmd));
 
-                (year, shard_idx)
+                (date.year() as u16, shard_idx)
             } else {
-                (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
+                (req.ctx_mut().year, req.ctx_mut().shard_idx)
             };
 
             let shards = self.shards.get(year);
             if shards.len() == 0 {
                 return Err(protocol::Error::TopInvalid);
             }
+            let shard_idx = shard_idx as usize;
             debug_assert!(
                 shard_idx < shards.len(),
                 "mysql: {}/{} req:{:?}",
@@ -145,7 +173,7 @@ where
                     (ctx.idx as usize, &shard.master)
                 }
             };
-            ctx.idx = idx as u16;
+            ctx.idx = idx as u8;
             ctx.runs += 1;
             // 只重试一次，重试次数过多，可能会导致雪崩。如果不重试，现在的配额策略在当前副本也只会连续发送四次请求，问题也不大
             let try_next = ctx.runs == 1;

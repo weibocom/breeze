@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::{Command, HashedCommand};
 
 pub type Context = u64;
+pub type ContextExtra = u64;
 
 #[repr(transparent)]
 #[derive(Clone, Default)]
@@ -56,6 +57,8 @@ pub trait Request:
         self.mut_context()
     }
     fn mut_context(&mut self) -> &mut Context;
+    fn extra_ctx(&self) -> &ContextExtra;
+    fn extra_ctx_mut(&mut self) -> &mut ContextExtra;
     // 请求成功后，是否需要进行回写或者同步。
     fn write_back(&mut self, wb: bool);
     // 是否需要进行回写或者同步
@@ -71,4 +74,9 @@ pub trait Request:
     fn attach(&mut self, attachment: Vec<u8>);
     // 获取附加信息
     fn attachment(&self) -> Option<&Vec<u8>>;
+
+    // 重试时上次响应是否成功
+    fn retry_rsp_ok(&self) -> bool {
+        false
+    }
 }

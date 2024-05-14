@@ -12,8 +12,8 @@ mod rsppacket;
 use std::fmt::Write;
 
 use crate::{
-    Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
-    Result, Stream, Writer,
+    Command, Commander, ContextExtra, Error, HashedCommand, Metric, MetricItem, Protocol,
+    RequestProcessor, Result, Stream, Writer,
 };
 use chrono::NaiveDate;
 use ds::RingSlice;
@@ -327,6 +327,12 @@ pub struct VectorCmd {
     pub group_by: GroupBy,
 }
 
+impl VectorCmd {
+    pub fn limit(&self) -> Option<usize> {
+        self.limit.limit.try_str_num(..)
+    }
+}
+
 /// field 字段的值，对于‘field’关键字，值是｜分隔的field names，否则就是二进制value
 #[derive(Debug, Clone)]
 pub enum FieldVal {
@@ -376,4 +382,5 @@ pub trait Strategy {
     //todo 通过代理类型实现
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);
+    fn batch(&self, ctx: ContextExtra, vcmd: &VectorCmd) -> u64;
 }
