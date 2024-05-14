@@ -64,8 +64,6 @@ where
                 group.check_load();
             }
 
-            // tick_i < cycle时，每个tick都check，增加扫描的效率。
-            // tick_i >= cycle时，每个cycle的第一个tick才check，减少扫描的消耗。
             if !self.cb.inited() || cycle_i == 0 {
                 self.cb.with_discovery(&self.discovery).await;
             }
@@ -209,7 +207,12 @@ impl<T: TopologyWrite> ServiceGroup<T> {
         log::debug!("load from discover: {}", self.path);
         use crate::Config;
         match d.get_service::<String>(&self.path, &self.sig).await {
-            Ok(Config::NotFound) => log::warn!("service not found: {}", self.path),
+            Ok(Config::NotFound) => {
+                log::warn!("service not found: {}", self.path);
+                let mut m =
+                    metrics::Path::new(vec!["any", &self.local_path]).status("service_notfound");
+                m += metrics::Status::ERROR;
+            }
             Ok(Config::NotChanged) => log::debug!("service not changed: {}", self.path),
             Ok(Config::Config(sig, cfg)) => {
                 log::info!("service changed: {} sig {} => {}", self.path, self.sig, sig);
@@ -222,20 +225,20 @@ impl<T: TopologyWrite> ServiceGroup<T> {
             Err(e) => log::error!("failed to get service: {}, {}", self.path, e),
         }
     }
-    async fn refresh_new<D: Discover>(&mut self, snapshot: &str, d: &D) -> bool {
+    async fn refresh_new<D: Discover>(&mut self, snapshot: &str, d: &D) {
         if self.cfg.len() == 0 {
             self.load_from_discover(snapshot, d).await;
         }
-        self.update_all(true)
+        self.update_all(true);
     }
-    async fn refresh<D: Discover>(&mut self, snapshot: &str, d: &D) -> bool {
+    async fn refresh<D: Discover>(&mut self, snapshot: &str, d: &D) {
         self.load_from_discover(snapshot, d).await;
-        self.update_all(false)
+        self.update_all(false);
     }
     // new: 只更新新注册的服务
-    // 返回是否可能有namespace更新
-    fn update_all(&mut self, new: bool) -> bool {
-        if self.changed && self.namespaces.len() > 0 {
+    fn update_all(&mut self, new: bool) {
+        //配置变化或者有新注册的时候需更新
+        if self.changed && self.namespaces.len() > 0 && !self.cfg.is_empty() {
             let s = self.namespaces.first().expect("empty");
             self.cache = s
                 .top
@@ -251,13 +254,16 @@ impl<T: TopologyWrite> ServiceGroup<T> {
                 let ns = &s.name;
                 match self.cache.get(ns) {
                     Some(cfg) => s.update(cfg),
-                    None => log::warn!("namespace {} not found", ns),
+                    None => {
+                        log::warn!("namespace {} not found", ns);
+                        let mut m =
+                            metrics::Path::new(vec!["any", &s.name]).status("service_notfound");
+                        m += metrics::Status::NOTIFY;
+                    }
                 }
             }
             self.changed = false;
-            return true;
         }
-        false
     }
     fn register(&mut self, ns: String, top: T) {
         assert!(self.namespaces.iter().find(|s| s.name == ns).is_none());
