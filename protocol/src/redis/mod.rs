@@ -93,15 +93,9 @@ impl Redis {
     }
     #[inline(always)]
     fn maybe_left_bytes<S: Stream>(&self, data: &mut S) -> usize {
-        let ctx = packet::transmute(data.context());
-        let multibulk_ptr = ctx.multibulk_ptr;
-        if multibulk_ptr == 0 {
-            return 0;
-        }
-
-        // 在当前层记录解析到的位置
-        let arrays = multibulk_ptr as *const Vec<packet::MultiBulk>;
-        let arrays = unsafe { &*arrays };
+        let multibulk_ptr = data.additional().unwrap();
+        let arrays = multibulk_ptr as *mut Vec<packet::MultiBulk>;
+        let arrays = unsafe { &mut *arrays };
         match arrays.last() {
             Some(array) => array.maybe_left_bytes(),
             _ => 0,

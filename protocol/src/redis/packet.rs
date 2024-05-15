@@ -21,7 +21,6 @@ pub struct RequestContext {
     pub is_reserved_hash: bool,
     //16
     pub reserved_hash: i64,
-    pub multibulk_ptr: usize, // 解析RESP arrays数据类型时使用
 }
 
 // 解析Bulk
@@ -594,26 +593,19 @@ impl Packet {
         self.skip_bulk(oft, bulk_count)
     }
     #[inline]
-    pub fn skip_multibulks(&self, oft: &mut usize, multibulks: &mut Option<usize>) -> Result<()> {
+    pub fn skip_multibulks(&self, oft: &mut usize, multibulks: &Option<usize>) -> Result<()> {
         let bulk_count = self.num_of_bulks(oft)?;
-        let multibulk_ptr: usize;
-        match multibulks {
-            Some(v) => {
-                multibulk_ptr = *v;
-                let arrays = multibulk_ptr as *mut Vec<MultiBulk>;
-                let arrays = unsafe { &mut *arrays };
-                if arrays.is_empty() {
-                    arrays.push(MultiBulk::new(bulk_count as u32, *oft));
-                }
-            }
-            None => {
-                println!("error: multibulk_ptr==0");
-                let mut data = Box::new(Vec::with_capacity(2)); // 2层嵌套覆盖常见场景
-                data.push(MultiBulk::new(bulk_count as u32, *oft));
-                multibulk_ptr = Box::into_raw(data) as usize;
-                *multibulks = Some(multibulk_ptr);
-            }
+        if bulk_count == 0 {
+            // 空数组，直接返回
+            return Ok(());
         }
+        let multibulk_ptr = multibulks.unwrap();
+        let arrays = multibulk_ptr as *mut Vec<MultiBulk>;
+        let arrays = unsafe { &mut *arrays };
+        if arrays.is_empty() {
+            arrays.push(MultiBulk::new(bulk_count as u32, *oft));
+        }
+
         self.skip_multibulks_inner(oft, multibulk_ptr)
     }
 

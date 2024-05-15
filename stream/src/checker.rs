@@ -57,14 +57,6 @@ impl<P, Req> BackendChecker<P, Req> {
         P: Protocol,
         Req: Request,
     {
-        // redis资源的backend附加一个ext，用于解析array响应
-        use protocol::redis::packet::MultiBulk;
-        let paser_ext = if self.res.name().eq_ignore_ascii_case("redis") {
-            let data: Box<Vec<_>> = Box::new(Vec::<MultiBulk>::with_capacity(2)); // 2层嵌套覆盖常见场景
-            Some(Box::into_raw(data) as usize)
-        } else {
-            None
-        };
         self.path.push(&self.addr);
         let path_addr = &self.path;
         let mut be_conns = path_addr.qps("be_conn");
@@ -86,6 +78,15 @@ impl<P, Req> BackendChecker<P, Req> {
             // TODO rtt放到handler中，同时增加协议级别的分类统计，待review确认 fishermen
             // let rtt = path_addr.rtt("req");
             let mut stream = rt::Stream::from(stream.expect("not expected"));
+            // redis资源的backend附加一个ext，用于解析array响应
+            use protocol::redis::packet::MultiBulk;
+            let paser_ext = if self.res.name().eq_ignore_ascii_case("redis") {
+                let data: Box<Vec<_>> = Box::new(Vec::<MultiBulk>::with_capacity(2)); // 2层嵌套覆盖常见场景
+                Some(Box::into_raw(data) as usize)
+            } else {
+                None
+            };
+            println!("set paser_ext {} {:?}", self.addr, paser_ext);
             stream.set_ext(paser_ext);
             let rx = &mut self.rx;
 
@@ -130,12 +131,13 @@ impl<P, Req> BackendChecker<P, Req> {
                     unexpected_resp += 1;
                 }
             }
+            // 目前仅redis需要这个ext信息
+            if let Some(ptr) = paser_ext {
+                println!("free paser_ext {:?}", paser_ext);
+                _ = unsafe { Box::from_raw(ptr as *mut Vec<MultiBulk>) };
+            }
         }
 
-        // 目前仅redis需要这个ext信息
-        if let Some(ptr) = paser_ext {
-            _ = unsafe { Box::from_raw(ptr as *mut Vec<MultiBulk>) };
-        }
         metrics::decr_task();
         log::info!("{:?} finished {}", path_addr, self.addr);
     }

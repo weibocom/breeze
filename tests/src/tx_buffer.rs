@@ -1,7 +1,7 @@
 use rt::TxBuffer;
 #[test]
 fn check_tx_buffer() {
-    const MIN: usize = 4 * 1024;
+    const MIN: usize = 2 * 1024;
     let mut buf = TxBuffer::new();
     const EMPTY: [u8; 0] = [];
     assert_eq!(buf.data(), &EMPTY[..]);
@@ -25,8 +25,8 @@ fn check_tx_buffer() {
     buf.take(v.len() - 1);
     assert_eq!(buf.len(), 0);
 
-    // 写入一个大于4K的。
-    let v = vec![b'z'; 4100];
+    // 写入一个大于2K的。
+    let v = vec![b'z'; 2100];
     buf.write(&v);
     assert_eq!(buf.len(), v.len());
     assert_eq!(buf.data(), &v);
