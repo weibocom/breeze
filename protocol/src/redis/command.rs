@@ -435,6 +435,10 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("bfset").arity(2).op(Store).first(1).last(1).step(1).padding(pt[3]).key(),
         Cmd::new("bfmget").m("bfget").arity(-2).op(MGet).first(1).last(-1).step(1).padding(pt[7]).multi().key().bulk(),
         Cmd::new("bfmset").m("bfset").arity(-2).op(Store).first(1).last(1).step(1).padding(pt[7]).multi().key().bulk(),
+
+        // 有些redis客户端要求支持client指令; 为了方便测试，在debug模式下极简化支持client指令
+        #[cfg(debug_assertions)]
+        Cmd::new("client").arity(-1).op(Meta).padding(pt[1]).nofwd(),
         
         // 待支持
         // {"lsmalloc",lsmallocCommand,3,REDIS_CMD_DENYOOM|REDIS_CMD_WRITE,NULL,1,1,1},
