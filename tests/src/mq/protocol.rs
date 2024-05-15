@@ -45,6 +45,9 @@ impl BufRead for VecStream {
     fn reserve(&mut self, r: usize) {
         self.inner.reserve(r)
     }
+    fn additional(&self) -> &Option<usize> {
+        &None
+    }
 }
 
 impl BufWriter for VecStream {

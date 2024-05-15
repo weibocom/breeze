@@ -5,7 +5,7 @@ pub trait AsyncBufRead {
     fn poll_recv(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<crate::Result<()>>;
 }
 
-pub type StreamContext = [u8; 24];
+pub type StreamContext = [u8; 16];
 
 pub trait BufRead {
     fn len(&self) -> usize;
@@ -20,7 +20,7 @@ pub trait BufRead {
     // 在解析一个流的不同的req/response时，有时候需要共享数据。
     fn context(&mut self) -> &mut StreamContext;
     fn reserve(&mut self, r: usize);
-    fn additional(&mut self) -> &mut Option<usize>;
+    fn additional(&self) -> &Option<usize>;
 }
 use super::Result;
 pub trait Writer: ds::BufWriter + Sized {

@@ -194,8 +194,8 @@ impl<S> protocol::BufRead for Stream<S> {
         self.rx_buf.grow(r);
     }
     #[inline]
-    fn additional(&mut self) -> &mut Option<usize> {
-        &mut self.ext
+    fn additional(&self) -> &Option<usize> {
+        &self.ext
     }
 }
 
