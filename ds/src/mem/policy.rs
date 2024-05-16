@@ -84,6 +84,7 @@ impl MemPolicy {
             log::info!("grow: {}+{}>{} => {} {}", len, reserve, cap, new, self);
         }
         self.reset();
+        println!("grow old:{} new:{} incr:{}", cap, new, new - cap);
         new
     }
     #[inline]
@@ -91,6 +92,7 @@ impl MemPolicy {
         let max = self.max as usize;
         assert!(max < cap, "{}", self);
         let new = (max * 2).max(BUF_MIN).max(len).next_power_of_two();
+        println!("shrink old:{} new:{} decr:{}", cap, new, cap - new);
         log::info!("shrink: {}  < {} => {} {}", len, cap, new, self);
         assert!(new >= len);
         self.reset();
