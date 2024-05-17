@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 
 use ds::BufWriter;
 use protocol::{
-    msgque::{McqText, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
+    msgque::{MsgQue, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
     AsyncBufRead, BufRead, Commander, Error, HashedCommand, Metric, Proto, RequestProcessor,
     Stream, Writer,
 };
@@ -106,7 +106,7 @@ impl Hash for Alg {
 fn test_req_reenter() {
     let getset = b"get key1\r\nget key2\r\nset key3 0 9999 10\r\n1234567890\r\nset key4 0 9999 10\r\n1234567890\r\nget key1\r\nget key2\r\n";
 
-    let proto = McqText;
+    let proto = MsgQue;
     let alg = &Alg {};
     for i in 0..getset.len() {
         let mut process = Process { reqs: Vec::new() };
@@ -176,7 +176,7 @@ fn test_req_reenter() {
 
 #[test]
 fn test_meta() {
-    let proto = McqText;
+    let proto = MsgQue;
     let alg = &Alg {};
 
     let mut process = Process { reqs: Vec::new() };
@@ -224,7 +224,7 @@ fn test_meta() {
 
 #[test]
 fn test_rsp() {
-    let proto = McqText;
+    let proto = MsgQue;
 
     let rspstr = b"END\r\n";
     for i in 0..rspstr.len() {
@@ -372,7 +372,7 @@ impl Commander<TestMetric, TestMetricItem> for TestCtx {
 
 #[test]
 fn test_write_response() {
-    let proto = McqText;
+    let proto = MsgQue;
     let alg = &Alg {};
 
     let mut process = Process { reqs: Vec::new() };
