@@ -92,10 +92,10 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         let mut query_result: QueryResult<Text> =
             QueryResult::new(self.data.clone(), self.has_results, meta);
         // 解析出mysql rows
-        let redis_data = query_result.parse_rows_to_redis(&mut self.oft)?;
+        let (redis_data, count) = query_result.parse_rows_to_redis(&mut self.oft)?;
 
         // 构建响应
-        Ok(self.build_final_rsp_cmd(true, redis_data))
+        Ok(self.build_final_rsp_cmd(true, redis_data, count))
     }
 
     /// 解析mysql的rs meta，如果解析出非incomplete类型的error，说明包解析完毕，需要进行take
@@ -136,10 +136,16 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     /// 构建最终的响应，并对已解析的内容进行take
     #[inline(always)]
-    pub(super) fn build_final_rsp_cmd(&mut self, ok: bool, rsp_data: Vec<u8>) -> Command {
+    pub(super) fn build_final_rsp_cmd(
+        &mut self,
+        ok: bool,
+        rsp_data: Vec<u8>,
+        count: u32,
+    ) -> Command {
         // 构建最终返回给client的响应内容
         let mem = ds::MemGuard::from_vec(rsp_data);
-        let cmd = Command::from(ok, mem);
+        let mut cmd = Command::from(ok, mem);
+        cmd.set_count(count);
         log::debug!("+++ build kvector rsp, ok:{} => {:?}", ok, cmd);
 
         // 返回最终响应前，take走已经解析的数据
