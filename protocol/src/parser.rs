@@ -141,6 +141,7 @@ pub trait RequestProcessor {
 
 pub struct Command {
     ok: bool,
+    count: u32,
     cmd: MemGuard,
 }
 
@@ -156,7 +157,7 @@ pub struct HashedCommand {
 impl Command {
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
-        Self { ok, cmd }
+        Self { ok, count: 0, cmd }
     }
     pub fn from_ok(cmd: ds::MemGuard) -> Self {
         Self::from(true, cmd)
@@ -164,6 +165,14 @@ impl Command {
     #[inline]
     pub fn ok(&self) -> bool {
         self.ok
+    }
+    #[inline]
+    pub fn count(&self) -> u32 {
+        self.count
+    }
+    #[inline]
+    pub fn set_count(&mut self, n: u32) {
+        self.count = n;
     }
 }
 impl std::ops::Deref for Command {

@@ -125,7 +125,7 @@ impl<T: crate::kv::prelude::Protocol> QueryResult<T> {
 
     /// 解析meta后面的rows
     #[inline(always)]
-    pub(crate) fn parse_rows_to_redis(&mut self, oft: &mut usize) -> Result<Vec<u8>> {
+    pub(crate) fn parse_rows_to_redis(&mut self, oft: &mut usize) -> Result<(Vec<u8>, u32)> {
         // 解析出mysql rows
         // 改为每次只处理本次的响应
         let mut rows = Vec::with_capacity(8);
@@ -143,7 +143,7 @@ impl<T: crate::kv::prelude::Protocol> QueryResult<T> {
         }
 
         // 将rows转为redis协议
-        Ok(format_to_redis(&rows))
+        Ok((format_to_redis(&rows), rows.len() as u32))
     }
 
     fn scan_one_row(&mut self, oft: &mut usize) -> Result<Option<Row>> {
