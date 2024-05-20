@@ -82,10 +82,7 @@ impl Redis {
         match data.at(0) {
             b'-' | b':' | b'+' => data.line(oft)?,
             b'$' => *oft += data.num_of_string(oft)? + 2,
-            b'*' => {
-                let multibulks = s.additional();
-                data.skip_multibulks(oft, multibulks)?
-            }
+            b'*' => data.skip_multibulks(oft, s.additional())?,
             _ => return Err(RedisError::RespInvalid.into()),
         }
 
@@ -143,12 +140,6 @@ impl Protocol for Redis {
                 //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
                 if oft > data.len() {
                     let left = self.maybe_left_bytes(data);
-                    log::debug!(
-                        "response incomplete oft {} datalen {} maybeleft {}",
-                        oft,
-                        data.len(),
-                        left
-                    );
                     data.reserve((oft - data.len()).max(left));
                 }
 

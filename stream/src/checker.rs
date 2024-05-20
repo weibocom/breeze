@@ -1,4 +1,5 @@
 use ds::time::{timeout, Duration};
+use log::debug;
 use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
@@ -86,7 +87,7 @@ impl<P, Req> BackendChecker<P, Req> {
             } else {
                 None
             };
-            println!("set paser_ext {} {:?}", self.addr, paser_ext);
+            log::info!("set paser_ext {} {:?}", self.addr, paser_ext);
             stream.set_ext(paser_ext);
             let rx = &mut self.rx;
 
@@ -133,7 +134,7 @@ impl<P, Req> BackendChecker<P, Req> {
             }
             // 目前仅redis需要这个ext信息
             if let Some(ptr) = paser_ext {
-                println!("free paser_ext {:?}", paser_ext);
+                log::info!("free paser_ext {:?}", paser_ext);
                 _ = unsafe { Box::from_raw(ptr as *mut Vec<MultiBulk>) };
             }
         }
