@@ -1,4 +1,6 @@
 const BUF_MIN: usize = 2 * 1024;
+const BUF_SHRINK_MIN: usize = 2 * BUF_MIN; // 高于这个值才缩容
+
 // 内存需要缩容时的策略
 // 为了避免频繁的缩容，需要设置一个最小频繁，通常使用最小间隔时间
 #[derive(Debug)]
@@ -48,7 +50,7 @@ impl MemPolicy {
     #[inline]
     pub fn need_shrink(&mut self, len: usize, cap: usize) -> bool {
         log::debug!("need_shrink: len: {}, cap: {} => {}", len, cap, self);
-        if cap > BUF_MIN {
+        if cap > BUF_SHRINK_MIN {
             self.check_shrink(len, cap);
             // 每10个周期检查一次。如果max不满足缩容要求，则重置
             if self.max as usize * 4 > cap {
@@ -90,7 +92,7 @@ impl MemPolicy {
     pub fn shrink(&mut self, len: usize, cap: usize) -> usize {
         let max = self.max as usize;
         assert!(max < cap, "{}", self);
-        let new = (max * 2).max(BUF_MIN).max(len).next_power_of_two();
+        let new = (max * 2).max(BUF_SHRINK_MIN).max(len).next_power_of_two();
         log::info!("shrink: {}  < {} => {} {}", len, cap, new, self);
         assert!(new >= len);
         self.reset();
