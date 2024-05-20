@@ -25,8 +25,8 @@ pub struct Stream<S> {
     s: MetricStream<S>,
     buf: TxBuffer,
     rx_buf: GuardedBuffer,
-
     ctx: StreamContext,
+    ext: Option<usize>,
 }
 impl<S> From<S> for Stream<S> {
     #[inline]
@@ -39,7 +39,13 @@ impl<S> From<S> for Stream<S> {
             // 初始化为0：针对部分只有连接没有请求的场景，不占用内存。
             rx_buf: GuardedBuffer::new(2048, 64 * 1024 * 1024, 0),
             ctx: Default::default(),
+            ext: None,
         }
+    }
+}
+impl<S> Stream<S> {
+    pub fn set_ext(&mut self, ext: Option<usize>) {
+        self.ext = ext;
     }
 }
 impl<S: AsyncRead + Unpin + std::fmt::Debug> AsyncRead for Stream<S> {
@@ -185,6 +191,10 @@ impl<S> protocol::BufRead for Stream<S> {
     #[inline]
     fn reserve(&mut self, r: usize) {
         self.rx_buf.grow(r);
+    }
+    #[inline]
+    fn additional(&self) -> &Option<usize> {
+        &self.ext
     }
 }
 

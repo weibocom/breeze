@@ -2,7 +2,7 @@ pub(crate) mod command;
 pub(crate) mod error;
 pub(crate) mod flag;
 pub use flag::RedisFlager;
-pub(crate) mod packet;
+pub mod packet;
 
 use crate::{
     redis::command::CommandType,
@@ -82,7 +82,7 @@ impl Redis {
         match data.at(0) {
             b'-' | b':' | b'+' => data.line(oft)?,
             b'$' => *oft += data.num_of_string(oft)? + 2,
-            b'*' => data.skip_all_bulk(oft)?,
+            b'*' => data.skip_multibulks(oft, s.additional())?,
             _ => return Err(RedisError::RespInvalid.into()),
         }
 

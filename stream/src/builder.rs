@@ -25,8 +25,17 @@ impl<R: Request, P: Protocol> From<(&str, P, Resource, &str, Timeout, ResOption)
         let init: Switcher = false.into();
         let f = finish.clone();
         let path = Path::new(vec![rsrc.name(), service]);
-        let checker =
-            BackendChecker::from(addr, rx, f, init.clone(), parser, path, timeout, option);
+        let checker = BackendChecker::from(
+            addr,
+            rx,
+            f,
+            init.clone(),
+            parser,
+            path,
+            timeout,
+            option,
+            rsrc,
+        );
         rt::spawn(checker.start_check());
 
         let addr = addr.to_string();
