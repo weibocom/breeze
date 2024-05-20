@@ -23,6 +23,46 @@ pub struct RequestContext {
     pub reserved_hash: i64,
 }
 
+// 解析Bulk
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MultiBulk {
+    left_bulk: u32, // 待解析bulk数量
+    pos: u32,       // 当前bulk待解析的起始位置
+}
+
+impl MultiBulk {
+    #[inline]
+    pub fn new(left_bulk: u32, pos: usize) -> Self {
+        Self {
+            left_bulk,
+            pos: pos as u32,
+        }
+    }
+    #[inline]
+    pub fn parse1(&mut self, pos: usize) {
+        (self.left_bulk > 0).then(|| self.left_bulk -= 1);
+        self.pos = pos as u32;
+    }
+    #[inline]
+    pub fn pos(&self) -> usize {
+        self.pos as usize
+    }
+    #[inline]
+    pub fn complete(&self) -> bool {
+        self.left_bulk == 0
+    }
+    #[inline]
+    pub fn maybe_left_bytes(&self) -> usize {
+        self.left_bulk as usize * 64
+    }
+}
+
+#[inline]
+pub fn transmute(ctx: &mut StreamContext) -> &mut RequestContext {
+    unsafe { std::mem::transmute(ctx) }
+}
+
 impl From<&mut StreamContext> for RequestContext {
     fn from(value: &mut StreamContext) -> Self {
         unsafe { std::mem::transmute(*value) }
@@ -580,6 +620,63 @@ impl Packet {
                 _ => panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count),
             }
             bulk_count -= 1;
+        }
+        Ok(())
+    }
+    #[inline]
+    pub fn skip_multibulks(&self, oft: &mut usize, multibulks: &Option<usize>) -> Result<()> {
+        let bulk_count = self.num_of_bulks(oft)?;
+        if bulk_count < 1 {
+            // 空数组，直接返回
+            return Ok(());
+        }
+        let multibulk_ptr = multibulks.unwrap();
+        let arrays = multibulk_ptr as *mut Vec<MultiBulk>;
+        let arrays = unsafe { &mut *arrays };
+        if arrays.is_empty() {
+            arrays.push(MultiBulk::new(bulk_count as u32, *oft));
+        }
+
+        self.skip_multibulks_inner(oft, multibulk_ptr)
+    }
+
+    #[inline]
+    pub fn skip_multibulks_inner(&self, oft: &mut usize, multibulk_ptr: usize) -> Result<()> {
+        let arrays = multibulk_ptr as *mut Vec<MultiBulk>;
+        let arrays = unsafe { &mut *arrays };
+        while arrays.len() > 0 {
+            if let Some(level_0) = arrays.get(0) {
+                if level_0.complete() {
+                    return Ok(());
+                }
+            }
+
+            if let Some(array) = arrays.last_mut() {
+                *oft = array.pos();
+                self.check_onetoken(*oft)?;
+                match self.at(*oft) {
+                    b'*' => {
+                        let current = self.num_of_bulks(oft)?;
+                        arrays.push(MultiBulk::new(current as u32, *oft));
+                        continue;
+                    }
+                    b'$' => {
+                        // 跳过num个字节 + "\r\n" 2个字节
+                        *oft += self.num_of_string(oft)? + CRLF_LEN;
+                        array.parse1(*oft);
+                    }
+                    b'+' | b':' => {
+                        self.line(oft)?;
+                        array.parse1(*oft);
+                    }
+                    _ => panic!("unsupport rsp:{:?}, pos: {}", self, oft),
+                }
+
+                // 当前的层次的array已解析完，
+                if array.complete() {
+                    let _ = arrays.pop();
+                }
+            }
         }
         Ok(())
     }

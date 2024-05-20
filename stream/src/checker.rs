@@ -7,7 +7,7 @@ use std::task::{ready, Poll};
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 
-use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream};
+use protocol::{Error, HandShake, Protocol, Request, ResOption, Resource, Result, Stream};
 
 use crate::handler::Handler;
 use ds::chan::mpsc::Receiver;
@@ -25,6 +25,7 @@ pub struct BackendChecker<P, Req> {
     timeout: endpoint::Timeout,
     path: Path,
     option: ResOption,
+    res: Resource,
 }
 
 impl<P, Req> BackendChecker<P, Req> {
@@ -37,6 +38,7 @@ impl<P, Req> BackendChecker<P, Req> {
         path: Path,
         timeout: endpoint::Timeout,
         option: ResOption,
+        res: Resource,
     ) -> Self {
         Self {
             addr: addr.to_string(),
@@ -47,6 +49,7 @@ impl<P, Req> BackendChecker<P, Req> {
             timeout,
             path,
             option,
+            res,
         }
     }
     pub(crate) async fn start_check(mut self)
@@ -75,6 +78,16 @@ impl<P, Req> BackendChecker<P, Req> {
             // TODO rtt放到handler中，同时增加协议级别的分类统计，待review确认 fishermen
             // let rtt = path_addr.rtt("req");
             let mut stream = rt::Stream::from(stream.expect("not expected"));
+            // redis资源的backend附加一个ext，用于解析array响应
+            use protocol::redis::packet::MultiBulk;
+            let paser_ext = if self.res.name().eq_ignore_ascii_case("redis") {
+                let data: Box<Vec<_>> = Box::new(Vec::<MultiBulk>::with_capacity(3)); // 3层嵌套覆盖常见场景
+                Some(Box::into_raw(data) as usize)
+            } else {
+                None
+            };
+            log::info!("set paser_ext {} {:?}", self.addr, paser_ext);
+            stream.set_ext(paser_ext);
             let rx = &mut self.rx;
 
             if self.parser.config().need_auth {
@@ -117,6 +130,10 @@ impl<P, Req> BackendChecker<P, Req> {
                     let mut unexpected_resp = Path::base().num("unexpected_resp");
                     unexpected_resp += 1;
                 }
+            }
+            if let Some(ptr) = paser_ext {
+                log::info!("free paser_ext {:?}", paser_ext);
+                _ = unsafe { Box::from_raw(ptr as *mut Vec<MultiBulk>) };
             }
         }
         metrics::decr_task();
