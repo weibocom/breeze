@@ -3,6 +3,8 @@ use std::fmt::{Display, Formatter};
 use crate::{msgque::ReadStrategy, CloneableAtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
 
+const HITS_BITS: u32 = 8;
+
 /// 依次轮询队列列表，注意整个列表在初始化时需要进行随机乱序处理
 #[derive(Debug, Clone, Default)]
 pub struct RoundRobbin {
@@ -18,7 +20,7 @@ impl ReadStrategy for RoundRobbin {
         let rand: usize = rand::random();
         Self {
             que_len: reader_len,
-            current_pos: CloneableAtomicUsize::new(rand >> 8 << 8),
+            current_pos: CloneableAtomicUsize::new(rand),
         }
     }
     /// 实现策略很简单：持续轮询
@@ -61,7 +63,7 @@ trait Pos {
 
 impl Pos for usize {
     fn que_idx(&self, que_len: usize) -> usize {
-        self.wrapping_shr(8).wrapping_rem(que_len)
+        self.wrapping_shr(HITS_BITS).wrapping_rem(que_len)
     }
 }
 
@@ -72,6 +74,6 @@ trait Idx {
 
 impl Idx for usize {
     fn to_pos(&self) -> usize {
-        self.wrapping_shl(8)
+        self.wrapping_shl(HITS_BITS)
     }
 }
